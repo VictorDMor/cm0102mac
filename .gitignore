@@ -6,5 +6,6 @@ __pycache__/
 *.dmg
 *.iso
 *.sav
+!saves/*.sav
 *.rsrc
 reports/generated/

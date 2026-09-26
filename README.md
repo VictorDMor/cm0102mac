@@ -64,6 +64,14 @@ save/reload, match simulation, and returning from full time are verified.
 Multiplayer remains unavailable; its initialization
 now returns an explicit unsupported error to the original game.
 
+## Saved game snapshot
+
+`saves/Mac-Teste-Validado-Pos-Jogo.sav` is a Git LFS snapshot of the latest
+verified post-match save. It was copied from the installed game's
+`Runtime/Files/games` directory; the installed save remains in place. After
+cloning, run `git lfs pull` if Git has not downloaded the save automatically.
+Other local saves stay outside the repository.
+
 `Run Native Prototype.command` remains a diagnostic alternative using the local
 build and installed game data. It limits execution to 10 billion original
 instructions by default, writes `.local/prototype-runs/run.XXXXXX`, and leaves
