@@ -1,10 +1,12 @@
 /goal Otimize drasticamente os tempos de carregamento e processamento do Championship Manager 01/02 nativo para Apple Silicon e modernize progressivamente sua implementação em C++, preservando o comportamento do jogo original.
 
-Trabalhe no projeto /Users/victordmor/Projects/cm0102mac. Implemente as melhorias e valide o aplicativo real; não pare em um diagnóstico, plano, benchmark isolado ou alteração da versão da linguagem.
+Trabalhe no repositório /Users/victordmor/Projects/cm0102mac, remoto origin git@github.com:VictorDMor/cm0102mac.git. Implemente as melhorias e valide o aplicativo real; não pare em um diagnóstico, plano, benchmark isolado ou alteração da versão da linguagem.
 
 ## Objetivo e prioridades
 
 O jogo já funciona nativamente, mas os tempos de carregamento e simulação são insatisfatórios para um Mac de 2026. A prioridade é uma melhora expressiva e demonstrável na experiência real: abrir o aplicativo, carregar uma partida salva, criar uma nova carreira, avançar dias e processar partidas. Modernize primeiro as rotinas que mais custam tempo, substituindo código gerado de baixo nível por C++ direto, legível, seguro e eficiente onde isso trouxer benefício comprovado.
+
+Mantenha a interface atual de 800×600 como referência. Aumento de resolução, redesenho das telas, novos gráficos e mudanças de layout ficam para um goal separado. Otimizar a renderização existente está no escopo se o perfil demonstrar que ela é um gargalo, preservando a apresentação e a interação atuais.
 
 Após obter a linha de base, estabeleça e registre metas numéricas ambiciosas e justificadas para os cenários prioritários. Não invente tempos atuais nem prometa fatores de aceleração antes das medições. Um ganho pequeno em uma operação isolada não satisfaz o objetivo de reduzir drasticamente o tempo percebido pelo usuário.
 
@@ -14,28 +16,30 @@ Após obter a linha de base, estabeleça e registre metas numéricas ambiciosas 
 - A implementação atual recompila antecipadamente o executável PowerPC original do Mac: Ghidra/P-code → C++ gerado → ARM64, com serviços nativos de macOS. A reconstrução Windows/ReCM serve como referência; seu motor não está integrado. Não confunda esse material com código-fonte original pronto para compilar.
 - O projeto já usa C++23. A modernização solicitada é estrutural e semântica: nomes e tipos claros, responsabilidades separadas, gerenciamento de recursos e estruturas de dados adequados. Adote recursos modernos efetivamente suportados pelo compilador disponível; não trate uma troca para um número de padrão mais recente como modernização concluída.
 - O usuário confirmou o ciclo completo: criar/carregar a carreira do Cruzeiro, abrir plantel, jogador e competição, avançar datas, concluir uma partida, voltar ao clube, salvar, sair e carregar novamente com o resultado contra a Anapolina preservado.
-- O save de referência é /Users/victordmor/Library/Application Support/CM 01-02 Native/Runtime/Files/games/Mac-Teste-Validado-Pos-Jogo.sav. Na última verificação tinha 17.917.514 bytes e SHA-256 82c504f46ce54a723137dbf42c005d458a4d7b18a9abab4c9f92627aa94f08fb. Há uma cópia preservada em .local/save-backups/post-match-82c504f46ce5.sav. Verifique antes de usar e trabalhe com cópias.
+- O save de referência está versionado via Git LFS em saves/Mac-Teste-Validado-Pos-Jogo.sav: 17.917.514 bytes e SHA-256 82c504f46ce54a723137dbf42c005d458a4d7b18a9abab4c9f92627aa94f08fb, conferidos contra o objeto LFS. Em um clone novo, execute git lfs pull se necessário e confirme que o arquivo contém o save completo, não apenas o ponteiro LFS. Preserve essa referência e teste com cópias. A gravação instalada fica em /Users/victordmor/Library/Application Support/CM 01-02 Native/Runtime/Files/games/Mac-Teste-Validado-Pos-Jogo.sav; há também uma cópia local em .local/save-backups/post-match-82c504f46ce5.sav.
 - Aplicativo instalado: /Users/victordmor/Applications/CM 01-02 Native Prototype.app. Dados e arquivos privados ficam em /Users/victordmor/Library/Application Support/CM 01-02 Native. A instalação já funciona sem o CDR montado, preservando resource forks, preferências e saves.
 - A última execução completa dos testes passou: 18 grupos, zero falhas, 30,63 segundos. Isso não é uma medição de desempenho do jogo.
 - A última alteração extraiu a montagem da exceção de Memory::check para uma função separada, mantendo limites e diagnósticos. Foi testada e instalada, mas ainda não teve validação de gameplay nem medição de ganho no jogo inteiro. O processo que estava aberto continuava usando a versão anterior: revalide qual binário está executando.
 - Multiplayer e alguns serviços menos usados permanecem incompletos. Não apresente o aplicativo como uma versão integralmente validada. Implementar multiplayer não é o foco deste novo objetivo.
-- Na última inspeção, esta pasta não tinha .git. Preserve todo o trabalho existente; não presuma branch, commit, remoto ou possibilidade de push.
+- O estado de implementação inspecionado em 26/09/2026 é a branch main no commit c75d79505caea14529237af41ef1cd2820a64ad2 (Track post-match save with Git LFS), precedido por 55d8e76 (Initialize native CM 01/02 port repository). Antes da edição deste prompt, o checkout estava limpo e o SHA de main no origin correspondia ao local. A revisão deste prompt é posterior a essa base; confira novamente HEAD, branch, diff e remoto ao começar. Preserve qualquer alteração que tenha surgido desde então.
+- .local/, reports/generated/, mídias de instalação e saves fora de saves/ estão ignorados. Um clone novo não contém automaticamente o ambiente de compilação, os dados originais nem os relatórios locais. No mesmo Mac, confirme a existência desses arquivos antes de reusar o ambiente; em outro checkout, siga a documentação e as ferramentas do projeto para preparar os insumos disponíveis. Não inclua esses artefatos no Git apenas para fazer o build funcionar.
 
 ## Leia primeiro
 
 Consulte as instruções locais aplicáveis e, a partir da raiz do projeto:
 
-- README.md
+- README.md, .gitignore e .gitattributes
+- saves/Mac-Teste-Validado-Pos-Jogo.sav, com verificação do conteúdo Git LFS
 - docs/native-port-status.md
 - docs/aot-port.md, especialmente o histórico de correções e as medições de desempenho
-- reports/generated/aot-status.json
+- reports/generated/aot-status.json, se disponível localmente; não é versionado
 - native/CMakeLists.txt
 - native/aot_runtime.hpp e native/aot_runtime.cpp
 - tools/compile_recomp.py
 - native/platform.cpp, native/filesystem_bridge.cpp, native/callbacks.cpp e native/sound_bridge.cpp
 - Os testes das rotinas que decidir alterar, incluindo native/memory_checks.cpp, native/day_advance_checks.cpp, native/match_arithmetic_checks.cpp e native/sound_checks.cpp.
 
-Use esses arquivos como ponto de partida; inspecione as implementações e o estado atual antes de confiar nos relatórios. O prompt é autossuficiente e não exige acesso à conversa anterior.
+Use esses arquivos como ponto de partida; inspecione as implementações e o estado atual antes de confiar nos relatórios. Alguns documentos contêm etapas históricas com validações que eram pendentes naquela época; diferencie essas passagens das confirmações posteriores. O prompt é autossuficiente e não exige acesso à conversa anterior.
 
 ## Estratégia de implementação
 
@@ -75,5 +79,13 @@ Depois dos testes pertinentes, valide no jogo real o carregamento, avanço, part
 - Nenhuma regressão conhecida nos caminhos anteriormente validados, incluindo salvar e carregar após uma partida.
 - Aplicativo nativo testado e entregue localmente; distinção explícita entre build, instalação, processo em execução e validação feita pelo usuário.
 - Documentação atualizada com medições antes/depois, cenários, condições, variabilidade, resultados de testes, mudanças aplicadas, gargalos restantes e limites da validação. Registre também tentativas descartadas que evitem retrabalho.
+
+## Versionamento e entrega no repositório
+
+Trabalhe sobre o estado atual confirmado, preservando alterações alheias. Mantenha commits coerentes de melhorias concluídas e validadas. Há autorização para fazer commit e push desse trabalho sem pedir confirmação a cada entrega: revise o diff exato, confira a branch e o remoto de destino, faça push normal e verifique que o SHA remoto corresponde ao commit entregue. Não use force push nem reescreva o histórico existente.
+
+Preserve .gitignore e .gitattributes, incluindo a regra LFS do save de referência. Não versione outros saves pessoais, logs de execução, credenciais, dados privados, imagens do CD ou diretórios locais de compilação. O save de referência já foi incluído deliberadamente pelo usuário; mantenha-o imutável e crie arquivos de trabalho separados para testes. Publique somente evidências técnicas adequadas ao repositório, como metodologia, resultados agregados e testes reproduzíveis.
+
+Ao concluir, informe o commit entregue, os ganhos medidos no aplicativo real, quais trechos foram modernizados, as validações executadas e as limitações restantes. Não apresente um push bem-sucedido como prova de funcionamento ou desempenho.
 
 Converse comigo em português. Mantenha código, documentação técnica, testes e mensagens do aplicativo em inglês. Trabalhe com autonomia nas decisões rotineiras, preserve os arquivos privados e não solicite novas permissões para ações já abrangidas pelo objetivo.
