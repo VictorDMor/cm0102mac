@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:cm0102mac}",
+            "name": "Debug cm-assets",
+            "target": "cm-assets",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug cm-assets"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:cm0102mac}",
+            "name": "Release cm-assets",
+            "target": "cm-assets",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release cm-assets"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:cm0102mac}",
+            "name": "Debug cm-assets-checks",
+            "target": "cm-assets-checks",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug cm-assets-checks"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:cm0102mac}",
+            "name": "Release cm-assets-checks",
+            "target": "cm-assets-checks",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release cm-assets-checks"
+        }
+    ]
+}

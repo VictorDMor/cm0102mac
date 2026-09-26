@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+"""Translate selected, reachable original PowerPC P-code to build-time C++.
+
+Unresolved indirect destinations stop the native program with an address. They
+never fall back to interpreting instructions. Expand roots and rebuild offline.
+"""
+import argparse
+from collections import defaultdict, deque
+import json
+import hashlib
+from pathlib import Path
+import sqlite3
+import struct
+
+
+def integer(value):
+    return int(value, 0)
+
+
+def constant(value):
+    return f"UINT64_C({value})"
+
+
+def read(node):
+    space, offset, size = node
+    offset = int(offset)
+    if size not in (1, 2, 4, 8):
+        raise ValueError(f"Unsupported value width: {node}")
+    if space == "const":
+        return constant(offset & ((1 << (size * 8)) - 1))
+    access = {"register": "r", "unique": "u", "ram": "memory.read"}.get(space)
+    if not access:
+        raise ValueError(f"Unsupported value space: {node}")
+    return f"s.{access}<{size}>({offset})"
+
+
+def write(node, value):
+    space, offset, size = node
+    if size not in (1, 2, 4, 8):
+        raise ValueError(f"Unsupported output width: {node}")
+    access = {"register": "wr", "unique": "wu", "ram": "memory.write"}.get(space)
+    if not access:
+        raise ValueError(f"Unsupported output space: {node}")
+    return f"s.{access}<{size}>({int(offset)}, {value});"
+
+
+def transfer(address, page, selected):
+    if address >> 12 == page and address in selected:
+        return f"goto i_{address:x};"
+    return f"s.pc = 0x{address:x}; return true;"
+
+
+def operation(op, address, index, page, selected, op_count):
+    name, output, *inputs = op
+    if name == "CALLOTHER":
+        return 'throw std::runtime_error("Unimplemented original intrinsic at ' + hex(address) + '");'
+    if name in ("BRANCH", "CALL", "CBRANCH"):
+        dest = inputs[0]
+        if dest[0] == "const":
+            offset = int(dest[1]) & ((1 << (8 * dest[2])) - 1)
+            if offset >= 1 << (8 * dest[2] - 1):
+                offset -= 1 << (8 * dest[2])
+            target = index + offset
+            if not 0 <= target <= op_count:
+                raise ValueError(f"P-code branch outside instruction at {address:x}")
+            jump = f"goto op_{address:x}_{target};"
+        elif dest[0] == "ram":
+            jump = transfer(int(dest[1]), page, selected)
+        else:
+            raise ValueError(f"Unexpected branch space: {dest}")
+        if name == "CBRANCH":
+            return f"if ({read(inputs[1])} != 0) {{ {jump} }}"
+        return jump
+    if name in ("BRANCHIND", "CALLIND", "RETURN"):
+        return f"s.pc = std::uint32_t({read(inputs[0])}); return true;"
+    if name in ("LOAD", "STORE"):
+        if inputs[0] != ["const", "417", 8]:
+            raise ValueError(f"Unexpected memory address space: {inputs[0]}")
+        if name == "LOAD":
+            return write(output, f"s.memory.read<{output[2]}>({read(inputs[1])})")
+        return f"s.memory.write<{inputs[2][2]}>({read(inputs[1])}, {read(inputs[2])});"
+
+    args = [read(n) for n in inputs]
+    a = args[0] if args else None
+    b = args[1] if len(args) > 1 else None
+    n = inputs[0][2] if inputs else None
+    binary = {
+        "INT_ADD": "+", "INT_SUB": "-", "INT_MULT": "*", "INT_AND": "&",
+        "INT_OR": "|", "INT_XOR": "^", "INT_EQUAL": "==", "INT_NOTEQUAL": "!=",
+        "INT_LESS": "<", "INT_LESSEQUAL": "<=", "BOOL_AND": "&&", "BOOL_OR": "||",
+    }
+    helpers = {"INT_LEFT": "shift_left", "INT_RIGHT": "shift_right",
+               "INT_SRIGHT": "shift_signed", "INT_CARRY": "carry", "INT_SDIV": "divide_signed"}
+    if name in binary:
+        value = f"({a} {binary[name]} {b})"
+    elif name in helpers:
+        value = f"{helpers[name]}<{n}>({a}, {b})"
+    elif name in ("COPY", "INT_ZEXT"):
+        value = a
+    elif name == "INT_SEXT":
+        value = f"std::uint64_t(signed_value<{n}>({a}))"
+    elif name == "INT_SLESS":
+        value = f"(signed_value<{n}>({a}) < signed_value<{n}>({b}))"
+    elif name == "INT_NEGATE":
+        value = f"~{a}"
+    elif name == "INT_2COMP":
+        value = f"(UINT64_C(0) - {a})"
+    elif name == "BOOL_NEGATE":
+        value = f"({a} == 0)"
+    elif name == "LZCOUNT":
+        value = f"leading_zeros<{n}>({a})"
+    elif name == "INT_DIV":
+        value = f"divide_unsigned({a}, {b})"
+    elif name == "SUBPIECE":
+        value = f"shift_right<{n}>({a}, {b} * 8)"
+    elif name.startswith("FLOAT") or name == "TRUNC":
+        fa = f"float_value<{n}>({a})"
+        fb = f"float_value<{inputs[1][2]}>({b})" if b else None
+        math_op = {"FLOAT_ADD": "+", "FLOAT_SUB": "-", "FLOAT_MULT": "*", "FLOAT_DIV": "/"}
+        if name in math_op:
+            value = f"float_bits<{output[2]}>({fa} {math_op[name]} {fb})"
+        elif name in ("FLOAT_EQUAL", "FLOAT_LESS"):
+            value = f"({fa} {'==' if name == 'FLOAT_EQUAL' else '<'} {fb})"
+        elif name == "FLOAT_NAN":
+            value = f"std::isnan({fa})"
+        elif name == "FLOAT2FLOAT":
+            value = f"float_bits<{output[2]}>({fa})"
+        elif name == "FLOAT_ABS":
+            value = f"float_bits<{output[2]}>(std::abs({fa}))"
+        elif name == "FLOAT_NEG":
+            value = f"float_bits<{output[2]}>(-{fa})"
+        elif name == "TRUNC":
+            value = f"float_truncate<{output[2]}>({fa})"
+        else:
+            raise ValueError(f"Unsupported floating operation: {name}")
+    else:
+        raise ValueError(f"Unsupported operation: {name}")
+    return write(output, value)
+
+
+def require_dead_register(instructions, start, offset, size):
+    """Fail closed unless every original branch overwrites a register before use.
+
+    Used only after the audited match multiply has annihilated the undefined
+    quotient. Calls, indirect flow, cycles, partial writes, and unknown targets
+    are not proofs. P-code inputs include overlapping subregister reads.
+    """
+    proven = set()
+
+    def overlaps(node):
+        return node is not None and node[0] == "register" and \
+            int(node[1]) < offset + size and offset < int(node[1]) + node[2]
+
+    def visit(address, path):
+        if address in proven:
+            return
+        item = instructions.get(address)
+        if item is None or address in path or len(path) >= 128:
+            raise ValueError("Cannot prove match quotient dead on every continuation")
+        for name, output, *inputs in item["ops"]:
+            if any(overlaps(node) for node in inputs):
+                raise ValueError(f"Match quotient read before overwrite at {address:x}")
+            if overlaps(output):
+                if output != ["register", str(offset), size]:
+                    raise ValueError(f"Partial match quotient overwrite at {address:x}")
+                proven.add(address)
+                return
+        if item["flow"] not in ("FALL_THROUGH", "CONDITIONAL_JUMP", "UNCONDITIONAL_JUMP"):
+            raise ValueError(f"Unproven match quotient control flow at {address:x}")
+        targets = list(item.get("flows", []))
+        if item["flow"] != "UNCONDITIONAL_JUMP":
+            targets.append(item.get("fallthrough"))
+        if not targets or None in targets:
+            raise ValueError(f"Missing match quotient continuation at {address:x}")
+        for target in targets:
+            visit(target, path | {address})
+        proven.add(address)
+
+    visit(start, set())
+
+
+def generate_page(page, instructions, selected):
+    code = ['#include "aot_runtime.hpp"', "namespace cm::aot {",
+            f"bool page_{page:x}(State& s) {{", "switch (s.pc) {"]
+    if any(item["assembly"].startswith("fctiwz ") for item in instructions):
+        code.insert(1, '#include "floating_point.hpp"')
+    for item in instructions:
+        a = item["address"]
+        code.append(f"case 0x{a:x}: goto i_{a:x};")
+    code.extend(["default: return false;", "}"])
+    for item in instructions:
+        a = item["address"]
+        code.extend([f"i_{a:x}: // {item['assembly']}", f"s.step(0x{a:x});"])
+        if a == 0x101355d4:
+            # PowerPC divw without OE/Rc does not trap on a zero divisor; its
+            # quotient is undefined. Here that quotient's only use is a multiply
+            # by the same zero divisor, followed by an unconditional overwrite.
+            # Any quotient therefore gives the same observable continuation.
+            # Audit the complete use/kill sequence before choosing zero locally;
+            # keep unrelated divisions strict and all nonzero cases unchanged.
+            sequence = [
+                "divw r3,r5,r4", "lwz r0,0xbc(r1)", "cmpwi r0,0x0",
+                "mullw r0,r3,r4", "subf r13,r0,r5", "neg r0,r13",
+                "ble 0x101355f4", "or r0,r13,r13", "or r13,r0,r0",
+                "xoris r3,r13,0x8000"]
+            by_address = {record["address"]: record for record in instructions}
+            if any(by_address.get(a + i * 4, {}).get("assembly") != assembly
+                   for i, assembly in enumerate(sequence)) or item["ops"] != [
+                    ["INT_SDIV", ["register", "12", 4], ["register", "20", 4], ["register", "16", 4]]]:
+                raise ValueError("Day-advance division no longer matches the audited quotient-independent sequence")
+            code.extend(["if (s.r<4>(16) == 0) {", "s.wr<4>(12, 0);",
+                         transfer(a + 4, page, selected), "}"])
+        if a == 0x1024773c:
+            # Same exceptional divw semantics in the match routine. Unlike the
+            # day-advance site, r3 is killed along several later branches.
+            sequence = [
+                "divw r3,r5,r4", "fctiwz f0,f0", "stfd f0,0x9c(r1)",
+                "lwz r0,0xa0(r1)", "cmpwi r0,0x0", "mullw r0,r3,r4"]
+            by_address = {record["address"]: record for record in instructions}
+            if any(by_address.get(a + i * 4, {}).get("assembly") != assembly
+                   for i, assembly in enumerate(sequence)) or item["ops"] != [
+                    ["INT_SDIV", ["register", "12", 4], ["register", "20", 4], ["register", "16", 4]]]:
+                raise ValueError("Match division no longer matches the audited annihilating multiply")
+            require_dead_register(by_address, 0x10247754, 12, 4)
+            code.extend(["if (s.r<4>(16) == 0) {", "s.wr<4>(12, 0);",
+                         transfer(a + 4, page, selected), "}"])
+        if a in (0x10713aec, 0x10713b3c):
+            # Club and competition fallback callers (10713214 / 107133b8)
+            # deliberately pass a null object. The shared selector 107139c0
+            # ignores its descriptor in that case. Avoid only these audited
+            # eager getter calls; nonnull lookup and other accesses are intact.
+            getter = 0x100d5310 if a == 0x10713aec else 0x100d4fd0
+            continuation = a + 4
+            if item["assembly"] != f"bl 0x{getter:x}" or item["ops"] != [
+                    ["COPY", ["register", "2440", 4], ["register", "8", 4]],
+                    ["COPY", ["register", "4128", 4], ["const", str(continuation), 4]],
+                    ["CALL", None, ["ram", str(getter), 4]]]:
+                raise ValueError("Background call site no longer matches the audited release")
+            code.extend(["if (s.r<4>(12) == 0) {", "s.wr<4>(2440, s.r<4>(8));",
+                         f"s.wr<4>(4128, 0x{continuation:x});",
+                         transfer(continuation, page, selected), "}"])
+        if item["assembly"].startswith("fctiwz "):
+            # Ghidra's generic TRUNC does not express PowerPC invalid-result
+            # saturation or all FPSCR flags. Lower this instruction explicitly.
+            operands = item["assembly"].split()[1].split(",")
+            destination, source = [16384 + 16 * int(register.removeprefix("f")) for register in operands]
+            ops = item["ops"]
+            if [op[0] for op in ops] != ["COPY", "FLOAT_NAN", "INT_OR", "INT_OR", "TRUNC", "INT_SEXT"] or \
+               ops[4][1][2] != 4 or ops[4][2] != ["register", str(source), 8] or \
+               ops[5][1] != ["register", str(destination), 8]:
+                raise ValueError(f"Unrecognized fctiwz export at {a:x}")
+            code.append(f"original_fctiwz(s, {destination}, {source});")
+            code.append(transfer(a + item["size"], page, selected))
+            continue
+        labels = set()
+        for i, op in enumerate(item["ops"]):
+            if op[0] in ("BRANCH", "CBRANCH", "CALL") and op[2][0] == "const":
+                offset, width = int(op[2][1]), op[2][2] * 8
+                offset &= (1 << width) - 1
+                if offset >= 1 << (width - 1): offset -= 1 << width
+                labels.add(i + offset)
+        for i, op in enumerate(item["ops"]):
+            if i in labels: code.append(f"op_{a:x}_{i}:")
+            code.append(operation(op, a, i, page, selected, len(item["ops"])))
+        if len(item["ops"]) in labels: code.append(f"op_{a:x}_{len(item['ops'])}:")
+        # This path is reached only if no earlier branch/return transferred out.
+        code.append(transfer(a + item["size"], page, selected))
+    code.extend(["}", "}"])
+    return "\n".join(code) + "\n"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("export", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--root", action="append", type=integer, required=True)
+    parser.add_argument("--limit", type=int, default=8192)
+    parser.add_argument("--all-analyzed", action="store_true",
+                        help="Stream every analyzed instruction into native compilation units")
+    args = parser.parse_args()
+    if args.limit < 1: raise ValueError("Instruction limit must be positive")
+    metadata = json.loads((args.export / "program.json").read_text())
+    if metadata["language"] != "PowerPC:BE:32:default":
+        raise ValueError("Expected 32-bit big-endian PowerPC")
+    if metadata["executableSHA256"] != "91692f95df17cf851e7c1d6dbdecd0bd0a5809ce1937133e209aee859a6b516b":
+        raise ValueError("This port's loader layout requires the audited CM 01/02 Mac binary")
+    with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
+        identity = db.execute("SELECT value FROM metadata WHERE key='executableSHA256'").fetchone()
+        if identity != (metadata["executableSHA256"],): raise ValueError("Wrong instruction index")
+        selected, missing, seen = {}, set(), set()
+        queue = deque(args.root)
+        while not args.all_analyzed and queue and len(selected) < args.limit:
+            address = queue.popleft()
+            if address in seen: continue
+            seen.add(address)
+            result = db.execute("SELECT body FROM instructions WHERE address=?", (address,)).fetchone()
+            if not result:
+                missing.add(address)
+                continue
+            item = json.loads(result[0])
+            selected[address] = item
+            queue.extend(item["flows"])
+            if "fallthrough" in item: queue.append(item["fallthrough"])
+    args.output.mkdir(parents=True, exist_ok=True)
+    # Invalidate completion before touching generated units, so interruption
+    # cannot leave an old manifest claiming the new partial output is complete.
+    (args.output / "compilation.json").unlink(missing_ok=True)
+    pages = defaultdict(list)
+    for address, item in sorted(selected.items()): pages[address >> 12].append(item)
+    outputs = {}
+    generated_count = len(selected)
+    if args.all_analyzed:
+        # Keep memory bounded to one code page. Game-derived instruction JSON
+        # does not need to be held in a multi-gigabyte Python object graph.
+        generated_count = 0
+        with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
+            page_ids = [row[0] for row in db.execute("SELECT DISTINCT address >> 12 FROM instructions ORDER BY address")]
+            for page in page_ids:
+                records = [json.loads(row[0]) for row in db.execute(
+                    "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
+                    (page << 12, (page + 1) << 12))]
+                path = args.output / f"page_{page:x}.cpp"
+                content = generate_page(page, records, {r["address"] for r in records})
+                if not path.exists() or path.read_text() != content: path.write_text(content)
+                pages[page] = []
+                outputs[path.name] = None
+                generated_count += len(records)
+        if generated_count != metadata["instructionCount"]: raise ValueError("Incomplete indexed listing")
+        queue.clear()
+    for page, instructions in pages.items():
+        if not args.all_analyzed: outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected)
+    code = ['#include "aot_runtime.hpp"', '#include "aot_integrity.hpp"', "namespace cm::aot {"]
+    for page in pages: code.append(f"bool page_{page:x}(State&);")
+    code += ["bool dispatch_page(State& s) {", "switch (s.pc >> 12) {"]
+    for page in pages: code.append(f"case 0x{page:x}: return page_{page:x}(s);")
+    code += ["default: return false;", "}", "}",
+             "const char* import_name(std::uint32_t address) {", "switch (address) {"]
+    for symbol in metadata["symbols"]:
+        if symbol["space"] == "ram" and symbol["name"].startswith(".import::"):
+            code.append(f"case {symbol['address']}: return {json.dumps(symbol['name'][9:])};")
+    code += ["default: return nullptr;", "}", "}",
+             "void load_program(State& s, const std::filesystem::path& directory) {"]
+    for segment in metadata["segments"]:
+        if segment["initialized"]:
+            with (args.export / segment["file"]).open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            code.append(f"load_verified(s.memory, {segment['address']}, directory / {json.dumps(segment['file'])}, {segment['size']}, {json.dumps(digest)});")
+        else: code.append(f"s.memory.map({segment['address']}, {segment['size']});")
+    # Ghidra's PEF loader represents imported transition vectors as four-byte
+    # placeholders. Real CFM calls dereference an eight-byte {entry, TOC} pair.
+    # Resolve the exact annotated import pointer slots, never scan/patch arbitrary
+    # data words that happen to equal an import address.
+    imports = {s["address"] for s in metadata["symbols"]
+               if s["space"] == "ram" and s["name"].startswith(".import::")}
+    vectors = [s for s in metadata["symbols"] if s["space"] == "ram" and s["name"].startswith(".TVect::")]
+    code.append(f"s.memory.map(0x60000000, {len(vectors) * 8});")
+    for index, vector in enumerate(vectors):
+        address = vector["address"]
+        segment = next(s for s in metadata["segments"]
+                       if s["initialized"] and s["address"] <= address < s["address"] + s["size"])
+        with (args.export / segment["file"]).open("rb") as stream:
+            stream.seek(address - segment["address"])
+            imported = struct.unpack(">I", stream.read(4))[0]
+        if imported not in imports: raise ValueError("Unrecognized imported transition vector")
+        native_vector = 0x60000000 + index * 8
+        code += [f"s.memory.write<4>({address}, {native_vector});",
+                 f"s.memory.write<4>({native_vector}, {imported});",
+                 f"s.memory.write<4>({native_vector + 4}, 0);"]
+    code += ["s.memory.map(0x70000000, 0x100000);", "s.wr<4>(4, 0x700fff00);",
+             "s.wr<4>(8, 0x108bba90);", f"s.wr<4>(4128, return_sentinel);", "}", "}"]
+    outputs["program.cpp"] = "\n".join(code) + "\n"
+    # Remove only stale generated pages, after all code generation has succeeded.
+    for stale in args.output.glob("page_*.cpp"):
+        if stale.name not in outputs: stale.unlink()
+    for filename, content in outputs.items():
+        if content is None: continue
+        path = args.output / filename
+        if not path.exists() or path.read_text() != content: path.write_text(content)
+    manifest = {"purpose": "Bounded ahead-of-time compilation experiment; not a playable game",
+                "executableSHA256": metadata["executableSHA256"], "roots": args.root,
+                "instructions": generated_count, "pages": len(pages),
+                "allAnalyzedInstructions": args.all_analyzed,
+                "sourceFixups": [
+                    {"address": f"0x{address:x}", "purpose": purpose}
+                    for address, purpose in (
+                        (0x101355d4, "Preserve nontrapping division where zero-divisor quotient is provably unused"),
+                        (0x1024773c, "Preserve match division after proving the exceptional quotient unused on every branch"),
+                        (0x10713aec, "Skip unused null-club descriptor lookup for default background"),
+                        (0x10713b3c, "Skip unused null-competition descriptor lookup for default background"))
+                    if (args.all_analyzed and address >> 12 in pages) or address in selected],
+                "missingStaticTargets": sorted(missing),
+                "pendingTargets": sorted(set(queue) - seen), "files": sorted(outputs)}
+    (args.output / "compilation.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    print(f"Generated {generated_count:,} original instructions across {len(pages)} native compilation units")
+    print(f"Missing static targets: {len(missing)}; pending targets: {len(manifest['pendingTargets'])}")
+
+
+if __name__ == "__main__":
+    main()

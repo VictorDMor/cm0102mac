@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+.build/
+.local/
+*.cdr
+*.dmg
+*.iso
+*.sav
+*.rsrc
+reports/generated/
