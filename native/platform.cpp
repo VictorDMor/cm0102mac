@@ -5,11 +5,13 @@
 #include "ui_bridge.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
+#include "directory_catalog.hpp"
 #include "printing_bridge.hpp"
 #include "callbacks.hpp"
 #include "apple_events.hpp"
 #include "data_forks.hpp"
 #include "sound_bridge.hpp"
+#include "performance_trace.hpp"
 #include <bit>
 #include <deque>
 #include <chrono>
@@ -60,12 +62,6 @@ bool same_name(const std::string& a, const std::string& b) {
     if (y) CFRelease(y);
     return same;
 }
-using Filename = std::unique_ptr<std::remove_pointer_t<CFStringRef>, decltype(&CFRelease)>;
-struct FilenameLess {
-    bool operator()(const Filename& a, const Filename& b) const {
-        return CFStringCompare(a.get(), b.get(), filename_comparison) == kCFCompareLessThan;
-    }
-};
 std::string read_mac_string(State& s, std::uint32_t address) {
     if (!address) return {};
     const auto bytes = s.memory.copy_out(address + 1, s.memory.read<1>(address));
@@ -97,6 +93,7 @@ std::uint32_t mac_date(std::int64_t unix_seconds) {
 struct NativePlatform::Impl {
     explicit Impl(AudioMode mode) : sound(mode) {}
     NativeSound sound;
+    PerformanceTrace performance;
     struct Handle { std::uint32_t payload, size; bool locked = false; };
     std::map<std::uint32_t, Handle> handles;
     // Owned PixMap, pixels, and palette handles for each GetCCursor result.
@@ -156,39 +153,25 @@ struct NativePlatform::Impl {
         return under(input, overlay()) ? (game / input.lexically_relative(overlay())).lexically_normal() : input;
     }
     bool volume_root(const fs::path& input) const { return logical_path(input) == game || input == writable; }
+    mutable NativeDirectoryCatalog catalog;
+    std::array<fs::path, 3> catalog_paths(const fs::path& input) const {
+        const auto logical = logical_path(input);
+        if (under(logical, game)) return {logical, overlay() / logical.lexically_relative(game), {}};
+        return {input, {}, input == writable ? overlay() : fs::path{}};
+    }
+    const std::vector<NativeDirectoryCatalog::Entry>& listing(const fs::path& input) const {
+        const auto paths = catalog_paths(input);
+        return catalog.list(paths[0], paths[1], paths[2]);
+    }
     std::vector<fs::path> entries(const fs::path& input) const {
         std::vector<fs::path> result;
-        // Preserve the exact CoreFoundation name comparison and overlay order,
-        // but avoid repeatedly decoding/comparing every previous name. This
-        // index lives for one listing only; external file changes remain visible.
-        std::map<Filename, std::size_t, FilenameLess> names;
-        auto append = [&](const fs::path& directory, bool replace) {
-            if (!fs::is_directory(directory)) return;
-            for (const auto& item : fs::directory_iterator(directory)) {
-                if (directory == writable && item.path() == overlay()) continue;
-                Filename key(CFStringCreateWithCString(nullptr, item.path().filename().c_str(),
-                                                        kCFStringEncodingUTF8), &CFRelease);
-                // Undecodable native names never matched in same_name either.
-                if (!key) { result.push_back(item.path()); continue; }
-                const auto [found, inserted] = names.try_emplace(std::move(key), result.size());
-                if (inserted) result.push_back(item.path());
-                else if (replace) result[found->second] = item.path();
-            }
-        };
-        const auto logical = logical_path(input);
-        if (under(logical, game)) {
-            append(logical, false);
-            append(overlay() / logical.lexically_relative(game), true);
-        } else append(input, false);
-        std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
-            return a.filename().string() < b.filename().string();
-        });
+        for (const auto& entry : listing(input)) result.push_back(entry.path);
         return result;
     }
     fs::path visible_child(const fs::path& parent, const std::string& name) const {
-        for (const auto& item : entries(parent))
-            if (same_name(item.filename().string(), name)) return item;
-        return parent / name;
+        const auto paths = catalog_paths(parent);
+        const auto found = catalog.child(paths[0], paths[1], paths[2], name);
+        return found.empty() ? parent / name : found;
     }
     fs::path writable_path(const fs::path& input) const {
         const auto logical = logical_path(input);
@@ -334,6 +317,7 @@ struct NativePlatform::Impl {
             }
             user_interface().present_window(port.window, width, height, width * 4, argb);
         }
+        performance.mark("frame", s, port.window);
     }
     bool window_event(State& s, const UIEvent& event) {
         if (!windows.contains(event.window)) return false;
@@ -526,7 +510,7 @@ struct NativePlatform::Impl {
                 case UIEvent::Kind::auto_key: what = 5; break;
                 case UIEvent::Kind::update: what = 6; message = found->window; break;
                 case UIEvent::Kind::activate: what = 8; message = found->window; break;
-                case UIEvent::Kind::suspend_resume: what = 15; break;
+                case UIEvent::Kind::suspend_resume: case UIEvent::Kind::mouse_moved: what = 15; break;
                 default: throw std::runtime_error("Unsupported original event record type");
             }
             s.memory.write<2>(address, what);
@@ -536,8 +520,9 @@ struct NativePlatform::Impl {
             s.memory.write<2>(address + 12, std::uint16_t(found->x));
             s.memory.write<2>(address + 14, found->modifiers);
             if (std::getenv("CM_AOT_TRACE_INPUT") && (what == 1 || what == 2))
-                std::fprintf(stderr, "Original mouse event: what=%u window=%08x global=%d,%d live=%d,%d\n",
-                    what, found->window, found->x, found->y, pointer.x, pointer.y);
+                std::fprintf(stderr, "Original mouse event: what=%u window=%08x global=%d,%d live=%d,%d button=%u modifiers=%04x\n",
+                    what, found->window, found->x, found->y, pointer.x, pointer.y, found->button, found->modifiers);
+            if (what >= 1 && what <= 5) performance.mark("input", s, what);
         }
         pending_events.erase(found);
         return true;
@@ -796,19 +781,21 @@ struct NativePlatform::Impl {
         const auto space = fs::space(writable);
         struct stat info{};
         if (stat(root.c_str(), &info)) throw FileError{volume_not_found};
-        const std::uint64_t block_size = std::max<std::uint64_t>(4096,
-            (((space.capacity + 65534) / 65535) + 4095) & ~UINT64_C(4095));
-        if (block_size > UINT32_MAX) throw FileError{parameter_error};
+        const auto geometry = legacy_volume_geometry(space);
         std::uint32_t files = 0, folders = 0;
         std::vector<fs::path> pending{root};
         while (!pending.empty()) {
             auto parent = std::move(pending.back());
             pending.pop_back();
-            for (const auto& entry : entries(parent)) {
-                if (fs::is_directory(entry)) {
+            for (const auto& entry : listing(parent)) {
+                // A symlink target can change without changing its parent.
+                // Resolve its type afresh and retain the original no-recursion rule.
+                const bool link = entry.type == fs::file_type::symlink;
+                const auto type = link ? fs::status(entry.path).type() : entry.type;
+                if (type == fs::file_type::directory) {
                     ++folders;
-                    if (!fs::is_symlink(entry)) pending.push_back(entry);
-                } else if (fs::is_regular_file(entry)) ++files;
+                    if (!link) pending.push_back(entry.path);
+                } else if (type == fs::file_type::regular) ++files;
             }
         }
         s.memory.clear(pb + 30, 92);
@@ -816,11 +803,11 @@ struct NativePlatform::Impl {
         s.memory.write<4>(pb + 30, mac_date(info.st_birthtimespec.tv_sec));
         s.memory.write<4>(pb + 34, mac_date(info.st_mtimespec.tv_sec));
         s.memory.write<2>(pb + 40, std::min(files, std::uint32_t(UINT16_MAX)));
-        s.memory.write<2>(pb + 46, space.capacity / block_size);
-        s.memory.write<4>(pb + 48, block_size);
-        s.memory.write<4>(pb + 52, block_size);
+        s.memory.write<2>(pb + 46, geometry.blocks);
+        s.memory.write<4>(pb + 48, geometry.block_size);
+        s.memory.write<4>(pb + 52, geometry.block_size);
         s.memory.write<4>(pb + 58, next_directory);
-        s.memory.write<2>(pb + 62, std::min<std::uint64_t>(space.available / block_size, UINT16_MAX));
+        s.memory.write<2>(pb + 62, geometry.free_blocks);
         s.memory.write<2>(pb + 64, 0x482b); // HFS-compatible catalog view.
         s.memory.write<4>(pb + 82, files);
         s.memory.write<4>(pb + 86, folders);
@@ -1565,6 +1552,7 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             if (permission != 1) target = impl_->writable_file(target);
             std::int16_t ref = 0;
             status = impl_->data_forks.open(target, permission, ref);
+            impl_->performance.mark("file-open", s, std::uint16_t(ref));
             if (std::getenv("CM_AOT_TRACE_FILES"))
                 std::fprintf(stderr, "Native file open: %s permission=%d status=%d\n", target.c_str(), permission, status);
             if (!status) s.memory.write<2>(parameter_block ? arg(0) + 24 : arg(2), std::uint16_t(ref));
@@ -1622,7 +1610,9 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
                 else if (!status) status = position_error;
             }
         } else if (name == "CarbonLib::PBCloseSync" || name == "CarbonLib::FSClose") {
-            status = impl_->data_forks.close(std::int16_t(name == "CarbonLib::PBCloseSync" ? s.memory.read<2>(arg(0) + 24) : arg(0)));
+            const auto ref = std::int16_t(name == "CarbonLib::PBCloseSync" ? s.memory.read<2>(arg(0) + 24) : arg(0));
+            status = impl_->data_forks.close(ref);
+            impl_->performance.mark("file-close", s, std::uint16_t(ref));
         } else if (name == "CarbonLib::PBGetCatInfoSync") {
             impl_->catalog_info(s, arg(0));
         } else if (name == "CarbonLib::PBHGetVInfoSync") {

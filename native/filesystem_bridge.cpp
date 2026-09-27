@@ -7,6 +7,17 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 namespace cm::aot {
+LegacyVolumeGeometry legacy_volume_geometry(const std::filesystem::space_info& space) {
+    // The original game multiplies these fields in 32 bits before converting
+    // free bytes to MiB (0x1073afc0). Expose a conservative Classic volume view
+    // whose products fit; never report more free space than the backing disk.
+    const auto capacity = std::min<std::uint64_t>(space.capacity, UINT32_MAX);
+    const auto block_size = std::max<std::uint64_t>(4096,
+        (((capacity + 65534) / 65535) + 4095) & ~UINT64_C(4095));
+    const auto blocks = capacity / block_size;
+    const auto free_blocks = std::min<std::uint64_t>(space.available / block_size, blocks);
+    return {std::uint32_t(block_size), std::uint16_t(blocks), std::uint16_t(free_blocks)};
+}
 std::int16_t native_rename_object(const std::filesystem::path& path, const std::string& name) {
     FSRef ref;
     const auto error = ::FSPathMakeRefWithOptions(reinterpret_cast<const UInt8*>(path.c_str()),

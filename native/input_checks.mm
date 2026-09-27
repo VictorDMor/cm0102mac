@@ -3,6 +3,8 @@
 #import <Carbon/Carbon.h>
 #include <iostream>
 #include <stdexcept>
+#include <cmath>
+#include <cstdlib>
 namespace {
 void require(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
 void post(NSEventType type, NSString* text, bool repeat = false) {
@@ -15,9 +17,13 @@ NSEvent* next() {
                                 inMode:NSDefaultRunLoopMode dequeue:YES];
 }
 }
-int main() {
+int main(int argc, char** argv) {
     @autoreleasepool {
         try {
+            const bool validation = argc == 2 && std::string(argv[1]) == "--validation-pointer";
+            if (argc != 1 && !validation) throw std::runtime_error("Unknown input-check option");
+            if (validation) setenv("CM_AOT_VALIDATION_EVENT_POINTER", "1", 1);
+            else unsetenv("CM_AOT_VALIDATION_EVENT_POINTER");
             cm::aot::NativeUI ui;
             cm::aot::UIEvent startup{cm::aot::UIEvent::Kind::update};
             for (unsigned i = 0; i < 16 && ui.poll(startup, 0); ++i) {}
@@ -46,7 +52,7 @@ int main() {
             const auto number = ui.window_number(1);
             auto receive = [&](cm::aot::UIEvent::Kind kind) {
                 for (unsigned i = 0; i < 100; ++i)
-                    if (ui.poll(event, 0) && event.kind == kind) return event;
+                    if (ui.poll(event, validation ? 0.01 : 0) && event.kind == kind) return event;
                 std::cerr << "Missing event kind " << int(kind) << "; active=" << NSApp.isActive
                           << "; keyWindow=" << (NSApp.keyWindow != nil) << '\n';
                 throw std::runtime_error("Native view did not deliver the queued input event");
@@ -71,7 +77,33 @@ int main() {
             // AppKit suppresses posted mouse events in an inactive app. Exercise
             // its actual view responder without depending on physical focus.
             [[NSApp windowWithWindowNumber:number].contentView rightMouseDown:click];
+            if (validation) {
+                const auto moved = receive(cm::aot::UIEvent::Kind::mouse_moved);
+                const auto before_delivery = ui.pointer_state();
+                require(moved.message == 0xfa000000 && cm::aot::legacy_event_mask(moved) == 0x8000 &&
+                        before_delivery.x == 173 && before_delivery.y == 256 && !before_delivery.down,
+                        "Validation did not move before pressing at a new position");
+            }
             const auto mouse = receive(cm::aot::UIEvent::Kind::mouse_down);
+            if (validation) {
+                const auto pointer = ui.pointer_state();
+                require(pointer.x == mouse.x && pointer.y == mouse.y,
+                        "Validation GetMouse disagrees with the delivered event position");
+                NSEvent* released = [NSEvent mouseEventWithType:NSEventTypeRightMouseUp location:NSMakePoint(29, 50)
+                    modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                    windowNumber:number context:nil eventNumber:2 clickCount:1 pressure:0];
+                [[NSApp windowWithWindowNumber:number].contentView rightMouseUp:released];
+                const auto up = receive(cm::aot::UIEvent::Kind::mouse_up);
+                const auto after = ui.pointer_state();
+                require(after.x == up.x && after.y == up.y && after.x == 179 && after.y == 250,
+                        "Validation pointer did not follow the next delivered event");
+            } else {
+                const auto physical = NSEvent.mouseLocation;
+                const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
+                const auto pointer = ui.pointer_state();
+                require(pointer.x == std::lround(physical.x) && pointer.y == std::lround(height - physical.y),
+                        "Normal input no longer follows the physical desktop pointer");
+            }
             if (mouse.button != 2 || mouse.x != 173 || mouse.y != 256 || (mouse.modifiers & 0x1f00) != 0x1000)
                 std::cerr << "Mouse fields: button=" << mouse.button << ", x=" << mouse.x << ", y=" << mouse.y
                           << ", modifiers=" << mouse.modifiers << ", nativeButton=" << click.buttonNumber << '\n';

@@ -11,7 +11,7 @@
 
 namespace cm::aot {
 struct UIEvent {
-    enum class Kind { launch, quit, open_files, mouse_down, mouse_up, key_down, update, menu, key_up, auto_key, wheel, activate, suspend_resume };
+    enum class Kind { launch, quit, open_files, mouse_down, mouse_up, key_down, update, menu, key_up, auto_key, wheel, activate, suspend_resume, mouse_moved };
     Kind kind;
     std::uint32_t window = 0, message = 0;
     std::int16_t x = 0, y = 0;

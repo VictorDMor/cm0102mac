@@ -1,5 +1,6 @@
 #include "platform.hpp"
 #include "aot_runtime.hpp"
+#include "filesystem_bridge.hpp"
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
@@ -42,6 +43,19 @@ std::int32_t call(State& s, const char* name, std::initializer_list<std::uint32_
 }
 int main() {
     try {
+        for (std::uint64_t capacity : {UINT64_C(0), UINT64_C(4096), UINT64_C(256) << 20,
+                                      UINT64_C(4) << 30, UINT64_C(460) << 30, UINT64_C(8) << 40}) {
+            for (const auto available : {UINT64_C(0), UINT64_C(1), capacity / 4, capacity}) {
+                const auto geometry = legacy_volume_geometry({capacity, available, available});
+                const auto total = std::uint64_t(geometry.blocks) * geometry.block_size;
+                const auto free = std::uint64_t(geometry.free_blocks) * geometry.block_size;
+                require(total <= capacity && total <= UINT32_MAX && free <= available && free <= total,
+                        "Classic volume geometry overflowed or overstated host space");
+                if (available >= (UINT64_C(4) << 30))
+                    require((std::uint32_t(geometry.free_blocks) * geometry.block_size >> 20) >= 4095,
+                            "Original 32-bit free-space calculation falsely reported a full modern disk");
+            }
+        }
         TempDirectory temporary;
         auto game = temporary.path / "Game";
         auto user = temporary.path / "User";
@@ -219,6 +233,43 @@ int main() {
         require(call(s, "CarbonLib::PBHGetVInfoSync", {pb}) == 0, "Native game volume query");
         require(s.memory.read<2>(pb + 22) == 0xffff && string(s, name) == "CM 01-02", "Volume identity");
         require(s.memory.read<4>(pb + 48) > 0 && s.memory.read<4>(pb + 82) == 2, "Volume allocation/file counts");
+        auto volume_counts = [&] {
+            s.memory.clear(pb, 122);
+            s.memory.write<2>(pb + 22, 0xffff);
+            require(call(s, "CarbonLib::PBHGetVInfoSync", {pb}) == 0, "Refresh volume counts");
+            return std::pair{s.memory.read<4>(pb + 82), s.memory.read<4>(pb + 86)};
+        };
+        const auto initial_counts = volume_counts();
+        const auto previous_time = fs::last_write_time(game / "Data");
+        std::ofstream(game / "Data" / "external.dat") << "external";
+        // Restoring mtime must not conceal a directory mutation: ctime also
+        // participates in validation, and nested directories are checked.
+        fs::last_write_time(game / "Data", previous_time);
+        require(volume_counts().first == initial_counts.first + 1, "Cached volume hid a nested external addition");
+        fs::rename(game / "Data" / "external.dat", game / "Data" / "renamed.dat");
+        string(s, name, "CM 01-02:Data:renamed.dat");
+        require(call(s, "CarbonLib::FSMakeFSSpec", {0, 0, name, spec}) == 0, "Cached names hid an external rename");
+        fs::remove(game / "Data" / "renamed.dat");
+        fs::create_directory(game / "Data" / "renamed.dat");
+        auto changed_counts = volume_counts();
+        require(changed_counts.first == initial_counts.first && changed_counts.second == initial_counts.second + 1,
+                "Cached volume retained a replaced entry's file type");
+        fs::remove(game / "Data" / "renamed.dat");
+        // Symlink targets can change without touching the link's directory.
+        const auto target = user / "target";
+        std::ofstream(target) << "target";
+        fs::create_symlink(target, game / "changing-link");
+        require(volume_counts().first == initial_counts.first + 1, "Symlink file count changed");
+        fs::remove(target);
+        fs::create_directory(target);
+        changed_counts = volume_counts();
+        require(changed_counts.first == initial_counts.first && changed_counts.second == initial_counts.second + 1,
+                "Cached volume hid a symlink target type change");
+        fs::remove(target);
+        require(volume_counts() == initial_counts, "Dangling symlink changed volume counts");
+        fs::remove(game / "changing-link");
+        require(volume_counts() == initial_counts, "Cached volume hid external removal");
+        s.memory.write<4>(pb + 18, name);
         string(s, name, "CM 01-02:Data:players.dat");
         s.memory.write<2>(pb + 22, 0);
         s.memory.write<2>(pb + 28, 0xffff);

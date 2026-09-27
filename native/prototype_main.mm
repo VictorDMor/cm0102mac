@@ -17,6 +17,25 @@ int main() {
             const std::filesystem::path support([[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
                 inDomains:NSUserDomainMask] firstObject].fileSystemRepresentation);
             const auto installation = support / "CM 01-02 Native";
+            auto runtime = installation / "Runtime";
+            auto runs = installation / "Runs";
+            id validation = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CMValidationRuntime"];
+            if (validation) {
+                if (![validation isKindOfClass:NSString.class] ||
+                    ![NSBundle.mainBundle.bundleIdentifier hasPrefix:@"local.cm0102.validation."])
+                    throw std::runtime_error("Validation requires a separate diagnostic app bundle.");
+                const std::filesystem::path requested([(NSString*)validation fileSystemRepresentation]);
+                if (!requested.is_absolute() || !std::filesystem::is_directory(requested))
+                    throw std::runtime_error("Validation requires an existing absolute runtime directory.");
+                runtime = std::filesystem::canonical(requested);
+                const auto original = std::filesystem::canonical(installation);
+                const auto relative = runtime.lexically_relative(original);
+                if (relative.empty() || *relative.begin() != "..")
+                    throw std::runtime_error("Validation must use a private copy outside the installed game directory.");
+                runs = runtime.parent_path() / "Runs";
+                setenv("CM_AOT_VALIDATION_EVENT_POINTER", "1", 1);
+                setenv("CM_AOT_PERFORMANCE_TRACE", "1", 1);
+            }
             auto program = bundle / "Contents/Resources/OriginalProgram";
             if (!std::filesystem::is_regular_file(program / "program.json")) program = local / "recomp-input";
             const auto game = installation / "Game";
@@ -24,8 +43,8 @@ int main() {
                 throw std::runtime_error("Original program data is missing. Run Install Native Prototype.command again.");
             if (!std::filesystem::is_regular_file(game / "CM 01-02"))
                 throw std::runtime_error("Game data is not installed. Run Install Native Prototype.command once to copy your game files.");
-            std::filesystem::create_directories(installation / "Runs");
-            auto pattern = (installation / "Runs" / "app.XXXXXX").string();
+            std::filesystem::create_directories(runs);
+            auto pattern = (runs / "app.XXXXXX").string();
             if (!mkdtemp(pattern.data())) throw std::runtime_error("Cannot create the prototype's diagnostic folder.");
             run_directory = pattern;
             if (!std::freopen((run_directory / "startup.log").c_str(), "w", stderr) ||
@@ -39,7 +58,8 @@ int main() {
             setenv("CM_AOT_TRACE_INPUT", "1", 0);
             setenv("CM_AOT_CAPTURE_DIRECTORY", (run_directory / "images").c_str(), 0);
             std::fprintf(stderr, "Native ARM64 development application; original data: %s\nInstalled game files: %s\n", program.c_str(), game.c_str());
-            std::array<std::string, 5> arguments{"cm-native-prototype", program.string(), "0x10773710", game.string(), (installation / "Runtime").string()};
+            if (validation) std::fprintf(stderr, "Isolated validation runtime: %s; event-coordinate pointer enabled\n", runtime.c_str());
+            std::array<std::string, 5> arguments{"cm-native-prototype", program.string(), "0x10773710", game.string(), runtime.string()};
             std::array<char*, 5> argv;
             for (unsigned i = 0; i < argv.size(); ++i) argv[i] = arguments[i].data();
             [NSApplication sharedApplication];

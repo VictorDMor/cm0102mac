@@ -184,6 +184,8 @@ def generate_page(page, instructions, selected):
             f"bool page_{page:x}(State& s) {{", "switch (s.pc) {"]
     if any(item["assembly"].startswith("fctiwz ") for item in instructions):
         code.insert(1, '#include "floating_point.hpp"')
+    if any(item["address"] == 0x10774c24 for item in instructions):
+        code.insert(1, '#include "allocator_bridge.hpp"')
     for item in instructions:
         a = item["address"]
         code.append(f"case 0x{a:x}: goto i_{a:x};")
@@ -191,6 +193,27 @@ def generate_page(page, instructions, selected):
     for item in instructions:
         a = item["address"]
         code.extend([f"i_{a:x}: // {item['assembly']}", f"s.step(0x{a:x});"])
+        if a == 0x10774c24:
+            # A stale largest-block hint can produce the same pool count after
+            # a failed allocation, trapping the original replenishment loop.
+            # Preserve every decreasing retry and all successful allocations;
+            # only require progress on this verified failure branch.
+            sequence = {
+                0x10774c00: "bl 0x10774840", 0x10774c04: "or. r28,r3,r3",
+                0x10774c08: "bne 0x10774c38", 0x10774c0c: "lwz r4,0x38(r1)",
+                0x10774c10: "cmplwi r4,0x1c", 0x10774c14: "ble 0x10774c2c",
+                0x10774c18: "lwzx r3,r31,r26", 0x10774c1c: "subi r4,r4,0x1c",
+                0x10774c20: "addi r0,r3,0x4", 0x10774c24: "divwu r25,r4,r0",
+                0x10774c28: "b 0x10774c30", 0x10774c2c: "li r25,0x0",
+                0x10774c30: "cmplwi r25,0xa", 0x10774c34: "bge 0x10774be8"}
+            by_address = {record["address"]: record for record in instructions}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in sequence.items()) or item["ops"] != [
+                    ["INT_DIV", ["register", "100", 4], ["register", "16", 4], ["register", "0", 4]]]:
+                raise ValueError("Pool retry no longer matches the audited failed-allocation loop")
+            code.extend(["s.wr<4>(100, next_pool_attempt(s.r<4>(100), divide_unsigned(s.r<4>(16), s.r<4>(0))));",
+                         transfer(a + 4, page, selected)])
+            continue
         if a == 0x101355d4:
             # PowerPC divw without OE/Rc does not trap on a zero divisor; its
             # quotient is undefined. Here that quotient's only use is a multiply
@@ -386,7 +409,8 @@ def main():
                         (0x101355d4, "Preserve nontrapping division where zero-divisor quotient is provably unused"),
                         (0x1024773c, "Preserve match division after proving the exceptional quotient unused on every branch"),
                         (0x10713aec, "Skip unused null-club descriptor lookup for default background"),
-                        (0x10713b3c, "Skip unused null-competition descriptor lookup for default background"))
+                        (0x10713b3c, "Skip unused null-competition descriptor lookup for default background"),
+                        (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"))
                     if (args.all_analyzed and address >> 12 in pages) or address in selected],
                 "missingStaticTargets": sorted(missing),
                 "pendingTargets": sorted(set(queue) - seen), "files": sorted(outputs)}

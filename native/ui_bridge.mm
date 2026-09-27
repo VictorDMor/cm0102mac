@@ -8,6 +8,9 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
+#include <chrono>
+#include <thread>
 
 namespace {
 std::uint16_t original_modifiers(NSEventModifierFlags flags) {
@@ -119,12 +122,67 @@ std::uint8_t original_character(NSEvent* event) {
 @public
     std::deque<cm::aot::UIEvent>* pending;
     std::set<std::filesystem::path>* hostArguments;
+    std::map<std::uint32_t, CMNativeWindow*>* gameWindows;
     bool launching;
 }
 - (void)originalMenuAction:(NSMenuItem*)sender;
 - (void)originalQuitAction:(NSMenuItem*)sender;
+- (void)validationClick:(NSMenuItem*)sender;
 @end
 @implementation CMNativeAppDelegate
+- (void)validationClick:(NSMenuItem*)sender {
+    (void)sender;
+    // A native accessibility action remains usable when a UI driver's pixel
+    // click mapping is lost after a long main-thread simulation. This explicit
+    // test-device dialog still delivers ordinary input to the original engine.
+    CMNativeWindow* target = nil;
+    for (NSWindow* candidate in NSApp.orderedWindows) {
+        if ([candidate isKindOfClass:CMNativeWindow.class] &&
+            ((CMNativeWindow*)candidate).acceptsActivation) {
+            target = (CMNativeWindow*)candidate;
+            break;
+        }
+    }
+    if (!target) {
+        for (const auto& [token, candidate] : *gameWindows) {
+            (void)token;
+            if (!candidate.acceptsActivation) continue;
+            if (target) { NSBeep(); return; } // Do not guess between hidden game windows.
+            target = candidate;
+        }
+    }
+    if (!target) { NSBeep(); return; }
+    NSAlert* dialog = [NSAlert new];
+    dialog.messageText = @"Validation click";
+    dialog.informativeText = @"Enter a position in the game image, measured from its top-left corner. This sends one unmodified left click to the original game.";
+    [dialog addButtonWithTitle:@"Send click"];
+    [dialog addButtonWithTitle:@"Cancel"];
+    NSView* fields = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 260, 64)];
+    NSTextField* x = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 34, 260, 24)];
+    NSTextField* y = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    x.placeholderString = @"X coordinate"; x.accessibilityLabel = @"X coordinate";
+    y.placeholderString = @"Y coordinate"; y.accessibilityLabel = @"Y coordinate";
+    [fields addSubview:x]; [fields addSubview:y];
+    dialog.accessoryView = fields;
+    dialog.window.initialFirstResponder = x;
+    if ([dialog runModal] != NSAlertFirstButtonReturn) return;
+    NSInteger horizontal = 0, vertical = 0;
+    NSScanner* sx = [NSScanner scannerWithString:x.stringValue];
+    NSScanner* sy = [NSScanner scannerWithString:y.stringValue];
+    CMNativeView* view = (CMNativeView*)target.contentView;
+    if (![sx scanInteger:&horizontal] || !sx.atEnd || ![sy scanInteger:&vertical] || !sy.atEnd ||
+        horizontal < 0 || vertical < 0 || horizontal >= view.bounds.size.width || vertical >= view.bounds.size.height) {
+        NSBeep(); return;
+    }
+    const auto point = [view convertPoint:NSMakePoint(horizontal, vertical) toView:nil];
+    const auto timestamp = NSProcessInfo.processInfo.systemUptime;
+    for (unsigned released = 0; released < 2; ++released) {
+        NSEvent* event = [NSEvent mouseEventWithType:released ? NSEventTypeLeftMouseUp : NSEventTypeLeftMouseDown
+            location:point modifierFlags:0 timestamp:timestamp + released * 0.08
+            windowNumber:target.windowNumber context:nil eventNumber:0 clickCount:1 pressure:released ? 0 : 1];
+        [view queueInput:event kind:released ? cm::aot::UIEvent::Kind::mouse_up : cm::aot::UIEvent::Kind::mouse_down];
+    }
+}
 - (void)originalMenuAction:(NSMenuItem*)sender {
     cm::aot::UIEvent event{cm::aot::UIEvent::Kind::menu};
     event.message = std::uint32_t(sender.tag);
@@ -194,7 +252,7 @@ std::uint16_t legacy_event_mask(const UIEvent& event) {
         case UIEvent::Kind::auto_key: return 32;
         case UIEvent::Kind::update: return 64;
         case UIEvent::Kind::activate: return 256;
-        case UIEvent::Kind::suspend_resume: return 0x8000;
+        case UIEvent::Kind::suspend_resume: case UIEvent::Kind::mouse_moved: return 0x8000;
         case UIEvent::Kind::wheel: return 0; // Delivered through the Carbon handler, not EventRecord.
     }
 }
@@ -241,6 +299,15 @@ struct NativeUI::Impl {
     std::set<std::filesystem::path> host_arguments;
     CMNativeAppDelegate* delegate;
     bool finished_launch = false;
+    // Only the isolated validation app opts in. Some UI drivers deliver an
+    // AppKit event without moving the physical desktop pointer. Use that event's
+    // position for subsequent legacy GetMouse queries in this test mode.
+    bool event_pointer = [] {
+        const auto value = std::getenv("CM_AOT_VALIDATION_EVENT_POINTER");
+        return value && std::strcmp(value, "1") == 0;
+    }();
+    std::optional<NativePointerState> delivered_pointer;
+    std::chrono::steady_clock::time_point validation_release_after{};
     struct Menu { NSMenu* native; std::int16_t id; bool enabled; };
     std::map<std::uint32_t, Menu> menus;
     std::map<std::uint32_t, CMNativeWindow*> windows;
@@ -282,6 +349,7 @@ struct NativeUI::Impl {
         [NSApplication sharedApplication];
         delegate = [CMNativeAppDelegate new];
         delegate->pending = &pending;
+        delegate->gameWindows = &windows;
         NSArray<NSString*>* arguments = NSProcessInfo.processInfo.arguments;
         for (NSUInteger i = 1; i < arguments.count; ++i)
             host_arguments.insert(std::filesystem::absolute(arguments[i].fileSystemRepresentation).lexically_normal());
@@ -475,6 +543,7 @@ void NativeUI::dispose_cursor(std::uint32_t token) {
     impl_->cursors.erase(found);
 }
 NativePointerState NativeUI::pointer_state() const {
+    if (impl_->event_pointer && impl_->delivered_pointer) return *impl_->delivered_pointer;
     const auto point = NSEvent.mouseLocation;
     const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
     const auto x = std::lround(point.x), y = std::lround(height - point.y);
@@ -511,8 +580,46 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds) {
             if (!native) break;
         }
         if (impl_->pending.empty()) return false;
+        if (impl_->event_pointer && impl_->pending.front().kind == UIEvent::Kind::mouse_down) {
+            const auto& click = impl_->pending.front();
+            if (!impl_->delivered_pointer || impl_->delivered_pointer->x != click.x || impl_->delivered_pointer->y != click.y) {
+                // A test device moves before pressing. Return the original
+                // mouse-moved OS event first, leaving the click in queue. The
+                // game's next GetMouse (before WaitNextEvent) then sees the new
+                // coordinates before it handles the press. Merely peeking the
+                // AppKit queue races with clicks arriving inside WaitNextEvent.
+                impl_->delivered_pointer = NativePointerState{click.x, click.y,
+                    std::uint16_t(click.modifiers | 0x80), false};
+                event = click;
+                event.kind = UIEvent::Kind::mouse_moved;
+                event.message = 0xfa000000;
+                event.button = 0;
+                event.modifiers |= 0x80;
+                return true;
+            }
+        }
+        if (impl_->event_pointer && impl_->pending.front().kind == UIEvent::Kind::mouse_up) {
+            // UI drivers may inject press/release one millisecond apart. The
+            // game's polling loop can consume both before its next UI update.
+            // Model an 80 ms test gesture, without changing simulation clocks,
+            // normal input, or queue order. Never wait beyond the caller's wait.
+            const auto remaining = impl_->validation_release_after - std::chrono::steady_clock::now();
+            if (remaining > std::chrono::steady_clock::duration::zero()) {
+                if (timeout_seconds > 0)
+                    std::this_thread::sleep_for(std::min(std::chrono::duration<double>(remaining),
+                                                        std::chrono::duration<double>(timeout_seconds)));
+                if (std::chrono::steady_clock::now() < impl_->validation_release_after) return false;
+            }
+        }
         event = std::move(impl_->pending.front());
         impl_->pending.pop_front();
+        if (impl_->event_pointer && (event.kind == UIEvent::Kind::mouse_down ||
+                                    event.kind == UIEvent::Kind::mouse_up)) {
+            impl_->delivered_pointer = NativePointerState{event.x, event.y, event.modifiers,
+                event.kind == UIEvent::Kind::mouse_down && event.button == 1};
+            if (event.kind == UIEvent::Kind::mouse_down)
+                impl_->validation_release_after = std::chrono::steady_clock::now() + std::chrono::milliseconds(80);
+        }
         return true;
     }
 }
@@ -611,6 +718,16 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
             NSMenuItem* top = [[NSMenuItem alloc] initWithTitle:menu.native.title action:nil keyEquivalent:@""];
             top.enabled = menu.enabled;
             top.submenu = menu.native;
+            [bar addItem:top];
+        }
+        if (impl_->event_pointer) {
+            NSMenuItem* top = [[NSMenuItem alloc] initWithTitle:@"Validation" action:nil keyEquivalent:@""];
+            NSMenu* menu = [[NSMenu alloc] initWithTitle:@"Validation"];
+            NSMenuItem* click = [[NSMenuItem alloc] initWithTitle:@"Click at position…"
+                action:@selector(validationClick:) keyEquivalent:@""];
+            click.target = impl_->delegate;
+            [menu addItem:click];
+            top.submenu = menu;
             [bar addItem:top];
         }
         impl_->menu_bar = menus;

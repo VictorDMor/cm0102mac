@@ -92,6 +92,12 @@ int main(int argc, char** argv) {
             require(call(s, "CarbonLib::WaitNextEvent", {2, record, 0, 0}) == 1 && s.memory.read<2>(button) == 2 &&
                     (s.memory.read<2>(record + 14) & 0x1f00) == 0x1000,
                     "Original control-click secondary-button logic was not executed");
+            NSEvent* left = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:NSMakePoint(24, 45)
+                modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                windowNumber:window.windowNumber context:nil eventNumber:3 clickCount:1 pressure:1];
+            [window.contentView mouseDown:left];
+            require(call(s, "CarbonLib::WaitNextEvent", {2, record, 0, 0}) == 1 && s.memory.read<2>(button) == 1,
+                    "Unmodified left click became a secondary click in the original callback");
             NSEvent* key = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:0
                 timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:window.windowNumber context:nil
                 characters:@"a" charactersIgnoringModifiers:@"a" isARepeat:NO keyCode:0];
