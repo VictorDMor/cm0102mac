@@ -352,3 +352,41 @@ The prior installed ARM64 app remains backed up privately. All 809 Game / 5
 Runtime / 42 Runs files and inventoried metadata match before/after installation;
 personal saves, original data and the immutable LFS reference remain unchanged.
 This is a bounded semantic increment, not reconstruction of the remaining engine.
+
+## Semantic independent date-before delivery — 2026-10-02
+
+Independent entry `0x103317f0` now executes the C++23 predicate for second date
+strictly earlier than first, preserving unsigned years, signed days, complete
+by-value spills, aliasing and its distinct first-day r5 clobber. The actual
+same/inter-page callers, indirect dispatch and callbacks reach the destination
+hook. The four previous contracts and deferred ascending-year leap quirk remain
+unchanged; other comparisons and date/engine subsystems remain outside scope.
+
+The [date-before report](native-date-before-reconstruction.md) records 5,646
+direct comparisons, 156 Gregorian oracle cases and 196,608 signed-day checks
+for each predicate; 33/33 CTest groups, 27 Python tests with all four optional
+groups also run explicitly, temporary auditing and generated/focused UBSAN passed.
+All linked State-dependent objects use the final layout. Immutable day/week
+fixtures passed with zero before calls. The original ordering fixture passed
+two candidates and all three baselines, with 12,911 modern before calls per
+candidate; its inverted return failed at the first before edge, 26. Existing
+negative controls and strict state/transcript/RNG comparisons remain preserved.
+New versioned original streams remain separate from historical streams.
+
+Real isolated ARM64 contract-expiry sorting exercised 13,153 modern before calls,
+with 32 independently checked samples. Calendar, player/contract information and
+normal Save/exit/reopen/Load passed on 10 August and after normal advancement to
+27 August 2002 night. These observations are separate from fixture equivalence.
+The report records an excluded native File-menu save attempt and the accepted
+original in-game save route. No annual crossing, whole-career equivalence or
+speed improvement is claimed.
+
+The production app is installed. Source/installed executable SHA-256 is
+`d2784cfde149a28d8e8c1d067e26ac90cfff482581a36858a0d215a7790194a1`;
+the signed private candidate is
+`c20788488bb734e5a97590ca75c315a6d5d4f39e75f93fbc65613892ec606511`.
+The current reference remains backed up privately as executable ARM64 with hash
+`b61765e722c6e5f7624550ac15524fcdb623f933e9306c3329644310a887f545`.
+Before/preinstall/after inventories agree for all 809 Game / 5 Runtime / 42 Runs
+files and captured Mac metadata. Personal saves, prior checkpoints, immutable
+LFS reference, private inputs and historical fixture/stream hashes are preserved.

@@ -15,6 +15,9 @@ constexpr unsigned year_length(std::uint16_t year) { return is_leap(year) ? 366 
 constexpr bool is_after(Date date, Date reference) {
     return date.year > reference.year || (date.year == reference.year && date.day > reference.day);
 }
+constexpr bool is_before(Date date, Date reference) {
+    return is_after(reference, date);
+}
 constexpr bool difference_second_later(Date first, Date second) {
     return is_after(second, first);
 }

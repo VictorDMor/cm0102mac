@@ -17,7 +17,7 @@ class CalendarAuditTests(unittest.TestCase):
                 (page << 12, (page + 1) << 12))]
 
     def test_contract_and_same_page_entry_hooks(self):
-        for entry in (0x10331860, 0x10717890, 0x10717B20, 0x10718130):
+        for entry in (0x103317F0, 0x10331860, 0x10717890, 0x10717B20, 0x10718130):
             records = self.records(entry >> 12)
             require_calendar_contract(entry >> 12, records)
             code = generate_page(entry >> 12, records, {r["address"] for r in records})
@@ -26,7 +26,7 @@ class CalendarAuditTests(unittest.TestCase):
             self.assertIn(f"goto i_{entry:x};", code)
 
     def test_reject_changed_body_and_helper(self):
-        for page, address in ((0x10331, 0x103318b0), (0x10717, 0x10717960), (0x10718, 0x10718480), (0x10718, 0x10718210)):
+        for page, address in ((0x10331, 0x10331840), (0x10331, 0x103318b0), (0x10717, 0x10717960), (0x10718, 0x10718480), (0x10718, 0x10718210)):
             records = self.records(page)
             require_calendar_contract(page, records)
             next(r for r in records if r["address"] == address)["ops"] = []
@@ -34,7 +34,7 @@ class CalendarAuditTests(unittest.TestCase):
                 require_calendar_contract(page, records)
 
     def test_reject_incomplete_entry(self):
-        for entry in (0x10331860, 0x10717890, 0x10717B20, 0x10718130, 0x10718440):
+        for entry in (0x103317F0, 0x10331860, 0x10717890, 0x10717B20, 0x10718130, 0x10718440):
             records = [r for r in self.records(entry >> 12) if r["address"] == entry]
             with self.assertRaises(ValueError):
                 require_calendar_contract(entry >> 12, records)
@@ -65,6 +65,15 @@ class CalendarAuditTests(unittest.TestCase):
         self.assertIn("if (try_modern_calendar(s, 0x10331860)) return true;", code)
         with self.assertRaises(ValueError):
             require_calendar_contract(0x10331, [r for r in records if r["address"] != 0x10331860])
+
+    def test_real_same_page_before_call_routes_to_hook(self):
+        records = self.records(0x10331)
+        self.assertEqual(next(r for r in records if r["address"] == 0x103317b8)["assembly"], "bl 0x103317f0")
+        code = generate_page(0x10331, records, {r["address"] for r in records})
+        self.assertIn("goto i_103317f0;", code.split("i_103317b8:")[1].split("i_103317bc:")[0])
+        self.assertIn("if (try_modern_calendar(s, 0x103317f0)) return true;", code)
+        with self.assertRaises(ValueError):
+            require_calendar_contract(0x10331, [r for r in records if r["address"] != 0x103317f0])
 
 
 if __name__ == "__main__":
