@@ -71,6 +71,21 @@ int main(int argc, char** argv) {
         replay_fixture(*a, directory.path); replay_fixture(*b, directory.path);
         require(compare_season_states(*s, *a).empty() && compare_season_states(*a, *b).empty(),
                 "Equivalent synthetic transcript executions disagreed");
+        // Semantic replay permits instruction accounting only. Every other
+        // boundary remains strict, including architectural and native order.
+        ++a->executed;
+        require(!compare_season_states(*s, *a).empty() && compare_season_states(*s, *a, true).empty(),
+                "Calendar accounting boundary changed the strict comparison");
+        ++a->native_calls;
+        require(!compare_season_states(*s, *a, true).empty(), "Semantic comparison masked native-call order");
+        --a->native_calls;
+        a->registers[0] ^= 1;
+        require(!compare_season_states(*s, *a, true).empty(), "Semantic comparison masked registers");
+        a->registers[0] ^= 1;
+        a->pc ^= 4;
+        require(!compare_season_states(*s, *a, true).empty(), "Semantic comparison masked PC");
+        a->pc ^= 4;
+        --a->executed;
         const auto seed = a->memory.read<4>(0x108b3f00);
         a->memory.write<4>(seed, a->memory.read<4>(seed) ^ 1);
         require(compare_season_states(*s, *a).find("rng.seed") != std::string::npos,

@@ -172,6 +172,9 @@ struct State {
         if (offset + N > unique.size()) throw std::out_of_range("Temporary offset");
         write_be<N>(unique.data() + offset, value);
     }
+    bool calendar_original = false;
+    std::array<std::uint64_t, 2> calendar_calls{};
+    std::uint64_t calendar_exceptional_calls = 0;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

@@ -2,6 +2,7 @@
 #include "callbacks.hpp"
 #include <chrono>
 #include <iostream>
+#include <string_view>
 
 using namespace cm::aot;
 using namespace std::chrono;
@@ -20,10 +21,11 @@ std::vector<std::uint8_t> date_record(sys_days date) {
 }
 }
 int main(int argc, char** argv) {
-    if (argc != 2) { std::cerr << "Usage: cm-calendar-reference-checks <original-segments>\n"; return 2; }
+    if (argc != 2 && !(argc == 3 && std::string_view(argv[2]) == "--modern")) { std::cerr << "Usage: cm-calendar-reference-checks <original-segments>\n"; return 2; }
     try {
         auto state = std::make_unique<State>();
         auto& s = *state;
+        s.calendar_original = argc == 2;
         load_program(s, argv[1]);
         s.memory.map(fixture, 256);
         s.memory.write<4>(0x108b7ae4, forward_scratch);
@@ -77,7 +79,9 @@ int main(int argc, char** argv) {
            }
           }
         }
-        std::cout << cases << " original calendar cases: month/year/leap/century edges, signed offsets, in-place dates, scratch initialization, ABI and no native/RNG calls\n";
+        if (!s.calendar_original) require(s.calendar_calls[0] == cases / 2 && s.calendar_calls[1] == cases / 2 &&
+                                          !s.calendar_exceptional_calls, "Modern oracle did not use both semantic entries exclusively");
+        std::cout << cases << (s.calendar_original ? " original" : " modern") << " calendar cases: month/year/leap/century edges, signed offsets, in-place dates, scratch initialization, ABI and no native/RNG calls\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

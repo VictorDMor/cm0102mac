@@ -220,7 +220,7 @@ advancement, a full match simulation, return from full time, a post-match save,
 and normal exit have run. The user also confirmed reloading the post-match save
 and finding the completed Anapolina result in Last Game in run `app.oXBAh4`.
 
-## Active priority: season reference and regression foundation
+## Completed milestone: season reference and regression foundation
 
 As of 2026-10-01, the user has replaced performance optimization with the
 [season reference milestone](native-season-reference.md). Complete a real native
@@ -239,6 +239,22 @@ replacement for the next increment, backed by 1,232 original-routine
 checks; no semantic replacement is included in this milestone.
 
 ## Accepted implementation sequence
+
+As of 2026-10-02, the user has selected calendar/date arithmetic as the first
+semantic reconstruction increment. Its executable handoff is the
+[calendar reconstruction goal prompt](features/native-calendar-reconstruction-goal-prompt.md).
+The season reference milestone above is complete. The modern calendar module and
+production entry hooks are implemented. Direct equivalence, original/modern
+one- and seven-day simulation comparisons with negative controls, and the full
+30-group suite have passed. Month advancement and preannual Save/Load were
+observed in the app. Normal advancement also crossed into 2003; postannual
+Save/exit/reopen/Load preserved the checked dates, club, player contract/history,
+fixtures and Mineirao state. The validated ARM64 app is installed, with all
+809 Game / 9 Runtime / 41 Runs files and their captured Mac metadata unchanged.
+The [calendar reconstruction report](native-calendar-reconstruction.md) records
+production call counts, delivery identities, commands and the bounded scope.
+Later subsystem ordering remains open and should follow
+the contracts and behavior comparisons established by each increment.
 
 First produce and verify the playable native ARM64 game through static recompilation
 and native OS bridges. Then recover clear names, types, and responsibilities and

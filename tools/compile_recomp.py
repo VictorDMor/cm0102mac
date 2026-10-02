@@ -14,6 +14,7 @@ import struct
 from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
 from local_temporaries import LocalTemporaries
+from calendar_audit import require_calendar_contract
 
 
 def integer(value):
@@ -224,6 +225,7 @@ def require_control_cursor_block(instructions, selected):
 
 
 def generate_page(page, instructions, selected, local_temporaries=True):
+    require_calendar_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -251,6 +253,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.append("MatchPageCounter<Turbo, Finite> counter(s);")
     if page == 0x10203:
         code.insert(1, '#include "match_presentation.hpp"')
+    if page == 0x10717:
+        code.insert(1, '#include "calendar_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     code.append("switch (s.pc) {")
@@ -270,6 +274,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
+        if a in (0x10717890, 0x10717b20):
+            code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -520,6 +526,9 @@ def main():
                 "instructions": generated_count, "pages": len(pages),
                 "allAnalyzedInstructions": args.all_analyzed,
                 "instructionLocalTemporaries": not args.legacy_unique_storage,
+                "semanticReplacements": [{"entry": f"0x{entry:x}", "module": "calendar_adapter"}
+                                         for entry in (0x10717890, 0x10717b20)
+                                         if (args.all_analyzed and entry >> 12 in pages) or entry in selected],
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}
                     for address, purpose in (

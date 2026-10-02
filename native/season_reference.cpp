@@ -12,6 +12,7 @@
 
 namespace cm::aot {
 namespace {
+bool semantic_calendar_replay = false;
 constexpr std::uint32_t day_pc = 0x101195e8;
 constexpr std::uint32_t date_global = 0x108b3f10, phase_global = 0x108b40a4;
 constexpr std::array<char, 8> magic{'C','M','D','A','Y','0','0','1'};
@@ -84,7 +85,7 @@ void check_input(Stream& stream, const State& s) {
     const auto executed = stream.take<std::uint64_t>(), calls = stream.take<std::uint64_t>();
     const auto registers = stream.take<decltype(s.registers)>();
     if (pc != s.pc) throw std::runtime_error("First divergence: native import PC at " + hex_address(s.pc));
-    if (executed != s.executed || calls != s.native_calls)
+    if ((!semantic_calendar_replay && executed != s.executed) || calls != s.native_calls)
         throw std::runtime_error("First divergence: execution or native-call order at " + hex_address(s.pc));
     if (registers != s.registers) {
         const auto pair = std::mismatch(registers.begin(), registers.end(), s.registers.begin());
@@ -244,14 +245,15 @@ void season_record_callback_end(State& s, std::uint32_t result) {
     recorder->stream.put(Event::callback_end); recorder->stream.put(result);
     recorder->native_depth = depth; s.memory.observer = recorder.get();
 }
-void open_season_replay(const std::filesystem::path& directory) {
+void open_season_replay(const std::filesystem::path& directory, bool semantic_calendar) {
     if (replay) throw std::runtime_error("A private season replay is already active");
+    semantic_calendar_replay = semantic_calendar;
     replay = std::make_unique<Stream>(directory / "imports.gz", false);
     if (replay->take<std::array<char, 8>>() != magic) { replay.reset(); throw std::runtime_error("Unrecognized private season transcript"); }
     replay_depth = 0;
     replay_previous_date.reset();
 }
-void close_season_replay() { replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset(); }
+void close_season_replay() { semantic_calendar_replay = false; replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset(); }
 bool season_replay_import(State& s, const char* name) {
     if (!replay) return false;
     s.memory.observer = nullptr;
@@ -300,7 +302,7 @@ std::string season_state_summary(const State& s) {
     out << " instructions=" << s.executed << " native-calls=" << s.native_calls;
     return out.str();
 }
-std::string compare_season_states(const State& expected, const State& actual) {
+std::string compare_season_states(const State& expected, const State& actual, bool semantic_calendar) {
     try {
         for (const auto& [name, global, offset, size] : std::vector<std::tuple<const char*, std::uint32_t, unsigned, unsigned>>{
             {"game.date.day-of-year", date_global, 0, 2}, {"game.date.year", date_global, 2, 2},
@@ -313,7 +315,7 @@ std::string compare_season_states(const State& expected, const State& actual) {
         }
     } catch (const std::exception& error) { return "First divergence: named game field unavailable: " + std::string(error.what()); }
     if (expected.pc != actual.pc) return "First divergence: boundary PC";
-    if (expected.executed != actual.executed || expected.native_calls != actual.native_calls)
+    if ((!semantic_calendar && expected.executed != actual.executed) || expected.native_calls != actual.native_calls)
         return "First divergence: instruction or native-call consumption";
     if (expected.allocated != actual.allocated || expected.available != actual.available ||
         expected.heap_end != actual.heap_end || expected.memory_error != actual.memory_error)
