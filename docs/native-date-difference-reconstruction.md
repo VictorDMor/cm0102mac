@@ -326,3 +326,17 @@ The immutable LFS save remains
 `82c504f46ce54a723137dbf42c005d458a4d7b18a9abab4c9f92627aa94f08fb`.
 No full-career replay, historical-hardware equivalence, exact year-change UI
 instant, reconstruction of the rest of the engine or speed improvement is claimed.
+
+## Deferred improvement — 2026-10-02
+
+The user requested recording a future investigation of the ascending-year leap
+quirk, with no implementation now. A possible correction would use the actual
+years crossed so that valid-date differences agree with Gregorian arithmetic
+and reversing operands changes only the sign. This would deliberately change
+original game behavior and is outside the completed equivalence increment.
+
+Before proposing a correction, inspect callers for reliance on the current
+results and assess effects on ages, contracts and other date-dependent deadlines.
+Any future implementation needs separate authorization, dedicated regression
+checks and real gameplay/save-load validation. Keep the delivered compatible
+behavior until that investigation and decision are complete.

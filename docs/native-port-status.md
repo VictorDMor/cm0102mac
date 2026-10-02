@@ -284,6 +284,12 @@ build). Eleven CTest groups pass; complete game-loading speedup is not yet measu
 
 ## Semantic date difference delivery — 2026-10-02
 
+Future work, explicitly deferred by the user: investigate correcting the
+ascending-year leap quirk after assessing caller dependencies and gameplay
+effects. The [deferred improvement](native-date-difference-reconstruction.md#deferred-improvement--2026-10-02)
+requires a separate decision and validation; the delivered behavior remains
+compatible with the original.
+
 Mac date difference `0x10718130` now uses the C++23 calendar module and legacy
 adapter in production. Its second operand is an eight-byte by-value record,
 including three padding bytes. The ascending-year leap quirk, initialization,
