@@ -314,3 +314,41 @@ executable backed up privately. Current before/after inventories agree for all
 This establishes a bounded semantic increment, not full-career or historical
 hardware equivalence. The previous calendar/annual report remains separate
 historical evidence. No matched speed benchmark or new optimization is claimed.
+
+## Semantic independent date ordering delivery — 2026-10-02
+
+Mac date-ordering predicate `0x10331860` now executes the C++23 calendar module
+through the legacy adapter. It returns exactly whether the second by-value date
+is strictly later, preserving unsigned years, signed days, complete padding
+spills, aliasing and architectural clobbers. Production dispatch covers the
+actual same-page caller, other pages, indirect calls and callbacks. Addition,
+subtraction and difference remain delivered; the deferred leap quirk is unchanged.
+Other independent/inlined comparisons and larger date-record routines remain
+outside this increment.
+
+The [independent ordering report](native-date-ordering-reconstruction.md) records
+5,646 direct original/modern cases, 156 Gregorian oracle cases, 196,608 pure
+signed-day checks, 32/32 CTest groups, 26 Python tests with four optional groups
+also executed explicitly, temporary auditing and focused/generated UBSAN.
+The old day/week fixtures passed strict original and modern/baseline comparisons,
+with zero ordering calls reported honestly. A new entirely original 20–21 July
+morning fixture exercises 38,051 modern ordering calls in each of two equivalent
+candidate runs; an isolated flipped return fails at its first ordering boundary.
+Existing RNG/shift/difference controls and original fixture/stream hashes remain
+preserved. Only translated instruction accounting may differ.
+
+The isolated ARM64 candidate advanced normally from 3 to 10 August afternoon.
+Contract-expiry sorting logged 38,422 modern orderings; 32 live samples agreed
+with independent date ordering. Calendar, player/contract panels and normal
+Save/exit/reopen/Load passed before and after advancement. The report separates
+these UI observations from automatic equivalence and records excluded capture
+attempts. No annual UI crossing or matched speed benchmark is claimed.
+
+The candidate is installed. Source/installed executable SHA-256 is
+`b61765e722c6e5f7624550ac15524fcdb623f933e9306c3329644310a887f545`;
+the signed isolated candidate is
+`01395e5f2e345635f414390dc89d8816103ef68dc5af9490a4ee538fd46a227c`.
+The prior installed ARM64 app remains backed up privately. All 809 Game / 5
+Runtime / 42 Runs files and inventoried metadata match before/after installation;
+personal saves, original data and the immutable LFS reference remain unchanged.
+This is a bounded semantic increment, not reconstruction of the remaining engine.

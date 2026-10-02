@@ -11,6 +11,7 @@ namespace {
 gzFile audit = nullptr;
 bool audit_record = false, audit_original_running = false, audit_perturb = false;
 bool audit_perturb_difference = false;
+bool audit_perturb_ordering = false;
 std::uint64_t audit_index = 0;
 using cm::calendar::Date;
 using cm::calendar::Direction;
@@ -22,6 +23,7 @@ constexpr Boundary addition{0x10717890, 0x108b7ae4, 0x108b84d5, 0x10717918, Dire
 constexpr Boundary subtraction{0x10717b20, 0x108b7adc, 0x108b84d3, 0x10717ba8, Direction::backward};
 constexpr std::uint32_t difference_entry = 0x10718130;
 constexpr std::uint32_t difference_scratch = 0x108b7ad0, difference_flag = 0x108b84d0;
+constexpr std::uint32_t ordering_entry = 0x10331860;
 // r4 and XER carry are observable clobbers of the original leap helper. Its
 // unsigned 16-bit year makes both signed shifts nonnegative. Preserve these
 // effects even though the arithmetic module uses ordinary Gregorian divisibility.
@@ -44,6 +46,38 @@ void copy_date(State& s, std::uint32_t output, std::uint32_t input) {
     s.memory.write<2>(output, s.memory.read<2>(input));
     s.memory.write<2>(output + 2, s.memory.read<2>(input + 2));
     s.memory.write<1>(output + 4, s.memory.read<1>(input + 4));
+}
+void execute_ordering(State& s) {
+    const auto stack = std::uint32_t(s.r<4>(4));
+    const auto first = std::uint32_t(s.r<4>(12));
+    // No frame or scratch. Spills precede reads, including aliased first dates.
+    s.memory.write<4>(stack + 28, s.r<4>(16));
+    s.memory.write<4>(stack + 32, s.r<4>(20));
+    auto second_year = std::uint16_t(s.memory.read<2>(stack + 30));
+    auto first_year = std::uint16_t(s.memory.read<2>(first + 2));
+    if (second_year <= first_year) {
+        // The reference repeats these ordered loads on its <= branch.
+        second_year = std::uint16_t(s.memory.read<2>(stack + 30));
+        first_year = std::uint16_t(s.memory.read<2>(first + 2));
+    }
+    s.wr<4>(0, first_year); s.wr<4>(16, second_year);
+    const unsigned comparison = second_year > first_year ? 4 : second_year < first_year ? 8 : 2;
+    s.wr<1>(2304, comparison | (s.r<1>(1024) & 1));
+    bool later = cm::calendar::is_after({0, second_year}, {0, first_year});
+    if (second_year == first_year) {
+        const auto second_day = cm::calendar::narrow_day(int(s.memory.read<2>(stack + 28)));
+        const auto first_day = cm::calendar::narrow_day(int(s.memory.read<2>(first)));
+        later = cm::calendar::is_after({second_day, second_year}, {first_day, first_year});
+        const auto bits = std::uint32_t(int(second_day)) ^ std::uint32_t(int(first_day));
+        // Preserve xor/shift clobbers separately from the semantic predicate.
+        // Unsigned shift avoids undefined behavior for negative input bits.
+        s.wr<4>(16, (bits >> 1) | (bits & 0x80000000u));
+        s.wr<4>(20, std::uint32_t(int(second_day)));
+        s.wr<1>(1027, (bits >> 31) && (bits & 1));
+        s.wr<4>(0, later);
+    }
+    s.wr<4>(12, later);
+    s.pc = std::uint32_t(s.r<4>(4128));
 }
 void execute_difference(State& s) {
     const auto stack = std::uint32_t(s.r<4>(4));
@@ -172,7 +206,9 @@ void execute(State& s, const Boundary& boundary) {
 }
 bool try_modern_calendar(State& s, std::uint32_t entry) {
     const bool difference = entry == difference_entry;
-    const bool original = s.calendar_original || (difference && s.date_difference_original);
+    const bool ordering = entry == ordering_entry;
+    const bool original = s.calendar_original || (difference && s.date_difference_original) ||
+                          (ordering && s.date_ordering_original);
     if (audit_original_running || (original && !audit)) return false;
     const auto return_pc = std::uint32_t(s.r<4>(4128));
     const auto destination = std::uint32_t(s.r<4>(12));
@@ -183,10 +219,10 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
     if (audit) {
         append(entry, 4);
         for (unsigned r : {12u, 16u, 20u, 4u, 8u, 4128u}) append(s.r<4>(r), 4);
-        const auto input = s.memory.copy_out(std::uint32_t(s.r<4>(difference ? 12 : 16)), 5);
+        const auto input = s.memory.copy_out(std::uint32_t(s.r<4>(difference || ordering ? 12 : 16)), 5);
         edge.insert(edge.end(), input.begin(), input.end());
     }
-    if (!difference && cm::calendar::narrow_day(int(s.r<2>(22))) == -32768) {
+    if (!difference && !ordering && cm::calendar::narrow_day(int(s.r<2>(22))) == -32768) {
         // Negating SHRT_MIN delegates indefinitely in the reference. Preserve
         // its bounded stack/budget failure instead of inventing a date result.
         ++s.calendar_exceptional_calls; return false;
@@ -200,7 +236,20 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
         audit_original_running = false;
     } else {
         s.step(entry); // Actual semantic dispatch, not fabricated original accounting.
-        if (difference) {
+        if (ordering) {
+            const bool sample = s.date_ordering_calls < 32 && std::getenv("CM_AOT_VALIDATION_EVENT_POINTER");
+            const auto first = sample ? read_date(s, destination) : Date{};
+            const auto second = sample ? Date{cm::calendar::narrow_day(int(s.r<2>(16))), std::uint16_t(s.r<2>(18))} : Date{};
+            const auto packed = sample ? s.r<4>(20) : 0;
+            ++s.date_ordering_calls;
+            execute_ordering(s);
+            if (audit_perturb_ordering && s.date_ordering_calls == 1)
+                s.wr<4>(12, s.r<4>(12) ^ 1);
+            if (sample)
+                std::fprintf(stderr, "date-ordering.modern sample=%llu first=%u/%d second=%u/%d second-tail=%08x result=%u return=%08x\n",
+                    static_cast<unsigned long long>(s.date_ordering_calls), first.year, first.day, second.year, second.day,
+                    unsigned(packed), unsigned(s.r<4>(12)), return_pc);
+        } else if (difference) {
             const bool sample = s.date_difference_calls < 32 && std::getenv("CM_AOT_VALIDATION_EVENT_POINTER");
             const auto first = sample ? read_date(s, destination) : Date{};
             const auto second = sample ? Date{cm::calendar::narrow_day(int(s.r<2>(16))), std::uint16_t(s.r<2>(18))} : Date{};
@@ -218,11 +267,18 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
             ++s.calendar_calls[entry == addition.entry ? 0 : 1];
             execute(s, entry == addition.entry ? addition : subtraction);
         }
-        if (!difference && audit_perturb && s.calendar_calls[0] + s.calendar_calls[1] == 1)
+        if (!difference && !ordering && audit_perturb && s.calendar_calls[0] + s.calendar_calls[1] == 1)
             s.memory.write<2>(destination, s.memory.read<2>(destination) + 1);
     }
     if (audit) {
-        if (difference) {
+        if (ordering) {
+            append(s.r<4>(12), 4);
+            // Complete registers and eight spill bytes. Direct checks also
+            // compare all temporaries and every mapped memory byte.
+            edge.insert(edge.end(), s.registers.begin(), s.registers.end());
+            const auto spills = s.memory.copy_out(std::uint32_t(s.r<4>(4)) + 28, 8);
+            edge.insert(edge.end(), spills.begin(), spills.end());
+        } else if (difference) {
             append(s.r<4>(12), 4);
             const auto scratch = s.memory.copy_out(std::uint32_t(s.memory.read<4>(difference_scratch)), 5);
             edge.insert(edge.end(), scratch.begin(), scratch.end());
@@ -252,7 +308,8 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
             const auto mismatch = std::mismatch(expected.begin(), expected.end(), edge.begin());
             if (mismatch.first != expected.end()) {
                 const auto index = mismatch.first - expected.begin();
-                const auto field = difference ? (index < 28 ? "difference entry/by-value argument" : index < 33 ? "first date" :
+                const auto field = ordering ? (index < 28 ? "ordering entry/by-value argument" : index < 33 ? "first date" :
+                    index < 37 ? "ordering return" : "ordering ABI/spills") : difference ? (index < 28 ? "difference entry/by-value argument" : index < 33 ? "first date" :
                     index < 37 ? "difference return" : index < 43 ? "difference scratch/flag" : "difference ABI/stack") :
                     index < 28 ? "entry/effective argument" : index < 33 ? "input date" :
                     index < 35 ? "output day-of-year" : index < 37 ? "output year" : index == 37 ? "output leap flag" :
@@ -266,18 +323,20 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
     }
     return true;
 }
-void open_calendar_audit(const std::filesystem::path& path, bool record, bool perturb, bool perturb_difference) {
+void open_calendar_audit(const std::filesystem::path& path, bool record, bool perturb, bool perturb_difference, bool perturb_ordering) {
     if (audit) throw std::runtime_error("Calendar audit already active");
     audit = gzopen(path.c_str(), record ? "wb1" : "rb");
     if (!audit) throw std::runtime_error("Cannot open private calendar edge reference");
     audit_record = record; audit_index = 0; audit_perturb = perturb;
     audit_perturb_difference = perturb_difference;
+    audit_perturb_ordering = perturb_ordering;
 }
 void close_calendar_audit(bool require_end) {
     if (!audit) return;
     bool extra = false;
     if (require_end && !audit_record) { std::uint8_t byte; extra = gzread(audit, &byte, 1) != 0 || !gzeof(audit); }
     const auto result = gzclose(audit); audit = nullptr; audit_perturb = false; audit_perturb_difference = false;
+    audit_perturb_ordering = false;
     if (extra || result != Z_OK) throw std::runtime_error("First divergence: calendar call count or edge checksum");
 }
 std::string calendar_call_summary(const State& s) {
@@ -287,6 +346,8 @@ std::string calendar_call_summary(const State& s) {
         << " exceptional-original=" << s.calendar_exceptional_calls;
     out << " difference-mode=" << (s.calendar_original || s.date_difference_original ? "original" : "modern")
         << " modern-difference=" << s.date_difference_calls;
+    out << " ordering-mode=" << (s.calendar_original || s.date_ordering_original ? "original" : "modern")
+        << " modern-ordering=" << s.date_ordering_calls;
     return out.str();
 }
 }

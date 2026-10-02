@@ -12,9 +12,11 @@ constexpr std::int16_t narrow_day(int day) {
     return std::bit_cast<std::int16_t>(std::uint16_t(day));
 }
 constexpr unsigned year_length(std::uint16_t year) { return is_leap(year) ? 366 : 365; }
-// This ordering belongs to date difference, not a separately replaced entry.
+constexpr bool is_after(Date date, Date reference) {
+    return date.year > reference.year || (date.year == reference.year && date.day > reference.day);
+}
 constexpr bool difference_second_later(Date first, Date second) {
-    return second.year > first.year || (second.year == first.year && second.day > first.day);
+    return is_after(second, first);
 }
 // The ascending original loop deliberately also uses current year minus one.
 // Thus cross-year difference is not generally antisymmetric or Gregorian.

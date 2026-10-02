@@ -6,23 +6,27 @@
 
 int main(int argc, char** argv) {
     try {
-        if (argc < 2) throw std::runtime_error("Usage: cm-season-reference <fixture> [--modern|--calendar-baseline] [--perturb-rng|--perturb-calendar|--perturb-difference] [--calendar-record|--calendar-check <private-edges.gz>]");
+        if (argc < 2) throw std::runtime_error("Usage: cm-season-reference <fixture> [--modern|--calendar-baseline|--date-ordering-baseline] [--perturb-rng|--perturb-calendar|--perturb-difference|--perturb-ordering] [--calendar-record|--calendar-check <private-edges.gz>]");
         bool modern = false, baseline = false, perturb_rng = false, perturb_calendar = false, record = false;
         bool perturb_difference = false;
+        bool ordering_baseline = false, perturb_ordering = false;
         std::filesystem::path edges;
         for (int i = 2; i < argc; ++i) {
             const std::string_view option(argv[i]);
             if (option == "--modern") modern = true;
             else if (option == "--calendar-baseline") { modern = true; baseline = true; }
+            else if (option == "--date-ordering-baseline") { modern = true; ordering_baseline = true; }
             else if (option == "--perturb-rng") perturb_rng = true;
             else if (option == "--perturb-calendar") perturb_calendar = true;
             else if (option == "--perturb-difference") perturb_difference = true;
+            else if (option == "--perturb-ordering") perturb_ordering = true;
             else if ((option == "--calendar-record" || option == "--calendar-check") && i + 1 < argc) {
                 record = option == "--calendar-record"; edges = argv[++i];
             } else throw std::runtime_error("Invalid season replay option");
         }
-        if ((record && modern) || ((perturb_calendar || perturb_difference) && (!modern || edges.empty())) ||
-            (perturb_difference && baseline))
+        if ((record && modern) || ((perturb_calendar || perturb_difference || perturb_ordering) && (!modern || edges.empty())) ||
+            (perturb_difference && baseline) || (perturb_ordering && (baseline || ordering_baseline)) ||
+            (baseline && ordering_baseline))
             throw std::runtime_error("Calendar references require original execution; calendar perturbation requires a modern edge check");
         const std::filesystem::path directory(argv[1]);
         auto state = std::make_unique<cm::aot::State>();
@@ -31,6 +35,7 @@ int main(int argc, char** argv) {
         cm::aot::load_match_snapshot(*expected, directory / "expected.snapshot");
         state->calendar_original = !modern;
         state->date_difference_original = baseline;
+        state->date_ordering_original = baseline || ordering_baseline;
         if (expected->executed <= state->executed)
             throw std::runtime_error("Private fixture has no bounded execution interval");
         // A real finite upper bound remains independent of the replacement's
@@ -40,7 +45,7 @@ int main(int argc, char** argv) {
             const auto seed = state->memory.read<4>(0x108b3f00);
             state->memory.write<4>(seed, state->memory.read<4>(seed) ^ 1);
         }
-        if (!edges.empty()) cm::aot::open_calendar_audit(edges, record, perturb_calendar, perturb_difference);
+        if (!edges.empty()) cm::aot::open_calendar_audit(edges, record, perturb_calendar, perturb_difference, perturb_ordering);
         cm::aot::open_season_replay(directory, modern);
         bool complete = false;
         try { cm::aot::run(*state); }
@@ -59,6 +64,11 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Real fixture did not exercise semantic date difference");
         if (baseline && state->date_difference_calls)
             throw std::runtime_error("Delivered calendar baseline unexpectedly used modern date difference");
+        if ((baseline || ordering_baseline) && state->date_ordering_calls)
+            throw std::runtime_error("Original ordering baseline unexpectedly used modern date ordering");
+        // Existing immutable fixtures may never call this independent entry.
+        // Report zero honestly; the checker requires separate exercised
+        // coverage before accepting an ordering negative control.
         return 0;
     } catch (const std::exception& error) {
         cm::aot::close_season_replay();

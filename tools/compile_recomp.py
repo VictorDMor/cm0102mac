@@ -253,7 +253,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.append("MatchPageCounter<Turbo, Finite> counter(s);")
     if page == 0x10203:
         code.insert(1, '#include "match_presentation.hpp"')
-    if page in (0x10717, 0x10718):
+    if page in (0x10331, 0x10717, 0x10718):
         code.insert(1, '#include "calendar_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
@@ -274,7 +274,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
-        if a in (0x10717890, 0x10717b20, 0x10718130):
+        if a in (0x10331860, 0x10717890, 0x10717b20, 0x10718130):
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
@@ -527,7 +527,7 @@ def main():
                 "allAnalyzedInstructions": args.all_analyzed,
                 "instructionLocalTemporaries": not args.legacy_unique_storage,
                 "semanticReplacements": [{"entry": f"0x{entry:x}", "module": "calendar_adapter"}
-                                         for entry in (0x10717890, 0x10717b20, 0x10718130)
+                                         for entry in (0x10331860, 0x10717890, 0x10717b20, 0x10718130)
                                          if (args.all_analyzed and entry >> 12 in pages) or entry in selected],
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}

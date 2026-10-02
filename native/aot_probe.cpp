@@ -27,6 +27,9 @@ int cm::aot::run_probe(int argc, char** argv) {
             }
         }
         cm::aot::load_program(*state, argv[1]);
+        // Private reference capture must never record the semantic candidate
+        // as its own oracle. Normal apps retain the production defaults.
+        state->calendar_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr;
         if (argc == 5) state->platform = std::make_shared<cm::aot::NativePlatform>(argv[3], argv[4]);
         state->pc = std::stoul(argv[2], nullptr, 0);
         cm::aot::run(*state);
