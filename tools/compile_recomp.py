@@ -11,6 +11,9 @@ import hashlib
 from pathlib import Path
 import sqlite3
 import struct
+from unsigned_division_audit import require_unsigned_division_routine
+from match_presentation_audit import require_match_presentation_context
+from local_temporaries import LocalTemporaries
 
 
 def integer(value):
@@ -50,7 +53,7 @@ def transfer(address, page, selected):
     return f"s.pc = 0x{address:x}; return true;"
 
 
-def operation(op, address, index, page, selected, op_count):
+def operation(op, address, index, page, selected, op_count, read_node=read, write_node=write):
     name, output, *inputs = op
     if name == "CALLOTHER":
         return 'throw std::runtime_error("Unimplemented original intrinsic at ' + hex(address) + '");'
@@ -69,18 +72,18 @@ def operation(op, address, index, page, selected, op_count):
         else:
             raise ValueError(f"Unexpected branch space: {dest}")
         if name == "CBRANCH":
-            return f"if ({read(inputs[1])} != 0) {{ {jump} }}"
+            return f"if ({read_node(inputs[1])} != 0) {{ {jump} }}"
         return jump
     if name in ("BRANCHIND", "CALLIND", "RETURN"):
-        return f"s.pc = std::uint32_t({read(inputs[0])}); return true;"
+        return f"s.pc = std::uint32_t({read_node(inputs[0])}); return true;"
     if name in ("LOAD", "STORE"):
         if inputs[0] != ["const", "417", 8]:
             raise ValueError(f"Unexpected memory address space: {inputs[0]}")
         if name == "LOAD":
-            return write(output, f"s.memory.read<{output[2]}>({read(inputs[1])})")
-        return f"s.memory.write<{inputs[2][2]}>({read(inputs[1])}, {read(inputs[2])});"
+            return write_node(output, f"s.memory.read<{output[2]}>({read_node(inputs[1])})")
+        return f"s.memory.write<{inputs[2][2]}>({read_node(inputs[1])}, {read_node(inputs[2])});"
 
-    args = [read(n) for n in inputs]
+    args = [read_node(n) for n in inputs]
     a = args[0] if args else None
     b = args[1] if len(args) > 1 else None
     n = inputs[0][2] if inputs else None
@@ -135,7 +138,7 @@ def operation(op, address, index, page, selected, op_count):
             raise ValueError(f"Unsupported floating operation: {name}")
     else:
         raise ValueError(f"Unsupported operation: {name}")
-    return write(output, value)
+    return write_node(output, value)
 
 
 def require_dead_register(instructions, start, offset, size):
@@ -179,11 +182,85 @@ def require_dead_register(instructions, start, offset, size):
     visit(start, set())
 
 
-def generate_page(page, instructions, selected):
+def require_control_cursor_block(instructions, selected):
+    """Pin every instruction lowered by the direct Mac control-cursor block.
+
+    Assembly text alone cannot establish equivalence: include every P-code
+    operation, node width/offset, branch target, size, and flow annotation.
+    Fingerprints are of the canonical fields below from the audited Mac export,
+    not of newly generated C++. Any export change requires a fresh audit.
+    """
+    expected = {
+        0x1071a828: "b01b96b48f73b1cd63dffb4c079566739c5b6191feb498739364a7e5dd3ec9a6",  # lhax r0,r28,r19
+        0x1071a82c: "42f1db371c7fcc6be19a3bac847e9b2242cbadedbab693047636435086c00d0d",  # mulli r3,r0,0xbf0
+        0x1071a830: "2fa70bef6f0d94e56c7ed74daeed6bfb1431a523f45b14de3f3d750a6d5e652e",  # addi r4,r3,0x4
+        0x1071a834: "454a829f8049bfdd8349f27004f3d02b90c1c4e5e7040011e17766a5e6a4ceec",  # add r4,r28,r4
+        0x1071a838: "370f651e17ed4e094cbb7cf6e1d690897f1dba1cde89860bd07714317dcd99f1",  # lha r3,0xb78(r4)
+        0x1071a83c: "a54194819c232fa492a29083207f539fea7ecd23bd57f537375930c64a65830b",  # lha r0,0xb74(r4)
+        0x1071a840: "bf12c75a4e958713105fd15e118ef7e812e55b90ca65fb6dbf9abb2434329635",  # cmpw r3,r0
+        0x1071a844: "bda58ec4a260f102ce2a8a66c1776c73e081d5fd76fd495286bc1c6342fabe4d",  # bge 0x1071a860
+        0x1071a848: "2408f30cc1f8fa834a0550c6658995e0344b83ae8aa6b56d014c1e662affc9b9",  # addi r0,r3,0x1
+        0x1071a84c: "a8290b488cd97ec5532e3108bcc7f79d9673bb59db3bd2aebf4fe0fb57aa398c",  # rlwinm r3,r3,0x1,0x0,0x1e
+        0x1071a850: "400e6fbf9b34dd2eedf2992b14584548b76ac843f9902981125a3d4eeebc8b61",  # sth r0,0xb78(r4)
+        0x1071a854: "afcff9c0c0501405d2a803b0cb4bf525318d5ee467fc2279de41c6e1809a9fe6",  # addi r0,r3,0x212
+        0x1071a858: "1acd4e7c8a0cfa3a04797ded6f8e8dd1045240bbe4a99556db3cef5fb9ac2b01",  # lhax r23,r4,r0
+        0x1071a85c: "37aaa6efa9d31af0f71fe9ee99447d382fbc91fcbf38b9b6f33dfb4c2f4f7083",  # b 0x1071a864
+        0x1071a860: "41bc39fcae77b370cb2d1704bab6c8a1fb944b2d7f866415b4981b822f1f2048",  # li r23,-0x1
+    }
+    fields = ("address", "size", "assembly", "flow", "fallthrough", "flows", "ops")
+    required = set(expected) | {0x1071a864}
+    records = defaultdict(list)
+    for item in instructions:
+        if item.get("address") in required:
+            records[item["address"]].append(item)
+    for address in required:
+        if len(records[address]) != 1 or address not in selected:
+            raise ValueError(f"Missing or ambiguous Mac control-cursor instruction at {address:x}")
+    for address, fingerprint in expected.items():
+        record = {key: records[address][0].get(key) for key in fields}
+        actual = hashlib.sha256(json.dumps(record, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if actual != fingerprint:
+            raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
+
+
+def generate_page(page, instructions, selected, local_temporaries=True):
+    if local_temporaries:
+        # Reject unsafe exports, including incoming scratch reads. Falling back
+        # just for a consumer cannot recover a previous instruction's discarded
+        # scratch writes. No completion manifest is emitted if any page fails.
+        for item in instructions:
+            LocalTemporaries.require_instruction_local_unique(item["ops"])
+    # A bounded export may contain unrelated instructions from these pages.
+    # Audit only when its commentary call/load is included; once included,
+    # require the same complete context and fingerprint as the full export.
+    page_addresses = {item["address"] for item in instructions}
+    presentation_anchor = {0x101cc: 0x101cce38, 0x10203: 0x10203738}.get(page)
+    if presentation_anchor in page_addresses or presentation_anchor in selected:
+        require_match_presentation_context(page, instructions, selected)
+    # Specialize accounting on selected UI/runtime pages while retaining
+    # the exact finite-budget path used by validation and probes.
+    match_hot_page = page in (0x1071a, 0x10773, 0x1073c)
     code = ['#include "aot_runtime.hpp"', "namespace cm::aot {",
-            f"bool page_{page:x}(State& s) {{", "switch (s.pc) {"]
+            (f"template <bool Turbo, bool Finite> bool page_{page:x}_impl(State& s) {{" if match_hot_page
+             else f"bool page_{page:x}(State& s) {{")]
+    if match_hot_page:
+        if page == 0x10773 and (0x10773870 in page_addresses or 0x10773870 in selected):
+            require_unsigned_division_routine(instructions, selected)
+            code.insert(1, '#include "unsigned_division.hpp"')
+            code.append("if constexpr (Turbo) if (!match_pc_profile_enabled() && try_fast_unsigned_division(s)) return true;")
+        code.append("MatchPageCounter<Turbo, Finite> counter(s);")
+    if page == 0x10203:
+        code.insert(1, '#include "match_presentation.hpp"')
+    if page == 0x10119:
+        code.insert(1, '#include "season_reference.hpp"')
+    code.append("switch (s.pc) {")
     if any(item["assembly"].startswith("fctiwz ") for item in instructions):
         code.insert(1, '#include "floating_point.hpp"')
+    if match_hot_page:
+        code.insert(1, '#include "match_turbo.hpp"')
+        code.insert(1, '#include "match_replay.hpp"')
+    if page == 0x1071a:
+        code.insert(1, '#include "control_cursor.hpp"')
     if any(item["address"] == 0x10774c24 for item in instructions):
         code.insert(1, '#include "allocator_bridge.hpp"')
     for item in instructions:
@@ -192,7 +269,22 @@ def generate_page(page, instructions, selected):
     code.extend(["default: return false;", "}"])
     for item in instructions:
         a = item["address"]
-        code.extend([f"i_{a:x}: // {item['assembly']}", f"s.step(0x{a:x});"])
+        code.append(f"i_{a:x}: // {item['assembly']}")
+        if a == 0x101195e8:
+            code.append("season_day_boundary(s, 0x101195e8);")
+        if a == 0x1071a828:
+            require_control_cursor_block(instructions, selected)
+            code.append("if constexpr (Turbo) if (match_snapshot_requested()) {")
+            code.append(f"counter.publish(0x{a:x}); capture_match_snapshot(s);")
+            code.append("}")
+            code.append("if constexpr (Turbo) {")
+            code.append("next_control_cursor_entry(s, counter);")
+            code.append("goto i_1071a864;")
+            code.append("}")
+        if match_hot_page:
+            code.append(f"counter.step(0x{a:x});")
+        else:
+            code.append(f"s.step(0x{a:x});")
         if a == 0x10774c24:
             # A stale largest-block hint can produce the same pool count after
             # a failed allocation, trapping the original replenishment loop.
@@ -282,13 +374,32 @@ def generate_page(page, instructions, selected):
                 offset &= (1 << width) - 1
                 if offset >= 1 << (width - 1): offset -= 1 << width
                 labels.add(i + offset)
+        local = LocalTemporaries.for_instruction(item["ops"], read, write) if local_temporaries else None
+        if local is not None:
+            code.append("{")
         for i, op in enumerate(item["ops"]):
             if i in labels: code.append(f"op_{a:x}_{i}:")
-            code.append(operation(op, a, i, page, selected, len(item["ops"])))
+            code.append(operation(op, a, i, page, selected, len(item["ops"]),
+                                  read_node=local.read if local else read,
+                                  write_node=local.write if local else write))
         if len(item["ops"]) in labels: code.append(f"op_{a:x}_{len(item['ops'])}:")
+        if a == 0x10203738:
+            code.append("s.wr<4>(0, commentary_presentation_duration(s, std::uint32_t(s.r<4>(104)), std::uint32_t(s.r<4>(0))));")
         # This path is reached only if no earlier branch/return transferred out.
         code.append(transfer(a + item["size"], page, selected))
-    code.extend(["}", "}"])
+        if local is not None:
+            code.append("}")
+    code.append("}")
+    if match_hot_page:
+        code.extend([f"bool page_{page:x}(State& s) {{",
+                     "if (match_turbo_enabled()) {",
+                     "if (s.budget == UINT64_MAX) "
+                     f"return page_{page:x}_impl<true, false>(s);",
+                     "if (match_replay_turbo_enabled()) "
+                     f"return page_{page:x}_impl<true, true>(s);",
+                     "}",
+                     f"return page_{page:x}_impl<false, false>(s);", "}"])
+    code.append("}")
     return "\n".join(code) + "\n"
 
 
@@ -300,6 +411,8 @@ def main():
     parser.add_argument("--limit", type=int, default=8192)
     parser.add_argument("--all-analyzed", action="store_true",
                         help="Stream every analyzed instruction into native compilation units")
+    parser.add_argument("--legacy-unique-storage", action="store_true",
+                        help="Materialize translation scratch for comparison with instruction-local temporaries")
     args = parser.parse_args()
     if args.limit < 1: raise ValueError("Instruction limit must be positive")
     metadata = json.loads((args.export / "program.json").read_text())
@@ -343,7 +456,8 @@ def main():
                     "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
                     (page << 12, (page + 1) << 12))]
                 path = args.output / f"page_{page:x}.cpp"
-                content = generate_page(page, records, {r["address"] for r in records})
+                content = generate_page(page, records, {r["address"] for r in records},
+                                        local_temporaries=not args.legacy_unique_storage)
                 if not path.exists() or path.read_text() != content: path.write_text(content)
                 pages[page] = []
                 outputs[path.name] = None
@@ -351,7 +465,9 @@ def main():
         if generated_count != metadata["instructionCount"]: raise ValueError("Incomplete indexed listing")
         queue.clear()
     for page, instructions in pages.items():
-        if not args.all_analyzed: outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected)
+        if not args.all_analyzed:
+            outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected,
+                                                       local_temporaries=not args.legacy_unique_storage)
     code = ['#include "aot_runtime.hpp"', '#include "aot_integrity.hpp"', "namespace cm::aot {"]
     for page in pages: code.append(f"bool page_{page:x}(State&);")
     code += ["bool dispatch_page(State& s) {", "switch (s.pc >> 12) {"]
@@ -403,6 +519,7 @@ def main():
                 "executableSHA256": metadata["executableSHA256"], "roots": args.root,
                 "instructions": generated_count, "pages": len(pages),
                 "allAnalyzedInstructions": args.all_analyzed,
+                "instructionLocalTemporaries": not args.legacy_unique_storage,
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}
                     for address, purpose in (

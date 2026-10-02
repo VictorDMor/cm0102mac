@@ -88,8 +88,17 @@ template <unsigned N, typename T> std::uint64_t float_truncate(T value) {
     return std::uint64_t(std::int64_t(rounded)) & mask<N>();
 }
 
+// Optional private fixture observer for native-service effects and original
+// RNG state writes. Original instructions and callbacks still execute normally.
+struct MemoryObserver {
+    virtual ~MemoryObserver() = default;
+    virtual void mapped(std::uint32_t start, std::uint64_t size) = 0;
+    virtual void written(std::uint32_t start, const std::uint8_t* bytes, std::size_t size) = 0;
+    virtual void cleared(std::uint32_t start, std::uint64_t size) = 0;
+};
 class Memory {
 public:
+    MemoryObserver* observer = nullptr;
     Memory();
     ~Memory();
     Memory(const Memory&) = delete;
@@ -99,20 +108,34 @@ public:
     void copy_in(std::uint32_t start, const std::vector<std::uint8_t>& bytes);
     void clear(std::uint32_t start, std::uint64_t size);
     std::vector<std::uint8_t> copy_out(std::uint32_t start, std::size_t size) const;
+    std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
     template <unsigned N> std::uint64_t read(std::uint64_t address) const {
-        check(address, N);
+        check_scalar<N>(address);
         return read_be<N>(data_ + address);
     }
     template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
-        check(address, N);
+        check_scalar<N>(address);
         write_be<N>(data_ + address, value);
+        if (observer) observer->written(std::uint32_t(address), data_ + address, N);
     }
 private:
+    template <unsigned N> void check_scalar(std::uint64_t address) const {
+        static_assert(N > 0 && N <= 8);
+        // An entry certifies the continuous interval from its 64 KiB boundary
+        // to the exact mapped end. Partial starts and holes use the range oracle.
+        if (address < (UINT64_C(1) << 32) &&
+            address + N <= (*page_ends_)[address >> 16]) return;
+        check(address, N);
+    }
     void check(std::uint64_t address, std::uint64_t size) const;
     std::uint8_t* data_;
     struct Range { std::uint64_t start, end; };
     std::vector<Range> ranges_;
+    std::unique_ptr<std::array<std::uint64_t, 65536>> page_ends_ =
+        std::make_unique<std::array<std::uint64_t, 65536>>();
 };
+
+[[noreturn, gnu::cold, gnu::noinline]] void instruction_budget_exhausted();
 
 struct State {
     Memory memory;
@@ -130,11 +153,14 @@ struct State {
     // Keep platform implementation details out of all generated units. Future
     // filesystem, window, event, and sound changes do not alter this ABI again.
     std::shared_ptr<NativePlatform> platform;
-    template <unsigned N> std::uint64_t r(std::size_t offset) const {
+    // Generated register offsets are constants. Inlining lets the compiler
+    // fold the bounds check and access them directly, retaining checks for
+    // dynamic callers without an out-of-line call per register access.
+    template <unsigned N> [[gnu::always_inline]] std::uint64_t r(std::size_t offset) const {
         if (offset + N > registers.size()) throw std::out_of_range("Register offset");
         return read_be<N>(registers.data() + offset);
     }
-    template <unsigned N> void wr(std::size_t offset, std::uint64_t value) {
+    template <unsigned N> [[gnu::always_inline]] void wr(std::size_t offset, std::uint64_t value) {
         if (offset + N > registers.size()) throw std::out_of_range("Register offset");
         write_be<N>(registers.data() + offset, value);
     }
@@ -148,7 +174,7 @@ struct State {
     }
     void step(std::uint32_t address) {
         pc = address;
-        if (executed++ >= budget) throw std::runtime_error("Native instruction budget exhausted");
+        if (executed++ >= budget) instruction_budget_exhausted();
     }
 };
 

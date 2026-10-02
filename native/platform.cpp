@@ -1271,6 +1271,8 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
                 if (arg(3)) s.memory.write<4>(arg(3), item->first);
                 if (arg(4)) s.memory.write<2>(arg(4), item->second);
             }
+        } else if (name == "CarbonLib::MenuKey") {
+            return_value = impl_->user_interface().menu_key(std::uint8_t(arg(0)));
         } else if (name == "CarbonLib::GetMenuHandle") {
             const auto found = impl_->menu_ids.find(std::int16_t(arg(0)));
             return_value = found == impl_->menu_ids.end() ? 0 : found->second;

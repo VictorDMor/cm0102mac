@@ -1,4 +1,5 @@
 #include "aot_runtime.hpp"
+#include "match_turbo.hpp"
 #include <iostream>
 
 using namespace cm::aot;
@@ -8,6 +9,27 @@ constexpr std::uint32_t start = 0x102474c0, division = 0x1024773c;
 constexpr std::uint32_t remainder_end = 0x10247768, quotient_dead = 0x10247948;
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
+}
+void check_sparse_profile_schedule() {
+    constexpr std::uint64_t stride = 1048583, start = 100;
+    require(match_pc_sample_threshold(start) == start + stride,
+            "Sparse profile did not initialize one stride ahead");
+    require(match_pc_sample_threshold(start + stride - 1) == start + stride,
+            "Sparse profile postponed a still-future sample on page entry");
+    require(record_match_pc_sample(0x10773870) == start + 2 * stride,
+            "Sparse profile did not advance after a selected-page sample");
+    const auto reentry = start + 10 * stride;
+    require(match_pc_sample_threshold(reentry) == reentry + stride &&
+            match_pc_sample_threshold(reentry + 1) == reentry + stride,
+            "Cold-page work caused a sparse-profile catch-up burst");
+    require(match_pc_sample_threshold(reentry + stride) == reentry + 2 * stride,
+            "Exactly due reentry did not reset the missed sample");
+    require(match_pc_sample_threshold(UINT64_MAX - stride) == UINT64_MAX,
+            "Sparse profile overflowed at its exact final stride");
+    require(record_match_pc_sample(0x10773874) == UINT64_MAX &&
+            match_pc_sample_threshold(UINT64_MAX) == UINT64_MAX &&
+            record_match_pc_sample(0x10773878) == UINT64_MAX,
+            "Sparse profile wrapped its saturated threshold");
 }
 std::unique_ptr<State> setup(const char* directory, double factor, double denominator,
                              std::uint32_t sample, bool second_draw = false, unsigned event = 11) {
@@ -47,6 +69,35 @@ void until(State& s, std::uint32_t target) {
 int main(int argc, char** argv) {
     if (argc != 2) { std::cerr << "Usage: cm-match-arithmetic-checks <original-segments>\n"; return 2; }
     try {
+        check_sparse_profile_schedule();
+        // The match hot pages select a specialized path only for the native
+        // app's unlimited instruction budget. Even that path must report the
+        // precise original PC and count if the 64-bit counter is exhausted.
+        set_match_turbo_enabled(true);
+        for (const auto address : {0x1071a000u, 0x1073c000u, 0x10773000u}) {
+            auto state = std::make_unique<State>();
+            state->pc = address;
+            state->budget = UINT64_MAX;
+            state->executed = UINT64_MAX;
+            bool exhausted = false;
+            try { dispatch_page(*state); }
+            catch (const std::runtime_error& error) {
+                exhausted = std::string(error.what()) == "Native instruction budget exhausted";
+            }
+            require(exhausted && state->pc == address && state->executed == 0,
+                    "Unlimited match accounting lost its exact failure state");
+            state->pc = address;
+            state->budget = 0;
+            state->executed = 0;
+            exhausted = false;
+            try { dispatch_page(*state); }
+            catch (const std::runtime_error& error) {
+                exhausted = std::string(error.what()) == "Native instruction budget exhausted";
+            }
+            require(exhausted && state->pc == address && state->executed == 1,
+                    "Finite match accounting lost its exact failure state");
+        }
+        set_match_turbo_enabled(false);
         unsigned cases = 0;
         for (double factor : {-2.0, -1.0, -0.75, -0.5, -0.1, 0.0, 0.1, 0.5, 0.75, 1.0, 2.0, 5.0}) {
             for (double denominator : {1.0, 8.0, 100.0}) {

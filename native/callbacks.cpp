@@ -1,9 +1,11 @@
 #include "callbacks.hpp"
 #include "aot_runtime.hpp"
+#include "season_reference.hpp"
 
 namespace cm::aot {
 std::uint32_t call_original(State& s, std::uint32_t transition_vector, std::span<const std::uint32_t> arguments) {
     if (arguments.size() > 8) throw std::runtime_error("Original callback requires stack argument marshalling");
+    season_record_callback_begin(s, transition_vector, arguments);
     struct Saved {
         decltype(State::registers) registers;
         decltype(State::unique) unique;
@@ -30,6 +32,7 @@ std::uint32_t call_original(State& s, std::uint32_t transition_vector, std::span
     s.registers = saved->registers;
     s.unique = saved->unique;
     s.pc = saved->pc;
+    season_record_callback_end(s, result);
     return result;
 }
 }

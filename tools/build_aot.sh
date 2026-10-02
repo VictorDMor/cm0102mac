@@ -19,10 +19,13 @@ mkdir -p "$input_dir" "$log_dir"
 if [[ ! -f "$input_dir/program.json" ]]; then
     # Audited event-loop jump table at 0x1091c330: automatic analysis skipped
     # these case destinations. Discover them offline before exporting the code.
+    # The competition result table at 0x108cc9fc also contains indirect cases
+    # reached during the 2002 World Cup final; discover all seven destinations.
     "$ghidra_install/support/analyzeHeadless" "$project_dir" cm0102-ppc32 \
         -process 'CM 01-02' -readOnly -noanalysis -scriptPath "$task_root/tools" \
         -postScript ExportRecomp.java "$input_dir" \
         0x1076ffa8 0x1076ffb4 0x1076ffcc 0x1076ffd8 0x1076ffe4 0x10770148 \
+        0x101b8a4c 0x101b8908 0x101b87c0 0x101b8680 0x101b8adc 0x101b8548 0x101b84cc \
         -max-cpu 4 > "$log_dir/recomp-export.log" 2>&1
     test -f "$input_dir/program.json"
 fi

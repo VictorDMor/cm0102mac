@@ -16,6 +16,16 @@ NSEvent* next() {
     return [NSApp nextEventMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp untilDate:NSDate.distantPast
                                 inMode:NSDefaultRunLoopMode dequeue:YES];
 }
+void post_hover(unsigned sequence) {
+    NSEvent* event = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
+        location:NSMakePoint(sequence, 0) modifierFlags:0 timestamp:0
+        windowNumber:0 context:nil eventNumber:sequence clickCount:0 pressure:0];
+    [NSApp postEvent:event atStart:NO];
+}
+NSEvent* next_input() {
+    return [NSApp nextEventMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp | NSEventMaskMouseMoved
+        untilDate:NSDate.distantPast inMode:NSDefaultRunLoopMode dequeue:YES];
+}
 }
 int main(int argc, char** argv) {
     @autoreleasepool {
@@ -25,6 +35,21 @@ int main(int argc, char** argv) {
             if (validation) setenv("CM_AOT_VALIDATION_EVENT_POINTER", "1", 1);
             else unsetenv("CM_AOT_VALIDATION_EVENT_POINTER");
             cm::aot::NativeUI ui;
+            // The original text editor sends unmatched Command keys to MenuKey.
+            // Return the original menu ID/item, respecting enabled state and
+            // current one-based positions after menu edits.
+            ui.create_menu(42, {7, "Test", true,
+                {{"Open", 0, 'O'}, {"Disabled", 0, 'A', 0, 0, false}, {"-"}}});
+            ui.create_menu(43, {8, "Disabled menu", false, {{"Save", 0, 'S'}}});
+            ui.set_menu_bar({42, 43});
+            require(ui.menu_key('o') == 0x00070001 && ui.menu_key('O') == 0x00070001,
+                    "MenuKey lost original menu ID, item number, or case matching");
+            require(!ui.menu_key('a') && !ui.menu_key('s') && !ui.menu_key(0),
+                    "MenuKey accepted a disabled or missing keyboard equivalent");
+            ui.delete_menu_item(42, 1);
+            ui.append_menu_item(42, {"Quit", 0, 'Q'});
+            require(!ui.menu_key('o') && ui.menu_key('q') == 0x00070003,
+                    "MenuKey used stale item positions after menu mutation");
             cm::aot::UIEvent startup{cm::aot::UIEvent::Kind::update};
             for (unsigned i = 0; i < 16 && ui.poll(startup, 0); ++i) {}
             post(NSEventTypeKeyDown, @"a"); post(NSEventTypeKeyUp, @"a"); post(NSEventTypeKeyDown, @"b");
@@ -45,6 +70,24 @@ int main(int argc, char** argv) {
             ui.flush_events(8 | 16, 8);
             require(next().type == NSEventTypeKeyDown && next().type == NSEventTypeKeyUp && !next(),
                     "Stop mask must take precedence when an event also matches the flush mask");
+            // Hover must have the same legacy osEvt mask before AppKit dispatch
+            // as it does in the translated pending queue. Read the native queue
+            // directly so a missing mapping cannot be hidden by view dispatch.
+            post(NSEventTypeKeyDown, @"f"); post_hover(1); post(NSEventTypeKeyUp, @"f");
+            ui.flush_events(0x8000, 0);
+            require(next_input().type == NSEventTypeKeyDown &&
+                    next_input().type == NSEventTypeKeyUp && !next_input(),
+                    "OS-event flush retained native hover or removed adjacent keys");
+            post_hover(2);
+            ui.flush_events(0xffff, 0);
+            require(!next_input(), "All-event flush retained native hover");
+            post(NSEventTypeKeyDown, @"g"); post_hover(3); post(NSEventTypeKeyUp, @"g");
+            ui.flush_events(0xffff, 0x8000);
+            const auto hover_stop = next_input(), after_hover = next_input();
+            require(hover_stop && hover_stop.type == NSEventTypeMouseMoved &&
+                    hover_stop.eventNumber == 3 && after_hover &&
+                    after_hover.type == NSEventTypeKeyUp && !next_input(),
+                    "Hover stop mask lost precedence or changed subsequent native queue order");
             ui.create_window(1, 13, 0x02200000, {100, 150, 300, 450});
             ui.show_window(1, true);
             cm::aot::UIEvent event{cm::aot::UIEvent::Kind::update};
@@ -103,6 +146,28 @@ int main(int argc, char** argv) {
                 const auto pointer = ui.pointer_state();
                 require(pointer.x == std::lround(physical.x) && pointer.y == std::lround(height - physical.y),
                         "Normal input no longer follows the physical desktop pointer");
+            }
+            auto* window = [NSApp windowWithWindowNumber:number];
+            require(window.acceptsMouseMovedEvents, "Native game window does not receive hover movement");
+            NSEvent* hover = [NSEvent mouseEventWithType:NSEventTypeMouseMoved location:NSMakePoint(40, 60)
+                modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                windowNumber:number context:nil eventNumber:3 clickCount:0 pressure:0];
+            [window.contentView mouseMoved:hover];
+            const auto moved = receive(cm::aot::UIEvent::Kind::mouse_moved);
+            require(moved.window == 1 && moved.x == 190 && moved.y == 240 &&
+                    moved.message == 0xfa000000 && cm::aot::legacy_event_mask(moved) == 0x8000 &&
+                    !moved.button && (moved.modifiers & 0x80),
+                    "Hover movement did not reach the original event queue");
+            if (validation) {
+                const auto pointer = ui.pointer_state();
+                require(pointer.x == moved.x && pointer.y == moved.y && !pointer.down,
+                        "Validation hover did not update the game's pointer position");
+            } else {
+                const auto physical = NSEvent.mouseLocation;
+                const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
+                const auto pointer = ui.pointer_state();
+                require(pointer.x == std::lround(physical.x) && pointer.y == std::lround(height - physical.y),
+                        "Normal hover substituted the event position for the physical pointer");
             }
             if (mouse.button != 2 || mouse.x != 173 || mouse.y != 256 || (mouse.modifiers & 0x1f00) != 0x1000)
                 std::cerr << "Mouse fields: button=" << mouse.button << ", x=" << mouse.x << ", y=" << mouse.y

@@ -1,4 +1,5 @@
 #include "ui_bridge.hpp"
+#include "match_turbo.hpp"
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 #include <deque>
@@ -13,6 +14,7 @@
 #include <thread>
 
 namespace {
+bool match_turbo = false;
 std::uint16_t original_modifiers(NSEventModifierFlags flags) {
     std::uint16_t value = 0;
     if (flags & NSEventModifierFlagCommand) value |= 0x100;
@@ -101,6 +103,10 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)rightMouseUp:(NSEvent*)event { [self mouseUp:event]; }
 - (void)otherMouseDown:(NSEvent*)event { [self mouseDown:event]; }
 - (void)otherMouseUp:(NSEvent*)event { [self mouseUp:event]; }
+- (void)mouseMoved:(NSEvent*)event {
+    [self queueInput:event kind:cm::aot::UIEvent::Kind::mouse_moved];
+    pending->back().message = 0xfa000000;
+}
 - (void)keyDown:(NSEvent*)event {
     [self queueInput:event kind:event.isARepeat ? cm::aot::UIEvent::Kind::auto_key : cm::aot::UIEvent::Kind::key_down];
 }
@@ -128,10 +134,11 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)originalMenuAction:(NSMenuItem*)sender;
 - (void)originalQuitAction:(NSMenuItem*)sender;
 - (void)validationClick:(NSMenuItem*)sender;
+- (void)validationMove:(NSMenuItem*)sender;
+- (void)toggleMatchTurbo:(NSMenuItem*)sender;
 @end
 @implementation CMNativeAppDelegate
-- (void)validationClick:(NSMenuItem*)sender {
-    (void)sender;
+- (void)validationPosition:(BOOL)click {
     // A native accessibility action remains usable when a UI driver's pixel
     // click mapping is lost after a long main-thread simulation. This explicit
     // test-device dialog still delivers ordinary input to the original engine.
@@ -153,9 +160,11 @@ std::uint8_t original_character(NSEvent* event) {
     }
     if (!target) { NSBeep(); return; }
     NSAlert* dialog = [NSAlert new];
-    dialog.messageText = @"Validation click";
-    dialog.informativeText = @"Enter a position in the game image, measured from its top-left corner. This sends one unmodified left click to the original game.";
-    [dialog addButtonWithTitle:@"Send click"];
+    dialog.messageText = click ? @"Validation click" : @"Validation move";
+    dialog.informativeText = click
+        ? @"Enter a position in the game image, measured from its top-left corner. This sends one unmodified left click to the original game."
+        : @"Enter a position in the game image, measured from its top-left corner. This sends one mouse movement to the original game.";
+    [dialog addButtonWithTitle:click ? @"Send click" : @"Send move"];
     [dialog addButtonWithTitle:@"Cancel"];
     NSView* fields = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 260, 64)];
     NSTextField* x = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 34, 260, 24)];
@@ -176,12 +185,25 @@ std::uint8_t original_character(NSEvent* event) {
     }
     const auto point = [view convertPoint:NSMakePoint(horizontal, vertical) toView:nil];
     const auto timestamp = NSProcessInfo.processInfo.systemUptime;
+    if (!click) {
+        NSEvent* event = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
+            location:point modifierFlags:0 timestamp:timestamp
+            windowNumber:target.windowNumber context:nil eventNumber:0 clickCount:0 pressure:0];
+        [view mouseMoved:event];
+        return;
+    }
     for (unsigned released = 0; released < 2; ++released) {
         NSEvent* event = [NSEvent mouseEventWithType:released ? NSEventTypeLeftMouseUp : NSEventTypeLeftMouseDown
             location:point modifierFlags:0 timestamp:timestamp + released * 0.08
             windowNumber:target.windowNumber context:nil eventNumber:0 clickCount:1 pressure:released ? 0 : 1];
         [view queueInput:event kind:released ? cm::aot::UIEvent::Kind::mouse_up : cm::aot::UIEvent::Kind::mouse_down];
     }
+}
+- (void)validationClick:(NSMenuItem*)sender { (void)sender; [self validationPosition:YES]; }
+- (void)validationMove:(NSMenuItem*)sender { (void)sender; [self validationPosition:NO]; }
+- (void)toggleMatchTurbo:(NSMenuItem*)sender {
+    cm::aot::set_match_turbo_enabled(!cm::aot::match_turbo_enabled());
+    sender.state = cm::aot::match_turbo_enabled() ? NSControlStateValueOn : NSControlStateValueOff;
 }
 - (void)originalMenuAction:(NSMenuItem*)sender {
     cm::aot::UIEvent event{cm::aot::UIEvent::Kind::menu};
@@ -242,6 +264,8 @@ std::uint8_t original_character(NSEvent* event) {
 @end
 
 namespace cm::aot {
+bool match_turbo_enabled() { return match_turbo; }
+void set_match_turbo_enabled(bool enabled) { match_turbo = enabled; }
 std::uint16_t legacy_event_mask(const UIEvent& event) {
     switch (event.kind) {
         case UIEvent::Kind::launch: case UIEvent::Kind::quit: case UIEvent::Kind::open_files: return 0x0400;
@@ -263,6 +287,7 @@ std::uint16_t native_event_mask(NSEvent* event) {
         case NSEventTypeLeftMouseUp: case NSEventTypeRightMouseUp: case NSEventTypeOtherMouseUp: return 4;
         case NSEventTypeKeyDown: return event.isARepeat ? 32 : 8;
         case NSEventTypeKeyUp: return 16;
+        case NSEventTypeMouseMoved: return 0x8000;
         default: return 0;
     }
 }
@@ -385,6 +410,7 @@ void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint3
         window.hasShadow = (attributes & 0x00200000u) == 0;
         window.hidesOnDeactivate = (attributes & 0x01000000u) != 0;
         window.becomesKeyOnlyIfNeeded = no_activate;
+        window.acceptsMouseMovedEvents = YES;
         window.backgroundColor = NSColor.clearColor;
         window.opaque = NO;
         CMNativeView* view = [[CMNativeView alloc] initWithFrame:NSMakeRect(0, 0, rect.size.width, rect.size.height)];
@@ -575,8 +601,10 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds) {
             NSEvent* native = [NSApp nextEventMatchingMask:NSEventMaskAny
                 untilDate:deadline
                 inMode:NSDefaultRunLoopMode dequeue:YES];
-            if (native) [NSApp sendEvent:native];
-            [NSApp updateWindows];
+            if (native) {
+                [NSApp sendEvent:native];
+                [NSApp updateWindows];
+            }
             if (!native) break;
         }
         if (impl_->pending.empty()) return false;
@@ -614,7 +642,8 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds) {
         event = std::move(impl_->pending.front());
         impl_->pending.pop_front();
         if (impl_->event_pointer && (event.kind == UIEvent::Kind::mouse_down ||
-                                    event.kind == UIEvent::Kind::mouse_up)) {
+                                    event.kind == UIEvent::Kind::mouse_up ||
+                                    event.kind == UIEvent::Kind::mouse_moved)) {
             impl_->delivered_pointer = NativePointerState{event.x, event.y, event.modifiers,
                 event.kind == UIEvent::Kind::mouse_down && event.button == 1};
             if (event.kind == UIEvent::Kind::mouse_down)
@@ -720,6 +749,16 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
             top.submenu = menu.native;
             [bar addItem:top];
         }
+        NSMenuItem* match = [[NSMenuItem alloc] initWithTitle:@"Match" action:nil keyEquivalent:@""];
+        NSMenu* match_menu = [[NSMenu alloc] initWithTitle:@"Match"];
+        NSMenuItem* turbo = [[NSMenuItem alloc] initWithTitle:@"Turbo"
+            action:@selector(toggleMatchTurbo:) keyEquivalent:@"t"];
+        turbo.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        turbo.target = impl_->delegate;
+        turbo.state = match_turbo_enabled() ? NSControlStateValueOn : NSControlStateValueOff;
+        [match_menu addItem:turbo];
+        match.submenu = match_menu;
+        [bar addItem:match];
         if (impl_->event_pointer) {
             NSMenuItem* top = [[NSMenuItem alloc] initWithTitle:@"Validation" action:nil keyEquivalent:@""];
             NSMenu* menu = [[NSMenu alloc] initWithTitle:@"Validation"];
@@ -727,11 +766,31 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
                 action:@selector(validationClick:) keyEquivalent:@""];
             click.target = impl_->delegate;
             [menu addItem:click];
+            NSMenuItem* move = [[NSMenuItem alloc] initWithTitle:@"Move to position…"
+                action:@selector(validationMove:) keyEquivalent:@""];
+            move.target = impl_->delegate;
+            [menu addItem:move];
             top.submenu = menu;
             [bar addItem:top];
         }
         impl_->menu_bar = menus;
         [NSApp setMainMenu:bar];
+    }
+}
+std::uint32_t NativeUI::menu_key(std::uint8_t key) const {
+    @autoreleasepool {
+        if (!key) return 0;
+        NSString* equivalent = [menu_text(std::string(1, char(key))) lowercaseString];
+        for (const auto token : impl_->menu_bar) {
+            const auto& menu = impl_->menus.at(token);
+            if (!menu.enabled) continue;
+            for (NSMenuItem* item in menu.native.itemArray) {
+                if (item.enabled && !item.separatorItem &&
+                    [item.keyEquivalent isEqualToString:equivalent])
+                    return std::uint32_t(item.tag);
+            }
+        }
+        return 0;
     }
 }
 std::optional<std::pair<std::uint32_t, std::uint16_t>> NativeUI::find_menu_command(

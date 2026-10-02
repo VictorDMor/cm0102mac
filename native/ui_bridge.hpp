@@ -58,6 +58,7 @@ public:
                                         std::uint32_t type, std::uint32_t size, bool data);
     void create_menu(std::uint32_t token, const MenuDefinition& menu);
     void set_menu_bar(const std::vector<std::uint32_t>& menus);
+    std::uint32_t menu_key(std::uint8_t key) const;
     std::optional<std::pair<std::uint32_t, std::uint16_t>> find_menu_command(
         std::uint32_t menu, std::uint32_t command, std::uint32_t index) const;
     void delete_menu_item(std::uint32_t menu, std::uint16_t item);

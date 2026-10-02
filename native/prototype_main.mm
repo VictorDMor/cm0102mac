@@ -35,6 +35,25 @@ int main() {
                 runs = runtime.parent_path() / "Runs";
                 setenv("CM_AOT_VALIDATION_EVENT_POINTER", "1", 1);
                 setenv("CM_AOT_PERFORMANCE_TRACE", "1", 1);
+                id reference = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CMSeasonReferenceDirectory"];
+                if (reference) {
+                    if (![reference isKindOfClass:NSString.class])
+                        throw std::runtime_error("Season reference requires a private directory string.");
+                    const std::filesystem::path fixture([(NSString*)reference fileSystemRepresentation]);
+                    if (!fixture.is_absolute() || !std::filesystem::is_directory(fixture) ||
+                        !std::filesystem::is_empty(fixture))
+                        throw std::runtime_error("Season reference requires a new empty private directory.");
+                    const auto relative_fixture = std::filesystem::canonical(fixture).lexically_relative(original);
+                    if (relative_fixture.empty() || *relative_fixture.begin() != "..")
+                        throw std::runtime_error("Season fixtures must stay outside the installed game directory.");
+                    setenv("CM_AOT_SEASON_REFERENCE", fixture.c_str(), 1);
+                    id days = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CMSeasonReferenceDays"];
+                    if (days) {
+                        if (![days isKindOfClass:NSNumber.class] || [days intValue] < 1 || [days intValue] > 7)
+                            throw std::runtime_error("Season reference requires 1 through 7 full days.");
+                        setenv("CM_AOT_SEASON_REFERENCE_DAYS", [[days stringValue] UTF8String], 1);
+                    }
+                }
             }
             auto program = bundle / "Contents/Resources/OriginalProgram";
             if (!std::filesystem::is_regular_file(program / "program.json")) program = local / "recomp-input";

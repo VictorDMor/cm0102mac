@@ -1,5 +1,10 @@
 # Real-game performance validation
 
+This document preserves historical performance experiments and their status at
+the time of each run. The [native season reference](native-season-reference.md)
+now takes priority. New optimization is suspended; use that report for the
+current validated executable, installation and behavior-comparison evidence.
+
 ## Scope and reference
 
 Optimize the native ARM64 game while preserving its simulation, original
@@ -84,6 +89,16 @@ Record these scenarios independently:
 Mark which time belongs to original presentation delays or user interaction.
 Set ambitious numerical improvement targets only after measuring the matching
 real scenarios. Do not substitute filesystem or memory microbenchmarks for them.
+
+The first clean pair establishes provisional engineering targets of at most
+2.2 seconds for reference loading (about half the observed 4.44-second baseline)
+and 20 seconds for the 11-to-18-January advance (over 55% below 45.92 seconds).
+These are targets, not achieved or promised results. The profile's substantial
+memory-check and instruction-accounting cost justifies investigating deeper
+runtime changes beyond directory caching. Confirm the baseline distribution
+with at least three matched runs before accepting a performance conclusion.
+Opening, new-career, and match targets require their own measured baselines;
+the two provisional targets do not replace those scenarios.
 
 ## Investigation notes
 
@@ -248,3 +263,365 @@ new-career creation, repeated performance comparisons, and installed-app deliver
 remain outstanding. The three older diagnostic processes were terminated after
 preserving the stall snapshot and verifying this saved session. Keep only one
 test instance open at a time. The normal installed application remains unchanged.
+
+### Indexed scalar memory bounds (under real-game evaluation)
+
+`Memory` now indexes exact mapped interval ends by 64 KiB address prefix. An
+entry is populated only when the entire interval from that prefix boundary to
+the stored end is mapped. Scalar reads/writes can validate directly against
+that end; partial starts, holes, and other misses retain the original merged
+byte-range check and diagnostic. Host page permissions are not used as bounds.
+The index is 512 KiB per `Memory`, allocated separately, and mapping additions
+refresh only their merged interval. The 32-bit address limit is checked before
+indexing; invalid mapping lengths are rejected without overflowing addition.
+
+Instruction accounting still updates the PC and increments the count on every
+instruction, including the failing instruction. Only exception construction
+moved to a cold function so it does not inhibit inlining the normal path.
+
+All 20 test groups passed in 41.21 seconds. The memory check includes 16,899
+byte-oracle/boundary cases, scalar read/write agreement, fragmented and merged
+pages, exact top-of-address-space bounds, wrapping lengths, big-endian payloads,
+and budget failure state. The synthetic six-mix read benchmark fell from
+1.02–2.34 ns/read to 0.56–0.71 ns/read; this is not a game speedup claim.
+The candidate source executable is
+`d26b3f05af78ee06df54f1e9ec0699b0613d68fe9ade64236f6ddd66309bdb6c`.
+Real before/after validation remains required.
+
+The first real comparison of this candidate used two private runtimes copied
+from the same prepared state before either run. Only one game process ran at a
+time, with no build, test suite, debugger, or sampler active. The prior binary
+already includes the catalog cache and both compatibility repairs.
+
+| Scenario | Prior wall / CPU (s) | Indexed wall / CPU (s) |
+| --- | ---: | ---: |
+| Load reference to club | 2.948221 / 2.855679 | 2.921694 / 2.809456 |
+| Continue 11 to 18 January | 32.253948 / 32.257398 | 27.957500 / 27.993896 |
+
+Both visually reached 18 January and saved to separate private files. This one
+pair suggests a 13.3% additional reduction in week advancement and no material
+load improvement. It is not a median, deterministic parity, or completion of the
+targets: generated news differed, and week instruction counts were 10,000,367,818
+and 10,229,649,356 respectively. Repeat matched runs before accepting the gain;
+reopen the candidate's newly saved file and complete a new match as well.
+
+A private pre-match save was created through normal game controls on 10 February
+2002 afternoon, before Cruzeiro–Uberlândia. Preparing it overlapped compilation
+and is excluded from performance measurements. It will provide the same starting
+point for complete-match comparisons; no match was skipped or state patched.
+
+### Three matched memory-index repetitions
+
+The prior executable already includes directory caching and both compatibility
+repairs. Three prior and indexed runs used separately prepared copies of the same
+private runtime. Pair 02 and 03 inventories matched across 11 files before launch.
+Only one process ran at a time, with no build, test, debugger, or profiler during
+load or advance. Each run loaded `Perf-Reference` and advanced from 11 to 18
+January 2002; the final date was checked in the game. Times below are seconds,
+from the load confirmation or Continue mouse-down to the final frame before the
+next input. CPU is process user plus system time.
+
+| Run | Load wall / CPU | Week wall / CPU |
+| --- | ---: | ---: |
+| Prior 01 | 2.948221 / 2.855679 | 32.253948 / 32.257398 |
+| Indexed 01 | 2.921694 / 2.809456 | 27.957500 / 27.993896 |
+| Prior 02 | 2.842648 / 2.775514 | 32.599281 / 32.591526 |
+| Indexed 02 | 2.937470 / 2.834165 | 27.356915 / 27.408155 |
+| Prior 03 | 2.958304 / 2.838562 | 33.322352 / 33.294147 |
+| Indexed 03 | 2.909420 / 2.801626 | 28.183736 / 28.177891 |
+| **Prior median (range)** | **2.948221 (2.842648–2.958304)** | **32.599281 (32.253948–33.322352)** |
+| **Indexed median (range)** | **2.921694 (2.909420–2.937470)** | **27.957500 (27.356915–28.183736)** |
+
+The median week reduction is 14.2% relative to the preceding repaired/cached
+build. The load difference is 0.9%, too small to establish a material gain.
+These are warm local measurements; presentation timing, new-career creation,
+match processing, and a more substantial end-to-end gain remain unresolved.
+News and instruction counts varied, so the runs do not establish deterministic
+simulation parity. Prior 03 and indexed 02/03 saved to separate private files
+and exited normally; save/reload validation is recorded separately.
+
+### Newly played match and reloaded result
+
+The indexed diagnostic build loaded the unchanged private
+`Perf-Pre-Match-10Feb.sav` (10 February 2002 afternoon). The original squad
+screen reported three selected foreign players where the competition permits
+two. One foreign substitute was deselected in the normal squad UI; the game
+then accepted the six remaining substitutes and started Cruzeiro–Uberlândia.
+The original match reached half time at 1–0, resumed through its normal control,
+and ended 3–0 at minute 91. The post-match afternoon results and return to the
+Cruzeiro squad were visible. The in-game Save control wrote a separate private
+`Perf-New-Match-10Feb.sav`, 18,969,336 bytes, SHA-256
+`09d615bce103dc81d7071b491e69794cf030ea704ad69c74763c6b71d3146cfb`.
+The pre-match source retained SHA-256
+`ac167b19877e04f6998301acc145d571d010c6a1caa453a58e6c6c1b1b5becdc`.
+After a normal exit, reopening the new save showed 10 February 2002 and
+Cruzeiro 3–0 Uberlândia in Last Game. This validates a newly completed match
+and its persistence for the indexed build; no save or result was patched.
+
+The match used the default commentary speed and required a normal half-time
+resume. Its two uninterrupted play intervals were 14.371075 and 44.852616 wall
+seconds (14.391820 and 44.955538 process CPU seconds). This is one run and
+does not establish a match baseline distribution or an optimized match speed.
+
+### Hover delivery repair under evaluation
+
+The native view did not enqueue AppKit mouse-moved events. In the diagnostic app,
+clicking the sidebar's Competitions menu exposed entries with child arrows, but
+an attempted click on a parent dismissed the menu. The view now accepts and
+forwards mouse movement as the original `osEvt` record. Normal input continues
+to query the physical pointer; the isolated validation app also offers
+`Validation > Move to position…` to deliver a move without pressing a button.
+Both input test groups pass, including movement event fields and pointer policy.
+In a newly built isolated app, moving onto `Campeonato Mundial` opened its child
+menu and choosing `Campeonato do Mundo` opened that competition screen. The
+normal installed app has not yet been updated or physically tested for this fix.
+
+### Match-speed experiments and isolated replay
+
+The in-game commentary speed was already set to `Muito Rápida` in the fixed
+Cruzeiro–Uberlândia pre-match save. The separate native `Match > Turbo` menu
+currently selects an experimental translated-code execution path. It does not
+change the original half-time, injury, dismissal, or tactical-decision stops.
+The first two page-accounting variants showed no established speed gain in live
+matches, so this menu is not a completed performance feature.
+
+A further experiment cached the 32 general-purpose PowerPC registers across
+three frequently sampled match pages. Its isolated game completed the match
+0–0, stopped at half-time as normal, returned to the club, and wrote a private
+post-match save. After a normal exit, reopening that save showed the 0–0 result
+in Last Game. The first and second uninterrupted halves took 23.968607 and
+34.075905 wall seconds, with 3.271780647 and 4.587626794 billion translated
+instructions respectively. The different event sequences and instruction
+counts prevent a same-work speed claim; the candidate provided no convincing
+benefit and the register cache was removed from the generator. The pre-match
+source hash remained `ac167b19877e04f6998301acc145d571d010c6a1caa453a58e6c6c1b1b5becdc`.
+
+A separate profile used a sparse original-PC counter rather than a timing run.
+It found visits in the interface-control page `0x1071a`, event loop `0x1073c`,
+and PowerPC 64-bit division helper in `0x10773`. The counter's threshold includes
+instructions outside these three pages, causing catch-up bursts upon reentry,
+in addition to periodic aliasing. These counts are not unbiased CPU percentages.
+Use a separate host sampling profile to choose optimization targets.
+The current counter rebases an overdue threshold upon page reentry and saturates
+increments at `UINT64_MAX`, preventing those catch-up bursts. Tests cover cold
+page gaps and counter overflow. Selected-page coverage and periodic aliasing
+still prevent interpreting these diagnostic counts as CPU percentages.
+
+A private capture reproduces a bounded interface slice without opening the game
+or drawing frames. It was initially misidentified as match-engine processing.
+The captured stack is `0x1071a828 -> 0x107194a0 -> 0x1073cb20 -> 0x101cb9a4`;
+the fixture index is -1 and the watched-fixture pointer is null. Original
+`0x1071a280` traverses control lists and calls rectangle hit-testing at
+`0x1071c190`. The block at `0x1071a828` is therefore a **UI control cursor**,
+not selection of football actors. The older Settings investigation also visited
+this address before a career existed.
+
+Two independent 4,000-instruction replays stopped at original address
+`0x1071a834` with matching register hash `bdd09a7140975110` and memory hash
+`7511b2eb3430aedc`. A 100,000-instruction request stopped at the first native
+import after 4,379 instructions, address `0x10bf7c34`. Normal and experimental
+direct-cursor replay states matched at 1, 10, 100, 1,000, 4,000 and 4,379
+instructions, comparing stop reason, address, instruction count, full register
+hash and mapped-memory hash. This verifies the captured interface slice only.
+The capture and save remain under ignored `.local/performance` paths.
+
+The private CLI replay stops at the first native import and is not a whole-match
+headless simulation. In-game event injection is deferred until the performance
+work is complete.
+
+Parallelizing the simulation has not been justified: the current guest code
+shares mutable match state and random draws, and changing their order would
+change the game.
+
+### Scheduler hypothesis corrected and saved-result validation
+
+On 2026-09-27, the `match-fullrate-on-01` post-match save was reopened through
+the original load screen. The game showed the Cruzeiro squad on 10 February
+2002 afternoon and Last Game showed **Cruzeiro 1-3 Uberlandia**. The save retained
+SHA-256 `599f1a940343dfa78b70f59a897887de4a96a8c016b24daa956015c23e709f61`;
+the validation session exited normally. This completes that run's previously
+pending persistence check, without establishing a Turbo speed gain.
+
+The corresponding `match-fullrate-off-01` run used the unchanged initial save,
+SHA-256 `ac167b19877e04f6998301acc145d571d010c6a1caa453a58e6c6c1b1b5becdc`.
+Normal squad actions removed Sorin from SB6 and Luisao from SB1, then assigned
+Luisao to DE in place of Cris, and accepted five substitutes. Commentary speed
+was visually confirmed as Muito Rapida; the native Turbo menu was unchecked.
+The game reached half-time 2-0 at minute 45 and full-time 2-0 at minute 93.
+No injury/dismissal decision occurred in this run. Its two uninterrupted play
+intervals were 26.023697 and 27.019206 wall seconds (26.062837 and 27.073462 CPU
+seconds), totaling 53.042903 wall seconds and 18,845,932,454 original instructions.
+The in-game save wrote a separate `Perf-Fullrate-Off-01.sav`, SHA-256
+`2a00a038af7b2f9e79558b53e550e5acc318ee7f90db98019f3b572810d441bf`, followed by
+normal exit. The initial pre-match copy stayed unchanged. Reopening this new
+off-run save subsequently showed 10 February afternoon, the Cruzeiro squad, and
+Last Game Cruzeiro 2-0 Uberlandia. A normal exit followed and the saved file hash
+remained unchanged. This reload ran alongside compilation and is persistence
+validation only, not a performance sample.
+
+The on-run had injuries and extra tactical interaction. Its log does not label
+match minutes, so its entry-to-last-frame intervals cannot all be assigned to
+play versus tactical processing retrospectively. All intervals 12-28 total
+56.559103 wall / 56.752663 CPU seconds; the full span including interaction is
+126.865792 wall / 123.581719 CPU seconds. The difference demonstrates busy
+execution while waiting for actions, not 70 seconds of additional simulation.
+The two runs differ in events and work; neither establishes a speedup.
+
+Source audit explains why the scheduler experiment was misdirected. The host's
+`Gestalt('pclk')` returns -5551, and original `0x1073af50` selects hardware class 2
+on failure, setting flag `0x80000`. However, `0x101cd5c0` rate-limits **background
+fixtures** selected by the manager's index. The watched-fixture path in
+`0x101ccdb0` calls `0x101d3f60` directly, outside that gate, and invokes background
+work while waiting. Clearing `0x000c0000` therefore is not an established way
+to accelerate the watched match and can increase competing work. The experiment
+must not ship on that premise. The earlier captured flag was from interface
+setup, not proof of the watched engine skipping five of six advancement steps.
+
+### Broader instruction translation investigation
+
+A separate five-second host CPU sample during the Jan 11 to Jan 18 advance
+in `cpu-week-01` recorded 3,943 main-thread samples, including 3,791 in generated
+execution. Work was spread across simulation pages (leading page `101df`: 349
+samples), rather than dominated by the UI cursor. This run included profiling
+and is not a clean timing measurement. It reached Jan 18, saved through the
+normal interface as `Perf-CPU-Week-01.sav` (SHA-256
+`8a86f17c0a6fb26501685154e75aa71f38f0302cd47a728c9c17a8d47505f5a3`), and exited
+normally after 74,402,370,805 original instructions.
+
+The next candidate lowers instruction-local P-code scratch into immutable C++
+locals, preserving operation order, narrowing boundaries, unsigned expression
+widths, and big-endian overlapping scratch slices. A complete export audit
+proves that all 1,953,048 instructions define their scratch inputs locally;
+generation rejects incoming scratch reads or internal P-code control flow.
+Architectural registers and game memory must remain equivalent. Dead translator
+scratch bytes are deliberately no longer materialized and are not architectural
+state; `--legacy-unique-storage` retains the previous lowering for comparisons.
+Repeated loading and weekly advancement measurements are recorded below;
+new-career and match lifecycle validation of this candidate remain pending.
+
+Local verification commands (the original instruction database is private):
+
+```sh
+python3 tools/test_local_temporaries.py .local/recomp-input/instructions.sqlite
+python3 tools/test_generated_temporaries.py .local/recomp-input/instructions.sqlite --sanitize
+python3 tools/test_control_cursor_audit.py .local/recomp-input/instructions.sqlite
+python3 tools/test_unsigned_division_audit.py .local/recomp-input/instructions.sqlite
+python3 tools/test_match_presentation_audit.py .local/recomp-input/instructions.sqlite
+ctest --test-dir .local/aot-build --output-on-failure
+```
+
+The first compiled comparison covers 2,080 synthetic aliasing, truncation,
+evaluation-order and exception cases under UndefinedBehaviorSanitizer. The
+actual-export comparison selects 2,050 normalized instruction patterns spanning
+all 46 exported P-code operation kinds; it compares full architectural register
+state, mapped memory, exceptions, PC and instruction count. Test discovery
+explicitly skips export-dependent audit classes when their private fixture was
+not supplied, rather than counting empty loops as verification.
+
+The compiled actual-export comparison passed 199,742 executions under UBSan:
+57,054 normal completions, 435 transfers and 23,247 matching memory failures,
+with 29 edge-value seeds, unequal initial scratch contents, finite budgets and
+counter overflow. All 25 CTest groups passed after adapting the presentation
+test to its architectural contract: incoming scratch is poisoned, and full
+register/memory/PC checks remain, while outgoing dead scratch is not asserted.
+These results establish translation checks, not real-game performance gains.
+
+### Instruction-local temporaries: three real-game pairs
+
+Six separate app/runtime copies ran in alternating before/after order, each
+starting from the immutable reference save and the same source runtime. Native
+Turbo was off. No build, test process or profiler ran concurrently, and only one
+game instance ran at a time. All six loaded the Jan 11 squad, advanced to Jan 18
+news, saved to separate new private files, and exited normally. This is a warm
+filesystem comparison; it is not a cold-disk benchmark or a reload verification
+of those newly written saves.
+
+| Scenario | Before, seconds (three runs) | After, seconds (three runs) | Median reduction |
+| --- | --- | --- | --- |
+| Startup, opening presentation retained | 23.562 / 23.538 / 23.558 | 23.111 / 23.138 / 23.151 | 1.8% |
+| Reference load | 2.951 / 2.982 / 2.901 | 2.332 / 2.368 / 2.355 | 20.2% |
+| Jan 11 to Jan 18 | 28.450 / 28.699 / 27.353 | 19.497 / 19.926 / 19.136 | 31.5% |
+
+Weekly CPU times were 28.475 / 28.732 / 27.380 seconds before and
+19.506 / 19.944 / 19.140 after. Original instruction counts varied with the
+simulation: 10.144 / 10.263 / 9.856 billion before versus
+10.259 / 10.447 / 10.257 billion after. Thus the improvement is not explained by
+doing fewer original instructions. Each weekly interval presented 78 frames;
+each load presented 198. Load CPU times were 2.806 / 2.845 / 2.793 before and
+2.199 / 2.221 / 2.199 after. The week meets the provisional 20-second target in
+all three runs; reference loading remains above its 2.2-second target.
+
+Load/week intervals start at delivered confirmation/Continue input and end at
+the final frame before the next action, with the completed state visually
+verified. Startup ends at the last frame before the first input; its clock
+starts at platform construction after program-segment verification, so it does
+not include the entire process-launch path. The original opening presentation
+was not skipped. Its small improvement does not establish drastic startup
+acceleration.
+
+The before source executable SHA-256 was
+`7bc9dba516d3b03f1e9aa174204f518af56749e51a70cb00fe068031bdf6577f`;
+the after source was
+`dccad5585e195f69c89edc12d43f4a1df975149a9e8a05b81a18f587f7afb572`.
+Re-signing isolated bundles changes their hashes; private manifests retain both
+source and signed identities. Besides local temporaries, the candidate contains
+the mouse-move flush correction and sparse-profile threshold correction. The
+profiler was disabled, but this is a build comparison rather than a formally
+isolated single-change experiment. Private raw results are retained locally;
+no personal saves or run logs are published. The installed app is still the
+previous version.
+
+Read-only original-code inspection explains most of startup's remaining wall
+time. Routine `0x101317c0` starts INTRO1 and waits for completion at
+`0x10131a84..94`, then starts INTRO2 and waits at `0x10131b94..bd0`. The logged
+audio lengths are 201,380 and 150,312 frames at 22,050 Hz: 9.132880 and
+6.816871 seconds. Two subsequent 2,500 ms holds occur at `0x10131c70..98` and
+`0x10131d24..80`. Their combined presentation floor is approximately 20.95
+seconds. The six paired logs also retain exactly 774 fade-related frame events.
+The CPU fade renderer at `0x10769460` has no timed delay; its pixel loop at
+`0x10769660..88` is a possible future optimization while retaining every step.
+Observed fade spans total about 1.89 seconds in the first candidate run, partly
+overlapping audio. Cutting the introduction would change presentation rather
+than accelerate equivalent work, so it is not included in this comparison.
+
+### Register-access inlining experiment
+
+Inspection of the current Release ARM64 object for generated page `0x101df`
+found 665 calls to `State::r<8>`. Its register offsets are constants in generated
+code, but the compiler retained calls and dynamic checks. A private compilation
+with `always_inline` on `State::r` and `State::wr` eliminated all 665 calls and
+reduced that page's text from 147,524 to 135,276 bytes (8.3%). The bounds checks
+remain in source and still apply to dynamic offsets. Only those two attributes
+are applied in the next candidate. The complete ARM64 rebuild succeeded and all
+25 CTest groups passed (50.56 seconds). Its source executable SHA-256 is
+`68711279182f82afc164a5adc36c1c2f93b61dee71b2a8f1ca7350022e4b0956`.
+An isolated app was prepared; game measurements remain pending because macOS
+locked during the earlier new-career baseline. The installed app is unchanged.
+
+Moving exception construction to a cold function alone retained all 665 calls.
+Forcing memory read/write inlining increased text to 149,824 bytes and mostly
+moved calls to `check_scalar`, so it was not adopted. Existing endian byte loops
+already compile to ARM64 loads/stores and byte reversals. These observations
+describe generated code shape, not a measured game-speed improvement.
+
+Review also corrected an overbroad generator guard: unrelated partial exports
+from the division/commentary pages no longer require an unused complete helper.
+Selecting its relevant entry/call/load still requires the entire fingerprinted
+context. Seven division, six presentation and five cursor audit tests passed.
+Generated text for all four affected complete pages was byte-identical before
+and after this correction in both scratch modes (eight comparisons), so this
+tooling correction does not change the full-game candidate.
+
+### New-career persistence recovered on 2026-10-01
+
+The later `career-local-before-01` log supersedes the paused checkpoint: the
+normal Save operation renamed its temporary file to `adsasdas.sav` successfully
+and the application exited normally. The private file has SHA-256
+`3f4ef38c285e34077b6574321455f247c8c2997403550f0810773c16a740ba66`.
+A separate runtime copy reopened it in the register-inline candidate. Visual
+inspection confirmed manager **Perf Career**, Cruzeiro's accessible squad, and
+**28 December 2001 morning**, later than the appointment originally observed on
+21 December. Selected Leagues showed Brazil and Portugal selected, real players
+enabled and attribute masking enabled. The validation exited normally and the
+save hash remained unchanged. This establishes persistence of the previously
+created career, not a new repeated career-creation measurement.

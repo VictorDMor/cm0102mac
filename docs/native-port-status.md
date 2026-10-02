@@ -220,15 +220,23 @@ advancement, a full match simulation, return from full time, a post-match save,
 and normal exit have run. The user also confirmed reloading the post-match save
 and finding the completed Anapolina result in Last Game in run `app.oXBAh4`.
 
-## Next priority: loading and simulation performance
+## Active priority: season reference and regression foundation
 
-The user explicitly prioritizes substantial reductions in loading and processing
-time. Measure end-to-end scenarios using `Mac-Teste-Validado-Pos-Jogo.sav`, then
-optimize measured hotspots while preserving simulation and save/reload behavior.
-The latest installed memory-check optimization passed 18 test groups, but its
-measured gain is isolated; no whole-game speedup is established. The running
-process still uses the previous binary. See the performance follow-up in
-`docs/aot-port.md` and `reports/generated/aot-status.json`.
+As of 2026-10-01, the user has replaced performance optimization with the
+[season reference milestone](native-season-reference.md). Complete a real native
+season, verify persistence on both sides of its annual transition, and establish
+a bounded repeatable simulation comparison before semantic modernization.
+Existing experiments and private data are preserved. New optimizations,
+features, rules, and graphics changes are suspended for this increment.
+The real application has completed 2002 and reached the ongoing 2003 edition.
+Normal Save/exit/reopen passed on both sides, and exact bounded comparisons of
+one and seven full days pass equivalent executions and reject a known RNG
+divergence. Inspected titles, division changes, player history and contract/
+transfer fields are documented separately from unexercised paths. The validated
+ARM64 application is installed, with every installed Game/Runtime file and its
+Mac metadata preserved. Calendar/date arithmetic is the first proposed semantic
+replacement for the next increment, backed by 1,232 original-routine
+checks; no semantic replacement is included in this milestone.
 
 ## Accepted implementation sequence
 
@@ -240,7 +248,7 @@ works; semantic modernization is a separate stage. The ReCM reconstruction remai
 a reference, with its Windows-specific layouts and incomplete subsystems accounted
 for. Its engine is not linked into the current Mac prototype.
 
-Performance work runs alongside functional porting. Measure real startup and
+Historical performance work ran alongside functional porting. Measure real startup and
 league initialization before selecting changes; prioritize redundant work,
 filesystem overhead, and diagnostic logging without changing game semantics.
 Larger simulation optimizations need a working new-game/day/save baseline and
