@@ -12,6 +12,25 @@ constexpr std::int16_t narrow_day(int day) {
     return std::bit_cast<std::int16_t>(std::uint16_t(day));
 }
 constexpr unsigned year_length(std::uint16_t year) { return is_leap(year) ? 366 : 365; }
+// This ordering belongs to date difference, not a separately replaced entry.
+constexpr bool difference_second_later(Date first, Date second) {
+    return second.year > first.year || (second.year == first.year && second.day > first.day);
+}
+// The ascending original loop deliberately also uses current year minus one.
+// Thus cross-year difference is not generally antisymmetric or Gregorian.
+constexpr std::int32_t difference_year_step(std::uint16_t current, bool second_later) {
+    const auto length = std::int32_t(year_length(std::uint16_t(current - 1)));
+    return second_later ? -length : length;
+}
+constexpr std::int32_t difference(Date first, Date second) {
+    const bool later = difference_second_later(first, second);
+    std::int32_t result = int(first.day) - int(second.day);
+    for (auto year = first.year; year != second.year; ) {
+        result += difference_year_step(year, later);
+        year = std::uint16_t(int(year) + (later ? 1 : -1));
+    }
+    return result;
+}
 // The original stores the initial sum/difference in a signed 16-bit day field.
 // This deliberately retains wrapping and one-direction-only normalization.
 constexpr Date shift_within_record(Date date, std::uint16_t magnitude, Direction direction) {

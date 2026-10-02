@@ -3,11 +3,14 @@
 #include <sstream>
 #include <algorithm>
 #include <zlib.h>
+#include <cstdio>
+#include <cstdlib>
 
 namespace cm::aot {
 namespace {
 gzFile audit = nullptr;
 bool audit_record = false, audit_original_running = false, audit_perturb = false;
+bool audit_perturb_difference = false;
 std::uint64_t audit_index = 0;
 using cm::calendar::Date;
 using cm::calendar::Direction;
@@ -17,6 +20,8 @@ struct Boundary {
 };
 constexpr Boundary addition{0x10717890, 0x108b7ae4, 0x108b84d5, 0x10717918, Direction::forward};
 constexpr Boundary subtraction{0x10717b20, 0x108b7adc, 0x108b84d3, 0x10717ba8, Direction::backward};
+constexpr std::uint32_t difference_entry = 0x10718130;
+constexpr std::uint32_t difference_scratch = 0x108b7ad0, difference_flag = 0x108b84d0;
 // r4 and XER carry are observable clobbers of the original leap helper. Its
 // unsigned 16-bit year makes both signed shifts nonnegative. Preserve these
 // effects even though the arithmetic module uses ordinary Gregorian divisibility.
@@ -39,6 +44,68 @@ void copy_date(State& s, std::uint32_t output, std::uint32_t input) {
     s.memory.write<2>(output, s.memory.read<2>(input));
     s.memory.write<2>(output + 2, s.memory.read<2>(input + 2));
     s.memory.write<1>(output + 4, s.memory.read<1>(input + 4));
+}
+void execute_difference(State& s) {
+    const auto stack = std::uint32_t(s.r<4>(4));
+    const auto link = std::uint32_t(s.r<4>(4128));
+    const auto first = std::uint32_t(s.r<4>(12));
+    s.memory.write<4>(stack - 4, s.r<4>(124));
+    const auto scratch = std::uint32_t(s.memory.read<4>(difference_scratch));
+    s.memory.write<4>(stack - 8, s.r<4>(120));
+    s.memory.write<4>(stack - 12, s.r<4>(116));
+    s.memory.write<4>(stack - 16, s.r<4>(112));
+    s.memory.write<4>(stack + 8, link);
+    s.memory.write<4>(stack - 80, stack);
+    s.wr<4>(4, stack - 80);
+    // Eight bytes by value: the five-byte date plus all three padding bytes.
+    s.memory.write<4>(stack + 28, s.r<4>(16));
+    s.memory.write<4>(stack + 32, s.r<4>(20));
+    s.wr<4>(24, scratch); s.wr<4>(120, first);
+    if (!s.memory.read<1>(difference_flag)) {
+        s.memory.write<2>(scratch, 40); s.memory.write<2>(scratch + 2, 1972);
+        s.memory.write<1>(scratch + 4, 1); s.memory.write<1>(difference_flag, 1);
+    }
+    s.memory.write<4>(stack - 24, s.memory.read<4>(stack + 28));
+    const auto first_year = std::uint16_t(s.memory.read<2>(first + 2));
+    const auto second_year = std::uint16_t(s.memory.read<2>(stack - 22));
+    s.memory.write<4>(stack - 20, s.memory.read<4>(stack + 32));
+    s.wr<4>(20, first_year);
+    bool later = first_year < second_year;
+    if (first_year == second_year) {
+        const auto second_day = cm::calendar::narrow_day(int(s.memory.read<2>(stack - 24)));
+        const auto first_day = cm::calendar::narrow_day(int(s.memory.read<2>(first)));
+        later = cm::calendar::difference_second_later({first_day, first_year}, {second_day, second_year});
+        s.wr<4>(16, std::uint32_t(int(second_day)));
+        const auto bits = std::uint32_t(int(first_day)) ^ std::uint32_t(int(second_day));
+        s.wr<1>(1027, (bits >> 31) && (bits & 1));
+    }
+    std::int32_t total = 0;
+    if (first_year != second_year) {
+        // Do not preload the day/flag: the year store may alias the first date.
+        s.memory.write<2>(scratch + 2, first_year);
+        s.memory.write<2>(scratch, s.memory.read<2>(first));
+        s.memory.write<1>(scratch + 4, s.memory.read<1>(first + 4));
+        auto current = std::uint16_t(s.memory.read<2>(scratch + 2));
+        while (later ? current < second_year : current > second_year) {
+            const auto leap_year = std::uint16_t(current - 1);
+            leap_clobbers(s, leap_year);
+            total += cm::calendar::difference_year_step(current, later);
+            current = std::uint16_t(int(current) + (later ? 1 : -1));
+            s.memory.write<2>(scratch + 2, current);
+            current = std::uint16_t(s.memory.read<2>(scratch + 2));
+        }
+    }
+    // The original always reloads both days after the ordered scratch writes.
+    const auto final_second_day = cm::calendar::narrow_day(int(s.memory.read<2>(stack + 28)));
+    const auto final_first_day = cm::calendar::narrow_day(int(s.memory.read<2>(first)));
+    total += int(final_first_day) - int(final_second_day);
+    s.wr<4>(12, std::uint32_t(total));
+    s.wr<1>(2304, 2 | (s.r<1>(1024) & 1)); // Final unsigned year comparison.
+    s.wr<4>(0, s.memory.read<4>(stack + 8)); s.wr<4>(4128, s.r<4>(0));
+    s.wr<4>(4, stack);
+    for (unsigned reg : {124u, 120u, 116u, 112u})
+        s.wr<4>(reg, s.memory.read<4>(stack - (128 - reg)));
+    s.pc = std::uint32_t(s.r<4>(4128));
 }
 void execute(State& s, const Boundary& boundary) {
     const auto stack = std::uint32_t(s.r<4>(4));
@@ -104,7 +171,9 @@ void execute(State& s, const Boundary& boundary) {
 }
 }
 bool try_modern_calendar(State& s, std::uint32_t entry) {
-    if (audit_original_running || (s.calendar_original && !audit)) return false;
+    const bool difference = entry == difference_entry;
+    const bool original = s.calendar_original || (difference && s.date_difference_original);
+    if (audit_original_running || (original && !audit)) return false;
     const auto return_pc = std::uint32_t(s.r<4>(4128));
     const auto destination = std::uint32_t(s.r<4>(12));
     std::vector<std::uint8_t> edge;
@@ -114,15 +183,15 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
     if (audit) {
         append(entry, 4);
         for (unsigned r : {12u, 16u, 20u, 4u, 8u, 4128u}) append(s.r<4>(r), 4);
-        const auto input = s.memory.copy_out(std::uint32_t(s.r<4>(16)), 5);
+        const auto input = s.memory.copy_out(std::uint32_t(s.r<4>(difference ? 12 : 16)), 5);
         edge.insert(edge.end(), input.begin(), input.end());
     }
-    if (cm::calendar::narrow_day(int(s.r<2>(22))) == -32768) {
+    if (!difference && cm::calendar::narrow_day(int(s.r<2>(22))) == -32768) {
         // Negating SHRT_MIN delegates indefinitely in the reference. Preserve
         // its bounded stack/budget failure instead of inventing a date result.
         ++s.calendar_exceptional_calls; return false;
     }
-    if (s.calendar_original) {
+    if (original) {
         audit_original_running = true; s.pc = entry;
         try {
             do { if (!dispatch_page(s)) throw std::runtime_error("Uncompiled original calendar reference"); }
@@ -131,20 +200,48 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
         audit_original_running = false;
     } else {
         s.step(entry); // Actual semantic dispatch, not fabricated original accounting.
-        ++s.calendar_calls[entry == addition.entry ? 0 : 1];
-        execute(s, entry == addition.entry ? addition : subtraction);
-        if (audit_perturb && audit_index == 0)
+        if (difference) {
+            const bool sample = s.date_difference_calls < 32 && std::getenv("CM_AOT_VALIDATION_EVENT_POINTER");
+            const auto first = sample ? read_date(s, destination) : Date{};
+            const auto second = sample ? Date{cm::calendar::narrow_day(int(s.r<2>(16))), std::uint16_t(s.r<2>(18))} : Date{};
+            const auto packed = sample ? s.r<4>(20) : 0;
+            ++s.date_difference_calls;
+            execute_difference(s);
+            if (audit_perturb_difference && s.date_difference_calls == 1)
+                s.wr<4>(12, s.r<4>(12) + 1);
+            // Bounded private samples from real application calls; no UI option.
+            if (sample)
+                std::fprintf(stderr, "date-difference.modern sample=%llu first=%u/%d second=%u/%d second-tail=%08x result=%d return=%08x\n",
+                    static_cast<unsigned long long>(s.date_difference_calls), first.year, first.day, second.year, second.day,
+                    unsigned(packed), int(std::bit_cast<std::int32_t>(std::uint32_t(s.r<4>(12)))), return_pc);
+        } else {
+            ++s.calendar_calls[entry == addition.entry ? 0 : 1];
+            execute(s, entry == addition.entry ? addition : subtraction);
+        }
+        if (!difference && audit_perturb && s.calendar_calls[0] + s.calendar_calls[1] == 1)
             s.memory.write<2>(destination, s.memory.read<2>(destination) + 1);
     }
     if (audit) {
-        for (const auto address : {destination, std::uint32_t(s.memory.read<4>(addition.scratch_slot)),
+        if (difference) {
+            append(s.r<4>(12), 4);
+            const auto scratch = s.memory.copy_out(std::uint32_t(s.memory.read<4>(difference_scratch)), 5);
+            edge.insert(edge.end(), scratch.begin(), scratch.end());
+            append(s.memory.read<1>(difference_flag), 1);
+        } else {
+            for (const auto address : {destination, std::uint32_t(s.memory.read<4>(addition.scratch_slot)),
                                   std::uint32_t(s.memory.read<4>(subtraction.scratch_slot))}) {
-            const auto bytes = s.memory.copy_out(address, 5); edge.insert(edge.end(), bytes.begin(), bytes.end());
+                const auto bytes = s.memory.copy_out(address, 5); edge.insert(edge.end(), bytes.begin(), bytes.end());
+            }
+            append(s.memory.read<1>(addition.initialization), 1);
+            append(s.memory.read<1>(subtraction.initialization), 1);
         }
-        append(s.memory.read<1>(addition.initialization), 1);
-        append(s.memory.read<1>(subtraction.initialization), 1);
         for (unsigned r : {0u, 12u, 16u, 20u, 4u, 8u, 112u, 116u, 120u, 124u, 4128u}) append(s.r<4>(r), 4);
+        if (difference) { append(s.r<4>(24), 4); append(s.r<4>(2440), 4); }
         for (unsigned r : {2304u, 1024u, 1027u}) append(s.r<1>(r), 1);
+        if (difference) {
+            const auto stack = s.memory.copy_out(std::uint32_t(s.r<4>(4)) - 80, 116);
+            edge.insert(edge.end(), stack.begin(), stack.end());
+        }
         if (audit_record) {
             if (gzwrite(audit, edge.data(), unsigned(edge.size())) != int(edge.size()))
                 throw std::runtime_error("Cannot record private calendar edges");
@@ -155,7 +252,9 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
             const auto mismatch = std::mismatch(expected.begin(), expected.end(), edge.begin());
             if (mismatch.first != expected.end()) {
                 const auto index = mismatch.first - expected.begin();
-                const auto field = index < 28 ? "entry/effective argument" : index < 33 ? "input date" :
+                const auto field = difference ? (index < 28 ? "difference entry/by-value argument" : index < 33 ? "first date" :
+                    index < 37 ? "difference return" : index < 43 ? "difference scratch/flag" : "difference ABI/stack") :
+                    index < 28 ? "entry/effective argument" : index < 33 ? "input date" :
                     index < 35 ? "output day-of-year" : index < 37 ? "output year" : index == 37 ? "output leap flag" :
                     index < 48 ? "scratch date" : index < 50 ? "initialization flag" : "direct ABI register";
                 throw std::runtime_error("First divergence: calendar edge " + std::to_string(audit_index) +
@@ -167,17 +266,18 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
     }
     return true;
 }
-void open_calendar_audit(const std::filesystem::path& path, bool record, bool perturb) {
+void open_calendar_audit(const std::filesystem::path& path, bool record, bool perturb, bool perturb_difference) {
     if (audit) throw std::runtime_error("Calendar audit already active");
     audit = gzopen(path.c_str(), record ? "wb1" : "rb");
     if (!audit) throw std::runtime_error("Cannot open private calendar edge reference");
     audit_record = record; audit_index = 0; audit_perturb = perturb;
+    audit_perturb_difference = perturb_difference;
 }
 void close_calendar_audit(bool require_end) {
     if (!audit) return;
     bool extra = false;
     if (require_end && !audit_record) { std::uint8_t byte; extra = gzread(audit, &byte, 1) != 0 || !gzeof(audit); }
-    const auto result = gzclose(audit); audit = nullptr; audit_perturb = false;
+    const auto result = gzclose(audit); audit = nullptr; audit_perturb = false; audit_perturb_difference = false;
     if (extra || result != Z_OK) throw std::runtime_error("First divergence: calendar call count or edge checksum");
 }
 std::string calendar_call_summary(const State& s) {
@@ -185,6 +285,8 @@ std::string calendar_call_summary(const State& s) {
     out << "calendar.mode=" << (s.calendar_original ? "original" : "modern")
         << " modern-add=" << s.calendar_calls[0] << " modern-subtract=" << s.calendar_calls[1]
         << " exceptional-original=" << s.calendar_exceptional_calls;
+    out << " difference-mode=" << (s.calendar_original || s.date_difference_original ? "original" : "modern")
+        << " modern-difference=" << s.date_difference_calls;
     return out.str();
 }
 }

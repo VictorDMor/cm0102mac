@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-09-26
+# Native port investigation — updated 2026-10-02
 
 ## Required outcome
 
@@ -281,3 +281,30 @@ build). Eleven CTest groups pass; complete game-loading speedup is not yet measu
 - [Apple: video pixel formats](https://developer.apple.com/documentation/coremedia/video-pixel-formats), including 16BE555.
 - Original disc readme, preserved locally by `tools/audit_media.py`.
 - Existing ReCM `AGENTS.md`, `CLAUDE.md`, `src/cpp/CMakeLists.txt`, and current source files.
+
+## Semantic date difference delivery — 2026-10-02
+
+Mac date difference `0x10718130` now uses the C++23 calendar module and legacy
+adapter in production. Its second operand is an eight-byte by-value record,
+including three padding bytes. The ascending-year leap quirk, initialization,
+ordered scratch writes, ABI and stack residue are preserved. Independent date
+comparison/conversion and other engine subsystems are unchanged.
+
+The [date difference reconstruction report](native-date-difference-reconstruction.md)
+records 6,892 direct equivalence cases, 494 independent-domain oracle checks,
+31/31 CTest groups, Python/export audits and UBSAN. One- and seven-day immutable
+fixtures passed strict original runs, the delivered addition/subtraction baseline,
+two modern runs each and all RNG/shift/difference negative controls. Only the
+existing instruction-accounting difference is permitted; no state masks were added.
+
+A single isolated ARM64 app advanced normally from 19 July 2002 night to
+3 August afternoon. The advancing run logged 500,953 semantic difference calls,
+with 32 auditable argument/result samples and no original fallback. Calendar,
+player/contract information and Save/exit/reopen/Load were checked before and
+after the month boundary. The validated app is installed with its prior
+executable backed up privately. Current before/after inventories agree for all
+809 Game / 5 Runtime / 42 Runs files, including captured Mac metadata.
+
+This establishes a bounded semantic increment, not full-career or historical
+hardware equivalence. The previous calendar/annual report remains separate
+historical evidence. No matched speed benchmark or new optimization is claimed.
