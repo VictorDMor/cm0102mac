@@ -99,6 +99,8 @@ struct MemoryObserver {
 class Memory {
 public:
     MemoryObserver* observer = nullptr;
+    // Optional direct boundary diagnostics, independent of write transcripts.
+    std::vector<std::pair<std::uint32_t, unsigned>>* read_trace = nullptr;
     Memory();
     ~Memory();
     Memory(const Memory&) = delete;
@@ -111,6 +113,7 @@ public:
     std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
     template <unsigned N> std::uint64_t read(std::uint64_t address) const {
         check_scalar<N>(address);
+        if (read_trace) read_trace->emplace_back(std::uint32_t(address), N);
         return read_be<N>(data_ + address);
     }
     template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
@@ -175,13 +178,15 @@ struct State {
     bool calendar_original = false;
     std::array<std::uint64_t, 2> calendar_calls{};
     std::uint64_t calendar_exceptional_calls = 0;
-    // Private baseline selections; production uses all five semantic entries.
+    // Private baseline selections; production uses all six semantic entries.
     bool date_difference_original = false;
     std::uint64_t date_difference_calls = 0;
     bool date_ordering_original = false;
     std::uint64_t date_ordering_calls = 0;
     bool date_before_original = false;
     std::uint64_t date_before_calls = 0;
+    bool date_month_original = false;
+    std::uint64_t date_month_calls = 0;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

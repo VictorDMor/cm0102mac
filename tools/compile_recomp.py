@@ -274,7 +274,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
-        if a in (0x103317f0, 0x10331860, 0x10717890, 0x10717b20, 0x10718130):
+        if a in (0x103317f0, 0x10331860, 0x10717890, 0x10717b20, 0x10718130, 0x10718360):
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")

@@ -8,5 +8,8 @@ void open_calendar_audit(const std::filesystem::path& path, bool record, bool pe
                          bool perturb_difference = false, bool perturb_ordering = false,
                          bool include_before = false, bool perturb_before = false);
 void close_calendar_audit(bool require_end = false);
+// Separate month stream; historical calendar formats remain byte-identical.
+void open_month_audit(const std::filesystem::path& path, bool record, bool perturb = false);
+void close_month_audit(bool require_end = false);
 std::string calendar_call_summary(const State& state);
 }

@@ -44,8 +44,9 @@ def check_calendar(executable, fixture, edges_directory=None):
     context = nullcontext(str(edges_directory)) if edges_directory else tempfile.TemporaryDirectory(prefix="cm-calendar-edges-")
     with context as temporary:
         edges = Path(temporary) / "original-calendar-v2.gz"
+        month_edges = Path(temporary) / "original-month-v1.gz"
         options = [
-            ["--calendar-record-v2", str(edges)],
+            ["--calendar-record-v2", str(edges), "--month-record", str(month_edges)],
             ["--modern", "--calendar-check-v2", str(edges)],
             ["--modern", "--calendar-check-v2", str(edges)],
             ["--modern", "--calendar-check-v2", str(edges), "--perturb-rng"],
@@ -57,21 +58,30 @@ def check_calendar(executable, fixture, edges_directory=None):
             ["--date-before-baseline", "--calendar-check-v2", str(edges)],
             ["--modern", "--calendar-check-v2", str(edges), "--perturb-before"],
         ]
+        options.extend([
+            ["--date-month-baseline", "--calendar-check-v2", str(edges)],
+            ["--modern", "--calendar-check-v2", str(edges), "--perturb-month"],
+        ])
+        for arguments in options[1:]:
+            arguments.extend(["--month-check", str(month_edges)])
         edge_hash = None
+        month_hash = None
+        month_calls = None
         ordering_calls = None
         before_calls = None
         for index, arguments in enumerate(options):
-            if (index == 8 and not ordering_calls) or (index == 10 and not before_calls):
+            if (index == 8 and not ordering_calls) or (index == 10 and not before_calls) or (index == 12 and not month_calls):
                 continue  # An unexercised entry cannot provide a negative control.
             result = subprocess.run([str(executable), str(fixture), *arguments],
                                     capture_output=True, text=True, timeout=7200)
             runs.append({"mode": index, "exitCode": result.returncode,
                          "stdout": result.stdout, "stderr": result.stderr})
-            if index in (0, 1, 2, 5, 7, 9) and result.returncode:
+            if index in (0, 1, 2, 5, 7, 9, 11) and result.returncode:
                 raise RuntimeError("Equivalent calendar replay failed: " + json.dumps(runs[-1]))
             if index == 0:
                 edge_hash = digest(edges)
-            elif digest(edges) != edge_hash:
+                month_hash = digest(month_edges)
+            elif digest(edges) != edge_hash or digest(month_edges) != month_hash:
                 raise RuntimeError("Original calendar edges changed")
             if index == 1:
                 count = re.search(r"modern-ordering=(\d+)", result.stdout)
@@ -82,6 +92,10 @@ def check_calendar(executable, fixture, edges_directory=None):
                 if not count:
                     raise RuntimeError("Modern before coverage was not reported")
                 before_calls = int(count.group(1))
+                count = re.search(r"modern-month=(\d+)", result.stdout)
+                if not count:
+                    raise RuntimeError("Modern month coverage was not reported")
+                month_calls = int(count.group(1))
         if runs[1]["stdout"] != runs[2]["stdout"]:
             raise RuntimeError("Equivalent modern reports disagree")
         by_mode = {r["mode"]: r for r in runs}
@@ -91,6 +105,8 @@ def check_calendar(executable, fixture, edges_directory=None):
             negatives.append((8, "First divergence: calendar edge"))
         if before_calls:
             negatives.append((10, "First divergence: calendar edge"))
+        if month_calls:
+            negatives.append((12, "First divergence: month edge 0"))
         for index, diagnostic in negatives:
             if by_mode[index]["exitCode"] != 1 or not by_mode[index]["stderr"].startswith(diagnostic):
                 raise RuntimeError("Known divergence was not detected: " + json.dumps(by_mode[index]))
@@ -103,6 +119,8 @@ def check_calendar(executable, fixture, edges_directory=None):
             diagnostic = by_mode[10]["stderr"]
             if (f"calendar edge {before_first_edge} at 0x103317f0 field=before return byte=36" not in diagnostic):
                 raise RuntimeError("Before control was not rejected at its first return boundary")
+        if month_calls and "at 0x10718360 field=month return byte=48" not in by_mode[12]["stderr"]:
+            raise RuntimeError("Month control was not rejected at its first return boundary")
     after = {name: digest(fixture / name) for name in strict["fixtureSHA256"]}
     if after != strict["fixtureSHA256"]:
         raise RuntimeError("Immutable season fixture changed")
@@ -114,6 +132,10 @@ def check_calendar(executable, fixture, edges_directory=None):
             "deliveredDateDifferenceBaselineChecked": True, "deliveredDateOrderingBaselineChecked": True,
             "modernBeforeCalls": before_calls, "beforeDivergenceDetected": bool(before_calls),
             "beforeCoverage": "exercised" if before_calls else "unexercised; separate real fixture required",
+            "modernMonthCalls": month_calls, "monthDivergenceDetected": bool(month_calls),
+            "deliveredDateBeforeBaselineChecked": True, "monthEdgeFormat": "CMMON001",
+            "originalMonthEdgesSHA256": month_hash,
+            "monthCoverage": "exercised" if month_calls else "unexercised; separate real fixture required",
             "calendarEdgeFormat": "CMCAL002", "firstBeforeEdge": before_first_edge,
             "originalCalendarEdgesSHA256": edge_hash, "fixtureUnchanged": True, "runs": runs,
             "comparison": "Only translated instruction accounting differs; PC, all registers, temporaries, all mapped bytes, allocation state, import/callback order and RNG remain checked"}
@@ -123,7 +145,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fixture", type=Path)
     parser.add_argument("--executable", type=Path, default=Path(__file__).resolve().parent.parent / ".local/aot-build/cm-season-reference")
-    parser.add_argument("--edges-directory", type=Path, help="New private directory retaining the original CMCAL002 stream")
+    parser.add_argument("--edges-directory", type=Path, help="New private directory retaining separate original CMCAL002 and CMMON001 streams")
     args = parser.parse_args()
     try:
         report = check_calendar(args.executable.resolve(strict=True), args.fixture.resolve(strict=True),

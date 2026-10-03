@@ -390,3 +390,50 @@ The current reference remains backed up privately as executable ARM64 with hash
 Before/preinstall/after inventories agree for all 809 Game / 5 Runtime / 42 Runs
 files and captured Mac metadata. Personal saves, prior checkpoints, immutable
 LFS reference, private inputs and historical fixture/stream hashes are preserved.
+
+
+## Semantic independent date-to-month delivery — 2026-10-02
+
+Independent entry `0x10718360` now executes semantic C++23 month conversion.
+The stored byte flag selects a mutable common/leap table through the current
+TOC; the year is not read. A reverse signed16 strict-threshold search returns
+zero-based month or -1, preserving invalid-day behavior, exact ordered reads,
+CTR groups, complete ABI/temporaries/PC and absence of writes/imports/RNG.
+The destination hook covers generated same/inter-page dispatch, indirect calls
+and callbacks. The five previous semantic contracts and the explicitly deferred
+ascending-year leap quirk remain unchanged. Adjacent day conversion, weekday,
+formatting and the remaining engine are outside this increment.
+
+The [date-to-month report](native-date-month-reconstruction.md) records 1,684
+direct original/modern cases, 239 Gregorian oracle cases, 131,072 pure signed-day
+checks, mutable tables/TOC, synthetic caller checks and independent ordered-read
+comparison. The final suite passed 34/34 CTest groups and 28 Python tests, with
+all four optional export groups separately executed, full temporary auditing
+and generated/focused UBSAN. All 1,967 linked State-dependent objects use the
+final layout. Immutable day/week/ordering fixtures each passed two strict originals,
+original stream capture, two candidates and all four historical/delivered
+baselines. Own month counts were 8,807 / 38,256 / 8,433 per candidate.
+The ordering fixture also exercised 38,051 later and 12,911 before
+calls. All six exercised negatives passed, including month rejected at its first
+return boundary. Legacy CMCAL002 hashes, original fixture files, strict state /
+transcript / RNG comparisons and permitted instruction-accounting difference
+remain preserved; month uses a separate CMMON001 stream.
+
+A single private ARM64 candidate instance advanced normally from 27 to 28 August
+2002 night, with original Game Options Save/normal exit/process absence/exact
+reopen/Load checked on both dates. Calendar results and Luisao's profile/contract
+survived; final condition 63% also survived reload. Three app runs counted
+774, 870 and 85 modern month calls, with 96 independently checked valid samples.
+These UI observations are separate from automatic original/modern equivalence.
+No full-engine reconstruction or matched speed improvement is claimed.
+
+The final production ARM64 application is installed; source/installed executable
+SHA-256 is `caf91df0b7d4313937711725022c38a59949bebe66a5d2c07e934efae1058756`.
+The signed private candidate is
+`f3e17857f83cf0922028847df8c2718b5f6fb9df83ea4d82f0f5b86e5a23de5d`.
+A new executable reference backup retains
+`d2784cfde149a28d8e8c1d067e26ac90cfff482581a36858a0d215a7790194a1`.
+Before/preinstall/after inventories agree for the currently observed 809 Game /
+5 Runtime / 43 Runs files and all inventoried metadata. Personal saves, previous
+checkpoints, immutable LFS save, original inputs and historical streams remain
+unchanged. Private diagnostic settings are absent from the installed plist.

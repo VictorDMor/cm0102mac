@@ -1,10 +1,21 @@
 #pragma once
 #include <bit>
 #include <cstdint>
+#include <span>
 
 namespace cm::calendar {
 struct Date { std::int16_t day; std::uint16_t year; };
 enum class Direction { forward, backward };
+constexpr bool recognizes_month(std::int16_t day, std::int16_t previous_last_day) {
+    return day > previous_last_day;
+}
+// Tables contain the last day before each zero-based month, including -1
+// before January. Keep invalid-day and mutable-table behavior explicit.
+constexpr int month_index(std::int16_t day, std::span<const std::int16_t, 12> thresholds) {
+    for (int month = 11; month >= 0; --month)
+        if (recognizes_month(day, thresholds[month])) return month;
+    return -1;
+}
 constexpr bool is_leap(std::uint16_t year) {
     return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
 }

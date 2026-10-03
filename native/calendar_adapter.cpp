@@ -13,6 +13,9 @@ bool audit_record = false, audit_original_running = false, audit_perturb = false
 bool audit_perturb_difference = false;
 bool audit_perturb_ordering = false, audit_perturb_before = false, audit_include_before = false;
 std::uint64_t audit_index = 0;
+gzFile month_audit = nullptr;
+bool month_record = false, month_perturb = false;
+std::uint64_t month_index = 0;
 using cm::calendar::Date;
 using cm::calendar::Direction;
 struct Boundary {
@@ -24,6 +27,39 @@ constexpr Boundary subtraction{0x10717b20, 0x108b7adc, 0x108b84d3, 0x10717ba8, D
 constexpr std::uint32_t difference_entry = 0x10718130;
 constexpr std::uint32_t difference_scratch = 0x108b7ad0, difference_flag = 0x108b84d0;
 constexpr std::uint32_t ordering_entry = 0x10331860, before_entry = 0x103317f0;
+constexpr std::uint32_t month_entry = 0x10718360;
+void execute_month(State& s) {
+    const auto date = std::uint32_t(s.r<4>(12));
+    const auto flag = std::uint8_t(s.memory.read<1>(date + 4));
+    const auto signed_flag = std::bit_cast<std::int8_t>(flag);
+    s.wr<4>(0, std::uint32_t(int(signed_flag)));
+    s.wr<1>(2304, (signed_flag < 0 ? 8 : signed_flag > 0 ? 4 : 2) | (s.r<1>(1024) & 1));
+    const auto slot = std::uint32_t(s.r<4>(8)) - (flag ? 0x3fa4u : 0x3fa8u);
+    s.wr<4>(16, s.memory.read<4>(slot));
+    s.wr<4>(0, 2); s.wr<4>(16, s.r<4>(16) + 22);
+    s.wr<4>(28, 11); s.wr<4>(24, 22); s.wr<4>(4132, 2);
+    for (unsigned block = 0; block < 2; ++block) {
+        for (unsigned index = 0; index < 6; ++index) {
+            const auto threshold = cm::calendar::narrow_day(int(s.memory.read<2>(
+                std::uint32_t(s.r<4>(16)) - index * 2)));
+            s.wr<4>(20, std::uint32_t(int(threshold)));
+            // Each group's first threshold precedes a fresh day load. The
+            // remaining five probes reuse it and decrement the month register.
+            if (!index)
+                s.wr<4>(0, std::uint32_t(int(cm::calendar::narrow_day(int(s.memory.read<2>(date))))));
+            else if (index) s.wr<4>(28, s.r<4>(28) - 1);
+            const auto day = cm::calendar::narrow_day(int(s.r<2>(2)));
+            s.wr<1>(2304, (threshold < day ? 8 : threshold > day ? 4 : 2) | (s.r<1>(1024) & 1));
+            if (cm::calendar::recognizes_month(day, threshold)) {
+                s.wr<4>(12, s.r<4>(28));
+                s.pc = std::uint32_t(s.r<4>(4128)); return;
+            }
+        }
+        s.wr<4>(24, s.r<4>(24) - 10); s.wr<4>(16, s.r<4>(16) - 12);
+        s.wr<4>(28, s.r<4>(28) - 1); s.wr<4>(4132, s.r<4>(4132) - 1);
+    }
+    s.wr<4>(12, 0xffffffffu); s.pc = std::uint32_t(s.r<4>(4128));
+}
 // r4 and XER carry are observable clobbers of the original leap helper. Its
 // unsigned 16-bit year makes both signed shifts nonnegative. Preserve these
 // effects even though the arithmetic module uses ordinary Gregorian divisibility.
@@ -206,6 +242,63 @@ void execute(State& s, const Boundary& boundary) {
 }
 }
 bool try_modern_calendar(State& s, std::uint32_t entry) {
+    if (entry == month_entry) {
+        const bool original = s.calendar_original || s.date_month_original;
+        if (audit_original_running || (original && !month_audit)) return false;
+        const auto date = std::uint32_t(s.r<4>(12)), link = std::uint32_t(s.r<4>(4128));
+        std::vector<std::uint8_t> edge;
+        auto append = [&](std::uint64_t value, unsigned width) {
+            for (unsigned i = width; i; --i) edge.push_back(std::uint8_t(value >> ((i - 1) * 8)));
+        };
+        const bool sample = !original && s.date_month_calls < 32 && std::getenv("CM_AOT_VALIDATION_EVENT_POINTER");
+        const auto input = month_audit || sample ? s.memory.copy_out(date, 5) : std::vector<std::uint8_t>{};
+        const auto table = month_audit || sample ? std::uint32_t(s.memory.read<4>(
+            std::uint32_t(s.r<4>(8)) - (input[4] ? 0x3fa4u : 0x3fa8u))) : 0;
+        if (month_audit) {
+            append(entry, 4); append(date, 4); append(link, 4);
+            edge.insert(edge.end(), input.begin(), input.end()); append(table, 4);
+            const auto thresholds = s.memory.copy_out(table, 24);
+            edge.insert(edge.end(), thresholds.begin(), thresholds.end());
+        }
+        if (original) {
+            audit_original_running = true; s.pc = entry;
+            try {
+                do { if (!dispatch_page(s)) throw std::runtime_error("Uncompiled original month reference"); }
+                while (s.pc != link);
+            } catch (...) { audit_original_running = false; throw; }
+            audit_original_running = false;
+        } else {
+            s.step(entry); ++s.date_month_calls; execute_month(s);
+            if (month_perturb && s.date_month_calls == 1) s.wr<4>(12, s.r<4>(12) + 1);
+            if (sample)
+                std::fprintf(stderr, "date-month.modern entry=%08x sample=%llu date=%u/%d flag=%u table=%08x result=%d return=%08x\n",
+                    entry, static_cast<unsigned long long>(s.date_month_calls), unsigned(read_be<2>(input.data()+2)),
+                    int(cm::calendar::narrow_day(int(read_be<2>(input.data())))), unsigned(input[4]), table,
+                    int(std::bit_cast<std::int32_t>(std::uint32_t(s.r<4>(12)))), link);
+        }
+        if (month_audit) {
+            append(s.r<4>(12), 4);
+            edge.insert(edge.end(), s.registers.begin(), s.registers.end()); append(s.pc, 4);
+            if (month_record) {
+                if (gzwrite(month_audit, edge.data(), unsigned(edge.size())) != int(edge.size()))
+                    throw std::runtime_error("Cannot record private month edges");
+            } else {
+                std::vector<std::uint8_t> expected(edge.size());
+                if (gzread(month_audit, expected.data(), unsigned(expected.size())) != int(expected.size()))
+                    throw std::runtime_error("First divergence: month call count/truncated edge reference");
+                const auto mismatch = std::mismatch(expected.begin(), expected.end(), edge.begin());
+                if (mismatch.first != expected.end()) {
+                    const auto byte = mismatch.first - expected.begin();
+                    throw std::runtime_error("First divergence: month edge " + std::to_string(month_index) +
+                        " at " + hex_address(entry) + " field=" + (byte >= 45 && byte < 49 ? "month return" : "month input/table/ABI/PC") +
+                        " byte=" + std::to_string(byte) + " expected=" + std::to_string(*mismatch.first) +
+                        " actual=" + std::to_string(*mismatch.second));
+                }
+            }
+            ++month_index;
+        }
+        return true;
+    }
     const bool difference = entry == difference_entry;
     const bool before = entry == before_entry;
     const bool ordering = entry == ordering_entry || before;
@@ -366,6 +459,28 @@ std::string calendar_call_summary(const State& s) {
         << " modern-ordering=" << s.date_ordering_calls;
     out << " before-mode=" << (s.calendar_original || s.date_before_original ? "original" : "modern")
         << " modern-before=" << s.date_before_calls;
+    out << " month-mode=" << (s.calendar_original || s.date_month_original ? "original" : "modern")
+        << " modern-month=" << s.date_month_calls;
     return out.str();
+}
+void open_month_audit(const std::filesystem::path& path, bool record, bool perturb) {
+    if (month_audit || (perturb && record)) throw std::runtime_error("Invalid private month audit mode");
+    month_audit = gzopen(path.c_str(), record ? "wb1" : "rb");
+    if (!month_audit) throw std::runtime_error("Cannot open private month edge reference");
+    constexpr std::array<char,8> magic{'C','M','M','O','N','0','0','1'};
+    auto header = magic;
+    const auto count = record ? gzwrite(month_audit, header.data(), header.size()) : gzread(month_audit, header.data(), header.size());
+    if (count != int(header.size()) || header != magic) {
+        gzclose(month_audit); month_audit = nullptr;
+        throw std::runtime_error("Unrecognized private month stream");
+    }
+    month_record = record; month_perturb = perturb; month_index = 0;
+}
+void close_month_audit(bool require_end) {
+    if (!month_audit) return;
+    bool extra = false;
+    if (require_end && !month_record) { std::uint8_t byte; extra = gzread(month_audit, &byte, 1) != 0 || !gzeof(month_audit); }
+    const auto result = gzclose(month_audit); month_audit = nullptr; month_perturb = false;
+    if (extra || result != Z_OK) throw std::runtime_error("First divergence: month call count or edge checksum");
 }
 }
