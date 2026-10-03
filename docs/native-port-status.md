@@ -472,3 +472,51 @@ Before/preinstall/after personal inventories agree for 809 Game / 5 Runtime /
 remain intact; the new saves/logs/builds are private and ignored. Installed
 program data matches the private inputs, and private diagnostic settings are
 absent from the production plist. No speed or full-engine completion is claimed.
+
+## Semantic weekday conversion — October 3, 2026
+
+Independent `0x10715b20` now uses semantic C++23 in normal ARM64 production,
+completing this bounded eight-entry calendar increment. The destination hook
+covers same-page `0x10715a54`, cross-page and indirect dispatch and callbacks.
+Formatting/localized names, date adjustment `0x10715a30`, date construction,
+player/contract and other neighboring routines remain generated. The deferred
+ascending-year leap difference remains unchanged; no speed gain is claimed.
+
+The exact year/flag/signed-day three-read contract, Monday=0..Sunday=6 normal
+domain, negative legacy remainders, all exits, CR/XER/carry and complete ABI are
+documented in [the weekday report](native-date-weekday-reconstruction.md).
+The final direct harness passed 4,240 original/modern cases, 559 chrono and
+319,675 wide Gregorian oracle cases and 786,432 pure signed-day checks. Full
+CTest passed 36/36; Python discovery passed 26 with four optional groups skipped,
+then all four groups were explicitly passed. Generated/focused UBSAN passed.
+All 1,969 linked State-dependent objects and 22 others use the final layout.
+
+The day/week/ordering fixtures each passed two strict originals, entirely original
+capture, six baselines and two candidates, with 1,690 / 5,831 / 1,419 own weekday
+calls. Their first-return negatives fail at edge 0, entry `0x10715b20`, return
+byte 20. CMWKD001 is independent; all three historical streams, including CMDOM001,
+remain byte-identical. Existing RNG/calendar/difference/later/before/month/
+day-of-month controls remain exercised where covered.
+
+A new private ARM64 candidate independently loaded Sunday September 1, 2002
+afternoon. Original Save/normal exit/process absence/exact reopen/Load preserved
+manager/club, fixtures/results and Luisao's profile/contract. After reading the
+checkpoint's pending old news, one normal Continue Game simulation step stopped
+on Tuesday September 3 morning. Monday was skipped naturally; no date or RNG
+was forced. A second Save/exit/reopen/Load preserved this actual weekday change,
+all observations and Luisao's normally recovered 89% condition. Three normal
+runs recorded 160 / 1,794 / 152 own semantic weekday calls; all 96 available
+samples passed independent checks, including real same-page caller evidence.
+
+The approved production build is installed and verified ARM64. Source/installed
+executable SHA-256 is
+`7284838b3e6d74785a6969d64bf2d19619ad2cdc3e5e7c0601e6e551a97db063`;
+the signed candidate is
+`ace1c411a6e863fcec0125105f763df7e81543df53ae440c151b82580060db14`.
+The new reference backup preserves the previously installed executable
+`1fa57f3f11d3c911f4d452ed5abf58a55112ed6b71defafb6439428f0fd234dc`,
+including all inventoried Mac metadata. Before/preinstall/after personal inventories
+agree for 809 Game / 5 Runtime / 43 Runs files, contents and metadata. All 745
+protected identities and the four pending prompts remain unchanged. Installed
+program data matches private inputs; production diagnostic plist properties are
+absent. Saves, logs, original payloads and builds remain private and ignored.

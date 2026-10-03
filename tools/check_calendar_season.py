@@ -46,8 +46,9 @@ def check_calendar(executable, fixture, edges_directory=None, historical_edges_d
         edges = Path(temporary) / "original-calendar-v2.gz"
         month_edges = Path(temporary) / "original-month-v1.gz"
         day_edges = Path(temporary) / "original-day-of-month-v1.gz"
+        weekday_edges = Path(temporary) / "original-weekday-v1.gz"
         options = [
-            ["--calendar-record-v2", str(edges), "--month-record", str(month_edges), "--day-of-month-record", str(day_edges)],
+            ["--calendar-record-v2", str(edges), "--month-record", str(month_edges), "--day-of-month-record", str(day_edges), "--weekday-record", str(weekday_edges)],
             ["--modern", "--calendar-check-v2", str(edges)],
             ["--modern", "--calendar-check-v2", str(edges)],
             ["--modern", "--calendar-check-v2", str(edges), "--perturb-rng"],
@@ -65,34 +66,41 @@ def check_calendar(executable, fixture, edges_directory=None, historical_edges_d
             ["--date-day-of-month-baseline", "--calendar-check-v2", str(edges)],
             ["--modern", "--calendar-check-v2", str(edges), "--perturb-day-of-month"],
         ])
+        options.extend([
+            ["--date-weekday-baseline", "--calendar-check-v2", str(edges)],
+            ["--modern", "--calendar-check-v2", str(edges), "--perturb-weekday"],
+        ])
         for arguments in options[1:]:
-            arguments.extend(["--month-check", str(month_edges), "--day-of-month-check", str(day_edges)])
+            arguments.extend(["--month-check", str(month_edges), "--day-of-month-check", str(day_edges), "--weekday-check", str(weekday_edges)])
         edge_hash = None
         month_hash = None
         day_hash = None
+        weekday_hash = None
+        weekday_calls = None
         day_calls = None
         month_calls = None
         ordering_calls = None
         before_calls = None
         for index, arguments in enumerate(options):
-            if (index == 8 and not ordering_calls) or (index == 10 and not before_calls) or (index == 12 and not month_calls) or (index == 14 and not day_calls):
+            if (index == 8 and not ordering_calls) or (index == 10 and not before_calls) or (index == 12 and not month_calls) or (index == 14 and not day_calls) or (index == 16 and not weekday_calls):
                 continue  # An unexercised entry cannot provide a negative control.
             result = subprocess.run([str(executable), str(fixture), *arguments],
                                     capture_output=True, text=True, timeout=7200)
             runs.append({"mode": index, "exitCode": result.returncode,
                          "stdout": result.stdout, "stderr": result.stderr})
-            if index in (0, 1, 2, 5, 7, 9, 11, 13) and result.returncode:
+            if index in (0, 1, 2, 5, 7, 9, 11, 13, 15) and result.returncode:
                 raise RuntimeError("Equivalent calendar replay failed: " + json.dumps(runs[-1]))
             if index == 0:
                 edge_hash = digest(edges)
                 month_hash = digest(month_edges)
                 day_hash = digest(day_edges)
+                weekday_hash = digest(weekday_edges)
                 if historical_edges_directory:
-                    for current in (edges, month_edges):
+                    for current in (edges, month_edges, day_edges):
                         previous = historical_edges_directory / current.name
                         if digest(previous) != digest(current):
                             raise RuntimeError("Recaptured original historical stream differs: " + current.name)
-            elif digest(edges) != edge_hash or digest(month_edges) != month_hash or digest(day_edges) != day_hash:
+            elif digest(edges) != edge_hash or digest(month_edges) != month_hash or digest(day_edges) != day_hash or digest(weekday_edges) != weekday_hash:
                 raise RuntimeError("Original calendar edges changed")
             if index == 1:
                 count = re.search(r"modern-ordering=(\d+)", result.stdout)
@@ -111,6 +119,10 @@ def check_calendar(executable, fixture, edges_directory=None, historical_edges_d
                 if not count:
                     raise RuntimeError("Modern day-of-month coverage was not reported")
                 day_calls = int(count.group(1))
+                count = re.search(r"modern-weekday=(\d+)", result.stdout)
+                if not count:
+                    raise RuntimeError("Modern weekday coverage was not reported")
+                weekday_calls = int(count.group(1))
         if runs[1]["stdout"] != runs[2]["stdout"]:
             raise RuntimeError("Equivalent modern reports disagree")
         by_mode = {r["mode"]: r for r in runs}
@@ -124,6 +136,8 @@ def check_calendar(executable, fixture, edges_directory=None, historical_edges_d
             negatives.append((12, "First divergence: month edge 0"))
         if day_calls:
             negatives.append((14, "First divergence: day-of-month edge 0"))
+        if weekday_calls:
+            negatives.append((16, "First divergence: weekday edge 0"))
         for index, diagnostic in negatives:
             if by_mode[index]["exitCode"] != 1 or not by_mode[index]["stderr"].startswith(diagnostic):
                 raise RuntimeError("Known divergence was not detected: " + json.dumps(by_mode[index]))
@@ -140,6 +154,8 @@ def check_calendar(executable, fixture, edges_directory=None, historical_edges_d
             raise RuntimeError("Month control was not rejected at its first return boundary")
         if day_calls and "at 0x107182f0 field=day-of-month return byte=48" not in by_mode[14]["stderr"]:
             raise RuntimeError("Day-of-month control was not rejected at its first return boundary")
+        if weekday_calls and "at 0x10715b20 field=weekday return byte=20" not in by_mode[16]["stderr"]:
+            raise RuntimeError("Weekday control was not rejected at its first return boundary")
     after = {name: digest(fixture / name) for name in strict["fixtureSHA256"]}
     if after != strict["fixtureSHA256"]:
         raise RuntimeError("Immutable season fixture changed")
@@ -156,6 +172,10 @@ def check_calendar(executable, fixture, edges_directory=None, historical_edges_d
             "originalMonthEdgesSHA256": month_hash,
             "deliveredDateMonthBaselineChecked": True,
             "modernDayOfMonthCalls": day_calls, "dayOfMonthDivergenceDetected": bool(day_calls),
+            "modernWeekdayCalls": weekday_calls, "weekdayDivergenceDetected": bool(weekday_calls),
+            "weekdayEdgeFormat": "CMWKD001", "originalWeekdayEdgesSHA256": weekday_hash,
+            "deliveredDateDayOfMonthBaselineChecked": True,
+            "weekdayCoverage": "exercised" if weekday_calls else "unexercised; separate real fixture required",
             "dayOfMonthEdgeFormat": "CMDOM001", "originalDayOfMonthEdgesSHA256": day_hash,
             "dayOfMonthCoverage": "exercised" if day_calls else "unexercised; separate real fixture required",
             "historicalStreamsByteIdentical": bool(historical_edges_directory),
@@ -169,8 +189,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fixture", type=Path)
     parser.add_argument("--executable", type=Path, default=Path(__file__).resolve().parent.parent / ".local/aot-build/cm-season-reference")
-    parser.add_argument("--edges-directory", type=Path, help="New private directory retaining separate original CMCAL002 and CMMON001 streams")
-    parser.add_argument("--historical-edges-directory", type=Path, help="Preserved original CMCAL002/CMMON001 directory; require byte-identical original recapture")
+    parser.add_argument("--edges-directory", type=Path, help="New private directory retaining separate original CMCAL002, CMMON001, CMDOM001 and CMWKD001 streams")
+    parser.add_argument("--historical-edges-directory", type=Path, help="Preserved original CMCAL002/CMMON001/CMDOM001 directory; require byte-identical original recapture")
     args = parser.parse_args()
     try:
         report = check_calendar(args.executable.resolve(strict=True), args.fixture.resolve(strict=True),

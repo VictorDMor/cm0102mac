@@ -17,7 +17,7 @@ class CalendarAuditTests(unittest.TestCase):
                 (page << 12, (page + 1) << 12))]
 
     def test_contract_and_same_page_entry_hooks(self):
-        for entry in (0x103317F0, 0x10331860, 0x10717890, 0x10717B20, 0x10718130, 0x107182F0, 0x10718360):
+        for entry in (0x103317F0, 0x10331860, 0x10715B20, 0x10717890, 0x10717B20, 0x10718130, 0x107182F0, 0x10718360):
             records = self.records(entry >> 12)
             require_calendar_contract(entry >> 12, records)
             code = generate_page(entry >> 12, records, {r["address"] for r in records})
@@ -34,7 +34,7 @@ class CalendarAuditTests(unittest.TestCase):
                 require_calendar_contract(page, records)
 
     def test_reject_incomplete_entry(self):
-        for entry in (0x103317F0, 0x10331860, 0x10717890, 0x10717B20, 0x10718130, 0x107182F0, 0x10718360, 0x10718440):
+        for entry in (0x103317F0, 0x10331860, 0x10715B20, 0x10717890, 0x10717B20, 0x10718130, 0x107182F0, 0x10718360, 0x10718440):
             records = [r for r in self.records(entry >> 12) if r["address"] == entry]
             with self.assertRaises(ValueError):
                 require_calendar_contract(entry >> 12, records)
@@ -71,6 +71,21 @@ class CalendarAuditTests(unittest.TestCase):
         for missing in (0x107182F0, 0x1071832C, 0x10718338, 0x10718348, 0x10718350):
             with self.assertRaises(ValueError):
                 require_calendar_contract(0x10718, [r for r in records if r["address"] != missing])
+
+    def test_weekday_all_exits_and_same_page_caller(self):
+        records = self.records(0x10715)
+        self.assertEqual(next(r for r in records if r["address"] == 0x10715A54)["assembly"], "bl 0x10715b20")
+        code = generate_page(0x10715, records, {r["address"] for r in records})
+        self.assertIn("goto i_10715b20;", code.split("i_10715a54:")[1].split("i_10715a58:")[0])
+        self.assertIn("if (try_modern_calendar(s, 0x10715b20)) return true;", code)
+        for missing in (0x10715B20, 0x10715B5C, 0x10715B74, 0x10715BA0, 0x10715BAC, 0x10715BB4, 0x10715BBC):
+            with self.assertRaises(ValueError):
+                require_calendar_contract(0x10715, [r for r in records if r["address"] != missing])
+        for address in (0x10715BAC, 0x10715BB4, 0x10715BBC):
+            altered = self.records(0x10715)
+            next(r for r in altered if r["address"] == address)["ops"] = []
+            with self.assertRaises(ValueError):
+                require_calendar_contract(0x10715, altered)
 
     def test_real_same_page_ordering_call_routes_to_hook(self):
         records = self.records(0x10331)

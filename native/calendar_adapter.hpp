@@ -14,5 +14,8 @@ void close_month_audit(bool require_end = false);
 // Separate CMDOM001 stream; neither historical format is changed.
 void open_day_of_month_audit(const std::filesystem::path& path, bool record, bool perturb = false);
 void close_day_of_month_audit(bool require_end = false);
+// Independent CMWKD001 stream; all three historical encodings remain intact.
+void open_weekday_audit(const std::filesystem::path& path, bool record, bool perturb = false);
+void close_weekday_audit(bool require_end = false);
 std::string calendar_call_summary(const State& state);
 }

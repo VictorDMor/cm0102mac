@@ -5,6 +5,16 @@
 
 namespace cm::calendar {
 struct Date { std::int16_t day; std::uint16_t year; };
+// The Mac epoch uses truncating year divisions and the stored leap flag.
+// Negative remainders deliberately survive; zero denotes Sunday (6).
+constexpr std::int32_t weekday_days(Date date, std::uint8_t flag) {
+    const auto years = std::int32_t(date.year) - 1600;
+    return 365 * years + years / 4 - years / 100 + years / 400 + date.day - (flag != 0);
+}
+constexpr std::int16_t weekday(Date date, std::uint8_t flag) {
+    const auto remainder = weekday_days(date, flag) % 7;
+    return std::int16_t(remainder > 0 ? remainder - 1 : remainder == 0 ? 6 : remainder);
+}
 enum class Direction { forward, backward };
 constexpr bool recognizes_month(std::int16_t day, std::int16_t previous_last_day) {
     return day > previous_last_day;

@@ -19,6 +19,9 @@ std::uint64_t month_index = 0;
 gzFile day_audit = nullptr;
 bool day_record = false, day_perturb = false;
 std::uint64_t day_index = 0;
+gzFile weekday_audit = nullptr;
+bool weekday_record = false, weekday_perturb = false;
+std::uint64_t weekday_index = 0;
 using cm::calendar::Date;
 using cm::calendar::Direction;
 struct Boundary {
@@ -32,6 +35,37 @@ constexpr std::uint32_t difference_scratch = 0x108b7ad0, difference_flag = 0x108
 constexpr std::uint32_t ordering_entry = 0x10331860, before_entry = 0x103317f0;
 constexpr std::uint32_t month_entry = 0x10718360;
 constexpr std::uint32_t day_entry = 0x107182f0;
+constexpr std::uint32_t weekday_entry = 0x10715b20;
+void execute_weekday(State& s) {
+    const auto pointer = std::uint32_t(s.r<4>(12));
+    // Three ordered loads only: unsigned year, byte flag, signed day.
+    const auto year = std::uint16_t(s.memory.read<2>(pointer + 2));
+    const auto flag = std::uint8_t(s.memory.read<1>(pointer + 4));
+    const auto day = cm::calendar::narrow_day(int(s.memory.read<2>(pointer)));
+    const Date date{day, year};
+    const auto years = std::int32_t(year) - 1600;
+    const auto total = cm::calendar::weekday_days(date, flag);
+    const auto remainder = total % 7;
+    // ABI residue of the signed multiply-high divisions. int64 products fit;
+    // arithmetic shifts are defined in C++23. These do not select the result.
+    const auto century_high = (INT64_C(0x51eb851f) * years) >> 32;
+    const auto century_floor = century_high >> 5;
+    const auto four_century_floor = century_high >> 7;
+    const auto seven_intermediate = ((-INT64_C(1840700269) * total) >> 32) + total;
+    s.wr<4>(0, std::uint32_t(remainder));
+    s.wr<4>(12, std::uint32_t(int(cm::calendar::weekday(date, flag))));
+    s.wr<4>(16, std::uint32_t(four_century_floor + (four_century_floor < 0)));
+    s.wr<4>(20, century_floor < 0);
+    s.wr<4>(24, std::uint32_t(four_century_floor));
+    s.wr<4>(28, four_century_floor < 0);
+    s.wr<4>(32, std::uint32_t(total));
+    // Positive exits keep r0's remainder; zero/negative exits sign-extend it
+    // again. Both record CR0 against the remainder, not the returned weekday.
+    s.wr<1>(2304, (s.r<1>(2304) & 0xf0) |
+        (remainder < 0 ? 8 : remainder > 0 ? 4 : 2) | (s.r<1>(1024) & 1));
+    s.wr<1>(1027, seven_intermediate < 0 && (std::uint64_t(seven_intermediate) & 3));
+    s.pc = std::uint32_t(s.r<4>(4128));
+}
 void execute_day_of_month(State& s) {
     const auto date = std::uint32_t(s.r<4>(12));
     const auto flag = std::uint8_t(s.memory.read<1>(date + 4));
@@ -278,6 +312,61 @@ void execute(State& s, const Boundary& boundary) {
 }
 }
 bool try_modern_calendar(State& s, std::uint32_t entry) {
+    if (entry == weekday_entry) {
+        const bool original = s.calendar_original || s.date_weekday_original;
+        if (audit_original_running || (original && !weekday_audit)) return false;
+        if (weekday_audit && weekday_record && !original)
+            throw std::runtime_error("Weekday reference recording requires original execution");
+        const auto pointer = std::uint32_t(s.r<4>(12)), link = std::uint32_t(s.r<4>(4128));
+        const bool sample = !original && s.date_weekday_calls < 32 && std::getenv("CM_AOT_VALIDATION_EVENT_POINTER");
+        const auto input = weekday_audit || sample ? s.memory.copy_out(pointer, 5) : std::vector<std::uint8_t>{};
+        std::vector<std::uint8_t> edge;
+        auto append = [&](std::uint64_t value, unsigned width) {
+            for (unsigned i = width; i; --i) edge.push_back(std::uint8_t(value >> ((i - 1) * 8)));
+        };
+        if (weekday_audit) {
+            append(entry, 4); append(pointer, 4); append(link, 4);
+            edge.insert(edge.end(), input.begin(), input.end());
+        }
+        if (original) {
+            audit_original_running = true; s.pc = entry;
+            try {
+                do { if (!dispatch_page(s)) throw std::runtime_error("Uncompiled original weekday reference"); }
+                while (s.pc != link);
+            } catch (...) { audit_original_running = false; throw; }
+            audit_original_running = false;
+        } else {
+            s.step(entry); ++s.date_weekday_calls; execute_weekday(s);
+            if (weekday_perturb && s.date_weekday_calls == 1) s.wr<4>(12, s.r<4>(12) + 1);
+            if (sample)
+                std::fprintf(stderr, "date-weekday.modern entry=%08x sample=%llu pointer=%08x date=%u/%d flag=%u result=%d return=%08x\n",
+                    entry, static_cast<unsigned long long>(s.date_weekday_calls), pointer,
+                    unsigned(read_be<2>(input.data()+2)), int(cm::calendar::narrow_day(int(read_be<2>(input.data())))),
+                    unsigned(input[4]), int(std::bit_cast<std::int32_t>(std::uint32_t(s.r<4>(12)))), link);
+        }
+        if (weekday_audit) {
+            append(s.r<4>(12), 4);
+            edge.insert(edge.end(), s.registers.begin(), s.registers.end()); append(s.pc, 4);
+            if (weekday_record) {
+                if (gzwrite(weekday_audit, edge.data(), unsigned(edge.size())) != int(edge.size()))
+                    throw std::runtime_error("Cannot record private weekday edges");
+            } else {
+                std::vector<std::uint8_t> expected(edge.size());
+                if (gzread(weekday_audit, expected.data(), unsigned(expected.size())) != int(expected.size()))
+                    throw std::runtime_error("First divergence: weekday call count/truncated edge reference");
+                const auto mismatch = std::mismatch(expected.begin(), expected.end(), edge.begin());
+                if (mismatch.first != expected.end()) {
+                    const auto byte = mismatch.first - expected.begin();
+                    throw std::runtime_error("First divergence: weekday edge " + std::to_string(weekday_index) +
+                        " at " + hex_address(entry) + " field=" + (byte >= 17 && byte < 21 ? "weekday return" : "weekday input/ABI/PC") +
+                        " byte=" + std::to_string(byte) + " expected=" + std::to_string(*mismatch.first) +
+                        " actual=" + std::to_string(*mismatch.second));
+                }
+            }
+            ++weekday_index;
+        }
+        return true;
+    }
     if (entry == month_entry || entry == day_entry) {
         const bool is_day = entry == day_entry;
         auto& stream = is_day ? day_audit : month_audit;
@@ -514,6 +603,8 @@ std::string calendar_call_summary(const State& s) {
         << " modern-month=" << s.date_month_calls;
     out << " day-of-month-mode=" << (s.calendar_original || s.date_day_of_month_original ? "original" : "modern")
         << " modern-day-of-month=" << s.date_day_of_month_calls;
+    out << " weekday-mode=" << (s.calendar_original || s.date_weekday_original ? "original" : "modern")
+        << " modern-weekday=" << s.date_weekday_calls;
     return out.str();
 }
 void open_month_audit(const std::filesystem::path& path, bool record, bool perturb) {
@@ -555,5 +646,25 @@ void close_day_of_month_audit(bool require_end) {
     if (require_end && !day_record) { std::uint8_t byte; extra = gzread(day_audit, &byte, 1) != 0 || !gzeof(day_audit); }
     const auto result = gzclose(day_audit); day_audit = nullptr; day_perturb = false;
     if (extra || result != Z_OK) throw std::runtime_error("First divergence: day-of-month call count or edge checksum");
+}
+void open_weekday_audit(const std::filesystem::path& path, bool record, bool perturb) {
+    if (weekday_audit || (perturb && record)) throw std::runtime_error("Invalid private weekday audit mode");
+    weekday_audit = gzopen(path.c_str(), record ? "wb1" : "rb");
+    if (!weekday_audit) throw std::runtime_error("Cannot open private weekday edge reference");
+    constexpr std::array<char,8> magic{'C','M','W','K','D','0','0','1'};
+    auto header = magic;
+    const auto count = record ? gzwrite(weekday_audit, header.data(), header.size()) : gzread(weekday_audit, header.data(), header.size());
+    if (count != int(header.size()) || header != magic) {
+        gzclose(weekday_audit); weekday_audit = nullptr;
+        throw std::runtime_error("Unrecognized private weekday stream");
+    }
+    weekday_record = record; weekday_perturb = perturb; weekday_index = 0;
+}
+void close_weekday_audit(bool require_end) {
+    if (!weekday_audit) return;
+    bool extra = false;
+    if (require_end && !weekday_record) { std::uint8_t byte; extra = gzread(weekday_audit, &byte, 1) != 0 || !gzeof(weekday_audit); }
+    const auto result = gzclose(weekday_audit); weekday_audit = nullptr; weekday_perturb = false;
+    if (extra || result != Z_OK) throw std::runtime_error("First divergence: weekday call count or edge checksum");
 }
 }
