@@ -22,6 +22,15 @@ constexpr bool is_leap(std::uint16_t year) {
 constexpr std::int16_t narrow_day(int day) {
     return std::bit_cast<std::int16_t>(std::uint16_t(day));
 }
+// Day-of-month is one-based on valid dates, and wraps to signed16 without
+// clamping. The adapter separately preserves the search and selected reload.
+constexpr std::int16_t day_from_threshold(std::int16_t day, std::int16_t threshold) {
+    return narrow_day(int(day) - int(threshold));
+}
+constexpr std::int16_t day_of_month(std::int16_t day, std::span<const std::int16_t, 12> thresholds) {
+    const auto month = month_index(day, thresholds);
+    return month < 0 ? -1 : day_from_threshold(day, thresholds[month]);
+}
 constexpr unsigned year_length(std::uint16_t year) { return is_leap(year) ? 366 : 365; }
 constexpr bool is_after(Date date, Date reference) {
     return date.year > reference.year || (date.year == reference.year && date.day > reference.day);

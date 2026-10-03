@@ -178,7 +178,7 @@ struct State {
     bool calendar_original = false;
     std::array<std::uint64_t, 2> calendar_calls{};
     std::uint64_t calendar_exceptional_calls = 0;
-    // Private baseline selections; production uses all six semantic entries.
+    // Private baseline selections; production uses all seven semantic entries.
     bool date_difference_original = false;
     std::uint64_t date_difference_calls = 0;
     bool date_ordering_original = false;
@@ -187,6 +187,8 @@ struct State {
     std::uint64_t date_before_calls = 0;
     bool date_month_original = false;
     std::uint64_t date_month_calls = 0;
+    bool date_day_of_month_original = false;
+    std::uint64_t date_day_of_month_calls = 0;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

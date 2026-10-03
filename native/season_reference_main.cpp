@@ -6,13 +6,14 @@
 
 int main(int argc, char** argv) {
     try {
-        if (argc < 2) throw std::runtime_error("Usage: cm-season-reference <fixture> [--modern|--calendar-baseline|--date-ordering-baseline|--date-before-baseline|--date-month-baseline] [--perturb-rng|--perturb-calendar|--perturb-difference|--perturb-ordering|--perturb-before|--perturb-month] [--calendar-record|--calendar-check|--calendar-record-v2|--calendar-check-v2 <private-edges.gz>] [--month-record|--month-check <private-month.gz>]");
+        if (argc < 2) throw std::runtime_error("Usage: cm-season-reference <fixture> [--modern|--calendar-baseline|--date-ordering-baseline|--date-before-baseline|--date-month-baseline|--date-day-of-month-baseline] [--perturb-rng|--perturb-calendar|--perturb-difference|--perturb-ordering|--perturb-before|--perturb-month|--perturb-day-of-month] [--calendar-record|--calendar-check|--calendar-record-v2|--calendar-check-v2 <private-edges.gz>] [--month-record|--month-check <private-month.gz>] [--day-of-month-record|--day-of-month-check <private-day.gz>]");
         bool modern = false, baseline = false, perturb_rng = false, perturb_calendar = false, record = false;
         bool perturb_difference = false;
         bool ordering_baseline = false, perturb_ordering = false;
         bool before_baseline = false, perturb_before = false, include_before = false;
         bool month_baseline = false, perturb_month = false, month_record = false;
-        std::filesystem::path edges, month_edges;
+        bool day_baseline = false, perturb_day = false, day_record = false;
+        std::filesystem::path edges, month_edges, day_edges;
         for (int i = 2; i < argc; ++i) {
             const std::string_view option(argv[i]);
             if (option == "--modern") modern = true;
@@ -20,6 +21,11 @@ int main(int argc, char** argv) {
             else if (option == "--date-ordering-baseline") { modern = true; ordering_baseline = true; }
             else if (option == "--date-before-baseline") { modern = true; before_baseline = true; }
             else if (option == "--date-month-baseline") { modern = true; month_baseline = true; }
+            else if (option == "--date-day-of-month-baseline") { modern = true; day_baseline = true; }
+            else if (option == "--perturb-day-of-month") perturb_day = true;
+            else if ((option == "--day-of-month-record" || option == "--day-of-month-check") && i + 1 < argc) {
+                day_record = option == "--day-of-month-record"; day_edges = argv[++i];
+            }
             else if (option == "--perturb-month") perturb_month = true;
             else if ((option == "--month-record" || option == "--month-check") && i + 1 < argc) {
                 month_record = option == "--month-record"; month_edges = argv[++i];
@@ -35,7 +41,10 @@ int main(int argc, char** argv) {
                 record = option == "--calendar-record" || option == "--calendar-record-v2"; edges = argv[++i];
             } else throw std::runtime_error("Invalid season replay option");
         }
-        if ((month_record && modern) || (perturb_month && (!modern || month_edges.empty() || month_baseline || baseline || ordering_baseline || before_baseline)) ||
+        if ((day_record && modern) ||
+            (day_baseline && (baseline || ordering_baseline || before_baseline || month_baseline)) ||
+            (perturb_day && (!modern || day_record || day_edges.empty() || day_baseline || baseline || ordering_baseline || before_baseline || month_baseline)) ||
+            (month_record && modern) || (perturb_month && (!modern || month_edges.empty() || month_baseline || baseline || ordering_baseline || before_baseline)) ||
             (month_baseline && (baseline || ordering_baseline || before_baseline)) || (record && modern) || ((perturb_calendar || perturb_difference || perturb_ordering || perturb_before) && (!modern || edges.empty())) ||
             (perturb_difference && baseline) || (perturb_ordering && (baseline || ordering_baseline)) ||
             ((baseline && ordering_baseline) || (before_baseline && (baseline || ordering_baseline))) ||
@@ -51,6 +60,7 @@ int main(int argc, char** argv) {
         state->date_ordering_original = baseline || ordering_baseline;
         state->date_before_original = baseline || ordering_baseline || before_baseline;
         state->date_month_original = baseline || ordering_baseline || before_baseline || month_baseline;
+        state->date_day_of_month_original = baseline || ordering_baseline || before_baseline || month_baseline || day_baseline;
         if (expected->executed <= state->executed)
             throw std::runtime_error("Private fixture has no bounded execution interval");
         // A real finite upper bound remains independent of the replacement's
@@ -62,6 +72,7 @@ int main(int argc, char** argv) {
         }
         if (!edges.empty()) cm::aot::open_calendar_audit(edges, record, perturb_calendar, perturb_difference, perturb_ordering, include_before, perturb_before);
         if (!month_edges.empty()) cm::aot::open_month_audit(month_edges, month_record, perturb_month);
+        if (!day_edges.empty()) cm::aot::open_day_of_month_audit(day_edges, day_record, perturb_day);
         cm::aot::open_season_replay(directory, modern);
         bool complete = false;
         try { cm::aot::run(*state); }
@@ -69,6 +80,7 @@ int main(int argc, char** argv) {
         cm::aot::close_season_replay();
         cm::aot::close_calendar_audit(true);
         cm::aot::close_month_audit(true);
+        cm::aot::close_day_of_month_audit(true);
         if (!complete) throw std::runtime_error("Replay returned before the final full-day boundary");
         const auto difference = cm::aot::compare_season_states(*expected, *state, modern);
         if (!difference.empty()) throw std::runtime_error(difference);
@@ -87,6 +99,8 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Original before baseline unexpectedly used modern date before");
         if ((baseline || ordering_baseline || before_baseline || month_baseline) && state->date_month_calls)
             throw std::runtime_error("Original month baseline unexpectedly used modern date month");
+        if (state->date_day_of_month_original && state->date_day_of_month_calls)
+            throw std::runtime_error("Original day-of-month baseline unexpectedly used modern day-of-month");
         // Existing immutable fixtures may never call this independent entry.
         // Report zero honestly; the checker requires separate exercised
         // coverage before accepting an ordering negative control.
@@ -95,6 +109,7 @@ int main(int argc, char** argv) {
         cm::aot::close_season_replay();
         try { cm::aot::close_calendar_audit(); } catch (...) {}
         try { cm::aot::close_month_audit(); } catch (...) {}
+        try { cm::aot::close_day_of_month_audit(); } catch (...) {}
         std::cerr << error.what() << '\n';
         return 1;
     }

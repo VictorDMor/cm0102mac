@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-02
+# Native port investigation — updated 2026-10-03
 
 ## Required outcome
 
@@ -437,3 +437,38 @@ Before/preinstall/after inventories agree for the currently observed 809 Game /
 5 Runtime / 43 Runs files and all inventoried metadata. Personal saves, previous
 checkpoints, immutable LFS save, original inputs and historical streams remain
 unchanged. Private diagnostic settings are absent from the installed plist.
+
+## Semantic independent day-of-month delivery — 2026-10-03
+
+The independent `0x107182f0` entry is implemented in semantic C++23 with its
+own twelve-probe loop, ordered day reloads, selected-threshold reload and
+signed16 narrowing. The six previous operations and deferred leap behavior
+remain intact. The [day-of-month report](native-date-day-of-month-reconstruction.md)
+records 3,173 direct comparisons, 1,700 Gregorian oracle cases, 131,072 pure
+signed-day checks, sparse mapped-field evidence, own CMDOM001 stream controls,
+35/35 CTest groups and generated/focused UBSAN passing. The clean rebuild uses
+1,968 State-dependent linked objects with the stabilized layout.
+
+All three immutable fixtures passed two strict originals, two candidates,
+all five baselines and exercised negatives, with own counts 8,639 / 14,209 /
+8,733 per candidate. Historical streams retain byte-identity; ordering also
+exercised later/before and all seven negatives. The new private ARM64
+candidate passed original Save/normal exit/process absence/exact reopen/Load at
+28 August 2002 night and 1 September 2002 afternoon. Ordinary holidays crossed
+the month boundary and were stopped at the first observed September interval;
+Goias on August 31 completed 0:3. Calendar results and pending fixtures,
+Luisao's profile/contract and final 80% condition survived reload. Three runs
+recorded 5 / 10,735 / 3 own modern day-of-month calls; 40 available valid samples
+passed independent checks. This is separate from automatic equivalence evidence.
+
+The validated production ARM64 build is installed. Source/installed executable
+SHA-256 is `1fa57f3f11d3c911f4d452ed5abf58a55112ed6b71defafb6439428f0fd234dc`;
+the signed candidate retains
+`6e5ccab6215b16680874424bd8ad51cca2c4642456047ab1f0f01ce3b3deb964`.
+The new retained reference backup is
+`caf91df0b7d4313937711725022c38a59949bebe66a5d2c07e934efae1058756`.
+Before/preinstall/after personal inventories agree for 809 Game / 5 Runtime /
+43 Runs files and all inventoried metadata. All 645 protected file identities
+remain intact; the new saves/logs/builds are private and ignored. Installed
+program data matches the private inputs, and private diagnostic settings are
+absent from the production plist. No speed or full-engine completion is claimed.
