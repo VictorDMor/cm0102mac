@@ -1,5 +1,6 @@
 #include "calendar_adapter.hpp"
 #include "calendar.hpp"
+#include "date_subsystem_adapter.hpp"
 #include <sstream>
 #include <algorithm>
 #include <zlib.h>
@@ -9,7 +10,16 @@
 namespace cm::aot {
 namespace {
 gzFile audit = nullptr;
-bool audit_record = false, audit_original_running = false, audit_perturb = false;
+bool audit_record = false, audit_perturb = false;
+unsigned history_depth = 0;
+struct HistoryScope {HistoryScope(){++history_depth;}~HistoryScope(){--history_depth;}};
+struct DatePause {
+    State& state;MemoryObserver* observer;
+    explicit DatePause(State& s):state(s),observer(s.memory.date_observer){state.memory.date_observer=nullptr;}
+    ~DatePause(){state.memory.date_observer=observer;}
+    void body(){state.memory.date_observer=observer;}
+    void diagnostics(){state.memory.date_observer=nullptr;}
+};
 bool audit_perturb_difference = false;
 bool audit_perturb_ordering = false, audit_perturb_before = false, audit_include_before = false;
 std::uint64_t audit_index = 0;
@@ -130,28 +140,9 @@ void execute_month(State& s) {
     }
     s.wr<4>(12, 0xffffffffu); s.pc = std::uint32_t(s.r<4>(4128));
 }
-// r4 and XER carry are observable clobbers of the original leap helper. Its
-// unsigned 16-bit year makes both signed shifts nonnegative. Preserve these
-// effects even though the arithmetic module uses ordinary Gregorian divisibility.
-void leap_clobbers(State& s, std::uint16_t year) {
-    s.wr<4>(2440, s.r<4>(8)); // Ghidra call-context TOC register.
-    s.wr<4>(20, year);
-    if (year % 4 == 0) {
-        s.wr<4>(16, (UINT64_C(0x51eb851f) * year) >> 32);
-        s.wr<1>(1027, 0);
-    }
-    s.wr<4>(12, cm::calendar::is_leap(year));
-    s.wr<1>(2304, (cm::calendar::is_leap(year) ? 4 : 2) | (s.r<1>(1024) & 1));
-}
 Date read_date(const State& s, std::uint32_t address) {
     return {cm::calendar::narrow_day(int(s.memory.read<2>(address))),
             std::uint16_t(s.memory.read<2>(address + 2))};
-}
-void copy_date(State& s, std::uint32_t output, std::uint32_t input) {
-    // Ordered loads/stores retain partial alias effects; no memcpy or prefetch.
-    s.memory.write<2>(output, s.memory.read<2>(input));
-    s.memory.write<2>(output + 2, s.memory.read<2>(input + 2));
-    s.memory.write<1>(output + 4, s.memory.read<1>(input + 4));
 }
 void execute_ordering(State& s, bool before = false) {
     const auto stack = std::uint32_t(s.r<4>(4));
@@ -186,157 +177,35 @@ void execute_ordering(State& s, bool before = false) {
     s.wr<4>(12, result);
     s.pc = std::uint32_t(s.r<4>(4128));
 }
-void execute_difference(State& s) {
-    const auto stack = std::uint32_t(s.r<4>(4));
-    const auto link = std::uint32_t(s.r<4>(4128));
-    const auto first = std::uint32_t(s.r<4>(12));
-    s.memory.write<4>(stack - 4, s.r<4>(124));
-    const auto scratch = std::uint32_t(s.memory.read<4>(difference_scratch));
-    s.memory.write<4>(stack - 8, s.r<4>(120));
-    s.memory.write<4>(stack - 12, s.r<4>(116));
-    s.memory.write<4>(stack - 16, s.r<4>(112));
-    s.memory.write<4>(stack + 8, link);
-    s.memory.write<4>(stack - 80, stack);
-    s.wr<4>(4, stack - 80);
-    // Eight bytes by value: the five-byte date plus all three padding bytes.
-    s.memory.write<4>(stack + 28, s.r<4>(16));
-    s.memory.write<4>(stack + 32, s.r<4>(20));
-    s.wr<4>(24, scratch); s.wr<4>(120, first);
-    if (!s.memory.read<1>(difference_flag)) {
-        s.memory.write<2>(scratch, 40); s.memory.write<2>(scratch + 2, 1972);
-        s.memory.write<1>(scratch + 4, 1); s.memory.write<1>(difference_flag, 1);
-    }
-    s.memory.write<4>(stack - 24, s.memory.read<4>(stack + 28));
-    const auto first_year = std::uint16_t(s.memory.read<2>(first + 2));
-    const auto second_year = std::uint16_t(s.memory.read<2>(stack - 22));
-    s.memory.write<4>(stack - 20, s.memory.read<4>(stack + 32));
-    s.wr<4>(20, first_year);
-    bool later = first_year < second_year;
-    if (first_year == second_year) {
-        const auto second_day = cm::calendar::narrow_day(int(s.memory.read<2>(stack - 24)));
-        const auto first_day = cm::calendar::narrow_day(int(s.memory.read<2>(first)));
-        later = cm::calendar::difference_second_later({first_day, first_year}, {second_day, second_year});
-        s.wr<4>(16, std::uint32_t(int(second_day)));
-        const auto bits = std::uint32_t(int(first_day)) ^ std::uint32_t(int(second_day));
-        s.wr<1>(1027, (bits >> 31) && (bits & 1));
-    }
-    std::int32_t total = 0;
-    if (first_year != second_year) {
-        // Do not preload the day/flag: the year store may alias the first date.
-        s.memory.write<2>(scratch + 2, first_year);
-        s.memory.write<2>(scratch, s.memory.read<2>(first));
-        s.memory.write<1>(scratch + 4, s.memory.read<1>(first + 4));
-        auto current = std::uint16_t(s.memory.read<2>(scratch + 2));
-        while (later ? current < second_year : current > second_year) {
-            const auto leap_year = std::uint16_t(current - 1);
-            leap_clobbers(s, leap_year);
-            total += cm::calendar::difference_year_step(current, later);
-            current = std::uint16_t(int(current) + (later ? 1 : -1));
-            s.memory.write<2>(scratch + 2, current);
-            current = std::uint16_t(s.memory.read<2>(scratch + 2));
-        }
-    }
-    // The original always reloads both days after the ordered scratch writes.
-    const auto final_second_day = cm::calendar::narrow_day(int(s.memory.read<2>(stack + 28)));
-    const auto final_first_day = cm::calendar::narrow_day(int(s.memory.read<2>(first)));
-    total += int(final_first_day) - int(final_second_day);
-    s.wr<4>(12, std::uint32_t(total));
-    s.wr<1>(2304, 2 | (s.r<1>(1024) & 1)); // Final unsigned year comparison.
-    s.wr<4>(0, s.memory.read<4>(stack + 8)); s.wr<4>(4128, s.r<4>(0));
-    s.wr<4>(4, stack);
-    for (unsigned reg : {124u, 120u, 116u, 112u})
-        s.wr<4>(reg, s.memory.read<4>(stack - (128 - reg)));
-    s.pc = std::uint32_t(s.r<4>(4128));
-}
-void execute(State& s, const Boundary& boundary) {
-    const auto stack = std::uint32_t(s.r<4>(4));
-    const auto link = std::uint32_t(s.r<4>(4128));
-    const auto destination = std::uint32_t(s.r<4>(12));
-    const auto source = std::uint32_t(s.r<4>(16));
-    const auto offset = cm::calendar::narrow_day(int(s.r<2>(22)));
-    // Retain the exact legacy frame bytes and nonvolatile-register convention.
-    s.memory.write<4>(stack - 4, s.r<4>(124));
-    const auto scratch = std::uint32_t(s.memory.read<4>(boundary.scratch_slot));
-    s.memory.write<4>(stack - 8, s.r<4>(120));
-    s.memory.write<4>(stack - 12, s.r<4>(116));
-    s.memory.write<4>(stack - 16, s.r<4>(112));
-    s.memory.write<4>(stack + 8, link);
-    s.memory.write<4>(stack - 80, stack);
-    s.wr<4>(4, stack - 80);
-    s.wr<4>(124, scratch); s.wr<4>(120, destination);
-    if (!s.memory.read<1>(boundary.initialization)) {
-        s.memory.write<2>(scratch, 40); s.memory.write<2>(scratch + 2, 1972);
-        s.memory.write<1>(scratch + 4, 1); s.memory.write<1>(boundary.initialization, 1);
-    }
-    if (offset < 0) {
-        s.memory.write<2>(scratch + 2, s.memory.read<2>(source + 2));
-        s.wr<4>(116, scratch + 2); s.wr<4>(112, scratch + 4);
-        s.memory.write<2>(scratch, s.memory.read<2>(source));
-        s.memory.write<1>(scratch + 4, s.memory.read<1>(source + 4));
-        s.wr<4>(12, stack - 24); s.wr<4>(16, scratch);
-        s.wr<4>(20, std::uint32_t(-int(offset)));
-        s.wr<4>(4128, boundary.delegated_return);
-        execute(s, boundary.direction == Direction::forward ? subtraction : addition);
-        s.memory.write<2>(scratch + 2, s.memory.read<2>(stack - 22));
-        const auto leap = s.memory.read<1>(stack - 20);
-        const auto day = s.memory.read<2>(stack - 24);
-        s.wr<4>(12, std::uint32_t(cm::calendar::narrow_day(int(day))));
-        s.memory.write<2>(scratch, day); s.memory.write<1>(scratch + 4, leap);
-    } else {
-        s.wr<4>(112, scratch + 2);
-        s.memory.write<2>(scratch + 2, s.memory.read<2>(source + 2));
-        auto date = cm::calendar::shift_within_record(read_date(s, source),
-            std::uint16_t(offset), boundary.direction);
-        // The year was loaded before the day, and can overlap the source day.
-        date.year = std::uint16_t(s.memory.read<2>(scratch + 2));
-        s.memory.write<2>(scratch, std::uint16_t(date.day));
-        for (;;) {
-            date = read_date(s, scratch);
-            leap_clobbers(s, boundary.direction == Direction::forward ? date.year : std::uint16_t(date.year - 1));
-            if (!cm::calendar::crosses_year(date, boundary.direction)) break;
-            date = cm::calendar::cross_year(date, boundary.direction);
-            s.memory.write<2>(scratch, std::uint16_t(date.day));
-            s.memory.write<2>(scratch + 2, date.year);
-        }
-        leap_clobbers(s, std::uint16_t(s.memory.read<2>(scratch + 2)));
-        s.memory.write<1>(scratch + 4, s.r<4>(12));
-    }
-    copy_date(s, destination, scratch);
-    s.wr<4>(0, s.memory.read<4>(stack + 8)); s.wr<4>(4128, s.r<4>(0));
-    s.wr<4>(4, stack);
-    s.wr<4>(124, s.memory.read<4>(stack - 4));
-    s.wr<4>(120, s.memory.read<4>(stack - 8));
-    s.wr<4>(116, s.memory.read<4>(stack - 12));
-    s.wr<4>(112, s.memory.read<4>(stack - 16));
-    s.pc = std::uint32_t(s.r<4>(4128));
-}
+
 }
 bool try_modern_calendar(State& s, std::uint32_t entry) {
+    if(s.calendar_original_resume==entry){s.calendar_original_resume=0;return false;}
+    DatePause observation(s);
     if (entry == weekday_entry) {
         const bool original = s.calendar_original || s.date_weekday_original;
-        if (audit_original_running || (original && !weekday_audit)) return false;
-        if (weekday_audit && weekday_record && !original)
+        const auto active_weekday_audit=history_depth?nullptr:weekday_audit;
+        if (original && !active_weekday_audit) return false;
+        HistoryScope history;
+        if (active_weekday_audit && weekday_record && !original)
             throw std::runtime_error("Weekday reference recording requires original execution");
         const auto pointer = std::uint32_t(s.r<4>(12)), link = std::uint32_t(s.r<4>(4128));
         const bool sample = !original && s.date_weekday_calls < 32 && std::getenv("CM_AOT_VALIDATION_EVENT_POINTER");
-        const auto input = weekday_audit || sample ? s.memory.copy_out(pointer, 5) : std::vector<std::uint8_t>{};
+        const auto input = active_weekday_audit || sample ? s.memory.copy_out(pointer, 5) : std::vector<std::uint8_t>{};
         std::vector<std::uint8_t> edge;
         auto append = [&](std::uint64_t value, unsigned width) {
             for (unsigned i = width; i; --i) edge.push_back(std::uint8_t(value >> ((i - 1) * 8)));
         };
-        if (weekday_audit) {
+        if (active_weekday_audit) {
             append(entry, 4); append(pointer, 4); append(link, 4);
             edge.insert(edge.end(), input.begin(), input.end());
         }
         if (original) {
-            audit_original_running = true; s.pc = entry;
-            try {
-                do { if (!dispatch_page(s)) throw std::runtime_error("Uncompiled original weekday reference"); }
-                while (s.pc != link);
-            } catch (...) { audit_original_running = false; throw; }
-            audit_original_running = false;
+            observation.body(); s.calendar_original_resume=entry; s.pc = entry;
+            try { run_until(s,link); } catch (...) {s.calendar_original_resume=0;throw;}
+            observation.diagnostics();
         } else {
-            s.step(entry); ++s.date_weekday_calls; execute_weekday(s);
+            observation.body(); s.step(entry); ++s.date_weekday_calls; execute_weekday(s); observation.diagnostics();
             if (weekday_perturb && s.date_weekday_calls == 1) s.wr<4>(12, s.r<4>(12) + 1);
             if (sample)
                 std::fprintf(stderr, "date-weekday.modern entry=%08x sample=%llu pointer=%08x date=%u/%d flag=%u result=%d return=%08x\n",
@@ -344,15 +213,15 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
                     unsigned(read_be<2>(input.data()+2)), int(cm::calendar::narrow_day(int(read_be<2>(input.data())))),
                     unsigned(input[4]), int(std::bit_cast<std::int32_t>(std::uint32_t(s.r<4>(12)))), link);
         }
-        if (weekday_audit) {
+        if (active_weekday_audit) {
             append(s.r<4>(12), 4);
             edge.insert(edge.end(), s.registers.begin(), s.registers.end()); append(s.pc, 4);
             if (weekday_record) {
-                if (gzwrite(weekday_audit, edge.data(), unsigned(edge.size())) != int(edge.size()))
+                if (gzwrite(active_weekday_audit, edge.data(), unsigned(edge.size())) != int(edge.size()))
                     throw std::runtime_error("Cannot record private weekday edges");
             } else {
                 std::vector<std::uint8_t> expected(edge.size());
-                if (gzread(weekday_audit, expected.data(), unsigned(expected.size())) != int(expected.size()))
+                if (gzread(active_weekday_audit, expected.data(), unsigned(expected.size())) != int(expected.size()))
                     throw std::runtime_error("First divergence: weekday call count/truncated edge reference");
                 const auto mismatch = std::mismatch(expected.begin(), expected.end(), edge.begin());
                 if (mismatch.first != expected.end()) {
@@ -369,14 +238,15 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
     }
     if (entry == month_entry || entry == day_entry) {
         const bool is_day = entry == day_entry;
-        auto& stream = is_day ? day_audit : month_audit;
+        auto stream = history_depth ? nullptr : (is_day ? day_audit : month_audit);
         const bool record = is_day ? day_record : month_record;
         const bool perturb = is_day ? day_perturb : month_perturb;
         auto& index = is_day ? day_index : month_index;
         auto& calls = is_day ? s.date_day_of_month_calls : s.date_month_calls;
         const std::string name = is_day ? "day-of-month" : "month";
         const bool original = s.calendar_original || (is_day ? s.date_day_of_month_original : s.date_month_original);
-        if (audit_original_running || (original && !stream)) return false;
+        if (original && !stream) return false;
+        HistoryScope history;
         const auto date = std::uint32_t(s.r<4>(12)), link = std::uint32_t(s.r<4>(4128));
         std::vector<std::uint8_t> edge;
         auto append = [&](std::uint64_t value, unsigned width) {
@@ -393,15 +263,13 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
             edge.insert(edge.end(), thresholds.begin(), thresholds.end());
         }
         if (original) {
-            audit_original_running = true; s.pc = entry;
-            try {
-                do { if (!dispatch_page(s)) throw std::runtime_error("Uncompiled original " + name + " reference"); }
-                while (s.pc != link);
-            } catch (...) { audit_original_running = false; throw; }
-            audit_original_running = false;
+            observation.body(); s.calendar_original_resume=entry;s.pc=entry;
+            try {run_until(s,link);} catch (...) {s.calendar_original_resume=0;throw;}
+            observation.diagnostics();
         } else {
-            s.step(entry); ++calls;
+            observation.body(); s.step(entry); ++calls;
             if (is_day) execute_day_of_month(s); else execute_month(s);
+            observation.diagnostics();
             if (perturb && calls == 1) s.wr<4>(12, s.r<4>(12) + 1);
             if (sample) {
                 if (is_day)
@@ -442,10 +310,11 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
     const bool difference = entry == difference_entry;
     const bool before = entry == before_entry;
     const bool ordering = entry == ordering_entry || before;
-    const bool audited = audit && (!before || audit_include_before);
+    const bool audited = !history_depth && audit && (!before || audit_include_before);
     const bool original = s.calendar_original || (difference && s.date_difference_original) ||
                           (before ? s.date_before_original : ordering && s.date_ordering_original);
-    if (audit_original_running || (original && !audited)) return false;
+    if (original && !audited) return false;
+    HistoryScope history;
     const auto return_pc = std::uint32_t(s.r<4>(4128));
     const auto destination = std::uint32_t(s.r<4>(12));
     std::vector<std::uint8_t> edge;
@@ -464,12 +333,9 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
         ++s.calendar_exceptional_calls; return false;
     }
     if (original) {
-        audit_original_running = true; s.pc = entry;
-        try {
-            do { if (!dispatch_page(s)) throw std::runtime_error("Uncompiled original calendar reference"); }
-            while (s.pc != return_pc);
-        } catch (...) { audit_original_running = false; throw; }
-        audit_original_running = false;
+        observation.body();s.calendar_original_resume=entry;s.pc=entry;
+        try {run_until(s,return_pc);} catch (...) {s.calendar_original_resume=0;throw;}
+        observation.diagnostics();
     } else {
         s.step(entry); // Actual semantic dispatch, not fabricated original accounting.
         if (ordering) {
@@ -478,7 +344,7 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
             const auto packed = sample ? s.r<4>(20) : 0;
             const auto stack = std::uint32_t(s.r<4>(4));
             ++calls;
-            execute_ordering(s, before);
+            observation.body();execute_ordering(s, before);observation.diagnostics();
             const auto first = sample ? read_date(s, destination) : Date{};
             const auto second = sample ? read_date(s, stack + 28) : Date{};
             if (((before && audit_perturb_before) || (!before && audit_perturb_ordering)) && calls == 1)
@@ -493,7 +359,7 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
             const auto second = sample ? Date{cm::calendar::narrow_day(int(s.r<2>(16))), std::uint16_t(s.r<2>(18))} : Date{};
             const auto packed = sample ? s.r<4>(20) : 0;
             ++s.date_difference_calls;
-            execute_difference(s);
+            observation.body();execute_semantic_calendar_boundary(s, difference_entry);observation.diagnostics();
             if (audit_perturb_difference && s.date_difference_calls == 1)
                 s.wr<4>(12, s.r<4>(12) + 1);
             // Bounded private samples from real application calls; no UI option.
@@ -503,7 +369,7 @@ bool try_modern_calendar(State& s, std::uint32_t entry) {
                     unsigned(packed), int(std::bit_cast<std::int32_t>(std::uint32_t(s.r<4>(12)))), return_pc);
         } else {
             ++s.calendar_calls[entry == addition.entry ? 0 : 1];
-            execute(s, entry == addition.entry ? addition : subtraction);
+            observation.body();execute_semantic_calendar_boundary(s, entry);observation.diagnostics();
         }
         if (!difference && !ordering && audit_perturb && s.calendar_calls[0] + s.calendar_calls[1] == 1)
             s.memory.write<2>(destination, s.memory.read<2>(destination) + 1);

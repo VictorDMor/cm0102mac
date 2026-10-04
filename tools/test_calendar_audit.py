@@ -2,7 +2,7 @@ import json
 import sqlite3
 import unittest
 from pathlib import Path
-from calendar_audit import require_calendar_contract
+from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES, CONTRACTS
 from compile_recomp import generate_page
 
 INDEX = Path(__file__).resolve().parent.parent / ".local/recomp-input/instructions.sqlite"
@@ -106,6 +106,34 @@ class CalendarAuditTests(unittest.TestCase):
         self.assertIn("if (try_modern_calendar(s, 0x103317f0)) return true;", code)
         with self.assertRaises(ValueError):
             require_calendar_contract(0x10331, [r for r in records if r["address"] != 0x103317f0])
+
+    def test_all_pending_destinations_and_body_fragments(self):
+        self.assertEqual(len(DATE_SUBSYSTEM_ENTRIES), 26)
+        self.assertEqual(len({start for start, _, _ in CONTRACTS}), 34)
+        for page in (0x10715, 0x10716, 0x10717, 0x10718):
+            records = self.records(page)
+            require_calendar_contract(page, records)
+            code = generate_page(page, records, {r["address"] for r in records})
+            for entry in DATE_SUBSYSTEM_ENTRIES:
+                if entry >> 12 != page:
+                    continue
+                self.assertIn(f"case 0x{entry:x}: goto i_{entry:x};", code)
+                self.assertIn(f"if (try_modern_date_subsystem(s, 0x{entry:x})) return true;", code)
+            for start, end, _ in CONTRACTS:
+                if not start >> 12 <= page <= (end - 1) >> 12:
+                    continue
+                body = [r for r in records if start <= r["address"] < end]
+                for victim in (body[0]["address"], body[-1]["address"]):
+                    with self.assertRaises(ValueError):
+                        require_calendar_contract(page, [r for r in records if r["address"] != victim])
+
+    def test_cross_page_formatter_contracts(self):
+        for page, address in ((0x10715, 0x10715ffc), (0x10716, 0x10716000),
+                              (0x10716, 0x10716ffc), (0x10717, 0x10717000)):
+            records = self.records(page)
+            next(r for r in records if r["address"] == address)["ops"] = []
+            with self.assertRaisesRegex(ValueError, "calendar contract changed"):
+                require_calendar_contract(page, records)
 
 
 if __name__ == "__main__":

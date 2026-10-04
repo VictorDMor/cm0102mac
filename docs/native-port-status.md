@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-03
+# Native port investigation — updated 2026-10-04
 
 ## Required outcome
 
@@ -520,3 +520,42 @@ agree for 809 Game / 5 Runtime / 43 Runs files, contents and metadata. All 745
 protected identities and the four pending prompts remain unchanged. Installed
 program data matches private inputs; production diagnostic plist properties are
 absent. Saves, logs, original payloads and builds remain private and ignored.
+
+## Semantic Date subsystem delivery — October 4, 2026
+
+The [Date subsystem report](native-date-subsystem-reconstruction.md) records
+all 26 newly implemented entries and the closed 34-entry production manifest.
+Construction, adjustment, leap, week/record arithmetic, nine formatters and
+presentation helpers are semantic C++23; their original language/template,
+diagnostic, ordinal-string and native-service dependencies remain outside Date.
+The original five-byte layout, mutable tables and invalid-input behavior remain,
+including the separately deferred ascending-year difference leap quirk.
+
+The final build passes 6,871 direct original/semantic ABI/effect comparisons,
+104 composed stream agreements, 52 own-result negatives and 26 callback pairs.
+All eight earlier contracts pass new regressions; CTest passes 39/39, explicit
+Python audits and generated/focused UBSAN pass. Day and ordering integrated
+campaigns pass with byte-identical recapture of all four historical streams.
+The weekly original capture and both semantic replays completed, with historical
+identities and per-run identity checks. At the user's explicit request, the
+remaining extended weekly baselines/negatives and final count matrix were stopped
+and waived. This delivery does not claim a full weekly campaign PASS.
+
+Two Save/normal exit/process absence/exact reopen/Original Load cycles pass
+around natural progression from September 3 morning to September 4 night.
+Dates/phases, fixtures/results and Luisao's observed profile/contract persist.
+Additional normal UI flows resolve rare formatter and language coverage; all
+26 new entries have their own real calls. Original-only UI samples at the six
+rare presentation callers match the semantic return and output bytes. Personal
+content and metadata, 858 protected identities and the new installed reference
+remain unchanged. The complete 34-entry ARM64 production build is installed;
+source and installed executable SHA-256 is
+`a35a303f441d352d61e0ab0a8e154e06f14f747461310c9e6ac28ce36abaf1e5`.
+The new executable reference preserves the preceding installed
+`7284838b3e6d74785a6969d64bf2d19619ad2cdc3e5e7c0601e6e551a97db063`.
+Fresh preinstall/post-install personal content and all metadata checks pass.
+At the user's request, large captures and temporary test artifacts from this
+execution were cleaned after identities were recorded; saves, immutable fixtures,
+protected history, original inputs, candidates/reference and evidence receipts
+remain private and preserved. Cleanup removed about 18.9 GB; post-cleanup complete
+personal/historical content and metadata checks pass.

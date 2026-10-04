@@ -36,6 +36,7 @@ int main(int argc, char** argv) {
             s.memory.write<4>(fixture + offset, 0x12340000 + offset);
         }
         unsigned cases = 0;
+        std::array<std::uint64_t,2> expected_calls{};
         for (const int y : {1900, 1999, 2000, 2001, 2002, 2004, 2100}) {
           for (const auto md : {January/1, February/28, March/1, December/31}) {
            for (const int offset : {-730, -366, -365, -28, -1, 0, 1, 28, 365, 366, 730}) {
@@ -73,13 +74,15 @@ int main(int argc, char** argv) {
                         "Original calendar scratch or lazy initialization side effect changed");
                 if (offset < 0) require(s.memory.copy_out(subtract ? forward_scratch : backward_scratch, 5) == expected,
                                         "Original signed offset did not preserve the delegated scratch result");
+                ++expected_calls[subtract?1:0];
+                if(offset<0)++expected_calls[subtract?0:1];
                 ++cases;
              }
             }
            }
           }
         }
-        if (!s.calendar_original) require(s.calendar_calls[0] == cases / 2 && s.calendar_calls[1] == cases / 2 &&
+        if (!s.calendar_original) require(s.calendar_calls == expected_calls &&
                                           !s.calendar_exceptional_calls, "Modern oracle did not use both semantic entries exclusively");
         std::cout << cases << (s.calendar_original ? " original" : " modern") << " calendar cases: month/year/leap/century edges, signed offsets, in-place dates, scratch initialization, ABI and no native/RNG calls\n";
         return 0;

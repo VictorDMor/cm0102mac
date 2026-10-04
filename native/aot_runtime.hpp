@@ -95,10 +95,13 @@ struct MemoryObserver {
     virtual void mapped(std::uint32_t start, std::uint64_t size) = 0;
     virtual void written(std::uint32_t start, const std::uint8_t* bytes, std::size_t size) = 0;
     virtual void cleared(std::uint32_t start, std::uint64_t size) = 0;
+    virtual void read(std::uint32_t, const std::uint8_t*, unsigned) {}
 };
 class Memory {
 public:
     MemoryObserver* observer = nullptr;
+    // Separate Date diagnostics survive import transcript observer switches.
+    MemoryObserver* date_observer = nullptr;
     // Optional direct boundary diagnostics, independent of write transcripts.
     std::vector<std::pair<std::uint32_t, unsigned>>* read_trace = nullptr;
     Memory();
@@ -114,12 +117,14 @@ public:
     template <unsigned N> std::uint64_t read(std::uint64_t address) const {
         check_scalar<N>(address);
         if (read_trace) read_trace->emplace_back(std::uint32_t(address), N);
+        if (date_observer) date_observer->read(std::uint32_t(address), data_ + address, N);
         return read_be<N>(data_ + address);
     }
     template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
         check_scalar<N>(address);
         write_be<N>(data_ + address, value);
         if (observer) observer->written(std::uint32_t(address), data_ + address, N);
+        if (date_observer) date_observer->written(std::uint32_t(address), data_ + address, N);
     }
 private:
     template <unsigned N> void check_scalar(std::uint64_t address) const {
@@ -178,7 +183,13 @@ struct State {
     bool calendar_original = false;
     std::array<std::uint64_t, 2> calendar_calls{};
     std::uint64_t calendar_exceptional_calls = 0;
-    // Private baseline selections; production uses all eight semantic entries.
+    // Final Date diagnostic layout. These are never serialized in saves or
+    // private runtime snapshots; normal production has no read observer.
+    bool date_subsystem_original = false;
+    std::array<bool,26> date_entry_original{};
+    std::array<std::uint64_t,26> date_subsystem_calls{},date_original_calls{};
+    std::uint32_t date_original_resume = 0, calendar_original_resume = 0;
+    // Private baseline selections; production uses all 34 semantic entries.
     bool date_difference_original = false;
     std::uint64_t date_difference_calls = 0;
     bool date_ordering_original = false;
@@ -202,6 +213,9 @@ bool dispatch_page(State& state);
 const char* import_name(std::uint32_t address);
 void load_program(State& state, const std::filesystem::path& directory);
 void run(State& state);
+// Execute a direct dependency call without callback argument marshalling or
+// restoration. Imports, callbacks and transcript boundaries use the same path.
+void run_until(State& state, std::uint32_t return_pc);
 bool bridge_import(State& state, const std::string& name);
 std::uint32_t allocate(State& state, std::uint32_t size, bool clear);
 void deallocate(State& state, std::uint32_t address);

@@ -52,6 +52,7 @@ void Memory::map(std::uint32_t start, std::uint64_t size) {
         break;
     }
     if (observer) observer->mapped(start, size);
+    if (date_observer) date_observer->mapped(start, size);
 }
 void instruction_budget_exhausted() {
     throw std::runtime_error("Native instruction budget exhausted");
@@ -126,11 +127,13 @@ void Memory::copy_in(std::uint32_t start, const std::vector<std::uint8_t>& bytes
     check(start, bytes.size());
     std::memcpy(data_ + start, bytes.data(), bytes.size());
     if (observer) observer->written(start, data_ + start, bytes.size());
+    if (date_observer) date_observer->written(start, data_ + start, bytes.size());
 }
 void Memory::clear(std::uint32_t start, std::uint64_t size) {
     check(start, size);
     std::memset(data_ + start, 0, size);
     if (observer) observer->cleared(start, size);
+    if (date_observer) date_observer->cleared(start, size);
 }
 std::vector<std::uint8_t> Memory::copy_out(std::uint32_t start, std::size_t size) const {
     check(start, size);
@@ -143,9 +146,9 @@ std::vector<std::pair<std::uint32_t, std::uint64_t>> Memory::mapped_ranges() con
         result.emplace_back(std::uint32_t(range.start), range.end - range.start);
     return result;
 }
-void run(State& s) {
+void run_until(State& s, std::uint32_t return_pc) {
     const bool trace = std::getenv("CM_AOT_TRACE_IMPORTS") != nullptr;
-    while (s.pc != return_sentinel) {
+    while (s.pc != return_pc) {
         if (const char* name = import_name(s.pc)) {
             if (season_replay_import(s, name)) { ++s.native_calls; continue; }
             season_record_import_begin(s);
@@ -167,4 +170,5 @@ void run(State& s) {
             throw std::runtime_error("Uncompiled original address: " + hex_address(s.pc));
     }
 }
+void run(State& s) {run_until(s,return_sentinel);}
 }

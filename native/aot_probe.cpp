@@ -1,4 +1,5 @@
 #include "calendar_adapter.hpp"
+#include "date_subsystem_audit.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -29,7 +30,11 @@ int cm::aot::run_probe(int argc, char** argv) {
         cm::aot::load_program(*state, argv[1]);
         // Private reference capture must never record the semantic candidate
         // as its own oracle. Normal apps retain the production defaults.
-        state->calendar_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr;
+        state->calendar_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr || std::getenv("CM_AOT_DATE_ORIGINAL") != nullptr;
+        if(const auto* date_edges=std::getenv("CM_AOT_DATE_RECORD")) {
+            if(!state->calendar_original)throw std::runtime_error("App Date recording requires explicit all-original selection");
+            open_date_subsystem_audit(date_edges,true);
+        }
         if (argc == 5) state->platform = std::make_shared<cm::aot::NativePlatform>(argv[3], argv[4]);
         state->pc = std::stoul(argv[2], nullptr, 0);
         cm::aot::run(*state);
@@ -38,7 +43,8 @@ int cm::aot::run_probe(int argc, char** argv) {
                   << cm::aot::hex_address(state->r<4>(12)) << '\n';
         return 0;
     } catch (const ApplicationExit&) {
-        std::cout << calendar_call_summary(*state) << '\n';
+        close_date_subsystem_audit(true);
+        std::cout << calendar_call_summary(*state) << '\n' << date_subsystem_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;
@@ -51,6 +57,7 @@ int cm::aot::run_probe(int argc, char** argv) {
             std::cerr << "r" << r << "=" << cm::aot::hex_address(state->r<4>(r * 4));
             std::cerr << (r % 4 == 3 ? '\n' : ' ');
         }
+        try {close_date_subsystem_audit();} catch (...) {}
         // Original PowerPC ABI back chains, read only after a failed run. Each
         // callee saves its return address in its caller's linkage area.
         auto frame = std::uint32_t(state->r<4>(4));
