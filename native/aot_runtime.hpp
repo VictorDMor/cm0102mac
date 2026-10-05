@@ -20,6 +20,7 @@ namespace cm::aot {
 class NativePlatform;
 struct RngBoundaryObserver;
 struct BackgroundBoundaryObserver;
+struct CollectionBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -219,6 +220,13 @@ struct State {
     std::array<std::uint64_t, 4> background_calls{}, background_original_calls{};
     std::uint32_t background_original_resume = 0;
     BackgroundBoundaryObserver* background_observer = nullptr;
+    // Collection lookup diagnostics are private, process-local, and never
+    // serialized. Observing them does not replace memory or drawing observers.
+    bool collection_original = false;
+    std::array<bool, 5> collection_entry_original{};
+    std::array<std::uint64_t, 5> collection_calls{}, collection_original_calls{};
+    std::uint32_t collection_original_resume = 0;
+    CollectionBoundaryObserver* collection_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

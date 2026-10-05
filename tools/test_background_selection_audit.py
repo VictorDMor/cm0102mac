@@ -9,6 +9,7 @@ import unittest
 from background_selection_audit import (
     BACKGROUND_SELECTION_ENTRIES, CONTRACTS, require_background_selection_contract)
 from calendar_audit import DATE_SUBSYSTEM_ENTRIES
+from collection_lookup_audit import COLLECTION_LOOKUP_ENTRIES
 from compile_recomp import CALENDAR_ADAPTER_ENTRIES, SEMANTIC_REPLACEMENTS, generate_page, operation
 from rng_core_audit import RNG_CORE_ENTRIES
 
@@ -16,7 +17,7 @@ INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructio
 
 
 class BackgroundManifestTests(unittest.TestCase):
-    def test_41_entries_preserve_existing_modules(self):
+    def test_46_entries_preserve_existing_modules(self):
         existing = (
             tuple((entry, 'calendar_adapter') for entry in (
                 0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
@@ -25,10 +26,12 @@ class BackgroundManifestTests(unittest.TestCase):
             tuple((entry, 'rng_core_adapter') for entry in RNG_CORE_ENTRIES))
         self.assertEqual(len(existing), 37)
         self.assertEqual(SEMANTIC_REPLACEMENTS[:37], existing)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[37:], tuple(
+        self.assertEqual(SEMANTIC_REPLACEMENTS[37:41], tuple(
             (entry, 'background_selection_adapter') for entry in BACKGROUND_SELECTION_ENTRIES))
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 41)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 41)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[41:], tuple(
+            (entry, 'collection_lookup_adapter') for entry in COLLECTION_LOOKUP_ENTRIES))
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 46)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 46)
         self.assertEqual(len(CALENDAR_ADAPTER_ENTRIES) + len(DATE_SUBSYSTEM_ENTRIES), 34)
 
 
@@ -93,7 +96,7 @@ class BackgroundAuditTests(unittest.TestCase):
                 not begin <= r['address'] < limit for begin, limit, _ in CONTRACTS)]
             require_background_selection_contract(page, unrelated)
 
-    def test_sampler_wrappers_accessors_and_null_guards_remain_generated(self):
+    def test_sampler_wrappers_accessor_calls_and_null_guards_remain_generated(self):
         selector_code = generate_page(0x10712, self.records(0x10712),
                                      {r['address'] for r in self.records(0x10712)})
         self.assertIn('i_107124e0:', selector_code)

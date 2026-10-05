@@ -656,3 +656,35 @@ Save/Load was not retested at the user's direction; it is neither approved by
 this delivery nor a required pending gate. This reconstructs the four-selector
 core, not the whole engine, and makes no visual or performance claim.
 See the [detailed report](native-background-selection-reconstruction.md).
+
+## Semantic collection lookup core — October 5, 2026
+
+Five Mac collection queries now run semantic C++23: list indexing `0x1074dd40`,
+positional wrapper `0x1074df60`, descriptor wrapper `0x1074df90`, preorder helper
+`0x1074e150` and comparator-search helper `0x1074e5b0`. Destination hooks on
+pages `0x1074d`/`0x1074e` preserve their original callers and recursive/callback
+dispatch. The manifest contains 46 entries, retaining the prior 41 in order.
+Guest position aliases, wrapped decrement, four expanded levels, 80-byte helper
+frames, mutable comparator vectors/children, TOC/clobbers and ordered fault
+prefixes remain compatible with the original Mac export.
+
+The consistent Release ARM64 build passes. Focused acceptance passes 263
+original-versus-semantic comparisons, 27 faults, five own negatives, nonempty
+normal dispatch of all five entries, recursion of both helpers, five callbacks,
+five generated indirect transitions and eight background/RNG compositions.
+Both existing background regression/equivalence checks pass. Five new Python
+audit tests and four updated background audit tests pass without skips; UBSAN
+of only the new adapter/harness passes. Only the new harness was repeated after
+correcting an original-behavior expectation in a child-fault fixture.
+
+The protected installer ran once at 18:55:18 UTC (15:55 local time). Source,
+candidate and installed ARM64 hashes match, bundled originals and production
+plist are verified, and ad-hoc bundle signatures pass strict verification.
+Personal content/metadata, presentation preference state, retained handoffs and
+both installed references are preserved. No live app session was opened;
+Save/Load was not retested at the user's direction and is not a required gate.
+Date, RNG, background selectors, appearance and commands retain their delivered
+behavior. Collection lifecycle operations, other accessors and descriptor
+comparison remain generated. This completes the five-query block, not the whole
+engine or collection lifecycle, with no visual or performance claim.
+See the [detailed report](native-collection-lookup-reconstruction.md).

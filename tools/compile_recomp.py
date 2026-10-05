@@ -17,6 +17,7 @@ from local_temporaries import LocalTemporaries
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
 from background_selection_audit import require_background_selection_contract, BACKGROUND_SELECTION_ENTRIES
+from collection_lookup_audit import require_collection_lookup_contract, COLLECTION_LOOKUP_ENTRIES
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -26,7 +27,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
     tuple((entry, "date_subsystem_adapter") for entry in DATE_SUBSYSTEM_ENTRIES) +
     tuple((entry, "rng_core_adapter") for entry in RNG_CORE_ENTRIES) +
-    tuple((entry, "background_selection_adapter") for entry in BACKGROUND_SELECTION_ENTRIES))
+    tuple((entry, "background_selection_adapter") for entry in BACKGROUND_SELECTION_ENTRIES) +
+    tuple((entry, "collection_lookup_adapter") for entry in COLLECTION_LOOKUP_ENTRIES))
 
 
 def integer(value):
@@ -241,6 +243,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
     require_background_selection_contract(page, instructions)
+    require_collection_lookup_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -276,6 +279,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "rng_core_adapter.hpp"')
     if page in (0x10712, 0x10713):
         code.insert(1, '#include "background_selection_adapter.hpp"')
+    if page in (0x1074d, 0x1074e):
+        code.insert(1, '#include "collection_lookup_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -307,6 +312,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_rng_core(s, 0x{a:x})) return true;")
         if a in BACKGROUND_SELECTION_ENTRIES:
             code.append(f"if (try_modern_background_selection(s, 0x{a:x})) return true;")
+        if a in COLLECTION_LOOKUP_ENTRIES:
+            code.append(f"if (try_modern_collection_lookup(s, 0x{a:x})) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
