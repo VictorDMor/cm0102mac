@@ -82,6 +82,17 @@ int main(int argc, char** argv) {
         ui.set_menu_item_text(2, 3, translated);
         require(ui.menu_item_text(2, 3) == translated && ui.count_menu_items(2) == 3,
                 "Native localized menu title update changed encoding or item count");
+        ui.set_menu_item_enabled(2, 3, false);
+        require(!ui.menu_selection_enabled(0x00020003), "Disabled original menu selection accepted");
+        ui.set_menu_item_enabled(2, 3, true);
+        require(ui.menu_selection_enabled(0x00020003) && !ui.menu_selection_enabled(0x00020002) &&
+            !ui.menu_selection_enabled(0x00020005), "MenuSelect must reject separator/deleted item identities");
+        ui.set_menu_item_enabled(2, 0, false);
+        require(!ui.menu_selection_enabled(0x00020003), "Disabled whole menu accepted a selection");
+        ui.set_menu_item_enabled(2, 0, true);
+        ui.set_menu_bar({ids.begin(), ids.end()});
+        require(ui.menu_selection_enabled(0x00020003) && ui.menu_item_text(2, 3) == translated,
+            "Repeated SetMenuBar changed original selection identity or title");
         ui.redraw_menu_bar();
         std::cout << menus << " original menus and " << items << " item texts verified in native AppKit menus\n";
         return 0;

@@ -602,3 +602,25 @@ xattrs, modes, mtime and flags; all 1,491 historical identities remain preserved
 Cleanup and reproducible-payload details are recorded in the RNG report.
 This remains a working development build, not an entirely reconstructed engine,
 a full-career guarantee or a claimed speed improvement.
+
+
+## Native presentation and direct commands — October 5, 2026
+
+The installed app includes interface scale controls, native text/control drawing and
+named Continue/Save/Load/Options/Back commands. The user expanded scope to native
+text after rejecting bitmap-only enlargement, and confirmed physical clicks.
+Mouse menu events now follow the same original command path as shortcuts without
+querying a keyboard-only AppKit property. The 37 semantic replacements are unchanged.
+
+The user accepted the native appearance. Live checks cover 200% on the external
+1x display, 100%/125%/Fit on Retina, and recovery after monitor removal. The final
+candidate completed a keyboard Save/normal exit/reopen/Load cycle at 125%, with
+career fields compared afterward. Menu Continue produced one original response;
+Options and cancellation worked. Reused-image drawing and stale Return input
+were corrected and rechecked. The final suite passed 44/44 CTest.
+
+The protected installer ran once at 15:12 UTC on October 5. The installed ARM64
+executable matches the tested source; personal Game, Runtime and Runs content and
+metadata, protected references and fixtures remain unchanged. Bitmap artwork
+retains its original resolution; Load is supported from the start screen.
+See the [detailed report](native-presentation-and-direct-commands.md).

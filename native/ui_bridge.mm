@@ -1,4 +1,5 @@
 #include "ui_bridge.hpp"
+#include "native_drawing.hpp"
 #include "match_turbo.hpp"
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
@@ -12,9 +13,15 @@
 #include <cstdlib>
 #include <chrono>
 #include <thread>
+#include <functional>
 
 namespace {
 bool match_turbo = false;
+bool repeated_key_event(NSEvent* event) {
+    // isARepeat is undefined for mouse/accessibility menu events and AppKit
+    // raises NSInternalInconsistencyException if queried for a non-key event.
+    return (event.type == NSEventTypeKeyDown || event.type == NSEventTypeKeyUp) && event.isARepeat;
+}
 std::uint16_t original_modifiers(NSEventModifierFlags flags) {
     std::uint16_t value = 0;
     if (flags & NSEventModifierFlagCommand) value |= 0x100;
@@ -62,6 +69,11 @@ std::uint8_t original_character(NSEvent* event) {
     std::uint32_t token;
     bool paintQueued;
     double wheelRemainder;
+    cm::aot::LegacyRect logicalBounds;
+    CGImageRef sourceImage;
+    CGImageRef nativeBackground;
+    std::shared_ptr<const cm::aot::NativeDrawing> nativeDrawing;
+    std::function<cm::aot::PresentationPoint(cm::aot::PresentationPoint)> inversePoint;
 }
 @property(nonatomic, strong) NSImage* renderedImage;
 @end
@@ -71,9 +83,12 @@ std::uint8_t original_character(NSEvent* event) {
 - (BOOL)acceptsFirstMouse:(NSEvent*)event { (void)event; return YES; }
 - (void)queueInput:(NSEvent*)native kind:(cm::aot::UIEvent::Kind)kind {
     cm::aot::UIEvent event{kind, token};
-    const auto point = [self.window convertPointToScreen:native.locationInWindow];
-    const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
-    event.x = std::int16_t(std::lround(point.x)); event.y = std::int16_t(std::lround(height - point.y));
+    const auto host = [self.window convertPointToScreen:native.locationInWindow];
+    const auto point = inversePoint({host.x, CGRectGetHeight(CGDisplayBounds(CGMainDisplayID())) - host.y});
+    // One inverse for window events and continuous polling, including the
+    // unscaled desktop background. Margin positions stay outside the panel.
+    event.x = std::int16_t(std::clamp(std::floor(point.x), double(INT16_MIN), double(INT16_MAX)));
+    event.y = std::int16_t(std::clamp(std::floor(point.y), double(INT16_MIN), double(INT16_MAX)));
     event.modifiers = original_modifiers(native.modifierFlags);
     if (kind != cm::aot::UIEvent::Kind::mouse_down && (NSEvent.pressedMouseButtons & 1) == 0)
         event.modifiers |= 0x80;
@@ -107,7 +122,21 @@ std::uint8_t original_character(NSEvent* event) {
     [self queueInput:event kind:cm::aot::UIEvent::Kind::mouse_moved];
     pending->back().message = 0xfa000000;
 }
+- (void)mouseDragged:(NSEvent*)event { [self mouseMoved:event]; }
+- (void)rightMouseDragged:(NSEvent*)event { [self mouseMoved:event]; }
+- (void)otherMouseDragged:(NSEvent*)event { [self mouseMoved:event]; }
+- (void)dealloc {
+    if (sourceImage) CGImageRelease(sourceImage);
+    if (nativeBackground) CGImageRelease(nativeBackground);
+}
 - (void)keyDown:(NSEvent*)event {
+    // AppKit handles enabled command shortcuts first. Swallow disabled/repeated
+    // command equivalents here instead of leaking them into bitmap text fields
+    // or the original Command-S sound toggle.
+    if ((event.modifierFlags & NSEventModifierFlagCommand) &&
+        (event.keyCode == 1 || event.keyCode == 31 || event.keyCode == 36 || event.keyCode == 43 || event.keyCode == 33)) {
+        NSBeep(); return;
+    }
     [self queueInput:event kind:event.isARepeat ? cm::aot::UIEvent::Kind::auto_key : cm::aot::UIEvent::Kind::key_down];
 }
 - (void)keyUp:(NSEvent*)event { [self queueInput:event kind:cm::aot::UIEvent::Kind::key_up]; }
@@ -115,8 +144,23 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)drawRect:(NSRect)dirty {
     (void)dirty;
     if (self.renderedImage) {
-        [self.renderedImage drawInRect:self.bounds fromRect:NSZeroRect operation:NSCompositingOperationCopy
-                              fraction:1 respectFlipped:YES hints:@{NSImageHintInterpolation:@(NSImageInterpolationNone)}];
+        // Draw original pixels directly into AppKit's backing context. Do not
+        // rasterize a resized NSImage or multiply the user scale by Retina.
+        CGContextRef context = NSGraphicsContext.currentContext.CGContext;
+        CGContextSaveGState(context);
+        CGContextSetInterpolationQuality(context, kCGInterpolationNone);
+        CGContextSetBlendMode(context, kCGBlendModeCopy);
+        CGContextTranslateCTM(context, 0, self.bounds.size.height);
+        CGContextScaleCTM(context, 1, -1);
+        CGContextDrawImage(context, NSRectToCGRect(self.bounds), nativeBackground ? nativeBackground : sourceImage);
+        CGContextRestoreGState(context);
+        if (nativeDrawing) {
+            CGContextSaveGState(context);
+            CGContextScaleCTM(context, self.bounds.size.width / nativeDrawing->width,
+                             self.bounds.size.height / nativeDrawing->height);
+            cm::aot::draw_native_shapes(context, *nativeDrawing);
+            CGContextRestoreGState(context);
+        }
     } else if (!paintQueued) {
         paintQueued = true;
         pending->push_back({cm::aot::UIEvent::Kind::update, token});
@@ -130,14 +174,32 @@ std::uint8_t original_character(NSEvent* event) {
     std::set<std::filesystem::path>* hostArguments;
     std::map<std::uint32_t, CMNativeWindow*>* gameWindows;
     bool launching;
+    std::function<void()> refreshPresentation;
+    std::function<void(NSInteger)> selectScale;
+    std::function<void(cm::aot::DirectCommand)> selectCommand;
 }
 - (void)originalMenuAction:(NSMenuItem*)sender;
+- (void)interfaceScaleAction:(NSMenuItem*)sender;
+- (void)directCommandAction:(NSMenuItem*)sender;
 - (void)originalQuitAction:(NSMenuItem*)sender;
 - (void)validationClick:(NSMenuItem*)sender;
 - (void)validationMove:(NSMenuItem*)sender;
 - (void)toggleMatchTurbo:(NSMenuItem*)sender;
 @end
 @implementation CMNativeAppDelegate
+- (void)interfaceScaleAction:(NSMenuItem*)sender { selectScale(sender.tag); }
+- (void)directCommandAction:(NSMenuItem*)sender {
+    if (sender.enabled && !repeated_key_event(NSApp.currentEvent)) selectCommand(cm::aot::DirectCommand(sender.tag));
+}
+- (void)applicationDidChangeScreenParameters:(NSNotification*)notification {
+    (void)notification; if (refreshPresentation) refreshPresentation();
+}
+- (void)windowDidChangeScreen:(NSNotification*)notification {
+    (void)notification; if (refreshPresentation) refreshPresentation();
+}
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification {
+    (void)notification; if (refreshPresentation) refreshPresentation();
+}
 - (void)validationPosition:(BOOL)click {
     // A native accessibility action remains usable when a UI driver's pixel
     // click mapping is lost after a long main-thread simulation. This explicit
@@ -180,10 +242,12 @@ std::uint8_t original_character(NSEvent* event) {
     NSScanner* sy = [NSScanner scannerWithString:y.stringValue];
     CMNativeView* view = (CMNativeView*)target.contentView;
     if (![sx scanInteger:&horizontal] || !sx.atEnd || ![sy scanInteger:&vertical] || !sy.atEnd ||
-        horizontal < 0 || vertical < 0 || horizontal >= view.bounds.size.width || vertical >= view.bounds.size.height) {
+        horizontal < 0 || vertical < 0 || horizontal >= view->logicalBounds[3] - view->logicalBounds[1] || vertical >= view->logicalBounds[2] - view->logicalBounds[0]) {
         NSBeep(); return;
     }
-    const auto point = [view convertPoint:NSMakePoint(horizontal, vertical) toView:nil];
+    const auto point = [view convertPoint:NSMakePoint(
+        horizontal * view.bounds.size.width / (view->logicalBounds[3] - view->logicalBounds[1]),
+        vertical * view.bounds.size.height / (view->logicalBounds[2] - view->logicalBounds[0])) toView:nil];
     const auto timestamp = NSProcessInfo.processInfo.systemUptime;
     if (!click) {
         NSEvent* event = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
@@ -206,6 +270,11 @@ std::uint8_t original_character(NSEvent* event) {
     sender.state = cm::aot::match_turbo_enabled() ? NSControlStateValueOn : NSControlStateValueOff;
 }
 - (void)originalMenuAction:(NSMenuItem*)sender {
+    if (!sender.enabled || repeated_key_event(NSApp.currentEvent)) return;
+    if (sender.tag == 0x00020001 && selectCommand) { selectCommand(cm::aot::DirectCommand::save_game); return; }
+    if (std::any_of(pending->begin(), pending->end(), [](const auto& event) {
+        return event.kind == cm::aot::UIEvent::Kind::menu;
+    })) { NSBeep(); return; }
     cm::aot::UIEvent event{cm::aot::UIEvent::Kind::menu};
     event.message = std::uint32_t(sender.tag);
     pending->push_back(std::move(event));
@@ -269,7 +338,7 @@ void set_match_turbo_enabled(bool enabled) { match_turbo = enabled; }
 std::uint16_t legacy_event_mask(const UIEvent& event) {
     switch (event.kind) {
         case UIEvent::Kind::launch: case UIEvent::Kind::quit: case UIEvent::Kind::open_files: return 0x0400;
-        case UIEvent::Kind::mouse_down: case UIEvent::Kind::menu: return 2;
+        case UIEvent::Kind::mouse_down: case UIEvent::Kind::menu: case UIEvent::Kind::command: return 2;
         case UIEvent::Kind::mouse_up: return 4;
         case UIEvent::Kind::key_down: return 8;
         case UIEvent::Kind::key_up: return 16;
@@ -321,6 +390,7 @@ std::vector<LegacyRect> NativeUI::desktop_rectangles() const {
 }
 struct NativeUI::Impl {
     std::deque<UIEvent> pending;
+    std::set<unsigned short> host_command_keyups;
     std::set<std::filesystem::path> host_arguments;
     CMNativeAppDelegate* delegate;
     bool finished_launch = false;
@@ -336,6 +406,32 @@ struct NativeUI::Impl {
     struct Menu { NSMenu* native; std::int16_t id; bool enabled; };
     std::map<std::uint32_t, Menu> menus;
     std::map<std::uint32_t, CMNativeWindow*> windows;
+    std::map<std::uint32_t, LegacyRect> logical_bounds;
+    std::uint32_t primary_window = 0;
+    InterfaceScale requested_scale = InterfaceScale::original;
+    std::optional<PresentationLayout> layout;
+    std::filesystem::path preference;
+    NSMenu* scale_menu = nil;
+    NSMenu* direct_menu = nil;
+    CommandContext command_context;
+    std::string command_status = "Unavailable while starting";
+    void refresh_commands() {
+        for (NSMenuItem* item in direct_menu.itemArray) {
+            if (item.tag >= 0 && item.tag < NSInteger(direct_command_count))
+                item.enabled = command_context.ready && command_context.actions[item.tag] != 0;
+            else if (item.tag == 101) { item.enabled = NO; }
+            else if (item.tag == 100) { item.title = [NSString stringWithUTF8String:command_status.c_str()]; item.enabled = NO; }
+        }
+        for (const auto& [token, menu] : menus) {
+            (void)token;
+            if (menu.id == 2 && menu.native.numberOfItems > 0) {
+                NSMenuItem* save = [menu.native itemAtIndex:0];
+                save.identifier = @"save_game";
+                save.enabled = command_context.ready && command_context.actions[std::size_t(DirectCommand::save_game)] != 0;
+            }
+        }
+    }
+    bool applying_layout = false;
     std::map<std::uint32_t, NSCursor*> cursors;
     std::map<std::uint32_t, EventRef> events;
     std::vector<std::uint32_t> menu_bar;
@@ -368,7 +464,78 @@ struct NativeUI::Impl {
         }
         [menu.native addItem:native];
     }
-    Impl() {
+    static PresentationRect rectangle(const LegacyRect& r) {
+        return {double(r[1]), double(r[0]), double(r[3] - r[1]), double(r[2] - r[0])};
+    }
+    bool background(std::uint32_t token) const {
+        if (!primary_window || token == primary_window || windows.at(token).acceptsActivation) return false;
+        const auto a = rectangle(logical_bounds.at(token)), b = rectangle(logical_bounds.at(primary_window));
+        return a.x <= b.x && a.y <= b.y && a.x + a.width >= b.x + b.width &&
+            a.y + a.height >= b.y + b.height && (a.width > b.width || a.height > b.height);
+    }
+    PresentationPoint logical_point(PresentationPoint host) const {
+        if (layout && !(host.y >= 0 && host.y < NSApp.mainMenu.menuBarHeight))
+            return layout->to_logical(host);
+        return host;
+    }
+    PresentationRect scene() const {
+        auto r = rectangle(logical_bounds.at(primary_window));
+        for (const auto& [token, bounds] : logical_bounds) {
+            if (background(token)) continue;
+            const auto b = rectangle(bounds);
+            const auto right = std::max(r.x + r.width, b.x + b.width);
+            const auto bottom = std::max(r.y + r.height, b.y + b.height);
+            r.x = std::min(r.x, b.x); r.y = std::min(r.y, b.y);
+            r.width = right - r.x; r.height = bottom - r.y;
+        }
+        return r;
+    }
+    NSScreen* screen() const {
+        NSScreen* selected = primary_window ? windows.at(primary_window).screen : nil;
+        if (selected) return selected;
+        return NSScreen.mainScreen ? NSScreen.mainScreen : NSScreen.screens.firstObject;
+    }
+    PresentationRect available() const {
+        const auto area = screen().visibleFrame;
+        const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
+        return {area.origin.x, height - NSMaxY(area), area.size.width, area.size.height};
+    }
+    void refresh_presentation() {
+        if (applying_layout || !primary_window || !screen()) return;
+        applying_layout = true;
+        layout = presentation_layout(requested_scale, scene(), available(), screen().backingScaleFactor);
+        const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
+        for (const auto& [token, window] : windows) {
+            if (background(token)) continue; // The original desktop is not a second interactive panel.
+            const auto host = layout->to_host(rectangle(logical_bounds.at(token)));
+            [window setFrame:NSMakeRect(host.x, height - host.y - host.height, host.width, host.height) display:NO];
+            window.contentView.needsDisplay = YES;
+        }
+        for (NSMenuItem* item in scale_menu.itemArray) {
+            const auto choice = interface_scales[item.tag];
+            item.enabled = scale_fits(choice, scene(), available());
+            item.state = choice == layout->effective ? NSControlStateValueOn : NSControlStateValueOff;
+        }
+        applying_layout = false;
+    }
+    bool choose_scale(InterfaceScale choice) {
+        if (primary_window && !scale_fits(choice, scene(), available())) return false;
+        requested_scale = choice;
+        refresh_presentation();
+        if (!preference.empty()) {
+            // Tiny host-only preference, never a game resource or save payload.
+            NSDictionary* value = @{ @"Version": @1,
+                @"InterfaceScale": [NSString stringWithUTF8String:std::string(scale_name(choice)).c_str()] };
+            NSError* error = nil;
+            NSData* data = [NSPropertyListSerialization dataWithPropertyList:value format:NSPropertyListXMLFormat_v1_0 options:0 error:&error];
+            std::error_code code;
+            std::filesystem::create_directories(preference.parent_path(), code);
+            if (code || !data || ![data writeToFile:[NSString stringWithUTF8String:preference.c_str()] options:NSDataWritingAtomic error:&error])
+                std::fprintf(stderr, "Presentation preference could not be saved; current scale remains usable.\n");
+        }
+        return true;
+    }
+    explicit Impl(std::filesystem::path path) : preference(std::move(path)) {
       @autoreleasepool {
         if (![NSThread isMainThread]) throw std::runtime_error("Native UI requires the macOS main thread");
         [NSApplication sharedApplication];
@@ -380,17 +547,45 @@ struct NativeUI::Impl {
             host_arguments.insert(std::filesystem::absolute(arguments[i].fileSystemRepresentation).lexically_normal());
         delegate->hostArguments = &host_arguments;
         delegate->launching = true;
+        delegate->refreshPresentation = [this] { refresh_presentation(); };
+        delegate->selectScale = [this](NSInteger index) {
+            if (index < 0 || index >= 5 || !choose_scale(interface_scales[index])) NSBeep();
+        };
+        delegate->selectCommand = [this](DirectCommand command) {
+            const auto index = std::size_t(command);
+            if (index >= direct_command_count || !command_context.ready || !command_context.actions[index]) { NSBeep(); return; }
+            UIEvent event{UIEvent::Kind::command};
+            event.message = std::uint32_t(command);
+            event.command_context = command_context.identity;
+            pending.push_back(event);
+            command_context = {};
+            command_status = "Queued for the original game";
+            refresh_commands();
+        };
+        if (!preference.empty()) {
+            std::error_code error;
+            const auto size = std::filesystem::file_size(preference, error);
+            if (!error && size <= 4096) {
+                NSData* data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:preference.c_str()]];
+                id value = data ? [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:nullptr error:nil] : nil;
+                if ([value isKindOfClass:NSDictionary.class] && [value[@"Version"] isEqual:@1] &&
+                    [value[@"InterfaceScale"] isKindOfClass:NSString.class]) {
+                    if (auto choice = parse_scale([value[@"InterfaceScale"] UTF8String])) requested_scale = *choice;
+                }
+            }
+        }
         [NSApp setDelegate:delegate];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
       }
     }
     ~Impl() {
+        delegate->refreshPresentation = {}; delegate->selectScale = {}; delegate->selectCommand = {};
         for (const auto& [token, event] : events) { (void)token; ReleaseEvent(event); }
         for (const auto& [token, window] : windows) { (void)token; [window orderOut:nil]; [window close]; }
         if (NSApp.delegate == delegate) [NSApp setDelegate:nil];
     }
 };
-NativeUI::NativeUI() : impl_(std::make_unique<Impl>()) {}
+NativeUI::NativeUI(std::filesystem::path preference) : impl_(std::make_unique<Impl>(std::move(preference))) {}
 NativeUI::~NativeUI() = default;
 void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint32_t attributes, const LegacyRect& bounds) {
     @autoreleasepool {
@@ -415,6 +610,8 @@ void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint3
         window.opaque = NO;
         CMNativeView* view = [[CMNativeView alloc] initWithFrame:NSMakeRect(0, 0, rect.size.width, rect.size.height)];
         view->pending = &impl_->pending; view->token = token; view->paintQueued = false;
+        view->logicalBounds = bounds;
+        view->inversePoint = [owner = impl_.get()](PresentationPoint point) { return owner->logical_point(point); };
         window.contentView = view;
         [window makeFirstResponder:view];
         window.delegate = impl_->delegate;
@@ -422,12 +619,21 @@ void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint3
         // background window's intentional extension beyond desktop edges.
         [window setFrame:rect display:NO];
         impl_->windows.emplace(token, window);
+        impl_->logical_bounds.emplace(token, bounds);
+        // The original engine creates one activating 800x600 interface, plus a
+        // nonactivating desktop and possible overlays. Keep that logical model.
+        if (!impl_->primary_window && !no_activate && bounds[3] - bounds[1] == 800 && bounds[2] - bounds[0] == 600)
+            impl_->primary_window = token;
+        impl_->refresh_presentation();
     }
 }
 void NativeUI::dispose_window(std::uint32_t token) {
     auto window = impl_->windows.at(token);
     [window orderOut:nil]; [window close];
     impl_->windows.erase(token);
+    impl_->logical_bounds.erase(token);
+    if (impl_->primary_window == token) { impl_->primary_window = 0; impl_->layout.reset(); }
+    impl_->refresh_presentation();
     std::erase_if(impl_->pending, [token](const auto& event) { return event.window == token; });
 }
 void NativeUI::show_window(std::uint32_t token, bool activate) {
@@ -446,16 +652,8 @@ void NativeUI::show_window(std::uint32_t token, bool activate) {
     [window displayIfNeeded];
 }
 LegacyRect NativeUI::window_bounds(std::uint32_t token, bool content) const {
-    const auto window = impl_->windows.at(token);
-    const auto rect = content ? [window contentRectForFrameRect:window.frame] : window.frame;
-    const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
-    const std::array<double, 4> values{height - NSMaxY(rect), NSMinX(rect), height - NSMinY(rect), NSMaxX(rect)};
-    LegacyRect result;
-    for (unsigned i = 0; i < 4; ++i) {
-        if (values[i] < INT16_MIN || values[i] > INT16_MAX) throw std::runtime_error("Native window exceeds original coordinate limits");
-        result[i] = std::int16_t(std::lround(values[i]));
-    }
-    return result;
+    (void)content; // Supported class-13 windows are borderless.
+    return impl_->logical_bounds.at(token);
 }
 std::int32_t NativeUI::window_number(std::uint32_t token) const { return impl_->windows.at(token).windowNumber; }
 NativeWindowHit NativeUI::find_window(std::int16_t x, std::int16_t y) const {
@@ -482,7 +680,8 @@ void NativeUI::set_window_title(std::uint32_t token, const std::string& title) {
     @autoreleasepool { impl_->windows.at(token).title = [[NSString alloc] initWithUTF8String:title.c_str()]; }
 }
 void NativeUI::present_window(std::uint32_t token, std::uint32_t width, std::uint32_t height,
-                              std::uint32_t row_bytes, const std::vector<std::uint8_t>& argb) {
+                              std::uint32_t row_bytes, const std::vector<std::uint8_t>& argb,
+                              std::shared_ptr<const NativeDrawing> native) {
     @autoreleasepool {
         if (!width || !height || row_bytes < std::uint64_t(width) * 4 || argb.size() != std::uint64_t(row_bytes) * height)
             throw std::runtime_error("Invalid native window pixel buffer");
@@ -495,7 +694,25 @@ void NativeUI::present_window(std::uint32_t token, std::uint32_t width, std::uin
         if (!image) throw std::runtime_error("Native Quartz rejected the original window pixel buffer");
         CMNativeView* view = (CMNativeView*)impl_->windows.at(token).contentView;
         view.renderedImage = [[NSImage alloc] initWithCGImage:image size:NSMakeSize(width, height)];
-        CGImageRelease(image);
+        if (view->sourceImage) CGImageRelease(view->sourceImage);
+        view->sourceImage = image;
+        if (view->nativeBackground) CGImageRelease(view->nativeBackground);
+        view->nativeBackground = nullptr;
+        view->nativeDrawing = std::move(native);
+        if (view->nativeDrawing) {
+            const auto& background = *view->nativeDrawing;
+            if (background.width != int(width) || background.height != int(height) ||
+                background.background.size() != std::uint64_t(width) * height * 4)
+                throw std::runtime_error("Invalid native drawing background");
+            const auto baseData = CFDataCreate(nullptr, background.background.data(), background.background.size());
+            const auto baseProvider = CGDataProviderCreateWithCFData(baseData);
+            const auto baseColors = CGColorSpaceCreateDeviceRGB();
+            view->nativeBackground = CGImageCreate(background.width, background.height, 8, 32, background.width * 4,
+                baseColors, CGBitmapInfo(kCGImageAlphaNoneSkipFirst) | CGBitmapInfo(kCGBitmapByteOrder32Big),
+                baseProvider, nullptr, false, kCGRenderingIntentDefault);
+            CGColorSpaceRelease(baseColors); CGDataProviderRelease(baseProvider); CFRelease(baseData);
+            if (!view->nativeBackground) view->nativeDrawing.reset();
+        }
         view.needsDisplay = YES;
         [view displayIfNeeded];
     }
@@ -572,7 +789,9 @@ NativePointerState NativeUI::pointer_state() const {
     if (impl_->event_pointer && impl_->delivered_pointer) return *impl_->delivered_pointer;
     const auto point = NSEvent.mouseLocation;
     const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
-    const auto x = std::lround(point.x), y = std::lround(height - point.y);
+    const auto logical = impl_->logical_point({point.x, height - point.y});
+    const auto x = impl_->layout ? std::floor(logical.x) : std::round(logical.x);
+    const auto y = impl_->layout ? std::floor(logical.y) : std::round(logical.y);
     if (x < INT16_MIN || x > INT16_MAX || y < INT16_MIN || y > INT16_MAX)
         throw std::runtime_error("Native mouse position exceeds original Point coordinates");
 #pragma clang diagnostic push
@@ -602,6 +821,19 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds) {
                 untilDate:deadline
                 inMode:NSDefaultRunLoopMode dequeue:YES];
             if (native) {
+                const bool command_key = native.type == NSEventTypeKeyDown && (native.modifierFlags & NSEventModifierFlagCommand) &&
+                    (native.keyCode == 1 || native.keyCode == 31 || native.keyCode == 36 || native.keyCode == 43 || native.keyCode == 33);
+                // A host shortcut consumes the entire key gesture. Sending its
+                // unmatched key-up to the original nested dialog can terminate
+                // filename editing or invoke an unrelated original accelerator.
+                if (native.type == NSEventTypeKeyDown) {
+                    if (command_key) impl_->host_command_keyups.insert(native.keyCode);
+                    else impl_->host_command_keyups.erase(native.keyCode);
+                } else if (native.type == NSEventTypeKeyUp && impl_->host_command_keyups.erase(native.keyCode)) continue;
+                if (command_key && NSProcessInfo.processInfo.systemUptime - native.timestamp > 1.0) {
+                    impl_->command_status = "Refused: shortcut arrived while the game was busy";
+                    impl_->refresh_commands(); NSBeep(); continue;
+                }
                 [NSApp sendEvent:native];
                 [NSApp updateWindows];
             }
@@ -740,6 +972,9 @@ void NativeUI::create_menu(std::uint32_t token, const MenuDefinition& menu) {
 }
 void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
     @autoreleasepool {
+        // AppKit permits only one parent for a submenu. Original SetMenuBar
+        // can reinstall the same handles, so detach them before rebuilding.
+        for (NSMenuItem* old in NSApp.mainMenu.itemArray) old.submenu = nil;
         NSMenu* bar = [[NSMenu alloc] initWithTitle:@""];
         bar.autoenablesItems = NO;
         for (auto token : menus) {
@@ -749,6 +984,41 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
             top.submenu = menu.native;
             [bar addItem:top];
         }
+        NSMenuItem* game_top = [[NSMenuItem alloc] initWithTitle:@"Game" action:nil keyEquivalent:@""];
+        impl_->direct_menu = [[NSMenu alloc] initWithTitle:@"Game"];
+        impl_->direct_menu.autoenablesItems = NO;
+        NSArray<NSString*>* command_titles = @[@"Continue Game", @"Save Game…", @"Load Game…", @"Game Options…", @"Back or Cancel"];
+        NSArray<NSString*>* command_keys = @[@"\r", @"", @"o", @",", @"["];
+        for (std::size_t i = 0; i < direct_command_count; ++i) {
+            NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:command_titles[i] action:@selector(directCommandAction:) keyEquivalent:command_keys[i]];
+            item.tag = i; item.target = impl_->delegate;
+            item.identifier = [NSString stringWithUTF8String:std::string(direct_command_names[i]).c_str()];
+            item.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+            [impl_->direct_menu addItem:item];
+        }
+        NSMenuItem* status = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+        status.tag = 100; [impl_->direct_menu addItem:status];
+        NSMenuItem* load_help = [[NSMenuItem alloc] initWithTitle:@"Load: start screen only; save and quit first" action:nil keyEquivalent:@""];
+        load_help.tag = 101; [impl_->direct_menu addItem:load_help];
+        game_top.submenu = impl_->direct_menu; [bar addItem:game_top];
+        impl_->refresh_commands();
+        NSMenuItem* view_top = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
+        NSMenu* view_menu = [[NSMenu alloc] initWithTitle:@"View"];
+        view_menu.autoenablesItems = NO;
+        NSMenuItem* scale_top = [[NSMenuItem alloc] initWithTitle:@"Interface Scale" action:nil keyEquivalent:@""];
+        impl_->scale_menu = [[NSMenu alloc] initWithTitle:@"Interface Scale"];
+        impl_->scale_menu.autoenablesItems = NO;
+        NSArray<NSString*>* titles = @[@"100% (Original)", @"125%", @"150%", @"200%", @"Fit to Screen"];
+        for (NSInteger index = 0; index < 5; ++index) {
+            NSMenuItem* choice = [[NSMenuItem alloc] initWithTitle:titles[index] action:@selector(interfaceScaleAction:) keyEquivalent:@""];
+            choice.tag = index; choice.target = impl_->delegate;
+            choice.identifier = [@"set_interface_scale." stringByAppendingString:[NSString stringWithUTF8String:std::string(scale_name(interface_scales[index])).c_str()]];
+            choice.state = interface_scales[index] == impl_->requested_scale ? NSControlStateValueOn : NSControlStateValueOff;
+            [impl_->scale_menu addItem:choice];
+        }
+        scale_top.submenu = impl_->scale_menu;
+        [view_menu addItem:scale_top]; view_top.submenu = view_menu; [bar addItem:view_top];
+        impl_->refresh_presentation();
         NSMenuItem* match = [[NSMenuItem alloc] initWithTitle:@"Match" action:nil keyEquivalent:@""];
         NSMenu* match_menu = [[NSMenu alloc] initWithTitle:@"Match"];
         NSMenuItem* turbo = [[NSMenuItem alloc] initWithTitle:@"Turbo"
@@ -791,6 +1061,33 @@ std::uint32_t NativeUI::menu_key(std::uint8_t key) const {
             }
         }
         return 0;
+    }
+}
+void NativeUI::update_commands(const CommandContext& context, std::string_view status) {
+    impl_->command_context = context;
+    impl_->command_status = status;
+    impl_->refresh_commands();
+}
+bool NativeUI::menu_selection_enabled(std::uint32_t selection) const {
+    const auto id = std::int16_t(selection >> 16);
+    const auto item = std::uint16_t(selection);
+    for (const auto token : impl_->menu_bar) {
+        const auto& menu = impl_->menus.at(token);
+        if (menu.id == id && menu.enabled && item && item <= menu.native.numberOfItems) {
+            NSMenuItem* entry = [menu.native itemAtIndex:item - 1];
+            return entry.enabled && !entry.separatorItem;
+        }
+    }
+    return false;
+}
+void NativeUI::set_menu_item_enabled(std::uint32_t token, std::uint16_t item, bool enabled) {
+    auto& menu = impl_->menus.at(token);
+    if (!item) {
+        menu.enabled = enabled;
+        for (NSMenuItem* top in NSApp.mainMenu.itemArray) if (top.submenu == menu.native) top.enabled = enabled;
+    } else if (item <= menu.native.numberOfItems) {
+        NSMenuItem* entry = [menu.native itemAtIndex:item - 1];
+        if (!entry.separatorItem) entry.enabled = enabled;
     }
 }
 std::optional<std::pair<std::uint32_t, std::uint16_t>> NativeUI::find_menu_command(
@@ -842,11 +1139,14 @@ std::string NativeUI::menu_item_text(std::uint32_t menu, std::uint16_t item) con
         return {static_cast<const char*>(data.bytes), data.length};
     }
 }
+bool NativeUI::set_interface_scale(InterfaceScale scale) { return impl_->choose_scale(scale); }
+InterfaceScale NativeUI::interface_scale() const { return impl_->layout ? impl_->layout->effective : impl_->requested_scale; }
+double NativeUI::presentation_scale() const { return impl_->layout ? impl_->layout->scale : 1; }
 void NativeUI::redraw_menu_bar() { @autoreleasepool { [NSApp.mainMenu update]; } }
 void NativeUI::set_menu_item_text(std::uint32_t menu, std::uint16_t item, const std::string& text) {
     @autoreleasepool {
         NSMenu* native = impl_->menus.at(menu).native;
-        if (!item || item > native.numberOfItems) throw std::runtime_error("Invalid menu item text index");
+        if (!item || item > native.numberOfItems) return; // Original preparation may refer to a removed Quit item.
         NSMenuItem* entry = [native itemAtIndex:item - 1];
         if (entry.isSeparatorItem) {
             if (text != "-") throw std::runtime_error("Changing a menu separator into an item requires rebuilding its action");

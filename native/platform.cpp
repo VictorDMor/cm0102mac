@@ -3,6 +3,8 @@
 #include "text_bridge.hpp"
 #include "process_bridge.hpp"
 #include "ui_bridge.hpp"
+#include "native_drawing.hpp"
+#include "direct_commands.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
 #include "directory_catalog.hpp"
@@ -91,6 +93,7 @@ std::uint32_t mac_date(std::int64_t unix_seconds) {
 }
 }
 struct NativePlatform::Impl {
+    NativeDrawingObserver drawing;
     explicit Impl(AudioMode mode) : sound(mode) {}
     NativeSound sound;
     PerformanceTrace performance;
@@ -107,6 +110,7 @@ struct NativePlatform::Impl {
     std::deque<UIEvent> pending_events;
     std::map<std::array<std::uint8_t, 16>, UIEvent> delivered_events;
     std::uint32_t last_event_tick = 0;
+    std::optional<std::uint32_t> menu_selection;
     // No drawing port is selected before the first window/offscreen port exists.
     std::uint32_t current_port = 0;
     std::uint32_t desktop_region = 0;
@@ -240,7 +244,7 @@ struct NativePlatform::Impl {
     }
 
     NativeUI& user_interface() {
-        if (!ui) ui = std::make_unique<NativeUI>();
+        if (!ui) ui = std::make_unique<NativeUI>(writable.parent_path() / "Presentation.plist");
         return *ui;
     }
     std::uint32_t new_port(State& s, std::uint16_t depth, const LegacyRect& bounds) {
@@ -271,6 +275,7 @@ struct NativePlatform::Impl {
         s.memory.write<4>(colors, depth); // Stable direct-color compatibility table.
         const auto token = next_port++;
         ports.emplace(token, Port{pixels, pixel_map, table, row_bytes, 0, depth, bounds});
+        drawing.register_surface(s, pixels, width, height, row_bytes, depth);
         return token;
     }
     Port& port_for_pixels(std::uint32_t pixel_map) {
@@ -304,7 +309,8 @@ struct NativePlatform::Impl {
         const auto width = std::int32_t(port.bounds[3]) - port.bounds[1];
         const auto height = std::int32_t(port.bounds[2]) - port.bounds[0];
         const auto original = s.memory.copy_out(port.pixels, port.row_bytes * height);
-        if (port.depth == 32) user_interface().present_window(port.window, width, height, port.row_bytes, original);
+        const auto native = drawing.snapshot(s, port.pixels);
+        if (port.depth == 32) user_interface().present_window(port.window, width, height, port.row_bytes, original, native);
         else {
             std::vector<std::uint8_t> argb(std::size_t(width) * height * 4);
             for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
@@ -315,7 +321,7 @@ struct NativePlatform::Impl {
                     argb[at + 1 + i] = (channel << 3) | (channel >> 2);
                 }
             }
-            user_interface().present_window(port.window, width, height, width * 4, argb);
+            user_interface().present_window(port.window, width, height, width * 4, argb, native);
         }
         performance.mark("frame", s, port.window);
     }
@@ -448,7 +454,28 @@ struct NativePlatform::Impl {
             mode = 0; offset = 0;
         } while (true);
     }
+    std::optional<std::pair<std::uint32_t, std::uint16_t>> delivered_command_action;
+    CommandContext commands;
+    std::string command_status = "Ready";
     bool next_event(State& s, std::uint16_t mask, std::uint32_t address, std::uint32_t sleep, std::uint32_t mouse_region) {
+        // A native command is an edge, not a held action. At the next original
+        // event boundary its handler has consumed the input (or entered a
+        // nested dialog). Withdraw only the mailbox value owned by this event.
+        if (delivered_command_action) {
+            const auto [root, action] = *delivered_command_action;
+            if (s.memory.read<2>(root + 0x25819e) == action) s.memory.write<2>(root + 0x25819e, 0);
+            delivered_command_action.reset();
+        }
+        commands = original_command_context(s, mask);
+        if (commands.ready) {
+            if (commands.handler == 0x100ee9d0) command_status = "Original file dialog: awaiting interaction";
+            else if (commands.handler == 0x1033f840) command_status = "Original options: awaiting interaction";
+            else if (commands.handler == 0x100f0ba0) command_status = "Original confirmation: awaiting interaction";
+            else if (command_status.starts_with("Dispatched") || command_status.starts_with("Original"))
+                command_status = "Original game returned to an interactive screen";
+
+        }
+        user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing");
         auto matches = [&](const UIEvent& event) { return (legacy_event_mask(event) & mask) != 0; };
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(sleep / 60.0);
         auto pointer = user_interface().pointer_state();
@@ -467,6 +494,33 @@ struct NativePlatform::Impl {
             if (sound.has_pending_commands()) timeout = std::min(timeout, 1.0 / 60);
             UIEvent event{UIEvent::Kind::update};
             const auto available = user_interface().poll(event, timeout);
+            if (available && (event.kind == UIEvent::Kind::command || event.kind == UIEvent::Kind::menu)) {
+                if (!commands.ready || (event.kind == UIEvent::Kind::command && event.command_context != commands.identity)) {
+                    command_status = "Refused: the game context changed";
+                    user_interface().update_commands({}, command_status);
+                    continue;
+                }
+                if (event.kind == UIEvent::Kind::command) {
+                    if (event.message >= direct_command_count) continue;
+                    const auto command = DirectCommand(event.message);
+                    std::fprintf(stderr, "Native command: %s action=%d control=%d context=%016llx\n",
+                        std::string(direct_command_names[std::size_t(command)]).c_str(), commands.actions[std::size_t(command)],
+                        commands.controls[std::size_t(command)], static_cast<unsigned long long>(commands.identity));
+                    if (command == DirectCommand::save_game && commands.actions[std::size_t(command)]) {
+                        event.kind = UIEvent::Kind::menu;
+                        event.message = 0x00020001;
+                        command_status = "Save dispatched to original File menu";
+                        // Disable duplicates, retaining the original File item's
+                        // own preparation/validation until MenuSelect returns.
+                    } else {
+                        const bool delivered = deliver_original_command(s, commands, command);
+                        command_status = delivered ? "Dispatched to the original game" : "Refused: action unavailable";
+                        user_interface().update_commands({}, command_status);
+                        s.memory.clear(address, 16);
+                        return false;
+                    }
+                }
+            }
             if (available) {
                 const auto handled = window_event(s, event);
                 if (!handled && event.kind != UIEvent::Kind::wheel) pending_events.push_back(std::move(event));
@@ -489,9 +543,16 @@ struct NativePlatform::Impl {
         }
         if (found->kind == UIEvent::Kind::open_files)
             throw std::runtime_error("Open-document events require file descriptor marshalling");
-        if (found->kind == UIEvent::Kind::menu)
-            throw std::runtime_error("Native menu selections require original MenuSelect dispatch");
-        if (found->kind == UIEvent::Kind::launch || found->kind == UIEvent::Kind::quit) {
+        if (found->kind == UIEvent::Kind::menu) {
+            // AppKit has already selected by identity. Let the original event
+            // loop run FindWindow -> menu preparation -> MenuSelect -> handler.
+            // The reserved Point is a bridge token, never a physical click.
+            menu_selection = found->message;
+            s.memory.write<2>(address, 1);
+            s.memory.write<4>(address + 10, 0x80008000);
+        } else if (found->kind == UIEvent::Kind::launch || found->kind == UIEvent::Kind::quit) {
+            if (found->kind == UIEvent::Kind::quit && commands.root)
+                delivered_command_action = {commands.root, 1026};
             const auto id = found->kind == UIEvent::Kind::launch ? 0x6f617070u : 0x71756974u;
             s.memory.write<2>(address, 23);
             s.memory.write<4>(address + 2, 0x61657674);
@@ -1088,6 +1149,10 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
                 const auto& region = impl_->handles.at(arg(5));
                 mask = s.memory.copy_out(region.payload, region.size);
             }
+            impl_->drawing.copy_surface(s, source.pixels, destination.pixels,
+                {from[1] - source.bounds[1], from[0] - source.bounds[0], width, height},
+                to[1] - destination.bounds[1], to[0] - destination.bounds[0], mask, destination.bounds[1], destination.bounds[0]);
+            impl_->drawing.copying = true;
             for (std::int32_t y = 0; y < height; ++y) for (std::int32_t x = 0; x < width; ++x) {
                 const auto sx = from[1] + x, sy = from[0] + y, dx = to[1] + x, dy = to[0] + y;
                 if (sx < source.bounds[1] || sy < source.bounds[0] || sx >= source.bounds[3] || sy >= source.bounds[2] ||
@@ -1109,6 +1174,7 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
                     s.memory.write<2>(output, ((rgb >> 9) & 0x7c00) | ((rgb >> 6) & 0x3e0) | ((rgb >> 3) & 31));
                 else s.memory.write<4>(output, rgb);
             }
+            impl_->drawing.copying = false;
             impl_->present(s, destination);
             return_value = arg(0);
         } else if (name == "CarbonLib::ForeColor") {
@@ -1162,6 +1228,7 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
         } else if (name == "CarbonLib::DisposeGWorld") {
             const auto port = impl_->ports.at(arg(0));
             if (port.window) throw std::runtime_error("A native window port is not a disposable GWorld");
+            impl_->drawing.remove_surface(port.pixels);
             impl_->dispose_handle(s, port.pixel_map); impl_->dispose_handle(s, port.color_table);
             deallocate(s, port.pixels);
             impl_->ports.erase(arg(0));
@@ -1207,6 +1274,7 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
         } else if (name == "CarbonLib::DisposeWindow") {
             if (auto found = impl_->window_ports.find(arg(0)); found != impl_->window_ports.end()) {
                 const auto port = impl_->ports.at(found->second);
+                impl_->drawing.remove_surface(port.pixels);
                 impl_->dispose_handle(s, port.pixel_map); impl_->dispose_handle(s, port.color_table);
                 deallocate(s, port.pixels);
                 impl_->ports.erase(found->second);
@@ -1273,7 +1341,21 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             }
         } else if (name == "CarbonLib::MenuKey") {
             return_value = impl_->user_interface().menu_key(std::uint8_t(arg(0)));
-        } else if (name == "CarbonLib::GetMenuHandle") {
+        } else if (name == "CarbonLib::MenuSelect") {
+            const auto selected = impl_->menu_selection.value_or(0);
+            impl_->menu_selection.reset();
+            return_value = impl_->user_interface().menu_selection_enabled(selected) ? selected : 0;
+            if (*return_value == 0x00020001 && impl_->commands.ready) {
+                clear_previous_command_key(s);
+                impl_->delivered_command_action = {impl_->commands.root, 1022};
+            }
+        } else if (name == "CarbonLib::EnableMenuItem" || name == "CarbonLib::DisableMenuItem") {
+            impl_->user_interface().set_menu_item_enabled(arg(0), arg(1), name == "CarbonLib::EnableMenuItem");
+            return_value = arg(0);
+        } else if (name == "CarbonLib::HiliteMenu") {
+            impl_->user_interface().redraw_menu_bar();
+            return_value = arg(0);
+        } else if (name == "CarbonLib::GetMenuHandle" || name == "CarbonLib::GetMenu") {
             const auto found = impl_->menu_ids.find(std::int16_t(arg(0)));
             return_value = found == impl_->menu_ids.end() ? 0 : found->second;
         } else if (name == "CarbonLib::DeleteMenuItem") {
@@ -1302,8 +1384,7 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             impl_->user_interface().redraw_menu_bar();
             return_value = arg(0);
         } else if (name == "CarbonLib::InitCursor") {
-            if (!impl_->ui) impl_->ui = std::make_unique<NativeUI>();
-            impl_->ui->initialize_cursor();
+            impl_->user_interface().initialize_cursor();
             return_value = arg(0);
         } else if (name == "CarbonLib::GetMouse" || name == "CarbonLib::GetGlobalMouse") {
             const auto point = impl_->user_interface().pointer_state();
@@ -1321,12 +1402,13 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
         } else if (name == "CarbonLib::Button") {
             return_value = impl_->user_interface().pointer_state().down;
         } else if (name == "CarbonLib::FindWindow") {
-            const auto hit = impl_->user_interface().find_window(std::int16_t(arg(0)), std::int16_t(arg(0) >> 16));
+            const auto hit = impl_->menu_selection && arg(0) == 0x80008000
+                ? NativeWindowHit{1, 0}
+                : impl_->user_interface().find_window(std::int16_t(arg(0)), std::int16_t(arg(0) >> 16));
             s.memory.write<4>(arg(1), hit.window);
             return_value = std::uint32_t(std::int32_t(hit.part));
         } else if (name == "CarbonLib::GetKeys") {
-            if (!impl_->ui) impl_->ui = std::make_unique<NativeUI>();
-            const auto keys = impl_->ui->key_map();
+            const auto keys = impl_->user_interface().key_map();
             s.memory.copy_in(arg(0), {keys.begin(), keys.end()});
             return_value = arg(0);
         } else if (name == "CarbonLib::WaitNextEvent") {
@@ -1672,4 +1754,5 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
     return true;
 }
 std::vector<float> NativePlatform::render_audio_offline(std::uint32_t frames) { return impl_->sound.render_offline(frames); }
+void NativePlatform::observe_drawing(State& s, std::uint32_t pc) { impl_->drawing.boundary(s, pc); }
 }

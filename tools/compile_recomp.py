@@ -16,6 +16,7 @@ from match_presentation_audit import require_match_presentation_context
 from local_temporaries import LocalTemporaries
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
+from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 
 def integer(value):
@@ -226,6 +227,7 @@ def require_control_cursor_block(instructions, selected):
 
 
 def generate_page(page, instructions, selected, local_temporaries=True):
+    require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
     if local_temporaries:
@@ -263,6 +265,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "rng_core_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
+    if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
+        code.insert(1, '#include "native_drawing.hpp"')
     code.append("switch (s.pc) {")
     if any(item["assembly"].startswith("fctiwz ") for item in instructions):
         code.insert(1, '#include "floating_point.hpp"')
@@ -284,6 +288,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a in DATE_SUBSYSTEM_ENTRIES:
             code.append(f"if (try_modern_date_subsystem(s, 0x{a:x})) return true;")
+        if a in NATIVE_DRAWING_BOUNDARIES:
+            code.append(f"native_drawing_boundary(s, 0x{a:x});")
         if a in RNG_CORE_ENTRIES:
             code.append(f"if (try_modern_rng_core(s, 0x{a:x})) return true;")
         if a == 0x101195e8:

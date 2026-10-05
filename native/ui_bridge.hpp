@@ -8,10 +8,13 @@
 #include "menu_resource.hpp"
 #include "regions.hpp"
 #include "cursor_resource.hpp"
+#include "presentation.hpp"
+#include "direct_commands.hpp"
 
 namespace cm::aot {
+struct NativeDrawing;
 struct UIEvent {
-    enum class Kind { launch, quit, open_files, mouse_down, mouse_up, key_down, update, menu, key_up, auto_key, wheel, activate, suspend_resume, mouse_moved };
+    enum class Kind { launch, quit, open_files, mouse_down, mouse_up, key_down, update, menu, key_up, auto_key, wheel, activate, suspend_resume, mouse_moved, command };
     Kind kind;
     std::uint32_t window = 0, message = 0;
     std::int16_t x = 0, y = 0;
@@ -20,6 +23,7 @@ struct UIEvent {
     std::uint32_t when = 0;
     std::uint16_t button = 0;
     std::int32_t wheel_delta = 0;
+    std::uint64_t command_context = 0;
 };
 struct NativeEventParameter {
     std::int32_t error = 0;
@@ -41,7 +45,8 @@ struct NativePointerState {
 struct NativeWindowHit { std::int16_t part; std::uint32_t window; };
 class NativeUI {
 public:
-    NativeUI();
+    // Empty paths keep component checks entirely in memory.
+    explicit NativeUI(std::filesystem::path presentation_preference = {});
     ~NativeUI();
     void initialize_cursor();
     void create_cursor(std::uint32_t token, const ColorCursor& cursor);
@@ -59,6 +64,8 @@ public:
     void create_menu(std::uint32_t token, const MenuDefinition& menu);
     void set_menu_bar(const std::vector<std::uint32_t>& menus);
     std::uint32_t menu_key(std::uint8_t key) const;
+    bool menu_selection_enabled(std::uint32_t selection) const;
+    void set_menu_item_enabled(std::uint32_t menu, std::uint16_t item, bool enabled);
     std::optional<std::pair<std::uint32_t, std::uint16_t>> find_menu_command(
         std::uint32_t menu, std::uint32_t command, std::uint32_t index) const;
     void delete_menu_item(std::uint32_t menu, std::uint16_t item);
@@ -67,6 +74,10 @@ public:
     std::string menu_item_text(std::uint32_t menu, std::uint16_t item) const;
     void set_menu_item_text(std::uint32_t menu, std::uint16_t item, const std::string& text);
     void redraw_menu_bar();
+    void update_commands(const CommandContext& context, std::string_view status);
+    bool set_interface_scale(InterfaceScale scale);
+    InterfaceScale interface_scale() const;
+    double presentation_scale() const;
     std::vector<NativeDisplay> displays() const;
     std::vector<LegacyRect> desktop_rectangles() const;
     void create_window(std::uint32_t token, std::uint32_t kind, std::uint32_t attributes, const LegacyRect& bounds);
@@ -77,7 +88,8 @@ public:
     NativeWindowHit find_window(std::int16_t x, std::int16_t y) const;
     void set_window_title(std::uint32_t token, const std::string& title);
     void present_window(std::uint32_t token, std::uint32_t width, std::uint32_t height,
-                        std::uint32_t row_bytes, const std::vector<std::uint8_t>& argb);
+                        std::uint32_t row_bytes, const std::vector<std::uint8_t>& argb,
+                        std::shared_ptr<const NativeDrawing> native = {});
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;
 private:
     struct Impl;

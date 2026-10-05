@@ -64,6 +64,27 @@ save/reload, match simulation, and returning from full time are verified.
 Multiplayer remains unavailable; its initialization
 now returns an explicit unsupported error to the original game.
 
+## Presentation and named commands
+
+The native app provides `View > Interface Scale`: 100%, 125%, 150%, 200% and
+Fit to Screen. Native text outlines and geometric controls are drawn at the
+backing resolution while the original layout and raster artwork remain intact.
+Oversized choices are disabled; the effective choice is checked and stored
+separately from saves.
+
+`Game` exposes Continue (Command-Return), Save (also File > Save / Command-S),
+Load (Command-O, start screen only), Game Options (Command-comma), and Back or
+Cancel (Command-[). Commands follow original enabled controls and dialogs.
+To load another career, save, quit normally, reopen, then use Load.
+
+Native text/control drawing and mouse menu selections are validated and installed.
+Live checks cover an external 1x display, the built-in Retina display, and a
+keyboard Save/exit/reopen/Load cycle at 125%. The user confirmed physical clicks
+and accepted the appearance. Backgrounds and pictures retain their original bitmap
+resolution. See the
+[presentation and command report](docs/native-presentation-and-direct-commands.md)
+for controls, dispatch, evidence and limits.
+
 ## Saved game snapshot
 
 `saves/Mac-Teste-Validado-Pos-Jogo.sav` is a Git LFS snapshot of the latest

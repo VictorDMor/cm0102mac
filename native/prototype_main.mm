@@ -33,7 +33,10 @@ int main() {
                 if (relative.empty() || *relative.begin() != "..")
                     throw std::runtime_error("Validation must use a private copy outside the installed game directory.");
                 runs = runtime.parent_path() / "Runs";
-                setenv("CM_AOT_VALIDATION_EVENT_POINTER", "1", 1);
+                id event_pointer = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CMValidationEventPointer"];
+                if (event_pointer && ![event_pointer isKindOfClass:NSNumber.class])
+                    throw std::runtime_error("Validation pointer selection requires a Boolean.");
+                setenv("CM_AOT_VALIDATION_EVENT_POINTER", !event_pointer || [event_pointer boolValue] ? "1" : "0", 1);
                 setenv("CM_AOT_PERFORMANCE_TRACE", "1", 1);
                 id reference = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CMSeasonReferenceDirectory"];
                 if (reference) {
@@ -77,7 +80,8 @@ int main() {
             setenv("CM_AOT_TRACE_INPUT", "1", 0);
             setenv("CM_AOT_CAPTURE_DIRECTORY", (run_directory / "images").c_str(), 0);
             std::fprintf(stderr, "Native ARM64 development application; original data: %s\nInstalled game files: %s\n", program.c_str(), game.c_str());
-            if (validation) std::fprintf(stderr, "Isolated validation runtime: %s; event-coordinate pointer enabled\n", runtime.c_str());
+            if (validation) std::fprintf(stderr, "Isolated validation runtime: %s; event-coordinate pointer %s\n", runtime.c_str(),
+                std::string(std::getenv("CM_AOT_VALIDATION_EVENT_POINTER")) == "1" ? "enabled" : "disabled (production pointer)");
             std::array<std::string, 5> arguments{"cm-native-prototype", program.string(), "0x10773710", game.string(), runtime.string()};
             std::array<char*, 5> argv;
             for (unsigned i = 0; i < argv.size(); ++i) argv[i] = arguments[i].data();
