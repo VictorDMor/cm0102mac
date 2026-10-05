@@ -25,6 +25,7 @@ void require(bool condition, const char* message) {
 std::unique_ptr<State> setup(const char* program, const BackgroundCase& type) {
     auto s = std::make_unique<State>();
     load_program(*s, program);
+    s->background_original = true; // Keep this original-body regression independent of semantic hooks.
     s->memory.map(fixture, 0x10000);
     s->memory.write<1>(0x108b84bc, 1); // Original background-picture enable flag.
     s->memory.write<4>(0x108b5e54, fixture);

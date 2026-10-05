@@ -19,6 +19,7 @@
 namespace cm::aot {
 class NativePlatform;
 struct RngBoundaryObserver;
+struct BackgroundBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -211,6 +212,13 @@ struct State {
     std::uint32_t rng_original_resume = 0;
     std::uint64_t rng_ordered_digest = UINT64_C(14695981039346656037);
     RngBoundaryObserver* rng_observer = nullptr;
+    // Background selection diagnostics are optional, process-local, and never
+    // serialized. They do not replace a memory or drawing observer.
+    bool background_original = false;
+    std::array<bool, 4> background_entry_original{};
+    std::array<std::uint64_t, 4> background_calls{}, background_original_calls{};
+    std::uint32_t background_original_resume = 0;
+    BackgroundBoundaryObserver* background_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

@@ -16,7 +16,17 @@ from match_presentation_audit import require_match_presentation_context
 from local_temporaries import LocalTemporaries
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
+from background_selection_audit import require_background_selection_contract, BACKGROUND_SELECTION_ENTRIES
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
+
+CALENDAR_ADAPTER_ENTRIES = (
+    0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
+    0x10717b20, 0x10718130, 0x107182f0, 0x10718360)
+SEMANTIC_REPLACEMENTS = (
+    tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
+    tuple((entry, "date_subsystem_adapter") for entry in DATE_SUBSYSTEM_ENTRIES) +
+    tuple((entry, "rng_core_adapter") for entry in RNG_CORE_ENTRIES) +
+    tuple((entry, "background_selection_adapter") for entry in BACKGROUND_SELECTION_ENTRIES))
 
 
 def integer(value):
@@ -230,6 +240,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
+    require_background_selection_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -263,6 +274,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "date_subsystem_audit.hpp"')
     if page in (0x10747, 0x1077b):
         code.insert(1, '#include "rng_core_adapter.hpp"')
+    if page in (0x10712, 0x10713):
+        code.insert(1, '#include "background_selection_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -284,7 +297,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
-        if a in (0x103317f0, 0x10331860, 0x10715b20, 0x10717890, 0x10717b20, 0x10718130, 0x107182f0, 0x10718360):
+        if a in CALENDAR_ADAPTER_ENTRIES:
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a in DATE_SUBSYSTEM_ENTRIES:
             code.append(f"if (try_modern_date_subsystem(s, 0x{a:x})) return true;")
@@ -292,6 +305,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"native_drawing_boundary(s, 0x{a:x});")
         if a in RNG_CORE_ENTRIES:
             code.append(f"if (try_modern_rng_core(s, 0x{a:x})) return true;")
+        if a in BACKGROUND_SELECTION_ENTRIES:
+            code.append(f"if (try_modern_background_selection(s, 0x{a:x})) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -542,8 +557,8 @@ def main():
                 "instructions": generated_count, "pages": len(pages),
                 "allAnalyzedInstructions": args.all_analyzed,
                 "instructionLocalTemporaries": not args.legacy_unique_storage,
-                "semanticReplacements": [{"entry": f"0x{entry:x}", "module": "rng_core_adapter" if entry in RNG_CORE_ENTRIES else "date_subsystem_adapter" if entry in DATE_SUBSYSTEM_ENTRIES else "calendar_adapter"}
-                                         for entry in (0x103317f0, 0x10331860, 0x10715b20, 0x10717890, 0x10717b20, 0x10718130, 0x107182f0, 0x10718360) + DATE_SUBSYSTEM_ENTRIES + RNG_CORE_ENTRIES
+                "semanticReplacements": [{"entry": f"0x{entry:x}", "module": module}
+                                         for entry, module in SEMANTIC_REPLACEMENTS
                                          if (args.all_analyzed and entry >> 12 in pages) or entry in selected],
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}

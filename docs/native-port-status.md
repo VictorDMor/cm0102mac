@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-04
+# Native port investigation — updated 2026-10-05
 
 ## Required outcome
 
@@ -624,3 +624,35 @@ executable matches the tested source; personal Game, Runtime and Runs content an
 metadata, protected references and fixtures remain unchanged. Bitmap artwork
 retains its original resolution; Load is supported from the start screen.
 See the [detailed report](native-presentation-and-direct-commands.md).
+
+
+## Semantic background selection core — October 5, 2026
+
+Four related Mac background selectors are now semantic C++23: catalog selection
+`0x107122e0`, image-list selection `0x10712a60`, default category `0x10713960` and
+object/descriptor category `0x107139c0`. Original payload choices, fallbacks,
+signed16/byte reductions, ordered ABI/memory effects and Mac pool/RNG consumption
+are retained. Destination hooks on pages `0x10712`/`0x10713` cover direct/local
+calls, generated indirect transitions and callbacks. The manifest contains 41
+entries, preserving the 34 Date and three RNG entries.
+
+The consistent ARM64 build passes. Focused acceptance passes 163 original-versus-
+semantic background comparisons, 18 faults, four own negatives, nonempty normal
+production dispatch of all four entries, four callbacks and four indirect
+transitions. The existing background regression and 2,022-case RNG check pass;
+four new Python audit/hook tests, two existing RNG audit tests and UBSAN of the
+new adapter/harness pass. Only failed fixture checks were repeated after correcting
+original alias/null-traversal expectations; no whole suite or Date/RNG campaign
+was run. Sampler, accessors, wrappers, null getter guards and drawing remain
+generated or retain their existing native integration. The original Date leap
+asymmetry, native text/controls, scale and commands remain unchanged.
+
+The protected installer ran once at 18:13:23 UTC (15:13 local time). Source and
+installed ARM64 executable hashes match; four original payloads and the
+production plist are verified. Personal content/metadata, the presentation
+preference and prior installed reference are preserved. No live app session was
+opened, and harness integration is not represented as fresh UI coverage.
+Save/Load was not retested at the user's direction; it is neither approved by
+this delivery nor a required pending gate. This reconstructs the four-selector
+core, not the whole engine, and makes no visual or performance claim.
+See the [detailed report](native-background-selection-reconstruction.md).

@@ -1,6 +1,7 @@
 #include "calendar_adapter.hpp"
 #include "date_subsystem_audit.hpp"
 #include "rng_core_adapter.hpp"
+#include "background_selection_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -53,6 +54,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         close_date_subsystem_audit(true);
         std::cout << calendar_call_summary(*state) << '\n' << date_subsystem_call_summary(*state);
         std::cout << rng_core_call_summary(*state);
+        std::cout << background_selection_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

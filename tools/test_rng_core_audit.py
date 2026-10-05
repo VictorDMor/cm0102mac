@@ -34,11 +34,16 @@ class RngAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'RNG core contract changed'):
                 require_rng_core_contract(start >> 12, records)
 
-    def test_consumer_remains_generated(self):
+    def test_pool_sampler_remains_generated(self):
         records = self.records(0x10712)
         code = generate_page(0x10712, records, {r['address'] for r in records})
         self.assertNotIn('try_modern_rng_core', code)
-        self.assertIn('s.pc = 0x1077b770; return true;', code)
+        self.assertIn('i_107124e0:', code)
+        self.assertNotIn('try_modern_background_selection(s, 0x107124e0)', code)
+        # The four selector bodies are now semantic. The independent sampler
+        # remains generated and still dispatches to the same Mac RNG step.
+        sampler_draw = code.split('i_10712530:', 1)[1].split('i_10712534:', 1)[0]
+        self.assertIn('s.pc = 0x1077b770; return true;', sampler_draw)
 
 
 if __name__ == '__main__':
