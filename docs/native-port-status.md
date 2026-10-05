@@ -688,3 +688,42 @@ behavior. Collection lifecycle operations, other accessors and descriptor
 comparison remain generated. This completes the five-query block, not the whole
 engine or collection lifecycle, with no visual or performance claim.
 See the [detailed report](native-collection-lookup-reconstruction.md).
+
+
+## Semantic Mac basic strings and descriptors — October 5, 2026
+
+Fourteen basic Mac string/descriptor entries now run readable semantic C++23:
+Mac table comparison (complete and signed16 bounded), descriptor comparison
+wrapper, allocated duplication, in-place table mapping, length, copy, word32
+bounded copy/padding, concatenation, unsigned-byte comparison (complete and
+word32 bounded), first/last byte search and substring search. The selection →
+collection query → descriptor comparison dependency chain is now semantic.
+Destination hooks on `0x10739`/`0x1074d`/`0x1077d` cover direct/local and indirect
+calls. The manifest contains 60 entries, preserving the previous 46 in order.
+Mutable/relocatable tables, raw NUL/0xff rules, signed mapping, lookahead reads,
+progressive overlaps, exact byte differences, guest frames/clobbers and partial
+fault effects remain original-compatible. Tables and allocator remain generated.
+
+The consistent Release ARM64 build passes. Focused acceptance passes 314
+original-versus-semantic comparisons, 62 faults, fourteen own return-boundary
+negatives, nonempty normal dispatch of all fourteen entries, four mixed modes,
+one generated descriptor-vector transition, two background/query/string/RNG
+compositions, six Date fallback copies and two normal formatter compositions.
+The four directly related collection/background/decimal CTests pass. The three
+affected Python audits pass 5/5/4 tests without private-index skips. UBSAN of
+only the new adapter/harness passes with empty stderr. Two formatter-fixture
+issues were corrected; only the new failed harness was rerun. No production
+adapter correction, whole-suite run or Date/RNG/allocator campaign was needed.
+
+The protected installer ran once at 21:34:57 UTC (18:34 local time). Signed
+source, candidate and installed ARM64 hashes match; bundled originals,
+production plist and strict ad-hoc signatures are verified. Personal content
+and metadata, absent presentation preference, all handoffs and the three
+prior-installed references remain unchanged. No live UI session was opened.
+Persistence was not retested at the user's direction and is not a pending gate.
+The original Date leap asymmetry, prior semantic modules, appearance and
+commands retain their delivered behavior. General text/language/templates/
+formatting, character classification, parsing, memory services, table
+initialization and allocation remain outside this basic string/descriptor
+subsystem; the large service at `0x1077de10` stays generated.
+See the [detailed report](native-string-core-reconstruction.md).

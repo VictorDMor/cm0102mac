@@ -3,6 +3,7 @@
 #include "rng_core_adapter.hpp"
 #include "background_selection_adapter.hpp"
 #include "collection_lookup_adapter.hpp"
+#include "string_core_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -36,6 +37,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         // as its own oracle. Normal apps retain the production defaults.
         state->calendar_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr || std::getenv("CM_AOT_DATE_ORIGINAL") != nullptr;
         state->rng_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr || std::getenv("CM_AOT_RNG_ORIGINAL") != nullptr;
+        state->string_original = std::getenv("CM_AOT_STRING_CORE_ORIGINAL") != nullptr;
         state->collection_original = std::getenv("CM_AOT_COLLECTION_LOOKUP_ORIGINAL") != nullptr;
         state->rng_trace = std::getenv("CM_AOT_VALIDATION_EVENT_POINTER") != nullptr;
         if (state->rng_trace && std::getenv("CM_AOT_RNG_STORAGE_AUDIT"))
@@ -58,6 +60,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << rng_core_call_summary(*state);
         std::cout << background_selection_call_summary(*state);
         std::cout << collection_lookup_call_summary(*state);
+        std::cout << string_core_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

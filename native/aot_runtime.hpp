@@ -21,6 +21,7 @@ class NativePlatform;
 struct RngBoundaryObserver;
 struct BackgroundBoundaryObserver;
 struct CollectionBoundaryObserver;
+struct StringBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -227,6 +228,12 @@ struct State {
     std::array<std::uint64_t, 5> collection_calls{}, collection_original_calls{};
     std::uint32_t collection_original_resume = 0;
     CollectionBoundaryObserver* collection_observer = nullptr;
+    // Optional string-core diagnostics are process-local, never serialized.
+    bool string_original = false;
+    std::array<bool, 14> string_entry_original{};
+    std::array<std::uint64_t, 14> string_calls{}, string_original_calls{};
+    std::uint32_t string_original_resume = 0;
+    StringBoundaryObserver* string_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();
