@@ -14,6 +14,9 @@ void season_record_callback_end(State& state, std::uint32_t result);
 bool season_replay_import(State& state, const char* name);
 void open_season_replay(const std::filesystem::path& directory, bool semantic_calendar = false);
 void close_season_replay();
+// Direct dependency fixtures can end after the last import, without a day
+// boundary. Require physical EOF/checksum before closing those short fixtures.
+void require_season_replay_eof();
 // Empty means exact agreement. Reports named game/RNG fields first, then the
 // first architectural or allocated-memory byte. No volatile fields are masked.
 std::string compare_season_states(const State& expected, const State& actual, bool semantic_calendar = false);

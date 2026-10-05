@@ -15,6 +15,7 @@ from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
 from local_temporaries import LocalTemporaries
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
+from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
 
 
 def integer(value):
@@ -226,6 +227,7 @@ def require_control_cursor_block(instructions, selected):
 
 def generate_page(page, instructions, selected, local_temporaries=True):
     require_calendar_contract(page, instructions)
+    require_rng_core_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -257,6 +259,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "calendar_adapter.hpp"')
     if page in (0x10715, 0x10716, 0x10717, 0x10718):
         code.insert(1, '#include "date_subsystem_audit.hpp"')
+    if page in (0x10747, 0x1077b):
+        code.insert(1, '#include "rng_core_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     code.append("switch (s.pc) {")
@@ -280,6 +284,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a in DATE_SUBSYSTEM_ENTRIES:
             code.append(f"if (try_modern_date_subsystem(s, 0x{a:x})) return true;")
+        if a in RNG_CORE_ENTRIES:
+            code.append(f"if (try_modern_rng_core(s, 0x{a:x})) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -530,8 +536,8 @@ def main():
                 "instructions": generated_count, "pages": len(pages),
                 "allAnalyzedInstructions": args.all_analyzed,
                 "instructionLocalTemporaries": not args.legacy_unique_storage,
-                "semanticReplacements": [{"entry": f"0x{entry:x}", "module": "date_subsystem_adapter" if entry in DATE_SUBSYSTEM_ENTRIES else "calendar_adapter"}
-                                         for entry in (0x103317f0, 0x10331860, 0x10715b20, 0x10717890, 0x10717b20, 0x10718130, 0x107182f0, 0x10718360) + DATE_SUBSYSTEM_ENTRIES
+                "semanticReplacements": [{"entry": f"0x{entry:x}", "module": "rng_core_adapter" if entry in RNG_CORE_ENTRIES else "date_subsystem_adapter" if entry in DATE_SUBSYSTEM_ENTRIES else "calendar_adapter"}
+                                         for entry in (0x103317f0, 0x10331860, 0x10715b20, 0x10717890, 0x10717b20, 0x10718130, 0x107182f0, 0x10718360) + DATE_SUBSYSTEM_ENTRIES + RNG_CORE_ENTRIES
                                          if (args.all_analyzed and entry >> 12 in pages) or entry in selected],
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}

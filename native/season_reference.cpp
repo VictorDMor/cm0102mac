@@ -254,6 +254,10 @@ void open_season_replay(const std::filesystem::path& directory, bool semantic_ca
     replay_previous_date.reset();
 }
 void close_season_replay() { semantic_calendar_replay = false; replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset(); }
+void require_season_replay_eof() {
+    if (!replay) throw std::runtime_error("No private season replay is open");
+    replay->require_eof();
+}
 bool season_replay_import(State& s, const char* name) {
     if (!replay) return false;
     s.memory.observer = nullptr;

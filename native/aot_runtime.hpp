@@ -18,6 +18,7 @@
 
 namespace cm::aot {
 class NativePlatform;
+struct RngBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -202,6 +203,14 @@ struct State {
     std::uint64_t date_day_of_month_calls = 0;
     bool date_weekday_original = false;
     std::uint64_t date_weekday_calls = 0;
+    // RNG diagnostics are process-local, never serialized in game saves or
+    // machine snapshots. Keep the complete layout together for one rebuild.
+    bool rng_original = false, rng_trace = false;
+    std::array<bool, 3> rng_entry_original{};
+    std::array<std::uint64_t, 3> rng_calls{}, rng_original_calls{};
+    std::uint32_t rng_original_resume = 0;
+    std::uint64_t rng_ordered_digest = UINT64_C(14695981039346656037);
+    RngBoundaryObserver* rng_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

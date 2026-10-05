@@ -2,13 +2,14 @@
 #include "match_replay.hpp"
 #include "calendar_adapter.hpp"
 #include "date_subsystem_audit.hpp"
+#include "rng_core_adapter.hpp"
 #include <iostream>
 #include <algorithm>
 #include <string_view>
 
 int main(int argc, char** argv) {
     try {
-        if (argc < 2) throw std::runtime_error("Usage: cm-season-reference <fixture> [--modern|--calendar-baseline|--date-ordering-baseline|--date-before-baseline|--date-month-baseline|--date-day-of-month-baseline|--date-weekday-baseline] [--perturb-rng|--perturb-calendar|--perturb-difference|--perturb-ordering|--perturb-before|--perturb-month|--perturb-day-of-month|--perturb-weekday] [--calendar-record|--calendar-check|--calendar-record-v2|--calendar-check-v2 <private-edges.gz>] [--month-record|--month-check <private-month.gz>] [--day-of-month-record|--day-of-month-check <private-day.gz>] [--weekday-record|--weekday-check <private-weekday.gz>]");
+        if (argc < 2) throw std::runtime_error("Usage: cm-season-reference <fixture> [--rng-baseline|--rng-modern|--modern|--calendar-baseline|--date-ordering-baseline|--date-before-baseline|--date-month-baseline|--date-day-of-month-baseline|--date-weekday-baseline] [--perturb-rng|--perturb-calendar|--perturb-difference|--perturb-ordering|--perturb-before|--perturb-month|--perturb-day-of-month|--perturb-weekday] [--calendar-record|--calendar-check|--calendar-record-v2|--calendar-check-v2 <private-edges.gz>] [--month-record|--month-check <private-month.gz>] [--day-of-month-record|--day-of-month-check <private-day.gz>] [--weekday-record|--weekday-check <private-weekday.gz>]");
         bool modern = false, baseline = false, perturb_rng = false, perturb_calendar = false, record = false;
         bool perturb_difference = false;
         bool ordering_baseline = false, perturb_ordering = false;
@@ -17,11 +18,14 @@ int main(int argc, char** argv) {
         bool day_baseline = false, perturb_day = false, day_record = false;
         bool subsystem_baseline=false,subsystem_record=false;std::uint32_t perturb_date=0;
         std::vector<std::uint32_t> original_dates;
+        bool rng_baseline = false, rng_modern = false;
         bool weekday_baseline = false, perturb_weekday = false, weekday_record = false;
         std::filesystem::path edges, month_edges, day_edges, weekday_edges, subsystem_edges;
         for (int i = 2; i < argc; ++i) {
             const std::string_view option(argv[i]);
             if (option == "--modern") modern = true;
+            else if (option == "--rng-baseline") { modern = true; rng_baseline = true; }
+            else if (option == "--rng-modern") { modern = true; rng_modern = true; }
             else if (option == "--calendar-baseline") { modern = true; baseline = true; }
             else if (option == "--date-ordering-baseline") { modern = true; ordering_baseline = true; }
             else if (option == "--date-before-baseline") { modern = true; before_baseline = true; }
@@ -70,10 +74,18 @@ int main(int argc, char** argv) {
         if((subsystem_record&&modern)||(perturb_date&&(!modern||subsystem_edges.empty()||subsystem_record||baseline||ordering_baseline||before_baseline||month_baseline||day_baseline||weekday_baseline||subsystem_baseline)))
             throw std::runtime_error("Date recording requires all-original execution; perturbation requires a fully modern check");
         const std::filesystem::path directory(argv[1]);
+        if ((rng_baseline && rng_modern) || ((rng_baseline || rng_modern) &&
+            (baseline || ordering_baseline || before_baseline || month_baseline || day_baseline ||
+             weekday_baseline || subsystem_baseline || !original_dates.empty() || record ||
+             month_record || day_record || weekday_record || subsystem_record)))
+            throw std::runtime_error("RNG comparison requires all 34 semantic Date entries and no oracle recording");
         auto state = std::make_unique<cm::aot::State>();
         auto expected = std::make_unique<cm::aot::State>();
         cm::aot::load_match_snapshot(*state, directory / "initial.snapshot");
         cm::aot::load_match_snapshot(*expected, directory / "expected.snapshot");
+        // Historical modes, including default all-original, retain original RNG.
+        state->rng_original = !rng_modern;
+        state->rng_trace = rng_baseline || rng_modern;
         state->calendar_original = !modern;
         state->date_subsystem_original=baseline||ordering_baseline||before_baseline||month_baseline||day_baseline||weekday_baseline||subsystem_baseline;
         for(auto entry:original_dates) {
@@ -118,6 +130,7 @@ int main(int argc, char** argv) {
                   << cm::aot::season_state_summary(*state) << '\n'
                   << cm::aot::calendar_call_summary(*state) << '\n'
                   << cm::aot::date_subsystem_call_summary(*state);
+        if (rng_baseline || rng_modern) std::cout << cm::aot::rng_core_call_summary(*state);
         if (modern && (!state->calendar_calls[0] || !state->calendar_calls[1] || state->calendar_exceptional_calls))
             throw std::runtime_error("Real fixture did not exercise both modern calendar routines exclusively");
         if (modern && !baseline && !state->date_difference_calls)

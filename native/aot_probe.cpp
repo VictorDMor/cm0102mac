@@ -1,5 +1,6 @@
 #include "calendar_adapter.hpp"
 #include "date_subsystem_audit.hpp"
+#include "rng_core_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -17,6 +18,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         return 2;
     }
     auto state = std::make_unique<cm::aot::State>();
+    std::unique_ptr<cm::aot::MemoryObserver> rng_storage;
     try {
         if (const char* value = std::getenv("CM_AOT_INSTRUCTION_BUDGET")) {
             const std::string input(value);
@@ -31,8 +33,13 @@ int cm::aot::run_probe(int argc, char** argv) {
         // Private reference capture must never record the semantic candidate
         // as its own oracle. Normal apps retain the production defaults.
         state->calendar_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr || std::getenv("CM_AOT_DATE_ORIGINAL") != nullptr;
+        state->rng_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr || std::getenv("CM_AOT_RNG_ORIGINAL") != nullptr;
+        state->rng_trace = std::getenv("CM_AOT_VALIDATION_EVENT_POINTER") != nullptr;
+        if (state->rng_trace && std::getenv("CM_AOT_RNG_STORAGE_AUDIT"))
+            rng_storage = cm::aot::observe_rng_storage(*state);
         if(const auto* date_edges=std::getenv("CM_AOT_DATE_RECORD")) {
-            if(!state->calendar_original)throw std::runtime_error("App Date recording requires explicit all-original selection");
+            if(!state->calendar_original || !state->rng_original)
+                throw std::runtime_error("App Date recording requires explicit all-original Date and RNG selection");
             open_date_subsystem_audit(date_edges,true);
         }
         if (argc == 5) state->platform = std::make_shared<cm::aot::NativePlatform>(argv[3], argv[4]);
@@ -45,6 +52,7 @@ int cm::aot::run_probe(int argc, char** argv) {
     } catch (const ApplicationExit&) {
         close_date_subsystem_audit(true);
         std::cout << calendar_call_summary(*state) << '\n' << date_subsystem_call_summary(*state);
+        std::cout << rng_core_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

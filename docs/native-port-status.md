@@ -548,8 +548,8 @@ Additional normal UI flows resolve rare formatter and language coverage; all
 26 new entries have their own real calls. Original-only UI samples at the six
 rare presentation callers match the semantic return and output bytes. Personal
 content and metadata, 858 protected identities and the new installed reference
-remain unchanged. The complete 34-entry ARM64 production build is installed;
-source and installed executable SHA-256 is
+remain unchanged. That delivery installed the complete 34-entry ARM64 build;
+its source and installed executable SHA-256 was
 `a35a303f441d352d61e0ab0a8e154e06f14f747461310c9e6ac28ce36abaf1e5`.
 The new executable reference preserves the preceding installed
 `7284838b3e6d74785a6969d64bf2d19619ad2cdc3e5e7c0601e6e551a97db063`.
@@ -559,3 +559,46 @@ execution were cleaned after identities were recorded; saves, immutable fixtures
 protected history, original inputs, candidates/reference and evidence receipts
 remain private and preserved. Cleanup removed about 18.9 GB; post-cleanup complete
 personal/historical content and metadata checks pass.
+
+## Semantic Mac RNG core delivery — October 4, 2026
+
+The [RNG core report](native-rng-core-reconstruction.md) records three production
+C++23 entries: CRT draw `0x1077b770`, seed `0x1077b790`, and pool initialization
+`0x107474a0`. The manifest now contains 37 semantic replacements, preserving all
+34 Date entries and the deferred ascending-year leap behavior. The original
+unsigned16 big-endian pool consumers, sampler, scheduler and match engine remain
+generated. The Windows ReCM generator and its services are not transplanted.
+
+Direct validation passes 2,022 complete ABI/memory/ordered-effect comparisons,
+three own-entry negatives, seven controlled clocks, generated consumer wrap,
+callbacks and indirect transitions. CTest passes 40/40; Python discovery passes
+37 with four optional groups skipped, and all four pass explicitly. Generated
+and focused UBSAN pass within the report's stated instrumentation boundaries.
+Two immutable day replays per mode agree with 209,662 draw and 4,201 seed calls
+each, exact state and EOF; the initial RNG negative rejects. Initialization has
+zero day-fixture coverage and two actual calls in each final app process.
+A final app-only oracle guard rejects captures unless both Date and RNG are
+explicitly original; the rebuilt app passes its targeted selection controls.
+The replay executable and core/UBSAN units retain their verified identities.
+
+The unchanged final candidate completes two Original Save/normal exit/process
+absence/exact reopen/Original Load cycles before and after normal night-game
+processing at September 4, 2002 NTE. Club fixtures, Luisao's profile/contract and
+the new Brazil 5:1 Uruguay result persist. All three RNG entries have separate
+real semantic counts, zero original-mode calls and 54 checked samples. Actual
+Load preserves career/world state without restoring the prior startup CRT
+trajectory; the report separates this behavior from deterministic snapshot
+replay. Preliminary automation/relaunch failures are documented and excluded.
+The explicitly waived remaining Date weekly campaign was not reopened.
+
+One protected installation completed at 21:35:45 -03:00 on October 4, 2026.
+Source and installed ARM64 executable SHA-256:
+`1b84152cc5ddad11d43fa2b3fc7c0293b20d2dcf0a8008ee0750843867a0d9b6`.
+The signed validation executable is distinct, and the new installed reference
+preserves the preceding Date build `a35a303f...`. Production has no diagnostic
+flags; four bundled originals match their input identities. Fresh personal
+inventories retain 809 Game / 5 Runtime / 44 Runs files with all content, forks,
+xattrs, modes, mtime and flags; all 1,491 historical identities remain preserved.
+Cleanup and reproducible-payload details are recorded in the RNG report.
+This remains a working development build, not an entirely reconstructed engine,
+a full-career guarantee or a claimed speed improvement.
