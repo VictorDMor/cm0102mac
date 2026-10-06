@@ -727,3 +727,40 @@ formatting, character classification, parsing, memory services, table
 initialization and allocation remain outside this basic string/descriptor
 subsystem; the large service at `0x1077de10` stays generated.
 See the [detailed report](native-string-core-reconstruction.md).
+
+
+## Semantic Mac block-memory primitives — October 5, 2026
+
+Six bounded Mac memory entries now run readable semantic C++23: Carbon-backed
+block copy `0x10739ef0`, destination-returning fill wrapper `0x10778300`, first/
+last byte search `0x10778330`/`0x10778360`, normalized block comparison
+`0x10778390` and aligned fill leaf `0x107783e0`. Internal NULs remain block data,
+comparison preserves divergence rereads and exact -1/0/+1 results, and fill
+preserves alignment, separate four-byte stores, counters/flags and fault prefixes.
+The leaf's large-path r3 count return differs from the wrapper's destination.
+Copy retains the generated mutable-vector stub and existing native BlockMoveData
+source snapshot, bulk validation, overlap and zero-count import. Destination
+hooks on pages `0x10739`/`0x10778` reach local/page/indirect dispatch. The manifest
+contains 66 entries, preserving the previous ordered 60 and Date leap behavior.
+
+One regeneration and a consistent Release ARM64 build pass without warnings or
+errors. Focused acceptance passes 270 original-versus-semantic ABI/memory/ordered-
+effect comparisons, 96 unmapped-access faults, six own negatives plus a nested
+child negative, six nonempty normal entries, two mixed fill modes, six generated
+indirect transitions, two Pascal conversions and two real precision-string
+formatter/search compositions. The required string, decimal and native bridge
+regressions pass: four focused CTests total. New/affected Python audits pass
+5/5/5/4 tests without skips. UBSAN of only the new adapter/harness passes with
+empty stderr. No failed runtime check, repeat of green groups, whole-suite,
+Date/RNG/allocator, I/O, season or UI campaign was needed.
+
+The protected installer ran once at 23:58:15 UTC (20:58:15 in São Paulo).
+Signed source, candidate and installed ARM64 hashes match; bundled originals,
+production plists and strict signatures are verified. Personal Game/Runtime/Runs
+content and metadata, absent presentation preference, LFS snapshot, nineteen
+retained prompts, new installed reference and prior references/candidates are
+preserved. No live UI or personal career was opened. Persistence was not retested
+at the user's direction and is not a pending gate. Stub/import, allocator/pools,
+generated consumers and broader memory/text/runtime services retain their
+existing paths. This closes the six-entry block with no visual or performance
+claim. See the [detailed report](native-memory-primitives-reconstruction.md).

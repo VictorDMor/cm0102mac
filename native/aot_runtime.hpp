@@ -22,6 +22,7 @@ struct RngBoundaryObserver;
 struct BackgroundBoundaryObserver;
 struct CollectionBoundaryObserver;
 struct StringBoundaryObserver;
+struct MemoryPrimitivesBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -234,6 +235,12 @@ struct State {
     std::array<std::uint64_t, 14> string_calls{}, string_original_calls{};
     std::uint32_t string_original_resume = 0;
     StringBoundaryObserver* string_observer = nullptr;
+    // Optional memory-primitive diagnostics are process-local, never serialized.
+    bool memory_primitives_original = false;
+    std::array<bool, 6> memory_primitives_entry_original{};
+    std::array<std::uint64_t, 6> memory_primitives_calls{}, memory_primitives_original_calls{};
+    std::uint32_t memory_primitives_original_resume = 0;
+    MemoryPrimitivesBoundaryObserver* memory_primitives_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();
