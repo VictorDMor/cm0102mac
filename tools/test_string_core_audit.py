@@ -18,7 +18,7 @@ class StringManifestTests(unittest.TestCase):
     def test_fourteen_entries_extend_existing_46(self):
         self.assertEqual(len(STRING_CORE_ENTRIES), 14)
         self.assertEqual(sum(INSTRUCTION_COUNTS), 295)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 71)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 78)
         self.assertEqual(SEMANTIC_REPLACEMENTS[46:60], tuple(
             (entry, 'string_core_adapter') for entry in STRING_CORE_ENTRIES))
         self.assertTrue(all(module != 'string_core_adapter'

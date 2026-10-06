@@ -23,6 +23,8 @@ from memory_primitives_audit import require_memory_primitives_contract, MEMORY_P
 from integer_parsing_audit import (require_integer_parsing_contract, require_integer_parsing_index,
                                    require_integer_parsing_hooks,
                                    INTEGER_PARSING_ENTRIES)
+from formatted_input_audit import (require_formatted_input_contract, require_formatted_input_index,
+                                   require_formatted_input_hooks, FORMATTED_INPUT_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -36,7 +38,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "collection_lookup_adapter") for entry in COLLECTION_LOOKUP_ENTRIES) +
     tuple((entry, "string_core_adapter") for entry in STRING_CORE_ENTRIES) +
     tuple((entry, "memory_primitives_adapter") for entry in MEMORY_PRIMITIVES_ENTRIES) +
-    tuple((entry, "integer_parsing_adapter") for entry in INTEGER_PARSING_ENTRIES))
+    tuple((entry, "integer_parsing_adapter") for entry in INTEGER_PARSING_ENTRIES) +
+    tuple((entry, "formatted_input_adapter") for entry in FORMATTED_INPUT_ENTRIES))
 
 
 def integer(value):
@@ -255,6 +258,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_string_core_contract(page, instructions)
     require_memory_primitives_contract(page, instructions)
     require_integer_parsing_contract(page, instructions)
+    require_formatted_input_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -298,6 +302,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "memory_primitives_adapter.hpp"')
     if any(a in selected for a in INTEGER_PARSING_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "integer_parsing_adapter.hpp"')
+    if any(a in selected for a in FORMATTED_INPUT_ENTRIES if a >> 12 == page):
+        code.insert(1, '#include "formatted_input_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -337,6 +343,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_memory_primitives(s, 0x{a:x})) return true;")
         if a in INTEGER_PARSING_ENTRIES:
             code.append(f"if (try_modern_integer_parsing(s, 0x{a:x})) return true;")
+        if a in FORMATTED_INPUT_ENTRIES:
+            code.append(f"if (try_modern_formatted_input(s, 0x{a:x})) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -469,6 +477,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     code.append("}")
     result = "\n".join(code) + "\n"
     require_integer_parsing_hooks(page, instructions, result)
+    require_formatted_input_hooks(page, instructions, result)
     return result
 
 
@@ -507,6 +516,7 @@ def main():
             queue.extend(item["flows"])
             if "fallthrough" in item: queue.append(item["fallthrough"])
         require_integer_parsing_index(db, None if args.all_analyzed else selected)
+        require_formatted_input_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

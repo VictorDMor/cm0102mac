@@ -24,6 +24,7 @@ struct CollectionBoundaryObserver;
 struct StringBoundaryObserver;
 struct MemoryPrimitivesBoundaryObserver;
 struct IntegerParsingBoundaryObserver;
+struct FormattedInputBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -249,6 +250,13 @@ struct State {
     std::array<std::uint64_t, 2> integer_parsing_phase_escapes{};
     std::uint32_t integer_parsing_original_resume = 0;
     IntegerParsingBoundaryObserver* integer_parsing_observer = nullptr;
+    // Private formatted-input diagnostics; never serialized or bundled as settings.
+    bool formatted_input_original = false;
+    std::array<bool, 7> formatted_input_entry_original{};
+    std::array<std::uint64_t, 7> formatted_input_calls{}, formatted_input_original_calls{};
+    std::uint64_t formatted_input_dispatch_escapes = 0;
+    std::uint32_t formatted_input_original_resume = 0;
+    FormattedInputBoundaryObserver* formatted_input_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

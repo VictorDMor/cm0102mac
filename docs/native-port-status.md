@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-05
+# Native port investigation — updated 2026-10-06
 
 ## Required outcome
 
@@ -808,3 +808,38 @@ It did not call the integer entries; their coverage is in the harness.
 Persistence is explicitly not retested. General scanner/formatter/floating/
 locale/stream/runtime services remain outside this integer block, with no visual
 or performance claim. See the [detailed report](native-integer-parsing-reconstruction.md).
+
+
+## Semantic Mac formatted input — October 6, 2026
+
+The complete seven-entry formatted-input block now runs semantic C++23: format
+analysis `0x1077b7a0`, scanner `0x1077bf20`, string callback `0x1077d960`, string
+vector/variadic facades `0x1077da70`/`0x1077dad0`, stream callback `0x1077d8d0`
+and stream variadic facade `0x1077d9f0`. Destination hooks and whole-body/three-page
+pins protect all 2,248 indexed instructions. The manifest has 78 replacements,
+retaining the previous 71 in order, including independent integer-parser selection.
+Live guest format templates, classification/destination tables, descriptors,
+argument cursors, ABI effects, packed extensions and string/stream lookahead are
+preserved. Output formatting, floating parsing, character conversion and stream
+services remain dependencies.
+
+Focused acceptance passes 931 full-state/ordered-effect comparisons, including
+645 expected faults, seven own negatives, one format-child negative, seven indirect
+transitions and 12 mixed modes. All seven entries have successful nonempty semantic
+witnesses with zero original calls/normal escapes. Integer and string CTests pass;
+30 Python audit tests and focused new-adapter/harness UBSAN pass. Missing decimal
+`dec2num` and NaN services remain matching dependency failures; a bounded original
+hexadecimal-float parser attempt did not terminate. Successful infinity paths cover
+float/double and packed stores. Those retained services are not reconstructed.
+
+One protected installation completed at 20:10:53 São Paulo time. The signed source,
+candidate and installed ARM64 executable match SHA-256
+`2e88cca135176aed98fe9771c06a269463e7fd16ebc14161fd66bd9c4492437e`.
+Original payloads, signatures and production plist are verified; personal content,
+metadata, saves, prompts and historical bundles were preserved before smoke.
+The installed app rendered Prepare Game, opened/cancelled its chooser by named
+shortcuts without loading, and exited normally without fatal diagnostics. The smoke
+selected modern entries but did not call this block; individual coverage is offline.
+Runtime/Runs may change from the intentional smoke. Save/Load is **not retested**,
+neither passed nor a required future gate. No full suite, days, match or career ran.
+See the [formatted-input report](native-formatted-input-reconstruction.md).
