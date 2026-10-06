@@ -23,6 +23,7 @@ struct BackgroundBoundaryObserver;
 struct CollectionBoundaryObserver;
 struct StringBoundaryObserver;
 struct MemoryPrimitivesBoundaryObserver;
+struct IntegerParsingBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -241,6 +242,13 @@ struct State {
     std::array<std::uint64_t, 6> memory_primitives_calls{}, memory_primitives_original_calls{};
     std::uint32_t memory_primitives_original_resume = 0;
     MemoryPrimitivesBoundaryObserver* memory_primitives_observer = nullptr;
+    // Optional integer-parser diagnostics are process-local, never serialized.
+    bool integer_parsing_original = false;
+    std::array<bool, 5> integer_parsing_entry_original{};
+    std::array<std::uint64_t, 5> integer_parsing_calls{}, integer_parsing_original_calls{};
+    std::array<std::uint64_t, 2> integer_parsing_phase_escapes{};
+    std::uint32_t integer_parsing_original_resume = 0;
+    IntegerParsingBoundaryObserver* integer_parsing_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

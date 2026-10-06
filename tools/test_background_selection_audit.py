@@ -17,7 +17,7 @@ INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructio
 
 
 class BackgroundManifestTests(unittest.TestCase):
-    def test_66_entries_preserve_existing_modules(self):
+    def test_71_entries_preserve_existing_modules(self):
         existing = (
             tuple((entry, 'calendar_adapter') for entry in (
                 0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
@@ -30,8 +30,8 @@ class BackgroundManifestTests(unittest.TestCase):
             (entry, 'background_selection_adapter') for entry in BACKGROUND_SELECTION_ENTRIES))
         self.assertEqual(SEMANTIC_REPLACEMENTS[41:46], tuple(
             (entry, 'collection_lookup_adapter') for entry in COLLECTION_LOOKUP_ENTRIES))
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 66)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 66)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 71)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 71)
         self.assertEqual(len(CALENDAR_ADAPTER_ENTRIES) + len(DATE_SUBSYSTEM_ENTRIES), 34)
 
 

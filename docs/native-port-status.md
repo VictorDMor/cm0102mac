@@ -764,3 +764,47 @@ at the user's direction and is not a pending gate. Stub/import, allocator/pools,
 generated consumers and broader memory/text/runtime services retain their
 existing paths. This closes the six-entry block with no visual or performance
 claim. See the [detailed report](native-memory-primitives-reconstruction.md).
+
+
+## Semantic Mac integer parsing — October 6, 2026
+
+Five Mac entries now execute readable C++23 in production ARM64: callback-based
+word32/word64 magnitude parsing `0x1077ee20` / `0x1077f180`, signed32 conversion
+`0x1077f570` and decimal ABI wrappers `0x1077f670` / `0x1077f6a0`. Named phases
+preserve base/prefix/field/EOF/lookahead behavior, separate sign/overflow,
+modular accumulation, guest classification/mapping tables, mutable descriptor
+callbacks, phase-table reads/CTR and the existing unsigned-division path.
+The wrapper preserves end-pointer/flag/error ordering and signed saturation.
+Destination hooks include the parser32 page crossing. Whole-body and fragment
+pins plus edge/hook audits protect the boundaries. The manifest has 71 entries,
+with the prior 66 preserved in order; Date leap behavior and existing guards
+remain intact. Unknown phase destinations retain the generated dynamic-transfer
+boundary and are separately counted, outside normal semantic coverage.
+
+Focused acceptance passes 435 complete architecture/memory/ordered-effect
+comparisons, including 222 faults, five own negatives and a child negative,
+five nonempty semantic entries, two mixed modes, five generated indirect
+transitions and two scanner compositions (`%d%n` / `%llu%n`). The string,
+memory and unsigned-division regressions pass. Five new audit tests and the
+5/5/5/4 affected prior Python tests pass without skips; UBSAN of only the new
+adapter/harness passes with empty stderr. Two new fixture expectations were
+corrected; only the failed new harness was rebuilt/rerun. One regeneration and
+a consistent Release ARM64 build completed without warnings/errors. Final
+review corrected the five-entry harness witness loop; the new CTest/UBSAN were
+rerun without changing the productive adapter or installed executable. No full
+suite, Date/RNG/allocator, replay, season, benchmark or career campaign ran.
+
+The protected installer ran once at 18:20:36 São Paulo time. Signed source,
+candidate and installed ARM64 executable SHA-256 is
+`191e7c599671efb7f0f1bed0273020693c86eddc59a5d40349f0a79e28d845b4`;
+original payloads, strict signatures and production plists are verified. Personal
+contents/metadata, the LFS snapshot, twenty retained prompts, the new installed
+reference and twenty-four historical bundles were unchanged at installation.
+A subsequent short smoke test observed the installed Prepare Game menu,
+Command-O's Load chooser, Command-['s cancellation and normal quit confirmed
+by Return, with process termination and zero fatal diagnostics. The smoke
+created logs/preferences; Game/snapshot/prompts/references remain unchanged.
+It did not call the integer entries; their coverage is in the harness.
+Persistence is explicitly not retested. General scanner/formatter/floating/
+locale/stream/runtime services remain outside this integer block, with no visual
+or performance claim. See the [detailed report](native-integer-parsing-reconstruction.md).
