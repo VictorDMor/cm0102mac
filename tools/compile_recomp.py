@@ -25,6 +25,12 @@ from integer_parsing_audit import (require_integer_parsing_contract, require_int
                                    INTEGER_PARSING_ENTRIES)
 from formatted_input_audit import (require_formatted_input_contract, require_formatted_input_index,
                                    require_formatted_input_hooks, FORMATTED_INPUT_ENTRIES)
+from character_conversion_audit import (require_character_conversion_contract, require_character_conversion_index,
+                                       require_character_conversion_hooks, CHARACTER_CONVERSION_ENTRIES)
+from floating_input_audit import (require_floating_input_contract, require_floating_input_index,
+                                  require_floating_input_hooks, FLOATING_INPUT_ENTRIES)
+from formatted_output_audit import (require_formatted_output_contract, require_formatted_output_index,
+                                    require_formatted_output_hooks, FORMATTED_OUTPUT_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -39,7 +45,10 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "string_core_adapter") for entry in STRING_CORE_ENTRIES) +
     tuple((entry, "memory_primitives_adapter") for entry in MEMORY_PRIMITIVES_ENTRIES) +
     tuple((entry, "integer_parsing_adapter") for entry in INTEGER_PARSING_ENTRIES) +
-    tuple((entry, "formatted_input_adapter") for entry in FORMATTED_INPUT_ENTRIES))
+    tuple((entry, "formatted_input_adapter") for entry in FORMATTED_INPUT_ENTRIES) +
+    tuple((entry, "formatted_output_adapter") for entry in FORMATTED_OUTPUT_ENTRIES) +
+    tuple((entry, "character_conversion_adapter") for entry in CHARACTER_CONVERSION_ENTRIES) +
+    tuple((entry, "floating_input_adapter") for entry in FLOATING_INPUT_ENTRIES))
 
 
 def integer(value):
@@ -259,6 +268,9 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_memory_primitives_contract(page, instructions)
     require_integer_parsing_contract(page, instructions)
     require_formatted_input_contract(page, instructions)
+    require_character_conversion_contract(page, instructions)
+    require_floating_input_contract(page, instructions)
+    require_formatted_output_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -304,6 +316,12 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "integer_parsing_adapter.hpp"')
     if any(a in selected for a in FORMATTED_INPUT_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "formatted_input_adapter.hpp"')
+    if any(a in selected for a in CHARACTER_CONVERSION_ENTRIES if a >> 12 == page):
+        code.insert(1, '#include "character_conversion_adapter.hpp"')
+    if any(a in selected for a in FLOATING_INPUT_ENTRIES if a >> 12 == page):
+        code.insert(1, '#include "floating_input_adapter.hpp"')
+    if any(a in selected for a in (*FORMATTED_OUTPUT_ENTRIES,0x10779ed8) if a >> 12 == page):
+        code.insert(1, '#include "formatted_output_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -345,6 +363,14 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_integer_parsing(s, 0x{a:x})) return true;")
         if a in FORMATTED_INPUT_ENTRIES:
             code.append(f"if (try_modern_formatted_input(s, 0x{a:x})) return true;")
+        if a in CHARACTER_CONVERSION_ENTRIES:
+            code.append(f"if (try_modern_character_conversion(s, 0x{a:x})) return true;")
+        if a in FLOATING_INPUT_ENTRIES:
+            code.append(f"if (try_modern_floating_input(s, 0x{a:x})) return true;")
+        if a in FORMATTED_OUTPUT_ENTRIES:
+            code.append(f"if (try_modern_formatted_output(s, 0x{a:x})) return true;")
+        if a == 0x10779ed8:
+            code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -478,6 +504,9 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     result = "\n".join(code) + "\n"
     require_integer_parsing_hooks(page, instructions, result)
     require_formatted_input_hooks(page, instructions, result)
+    require_character_conversion_hooks(page, instructions, result)
+    require_floating_input_hooks(page, instructions, result)
+    require_formatted_output_hooks(page, instructions, result)
     return result
 
 
@@ -517,6 +546,9 @@ def main():
             if "fallthrough" in item: queue.append(item["fallthrough"])
         require_integer_parsing_index(db, None if args.all_analyzed else selected)
         require_formatted_input_index(db, None if args.all_analyzed else selected)
+        require_character_conversion_index(db, None if args.all_analyzed else selected)
+        require_floating_input_index(db, None if args.all_analyzed else selected)
+        require_formatted_output_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

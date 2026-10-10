@@ -1,6 +1,7 @@
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "decimal_bridge.hpp"
+#include "decimal_input_bridge.hpp"
 #include "application_exit.hpp"
 #include <algorithm>
 
@@ -82,6 +83,10 @@ bool bridge_import(State& s, const std::string& name) {
         result(std::uint32_t(std::int32_t(s.memory_error)));
     } else if (name == "CarbonLib::num2dec") {
         original_num2dec(s);
+    } else if (name == "CarbonLib::dec2num") {
+        original_dec2num(s);
+    } else if (name == "CarbonLib::nan") {
+        original_nan(s);
     } else if (name == "CarbonLib::sin" || name == "CarbonLib::cos" || name == "CarbonLib::atan" ||
                name == "CarbonLib::atan2" || name == "CarbonLib::sqrt" || name == "CarbonLib::pow") {
         // The six imported libm functions use f1/f2 double arguments and f1

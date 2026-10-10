@@ -843,3 +843,58 @@ selected modern entries but did not call this block; individual coverage is offl
 Runtime/Runs may change from the intentional smoke. Save/Load is **not retested**,
 neither passed nor a required future gate. No full suite, days, match or career ran.
 See the [formatted-input report](native-formatted-input-reconstruction.md).
+
+
+## Semantic Mac formatted output, characters and floating input — October 9, 2026
+
+Twenty-two new entries now run semantic C++23 in production ARM64: fifteen
+output format/parser/numeric/descriptor/callback/facade entries, six multibyte/
+wide16 character entries, and the descriptor-based floating input parser. The
+missing CarbonLib dec2num/nan imports now have explicit PPC record/payload ABI
+bridges. Decimal and NaN scanner fixtures that previously failed at absent
+services now have independently expected successful results. The manifest has
+100 ordered replacements and retains the previous 78 unchanged. Destination
+hooks cover local, cross-page and indirect dispatch, including the one shared
+reset edge `0x10779ff4 -> 0x10779ed8`. Whole-body and eight fragment pins protect
+all 3,902 indexed instructions. Live guest tables/descriptors, Mac argument
+layouts, callback clobbers, faults and architectural effects are retained.
+
+Focused acceptance passed 1,395 output comparisons (1,028 expected faults),
+335 character comparisons (49 faults), and 156 floating input comparisons
+(89 faults). Every new entry has nonempty normal semantic calls, zero original
+selection/normal escapes, an own negative and a generated indirect transition.
+Each chain has a child negative. Output also has two shared-reset transitions,
+16 mixed modes and three unknown-destination diagnostics excluded from normal
+witnesses; characters have eight mixed modes and floating input has two. The
+scanner regression passes 940 comparisons (641 faults), seven own negatives,
+a child negative, seven indirect transitions and 12 mixed modes. Decimal checks
+retain 1,064 num2dec ABI cases and 14 original formatting examples and add 101
+independent dec2num/nan input/CFM checks plus two independent negative controls.
+
+Final regeneration and a consistent Release ARM64 build passed. Seven focused
+CTests passed in 26.44 seconds; nine Python audit scripts passed 46 tests.
+Focused UBSAN of new/modified adapters, bridges and harnesses passed all five
+binaries with empty stderr against the final consistent libraries. The bounded
+legacy hexadecimal exponent attempt exhausts 1,500 instructions in both
+original and semantic modes and is excluded from passing conversion counts;
+executable hexadecimal paths are checked separately. No correction was made
+to that legacy behavior or Date's ascending-year leap behavior.
+
+The protected installer ran once at 21:12:21 São Paulo time. Signed source,
+candidate and installed ARM64 executable SHA-256 is
+`0725840a0907bc6bd866d47632fbe75606defaa98d320ecb53b50c7348fed749`.
+Original payloads, strict signatures and production plists passed. Personal
+content/metadata, the LFS snapshot, all 22 handoffs (17 private), the new baseline
+reference and 117 historical bundles were preserved immediately after install.
+The installed app rendered Prepare Game, opened/cancelled its chooser by named
+commands without loading, and exited normally with no fatal diagnostics.
+Seven output entries had semantic calls in the smoke; complete individual
+coverage is in the harness. Final verification found no app process and
+Game/snapshot/handoffs/references/historical bundles remained unchanged.
+Runtime/Runs and preferences may change from the intentional smoke.
+
+Save/Load is **not retested**. No career, day, match, serialization campaign,
+benchmark or full suite ran. Locale, num2dec, fwrite/flush/refill and remaining
+file/stream services retain their existing ownership and implementation.
+No visual/performance improvement is claimed. See the
+[detailed report](native-formatted-output-reconstruction.md).

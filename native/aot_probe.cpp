@@ -7,6 +7,9 @@
 #include "memory_primitives_adapter.hpp"
 #include "integer_parsing_adapter.hpp"
 #include "formatted_input_adapter.hpp"
+#include "formatted_output_adapter.hpp"
+#include "character_conversion_adapter.hpp"
+#include "floating_input_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -42,6 +45,9 @@ int cm::aot::run_probe(int argc, char** argv) {
         state->rng_original = std::getenv("CM_AOT_SEASON_REFERENCE") != nullptr || std::getenv("CM_AOT_RNG_ORIGINAL") != nullptr;
         state->string_original = std::getenv("CM_AOT_STRING_CORE_ORIGINAL") != nullptr;
         state->formatted_input_original = std::getenv("CM_AOT_FORMATTED_INPUT_ORIGINAL") != nullptr;
+        state->formatted_output_original = std::getenv("CM_AOT_FORMATTED_OUTPUT_ORIGINAL") != nullptr;
+        state->character_conversion_original = std::getenv("CM_AOT_CHARACTER_CONVERSION_ORIGINAL") != nullptr;
+        state->floating_input_original = std::getenv("CM_AOT_FLOATING_INPUT_ORIGINAL") != nullptr;
         state->integer_parsing_original = std::getenv("CM_AOT_INTEGER_PARSING_ORIGINAL") != nullptr;
         state->memory_primitives_original = std::getenv("CM_AOT_MEMORY_PRIMITIVES_ORIGINAL") != nullptr;
         state->collection_original = std::getenv("CM_AOT_COLLECTION_LOOKUP_ORIGINAL") != nullptr;
@@ -70,6 +76,9 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << memory_primitives_call_summary(*state);
         std::cout << integer_parsing_call_summary(*state);
         std::cout << formatted_input_call_summary(*state);
+        std::cout << formatted_output_call_summary(*state);
+        std::cout << character_conversion_call_summary(*state);
+        std::cout << floating_input_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

@@ -1,4 +1,5 @@
 #include "aot_runtime.hpp"
+#include "decimal_input_checks.hpp"
 #include <CoreServices/CoreServices.h>
 #include <algorithm>
 #include <cfenv>
@@ -93,6 +94,7 @@ unsigned original_formatting(const char* program) {
     auto owner = std::make_unique<State>();
     auto& s = *owner;
     load_program(s, program);
+    s.formatted_output_original = true;
     s.memory.map(base, 0x10000);
     constexpr auto text = base + 0x100, format = base + 0x1000, arguments = base + 0x2000;
     struct Example { const char* format; double value; const char* expected; };
@@ -139,7 +141,8 @@ int main(int argc, char** argv) {
     if (argc != 2) { std::cerr << "Usage: cm-decimal-checks <original-segments>\n"; return 2; }
     try {
         const auto conversions = bridge_checks();
+        const auto input_conversions = decimal_input_bridge_checks(argv[1]);
         const auto formats = original_formatting(argv[1]);
-        std::cout << conversions << " decimal ABI cases and " << formats << " original formatting cases passed\n";
+        std::cout << conversions << " num2dec ABI cases, " << input_conversions << " independent dec2num/nan cases and " << formats << " formatting cases passed\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

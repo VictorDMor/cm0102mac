@@ -25,6 +25,9 @@ struct StringBoundaryObserver;
 struct MemoryPrimitivesBoundaryObserver;
 struct IntegerParsingBoundaryObserver;
 struct FormattedInputBoundaryObserver;
+struct FormattedOutputBoundaryObserver;
+struct CharacterConversionBoundaryObserver;
+struct FloatingInputBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -257,6 +260,23 @@ struct State {
     std::uint64_t formatted_input_dispatch_escapes = 0;
     std::uint32_t formatted_input_original_resume = 0;
     FormattedInputBoundaryObserver* formatted_input_observer = nullptr;
+    // Optional diagnostics for the three related text/numeric chains. Never serialized.
+    bool formatted_output_original = false;
+    std::array<bool, 15> formatted_output_entry_original{};
+    std::array<std::uint64_t, 15> formatted_output_calls{}, formatted_output_original_calls{};
+    std::uint64_t formatted_output_dispatch_escapes = 0, formatted_output_shared_tail_calls = 0;
+    std::uint32_t formatted_output_original_resume = 0;
+    FormattedOutputBoundaryObserver* formatted_output_observer = nullptr;
+    bool character_conversion_original = false;
+    std::array<bool, 6> character_conversion_entry_original{};
+    std::array<std::uint64_t, 6> character_conversion_calls{}, character_conversion_original_calls{};
+    std::uint32_t character_conversion_original_resume = 0;
+    CharacterConversionBoundaryObserver* character_conversion_observer = nullptr;
+    bool floating_input_original = false;
+    std::array<std::uint64_t, 1> floating_input_calls{}, floating_input_original_calls{};
+    std::uint64_t floating_input_dispatch_escapes = 0;
+    std::uint32_t floating_input_original_resume = 0;
+    FloatingInputBoundaryObserver* floating_input_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

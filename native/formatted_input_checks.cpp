@@ -103,6 +103,7 @@ std::unique_ptr<State> setup(const char* program,unsigned entry,const std::strin
     for(unsigned n=0;n<32;++n)s->wr<4>(n*4,0xcafe0000u+n);
     s->wr<4>(4,stack);s->wr<4>(8,toc);s->wr<4>(4128,return_sentinel);s->wr<4>(4132,0x31415926);s->wr<4>(2440,0xbadc0ffe);
     s->wr<1>(2304,0xa6);s->wr<1>(1024,1);s->wr<1>(1027,1);
+    s->wr<1>(1309,0);s->wr<1>(1310,0);s->wr<1>(1311,0);
     text(*s,left,input);text(*s,format_address,format);
     s->memory.copy_in(destination,std::vector<std::uint8_t>(128,0xdd));
     s->memory.write<4>(right,left);s->memory.write<4>(right+4,0);
@@ -229,18 +230,35 @@ int main(int argc,char** argv) {
                 require(s.memory.read<1>(destination+8)==0xdd,"Destination guard");
             });
         }
-        // Decimal float parsing reaches an existing unimplemented OS service.
-        // Preserve that exact dependency failure and its complete effect prefix.
-        for(const std::string& f:{"%f","%lf","%Lf"})check(setup(argv[1],4,"1.5!",f),"decimal dependency fault "+f,{},true);
+        // These are the same three historical missing-service cases, now exact
+        // successful conversions through the production decimal input bridge.
+        for(const std::string& f:{"%f","%lf","%Lf"})check(setup(argv[1],4,"1.5!",f),"decimal dependency now available "+f,[=](const State& s,const Effects&){
+            require(s.r<4>(12)==1,"Decimal scanner assignment count");
+            require((f=="%f"?s.memory.read<4>(destination):s.memory.read<8>(destination))==(f=="%f"?UINT64_C(0x3fc00000):UINT64_C(0x3ff8000000000000)),"Independent decimal destination bits");
+            require(s.memory.read<4>(stack-128+56)==left+3,"Decimal scanner callback cursor");
+        });
+        for(const std::string& f:{"%f%n","%lf%n","%Lf%n"})check(setup(argv[1],4,"1.5!",f),"floating count composition "+f,[=](const State& s,const Effects&){
+            require(s.r<4>(12)==1&&s.memory.read<4>(destination+16)==3,"Floating consumed count");
+            require((f=="%f%n"?s.memory.read<4>(destination):s.memory.read<8>(destination))==(f=="%f%n"?UINT64_C(0x3fc00000):UINT64_C(0x3ff8000000000000)),"Floating store bits");
+        });
+        check(setup(argv[1],4,"1.5!","%*f%n"),"suppressed floating count",[](const State& s,const Effects&){require(s.r<4>(12)==0&&s.memory.read<4>(destination)==3&&s.memory.read<1>(destination+4)==0xdd,"Suppression/count/guard");});
+        check(setup(argv[1],4,"1.5,2.5,3.5,4.5!","%,vf%n"),"packed decimal composition",[](const State& s,const Effects&){
+            require(s.r<4>(12)==1&&s.memory.read<4>(destination+16)==15,"Packed floating count assignments="+std::to_string(s.r<4>(12))+" count="+std::to_string(s.memory.read<4>(destination+16)));
+            for(unsigned i=0;i<4;++i)require(s.memory.read<4>(destination+i*4)==float_bits<4>(1.5+i),"Packed independent lane bits");
+        });
+        for(const std::string& f:{"%2lc%n","%2ls%n"})check(setup(argv[1],4,"AB!",f),"wide16 composition "+f,[=](const State& s,const Effects&){
+            require(s.r<4>(12)==1&&s.memory.read<4>(destination+16)==2,"Wide16 consumed count");
+            require(s.memory.copy_out(destination,f=="%2lc%n"?3:6)==(f=="%2lc%n"?std::vector<std::uint8_t>{0,0,'B'}:std::vector<std::uint8_t>{0,'A',0,'B',0,0}),"Original lc/ls destination increment");
+        });
         for(unsigned entry:{1u,3u,4u})for(const auto& c:std::vector<std::pair<std::string,std::string>>{{"","%d"},{"","%n"},{"12","%d%d"},{"  ","%d"},{"abc","%*2c%n"},{"abc","%lc%n"},{"abc!","%ls%n"},{"abc!","%l[a-c]%n"},{"12","%0d"},{"","%%"},{"%","%%"},{"abc","%Q"}})check(setup(argv[1],entry,c.first,c.second),"boundary/characters "+c.second);
         for(const std::string& f:{"%3c%hhn","%3c%hn","%3c%ln","%3c%lln"})check(setup(argv[1],4,"abc!",f),"count destination widths",[=](const State& s,const Effects&){
             const auto count=f.ends_with("hhn")?s.memory.read<1>(destination+16):f.ends_with("hn")?s.memory.read<2>(destination+16):f.ends_with("lln")?s.memory.read<8>(destination+16):s.memory.read<4>(destination+16);
             require(s.r<4>(12)==1&&count==3,"Count narrowing/widening");
         });
-        for(const auto& c:std::vector<std::pair<std::string,std::string>>{{"abc","%*s%n"},{"abc","%*[a-c]%n"},{"!","%[a-c]"},{"abc","%4294967295c"},{std::string("\x80\x81!",3),std::string("%[\x80-\x82]",7)},{std::string("\xff!",2),"%c"},{"-inf!","%f"},{"nan!","%lf"},{"inf!","%*f"}})check(setup(argv[1],4,c.first,c.second),"text/high-byte/float boundary",{},c.first=="nan!");
+        for(const auto& c:std::vector<std::pair<std::string,std::string>>{{"abc","%*s%n"},{"abc","%*[a-c]%n"},{"!","%[a-c]"},{"abc","%4294967295c"},{std::string("\x80\x81!",3),std::string("%[\x80-\x82]",7)},{std::string("\xff!",2),"%c"},{"-inf!","%f"},{"nan!","%lf"},{"inf!","%*f"}})check(setup(argv[1],4,c.first,c.second),"text/high-byte/float boundary",[=](const State& s,const Effects&){if(c.first=="nan!")require(s.r<4>(12)==1&&s.memory.read<8>(destination)==UINT64_C(0x7ff8000000000000),"Historical NaN service case now succeeds with PPC bits");});
         for(unsigned entry:{3u,4u,6u}){auto a=setup(argv[1],entry);a->wr<4>(12,0);check(std::move(a),"null facade");}
         for(unsigned orientation:{0u,0x10u,0x20u,0x30u}){auto a=setup(argv[1],6);a->memory.write<1>(stream+5,0x40|orientation);check(std::move(a),"stream orientation");}
-        for(const auto& c:std::vector<std::pair<std::string,std::string>>{{"-123!","%d%n"},{"18446744073709551615!","%llu%n"},{"abc!","%3c%n"},{"ab!","%[a-b]%n"},{"inf!","%f%n"}}) {
+        for(const auto& c:std::vector<std::pair<std::string,std::string>>{{"-123!","%d%n"},{"18446744073709551615!","%llu%n"},{"abc!","%3c%n"},{"ab!","%[a-b]%n"},{"inf!","%f%n"},{"1.5!","%f%n"},{"nan!","%lf%n"}}) {
             check(setup(argv[1],6,c.first,c.second),"buffered stream composition "+c.second,[=](const State& s,const Effects&){
                 require(s.r<4>(12)==1,"Stream count");require(s.memory.read<1>(stream+5)==0x50,"Byte orientation");
                 require(s.memory.read<1>(stream+12)==0&&s.memory.read<1>(stream+13)==0,"No stream EOF/error");
