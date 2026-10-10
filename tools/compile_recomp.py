@@ -33,6 +33,8 @@ from formatted_output_audit import (require_formatted_output_contract, require_f
                                     require_formatted_output_hooks, FORMATTED_OUTPUT_ENTRIES)
 from allocator_audit import (require_allocator_contract, require_allocator_index,
                              require_allocator_hooks, ALLOCATOR_ENTRIES)
+from stream_buffer_audit import (require_stream_buffer_contract, require_stream_buffer_index,
+                                 require_stream_buffer_hooks, STREAM_BUFFER_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -51,7 +53,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "formatted_output_adapter") for entry in FORMATTED_OUTPUT_ENTRIES) +
     tuple((entry, "character_conversion_adapter") for entry in CHARACTER_CONVERSION_ENTRIES) +
     tuple((entry, "floating_input_adapter") for entry in FLOATING_INPUT_ENTRIES) +
-    tuple((entry, "allocator_adapter") for entry in ALLOCATOR_ENTRIES))
+    tuple((entry, "allocator_adapter") for entry in ALLOCATOR_ENTRIES) +
+    tuple((entry, "stream_buffer_adapter") for entry in STREAM_BUFFER_ENTRIES))
 
 
 def integer(value):
@@ -275,6 +278,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_floating_input_contract(page, instructions)
     require_formatted_output_contract(page, instructions)
     require_allocator_contract(page, instructions)
+    require_stream_buffer_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -328,6 +332,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "formatted_output_adapter.hpp"')
     if any(a in selected for a in ALLOCATOR_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "allocator_adapter.hpp"')
+    if any(a in selected for a in STREAM_BUFFER_ENTRIES if a >> 12 == page):
+        code.insert(1, '#include "stream_buffer_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -377,6 +383,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_formatted_output(s, 0x{a:x})) return true;")
         if a in ALLOCATOR_ENTRIES:
             code.append(f"if (try_modern_allocator(s, 0x{a:x})) return true;")
+        if a in STREAM_BUFFER_ENTRIES:
+            code.append(f"if (try_modern_stream_buffer(s, 0x{a:x})) return true;")
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -516,6 +524,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_floating_input_hooks(page, instructions, result)
     require_formatted_output_hooks(page, instructions, result)
     require_allocator_hooks(page, instructions, result)
+    require_stream_buffer_hooks(page, instructions, result)
     return result
 
 
@@ -559,6 +568,7 @@ def main():
         require_floating_input_index(db, None if args.all_analyzed else selected)
         require_formatted_output_index(db, None if args.all_analyzed else selected)
         require_allocator_index(db, None if args.all_analyzed else selected)
+        require_stream_buffer_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

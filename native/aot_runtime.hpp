@@ -29,6 +29,7 @@ struct FormattedOutputBoundaryObserver;
 struct CharacterConversionBoundaryObserver;
 struct FloatingInputBoundaryObserver;
 struct AllocatorBoundaryObserver;
+struct StreamBufferBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -285,6 +286,13 @@ struct State {
     std::uint32_t allocator_original_resume = 0;
     std::uint64_t allocator_dispatch_escapes = 0;
     AllocatorBoundaryObserver* allocator_observer = nullptr;
+    // Stream storage diagnostics are process-local and never serialized.
+    bool stream_buffer_original = false;
+    std::array<bool,13> stream_buffer_entry_original{};
+    std::array<std::uint64_t,13> stream_buffer_calls{}, stream_buffer_original_calls{};
+    std::uint32_t stream_buffer_original_resume = 0;
+    std::uint64_t stream_buffer_dispatch_escapes = 0;
+    StreamBufferBoundaryObserver* stream_buffer_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

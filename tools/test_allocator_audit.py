@@ -18,9 +18,9 @@ INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructio
 
 class AllocatorManifestTests(unittest.TestCase):
     def test_exact_prior_100_and_27_ordered_entries(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 127)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 127)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[100:], tuple((e, 'allocator_adapter') for e in ALLOCATOR_ENTRIES))
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 140)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 140)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[100:127], tuple((e, 'allocator_adapter') for e in ALLOCATOR_ENTRIES))
         self.assertEqual(ALLOCATOR_ENTRIES, tuple(sorted(ALLOCATOR_ENTRIES)))
         self.assertEqual(len(CONTRACTS), 27)
         self.assertEqual(sum(INSTRUCTION_COUNTS), 1057)
