@@ -10,6 +10,7 @@
 #include "formatted_output_adapter.hpp"
 #include "character_conversion_adapter.hpp"
 #include "floating_input_adapter.hpp"
+#include "allocator_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -48,6 +49,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         state->formatted_output_original = std::getenv("CM_AOT_FORMATTED_OUTPUT_ORIGINAL") != nullptr;
         state->character_conversion_original = std::getenv("CM_AOT_CHARACTER_CONVERSION_ORIGINAL") != nullptr;
         state->floating_input_original = std::getenv("CM_AOT_FLOATING_INPUT_ORIGINAL") != nullptr;
+        state->allocator_original = std::getenv("CM_AOT_ALLOCATOR_ORIGINAL") != nullptr;
         state->integer_parsing_original = std::getenv("CM_AOT_INTEGER_PARSING_ORIGINAL") != nullptr;
         state->memory_primitives_original = std::getenv("CM_AOT_MEMORY_PRIMITIVES_ORIGINAL") != nullptr;
         state->collection_original = std::getenv("CM_AOT_COLLECTION_LOOKUP_ORIGINAL") != nullptr;
@@ -79,6 +81,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << formatted_output_call_summary(*state);
         std::cout << character_conversion_call_summary(*state);
         std::cout << floating_input_call_summary(*state);
+        std::cout << allocator_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

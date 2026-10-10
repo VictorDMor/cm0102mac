@@ -28,6 +28,7 @@ struct FormattedInputBoundaryObserver;
 struct FormattedOutputBoundaryObserver;
 struct CharacterConversionBoundaryObserver;
 struct FloatingInputBoundaryObserver;
+struct AllocatorBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -277,6 +278,13 @@ struct State {
     std::uint64_t floating_input_dispatch_escapes = 0;
     std::uint32_t floating_input_original_resume = 0;
     FloatingInputBoundaryObserver* floating_input_observer = nullptr;
+    // Allocator selection, counters and effects are private, never serialized.
+    bool allocator_original = false;
+    std::array<bool,27> allocator_entry_original{};
+    std::array<std::uint64_t,27> allocator_calls{}, allocator_original_calls{};
+    std::uint32_t allocator_original_resume = 0;
+    std::uint64_t allocator_dispatch_escapes = 0;
+    AllocatorBoundaryObserver* allocator_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

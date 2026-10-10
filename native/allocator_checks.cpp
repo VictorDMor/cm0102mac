@@ -10,6 +10,7 @@ void require(bool value, const char* message) {
 std::unique_ptr<State> setup(const char* program, std::uint32_t hint) {
     auto state = std::make_unique<State>();
     load_program(*state, program);
+    state->allocator_original = true; // Keep this fixture on the guarded translated reference.
     auto& s = *state;
     s.memory.map(pool, 0x2000);
     s.memory.clear(pool, 0x2000);

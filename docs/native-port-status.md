@@ -898,3 +898,52 @@ benchmark or full suite ran. Locale, num2dec, fwrite/flush/refill and remaining
 file/stream services retain their existing ownership and implementation.
 No visual/performance improvement is claimed. See the
 [detailed report](native-formatted-output-reconstruction.md).
+
+
+## Semantic Mac arenas, small pools and allocation facades — October 9, 2026
+
+Twenty-seven new allocator entries now run named semantic C++23 in production
+ARM64: arenas, boundary tags and free lists, small-object pools, context dispatch,
+reallocation/clearing and four global facades. Guest big-endian word32 metadata,
+addresses, live class tables and access/ABI effects are retained. The manifest
+has 127 ordered replacements and preserves the prior 100 exactly. The full
+1,057-instruction body pins, two reallocation page fragments and destination hooks
+are audited; no external interior edge is present in the indexed flow graph.
+Lifecycle, acquisition/disposal glue, streams and Carbon allocation policy retain
+their existing ownership.
+
+The productive pool progress correction is preserved at the same failed-allocation
+branch, using the existing next_pool_attempt helper. The oracle is the guarded
+translation. Independent checks establish decreasing retry limits, progress,
+payload preservation and nonoverlapping slots across the 16 synthetic hint/size
+combinations. No raw-loop retry or captured historical heap campaign was run.
+
+Focused acceptance passes 337 full-state/ordered-effect comparisons, including
+86 expected mapping faults, 27 own negatives and three child-before-parent
+negatives. All 27 entries have nonempty normal semantic witnesses, zero original
+selection/escapes and generated indirect dispatch coverage. Fourteen mixed modes,
+all six pool classes, boundary tags/coalescing, refill/disposal, reallocation,
+word32 counted-clear wrap, relocated TOC, live table mutation, aliases and access
+prefixes are covered. Five focused CTests pass; the new audit and nine affected
+prior audits pass 53 tests. Focused UBSAN passes three binaries with empty stderr
+against the final consistent Release ARM64 libraries.
+
+The protected installer ran once at 22:18:59 São Paulo time. The signed source,
+candidate and installed ARM64 executable match SHA-256
+`14eb1c373854e95c6e642ebc1ddd99ae56f9c353ecb49de93e0822cc93e44ae8`.
+Strict deep signatures, original payloads and production plists pass. Personal
+content and metadata, saves, all 23 handoffs (18 private), the new prior-app
+reference and 120 historical bundles were preserved before smoke.
+The installed app rendered Prepare Game, opened/cancelled its chooser by named
+commands without loading, and exited normally without fatal diagnostics. The
+exit summary records semantic calls to all 27 entries, zero original selection
+and zero allocator escapes. This observes execution in that UI sequence; branch
+and equivalence evidence remains in the harness. Final protection again passed
+for Game/snapshot/handoffs/payloads/references/historical bundles and no app process
+remained. Runtime/Runs and preferences may change from the intentional smoke.
+
+Save/Load is **not retested**. No career, day, match, serialization campaign,
+benchmark, whole suite or historical heap replay ran. Date's ascending-year leap
+behavior and adjacent subsystem behavior remain unchanged. No visual or
+performance improvement is claimed. See the
+[detailed allocator report](native-allocator-pools-reconstruction.md).
