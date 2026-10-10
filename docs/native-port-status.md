@@ -947,3 +947,48 @@ benchmark, whole suite or historical heap replay ran. Date's ascending-year leap
 behavior and adjacent subsystem behavior remain unchanged. No visual or
 performance improvement is claimed. See the
 [detailed allocator report](native-allocator-pools-reconstruction.md).
+
+
+## Semantic Mac stream storage and byte/item I/O — October 10, 2026
+
+The thirteen stream-storage/lifecycle replacements delivered in
+`f71ae1b782c0cc8afaed337c90442a5478acd876` brought the manifest from 127 to 140.
+Their [report](native-stream-buffer-reconstruction.md) preserves the focused
+234-comparison, callback/fault and installed-smoke acceptance, with Save/Load
+not retested for that bounded delivery.
+
+Nine further byte/item-I/O replacements now bring the ordered manifest to 149,
+preserving the exact prior 140. Slow/fast byte reads, line reads, byte pushback,
+item read/write bodies/facades and orientation execute named C++23 by default.
+Guest metadata, callback ABI, bulk overlap behavior, word32 wrap and the original
+read-floor/write-partial-item credit remain intact. The original pinned bodies
+cover 682 instructions with no indexed external interior edges.
+
+Acceptance passed 226 comparisons, 27 expected faults and 13 own/child negatives,
+six focused CTests, seven new audit tests plus 60 tests in affected prior audits,
+and three focused UBSAN binaries. All nine entries have direct/indirect normal
+semantic witnesses, zero own original calls and zero dispatch escapes. Full
+Release ARM64 generation retains 1,953,157 indexed instructions across 1,922 pages,
+with zero missing/pending destinations.
+
+An isolated signed app using identical compiled code loaded Reading, saved through
+the original in-game menu to a new private streamio.sav, exited, reopened and loaded
+that file. Club, manager, observed date and visible squad persisted. This witness
+used the existing diagnostic event-coordinate/unmodified-click mode to address
+CUA background input; installed-production Save/Load and complete serializer
+coverage are not claimed. User Reading and original/private artifacts remained
+protected. No day or match was advanced.
+
+The protected installation ran once. Source, candidate, installed and running
+smoke ARM64 executable SHA-256 is
+`5e219ce7b0c4e35a0761f0ba4ff52a326873bfe1faf9f7e99dd60172ec6c373a`.
+Strict signatures, normal production launch metadata and four original payload
+hashes passed. The installed app rendered Prepare Game, opened/cancelled the
+chooser and exited normally with no fatal diagnostics. Final preservation passed
+for Game, user saves, payloads, handoffs, references and 126 historical bundles;
+Runtime/Runs/presentation preferences may change legitimately after UI.
+
+File seek/tell, open/mode parsing and remaining runtime/engine services remain
+in progress. The [detailed I/O report](native-stream-io-reconstruction.md) and
+[complete-port ledger](native-cpp23-port-progress.md) distinguish this accepted
+subsystem from the still-active whole-port objective.

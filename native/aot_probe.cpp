@@ -12,6 +12,7 @@
 #include "floating_input_adapter.hpp"
 #include "allocator_adapter.hpp"
 #include "stream_buffer_adapter.hpp"
+#include "stream_io_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -52,6 +53,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         state->floating_input_original = std::getenv("CM_AOT_FLOATING_INPUT_ORIGINAL") != nullptr;
         state->allocator_original = std::getenv("CM_AOT_ALLOCATOR_ORIGINAL") != nullptr;
         state->stream_buffer_original = std::getenv("CM_AOT_STREAM_BUFFER_ORIGINAL") != nullptr;
+        state->stream_io_original = std::getenv("CM_AOT_STREAM_IO_ORIGINAL") != nullptr;
         state->integer_parsing_original = std::getenv("CM_AOT_INTEGER_PARSING_ORIGINAL") != nullptr;
         state->memory_primitives_original = std::getenv("CM_AOT_MEMORY_PRIMITIVES_ORIGINAL") != nullptr;
         state->collection_original = std::getenv("CM_AOT_COLLECTION_LOOKUP_ORIGINAL") != nullptr;
@@ -85,6 +87,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << floating_input_call_summary(*state);
         std::cout << allocator_call_summary(*state);
         std::cout << stream_buffer_call_summary(*state);
+        std::cout << stream_io_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

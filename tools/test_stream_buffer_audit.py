@@ -17,9 +17,9 @@ INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructio
 
 class StreamBufferManifestTests(unittest.TestCase):
     def test_exact_prior_127_and_13_ordered_entries(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 140)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 140)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[127:], tuple((e, 'stream_buffer_adapter') for e in STREAM_BUFFER_ENTRIES))
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 149)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 149)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[127:140], tuple((e, 'stream_buffer_adapter') for e in STREAM_BUFFER_ENTRIES))
         self.assertEqual(STREAM_BUFFER_ENTRIES, tuple(sorted(STREAM_BUFFER_ENTRIES)))
         self.assertEqual(len(CONTRACTS), 13)
         self.assertEqual(sum(INSTRUCTION_COUNTS), 541)

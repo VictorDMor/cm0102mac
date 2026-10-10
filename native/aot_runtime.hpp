@@ -30,6 +30,7 @@ struct CharacterConversionBoundaryObserver;
 struct FloatingInputBoundaryObserver;
 struct AllocatorBoundaryObserver;
 struct StreamBufferBoundaryObserver;
+struct StreamIoBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -293,6 +294,13 @@ struct State {
     std::uint32_t stream_buffer_original_resume = 0;
     std::uint64_t stream_buffer_dispatch_escapes = 0;
     StreamBufferBoundaryObserver* stream_buffer_observer = nullptr;
+    // Buffered item I/O diagnostics remain private and process-local.
+    bool stream_io_original = false;
+    std::array<bool,9> stream_io_entry_original{};
+    std::array<std::uint64_t,9> stream_io_calls{}, stream_io_original_calls{};
+    std::uint32_t stream_io_original_resume = 0;
+    std::uint64_t stream_io_dispatch_escapes = 0;
+    StreamIoBoundaryObserver* stream_io_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

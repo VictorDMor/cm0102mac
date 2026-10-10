@@ -17,20 +17,27 @@ count is not a percentage of engine behavior, functions or instructions.
 The earlier 5,833 analyzed functions are an analysis result, not a completeness
 certificate.
 
-The current accepted manifest contains **140 semantic replacements**: the exact
-prior 127 plus thirteen stream-storage/lifecycle entries covering 541 indexed
-instructions. Their [acceptance report](native-stream-buffer-reconstruction.md)
-records 234 comparisons, 39 expected faults, 17 rejected negatives, six related
-CTest passes, four focused UBSAN passes and installed ARM64 menu/chooser/normal-exit
-proof. Buffered item I/O, seek/tell, open/mode parsing and remaining file/runtime
-services are subsequent work. Save/Load is not retested by this block.
+The current accepted manifest contains **149 semantic replacements**. The exact
+prior 127 gained thirteen storage/lifecycle entries covering 541 indexed
+instructions, followed by nine byte/item-I/O entries covering 682 instructions.
+The [storage report](native-stream-buffer-reconstruction.md) records 234
+comparisons and installed menu/chooser/normal-exit proof, with persistence not
+retested for that bounded block.
 
-The following buffered item-I/O block has been characterized privately: nine
-entries, 682 indexed instructions, no indexed external interior edges. It contains
-slow/fast byte reads, line reads, byte pushback, item read/write bodies and facades,
-and byte orientation. These are contracts for subsequent implementation, not
-accepted semantic replacements. File seek/tell and open/mode parsing remain
-separate dependencies.
+The [I/O report](native-stream-io-reconstruction.md) records 226 comparisons,
+27 expected faults, 13 rejected negatives, six accepted focused CTests, seven
+new audits plus 60 tests in affected prior audits, and three focused UBSAN passes.
+A private signed copy using identical compiled code loaded Reading, saved through
+the original in-game menu, exited, reopened and loaded the new streamio save.
+It retained the observed club/manager/date/squad and preserved the original save.
+This isolated runtime witness used the existing diagnostic event-coordinate click
+mode because CUA background input carried Command/live-cursor differences. It is
+not installed-production Save/Load or complete serialization evidence.
+
+File seek/tell, open/mode parsing and remaining file services are next. They remain
+generated productive dependencies even though the isolated career used them
+successfully. Native input validation limitations are also retained as an evidence
+boundary rather than being hidden by the test mode.
 
 ## Work that still prevents completion
 
