@@ -35,6 +35,7 @@ struct FileControllerBoundaryObserver;
 struct FilePathBoundaryObserver;
 struct RuntimeLifecycleBoundaryObserver;
 struct CodeFragmentBoundaryObserver;
+struct CppObjectStorageBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -328,6 +329,14 @@ struct State {
     std::uint32_t code_fragment_original_resume = 0;
     std::uint64_t code_fragment_dispatch_escapes = 0;
     CodeFragmentBoundaryObserver* code_fragment_observer = nullptr;
+    // C++ object-storage diagnostics remain private and unpersisted.
+    bool cpp_object_storage_original = false;
+    std::array<bool, 12> cpp_object_storage_entry_original{};
+    std::array<std::uint64_t, 12> cpp_object_storage_calls{}, cpp_object_storage_original_calls{};
+    std::array<std::uint64_t, 12> cpp_object_storage_returns{}, cpp_object_storage_terminations{};
+    std::uint32_t cpp_object_storage_original_resume = 0;
+    std::uint64_t cpp_object_storage_dispatch_escapes = 0;
+    CppObjectStorageBoundaryObserver* cpp_object_storage_observer = nullptr;
     bool file_controller_original = false;
     std::array<bool, 26> file_controller_entry_original{};
     std::array<std::uint64_t, 26> file_controller_calls{}, file_controller_original_calls{};

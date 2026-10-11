@@ -25,9 +25,9 @@ class ScopeTests(unittest.TestCase):
             self.assertNotIn(entry, CODE_FRAGMENT_ENTRIES)
 
     def test_exact_prior_188_and_five_production_entries(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 193)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 193)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[188:], tuple((e, 'code_fragment_adapter') for e in CODE_FRAGMENT_ENTRIES))
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 205)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 205)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[188:193], tuple((e, 'code_fragment_adapter') for e in CODE_FRAGMENT_ENTRIES))
         prior = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS[:188]]
         self.assertEqual(hashlib.sha256(json.dumps(prior, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '71685ebd95d1c0fc78ebeaa5ec1d9da103cc49027e1b75cca68860c93cc976af')

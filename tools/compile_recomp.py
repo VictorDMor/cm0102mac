@@ -45,6 +45,8 @@ from runtime_lifecycle_audit import (require_runtime_lifecycle_contract, require
                                     require_runtime_lifecycle_hooks, RUNTIME_LIFECYCLE_ENTRIES)
 from code_fragment_audit import (require_code_fragment_contract, require_code_fragment_index,
                                 require_code_fragment_hooks, CODE_FRAGMENT_ENTRIES)
+from cpp_object_storage_audit import (require_cpp_object_storage_contract, require_cpp_object_storage_index,
+                                    require_cpp_object_storage_hooks, CPP_OBJECT_STORAGE_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -69,7 +71,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "file_controller_adapter") for entry in FILE_CONTROLLER_ENTRIES) +
     tuple((entry, "file_path_adapter") for entry in FILE_PATH_ENTRIES) +
     tuple((entry, "runtime_lifecycle_adapter") for entry in RUNTIME_LIFECYCLE_ENTRIES) +
-    tuple((entry, "code_fragment_adapter") for entry in CODE_FRAGMENT_ENTRIES))
+    tuple((entry, "code_fragment_adapter") for entry in CODE_FRAGMENT_ENTRIES) +
+    tuple((entry, "cpp_object_storage_adapter") for entry in CPP_OBJECT_STORAGE_ENTRIES))
 
 
 def integer(value):
@@ -299,6 +302,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_file_path_contract(page, instructions)
     require_runtime_lifecycle_contract(page, instructions)
     require_code_fragment_contract(page, instructions)
+    require_cpp_object_storage_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -364,6 +368,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "runtime_lifecycle_adapter.hpp"')
     if any(a in selected for a in CODE_FRAGMENT_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "code_fragment_adapter.hpp"')
+    if any(a in selected for a in CPP_OBJECT_STORAGE_ENTRIES if a >> 12 == page):
+        code.insert(1, '#include "cpp_object_storage_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -425,6 +431,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_runtime_lifecycle(s, 0x{a:x})) return true;")
         if a in CODE_FRAGMENT_ENTRIES:
             code.append(f"if (try_modern_code_fragment(s, 0x{a:x})) return true;")
+        if a in CPP_OBJECT_STORAGE_ENTRIES:
+            code.append(f"if (try_modern_cpp_object_storage(s, 0x{a:x})) return true;")
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -570,6 +578,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_file_path_hooks(page, instructions, result)
     require_runtime_lifecycle_hooks(page, instructions, result)
     require_code_fragment_hooks(page, instructions, result)
+    require_cpp_object_storage_hooks(page, instructions, result)
     return result
 
 
@@ -619,6 +628,7 @@ def main():
         require_file_path_index(db, None if args.all_analyzed else selected)
         require_runtime_lifecycle_index(db, None if args.all_analyzed else selected)
         require_code_fragment_index(db, None if args.all_analyzed else selected)
+        require_cpp_object_storage_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

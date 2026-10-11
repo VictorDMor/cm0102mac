@@ -36,6 +36,50 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## C++ object-array lifetime and storage reconstructed
+
+Twelve production routines now use named C++23 bodies: cookie/raw array
+construction and destruction, partial-construction cleanup, object/array
+allocation and release, enabled allocation failure, failure-object destruction
+and its type metadata. The complete bodies contain 335 original instructions.
+The manifest contains 205 entries with the accepted first 193 unchanged;
+generation retains 1,953,157 instructions, 1,922 pages and zero missing/pending
+targets. Full bodies, interior-flow constraints and destination hooks are pinned;
+the full Release rebuild uses a consistent State layout for all generated units.
+
+Guest cookies/guards, ascending constructors, reverse destructor order, live
+counter/stride/callback rereads, signed deleting flags, word32 wrap and ordered
+vtable publication are preserved. Allocation delegates to the existing semantic
+allocator and native heap services. The new-handler owner is captured once and
+its callback reloaded after failure. ApplicationExit is preserved as a successful
+nonreturning boundary. Selection, observers and counters remain private.
+
+171 production comparisons passed, including 36 expected mapping faults, two
+real native terminations and 22 own/child negatives. All twelve have normal
+direct/CFM evidence and independent reset; parent/child mixed selection is tested
+in allocation/release chains. Default cases have zero original calls and escapes.
+Native allocation/construction/destruction/
+reuse/release composition preserves payload, padding and guest address reuse.
+Four directly related CTests, seventeen audit suites (102 tests), and UBSAN of
+modified implementation/dispatch/harness code passed.
+
+One protected installation delivered source/candidate/installed/running ARM64
+executable SHA-256
+`6d9ed067922846327fac9fc294bac76feb15acb932cd8a403c4a0322a1913647`.
+Prepare Game and original named Quit/confirmation completed normally; owned
+process 63146 closed and logged 4,977,661,890 recompiled instructions. Eight
+entries executed in the installed UI, including tens of thousands of object/
+array allocation/release calls; the harness covers all twelve. Game, existing
+saves, four payloads, 23 handoffs, the previous reference and 151 older bundles
+are preserved. Logs/preferences may change.
+
+The exception matcher, throw/unwind machinery, nonlocal contexts, startup, heap
+glues and native heap bridges remain outside this increment. Enabled failure
+with no matching fragment follows the original termination path; successful
+catch/unwind is not claimed. The full modernization goal remains active.
+Save/Load: **not retested**; performance: **not benchmarked**. Contracts, pins and
+evidence are in [the object-storage report](native-cpp-object-storage-reconstruction.md).
+
 ## C++ code-fragment registration and exception metadata reconstructed
 
 Five production helpers now use named C++23 bodies: code-fragment registration,

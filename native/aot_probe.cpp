@@ -17,6 +17,7 @@
 #include "file_path_adapter.hpp"
 #include "runtime_lifecycle_adapter.hpp"
 #include "code_fragment_adapter.hpp"
+#include "cpp_object_storage_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -96,6 +97,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << file_path_call_summary(*state);
         std::cout << runtime_lifecycle_call_summary(*state);
         std::cout << code_fragment_call_summary(*state);
+        std::cout << cpp_object_storage_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;
