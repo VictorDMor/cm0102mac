@@ -36,6 +36,33 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Aggregate-object lifetimes reconstructed
+
+Six complete entries / 411 indexed instructions now execute semantic C++23
+embedded-table and aggregate construction/destruction, record-group cleanup and
+stream detachment. Generation has **579** replacements with the prior 573 records,
+roots, instruction inventory and five source fixups unchanged. Guest field
+layouts, signed counts/deleting flags, live callbacks and owner reloads, actual
+allocator/array/CFM dependencies and nonlocal ownership retain original behavior.
+
+Seven focused CTests, 229 executed generator audits and thirteen storage
+regression tests pass. Evidence includes 4,006 component comparisons, 3,929
+interrupted/faulting outcomes including 3,021 budget stops, six own negatives,
+54 actual production comparisons, six profile comparisons, an application-exit
+prefix and 44 nonlocal comparisons including 24 restore/handler faults. Seven
+affected units pass UBSAN in four modes with exact Release output.
+
+The installed signed ARM64 executable SHA-256 is
+`86f34c78266f270d83b7f477322c635b38b417138ff68bf2f181c9a561c0d8df`.
+Candidate/installed/running identity and the menu/cancel/original-confirmation/
+normal-exit smoke pass. All six entries execute with ten semantic calls/returns
+and zero original/profile selection, own failures or dispatch escapes. Current
+saves, original files, inputs, references, 23 handoffs and 204 prior bundles are
+protected. The prior build's 4,114 reproducible outputs are cleaned, recovering
+approximately 1.47 GB; the current consistent build remains. Save/Load is **not
+retested**, performance is **not benchmarked**, and the complete port remains
+unfinished. See [the aggregate-object report](native-aggregate-object-reconstruction.md).
+
 ## Build storage and cycle cleanup
 
 Generated C++ can now be seeded from a previous completed generation through
@@ -43,9 +70,10 @@ independent APFS copy-on-write files. All instructions/pages are still rendered
 and audited before completion. Thirteen focused tests and a full private
 regeneration pass: 1,923 cloned C++ files / 752,660,018 logical bytes produce
 identical source and manifest hashes, while every original file retains its
-identity and metadata. The accepted 573 semantic entries and installed game
-remain unchanged. Earlier reproducible objects/test outputs are cleaned after
-each accepted cycle; the latest consistent build and active phase are retained.
+identity and metadata. At that storage-only delivery, the accepted 573 semantic
+entries and installed game remained unchanged. Earlier reproducible objects/test
+outputs are cleaned after each accepted cycle; the latest consistent build and
+active phase are retained.
 See [build storage and retention](native-build-storage.md).
 
 ## Descriptor-tree mutation reconstructed
@@ -64,7 +92,7 @@ stops, three own negatives, 45 actual production comparisons, three profile
 comparisons, an application-exit prefix and 23 nonlocal comparisons including
 twelve restore/handler faults.
 
-The installed signed ARM64 executable SHA-256 is
+At this tree delivery, the installed signed ARM64 executable SHA-256 was
 `7a4ed5b5b47583e4a44fc1d9188c751d52f0ac7230b8b7e44090dabb3505b675`.
 Candidate/installed/running identity and the menu/cancel/original-confirmation/
 normal-exit smoke pass: all three entries execute with 53 semantic calls/returns

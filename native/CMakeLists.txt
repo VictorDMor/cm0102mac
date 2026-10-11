@@ -34,6 +34,7 @@ target_sources(cm_aot PRIVATE native_service.cpp native_service_adapter.cpp)
 target_sources(cm_aot PRIVATE engine_initialization.cpp engine_initialization_adapter.cpp runtime_diagnostics.cpp)
 target_sources(cm_aot PRIVATE utility_object.cpp utility_object_adapter.cpp)
 target_sources(cm_aot PRIVATE tree_mutation.cpp tree_mutation_adapter.cpp)
+target_sources(cm_aot PRIVATE aggregate_object.cpp aggregate_object_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -137,6 +138,23 @@ target_sources(cm-tree-mutation-checks PRIVATE $<TARGET_OBJECTS:cm-tree-mutation
 target_link_libraries(cm-tree-mutation-checks PRIVATE cm_aot)
 target_compile_options(cm-tree-mutation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME tree_mutation_component_equivalence COMMAND cm-tree-mutation-checks)
+set(CM_AGGREGATE_OBJECT_REFERENCE "${CMAKE_BINARY_DIR}/aggregate_object_reference.cpp")
+add_custom_command(OUTPUT "${CM_AGGREGATE_OBJECT_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_aggregate_object_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_AGGREGATE_OBJECT_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_aggregate_object_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/aggregate_object_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-aggregate-object-reference OBJECT "${CM_AGGREGATE_OBJECT_REFERENCE}")
+target_include_directories(cm-aggregate-object-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(cm-aggregate-object-checks aggregate_object_checks.cpp)
+target_sources(cm-aggregate-object-checks PRIVATE $<TARGET_OBJECTS:cm-aggregate-object-reference>)
+target_link_libraries(cm-aggregate-object-checks PRIVATE cm_aot)
+target_compile_options(cm-aggregate-object-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME aggregate_object_component_equivalence COMMAND cm-aggregate-object-checks)
 set(CM_ENGINE_INITIALIZATION_REFERENCE "${CMAKE_BINARY_DIR}/engine_initialization_reference.cpp")
 add_custom_command(OUTPUT "${CM_ENGINE_INITIALIZATION_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_engine_initialization_reference.py"
@@ -183,6 +201,18 @@ add_test(NAME original_tree_mutation_profile COMMAND "${CMAKE_COMMAND}" -E env
 add_test(NAME modern_tree_mutation_transfer COMMAND "${CMAKE_COMMAND}" -E env
     "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
     $<TARGET_FILE:cm-tree-mutation-production-checks> "${CM_ORACLE_DIR}" --transfer)
+add_executable(cm-aggregate-object-production-checks aggregate_object_production_checks.cpp aggregate_object_transfer_checks.cpp)
+target_link_libraries(cm-aggregate-object-production-checks PRIVATE cm_aot)
+target_compile_options(cm-aggregate-object-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_aggregate_object_production COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-aggregate-object-production-checks> "${CM_ORACLE_DIR}")
+add_test(NAME original_aggregate_object_profile COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-aggregate-object-production-checks> "${CM_ORACLE_DIR}" --profile)
+add_test(NAME modern_aggregate_object_transfer COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-aggregate-object-production-checks> "${CM_ORACLE_DIR}" --transfer)
 add_test(NAME modern_engine_initialization_production COMMAND "${CMAKE_COMMAND}" -E env
     "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
     $<TARGET_FILE:cm-engine-initialization-production-checks> "${CM_ORACLE_DIR}")

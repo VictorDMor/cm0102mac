@@ -66,6 +66,8 @@ claimed by this build-tool change.
 
 The private active-phase records are `generation-storage-tests.log`,
 `generation-storage-full-generation.log`, `generation-storage-source-before.json`
-and `generation-storage-receipt.json`. The current installed signed ARM64 app
-remains the accepted tree-mutation delivery. Save/Load is **not retested** and
-performance is **not benchmarked**. The full C++23 port remains active.
+and `generation-storage-receipt.json`. At this storage-only delivery, the installed
+signed ARM64 app remained the accepted tree-mutation build. The subsequent
+[aggregate-object delivery](native-aggregate-object-reconstruction.md) reuses
+that seed for a fresh consistent production build. Save/Load is **not retested**
+and performance is **not benchmarked**. The full C++23 port remains active.
