@@ -27,6 +27,7 @@ target_sources(cm_aot PRIVATE guest_context_transfer.cpp)
 target_sources(cm_aot PRIVATE exception_runtime_adapter.cpp exception_runtime_context.cpp exception_runtime_frames.cpp exception_runtime_cleanup.cpp exception_runtime_matching.cpp exception_runtime_search.cpp exception_runtime_capture.cpp exception_runtime_handlers.cpp exception_runtime_unexpected.cpp)
 target_sources(cm_aot PRIVATE compiler_arithmetic_adapter.cpp compiler_arithmetic_integer.cpp compiler_arithmetic_conversion.cpp)
 target_sources(cm_aot PRIVATE register_context.cpp register_context_adapter.cpp)
+target_sources(cm_aot PRIVATE stdlib_core.cpp stdlib_core_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -96,6 +97,34 @@ enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CM_STDLIB_CORE_REFERENCE "${CMAKE_BINARY_DIR}/stdlib_core_reference.cpp")
+add_custom_command(OUTPUT "${CM_STDLIB_CORE_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_stdlib_core_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_STDLIB_CORE_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_stdlib_core_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/stdlib_core_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-stdlib-core-reference OBJECT "${CM_STDLIB_CORE_REFERENCE}")
+target_include_directories(cm-stdlib-core-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(cm-stdlib-core-checks stdlib_core_checks.cpp)
+target_link_libraries(cm-stdlib-core-checks PRIVATE cm_aot)
+target_sources(cm-stdlib-core-checks PRIVATE $<TARGET_OBJECTS:cm-stdlib-core-reference>)
+add_test(NAME stdlib_core_component_equivalence COMMAND cm-stdlib-core-checks)
+add_executable(cm-stdlib-core-integration-checks stdlib_core_integration_checks.cpp)
+target_link_libraries(cm-stdlib-core-integration-checks PRIVATE cm_aot)
+target_sources(cm-stdlib-core-integration-checks PRIVATE $<TARGET_OBJECTS:cm-stdlib-core-reference>)
+target_compile_options(cm-stdlib-core-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+target_compile_options(cm-stdlib-core-integration-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_stdlib_core_production COMMAND cm-stdlib-core-integration-checks)
+add_test(NAME original_stdlib_core_profile COMMAND "${CMAKE_COMMAND}" -E env
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-stdlib-core-integration-checks> --profile)
+add_executable(cm-stdlib-core-transfer-checks stdlib_core_transfer_checks.cpp)
+target_link_libraries(cm-stdlib-core-transfer-checks PRIVATE cm_aot)
+target_compile_options(cm-stdlib-core-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_stdlib_core_transfer COMMAND cm-stdlib-core-transfer-checks)
 set(CM_REGISTER_REFERENCE "${CMAKE_BINARY_DIR}/register_context_reference.cpp")
 add_custom_command(OUTPUT "${CM_REGISTER_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_register_context_reference.py"

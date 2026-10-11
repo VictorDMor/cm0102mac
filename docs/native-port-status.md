@@ -36,11 +36,35 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Word utilities and comparator search reconstructed
+
+Four complete routines / 90 indexed instructions now have semantic C++23
+implementations in default production: the two absolute-word facades,
+floor-style signed remainder and comparator binary search. Complete generation
+has 268 semantic replacements with the accepted first 264 unchanged. Component
+acceptance has 4,095 comparisons, 569 exact budget stops and four individual
+negatives. Production has 742 comparisons, 585 exact budget stops, two mapping
+faults and four individual negatives, including real guest string-comparator
+composition. Thirty-two nonlocal search cases / sixteen restore-handler faults
+preserve abandoned callbacks and nested search frames. Six focused CTests,
+21 affected Python suites / 136 tests with zero skips, and twelve-unit UBSAN
+with output identical to Release pass.
+
+Protected installation and installed menu/chooser/named-cancel/normal-exit smoke
+pass. The ARM64 executable SHA-256 is
+`1f08d21e93d6c1be300a244a3a081db4e91eed7d32cf794425a0fdcfcd484bde`.
+Installed counters record seven absolute-long-word and 63 binary-search calls/
+returns with zero original selection, continuation, fault or escape. The other
+two UI roots have zero calls; their coverage is the harness. Game/save/payload/
+handoff/reference content is preserved. Save/Load is **not retested** and the
+complete port objective remains active. See
+[the word-utility/search report](native-stdlib-core-reconstruction.md).
+
 ## Register context reconstructed
 
 All thirty complete entries for f18..f31 suffix save/restore and scalar nonlocal
 capture/restore run in semantic C++23 production. Four shared bodies contain 91
-unique indexed instructions. The manifest is **264**, preserving its first 234
+unique indexed instructions. At that delivery the manifest was **264**, preserving its first 234
 exactly. Component acceptance has 2,883 comparisons / 756 mapping-fault prefixes /
 30 individual negatives. Production adds 1,169 comparisons, 598 exact budget
 stops, sixty mapping faults, thirty negatives and direct/generated/CFM evidence

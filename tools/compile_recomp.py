@@ -56,6 +56,8 @@ from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawi
 from register_context_audit import (require_register_context_contract, require_register_context_index,
                                    require_register_context_hooks, register_context_hook,
                                    REGISTER_CONTEXT_ENTRIES, CAPTURE_OBSERVATIONS)
+from stdlib_core_audit import (require_stdlib_core_contract, require_stdlib_core_index,
+                               require_stdlib_core_hooks, stdlib_core_hook, STDLIB_CORE_ENTRIES)
 
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
@@ -83,7 +85,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "cpp_object_storage_adapter") for entry in CPP_OBJECT_STORAGE_ENTRIES) +
     tuple((entry, "exception_runtime_adapter") for entry in EXCEPTION_RUNTIME_ENTRIES) +
     tuple((entry, "compiler_arithmetic_adapter") for entry in COMPILER_ARITHMETIC_ENTRIES) +
-    tuple((entry, "register_context_adapter") for entry in REGISTER_CONTEXT_ENTRIES))
+    tuple((entry, "register_context_adapter") for entry in REGISTER_CONTEXT_ENTRIES) +
+    tuple((entry, "stdlib_core_adapter") for entry in STDLIB_CORE_ENTRIES))
 
 
 def integer(value):
@@ -315,7 +318,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -341,6 +344,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_compiler_arithmetic_contract(page, instructions, selected)
     if register_context_hooks:
         require_register_context_contract(page, instructions, selected)
+    if stdlib_core_hooks:
+        require_stdlib_core_contract(page, instructions, selected)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -368,6 +373,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if register_context_hooks and page_addresses & set(REGISTER_CONTEXT_ENTRIES):
         code.insert(1, '#include "register_context_adapter.hpp"')
         code.insert(1, '#include "guest_context_transfer.hpp"')
+    if stdlib_core_hooks and page_addresses & set(STDLIB_CORE_ENTRIES):
+        code.insert(1, '#include "stdlib_core_adapter.hpp"')
     if any(op[0] == 'CALLOTHER' for item in instructions for op in item['ops']):
         code.insert(1, '#include "vector_context.hpp"')
     if match_hot_page:
@@ -494,6 +501,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(compiler_arithmetic_hook(a))
         if register_context_hooks and a in REGISTER_CONTEXT_ENTRIES:
             code.append(register_context_hook(a))
+        if stdlib_core_hooks and a in STDLIB_CORE_ENTRIES:
+            code.append(stdlib_core_hook(a))
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -658,6 +667,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_compiler_arithmetic_hooks(page, instructions, result)
     if register_context_hooks:
         require_register_context_hooks(page, instructions, result)
+    if stdlib_core_hooks:
+        require_stdlib_core_hooks(page, instructions, result)
     return result
 
 
@@ -711,6 +722,7 @@ def main():
         require_exception_runtime_index(db, None if args.all_analyzed else selected)
         require_compiler_arithmetic_index(db, None if args.all_analyzed else selected)
         require_register_context_index(db, None if args.all_analyzed else selected)
+        require_stdlib_core_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

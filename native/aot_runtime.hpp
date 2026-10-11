@@ -39,6 +39,7 @@ struct CppObjectStorageBoundaryObserver;
 struct ExceptionRuntimeBoundaryObserver;
 struct CompilerArithmeticBoundaryObserver;
 struct RegisterContextBoundaryObserver;
+struct StdlibCoreBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 using Vector128 = std::array<std::uint8_t, 16>;
 
@@ -383,6 +384,16 @@ struct State {
     std::uint32_t register_context_original_body = 0;
     std::uint64_t register_context_dispatch_escapes = 0, register_context_unknown_transfers = 0;
     RegisterContextBoundaryObserver* register_context_observer = nullptr;
+    // Word utilities and comparator-search diagnostics remain process-local.
+    bool stdlib_core_original = false;
+    std::array<bool, 4> stdlib_core_entry_original{};
+    std::array<std::uint64_t, 4> stdlib_core_calls{}, stdlib_core_original_calls{};
+    std::array<std::uint64_t, 4> stdlib_core_returns{}, stdlib_core_transfers{}, stdlib_core_faults{};
+    std::array<std::uint64_t, 4> stdlib_core_budget_original_calls{}, stdlib_core_profile_original_calls{};
+    std::array<std::uint64_t, 4> stdlib_core_budget_resumes{}, stdlib_core_budget_returns{};
+    std::uint32_t stdlib_core_original_body = 0;
+    std::uint64_t stdlib_core_dispatch_escapes = 0;
+    StdlibCoreBoundaryObserver* stdlib_core_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();
