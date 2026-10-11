@@ -36,6 +36,18 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Build storage and cycle cleanup
+
+Generated C++ can now be seeded from a previous completed generation through
+independent APFS copy-on-write files. All instructions/pages are still rendered
+and audited before completion. Thirteen focused tests and a full private
+regeneration pass: 1,923 cloned C++ files / 752,660,018 logical bytes produce
+identical source and manifest hashes, while every original file retains its
+identity and metadata. The accepted 573 semantic entries and installed game
+remain unchanged. Earlier reproducible objects/test outputs are cleaned after
+each accepted cycle; the latest consistent build and active phase are retained.
+See [build storage and retention](native-build-storage.md).
+
 ## Descriptor-tree mutation reconstructed
 
 Three complete entries / 285 indexed instructions now execute semantic C++23

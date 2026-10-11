@@ -11,6 +11,7 @@ import hashlib
 from pathlib import Path
 import sqlite3
 import struct
+from generation_storage import seed_generated
 from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
 from local_temporaries import LocalTemporaries
@@ -753,6 +754,8 @@ def main():
                         help="Stream every analyzed instruction into native compilation units")
     parser.add_argument("--legacy-unique-storage", action="store_true",
                         help="Materialize translation scratch for comparison with instruction-local temporaries")
+    parser.add_argument("--reuse-generated", type=Path,
+                        help="Seed an empty output with independent copies of prior C++; every unit is regenerated and audited")
     args = parser.parse_args()
     if args.limit < 1: raise ValueError("Instruction limit must be positive")
     metadata = json.loads((args.export / "program.json").read_text())
@@ -800,6 +803,9 @@ def main():
         require_engine_initialization_index(db, None if args.all_analyzed else selected)
         require_utility_object_index(db, None if args.all_analyzed else selected)
         require_tree_mutation_index(db, None if args.all_analyzed else selected)
+    if args.reuse_generated:
+        reused = seed_generated(args.reuse_generated, args.output)
+        print(f"Seeded generated C++: {reused['clonedFiles']} copy-on-write files; {reused['copiedFiles']} regular copies", flush=True)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.
