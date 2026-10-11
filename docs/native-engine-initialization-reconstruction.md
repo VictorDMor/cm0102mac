@@ -73,11 +73,16 @@ body of these twenty entries is replayed by a semantic initializer.
 
 Already semantic dependencies remain Date `0x107156f0`/`0x10715880`, C++ array
 construction `0x10773320` and lifecycle registration `0x10772df0`. The object
-constructors `0x10738c00`, `0x1073ae10`, `0x1074dec0` and `0x1073c1b0` remain
-generated dependencies. Their actual successful paths, allocation effects and
-registration participate in production comparisons; this block does not claim
+constructors `0x10738c00`, `0x1073ae10`, `0x1074dec0` and `0x1073c1b0` were
+generated dependencies in this delivery. Their actual successful paths,
+allocation effects and registration participate in production comparisons;
+this block does not claim
 that those four constructors have been semantically reconstructed. Date's
 ascending-year leap behavior and the allocator progress guard remain unchanged.
+The later
+[utility-object delivery](native-utility-object-reconstruction.md) reconstructs
+the first three constructors and their related lifetimes; the aggregate
+constructor remains generated.
 
 ## Owned diagnostics and host continuations
 

@@ -36,6 +36,32 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Basic utility-object lifetimes reconstructed
+
+Eleven complete entries / 239 indexed instructions now execute semantic C++23
+node, list, buffer and descriptor lifetime operations in production. Generation
+has **570** replacements with all 559 prior records and five source fixups
+unchanged. Guest layouts, signed deleting flags, padding, aliasing, allocator
+policy, CFM cleanup, the retained descriptor-root quirk and nonlocal ownership
+are preserved. The tree algorithm and aggregate constructor remain generated.
+
+Nine focused CTests, 26 affected/new Python suites / 174 tests without final skips
+and seven-unit UBSAN across four runs pass. Evidence includes 991 component
+comparisons, 843 faults, 399 exact budget stops, eleven own negatives, 66 real
+production comparisons, eleven profile comparisons, an application-exit prefix
+and 79 nonlocal comparisons including 44 restore/handler faults and both leaves.
+
+The installed signed ARM64 executable SHA-256 is
+`4b2fd9c202ef2293475e4f37a45b81ec0887e01787f5e4165b4490b22b0bc058`. Candidate/installed/running identity and the protected
+menu/chooser/cancel/normal-exit smoke pass: 388 semantic calls and returns,
+zero original/profile selection or own failures. Ten entries occur there;
+list clear is covered by dedicated actual production checks. Original game/save/
+payload/reference/handoff metadata and 194 older bundles are protected. Old
+reproducible build/test outputs are cleaned after each accepted cycle while the
+latest validated build is retained. Save/Load is **not retested** and performance
+is **not benchmarked**. The full port remains incomplete. See
+[the utility-object report](native-utility-object-reconstruction.md).
+
 ## Engine global initialization reconstructed
 
 The startup root and its nineteen global initializers now execute named C++23

@@ -32,6 +32,7 @@ target_sources(cm_aot PRIVATE time_runtime.cpp time_runtime_adapter.cpp)
 target_sources(cm_aot PRIVATE import_descriptor.cpp import_descriptor_adapter.cpp)
 target_sources(cm_aot PRIVATE native_service.cpp native_service_adapter.cpp)
 target_sources(cm_aot PRIVATE engine_initialization.cpp engine_initialization_adapter.cpp runtime_diagnostics.cpp)
+target_sources(cm_aot PRIVATE utility_object.cpp utility_object_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -101,6 +102,23 @@ enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CM_UTILITY_OBJECT_REFERENCE "${CMAKE_BINARY_DIR}/utility_object_reference.cpp")
+add_custom_command(OUTPUT "${CM_UTILITY_OBJECT_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_utility_object_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_UTILITY_OBJECT_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_utility_object_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/utility_object_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-utility-object-reference OBJECT "${CM_UTILITY_OBJECT_REFERENCE}")
+target_include_directories(cm-utility-object-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(cm-utility-object-checks utility_object_checks.cpp)
+target_sources(cm-utility-object-checks PRIVATE $<TARGET_OBJECTS:cm-utility-object-reference>)
+target_link_libraries(cm-utility-object-checks PRIVATE cm_aot)
+target_compile_options(cm-utility-object-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME utility_object_component_equivalence COMMAND cm-utility-object-checks)
 set(CM_ENGINE_INITIALIZATION_REFERENCE "${CMAKE_BINARY_DIR}/engine_initialization_reference.cpp")
 add_custom_command(OUTPUT "${CM_ENGINE_INITIALIZATION_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_engine_initialization_reference.py"
@@ -123,6 +141,18 @@ target_link_libraries(cm-engine-initialization-production-checks PRIVATE cm_aot)
 target_compile_options(cm-engine-initialization-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 set(CM_ORIGINAL_APPLICATION_FILE "$ENV{HOME}/Library/Application Support/CM 01-02 Native/Game/CM 01-02"
     CACHE FILEPATH "Original application including its resource fork, read only by initialization fixtures")
+add_executable(cm-utility-object-production-checks utility_object_production_checks.cpp utility_object_transfer_checks.cpp)
+target_link_libraries(cm-utility-object-production-checks PRIVATE cm_aot)
+target_compile_options(cm-utility-object-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_utility_object_production COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-utility-object-production-checks> "${CM_ORACLE_DIR}")
+add_test(NAME original_utility_object_profile COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-utility-object-production-checks> "${CM_ORACLE_DIR}" --profile)
+add_test(NAME modern_utility_object_transfer COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-utility-object-production-checks> "${CM_ORACLE_DIR}" --transfer)
 add_test(NAME modern_engine_initialization_production COMMAND "${CMAKE_COMMAND}" -E env
     "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
     $<TARGET_FILE:cm-engine-initialization-production-checks> "${CM_ORACLE_DIR}")
