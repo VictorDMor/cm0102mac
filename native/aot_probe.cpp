@@ -30,6 +30,7 @@
 #include "tree_mutation_adapter.hpp"
 #include "aggregate_object_adapter.hpp"
 #include "record_group_adapter.hpp"
+#include "record_query_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -75,6 +76,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         state->compiler_arithmetic_original = std::getenv("CM_AOT_COMPILER_ARITHMETIC_ORIGINAL") != nullptr;
         state->time_runtime_original = std::getenv("CM_AOT_TIME_RUNTIME_ORIGINAL") != nullptr;
         engine_initialization_diagnostics(*state).original = std::getenv("CM_AOT_ENGINE_INITIALIZATION_ORIGINAL") != nullptr;
+        record_query_diagnostics(*state).original = std::getenv("CM_AOT_RECORD_QUERY_ORIGINAL") != nullptr;
         record_group_diagnostics(*state).original = std::getenv("CM_AOT_RECORD_GROUP_ORIGINAL") != nullptr;
         aggregate_object_diagnostics(*state).original = std::getenv("CM_AOT_AGGREGATE_OBJECT_ORIGINAL") != nullptr;
         tree_mutation_diagnostics(*state).original = std::getenv("CM_AOT_TREE_MUTATION_ORIGINAL") != nullptr;
@@ -132,6 +134,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << tree_mutation_call_summary(*state);
         std::cout << aggregate_object_call_summary(*state);
         std::cout << record_group_call_summary(*state);
+        std::cout << record_query_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

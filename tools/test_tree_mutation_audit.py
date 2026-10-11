@@ -24,8 +24,8 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(sum(n for _, _, n, _ in CONTRACTS), 285)
         self.assertEqual(TREE_MUTATION_ENTRIES, tuple(sorted(set(TREE_MUTATION_ENTRIES))))
         baseline = [{'entry': f'0x{a:x}', 'module': m} for a, m in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(baseline), 590)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 590)
+        self.assertEqual(len(baseline), 596)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 596)
         self.assertEqual(hashlib.sha256(json.dumps(baseline[:570], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '7c46bda5a1297c19d312785558d5b5dbec2beff2c1c06fd9e11a1aa5cbbb7256')
         self.assertEqual(SEMANTIC_REPLACEMENTS[570:573], tuple((a, 'tree_mutation_adapter') for a in TREE_MUTATION_ENTRIES))

@@ -36,6 +36,7 @@ target_sources(cm_aot PRIVATE utility_object.cpp utility_object_adapter.cpp)
 target_sources(cm_aot PRIVATE tree_mutation.cpp tree_mutation_adapter.cpp)
 target_sources(cm_aot PRIVATE aggregate_object.cpp aggregate_object_adapter.cpp)
 target_sources(cm_aot PRIVATE record_group.cpp record_group_adapter.cpp)
+target_sources(cm_aot PRIVATE record_query.cpp record_query_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -173,6 +174,23 @@ target_sources(cm-record-group-checks PRIVATE $<TARGET_OBJECTS:cm-record-group-r
 target_link_libraries(cm-record-group-checks PRIVATE cm_aot)
 target_compile_options(cm-record-group-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME record_group_component_equivalence COMMAND cm-record-group-checks)
+set(CM_RECORD_QUERY_REFERENCE "${CMAKE_BINARY_DIR}/record_query_reference.cpp")
+add_custom_command(OUTPUT "${CM_RECORD_QUERY_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_record_query_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_RECORD_QUERY_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_record_query_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/record_query_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-record-query-reference OBJECT "${CM_RECORD_QUERY_REFERENCE}")
+target_include_directories(cm-record-query-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(cm-record-query-checks record_query_checks.cpp)
+target_sources(cm-record-query-checks PRIVATE $<TARGET_OBJECTS:cm-record-query-reference>)
+target_link_libraries(cm-record-query-checks PRIVATE cm_aot)
+target_compile_options(cm-record-query-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME record_query_component_equivalence COMMAND cm-record-query-checks)
 set(CM_ENGINE_INITIALIZATION_REFERENCE "${CMAKE_BINARY_DIR}/engine_initialization_reference.cpp")
 add_custom_command(OUTPUT "${CM_ENGINE_INITIALIZATION_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_engine_initialization_reference.py"
@@ -243,6 +261,18 @@ add_test(NAME original_record_group_profile COMMAND "${CMAKE_COMMAND}" -E env
 add_test(NAME modern_record_group_transfer COMMAND "${CMAKE_COMMAND}" -E env
     "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
     $<TARGET_FILE:cm-record-group-production-checks> "${CM_ORACLE_DIR}" --transfer)
+add_executable(cm-record-query-production-checks record_query_production_checks.cpp record_query_transfer_checks.cpp)
+target_link_libraries(cm-record-query-production-checks PRIVATE cm_aot)
+target_compile_options(cm-record-query-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_record_query_production COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-record-query-production-checks> "${CM_ORACLE_DIR}")
+add_test(NAME original_record_query_profile COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-record-query-production-checks> "${CM_ORACLE_DIR}" --profile)
+add_test(NAME modern_record_query_transfer COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-record-query-production-checks> "${CM_ORACLE_DIR}" --transfer)
 add_test(NAME modern_engine_initialization_production COMMAND "${CMAKE_COMMAND}" -E env
     "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
     $<TARGET_FILE:cm-engine-initialization-production-checks> "${CM_ORACLE_DIR}")

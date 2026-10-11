@@ -83,6 +83,9 @@ from aggregate_object_audit import (require_aggregate_object_contract, require_a
 from record_group_audit import (require_record_group_contract, require_record_group_index,
                                 require_record_group_hooks, record_group_hook, RECORD_GROUP_ENTRIES)
 
+from record_query_audit import (require_record_query_contract, require_record_query_index,
+                                require_record_query_hooks, record_query_hook, RECORD_QUERY_ENTRIES)
+
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
     0x10717b20, 0x10718130, 0x107182f0, 0x10718360)
@@ -118,7 +121,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "utility_object_adapter") for entry in UTILITY_OBJECT_ENTRIES) +
     tuple((entry, "tree_mutation_adapter") for entry in TREE_MUTATION_ENTRIES) +
     tuple((entry, "aggregate_object_adapter") for entry in AGGREGATE_OBJECT_ENTRIES) +
-    tuple((entry, "record_group_adapter") for entry in RECORD_GROUP_ENTRIES))
+    tuple((entry, "record_group_adapter") for entry in RECORD_GROUP_ENTRIES) +
+    tuple((entry, "record_query_adapter") for entry in RECORD_QUERY_ENTRIES))
 
 
 def integer(value):
@@ -350,7 +354,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -384,6 +388,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_import_descriptor_contract(page, instructions, selected)
     if engine_initialization_hooks:
         require_engine_initialization_contract(page, instructions, selected)
+    if record_query_hooks:
+        require_record_query_contract(page, instructions, selected)
     if record_group_hooks:
         require_record_group_contract(page, instructions, selected)
     if aggregate_object_hooks:
@@ -429,6 +435,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "import_descriptor_adapter.hpp"')
     if engine_initialization_hooks and page_addresses & set(ENGINE_INITIALIZATION_ENTRIES):
         code.insert(1, '#include "engine_initialization_adapter.hpp"')
+    if record_query_hooks and page_addresses & set(RECORD_QUERY_ENTRIES):
+        code.insert(1, '#include "record_query_adapter.hpp"')
     if record_group_hooks and page_addresses & set(RECORD_GROUP_ENTRIES):
         code.insert(1, '#include "record_group_adapter.hpp"')
     if aggregate_object_hooks and page_addresses & set(AGGREGATE_OBJECT_ENTRIES):
@@ -573,6 +581,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(import_descriptor_hook(a))
         if engine_initialization_hooks and a in ENGINE_INITIALIZATION_ENTRIES:
             code.append(engine_initialization_hook(a))
+        if record_query_hooks and a in RECORD_QUERY_ENTRIES:
+            code.append(record_query_hook(a))
         if record_group_hooks and a in RECORD_GROUP_ENTRIES:
             code.append(record_group_hook(a))
         if aggregate_object_hooks and a in AGGREGATE_OBJECT_ENTRIES:
@@ -755,6 +765,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_import_descriptor_hooks(page, instructions, result)
     if engine_initialization_hooks:
         require_engine_initialization_hooks(page, instructions, result)
+    if record_query_hooks:
+        require_record_query_hooks(page, instructions, result)
     if record_group_hooks:
         require_record_group_hooks(page, instructions, result)
     if aggregate_object_hooks:
@@ -828,6 +840,7 @@ def main():
         require_utility_object_index(db, None if args.all_analyzed else selected)
         require_tree_mutation_index(db, None if args.all_analyzed else selected)
         require_aggregate_object_index(db, None if args.all_analyzed else selected)
+        require_record_query_index(db, None if args.all_analyzed else selected)
         require_record_group_index(db, None if args.all_analyzed else selected)
     if args.reuse_generated:
         reused = seed_generated(args.reuse_generated, args.output)
