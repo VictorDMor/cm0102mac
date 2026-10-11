@@ -8,6 +8,18 @@ task_root="$(cd "$(dirname "$0")/.." && pwd)"
 ghidra_install="$1"
 project_dir="$task_root/.local/ghidra"
 input_dir="$task_root/.local/recomp-input"
+if [[ -f "$input_dir/program.json" ]]; then
+    # Preserve historical indexes. A cached export that predates exception
+    # discovery must not silently omit the newly reachable code again.
+    if ! python3 - "$input_dir/program.json" <<'PY'
+import json, sys
+roots = set(json.load(open(sys.argv[1])).get("explicitDiscoveryRoots", []))
+sys.exit(not {0x10772698, 0x10772b80, 0x107724c0, 0x107724f4, 0x10772d80} <= roots)
+PY
+    then
+        input_dir="$task_root/.local/recomp-input-exceptions"
+    fi
+fi
 generated_dir="$task_root/.local/recompiled"
 build_dir="$task_root/.local/aot-build"
 log_dir="$task_root/.local/logs"
@@ -21,11 +33,15 @@ if [[ ! -f "$input_dir/program.json" ]]; then
     # these case destinations. Discover them offline before exporting the code.
     # The competition result table at 0x108cc9fc also contains indirect cases
     # reached during the 2002 World Cup final; discover all seven destinations.
+    # Exception context suffixes use computed LR transfers. Their vector save
+    # and restore destinations, unexpected-exception landing pad, and object
+    # cleanup callback are likewise absent from automatic function discovery.
     "$ghidra_install/support/analyzeHeadless" "$project_dir" cm0102-ppc32 \
         -process 'CM 01-02' -readOnly -noanalysis -scriptPath "$task_root/tools" \
         -postScript ExportRecomp.java "$input_dir" \
         0x1076ffa8 0x1076ffb4 0x1076ffcc 0x1076ffd8 0x1076ffe4 0x10770148 \
         0x101b8a4c 0x101b8908 0x101b87c0 0x101b8680 0x101b8adc 0x101b8548 0x101b84cc \
+        0x10772698 0x10772b80 0x107724c0 0x107724f4 0x10772d80 \
         -max-cpu 4 > "$log_dir/recomp-export.log" 2>&1
     test -f "$input_dir/program.json"
 fi

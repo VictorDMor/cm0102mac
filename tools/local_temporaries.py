@@ -24,7 +24,7 @@ class LocalTemporaries:
     evaluates its expression immediately and only then replaces byte ownership;
     later reads cannot accidentally reevaluate a changed register or memory load.
     """
-    unique_size = 0x42000
+    unique_size = 0x45000
 
     @classmethod
     def for_instruction(cls, operations, read, write):

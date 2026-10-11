@@ -36,7 +36,9 @@ struct FilePathBoundaryObserver;
 struct RuntimeLifecycleBoundaryObserver;
 struct CodeFragmentBoundaryObserver;
 struct CppObjectStorageBoundaryObserver;
+struct ExceptionRuntimeBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
+using Vector128 = std::array<std::uint8_t, 16>;
 
 template <unsigned N> constexpr std::uint64_t mask() {
     static_assert(N > 0 && N <= 8);
@@ -132,6 +134,8 @@ public:
     void clear(std::uint32_t start, std::uint64_t size);
     std::vector<std::uint8_t> copy_out(std::uint32_t start, std::size_t size) const;
     std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
+    Vector128 read_vector(std::uint64_t address) const;
+    void write_vector(std::uint64_t address, const Vector128& value);
     template <unsigned N> std::uint64_t read(std::uint64_t address) const {
         check_scalar<N>(address);
         if (read_trace) read_trace->emplace_back(std::uint32_t(address), N);
@@ -165,8 +169,10 @@ private:
 
 struct State {
     Memory memory;
-    std::array<std::uint8_t, 0x4300> registers{};
-    std::array<std::uint8_t, 0x42000> unique{};
+    // Ghidra's v0..v31 occupy 0x4200..0x43ff. The extension at 0x4400
+    // holds VSCR, which this language exposes only through user operations.
+    std::array<std::uint8_t, 0x4410> registers{};
+    std::array<std::uint8_t, 0x45000> unique{};
     std::uint32_t pc = 0;
     std::uint64_t executed = 0, budget = 10000000;
     std::uint64_t native_calls = 0;
@@ -198,6 +204,10 @@ struct State {
         if (offset + N > unique.size()) throw std::out_of_range("Temporary offset");
         write_be<N>(unique.data() + offset, value);
     }
+    Vector128 read_vector_register(std::size_t offset) const;
+    void write_vector_register(std::size_t offset, const Vector128& value);
+    Vector128 read_vector_temporary(std::size_t offset) const;
+    void write_vector_temporary(std::size_t offset, const Vector128& value);
     bool calendar_original = false;
     std::array<std::uint64_t, 2> calendar_calls{};
     std::uint64_t calendar_exceptional_calls = 0;
@@ -337,6 +347,16 @@ struct State {
     std::uint32_t cpp_object_storage_original_resume = 0;
     std::uint64_t cpp_object_storage_dispatch_escapes = 0;
     CppObjectStorageBoundaryObserver* cpp_object_storage_observer = nullptr;
+    // Exception diagnostics are process-local, separate from guest contexts.
+    bool exception_runtime_original = false;
+    std::array<bool, 21> exception_runtime_entry_original{};
+    std::array<std::uint64_t, 21> exception_runtime_calls{}, exception_runtime_original_calls{};
+    std::array<std::uint64_t, 21> exception_runtime_returns{}, exception_runtime_transfers{}, exception_runtime_terminations{};
+    std::uint32_t exception_runtime_original_resume = 0;
+    std::uint64_t exception_runtime_dispatch_escapes = 0, exception_runtime_unknown_transfers = 0;
+    std::uint64_t exception_runtime_landings = 0, exception_runtime_original_landings = 0;
+    std::uint64_t exception_runtime_landing_returns = 0, exception_runtime_landing_transfers = 0, exception_runtime_landing_terminations = 0;
+    ExceptionRuntimeBoundaryObserver* exception_runtime_observer = nullptr;
     bool file_controller_original = false;
     std::array<bool, 26> file_controller_entry_original{};
     std::array<std::uint64_t, 26> file_controller_calls{}, file_controller_original_calls{};

@@ -7,6 +7,8 @@
 #include "runtime_lifecycle_adapter.hpp"
 #include "code_fragment_adapter.hpp"
 #include "cpp_object_storage_adapter.hpp"
+#include "exception_runtime_adapter.hpp"
+#include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
 #include "season_reference.hpp"
 #include <algorithm>
@@ -155,7 +157,10 @@ std::vector<std::pair<std::uint32_t, std::uint64_t>> Memory::mapped_ranges() con
     return result;
 }
 void run_until(State& s, std::uint32_t return_pc) {
+    GuestDispatchScope dispatch(s);
     const bool trace = std::getenv("CM_AOT_TRACE_IMPORTS") != nullptr;
+    for (;;) {
+    try {
     while (s.pc != return_pc) {
         if (const char* name = import_name(s.pc)) {
             if (season_replay_import(s, name)) { ++s.native_calls; continue; }
@@ -168,6 +173,7 @@ void run_until(State& s, std::uint32_t return_pc) {
             if (s.runtime_lifecycle_observer) s.runtime_lifecycle_observer->import_enter(s, name);
             if (s.code_fragment_observer) s.code_fragment_observer->import_enter(s, name);
             if (s.cpp_object_storage_observer) s.cpp_object_storage_observer->import_enter(s, name);
+            if (s.exception_runtime_observer) s.exception_runtime_observer->import_enter(s, name);
             if (trace) {
                 std::fprintf(stderr, "%s pc=%08x lr=%08x", name, s.pc, unsigned(s.r<4>(4128)));
                 for (unsigned r = 3; r <= 10; ++r) std::fprintf(stderr, " r%u=%08x", r, unsigned(s.r<4>(r * 4)));
@@ -177,7 +183,8 @@ void run_until(State& s, std::uint32_t return_pc) {
                 (s.file_path_observer && s.file_path_observer->import_fixture(s, name)) ||
                 (s.runtime_lifecycle_observer && s.runtime_lifecycle_observer->import_fixture(s, name)) ||
                 (s.code_fragment_observer && s.code_fragment_observer->import_fixture(s, name)) ||
-                (s.cpp_object_storage_observer && s.cpp_object_storage_observer->import_fixture(s, name)) || bridge_import(s, name)) {
+                (s.cpp_object_storage_observer && s.cpp_object_storage_observer->import_fixture(s, name)) ||
+                (s.exception_runtime_observer && s.exception_runtime_observer->import_fixture(s, name)) || bridge_import(s, name)) {
                 season_record_import_end(s);
                 if (trace) std::fprintf(stderr, "%s returned r3=%08x\n", name, unsigned(s.r<4>(12)));
                 ++s.native_calls;
@@ -189,6 +196,7 @@ void run_until(State& s, std::uint32_t return_pc) {
                 if (s.runtime_lifecycle_observer) s.runtime_lifecycle_observer->import_leave(s, name);
                 if (s.code_fragment_observer) s.code_fragment_observer->import_leave(s, name);
                 if (s.cpp_object_storage_observer) s.cpp_object_storage_observer->import_leave(s, name);
+                if (s.exception_runtime_observer) s.exception_runtime_observer->import_leave(s, name);
                 continue;
             }
             throw std::runtime_error(std::string("Unimplemented native OS bridge: ") + name +
@@ -196,6 +204,11 @@ void run_until(State& s, std::uint32_t return_pc) {
         }
         if (!dispatch_page(s))
             throw std::runtime_error("Uncompiled original address: " + hex_address(s.pc));
+    }
+    return;
+    } catch (const GuestContextTransfer& transfer) {
+        if (!dispatch.resumes(transfer)) throw;
+    }
     }
 }
 void run(State& s) {run_until(s,return_sentinel);}

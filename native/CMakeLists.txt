@@ -22,6 +22,9 @@ add_library(cm_ui STATIC ui_bridge.mm native_drawing_view.mm presentation.cpp me
 target_compile_options(cm_ui PRIVATE -Wall -Wextra -Werror -Wpedantic -fobjc-arc)
 target_link_libraries(cm_ui PUBLIC "-framework AppKit" "-framework Carbon" "-framework CoreText")
 add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arrays.cpp cpp_object_storage_allocation.cpp code_fragment_adapter.cpp code_fragment_registration.cpp code_fragment_lookup.cpp code_fragment_metadata.cpp runtime_lifecycle_adapter.cpp runtime_lifecycle_objects.cpp runtime_lifecycle_exit.cpp runtime_lifecycle_signal.cpp file_path_adapter.cpp file_path_names.cpp file_path_specs.cpp file_path_resolution.cpp file_controller_adapter.cpp file_controller_state.cpp file_controller_streams.cpp file_controller_paths.cpp file_controller_forks.cpp file_reference_bridge.cpp unicode_bridge.cpp fork_io_bridge.cpp stream_io_adapter.cpp stream_io_characters.cpp stream_io_read.cpp stream_io_write.cpp stream_buffer_adapter.cpp stream_buffer_storage.cpp stream_buffer_transfer.cpp stream_buffer_lifecycle.cpp allocator_adapter.cpp allocator_arenas.cpp allocator_pools.cpp allocator_facades.cpp formatted_output_adapter.cpp formatted_output_format.cpp formatted_output_numbers.cpp formatted_output_float.cpp formatted_output_descriptor.cpp formatted_output_facades.cpp floating_input_adapter.cpp decimal_input_bridge.cpp character_conversion_adapter.cpp formatted_input_adapter.cpp integer_parsing_adapter.cpp memory_primitives_adapter.cpp string_core_adapter.cpp collection_lookup_adapter.cpp background_selection_adapter.cpp rng_core_adapter.cpp date_subsystem_adapter.cpp date_subsystem_audit.cpp calendar_adapter.cpp aot_runtime.cpp aot_integrity.cpp performance_trace.cpp directory_catalog.cpp floating_point.cpp decimal_bridge.cpp carbon_bridge.cpp platform.cpp native_drawing.cpp direct_commands.cpp sound_bridge.cpp text_bridge.cpp process_bridge.cpp resource_bridge.cpp filesystem_bridge.cpp printing_bridge.cpp callbacks.cpp apple_events.cpp data_forks.cpp match_replay.cpp season_reference.cpp ${CM_GENERATED_SOURCES})
+target_sources(cm_aot PRIVATE vector_context.cpp)
+target_sources(cm_aot PRIVATE guest_context_transfer.cpp)
+target_sources(cm_aot PRIVATE exception_runtime_adapter.cpp exception_runtime_context.cpp exception_runtime_frames.cpp exception_runtime_cleanup.cpp exception_runtime_matching.cpp exception_runtime_search.cpp exception_runtime_capture.cpp exception_runtime_handlers.cpp exception_runtime_unexpected.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -88,6 +91,103 @@ add_executable(cm-bridge-checks bridge_checks.cpp)
 target_link_libraries(cm-bridge-checks PRIVATE cm_aot)
 target_compile_options(cm-bridge-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 enable_testing()
+set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
+if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CM_CONTEXT_REFERENCE "${CMAKE_BINARY_DIR}/exception_context_reference.cpp")
+add_custom_command(OUTPUT "${CM_CONTEXT_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTEXT_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/vector_context_lowering.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/exception_runtime_audit.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-exception-context-reference OBJECT "${CM_CONTEXT_REFERENCE}")
+target_include_directories(cm-exception-context-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(cm-exception-context-reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-vector-context-checks vector_context_checks.cpp)
+target_link_libraries(cm-vector-context-checks PRIVATE cm_aot cm-exception-context-reference)
+target_compile_options(cm-vector-context-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_executable(cm-exception-frame-checks exception_frame_checks.cpp)
+target_link_libraries(cm-exception-frame-checks PRIVATE cm_aot cm-exception-context-reference)
+target_compile_options(cm-exception-frame-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_executable(cm-exception-cleanup-checks exception_cleanup_checks.cpp)
+target_link_libraries(cm-exception-cleanup-checks PRIVATE cm_aot cm-exception-context-reference)
+target_compile_options(cm-exception-cleanup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_executable(cm-exception-matching-checks exception_matching_checks.cpp)
+target_link_libraries(cm-exception-matching-checks PRIVATE cm_aot cm-exception-context-reference)
+target_compile_options(cm-exception-matching-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+set(CM_SEARCH_REFERENCE "${CMAKE_BINARY_DIR}/exception_search_reference.cpp")
+add_custom_command(OUTPUT "${CM_SEARCH_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_SEARCH_REFERENCE}" --with-search
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/vector_context_lowering.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/exception_runtime_audit.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-exception-search-reference OBJECT "${CM_SEARCH_REFERENCE}")
+target_include_directories(cm-exception-search-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(cm-exception-search-reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-exception-search-checks exception_search_checks.cpp)
+target_link_libraries(cm-exception-search-checks PRIVATE cm_aot cm-exception-search-reference)
+target_compile_options(cm-exception-search-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+set(CM_TRANSFER_REFERENCE "${CMAKE_BINARY_DIR}/exception_transfer_reference.cpp")
+add_custom_command(OUTPUT "${CM_TRANSFER_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_TRANSFER_REFERENCE}" --with-search --with-transfers
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/vector_context_lowering.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/exception_runtime_audit.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-exception-transfer-reference OBJECT "${CM_TRANSFER_REFERENCE}")
+target_include_directories(cm-exception-transfer-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(cm-exception-transfer-reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-exception-transfer-checks exception_transfer_checks.cpp)
+target_link_libraries(cm-exception-transfer-checks PRIVATE cm_aot cm-exception-transfer-reference)
+target_compile_options(cm-exception-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+foreach(CM_CAPTURE_MODE IN ITEMS capture scalar full)
+    set(CM_CAPTURE_REFERENCE "${CMAKE_BINARY_DIR}/exception_${CM_CAPTURE_MODE}_reference.cpp")
+    if(CM_CAPTURE_MODE STREQUAL "capture")
+        set(CM_CAPTURE_ARGUMENTS --with-search --with-capture --with-transfers)
+    elseif(CM_CAPTURE_MODE STREQUAL "scalar")
+        set(CM_CAPTURE_ARGUMENTS --scalar-prefix)
+    else()
+        set(CM_CAPTURE_ARGUMENTS --complete --with-transfers)
+    endif()
+    add_custom_command(OUTPUT "${CM_CAPTURE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+                "${CM_ORACLE_DIR}" "${CM_CAPTURE_REFERENCE}" ${CM_CAPTURE_ARGUMENTS}
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_exception_context_reference.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/vector_context_lowering.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/exception_runtime_audit.py"
+                "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_library(cm-exception-${CM_CAPTURE_MODE}-reference OBJECT "${CM_CAPTURE_REFERENCE}")
+    target_include_directories(cm-exception-${CM_CAPTURE_MODE}-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(cm-exception-${CM_CAPTURE_MODE}-reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+endforeach()
+target_link_libraries(cm-exception-transfer-checks PRIVATE cm-exception-capture-reference)
+add_executable(cm-exception-capture-checks exception_capture_checks.cpp)
+target_link_libraries(cm-exception-capture-checks PRIVATE cm_aot cm-exception-capture-reference cm-exception-scalar-reference)
+target_compile_options(cm-exception-capture-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_executable(cm-exception-handler-checks exception_handler_checks.cpp)
+target_link_libraries(cm-exception-handler-checks PRIVATE cm_aot cm-exception-full-reference)
+target_compile_options(cm-exception-handler-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_executable(cm-exception-integration-checks exception_integration_checks.cpp)
+target_link_libraries(cm-exception-integration-checks PRIVATE cm_aot)
+target_compile_options(cm-exception-integration-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+endif()
 add_executable(cm-presentation-checks presentation_checks.cpp presentation.cpp)
 target_compile_options(cm-presentation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME native_presentation_geometry COMMAND cm-presentation-checks)
@@ -122,7 +222,6 @@ add_test(NAME original_float_conversion COMMAND cm-floating-point-checks)
 add_executable(cm-decimal-checks decimal_checks.cpp decimal_input_checks.cpp)
 target_link_libraries(cm-decimal-checks PRIVATE cm_aot)
 target_compile_options(cm-decimal-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
-set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/oracle.tsv")
     add_test(NAME original_routines COMMAND cm-aot-checks "${CM_ORACLE_DIR}" "${CM_ORACLE_DIR}/oracle.tsv")
     add_test(NAME original_sound_callbacks COMMAND cm-sound-checks "${CM_ORACLE_DIR}")
@@ -249,6 +348,17 @@ add_executable(cm-shutdown-checks shutdown_checks.cpp)
 target_link_libraries(cm-shutdown-checks PRIVATE cm_probe_host)
 target_compile_options(cm-shutdown-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 set(CM_GAME_DIR "" CACHE PATH "Verified original Mac game files for resource lifecycle checks")
+if(TARGET cm-vector-context-checks)
+    add_test(NAME original_vector_context_storage COMMAND cm-vector-context-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_frame_equivalence COMMAND cm-exception-frame-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_cleanup_equivalence COMMAND cm-exception-cleanup-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_matching_equivalence COMMAND cm-exception-matching-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_search_equivalence COMMAND cm-exception-search-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_transfer_equivalence COMMAND cm-exception-transfer-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_capture_equivalence COMMAND cm-exception-capture-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_handler_equivalence COMMAND cm-exception-handler-checks "${CM_ORACLE_DIR}")
+    add_test(NAME modern_exception_production_integration COMMAND cm-exception-integration-checks "${CM_ORACLE_DIR}")
+endif()
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME modern_rng_core_equivalence COMMAND cm-rng-core-checks "${CM_ORACLE_DIR}" "${CMAKE_BINARY_DIR}/rng-core-private")
     add_test(NAME modern_date_construction_equivalence COMMAND cm-date-construction-checks "${CM_ORACLE_DIR}" "${CMAKE_BINARY_DIR}/date-construction-private.bin" --composed)

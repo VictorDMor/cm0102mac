@@ -66,7 +66,7 @@ class LocalTemporariesTests(unittest.TestCase):
         self.assertIsNotNone(self.local(valid))
         candidates = [valid[1:], valid[::-1]]
         for bad in (unique(19, 8), unique(21, 8), unique(-1, 1),
-                    unique(0x42000, 1), unique(20, 3)):
+                    unique(LocalTemporaries.unique_size, 1), unique(20, 3)):
             for op_index in (0, 1):
                 mutation = deepcopy(valid)
                 mutation[op_index][1 if op_index == 0 else 2] = bad
@@ -78,6 +78,12 @@ class LocalTemporariesTests(unittest.TestCase):
                 self.assertIsNone(self.local(operations))
                 with self.assertRaises(ValueError):
                     LocalTemporaries.require_instruction_local_unique(operations)
+
+    def test_recovered_vector_context_address_scratch_is_in_bounds(self):
+        ops = [["COPY", unique(0x44b00, 4), constant(0)],
+               ["COPY", register(12, 4), unique(0x44b00, 4)]]
+        self.assertIsNotNone(self.local(ops))
+        LocalTemporaries.require_instruction_local_unique(ops)
 
     def test_cpp_differential_aliases_evaluation_and_exceptions(self):
         compiler = shutil.which("clang++") or shutil.which("c++")
@@ -150,7 +156,7 @@ struct FixtureMemory {
 };
 struct Fixture {
     std::array<std::uint8_t, 128> registers{};
-    std::array<std::uint8_t, 0x42000> unique{};
+    std::array<std::uint8_t, 0x45000> unique{};
     FixtureMemory memory;
     template<unsigned N> auto r(std::size_t p) const { return read_be<N>(registers.data() + p); }
     template<unsigned N> auto u(std::size_t p) const { return read_be<N>(unique.data() + p); }

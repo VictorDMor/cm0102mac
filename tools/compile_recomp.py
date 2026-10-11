@@ -14,6 +14,7 @@ import struct
 from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
 from local_temporaries import LocalTemporaries
+from vector_context_lowering import lower_vector_intrinsic
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
 from background_selection_audit import require_background_selection_contract, BACKGROUND_SELECTION_ENTRIES
@@ -47,6 +48,8 @@ from code_fragment_audit import (require_code_fragment_contract, require_code_fr
                                 require_code_fragment_hooks, CODE_FRAGMENT_ENTRIES)
 from cpp_object_storage_audit import (require_cpp_object_storage_contract, require_cpp_object_storage_index,
                                     require_cpp_object_storage_hooks, CPP_OBJECT_STORAGE_ENTRIES)
+from exception_runtime_audit import (require_exception_runtime_contract, require_exception_runtime_index,
+                                    require_exception_runtime_hooks, EXCEPTION_RUNTIME_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -72,7 +75,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "file_path_adapter") for entry in FILE_PATH_ENTRIES) +
     tuple((entry, "runtime_lifecycle_adapter") for entry in RUNTIME_LIFECYCLE_ENTRIES) +
     tuple((entry, "code_fragment_adapter") for entry in CODE_FRAGMENT_ENTRIES) +
-    tuple((entry, "cpp_object_storage_adapter") for entry in CPP_OBJECT_STORAGE_ENTRIES))
+    tuple((entry, "cpp_object_storage_adapter") for entry in CPP_OBJECT_STORAGE_ENTRIES) +
+    tuple((entry, "exception_runtime_adapter") for entry in EXCEPTION_RUNTIME_ENTRIES))
 
 
 def integer(value):
@@ -86,6 +90,12 @@ def constant(value):
 def read(node):
     space, offset, size = node
     offset = int(offset)
+    if size == 16:
+        access = {'register': 'read_vector_register', 'unique': 'read_vector_temporary',
+                  'ram': 'memory.read_vector'}.get(space)
+        if access is None:
+            raise ValueError(f'Unsupported vector value space: {node}')
+        return f's.{access}({offset})'
     if size not in (1, 2, 4, 8):
         raise ValueError(f"Unsupported value width: {node}")
     if space == "const":
@@ -98,6 +108,12 @@ def read(node):
 
 def write(node, value):
     space, offset, size = node
+    if size == 16:
+        access = {'register': 'write_vector_register', 'unique': 'write_vector_temporary',
+                  'ram': 'memory.write_vector'}.get(space)
+        if access is None:
+            raise ValueError(f'Unsupported vector output space: {node}')
+        return f's.{access}({int(offset)}, {value});'
     if size not in (1, 2, 4, 8):
         raise ValueError(f"Unsupported output width: {node}")
     access = {"register": "wr", "unique": "wu", "ram": "memory.write"}.get(space)
@@ -112,10 +128,16 @@ def transfer(address, page, selected):
     return f"s.pc = 0x{address:x}; return true;"
 
 
-def operation(op, address, index, page, selected, op_count, read_node=read, write_node=write):
+def operation(op, address, index, page, selected, op_count, read_node=read, write_node=write, userops=None):
     name, output, *inputs = op
     if name == "CALLOTHER":
+        vector = lower_vector_intrinsic(op, userops, read_node, write_node)
+        if vector is not None:
+            return vector
         return 'throw std::runtime_error("Unimplemented original intrinsic at ' + hex(address) + '");'
+    if any(node is not None and node[2] == 16 for node in (output, *inputs)) \
+            and name not in ('LOAD', 'STORE', 'COPY'):
+        raise ValueError(f'Unsupported vector operation: {name}')
     if name in ("BRANCH", "CALL", "CBRANCH"):
         dest = inputs[0]
         if dest[0] == "const":
@@ -139,7 +161,11 @@ def operation(op, address, index, page, selected, op_count, read_node=read, writ
         if inputs[0] != ["const", "417", 8]:
             raise ValueError(f"Unexpected memory address space: {inputs[0]}")
         if name == "LOAD":
+            if output[2] == 16:
+                return write_node(output, f's.memory.read_vector({read_node(inputs[1])})')
             return write_node(output, f"s.memory.read<{output[2]}>({read_node(inputs[1])})")
+        if inputs[2][2] == 16:
+            return f's.memory.write_vector({read_node(inputs[1])}, {read_node(inputs[2])});'
         return f"s.memory.write<{inputs[2][2]}>({read_node(inputs[1])}, {read_node(inputs[2])});"
 
     args = [read_node(n) for n in inputs]
@@ -282,7 +308,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -303,6 +329,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_runtime_lifecycle_contract(page, instructions)
     require_code_fragment_contract(page, instructions)
     require_cpp_object_storage_contract(page, instructions)
+    require_exception_runtime_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -313,6 +340,9 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     # Audit only when its commentary call/load is included; once included,
     # require the same complete context and fingerprint as the full export.
     page_addresses = {item["address"] for item in instructions}
+    transfer_hooks = guest_context_transfers and bool(page_addresses & {0x10772768, 0x10772774, 0x107727d4, 0x10772a94})
+    if transfer_hooks:
+        require_exception_runtime_contract(page, instructions)
     presentation_anchor = {0x101cc: 0x101cce38, 0x10203: 0x10203738}.get(page)
     if presentation_anchor in page_addresses or presentation_anchor in selected:
         require_match_presentation_context(page, instructions, selected)
@@ -322,6 +352,10 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     code = ['#include "aot_runtime.hpp"', "namespace cm::aot {",
             (f"template <bool Turbo, bool Finite> bool page_{page:x}_impl(State& s) {{" if match_hot_page
              else f"bool page_{page:x}(State& s) {{")]
+    if transfer_hooks:
+        code.insert(1, '#include "guest_context_transfer.hpp"')
+    if any(op[0] == 'CALLOTHER' for item in instructions for op in item['ops']):
+        code.insert(1, '#include "vector_context.hpp"')
     if match_hot_page:
         if page == 0x10773 and (0x10773870 in page_addresses or 0x10773870 in selected):
             require_unsigned_division_routine(instructions, selected)
@@ -370,6 +404,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "code_fragment_adapter.hpp"')
     if any(a in selected for a in CPP_OBJECT_STORAGE_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "cpp_object_storage_adapter.hpp"')
+    if exception_runtime_hooks and any(a in selected for a in (*EXCEPTION_RUNTIME_ENTRIES, 0x107724f4) if a >> 12 == page):
+        code.insert(1, '#include "exception_runtime_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -433,6 +469,10 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_code_fragment(s, 0x{a:x})) return true;")
         if a in CPP_OBJECT_STORAGE_ENTRIES:
             code.append(f"if (try_modern_cpp_object_storage(s, 0x{a:x})) return true;")
+        if exception_runtime_hooks and a in EXCEPTION_RUNTIME_ENTRIES:
+            code.append(f"if (try_modern_exception_runtime(s, 0x{a:x})) return true;")
+        if exception_runtime_hooks and a == 0x107724f4:
+            code.append("if (try_modern_exception_unexpected_landing(s)) return true;")
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -544,10 +584,20 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append("{")
         for i, op in enumerate(item["ops"]):
             if i in labels: code.append(f"op_{a:x}_{i}:")
-            code.append(operation(op, a, i, page, selected, len(item["ops"]),
-                                  read_node=local.read if local else read,
-                                  write_node=local.write if local else write))
+            lowered = operation(op, a, i, page, selected, len(item["ops"]),
+                                read_node=local.read if local else read,
+                                write_node=local.write if local else write,
+                                userops=userops)
+            if transfer_hooks and a == 0x10772774 and op[0] == 'RETURN':
+                if lowered.count('return true;') != 1:
+                    raise ValueError('Missing original context-return boundary')
+                lowered = lowered.replace('return true;', 'complete_context_transfer(s); return true;')
+            code.append(lowered)
         if len(item["ops"]) in labels: code.append(f"op_{a:x}_{len(item['ops'])}:")
+        if transfer_hooks and a in (0x107727d4, 0x10772a94):
+            code.append('record_context_function(s, std::uint32_t(s.r<4>(20)));')
+        if transfer_hooks and a == 0x10772768:
+            code.append('record_context_frame(s, std::uint32_t(s.r<4>(12)));')
         if a == 0x10203738:
             code.append("s.wr<4>(0, commentary_presentation_duration(s, std::uint32_t(s.r<4>(104)), std::uint32_t(s.r<4>(0))));")
         # This path is reached only if no earlier branch/return transferred out.
@@ -579,6 +629,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_runtime_lifecycle_hooks(page, instructions, result)
     require_code_fragment_hooks(page, instructions, result)
     require_cpp_object_storage_hooks(page, instructions, result)
+    if exception_runtime_hooks:
+        require_exception_runtime_hooks(page, instructions, result)
     return result
 
 
@@ -629,6 +681,7 @@ def main():
         require_runtime_lifecycle_index(db, None if args.all_analyzed else selected)
         require_code_fragment_index(db, None if args.all_analyzed else selected)
         require_cpp_object_storage_index(db, None if args.all_analyzed else selected)
+        require_exception_runtime_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.
@@ -649,7 +702,8 @@ def main():
                     (page << 12, (page + 1) << 12))]
                 path = args.output / f"page_{page:x}.cpp"
                 content = generate_page(page, records, {r["address"] for r in records},
-                                        local_temporaries=not args.legacy_unique_storage)
+                                        local_temporaries=not args.legacy_unique_storage,
+                                        userops=metadata['userops'])
                 if not path.exists() or path.read_text() != content: path.write_text(content)
                 pages[page] = []
                 outputs[path.name] = None
@@ -659,7 +713,8 @@ def main():
     for page, instructions in pages.items():
         if not args.all_analyzed:
             outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected,
-                                                       local_temporaries=not args.legacy_unique_storage)
+                                                       local_temporaries=not args.legacy_unique_storage,
+                                                       userops=metadata['userops'])
     code = ['#include "aot_runtime.hpp"', '#include "aot_integrity.hpp"', "namespace cm::aot {"]
     for page in pages: code.append(f"bool page_{page:x}(State&);")
     code += ["bool dispatch_page(State& s) {", "switch (s.pc >> 12) {"]

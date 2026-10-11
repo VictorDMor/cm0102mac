@@ -36,6 +36,45 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Exception runtime reconstructed
+
+All 21 routines / 1,657 indexed instructions now run named C++23 operations in
+default production: action/frame traversal, saved registers, cleanup, encoded
+type/specification matching, search/catch installation, scalar/vector capture,
+context transfer, exception objects and termination/unexpected callbacks. The
+interior unexpected landing continuation belongs to its original root. The
+manifest has 226 entries, preserving the accepted first 205 exactly. Read-only
+recovery added 177 previously unindexed instructions while preserving every
+prior record and initialized payload; complete generation has 1,953,334
+instructions, 1,922 pages and zero missing/pending targets.
+
+Component comparisons preserve full architecture, guest bytes, ordered fault
+prefixes and callback/import effects. Production acceptance adds 79 comparisons
+and 23 root/landing/child negatives: all 21 normal direct, generated CFM-indirect
+and diagnostic-original roots; independent child selection/reset; separately
+counted unfamiliar transfers; six actual throws into the unexpected landing;
+and native termination. Guest transfers abandon interrupted host continuations
+and retain state/function/frame ownership, including recursion and array cleanup.
+
+Twelve focused CTests pass, with related object-storage, fragment-metadata and
+lifecycle checks rebuilt against the consistent expanded State layout. Twenty
+Python suites pass 125 unique test functions, including the recovered full-export
+local-temporary audit. Fresh UBSAN covers 29 units and nine executables, all with
+empty stderr and output identical to Release. See
+`native-exception-runtime-reconstruction.md` for per-component counts, pins,
+undefined vector-lane limits and the exact acceptance scope.
+
+Protected installation verified source/candidate/installed/running ARM64
+executable SHA-256
+`8454b2568e865c76675c4fa73ca5601bdd4cb910366bc947ae0fdc18e4d592a5`.
+Prepare Game, named Load Game chooser/cancel and original Quit/confirmation
+completed normally; owned PID 52542 exited and logged 21,593,344,557 recompiled
+instructions. The new exception counters stayed zero in the installed UI; their
+per-entry runtime evidence is the production harness. Game, existing saves,
+four payloads, 23 handoffs, previous references and 154 historical bundles are
+preserved. Logs/preferences may change. Save/Load is **not retested**; performance
+and gameplay campaigns were not run for this block. The full port remains active.
+
 ## C++ object-array lifetime and storage reconstructed
 
 Twelve production routines now use named C++23 bodies: cookie/raw array

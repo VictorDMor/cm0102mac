@@ -1,5 +1,6 @@
 #pragma once
 #include "aot_runtime.hpp"
+#include "guest_context_transfer.hpp"
 #include <string_view>
 
 namespace cm::aot {
@@ -8,7 +9,9 @@ namespace cm::aot {
 struct MacAbi {
     State& s;
     std::uint64_t& dispatch_escapes;
-    MacAbi(State& state,std::uint64_t& escapes):s(state),dispatch_escapes(escapes) {}
+    GuestNativeScope guest_scope;
+    MacAbi(State& state,std::uint64_t& escapes):s(state),dispatch_escapes(escapes),guest_scope(state) {}
+    MacAbi(State& state,std::uint64_t& escapes,std::uint32_t function):s(state),dispatch_escapes(escapes),guest_scope(state,function) {}
     std::uint32_t r(unsigned n) const { return std::uint32_t(s.r<4>(n*4)); }
     void put(unsigned n,std::uint32_t value) { s.wr<4>(n*4,value); }
     void compare(std::int64_t a,std::int64_t b=0,bool record=false) {
@@ -33,7 +36,7 @@ struct MacAbi {
     }
     void capture_link() { put(0,std::uint32_t(s.r<4>(4128))); }
     void save_link(std::uint32_t pc) { store(r(1)+8,r(0),pc); }
-    void frame(unsigned size,std::uint32_t pc) { const auto old=r(1); store(old-size,old,pc); put(1,old-size); }
+    void frame(unsigned size,std::uint32_t pc) { const auto old=r(1); store(old-size,old,pc); put(1,old-size); guest_scope.frame(r(1)); }
     void pop(unsigned size,std::uint32_t pc) { load(0,r(1)+size+8,pc); put(1,r(1)+size); }
     void restore_link() { s.wr<4>(4128,r(0)); }
     void finish() { s.pc=std::uint32_t(s.r<4>(4128)); }
