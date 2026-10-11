@@ -30,6 +30,7 @@ target_sources(cm_aot PRIVATE register_context.cpp register_context_adapter.cpp)
 target_sources(cm_aot PRIVATE stdlib_core.cpp stdlib_core_adapter.cpp)
 target_sources(cm_aot PRIVATE time_runtime.cpp time_runtime_adapter.cpp)
 target_sources(cm_aot PRIVATE import_descriptor.cpp import_descriptor_adapter.cpp)
+target_sources(cm_aot PRIVATE native_service.cpp native_service_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -99,6 +100,35 @@ enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CM_NATIVE_SERVICE_REFERENCE "${CMAKE_BINARY_DIR}/native_service_reference.cpp")
+add_custom_command(OUTPUT "${CM_NATIVE_SERVICE_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_native_service_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_NATIVE_SERVICE_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_native_service_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/native_service_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-native-service-reference OBJECT "${CM_NATIVE_SERVICE_REFERENCE}")
+target_include_directories(cm-native-service-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(cm-native-service-checks native_service_checks.cpp)
+target_sources(cm-native-service-checks PRIVATE $<TARGET_OBJECTS:cm-native-service-reference>)
+target_link_libraries(cm-native-service-checks PRIVATE cm_aot)
+target_compile_options(cm-native-service-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME native_service_component_equivalence COMMAND cm-native-service-checks)
+add_test(NAME modern_native_service_production COMMAND cm-native-service-checks --production)
+add_test(NAME original_native_service_profile COMMAND "${CMAKE_COMMAND}" -E env
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-native-service-checks> --profile)
+add_executable(cm-native-service-transfer-checks native_service_transfer_checks.cpp)
+target_link_libraries(cm-native-service-transfer-checks PRIVATE cm_aot)
+target_compile_options(cm-native-service-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_native_service_transfer COMMAND cm-native-service-transfer-checks)
+add_executable(cm-native-service-event-checks native_service_event_checks.cpp)
+target_link_libraries(cm-native-service-event-checks PRIVATE cm_aot)
+target_compile_options(cm-native-service-event-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_native_service_event COMMAND cm-native-service-event-checks "${CM_ORACLE_DIR}")
+add_test(NAME original_native_service_event COMMAND cm-native-service-event-checks "${CM_ORACLE_DIR}" --original)
 set(CM_IMPORT_DESCRIPTOR_REFERENCE "${CMAKE_BINARY_DIR}/import_descriptor_reference.cpp")
 add_custom_command(OUTPUT "${CM_IMPORT_DESCRIPTOR_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_import_descriptor_reference.py"

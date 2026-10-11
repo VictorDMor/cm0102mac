@@ -24,6 +24,7 @@
 #include "stdlib_core_adapter.hpp"
 #include "time_runtime_adapter.hpp"
 #include "import_descriptor_adapter.hpp"
+#include "native_service_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -68,6 +69,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         state->integer_parsing_original = std::getenv("CM_AOT_INTEGER_PARSING_ORIGINAL") != nullptr;
         state->compiler_arithmetic_original = std::getenv("CM_AOT_COMPILER_ARITHMETIC_ORIGINAL") != nullptr;
         state->time_runtime_original = std::getenv("CM_AOT_TIME_RUNTIME_ORIGINAL") != nullptr;
+        state->native_service_original = std::getenv("CM_AOT_NATIVE_SERVICE_ORIGINAL") != nullptr;
         state->import_descriptor_original = std::getenv("CM_AOT_IMPORT_DESCRIPTOR_ORIGINAL") != nullptr;
         state->register_context_original = std::getenv("CM_AOT_REGISTER_CONTEXT_ORIGINAL") != nullptr;
         state->memory_primitives_original = std::getenv("CM_AOT_MEMORY_PRIMITIVES_ORIGINAL") != nullptr;
@@ -114,6 +116,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << stdlib_core_call_summary(*state);
         std::cout << time_runtime_call_summary(*state);
         std::cout << import_descriptor_call_summary(*state);
+        std::cout << native_service_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

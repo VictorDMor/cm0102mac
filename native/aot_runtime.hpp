@@ -42,6 +42,7 @@ struct RegisterContextBoundaryObserver;
 struct StdlibCoreBoundaryObserver;
 struct TimeRuntimeBoundaryObserver;
 struct ImportDescriptorBoundaryObserver;
+struct NativeServiceBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 using Vector128 = std::array<std::uint8_t, 16>;
 
@@ -416,6 +417,16 @@ struct State {
     std::uint32_t import_descriptor_original_body = 0;
     std::uint64_t import_descriptor_dispatch_escapes = 0;
     ImportDescriptorBoundaryObserver* import_descriptor_observer = nullptr;
+    // Framed native-service diagnostics are process-local and never persisted.
+    bool native_service_original = false;
+    std::array<bool, 3> native_service_entry_original{};
+    std::array<std::uint64_t, 3> native_service_calls{}, native_service_original_calls{};
+    std::array<std::uint64_t, 3> native_service_returns{}, native_service_faults{};
+    std::array<std::uint64_t, 3> native_service_budget_stops{}, native_service_transfers{};
+    std::array<std::uint64_t, 3> native_service_profile_original_calls{};
+    std::uint32_t native_service_original_body = 0;
+    std::uint64_t native_service_dispatch_escapes = 0;
+    NativeServiceBoundaryObserver* native_service_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

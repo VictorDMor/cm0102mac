@@ -26,11 +26,11 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(IMPORT_DESCRIPTOR_ENTRIES[:-1], tuple(range(0x1077fad8, 0x10781320, 24)))
         self.assertEqual(IMPORT_DESCRIPTOR_ENTRIES[-1], 0x10781320)
         baseline = [{'entry': f'0x{a:x}', 'module': m} for a, m in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(baseline), 536)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 536)
+        self.assertEqual(len(baseline), 539)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 539)
         self.assertEqual(hashlib.sha256(json.dumps(baseline[:276], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'ba418ebeea27f3e546fe4f02aed4ddaa192bbcafa009d0c8552411a739b4ebb2')
-        self.assertEqual(SEMANTIC_REPLACEMENTS[276:], tuple((a, 'import_descriptor_adapter') for a in IMPORT_DESCRIPTOR_ENTRIES))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[276:536], tuple((a, 'import_descriptor_adapter') for a in IMPORT_DESCRIPTOR_ENTRIES))
         self.assertEqual([(a, p, n) for a, p, n, _ in FRAGMENT_CONTRACTS], [(0x10780ff0, 0x10780, 4), (0x10780ff0, 0x10781, 2)])
 
     def test_only_complete_roots_are_exterior_entrances(self):

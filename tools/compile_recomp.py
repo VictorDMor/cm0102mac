@@ -64,6 +64,9 @@ from time_runtime_audit import (require_time_runtime_contract, require_time_runt
 from import_descriptor_audit import (require_import_descriptor_contract, require_import_descriptor_index,
                                      require_import_descriptor_hooks, import_descriptor_hook, IMPORT_DESCRIPTOR_ENTRIES)
 
+from native_service_audit import (require_native_service_contract, require_native_service_index,
+                                  require_native_service_hooks, native_service_hook, NATIVE_SERVICE_ENTRIES)
+
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
     0x10717b20, 0x10718130, 0x107182f0, 0x10718360)
@@ -93,7 +96,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "register_context_adapter") for entry in REGISTER_CONTEXT_ENTRIES) +
     tuple((entry, "stdlib_core_adapter") for entry in STDLIB_CORE_ENTRIES) +
     tuple((entry, "time_runtime_adapter") for entry in TIME_RUNTIME_ENTRIES) +
-    tuple((entry, "import_descriptor_adapter") for entry in IMPORT_DESCRIPTOR_ENTRIES))
+    tuple((entry, "import_descriptor_adapter") for entry in IMPORT_DESCRIPTOR_ENTRIES) +
+    tuple((entry, "native_service_adapter") for entry in NATIVE_SERVICE_ENTRIES))
 
 
 def integer(value):
@@ -325,7 +329,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -357,6 +361,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_time_runtime_contract(page, instructions, selected)
     if import_descriptor_hooks:
         require_import_descriptor_contract(page, instructions, selected)
+    if native_service_hooks:
+        require_native_service_contract(page, instructions, selected)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -390,6 +396,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "time_runtime_adapter.hpp"')
     if import_descriptor_hooks and page_addresses & set(IMPORT_DESCRIPTOR_ENTRIES):
         code.insert(1, '#include "import_descriptor_adapter.hpp"')
+    if native_service_hooks and page_addresses & set(NATIVE_SERVICE_ENTRIES):
+        code.insert(1, '#include "native_service_adapter.hpp"')
     if any(op[0] == 'CALLOTHER' for item in instructions for op in item['ops']):
         code.insert(1, '#include "vector_context.hpp"')
     if match_hot_page:
@@ -522,6 +530,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(time_runtime_hook(a))
         if import_descriptor_hooks and a in IMPORT_DESCRIPTOR_ENTRIES:
             code.append(import_descriptor_hook(a))
+        if native_service_hooks and a in NATIVE_SERVICE_ENTRIES:
+            code.append(native_service_hook(a))
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -692,6 +702,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_time_runtime_hooks(page, instructions, result)
     if import_descriptor_hooks:
         require_import_descriptor_hooks(page, instructions, result)
+    if native_service_hooks:
+        require_native_service_hooks(page, instructions, result)
     return result
 
 
@@ -748,6 +760,7 @@ def main():
         require_stdlib_core_index(db, None if args.all_analyzed else selected)
         require_time_runtime_index(db, None if args.all_analyzed else selected)
         require_import_descriptor_index(db, None if args.all_analyzed else selected)
+        require_native_service_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

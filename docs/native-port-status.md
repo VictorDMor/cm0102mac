@@ -36,6 +36,29 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Framed native-service facades reconstructed
+
+The complete AppleEvent, NewPtr and DisposePtr facades now execute semantic
+C++23 service calls in production: three entries / 27 indexed instructions.
+Complete generation has **539** semantic replacements with all accepted 536
+records unchanged. Caller frames, live TOC/link restoration, word32 arithmetic,
+existing native allocation policy and callback/nonlocal ownership are preserved.
+
+Twelve focused CTests, 24 affected/new Python suites / 160 tests with zero final
+skips, and ten-unit UBSAN across six runs pass. The facade harness records 198
+component and 213 production comparisons, 57 exact budget stops per mode,
+individual negatives and direct/generated/CFM evidence for every entry. Another
+96 mixed nonlocal comparisons include 48 restore/handler faults; actual AppKit
+launch dispatch executes the original callback once in both selection modes.
+
+Protected installed menu/chooser/cancel/normal-exit smoke passes. All three new
+entries execute there with 185 semantic calls/returns and zero original/profile
+selection, own fault, budget stop, transfer or escape. The installed signed ARM64
+SHA-256 is `dd0d8a6e67eba0165719e2acd19ba554bc6412735e16157f1ba096335e8b90bd`.
+Game/save/payload/handoff/reference protection and 185 older bundles pass.
+Save/Load remains **not retested**; full engine/runtime reconstruction is still
+incomplete. See [the service-facade report](native-service-facades-reconstruction.md).
+
 ## Import descriptors and generic CFM tails reconstructed
 
 All 259 Mac import glues and the generic CFM descriptor tail now execute named
