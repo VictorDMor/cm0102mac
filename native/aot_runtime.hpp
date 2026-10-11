@@ -40,6 +40,7 @@ struct ExceptionRuntimeBoundaryObserver;
 struct CompilerArithmeticBoundaryObserver;
 struct RegisterContextBoundaryObserver;
 struct StdlibCoreBoundaryObserver;
+struct TimeRuntimeBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 using Vector128 = std::array<std::uint8_t, 16>;
 
@@ -394,6 +395,16 @@ struct State {
     std::uint32_t stdlib_core_original_body = 0;
     std::uint64_t stdlib_core_dispatch_escapes = 0;
     StdlibCoreBoundaryObserver* stdlib_core_observer = nullptr;
+    // Mac clock/calendar diagnostics are process-local and never persisted.
+    bool time_runtime_original = false;
+    std::array<bool, 8> time_runtime_entry_original{};
+    std::array<std::uint64_t, 8> time_runtime_calls{}, time_runtime_original_calls{};
+    std::array<std::uint64_t, 8> time_runtime_returns{}, time_runtime_transfers{}, time_runtime_faults{};
+    std::array<std::uint64_t, 8> time_runtime_budget_original_calls{}, time_runtime_profile_original_calls{};
+    std::array<std::uint64_t, 8> time_runtime_budget_resumes{}, time_runtime_budget_returns{};
+    std::uint32_t time_runtime_original_body = 0;
+    std::uint64_t time_runtime_dispatch_escapes = 0;
+    TimeRuntimeBoundaryObserver* time_runtime_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

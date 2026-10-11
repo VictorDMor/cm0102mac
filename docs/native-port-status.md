@@ -1357,3 +1357,35 @@ Game content/metadata, user/workspace saves, 23 handoffs, payloads, reference an
 142 older private bundles were preserved. Runtime/Runs may change through UI.
 Save/Load is **not retested**; no career, day, match or performance benchmark ran.
 The complete C++23 engine/runtime goal remains active.
+
+
+## Semantic Mac clock, calendar and daylight runtime — October 11, 2026
+
+Eight complete time-runtime entries now run named semantic C++23 in production:
+zero-status leaf, year-offset leap predicate, calendar conversion, field
+initialization, optional-output time facade, shared local fields, Mac clock
+epoch conversion, and machine-location daylight status. Word32 epoch behavior,
+live signed month rows, guest frames/registers, ordered effects, nullable guards
+and nonlocal transfers retain their original contracts. Existing host clock and
+location services, Date's ascending-year leap quirk and allocator policy remain
+unchanged.
+
+The complete generation has 1,953,334 instructions, 1,922 pages, zero missing/
+pending targets and **276** semantic replacements, preserving the first 268
+exactly. Acceptance passes 3,025 component comparisons, 2,036 production
+comparisons, individual direct/generated/CFM coverage, eight separate profile
+selections, 128 nonlocal comparisons, six focused CTests, 22 Python suites /
+144 tests with zero skips, and thirteen-unit UBSAN with identical Release output.
+Expected faults and budget stops are separately classified and are not normal
+coverage. See [native-time-runtime-reconstruction.md](native-time-runtime-reconstruction.md)
+for contracts, per-entry evidence and the corrected fixture/packaging attempts.
+
+The protected final installed ARM64 executable is
+`c21cad895a67e5ff3142cbd532bcfad1b9d5716b2d68553358bb2f759b333405`.
+The owned smoke rendered the menu, opened/cancelled the original chooser, and
+exited normally. Three time entries had normal semantic calls and zero original,
+profile, budget continuation, transfer, fault or escape diagnostics. Individual
+coverage of all eight belongs to the harnesses. Game/saves/payloads, 23 handoffs,
+references and 175 older private bundles were preserved. Runtime/Runs may change
+through the smoke. Save/Load is **not retested**; no career/day/match/season or
+performance benchmark ran. The complete C++23 port goal remains active.
