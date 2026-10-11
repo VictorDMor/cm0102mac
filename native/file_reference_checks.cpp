@@ -1,6 +1,7 @@
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "stream_io_adapter.hpp"
+#include "file_controller_adapter.hpp"
 #include <CoreServices/CoreServices.h>
 #include <bit>
 #include <cstring>
@@ -75,7 +76,7 @@ std::uint32_t generated(State& s, std::uint32_t entry, std::initializer_list<std
     unsigned n = 3; for (auto value : arguments) s.wr<4>(n++ * 4, value);
     s.wr<4>(4, 0x700fff00); s.wr<4>(8, toc); s.wr<4>(4128, return_sentinel);
     s.pc = entry; s.budget = s.executed + 1000000; run(s);
-    require(s.pc == return_sentinel, "Original file controller return"); ++generated_calls;
+    require(s.pc == return_sentinel, "Production file controller return"); ++generated_calls;
     return std::uint32_t(s.r<4>(12));
 }
 void convert_case(State& s, std::uint32_t encoding, const std::vector<std::uint8_t>& source,
@@ -316,52 +317,56 @@ int main(int argc, char** argv) {
             "Classic setter accepted an unknown directory");
 
         Imports imports; s.stream_io_observer = &imports;
-        // The real generated Mac bodies discover the normal production fork
-        // capability themselves. No fixture replaces their Gestalt result.
+        // Production controller dispatch discovers the normal fork capability
+        // itself. This composition has no dependency-import fixture attached.
         s.memory.write<1>(toc - 0x3504, 0); s.memory.write<1>(toc - 0x3503, 0);
         cstring(s, text, "CM User Data:small.dat"); cstring(s, mode_pointer, "rb");
         const auto stream = generated(s, 0x107768f0, {text, mode_pointer});
-        require(stream != 0, "Original fopen failed over the real FSRef bridge");
-        require(s.memory.read<1>(toc - 0x3504) == 1 && s.memory.read<1>(toc - 0x3503) == 1, "Original capability cache did not select production FSRef services");
+        require(stream != 0, "Production fopen failed over the real FSRef bridge");
+        require(s.memory.read<1>(toc - 0x3504) == 1 && s.memory.read<1>(toc - 0x3503) == 1, "Production capability cache did not select production FSRef services");
         require(generated(s, 0x10775fe0, {output, 1, 8, stream}) == 8 && s.memory.copy_out(output, 8) ==
-            std::vector<std::uint8_t>({'A','B','C','D','E','F','G','H'}), "Semantic fread through original modern open");
-        require(!generated(s, 0x107766f0, {stream}), "Semantic fclose through original modern close");
+            std::vector<std::uint8_t>({'A','B','C','D','E','F','G','H'}), "Semantic fread through production modern open");
+        require(!generated(s, 0x107766f0, {stream}), "Semantic fclose through production modern close");
         cstring(s, text, "CM User Data:created.dat"); cstring(s, mode_pointer, "wb");
         const auto written_stream = generated(s, 0x107768f0, {text, mode_pointer});
-        require(written_stream != 0, "Original modern fopen creation failed");
+        require(written_stream != 0, "Production modern fopen creation failed");
         s.memory.copy_in(output, {'n','a','t','i','v','e'});
         require(generated(s, 0x10776360, {output, 1, 6, written_stream}) == 6 && !generated(s, 0x107766f0, {written_stream}) &&
-            bytes(user / "created.dat") == "native", "Semantic fwrite/flush through original modern creation");
+            bytes(user / "created.dat") == "native", "Semantic fwrite/flush through production modern creation");
         cstring(s, text, std::string("CM User Data:Caf") + char(0x8e) + " stream.dat"); cstring(s, mode_pointer, "wb");
         const auto accented_stream = generated(s, 0x107768f0, {text, mode_pointer});
         require(accented_stream && generated(s, 0x10776360, {output, 1, 6, accented_stream}) == 6 &&
                 !generated(s, 0x107766f0, {accented_stream}) && bytes(user / "Caf\xc3\xa9 stream.dat") == "native",
-                "Original MacRoman filename to native Unicode stream composition");
+                "Production MacRoman filename to native Unicode stream composition");
         cstring(s, text, "CM User Data:created.dat"); cstring(s, mode_pointer, "wb");
         const auto truncated_stream = generated(s, 0x107768f0, {text, mode_pointer});
         require(truncated_stream && !generated(s, 0x107766f0, {truncated_stream}) && fs::file_size(user / "created.dat") == 0,
-            "Original modern write mode did not truncate");
+            "Production modern write mode did not truncate");
         cstring(s, text, "CM User Data:missing.dat"); cstring(s, mode_pointer, "rb");
         require(!generated(s, 0x107768f0, {text, mode_pointer}) && !fs::exists(user / "missing.dat"), "Read mode created a missing file");
         cstring(s, text, "CM User Data:created.dat"); cstring(s, mode_pointer, "CM User Data:renamed.dat");
         require(!generated(s, 0x107766c0, {text, mode_pointer}) && !fs::exists(user / "created.dat") && fs::exists(user / "renamed.dat"),
-            "Original modern rename chain");
+            "Production modern rename chain");
         cstring(s, text, "CM User Data:renamed.dat");
-        require(!generated(s, 0x10776690, {text}) && !fs::exists(user / "renamed.dat"), "Original modern remove chain");
-        require(generated(s, 0x10776690, {text}) == UINT32_MAX, "Original remove facade failure result");
+        require(!generated(s, 0x10776690, {text}) && !fs::exists(user / "renamed.dat"), "Production modern remove chain");
+        require(generated(s, 0x10776690, {text}) == UINT32_MAX, "Production remove facade failure result");
         // Force Classic only for a final composition witness of its repaired
         // metadata path. Production capability is tested independently below.
         s.memory.write<1>(toc - 0x3503, 0);
         cstring(s, text, "CM User Data:classic-created.dat"); cstring(s, mode_pointer, "wb");
         const auto classic_stream = generated(s, 0x107768f0, {text, mode_pointer});
         require(classic_stream && !generated(s, 0x107766f0, {classic_stream}) && fs::exists(user / "classic-created.dat"),
-            "Original Classic create/metadata/close chain");
+            "Production Classic create/metadata/close chain");
         s.stream_io_observer = nullptr;
+        for (unsigned i : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 8u, 9u, 10u, 11u, 12u, 13u, 15u, 16u, 17u, 24u, 25u})
+            require(s.file_controller_calls[i] != 0, "Missing real native controller witness " + hex_address(file_controller_entries[i]));
+        require(s.file_controller_original_calls == std::array<std::uint64_t, 26>{} && !s.file_controller_dispatch_escapes,
+                "Real native composition selected original controller or escaped");
         for (const char* operation : {"CarbonLib::UpgradeScriptInfoToTextEncoding", "CarbonLib::CreateTextToUnicodeInfoByEncoding",
              "CarbonLib::ConvertFromTextToUnicode", "CarbonLib::DisposeTextToUnicodeInfo", "CarbonLib::FSMakeFSRefUnicode",
              "CarbonLib::FSpMakeFSRef", "CarbonLib::FSGetCatalogInfo", "CarbonLib::FSCreateFileUnicode", "CarbonLib::FSOpenFork",
              "CarbonLib::FSCompareFSRefs", "CarbonLib::FSRenameUnicode", "CarbonLib::FSDeleteObject", "CarbonLib::PBSetCatInfoSync"})
-            require(imports.calls[operation] != 0, "Original modern chain did not execute " + std::string(operation));
+            require(imports.calls[operation] != 0, "Production modern chain did not execute " + std::string(operation));
         std::cout << "Native file references passed " << checks << " assertions, " << generated_calls
                   << " generated calls and " << imports.calls.size() << " real imported services\n";
         return 0;

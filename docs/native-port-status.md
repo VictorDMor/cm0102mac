@@ -1056,3 +1056,37 @@ Save/Load is **not retested**. No career, day, match or performance benchmark ra
 Menu smoke does not establish per-entry coverage; the native-file fixtures supply
 that evidence. Semantic file controllers and the remaining engine/runtime work
 continue under the complete-port goal.
+
+
+## Native Mac file controllers — October 10, 2026
+
+Twenty-six file-controller entries now execute named C++23 bodies in production:
+filename facades, fopen/reopen/mode parsing, capability and metadata selection,
+Classic/FSRef open/read/write/seek/close/remove/rename, temporary-record lifetime,
+tell/get-position/seek/set-position and status/stdio initialization. Their 1,421
+indexed instructions, the two open-backend fragments and destination hooks are
+pinned. The manifest now has 175 entries, preserving all prior 149 in order and
+content. The [detailed report](native-file-controller-reconstruction.md) records
+contracts, complete ABI/effect comparisons and per-entry counters.
+
+Focused equivalence passed 607 comparisons, 111 expected mapping faults and 31
+own/child boundary negatives. All 26 entries have normal semantic and generated
+indirect witnesses. The fixture matrix includes pending callbacks, 82 real owned
+fork comparisons, empty EOF and sparse signed-64-bit carry/borrow. A separate
+real-OS composition passed 420 assertions, 17 production dispatches and 28 import
+services, with normal semantic counts for 18 controllers and zero original
+selection/escapes. Seven related CTests passed in 14.79 seconds; the final added
+EOF cases passed the affected CTest again in 4.64 seconds. Thirteen audit suites
+and both UBSAN harnesses passed against a consistent Release ARM64 build.
+
+One protected final installation delivered source/candidate/installed/running
+executable SHA-256
+`6ca38d4eb7c44ca73f098b758e9a65b6ebd0274b529052321d42b75783943515`.
+The previous installed FSRef/Unicode artifact is preserved. Strict signatures,
+normal plist and four payload hashes passed. Prepare Game rendered; original
+Load Game opened the chooser, cancellation returned to the menu, and original
+Quit/confirmation exited normally. The tested process was confirmed closed.
+Game content/metadata, user/workspace saves, 23 handoffs, original payloads,
+reference and 139 older private bundles were preserved. Runtime/Runs may change
+through UI. Save/Load is **not retested**; no career, day, match or performance
+benchmark ran. The complete C++23 engine/runtime goal remains active.

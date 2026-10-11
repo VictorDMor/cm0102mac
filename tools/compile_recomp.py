@@ -37,6 +37,8 @@ from stream_buffer_audit import (require_stream_buffer_contract, require_stream_
                                  require_stream_buffer_hooks, STREAM_BUFFER_ENTRIES)
 from stream_io_audit import (require_stream_io_contract, require_stream_io_index,
                              require_stream_io_hooks, STREAM_IO_ENTRIES)
+from file_controller_audit import (require_file_controller_contract, require_file_controller_index,
+                                   require_file_controller_hooks, FILE_CONTROLLER_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -57,7 +59,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "floating_input_adapter") for entry in FLOATING_INPUT_ENTRIES) +
     tuple((entry, "allocator_adapter") for entry in ALLOCATOR_ENTRIES) +
     tuple((entry, "stream_buffer_adapter") for entry in STREAM_BUFFER_ENTRIES) +
-    tuple((entry, "stream_io_adapter") for entry in STREAM_IO_ENTRIES))
+    tuple((entry, "stream_io_adapter") for entry in STREAM_IO_ENTRIES) +
+    tuple((entry, "file_controller_adapter") for entry in FILE_CONTROLLER_ENTRIES))
 
 
 def integer(value):
@@ -283,6 +286,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_allocator_contract(page, instructions)
     require_stream_buffer_contract(page, instructions)
     require_stream_io_contract(page, instructions)
+    require_file_controller_contract(page, instructions)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -340,6 +344,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
         code.insert(1, '#include "stream_buffer_adapter.hpp"')
     if any(a in selected for a in STREAM_IO_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "stream_io_adapter.hpp"')
+    if any(a in selected for a in FILE_CONTROLLER_ENTRIES if a >> 12 == page):
+        code.insert(1, '#include "file_controller_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -393,6 +399,8 @@ def generate_page(page, instructions, selected, local_temporaries=True):
             code.append(f"if (try_modern_stream_buffer(s, 0x{a:x})) return true;")
         if a in STREAM_IO_ENTRIES:
             code.append(f"if (try_modern_stream_io(s, 0x{a:x})) return true;")
+        if a in FILE_CONTROLLER_ENTRIES:
+            code.append(f"if (try_modern_file_controller(s, 0x{a:x})) return true;")
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -534,6 +542,7 @@ def generate_page(page, instructions, selected, local_temporaries=True):
     require_allocator_hooks(page, instructions, result)
     require_stream_buffer_hooks(page, instructions, result)
     require_stream_io_hooks(page, instructions, result)
+    require_file_controller_hooks(page, instructions, result)
     return result
 
 
@@ -579,6 +588,7 @@ def main():
         require_allocator_index(db, None if args.all_analyzed else selected)
         require_stream_buffer_index(db, None if args.all_analyzed else selected)
         require_stream_io_index(db, None if args.all_analyzed else selected)
+        require_file_controller_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

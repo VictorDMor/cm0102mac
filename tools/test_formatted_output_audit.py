@@ -19,8 +19,8 @@ class FormattedOutputManifestTests(unittest.TestCase):
     def test_six_entries_and_preserved_prior_manifest(self):
         self.assertEqual(len(FORMATTED_OUTPUT_ENTRIES),15)
         self.assertEqual(sum(INSTRUCTION_COUNTS),2649)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),149)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),149)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),175)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),175)
         self.assertEqual(SEMANTIC_REPLACEMENTS[78:93],tuple((e,'formatted_output_adapter') for e in FORMATTED_OUTPUT_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:78]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

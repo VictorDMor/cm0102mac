@@ -17,9 +17,9 @@ INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructio
 
 class StreamIoManifestTests(unittest.TestCase):
     def test_exact_prior_140_and_9_ordered_entries(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 149)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 149)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[140:], tuple((e, 'stream_io_adapter') for e in STREAM_IO_ENTRIES))
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 175)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 175)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[140:149], tuple((e, 'stream_io_adapter') for e in STREAM_IO_ENTRIES))
         self.assertEqual(STREAM_IO_ENTRIES, tuple(sorted(STREAM_IO_ENTRIES)))
         self.assertEqual(len(CONTRACTS), 9)
         self.assertEqual(sum(INSTRUCTION_COUNTS), 682)
