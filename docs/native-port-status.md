@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-10
+# Native port investigation — updated 2026-10-11
 
 ## Required outcome
 
@@ -35,6 +35,43 @@ unfinished; this is a working development build, not a fully validated release.
 The input image was already mounted read/write when work began. The tools created
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
+
+## C++ code-fragment registration and exception metadata reconstructed
+
+Five production helpers now use named C++23 bodies: code-fragment registration,
+cached-region lookup, exception metadata resolution, saved-frame-word reading
+and action-kind reading. The bodies contain 301 original instructions. The
+manifest contains 193 entries with the accepted first 188 unchanged; generation
+retains 1,953,157 instructions, 1,922 pages and zero missing/pending targets.
+The full Release rebuild uses a consistent State layout across every generated
+unit. Body/index/interior-flow contracts and destination hooks are pinned.
+
+The guest 32-slot linked blocks, once-only native capability probe, allocation,
+cache asymmetry, signed binary search, inclusive function/action ends, inline
+descriptors and three action formats retain original ABI, scratch and live alias
+effects. Native Gestalt/NewPtrClear and guest heap ownership remain the existing
+dependencies. Selection, observers and counters are private and unpersisted.
+
+165 production comparisons passed, including 23 expected mapping faults and
+six own/child negatives. Every entry has normal direct/CFM evidence; default
+cases have zero original calls and escapes. A five-stage composition registers
+through real native services and uses the resulting metadata in all four query
+helpers. Three directly related CTests, sixteen audit suites (95 tests), and
+UBSAN of modified implementation/dispatch/harness code passed.
+
+One protected installation delivered source/candidate/installed/running ARM64
+executable SHA-256
+`cf03e10179523d539f03ff222af074560c82eee58f1cfd84cd18b14acdb832b3`.
+Prepare Game and original named Quit/confirmation completed normally; owned
+process 29445 closed and logged 4,532,133,418 recompiled instructions. The UI
+called registration once; the harness covers all five. Game, existing saves,
+four payloads, 23 handoffs, the previous reference and 148 older bundles are
+preserved. Logs/preferences may change.
+
+This increment does not reconstruct startup, exception execution/unwinding,
+nonlocal contexts or heap glues. The full modernization goal remains active.
+Save/Load: **not retested**; performance: **not benchmarked**. Contracts, pins and
+evidence are recorded in [the metadata report](native-code-fragment-reconstruction.md).
 
 ## Runtime shutdown, global destructors and signals reconstructed in C++23
 

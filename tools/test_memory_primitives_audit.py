@@ -21,8 +21,8 @@ class MemoryPrimitivesManifestTests(unittest.TestCase):
                          (0x10739ef0, 0x10778300, 0x10778330, 0x10778360, 0x10778390, 0x107783e0))
         self.assertEqual(INSTRUCTION_COUNTS, (15, 12, 12, 12, 20, 48))
         self.assertEqual(sum(INSTRUCTION_COUNTS), 119)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 188)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 188)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 193)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 193)
         self.assertEqual(SEMANTIC_REPLACEMENTS[60:66], tuple(
             (entry, 'memory_primitives_adapter') for entry in MEMORY_PRIMITIVES_ENTRIES))
         prior = [{'entry': f'0x{entry:x}', 'module': module}

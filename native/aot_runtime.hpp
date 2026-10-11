@@ -34,6 +34,7 @@ struct StreamIoBoundaryObserver;
 struct FileControllerBoundaryObserver;
 struct FilePathBoundaryObserver;
 struct RuntimeLifecycleBoundaryObserver;
+struct CodeFragmentBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -320,6 +321,13 @@ struct State {
     std::uint32_t runtime_lifecycle_original_resume = 0;
     std::uint64_t runtime_lifecycle_dispatch_escapes = 0;
     RuntimeLifecycleBoundaryObserver* runtime_lifecycle_observer = nullptr;
+    // Code-fragment registry diagnostics remain private and unpersisted.
+    bool code_fragment_original = false;
+    std::array<bool, 5> code_fragment_entry_original{};
+    std::array<std::uint64_t, 5> code_fragment_calls{}, code_fragment_original_calls{};
+    std::uint32_t code_fragment_original_resume = 0;
+    std::uint64_t code_fragment_dispatch_escapes = 0;
+    CodeFragmentBoundaryObserver* code_fragment_observer = nullptr;
     bool file_controller_original = false;
     std::array<bool, 26> file_controller_entry_original{};
     std::array<std::uint64_t, 26> file_controller_calls{}, file_controller_original_calls{};
