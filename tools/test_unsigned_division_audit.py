@@ -52,7 +52,10 @@ class UnsignedDivisionAuditTests(unittest.TestCase):
     def test_complete_export_keeps_specialization_and_fingerprint(self):
         selected = {r["address"] for r in self.records}
         generated = generate_page(0x10773, self.records, selected)
-        self.assertIn("try_fast_unsigned_division(s)", generated)
+        self.assertIn("try_modern_compiler_arithmetic(s, 0x10773870)", generated)
+        self.assertNotIn("try_fast_unsigned_division(s)", generated)
+        legacy = generate_page(0x10773, self.records, selected, compiler_arithmetic_hooks=False)
+        self.assertIn("try_fast_unsigned_division(s)", legacy)
         records = deepcopy(self.records)
         records[-1]["assembly"] = "nop"
         with self.assertRaises(ValueError):

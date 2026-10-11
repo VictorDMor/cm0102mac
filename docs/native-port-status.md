@@ -36,6 +36,33 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Compiler arithmetic reconstructed
+
+All eight complete compiler-arithmetic routines / 412 indexed instructions run
+named C++23 operations in default production: signed/unsigned 64-bit quotient
+and remainder, plus integer/floating conversions. The manifest now has 234
+entries with the accepted first 226 unchanged. Complete generation retains
+1,953,334 instructions, 1,922 pages and zero missing/pending targets. All units
+use the expanded State layout in a fresh complete Release ARM64 build.
+
+13,199 component comparisons include 77 mapping-fault prefixes, two enabled
+conversion traps and eight rejected negatives. Production adds 7,422 comparisons,
+4,895 exact budget stops, ten mapping faults and eight individual negatives;
+all eight have normal native/generated/CFM calls with zero original selections
+and escapes. Sixteen separate profile comparisons retain actual original-PC
+samples. Unsigned quotient keeps its exact full-call charge; the other seven
+use semantic entry charges and original execution for tight budgets/profiling.
+
+Ten focused CTests, 20 audit suites / 127 tests with zero skips, and fresh ten-unit
+UBSAN pass. One protected installation preserves saves/payloads/handoffs and
+159 earlier private bundles. Installed menu/chooser/cancel/normal-exit smoke
+passes; unsigned quotient has 12,125,476 modern calls/returns with zero faults,
+original selections or escapes, while the other seven UI counters are zero.
+Internal ARM64 executable SHA-256:
+`6814c65faad2615a547a5d3ce97a3b6f840ec20c58bd09c7cac8b7a76ae3beb3`.
+Save/Load is **not retested**; no benchmark or whole-port completion is claimed.
+See [the arithmetic report](native-compiler-arithmetic-reconstruction.md).
+
 ## Exception runtime reconstructed
 
 All 21 routines / 1,657 indexed instructions now run named C++23 operations in

@@ -50,6 +50,8 @@ from cpp_object_storage_audit import (require_cpp_object_storage_contract, requi
                                     require_cpp_object_storage_hooks, CPP_OBJECT_STORAGE_ENTRIES)
 from exception_runtime_audit import (require_exception_runtime_contract, require_exception_runtime_index,
                                     require_exception_runtime_hooks, EXCEPTION_RUNTIME_ENTRIES)
+from compiler_arithmetic_audit import (require_compiler_arithmetic_contract, require_compiler_arithmetic_index,
+                                     require_compiler_arithmetic_hooks, compiler_arithmetic_hook, COMPILER_ARITHMETIC_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 
 CALENDAR_ADAPTER_ENTRIES = (
@@ -76,7 +78,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "runtime_lifecycle_adapter") for entry in RUNTIME_LIFECYCLE_ENTRIES) +
     tuple((entry, "code_fragment_adapter") for entry in CODE_FRAGMENT_ENTRIES) +
     tuple((entry, "cpp_object_storage_adapter") for entry in CPP_OBJECT_STORAGE_ENTRIES) +
-    tuple((entry, "exception_runtime_adapter") for entry in EXCEPTION_RUNTIME_ENTRIES))
+    tuple((entry, "exception_runtime_adapter") for entry in EXCEPTION_RUNTIME_ENTRIES) +
+    tuple((entry, "compiler_arithmetic_adapter") for entry in COMPILER_ARITHMETIC_ENTRIES))
 
 
 def integer(value):
@@ -308,7 +311,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -330,6 +333,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     require_code_fragment_contract(page, instructions)
     require_cpp_object_storage_contract(page, instructions)
     require_exception_runtime_contract(page, instructions)
+    if compiler_arithmetic_hooks:
+        require_compiler_arithmetic_contract(page, instructions, selected)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -359,8 +364,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if match_hot_page:
         if page == 0x10773 and (0x10773870 in page_addresses or 0x10773870 in selected):
             require_unsigned_division_routine(instructions, selected)
-            code.insert(1, '#include "unsigned_division.hpp"')
-            code.append("if constexpr (Turbo) if (!match_pc_profile_enabled() && try_fast_unsigned_division(s)) return true;")
+            if not compiler_arithmetic_hooks:
+                code.insert(1, '#include "unsigned_division.hpp"')
+                code.append("if constexpr (Turbo) if (!match_pc_profile_enabled() && try_fast_unsigned_division(s)) return true;")
         code.append("MatchPageCounter<Turbo, Finite> counter(s);")
     if page == 0x10203:
         code.insert(1, '#include "match_presentation.hpp"')
@@ -406,6 +412,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "cpp_object_storage_adapter.hpp"')
     if exception_runtime_hooks and any(a in selected for a in (*EXCEPTION_RUNTIME_ENTRIES, 0x107724f4) if a >> 12 == page):
         code.insert(1, '#include "exception_runtime_adapter.hpp"')
+    if compiler_arithmetic_hooks and any(a in selected for a in COMPILER_ARITHMETIC_ENTRIES if a >> 12 == page):
+        code.insert(1, '#include "compiler_arithmetic_adapter.hpp"')
     if page == 0x10119:
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
@@ -473,6 +481,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"if (try_modern_exception_runtime(s, 0x{a:x})) return true;")
         if exception_runtime_hooks and a == 0x107724f4:
             code.append("if (try_modern_exception_unexpected_landing(s)) return true;")
+        if compiler_arithmetic_hooks and a in COMPILER_ARITHMETIC_ENTRIES:
+            code.append(compiler_arithmetic_hook(a))
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -631,6 +641,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     require_cpp_object_storage_hooks(page, instructions, result)
     if exception_runtime_hooks:
         require_exception_runtime_hooks(page, instructions, result)
+    if compiler_arithmetic_hooks:
+        require_compiler_arithmetic_hooks(page, instructions, result)
     return result
 
 
@@ -682,6 +694,7 @@ def main():
         require_code_fragment_index(db, None if args.all_analyzed else selected)
         require_cpp_object_storage_index(db, None if args.all_analyzed else selected)
         require_exception_runtime_index(db, None if args.all_analyzed else selected)
+        require_compiler_arithmetic_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

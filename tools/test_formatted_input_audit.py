@@ -20,8 +20,8 @@ class FormattedInputManifestTests(unittest.TestCase):
         self.assertEqual(FORMATTED_INPUT_ENTRIES,(0x1077b7a0,0x1077bf20,0x1077d960,0x1077da70,0x1077dad0,0x1077d8d0,0x1077d9f0))
         self.assertEqual(INSTRUCTION_COUNTS,(478,1631,36,22,17,33,31))
         self.assertEqual(sum(INSTRUCTION_COUNTS),2248)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),226)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),226)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),234)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),234)
         self.assertEqual(SEMANTIC_REPLACEMENTS[71:78],tuple((e,'formatted_input_adapter') for e in FORMATTED_INPUT_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:71]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
@@ -122,7 +122,7 @@ class FormattedInputAuditTests(unittest.TestCase):
             self.assertIn(f'i_{entry:x}:',pages[entry>>12])
             self.assertNotIn(f'try_modern_formatted_input(s, 0x{entry:x})',pages[entry>>12])
         self.assertIn('try_modern_string_core(s, 0x1077dbd0)',pages[0x1077d])
-        self.assertIn('try_fast_unsigned_division(s)',pages[0x10773])
+        self.assertIn('try_modern_compiler_arithmetic(s, 0x10773870)',pages[0x10773])
         for entry in (0x10713aec,0x10713b3c):
             fragment=pages[0x10713].split(f'i_{entry:x}:',1)[1].split(f'i_{entry+4:x}:',1)[0]
             self.assertIn('if (s.r<4>(12) == 0)',fragment)

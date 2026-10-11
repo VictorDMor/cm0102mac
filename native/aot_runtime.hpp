@@ -37,6 +37,7 @@ struct RuntimeLifecycleBoundaryObserver;
 struct CodeFragmentBoundaryObserver;
 struct CppObjectStorageBoundaryObserver;
 struct ExceptionRuntimeBoundaryObserver;
+struct CompilerArithmeticBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 using Vector128 = std::array<std::uint8_t, 16>;
 
@@ -363,6 +364,15 @@ struct State {
     std::uint32_t file_controller_original_resume = 0;
     std::uint64_t file_controller_dispatch_escapes = 0;
     FileControllerBoundaryObserver* file_controller_observer = nullptr;
+    // Compiler arithmetic diagnostics are process-local and unpersisted.
+    bool compiler_arithmetic_original = false;
+    std::array<bool, 8> compiler_arithmetic_entry_original{};
+    std::array<std::uint64_t, 8> compiler_arithmetic_calls{}, compiler_arithmetic_original_calls{};
+    std::array<std::uint64_t, 8> compiler_arithmetic_returns{}, compiler_arithmetic_faults{};
+    std::array<std::uint64_t, 8> compiler_arithmetic_budget_original_calls{}, compiler_arithmetic_profile_original_calls{};
+    std::uint32_t compiler_arithmetic_original_resume = 0;
+    std::uint64_t compiler_arithmetic_dispatch_escapes = 0;
+    CompilerArithmeticBoundaryObserver* compiler_arithmetic_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

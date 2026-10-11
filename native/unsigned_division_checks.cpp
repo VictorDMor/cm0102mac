@@ -35,6 +35,7 @@ void prepare(State& state, std::uint64_t dividend, std::uint64_t divisor,
     state.available = {{0x50000100, 128}};
     state.heap_end = 0x50000300;
     state.memory_error = -108;
+    state.compiler_arithmetic_original = true;
 }
 
 bool original(State& state) {

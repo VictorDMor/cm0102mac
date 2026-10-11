@@ -9,47 +9,39 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The preceding accepted baseline is commit `7826fad7667398eeaaa404ca68dc707672c75c77`:
-127 semantic entry replacements and the installed allocator acceptance described
-in [the allocator report](native-allocator-pools-reconstruction.md).
-The private indexed original contains 1,953,157 instructions; the semantic entry
-count is not a percentage of engine behavior, functions or instructions.
-The earlier 5,833 analyzed functions are an analysis result, not a completeness
-certificate.
+The accepted production manifest contains **234 semantic entry replacements**.
+The [compiler arithmetic report](native-compiler-arithmetic-reconstruction.md)
+adds eight complete entries / 412 original instructions, preserving the first
+226 exactly. Generation has 1,953,334 instructions, 1,922 pages and zero
+missing/pending targets. A fresh full Release ARM64 build and all affected checks
+use the expanded State layout consistently.
 
-The current accepted manifest contains **149 semantic replacements**. The exact
-prior 127 gained thirteen storage/lifecycle entries covering 541 indexed
-instructions, followed by nine byte/item-I/O entries covering 682 instructions.
-The [storage report](native-stream-buffer-reconstruction.md) records 234
-comparisons and installed menu/chooser/normal-exit proof, with persistence not
-retested for that bounded block.
+Arithmetic component acceptance has 13,199 comparisons, 77 mapping-fault prefixes,
+two enabled traps and eight rejected negatives. Production adds 7,422 comparisons
+and 4,895 exact budget stops, normal direct/generated/CFM witnesses for every
+entry, independent selection/reset and a separate 16-case original-PC profiling
+check. Ten focused CTests, 20 Python suites / 127 tests with zero skips, and
+fresh ten-unit UBSAN pass. The protected installed menu/chooser/cancel/normal-exit
+smoke succeeds. Unsigned quotient records 12,125,476 modern calls/returns without
+faults or original selections; the other seven UI counters are zero. The harness
+supplies individual evidence for all eight entries. Save/Load is not retested
+for this bounded block.
+The installed internal ARM64 executable SHA-256 is
+`6814c65faad2615a547a5d3ce97a3b6f840ec20c58bd09c7cac8b7a76ae3beb3`.
 
-The [I/O report](native-stream-io-reconstruction.md) records 226 comparisons,
-27 expected faults, 13 rejected negatives, six accepted focused CTests, seven
-new audits plus 60 tests in affected prior audits, and three focused UBSAN passes.
-A private signed copy using identical compiled code loaded Reading, saved through
-the original in-game menu, exited, reopened and loaded the new streamio save.
-It retained the observed club/manager/date/squad and preserved the original save.
-This isolated runtime witness used the existing diagnostic event-coordinate click
-mode because CUA background input carried Command/live-cursor differences. It is
-not installed-production Save/Load or complete serialization evidence.
+The prior [exception report](native-exception-runtime-reconstruction.md) remains
+the acceptance record for its 21 complete entries / 1,657 instructions. Its
+read-only recovery added 177 previously unindexed instructions while preserving
+all earlier records and payloads. Earlier allocator, stream, file/path/controller,
+fragment metadata, lifecycle and object-storage acceptances likewise remain
+in their subsystem reports. Their historical manifest totals describe those
+deliveries rather than the current 234-entry baseline.
 
-The [native fork transport](native-fork-io-bridge.md) now implements seventeen
-previously missing 64-bit and async File Manager imports. Real-file checks cover
-positions above 4 GiB, errors, CFM completion and the generated file callbacks;
-five focused CTests and three instrumented binaries pass. These native services
-do not increase the semantic manifest. The subsequent
-[file-reference and Unicode bridge](native-file-references.md) implements thirteen
-more native services and activates production FSRef/64-bit capability discovery.
-401 assertions, seventeen original-chain calls, six focused CTests and three
-instrumented binaries verify real file operations, native conversion contexts,
-metadata widths and original-media preservation. The semantic manifest remains
-149; the original file controllers are still generated bodies.
-
-File seek/tell, open/mode parsing and remaining file services are next. They remain
-generated productive dependencies even though the isolated career used them
-successfully. Native input validation limitations are also retained as an evidence
-boundary rather than being hidden by the test mode.
+The semantic entry count is not a percentage of behavior, functions or
+instructions. The earlier 5,833 analyzed functions are an analyzer result rather
+than a completeness certificate. Native file/fork/Unicode services are separate
+bridge evidence and do not increase the semantic entry manifest. The complete
+port objective remains active.
 
 ## Work that still prevents completion
 

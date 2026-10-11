@@ -61,7 +61,8 @@ def main():
     for page in pages:
         selected = [r for r in records if r['address'] >> 12 == page]
         code = generate_page(page, selected, {r['address'] for r in selected}, userops=metadata['userops'],
-                             guest_context_transfers=args.with_transfers, exception_runtime_hooks=False)
+                             guest_context_transfers=args.with_transfers, exception_runtime_hooks=False,
+                             compiler_arithmetic_hooks=False)
         # Bounded references execute every selected original instruction.
         if 'try_modern_exception_runtime' in code:
             raise ValueError('Context reference must execute the original bodies, not semantic hooks')

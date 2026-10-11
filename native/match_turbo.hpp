@@ -30,6 +30,20 @@ public:
             state_.executed = count_;
         }
     }
+    // A semantic call can change State's instruction charge or throw after
+    // doing so. Publish before entry and adopt its charge on either outcome;
+    // the page destructor must not overwrite it with a stale local count.
+    template <typename Operation> bool semantic_boundary(std::uint32_t address, Operation&& operation) {
+        publish(address);
+        try {
+            const bool handled = operation();
+            if constexpr (Turbo) count_ = state_.executed;
+            return handled;
+        } catch (...) {
+            if constexpr (Turbo) count_ = state_.executed;
+            throw;
+        }
+    }
     void step(std::uint32_t address) {
         if constexpr (Turbo) {
             state_.pc = address;

@@ -20,8 +20,8 @@ class IntegerParsingManifestTests(unittest.TestCase):
         self.assertEqual(INTEGER_PARSING_ENTRIES,(0x1077ee20,0x1077f180,0x1077f570,0x1077f670,0x1077f6a0))
         self.assertEqual(INSTRUCTION_COUNTS,(215,249,61,10,10))
         self.assertEqual(sum(INSTRUCTION_COUNTS),545)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),226)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),226)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),234)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),234)
         self.assertEqual(SEMANTIC_REPLACEMENTS[66:71],tuple((e,'integer_parsing_adapter') for e in INTEGER_PARSING_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:66]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
@@ -106,7 +106,7 @@ class IntegerParsingAuditTests(unittest.TestCase):
             fragment=pages[source>>12].split(f'i_{source:x}:',1)[1].split(f'i_{source+4:x}:',1)[0]
             self.assertIn(f's.pc = 0x{target:x}; return true;',fragment)
         self.assertIn('s.pc = 0x1077f000; return true;',pages[0x1077e])
-        self.assertIn('try_fast_unsigned_division(s)',pages[0x10773])
+        self.assertIn('try_modern_compiler_arithmetic(s, 0x10773870)',pages[0x10773])
         for entry in (0x1077d960,0x1077d9e0,0x1077da70,0x10781320,0x1077de10):
             self.assertIn(f'i_{entry:x}:',pages[entry>>12]);self.assertNotIn(f'try_modern_integer_parsing(s, 0x{entry:x})',pages[entry>>12])
         for entry in (0x10713aec,0x10713b3c):

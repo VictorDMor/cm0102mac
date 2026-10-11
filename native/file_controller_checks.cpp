@@ -1,3 +1,6 @@
+#include <CoreServices/CoreServices.h>
+// The SDK calling-convention macro conflicts with the fixture's string reader.
+#undef pascal
 #include "file_controller_internal.hpp"
 #include "file_controller_adapter.hpp"
 #include "file_controller_fixture.hpp"
@@ -6,7 +9,6 @@
 #include "platform.hpp"
 #include <map>
 #include <fstream>
-#include <CoreServices/CoreServices.h>
 #include <unistd.h>
 
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
