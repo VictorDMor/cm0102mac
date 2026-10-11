@@ -3,6 +3,7 @@
 #include "stream_buffer_adapter.hpp"
 #include "stream_io_adapter.hpp"
 #include "file_controller_adapter.hpp"
+#include "file_path_adapter.hpp"
 #include "match_turbo.hpp"
 #include "season_reference.hpp"
 #include <algorithm>
@@ -160,12 +161,14 @@ void run_until(State& s, std::uint32_t return_pc) {
             if (s.stream_buffer_observer) s.stream_buffer_observer->import_enter(s, name);
             if (s.stream_io_observer) s.stream_io_observer->import_enter(s, name);
             if (s.file_controller_observer) s.file_controller_observer->import_enter(s, name);
+            if (s.file_path_observer) s.file_path_observer->import_enter(s, name);
             if (trace) {
                 std::fprintf(stderr, "%s pc=%08x lr=%08x", name, s.pc, unsigned(s.r<4>(4128)));
                 for (unsigned r = 3; r <= 10; ++r) std::fprintf(stderr, " r%u=%08x", r, unsigned(s.r<4>(r * 4)));
                 std::fprintf(stderr, "\n");
             }
-            if ((s.file_controller_observer && s.file_controller_observer->import_fixture(s, name)) || bridge_import(s, name)) {
+            if ((s.file_controller_observer && s.file_controller_observer->import_fixture(s, name)) ||
+                (s.file_path_observer && s.file_path_observer->import_fixture(s, name)) || bridge_import(s, name)) {
                 season_record_import_end(s);
                 if (trace) std::fprintf(stderr, "%s returned r3=%08x\n", name, unsigned(s.r<4>(12)));
                 ++s.native_calls;
@@ -173,6 +176,7 @@ void run_until(State& s, std::uint32_t return_pc) {
                 if (s.stream_buffer_observer) s.stream_buffer_observer->import_leave(s, name);
                 if (s.stream_io_observer) s.stream_io_observer->import_leave(s, name);
                 if (s.file_controller_observer) s.file_controller_observer->import_leave(s, name);
+                if (s.file_path_observer) s.file_path_observer->import_leave(s, name);
                 continue;
             }
             throw std::runtime_error(std::string("Unimplemented native OS bridge: ") + name +

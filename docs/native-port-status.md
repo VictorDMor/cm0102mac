@@ -1090,3 +1090,39 @@ Game content/metadata, user/workspace saves, 23 handoffs, original payloads,
 reference and 139 older private bundles were preserved. Runtime/Runs may change
 through UI. Save/Load is **not retested**; no career, day, match or performance
 benchmark ran. The complete C++23 engine/runtime goal remains active.
+
+
+## Native Mac file paths — October 10, 2026
+
+Seven path/name helpers now execute named C++23 bodies in production: CString to
+Pascal, Classic/capability-aware FSSpec construction, script encoding, path to
+FSRef, Unicode-name conversion and parent/leaf resolution. Their 537 indexed
+instructions and destination hooks are pinned, with zero external interior
+edges. The manifest now contains 182 entries and retains the exact prior 175.
+The [detailed report](native-file-path-reconstruction.md) records contracts,
+complete ABI/effect comparisons and per-entry native counters.
+
+Focused equivalence passed 277 comparisons, 21 expected mapping faults and 12
+own/child negatives. All seven have direct/generated-indirect normal witnesses
+and independent original selection/reset. The matrix includes live aliases,
+relocated TOCs, length wrap/sign behavior, full-word script errors, partial
+conversion and the legacy sign-extended-byte fallback. Fifty-four comparisons use
+real native services. A separate real-OS composition passed 428 assertions, 17
+production dispatches and 28 import services, with normal semantic calls for all
+seven path entries and zero original selection/escapes.
+
+One consistent full Release ARM64 build completed after the State change. Seven
+related CTests passed in 21.85 seconds, fourteen audit suites passed (81 tests),
+and both instrumented UBSAN harnesses passed with empty stderr. The two final
+native-directory cases passed the affected path CTest again in 2.16 seconds. One protected
+installation delivered source/candidate/installed/running executable SHA-256
+`ecb56a3ecf166793c88189d5c1ff10af049686c049e21182739220327b28d6da`.
+Strict signatures, normal plist and four payload hashes passed; the prior
+controller app is preserved. The app rendered Prepare Game, opened/cancelled the
+original chooser and exited normally. A UI-query-triggered reopening was also
+closed normally; both owned processes were confirmed closed.
+
+Game content/metadata, user/workspace saves, 23 handoffs, payloads, reference and
+142 older private bundles were preserved. Runtime/Runs may change through UI.
+Save/Load is **not retested**; no career, day, match or performance benchmark ran.
+The complete C++23 engine/runtime goal remains active.

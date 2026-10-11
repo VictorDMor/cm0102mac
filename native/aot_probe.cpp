@@ -14,6 +14,7 @@
 #include "stream_buffer_adapter.hpp"
 #include "stream_io_adapter.hpp"
 #include "file_controller_adapter.hpp"
+#include "file_path_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -90,6 +91,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << stream_buffer_call_summary(*state);
         std::cout << stream_io_call_summary(*state);
         std::cout << file_controller_call_summary(*state);
+        std::cout << file_path_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

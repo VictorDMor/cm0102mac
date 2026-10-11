@@ -2,6 +2,7 @@
 #include "platform.hpp"
 #include "stream_io_adapter.hpp"
 #include "file_controller_adapter.hpp"
+#include "file_path_adapter.hpp"
 #include <CoreServices/CoreServices.h>
 #include <bit>
 #include <cstring>
@@ -362,6 +363,12 @@ int main(int argc, char** argv) {
             require(s.file_controller_calls[i] != 0, "Missing real native controller witness " + hex_address(file_controller_entries[i]));
         require(s.file_controller_original_calls == std::array<std::uint64_t, 26>{} && !s.file_controller_dispatch_escapes,
                 "Real native composition selected original controller or escaped");
+        for (unsigned i = 0; i < file_path_entries.size(); ++i) {
+            require(s.file_path_calls[i] != 0, "Missing real native path witness " + hex_address(file_path_entries[i]));
+            std::cout << "native_file_path.entry=" << hex_address(file_path_entries[i]) << " normal=" << s.file_path_calls[i] << '\n';
+        }
+        require(s.file_path_original_calls == std::array<std::uint64_t, 7>{} && !s.file_path_dispatch_escapes,
+                "Real native composition selected original path or escaped");
         for (const char* operation : {"CarbonLib::UpgradeScriptInfoToTextEncoding", "CarbonLib::CreateTextToUnicodeInfoByEncoding",
              "CarbonLib::ConvertFromTextToUnicode", "CarbonLib::DisposeTextToUnicodeInfo", "CarbonLib::FSMakeFSRefUnicode",
              "CarbonLib::FSpMakeFSRef", "CarbonLib::FSGetCatalogInfo", "CarbonLib::FSCreateFileUnicode", "CarbonLib::FSOpenFork",

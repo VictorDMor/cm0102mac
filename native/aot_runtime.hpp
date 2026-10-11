@@ -32,6 +32,7 @@ struct AllocatorBoundaryObserver;
 struct StreamBufferBoundaryObserver;
 struct StreamIoBoundaryObserver;
 struct FileControllerBoundaryObserver;
+struct FilePathBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -303,6 +304,12 @@ struct State {
     std::uint64_t stream_io_dispatch_escapes = 0;
     StreamIoBoundaryObserver* stream_io_observer = nullptr;
     // File-controller selection and fixtures are process-local, never saved.
+    bool file_path_original = false;
+    std::array<bool, 7> file_path_entry_original{};
+    std::array<std::uint64_t, 7> file_path_calls{}, file_path_original_calls{};
+    std::uint32_t file_path_original_resume = 0;
+    std::uint64_t file_path_dispatch_escapes = 0;
+    FilePathBoundaryObserver* file_path_observer = nullptr;
     bool file_controller_original = false;
     std::array<bool, 26> file_controller_entry_original{};
     std::array<std::uint64_t, 26> file_controller_calls{}, file_controller_original_calls{};
