@@ -43,6 +43,7 @@ struct StdlibCoreBoundaryObserver;
 struct TimeRuntimeBoundaryObserver;
 struct ImportDescriptorBoundaryObserver;
 struct NativeServiceBoundaryObserver;
+struct RuntimeDiagnostics;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 using Vector128 = std::array<std::uint8_t, 16>;
 
@@ -174,6 +175,8 @@ private:
 [[noreturn, gnu::cold, gnu::noinline]] void instruction_budget_exhausted();
 
 struct State {
+    State();
+    ~State();
     Memory memory;
     // Ghidra's v0..v31 occupy 0x4200..0x43ff. The extension at 0x4400
     // holds VSCR, which this language exposes only through user operations.
@@ -191,6 +194,9 @@ struct State {
     // Keep platform implementation details out of all generated units. Future
     // filesystem, window, event, and sound changes do not alter this ABI again.
     std::shared_ptr<NativePlatform> platform;
+    // Additional semantic-module diagnostics are owned, private and unsaved.
+    // Their definition can grow without changing the generated runtime ABI.
+    std::unique_ptr<RuntimeDiagnostics> runtime_diagnostics;
     // Generated register offsets are constants. Inlining lets the compiler
     // fold the bounds check and access them directly, retaining checks for
     // dynamic callers without an out-of-line call per register access.

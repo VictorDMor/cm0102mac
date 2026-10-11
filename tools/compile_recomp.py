@@ -67,6 +67,10 @@ from import_descriptor_audit import (require_import_descriptor_contract, require
 from native_service_audit import (require_native_service_contract, require_native_service_index,
                                   require_native_service_hooks, native_service_hook, NATIVE_SERVICE_ENTRIES)
 
+from engine_initialization_audit import (require_engine_initialization_contract, require_engine_initialization_index,
+                                         require_engine_initialization_hooks, engine_initialization_hook,
+                                         ENGINE_INITIALIZATION_ENTRIES)
+
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
     0x10717b20, 0x10718130, 0x107182f0, 0x10718360)
@@ -97,7 +101,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "stdlib_core_adapter") for entry in STDLIB_CORE_ENTRIES) +
     tuple((entry, "time_runtime_adapter") for entry in TIME_RUNTIME_ENTRIES) +
     tuple((entry, "import_descriptor_adapter") for entry in IMPORT_DESCRIPTOR_ENTRIES) +
-    tuple((entry, "native_service_adapter") for entry in NATIVE_SERVICE_ENTRIES))
+    tuple((entry, "native_service_adapter") for entry in NATIVE_SERVICE_ENTRIES) +
+    tuple((entry, "engine_initialization_adapter") for entry in ENGINE_INITIALIZATION_ENTRIES))
 
 
 def integer(value):
@@ -329,7 +334,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -361,6 +366,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_time_runtime_contract(page, instructions, selected)
     if import_descriptor_hooks:
         require_import_descriptor_contract(page, instructions, selected)
+    if engine_initialization_hooks:
+        require_engine_initialization_contract(page, instructions, selected)
     if native_service_hooks:
         require_native_service_contract(page, instructions, selected)
     if local_temporaries:
@@ -396,6 +403,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "time_runtime_adapter.hpp"')
     if import_descriptor_hooks and page_addresses & set(IMPORT_DESCRIPTOR_ENTRIES):
         code.insert(1, '#include "import_descriptor_adapter.hpp"')
+    if engine_initialization_hooks and page_addresses & set(ENGINE_INITIALIZATION_ENTRIES):
+        code.insert(1, '#include "engine_initialization_adapter.hpp"')
     if native_service_hooks and page_addresses & set(NATIVE_SERVICE_ENTRIES):
         code.insert(1, '#include "native_service_adapter.hpp"')
     if any(op[0] == 'CALLOTHER' for item in instructions for op in item['ops']):
@@ -530,6 +539,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(time_runtime_hook(a))
         if import_descriptor_hooks and a in IMPORT_DESCRIPTOR_ENTRIES:
             code.append(import_descriptor_hook(a))
+        if engine_initialization_hooks and a in ENGINE_INITIALIZATION_ENTRIES:
+            code.append(engine_initialization_hook(a))
         if native_service_hooks and a in NATIVE_SERVICE_ENTRIES:
             code.append(native_service_hook(a))
         if a == 0x10779ed8:
@@ -702,6 +713,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_time_runtime_hooks(page, instructions, result)
     if import_descriptor_hooks:
         require_import_descriptor_hooks(page, instructions, result)
+    if engine_initialization_hooks:
+        require_engine_initialization_hooks(page, instructions, result)
     if native_service_hooks:
         require_native_service_hooks(page, instructions, result)
     return result
@@ -761,6 +774,7 @@ def main():
         require_time_runtime_index(db, None if args.all_analyzed else selected)
         require_import_descriptor_index(db, None if args.all_analyzed else selected)
         require_native_service_index(db, None if args.all_analyzed else selected)
+        require_engine_initialization_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

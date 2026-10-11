@@ -85,8 +85,8 @@ std::uint8_t original_character(NSEvent* event) {
     cm::aot::UIEvent event{kind, token};
     const auto host = [self.window convertPointToScreen:native.locationInWindow];
     const auto point = inversePoint({host.x, CGRectGetHeight(CGDisplayBounds(CGMainDisplayID())) - host.y});
-    // One inverse for window events and continuous polling, including the
-    // unscaled desktop background. Margin positions stay outside the panel.
+    // One inverse for window events and continuous polling. Positions outside
+    // the scaled game area stay outside the original panel.
     event.x = std::int16_t(std::clamp(std::floor(point.x), double(INT16_MIN), double(INT16_MAX)));
     event.y = std::int16_t(std::clamp(std::floor(point.y), double(INT16_MIN), double(INT16_MAX)));
     event.modifiers = original_modifiers(native.modifierFlags);
@@ -506,7 +506,12 @@ struct NativeUI::Impl {
         layout = presentation_layout(requested_scale, scene(), available(), screen().backingScaleFactor);
         const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
         for (const auto& [token, window] : windows) {
-            if (background(token)) continue; // The original desktop is not a second interactive panel.
+            if (background(token)) {
+                // Retain the original desktop's logical window and pixels for
+                // the engine, without covering the macOS desktop around the game.
+                [window orderOut:nil];
+                continue;
+            }
             const auto host = layout->to_host(rectangle(logical_bounds.at(token)));
             [window setFrame:NSMakeRect(host.x, height - host.y - host.height, host.width, host.height) display:NO];
             window.contentView.needsDisplay = YES;
@@ -638,7 +643,8 @@ void NativeUI::dispose_window(std::uint32_t token) {
 }
 void NativeUI::show_window(std::uint32_t token, bool activate) {
     auto window = impl_->windows.at(token);
-    if (activate && window.acceptsActivation) [window makeKeyAndOrderFront:nil];
+    if (impl_->background(token)) [window orderOut:nil];
+    else if (activate && window.acceptsActivation) [window makeKeyAndOrderFront:nil];
     else [window orderFront:nil];
     CMNativeView* view = (CMNativeView*)window.contentView;
     view.needsDisplay = YES;

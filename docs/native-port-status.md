@@ -36,6 +36,34 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Engine global initialization reconstructed
+
+The startup root and its nineteen global initializers now execute named C++23
+operations in production: twenty complete entries / 327 indexed instructions.
+The root preserves original call order and actual constructor/destructor
+dependencies. Complete generation has **559** semantic replacements, with the
+preceding 539 records and all five source fixups unchanged. Owned opaque runtime
+diagnostics keep future metadata additions independent of generated State layout;
+this delivery rebuilt all 2,025 State-dependent objects consistently.
+
+Ten focused CTests and 25 affected/new Python audit suites / 167 unittest tests
+pass without final skips. The component matrix records 2,628 comparisons, 2,448
+faults, 820 exact budget stops and twenty own negatives. Production checks record
+124 direct/generated/CFM/global/entry/mixed comparisons, twenty profile checks
+and 142 nonlocal comparisons including eighty restore/handler faults. Twenty-nine
+UBSAN units pass four runs with empty sanitizer stderr and exact Release output.
+
+Protected installed menu/chooser/cancel/normal-exit smoke executes all twenty
+initializers once, with twenty semantic calls and returns and zero original,
+profile, own fault, budget stop, transfer or escape. The signed ARM64 SHA-256 is
+`0af6b5bf6bea154f6b25e00f49593fc0c7fa2948c810b1daa70f27e4f5e5809c`.
+Game/save/payload/handoff/reference metadata and 190 older bundles are preserved.
+The same build hides the original desktop backdrop and sizes the visible game
+window to its scaled content; 800×600, 1000×750 and 1200×900 were verified at
+100%, 125% and 150%. The prior 100% preference was restored before exit.
+Save/Load is **not retested**; the full engine/runtime port remains incomplete.
+See [the initializer report](native-engine-initialization-reconstruction.md).
+
 ## Framed native-service facades reconstructed
 
 The complete AppleEvent, NewPtr and DisposePtr facades now execute semantic

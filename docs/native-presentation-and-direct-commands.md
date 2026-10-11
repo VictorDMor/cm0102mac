@@ -24,6 +24,18 @@ which exceeds the current usable screen is disabled. A previously saved choice
 which stops fitting falls back to Fit; 100% is the default when it fits.
 Changing scale preserves the current original screen, career and source bitmap.
 
+The visible macOS game window matches the scaled 800×600 content: 800×600 at
+100%, 1000×750 at 125%, 1200×900 at 150% and 1600×1200 at 200%, when that scale
+fits the display. The original nonactivating desktop backdrop remains a logical
+engine window, but its host window is hidden; it no longer covers the desktop
+around the game. Repeated original ShowWindow requests retain that policy.
+Overlays keep their relative position and scale. Fit uses the largest content
+rectangle that fits the usable screen, retaining the original aspect ratio.
+The October 11 installed build verified 100%, 125% and 150% window extents,
+chooser/cancel and normal exit; the existing 100% preference was restored. Its
+AppKit regression also checks repeated desktop ShowWindow suppression and exact
+game frame/content dimensions. Save/Load was not retested for this change.
+
 | Stable identifier | Native control / shortcut | Supported context |
 | --- | --- | --- |
 | `continue_game` | Game > Continue Game; Command-Return | Enabled original Continue control on a career screen |

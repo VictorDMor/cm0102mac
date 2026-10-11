@@ -8,7 +8,7 @@ using namespace cm::aot;
 namespace cm::semantic_io_checks {
 constexpr std::uint32_t fixture=0x30000000, stack=0x700fff00, toc=0x108bba90;
 constexpr std::uint32_t left=fixture, right=fixture+0x100, destination=fixture+0x200;
-void require(bool condition, const std::string& message) {
+inline void require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 struct Effects final : MemoryObserver {
@@ -83,7 +83,7 @@ struct Image {
         }
     }
 };
-std::unique_ptr<State> clone(const State& s) {
+inline std::unique_ptr<State> clone(const State& s) {
     auto t = std::make_unique<State>();
     t->registers = s.registers; t->unique = s.unique; t->pc = s.pc;
     t->executed = s.executed; t->budget = s.budget; t->native_calls = s.native_calls;

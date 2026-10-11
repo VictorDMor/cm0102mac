@@ -39,6 +39,8 @@ int main() {
                 MenuItem save; save.text = "Save"; save.key = 'S'; save.enabled = true;
                 menu.items.push_back(save);
                 ui.create_menu(7, menu);
+                ui.create_window(10,13,0x02220000,{-20,-20,1600,2400});
+                ui.show_window(10,false);
                 ui.create_window(11,13,0x02200000,{200,100,800,900});
                 ui.show_window(11,true);
                 require(ui.set_interface_scale(InterfaceScale::percent125), "125 percent should fit this fixture display");
@@ -52,6 +54,20 @@ int main() {
                 drain(ui);
                 NSWindow* window = [NSApp windowWithWindowNumber:ui.window_number(11)];
                 require(window != nil, "Missing scaled native window");
+                NSWindow* desktop = [NSApp windowWithWindowNumber:ui.window_number(10)];
+                require(desktop && !desktop.visible, "Original desktop still covers the macOS desktop");
+                ui.show_window(10,false);
+                require(!desktop.visible, "Repeated ShowWindow exposed the desktop backdrop");
+                for (const auto choice : {InterfaceScale::original, InterfaceScale::percent125, InterfaceScale::percent150}) {
+                    if (!ui.set_interface_scale(choice)) continue; // A fixed scale may exceed this display.
+                    const auto scale = ui.presentation_scale();
+                    require(window.frame.size.width == 800 * scale && window.frame.size.height == 600 * scale &&
+                        window.contentView.bounds.size.width == window.frame.size.width &&
+                        window.contentView.bounds.size.height == window.frame.size.height && !desktop.visible,
+                        "Visible window must match the scaled game content without desktop margins");
+                }
+                require(ui.set_interface_scale(InterfaceScale::percent125), "Restore input fixture scale");
+                require(ui.find_window(-10,-10).window == 0, "Hidden desktop backdrop still receives input");
                 auto input = [&](NSEventType type, SEL selector, UIEvent::Kind kind, double x, double y) {
                     NSEvent* native = [NSEvent mouseEventWithType:type location:NSMakePoint(x, window.contentView.bounds.size.height - y)
                         modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:window.windowNumber
@@ -139,6 +155,7 @@ int main() {
                 require(first.size()==1 && second.size()==1 && bytes(first[0]) == bytes(second[0]), "Scale changed source bitmap bytes");
                 require(ui.set_interface_scale(InterfaceScale::percent125), "Restore persisted choice");
                 ui.dispose_window(11);
+                ui.dispose_window(10);
             }
             { NativeUI reopened(preference); require(reopened.interface_scale() == InterfaceScale::percent125, "Preference did not survive reopening"); }
             { NativeUI other(temporary / "other/Presentation.plist"); require(other.interface_scale() == InterfaceScale::original, "Candidate preferences leaked across runtimes"); }
