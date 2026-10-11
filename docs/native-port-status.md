@@ -36,6 +36,34 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Record-group operations reconstructed
+
+Eleven complete entries / 853 indexed instructions now execute semantic C++23
+labels, owned/borrowed fields, bulk field updates, group insertion/removal, callback
+publication and identifier swapping. Generation has **590** replacements with the
+accepted 579 records, roots, instruction/file inventory and five fixups preserved.
+Signed fields/types/counts, live owner/row reloads, guest ABI, actual dependencies
+and known nonlocal ownership retain original behavior. The cross-page getter has
+separately pinned 36/39-instruction fragments and a complete private reference.
+
+Seven focused CTests, 236 executed generator audits and thirteen storage tests
+pass. Evidence includes 6,002 component comparisons, 5,856 interrupted/faulting
+outcomes including 3,664 budget stops, eleven own negatives, 99 actual production
+comparisons, eleven profile comparisons, an application-exit prefix and 81 nonlocal
+comparisons including 44 restore/handler faults. Seven affected UBSAN units pass
+four modes with exact Release output; the State header/layout is unchanged.
+
+The installed signed ARM64 executable SHA-256 is
+`be589e7f51dda32ccdf2746d69a3ba9d2d50181486a16715845730d35ac514c5`.
+Candidate/installed/running identity and menu/cancel/original-confirmation/normal-
+exit smoke pass: five entries execute with 271,437 semantic calls/returns and zero
+own failures, original/profile selection or dispatch escapes. The other six have
+dedicated actual production coverage. Current saves, original files, inputs,
+references, 23 handoffs and 208 prior bundles are protected. Cleanup removes 4,120
+old reproducible outputs and recovers approximately 1.41 GB; the current consistent
+build remains. Save/Load is **not retested**, performance is **not benchmarked**,
+and the full port remains unfinished. See [the record-group report](native-record-group-reconstruction.md).
+
 ## Aggregate-object lifetimes reconstructed
 
 Six complete entries / 411 indexed instructions now execute semantic C++23
@@ -52,7 +80,7 @@ interrupted/faulting outcomes including 3,021 budget stops, six own negatives,
 prefix and 44 nonlocal comparisons including 24 restore/handler faults. Seven
 affected units pass UBSAN in four modes with exact Release output.
 
-The installed signed ARM64 executable SHA-256 is
+At the aggregate-object delivery, the installed signed ARM64 executable SHA-256 was
 `86f34c78266f270d83b7f477322c635b38b417138ff68bf2f181c9a561c0d8df`.
 Candidate/installed/running identity and the menu/cancel/original-confirmation/
 normal-exit smoke pass. All six entries execute with ten semantic calls/returns

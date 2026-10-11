@@ -2,6 +2,7 @@
 #include "utility_object_adapter.hpp"
 #include "tree_mutation_adapter.hpp"
 #include "aggregate_object_adapter.hpp"
+#include "record_group_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -11,6 +12,7 @@ struct RuntimeDiagnostics {
     UtilityObjectDiagnostics utility_object;
     TreeMutationDiagnostics tree_mutation;
     AggregateObjectDiagnostics aggregate_object;
+    RecordGroupDiagnostics record_group;
 };
 State::State() = default;
 State::~State() = default;
@@ -46,6 +48,15 @@ AggregateObjectDiagnostics& aggregate_object_diagnostics(State& state) {
 const AggregateObjectDiagnostics& aggregate_object_diagnostics(const State& state) {
     static const AggregateObjectDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->aggregate_object : empty;
+}
+
+RecordGroupDiagnostics& record_group_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->record_group;
+}
+const RecordGroupDiagnostics& record_group_diagnostics(const State& state) {
+    static const RecordGroupDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->record_group : empty;
 }
 
 }
