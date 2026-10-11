@@ -27,6 +27,7 @@
 #include "native_service_adapter.hpp"
 #include "engine_initialization_adapter.hpp"
 #include "utility_object_adapter.hpp"
+#include "tree_mutation_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -72,6 +73,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         state->compiler_arithmetic_original = std::getenv("CM_AOT_COMPILER_ARITHMETIC_ORIGINAL") != nullptr;
         state->time_runtime_original = std::getenv("CM_AOT_TIME_RUNTIME_ORIGINAL") != nullptr;
         engine_initialization_diagnostics(*state).original = std::getenv("CM_AOT_ENGINE_INITIALIZATION_ORIGINAL") != nullptr;
+        tree_mutation_diagnostics(*state).original = std::getenv("CM_AOT_TREE_MUTATION_ORIGINAL") != nullptr;
         utility_object_diagnostics(*state).original = std::getenv("CM_AOT_UTILITY_OBJECT_ORIGINAL") != nullptr;
         state->native_service_original = std::getenv("CM_AOT_NATIVE_SERVICE_ORIGINAL") != nullptr;
         state->import_descriptor_original = std::getenv("CM_AOT_IMPORT_DESCRIPTOR_ORIGINAL") != nullptr;
@@ -123,6 +125,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << native_service_call_summary(*state);
         std::cout << engine_initialization_call_summary(*state);
         std::cout << utility_object_call_summary(*state);
+        std::cout << tree_mutation_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;

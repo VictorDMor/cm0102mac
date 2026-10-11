@@ -6,9 +6,10 @@ Eleven complete Mac bodies now execute named C++23 operations for owned byte
 nodes, linked lists, buffers and descriptor-object lifetimes. These operations
 retain guest word32 addresses, big-endian fields and actual allocator, copy,
 reporting and CFM dependencies. No original body of a replaced entry is replayed
-by the semantic implementation. The tree algorithm at `0x1074ea30`, aggregate
-constructor `0x1073c1b0`, and other collection methods remain separate generated
-dependencies; this delivery does not claim their reconstruction.
+by the semantic implementation. At this delivery the tree algorithm at `0x1074ea30`, aggregate
+constructor `0x1073c1b0`, and other collection methods remained separate generated
+dependencies. Tree insertion and cleanup are subsequently reconstructed in
+[the tree-mutation report](native-tree-mutation-reconstruction.md).
 
 Complete generation appends eleven `utility_object_adapter` records after the
 accepted 559 records, giving **570** semantic replacements. The first 559 records

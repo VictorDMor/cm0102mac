@@ -73,6 +73,9 @@ from engine_initialization_audit import (require_engine_initialization_contract,
 from utility_object_audit import (require_utility_object_contract, require_utility_object_index,
                                  require_utility_object_hooks, utility_object_hook, UTILITY_OBJECT_ENTRIES)
 
+from tree_mutation_audit import (require_tree_mutation_contract, require_tree_mutation_index,
+                                 require_tree_mutation_hooks, tree_mutation_hook, TREE_MUTATION_ENTRIES)
+
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
     0x10717b20, 0x10718130, 0x107182f0, 0x10718360)
@@ -105,7 +108,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "import_descriptor_adapter") for entry in IMPORT_DESCRIPTOR_ENTRIES) +
     tuple((entry, "native_service_adapter") for entry in NATIVE_SERVICE_ENTRIES) +
     tuple((entry, "engine_initialization_adapter") for entry in ENGINE_INITIALIZATION_ENTRIES) +
-    tuple((entry, "utility_object_adapter") for entry in UTILITY_OBJECT_ENTRIES))
+    tuple((entry, "utility_object_adapter") for entry in UTILITY_OBJECT_ENTRIES) +
+    tuple((entry, "tree_mutation_adapter") for entry in TREE_MUTATION_ENTRIES))
 
 
 def integer(value):
@@ -337,7 +341,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -371,6 +375,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_import_descriptor_contract(page, instructions, selected)
     if engine_initialization_hooks:
         require_engine_initialization_contract(page, instructions, selected)
+    if tree_mutation_hooks:
+        require_tree_mutation_contract(page, instructions, selected)
     if utility_object_hooks:
         require_utility_object_contract(page, instructions, selected)
     if native_service_hooks:
@@ -410,6 +416,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "import_descriptor_adapter.hpp"')
     if engine_initialization_hooks and page_addresses & set(ENGINE_INITIALIZATION_ENTRIES):
         code.insert(1, '#include "engine_initialization_adapter.hpp"')
+    if tree_mutation_hooks and page_addresses & set(TREE_MUTATION_ENTRIES):
+        code.insert(1, '#include "tree_mutation_adapter.hpp"')
     if utility_object_hooks and page_addresses & set(UTILITY_OBJECT_ENTRIES):
         code.insert(1, '#include "utility_object_adapter.hpp"')
     if native_service_hooks and page_addresses & set(NATIVE_SERVICE_ENTRIES):
@@ -548,6 +556,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(import_descriptor_hook(a))
         if engine_initialization_hooks and a in ENGINE_INITIALIZATION_ENTRIES:
             code.append(engine_initialization_hook(a))
+        if tree_mutation_hooks and a in TREE_MUTATION_ENTRIES:
+            code.append(tree_mutation_hook(a))
         if utility_object_hooks and a in UTILITY_OBJECT_ENTRIES:
             code.append(utility_object_hook(a))
         if native_service_hooks and a in NATIVE_SERVICE_ENTRIES:
@@ -724,6 +734,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_import_descriptor_hooks(page, instructions, result)
     if engine_initialization_hooks:
         require_engine_initialization_hooks(page, instructions, result)
+    if tree_mutation_hooks:
+        require_tree_mutation_hooks(page, instructions, result)
     if utility_object_hooks:
         require_utility_object_hooks(page, instructions, result)
     if native_service_hooks:
@@ -787,6 +799,7 @@ def main():
         require_native_service_index(db, None if args.all_analyzed else selected)
         require_engine_initialization_index(db, None if args.all_analyzed else selected)
         require_utility_object_index(db, None if args.all_analyzed else selected)
+        require_tree_mutation_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

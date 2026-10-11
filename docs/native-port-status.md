@@ -36,6 +36,33 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Descriptor-tree mutation reconstructed
+
+Three complete entries / 285 indexed instructions now execute semantic C++23
+root insertion, recursive insertion/equal-key replacement and postorder cleanup.
+Generation has **573** replacements with the prior 570 records, roots, instruction
+inventory and all five source fixups unchanged. Guest links, live CFM callbacks,
+signed comparison, original failure/count quirks, four expanded traversal levels,
+deep recursion, caller ABI and nonlocal ownership are preserved.
+
+Eight focused CTests, 222 generator audit tests without final skips/failures and
+seven affected UBSAN units across four exact Release-equivalent runs pass.
+Evidence includes 2,196 component comparisons, 2,101 faults, 1,073 exact budget
+stops, three own negatives, 45 actual production comparisons, three profile
+comparisons, an application-exit prefix and 23 nonlocal comparisons including
+twelve restore/handler faults.
+
+The installed signed ARM64 executable SHA-256 is
+`7a4ed5b5b47583e4a44fc1d9188c751d52f0ac7230b8b7e44090dabb3505b675`.
+Candidate/installed/running identity and the menu/cancel/original-confirmation/
+normal-exit smoke pass: all three entries execute with 53 semantic calls/returns
+and zero original/profile selection, own failures or dispatch escapes. Original
+files, saves, inputs, references, 23 handoffs and 199 prior bundles are protected.
+The previous cycle's reproducible build/test outputs have been cleaned; the
+current consistent build is retained. Save/Load is **not retested**, performance
+is **not benchmarked**, and the complete port remains unfinished. See
+[the tree-mutation report](native-tree-mutation-reconstruction.md).
+
 ## Basic utility-object lifetimes reconstructed
 
 Eleven complete entries / 239 indexed instructions now execute semantic C++23
@@ -43,7 +70,8 @@ node, list, buffer and descriptor lifetime operations in production. Generation
 has **570** replacements with all 559 prior records and five source fixups
 unchanged. Guest layouts, signed deleting flags, padding, aliasing, allocator
 policy, CFM cleanup, the retained descriptor-root quirk and nonlocal ownership
-are preserved. The tree algorithm and aggregate constructor remain generated.
+are preserved. The tree algorithm and aggregate constructor remained generated at this delivery;
+tree mutation is subsequently reconstructed in the report above.
 
 Nine focused CTests, 26 affected/new Python suites / 174 tests without final skips
 and seven-unit UBSAN across four runs pass. Evidence includes 991 component
@@ -51,7 +79,7 @@ comparisons, 843 faults, 399 exact budget stops, eleven own negatives, 66 real
 production comparisons, eleven profile comparisons, an application-exit prefix
 and 79 nonlocal comparisons including 44 restore/handler faults and both leaves.
 
-The installed signed ARM64 executable SHA-256 is
+At this utility delivery, the installed signed ARM64 executable SHA-256 was
 `4b2fd9c202ef2293475e4f37a45b81ec0887e01787f5e4165b4490b22b0bc058`. Candidate/installed/running identity and the protected
 menu/chooser/cancel/normal-exit smoke pass: 388 semantic calls and returns,
 zero original/profile selection or own failures. Ten entries occur there;

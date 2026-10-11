@@ -33,6 +33,7 @@ target_sources(cm_aot PRIVATE import_descriptor.cpp import_descriptor_adapter.cp
 target_sources(cm_aot PRIVATE native_service.cpp native_service_adapter.cpp)
 target_sources(cm_aot PRIVATE engine_initialization.cpp engine_initialization_adapter.cpp runtime_diagnostics.cpp)
 target_sources(cm_aot PRIVATE utility_object.cpp utility_object_adapter.cpp)
+target_sources(cm_aot PRIVATE tree_mutation.cpp tree_mutation_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -119,6 +120,23 @@ target_sources(cm-utility-object-checks PRIVATE $<TARGET_OBJECTS:cm-utility-obje
 target_link_libraries(cm-utility-object-checks PRIVATE cm_aot)
 target_compile_options(cm-utility-object-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME utility_object_component_equivalence COMMAND cm-utility-object-checks)
+set(CM_TREE_MUTATION_REFERENCE "${CMAKE_BINARY_DIR}/tree_mutation_reference.cpp")
+add_custom_command(OUTPUT "${CM_TREE_MUTATION_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_tree_mutation_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_TREE_MUTATION_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_tree_mutation_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/tree_mutation_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-tree-mutation-reference OBJECT "${CM_TREE_MUTATION_REFERENCE}")
+target_include_directories(cm-tree-mutation-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(cm-tree-mutation-checks tree_mutation_checks.cpp)
+target_sources(cm-tree-mutation-checks PRIVATE $<TARGET_OBJECTS:cm-tree-mutation-reference>)
+target_link_libraries(cm-tree-mutation-checks PRIVATE cm_aot)
+target_compile_options(cm-tree-mutation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME tree_mutation_component_equivalence COMMAND cm-tree-mutation-checks)
 set(CM_ENGINE_INITIALIZATION_REFERENCE "${CMAKE_BINARY_DIR}/engine_initialization_reference.cpp")
 add_custom_command(OUTPUT "${CM_ENGINE_INITIALIZATION_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_engine_initialization_reference.py"
@@ -153,6 +171,18 @@ add_test(NAME original_utility_object_profile COMMAND "${CMAKE_COMMAND}" -E env
 add_test(NAME modern_utility_object_transfer COMMAND "${CMAKE_COMMAND}" -E env
     "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
     $<TARGET_FILE:cm-utility-object-production-checks> "${CM_ORACLE_DIR}" --transfer)
+add_executable(cm-tree-mutation-production-checks tree_mutation_production_checks.cpp tree_mutation_transfer_checks.cpp)
+target_link_libraries(cm-tree-mutation-production-checks PRIVATE cm_aot)
+target_compile_options(cm-tree-mutation-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME modern_tree_mutation_production COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-tree-mutation-production-checks> "${CM_ORACLE_DIR}")
+add_test(NAME original_tree_mutation_profile COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-tree-mutation-production-checks> "${CM_ORACLE_DIR}" --profile)
+add_test(NAME modern_tree_mutation_transfer COMMAND "${CMAKE_COMMAND}" -E env
+    "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
+    $<TARGET_FILE:cm-tree-mutation-production-checks> "${CM_ORACLE_DIR}" --transfer)
 add_test(NAME modern_engine_initialization_production COMMAND "${CMAKE_COMMAND}" -E env
     "CM_AOT_ORIGINAL_APPLICATION=${CM_ORIGINAL_APPLICATION_FILE}"
     $<TARGET_FILE:cm-engine-initialization-production-checks> "${CM_ORACLE_DIR}")
