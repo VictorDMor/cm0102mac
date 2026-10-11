@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-06
+# Native port investigation — updated 2026-10-10
 
 ## Required outcome
 
@@ -992,3 +992,30 @@ File seek/tell, open/mode parsing and remaining runtime/engine services remain
 in progress. The [detailed I/O report](native-stream-io-reconstruction.md) and
 [complete-port ledger](native-cpp23-port-progress.md) distinguish this accepted
 subsystem from the still-active whole-port objective.
+
+## Native 64-bit and async file transport — October 10, 2026
+
+Seventeen missing File Manager imports now have real native fork behavior,
+including 64-bit positions/sizes and Classic/fork asynchronous completion.
+The shared bounded transfer retains original-media overlays and guest access
+boundaries. The [transport report](native-fork-io-bridge.md) records 377 assertions,
+three real generated CFM completion executions, seven generated stream callback
+executions, five focused CTest passes and three UBSAN binaries with empty stderr.
+Native errors, sparse files above 4 GiB, EOF, large counts, close ownership and
+read-only rejection are exercised against actual private files.
+
+The signed source/candidate/installed/running ARM64 executable SHA-256 is
+`b773d4ab9281a23b673243b384e935b0eec215728bf01e772d32e7a6531113c5`.
+A preliminary installation preceded the final SDK review of the Classic async
+queue-result ABI. The corrected artifact was rebuilt/retested and installed in
+a second protected update, preserving the prior app,
+personal content/metadata, saves, payloads, 23 handoffs and 131 earlier bundles.
+The installed smoke reached Prepare Game, opened/cancelled the original chooser
+and exited normally with no fatal diagnostics. Final protection passed; no
+game process remained. Save/Load is **not retested** for this increment.
+
+The semantic manifest remains exactly 149. Production capability selection stays
+Classic until the FSRef/open/catalog/Unicode chain is implemented and accepted.
+These transport checks do not claim new imports executed in ordinary menu smoke,
+semantic file-controller replacement or whole-port completion. The complete
+file-controller and remaining engine/runtime work continues under the active goal.

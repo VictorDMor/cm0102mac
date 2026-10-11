@@ -12,6 +12,7 @@
 #include "callbacks.hpp"
 #include "apple_events.hpp"
 #include "data_forks.hpp"
+#include "fork_io_bridge.hpp"
 #include "sound_bridge.hpp"
 #include "performance_trace.hpp"
 #include <bit>
@@ -420,39 +421,11 @@ struct NativePlatform::Impl {
     }
     std::int16_t read_data(State& s, std::int16_t ref, std::uint16_t mode, std::int32_t offset,
                          std::uint32_t buffer, std::int32_t requested, std::uint32_t& actual) {
-        actual = 0;
-        if (requested < 0) return parameter_error;
-        if (std::uint64_t(buffer) + std::uint32_t(requested) > (UINT64_C(1) << 32))
-            throw std::runtime_error("Original file read crosses the 32-bit data address boundary");
-        // Bound native temporary storage while allowing a large original read.
-        do {
-            std::vector<std::uint8_t> bytes(std::min<std::uint32_t>(requested - actual, 1024 * 1024));
-            std::uint32_t count = 0;
-            const auto error = data_forks.read(ref, mode, offset, bytes, count);
-            bytes.resize(count);
-            if (count) s.memory.copy_in(buffer + actual, bytes);
-            actual += count;
-            if (error || actual == std::uint32_t(requested)) return error;
-            if (!count) throw std::runtime_error("Native file read made no progress without reporting EOF");
-            mode = 0; offset = 0; // Continue at the mark left by the previous native read.
-        } while (true);
+        return read_guest_fork(s, data_forks, ref, mode, offset, buffer, requested, actual);
     }
     std::int16_t write_data(State& s, std::int16_t ref, std::uint16_t mode, std::int32_t offset,
                            std::uint32_t buffer, std::int32_t requested, std::uint32_t& actual) {
-        actual = 0;
-        if (requested < 0) return parameter_error;
-        if (std::uint64_t(buffer) + std::uint32_t(requested) > (UINT64_C(1) << 32))
-            throw std::runtime_error("Original file write crosses the 32-bit data address boundary");
-        do {
-            const auto count = std::min<std::uint32_t>(requested - actual, 1024 * 1024);
-            const auto bytes = count ? s.memory.copy_out(buffer + actual, count) : std::vector<std::uint8_t>{};
-            std::uint32_t written = 0;
-            const auto error = data_forks.write(ref, mode, offset, bytes, written);
-            actual += written;
-            if (error || actual == std::uint32_t(requested)) return error;
-            if (!written) throw std::runtime_error("Native file write made no progress without reporting an error");
-            mode = 0; offset = 0;
-        } while (true);
+        return write_guest_fork(s, data_forks, ref, mode, offset, buffer, requested, actual);
     }
     std::optional<std::pair<std::uint32_t, std::uint16_t>> delivered_command_action;
     CommandContext commands;
@@ -893,6 +866,20 @@ std::vector<fs::path> NativePlatform::save_window_images(const fs::path& directo
 }
 bool NativePlatform::dispatch(State& s, const std::string& name) {
     if (impl_->sound.dispatch(s, name)) return true;
+    if (const auto result = dispatch_fork_io(s, impl_->data_forks, name)) {
+        complete_fork_io(s, *result);
+        if (name == "CarbonLib::FSCloseFork")
+            impl_->performance.mark("file-close", s, std::uint16_t(s.r<4>(12)));
+        // Fork async APIs are void; Classic async APIs return queue acceptance.
+        // Their completed operation result is published separately in ioResult.
+        switch (result->return_kind) {
+        case ForkIoResult::Return::result: s.wr<4>(12, std::uint32_t(std::int32_t(result->error))); break;
+        case ForkIoResult::Return::queued: s.wr<4>(12, 0); break;
+        case ForkIoResult::Return::void_result: break;
+        }
+        s.pc = std::uint32_t(s.r<4>(4128));
+        return true;
+    }
     // Deliver original audio callbacks at cooperative timing/event boundaries,
     // not inside arbitrary synchronous OS services. Match cleanup quiets a
     // channel, frees its PCM/header, closes the file, then disposes the channel.

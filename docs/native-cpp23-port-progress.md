@@ -34,6 +34,14 @@ This isolated runtime witness used the existing diagnostic event-coordinate clic
 mode because CUA background input carried Command/live-cursor differences. It is
 not installed-production Save/Load or complete serialization evidence.
 
+The [native fork transport](native-fork-io-bridge.md) now implements seventeen
+previously missing 64-bit and async File Manager imports. Real-file checks cover
+positions above 4 GiB, errors, CFM completion and the generated file callbacks;
+five focused CTests and three instrumented binaries pass. These native services
+do not increase the semantic manifest. The default capability response stays
+Classic while FSRef lookup/open/create/catalog/rename/delete and Unicode
+conversion ownership/marshalling are still under reconstruction.
+
 File seek/tell, open/mode parsing and remaining file services are next. They remain
 generated productive dependencies even though the isolated career used them
 successfully. Native input validation limitations are also retained as an evidence

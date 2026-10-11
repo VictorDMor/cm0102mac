@@ -63,11 +63,11 @@ std::int16_t NativeDataForks::position(std::int16_t ref, std::int64_t& offset) c
     if (!error) offset = result;
     return error;
 }
-std::int16_t NativeDataForks::seek(std::int16_t ref, std::uint16_t mode, std::int32_t offset) {
+std::int16_t NativeDataForks::seek(std::int16_t ref, std::uint16_t mode, std::int64_t offset) {
     if (!impl_->files.contains(ref)) return rfNumErr;
     return ::FSSetForkPosition(ref, mode, offset);
 }
-std::int16_t NativeDataForks::read(std::int16_t ref, std::uint16_t mode, std::int32_t offset,
+std::int16_t NativeDataForks::read(std::int16_t ref, std::uint16_t mode, std::int64_t offset,
                                    std::span<std::uint8_t> buffer, std::uint32_t& actual) {
     actual = 0;
     if (!impl_->files.contains(ref)) return rfNumErr;
@@ -77,7 +77,7 @@ std::int16_t NativeDataForks::read(std::int16_t ref, std::uint16_t mode, std::in
     actual = count;
     return error;
 }
-std::int16_t NativeDataForks::write(std::int16_t ref, std::uint16_t mode, std::int32_t offset,
+std::int16_t NativeDataForks::write(std::int16_t ref, std::uint16_t mode, std::int64_t offset,
                                   std::span<const std::uint8_t> buffer, std::uint32_t& actual) {
     actual = 0;
     if (!impl_->files.contains(ref)) return rfNumErr;
@@ -87,10 +87,14 @@ std::int16_t NativeDataForks::write(std::int16_t ref, std::uint16_t mode, std::i
     actual = count;
     return error;
 }
-std::int16_t NativeDataForks::resize(std::int16_t ref, std::int32_t bytes) {
+std::int16_t NativeDataForks::resize(std::int16_t ref, std::int64_t bytes) {
     if (!impl_->files.contains(ref)) return rfNumErr;
     if (bytes < 0) return paramErr;
     return ::FSSetForkSize(ref, fsFromStart, bytes);
+}
+std::int16_t NativeDataForks::resize(std::int16_t ref, std::uint16_t mode, std::int64_t offset) {
+    if (!impl_->files.contains(ref)) return rfNumErr;
+    return ::FSSetForkSize(ref, mode, offset);
 }
 }
 #pragma clang diagnostic pop

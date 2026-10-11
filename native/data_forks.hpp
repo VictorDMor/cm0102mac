@@ -15,12 +15,13 @@ public:
     std::int16_t close(std::int16_t ref);
     std::int16_t size(std::int16_t ref, std::int64_t& bytes) const;
     std::int16_t position(std::int16_t ref, std::int64_t& offset) const;
-    std::int16_t seek(std::int16_t ref, std::uint16_t mode, std::int32_t offset);
-    std::int16_t read(std::int16_t ref, std::uint16_t mode, std::int32_t offset,
+    std::int16_t seek(std::int16_t ref, std::uint16_t mode, std::int64_t offset);
+    std::int16_t read(std::int16_t ref, std::uint16_t mode, std::int64_t offset,
                       std::span<std::uint8_t> buffer, std::uint32_t& actual);
-    std::int16_t write(std::int16_t ref, std::uint16_t mode, std::int32_t offset,
+    std::int16_t write(std::int16_t ref, std::uint16_t mode, std::int64_t offset,
                        std::span<const std::uint8_t> buffer, std::uint32_t& actual);
-    std::int16_t resize(std::int16_t ref, std::int32_t bytes);
+    std::int16_t resize(std::int16_t ref, std::int64_t bytes);
+    std::int16_t resize(std::int16_t ref, std::uint16_t mode, std::int64_t offset);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
