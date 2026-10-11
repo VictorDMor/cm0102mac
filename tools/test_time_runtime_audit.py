@@ -24,11 +24,11 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(sum(n for _, _, n, _ in CONTRACTS), 204)
         self.assertEqual(TIME_RUNTIME_ENTRIES, tuple(sorted(set(TIME_RUNTIME_ENTRIES))))
         baseline = [{'entry': f'0x{a:x}', 'module': m} for a, m in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(baseline), 276)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 276)
+        self.assertEqual(len(baseline), 536)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 536)
         self.assertEqual(hashlib.sha256(json.dumps(baseline[:268], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '97d4e7d8d5633d4efc9c771a720a4ddedfa347de67e7600c20ceca91ac20fbec')
-        self.assertEqual(SEMANTIC_REPLACEMENTS[268:], tuple((a, 'time_runtime_adapter') for a in TIME_RUNTIME_ENTRIES))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[268:276], tuple((a, 'time_runtime_adapter') for a in TIME_RUNTIME_ENTRIES))
 
     def test_only_complete_roots_are_exterior_entrances(self):
         for start, end, _, _ in CONTRACTS:

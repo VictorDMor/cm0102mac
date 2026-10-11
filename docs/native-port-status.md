@@ -36,6 +36,30 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Import descriptors and generic CFM tails reconstructed
+
+All 259 Mac import glues and the generic CFM descriptor tail now execute named
+semantic C++23 operations in production: 260 complete entries / 1,559 indexed
+instructions. Live guest descriptors, word32 pointers, caller/callee TOCs,
+function publication order and frame/dispatcher ownership retain the original
+contracts. Complete generation has **536** semantic replacements with the
+accepted first 276 unchanged. Nine focused CTests, 23 affected Python suites /
+153 tests with zero skips and nine-unit UBSAN pass. The new harness records
+11,434 component comparisons, 8,580 production comparisons, 260 own negatives
+per mode and positive direct/generated/native/guest evidence for every entry;
+all 259 imports also execute through the generic CFM tail in composition.
+
+Protected installation and installed menu/chooser/named-cancel/normal-exit smoke
+pass. The signed ARM64 executable SHA-256 is
+`7d78391d80e68f4de4e911cf6c66c17dfa3dcf7309c6b8a29e8062cbd4ccc452`.
+Installed diagnostics record 37,360,301 semantic calls/tails across 115 entries,
+including 5,442,294 generic tails, with zero original/profile/budget selection,
+own fault, budget stop, context transfer or escape in this block. The other 145
+entries are covered by the harness. Game/save/payload/handoff/reference content
+and 180 older bundles are preserved. Save/Load is **not retested**. Remaining
+native services and engine/runtime reconstruction keep the complete goal active.
+See [the descriptor-tail report](native-import-descriptor-reconstruction.md).
+
 ## Word utilities and comparator search reconstructed
 
 Four complete routines / 90 indexed instructions now have semantic C++23

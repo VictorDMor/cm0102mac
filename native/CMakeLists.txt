@@ -29,6 +29,7 @@ target_sources(cm_aot PRIVATE compiler_arithmetic_adapter.cpp compiler_arithmeti
 target_sources(cm_aot PRIVATE register_context.cpp register_context_adapter.cpp)
 target_sources(cm_aot PRIVATE stdlib_core.cpp stdlib_core_adapter.cpp)
 target_sources(cm_aot PRIVATE time_runtime.cpp time_runtime_adapter.cpp)
+target_sources(cm_aot PRIVATE import_descriptor.cpp import_descriptor_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -98,6 +99,26 @@ enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CM_IMPORT_DESCRIPTOR_REFERENCE "${CMAKE_BINARY_DIR}/import_descriptor_reference.cpp")
+add_custom_command(OUTPUT "${CM_IMPORT_DESCRIPTOR_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_import_descriptor_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_IMPORT_DESCRIPTOR_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_import_descriptor_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/import_descriptor_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-import-descriptor-reference OBJECT "${CM_IMPORT_DESCRIPTOR_REFERENCE}")
+target_include_directories(cm-import-descriptor-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(cm-import-descriptor-checks import_descriptor_checks.cpp)
+target_link_libraries(cm-import-descriptor-checks PRIVATE cm_aot)
+target_sources(cm-import-descriptor-checks PRIVATE $<TARGET_OBJECTS:cm-import-descriptor-reference>)
+target_compile_options(cm-import-descriptor-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME import_descriptor_component_equivalence COMMAND cm-import-descriptor-checks)
+add_test(NAME modern_import_descriptor_production COMMAND cm-import-descriptor-checks --production)
+add_test(NAME original_import_descriptor_profile COMMAND "${CMAKE_COMMAND}" -E env
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-import-descriptor-checks> --profile)
 set(CM_TIME_RUNTIME_REFERENCE "${CMAKE_BINARY_DIR}/time_runtime_reference.cpp")
 add_custom_command(OUTPUT "${CM_TIME_RUNTIME_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_time_runtime_reference.py"

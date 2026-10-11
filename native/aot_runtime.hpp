@@ -41,6 +41,7 @@ struct CompilerArithmeticBoundaryObserver;
 struct RegisterContextBoundaryObserver;
 struct StdlibCoreBoundaryObserver;
 struct TimeRuntimeBoundaryObserver;
+struct ImportDescriptorBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 using Vector128 = std::array<std::uint8_t, 16>;
 
@@ -405,6 +406,16 @@ struct State {
     std::uint32_t time_runtime_original_body = 0;
     std::uint64_t time_runtime_dispatch_escapes = 0;
     TimeRuntimeBoundaryObserver* time_runtime_observer = nullptr;
+    // Live import and CFM descriptor diagnostics are process-local and unsaved.
+    bool import_descriptor_original = false;
+    std::array<bool, 260> import_descriptor_entry_original{};
+    std::array<std::uint64_t, 260> import_descriptor_calls{}, import_descriptor_original_calls{};
+    std::array<std::uint64_t, 260> import_descriptor_tails{}, import_descriptor_faults{};
+    std::array<std::uint64_t, 260> import_descriptor_budget_stops{}, import_descriptor_transfers{};
+    std::array<std::uint64_t, 260> import_descriptor_budget_original_calls{}, import_descriptor_profile_original_calls{};
+    std::uint32_t import_descriptor_original_body = 0;
+    std::uint64_t import_descriptor_dispatch_escapes = 0;
+    ImportDescriptorBoundaryObserver* import_descriptor_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();
