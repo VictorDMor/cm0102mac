@@ -1014,8 +1014,45 @@ The installed smoke reached Prepare Game, opened/cancelled the original chooser
 and exited normally with no fatal diagnostics. Final protection passed; no
 game process remained. Save/Load is **not retested** for this increment.
 
-The semantic manifest remains exactly 149. Production capability selection stays
-Classic until the FSRef/open/catalog/Unicode chain is implemented and accepted.
+At this transport delivery the semantic manifest remained exactly 149, and
+production capability selection stayed Classic pending FSRef/Unicode acceptance.
 These transport checks do not claim new imports executed in ordinary menu smoke,
 semantic file-controller replacement or whole-port completion. The complete
 file-controller and remaining engine/runtime work continues under the active goal.
+
+## Native FSRef and Unicode file services — October 10, 2026
+
+Thirteen further native services now implement opaque file references, Unicode
+lookup/create/rename, selected catalog metadata, named fork opening, comparison,
+deletion and owned text-conversion contexts, together with the Classic catalog
+setter. Production `Gestalt('fs  ')` returns `0x1302`, so the existing generated
+controllers discover and use the FSRef/64-bit path normally. Guest catalog
+fields, UTC dates and Finder records are explicitly marshalled; host pointers and
+volume IDs do not enter the guest ABI. Original-media writes retain private-copy
+preservation. The [detailed report](native-file-references.md) records the contracts
+and remaining original-media tombstone limitation.
+
+Focused acceptance passed 401 assertions, 17 generated routine calls and 28
+distinct import services. Every new service has positive and rejection evidence
+and is exercised through the original chain, including a mixed Classic fixture.
+Six related CTests passed in 17.94 seconds, and three UBSAN binaries passed with
+empty stderr against the final consistent Release ARM64 build. The semantic
+manifest still contains the exact prior 149 entries; native import implementation
+does not reconstruct the original file-controller bodies.
+
+One protected installation delivered the signed source/candidate/installed/running
+ARM64 executable with SHA-256
+`b3c376d2cb730bef9173890da3f5dc5d73d996107539269fc379611984103c88`.
+Strict signatures, normal production plist and four original payload hashes passed.
+The previous installed executable is preserved at SHA-256
+`b773d4ab9281a23b673243b384e935b0eec215728bf01e772d32e7a6531113c5`.
+The installed app rendered Prepare Game, opened/cancelled the original chooser
+without loading a career and exited normally with no fatal diagnostics. The
+process was confirmed closed. Final protection passed for Game content/metadata,
+the workspace save snapshot, 23 handoffs, payloads, reference and 136 earlier
+private bundles. Runtime/Runs and presentation preferences may change after UI.
+
+Save/Load is **not retested**. No career, day, match or performance benchmark ran.
+Menu smoke does not establish per-entry coverage; the native-file fixtures supply
+that evidence. Semantic file controllers and the remaining engine/runtime work
+continue under the complete-port goal.

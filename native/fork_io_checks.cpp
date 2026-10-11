@@ -242,8 +242,8 @@ int main(int argc, char** argv) {
         require(!call(s, "CarbonLib::FSCloseFork", {std::uint32_t(read_only)}), "Read-only fork close");
 
         // Exercise the actual generated Mac callbacks over the new imports.
-        // A flag in a fixture selects the fork path; production Gestalt stays
-        // Classic until the entire FSRef/open/Unicode family is accepted.
+        // Select the fork PB layout directly. Default capability discovery and
+        // the entire FSRef/open/Unicode chain have their own focused check.
         s.memory.write<1>(toc - 0x3504, 1); s.memory.write<1>(toc - 0x3503, 1);
         s.memory.write<4>(count_pointer, 4);
         generated(s, 0x10777140, {std::uint32_t(sparse), buffer, count_pointer, 0});

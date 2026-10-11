@@ -14,5 +14,6 @@ struct NativeVolumeParameters {
 };
 NativeVolumeParameters native_volume_parameters(const std::filesystem::path& path);
 std::int16_t native_delete_object(const std::filesystem::path& path);
-std::int16_t native_rename_object(const std::filesystem::path& path, const std::string& name);
+std::int16_t native_rename_object(const std::filesystem::path& path, const std::string& name,
+    std::uint32_t encoding = UINT32_MAX);
 }

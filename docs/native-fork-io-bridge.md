@@ -140,12 +140,18 @@ may change from intentional UI; no identity claim is made for them after smoke.
 Save/Load is **not retested** for this transport increment; the earlier isolated
 stream I/O persistence witness is not promoted to current acceptance.
 
-Production `Gestalt('fs  ')` deliberately remains on its existing Classic
-capability response. The generated file callbacks use the new fork services in
-focused fixtures, but ordinary menu smoke cannot establish their execution.
-FSRef lookup/open/create/catalog/rename/delete, text-to-Unicode lifetime/marshalling
-and the semantic open/mode/position/file-controller bodies still require their
-own implementations and acceptance before selecting the full FSRef chain by
-default. The existing Classic large-EOF diagnostic and original-media tombstone
-limitations remain. These are outstanding work in the active whole-port goal,
-not reasons to mark the goal complete.
+At this transport delivery, `Gestalt('fs  ')` deliberately remained on its Classic
+capability response. The generated file callbacks used the new fork services in
+focused fixtures, but ordinary menu smoke did not establish their execution.
+FSRef lookup/open/create/catalog/rename/delete and text-to-Unicode ownership and
+marshalling still required implementation and acceptance before that chain could
+be selected by default. Semantic C++23 open/mode/seek/tell/file-controller bodies
+were independently outstanding. The Classic large-EOF diagnostic and
+original-media tombstone limitations remained. This transport delivery did not
+complete the active whole-port goal.
+
+The subsequent [FSRef/Unicode delivery](native-file-references.md) implements and
+accepts the native file-reference chain and activates production fork capability
+discovery. Semantic controller reconstruction and original-media tombstones
+remain outstanding; the earlier transport smoke is not retroactive evidence of
+those later imports.

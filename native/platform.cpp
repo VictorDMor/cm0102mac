@@ -13,6 +13,8 @@
 #include "apple_events.hpp"
 #include "data_forks.hpp"
 #include "fork_io_bridge.hpp"
+#include "unicode_bridge.hpp"
+#include "file_reference_bridge.hpp"
 #include "sound_bridge.hpp"
 #include "performance_trace.hpp"
 #include <bit>
@@ -107,6 +109,7 @@ struct NativePlatform::Impl {
     std::unique_ptr<NativeResources> resources;
     NativePrinting printing;
     NativeDataForks data_forks;
+    NativeUnicode unicode;
     NativeAppleEvents apple_events;
     std::deque<UIEvent> pending_events;
     std::map<std::array<std::uint8_t, 16>, UIEvent> delivered_events;
@@ -212,7 +215,7 @@ struct NativePlatform::Impl {
         return status;
     }
 
-    std::int16_t rename_object(const fs::path& target, const std::string& name) {
+    std::int16_t rename_object(const fs::path& target, const std::string& name, std::uint32_t encoding = UINT32_MAX) {
         if (name.empty() || name == "." || name == ".." || name.find_first_of(":/") != std::string::npos ||
             name.find('\0') != std::string::npos) return bad_name;
         if (!fs::exists(fs::symlink_status(target))) return file_not_found;
@@ -225,7 +228,7 @@ struct NativePlatform::Impl {
             throw std::runtime_error("Renaming an original media entry requires private tombstone support: " + target.string());
         const auto destination = visible_child(target.parent_path(), name);
         if (fs::exists(fs::symlink_status(destination)) && !fs::equivalent(target, destination)) return -48;
-        const auto error = native_rename_object(target, name);
+        const auto error = native_rename_object(target, name, encoding);
         if (error) return error;
         const auto renamed = fs::canonical(target.parent_path() / name);
         const auto new_logical = logical_path(renamed);
@@ -723,6 +726,42 @@ struct NativePlatform::Impl {
     fs::path from_spec(State& s, std::uint32_t spec) const {
         return path(std::int16_t(s.memory.read<2>(spec)), s.memory.read<4>(spec + 2), read_mac_string(s, spec + 6));
     }
+    NativeFileReference reference_for(const fs::path& path) const {
+        NativeFileReference result{};
+        const auto error = native_file_reference(allowed(path), result);
+        if (error) throw FileError{error};
+        return result;
+    }
+    fs::path from_reference(State& s, std::uint32_t address) const {
+        NativeFileReference ref{};
+        const auto bytes = s.memory.copy_out(address, ref.size());
+        std::copy(bytes.begin(), bytes.end(), ref.begin());
+        fs::path path;
+        const auto error = native_reference_path(ref, path);
+        if (error) throw FileError{error};
+        path = allowed(path);
+        const auto logical = logical_path(path);
+        // An identity obtained before copy-on-write continues to use the same
+        // visible namespace. The original media object remains immutable.
+        if (under(logical, game) && logical != game)
+            path = allowed(visible_child(logical.parent_path(), logical.filename().string()));
+        return path;
+    }
+    void write_reference(State& s, std::uint32_t address, const NativeFileReference& ref) const {
+        s.memory.copy_in(address, {ref.begin(), ref.end()});
+    }
+    std::vector<std::uint16_t> unicode_units(State& s, std::uint32_t address, std::uint32_t length) const {
+        if (length > 255) throw FileError{bad_name};
+        std::vector<std::uint16_t> result(length);
+        for (unsigned n = 0; n < length; ++n) result[n] = s.memory.read<2>(std::uint64_t(address) + n * 2);
+        return result;
+    }
+    std::uint32_t node_id(const fs::path& target) {
+        if (fs::is_directory(target)) return directory_id(target);
+        const auto [entry, inserted] = file_ids.try_emplace(logical_path(fs::canonical(target)), next_directory);
+        if (inserted) ++next_directory;
+        return entry->second;
+    }
     void write_spec(State& s, std::uint32_t address, const fs::path& target) {
         const bool root = volume_root(target);
         const auto name = root ? std::string{} : convert(target.filename().string(), kCFStringEncodingUTF8, kCFStringEncodingMacRoman);
@@ -781,6 +820,28 @@ struct NativePlatform::Impl {
         const bool root = volume_root(target);
         s.memory.write<4>(pb + 100, root ? 1 : directory_id(target.parent_path()));
         if (name && index) write_mac_string(s, name, root ? volume(target) == -1 ? "CM 01-02" : "CM User Data" : target.filename().string());
+    }
+    void set_catalog_info(State& s, std::uint32_t pb) {
+        auto target = path(std::int16_t(s.memory.read<2>(pb + 22)), s.memory.read<4>(pb + 48),
+            read_mac_string(s, s.memory.read<4>(pb + 18)));
+        if (!fs::exists(target)) throw FileError{file_not_found};
+        if (fs::is_directory(target)) {
+            const auto backing = writable_path(target);
+            if (backing != target && !fs::exists(backing)) {
+                fs::create_directories(backing);
+                if (copyfile(target.c_str(), backing.c_str(), nullptr, COPYFILE_METADATA)) throw FileError{parameter_error};
+            }
+            target = backing;
+        } else target = writable_file(target);
+        GuestFileCatalog info{};
+        write_be<2>(info.data(), s.memory.read<1>(pb + 30) & 0x11);
+        const auto finder = s.memory.copy_out(pb + 32, 16), extended = s.memory.copy_out(pb + 84, 16);
+        std::copy(finder.begin(), finder.end(), info.begin() + 72);
+        std::copy(extended.begin(), extended.end(), info.begin() + 88);
+        for (const auto& [source, destination] : {std::pair{72u, 16u}, {76u, 24u}, {80u, 48u}})
+            write_be<4>(info.data() + destination + 2, s.memory.read<4>(pb + source));
+        const auto error = native_set_file_catalog(reference_for(target), 0x2 | 0x20 | 0x40 | 0x200 | 0x800 | 0x1000, info);
+        if (error) throw FileError{error};
     }
     void volume_info(State& s, std::uint32_t pb) {
         const auto name = std::uint32_t(s.memory.read<4>(pb + 18));
@@ -865,6 +926,11 @@ std::vector<fs::path> NativePlatform::save_window_images(const fs::path& directo
     return impl_->ui ? impl_->ui->save_window_images(directory) : std::vector<fs::path>{};
 }
 bool NativePlatform::dispatch(State& s, const std::string& name) {
+    if (const auto result = impl_->unicode.dispatch(s, name)) {
+        s.wr<4>(12, std::uint32_t(*result));
+        s.pc = std::uint32_t(s.r<4>(4128));
+        return true;
+    }
     if (impl_->sound.dispatch(s, name)) return true;
     if (const auto result = dispatch_fork_io(s, impl_->data_forks, name)) {
         complete_fork_io(s, *result);
@@ -904,10 +970,9 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             impl_->user_interface();
             s.memory.write<4>(arg(1), 7);
         } else if (name == "CarbonLib::Gestalt" && arg(0) == 0x66732020) {
-            // FSSpec calls, no MFS volumes, and access to HFS+ volumes. The
-            // FSRef-based HFS+ API family is not exposed by this bridge yet;
-            // select the original program's Classic file-access path.
-            s.memory.write<4>(arg(1), 0x0302);
+            // FSSpec, HFS+ volumes, and the accepted FSRef/Unicode/fork family.
+            // The original stream controllers now choose their 64-bit path.
+            s.memory.write<4>(arg(1), 0x1302);
         } else if (name == "CarbonLib::Gestalt" && (arg(0) == 0x70636c6b || arg(0) == 0x72616d20)) {
             const auto hardware = native_hardware_value(arg(0));
             status = hardware.error;
@@ -1578,6 +1643,79 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             return_value = arg(0);
         } else if (name == "CarbonLib::ResError") {
             return_value = std::uint32_t(std::int32_t(impl_->resource_manager().error()));
+        } else if (name == "CarbonLib::FSpMakeFSRef") {
+            impl_->write_reference(s, arg(1), impl_->reference_for(impl_->from_spec(s, arg(0))));
+        } else if (name == "CarbonLib::FSMakeFSRefUnicode") {
+            const auto parent = impl_->from_reference(s, arg(0));
+            if (!fs::is_directory(parent)) throw FileError{directory_not_found};
+            std::string leaf;
+            status = native_unicode_name(impl_->unicode_units(s, arg(2), arg(1)), leaf);
+            if (!status) impl_->write_reference(s, arg(4), impl_->reference_for(impl_->allowed(impl_->visible_child(parent, leaf))));
+        } else if (name == "CarbonLib::FSGetCatalogInfo") {
+            if (arg(1) && !arg(2)) throw FileError{parameter_error};
+            const auto target = impl_->from_reference(s, arg(0));
+            NativeFileCatalog info;
+            status = native_file_catalog(impl_->reference_for(target), arg(1), info);
+            if (!status) {
+                write_be<2>(info.bytes.data() + 2, std::uint16_t(impl_->volume(target)));
+                if (arg(1) & 0x8) write_be<4>(info.bytes.data() + 4, impl_->volume_root(target) ? 1 : impl_->directory_id(target.parent_path()));
+                if (arg(1) & 0x10) write_be<4>(info.bytes.data() + 8, impl_->node_id(target));
+                if (fs::is_directory(target) && (arg(1) & 0x2000))
+                    write_be<4>(info.bytes.data() + 136, impl_->entries(target).size());
+                if (arg(2)) write_guest_file_catalog(s, arg(2), arg(1), info.bytes);
+                if (arg(3)) {
+                    if (impl_->volume_root(target)) info.name = impl_->volume(target) == -1 ? u"CM 01-02" : u"CM User Data";
+                    s.memory.write<2>(arg(3), info.name.size());
+                    for (unsigned n = 0; n < info.name.size(); ++n) s.memory.write<2>(std::uint64_t(arg(3)) + 2 + n * 2, info.name[n]);
+                }
+                if (arg(4)) impl_->write_spec(s, arg(4), target);
+                if (arg(5)) impl_->write_reference(s, arg(5), impl_->reference_for(impl_->volume_root(target) ? target : target.parent_path()));
+            }
+        } else if (name == "CarbonLib::FSCompareFSRefs") {
+            status = native_compare_references(impl_->reference_for(impl_->from_reference(s, arg(0))),
+                impl_->reference_for(impl_->from_reference(s, arg(1))));
+        } else if (name == "CarbonLib::FSCreateFileUnicode") {
+            const auto parent = impl_->from_reference(s, arg(0));
+            if (!fs::is_directory(parent)) throw FileError{directory_not_found};
+            if (arg(3) && !arg(4)) throw FileError{parameter_error};
+            if (arg(3) & 0x400000) throw FileError{parameter_error};
+            const auto characters = impl_->unicode_units(s, arg(2), arg(1));
+            std::string leaf;
+            status = native_unicode_name(characters, leaf);
+            if (!status) {
+                if (fs::exists(fs::symlink_status(impl_->visible_child(parent, leaf)))) throw FileError{-48};
+                const auto input_catalog = read_guest_file_catalog(s, arg(4), arg(3));
+                const auto backing = impl_->writable_path(parent);
+                fs::create_directories(backing);
+                NativeFileReference created{};
+                status = native_create_unicode_file(impl_->reference_for(backing), characters, arg(3),
+                    input_catalog, created);
+                if (!status) {
+                    fs::path target;
+                    status = native_reference_path(created, target);
+                    if (!status) {
+                        if (arg(5)) impl_->write_reference(s, arg(5), created);
+                        if (arg(6)) impl_->write_spec(s, arg(6), target);
+                    }
+                }
+            }
+        } else if (name == "CarbonLib::FSOpenFork") {
+            auto target = impl_->from_reference(s, arg(0));
+            auto permission = std::int8_t(arg(3));
+            if (!permission) permission = under(target, impl_->writable) ? 3 : 1;
+            if (permission != 1) target = impl_->writable_file(target);
+            std::int16_t ref = 0;
+            status = impl_->data_forks.open(target, impl_->unicode_units(s, arg(2), arg(1)), permission, ref);
+            impl_->performance.mark("file-open", s, std::uint16_t(ref));
+            if (!status) s.memory.write<2>(arg(4), std::uint16_t(ref));
+        } else if (name == "CarbonLib::FSDeleteObject") {
+            status = impl_->delete_object(impl_->from_reference(s, arg(0)));
+        } else if (name == "CarbonLib::FSRenameUnicode") {
+            const auto target = impl_->from_reference(s, arg(0));
+            std::string leaf;
+            status = native_unicode_name(impl_->unicode_units(s, arg(2), arg(1)), leaf);
+            if (!status) status = impl_->rename_object(target, leaf, arg(3));
+            if (!status && arg(4)) impl_->write_reference(s, arg(4), impl_->reference_for(target.parent_path() / leaf));
         } else if (name == "CarbonLib::FSMakeFSSpec") {
             const auto target = impl_->path(std::int16_t(arg(0)), arg(1), read_mac_string(s, arg(2)));
             impl_->write_spec(s, arg(3), target);
@@ -1686,6 +1824,8 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             impl_->performance.mark("file-close", s, std::uint16_t(ref));
         } else if (name == "CarbonLib::PBGetCatInfoSync") {
             impl_->catalog_info(s, arg(0));
+        } else if (name == "CarbonLib::PBSetCatInfoSync") {
+            impl_->set_catalog_info(s, arg(0));
         } else if (name == "CarbonLib::PBHGetVInfoSync") {
             impl_->volume_info(s, arg(0));
         } else if (name == "CarbonLib::PBHGetVolParmsSync") {
@@ -1731,7 +1871,7 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
                 std::int16_t(s.memory.read<2>(arg(0) + 28)), status, unsigned(s.r<4>(4128)));
         } catch (...) { std::fprintf(stderr, "Native catalog failure: unreadable parameters\n"); }
     }
-    if (name == "CarbonLib::PBGetCatInfoSync" || name == "CarbonLib::PBHGetVInfoSync" || name == "CarbonLib::PBHGetVolParmsSync" ||
+    if (name == "CarbonLib::PBGetCatInfoSync" || name == "CarbonLib::PBSetCatInfoSync" || name == "CarbonLib::PBHGetVInfoSync" || name == "CarbonLib::PBHGetVolParmsSync" ||
         name == "CarbonLib::PBHOpenDFSync" || name == "CarbonLib::PBReadSync" || name == "CarbonLib::PBGetEOFSync" ||
         name == "CarbonLib::PBHCreateSync" || name == "CarbonLib::PBHDeleteSync" || name == "CarbonLib::PBHRenameSync" || name == "CarbonLib::PBWriteSync" || name == "CarbonLib::PBSetEOFSync" ||
         name == "CarbonLib::PBSetFPosSync" || name == "CarbonLib::PBCloseSync")

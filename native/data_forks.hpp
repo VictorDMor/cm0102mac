@@ -11,6 +11,8 @@ public:
     ~NativeDataForks();
     std::int16_t open_read(const std::filesystem::path& file, std::int16_t& ref);
     std::int16_t open(const std::filesystem::path& file, std::int8_t permission, std::int16_t& ref);
+    std::int16_t open(const std::filesystem::path& file, std::span<const std::uint16_t> fork_name,
+                      std::int8_t permission, std::int16_t& ref);
     std::int16_t create(const std::filesystem::path& file, std::uint32_t creator, std::uint32_t type);
     std::int16_t close(std::int16_t ref);
     std::int16_t size(std::int16_t ref, std::int64_t& bytes) const;

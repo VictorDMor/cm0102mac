@@ -18,7 +18,7 @@ LegacyVolumeGeometry legacy_volume_geometry(const std::filesystem::space_info& s
     const auto free_blocks = std::min<std::uint64_t>(space.available / block_size, blocks);
     return {std::uint32_t(block_size), std::uint16_t(blocks), std::uint16_t(free_blocks)};
 }
-std::int16_t native_rename_object(const std::filesystem::path& path, const std::string& name) {
+std::int16_t native_rename_object(const std::filesystem::path& path, const std::string& name, std::uint32_t encoding) {
     FSRef ref;
     const auto error = ::FSPathMakeRefWithOptions(reinterpret_cast<const UInt8*>(path.c_str()),
         kFSPathMakeRefDoNotFollowLeafSymlink, &ref, nullptr);
@@ -30,7 +30,7 @@ std::int16_t native_rename_object(const std::filesystem::path& path, const std::
     std::vector<UniChar> characters(length);
     CFStringGetCharacters(text, CFRangeMake(0, length), characters.data());
     CFRelease(text);
-    return ::FSRenameUnicode(&ref, characters.size(), characters.data(), kTextEncodingUnknown, nullptr);
+    return ::FSRenameUnicode(&ref, characters.size(), characters.data(), encoding, nullptr);
 }
 std::int16_t native_delete_object(const std::filesystem::path& path) {
     FSRef ref;

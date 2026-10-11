@@ -17,12 +17,16 @@ std::int16_t NativeDataForks::open_read(const std::filesystem::path& file, std::
     return open(file, fsRdPerm, ref);
 }
 std::int16_t NativeDataForks::open(const std::filesystem::path& file, std::int8_t permission, std::int16_t& ref) {
+    return open(file, {}, permission, ref);
+}
+std::int16_t NativeDataForks::open(const std::filesystem::path& file, std::span<const std::uint16_t> fork_name,
+                                  std::int8_t permission, std::int16_t& ref) {
     ref = 0;
     FSRef path;
     auto error = ::FSPathMakeRef(reinterpret_cast<const UInt8*>(file.c_str()), &path, nullptr);
     if (error) return error;
     FSIORefNum opened = 0;
-    error = ::FSOpenFork(&path, 0, nullptr, permission, &opened);
+    error = ::FSOpenFork(&path, fork_name.size(), fork_name.empty() ? nullptr : fork_name.data(), permission, &opened);
     if (!error) { impl_->files.insert(opened); ref = opened; }
     return error;
 }
