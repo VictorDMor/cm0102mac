@@ -36,6 +36,44 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Runtime shutdown, global destructors and signals reconstructed in C++23
+
+Six production entries now use named semantic C++23 bodies: global-destructor
+registration/traversal, abort, exit, reverse exit callbacks/native termination
+and raise. They contain 145 original instructions. The manifest contains 188
+entries with its accepted first 182 unchanged; generation retains 1,953,157
+instructions, 1,922 pages and zero missing/pending targets. Complete bodies,
+exit page fragments, interior-flow restrictions and destination hooks are pinned.
+
+The live guest lists/table, unlink/reset-before-callback order, signed guards,
+low-word arithmetic, Mac ABI/fault prefixes and callback-driven mutation are
+preserved. The adapter distinguishes a successful return from the existing
+nonreturning ApplicationExit unwind. Production uses the native ExitToShell
+bridge; attached dependency-return fixtures are private. Original mode,
+selection/reset/counters/observers remain process-local and unpersisted.
+
+128 complete-state/effect comparisons passed, including 28 expected mapping
+faults, 45 native terminations and 19 own/child return/termination negatives.
+All six have normal direct/CFM witnesses, with zero original selection/escapes
+in default cases. Seven focused CTests, fifteen audit suites (88 tests), and
+UBSAN of modified implementation/dispatch/harness code passed. The full Release
+rebuild compiled all 1,922 generated units consistently after State changed.
+
+One protected installation delivered the signed source/candidate/installed/
+running ARM64 executable with SHA-256
+`fdcd54f2fdb4386a8d9dd2350491c0e15cd071c9964cbae031060e70533be34e`.
+Installed Prepare Game and original named Quit/confirmation completed normally;
+owned process 90304 closed and logged 4,280,759,117 recompiled instructions.
+This UI covers four entries; the harness establishes all six. Game, existing
+saves, original payloads, 23 handoffs, the previous installed reference and
+145 older bundles are preserved. Logs/preferences may legitimately change.
+
+Startup/root initialization, nonlocal contexts, heap glues, signal installation
+APIs and the broader C/C++ runtime remain outside this bounded increment. The
+complete modernization goal remains active. Save/Load: **not retested**;
+performance: **not benchmarked**. Contracts/pins and evidence are recorded in
+[the lifecycle report](native-runtime-lifecycle-reconstruction.md).
+
 ## Working native code
 
 `CMAssets` and `cm-assets` compile into a Mach-O ARM64 executable. Four deterministic

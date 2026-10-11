@@ -33,6 +33,7 @@ struct StreamBufferBoundaryObserver;
 struct StreamIoBoundaryObserver;
 struct FileControllerBoundaryObserver;
 struct FilePathBoundaryObserver;
+struct RuntimeLifecycleBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 
 template <unsigned N> constexpr std::uint64_t mask() {
@@ -310,6 +311,15 @@ struct State {
     std::uint32_t file_path_original_resume = 0;
     std::uint64_t file_path_dispatch_escapes = 0;
     FilePathBoundaryObserver* file_path_observer = nullptr;
+    // Lifecycle diagnostics describe both returns and successful termination;
+    // they remain process-local and are never saved into the guest program.
+    bool runtime_lifecycle_original = false;
+    std::array<bool, 6> runtime_lifecycle_entry_original{};
+    std::array<std::uint64_t, 6> runtime_lifecycle_calls{}, runtime_lifecycle_original_calls{};
+    std::array<std::uint64_t, 6> runtime_lifecycle_returns{}, runtime_lifecycle_terminations{};
+    std::uint32_t runtime_lifecycle_original_resume = 0;
+    std::uint64_t runtime_lifecycle_dispatch_escapes = 0;
+    RuntimeLifecycleBoundaryObserver* runtime_lifecycle_observer = nullptr;
     bool file_controller_original = false;
     std::array<bool, 26> file_controller_entry_original{};
     std::array<std::uint64_t, 26> file_controller_calls{}, file_controller_original_calls{};
