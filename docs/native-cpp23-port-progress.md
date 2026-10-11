@@ -9,7 +9,18 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The accepted production manifest contains **264 semantic entry replacements**.
+The accepted production manifest contains **598 semantic entry replacements**.
+The latest [record-history report](native-record-history-reconstruction.md)
+adds two complete entries / 393 indexed instructions, preserving the accepted
+596-entry prefix. Nine focused CTests, 250 generator audits, thirteen storage
+regressions and seven affected UBSAN units pass. Individual actual production
+checks cover both entries; both also execute in the owned installed menu smoke.
+The signed installed ARM64 executable SHA-256 is
+`96d8399080b94158afe410834f39b5b7d19e48d815c61e91b9ba2d2a97682723`.
+Save/Load is **not retested** and performance is **not benchmarked** in this cycle.
+
+## Historical register-context acceptance
+
 The [register-context report](native-register-context-reconstruction.md) adds all
 thirty floating suffix/nonlocal context entries over four shared bodies / 91
 unique original instructions, preserving the first 234 replacements exactly.
@@ -24,7 +35,7 @@ recursive/shared frames, copied contexts, peer State and owner expiry. Ten focus
 CTests, fifteen affected Python suites / 101 tests with zero skips and fresh
 eleven-unit UBSAN pass. All six sanitizer outputs match Release.
 
-The protected installed ARM64 executable SHA-256 is
+At that delivery, the protected installed ARM64 executable SHA-256 was
 `05f50e3350ac9244a0796093ddf186e7171f3c5a7e34c954e4d7741e162a42f1`.
 Installed menu/chooser/cancel/normal exit records 337 modern captures and one
 modern restore/transfer, with zero faults, original selections, escapes or unknown
@@ -37,7 +48,7 @@ reports. Historical manifest totals describe those deliveries. The semantic entr
 count is not a percentage of behavior or functions, and the 5,833 analyzed
 functions are not a completeness certificate. Whole-port completion remains open.
 
-## Current register-context acceptance
+## Register-context ownership contract
 
 The entire architectural and control-flow block is accepted in production.
 Raw guest storage and scoped host routing remain separate. A nonlocal restore

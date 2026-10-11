@@ -4,6 +4,7 @@
 #include "aggregate_object_adapter.hpp"
 #include "record_group_adapter.hpp"
 #include "record_query_adapter.hpp"
+#include "record_history_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -15,6 +16,7 @@ struct RuntimeDiagnostics {
     AggregateObjectDiagnostics aggregate_object;
     RecordGroupDiagnostics record_group;
     RecordQueryDiagnostics record_query;
+    RecordHistoryDiagnostics record_history;
 };
 State::State() = default;
 State::~State() = default;
@@ -68,6 +70,15 @@ RecordQueryDiagnostics& record_query_diagnostics(State& state) {
 const RecordQueryDiagnostics& record_query_diagnostics(const State& state) {
     static const RecordQueryDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->record_query : empty;
+}
+
+RecordHistoryDiagnostics& record_history_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->record_history;
+}
+const RecordHistoryDiagnostics& record_history_diagnostics(const State& state) {
+    static const RecordHistoryDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->record_history : empty;
 }
 
 }

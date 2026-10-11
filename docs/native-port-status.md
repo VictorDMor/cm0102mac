@@ -36,6 +36,37 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Record-history insertion reconstructed
+
+Two complete entries / 393 indexed instructions now execute named C++23
+current-row history insertion and matching cached-record traversal. Generation
+has **598** replacements with the accepted 596-entry prefix, roots, indexed
+instructions, generated inventory and five fixups preserved. Actual byte exchange,
+signed history bounds, marked-node selection, owned-field disposal, live row
+reloads, callbacks, fallback arguments and guest ABI retain original behavior.
+
+Nine focused CTests, 250 executed generator audits and thirteen storage tests
+pass. Evidence includes 2,359 component comparisons, 2,307 interrupted/faulting
+outcomes including 484 budget stops, two own negatives and a semantic-child
+negative, 25 actual production comparisons, two root profile comparisons, an
+application-exit prefix and 25 nonlocal comparisons including twelve
+restore/handler faults. Seven affected UBSAN units pass four modes with exact
+Release output. The complete fresh build contains 2,055 objects and retains the
+unchanged State header/layout.
+
+The installed signed ARM64 executable SHA-256 is
+`96d8399080b94158afe410834f39b5b7d19e48d815c61e91b9ba2d2a97682723`.
+Candidate/installed/running identity and menu/cancel/original-confirmation/normal-
+exit smoke pass in the 800×600 content-sized window. Both entries execute with
+three semantic calls/returns and zero own failures, original/profile selection
+or dispatch escapes. Dedicated actual production checks cover their additional
+branches. The newer external save, original files, inputs, references, 23 handoffs
+and 216 prior bundles are preserved. Cleanup removes 4,128 prior reproducible
+outputs and recovers approximately 1.36 GB, with approximately 49.39 GB available
+after preservation checks. Save/Load is **not retested**, performance is **not
+benchmarked**, and the full port remains unfinished. See
+[the record-history report](native-record-history-reconstruction.md).
+
 ## Current-record queries reconstructed
 
 Six complete entries / 253 indexed instructions now execute semantic C++23
@@ -53,7 +84,7 @@ comparisons including 24 restore/handler faults. Seven affected UBSAN units pass
 four modes with exact Release output; all 2,036 State-dependent objects are fresh
 and the State header/layout is unchanged.
 
-The installed signed ARM64 executable SHA-256 is
+At the query delivery, the installed signed ARM64 executable SHA-256 was
 `456b0195b0ebd66dbd23a4aaee28f4982db2b5492a0304b68aa55d6f49b4d559`.
 Candidate/installed/running identity and menu/cancel/original-confirmation/normal-
 exit smoke pass in the 800×600 content-sized window. One query executes once;
