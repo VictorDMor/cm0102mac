@@ -38,6 +38,7 @@ target_sources(cm_aot PRIVATE aggregate_object.cpp aggregate_object_adapter.cpp)
 target_sources(cm_aot PRIVATE record_group.cpp record_group_adapter.cpp)
 target_sources(cm_aot PRIVATE record_query.cpp record_query_adapter.cpp)
 target_sources(cm_aot PRIVATE record_history.cpp record_history_adapter.cpp)
+target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -209,6 +210,46 @@ target_sources(cm-record-history-checks PRIVATE $<TARGET_OBJECTS:cm-record-histo
 target_link_libraries(cm-record-history-checks PRIVATE cm_aot)
 target_compile_options(cm-record-history-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME record_history_component_equivalence COMMAND cm-record-history-checks)
+set(CM_MATCH_ENGINE_REFERENCE "${CMAKE_BINARY_DIR}/match_engine_reference.cpp")
+add_custom_command(OUTPUT "${CM_MATCH_ENGINE_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_engine_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_ENGINE_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_engine_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/match_engine_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-match-engine-reference OBJECT "${CM_MATCH_ENGINE_REFERENCE}")
+target_include_directories(cm-match-engine-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(cm-match-engine-reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+foreach(CM_MATCH_CHECK IN ITEMS caller core)
+    add_executable(cm-match-engine-${CM_MATCH_CHECK}-checks match_engine_${CM_MATCH_CHECK}_checks.cpp)
+    target_sources(cm-match-engine-${CM_MATCH_CHECK}-checks PRIVATE $<TARGET_OBJECTS:cm-match-engine-reference>)
+    target_link_libraries(cm-match-engine-${CM_MATCH_CHECK}-checks PRIVATE cm_aot)
+    target_compile_options(cm-match-engine-${CM_MATCH_CHECK}-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME match_engine_${CM_MATCH_CHECK}_equivalence COMMAND cm-match-engine-${CM_MATCH_CHECK}-checks)
+endforeach()
+add_executable(cm-match-engine-live-checks match_engine_live_checks.cpp)
+target_link_libraries(cm-match-engine-live-checks PRIVATE cm_aot)
+target_compile_options(cm-match-engine-live-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-debugger-session-checks match_debugger_session_checks.cpp)
+target_link_libraries(cm-match-debugger-session-checks PRIVATE cm_aot)
+target_compile_options(cm-match-debugger-session-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+foreach(CM_MATCH_CHECK IN ITEMS production transfer)
+    add_executable(cm-match-engine-${CM_MATCH_CHECK}-checks match_engine_${CM_MATCH_CHECK}_checks.cpp)
+    target_link_libraries(cm-match-engine-${CM_MATCH_CHECK}-checks PRIVATE cm_aot)
+    target_compile_options(cm-match-engine-${CM_MATCH_CHECK}-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+endforeach()
+set(CM_MATCH_ENGINE_SNAPSHOT "" CACHE FILEPATH "Private initialized match-entry snapshot for focused engine checks")
+if(EXISTS "${CM_MATCH_ENGINE_SNAPSHOT}")
+    add_test(NAME match_engine_live_equivalence COMMAND cm-match-engine-live-checks "${CM_MATCH_ENGINE_SNAPSHOT}")
+    add_test(NAME match_debugger_session COMMAND cm-match-debugger-session-checks "${CM_MATCH_ENGINE_SNAPSHOT}")
+    add_test(NAME match_engine_production COMMAND cm-match-engine-production-checks "${CM_MATCH_ENGINE_SNAPSHOT}")
+    add_test(NAME match_engine_original_profile COMMAND "${CMAKE_COMMAND}" -E env
+        CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-match-engine-production-checks> "${CM_MATCH_ENGINE_SNAPSHOT}" --profile)
+    add_test(NAME match_engine_nonlocal_transfer COMMAND cm-match-engine-transfer-checks "${CM_MATCH_ENGINE_SNAPSHOT}")
+endif()
 set(CM_ENGINE_INITIALIZATION_REFERENCE "${CMAKE_BINARY_DIR}/engine_initialization_reference.cpp")
 add_custom_command(OUTPUT "${CM_ENGINE_INITIALIZATION_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_engine_initialization_reference.py"

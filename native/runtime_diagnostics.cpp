@@ -5,6 +5,7 @@
 #include "record_group_adapter.hpp"
 #include "record_query_adapter.hpp"
 #include "record_history_adapter.hpp"
+#include "match_engine_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -17,6 +18,7 @@ struct RuntimeDiagnostics {
     RecordGroupDiagnostics record_group;
     RecordQueryDiagnostics record_query;
     RecordHistoryDiagnostics record_history;
+    MatchEngineDiagnostics match_engine;
 };
 State::State() = default;
 State::~State() = default;
@@ -79,6 +81,15 @@ RecordHistoryDiagnostics& record_history_diagnostics(State& state) {
 const RecordHistoryDiagnostics& record_history_diagnostics(const State& state) {
     static const RecordHistoryDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->record_history : empty;
+}
+
+MatchEngineDiagnostics& match_engine_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->match_engine;
+}
+const MatchEngineDiagnostics& match_engine_diagnostics(const State& state) {
+    static const MatchEngineDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->match_engine : empty;
 }
 
 }

@@ -9,14 +9,18 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The accepted production manifest contains **598 semantic entry replacements**.
-The latest [record-history report](native-record-history-reconstruction.md)
-adds two complete entries / 393 indexed instructions, preserving the accepted
-596-entry prefix. Nine focused CTests, 250 generator audits, thirteen storage
-regressions and seven affected UBSAN units pass. Individual actual production
-checks cover both entries; both also execute in the owned installed menu smoke.
+The accepted production manifest contains **601 semantic entry replacements**.
+The latest [match-advancement report](native-match-advancement-reconstruction.md)
+adds three complete entries / 1,940 indexed instructions, preserving the accepted
+598-entry prefix. Seven focused CTests, fourteen boundary/reference audits,
+31 changed manifest assertions and four affected-unit UBSAN runs pass. Actual
+production checks cover each entry through direct/generated/CFM paths; 24 real
+engine steps agree with the original. The owned installed menu check exits
+normally and does not claim match-entry coverage. The standalone debugger's
+session controller shares this engine; its club factory and separate UI remain
+required work under [the debugger contract](native-match-debugger.md).
 The signed installed ARM64 executable SHA-256 is
-`96d8399080b94158afe410834f39b5b7d19e48d815c61e91b9ba2d2a97682723`.
+`084136e6a0dd6835430ec520b24928149a5abb9db537665fe7aa24766874857c`.
 Save/Load is **not retested** and performance is **not benchmarked** in this cycle.
 
 ## Historical register-context acceptance
@@ -62,7 +66,8 @@ captured-owner transfer acceptance and installed restoration use no fallback.
 | Area | Current authoritative boundary | Evidence required for completion |
 | --- | --- | --- |
 | C/C++ runtime | Allocator and text/number blocks are semantic; many stream, file, sorting, lifecycle and numeric routines remain generated | Named implementations, pinned Mac contracts, ABI/effect/fault comparisons, discriminating negatives and production dispatch evidence for each migrated entry |
-| Simulation engine | Management, leagues, competition, database, transfers and match orchestration largely remain statically recompiled | Complete coherent semantic subsystems and original-compatible composition; component checks alone do not establish game behavior |
+| Simulation engine | Watched/background callers and shared match advancement are semantic; dependent football routines, management, leagues, competition, database and transfers largely remain statically recompiled | Complete coherent semantic subsystems and original-compatible composition; component checks alone do not establish game behavior |
+| Standalone match debugger | Shared-engine session control is implemented; arbitrary-club factory, separate UI and consistent interventions remain pending | A runnable independent ARM64 app, actual club selection, isolated match progression, player/goal edits and observable shared-engine effects |
 | Native platform | `native/platform.cpp` explicitly returns Open Transport unsupported initialization; print-job and less-used service coverage is incomplete | Real native services with original Mac ABI/error/lifetime behavior and exercising their actual product flows |
 | Whole-game compatibility | Historical live evidence covers core single-player actions and a post-match save; it is not current whole-release coverage | Current installed-artifact identity plus appropriate management, simulation, competition, persistence and supported multiplayer evidence after affected subsystems migrate |
 | Generated engine retirement | Generated bodies remain the productive implementation of unmigrated routines and the diagnostic oracle | All required productive engine paths have semantic owners before generated bodies can be removed from production |

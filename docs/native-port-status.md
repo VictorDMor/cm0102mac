@@ -36,7 +36,40 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
-## Record-history insertion reconstructed
+## Match advancement reconstructed
+
+Three complete entries / 1,940 indexed instructions now execute C++23 watched
+orchestration, background advancement and the shared match advancement state
+machine. The production manifest has **601** replacements with the accepted
+598-entry prefix preserved. Existing football/RNG dependencies, original match
+rules, random draw order, event/clock handling, floating rounding, completion
+effects and guest ABI remain intact.
+
+Seven focused CTests, fourteen boundary/reference audits, 31 updated manifest
+assertions and four affected-unit UBSAN runs pass. Evidence includes 1,189
+component comparisons, 967 fault/interrupted prefixes and 670 budget stops;
+53 actual direct/generated/CFM comparisons, nine original-profile comparisons,
+21 nonlocal comparisons including twelve restore/handler faults, and 24 actual
+shared-engine steps agreeing with the captured original in complete guest state,
+ordered effects and accounting. The fresh build has 2,057 objects and retains
+the unchanged State header/layout.
+
+The installed signed ARM64 executable SHA-256 is
+`084136e6a0dd6835430ec520b24928149a5abb9db537665fe7aa24766874857c`.
+Candidate/installed/running identity, original menu, quit confirmation and normal
+exit pass in the 800×600 content window. Menu match counters are zero; individual
+entry coverage comes from actual production checks. Original game files, current
+runtime files, saves, references and private handoffs are preserved. Save/Load
+is **not retested** and performance is **not benchmarked**. See
+[the advancement report](native-match-advancement-reconstruction.md).
+
+The separate [match debugger](native-match-debugger.md) now has a validated shared-
+engine session controller. Fresh club database/bootstrap, arbitrary pairing,
+isolated match creation, the separate application UI and consistent player/goal
+interventions remain required work. The broader engine and complete port remain
+unfinished.
+
+## Prior record-history insertion reconstruction
 
 Two complete entries / 393 indexed instructions now execute named C++23
 current-row history insertion and matching cached-record traversal. Generation
@@ -54,7 +87,7 @@ restore/handler faults. Seven affected UBSAN units pass four modes with exact
 Release output. The complete fresh build contains 2,055 objects and retains the
 unchanged State header/layout.
 
-The installed signed ARM64 executable SHA-256 is
+At that delivery, the installed signed ARM64 executable SHA-256 was
 `96d8399080b94158afe410834f39b5b7d19e48d815c61e91b9ba2d2a97682723`.
 Candidate/installed/running identity and menu/cancel/original-confirmation/normal-
 exit smoke pass in the 800×600 content-sized window. Both entries execute with
