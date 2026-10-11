@@ -26,6 +26,7 @@ target_sources(cm_aot PRIVATE vector_context.cpp)
 target_sources(cm_aot PRIVATE guest_context_transfer.cpp)
 target_sources(cm_aot PRIVATE exception_runtime_adapter.cpp exception_runtime_context.cpp exception_runtime_frames.cpp exception_runtime_cleanup.cpp exception_runtime_matching.cpp exception_runtime_search.cpp exception_runtime_capture.cpp exception_runtime_handlers.cpp exception_runtime_unexpected.cpp)
 target_sources(cm_aot PRIVATE compiler_arithmetic_adapter.cpp compiler_arithmetic_integer.cpp compiler_arithmetic_conversion.cpp)
+target_sources(cm_aot PRIVATE register_context.cpp register_context_adapter.cpp)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -95,6 +96,33 @@ enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CM_REGISTER_REFERENCE "${CMAKE_BINARY_DIR}/register_context_reference.cpp")
+add_custom_command(OUTPUT "${CM_REGISTER_REFERENCE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_register_context_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_REGISTER_REFERENCE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_register_context_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/register_context_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/local_temporaries.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+    VERBATIM)
+add_library(cm-register-context-reference OBJECT "${CM_REGISTER_REFERENCE}")
+target_include_directories(cm-register-context-reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(cm-register-context-reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-register-context-checks register_context_checks.cpp)
+target_link_libraries(cm-register-context-checks PRIVATE cm_aot cm-register-context-reference)
+target_compile_options(cm-register-context-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME register_context_component_equivalence COMMAND cm-register-context-checks)
+add_executable(cm-register-context-integration-checks register_context_integration_checks.cpp)
+target_link_libraries(cm-register-context-integration-checks PRIVATE cm_aot)
+target_compile_options(cm-register-context-integration-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME modern_register_context_production COMMAND cm-register-context-integration-checks)
+add_test(NAME original_register_context_pc_profile COMMAND "${CMAKE_COMMAND}" -E env
+    CM_AOT_MATCH_PC_PROFILE=1 "$<TARGET_FILE:cm-register-context-integration-checks>" --profile)
+add_executable(cm-register-context-transfer-checks register_context_transfer_checks.cpp)
+target_link_libraries(cm-register-context-transfer-checks PRIVATE cm_aot)
+target_compile_options(cm-register-context-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME modern_register_context_transfer COMMAND cm-register-context-transfer-checks)
 set(CM_ARITHMETIC_REFERENCE "${CMAKE_BINARY_DIR}/compiler_arithmetic_reference.cpp")
 add_custom_command(OUTPUT "${CM_ARITHMETIC_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_compiler_arithmetic_reference.py"

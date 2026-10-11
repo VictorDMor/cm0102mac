@@ -9,39 +9,42 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The accepted production manifest contains **234 semantic entry replacements**.
-The [compiler arithmetic report](native-compiler-arithmetic-reconstruction.md)
-adds eight complete entries / 412 original instructions, preserving the first
-226 exactly. Generation has 1,953,334 instructions, 1,922 pages and zero
-missing/pending targets. A fresh full Release ARM64 build and all affected checks
-use the expanded State layout consistently.
+The accepted production manifest contains **264 semantic entry replacements**.
+The [register-context report](native-register-context-reconstruction.md) adds all
+thirty floating suffix/nonlocal context entries over four shared bodies / 91
+unique original instructions, preserving the first 234 replacements exactly.
+Generation retains 1,953,334 instructions / 1,922 pages with zero missing/pending
+targets. Full Release ARM64 build and checks use the expanded State consistently.
 
-Arithmetic component acceptance has 13,199 comparisons, 77 mapping-fault prefixes,
-two enabled traps and eight rejected negatives. Production adds 7,422 comparisons
-and 4,895 exact budget stops, normal direct/generated/CFM witnesses for every
-entry, independent selection/reset and a separate 16-case original-PC profiling
-check. Ten focused CTests, 20 Python suites / 127 tests with zero skips, and
-fresh ten-unit UBSAN pass. The protected installed menu/chooser/cancel/normal-exit
-smoke succeeds. Unsigned quotient records 12,125,476 modern calls/returns without
-faults or original selections; the other seven UI counters are zero. The harness
-supplies individual evidence for all eight entries. Save/Load is not retested
-for this bounded block.
-The installed internal ARM64 executable SHA-256 is
-`6814c65faad2615a547a5d3ce97a3b6f840ec20c58bd09c7cac8b7a76ae3beb3`.
+Acceptance includes 2,883 component comparisons, 756 mapping-fault prefixes and
+thirty individual negatives; production adds 1,169 comparisons, 598 exact budget
+stops, sixty mapping faults, thirty negatives and direct/generated/CFM evidence
+for every entry. Eighty nested transfers check abandoned and surviving C++ calls,
+recursive/shared frames, copied contexts, peer State and owner expiry. Ten focused
+CTests, fifteen affected Python suites / 101 tests with zero skips and fresh
+eleven-unit UBSAN pass. All six sanitizer outputs match Release.
 
-The prior [exception report](native-exception-runtime-reconstruction.md) remains
-the acceptance record for its 21 complete entries / 1,657 instructions. Its
-read-only recovery added 177 previously unindexed instructions while preserving
-all earlier records and payloads. Earlier allocator, stream, file/path/controller,
-fragment metadata, lifecycle and object-storage acceptances likewise remain
-in their subsystem reports. Their historical manifest totals describe those
-deliveries rather than the current 234-entry baseline.
+The protected installed ARM64 executable SHA-256 is
+`05f50e3350ac9244a0796093ddf186e7171f3c5a7e34c954e4d7741e162a42f1`.
+Installed menu/chooser/cancel/normal exit records 337 modern captures and one
+modern restore/transfer, with zero faults, original selections, escapes or unknown
+transfers. The 28 floating suffix UI counters are zero; the harness establishes
+individual coverage for them. Save/Load is **not retested** for this block.
 
-The semantic entry count is not a percentage of behavior, functions or
-instructions. The earlier 5,833 analyzed functions are an analyzer result rather
-than a completeness certificate. Native file/fork/Unicode services are separate
-bridge evidence and do not increase the semantic entry manifest. The complete
-port objective remains active.
+The prior arithmetic, exception, allocator, stream, file/path/controller,
+fragment, lifecycle and object-storage acceptances remain in their subsystem
+reports. Historical manifest totals describe those deliveries. The semantic entry
+count is not a percentage of behavior or functions, and the 5,833 analyzed
+functions are not a completeness certificate. Whole-port completion remains open.
+
+## Current register-context acceptance
+
+The entire architectural and control-flow block is accepted in production.
+Raw guest storage and scoped host routing remain separate. A nonlocal restore
+abandons interrupted semantic callers; it does not return through a stale
+C++ epilogue. The shared exception continuation regressions also pass. Unknown
+or manufactured contexts use a separately counted fallback, while all live
+captured-owner transfer acceptance and installed restoration use no fallback.
 
 ## Work that still prevents completion
 

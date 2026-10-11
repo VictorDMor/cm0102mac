@@ -38,6 +38,7 @@ struct CodeFragmentBoundaryObserver;
 struct CppObjectStorageBoundaryObserver;
 struct ExceptionRuntimeBoundaryObserver;
 struct CompilerArithmeticBoundaryObserver;
+struct RegisterContextBoundaryObserver;
 constexpr std::uint32_t return_sentinel = 0xfffffff0;
 using Vector128 = std::array<std::uint8_t, 16>;
 
@@ -373,6 +374,15 @@ struct State {
     std::uint32_t compiler_arithmetic_original_resume = 0;
     std::uint64_t compiler_arithmetic_dispatch_escapes = 0;
     CompilerArithmeticBoundaryObserver* compiler_arithmetic_observer = nullptr;
+    // Register-context diagnostics never enter guest buffers or save files.
+    bool register_context_original = false;
+    std::array<bool, 30> register_context_entry_original{};
+    std::array<std::uint64_t, 30> register_context_calls{}, register_context_original_calls{};
+    std::array<std::uint64_t, 30> register_context_returns{}, register_context_transfers{}, register_context_faults{};
+    std::array<std::uint64_t, 30> register_context_budget_original_calls{}, register_context_profile_original_calls{};
+    std::uint32_t register_context_original_body = 0;
+    std::uint64_t register_context_dispatch_escapes = 0, register_context_unknown_transfers = 0;
+    RegisterContextBoundaryObserver* register_context_observer = nullptr;
     void step(std::uint32_t address) {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();

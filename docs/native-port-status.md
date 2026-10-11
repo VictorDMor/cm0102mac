@@ -36,11 +36,33 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Register context reconstructed
+
+All thirty complete entries for f18..f31 suffix save/restore and scalar nonlocal
+capture/restore run in semantic C++23 production. Four shared bodies contain 91
+unique indexed instructions. The manifest is **264**, preserving its first 234
+exactly. Component acceptance has 2,883 comparisons / 756 mapping-fault prefixes /
+30 individual negatives. Production adds 1,169 comparisons, 598 exact budget
+stops, sixty mapping faults, thirty negatives and direct/generated/CFM evidence
+for every entry. Eighty nested original/semantic/mixed cases prove surviving and
+abandoned host continuations, including shared frames, recursion, copied contexts
+and peer-State isolation. Ten focused CTests, fifteen affected Python suites /
+101 tests with zero skips and eleven-unit UBSAN pass. See
+[the register-context report](native-register-context-reconstruction.md).
+
+The protected installed ARM64 executable SHA-256 is
+`05f50e3350ac9244a0796093ddf186e7171f3c5a7e34c954e4d7741e162a42f1`.
+The installed menu/chooser/cancel/normal-exit smoke records 337 captures and one
+restoration, with zero original selection, fault, escape or unknown transfer.
+The other 28 UI entry counts are zero; their individual coverage is from the
+harness. Protected game/save/payload/handoff/reference content is unchanged.
+Save/Load is **not retested**; the complete port objective remains active.
+
 ## Compiler arithmetic reconstructed
 
 All eight complete compiler-arithmetic routines / 412 indexed instructions run
 named C++23 operations in default production: signed/unsigned 64-bit quotient
-and remainder, plus integer/floating conversions. The manifest now has 234
+and remainder, plus integer/floating conversions. At this earlier delivery the manifest expanded to 234
 entries with the accepted first 226 unchanged. Complete generation retains
 1,953,334 instructions, 1,922 pages and zero missing/pending targets. All units
 use the expanded State layout in a fresh complete Release ARM64 build.

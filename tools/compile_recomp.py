@@ -53,6 +53,9 @@ from exception_runtime_audit import (require_exception_runtime_contract, require
 from compiler_arithmetic_audit import (require_compiler_arithmetic_contract, require_compiler_arithmetic_index,
                                      require_compiler_arithmetic_hooks, compiler_arithmetic_hook, COMPILER_ARITHMETIC_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
+from register_context_audit import (require_register_context_contract, require_register_context_index,
+                                   require_register_context_hooks, register_context_hook,
+                                   REGISTER_CONTEXT_ENTRIES, CAPTURE_OBSERVATIONS)
 
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
@@ -79,7 +82,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "code_fragment_adapter") for entry in CODE_FRAGMENT_ENTRIES) +
     tuple((entry, "cpp_object_storage_adapter") for entry in CPP_OBJECT_STORAGE_ENTRIES) +
     tuple((entry, "exception_runtime_adapter") for entry in EXCEPTION_RUNTIME_ENTRIES) +
-    tuple((entry, "compiler_arithmetic_adapter") for entry in COMPILER_ARITHMETIC_ENTRIES))
+    tuple((entry, "compiler_arithmetic_adapter") for entry in COMPILER_ARITHMETIC_ENTRIES) +
+    tuple((entry, "register_context_adapter") for entry in REGISTER_CONTEXT_ENTRIES))
 
 
 def integer(value):
@@ -311,7 +315,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -335,6 +339,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     require_exception_runtime_contract(page, instructions)
     if compiler_arithmetic_hooks:
         require_compiler_arithmetic_contract(page, instructions, selected)
+    if register_context_hooks:
+        require_register_context_contract(page, instructions, selected)
     if local_temporaries:
         # Reject unsafe exports, including incoming scratch reads. Falling back
         # just for a consumer cannot recover a previous instruction's discarded
@@ -358,6 +364,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             (f"template <bool Turbo, bool Finite> bool page_{page:x}_impl(State& s) {{" if match_hot_page
              else f"bool page_{page:x}(State& s) {{")]
     if transfer_hooks:
+        code.insert(1, '#include "guest_context_transfer.hpp"')
+    if register_context_hooks and page_addresses & set(REGISTER_CONTEXT_ENTRIES):
+        code.insert(1, '#include "register_context_adapter.hpp"')
         code.insert(1, '#include "guest_context_transfer.hpp"')
     if any(op[0] == 'CALLOTHER' for item in instructions for op in item['ops']):
         code.insert(1, '#include "vector_context.hpp"')
@@ -483,6 +492,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("if (try_modern_exception_unexpected_landing(s)) return true;")
         if compiler_arithmetic_hooks and a in COMPILER_ARITHMETIC_ENTRIES:
             code.append(compiler_arithmetic_hook(a))
+        if register_context_hooks and a in REGISTER_CONTEXT_ENTRIES:
+            code.append(register_context_hook(a))
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if a == 0x101195e8:
@@ -500,6 +511,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"counter.step(0x{a:x});")
         else:
             code.append(f"s.step(0x{a:x});")
+        if register_context_hooks and a in CAPTURE_OBSERVATIONS:
+            code.append(CAPTURE_OBSERVATIONS[a])
         if a == 0x10774c24:
             # A stale largest-block hint can produce the same pool count after
             # a failed allocation, trapping the original replenishment loop.
@@ -643,6 +656,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_exception_runtime_hooks(page, instructions, result)
     if compiler_arithmetic_hooks:
         require_compiler_arithmetic_hooks(page, instructions, result)
+    if register_context_hooks:
+        require_register_context_hooks(page, instructions, result)
     return result
 
 
@@ -695,6 +710,7 @@ def main():
         require_cpp_object_storage_index(db, None if args.all_analyzed else selected)
         require_exception_runtime_index(db, None if args.all_analyzed else selected)
         require_compiler_arithmetic_index(db, None if args.all_analyzed else selected)
+        require_register_context_index(db, None if args.all_analyzed else selected)
     args.output.mkdir(parents=True, exist_ok=True)
     # Invalidate completion before touching generated units, so interruption
     # cannot leave an old manifest claiming the new partial output is complete.

@@ -157,7 +157,7 @@ std::vector<std::pair<std::uint32_t, std::uint64_t>> Memory::mapped_ranges() con
     return result;
 }
 void run_until(State& s, std::uint32_t return_pc) {
-    GuestDispatchScope dispatch(s);
+    GuestDispatchScope dispatch(s, return_pc);
     const bool trace = std::getenv("CM_AOT_TRACE_IMPORTS") != nullptr;
     for (;;) {
     try {

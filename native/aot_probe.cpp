@@ -20,6 +20,7 @@
 #include "cpp_object_storage_adapter.hpp"
 #include "exception_runtime_adapter.hpp"
 #include "compiler_arithmetic_adapter.hpp"
+#include "register_context_adapter.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
 #include "probe_host.hpp"
@@ -63,6 +64,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         state->stream_io_original = std::getenv("CM_AOT_STREAM_IO_ORIGINAL") != nullptr;
         state->integer_parsing_original = std::getenv("CM_AOT_INTEGER_PARSING_ORIGINAL") != nullptr;
         state->compiler_arithmetic_original = std::getenv("CM_AOT_COMPILER_ARITHMETIC_ORIGINAL") != nullptr;
+        state->register_context_original = std::getenv("CM_AOT_REGISTER_CONTEXT_ORIGINAL") != nullptr;
         state->memory_primitives_original = std::getenv("CM_AOT_MEMORY_PRIMITIVES_ORIGINAL") != nullptr;
         state->collection_original = std::getenv("CM_AOT_COLLECTION_LOOKUP_ORIGINAL") != nullptr;
         state->rng_trace = std::getenv("CM_AOT_VALIDATION_EVENT_POINTER") != nullptr;
@@ -103,6 +105,7 @@ int cm::aot::run_probe(int argc, char** argv) {
         std::cout << cpp_object_storage_call_summary(*state);
         std::cout << exception_runtime_call_summary(*state);
         std::cout << compiler_arithmetic_call_summary(*state);
+        std::cout << register_context_call_summary(*state);
         std::cout << "Original application requested a normal exit after " << state->executed
                   << " statically recompiled instructions\n";
         return 0;
