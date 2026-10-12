@@ -88,6 +88,7 @@ NSArray* players(const Session& session) {
             const auto position = int(cm::aot::signed_value<1>(memory.read<1>(record + 0x19)));
             [result addObject:@{@"team": @(team), @"actor": @(actor), @"position": @(position),
                 @"active": @(position >= 0 && position < 11),
+                @"goals": @(memory.read<1>(record + 0xc)),
                 @"staffID": @(memory.read<4>(staff)), @"name": [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet]}];
         }
     }
@@ -159,6 +160,7 @@ public:
             @"actorQueue": @(value.actor_queue_count), @"stepCount": @(steps.size()),
             @"homeOnPitch": @(session_->on_pitch(0)), @"awayOnPitch": @(session_->on_pitch(1)),
             @"withdrawalCount": @(session_->withdrawals().size()),
+            @"injectedGoalCount": @(session_->goals().size()),
             @"lastInstructions": @(steps.empty() ? 0 : steps.back().instructions),
             @"sharedModernCalls": @(diagnostics.calls[2]), @"failure": text(session_->failure()),
             @"players": players(*session_), @"events": [events_ copy]});
@@ -168,7 +170,7 @@ public:
         id operation = value[@"command"];
         if (![operation isKindOfClass:NSString.class]) throw std::invalid_argument("Missing worker command");
         NSArray* fields = [operation isEqual:@"create"] ? @[@"command", @"homeID", @"awayID", @"seed"] :
-            [operation isEqual:@"withdraw"] ? @[@"command", @"team", @"actor"] : @[@"command"];
+            ([operation isEqual:@"withdraw"] || [operation isEqual:@"goal"]) ? @[@"command", @"team", @"actor"] : @[@"command"];
         NSMutableSet* keys = [NSMutableSet setWithArray:fields];
         if (value[@"requestID"]) [keys addObject:@"requestID"];
         if (![[NSSet setWithArray:value.allKeys] isEqual:keys]) throw std::invalid_argument("Unexpected command fields");
@@ -188,6 +190,14 @@ public:
                     record.team ? @"away" : @"home", record.actor, record.staff_id,
                     int(record.position_before), int(record.position_after), record.on_pitch_before, record.on_pitch_after,
                     unsigned(record.withdrawals_before), unsigned(record.withdrawals_after), int(record.after.elapsed_engine_units)]);
+            }
+            else if ([operation isEqual:@"goal"]) {
+                const auto record = session_->add_goal(integer(value, @"team"), integer(value, @"actor"));
+                event([NSString stringWithFormat:@"Intervention: awarded goal by %@ actor %u (staff %u) through original goal bookkeeping; score %d–%d → %d–%d; scorer goals %u → %u; unit %d; instructions %llu",
+                    record.team ? @"away" : @"home", record.actor, record.staff_id,
+                    int(record.before.home_score), int(record.before.away_score), int(record.after.home_score), int(record.after.away_score),
+                    unsigned(record.scorer_goals_before), unsigned(record.scorer_goals_after), int(record.after.elapsed_engine_units),
+                    static_cast<unsigned long long>(record.instructions)]);
             }
             else if (![operation isEqual:@"inspect"]) throw std::invalid_argument("Unknown worker command");
         }

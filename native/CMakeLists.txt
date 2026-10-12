@@ -38,7 +38,7 @@ target_sources(cm_aot PRIVATE aggregate_object.cpp aggregate_object_adapter.cpp)
 target_sources(cm_aot PRIVATE record_group.cpp record_group_adapter.cpp)
 target_sources(cm_aot PRIVATE record_query.cpp record_query_adapter.cpp)
 target_sources(cm_aot PRIVATE record_history.cpp record_history_adapter.cpp)
-target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp)
+target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 add_library(cm_match_debugger_database STATIC match_debugger_database.cpp)
 target_include_directories(cm_match_debugger_database PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -307,11 +307,17 @@ target_compile_options(cm-match-debugger-factory-checks PRIVATE -Wall -Wextra -W
 add_executable(cm-match-debugger-withdrawal-checks match_debugger_withdrawal_checks.cpp)
 target_link_libraries(cm-match-debugger-withdrawal-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-withdrawal-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-debugger-goal-checks match_debugger_goal_checks.cpp)
+target_link_libraries(cm-match-debugger-goal-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugger-goal-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME match_debugger_fresh_match_factory COMMAND cm-match-debugger-factory-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-factory-checks")
     add_test(NAME match_debugger_actual_withdrawal COMMAND cm-match-debugger-withdrawal-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-withdrawal-checks")
+    add_test(NAME match_debugger_actual_goal COMMAND cm-match-debugger-goal-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-goal-checks")
+    set_tests_properties(match_debugger_actual_goal PROPERTIES TIMEOUT 360)
     add_test(NAME match_actor_actual_production COMMAND cm-match-actor-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-production-checks")
     add_test(NAME match_actor_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1

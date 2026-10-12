@@ -1,5 +1,6 @@
 #include "match_debugger_session.hpp"
 #include "match_engine.hpp"
+#include "match_debugger_goal.hpp"
 #include <limits>
 
 namespace cm::aot::match_debugger {
@@ -52,6 +53,7 @@ void Session::reset() {
     engine_ = std::move(replacement);
     steps_.clear();
     withdrawals_.clear();
+    goals_.clear();
     failure_.clear();
     execution_ = ExecutionState::paused;
 }
@@ -126,6 +128,57 @@ WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor)
     } catch (...) {
         execution_ = ExecutionState::faulted;
         failure_ = "Engine intervention was interrupted before returning";
+        throw;
+    }
+}
+
+GoalRecord Session::add_goal(unsigned team, unsigned actor) {
+    if (execution_ != ExecutionState::paused || steps_.empty())
+        throw std::logic_error("Adding a goal requires a paused match after kickoff");
+    if (team > 1 || actor >= 20)
+        throw std::invalid_argument("Invalid match side or actor index");
+    auto& state = *engine_.state;
+    const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+    const auto staff = std::uint32_t(state.memory.read<4>(address + 0x6c));
+    const auto position = signed_value<1>(state.memory.read<1>(address + 0x19));
+    if (!staff || position < 0 || position >= 11 || state.memory.read<1>(address + 0x27) != team ||
+        state.memory.read<4>(address + 0x1a4) != engine_.match)
+        throw std::invalid_argument("Select an actual player currently on the pitch");
+    GoalRecord record;
+    record.before = inspect();
+    const auto score = team ? record.before.away_score : record.before.home_score;
+    record.scorer_goals_before = std::uint8_t(state.memory.read<1>(address + 0xc));
+    if (score < 0 || score == 127 || record.scorer_goals_before == 255)
+        throw std::invalid_argument("Original goal counters have reached their supported limit");
+    record.number = goals_.size() + 1;
+    record.at_step = steps_.size();
+    record.team = team; record.actor = actor;
+    record.staff_id = std::uint32_t(state.memory.read<4>(staff));
+    const auto instructions = state.executed;
+    try {
+        StepBudget budget(state, step_instruction_limit_);
+        apply_original_awarded_goal(state, engine_.match, address, team);
+        record.instructions = state.executed - instructions;
+        record.scorer_goals_after = std::uint8_t(state.memory.read<1>(address + 0xc));
+        record.after = inspect();
+        if (record.after.home_score != record.before.home_score + int(team == 0) ||
+            record.after.away_score != record.before.away_score + int(team == 1) ||
+            record.scorer_goals_after != unsigned(record.scorer_goals_before) + 1 ||
+            record.after.elapsed_engine_units != record.before.elapsed_engine_units)
+            throw std::runtime_error("Original awarded goal did not complete its bookkeeping: score " +
+                std::to_string(record.before.home_score) + "-" + std::to_string(record.before.away_score) + " -> " +
+                std::to_string(record.after.home_score) + "-" + std::to_string(record.after.away_score) + "; scorer " +
+                std::to_string(record.scorer_goals_before) + " -> " + std::to_string(record.scorer_goals_after) + "; clock " +
+                std::to_string(record.before.elapsed_engine_units) + " -> " + std::to_string(record.after.elapsed_engine_units));
+        goals_.push_back(record);
+        return record;
+    } catch (const std::exception& error) {
+        execution_ = ExecutionState::faulted;
+        failure_ = "Engine goal intervention fault at " + hex_address(state.pc) + ": " + error.what();
+        throw;
+    } catch (...) {
+        execution_ = ExecutionState::faulted;
+        failure_ = "Engine goal intervention was interrupted before returning";
         throw;
     }
 }

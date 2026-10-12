@@ -68,7 +68,7 @@ class Worker:
         self.send(command)
         require(self.next()["type"] == "error", "Invalid command was accepted")
         state = self.state()
-        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount"):
+        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount", "injectedGoalCount"):
             require(state.get(key) == preserved.get(key), f"Rejected command changed {key}")
 
     def close(self, *, eof=False):
@@ -116,6 +116,7 @@ def main():
             require(initial["requestID"] == first.last_request, "Creation response correlation")
             require(initial["sharedModernCalls"] == 0, "Fresh instance already advanced")
             first.rejected({"command": "withdraw", "team": 0, "actor": 8}, initial)
+            first.rejected({"command": "goal", "team": 0, "actor": 8}, initial)
             require(any(p["name"] == "David Seaman" for p in initial["players"]), "Actual Arsenal name")
             require(any(p["name"] == "Michaël Silvestre" for p in initial["players"]), "Original non-ASCII player name")
             for tick in range(1, 4):
@@ -144,6 +145,31 @@ def main():
             first.send({"command": "inspect"})
             stable = first.state(status="paused")
             require(stable["engineUnits"] == paused["engineUnits"] and stable["stepCount"] == paused["stepCount"], "Pause advanced the engine")
+            for command in ({"command": "goal", "team": 2, "actor": 8},
+                            {"command": "goal", "team": 0, "actor": 20},
+                            {"command": "goal", "team": False, "actor": 8},
+                            {"command": "goal", "team": 0, "actor": 8.5},
+                            {"command": "goal", "team": 0, "actor": 4294967296},
+                            {"command": "goal", "team": 0, "actor": 8, "extra": 1}):
+                first.rejected(command, stable)
+            for goal_number, (team, actor) in enumerate(((0, 8), (1, 0)), start=1):
+                scorer_before = next(p for p in stable["players"] if p["team"] == team and p["actor"] == actor)
+                first.send({"command": "goal", "team": team, "actor": actor})
+                scored = first.state(status="paused", injectedGoalCount=goal_number)
+                scorer = next(p for p in scored["players"] if p["team"] == team and p["actor"] == actor)
+                require(scorer["goals"] == scorer_before["goals"] + 1 and scorer["active"] and
+                        scored["homeScore"] == stable["homeScore"] + int(team == 0) and
+                        scored["awayScore"] == stable["awayScore"] + int(team == 1) and
+                        scored["engineUnits"] == stable["engineUnits"] and scored["stepCount"] == stable["stepCount"] and
+                        scored["interruption"] == 8 and scored["homeOnPitch"] == scored["awayOnPitch"] == 11,
+                        "Worker did not apply the original scorer/team/kickoff goal operation")
+                require(scored["requestID"] == first.last_request and
+                        any("awarded goal" in e["description"] and "scorer goals" in e["description"] for e in scored["events"]),
+                        "Goal response correlation or audit event is missing")
+                first.send({"command": "step"})
+                stable = first.state(status="paused", stepCount=scored["stepCount"] + 1)
+                require(stable["homeScore"] == scored["homeScore"] and stable["awayScore"] == scored["awayScore"],
+                        "Engine discarded an injected goal on its following step")
             first.send({"command": "withdraw", "team": 0, "actor": 8})
             withdrawn = first.state(status="paused", withdrawalCount=1)
             target = next(p for p in withdrawn["players"] if p["team"] == 0 and p["actor"] == 8)
@@ -153,6 +179,7 @@ def main():
             require(any("Intervention:" in e["description"] and "11 → 10" in e["description"] for e in withdrawn["events"]),
                     "Withdrawal before/after effects are absent from the ordered log")
             for command in ({"command": "withdraw", "team": 0, "actor": 8},
+                            {"command": "goal", "team": 0, "actor": 8},
                             {"command": "withdraw", "team": 2, "actor": 8},
                             {"command": "withdraw", "team": 0, "actor": 20}):
                 first.rejected(command, withdrawn)
@@ -173,6 +200,12 @@ def main():
             for tick in range(1, 101):
                 second.send({"command": "step"})
                 second.state(status="paused", stepCount=tick, sharedModernCalls=tick)
+            second.send({"command": "goal", "team": 1, "actor": 8})
+            other_goal = second.state(status="paused", injectedGoalCount=1, stepCount=100)
+            require(next(p for p in other_goal["players"] if p["team"] == 1 and p["actor"] == 8)["goals"] >= 1,
+                    "Alternate clubs/seed failed the goal action")
+            second.send({"command": "step"})
+            second.state(status="paused", stepCount=101)
             first.send({"command": "inspect"})
             retained = first.state(status="paused")
             require(retained["players"] == stable["players"] and retained["stepCount"] == stable["stepCount"], "Another worker changed the first experiment")
@@ -181,12 +214,12 @@ def main():
             require(reset["players"] == initial["players"] and reset["seed"] == initial["seed"] and
                     reset["homeScore"] == initial["homeScore"] and reset["awayScore"] == initial["awayScore"], "Seeded reset changed initial setup")
             require(reset["requestID"] == first.last_request, "Reset response correlation")
-            require(reset["homeOnPitch"] == 11 and reset["awayOnPitch"] == 11 and reset["withdrawalCount"] == 0,
+            require(reset["homeOnPitch"] == 11 and reset["awayOnPitch"] == 11 and reset["withdrawalCount"] == 0 and reset["injectedGoalCount"] == 0,
                     "Reset retained original injury intervention state")
             require(len(list(first.root.iterdir())) == 1, "Reset retained obsolete experiment backing")
             second.close(eof=True)
             first.close()
-            print("PASS: two actual pairings/processes, named starting elevens, productive C++23 steps, run/pause, real injury withdrawal/log/following steps, rejected commands, seeded reset, independent state, immediate old-backing cleanup, normal quit/EOF cleanup")
+            print("PASS: two actual pairings/processes, named starting elevens, productive C++23 steps, run/pause, original scorer/team/kickoff goals and following steps, real injury withdrawal/log, rejected commands, seeded reset, independent state, immediate old-backing cleanup, normal quit/EOF cleanup")
         finally:
             for worker in workers:
                 if worker.process.poll() is None:

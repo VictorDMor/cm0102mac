@@ -61,6 +61,7 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
 @property NSButton* pauseButton;
 @property NSButton* resetButton;
 @property NSButton* withdrawButton;
+@property NSButton* goalButton;
 @property NSProgressIndicator* progress;
 @property NSTableView* playerTable;
 @property NSTableView* eventTable;
@@ -152,7 +153,9 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     self.resetButton = button(@"Reset", self, @selector(resetMatch:));
     self.withdrawButton = button(@"Withdraw (injury)", self, @selector(withdrawPlayer:));
     self.withdrawButton.toolTip = @"Select an on-pitch player while paused after kickoff. Apply the engine's injury withdrawal and tactical updates.";
-    NSStackView* controls = stack(@[self.stepButton, self.runButton, self.pauseButton, self.resetButton, self.withdrawButton], NSUserInterfaceLayoutOrientationHorizontal);
+    self.goalButton = button(@"Add goal", self, @selector(addGoal:));
+    self.goalButton.toolTip = @"Select an on-pitch scorer while paused after kickoff. Force an awarded goal with the engine's player/team records and kickoff preparation.";
+    NSStackView* controls = stack(@[self.stepButton, self.runButton, self.pauseButton, self.resetButton, self.withdrawButton, self.goalButton], NSUserInterfaceLayoutOrientationHorizontal);
     self.inspection = label(@"Engine units: —   •   Steps: —   •   Phase: —");
     self.inspection.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
     self.inspection.maximumNumberOfLines = 3;
@@ -168,7 +171,7 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     self.playerTable.accessibilityLabel = @"Actual match players";
     NSScrollView* playerScroll = table_scroll(self.playerTable, @[
         @[@"team", @"Side", @65], @[@"actor", @"Actor", @55], @[@"position", @"Slot", @55],
-        @[@"active", @"State", @90], @[@"staffID", @"Staff ID", @75], @[@"name", @"Player", @450]], self);
+        @[@"active", @"State", @90], @[@"staffID", @"Staff ID", @75], @[@"goals", @"Goals", @55], @[@"name", @"Player", @395]], self);
     self.eventTable = [NSTableView new];
     self.eventTable.accessibilityLabel = @"Engine changes";
     NSScrollView* eventScroll = table_scroll(self.eventTable, @[@[@"step", @"Step", @65], @[@"description", @"Observed engine changes and controls", @780]], self);
@@ -219,6 +222,7 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     const auto selected = self.playerTable.selectedRow;
     self.withdrawButton.enabled = !self.busy && paused && [self.latest[@"stepCount"] unsignedLongLongValue] > 0 &&
         selected >= 0 && NSUInteger(selected) < self.players.count && [self.players[selected][@"active"] boolValue];
+    self.goalButton.enabled = self.withdrawButton.enabled;
     self.createButton.enabled = !self.busy && self.clubIDs != nil;
     self.home.enabled = self.away.enabled = self.seed.enabled = !self.busy;
     if (self.busy) [self.progress startAnimation:nil]; else [self.progress stopAnimation:nil];
@@ -338,6 +342,15 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     self.busy = YES; [self updateControls];
     [self send:@{@"command": @"withdraw", @"team": player[@"team"], @"actor": player[@"actor"]}];
 }
+- (void)addGoal:(id)sender {
+    (void)sender;
+    const auto row = self.playerTable.selectedRow;
+    if (row < 0 || NSUInteger(row) >= self.players.count) return;
+    NSDictionary* player = self.players[row];
+    self.status.textColor = NSColor.labelColor;
+    self.busy = YES; [self updateControls];
+    [self send:@{@"command": @"goal", @"team": player[@"team"], @"actor": player[@"actor"]}];
+}
 - (void)receive:(NSDictionary*)message {
     NSString* type = message[@"type"];
     if ([type isEqual:@"progress"]) { self.status.stringValue = message[@"message"]; return; }
@@ -361,9 +374,9 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     NSString* state = message[@"status"];
     if (![state isEqual:@"empty"]) {
         self.score.stringValue = [NSString stringWithFormat:@"%@   %@ – %@   %@", self.clubNames[message[@"homeID"]], message[@"homeScore"], message[@"awayScore"], self.clubNames[message[@"awayID"]]];
-        self.inspection.stringValue = [NSString stringWithFormat:@"Engine units: %@   •   Steps: %@   •   Phase: %@   •   Interruption: %@   •   Transition: %@\nOn pitch: %@ / %@   •   Injury withdrawals: %@   •   Actor work queue: %@\nLast step instructions: %@   •   Shared C++23 calls: %@",
+        self.inspection.stringValue = [NSString stringWithFormat:@"Engine units: %@   •   Steps: %@   •   Phase: %@   •   Interruption: %@   •   Transition: %@\nOn pitch: %@ / %@   •   Withdrawals: %@   •   Added goals: %@   •   Actor queue: %@\nLast step instructions: %@   •   Shared C++23 calls: %@",
             message[@"engineUnits"], message[@"stepCount"], message[@"phase"], message[@"interruption"], message[@"transition"],
-            message[@"homeOnPitch"], message[@"awayOnPitch"], message[@"withdrawalCount"], message[@"actorQueue"], message[@"lastInstructions"], message[@"sharedModernCalls"]];
+            message[@"homeOnPitch"], message[@"awayOnPitch"], message[@"withdrawalCount"], message[@"injectedGoalCount"], message[@"actorQueue"], message[@"lastInstructions"], message[@"sharedModernCalls"]];
         // Preserve a command validation error until the next accepted control;
         // a following snapshot is also how a failed creation exposes its old state.
         if (![self.status.textColor isEqual:NSColor.systemRedColor])
