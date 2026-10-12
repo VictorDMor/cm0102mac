@@ -36,22 +36,23 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
-## Player decision conversion in progress
+## Complete player decision reconstructed
 
 The [complete player decision body](native-player-decision-reconstruction.md)
-contains 2,090 instructions across three pages. Its independent original
-reference and 61-case characterization pass, including 50 returns, eight budget
-prefixes, two pending native-event boundaries and an architectural negative.
-Observed runtime sites cover 869 instructions; this is not full branch coverage.
-An unhooked C++23 dead-ball/frame prototype agrees on two actual paths and 12
-budget prefixes with affected-code UBSAN. The remaining phases are unfinished;
-the production semantic manifest remains **642** and the installed apps are
-unchanged by this development cycle.
+adds one 2,090-instruction C++23 entry across three pages, bringing the current
+manifest to **643** with the full 642-entry prefix preserved. Named tactical,
+pressure, marking, destination, keeper and outfield phases retain original guest
+ABI, effects and dependency behavior. Ten focused CTests, source audits and
+changed manifest checks pass; individual component/negative, actual
+direct/generated/CFM, original/profile and nonlocal evidence are recorded in the
+report. Both signed ARM64 apps are installed and their packaged-program worker
+sequence is verified; disposable cleanup recovers 2.80 GB. The full movement/action engine and final visual acceptance remain
+unfinished. Save/Load is **not retested**; performance is **not benchmarked**.
 
 ## Marking relations and local pressure reconstructed
 
 The [marking/pressure block](native-match-marking-pressure-reconstruction.md)
-adds 13 complete C++23 entries / 396 instructions, bringing the current manifest
+adds 13 complete C++23 entries / 396 instructions, bringing that phase's manifest
 to **642** with the full 629-entry prefix preserved. Marking-list maintenance,
 tactics-selected traits, marker eligibility and weighted opposing-player
 assessment now run in both production apps. Seven focused CTests, source audits,

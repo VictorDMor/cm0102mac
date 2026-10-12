@@ -10,14 +10,15 @@ class SemanticGuestCall {
     std::uint32_t next;
     GuestNativeScope scope;
     SemanticDependencyDispatch* dependencies;
-    void step() { state.step(next); next += 4; }
+    SemanticGuestObserver* observer;
+    void step() { if (observer) observer->before_step(state, next); state.step(next); next += 4; }
     void condition(std::int64_t a, std::int64_t b, bool record = false) {
         state.wr<1>(2304, (record ? state.r<1>(2304) & 0xf0 : 0) |
             (a < b ? 8 : a > b ? 4 : 2) | (state.r<1>(1024) & 1));
     }
 public:
-    SemanticGuestCall(State& s, std::uint32_t root, SemanticDependencyDispatch* d)
-        : state(s), next(root), scope(s, root), dependencies(d) {}
+    SemanticGuestCall(State& s, std::uint32_t root, SemanticDependencyDispatch* d, SemanticGuestObserver* o = nullptr)
+        : state(s), next(root), scope(s, root), dependencies(d), observer(o) {}
     std::uint32_t r(unsigned n) const { return std::uint32_t(state.r<4>(n * 4)); }
     void at(std::uint32_t address) { next = address; }
     void link() { step(); state.wr<4>(0, state.r<4>(4128)); }
@@ -150,6 +151,7 @@ public:
     bool at_least() { step(); return (state.r<1>(2304) & 8) == 0; }
     void jump(std::uint32_t address) { step(); at(address); }
     void call(std::uint32_t target) {
+        if (observer) observer->before_dependency(state, next, target);
         step(); state.wr<4>(2440, r(2)); state.wr<4>(4128, next); state.pc = target;
         if (dependencies) dependencies->call(state, target, next); else run_until(state, next);
     }
@@ -224,6 +226,29 @@ public:
         state.wr<1>(1027, sum > UINT32_MAX); state.wr<4>(destination * 4, std::uint32_t(sum));
     }
     void restore_link() { step(); state.wr<4>(4128, r(0)); }
+
+    void floating_indexed_single(unsigned destination, unsigned base, unsigned index) {
+        step(); state.wr<8>(0x4000 + destination * 16, float_bits<8>(float_value<4>(state.memory.read<4>(r(base) + r(index)))));
+    }
+    void floating_product_single(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
+        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
+        const auto result = double(float_value<4>(float_bits<4>(x * y)));
+        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
+        floating_result_status(result, std::isnan(x) || std::isnan(y), true);
+    }
+    void intersect(unsigned destination, unsigned first, unsigned second, bool complement = false) {
+        step(); state.wr<4>(destination * 4, r(first) & (complement ? ~r(second) : r(second)));
+    }
+    void combine(unsigned destination, unsigned first, unsigned second, bool record = false, bool exclusive = false) {
+        step(); const auto value = exclusive ? r(first) ^ r(second) : r(first) | r(second);
+        state.wr<4>(destination * 4, value);
+        if (record) condition(std::bit_cast<std::int32_t>(value), 0, true);
+    }
+    void compare_less_or_equal_bit() {
+        step(); const auto bits = state.r<1>(2304);
+        state.wr<1>(2304, (bits & ~2u) | ((bits & 10u) ? 2u : 0u));
+    }
 
 };
 }

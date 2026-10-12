@@ -46,3 +46,44 @@ def load_player_decision(db):
         json_each(json_insert(json_extract(i.body,'$.flows'),'$[#]',json_extract(i.body,'$.fallthrough'))) AS e
         WHERE e.value>? AND e.value<?""", (ENTRY, END)))
     return records
+
+PLAYER_DECISION_ENTRIES = (ENTRY,)
+
+
+def require_player_decision_contract(page, instructions, selected=None):
+    expected = next((item for item in FRAGMENTS if item[0] == page), None)
+    if expected is None:
+        return
+    low, high = max(ENTRY, page << 12), min(END, (page + 1) << 12)
+    addresses = {row['address'] for row in instructions} | set(selected or ())
+    if not any(low <= address < high for address in addresses):
+        return
+    body = [row for row in instructions if low <= row['address'] < high]
+    if len(body) != expected[1] or fingerprint(body) != expected[2]:
+        raise ValueError(f'Original player decision fragment is incomplete or changed at {page:x}')
+
+
+def require_player_decision_index(db, selected=None):
+    if selected is None:
+        load_player_decision(db)
+    else:
+        records = [row for _, row in sorted(selected.items())]
+        for page, _, _ in FRAGMENTS:
+            require_player_decision_contract(page, records, selected)
+        require_player_decision_edges(db.execute("""SELECT i.address,e.value FROM instructions AS i,
+            json_each(json_insert(json_extract(i.body,'$.flows'),'$[#]',json_extract(i.body,'$.fallthrough'))) AS e
+            WHERE e.value>? AND e.value<?""", (ENTRY, END)))
+
+
+def player_decision_hook(entry):
+    return f'if (try_modern_player_decision(s, 0x{entry:x})) return true;'
+
+
+def require_player_decision_hooks(page, instructions, code):
+    if page != ENTRY >> 12 or ENTRY not in {row['address'] for row in instructions}:
+        return
+    hook = player_decision_hook(ENTRY)
+    fragment = code.split(f'i_{ENTRY:x}:', 1)[-1].split(f'i_{ENTRY + 4:x}:', 1)[0]
+    steps = [token for token in (f's.step(0x{ENTRY:x});', f'counter.step(0x{ENTRY:x});') if token in fragment]
+    if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+        raise ValueError('Missing or misplaced complete player decision hook')

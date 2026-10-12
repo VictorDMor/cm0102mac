@@ -4,6 +4,7 @@
 #include "semantic_io_checks.hpp"
 #include "code_fragment_adapter.hpp"
 #include "process_bridge.hpp"
+#include "player_decision_adapter.hpp"
 #include <chrono>
 #include <fstream>
 #include <map>
@@ -83,6 +84,7 @@ Result compare(const State& input, std::uint32_t match, unsigned side, unsigned 
     Scenario scenario, std::uint64_t budget, bool negative, std::ostream& receipt) {
     auto generated = clone(input), reference = clone(input);
     generated->platform = reference->platform = input.platform;
+    player_decision_diagnostics(*generated).original=true;player_decision_diagnostics(*reference).original=true;
     const auto actor = match + (side ? 0x546c : 0x311c) + slot * 0x1c4;
     for (auto* state : {generated.get(), reference.get()}) {
         state->wr<4>(12, actor); state->wr<4>(4128, return_sentinel); state->pc = entry;

@@ -7,8 +7,8 @@ from pathlib import Path
 import re
 import sqlite3
 import unittest
-from compile_recomp import SEMANTIC_REPLACEMENTS
-from player_decision_audit import ENTRY, END, COUNT, FRAGMENTS, load_player_decision, require_player_decision_body, require_player_decision_edges
+from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
+from player_decision_audit import ENTRY, END, COUNT, FRAGMENTS, load_player_decision, require_player_decision_body, require_player_decision_edges, require_player_decision_contract, require_player_decision_hooks, player_decision_hook
 from make_player_decision_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -16,10 +16,15 @@ INPUT = Path(os.environ.get('CM_PLAYER_DECISION_INPUT', ROOT / '.local/compiler-
 
 
 class ScopeTests(unittest.TestCase):
-    def test_complete_original_scope_is_not_a_delivered_replacement(self):
+    def test_complete_original_scope_and_preserved_642_entry_prefix(self):
         self.assertEqual(sum(count for _, count, _ in FRAGMENTS), COUNT)
         self.assertEqual((ENTRY, END, COUNT), (0x102836a0, 0x10285748, 2090))
-        self.assertNotIn(ENTRY, {entry for entry, _ in SEMANTIC_REPLACEMENTS})
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 643)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[642:], ((ENTRY, 'player_decision_adapter'),))
+        import hashlib
+        prior = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS[:642]]
+        self.assertEqual(hashlib.sha256(json.dumps(prior, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                         'f2efaafb37166e008c7ed153d56bff3b63f9a8d80e872fe247500410d36ca6e0')
 
     def test_only_root_is_an_allowed_external_entrance(self):
         require_player_decision_edges([(0, ENTRY), (ENTRY, END - 4), (END - 4, END)])
@@ -64,6 +69,21 @@ class ContractTests(unittest.TestCase):
             self.assertIn(f'bool player_decision_reference_{page:x}(State& s)', code)
         for forbidden in ('try_modern_', 'complete_context_transfer', 'bool page_10000(', 'bool page_1076e('):
             self.assertNotIn(forbidden, code)
+
+    def test_every_production_fragment_and_hook_is_pinned(self):
+        for page, _, _ in FRAGMENTS:
+            part = [row for row in self.records if row['address'] >> 12 == page]
+            require_player_decision_contract(page, part)
+            for broken in (part[1:], part[:-1], part + [part[0]], list(reversed(part))):
+                with self.assertRaises(ValueError): require_player_decision_contract(page, broken)
+            code = generate_page(page, part, {row['address'] for row in self.records}, userops=self.userops)
+            require_player_decision_hooks(page, part, code)
+            if page == ENTRY >> 12:
+                hook = player_decision_hook(ENTRY)
+                step = f'counter.step(0x{ENTRY:x});' if f'counter.step(0x{ENTRY:x});' in code else f's.step(0x{ENTRY:x});'
+                for broken in (code.replace(hook, ''), code.replace(hook, hook + '\n' + hook), code.replace(hook + '\n' + step, step + '\n' + hook)):
+                    with self.assertRaises(ValueError): require_player_decision_hooks(page, part, broken)
+                with self.assertRaises(ValueError): require_player_decision_contract(page, [], {ENTRY})
 
     def test_reference_rejects_unrelated_instructions(self):
         unrelated = deepcopy(self.records[-1])
