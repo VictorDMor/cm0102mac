@@ -36,10 +36,14 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Actor movement primitives reconstructed
+
+The [actor-motion block](native-actor-motion-reconstruction.md) adds five complete C++23 entries / 462 indexed instructions: live coordinate/cell migration, heading selection/readback, turning eligibility and possession. The current manifest is **648**, with its full 643-entry prefix preserved. All original body sites are covered in 427 component comparisons; individual actual direct/generated/CFM, original/profile and nonlocal checks pass, including leaf scopes. The real debugger lab and worker regressions pass. Only three generated pages change, retaining the reusable build tree. The larger movement/interaction coordinator remains original; its 25 whole-body and 129 computed-prefix characterization cases pass. This is progress toward the full engine, not completion. Save/Load is **not retested**; performance is **not benchmarked**.
+
 ## Complete player decision reconstructed
 
 The [complete player decision body](native-player-decision-reconstruction.md)
-adds one 2,090-instruction C++23 entry across three pages, bringing the current
+adds one 2,090-instruction C++23 entry across three pages, bringing that phase
 manifest to **643** with the full 642-entry prefix preserved. Named tactical,
 pressure, marking, destination, keeper and outfield phases retain original guest
 ABI, effects and dependency behavior. Ten focused CTests, source audits and

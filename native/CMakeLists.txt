@@ -45,6 +45,7 @@ target_sources(cm_aot PRIVATE spatial_role.cpp spatial_role_adapter.cpp)
 target_sources(cm_aot PRIVATE marking_pressure.cpp marking_pressure_adapter.cpp)
 target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
 target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
+target_sources(cm_aot PRIVATE actor_motion.cpp actor_motion_adapter.cpp)
 add_library(cm_match_debugger_database STATIC match_debugger_database.cpp)
 target_include_directories(cm_match_debugger_database PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(cm_match_debugger_database PUBLIC "-framework CoreFoundation")
@@ -155,6 +156,31 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_executable(cm-player-decision-characterization player_decision_characterization.cpp "${CM_PLAYER_DECISION_REFERENCE}")
     target_link_libraries(cm-player-decision-characterization PRIVATE cm_match_debugger_factory)
     target_compile_options(cm-player-decision-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    set(CM_ACTOR_MOTION_REFERENCE "${CMAKE_BINARY_DIR}/actor_motion_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ACTOR_MOTION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_motion_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ACTOR_MOTION_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_motion_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/actor_motion_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-actor-motion-checks actor_motion_checks.cpp "${CM_ACTOR_MOTION_REFERENCE}")
+    target_link_libraries(cm-actor-motion-checks PRIVATE cm_aot)
+    target_compile_options(cm-actor-motion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME actor_motion_component_equivalence COMMAND cm-actor-motion-checks)
+    set(CM_PLAYER_MOVEMENT_REFERENCE "${CMAKE_BINARY_DIR}/player_movement_reference.cpp")
+    add_custom_command(OUTPUT "${CM_PLAYER_MOVEMENT_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_player_movement_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_PLAYER_MOVEMENT_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_player_movement_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/player_movement_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CM_ORACLE_DIR}/segment-1.bin"
+        VERBATIM)
+    add_executable(cm-player-movement-characterization player_movement_characterization.cpp "${CM_PLAYER_MOVEMENT_REFERENCE}")
+    target_link_libraries(cm-player-movement-characterization PRIVATE cm_match_debugger_factory)
+    target_compile_options(cm-player-movement-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_executable(cm-player-decision-checks player_decision_checks.cpp player_decision_test_trace.cpp "${CM_PLAYER_DECISION_REFERENCE}")
     target_link_libraries(cm-player-decision-checks PRIVATE cm_aot)
     target_compile_options(cm-player-decision-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -213,6 +239,12 @@ add_executable(cm-match-actor-production-checks match_actor_production_checks.cp
 add_executable(cm-actor-construction-production-checks actor_construction_production_checks.cpp)
 add_executable(cm-spatial-role-production-checks spatial_role_production_checks.cpp)
 add_executable(cm-marking-pressure-production-checks marking_pressure_production_checks.cpp)
+add_executable(cm-actor-motion-production-checks actor_motion_production_checks.cpp)
+target_link_libraries(cm-actor-motion-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-actor-motion-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-actor-motion-transfer-checks actor_motion_transfer_checks.cpp)
+target_link_libraries(cm-actor-motion-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-actor-motion-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-player-decision-production-checks player_decision_production_checks.cpp)
 target_link_libraries(cm-player-decision-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-player-decision-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -424,6 +456,18 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)
     if(TARGET cm-player-decision-characterization)
+        add_test(NAME actor_motion_actual_production COMMAND cm-actor-motion-production-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-motion-production-checks")
+        add_test(NAME actor_motion_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+            $<TARGET_FILE:cm-actor-motion-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+            "${CMAKE_BINARY_DIR}/actor-motion-profile-checks" "${CMAKE_BINARY_DIR}/actor-motion-live-profile.snapshot")
+        set_tests_properties(actor_motion_actual_production PROPERTIES FIXTURES_SETUP ActorMotionLiveProfile TIMEOUT 180)
+        set_tests_properties(actor_motion_original_profile PROPERTIES FIXTURES_REQUIRED ActorMotionLiveProfile TIMEOUT 180)
+        add_test(NAME actor_motion_nonlocal_transfer COMMAND cm-actor-motion-transfer-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-motion-transfer-checks")
+        add_test(NAME player_movement_original_characterization COMMAND cm-player-movement-characterization
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-movement-characterization")
+        set_tests_properties(player_movement_original_characterization PROPERTIES TIMEOUT 180)
         add_test(NAME player_decision_original_characterization COMMAND cm-player-decision-characterization
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-decision-characterization")
         set_tests_properties(player_decision_original_characterization PROPERTIES TIMEOUT 180)

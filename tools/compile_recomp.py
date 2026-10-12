@@ -100,6 +100,8 @@ from marking_pressure_audit import (require_marking_pressure_contract, require_m
                                     require_marking_pressure_hooks, marking_pressure_hook, MARKING_PRESSURE_ENTRIES)
 from player_decision_audit import (require_player_decision_contract, require_player_decision_index,
                                     require_player_decision_hooks, player_decision_hook, PLAYER_DECISION_ENTRIES)
+from actor_motion_audit import (require_actor_motion_contract, require_actor_motion_index,
+                                require_actor_motion_hooks, actor_motion_hook, ACTOR_MOTION_ENTRIES)
 
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
@@ -144,7 +146,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "actor_construction_adapter") for entry in ACTOR_CONSTRUCTION_ENTRIES) +
     tuple((entry, "spatial_role_adapter") for entry in SPATIAL_ROLE_ENTRIES) +
     tuple((entry, "marking_pressure_adapter") for entry in MARKING_PRESSURE_ENTRIES) +
-    tuple((entry, "player_decision_adapter") for entry in PLAYER_DECISION_ENTRIES))
+    tuple((entry, "player_decision_adapter") for entry in PLAYER_DECISION_ENTRIES) +
+    tuple((entry, "actor_motion_adapter") for entry in ACTOR_MOTION_ENTRIES))
 
 
 def integer(value):
@@ -376,7 +379,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -422,6 +425,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_spatial_role_contract(page, instructions, selected)
     if marking_pressure_hooks:
         require_marking_pressure_contract(page, instructions, selected)
+    if actor_motion_hooks:
+        require_actor_motion_contract(page, instructions, selected)
     if player_decision_hooks:
         require_player_decision_contract(page, instructions, selected)
     if record_query_hooks:
@@ -483,6 +488,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "spatial_role_adapter.hpp"')
     if marking_pressure_hooks and page_addresses & set(MARKING_PRESSURE_ENTRIES):
         code.insert(1, '#include "marking_pressure_adapter.hpp"')
+    if actor_motion_hooks and page_addresses & set(ACTOR_MOTION_ENTRIES):
+        code.insert(1, '#include "actor_motion_adapter.hpp"')
     if player_decision_hooks and page_addresses & set(PLAYER_DECISION_ENTRIES):
         code.insert(1, '#include "player_decision_adapter.hpp"')
     if record_query_hooks and page_addresses & set(RECORD_QUERY_ENTRIES):
@@ -643,6 +650,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(spatial_role_hook(a))
         if marking_pressure_hooks and a in MARKING_PRESSURE_ENTRIES:
             code.append(marking_pressure_hook(a))
+        if actor_motion_hooks and a in ACTOR_MOTION_ENTRIES:
+            code.append(actor_motion_hook(a))
         if player_decision_hooks and a in PLAYER_DECISION_ENTRIES:
             code.append(player_decision_hook(a))
         if record_query_hooks and a in RECORD_QUERY_ENTRIES:
@@ -841,6 +850,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_spatial_role_hooks(page, instructions, result)
     if marking_pressure_hooks:
         require_marking_pressure_hooks(page, instructions, result)
+    if actor_motion_hooks:
+        require_actor_motion_hooks(page, instructions, result)
     if player_decision_hooks:
         require_player_decision_hooks(page, instructions, result)
     if record_query_hooks:
@@ -925,6 +936,7 @@ def main():
         require_spatial_role_index(db, None if args.all_analyzed else selected)
         require_marking_pressure_index(db, None if args.all_analyzed else selected)
         require_player_decision_index(db, None if args.all_analyzed else selected)
+        require_actor_motion_index(db, None if args.all_analyzed else selected)
         require_record_query_index(db, None if args.all_analyzed else selected)
         require_record_group_index(db, None if args.all_analyzed else selected)
     if args.reuse_generated:

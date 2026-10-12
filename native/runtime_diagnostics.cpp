@@ -11,6 +11,7 @@
 #include "spatial_role_adapter.hpp"
 #include "marking_pressure_adapter.hpp"
 #include "player_decision_adapter.hpp"
+#include "actor_motion_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -29,9 +30,18 @@ struct RuntimeDiagnostics {
     SpatialRoleDiagnostics spatial_role;
     MarkingPressureDiagnostics marking_pressure;
     PlayerDecisionDiagnostics player_decision;
+    ActorMotionDiagnostics actor_motion;
 };
 State::State() = default;
 State::~State() = default;
+ActorMotionDiagnostics& actor_motion_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->actor_motion;
+}
+const ActorMotionDiagnostics& actor_motion_diagnostics(const State& state) {
+    static const ActorMotionDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->actor_motion : empty;
+}
 PlayerDecisionDiagnostics& player_decision_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->player_decision;

@@ -193,6 +193,16 @@ public:
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
         floating_result_status(result, std::isnan(x) || std::isnan(y), true);
     }
+    void floating_product_sum(unsigned destination, unsigned first, unsigned second, unsigned addend) {
+        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
+        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
+        const auto z = float_value<8>(state.r<8>(0x4000 + addend * 16));
+        // Original indexed semantics round multiply then add separately.
+        // Production is compiled with contraction disabled, preserving both.
+        const auto product = x * y; const auto result = product + z;
+        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
+        floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
+    }
     void floating_compare(unsigned first, unsigned second) {
         step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
         const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
