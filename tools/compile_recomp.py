@@ -92,6 +92,8 @@ from match_engine_audit import (require_match_engine_contract, require_match_eng
                                require_match_engine_hooks, match_engine_hook, MATCH_ENGINE_ENTRIES)
 from match_actor_audit import (require_match_actor_contract, require_match_actor_index,
                               require_match_actor_hooks, match_actor_hook, MATCH_ACTOR_ENTRIES)
+from actor_construction_audit import (require_actor_construction_contract, require_actor_construction_index,
+                                      require_actor_construction_hooks, actor_construction_hook, ACTOR_CONSTRUCTION_ENTRIES)
 
 CALENDAR_ADAPTER_ENTRIES = (
     0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
@@ -132,7 +134,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "record_query_adapter") for entry in RECORD_QUERY_ENTRIES) +
     tuple((entry, "record_history_adapter") for entry in RECORD_HISTORY_ENTRIES) +
     tuple((entry, "match_engine_adapter") for entry in MATCH_ENGINE_ENTRIES) +
-    tuple((entry, "match_actor_adapter") for entry in MATCH_ACTOR_ENTRIES))
+    tuple((entry, "match_actor_adapter") for entry in MATCH_ACTOR_ENTRIES) +
+    tuple((entry, "actor_construction_adapter") for entry in ACTOR_CONSTRUCTION_ENTRIES))
 
 
 def integer(value):
@@ -364,7 +367,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -404,6 +407,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_match_engine_contract(page, instructions, selected)
     if match_actor_hooks:
         require_match_actor_contract(page, instructions, selected)
+    if actor_construction_hooks:
+        require_actor_construction_contract(page, instructions, selected)
     if record_query_hooks:
         require_record_query_contract(page, instructions, selected)
     if record_group_hooks:
@@ -457,6 +462,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_engine_adapter.hpp"')
     if match_actor_hooks and page_addresses & set(MATCH_ACTOR_ENTRIES):
         code.insert(1, '#include "match_actor_adapter.hpp"')
+    if actor_construction_hooks and page_addresses & set(ACTOR_CONSTRUCTION_ENTRIES):
+        code.insert(1, '#include "actor_construction_adapter.hpp"')
     if record_query_hooks and page_addresses & set(RECORD_QUERY_ENTRIES):
         code.insert(1, '#include "record_query_adapter.hpp"')
     if record_group_hooks and page_addresses & set(RECORD_GROUP_ENTRIES):
@@ -609,6 +616,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(match_engine_hook(a))
         if match_actor_hooks and a in MATCH_ACTOR_ENTRIES:
             code.append(match_actor_hook(a))
+        if actor_construction_hooks and a in ACTOR_CONSTRUCTION_ENTRIES:
+            code.append(actor_construction_hook(a))
         if record_query_hooks and a in RECORD_QUERY_ENTRIES:
             code.append(record_query_hook(a))
         if record_group_hooks and a in RECORD_GROUP_ENTRIES:
@@ -799,6 +808,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_match_engine_hooks(page, instructions, result)
     if match_actor_hooks:
         require_match_actor_hooks(page, instructions, result)
+    if actor_construction_hooks:
+        require_actor_construction_hooks(page, instructions, result)
     if record_query_hooks:
         require_record_query_hooks(page, instructions, result)
     if record_group_hooks:
@@ -877,6 +888,7 @@ def main():
         require_record_history_index(db, None if args.all_analyzed else selected)
         require_match_engine_index(db, None if args.all_analyzed else selected)
         require_match_actor_index(db, None if args.all_analyzed else selected)
+        require_actor_construction_index(db, None if args.all_analyzed else selected)
         require_record_query_index(db, None if args.all_analyzed else selected)
         require_record_group_index(db, None if args.all_analyzed else selected)
     if args.reuse_generated:

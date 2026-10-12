@@ -36,16 +36,31 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
-## Match advancement reconstructed
+## Match actor construction reconstructed
+
+The [complete actor-construction block](native-match-actor-construction-reconstruction.md)
+adds two C++23 entries / 2,778 indexed instructions, bringing the current manifest
+to **606** with the complete 604-entry prefix preserved. Preparation and player
+initialization now run in both production apps, including the debugger roster
+editor. Six focused CTests, pinned original/source audits, 32 changed manifest
+assertions and affected-unit UBSAN checks pass. Both entries have dedicated
+direct/generated/CFM runtime coverage, original/profile controls, own/child
+negatives and nonlocal transfer proof. Installed signed ARM64 identities and an
+actual packaged-program worker sequence are verified. Final visual control
+verification awaits Mac unlock; Save/Load is **not retested** and performance is
+**not benchmarked**. Remaining football dependencies, red-card dismissal and a
+complete decoded commentary inspector remain unfinished.
+
+## Prior match advancement reconstruction
 
 The subsequent [match-actor block](native-match-actor-reconstruction.md) adds three
 complete C++23 entries / 207 instructions for injury withdrawal and position
-access, bringing the current manifest to **604** with the full 601-entry prefix
+access, bringing that phase's manifest to **604** with the full 601-entry prefix
 preserved. It passes 562 component comparisons, actual direct/generated/CFM and
 original/profile controls, 21 nonlocal comparisons and real withdrawal/worker
 checks. Both signed ARM64 apps are updated; final GUI verification awaits an
-unlocked Mac. Remaining football dependencies and debugger goal/lineup controls
-are still incomplete. The advancement acceptance below records its prior phase.
+unlocked Mac. Goal injection and pre-kickoff lineup editing were subsequently
+delivered. The advancement acceptance below records its prior phase.
 
 Three complete entries / 1,940 indexed instructions now execute C++23 watched
 orchestration, background advancement and the shared match advancement state
@@ -82,8 +97,9 @@ Liverpool/Chelsea query exposed on the 86th attempted step; that seed now comple
 worker command and AppKit control with before/after logging. Home/away outfield
 and goalkeeper checks agree with direct original effects; thirty subsequent
 C++23 steps agree with original shared advancement. Final interactive checking
-awaits Mac unlock. Lineup editing, red-card controls and goal injection remain
-required. The broader engine and complete port remain
+awaits Mac unlock. Lineup editing and awarded-goal controls are delivered;
+red-card controls and a complete commentary inspector remain required.
+The broader engine and complete port remain
 unfinished. See [the application report](native-match-debugger-application.md).
 
 ## Prior record-history insertion reconstruction

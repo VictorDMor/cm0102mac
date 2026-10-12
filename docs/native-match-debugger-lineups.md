@@ -18,7 +18,7 @@ The original isolated fixture initializes eleven populated actors per side. Othe
 
 **Apply slot** uses the production position setter `101f1870`, already reconstructed in C++23. It updates a displaced player first and then the selected player, within one bounded paused edit. First advancement builds and uses the original pitch state from these live assignments. A write failure or budget interruption retains partial guest effects, restores the caller budget, records no accepted edit and faults the session until reset.
 
-The complete original preparation body contains 66 instructions (`1020e8f0..1020e9f8`); its actor initializer contains 2,712 (`10223ac0..10226520`). Their canonical source fingerprints are retained privately for the next C++23 reconstruction block. **Both construction bodies remain original dependencies in this delivery. The semantic manifest remains 604.** The host/session/UI additions are C++23/Objective-C++; this is not acceptance of the complete actor initializer as reconstructed code.
+At this lineup-editing delivery, preparation (66 instructions at `1020e8f0..1020e9f8`) and initialization (2,712 at `10223ac0..10226520`) remained original dependencies and the manifest contained 604 entries. The subsequent [complete actor-construction reconstruction](native-match-actor-construction-reconstruction.md) converts both whole bodies to production C++23, with a 606-entry manifest and independent per-entry/component/runtime proof. The lineup feature continues to use those same original-compatible production operations.
 
 ## Focused evidence and limits
 
