@@ -96,7 +96,7 @@ StepRecord Session::execute_step() {
         // An interrupted guest step may have partial effects. Retain them for
         // diagnosis, block further advancement, and require a fresh reset.
         execution_ = ExecutionState::faulted;
-        failure_ = error.what();
+        failure_ = "Engine step fault at " + hex_address(state.pc) + ": " + error.what();
         throw;
     } catch (...) {
         execution_ = ExecutionState::faulted;

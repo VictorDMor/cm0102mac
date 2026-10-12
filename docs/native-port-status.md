@@ -63,11 +63,15 @@ runtime files, saves, references and private handoffs are preserved. Save/Load
 is **not retested** and performance is **not benchmarked**. See
 [the advancement report](native-match-advancement-reconstruction.md).
 
-The separate [match debugger](native-match-debugger.md) now has a validated shared-
-engine session controller. Fresh club database/bootstrap, arbitrary pairing,
-isolated match creation, the separate application UI and consistent player/goal
-interventions remain required work. The broader engine and complete port remain
-unfinished.
+The separate [match debugger](native-match-debugger.md) now has an installed ARM64
+application/session core: original club selection, independent detailed match
+creation, Step/Run/Pause/Reset, named players and observed engine changes.
+Focused checks cover two pairings, process isolation, rejected commands, seeded
+reset and scratch cleanup. An original empty injury/history manager fixes the
+Liverpool/Chelsea query exposed on the 86th attempted step; that seed now completes
+100 checked calls. Interactive lineup editing and consistent player/goal
+interventions remain required. The broader engine and complete port remain
+unfinished. See [the application report](native-match-debugger-application.md).
 
 ## Prior record-history insertion reconstruction
 

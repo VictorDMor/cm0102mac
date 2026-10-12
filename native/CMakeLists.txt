@@ -108,6 +108,12 @@ target_compile_options(cm-native-prototype PRIVATE -Wall -Wextra -Werror -Wpedan
 set_target_properties(cm-native-prototype PROPERTIES
     OUTPUT_NAME "CM 01-02 Native Prototype"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Prototype-Info.plist.in")
+add_executable(cm-match-debugger MACOSX_BUNDLE match_debugger_main.mm match_debugger_worker.mm)
+target_link_libraries(cm-match-debugger PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugger PRIVATE -Wall -Wextra -Werror -Wpedantic -fobjc-arc -ffp-contract=off)
+set_target_properties(cm-match-debugger PROPERTIES
+    OUTPUT_NAME "CM Match Debugger"
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MatchDebugger-Info.plist.in")
 add_executable(cm-aot-checks aot_checks.cpp)
 target_link_libraries(cm-aot-checks PRIVATE cm_aot)
 target_compile_options(cm-aot-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
@@ -116,6 +122,17 @@ target_link_libraries(cm-bridge-checks PRIVATE cm_aot)
 target_compile_options(cm-bridge-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
+set(CM_MATCH_DEBUGGER_PROGRAM_DIR "${CM_ORACLE_DIR}" CACHE PATH "Original program segments packaged with the match debugger")
+if(EXISTS "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/program.json")
+    foreach(resource IN ITEMS program.json segment-0.bin segment-1.bin segment-3.bin)
+        set(resource_path "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/${resource}")
+        if(NOT EXISTS "${resource_path}")
+            message(FATAL_ERROR "Missing debugger original program resource: ${resource}")
+        endif()
+        target_sources(cm-match-debugger PRIVATE "${resource_path}")
+        set_source_files_properties("${resource_path}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/OriginalProgram")
+    endforeach()
+endif()
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(CM_UTILITY_OBJECT_REFERENCE "${CMAKE_BINARY_DIR}/utility_object_reference.cpp")
@@ -267,6 +284,14 @@ target_compile_options(cm-match-debugger-factory-checks PRIVATE -Wall -Wextra -W
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME match_debugger_fresh_match_factory COMMAND cm-match-debugger-factory-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-factory-checks")
+endif()
+if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/program.json")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME match_debugger_worker_protocol COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/check_match_debugger_worker.py"
+        $<TARGET_FILE:cm-match-debugger> "${CM_MATCH_DEBUGGER_PROGRAM_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        --private-root "${CMAKE_BINARY_DIR}/debugger-worker-checks")
+    set_tests_properties(match_debugger_worker_protocol PROPERTIES TIMEOUT 360)
 endif()
 foreach(CM_MATCH_CHECK IN ITEMS production transfer)
     add_executable(cm-match-engine-${CM_MATCH_CHECK}-checks match_engine_${CM_MATCH_CHECK}_checks.cpp)

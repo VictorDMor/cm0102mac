@@ -4,7 +4,7 @@
 
 The debugger's C++23 factory creates an actual detailed match from two original clubs, a date and an explicit nonzero random seed. It loads original program/database inputs into a new owned world, initializes real player records and remaining original match services, and invokes the original constructor and initializer. The resulting paused session advances through the same reconstructed shared engine as the production game.
 
-This is a reusable engine prerequisite, not delivery of the standalone `.app`. Lineup editing, player/goal interventions, event inspection and the interactive application remain pending. The semantic manifest remains at 601 entries. The factory retains original setup dependencies; it does not claim that their bodies have been reconstructed or replace them with a second football model.
+The initial factory delivery is a reusable engine prerequisite. The subsequent [application core](native-match-debugger-application.md) supplies the standalone `.app`, interactive execution controls and observed engine changes, and adds the original injury/history prerequisite below. Lineup editing and player/goal interventions remain pending. The semantic manifest remains at 601 entries. The factory retains original setup dependencies; it does not claim that their bodies have been reconstructed or replace them with a second football model.
 
 ## Inputs and ownership
 
@@ -29,8 +29,11 @@ The factory constructs these original services in their characterized order:
 | `-0x7b3c` | `0x48` | `0x10301540` |
 | `-0x7ba0` | `0x2c` | `0x101840e0` |
 | `-0x7b7c` | `0x3c` | `0x10077ee0` |
+| `-0x7b94` | `0x18` | `0x10646d90` |
 | `-0x7aac` | `0x0c` | `0x10432540` |
 | `-0x7a7c` | `0x67bc` | `0x103cfe50` |
+
+The empty injury/history manager at `-0x7b94` was added after the installed debugger exposed a null original query on Liverpool/Chelsea's 86th attempted step with seed 67890. Its allocation, constructor and publication match original setup `1034649c..103464c0`. A focused application regression now completes 100 steps through that path. Initial factory comparisons below remain the original twelve-step acceptance scope; the application report records the added regression.
 
 `0x10354cb0` initializes the original competition index from actual competition counts and empty manager competition lists. There are no scheduled career competition objects. The original isolated/statistics fixture kind (`-2`) supplies actual selected club and stadium pointers and the chosen date. The match allocation is `0xe0bc`, constructor `0x101d16a0`, and initializer `0x101d1760`.
 

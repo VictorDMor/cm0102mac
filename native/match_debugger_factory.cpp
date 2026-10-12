@@ -83,12 +83,15 @@ void initialize_staff_records(State& state) {
 void initialize_match_services(State& state) {
     // Preserve the characterized original construction order. There are no
     // active career competition objects in this independent world.
-    constexpr std::array<std::tuple<std::uint32_t, std::uint32_t, std::int32_t>, 9> services{{
+    constexpr std::array<std::tuple<std::uint32_t, std::uint32_t, std::int32_t>, 10> services{{
         {0x5cc, 0x103acf80, -0x7a6c}, {0x10, 0x10145af0, -0x7a54},
         {0x28a4, 0x1048ebb0, -0x7b54}, {0x30, 0x1000e6b0, -0x7afc},
         {0x48, 0x10301540, -0x7b3c}, {0x2c, 0x101840e0, -0x7ba0},
-        {0x3c, 0x10077ee0, -0x7b7c}, {0xc, 0x10432540, -0x7aac},
-        {0x67bc, 0x103cfe50, -0x7a7c}}};
+        {0x3c, 0x10077ee0, -0x7b7c},
+        // Original injury/history queries call 1069e700 on this manager.
+        // Its original empty constructor is required even without a career.
+        {0x18, 0x10646d90, -0x7b94},
+        {0xc, 0x10432540, -0x7aac}, {0x67bc, 0x103cfe50, -0x7a7c}}};
     for (auto [size, constructor, offset] : services) {
         const auto object = invoke(state, 0x10773520, {size});
         if (!object) throw std::runtime_error("Could not allocate an original match service");
