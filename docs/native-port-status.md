@@ -38,6 +38,15 @@ checksum from the current mounted copy.
 
 ## Match advancement reconstructed
 
+The subsequent [match-actor block](native-match-actor-reconstruction.md) adds three
+complete C++23 entries / 207 instructions for injury withdrawal and position
+access, bringing the current manifest to **604** with the full 601-entry prefix
+preserved. It passes 562 component comparisons, actual direct/generated/CFM and
+original/profile controls, 21 nonlocal comparisons and real withdrawal/worker
+checks. Both signed ARM64 apps are updated; final GUI verification awaits an
+unlocked Mac. Remaining football dependencies and debugger goal/lineup controls
+are still incomplete. The advancement acceptance below records its prior phase.
+
 Three complete entries / 1,940 indexed instructions now execute C++23 watched
 orchestration, background advancement and the shared match advancement state
 machine. The production manifest has **601** replacements with the accepted

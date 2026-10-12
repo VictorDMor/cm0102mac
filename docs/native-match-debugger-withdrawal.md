@@ -10,7 +10,7 @@ Actual on-pitch counts are separate from the actor work queue. Each accepted int
 
 The UI disables withdrawal before kickoff, during running/faulted/completed states, without a selected row, and for an off-pitch actor. The session independently validates the boundary, side/index, staff reference, original team byte and owning-match pointer before any guest write. Invalid selections preserve the match, registers, accounting and history. A budget failure or interrupted call retains partial diagnostic effects, faults the session, restores its caller budget and blocks continuation until reset.
 
-The original 203-instruction withdrawal body and its dependencies remain in use. The C++23 ownership/control/inspection boundary is new; **the semantic replacement manifest remains at 601**. Reconstruction of injury, substitution, card and goal lifecycles remains part of the ongoing engine port. Goal injection, lineup editing and red-card controls are pending.
+The subsequent [match-actor reconstruction](native-match-actor-reconstruction.md) converts the complete 203-instruction withdrawal body and both position accessors to C++23 in the production dispatcher, raising the semantic manifest to **604** with its 601-entry prefix preserved. Remaining football dependencies, substitution, card and goal lifecycles still require reconstruction. Goal injection, lineup editing and red-card controls are pending.
 
 ## Focused evidence
 

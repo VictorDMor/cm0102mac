@@ -39,6 +39,7 @@ target_sources(cm_aot PRIVATE record_group.cpp record_group_adapter.cpp)
 target_sources(cm_aot PRIVATE record_query.cpp record_query_adapter.cpp)
 target_sources(cm_aot PRIVATE record_history.cpp record_history_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp)
+target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 add_library(cm_match_debugger_database STATIC match_debugger_database.cpp)
 target_include_directories(cm_match_debugger_database PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(cm_match_debugger_database PUBLIC "-framework CoreFoundation")
@@ -123,6 +124,28 @@ target_compile_options(cm-bridge-checks PRIVATE -Wall -Wextra -Werror -Wpedantic
 enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 set(CM_MATCH_DEBUGGER_PROGRAM_DIR "${CM_ORACLE_DIR}" CACHE PATH "Original program segments packaged with the match debugger")
+if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(CM_MATCH_ACTOR_REFERENCE "${CMAKE_BINARY_DIR}/match_actor_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MATCH_ACTOR_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_actor_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_ACTOR_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_actor_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/match_actor_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-match-actor-checks match_actor_checks.cpp "${CM_MATCH_ACTOR_REFERENCE}")
+    target_link_libraries(cm-match-actor-checks PRIVATE cm_aot)
+    target_compile_options(cm-match-actor-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME match_actor_component_equivalence COMMAND cm-match-actor-checks)
+endif()
+add_executable(cm-match-actor-production-checks match_actor_production_checks.cpp)
+target_link_libraries(cm-match-actor-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-actor-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-actor-transfer-checks match_actor_transfer_checks.cpp)
+target_link_libraries(cm-match-actor-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-actor-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/program.json")
     foreach(resource IN ITEMS program.json segment-0.bin segment-1.bin segment-3.bin)
         set(resource_path "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/${resource}")
@@ -289,6 +312,15 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-factory-checks")
     add_test(NAME match_debugger_actual_withdrawal COMMAND cm-match-debugger-withdrawal-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-withdrawal-checks")
+    add_test(NAME match_actor_actual_production COMMAND cm-match-actor-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-production-checks")
+    add_test(NAME match_actor_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-match-actor-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/actor-profile-checks" "${CMAKE_BINARY_DIR}/actor-live-profile.snapshot")
+    set_tests_properties(match_actor_actual_production PROPERTIES FIXTURES_SETUP MatchActorLiveProfile)
+    set_tests_properties(match_actor_original_profile PROPERTIES FIXTURES_REQUIRED MatchActorLiveProfile)
+    add_test(NAME match_actor_nonlocal_transfer COMMAND cm-match-actor-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-transfer-checks")
 endif()
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/program.json")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

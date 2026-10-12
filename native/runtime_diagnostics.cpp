@@ -6,6 +6,7 @@
 #include "record_query_adapter.hpp"
 #include "record_history_adapter.hpp"
 #include "match_engine_adapter.hpp"
+#include "match_actor_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -19,12 +20,21 @@ struct RuntimeDiagnostics {
     RecordQueryDiagnostics record_query;
     RecordHistoryDiagnostics record_history;
     MatchEngineDiagnostics match_engine;
+    MatchActorDiagnostics match_actor;
 };
 State::State() = default;
 State::~State() = default;
 EngineInitializationDiagnostics& engine_initialization_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->engine_initialization;
+}
+MatchActorDiagnostics& match_actor_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->match_actor;
+}
+const MatchActorDiagnostics& match_actor_diagnostics(const State& state) {
+    static const MatchActorDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->match_actor : empty;
 }
 const EngineInitializationDiagnostics& engine_initialization_diagnostics(const State& state) {
     static const EngineInitializationDiagnostics empty;
