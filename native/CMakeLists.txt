@@ -441,7 +441,13 @@ target_compile_options(cm-match-debugger-lineup-checks PRIVATE -Wall -Wextra -We
 add_executable(cm-match-debugger-lab-checks match_debugger_lab_checks.cpp)
 target_link_libraries(cm-match-debugger-lab-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-lab-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-debugger-completion-checks match_debugger_completion_checks.cpp)
+target_link_libraries(cm-match-debugger-completion-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugger-completion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME match_debugger_actual_completion COMMAND cm-match-debugger-completion-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-completion-checks")
+    set_tests_properties(match_debugger_actual_completion PROPERTIES TIMEOUT 180)
     add_test(NAME match_debugger_lab COMMAND cm-match-debugger-lab-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lab-checks")
     set_tests_properties(match_debugger_lab PROPERTIES TIMEOUT 180)
@@ -525,6 +531,10 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_MATCH_
         $<TARGET_FILE:cm-match-debugger> "${CM_MATCH_DEBUGGER_PROGRAM_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
         --private-root "${CMAKE_BINARY_DIR}/debugger-worker-checks")
     set_tests_properties(match_debugger_worker_protocol PROPERTIES TIMEOUT 360)
+    add_test(NAME match_debugger_worker_completion COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/check_match_debugger_completion.py"
+        $<TARGET_FILE:cm-match-debugger> "${CM_MATCH_DEBUGGER_PROGRAM_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}")
+    set_tests_properties(match_debugger_worker_completion PROPERTIES TIMEOUT 180)
 endif()
 foreach(CM_MATCH_CHECK IN ITEMS production transfer)
     add_executable(cm-match-engine-${CM_MATCH_CHECK}-checks match_engine_${CM_MATCH_CHECK}_checks.cpp)

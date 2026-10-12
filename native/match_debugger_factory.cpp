@@ -115,6 +115,30 @@ public:
                 "The home club cannot field eleven eligible players" : "The away club cannot field eleven eligible players");
     }
 };
+
+void bind_detailed_friendly(State& state, std::uint32_t fixture) {
+    // The original -2 statistics fixture prepares independent players without
+    // career eligibility. Detailed end-of-match commentary instead queries a
+    // real competition ID and player assessment reads the fixture's official.
+    // Bind the existing original Friendly manager after player preparation;
+    // do not feed the negative statistics ID into a competition array.
+    const auto competition = std::uint32_t(state.memory.read<4>(slot(state, -0x7a50)));
+    const auto count = state.memory.read<4>(slot(state, -0x7b60));
+    const auto index = std::uint32_t(state.memory.read<4>(slot(state, -0x7b5c)));
+    const auto manager = std::uint32_t(state.memory.read<4>(slot(state, -0x7b54)));
+    const auto official = std::uint32_t(state.memory.read<4>(slot(state, -0x7ab4)));
+    if (competition >= count || !index || !manager ||
+        state.memory.read<4>(index + competition * 4) != manager ||
+        !state.memory.read<4>(slot(state, -0x7528)) || !official || state.memory.read<4>(official) != 0)
+        throw std::runtime_error("Original friendly competition or match official is unavailable");
+    // A repeatable sandbox default: the first actual original official. The
+    // original statistics-fixture builder uses -1 for absent previous-leg goals
+    // (10371bcc..10371bdc); zero incorrectly represents an aggregate fixture.
+    state.memory.write<4>(fixture + 0x14, official);
+    state.memory.write<1>(fixture + 0x4b, 0xff);
+    state.memory.write<1>(fixture + 0x4c, 0xff);
+    state.memory.write<4>(fixture, competition);
+}
 }
 
 EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
@@ -180,6 +204,7 @@ EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
             ++actor;
         }
     }
+    bind_detailed_friendly(state, fixture);
     report("Match ready and paused");
     return {std::move(world).release_state(), match, std::move(rosters)};
 }
