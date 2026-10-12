@@ -33,6 +33,43 @@ unsigned finish(State& state, std::uint32_t match) {
     }
     throw std::runtime_error("The original match did not finish within its bounded final interval");
 }
+struct RefereeReadReady {};
+struct RefereeRead final : MemoryObserver {
+    State& state; std::uint32_t official; bool observed = false;
+    RefereeRead(State& value, std::uint32_t pointer) : state(value), official(pointer) {}
+    void mapped(std::uint32_t, std::uint64_t) override {}
+    void written(std::uint32_t, const std::uint8_t*, std::size_t) override {}
+    void cleared(std::uint32_t, std::uint64_t) override {}
+    void read(std::uint32_t address, const std::uint8_t*, unsigned size) override {
+        if (state.pc == 0x10223378) {
+            require(address == official + 0x24 && size == 1, "Original foul query used an incorrect referee");
+            observed = true; throw RefereeReadReady{};
+        }
+    }
+};
+void referee_query(const State& input, std::uint32_t match) {
+    const auto official = std::uint32_t(input.memory.read<4>(match + 0xe034));
+    require(official && input.memory.read<4>(official) == 0 && input.memory.read<4>(match + 0xe030) == match,
+        "Original referee context is absent or has an incorrect identity");
+    for (bool missing : {false, true}) {
+        auto state = clone(input); state->platform = input.platform;
+        state->memory.map(fixture, 0x80); state->memory.write<1>(fixture + 0x14, 0); state->memory.write<1>(fixture + 0x24, 1);
+        if (missing) state->memory.write<4>(match + 0xe034, 0);
+        RefereeRead query(*state, official); state->memory.date_observer = &query;
+        state->wr<4>(12, match + 0xe030); state->wr<4>(16, fixture); state->wr<4>(20, 0);
+        state->wr<4>(24, 1); state->wr<4>(28, 0); state->wr<4>(4128, return_sentinel);
+        state->pc = 0x10223100; state->budget = state->executed + 1000;
+        bool rejected = false;
+        try { run_until(*state, return_sentinel); }
+        catch (const RefereeReadReady&) {}
+        catch (const std::runtime_error& error) {
+            rejected = missing && state->pc == 0x10223378 && std::string_view(error.what()).starts_with("Unmapped data access");
+        }
+        state->memory.date_observer = nullptr;
+        require(missing ? rejected && !query.observed : query.observed && !rejected,
+            "Original referee query or missing-context negative did not discriminate");
+    }
+}
 }
 
 int main(int argc, char** argv) {
@@ -40,12 +77,20 @@ int main(int argc, char** argv) {
         require(argc == 4, "Expected original program, game and private completion root");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        auto engine = create_match({argv[1], argv[2], root}, {2262, 5677, 12345, 2001, 194});
+        {
+            auto arsenal = create_match({argv[1], argv[2], root / "arsenal"}, {677, 5677, 12345, 2001, 194});
+            referee_query(*arsenal.state, arsenal.match);
+            for (unsigned tick = 0; tick < 100; ++tick) require(advance(*arsenal.state, arsenal.match) == 1,
+                "Arsenal's original referee handling failed within the reported initial interval");
+        }
+        auto engine = create_match({argv[1], argv[2], root / "cruzeiro"}, {2262, 5677, 12345, 2001, 194});
         auto& state = *engine.state;
         const auto match = engine.match, fixture = std::uint32_t(state.memory.read<4>(match + 0x3118));
         require(state.memory.read<4>(fixture) < 536 && state.memory.read<4>(fixture + 0x14) &&
             state.memory.read<1>(fixture + 0x4b) == 0xff && state.memory.read<1>(fixture + 0x4c) == 0xff,
             "Detailed friendly fixture is incomplete");
+        require(state.memory.read<4>(state.memory.read<4>(fixture + 0x14)) == state.memory.read<4>(fixture),
+            "Detailed fixture has an incorrect competition record");
         unsigned prefix = 0;
         while (state.memory.read<2>(match + 0x7948) < 980) {
             require(++prefix <= 1200, "Actual match did not reach its final interval");
@@ -90,7 +135,7 @@ int main(int argc, char** argv) {
         require(session.execution_state() == ExecutionState::completed && session.inspect() == final_inspection &&
             session.events().size() == event_count, "Redo lost full time or the final football state");
         completed.compare(session.state(), "Redo actual completion");
-        std::cout << "PASS: Cruzeiro/Manchester United seed 12345, " << prefix + final_ticks << " actual ticks, full time "
+        std::cout << "PASS: 100 Arsenal/Manchester United actual ticks, original referee query and missing-context negative; Cruzeiro/Manchester United seed 12345, " << prefix + final_ticks << " actual ticks, full time "
             << clock_seconds(final_inspection) << "s, original/C++23 final state and instruction agreement, 2 original-fault negatives, full-time event, undo/redo and completed-step rejection\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

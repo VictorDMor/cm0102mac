@@ -116,28 +116,38 @@ public:
     }
 };
 
-void bind_detailed_friendly(State& state, std::uint32_t fixture) {
+void bind_detailed_friendly(State& state, std::uint32_t match, std::uint32_t fixture) {
     // The original -2 statistics fixture prepares independent players without
     // career eligibility. Detailed end-of-match commentary instead queries a
-    // real competition ID and player assessment reads the fixture's official.
+    // real competition ID and player assessment reads the competition record.
     // Bind the existing original Friendly manager after player preparation;
     // do not feed the negative statistics ID into a competition array.
     const auto competition = std::uint32_t(state.memory.read<4>(slot(state, -0x7a50)));
     const auto count = state.memory.read<4>(slot(state, -0x7b60));
     const auto index = std::uint32_t(state.memory.read<4>(slot(state, -0x7b5c)));
     const auto manager = std::uint32_t(state.memory.read<4>(slot(state, -0x7b54)));
+    const auto competition_record = manager ? std::uint32_t(state.memory.read<4>(manager + 4)) : 0;
     const auto official = std::uint32_t(state.memory.read<4>(slot(state, -0x7ab4)));
     if (competition >= count || !index || !manager ||
-        state.memory.read<4>(index + competition * 4) != manager ||
+        state.memory.read<4>(index + competition * 4) != manager || !competition_record ||
+        state.memory.read<4>(competition_record) != competition ||
         !state.memory.read<4>(slot(state, -0x7528)) || !official || state.memory.read<4>(official) != 0)
         throw std::runtime_error("Original friendly competition or match official is unavailable");
     // A repeatable sandbox default: the first actual original official. The
     // original statistics-fixture builder uses -1 for absent previous-leg goals
     // (10371bcc..10371bdc); zero incorrectly represents an aggregate fixture.
-    state.memory.write<4>(fixture + 0x14, official);
+    state.memory.write<4>(fixture + 0x14, competition_record);
+    state.memory.write<2>(fixture + 0x2e, 0);
     state.memory.write<1>(fixture + 0x4b, 0xff);
     state.memory.write<1>(fixture + 0x4c, 0xff);
     state.memory.write<4>(fixture, competition);
+    // Isolated initialization deliberately passes no referee to 1021b020.
+    // After binding a detailed friendly, construct its actual referee context
+    // just as 101d2580..101d25a4 does for a scheduled match. Foul/card queries
+    // read the resulting match + e034 pointer, not fixture + 14.
+    (void)invoke(state, 0x1021b020, {match + 0xe030, match, official});
+    if (state.memory.read<4>(match + 0xe034) != official)
+        throw std::runtime_error("Original match referee context did not initialize");
 }
 }
 
@@ -204,7 +214,7 @@ EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
             ++actor;
         }
     }
-    bind_detailed_friendly(state, fixture);
+    bind_detailed_friendly(state, match, fixture);
     report("Match ready and paused");
     return {std::move(world).release_state(), match, std::move(rosters)};
 }
