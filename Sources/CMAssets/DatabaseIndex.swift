@@ -7,12 +7,15 @@ public struct DatabaseEntry: Codable, Equatable, Sendable {
     public let storedOffset: UInt32
     public let storedType: UInt32
 
-    // The supplied Mac media has a four-byte prefix followed by fixed-size records.
+    // Fixed-size records start at byte zero and end with the original marker.
     // A divisible size establishes structural consistency, not field semantics.
     public func recordSize(in data: Data) throws -> Int? {
         guard recordCount > 0 else { return nil }
         guard data.count >= 4, (data.count - 4) % Int(recordCount) == 0 else {
             throw AssetError.invalid("Record count does not match \(filename)")
+        }
+        guard try Bytes(data).u32(data.count - 4) == 0xf1fffff1 else {
+            throw AssetError.invalid("Invalid database table end marker in \(filename)")
         }
         let size = (data.count - 4) / Int(recordCount)
         guard size > 0 else { throw AssetError.invalid("Empty records in \(filename)") }

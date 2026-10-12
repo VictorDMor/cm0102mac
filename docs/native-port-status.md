@@ -574,7 +574,10 @@ All pixels across the nine files have the high bit clear; white is stored as
 that tinted whites pink. The output also tracks unsupported images explicitly.
 
 The `.dam` index uses an eight-byte prefix and 68-byte entries with big-endian
-numeric fields. Present table files have a four-byte prefix. Relevant observed
+numeric fields. Present table records start at byte zero and end with the four-
+byte `0xf1fffff1` marker. Earlier inspection inferred a prefix from file sizes;
+club IDs and the original reader's seek/read confirm that the extra word is a
+trailer. Relevant observed
 record sizes differ from the existing Windows definitions:
 
 | Record | Mac bytes | Existing Windows bytes |

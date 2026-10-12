@@ -30,7 +30,18 @@ func bigEndianIndexAndRecordBoundary() throws {
     let table = index.entries[0]
     try check(table.tableID == 10, "big-endian table ID")
     try check(table.recordCount == 2, "big-endian record count")
-    try check(try table.recordSize(in: Data(count: 148)) == 72, "four-byte table prefix")
+    var records = Data(count: 148)
+    write32(0, at: 0, in: &records)
+    write32(1, at: 72, in: &records)
+    write32(0xf1fffff1, at: 144, in: &records)
+    try check(try table.recordSize(in: records) == 72, "records begin at zero and have a four-byte end marker")
+    var wrongMarker = records
+    write32(0, at: 144, in: &wrongMarker)
+    try rejects { _ = try table.recordSize(in: wrongMarker) }
+    var misplacedMarker = records
+    write32(0xf1fffff1, at: 0, in: &misplacedMarker)
+    write32(0, at: 144, in: &misplacedMarker)
+    try rejects { _ = try table.recordSize(in: misplacedMarker) }
     try rejects { _ = try table.recordSize(in: Data(count: 147)) }
 }
 
