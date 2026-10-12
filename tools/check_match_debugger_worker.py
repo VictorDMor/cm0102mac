@@ -68,7 +68,7 @@ class Worker:
         self.send(command)
         require(self.next()["type"] == "error", "Invalid command was accepted")
         state = self.state()
-        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "rosters", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount", "injectedGoalCount", "lineupEditCount", "matchSeconds", "clock", "timelineCursor", "timelineSize", "matchEvents", "substitutionCount"):
+        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "rosters", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount", "injectedGoalCount", "lineupEditCount", "matchSeconds", "clock", "timelineCursor", "timelineSize", "matchEvents", "substitutionCount", "cardEditCount"):
             require(state.get(key) == preserved.get(key), f"Rejected command changed {key}")
 
     def close(self, *, eof=False):
@@ -262,7 +262,7 @@ def main():
             first.send({"command": "withdraw", "team": 0, "actor": 8})
             withdrawn = first.state(status="paused", withdrawalCount=1)
             target = next(p for p in withdrawn["players"] if p["team"] == 0 and p["actor"] == 8)
-            require(target["position"] == -3 and not target["active"] and withdrawn["homeOnPitch"] == 10 and
+            require(target["position"] in (-2, -1) and target["injured"] and target["redCards"] == 0 and not target["active"] and withdrawn["homeOnPitch"] == 10 and
                     withdrawn["awayOnPitch"] == 11 and withdrawn["stepCount"] == stable["stepCount"] and
                     withdrawn["engineUnits"] == stable["engineUnits"], "Worker did not apply the original injury withdrawal")
             require(any("Intervention:" in e["description"] and "11 → 10" in e["description"] for e in withdrawn["events"]),

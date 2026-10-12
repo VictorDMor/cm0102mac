@@ -1,5 +1,8 @@
 # Standalone match debugger application
 
+Current update: [card controls and corrected injury handling](native-match-debugger-cards.md)
+are delivered. The initial lab/application evidence below is retained as history.
+
 ## Delivered core
 
 `CM Match Debugger.app` is a separate ARM64 AppKit application with bundle identifier `local.cm0102.match-debugger`. Its private engine process creates a fresh detailed match from two selected original club IDs and an explicit nonzero random seed. The default Match view presents score, elapsed `minutes:seconds`, named players and reserves, and committed football events together. Raw diagnostics remain in Details.

@@ -1,5 +1,14 @@
 # Match injury withdrawal and position access reconstruction
 
+> Classification correction (2026-10-12): the original `101f1530` body described
+> below is dismissal, with actor `+0x23` red count and position `-3`. Its
+> semantic body/ABI are unchanged and its source name is now `dismiss_player`.
+> This historical report mislabeled it as injury. Current Injury handling uses
+> the complete original pending-injury processor `101f6c60`; see the
+> [card and injury correction report](native-match-debugger-cards.md) for current
+> behavior and focused verification. The evidence below for `101f1530` is
+> evidence of dismissal, not of the corrected Injury control.
+
 ## Result and bounded scope
 
 Three complete original entries now execute named C++23 behavior in both the installed game and standalone debugger:

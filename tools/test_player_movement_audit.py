@@ -2,14 +2,15 @@
 from contextlib import closing
 from copy import deepcopy
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
 import unittest
-from compile_recomp import SEMANTIC_REPLACEMENTS
-from player_movement_audit import ENTRY, END, COUNT, FRAGMENTS, TABLES, load_player_movement, load_player_movement_tables, require_player_movement_body, require_player_movement_edges, require_player_movement_tables
+from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
+from player_movement_audit import ENTRY, END, COUNT, FRAGMENTS, TABLES, load_player_movement, load_player_movement_tables, require_player_movement_body, require_player_movement_edges, require_player_movement_tables, require_player_movement_contract, require_player_movement_hooks
 from make_player_movement_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,14 +18,31 @@ INPUT = Path(os.environ.get('CM_PLAYER_MOVEMENT_INPUT', ROOT / '.local/compiler-
 
 
 class ScopeTests(unittest.TestCase):
-    def test_complete_scope_does_not_claim_a_production_replacement(self):
+    def test_complete_scope_appends_one_production_root(self):
         self.assertEqual(sum(count for _, count, _ in FRAGMENTS), COUNT)
         self.assertEqual((ENTRY, END, COUNT), (0x1022e7e0, 0x10235da4, 7537))
-        self.assertNotIn(ENTRY, [entry for entry, _ in SEMANTIC_REPLACEMENTS])
+        self.assertEqual(SEMANTIC_REPLACEMENTS[-1], (ENTRY, "player_movement_adapter"))
         manifest = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(manifest), 648)
+        self.assertEqual(len(manifest), 649)
         self.assertEqual(hashlib.sha256(json.dumps(manifest[:643], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '3f290aa60e8a00b40e6bceba6d3abfbe86e6a32413fa267d7ec7c2e07a7c1398')
+
+    def test_previous_manifest_is_preserved(self):
+        previous=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:648]]
+        self.assertEqual(hashlib.sha256(json.dumps(previous,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                         'ad73754c9c759159ac6dc22a40d7392bd94d25283af8bf4c1c323f0c721f65f0')
+
+    def test_production_does_not_replay_its_body(self):
+        sources=list((ROOT/'native').glob('player_movement*.cpp'))
+        sources=[source for source in sources if not any(word in source.name for word in ('checks','characterization','adapter'))]
+        self.assertTrue(sources)
+        for source in sources:
+            text=source.read_text()
+            for forbidden in ('player_movement_reference','dispatch_page','pcode','i_102'):
+                self.assertNotIn(forbidden,text,source.name)
+        coordinator=(ROOT/'native/player_movement_coordinator.cpp').read_text()
+        self.assertIn('if(state.pc<entry || state.pc>=end)',coordinator)
+        self.assertIn('GuestNativeScope scope(state,entry)',coordinator)
 
     def test_only_the_root_is_an_allowed_external_entrance(self):
         require_player_movement_edges([(0, ENTRY), (ENTRY, END - 4), (END - 4, END)])
@@ -86,6 +104,20 @@ class ContractTests(unittest.TestCase):
             self.assertIn(f'player_movement_reference_jump_seen(s, 0x{site:x}, std::uint32_t(s.r<4>(4132))); s.step(0x{site:x});', self.code)
         self.assertEqual([len(self.tables[site]) for site in sites], [47, 47, 11])
         self.assertEqual([len(set(self.tables[site])) for site in sites], [12, 12, 3])
+
+    def test_complete_production_hook_and_fragment_contracts(self):
+        for page,*_ in FRAGMENTS:
+            rows=[row for row in self.records if row['address']>>12==page]
+            disabled={key:False for key in inspect.signature(generate_page).parameters if key.endswith('_hooks')}
+            disabled['player_movement_hooks']=True
+            code=generate_page(page,rows,{row['address'] for row in self.records},userops=self.userops,**disabled)
+            require_player_movement_contract(page,rows,{ENTRY})
+            require_player_movement_hooks(page,rows,code)
+            if page==ENTRY>>12:
+                hook=f'if (try_modern_player_movement(s, 0x{ENTRY:x})) return true;'
+                with self.assertRaises(ValueError):require_player_movement_hooks(page,rows,code.replace(hook,''))
+            else:self.assertNotIn('try_modern_player_movement',code)
+            with self.assertRaises(ValueError):require_player_movement_contract(page,rows[:-1],{row['address'] for row in rows})
 
     def test_table_pointer_or_any_word_mutation_is_rejected(self):
         words = {}

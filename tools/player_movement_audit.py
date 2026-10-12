@@ -1,4 +1,4 @@
-"""Complete original movement/interaction boundary, before semantic replacement.
+"""Complete original movement/interaction contract and production hook.
 
 Computed destinations are live guest data. These pins validate the read-only
 original input used to characterize them, not a host dispatch table.
@@ -88,3 +88,46 @@ def load_player_movement_tables(input_directory):
         raise ValueError(f'Missing original movement table word at {address:x}')
 
     return require_player_movement_tables(read_word)
+
+
+PLAYER_MOVEMENT_ENTRIES = (ENTRY,)
+
+
+def require_player_movement_contract(page, records, selected=None):
+    if not any(page == fragment_page for fragment_page, *_ in FRAGMENTS):
+        return
+    addresses = {row['address'] for row in records} | set(selected or ())
+    if not any(ENTRY <= address < END for address in addresses):
+        return
+    part = [row for row in records if ENTRY <= row['address'] < END]
+    _, count, digest = next(fragment for fragment in FRAGMENTS if fragment[0] == page)
+    if len(part) != count or fingerprint(part) != digest:
+        raise ValueError(f'Original movement fragment changed or incomplete at {page:x}')
+
+
+def require_player_movement_index(db, selected=None):
+    if selected is None:
+        load_player_movement(db)
+    else:
+        records = [row for _, row in sorted(selected.items())]
+        for page, *_ in FRAGMENTS:
+            require_player_movement_contract(page, records, selected)
+        require_player_movement_edges(db.execute("""SELECT i.address,e.value FROM instructions AS i,
+            json_each(json_insert(json_extract(i.body,'$.flows'),'$[#]',json_extract(i.body,'$.fallthrough'))) AS e
+            WHERE e.value>? AND e.value<?""", (ENTRY, END)))
+
+
+def player_movement_hook(entry):
+    if entry != ENTRY:
+        raise ValueError('Only the complete movement root is callable')
+    return f'if (try_modern_player_movement(s, 0x{entry:x})) return true;'
+
+
+def require_player_movement_hooks(page, records, code):
+    if page != ENTRY >> 12 or ENTRY not in {row['address'] for row in records}:
+        return
+    hook = player_movement_hook(ENTRY)
+    fragment = code.split(f'i_{ENTRY:x}:', 1)[-1].split(f'i_{ENTRY + 4:x}:', 1)[0]
+    steps = [token for token in (f's.step(0x{ENTRY:x});', f'counter.step(0x{ENTRY:x});') if token in fragment]
+    if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+        raise ValueError('Missing or misplaced complete movement hook')

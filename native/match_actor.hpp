@@ -7,7 +7,7 @@ struct DependencyDispatch {
     virtual ~DependencyDispatch() = default;
     virtual void call(State&, std::uint32_t target, std::uint32_t continuation) = 0;
 };
-void withdraw_injured(State&, DependencyDispatch* = nullptr);
+void dismiss_player(State&, DependencyDispatch* = nullptr);
 void read_position(State&);
 void write_position(State&);
 }

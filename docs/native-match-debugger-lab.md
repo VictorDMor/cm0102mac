@@ -1,5 +1,8 @@
 # Match lab: time, events and unrestricted substitutions
 
+Current update: [card controls and corrected injury handling](native-match-debugger-cards.md)
+are delivered. The initial lab/application evidence below is retained as history.
+
 ## Delivered behavior
 
 The default **Match** view shows a large original match clock, score, named players and substitutes, and football commentary together. Technical fields remain in **Details**. **Play**, **Pause**, **Back**, **Next moment**, minute jumps and a `minutes:seconds` field control the real engine. The clock converts the original signed field at `match+0x7948` using eleven engine units per minute; its original event-related adjustments remain visible.

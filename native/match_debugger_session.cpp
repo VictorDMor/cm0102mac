@@ -1,6 +1,7 @@
 #include "match_debugger_session.hpp"
 #include "match_engine.hpp"
 #include "match_debugger_goal.hpp"
+#include "match_debugger_cards.hpp"
 #include "match_debugger_checkpoint.hpp"
 #include <limits>
 #include <algorithm>
@@ -76,7 +77,8 @@ public:
 struct Session::History {
     struct Frame {
         std::unique_ptr<Checkpoint> guest;
-        std::size_t steps, withdrawals, goals, lineups, substitutions, events;
+        std::size_t steps, withdrawals, goals, lineups, substitutions, events, cards;
+        std::array<std::int8_t, 40> return_positions;
         unsigned seconds;
         ExecutionState execution;
     };
@@ -88,6 +90,7 @@ struct Session::History {
     std::vector<LineupRecord> lineups;
     std::vector<SubstitutionRecord> substitutions;
     std::vector<MatchEvent> events;
+    std::vector<CardRecord> cards;
 };
 
 Session::~Session() = default;
@@ -98,18 +101,18 @@ void Session::capture_boundary() {
         history_->frames.empty() ? nullptr : history_->frames.back().guest.get());
     if (!history_->frames.empty()) guest->caller_budget(history_->frames[history_->cursor].guest->budget());
     history_->frames.push_back({std::move(guest), steps_.size(), withdrawals_.size(), goals_.size(), lineup_edits_.size(),
-        substitutions_.size(), events_.size(), clock_seconds(inspect()),
+        substitutions_.size(), events_.size(), cards_.size(), return_positions_, clock_seconds(inspect()),
         execution_ == ExecutionState::running ? ExecutionState::paused : execution_});
     history_->cursor = history_->frames.size() - 1;
     history_->steps = steps_; history_->withdrawals = withdrawals_; history_->goals = goals_;
-    history_->lineups = lineup_edits_; history_->substitutions = substitutions_; history_->events = events_;
+    history_->lineups = lineup_edits_; history_->substitutions = substitutions_; history_->events = events_; history_->cards = cards_;
 }
 
 void Session::branch_history() {
     if (!history_ || history_->cursor + 1 == history_->frames.size()) return;
     history_->frames.resize(history_->cursor + 1);
     history_->steps = steps_; history_->withdrawals = withdrawals_; history_->goals = goals_;
-    history_->lineups = lineup_edits_; history_->substitutions = substitutions_; history_->events = events_;
+    history_->lineups = lineup_edits_; history_->substitutions = substitutions_; history_->events = events_; history_->cards = cards_;
 }
 
 void Session::restore_boundary(std::size_t index) {
@@ -123,6 +126,8 @@ void Session::restore_boundary(std::size_t index) {
     lineup_edits_.assign(history_->lineups.begin(), history_->lineups.begin() + frame.lineups);
     substitutions_.assign(history_->substitutions.begin(), history_->substitutions.begin() + frame.substitutions);
     events_.assign(history_->events.begin(), history_->events.begin() + frame.events);
+    cards_.assign(history_->cards.begin(), history_->cards.begin() + frame.cards);
+    return_positions_ = frame.return_positions;
     history_->cursor = index; failure_.clear(); execution_ = frame.execution;
 }
 
@@ -201,7 +206,8 @@ void Session::reset() {
     withdrawals_.clear();
     goals_.clear();
     lineup_edits_.clear();
-    substitutions_.clear(); events_.clear(); history_.reset();
+    substitutions_.clear(); events_.clear(); cards_.clear(); return_positions_.fill(-1); history_.reset();
+    remember_positions();
     failure_.clear();
     execution_ = ExecutionState::paused;
     capture_boundary();
@@ -229,6 +235,111 @@ unsigned Session::on_pitch(unsigned team) const {
     return count;
 }
 
+Cards Session::cards(unsigned team, unsigned actor) const {
+    if (team > 1 || actor >= 20) throw std::invalid_argument("Choose an actual match player");
+    const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+    return {unsigned(engine_.state->memory.read<1>(address + 0x24)),
+            unsigned(engine_.state->memory.read<1>(address + 0x23))};
+}
+
+void Session::remember_positions() {
+    for (unsigned index = 0; index < 40; ++index) {
+        const auto address = engine_.match + 0x311c + index * 0x1c4;
+        const auto position = signed_value<1>(engine_.state->memory.read<1>(address + 0x19));
+        if (position >= 0 && position < 11 && engine_.state->memory.read<4>(address + 0x6c))
+            return_positions_[index] = std::int8_t(position);
+    }
+}
+
+CardRecord Session::change_card(unsigned team, unsigned actor, CardKind kind, bool add) {
+    if (execution_ != ExecutionState::paused || steps_.empty())
+        throw std::logic_error("Pause the match after kickoff to change cards");
+    if (team > 1 || actor >= 20 || (kind != CardKind::yellow && kind != CardKind::red))
+        throw std::invalid_argument("Choose a player and a yellow or red card");
+    auto& state = *engine_.state;
+    const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+    const auto staff = std::uint32_t(state.memory.read<4>(address + 0x6c));
+    const auto position = signed_value<1>(state.memory.read<1>(address + 0x19));
+    const auto before = cards(team, actor);
+    if (!staff || state.memory.read<1>(address + 0x27) != team || state.memory.read<4>(address + 0x1a4) != engine_.match)
+        throw std::invalid_argument("Choose an actual player in this match");
+    if (add && (before.red || position < 0 || position > 10 || inspect().phase != 0))
+        throw std::invalid_argument("Choose an on-pitch player during active play to add a card");
+    if (!add && !(kind == CardKind::yellow ? before.yellow : before.red))
+        throw std::invalid_argument("The selected player does not have that card");
+    const bool restore = !add && before.red && (kind == CardKind::red || before.yellow == 2);
+    const auto previous_position = return_positions_[team * 20 + actor];
+    if (restore && (position != -3 || previous_position < 0 || previous_position > 10 || before.red != 1))
+        throw std::invalid_argument("This dismissal cannot be reversed at the current match boundary");
+    unsigned displaced = 20, vacancy = 11;
+    if (restore) {
+        std::array<bool, 11> occupied{};
+        for (unsigned other = 0; other < 20; ++other) {
+            const auto candidate = engine_.match + 0x311c + (team * 20 + other) * 0x1c4;
+            const auto role = signed_value<1>(state.memory.read<1>(candidate + 0x19));
+            if (role >= 0 && role < 11) {
+                occupied[unsigned(role)] = true;
+                if (role == previous_position) displaced = other;
+            }
+        }
+        const auto empty = std::find(occupied.begin(), occupied.end(), false);
+        if (empty == occupied.end()) throw std::invalid_argument("There is no vacant position for the returning player");
+        vacancy = unsigned(empty - occupied.begin());
+    }
+    CardRecord record{kind, add, team, actor, std::uint32_t(state.memory.read<4>(staff)), steps_.size(), 0, before, {}};
+    const auto instructions = state.executed;
+    branch_history();
+    try {
+        StepBudget budget(state, step_instruction_limit_);
+        MatchEventsCapture events(state, engine_.match, true, [&](MatchEvent value) { observe_event(value); });
+        const auto first_event = events_.size();
+        remember_positions();
+        if (add) {
+            // An actual opposing actor supplies the original foul-received field.
+            const auto opponent = engine_.match + 0x311c + ((1 - team) * 20 + 8) * 0x1c4;
+            apply_original_card(state, engine_.match, address, opponent, kind == CardKind::yellow);
+        } else {
+            // Removal is an explicit debugger edit, not a football rule or a
+            // retroactive removal of the underlying foul/rating effects.
+            if (kind == CardKind::yellow || (kind == CardKind::red && before.yellow == 2))
+                state.memory.write<1>(address + 0x24, before.yellow - 1);
+            if (restore) {
+                state.memory.write<1>(address + 0x23, 0);
+                state.memory.write<1>(address + 0x21, 0);
+                if (displaced != 20)
+                    (void)invoke(state, 0x101f1870, {engine_.match + 0x311c + (team * 20 + displaced) * 0x1c4, vacancy});
+                return_dismissed_player(state, engine_.match, address, unsigned(previous_position));
+            }
+            if (before.yellow == 2 || (before.red && before.yellow == 1 && kind == CardKind::red))
+                state.memory.write<1>(address + 0x26, 0);
+            else if (before.red && before.yellow == 1 && kind == CardKind::yellow) {
+                state.memory.write<1>(address + 0x25, state.memory.read<1>(address + 0x26));
+                state.memory.write<1>(address + 0x26, 0);
+            } else state.memory.write<1>(address + 0x25, 0);
+        }
+        record.instructions = state.executed - instructions; record.after = cards(team, actor);
+        cards_.push_back(record);
+        MatchEvent event;
+        event.kind = add ? (kind == CardKind::yellow ? MatchEvent::Kind::yellow_card : MatchEvent::Kind::red_card) :
+            (kind == CardKind::yellow ? MatchEvent::Kind::yellow_removed : MatchEvent::Kind::red_removed);
+        event.code = add && record.after.yellow == 2 ? 183 : -1;
+        event.seconds = clock_seconds(inspect()); event.team = int(team); event.actor = int(actor);
+        event.staff_id = record.staff_id; event.injected = true;
+        const auto original_card = add && std::any_of(events_.begin() + first_event, events_.end(), [&](const MatchEvent& original) {
+            return original.staff_id == record.staff_id && (original.code == 183 || original.code == 184 || original.code == 185);
+        });
+        if (!original_card) observe_event(event);
+        capture_boundary();
+        return record;
+    } catch (const std::exception& error) {
+        execution_ = ExecutionState::faulted;
+        failure_ = "Engine card intervention fault at " + hex_address(state.pc) + ": " + error.what();
+        throw;
+    } catch (...) {
+        execution_ = ExecutionState::faulted; failure_ = "Engine card intervention was interrupted"; throw;
+    }
+}
+
 WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor) {
     if (execution_ != ExecutionState::paused || steps_.empty())
         throw std::logic_error("Injury withdrawal requires a paused match after kickoff");
@@ -248,7 +359,7 @@ WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor)
     record.team = team; record.actor = actor;
     record.staff_id = std::uint32_t(state.memory.read<4>(staff));
     record.position_before = std::int8_t(position);
-    record.withdrawals_before = std::uint8_t(state.memory.read<1>(address + 0x23));
+    record.injury_before = std::uint8_t(state.memory.read<1>(address + 0x1c));
     record.on_pitch_before = on_pitch(team);
     record.before = inspect();
     const auto instructions = state.executed;
@@ -256,20 +367,14 @@ WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor)
     try {
         StepBudget budget(state, step_instruction_limit_);
         MatchEventsCapture events(state, engine_.match, true, [&](MatchEvent value) { observe_event(value); });
-        state.wr<4>(12, engine_.match);
-        state.wr<4>(16, address);
-        state.wr<4>(20, 0); // Original injury count/time and tactical update path.
-        state.wr<4>(4128, return_sentinel);
-        state.pc = 0x101f1530;
-        run_until(state, return_sentinel);
-        if (state.pc != return_sentinel)
-            throw std::runtime_error("Original injury withdrawal did not return to its boundary");
+        remember_positions();
+        apply_original_injury(state, engine_.match, address);
         record.instructions = state.executed - instructions;
         record.position_after = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
-        record.withdrawals_after = std::uint8_t(state.memory.read<1>(address + 0x23));
+        record.injury_after = std::uint8_t(state.memory.read<1>(address + 0x1c));
         record.on_pitch_after = on_pitch(team);
         record.after = inspect();
-        if (record.position_after != -3)
+        if (record.position_after != -2 && record.position_after != -1)
             throw std::runtime_error("Original injury withdrawal did not mark the selected actor unavailable");
         withdrawals_.push_back(record);
         MatchEvent event; event.kind = MatchEvent::Kind::injury; event.seconds = clock_seconds(record.after);
@@ -470,8 +575,8 @@ SubstitutionRecord Session::substitute(unsigned team, unsigned outgoing_actor, s
     const auto outgoing = engine_.match + 0x311c + (team * 20 + outgoing_actor) * 0x1c4;
     const auto staff = std::uint32_t(state.memory.read<4>(outgoing + 0x6c));
     const auto current_position = signed_value<1>(state.memory.read<1>(outgoing + 0x19));
-    const bool injured = current_position == -3;
-    const auto position = injured ? signed_value<1>(state.memory.read<1>(outgoing + 0x1a)) : current_position;
+    const bool injured = (current_position == -2 || current_position == -1) && state.memory.read<1>(outgoing + 0x1c) != 0;
+    const auto position = injured ? return_positions_[team * 20 + outgoing_actor] : current_position;
     if (!staff || position < 0 || position > 10 || (current_position < 0 && !injured))
         throw std::invalid_argument("Choose an on-pitch or injured player to replace");
     const auto& members = roster(team);
@@ -567,6 +672,7 @@ StepRecord Session::execute_step() {
         StepRecord record;
         record.number = steps_.size() + 1;
         record.before = inspect();
+        remember_positions();
         const auto first_event = events_.size();
         const auto instructions = state.executed;
         StepBudget budget(state, step_instruction_limit_);

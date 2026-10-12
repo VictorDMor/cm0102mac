@@ -155,7 +155,7 @@ void withdraw_body(ActorCall& a) {
 }
 }
 
-void withdraw_injured(State& state, DependencyDispatch* dependencies) {
+void dismiss_player(State& state, DependencyDispatch* dependencies) {
     ActorCall call(state, entries[0], dependencies); withdraw_body(call);
     call.at(0x101f1848); call.load(0, 1, 0x68); call.offset(1, 1, 0x60); call.restore_link(); call.multiple(23, true); call.finish();
 }

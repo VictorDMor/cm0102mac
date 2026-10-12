@@ -38,7 +38,7 @@ target_sources(cm_aot PRIVATE aggregate_object.cpp aggregate_object_adapter.cpp)
 target_sources(cm_aot PRIVATE record_group.cpp record_group_adapter.cpp)
 target_sources(cm_aot PRIVATE record_query.cpp record_query_adapter.cpp)
 target_sources(cm_aot PRIVATE record_history.cpp record_history_adapter.cpp)
-target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp)
+target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
 target_sources(cm_aot PRIVATE spatial_role.cpp spatial_role_adapter.cpp)
@@ -46,6 +46,28 @@ target_sources(cm_aot PRIVATE marking_pressure.cpp marking_pressure_adapter.cpp)
 target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
 target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
 target_sources(cm_aot PRIVATE actor_motion.cpp actor_motion_adapter.cpp)
+target_sources(cm_aot PRIVATE
+    player_movement_adapter.cpp
+    player_movement_coordinator.cpp
+    player_movement.cpp
+    player_movement_carrier.cpp
+    player_movement_environment.cpp
+    player_movement_interaction.cpp
+    player_movement_contact.cpp
+    player_movement_contact_action.cpp
+    player_movement_contact_followup.cpp
+    player_movement_restart.cpp
+    player_movement_possession.cpp
+    player_movement_play_preparation.cpp
+    player_movement_play_bias.cpp
+    player_movement_kind17_contact.cpp
+    player_movement_kind17_clear.cpp
+    player_movement_kind18.cpp
+    player_movement_repeated_contact.cpp
+    player_movement_transfer.cpp
+    player_movement_distance.cpp
+    player_movement_statistics.cpp
+    player_movement_ratings.cpp)
 add_library(cm_match_debugger_database STATIC match_debugger_database.cpp)
 target_include_directories(cm_match_debugger_database PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(cm_match_debugger_database PUBLIC "-framework CoreFoundation")
@@ -178,6 +200,42 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
             "${CM_ORACLE_DIR}/segment-1.bin"
         VERBATIM)
+    set(CM_MOVEMENT_COMPONENT_DIR "${CMAKE_BINARY_DIR}/player-movement-components")
+    set(CM_MOVEMENT_COMPONENT_REFERENCES
+        "${CM_MOVEMENT_COMPONENT_DIR}/preparation-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/carrier-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/environment-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/interaction-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/contact-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/contact-outcome-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/contact-action-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/contact-followup-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/restart-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/possession-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/play-preparation-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/play-bias-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/kind17-contact-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/kind17-clear-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/kind18-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/repeated-contact-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/transfer-tail-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/noncarrier-reference.cpp"
+        "${CM_MOVEMENT_COMPONENT_DIR}/whole-reference.cpp"
+)
+    add_custom_command(OUTPUT ${CM_MOVEMENT_COMPONENT_REFERENCES}
+        "${CM_MOVEMENT_COMPONENT_DIR}/contact-action-table.hpp" "${CM_MOVEMENT_COMPONENT_DIR}/repeated-contact-tables.hpp"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_player_movement_component_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MOVEMENT_COMPONENT_DIR}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_player_movement_component_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_player_movement_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/player_movement_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json" "${CM_ORACLE_DIR}/segment-1.bin"
+        VERBATIM)
+    add_executable(cm-player-movement-checks player_movement_noncarrier_checks.cpp ${CM_MOVEMENT_COMPONENT_REFERENCES})
+    target_include_directories(cm-player-movement-checks PRIVATE "${CM_MOVEMENT_COMPONENT_DIR}")
+    target_link_libraries(cm-player-movement-checks PRIVATE cm_aot)
+    target_compile_options(cm-player-movement-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME player_movement_component_equivalence COMMAND cm-player-movement-checks)
     add_executable(cm-player-movement-characterization player_movement_characterization.cpp "${CM_PLAYER_MOVEMENT_REFERENCE}")
     target_link_libraries(cm-player-movement-characterization PRIVATE cm_match_debugger_factory)
     target_compile_options(cm-player-movement-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -239,6 +297,12 @@ add_executable(cm-match-actor-production-checks match_actor_production_checks.cp
 add_executable(cm-actor-construction-production-checks actor_construction_production_checks.cpp)
 add_executable(cm-spatial-role-production-checks spatial_role_production_checks.cpp)
 add_executable(cm-marking-pressure-production-checks marking_pressure_production_checks.cpp)
+add_executable(cm-player-movement-production-checks player_movement_production_checks.cpp)
+target_link_libraries(cm-player-movement-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-player-movement-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-player-movement-transfer-checks player_movement_transfer_checks.cpp)
+target_link_libraries(cm-player-movement-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-player-movement-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-actor-motion-production-checks actor_motion_production_checks.cpp)
 target_link_libraries(cm-actor-motion-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-motion-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -441,10 +505,16 @@ target_compile_options(cm-match-debugger-lineup-checks PRIVATE -Wall -Wextra -We
 add_executable(cm-match-debugger-lab-checks match_debugger_lab_checks.cpp)
 target_link_libraries(cm-match-debugger-lab-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-lab-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-debugger-cards-checks match_debugger_cards_checks.cpp)
+target_link_libraries(cm-match-debugger-cards-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugger-cards-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-debugger-completion-checks match_debugger_completion_checks.cpp)
 target_link_libraries(cm-match-debugger-completion-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-completion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME match_debugger_actual_cards COMMAND cm-match-debugger-cards-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-cards-checks")
+    set_tests_properties(match_debugger_actual_cards PROPERTIES TIMEOUT 180)
     add_test(NAME match_debugger_actual_completion COMMAND cm-match-debugger-completion-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-completion-checks")
     set_tests_properties(match_debugger_actual_completion PROPERTIES TIMEOUT 180)
@@ -462,6 +532,16 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)
     if(TARGET cm-player-decision-characterization)
+        add_test(NAME player_movement_actual_production COMMAND cm-player-movement-production-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-movement-production-checks")
+        add_test(NAME player_movement_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+            $<TARGET_FILE:cm-player-movement-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+            "${CMAKE_BINARY_DIR}/player-movement-profile-checks" "${CMAKE_BINARY_DIR}/player-movement-live-profile.snapshot")
+        set_tests_properties(player_movement_actual_production PROPERTIES FIXTURES_SETUP PlayerMovementLiveProfile TIMEOUT 240)
+        set_tests_properties(player_movement_original_profile PROPERTIES FIXTURES_REQUIRED PlayerMovementLiveProfile TIMEOUT 180)
+        add_test(NAME player_movement_nonlocal_transfer COMMAND cm-player-movement-transfer-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-movement-transfer-checks")
+        set_tests_properties(player_movement_nonlocal_transfer PROPERTIES TIMEOUT 180)
         add_test(NAME actor_motion_actual_production COMMAND cm-actor-motion-production-checks
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-motion-production-checks")
         add_test(NAME actor_motion_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
@@ -531,6 +611,10 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_MATCH_
         $<TARGET_FILE:cm-match-debugger> "${CM_MATCH_DEBUGGER_PROGRAM_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
         --private-root "${CMAKE_BINARY_DIR}/debugger-worker-checks")
     set_tests_properties(match_debugger_worker_protocol PROPERTIES TIMEOUT 360)
+    add_test(NAME match_debugger_cards_protocol COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tools/check_match_debugger_cards.py"
+        $<TARGET_FILE:cm-match-debugger> "${CM_MATCH_DEBUGGER_PROGRAM_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}")
+    set_tests_properties(match_debugger_cards_protocol PROPERTIES TIMEOUT 180)
     add_test(NAME match_debugger_worker_completion COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../tools/check_match_debugger_completion.py"
         $<TARGET_FILE:cm-match-debugger> "${CM_MATCH_DEBUGGER_PROGRAM_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}")

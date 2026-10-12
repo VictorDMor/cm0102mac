@@ -2,6 +2,7 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugger_database.hpp"
 #include "match_engine_adapter.hpp"
+#include "player_movement_adapter.hpp"
 #import <Foundation/Foundation.h>
 #include <algorithm>
 #include <chrono>
@@ -109,6 +110,8 @@ NSArray* players(const Session& session) {
                 @"active": @(staff && position >= 0 && position < 11),
                 @"present": @(staff != 0),
                 @"goals": @(memory.read<1>(record + 0xc)),
+                @"yellowCards": @(session.cards(team, actor).yellow), @"redCards": @(session.cards(team, actor).red),
+                @"injured": @(memory.read<1>(record + 0x1c) != 0),
                 @"staffID": staff ? @(memory.read<4>(staff)) : NSNull.null,
                 @"name": staff ? player_name(memory, staff) : @"Empty actor"}];
         }
@@ -128,7 +131,7 @@ NSDictionary* commentary_catalog(const fs::path& game) {
     NSMutableDictionary* catalog = [NSMutableDictionary new];
     NSString* title = @"Play continues";
     NSInteger current = -1;
-    NSSet* supported = [NSSet setWithArray:@[@"<p1>", @"<p1c>", @"<p2>", @"<t1>", @"<t2>", @"<t>", @"<tc>", @"<Rf>", @"<rf>", @"<R>"]];
+    NSSet* supported = [NSSet setWithArray:@[@"<p1>", @"<p1c>", @"<p2>", @"<t1>", @"<t2>", @"<t>", @"<tc>", @"<Rf>", @"<rf>", @"<R>", @"<Y>"]];
     NSRegularExpression* tokens = [NSRegularExpression regularExpressionWithPattern:@"<[^>]+>" options:0 error:nil];
     for (NSString* raw in [source componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
         NSString* line = [raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
@@ -201,6 +204,10 @@ public:
             case MatchEvent::Kind::goal: description = [NSString stringWithFormat:@"Goal! %@ scores for %@", first, team_name(event.team)]; break;
             case MatchEvent::Kind::injury: description = [NSString stringWithFormat:@"%@ leaves the pitch injured", first]; break;
             case MatchEvent::Kind::substitution: description = [NSString stringWithFormat:@"Substitution for %@: %@ on, %@ off", team_name(event.team), first, second]; break;
+            case MatchEvent::Kind::yellow_card: description = [NSString stringWithFormat:event.code == 183 ? @"Second yellow card for %@ — sent off" : @"Yellow card for %@", first]; break;
+            case MatchEvent::Kind::red_card: description = [NSString stringWithFormat:@"Red card for %@ — sent off", first]; break;
+            case MatchEvent::Kind::yellow_removed: description = [NSString stringWithFormat:@"Yellow card removed from %@", first]; break;
+            case MatchEvent::Kind::red_removed: description = [NSString stringWithFormat:@"Red card removed from %@ — returns to the pitch", first]; break;
             case MatchEvent::Kind::commentary: {
                 NSDictionary* entry = commentary_[@(event.code)];
                 if (entry[@"text"]) {
@@ -208,7 +215,7 @@ public:
                     NSDictionary* replacements = @{@"<p1>": first, @"<p1c>": first, @"<p2>": second,
                         @"<t1>": team_name(event.team), @"<t2>": team_name(event.other_team),
                         @"<t>": team_name(event.team), @"<tc>": team_name(event.team),
-                        @"<rf>": @"the referee", @"<Rf>": @"The referee", @"<R>": @"the referee",
+                        @"<rf>": @"the referee", @"<Rf>": @"The referee", @"<R>": @"", @"<Y>": @"",
                         @"{s}": @"'s", @"|": @" — "};
                     for (NSString* token in replacements)
                         description = [description stringByReplacingOccurrencesOfString:token withString:replacements[token]];
@@ -252,6 +259,7 @@ public:
         if (!session_) { send(@{@"type": @"state", @"status": @"empty", @"requestID": @(request)}); return; }
         const auto value = session_->inspect();
         const auto& diagnostics = cm::aot::match_engine_diagnostics(session_->state());
+        const auto& movement = cm::aot::player_movement_diagnostics(session_->state());
         const auto& steps = session_->steps();
         send(@{@"type": @"state", @"status": execution(session_->execution_state()), @"requestID": @(request),
             @"generation": @(generation_), @"homeID": @(setup_.home_club), @"awayID": @(setup_.away_club),
@@ -265,9 +273,13 @@ public:
             @"homeOnPitch": @(session_->on_pitch(0)), @"awayOnPitch": @(session_->on_pitch(1)),
             @"withdrawalCount": @(session_->withdrawals().size()),
             @"injectedGoalCount": @(session_->goals().size()),
+            @"cardEditCount": @(session_->card_edits().size()),
             @"lineupEditCount": @(session_->lineup_edits().size()),
             @"lastInstructions": @(steps.empty() ? 0 : steps.back().instructions),
-            @"sharedModernCalls": @(diagnostics.calls[2]), @"failure": text(session_->failure()),
+            @"sharedModernCalls": @(diagnostics.calls[2]),
+            @"modernMovementCalls": @(movement.calls[0]), @"modernMovementReturns": @(movement.returns[0]),
+            @"originalMovementCalls": @(movement.original_calls[0]), @"movementFaults": @(movement.faults[0]),
+            @"movementDispatchEscapes": @(movement.dispatch_escapes), @"failure": text(session_->failure()),
             @"players": players(*session_), @"rosters": rosters_, @"matchEvents": football_events(), @"events": [events_ copy]});
         [events_ removeAllObjects];
     }
@@ -279,6 +291,7 @@ public:
             [operation isEqual:@"position"] ? @[@"command", @"team", @"actor", @"position"] :
             [operation isEqual:@"substitute"] ? @[@"command", @"team", @"actor", @"staffID"] :
             [operation isEqual:@"seek"] ? @[@"command", @"seconds"] :
+            [operation isEqual:@"card"] ? @[@"command", @"team", @"actor", @"color", @"action"] :
             ([operation isEqual:@"withdraw"] || [operation isEqual:@"goal"]) ? @[@"command", @"team", @"actor"] : @[@"command"];
         NSMutableSet* keys = [NSMutableSet setWithArray:fields];
         if (value[@"requestID"]) [keys addObject:@"requestID"];
@@ -296,6 +309,14 @@ public:
             else if ([operation isEqual:@"back"]) session_->back();
             else if ([operation isEqual:@"forward"]) session_->forward();
             else if ([operation isEqual:@"seek"]) session_->seek_seconds(integer(value, @"seconds"));
+            else if ([operation isEqual:@"card"]) {
+                id color = value[@"color"], action = value[@"action"];
+                if (![color isKindOfClass:NSString.class] || (![color isEqual:@"yellow"] && ![color isEqual:@"red"]) ||
+                    ![action isKindOfClass:NSString.class] || (![action isEqual:@"add"] && ![action isEqual:@"remove"]))
+                    throw std::invalid_argument("Choose a yellow or red card to add or remove");
+                (void)session_->change_card(integer(value, @"team"), integer(value, @"actor"),
+                    [color isEqual:@"yellow"] ? CardKind::yellow : CardKind::red, [action isEqual:@"add"]);
+            }
             else if ([operation isEqual:@"substitute"]) {
                 const auto record = session_->substitute(integer(value, @"team"), integer(value, @"actor"), integer(value, @"staffID"));
                 event([NSString stringWithFormat:@"Substitution: staff %u on, staff %u off", record.incoming_staff_id, record.outgoing_staff_id]);
@@ -318,10 +339,10 @@ public:
             }
             else if ([operation isEqual:@"withdraw"]) {
                 const auto record = session_->withdraw_injured_player(integer(value, @"team"), integer(value, @"actor"));
-                event([NSString stringWithFormat:@"Intervention: %@ actor %u (staff %u) withdrawn through injury handling; slot %d → %d; on pitch %u → %u; withdrawal count %u → %u; unit %d",
+                event([NSString stringWithFormat:@"Intervention: %@ actor %u (staff %u) withdrawn through injury handling; slot %d → %d; on pitch %u → %u; injury flag %u → %u; unit %d",
                     record.team ? @"away" : @"home", record.actor, record.staff_id,
                     int(record.position_before), int(record.position_after), record.on_pitch_before, record.on_pitch_after,
-                    unsigned(record.withdrawals_before), unsigned(record.withdrawals_after), int(record.after.elapsed_engine_units)]);
+                    unsigned(record.injury_before), unsigned(record.injury_after), int(record.after.elapsed_engine_units)]);
             }
             else if ([operation isEqual:@"goal"]) {
                 const auto record = session_->add_goal(integer(value, @"team"), integer(value, @"actor"));

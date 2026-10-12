@@ -77,7 +77,7 @@ std::vector<Effects::Access> compare(const State& input, const Options& options,
     const auto execute = [&](State& state, Model& model, bool previous) {
         try {
             if (previous) model.execute_original(state, return_sentinel);
-            else if (index == 0) actor::withdraw_injured(state, &model);
+            else if (index == 0) actor::dismiss_player(state, &model);
             else if (index == 1) actor::read_position(state);
             else actor::write_position(state);
         } catch (const std::exception& error) { return std::string(error.what()); }
@@ -158,6 +158,6 @@ int main() {
             wrapped->memory.map(0, 1); wrapped->memory.write<1>(0, 253); compare(*wrapped, standard, index);
         }
         std::cout << "PASS: match-actor comparisons=" << comparisons << " interrupted=" << interruptions << " own/child-negatives=" << negatives
-                  << "; full ABI/memory/ordered effects/dependency boundaries/accounting, periods, injury modes, keeper/tactics, budgets, byte holes and position widths\n";
+                  << "; full ABI/memory/ordered effects/dependency boundaries/accounting, periods, dismissal modes, keeper/tactics, budgets, byte holes and position widths\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

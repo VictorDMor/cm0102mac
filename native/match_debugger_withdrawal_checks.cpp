@@ -1,6 +1,7 @@
 #include "match_debugger_factory.hpp"
 #include "match_engine_adapter.hpp"
 #include "match_actor_adapter.hpp"
+#include "player_movement_adapter.hpp"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -90,6 +91,7 @@ int main(int argc, char** argv) {
         const auto kickoff = session.step();
         match_engine_diagnostics(*control.state).entry_original[2] = true;
         match_actor_diagnostics(*control.state).original = true;
+        player_movement_diagnostics(*control.state).original = true;
         const auto modern_actor_before = match_actor_diagnostics(session.state()).calls;
         const auto original_actor_before = match_actor_diagnostics(*control.state).original_calls;
         require(invoke(*control.state, 0x101d3f60, {control.match, 1}) == kickoff.instructions, "Original kickoff accounting");
@@ -114,18 +116,20 @@ int main(int argc, char** argv) {
             }
             const auto address = control.match + 0x311c + (team * 20 + actor) * 0x1c4;
             std::uint64_t instructions = 0;
-            { Observe observe(*control.state, original); instructions = invoke(*control.state, 0x101f1530, {control.match, address, 0}); }
+            { Observe observe(*control.state, original); control.state->memory.write<1>(address + 0x1c, 1);
+                control.state->memory.write<1>(address + 0x1d, 1);
+                instructions = invoke(*control.state, 0x101f6c60, {control.match}); }
             require(observed.effects == original.effects && !observed.effects.empty(), "Complete ordered original intervention effects");
             same_match(session, control, baseline);
             --expected[team];
-            require(record.instructions == instructions && record.position_after == -3 &&
-                record.withdrawals_after == std::uint8_t(record.withdrawals_before + 1) &&
+            require(record.instructions == instructions && (record.position_after == -2 || record.position_after == -1) &&
+                record.injury_after == 1 && session.state().memory.read<1>(address + 0x23) == 0 &&
                 record.on_pitch_before == expected[team] + 1 && record.on_pitch_after == expected[team] &&
                 session.on_pitch(1 - team) == expected[1 - team] &&
                 record.before.elapsed_engine_units == record.after.elapsed_engine_units,
                 "Actual injury/tactical bookkeeping was not applied");
             auto position_only = before;
-            position_only[0x311c + (team * 20 + actor) * 0x1c4 + 0x19] = 0xfd;
+            position_only[0x311c + (team * 20 + actor) * 0x1c4 + 0x19] = 0xfe;
             require(position_only != session.state().memory.copy_out(session.match_address(), 0xe0bc),
                 "Negative control cannot distinguish original withdrawal from a position-only edit");
             reject_without_effects(session, [&] { session.withdraw_injured_player(team, actor); });
@@ -133,7 +137,7 @@ int main(int argc, char** argv) {
                 const auto next = session.step();
                 require(invoke(*control.state, 0x101d3f60, {control.match, 1}) == next.instructions, "Post-withdrawal original step accounting");
                 same_match(session, control, baseline);
-                require(session.on_pitch(team) == expected[team] && session.state().memory.read<1>(address + 0x19) == 0xfd,
+                require(session.on_pitch(team) == expected[team] && signed_value<1>(session.state().memory.read<1>(address + 0x19)) < 0,
                     "Original engine brought the withdrawn actor back on pitch");
             }
             std::cout << "withdrawn team=" << team << " actor=" << actor << " instructions=" << record.instructions << " ordered-effects=" << observed.effects.size()
@@ -142,7 +146,7 @@ int main(int argc, char** argv) {
         require(session.withdrawals().size() == 3 && session.steps().size() == 31, "Interventions were confused with completed engine steps");
         require(match_engine_diagnostics(session.state()).calls[2] == 31 && match_engine_diagnostics(*control.state).original_calls[2] == 31,
             "Subsequent modern/original engine controls were bypassed");
-        for (unsigned entry = 0; entry < 3; ++entry)
+        for (unsigned entry = 2; entry < 3; ++entry)
             require(match_actor_diagnostics(session.state()).calls[entry] > modern_actor_before[entry] &&
                 match_actor_diagnostics(*control.state).original_calls[entry] > original_actor_before[entry],
                 "Actual withdrawal/position entry did not execute the selected C++23/original body");

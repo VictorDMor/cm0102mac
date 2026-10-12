@@ -36,9 +36,29 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Complete player movement and debugger cards delivered
+
+The [complete movement/interaction root](native-player-movement-reconstruction.md)
+adds one C++23 entry / 7,537 indexed instructions across eight original pages,
+bringing the current manifest to **649** with its 648-entry prefix preserved.
+All source sites are covered in component comparisons; actual productive,
+original/profile, negative and nonlocal checks pass. A real match observes
+597 dedicated C++23 movement calls and returns without original fallback,
+fault or dispatcher escape. Both ARM64 production apps contain the new root.
+This completes that routine, not the whole match engine or complete game port.
+
+The [debugger card controls](native-match-debugger-cards.md) add/remove yellow
+and red cards, second-yellow dismissal, original pitch re-entry, visible counts,
+football events and complete history controls. Original injury/dismissal
+classification is corrected: the Injury control now invokes actual injury
+processing without adding a red card. Focused engine, protocol, UBSAN and
+installed acceptance are recorded in the reports. The user's current Reading
+save and all original inputs are preserved. Save/Load is **not retested**;
+performance is **not benchmarked**.
+
 ## Actor movement primitives reconstructed
 
-The [actor-motion block](native-actor-motion-reconstruction.md) adds five complete C++23 entries / 462 indexed instructions: live coordinate/cell migration, heading selection/readback, turning eligibility and possession. The current manifest is **648**, with its full 643-entry prefix preserved. All original body sites are covered in 427 component comparisons; individual actual direct/generated/CFM, original/profile and nonlocal checks pass, including leaf scopes. The real debugger lab and worker regressions pass. Only three generated pages change, retaining the reusable build tree. The larger movement/interaction coordinator remains original; its 25 whole-body and 129 computed-prefix characterization cases pass. This is progress toward the full engine, not completion. Save/Load is **not retested**; performance is **not benchmarked**.
+The [actor-motion block](native-actor-motion-reconstruction.md) adds five complete C++23 entries / 462 indexed instructions: live coordinate/cell migration, heading selection/readback, turning eligibility and possession. That phase manifest is **648**, with its full 643-entry prefix preserved. All original body sites are covered in 427 component comparisons; individual actual direct/generated/CFM, original/profile and nonlocal checks pass, including leaf scopes. The real debugger lab and worker regressions pass. Only three generated pages change, retaining the reusable build tree. At that phase the larger coordinator remained original; its 25 whole-body and 129 computed-prefix characterization cases pass. This is progress toward the full engine, not completion. Save/Load is **not retested**; performance is **not benchmarked**.
 
 ## Complete player decision reconstructed
 

@@ -42,7 +42,7 @@ bool try_modern_match_actor(State& s, std::uint32_t entry) {
             const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
             if (!dispatch_page(s)) throw std::runtime_error("Missing original match-actor body");
             if (s.pc != caller) run_until(s, caller);
-        } else if (index == 0) match_actor::withdraw_injured(s);
+        } else if (index == 0) match_actor::dismiss_player(s);
         else if (index == 1) match_actor::read_position(s);
         else match_actor::write_position(s);
     } catch (const ApplicationExit&) { leave(s, index, original, MatchActorOutcome::terminated); throw; }

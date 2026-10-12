@@ -1,5 +1,14 @@
 # Original injury withdrawal in the match debugger
 
+> Classification correction (2026-10-12): the original `101f1530` body described
+> below is dismissal, with actor `+0x23` red count and position `-3`. Its
+> semantic body/ABI are unchanged and its source name is now `dismiss_player`.
+> This historical report mislabeled it as injury. Current Injury handling uses
+> the complete original pending-injury processor `101f6c60`; see the
+> [card and injury correction report](native-match-debugger-cards.md) for current
+> behavior and focused verification. The evidence below for `101f1530` is
+> evidence of dismissal, not of the corrected Injury control.
+
 ## Behavior and scope
 
 The standalone debugger exposes **Withdraw (injury)** for a selected actual player while the match is paused after kickoff. `Session::withdraw_injured_player(team, actor)` invokes the original complete injury-withdrawal operation at `101f1530(match, actor, 0)` through the production dispatcher. It updates original availability, withdrawal/time bookkeeping, tactical organization and related live actor records. The actor remains in the match record with original position sentinel `-3` and is excluded from the active on-pitch count.

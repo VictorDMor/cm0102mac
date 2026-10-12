@@ -1,6 +1,7 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugger_checkpoint.hpp"
 #include "match_engine_adapter.hpp"
+#include "player_movement_adapter.hpp"
 #include "semantic_io_checks.hpp"
 #include <chrono>
 
@@ -100,6 +101,7 @@ int main(int argc, char** argv) {
         const Checkpoint before_final(state);
         auto original = before_final.restore();
         match_engine_diagnostics(*original).entry_original[2] = true;
+        player_movement_diagnostics(*original).original = true;
         const auto final_ticks = finish(state, match);
         require(finish(*original, match) == final_ticks, "Original and C++23 completion tick counts differ");
         const Image completed(state);

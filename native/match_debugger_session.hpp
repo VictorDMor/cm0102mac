@@ -43,7 +43,7 @@ struct WithdrawalRecord {
     std::uint64_t number = 0, at_step = 0, instructions = 0;
     std::uint32_t team = 0, actor = 0, staff_id = 0;
     std::int8_t position_before = 0, position_after = 0;
-    std::uint8_t withdrawals_before = 0, withdrawals_after = 0;
+    std::uint8_t injury_before = 0, injury_after = 0;
     unsigned on_pitch_before = 0, on_pitch_after = 0;
     Inspection before, after;
 };
@@ -66,12 +66,27 @@ struct LineupRecord {
 };
 
 struct MatchEvent {
-    enum class Kind { commentary, kickoff, goal, injury, substitution, completed } kind = Kind::commentary;
+    enum class Kind { commentary, kickoff, goal, injury, substitution, completed,
+        yellow_card, red_card, yellow_removed, red_removed } kind = Kind::commentary;
     std::uint64_t at_step = 0;
     unsigned seconds = 0;
     int code = -1, team = -1, actor = -1, other_team = -1, other_actor = -1;
     std::uint32_t staff_id = 0, other_staff_id = 0;
     bool injected = false;
+};
+
+enum class CardKind { yellow, red };
+struct Cards {
+    unsigned yellow = 0, red = 0;
+    bool operator==(const Cards&) const = default;
+};
+struct CardRecord {
+    CardKind kind = CardKind::yellow;
+    bool added = false;
+    unsigned team = 0, actor = 0;
+    std::uint32_t staff_id = 0;
+    std::uint64_t at_step = 0, instructions = 0;
+    Cards before, after;
 };
 
 struct SubstitutionRecord {
@@ -106,6 +121,8 @@ public:
     const std::vector<LineupRecord>& lineup_edits() const { return lineup_edits_; }
     const std::vector<SubstitutionRecord>& substitutions() const { return substitutions_; }
     const std::vector<MatchEvent>& events() const { return events_; }
+    const std::vector<CardRecord>& card_edits() const { return cards_; }
+    Cards cards(unsigned team, unsigned actor) const;
     const std::vector<RosterMember>& roster(unsigned team) const;
     const State& state() const { return *engine_.state; }
     std::uint32_t match_address() const { return engine_.match; }
@@ -122,9 +139,9 @@ public:
     std::size_t timeline_size() const;
     unsigned recorded_seconds() const;
     unsigned on_pitch(unsigned team) const;
-    // Original injury withdrawal, applied only after kickoff at a paused
-    // boundary. This is distinct from lineup editing or a red-card operation.
+    // Process original pending injury flags at a paused boundary after kickoff.
     WithdrawalRecord withdraw_injured_player(unsigned team, unsigned actor);
+    CardRecord change_card(unsigned team, unsigned actor, CardKind, bool add);
     // Force an awarded goal through the characterized original bookkeeping
     // regions. It updates the scorer, team, commentary and kickoff.
     GoalRecord add_goal(unsigned team, unsigned actor);
@@ -144,6 +161,8 @@ private:
     std::vector<LineupRecord> lineup_edits_;
     std::vector<SubstitutionRecord> substitutions_;
     std::vector<MatchEvent> events_;
+    std::vector<CardRecord> cards_;
+    std::array<std::int8_t, 40> return_positions_{};
     struct History;
     std::unique_ptr<History> history_;
 
@@ -152,6 +171,7 @@ private:
     void restore_boundary(std::size_t);
     bool advance_recorded();
     void observe_event(MatchEvent);
+    void remember_positions();
 
     StepRecord execute_step();
     void require_pre_kickoff_edit() const;

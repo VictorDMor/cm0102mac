@@ -100,10 +100,11 @@ public:
             enabled ^= state.r<1>(flag) & state.r<1>(mask);
         state.wr<1>(1281, enabled);
     }
-    void floating_difference(unsigned destination, unsigned first, unsigned second, bool divide = false) {
+    void floating_difference(unsigned destination, unsigned first, unsigned second, bool divide = false, bool single = false) {
         step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
         const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
-        const auto value = divide ? x / y : x - y;
+        const auto calculated = divide ? x / y : x - y;
+        const auto value = single ? double(float_value<4>(float_bits<4>(calculated))) : calculated;
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(value));
         if (divide) {
             state.wr<1>(1285, state.r<1>(1285) | (y == 0));
@@ -193,15 +194,22 @@ public:
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
         floating_result_status(result, std::isnan(x) || std::isnan(y), true);
     }
-    void floating_product_sum(unsigned destination, unsigned first, unsigned second, unsigned addend) {
+    void floating_product_sum(unsigned destination, unsigned first, unsigned second, unsigned addend, bool single = false) {
         step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
         const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
         const auto z = float_value<8>(state.r<8>(0x4000 + addend * 16));
         // Original indexed semantics round multiply then add separately.
         // Production is compiled with contraction disabled, preserving both.
-        const auto product = x * y; const auto result = product + z;
+        const auto product = x * y; const auto sum = product + z;
+        const auto result = single ? double(float_value<4>(float_bits<4>(sum))) : sum;
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
         floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
+    }
+    void floating_round_single(unsigned destination, unsigned source) {
+        step(); const auto input = float_value<8>(state.r<8>(0x4000 + source * 16));
+        const auto result = double(float_value<4>(float_bits<4>(input)));
+        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
+        floating_result_status(result, std::isnan(input), true);
     }
     void floating_compare(unsigned first, unsigned second) {
         step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
@@ -236,6 +244,8 @@ public:
         state.wr<1>(1027, sum > UINT32_MAX); state.wr<4>(destination * 4, std::uint32_t(sum));
     }
     void restore_link() { step(); state.wr<4>(4128, r(0)); }
+    void count_destination(unsigned source) { step(); state.wr<4>(4132, r(source)); }
+    std::uint32_t count_branch() { step(); state.pc = std::uint32_t(state.r<4>(4132)); return state.pc; }
 
     void floating_indexed_single(unsigned destination, unsigned base, unsigned index) {
         step(); state.wr<8>(0x4000 + destination * 16, float_bits<8>(float_value<4>(state.memory.read<4>(r(base) + r(index)))));
