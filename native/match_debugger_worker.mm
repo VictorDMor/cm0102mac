@@ -30,8 +30,15 @@ std::uint32_t integer(NSDictionary* value, NSString* key) {
     if (![field isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)field) == CFBooleanGetTypeID() ||
         [field doubleValue] < 0 || [field doubleValue] > UINT32_MAX ||
         [field doubleValue] != [field unsignedLongLongValue])
-        throw std::invalid_argument("Command requires unsigned integer club IDs and a nonzero seed");
+        throw std::invalid_argument("Command requires unsigned integer fields");
     return [field unsignedIntValue];
+}
+int position(NSDictionary* value) {
+    id field = value[@"position"];
+    if (![field isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)field) == CFBooleanGetTypeID() ||
+        [field doubleValue] < -1 || [field doubleValue] > 10 || [field doubleValue] != [field longLongValue])
+        throw std::invalid_argument("Lineup position must be an integer from -1 (bench) through 10");
+    return [field intValue];
 }
 NSString* execution(ExecutionState state) {
     switch (state) {
@@ -71,6 +78,25 @@ NSString* original_string(const cm::aot::Memory& memory, std::uint32_t address) 
     return result;
 }
 
+NSString* player_name(const cm::aot::Memory& memory, std::uint32_t staff) {
+    NSString* common = original_string(memory, std::uint32_t(memory.read<4>(staff + 0x30)));
+    NSString* name = common.length ? common : [NSString stringWithFormat:@"%@ %@",
+        original_string(memory, std::uint32_t(memory.read<4>(staff + 0x28))),
+        original_string(memory, std::uint32_t(memory.read<4>(staff + 0x2c)))];
+    return [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+}
+
+NSArray* rosters(const Session& session) {
+    NSMutableArray* sides = [NSMutableArray new];
+    for (unsigned team = 0; team < 2; ++team) {
+        NSMutableArray* members = [NSMutableArray new];
+        for (const auto& member : session.roster(team))
+            [members addObject:@{@"staffID": @(member.staff_id), @"name": player_name(session.state().memory, member.staff)}];
+        [sides addObject:members];
+    }
+    return sides;
+}
+
 NSArray* players(const Session& session) {
     NSMutableArray* result = [NSMutableArray new];
     const auto& memory = session.state().memory;
@@ -78,18 +104,13 @@ NSArray* players(const Session& session) {
         for (unsigned actor = 0; actor < 20; ++actor) {
             const auto record = session.match_address() + 0x311c + (team * 20 + actor) * 0x1c4;
             const auto staff = std::uint32_t(memory.read<4>(record + 0x6c));
-            if (!staff) continue;
-            // Original name formatter 100caeb0 reads these resolved string
-            // pointers: first name +28, surname +2c, common name +30.
-            NSString* common = original_string(memory, std::uint32_t(memory.read<4>(staff + 0x30)));
-            NSString* name = common.length ? common : [NSString stringWithFormat:@"%@ %@",
-                original_string(memory, std::uint32_t(memory.read<4>(staff + 0x28))),
-                original_string(memory, std::uint32_t(memory.read<4>(staff + 0x2c)))];
             const auto position = int(cm::aot::signed_value<1>(memory.read<1>(record + 0x19)));
             [result addObject:@{@"team": @(team), @"actor": @(actor), @"position": @(position),
-                @"active": @(position >= 0 && position < 11),
+                @"active": @(staff && position >= 0 && position < 11),
+                @"present": @(staff != 0),
                 @"goals": @(memory.read<1>(record + 0xc)),
-                @"staffID": @(memory.read<4>(staff)), @"name": [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet]}];
+                @"staffID": staff ? @(memory.read<4>(staff)) : NSNull.null,
+                @"name": staff ? player_name(memory, staff) : @"Empty actor"}];
         }
     }
     return result;
@@ -102,6 +123,7 @@ class Worker {
     MatchSetup setup_;
     std::uint64_t generation_ = 0, attempt_ = 0;
     NSMutableArray* events_ = [NSMutableArray new];
+    NSArray* rosters_ = @[];
 public:
     Worker(fs::path program, fs::path game, fs::path root)
         : program_(fs::canonical(program)), game_(fs::canonical(game)), root_(fs::canonical(root)),
@@ -144,6 +166,7 @@ public:
         active_backing_ = next;
         generation_ = attempt_;
         setup_ = requested;
+        rosters_ = rosters(*session_);
         [events_ removeAllObjects];
         event(@"Fresh actual match created and paused before kickoff");
     }
@@ -161,15 +184,18 @@ public:
             @"homeOnPitch": @(session_->on_pitch(0)), @"awayOnPitch": @(session_->on_pitch(1)),
             @"withdrawalCount": @(session_->withdrawals().size()),
             @"injectedGoalCount": @(session_->goals().size()),
+            @"lineupEditCount": @(session_->lineup_edits().size()),
             @"lastInstructions": @(steps.empty() ? 0 : steps.back().instructions),
             @"sharedModernCalls": @(diagnostics.calls[2]), @"failure": text(session_->failure()),
-            @"players": players(*session_), @"events": [events_ copy]});
+            @"players": players(*session_), @"rosters": rosters_, @"events": [events_ copy]});
         [events_ removeAllObjects];
     }
     bool command(NSDictionary* value, std::uint32_t request) {
         id operation = value[@"command"];
         if (![operation isKindOfClass:NSString.class]) throw std::invalid_argument("Missing worker command");
         NSArray* fields = [operation isEqual:@"create"] ? @[@"command", @"homeID", @"awayID", @"seed"] :
+            [operation isEqual:@"player"] ? @[@"command", @"team", @"actor", @"staffID"] :
+            [operation isEqual:@"position"] ? @[@"command", @"team", @"actor", @"position"] :
             ([operation isEqual:@"withdraw"] || [operation isEqual:@"goal"]) ? @[@"command", @"team", @"actor"] : @[@"command"];
         NSMutableSet* keys = [NSMutableSet setWithArray:fields];
         if (value[@"requestID"]) [keys addObject:@"requestID"];
@@ -184,6 +210,22 @@ public:
                 if (session_->execution_state() == ExecutionState::running) { session_->pause(); event(@"Engine execution paused"); }
             }
             else if ([operation isEqual:@"reset"]) create(setup_);
+            else if ([operation isEqual:@"player"]) {
+                const auto record = session_->set_player(integer(value, @"team"), integer(value, @"actor"), integer(value, @"staffID"));
+                event([NSString stringWithFormat:@"Lineup edit: %@ actor %u initialized through original player handling; staff %u → %u; slot %d → %d; on pitch %u → %u; instructions %llu",
+                    record.team ? @"away" : @"home", record.actor, record.staff_before, record.staff_after,
+                    int(record.position_before), int(record.position_after), record.on_pitch_before, record.on_pitch_after,
+                    static_cast<unsigned long long>(record.instructions)]);
+            }
+            else if ([operation isEqual:@"position"]) {
+                const auto record = session_->set_position(integer(value, @"team"), integer(value, @"actor"), position(value));
+                NSString* displaced = record.displaced_actor == 20 ? @"" : [NSString stringWithFormat:@"; displaced actor %u (staff %u) slot %d → %d",
+                    record.displaced_actor, record.displaced_staff, int(record.displaced_before), int(record.displaced_after)];
+                event([NSString stringWithFormat:@"Lineup edit: %@ actor %u (staff %u) slot %d → %d%@; on pitch %u → %u; instructions %llu",
+                    record.team ? @"away" : @"home", record.actor, record.staff_after,
+                    int(record.position_before), int(record.position_after), displaced, record.on_pitch_before, record.on_pitch_after,
+                    static_cast<unsigned long long>(record.instructions)]);
+            }
             else if ([operation isEqual:@"withdraw"]) {
                 const auto record = session_->withdraw_injured_player(integer(value, @"team"), integer(value, @"actor"));
                 event([NSString stringWithFormat:@"Intervention: %@ actor %u (staff %u) withdrawn through injury handling; slot %d → %d; on pitch %u → %u; withdrawal count %u → %u; unit %d",

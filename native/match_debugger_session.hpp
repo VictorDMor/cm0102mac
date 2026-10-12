@@ -8,11 +8,17 @@
 
 namespace cm::aot::match_debugger {
 
+struct RosterMember {
+    std::uint32_t staff_id = 0, staff = 0, player = 0;
+    bool operator==(const RosterMember&) const = default;
+};
+
 // The session factory must construct an independent, initialized real match.
 // Database loading and club/lineup selection belong to that factory.
 struct EngineInstance {
     std::unique_ptr<State> state;
     std::uint32_t match = 0;
+    std::array<std::vector<RosterMember>, 2> rosters{};
 };
 
 enum class ExecutionState { paused, running, completed, aborted, faulted };
@@ -49,6 +55,16 @@ struct GoalRecord {
     Inspection before, after;
 };
 
+struct LineupRecord {
+    enum class Kind { player, position } kind = Kind::player;
+    std::uint64_t number = 0, instructions = 0;
+    unsigned team = 0, actor = 0, displaced_actor = 20;
+    std::uint32_t staff_before = 0, staff_after = 0, displaced_staff = 0;
+    std::int8_t position_before = -5, position_after = -5;
+    std::int8_t displaced_before = -5, displaced_after = -5;
+    unsigned on_pitch_before = 0, on_pitch_after = 0;
+};
+
 // One owner drives this session. A UI scheduler invokes advance_if_running()
 // between UI events; it must not concurrently access a running guest State.
 // The engine call uses the same dispatch as the production game.
@@ -63,6 +79,8 @@ public:
     const std::vector<StepRecord>& steps() const { return steps_; }
     const std::vector<WithdrawalRecord>& withdrawals() const { return withdrawals_; }
     const std::vector<GoalRecord>& goals() const { return goals_; }
+    const std::vector<LineupRecord>& lineup_edits() const { return lineup_edits_; }
+    const std::vector<RosterMember>& roster(unsigned team) const;
     const State& state() const { return *engine_.state; }
     std::uint32_t match_address() const { return engine_.match; }
 
@@ -78,6 +96,8 @@ public:
     // Force an awarded goal through the characterized original bookkeeping
     // regions. It updates the scorer, team, commentary and kickoff.
     GoalRecord add_goal(unsigned team, unsigned actor);
+    LineupRecord set_player(unsigned team, unsigned actor, std::uint32_t staff_id);
+    LineupRecord set_position(unsigned team, unsigned actor, int position);
 
 private:
     Factory factory_;
@@ -88,8 +108,11 @@ private:
     std::vector<StepRecord> steps_;
     std::vector<WithdrawalRecord> withdrawals_;
     std::vector<GoalRecord> goals_;
+    std::vector<LineupRecord> lineup_edits_;
 
     StepRecord execute_step();
+    void require_pre_kickoff_edit() const;
+    void validate_kickoff_lineups() const;
     static Inspection inspect(const EngineInstance&);
 };
 

@@ -310,6 +310,9 @@ target_compile_options(cm-match-debugger-withdrawal-checks PRIVATE -Wall -Wextra
 add_executable(cm-match-debugger-goal-checks match_debugger_goal_checks.cpp)
 target_link_libraries(cm-match-debugger-goal-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-goal-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-debugger-lineup-checks match_debugger_lineup_checks.cpp)
+target_link_libraries(cm-match-debugger-lineup-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugger-lineup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME match_debugger_fresh_match_factory COMMAND cm-match-debugger-factory-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-factory-checks")
@@ -318,6 +321,9 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     add_test(NAME match_debugger_actual_goal COMMAND cm-match-debugger-goal-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-goal-checks")
     set_tests_properties(match_debugger_actual_goal PROPERTIES TIMEOUT 360)
+    add_test(NAME match_debugger_actual_lineup COMMAND cm-match-debugger-lineup-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
+    set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)
     add_test(NAME match_actor_actual_production COMMAND cm-match-actor-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-production-checks")
     add_test(NAME match_actor_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1

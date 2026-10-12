@@ -2,10 +2,20 @@
 #include "match_engine.hpp"
 #include "match_debugger_goal.hpp"
 #include <limits>
+#include <algorithm>
 
 namespace cm::aot::match_debugger {
 namespace {
 constexpr std::uint32_t shared_advancement = match_engine::entries[2];
+
+std::uint32_t invoke(State& state, std::uint32_t entry, std::initializer_list<std::uint32_t> values) {
+    unsigned reg = 3;
+    for (auto value : values) state.wr<4>(reg++ * 4, value);
+    state.wr<4>(4128, return_sentinel); state.pc = entry;
+    run_until(state, return_sentinel);
+    if (state.pc != return_sentinel) throw std::runtime_error("Original lineup operation did not return to its boundary");
+    return std::uint32_t(state.r<4>(12));
+}
 
 class StepBudget {
     State& state_;
@@ -54,6 +64,7 @@ void Session::reset() {
     steps_.clear();
     withdrawals_.clear();
     goals_.clear();
+    lineup_edits_.clear();
     failure_.clear();
     execution_ = ExecutionState::paused;
 }
@@ -61,6 +72,7 @@ void Session::reset() {
 void Session::run() {
     if (execution_ != ExecutionState::paused)
         throw std::logic_error("Match debugger can run only a paused experiment");
+    validate_kickoff_lineups();
     execution_ = ExecutionState::running;
 }
 
@@ -74,7 +86,7 @@ unsigned Session::on_pitch(unsigned team) const {
     for (unsigned actor = 0; actor < 20; ++actor) {
         const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
         const auto position = signed_value<1>(engine_.state->memory.read<1>(address + 0x19));
-        count += position >= 0 && position < 11;
+        count += position >= 0 && position < 11 && engine_.state->memory.read<4>(address + 0x6c) != 0;
     }
     return count;
 }
@@ -129,6 +141,124 @@ WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor)
         execution_ = ExecutionState::faulted;
         failure_ = "Engine intervention was interrupted before returning";
         throw;
+    }
+}
+
+const std::vector<RosterMember>& Session::roster(unsigned team) const {
+    if (team > 1) throw std::invalid_argument("Match side must be home or away");
+    return engine_.rosters[team];
+}
+
+void Session::require_pre_kickoff_edit() const {
+    if (execution_ != ExecutionState::paused || !steps_.empty() || inspect().elapsed_engine_units != 0)
+        throw std::logic_error("Lineup editing requires a paused experiment before kickoff");
+}
+
+void Session::validate_kickoff_lineups() const {
+    if (!steps_.empty() || inspect().elapsed_engine_units != 0) return;
+    for (unsigned team = 0; team < 2; ++team) {
+        std::array<bool, 11> assigned{};
+        for (unsigned actor = 0; actor < 20; ++actor) {
+            const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+            const auto& memory = engine_.state->memory;
+            const auto position = signed_value<1>(memory.read<1>(address + 0x19));
+            if (position < 0) continue;
+            if (position >= 11 || assigned[unsigned(position)] || !memory.read<4>(address + 0x6c) ||
+                memory.read<1>(address + 0x27) != team || memory.read<4>(address + 0x1a4) != engine_.match)
+                throw std::logic_error("Starting lineup has an invalid or duplicate position");
+            assigned[unsigned(position)] = true;
+        }
+        if (!assigned[0]) throw std::logic_error("Assign an actual player to goalkeeper slot 0 before kickoff");
+    }
+}
+
+LineupRecord Session::set_player(unsigned team, unsigned actor, std::uint32_t staff_id) {
+    require_pre_kickoff_edit();
+    if (team > 1 || actor >= 20) throw std::invalid_argument("Invalid match side or actor index");
+    const auto& members = roster(team);
+    const auto member = std::find_if(members.begin(), members.end(), [&](const auto& value) { return value.staff_id == staff_id; });
+    auto& state = *engine_.state;
+    if (member == members.end() || !member->staff || !member->player ||
+        state.memory.read<4>(member->staff) != staff_id || state.memory.read<4>(member->staff + 0x14) != member->player)
+        throw std::invalid_argument("Select an actual player from this club's roster");
+    for (unsigned side = 0; side < 2; ++side) for (unsigned index = 0; index < 20; ++index)
+        if (state.memory.read<4>(engine_.match + 0x311c + (side * 20 + index) * 0x1c4 + 0x6c) == member->staff)
+            throw std::invalid_argument("This player already occupies a match actor");
+    const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+    const auto previous = std::uint32_t(state.memory.read<4>(address + 0x6c));
+    LineupRecord record;
+    record.number = lineup_edits_.size() + 1; record.team = team; record.actor = actor;
+    record.staff_before = previous ? std::uint32_t(state.memory.read<4>(previous)) : 0;
+    record.staff_after = staff_id; record.position_before = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
+    record.on_pitch_before = on_pitch(team);
+    const auto before = state.executed;
+    try {
+        StepBudget budget(state, step_instruction_limit_);
+        const auto controller = engine_.match + 0x7aac + team * 0xd8;
+        // The complete original preparation root invokes the full original
+        // actor initializer with this live staff/player and original actor ID.
+        if (invoke(state, 0x1020e8f0, {controller, actor, member->staff, actor}) != 1)
+            throw std::runtime_error("Original player initialization did not complete");
+        const auto initialized = signed_value<1>(state.memory.read<1>(address + 0x19));
+        if (previous && initialized >= -1) {
+            const auto wanted = record.position_before >= -1 ? record.position_before : -1;
+            if (initialized != wanted) (void)invoke(state, 0x101f1870, {address, std::uint32_t(wanted)});
+        }
+        if (state.memory.read<4>(address + 0x6c) != member->staff || state.memory.read<4>(address + 0x1a4) != engine_.match ||
+            state.memory.read<1>(address + 0x27) != team || state.memory.read<1>(address + 0x2f) != actor)
+            throw std::runtime_error("Original player initialization did not retain its live identity");
+        record.position_after = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
+        record.on_pitch_after = on_pitch(team); record.instructions = state.executed - before;
+        lineup_edits_.push_back(record); return record;
+    } catch (const std::exception& error) {
+        execution_ = ExecutionState::faulted;
+        failure_ = "Lineup player intervention fault at " + hex_address(state.pc) + ": " + error.what(); throw;
+    } catch (...) {
+        execution_ = ExecutionState::faulted; failure_ = "Lineup player intervention was interrupted"; throw;
+    }
+}
+
+LineupRecord Session::set_position(unsigned team, unsigned actor, int position) {
+    require_pre_kickoff_edit();
+    if (team > 1 || actor >= 20 || position < -1 || position > 10)
+        throw std::invalid_argument("Invalid match side, actor or lineup position");
+    auto& state = *engine_.state;
+    const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+    const auto staff = std::uint32_t(state.memory.read<4>(address + 0x6c));
+    const auto old_position = signed_value<1>(state.memory.read<1>(address + 0x19));
+    if (!staff || old_position < -1 || old_position > 10 || state.memory.read<1>(address + 0x27) != team ||
+        state.memory.read<4>(address + 0x1a4) != engine_.match)
+        throw std::invalid_argument("Select an actual available player in this match");
+    if (old_position == position) throw std::invalid_argument("The player already has this lineup position");
+    LineupRecord record;
+    record.kind = LineupRecord::Kind::position; record.number = lineup_edits_.size() + 1;
+    record.team = team; record.actor = actor; record.staff_before = record.staff_after = std::uint32_t(state.memory.read<4>(staff));
+    record.position_before = std::int8_t(old_position); record.on_pitch_before = on_pitch(team);
+    if (position >= 0) for (unsigned other = 0; other < 20; ++other) {
+        const auto candidate = engine_.match + 0x311c + (team * 20 + other) * 0x1c4;
+        if (other == actor || signed_value<1>(state.memory.read<1>(candidate + 0x19)) != position) continue;
+        const auto other_staff = state.memory.read<4>(candidate + 0x6c);
+        if (!other_staff || state.memory.read<1>(candidate + 0x27) != team || state.memory.read<4>(candidate + 0x1a4) != engine_.match ||
+            record.displaced_actor != 20) throw std::invalid_argument("Starting lineup has an invalid or duplicate position");
+        record.displaced_actor = other; record.displaced_staff = std::uint32_t(state.memory.read<4>(other_staff));
+        record.displaced_before = std::int8_t(position);
+    }
+    const auto before = state.executed;
+    try {
+        StepBudget budget(state, step_instruction_limit_);
+        if (record.displaced_actor != 20) {
+            const auto other = engine_.match + 0x311c + (team * 20 + record.displaced_actor) * 0x1c4;
+            (void)invoke(state, 0x101f1870, {other, std::uint32_t(old_position)});
+            record.displaced_after = std::int8_t(signed_value<1>(state.memory.read<1>(other + 0x19)));
+        }
+        (void)invoke(state, 0x101f1870, {address, std::uint32_t(position)});
+        record.position_after = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
+        record.on_pitch_after = on_pitch(team); record.instructions = state.executed - before;
+        lineup_edits_.push_back(record); return record;
+    } catch (const std::exception& error) {
+        execution_ = ExecutionState::faulted; failure_ = "Lineup position intervention fault at " + hex_address(state.pc) + ": " + error.what(); throw;
+    } catch (...) {
+        execution_ = ExecutionState::faulted; failure_ = "Lineup position intervention was interrupted"; throw;
     }
 }
 
@@ -226,6 +356,7 @@ StepRecord Session::execute_step() {
 StepRecord Session::step() {
     if (execution_ != ExecutionState::paused)
         throw std::logic_error("Match debugger stepping requires a paused experiment");
+    validate_kickoff_lineups();
     return execute_step();
 }
 

@@ -163,6 +163,7 @@ EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
     if (state.memory.read<1>(match) || state.memory.read<2>(match + 0x7948))
         throw std::runtime_error("New match is not at its detailed pre-kickoff boundary");
     report("Match ready and paused");
-    return {std::move(world).release_state(), match};
+    std::array<std::vector<RosterMember>, 2> rosters{world.roster(setup.home_club), world.roster(setup.away_club)};
+    return {std::move(world).release_state(), match, std::move(rosters)};
 }
 }

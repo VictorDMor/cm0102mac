@@ -2,17 +2,13 @@
 
 #include "aot_runtime.hpp"
 #include "match_debugger_database.hpp"
+#include "match_debugger_session.hpp"
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <vector>
 
 namespace cm::aot::match_debugger {
-
-struct RosterMember {
-    std::uint32_t staff_id = 0, staff = 0, player = 0;
-    bool operator==(const RosterMember&) const = default;
-};
 
 // A fresh original database world, before any career or match is created.
 // Remaining original dependencies execute through the production dispatcher.

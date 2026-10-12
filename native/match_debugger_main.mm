@@ -62,6 +62,10 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
 @property NSButton* resetButton;
 @property NSButton* withdrawButton;
 @property NSButton* goalButton;
+@property NSPopUpButton* rosterChoice;
+@property NSPopUpButton* positionChoice;
+@property NSButton* playerButton;
+@property NSButton* positionButton;
 @property NSProgressIndicator* progress;
 @property NSTableView* playerTable;
 @property NSTableView* eventTable;
@@ -116,11 +120,11 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     [NSApp activateIgnoringOtherApps:YES];
 }
 - (void)buildWindow {
-    self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1040, 740)
+    self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1040, 780)
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     self.window.title = @"CM Match Debugger";
-    self.window.minSize = NSMakeSize(840, 630);
+    self.window.minSize = NSMakeSize(900, 740);
     [self.window center];
     NSTextField* heading = label(@"Match experiment", 24);
     heading.font = [NSFont boldSystemFontOfSize:24];
@@ -156,6 +160,21 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     self.goalButton = button(@"Add goal", self, @selector(addGoal:));
     self.goalButton.toolTip = @"Select an on-pitch scorer while paused after kickoff. Force an awarded goal with the engine's player/team records and kickoff preparation.";
     NSStackView* controls = stack(@[self.stepButton, self.runButton, self.pauseButton, self.resetButton, self.withdrawButton, self.goalButton], NSUserInterfaceLayoutOrientationHorizontal);
+    self.rosterChoice = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    [self.rosterChoice.widthAnchor constraintEqualToConstant:280].active = YES;
+    self.rosterChoice.accessibilityLabel = @"Available original club players";
+    self.playerButton = button(@"Set player", self, @selector(setPlayer:));
+    self.playerButton.toolTip = @"Before kickoff, initialize the selected actor with an unused actual player from its club. Empty actors become reserves.";
+    self.positionChoice = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    [self.positionChoice addItemWithTitle:@"Bench"]; self.positionChoice.lastItem.tag = -1;
+    for (NSInteger position = 0; position < 11; ++position) {
+        [self.positionChoice addItemWithTitle:[NSString stringWithFormat:@"Slot %ld%@", position, position ? @"" : @" (GK)"]];
+        self.positionChoice.lastItem.tag = position;
+    }
+    self.positionChoice.accessibilityLabel = @"Pre-kickoff lineup position";
+    self.positionButton = button(@"Apply slot", self, @selector(setPosition:));
+    self.positionButton.toolTip = @"Before kickoff, bench a player or assign a slot. An occupied slot swaps both players; unavailable players retain their original status.";
+    NSStackView* lineup = stack(@[label(@"Before kickoff:"), self.rosterChoice, self.playerButton, self.positionChoice, self.positionButton], NSUserInterfaceLayoutOrientationHorizontal);
     self.inspection = label(@"Engine units: —   •   Steps: —   •   Phase: —");
     self.inspection.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
     self.inspection.maximumNumberOfLines = 3;
@@ -185,7 +204,7 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     NSTextField* footer = label(@"Shared advancement: C++23. Original match setup and football dependencies remain. Clock shows raw engine units.", 11);
     footer.textColor = NSColor.secondaryLabelColor;
     footer.maximumNumberOfLines = 2;
-    NSStackView* content = stack(@[heading, explanation, selection, self.score, controls, self.inspection, status, tabs, footer], NSUserInterfaceLayoutOrientationVertical);
+    NSStackView* content = stack(@[heading, explanation, selection, self.score, controls, lineup, self.inspection, status, tabs, footer], NSUserInterfaceLayoutOrientationVertical);
     content.translatesAutoresizingMaskIntoConstraints = NO;
     [self.window.contentView addSubview:content];
     NSView* view = self.window.contentView;
@@ -223,6 +242,27 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     self.withdrawButton.enabled = !self.busy && paused && [self.latest[@"stepCount"] unsignedLongLongValue] > 0 &&
         selected >= 0 && NSUInteger(selected) < self.players.count && [self.players[selected][@"active"] boolValue];
     self.goalButton.enabled = self.withdrawButton.enabled;
+    BOOL beforeKickoff = !self.busy && paused && [self.latest[@"stepCount"] unsignedLongLongValue] == 0 &&
+        [self.latest[@"engineUnits"] intValue] == 0;
+    BOOL selection = selected >= 0 && NSUInteger(selected) < self.players.count;
+    NSNumber* previousChoice = self.rosterChoice.selectedItem.representedObject;
+    [self.rosterChoice removeAllItems];
+    if (selection && [self.latest[@"rosters"] count] == 2) {
+        NSMutableSet* assigned = [NSMutableSet new];
+        for (NSDictionary* player in self.players) if ([player[@"present"] boolValue]) [assigned addObject:player[@"staffID"]];
+        const auto team = [self.players[selected][@"team"] unsignedIntegerValue];
+        for (NSDictionary* candidate in self.latest[@"rosters"][team]) {
+            if ([assigned containsObject:candidate[@"staffID"]]) continue;
+            [self.rosterChoice addItemWithTitle:[NSString stringWithFormat:@"%@ [%@]", candidate[@"name"], candidate[@"staffID"]]];
+            self.rosterChoice.lastItem.representedObject = candidate[@"staffID"];
+            if ([candidate[@"staffID"] isEqual:previousChoice]) [self.rosterChoice selectItem:self.rosterChoice.lastItem];
+        }
+    }
+    self.rosterChoice.enabled = beforeKickoff && selection && self.rosterChoice.numberOfItems > 0;
+    self.playerButton.enabled = self.rosterChoice.enabled;
+    self.positionChoice.enabled = beforeKickoff && selection && [self.players[selected][@"present"] boolValue] &&
+        [self.players[selected][@"position"] intValue] >= -1;
+    self.positionButton.enabled = self.positionChoice.enabled;
     self.createButton.enabled = !self.busy && self.clubIDs != nil;
     self.home.enabled = self.away.enabled = self.seed.enabled = !self.busy;
     if (self.busy) [self.progress startAnimation:nil]; else [self.progress stopAnimation:nil];
@@ -351,6 +391,23 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     self.busy = YES; [self updateControls];
     [self send:@{@"command": @"goal", @"team": player[@"team"], @"actor": player[@"actor"]}];
 }
+- (void)setPlayer:(id)sender {
+    (void)sender;
+    const auto row = self.playerTable.selectedRow;
+    NSNumber* staff = self.rosterChoice.selectedItem.representedObject;
+    if (row < 0 || NSUInteger(row) >= self.players.count || !staff) return;
+    NSDictionary* player = self.players[row]; self.busy = YES; self.status.textColor = NSColor.labelColor;
+    [self updateControls];
+    [self send:@{@"command": @"player", @"team": player[@"team"], @"actor": player[@"actor"], @"staffID": staff}];
+}
+- (void)setPosition:(id)sender {
+    (void)sender;
+    const auto row = self.playerTable.selectedRow;
+    if (row < 0 || NSUInteger(row) >= self.players.count) return;
+    NSDictionary* player = self.players[row]; const auto position = self.positionChoice.selectedItem.tag;
+    self.busy = YES; self.status.textColor = NSColor.labelColor; [self updateControls];
+    [self send:@{@"command": @"position", @"team": player[@"team"], @"actor": player[@"actor"], @"position": @(position)}];
+}
 - (void)receive:(NSDictionary*)message {
     NSString* type = message[@"type"];
     if ([type isEqual:@"progress"]) { self.status.stringValue = message[@"message"]; return; }
@@ -374,9 +431,9 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     NSString* state = message[@"status"];
     if (![state isEqual:@"empty"]) {
         self.score.stringValue = [NSString stringWithFormat:@"%@   %@ – %@   %@", self.clubNames[message[@"homeID"]], message[@"homeScore"], message[@"awayScore"], self.clubNames[message[@"awayID"]]];
-        self.inspection.stringValue = [NSString stringWithFormat:@"Engine units: %@   •   Steps: %@   •   Phase: %@   •   Interruption: %@   •   Transition: %@\nOn pitch: %@ / %@   •   Withdrawals: %@   •   Added goals: %@   •   Actor queue: %@\nLast step instructions: %@   •   Shared C++23 calls: %@",
+        self.inspection.stringValue = [NSString stringWithFormat:@"Engine units: %@   •   Steps: %@   •   Phase: %@   •   Interruption: %@   •   Transition: %@\nOn pitch: %@ / %@   •   Lineup edits: %@   •   Withdrawals: %@   •   Added goals: %@\nActor queue: %@   •   Last instructions: %@   •   Shared C++23 calls: %@",
             message[@"engineUnits"], message[@"stepCount"], message[@"phase"], message[@"interruption"], message[@"transition"],
-            message[@"homeOnPitch"], message[@"awayOnPitch"], message[@"withdrawalCount"], message[@"injectedGoalCount"], message[@"actorQueue"], message[@"lastInstructions"], message[@"sharedModernCalls"]];
+            message[@"homeOnPitch"], message[@"awayOnPitch"], message[@"lineupEditCount"], message[@"withdrawalCount"], message[@"injectedGoalCount"], message[@"actorQueue"], message[@"lastInstructions"], message[@"sharedModernCalls"]];
         // Preserve a command validation error until the next accepted control;
         // a following snapshot is also how a failed creation exposes its old state.
         if (![self.status.textColor isEqual:NSColor.systemRedColor])
@@ -395,13 +452,21 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
 }
 - (NSInteger)numberOfRowsInTableView:(NSTableView*)table { return table == self.playerTable ? self.players.count : self.events.count; }
 - (void)tableViewSelectionDidChange:(NSNotification*)notification {
-    if (notification.object == self.playerTable) [self updateControls];
+    if (notification.object == self.playerTable) {
+        const auto row = self.playerTable.selectedRow;
+        if (row >= 0 && NSUInteger(row) < self.players.count) {
+            const auto position = [self.players[row][@"position"] intValue];
+            [self.positionChoice selectItemWithTag:position >= -1 && position < 11 ? position : -1];
+        }
+        [self updateControls];
+    }
 }
 - (NSView*)tableView:(NSTableView*)table viewForTableColumn:(NSTableColumn*)column row:(NSInteger)row {
     NSDictionary* value = table == self.playerTable ? self.players[row] : self.events[row];
     NSString* key = column.identifier;
     id cell = value[key];
     if (table == self.playerTable) {
+        if (cell == NSNull.null) cell = @"";
         if ([key isEqual:@"team"]) cell = [cell boolValue] ? @"Away" : @"Home";
         if ([key isEqual:@"active"]) cell = [cell boolValue] ? @"On pitch" : @"Off pitch";
     }

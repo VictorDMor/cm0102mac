@@ -68,7 +68,7 @@ class Worker:
         self.send(command)
         require(self.next()["type"] == "error", "Invalid command was accepted")
         state = self.state()
-        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount", "injectedGoalCount"):
+        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "rosters", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount", "injectedGoalCount", "lineupEditCount"):
             require(state.get(key) == preserved.get(key), f"Rejected command changed {key}")
 
     def close(self, *, eof=False):
@@ -119,12 +119,45 @@ def main():
             first.rejected({"command": "goal", "team": 0, "actor": 8}, initial)
             require(any(p["name"] == "David Seaman" for p in initial["players"]), "Actual Arsenal name")
             require(any(p["name"] == "Michaël Silvestre" for p in initial["players"]), "Original non-ASCII player name")
+            require(len(initial["players"]) == 40 and len(initial["rosters"]) == 2 and
+                    all(len(roster) > 11 for roster in initial["rosters"]), "Full actor slots and actual club rosters are absent")
+            free = next(p for p in initial["rosters"][0] if p["staffID"] not in {v["staffID"] for v in initial["players"]})
+            for command in ({"command": "player", "team": 0, "actor": 11, "staffID": initial["rosters"][1][0]["staffID"]},
+                            {"command": "player", "team": 0, "actor": True, "staffID": free["staffID"]},
+                            {"command": "player", "team": 0, "actor": 20, "staffID": free["staffID"]},
+                            {"command": "position", "team": 0, "actor": 11, "position": 8},
+                            {"command": "position", "team": 0, "actor": 8, "position": False},
+                            {"command": "position", "team": 0, "actor": 8, "position": -2},
+                            {"command": "position", "team": 0, "actor": 8, "position": 1.5}):
+                first.rejected(command, initial)
+            first.send({"command": "player", "team": 0, "actor": 11, "staffID": free["staffID"]})
+            added = first.state(status="paused", lineupEditCount=1, stepCount=0)
+            reserve = next(p for p in added["players"] if p["team"] == 0 and p["actor"] == 11)
+            require(reserve["present"] and reserve["staffID"] == free["staffID"] and reserve["position"] == -1 and
+                    reserve["name"] == free["name"] and added["homeOnPitch"] == 11, "Original reserve was not initialized from the selected real roster")
+            first.rejected({"command": "player", "team": 0, "actor": 12, "staffID": free["staffID"]}, added)
+            first.send({"command": "position", "team": 0, "actor": 11, "position": 8})
+            promoted = first.state(status="paused", lineupEditCount=2)
+            require(next(p for p in promoted["players"] if p["team"] == 0 and p["actor"] == 11)["position"] == 8 and
+                    next(p for p in promoted["players"] if p["team"] == 0 and p["actor"] == 8)["position"] == -1 and
+                    promoted["homeOnPitch"] == 11 and any("displaced actor 8" in e["description"] for e in promoted["events"]),
+                    "Reserve promotion did not swap the real occupied position or log its effects")
+            first.send({"command": "position", "team": 0, "actor": 8, "position": 8})
+            first.state(status="paused", lineupEditCount=3)
+            first.send({"command": "position", "team": 0, "actor": 9, "position": -1})
+            benched = first.state(status="paused", lineupEditCount=4)
+            require(benched["homeOnPitch"] == 10 and any("11 → 10" in e["description"] for e in benched["events"]), "Pre-kickoff benching did not affect the actual side")
+            first.send({"command": "position", "team": 0, "actor": 9, "position": 9})
+            restored = first.state(status="paused", lineupEditCount=5)
+            lineup(restored)
             for tick in range(1, 4):
                 first.send({"command": "step"})
                 stepped = first.state(status="paused", stepCount=tick)
                 require(stepped["engineUnits"] == tick and stepped["sharedModernCalls"] == tick and stepped["lastInstructions"] > 0,
                         "Step bypassed the real shared C++23 engine")
                 require(stepped["requestID"] == first.last_request, "Step response correlation")
+            first.rejected({"command": "position", "team": 0, "actor": 9, "position": -1}, stepped)
+            first.rejected({"command": "player", "team": 0, "actor": 12, "staffID": free["staffID"]}, stepped)
             for command in (
                 {"command": "create", "homeID": 677, "awayID": 5677, "seed": 0},
                 {"command": "create", "homeID": 677, "awayID": 5677, "seed": True},
@@ -194,7 +227,7 @@ def main():
             second.send({"command": "create", "homeID": 5346, "awayID": 1953, "seed": 67890})
             other = second.state(status="paused", engineUnits=0)
             lineup(other)
-            require({p["staffID"] for p in other["players"]}.isdisjoint({p["staffID"] for p in initial["players"]}), "Different clubs share player selection")
+            require({p["staffID"] for p in other["players"] if p["present"]}.isdisjoint({p["staffID"] for p in initial["players"] if p["present"]}), "Different clubs share player selection")
             # The original injury/history path first queries its manager on
             # this seed's 86th call. Cover that concrete bootstrap regression.
             for tick in range(1, 101):
@@ -214,12 +247,12 @@ def main():
             require(reset["players"] == initial["players"] and reset["seed"] == initial["seed"] and
                     reset["homeScore"] == initial["homeScore"] and reset["awayScore"] == initial["awayScore"], "Seeded reset changed initial setup")
             require(reset["requestID"] == first.last_request, "Reset response correlation")
-            require(reset["homeOnPitch"] == 11 and reset["awayOnPitch"] == 11 and reset["withdrawalCount"] == 0 and reset["injectedGoalCount"] == 0,
+            require(reset["homeOnPitch"] == 11 and reset["awayOnPitch"] == 11 and reset["withdrawalCount"] == 0 and reset["injectedGoalCount"] == 0 and reset["lineupEditCount"] == 0,
                     "Reset retained original injury intervention state")
             require(len(list(first.root.iterdir())) == 1, "Reset retained obsolete experiment backing")
             second.close(eof=True)
             first.close()
-            print("PASS: two actual pairings/processes, named starting elevens, productive C++23 steps, run/pause, original scorer/team/kickoff goals and following steps, real injury withdrawal/log, rejected commands, seeded reset, independent state, immediate old-backing cleanup, normal quit/EOF cleanup")
+            print("PASS: two actual pairings/processes, full actor slots/real rosters, original reserve initialization and pre-kickoff position swaps/benching/logs, named starting elevens, productive C++23 steps, run/pause, original scorer/team/kickoff goals and following steps, real injury withdrawal/log, rejected commands, seeded reset, independent state, immediate old-backing cleanup, normal quit/EOF cleanup")
         finally:
             for worker in workers:
                 if worker.process.poll() is None:
