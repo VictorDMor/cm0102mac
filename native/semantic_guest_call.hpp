@@ -157,6 +157,12 @@ public:
         load(0, 1, bytes + 8); offset(1, 1, bytes); step(); state.wr<4>(4128, r(0));
     }
     void finish() { step(); state.pc = std::uint32_t(state.r<4>(4128)); }
+    bool finish_if_equal() {
+        step();
+        const bool returned = (state.r<1>(2304) & 2) != 0;
+        if (returned) state.pc = std::uint32_t(state.r<4>(4128));
+        return returned;
+    }
     void floating_store_single(unsigned source, unsigned base, std::int32_t displacement) {
         step(); state.memory.write<4>(r(base) + std::uint32_t(displacement), float_bits<4>(float_value<8>(state.r<8>(0x4000 + source * 16))));
     }

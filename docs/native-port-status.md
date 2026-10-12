@@ -36,11 +36,26 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
-## Spatial membership and tactical roles reconstructed
+## Marking relations and local pressure reconstructed
+
+The [marking/pressure block](native-match-marking-pressure-reconstruction.md)
+adds 13 complete C++23 entries / 396 instructions, bringing the current manifest
+to **642** with the full 629-entry prefix preserved. Marking-list maintenance,
+tactics-selected traits, marker eligibility and weighted opposing-player
+assessment now run in both production apps. Seven focused CTests, source audits,
+34 changed manifest checks and affected-unit UBSAN runs pass. Every entry has
+individual component/negative, actual direct/generated/CFM, original/profile and
+nonlocal proof; actual guest candidate collection allocation/copy is compared.
+Installed signed ARM64 identities and a real goal/withdrawal/following-step worker
+sequence are verified. Full movement/action reconstruction and final visual
+acceptance remain unfinished. Save/Load is **not retested**; performance is
+**not benchmarked**.
+
+## Prior spatial membership and tactical role reconstruction
 
 The [spatial/role block](native-match-spatial-role-reconstruction.md) adds 23
 complete C++23 entries / 754 instructions, bringing the current manifest to
-**629** with the complete 606-entry prefix preserved. Role lookup, coordinate
+that phase's **629** with the complete 606-entry prefix preserved. Role lookup, coordinate
 and marking access, cell insertion/removal and both-side goalkeeper resolution
 now execute the same semantic code in the game and debugger. Eight focused
 CTests, original/source audits, 33 changed manifest assertions and affected-unit

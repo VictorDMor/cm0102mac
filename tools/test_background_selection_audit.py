@@ -30,8 +30,8 @@ class BackgroundManifestTests(unittest.TestCase):
             (entry, 'background_selection_adapter') for entry in BACKGROUND_SELECTION_ENTRIES))
         self.assertEqual(SEMANTIC_REPLACEMENTS[41:46], tuple(
             (entry, 'collection_lookup_adapter') for entry in COLLECTION_LOOKUP_ENTRIES))
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 629)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 629)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 642)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 642)
         self.assertEqual(len(CALENDAR_ADAPTER_ENTRIES) + len(DATE_SUBSYSTEM_ENTRIES), 34)
 
 
