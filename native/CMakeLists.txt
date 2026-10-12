@@ -47,6 +47,10 @@ target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
 target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
 target_sources(cm_aot PRIVATE actor_motion.cpp actor_motion_adapter.cpp)
 target_sources(cm_aot PRIVATE
+    match_discipline_adapter.cpp
+    match_discipline_facades.cpp
+    match_discipline_penalties.cpp
+    match_discipline_referee.cpp
     player_movement_adapter.cpp
     player_movement_coordinator.cpp
     player_movement.cpp
@@ -178,6 +182,18 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_executable(cm-player-decision-characterization player_decision_characterization.cpp "${CM_PLAYER_DECISION_REFERENCE}")
     target_link_libraries(cm-player-decision-characterization PRIVATE cm_match_debugger_factory)
     target_compile_options(cm-player-decision-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    set(CM_MATCH_DISCIPLINE_REFERENCE "${CMAKE_BINARY_DIR}/match_discipline_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MATCH_DISCIPLINE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_discipline_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DISCIPLINE_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_discipline_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/match_discipline_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-match-discipline-checks match_discipline_checks.cpp "${CM_MATCH_DISCIPLINE_REFERENCE}")
+    target_link_libraries(cm-match-discipline-checks PRIVATE cm_aot)
+    target_compile_options(cm-match-discipline-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME match_discipline_component_equivalence COMMAND cm-match-discipline-checks)
     set(CM_ACTOR_MOTION_REFERENCE "${CMAKE_BINARY_DIR}/actor_motion_reference.cpp")
     add_custom_command(OUTPUT "${CM_ACTOR_MOTION_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_motion_reference.py"
@@ -297,6 +313,12 @@ add_executable(cm-match-actor-production-checks match_actor_production_checks.cp
 add_executable(cm-actor-construction-production-checks actor_construction_production_checks.cpp)
 add_executable(cm-spatial-role-production-checks spatial_role_production_checks.cpp)
 add_executable(cm-marking-pressure-production-checks marking_pressure_production_checks.cpp)
+add_executable(cm-match-discipline-production-checks match_discipline_production_checks.cpp)
+target_link_libraries(cm-match-discipline-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-discipline-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-discipline-transfer-checks match_discipline_transfer_checks.cpp)
+target_link_libraries(cm-match-discipline-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-discipline-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-player-movement-production-checks player_movement_production_checks.cpp)
 target_link_libraries(cm-player-movement-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-player-movement-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -512,6 +534,16 @@ add_executable(cm-match-debugger-completion-checks match_debugger_completion_che
 target_link_libraries(cm-match-debugger-completion-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-completion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME match_discipline_actual_production COMMAND cm-match-discipline-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-discipline-production-checks")
+    add_test(NAME match_discipline_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-match-discipline-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/match-discipline-profile-checks" "${CMAKE_BINARY_DIR}/match-discipline-live-profile")
+    add_test(NAME match_discipline_nonlocal_transfer COMMAND cm-match-discipline-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-discipline-transfer-checks"
+        "${CMAKE_BINARY_DIR}/match-discipline-live-profile")
+    set_tests_properties(match_discipline_actual_production PROPERTIES FIXTURES_SETUP MatchDisciplineLiveProfile TIMEOUT 180)
+    set_tests_properties(match_discipline_original_profile match_discipline_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MatchDisciplineLiveProfile TIMEOUT 180)
     add_test(NAME match_debugger_actual_cards COMMAND cm-match-debugger-cards-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-cards-checks")
     set_tests_properties(match_debugger_actual_cards PROPERTIES TIMEOUT 180)

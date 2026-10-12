@@ -26,8 +26,8 @@ class ScopeTests(unittest.TestCase):
             self.assertNotIn(entry, RUNTIME_LIFECYCLE_ENTRIES)
 
     def test_exact_prior_182_and_six_production_entries(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 649)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 649)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 655)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 655)
         self.assertEqual(SEMANTIC_REPLACEMENTS[182:188], tuple((e, 'runtime_lifecycle_adapter') for e in RUNTIME_LIFECYCLE_ENTRIES))
         prior = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS[:182]]
         self.assertEqual(hashlib.sha256(json.dumps(prior, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),

@@ -36,11 +36,26 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Match foul and referee outcomes reconstructed
+
+The [match-discipline block](native-match-discipline-reconstruction.md) adds six
+complete C++23 entries / 1,078 indexed instructions: contact and single-actor foul
+outcomes, referee incident response and three match facades. The current
+manifest is **655**, with the full 649-entry prefix preserved. Original card,
+foul, rating, referee, clock, random-stream and reason effects retain their ABI,
+ordered access and fault behavior. Both applications share these bodies.
+Six focused CTests, seven source audits, 39 changed manifest checks, affected-unit
+UBSAN and installed worker/UI acceptance pass. Signed ARM64 apps are installed,
+with current saves and original files preserved. The report records per-entry
+production and nonlocal evidence and the explicit diagnostic limits. This completes
+this bounded block; the full match engine and whole game port remain unfinished.
+Save/Load is **not retested**; performance is **not benchmarked**.
+
 ## Complete player movement and debugger cards delivered
 
 The [complete movement/interaction root](native-player-movement-reconstruction.md)
 adds one C++23 entry / 7,537 indexed instructions across eight original pages,
-bringing the current manifest to **649** with its 648-entry prefix preserved.
+bringing that phase manifest to **649** with its 648-entry prefix preserved.
 All source sites are covered in component comparisons; actual productive,
 original/profile, negative and nonlocal checks pass. A real match observes
 597 dedicated C++23 movement calls and returns without original fallback,

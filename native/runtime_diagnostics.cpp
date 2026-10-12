@@ -13,6 +13,7 @@
 #include "player_decision_adapter.hpp"
 #include "actor_motion_adapter.hpp"
 #include "player_movement_adapter.hpp"
+#include "match_discipline_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -33,7 +34,16 @@ struct RuntimeDiagnostics {
     PlayerDecisionDiagnostics player_decision;
     ActorMotionDiagnostics actor_motion;
     PlayerMovementDiagnostics player_movement;
+    MatchDisciplineDiagnostics match_discipline;
 };
+MatchDisciplineDiagnostics& match_discipline_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->match_discipline;
+}
+const MatchDisciplineDiagnostics& match_discipline_diagnostics(const State& state) {
+    static const MatchDisciplineDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->match_discipline : empty;
+}
 PlayerMovementDiagnostics& player_movement_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->player_movement;
