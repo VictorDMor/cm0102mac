@@ -4,6 +4,7 @@
 #include "match_debugger_database.hpp"
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace cm::aot::match_debugger {
@@ -22,7 +23,8 @@ public:
     static DatabaseWorld load(const std::filesystem::path& original_program,
         const std::filesystem::path& original_game,
         const std::filesystem::path& new_private_directory,
-        std::uint64_t instruction_limit = 600000000);
+        std::uint64_t instruction_limit = 600000000,
+        std::optional<std::uint32_t> random_seed = std::nullopt);
 
     const DatabaseCatalog& catalog() const { return catalog_; }
     const State& state() const { return *state_; }

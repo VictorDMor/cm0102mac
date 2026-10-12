@@ -38,8 +38,9 @@ std::uint32_t call(State& state, std::uint32_t entry,
 DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
     const std::filesystem::path& original_game,
     const std::filesystem::path& new_private_directory,
-    std::uint64_t instruction_limit) {
+    std::uint64_t instruction_limit, std::optional<std::uint32_t> random_seed) {
     if (!instruction_limit) throw std::invalid_argument("Database bootstrap requires a positive instruction limit");
+    if (random_seed == 0) throw std::invalid_argument("Debugger random seed must be explicit and nonzero");
     const auto program = std::filesystem::canonical(original_program);
     const auto game = std::filesystem::canonical(original_game);
     const auto scratch = std::filesystem::weakly_canonical(new_private_directory);
@@ -69,6 +70,7 @@ DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
             throw std::runtime_error("Independent bootstrap did not compose all original global initializers");
     if (call(state, 0x10118ef0, {0}) != 1)
         throw std::runtime_error("Original application objects did not initialize");
+    if (random_seed) (void)call(state, 0x107474a0, {*random_seed});
 
     constexpr char data_path[] = "CM 01-02:Data";
     const auto path = allocate(state, sizeof(data_path), false);

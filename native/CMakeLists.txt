@@ -46,6 +46,9 @@ target_compile_options(cm_match_debugger_database PRIVATE -Wall -Wextra -Werror 
 add_library(cm_match_debugger_bootstrap STATIC match_debugger_bootstrap.cpp)
 target_link_libraries(cm_match_debugger_bootstrap PUBLIC cm_aot cm_match_debugger_database)
 target_compile_options(cm_match_debugger_bootstrap PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_library(cm_match_debugger_factory STATIC match_debugger_factory.cpp)
+target_link_libraries(cm_match_debugger_factory PUBLIC cm_match_debugger_bootstrap)
+target_compile_options(cm_match_debugger_factory PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 target_link_libraries(cm_aot PUBLIC cm_ui cm_audio z "-framework CoreFoundation" "-framework CoreServices" "-framework ApplicationServices")
 target_include_directories(cm_aot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_aot PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -257,6 +260,13 @@ target_compile_options(cm-match-debugger-bootstrap-checks PRIVATE -Wall -Wextra 
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME match_debugger_fresh_database_world COMMAND cm-match-debugger-bootstrap-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-bootstrap-checks")
+endif()
+add_executable(cm-match-debugger-factory-checks match_debugger_factory_checks.cpp)
+target_link_libraries(cm-match-debugger-factory-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugger-factory-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME match_debugger_fresh_match_factory COMMAND cm-match-debugger-factory-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-factory-checks")
 endif()
 foreach(CM_MATCH_CHECK IN ITEMS production transfer)
     add_executable(cm-match-engine-${CM_MATCH_CHECK}-checks match_engine_${CM_MATCH_CHECK}_checks.cpp)

@@ -45,6 +45,8 @@ public:
     const std::string& failure() const { return failure_; }
     Inspection inspect() const;
     const std::vector<StepRecord>& steps() const { return steps_; }
+    const State& state() const { return *engine_.state; }
+    std::uint32_t match_address() const { return engine_.match; }
 
     void run();
     void pause();
