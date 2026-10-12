@@ -33,6 +33,15 @@ struct StepRecord {
     Inspection before, after;
 };
 
+struct WithdrawalRecord {
+    std::uint64_t number = 0, at_step = 0, instructions = 0;
+    std::uint32_t team = 0, actor = 0, staff_id = 0;
+    std::int8_t position_before = 0, position_after = 0;
+    std::uint8_t withdrawals_before = 0, withdrawals_after = 0;
+    unsigned on_pitch_before = 0, on_pitch_after = 0;
+    Inspection before, after;
+};
+
 // One owner drives this session. A UI scheduler invokes advance_if_running()
 // between UI events; it must not concurrently access a running guest State.
 // The engine call uses the same dispatch as the production game.
@@ -45,6 +54,7 @@ public:
     const std::string& failure() const { return failure_; }
     Inspection inspect() const;
     const std::vector<StepRecord>& steps() const { return steps_; }
+    const std::vector<WithdrawalRecord>& withdrawals() const { return withdrawals_; }
     const State& state() const { return *engine_.state; }
     std::uint32_t match_address() const { return engine_.match; }
 
@@ -53,6 +63,10 @@ public:
     StepRecord step();
     std::optional<StepRecord> advance_if_running();
     void reset();
+    unsigned on_pitch(unsigned team) const;
+    // Original injury withdrawal, applied only after kickoff at a paused
+    // boundary. This is distinct from lineup editing or a red-card operation.
+    WithdrawalRecord withdraw_injured_player(unsigned team, unsigned actor);
 
 private:
     Factory factory_;
@@ -61,6 +75,7 @@ private:
     ExecutionState execution_ = ExecutionState::paused;
     std::string failure_;
     std::vector<StepRecord> steps_;
+    std::vector<WithdrawalRecord> withdrawals_;
 
     StepRecord execute_step();
     static Inspection inspect(const EngineInstance&);

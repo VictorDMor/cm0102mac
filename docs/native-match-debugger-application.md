@@ -8,7 +8,7 @@ The catalog exposes the 10,593 original clubs. The factory validates that the se
 
 Run executes at most 30 calls per second to make inspection and manual pausing practical. The UI remains responsive because it never owns or concurrently accesses a running guest state. Each completed step uses the same reconstructed shared advancement entry as the production game. An original pause, completion or abort result stops scheduled execution. A fault preserves the partial state, reports the guest fault address, blocks further advancement and permits a fresh reset.
 
-The application/session core is implemented and its actual worker is accepted; final corrected installed-UI verification awaits an unlocked Mac. **Lineup editing, player withdrawal/dismissal and goal injection remain pending.** The engine-change list reports observations rather than a complete decoded commentary stream. The full debugger product contract and the whole match-engine reconstruction are not complete.
+The application/session core is implemented and its actual worker is accepted; final corrected installed-UI verification awaits an unlocked Mac. The subsequent [injury withdrawal](native-match-debugger-withdrawal.md) adds original player withdrawal, actual on-pitch counts and before/after intervention logging. **Lineup editing, red-card dismissal and goal injection remain pending.** The engine-change list reports observations rather than a complete decoded commentary stream. The full debugger product contract and the whole match-engine reconstruction are not complete.
 
 ## Process and file ownership
 

@@ -157,6 +157,8 @@ public:
             @"homeScore": @(value.home_score), @"awayScore": @(value.away_score),
             @"phase": @(value.phase), @"interruption": @(value.interruption), @"transition": @(value.transition),
             @"actorQueue": @(value.actor_queue_count), @"stepCount": @(steps.size()),
+            @"homeOnPitch": @(session_->on_pitch(0)), @"awayOnPitch": @(session_->on_pitch(1)),
+            @"withdrawalCount": @(session_->withdrawals().size()),
             @"lastInstructions": @(steps.empty() ? 0 : steps.back().instructions),
             @"sharedModernCalls": @(diagnostics.calls[2]), @"failure": text(session_->failure()),
             @"players": players(*session_), @"events": [events_ copy]});
@@ -165,8 +167,9 @@ public:
     bool command(NSDictionary* value, std::uint32_t request) {
         id operation = value[@"command"];
         if (![operation isKindOfClass:NSString.class]) throw std::invalid_argument("Missing worker command");
-        NSMutableSet* keys = [NSMutableSet setWithArray:[operation isEqual:@"create"] ?
-            @[@"command", @"homeID", @"awayID", @"seed"] : @[@"command"]];
+        NSArray* fields = [operation isEqual:@"create"] ? @[@"command", @"homeID", @"awayID", @"seed"] :
+            [operation isEqual:@"withdraw"] ? @[@"command", @"team", @"actor"] : @[@"command"];
+        NSMutableSet* keys = [NSMutableSet setWithArray:fields];
         if (value[@"requestID"]) [keys addObject:@"requestID"];
         if (![[NSSet setWithArray:value.allKeys] isEqual:keys]) throw std::invalid_argument("Unexpected command fields");
         if ([operation isEqual:@"quit"]) return false;
@@ -179,6 +182,13 @@ public:
                 if (session_->execution_state() == ExecutionState::running) { session_->pause(); event(@"Engine execution paused"); }
             }
             else if ([operation isEqual:@"reset"]) create(setup_);
+            else if ([operation isEqual:@"withdraw"]) {
+                const auto record = session_->withdraw_injured_player(integer(value, @"team"), integer(value, @"actor"));
+                event([NSString stringWithFormat:@"Intervention: %@ actor %u (staff %u) withdrawn through injury handling; slot %d → %d; on pitch %u → %u; withdrawal count %u → %u; unit %d",
+                    record.team ? @"away" : @"home", record.actor, record.staff_id,
+                    int(record.position_before), int(record.position_after), record.on_pitch_before, record.on_pitch_after,
+                    unsigned(record.withdrawals_before), unsigned(record.withdrawals_after), int(record.after.elapsed_engine_units)]);
+            }
             else if (![operation isEqual:@"inspect"]) throw std::invalid_argument("Unknown worker command");
         }
         snapshot(request);

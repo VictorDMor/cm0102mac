@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-11
+# Native port investigation — updated 2026-10-12
 
 ## Required outcome
 
@@ -69,8 +69,12 @@ creation, Step/Run/Pause/Reset, named players and observed engine changes.
 Focused checks cover two pairings, process isolation, rejected commands, seeded
 reset and scratch cleanup. An original empty injury/history manager fixes the
 Liverpool/Chelsea query exposed on the 86th attempted step; that seed now completes
-100 checked calls. Interactive lineup editing and consistent player/goal
-interventions remain required. The broader engine and complete port remain
+100 checked calls. Original injury withdrawal now has a C++23 session boundary,
+worker command and AppKit control with before/after logging. Home/away outfield
+and goalkeeper checks agree with direct original effects; thirty subsequent
+C++23 steps agree with original shared advancement. Final interactive checking
+awaits Mac unlock. Lineup editing, red-card controls and goal injection remain
+required. The broader engine and complete port remain
 unfinished. See [the application report](native-match-debugger-application.md).
 
 ## Prior record-history insertion reconstruction

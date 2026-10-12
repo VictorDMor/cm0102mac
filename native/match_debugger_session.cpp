@@ -51,6 +51,7 @@ void Session::reset() {
     (void)inspect(replacement);
     engine_ = std::move(replacement);
     steps_.clear();
+    withdrawals_.clear();
     failure_.clear();
     execution_ = ExecutionState::paused;
 }
@@ -63,6 +64,70 @@ void Session::run() {
 
 void Session::pause() {
     if (execution_ == ExecutionState::running) execution_ = ExecutionState::paused;
+}
+
+unsigned Session::on_pitch(unsigned team) const {
+    if (team > 1) throw std::invalid_argument("Match side must be home or away");
+    unsigned count = 0;
+    for (unsigned actor = 0; actor < 20; ++actor) {
+        const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+        const auto position = signed_value<1>(engine_.state->memory.read<1>(address + 0x19));
+        count += position >= 0 && position < 11;
+    }
+    return count;
+}
+
+WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor) {
+    if (execution_ != ExecutionState::paused || steps_.empty())
+        throw std::logic_error("Injury withdrawal requires a paused match after kickoff");
+    if (team > 1 || actor >= 20)
+        throw std::invalid_argument("Invalid match side or actor index");
+    auto& state = *engine_.state;
+    const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+    const auto staff = std::uint32_t(state.memory.read<4>(address + 0x6c));
+    const auto position = signed_value<1>(state.memory.read<1>(address + 0x19));
+    if (!staff || position < 0 || position >= 11 || state.memory.read<1>(address + 0x27) != team ||
+        state.memory.read<4>(address + 0x1a4) != engine_.match)
+        throw std::invalid_argument("Select an actual player currently on the pitch");
+
+    WithdrawalRecord record;
+    record.number = withdrawals_.size() + 1;
+    record.at_step = steps_.size();
+    record.team = team; record.actor = actor;
+    record.staff_id = std::uint32_t(state.memory.read<4>(staff));
+    record.position_before = std::int8_t(position);
+    record.withdrawals_before = std::uint8_t(state.memory.read<1>(address + 0x23));
+    record.on_pitch_before = on_pitch(team);
+    record.before = inspect();
+    const auto instructions = state.executed;
+    try {
+        StepBudget budget(state, step_instruction_limit_);
+        state.wr<4>(12, engine_.match);
+        state.wr<4>(16, address);
+        state.wr<4>(20, 0); // Original injury count/time and tactical update path.
+        state.wr<4>(4128, return_sentinel);
+        state.pc = 0x101f1530;
+        run_until(state, return_sentinel);
+        if (state.pc != return_sentinel)
+            throw std::runtime_error("Original injury withdrawal did not return to its boundary");
+        record.instructions = state.executed - instructions;
+        record.position_after = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
+        record.withdrawals_after = std::uint8_t(state.memory.read<1>(address + 0x23));
+        record.on_pitch_after = on_pitch(team);
+        record.after = inspect();
+        if (record.position_after != -3)
+            throw std::runtime_error("Original injury withdrawal did not mark the selected actor unavailable");
+        withdrawals_.push_back(record);
+        return record;
+    } catch (const std::exception& error) {
+        execution_ = ExecutionState::faulted;
+        failure_ = "Engine intervention fault at " + hex_address(state.pc) + ": " + error.what();
+        throw;
+    } catch (...) {
+        execution_ = ExecutionState::faulted;
+        failure_ = "Engine intervention was interrupted before returning";
+        throw;
+    }
 }
 
 StepRecord Session::execute_step() {

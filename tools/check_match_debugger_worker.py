@@ -68,7 +68,7 @@ class Worker:
         self.send(command)
         require(self.next()["type"] == "error", "Invalid command was accepted")
         state = self.state()
-        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "sharedModernCalls"):
+        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount"):
             require(state.get(key) == preserved.get(key), f"Rejected command changed {key}")
 
     def close(self, *, eof=False):
@@ -115,6 +115,7 @@ def main():
             lineup(initial)
             require(initial["requestID"] == first.last_request, "Creation response correlation")
             require(initial["sharedModernCalls"] == 0, "Fresh instance already advanced")
+            first.rejected({"command": "withdraw", "team": 0, "actor": 8}, initial)
             require(any(p["name"] == "David Seaman" for p in initial["players"]), "Actual Arsenal name")
             require(any(p["name"] == "Michaël Silvestre" for p in initial["players"]), "Original non-ASCII player name")
             for tick in range(1, 4):
@@ -143,6 +144,22 @@ def main():
             first.send({"command": "inspect"})
             stable = first.state(status="paused")
             require(stable["engineUnits"] == paused["engineUnits"] and stable["stepCount"] == paused["stepCount"], "Pause advanced the engine")
+            first.send({"command": "withdraw", "team": 0, "actor": 8})
+            withdrawn = first.state(status="paused", withdrawalCount=1)
+            target = next(p for p in withdrawn["players"] if p["team"] == 0 and p["actor"] == 8)
+            require(target["position"] == -3 and not target["active"] and withdrawn["homeOnPitch"] == 10 and
+                    withdrawn["awayOnPitch"] == 11 and withdrawn["stepCount"] == stable["stepCount"] and
+                    withdrawn["engineUnits"] == stable["engineUnits"], "Worker did not apply the original injury withdrawal")
+            require(any("Intervention:" in e["description"] and "11 → 10" in e["description"] for e in withdrawn["events"]),
+                    "Withdrawal before/after effects are absent from the ordered log")
+            for command in ({"command": "withdraw", "team": 0, "actor": 8},
+                            {"command": "withdraw", "team": 2, "actor": 8},
+                            {"command": "withdraw", "team": 0, "actor": 20}):
+                first.rejected(command, withdrawn)
+            for _ in range(2):
+                first.send({"command": "step"})
+                stable = first.state(status="paused")
+                require(stable["homeOnPitch"] == 10 and stable["withdrawalCount"] == 1, "Engine restored the withdrawn player")
 
             second = Worker(args.executable.resolve(), args.program.resolve(), args.game.resolve(), root / "second")
             workers.append(second)
@@ -164,10 +181,12 @@ def main():
             require(reset["players"] == initial["players"] and reset["seed"] == initial["seed"] and
                     reset["homeScore"] == initial["homeScore"] and reset["awayScore"] == initial["awayScore"], "Seeded reset changed initial setup")
             require(reset["requestID"] == first.last_request, "Reset response correlation")
+            require(reset["homeOnPitch"] == 11 and reset["awayOnPitch"] == 11 and reset["withdrawalCount"] == 0,
+                    "Reset retained original injury intervention state")
             require(len(list(first.root.iterdir())) == 1, "Reset retained obsolete experiment backing")
             second.close(eof=True)
             first.close()
-            print("PASS: two actual pairings/processes, named starting elevens, productive C++23 steps, run/pause, rejected commands, seeded reset, independent state, immediate old-backing cleanup, normal quit/EOF cleanup")
+            print("PASS: two actual pairings/processes, named starting elevens, productive C++23 steps, run/pause, real injury withdrawal/log/following steps, rejected commands, seeded reset, independent state, immediate old-backing cleanup, normal quit/EOF cleanup")
         finally:
             for worker in workers:
                 if worker.process.poll() is None:
