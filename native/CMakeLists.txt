@@ -141,6 +141,18 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_link_libraries(cm-marking-pressure-checks PRIVATE cm_aot)
     target_compile_options(cm-marking-pressure-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME marking_pressure_component_equivalence COMMAND cm-marking-pressure-checks)
+    set(CM_PLAYER_DECISION_REFERENCE "${CMAKE_BINARY_DIR}/player_decision_reference.cpp")
+    add_custom_command(OUTPUT "${CM_PLAYER_DECISION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_player_decision_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_PLAYER_DECISION_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_player_decision_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/player_decision_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-player-decision-characterization player_decision_characterization.cpp "${CM_PLAYER_DECISION_REFERENCE}")
+    target_link_libraries(cm-player-decision-characterization PRIVATE cm_match_debugger_factory)
+    target_compile_options(cm-player-decision-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 endif()
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -393,6 +405,11 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     add_test(NAME match_debugger_actual_lineup COMMAND cm-match-debugger-lineup-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)
+    if(TARGET cm-player-decision-characterization)
+        add_test(NAME player_decision_original_characterization COMMAND cm-player-decision-characterization
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-decision-characterization")
+        set_tests_properties(player_decision_original_characterization PROPERTIES TIMEOUT 180)
+    endif()
     add_test(NAME marking_pressure_actual_production COMMAND cm-marking-pressure-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/marking-pressure-production-checks")
     add_test(NAME marking_pressure_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1

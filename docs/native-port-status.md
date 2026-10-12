@@ -36,6 +36,18 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
+## Player decision conversion in progress
+
+The [complete player decision body](native-player-decision-reconstruction.md)
+contains 2,090 instructions across three pages. Its independent original
+reference and 61-case characterization pass, including 50 returns, eight budget
+prefixes, two pending native-event boundaries and an architectural negative.
+Observed runtime sites cover 869 instructions; this is not full branch coverage.
+An unhooked C++23 dead-ball/frame prototype agrees on two actual paths and 12
+budget prefixes with affected-code UBSAN. The remaining phases are unfinished;
+the production semantic manifest remains **642** and the installed apps are
+unchanged by this development cycle.
+
 ## Marking relations and local pressure reconstructed
 
 The [marking/pressure block](native-match-marking-pressure-reconstruction.md)
