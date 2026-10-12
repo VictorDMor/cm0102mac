@@ -327,15 +327,21 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     NSString* type = message[@"type"];
     if ([type isEqual:@"progress"]) { self.status.stringValue = message[@"message"]; return; }
     const auto request = [message[@"requestID"] unsignedIntValue];
-    if (self.pendingRequest && request != self.pendingRequest) return;
+    if (self.pendingRequest && request != self.pendingRequest) {
+        // A running update can already be in the pipe when Pause is sent.
+        // Retain its ordered observations while awaiting the control reply;
+        // it must not re-enable controls or finish a newer creation request.
+        if ([type isEqual:@"state"] && [self.latest[@"generation"] isEqual:message[@"generation"]])
+            [self appendEvents:message[@"events"]];
+        return;
+    }
     if ([type isEqual:@"error"]) { [self showError:message[@"message"]]; return; }
     if (![type isEqual:@"state"]) return;
     self.pendingRequest = 0;
     const BOOL newExperiment = ![self.latest[@"generation"] isEqual:message[@"generation"]];
     self.latest = message; self.busy = NO;
     if (newExperiment) [self.events removeAllObjects];
-    [self.events addObjectsFromArray:message[@"events"] ? message[@"events"] : @[]];
-    if (self.events.count > 2000) [self.events removeObjectsInRange:NSMakeRange(0, self.events.count - 2000)];
+    [self appendEvents:message[@"events"]];
     self.players = message[@"players"] ? message[@"players"] : @[];
     NSString* state = message[@"status"];
     if (![state isEqual:@"empty"]) {
@@ -351,6 +357,12 @@ NSScrollView* table_scroll(NSTableView* table, NSArray<NSArray*>* columns, id de
     [self.playerTable reloadData]; [self.eventTable reloadData];
     if (self.events.count) [self.eventTable scrollRowToVisible:self.events.count - 1];
     [self updateControls];
+}
+- (void)appendEvents:(NSArray*)events {
+    [self.events addObjectsFromArray:events ? events : @[]];
+    if (self.events.count > 2000) [self.events removeObjectsInRange:NSMakeRange(0, self.events.count - 2000)];
+    [self.eventTable reloadData];
+    if (self.events.count) [self.eventTable scrollRowToVisible:self.events.count - 1];
 }
 - (NSInteger)numberOfRowsInTableView:(NSTableView*)table { return table == self.playerTable ? self.players.count : self.events.count; }
 - (NSView*)tableView:(NSTableView*)table viewForTableColumn:(NSTableColumn*)column row:(NSInteger)row {
