@@ -58,7 +58,7 @@ DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
     world.state_ = std::make_unique<State>();
     auto& state = *world.state_;
     load_program(state, program);
-    state.platform = std::make_shared<NativePlatform>(game, scratch, AudioMode::offline);
+    state.platform = std::make_shared<NativePlatform>(game, scratch, AudioMode::offline, EventMode::isolated);
     state.budget = instruction_limit;
     state.pc = 0x10773710;
     // Stop after actual global initialization, before the application event

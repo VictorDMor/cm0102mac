@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
         validate_players(first, setup.home_club, setup.away_club);
         require(first.execution_state() == ExecutionState::paused && first.inspect().elapsed_engine_units == 0,
             "Fresh detailed match does not open paused before kickoff");
-        require(progress.size() == 5, "Match creation progress boundaries");
+        require(progress.size() == 6, "Match creation progress boundaries include actual substitutes");
         const auto initial = digest(first.state(), first.match_address());
         const auto inspection = first.inspect();
         require(!first.advance_if_running() && first.inspect() == inspection, "Paused engine advanced");

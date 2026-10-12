@@ -120,14 +120,15 @@ int main(int argc, char** argv) {
         match_actor_diagnostics(*control.state).original = true;
         const Baseline baseline{session.state().executed, control.state->executed, session.state().native_calls,
             control.state->native_calls, session.state().budget, control.state->budget};
-        require(session.roster(0).size() > 11 && session.roster(1).size() > 11 && session.state().memory.read<4>(actor_address(session.match_address(),0,11)+0x6c)==0,
-            "Real rosters or empty reserve actor are absent");
+        const auto initial_reserve = session.state().memory.read<4>(actor_address(session.match_address(),0,11)+0x6c);
+        require(session.roster(0).size() > 20 && session.roster(1).size() > 20 && initial_reserve,
+            "Real rosters or prepared substitutes are absent");
         auto member = unused(session,0);
         reject_without_effects(session,[&]{session.set_player(2,11,member.staff_id);});
         reject_without_effects(session,[&]{session.set_player(0,20,member.staff_id);});
         reject_without_effects(session,[&]{session.set_player(0,11,session.roster(1).front().staff_id);});
         reject_without_effects(session,[&]{session.set_player(0,11,UINT32_MAX);});
-        reject_without_effects(session,[&]{session.set_position(0,11,8);});
+        reject_without_effects(session,[&]{session.set_position(0,20,8);});
         reject_without_effects(session,[&]{session.set_position(0,8,-2);});
         reject_without_effects(session,[&]{session.set_position(0,8,11);});
         reject_without_effects(session,[&]{session.set_position(0,8,8);});
@@ -192,7 +193,7 @@ int main(int argc, char** argv) {
         reject_without_effects(limited,[&]{limited.set_position(0,8,-1);});
         require(session.state().memory.copy_out(session.match_address(),0xe0bc)==retained,"Another lineup experiment changed this match");
         session.reset();require(session.lineup_edits().empty() && session.steps().empty() && session.on_pitch(0)==11 && session.on_pitch(1)==11 &&
-            session.state().memory.read<4>(actor_address(session.match_address(),0,11)+0x6c)==0,"Seeded reset retained player/lineup edits");
+            session.state().memory.read<4>(actor_address(session.match_address(),0,11)+0x6c)==initial_reserve,"Seeded reset retained player/lineup edits");
         std::cout<<"PASS: two complete original actor constructions, full ABI/match/accounting/effects agreement for "<<compared
             <<" lineup edits, real club roster validation, reserve/starter replacement, position swaps/benching, missing goalkeeper guard, 30 original-agreeing shared steps, pointer-only negatives, rejected edits, partial budget fault, independent state and fresh reset\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}

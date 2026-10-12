@@ -1,6 +1,8 @@
 # Pre-kickoff lineup editing in the match debugger
 
-## Behavior and scope
+The original delivery below records the pre-kickoff editor. The subsequent [match lab](native-match-debugger-lab.md) initializes actual substitutes, hides empty actor spaces, adds unrestricted in-match substitutions and retains these original-compatible starting-lineup controls. Its current interface uses **Choose player**, **Set position**, **Injury** and **Add goal**.
+
+## Original behavior and scope
 
 The **Before kickoff** controls edit a fresh paused experiment. The inspector shows all forty actor spaces, including empty spaces, and exposes each side's actual original club roster. Select an actor, choose an unused club player and press **Set player** to replace a starter or create a reserve in an empty space. Choose **Bench** or a position from 0 through 10 and press **Apply slot** to change the player's starting assignment. Position 0 is the goalkeeper assignment. An occupied position exchanges the selected and displaced players' assignments, preserving unique positions. A reserve taking a starter's slot moves that starter to the bench.
 

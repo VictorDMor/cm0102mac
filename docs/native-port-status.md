@@ -130,20 +130,7 @@ runtime files, saves, references and private handoffs are preserved. Save/Load
 is **not retested** and performance is **not benchmarked**. See
 [the advancement report](native-match-advancement-reconstruction.md).
 
-The separate [match debugger](native-match-debugger.md) now has an installed ARM64
-application/session core: original club selection, independent detailed match
-creation, Step/Run/Pause/Reset, named players and observed engine changes.
-Focused checks cover two pairings, process isolation, rejected commands, seeded
-reset and scratch cleanup. An original empty injury/history manager fixes the
-Liverpool/Chelsea query exposed on the 86th attempted step; that seed now completes
-100 checked calls. Original injury withdrawal now has a C++23 session boundary,
-worker command and AppKit control with before/after logging. Home/away outfield
-and goalkeeper checks agree with direct original effects; thirty subsequent
-C++23 steps agree with original shared advancement. Final interactive checking
-awaits Mac unlock. Lineup editing and awarded-goal controls are delivered;
-red-card controls and a complete commentary inspector remain required.
-The broader engine and complete port remain
-unfinished. See [the application report](native-match-debugger-application.md).
+The separate [match debugger](native-match-debugger.md) has an ARM64 application/session core using the same production engine. Its [match lab](native-match-debugger-lab.md) shows elapsed time, score, actual reserves and committed football events together. Complete guest-state history supports rewind/redo, time jumps and branch edits; goals, injury withdrawal and unrestricted substitutions change actual engine state. Full-roster replacements, re-entry, more than three substitutions and injured-goalkeeper replacement are covered by focused checks. History shares unchanged pages in RAM and creates no per-step SSD captures. The existing Liverpool/Chelsea injury/history bootstrap regression remains covered through 100 actual calls. The manifest remains **643** entries; this lab delivery adds no semantic replacement. Red-card intervention, broader engine reconstruction and the complete port remain unfinished. See [the application report](native-match-debugger-application.md).
 
 ## Prior record-history insertion reconstruction
 

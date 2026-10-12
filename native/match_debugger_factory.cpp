@@ -162,8 +162,25 @@ EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
     }
     if (state.memory.read<1>(match) || state.memory.read<2>(match + 0x7948))
         throw std::runtime_error("New match is not at its detailed pre-kickoff boundary");
-    report("Match ready and paused");
     std::array<std::vector<RosterMember>, 2> rosters{world.roster(setup.home_club), world.roster(setup.away_club)};
+    report("Preparing substitutes");
+    for (unsigned team = 0; team < 2; ++team) {
+        unsigned actor = 11;
+        for (const auto& member : rosters[team]) {
+            if (actor == 20) break;
+            bool assigned = false;
+            for (unsigned starter = 0; starter < 11; ++starter)
+                assigned |= state.memory.read<4>(match + 0x311c + (team * 20 + starter) * 0x1c4 + 0x6c) == member.staff;
+            if (assigned) continue;
+            if (invoke(state, 0x1020e8f0, {match + 0x7aac + team * 0xd8, actor, member.staff, actor}) != 1)
+                throw std::runtime_error("Could not prepare an actual substitute");
+            const auto address = match + 0x311c + (team * 20 + actor) * 0x1c4;
+            const auto position = signed_value<1>(state.memory.read<1>(address + 0x19));
+            if (position >= 0) (void)invoke(state, 0x101f1870, {address, 0xffffffff});
+            ++actor;
+        }
+    }
+    report("Match ready and paused");
     return {std::move(world).release_state(), match, std::move(rosters)};
 }
 }

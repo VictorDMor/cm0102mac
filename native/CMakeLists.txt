@@ -44,6 +44,7 @@ target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.
 target_sources(cm_aot PRIVATE spatial_role.cpp spatial_role_adapter.cpp)
 target_sources(cm_aot PRIVATE marking_pressure.cpp marking_pressure_adapter.cpp)
 target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
+target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
 add_library(cm_match_debugger_database STATIC match_debugger_database.cpp)
 target_include_directories(cm_match_debugger_database PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(cm_match_debugger_database PUBLIC "-framework CoreFoundation")
@@ -405,7 +406,13 @@ target_compile_options(cm-match-debugger-goal-checks PRIVATE -Wall -Wextra -Werr
 add_executable(cm-match-debugger-lineup-checks match_debugger_lineup_checks.cpp)
 target_link_libraries(cm-match-debugger-lineup-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-lineup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-debugger-lab-checks match_debugger_lab_checks.cpp)
+target_link_libraries(cm-match-debugger-lab-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugger-lab-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME match_debugger_lab COMMAND cm-match-debugger-lab-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lab-checks")
+    set_tests_properties(match_debugger_lab PROPERTIES TIMEOUT 180)
     add_test(NAME match_debugger_fresh_match_factory COMMAND cm-match-debugger-factory-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-factory-checks")
     add_test(NAME match_debugger_actual_withdrawal COMMAND cm-match-debugger-withdrawal-checks

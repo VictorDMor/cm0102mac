@@ -116,6 +116,41 @@ NSArray* players(const Session& session) {
     return result;
 }
 
+NSString* match_clock(unsigned seconds) {
+    return [NSString stringWithFormat:@"%02u:%02u", seconds / 60, seconds % 60];
+}
+
+NSDictionary* commentary_catalog(const fs::path& game) {
+    NSError* error = nil;
+    NSString* source = [NSString stringWithContentsOfFile:text((game / "Data/events_eng.cfg").string())
+        encoding:NSWindowsCP1252StringEncoding error:&error];
+    if (!source) throw std::runtime_error("Could not read original match commentary");
+    NSMutableDictionary* catalog = [NSMutableDictionary new];
+    NSString* title = @"Play continues";
+    NSInteger current = -1;
+    NSSet* supported = [NSSet setWithArray:@[@"<p1>", @"<p1c>", @"<p2>", @"<t1>", @"<t2>", @"<t>", @"<tc>", @"<Rf>", @"<rf>", @"<R>"]];
+    NSRegularExpression* tokens = [NSRegularExpression regularExpressionWithPattern:@"<[^>]+>" options:0 error:nil];
+    for (NSString* raw in [source componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+        NSString* line = [raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        if ([line hasPrefix:@"# EVENT_"]) title = [[[line substringFromIndex:8] lowercaseString] stringByReplacingOccurrencesOfString:@"_" withString:@" "];
+        else if ([line hasPrefix:@"= "]) {
+            current = [[[line substringFromIndex:2] componentsSeparatedByString:@","][0] integerValue];
+            if (current < 0 || current > 676 || catalog[@(current)]) throw std::runtime_error("Invalid original commentary catalog");
+            catalog[@(current)] = [@{@"label": title} mutableCopy];
+        } else if (current >= 0 && [line hasPrefix:@"G "]) {
+            NSMutableDictionary* entry = catalog[@(current)];
+            if (entry[@"text"]) continue;
+            NSString* wording = [line substringFromIndex:2];
+            BOOL resolves = YES;
+            for (NSTextCheckingResult* token in [tokens matchesInString:wording options:0 range:NSMakeRange(0, wording.length)])
+                if (![supported containsObject:[wording substringWithRange:token.range]]) resolves = NO;
+            if (resolves) entry[@"text"] = wording;
+        }
+    }
+    if (catalog.count != 677) throw std::runtime_error("Original match commentary is incomplete");
+    return catalog;
+}
+
 class Worker {
     fs::path program_, game_, root_, active_backing_;
     DatabaseCatalog catalog_;
@@ -124,10 +159,11 @@ class Worker {
     std::uint64_t generation_ = 0, attempt_ = 0;
     NSMutableArray* events_ = [NSMutableArray new];
     NSArray* rosters_ = @[];
+    NSDictionary* commentary_;
 public:
     Worker(fs::path program, fs::path game, fs::path root)
         : program_(fs::canonical(program)), game_(fs::canonical(game)), root_(fs::canonical(root)),
-          catalog_(DatabaseCatalog::load(game_)) {
+          catalog_(DatabaseCatalog::load(game_)), commentary_(commentary_catalog(game_)) {
         if (!fs::is_directory(root_) || !fs::is_empty(root_) || fs::is_symlink(fs::symlink_status(root)))
             throw std::invalid_argument("Engine worker requires an empty private directory");
         for (const auto& input : {program_, game_}) {
@@ -143,6 +179,48 @@ public:
         catch (const std::exception& error) { std::fprintf(stderr, "%s\n", error.what()); }
     }
     bool running() const { return session_ && session_->execution_state() == ExecutionState::running; }
+    NSString* name(std::uint32_t staff) const {
+        for (NSArray* side in rosters_) for (NSDictionary* member in side)
+            if ([member[@"staffID"] unsignedIntValue] == staff) return member[@"name"];
+        return @"A player";
+    }
+    NSString* team_name(int side) const {
+        return side >= 0 && side <= 1 ? text(catalog_.club(side ? setup_.away_club : setup_.home_club).name) : @"the team";
+    }
+    NSArray* football_events() const {
+        NSMutableArray* result = [NSMutableArray new];
+        const auto& events = session_->events();
+        const auto first_event = events.size() > 2000 ? events.size() - 2000 : 0;
+        for (std::size_t index = first_event; index < events.size(); ++index) {
+            const auto& event = events[index];
+            NSString* description;
+            NSString* first = name(event.staff_id), *second = name(event.other_staff_id);
+            switch (event.kind) {
+            case MatchEvent::Kind::kickoff: description = @"Kickoff"; break;
+            case MatchEvent::Kind::completed: description = @"Full time"; break;
+            case MatchEvent::Kind::goal: description = [NSString stringWithFormat:@"Goal! %@ scores for %@", first, team_name(event.team)]; break;
+            case MatchEvent::Kind::injury: description = [NSString stringWithFormat:@"%@ leaves the pitch injured", first]; break;
+            case MatchEvent::Kind::substitution: description = [NSString stringWithFormat:@"Substitution for %@: %@ on, %@ off", team_name(event.team), first, second]; break;
+            case MatchEvent::Kind::commentary: {
+                NSDictionary* entry = commentary_[@(event.code)];
+                if (entry[@"text"]) {
+                    description = entry[@"text"];
+                    NSDictionary* replacements = @{@"<p1>": first, @"<p1c>": first, @"<p2>": second,
+                        @"<t1>": team_name(event.team), @"<t2>": team_name(event.other_team),
+                        @"<t>": team_name(event.team), @"<tc>": team_name(event.team),
+                        @"<rf>": @"the referee", @"<Rf>": @"The referee", @"<R>": @"the referee",
+                        @"{s}": @"'s", @"|": @" — "};
+                    for (NSString* token in replacements)
+                        description = [description stringByReplacingOccurrencesOfString:token withString:replacements[token]];
+                } else description = [NSString stringWithFormat:@"%@: %@", [entry[@"label"] capitalizedString], first];
+                break;
+            }
+            }
+            [result addObject:@{@"clock": match_clock(event.seconds), @"seconds": @(event.seconds), @"step": @(event.at_step),
+                @"description": description, @"source": event.injected ? @"Injected" : @"Match", @"code": @(event.code)}];
+        }
+        return result;
+    }
     void event(NSString* description) {
         [events_ addObject:@{@"step": @(session_ ? session_->steps().size() : 0), @"description": description}];
     }
@@ -178,6 +256,9 @@ public:
         send(@{@"type": @"state", @"status": execution(session_->execution_state()), @"requestID": @(request),
             @"generation": @(generation_), @"homeID": @(setup_.home_club), @"awayID": @(setup_.away_club),
             @"seed": @(setup_.random_seed), @"engineUnits": @(value.elapsed_engine_units),
+            @"matchSeconds": @(clock_seconds(value)), @"clock": match_clock(clock_seconds(value)),
+            @"recordedSeconds": @(session_->recorded_seconds()), @"timelineCursor": @(session_->timeline_index()),
+            @"timelineSize": @(session_->timeline_size()), @"substitutionCount": @(session_->substitutions().size()),
             @"homeScore": @(value.home_score), @"awayScore": @(value.away_score),
             @"phase": @(value.phase), @"interruption": @(value.interruption), @"transition": @(value.transition),
             @"actorQueue": @(value.actor_queue_count), @"stepCount": @(steps.size()),
@@ -187,7 +268,7 @@ public:
             @"lineupEditCount": @(session_->lineup_edits().size()),
             @"lastInstructions": @(steps.empty() ? 0 : steps.back().instructions),
             @"sharedModernCalls": @(diagnostics.calls[2]), @"failure": text(session_->failure()),
-            @"players": players(*session_), @"rosters": rosters_, @"events": [events_ copy]});
+            @"players": players(*session_), @"rosters": rosters_, @"matchEvents": football_events(), @"events": [events_ copy]});
         [events_ removeAllObjects];
     }
     bool command(NSDictionary* value, std::uint32_t request) {
@@ -196,6 +277,8 @@ public:
         NSArray* fields = [operation isEqual:@"create"] ? @[@"command", @"homeID", @"awayID", @"seed"] :
             [operation isEqual:@"player"] ? @[@"command", @"team", @"actor", @"staffID"] :
             [operation isEqual:@"position"] ? @[@"command", @"team", @"actor", @"position"] :
+            [operation isEqual:@"substitute"] ? @[@"command", @"team", @"actor", @"staffID"] :
+            [operation isEqual:@"seek"] ? @[@"command", @"seconds"] :
             ([operation isEqual:@"withdraw"] || [operation isEqual:@"goal"]) ? @[@"command", @"team", @"actor"] : @[@"command"];
         NSMutableSet* keys = [NSMutableSet setWithArray:fields];
         if (value[@"requestID"]) [keys addObject:@"requestID"];
@@ -210,6 +293,13 @@ public:
                 if (session_->execution_state() == ExecutionState::running) { session_->pause(); event(@"Engine execution paused"); }
             }
             else if ([operation isEqual:@"reset"]) create(setup_);
+            else if ([operation isEqual:@"back"]) session_->back();
+            else if ([operation isEqual:@"forward"]) session_->forward();
+            else if ([operation isEqual:@"seek"]) session_->seek_seconds(integer(value, @"seconds"));
+            else if ([operation isEqual:@"substitute"]) {
+                const auto record = session_->substitute(integer(value, @"team"), integer(value, @"actor"), integer(value, @"staffID"));
+                event([NSString stringWithFormat:@"Substitution: staff %u on, staff %u off", record.incoming_staff_id, record.outgoing_staff_id]);
+            }
             else if ([operation isEqual:@"player"]) {
                 const auto record = session_->set_player(integer(value, @"team"), integer(value, @"actor"), integer(value, @"staffID"));
                 event([NSString stringWithFormat:@"Lineup edit: %@ actor %u initialized through original player handling; staff %u → %u; slot %d → %d; on pitch %u → %u; instructions %llu",

@@ -97,8 +97,9 @@ std::uint32_t mac_date(std::int64_t unix_seconds) {
 }
 struct NativePlatform::Impl {
     NativeDrawingObserver drawing;
-    explicit Impl(AudioMode mode) : sound(mode) {}
+    explicit Impl(AudioMode mode, EventMode events) : sound(mode), event_mode(events) {}
     NativeSound sound;
+    EventMode event_mode;
     PerformanceTrace performance;
     struct Handle { std::uint32_t payload, size; bool locked = false; };
     std::map<std::uint32_t, Handle> handles;
@@ -434,6 +435,14 @@ struct NativePlatform::Impl {
     CommandContext commands;
     std::string command_status = "Ready";
     bool next_event(State& s, std::uint16_t mask, std::uint32_t address, std::uint32_t sleep, std::uint32_t mouse_region) {
+        // An isolated engine has no original game window or input source.
+        // Original progress polling still receives a valid null EventRecord,
+        // with the live system tick, without entering AppKit's event loop.
+        if (event_mode == EventMode::isolated) {
+            s.memory.clear(address, 16);
+            s.memory.write<4>(address + 6, native_tick_count());
+            return false;
+        }
         // A native command is an edge, not a held action. At the next original
         // event boundary its handler has consumed the input (or entered a
         // nested dialog). Withdraw only the mailbox value owned by this event.
@@ -909,7 +918,10 @@ struct NativePlatform::Impl {
         if (name) write_mac_string(s, name, ref == -1 ? "CM 01-02" : "CM User Data");
     }
 };
-NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio) : impl_(std::make_unique<Impl>(audio)) {
+NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio)
+    : NativePlatform(std::move(game), std::move(writable), audio, EventMode::interactive) {}
+NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio, EventMode events)
+    : impl_(std::make_unique<Impl>(audio, events)) {
     if (!fs::is_directory(game)) throw std::runtime_error("Game directory does not exist");
     impl_->game = fs::canonical(game);
     impl_->writable = fs::weakly_canonical(fs::absolute(writable));
@@ -1463,8 +1475,10 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             const auto keys = impl_->user_interface().key_map();
             s.memory.copy_in(arg(0), {keys.begin(), keys.end()});
             return_value = arg(0);
-        } else if (name == "CarbonLib::WaitNextEvent") {
-            return_value = impl_->next_event(s, arg(0), arg(1), arg(2), arg(3));
+        } else if (name == "CarbonLib::WaitNextEvent" ||
+                   (name == "CarbonLib::GetNextEvent" && impl_->event_mode == EventMode::isolated)) {
+            return_value = impl_->next_event(s, arg(0), arg(1), name == "CarbonLib::WaitNextEvent" ? arg(2) : 0,
+                name == "CarbonLib::WaitNextEvent" ? arg(3) : 0);
         } else if (name == "CarbonLib::AEProcessAppleEvent") {
             return_value = impl_->process_event(s, arg(0));
         } else if (name == "CarbonLib::AEDisposeDesc") {

@@ -1,6 +1,7 @@
 #include "match_debugger_session.hpp"
 #include "match_engine.hpp"
 #include "match_debugger_goal.hpp"
+#include "match_debugger_checkpoint.hpp"
 #include <limits>
 #include <algorithm>
 
@@ -28,6 +29,141 @@ public:
     }
     ~StepBudget() { state_.budget = previous_; }
 };
+
+class MatchEventsCapture final : public MemoryObserver {
+    State& state_;
+    std::uint32_t match_;
+    bool injected_;
+    MemoryObserver* previous_;
+    std::function<void(MatchEvent)> event_;
+    std::uint32_t word(std::uint32_t address) const {
+        const auto bytes = state_.memory.copy_out(address, 4); return std::uint32_t(read_be<4>(bytes.data()));
+    }
+public:
+    MatchEventsCapture(State& state, std::uint32_t match, bool injected, std::function<void(MatchEvent)> event)
+        : state_(state), match_(match), injected_(injected), previous_(state.memory.date_observer), event_(std::move(event)) {
+        state_.memory.date_observer = this;
+    }
+    ~MatchEventsCapture() { state_.memory.date_observer = previous_; }
+    void mapped(std::uint32_t address, std::uint64_t size) override { if (previous_) previous_->mapped(address, size); }
+    void cleared(std::uint32_t address, std::uint64_t size) override { if (previous_) previous_->cleared(address, size); }
+    void read(std::uint32_t address, const std::uint8_t* bytes, unsigned size) override { if (previous_) previous_->read(address, bytes, size); }
+    void written(std::uint32_t address, const std::uint8_t* bytes, std::size_t size) override {
+        if (previous_) previous_->written(address, bytes, size);
+        // Original commentary commits its twenty-byte ring record here, after
+        // writing the event code, both player/side pairs and context pointer.
+        // Observe the committed event; attempted/rejected commentary is absent.
+        if (state_.pc != 0x10201704 || size != 1 || state_.r<4>(120) != match_) return;
+        MatchEvent value;
+        value.code = int(signed_value<2>(state_.r<4>(96))) - 8000;
+        if (value.code < 0 || value.code > 676) throw std::runtime_error("Original commentary committed an unknown event");
+        value.actor = int(signed_value<1>(state_.r<4>(100))); value.team = int(signed_value<1>(state_.r<4>(104)));
+        value.other_actor = int(signed_value<1>(state_.r<4>(108))); value.other_team = int(signed_value<1>(state_.r<4>(112)));
+        const auto staff_id = [&](int team, int actor) {
+            if (team < 0 || team > 1 || actor < 0 || actor >= 20) return std::uint32_t(0);
+            const auto staff = word(match_ + 0x311c + (unsigned(team) * 20 + unsigned(actor)) * 0x1c4 + 0x6c);
+            return staff ? word(staff) : 0;
+        };
+        value.staff_id = staff_id(value.team, value.actor); value.other_staff_id = staff_id(value.other_team, value.other_actor);
+        const auto time = state_.memory.copy_out(match_ + 0x7948, 2);
+        Inspection clock; clock.elapsed_engine_units = std::int16_t(signed_value<2>(read_be<2>(time.data())));
+        value.seconds = clock_seconds(clock); value.injected = injected_;
+        event_(value);
+    }
+};
+}
+
+struct Session::History {
+    struct Frame {
+        std::unique_ptr<Checkpoint> guest;
+        std::size_t steps, withdrawals, goals, lineups, substitutions, events;
+        unsigned seconds;
+        ExecutionState execution;
+    };
+    std::vector<Frame> frames;
+    std::size_t cursor = 0;
+    std::vector<StepRecord> steps;
+    std::vector<WithdrawalRecord> withdrawals;
+    std::vector<GoalRecord> goals;
+    std::vector<LineupRecord> lineups;
+    std::vector<SubstitutionRecord> substitutions;
+    std::vector<MatchEvent> events;
+};
+
+Session::~Session() = default;
+
+void Session::capture_boundary() {
+    if (!history_) history_ = std::make_unique<History>();
+    auto guest = std::make_unique<Checkpoint>(*engine_.state,
+        history_->frames.empty() ? nullptr : history_->frames.back().guest.get());
+    if (!history_->frames.empty()) guest->caller_budget(history_->frames[history_->cursor].guest->budget());
+    history_->frames.push_back({std::move(guest), steps_.size(), withdrawals_.size(), goals_.size(), lineup_edits_.size(),
+        substitutions_.size(), events_.size(), clock_seconds(inspect()),
+        execution_ == ExecutionState::running ? ExecutionState::paused : execution_});
+    history_->cursor = history_->frames.size() - 1;
+    history_->steps = steps_; history_->withdrawals = withdrawals_; history_->goals = goals_;
+    history_->lineups = lineup_edits_; history_->substitutions = substitutions_; history_->events = events_;
+}
+
+void Session::branch_history() {
+    if (!history_ || history_->cursor + 1 == history_->frames.size()) return;
+    history_->frames.resize(history_->cursor + 1);
+    history_->steps = steps_; history_->withdrawals = withdrawals_; history_->goals = goals_;
+    history_->lineups = lineup_edits_; history_->substitutions = substitutions_; history_->events = events_;
+}
+
+void Session::restore_boundary(std::size_t index) {
+    if (!history_ || index >= history_->frames.size()) throw std::invalid_argument("Choose a recorded moment");
+    const auto& frame = history_->frames[index];
+    auto restored = frame.guest->restore();
+    engine_.state = std::move(restored);
+    steps_.assign(history_->steps.begin(), history_->steps.begin() + frame.steps);
+    withdrawals_.assign(history_->withdrawals.begin(), history_->withdrawals.begin() + frame.withdrawals);
+    goals_.assign(history_->goals.begin(), history_->goals.begin() + frame.goals);
+    lineup_edits_.assign(history_->lineups.begin(), history_->lineups.begin() + frame.lineups);
+    substitutions_.assign(history_->substitutions.begin(), history_->substitutions.begin() + frame.substitutions);
+    events_.assign(history_->events.begin(), history_->events.begin() + frame.events);
+    history_->cursor = index; failure_.clear(); execution_ = frame.execution;
+}
+
+std::size_t Session::timeline_index() const { return history_ ? history_->cursor : 0; }
+std::size_t Session::timeline_size() const { return history_ ? history_->frames.size() : 0; }
+unsigned Session::recorded_seconds() const { return history_ ? history_->frames.back().seconds : 0; }
+void Session::back() {
+    if (execution_ == ExecutionState::running) throw std::logic_error("Pause before going back");
+    if (!timeline_index()) throw std::logic_error("Already at the first recorded moment");
+    restore_boundary(timeline_index() - 1);
+}
+bool Session::advance_recorded() {
+    if (history_ && history_->cursor + 1 < history_->frames.size()) {
+        restore_boundary(history_->cursor + 1); return true;
+    }
+    return false;
+}
+void Session::forward() {
+    if (execution_ == ExecutionState::running) throw std::logic_error("Pause before going forward");
+    if (!advance_recorded()) (void)step();
+}
+void Session::seek_seconds(unsigned target) {
+    if (execution_ == ExecutionState::running) throw std::logic_error("Pause before moving through time");
+    if (target > 180 * 60) throw std::invalid_argument("Choose a match time between 00:00 and 180:00");
+    std::size_t closest = 0;
+    for (std::size_t index = 0; index < history_->frames.size(); ++index)
+        if (history_->frames[index].seconds <= target) closest = index;
+    restore_boundary(closest);
+    if (target <= recorded_seconds()) {
+        if (clock_seconds(inspect()) < target && closest + 1 < timeline_size()) restore_boundary(closest + 1);
+        return;
+    }
+    for (unsigned calls = 0; clock_seconds(inspect()) < target; ++calls) {
+        if (execution_ != ExecutionState::paused) break;
+        if (calls == 6000) throw std::runtime_error("The match did not reach the selected time within this advance");
+        const auto record = step();
+        if (record.engine_return != 1) break;
+    }
+}
+void Session::observe_event(MatchEvent value) {
+    value.at_step = steps_.size(); events_.push_back(value);
 }
 
 Session::Session(Factory factory, std::uint64_t step_instruction_limit)
@@ -65,8 +201,10 @@ void Session::reset() {
     withdrawals_.clear();
     goals_.clear();
     lineup_edits_.clear();
+    substitutions_.clear(); events_.clear(); history_.reset();
     failure_.clear();
     execution_ = ExecutionState::paused;
+    capture_boundary();
 }
 
 void Session::run() {
@@ -114,8 +252,10 @@ WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor)
     record.on_pitch_before = on_pitch(team);
     record.before = inspect();
     const auto instructions = state.executed;
+    branch_history();
     try {
         StepBudget budget(state, step_instruction_limit_);
+        MatchEventsCapture events(state, engine_.match, true, [&](MatchEvent value) { observe_event(value); });
         state.wr<4>(12, engine_.match);
         state.wr<4>(16, address);
         state.wr<4>(20, 0); // Original injury count/time and tactical update path.
@@ -132,6 +272,9 @@ WithdrawalRecord Session::withdraw_injured_player(unsigned team, unsigned actor)
         if (record.position_after != -3)
             throw std::runtime_error("Original injury withdrawal did not mark the selected actor unavailable");
         withdrawals_.push_back(record);
+        MatchEvent event; event.kind = MatchEvent::Kind::injury; event.seconds = clock_seconds(record.after);
+        event.team = int(team); event.actor = int(actor); event.staff_id = record.staff_id; event.injected = true; observe_event(event);
+        capture_boundary();
         return record;
     } catch (const std::exception& error) {
         execution_ = ExecutionState::faulted;
@@ -192,6 +335,7 @@ LineupRecord Session::set_player(unsigned team, unsigned actor, std::uint32_t st
     record.staff_after = staff_id; record.position_before = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
     record.on_pitch_before = on_pitch(team);
     const auto before = state.executed;
+    branch_history();
     try {
         StepBudget budget(state, step_instruction_limit_);
         const auto controller = engine_.match + 0x7aac + team * 0xd8;
@@ -209,7 +353,7 @@ LineupRecord Session::set_player(unsigned team, unsigned actor, std::uint32_t st
             throw std::runtime_error("Original player initialization did not retain its live identity");
         record.position_after = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
         record.on_pitch_after = on_pitch(team); record.instructions = state.executed - before;
-        lineup_edits_.push_back(record); return record;
+        lineup_edits_.push_back(record); capture_boundary(); return record;
     } catch (const std::exception& error) {
         execution_ = ExecutionState::faulted;
         failure_ = "Lineup player intervention fault at " + hex_address(state.pc) + ": " + error.what(); throw;
@@ -244,6 +388,7 @@ LineupRecord Session::set_position(unsigned team, unsigned actor, int position) 
         record.displaced_before = std::int8_t(position);
     }
     const auto before = state.executed;
+    branch_history();
     try {
         StepBudget budget(state, step_instruction_limit_);
         if (record.displaced_actor != 20) {
@@ -254,7 +399,7 @@ LineupRecord Session::set_position(unsigned team, unsigned actor, int position) 
         (void)invoke(state, 0x101f1870, {address, std::uint32_t(position)});
         record.position_after = std::int8_t(signed_value<1>(state.memory.read<1>(address + 0x19)));
         record.on_pitch_after = on_pitch(team); record.instructions = state.executed - before;
-        lineup_edits_.push_back(record); return record;
+        lineup_edits_.push_back(record); capture_boundary(); return record;
     } catch (const std::exception& error) {
         execution_ = ExecutionState::faulted; failure_ = "Lineup position intervention fault at " + hex_address(state.pc) + ": " + error.what(); throw;
     } catch (...) {
@@ -285,8 +430,10 @@ GoalRecord Session::add_goal(unsigned team, unsigned actor) {
     record.team = team; record.actor = actor;
     record.staff_id = std::uint32_t(state.memory.read<4>(staff));
     const auto instructions = state.executed;
+    branch_history();
     try {
         StepBudget budget(state, step_instruction_limit_);
+        MatchEventsCapture events(state, engine_.match, true, [&](MatchEvent value) { observe_event(value); });
         apply_original_awarded_goal(state, engine_.match, address, team);
         record.instructions = state.executed - instructions;
         record.scorer_goals_after = std::uint8_t(state.memory.read<1>(address + 0xc));
@@ -301,6 +448,9 @@ GoalRecord Session::add_goal(unsigned team, unsigned actor) {
                 std::to_string(record.scorer_goals_before) + " -> " + std::to_string(record.scorer_goals_after) + "; clock " +
                 std::to_string(record.before.elapsed_engine_units) + " -> " + std::to_string(record.after.elapsed_engine_units));
         goals_.push_back(record);
+        MatchEvent event; event.kind = MatchEvent::Kind::goal; event.seconds = clock_seconds(record.after);
+        event.team = int(team); event.actor = int(actor); event.staff_id = record.staff_id; event.injected = true; observe_event(event);
+        capture_boundary();
         return record;
     } catch (const std::exception& error) {
         execution_ = ExecutionState::faulted;
@@ -313,14 +463,114 @@ GoalRecord Session::add_goal(unsigned team, unsigned actor) {
     }
 }
 
+SubstitutionRecord Session::substitute(unsigned team, unsigned outgoing_actor, std::uint32_t incoming_staff_id) {
+    if (execution_ != ExecutionState::paused || steps_.empty()) throw std::logic_error("Pause the match after kickoff to make a substitution");
+    if (team > 1 || outgoing_actor >= 20) throw std::invalid_argument("Choose a player to replace");
+    auto& state = *engine_.state;
+    const auto outgoing = engine_.match + 0x311c + (team * 20 + outgoing_actor) * 0x1c4;
+    const auto staff = std::uint32_t(state.memory.read<4>(outgoing + 0x6c));
+    const auto current_position = signed_value<1>(state.memory.read<1>(outgoing + 0x19));
+    const bool injured = current_position == -3;
+    const auto position = injured ? signed_value<1>(state.memory.read<1>(outgoing + 0x1a)) : current_position;
+    if (!staff || position < 0 || position > 10 || (current_position < 0 && !injured))
+        throw std::invalid_argument("Choose an on-pitch or injured player to replace");
+    const auto& members = roster(team);
+    const auto member = std::find_if(members.begin(), members.end(), [&](const auto& value) { return value.staff_id == incoming_staff_id; });
+    if (member == members.end()) throw std::invalid_argument("Choose a replacement from this club");
+    if (member->staff == staff) throw std::invalid_argument("Choose a different replacement player");
+    unsigned incoming_actor = 20, available = 20;
+    for (unsigned actor = 0; actor < 20; ++actor) {
+        const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+        const auto active_position = signed_value<1>(state.memory.read<1>(address + 0x19));
+        if (actor != outgoing_actor && active_position < 0 && available == 20) available = actor;
+        if (state.memory.read<4>(address + 0x6c) == member->staff) {
+            if (active_position >= 0) throw std::invalid_argument("This replacement is already on the pitch");
+            incoming_actor = actor;
+        }
+    }
+    const bool initialize = incoming_actor == 20;
+    if (initialize) incoming_actor = available;
+    if (incoming_actor == 20) throw std::invalid_argument("No substitute slot is available");
+    SubstitutionRecord record;
+    record.number = substitutions_.size() + 1; record.at_step = steps_.size(); record.team = team;
+    record.outgoing_actor = outgoing_actor; record.incoming_actor = incoming_actor;
+    record.outgoing_staff_id = std::uint32_t(state.memory.read<4>(staff)); record.incoming_staff_id = incoming_staff_id;
+    record.position = std::int8_t(position); record.before = inspect();
+    const auto before = state.executed;
+    const auto pitch_before = on_pitch(team);
+    branch_history();
+    try {
+        StepBudget budget(state, step_instruction_limit_);
+        MatchEventsCapture events(state, engine_.match, true, [&](MatchEvent value) { observe_event(value); });
+        if (initialize && invoke(state, 0x1020e8f0, {engine_.match + 0x7aac + team * 0xd8, incoming_actor, member->staff, incoming_actor}) != 1)
+            throw std::runtime_error("The replacement player could not be prepared");
+        const auto incoming = engine_.match + 0x311c + (team * 20 + incoming_actor) * 0x1c4;
+        if (initialize && signed_value<1>(state.memory.read<1>(incoming + 0x19)) >= 0)
+            (void)invoke(state, 0x101f1870, {incoming, std::uint32_t(-1)});
+        if (injured) {
+            std::array<bool, 11> occupied{};
+            unsigned reassigned = 20;
+            for (unsigned actor = 0; actor < 20; ++actor) {
+                const auto address = engine_.match + 0x311c + (team * 20 + actor) * 0x1c4;
+                const auto current = signed_value<1>(state.memory.read<1>(address + 0x19));
+                if (current >= 0 && current < 11) {
+                    occupied[unsigned(current)] = true;
+                    if (current == position) reassigned = actor;
+                }
+            }
+            if (reassigned != 20) {
+                const auto vacant = std::find(occupied.begin(), occupied.end(), false);
+                if (vacant == occupied.end()) throw std::runtime_error("No vacant position remains for this injury replacement");
+                (void)invoke(state, 0x101f1870, {engine_.match + 0x311c + (team * 20 + reassigned) * 0x1c4,
+                    std::uint32_t(vacant - occupied.begin())});
+            }
+            // Restore only the outgoing role for the original substitution's
+            // boundary; its injury data remains intact and it finishes off pitch.
+            (void)invoke(state, 0x101f1870, {outgoing, std::uint32_t(position)});
+        }
+        // This complete original in-match substitution method only reads the
+        // owning-match pointer and side from its presentation caller. Supply
+        // those two fields in a reserved guest stack context. The original
+        // body performs pitch/marking changes, times, counters and commentary.
+        const auto parent = std::uint32_t(state.r<4>(4));
+        if (parent < 0x1100) throw std::runtime_error("Invalid substitution caller stack");
+        const auto context = parent - 0x1000;
+        state.memory.write<4>(context + 4, engine_.match); state.memory.write<1>(context + 0xe68, team);
+        // Unlimited debugger substitutions still require a valid original
+        // remaining-substitution counter. The UI normally blocks at zero;
+        // blindly bypassing that UI would underflow it and confuse automatic
+        // injury/tactical handling. Grant one allowance only when exhausted.
+        const auto allowance = engine_.match + 0x7aac + team * 0xd8 + 0x19;
+        if (signed_value<1>(state.memory.read<1>(allowance)) <= 0) state.memory.write<1>(allowance, 1);
+        if (invoke(state, 0x103cb760, {context, incoming_actor, outgoing_actor}) != 1)
+            throw std::runtime_error("The original substitution did not complete");
+        if (signed_value<1>(state.memory.read<1>(incoming + 0x19)) != position ||
+            signed_value<1>(state.memory.read<1>(outgoing + 0x19)) != -4 || on_pitch(team) != pitch_before + unsigned(injured))
+            throw std::runtime_error("The original substitution did not retain the selected lineup");
+        (void)invoke(state, 0x101f1de0, {engine_.match, team});
+        (void)invoke(state, 0x101f1e10, {engine_.match, team});
+        record.instructions = state.executed - before; record.after = inspect();
+        substitutions_.push_back(record);
+        MatchEvent event; event.kind = MatchEvent::Kind::substitution; event.seconds = clock_seconds(record.after);
+        event.team = event.other_team = int(team); event.actor = int(incoming_actor); event.other_actor = int(outgoing_actor);
+        event.staff_id = incoming_staff_id; event.other_staff_id = record.outgoing_staff_id; event.injected = true; observe_event(event);
+        capture_boundary(); return record;
+    } catch (const std::exception& error) {
+        execution_ = ExecutionState::faulted; failure_ = "Substitution could not complete: " + std::string(error.what()); throw;
+    }
+}
+
 StepRecord Session::execute_step() {
     auto& state = *engine_.state;
+    branch_history();
     try {
         StepRecord record;
         record.number = steps_.size() + 1;
         record.before = inspect();
+        const auto first_event = events_.size();
         const auto instructions = state.executed;
         StepBudget budget(state, step_instruction_limit_);
+        MatchEventsCapture events(state, engine_.match, false, [&](MatchEvent value) { observe_event(value); });
         state.wr<4>(12, engine_.match);
         state.wr<4>(16, 1);
         state.wr<4>(4128, return_sentinel);
@@ -339,10 +589,17 @@ StepRecord Session::execute_step() {
         default: throw std::runtime_error("Match debugger received an unknown engine advancement result");
         }
         steps_.push_back(record);
+        if (steps_.size() == 1 || record.engine_return == 2) {
+            MatchEvent event; event.kind = record.engine_return == 2 ? MatchEvent::Kind::completed : MatchEvent::Kind::kickoff;
+            event.seconds = clock_seconds(record.engine_return == 2 ? record.after : record.before);
+            if (event.kind == MatchEvent::Kind::kickoff) events_.insert(events_.begin() + first_event, event);
+            else observe_event(event);
+        }
+        capture_boundary();
         return record;
     } catch (const std::exception& error) {
         // An interrupted guest step may have partial effects. Retain them for
-        // diagnosis, block further advancement, and require a fresh reset.
+        // diagnosis, block further advancement until a recorded boundary is restored.
         execution_ = ExecutionState::faulted;
         failure_ = "Engine step fault at " + hex_address(state.pc) + ": " + error.what();
         throw;

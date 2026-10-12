@@ -8,9 +8,11 @@
 
 namespace cm::aot {
 struct State;
+enum class EventMode { interactive, isolated };
 class NativePlatform {
 public:
     NativePlatform(std::filesystem::path game_directory, std::filesystem::path writable_directory, AudioMode audio = AudioMode::device);
+    NativePlatform(std::filesystem::path game_directory, std::filesystem::path writable_directory, AudioMode audio, EventMode events);
     ~NativePlatform();
     NativePlatform(const NativePlatform&) = delete;
     NativePlatform& operator=(const NativePlatform&) = delete;

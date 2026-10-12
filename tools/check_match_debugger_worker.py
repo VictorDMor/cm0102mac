@@ -68,7 +68,7 @@ class Worker:
         self.send(command)
         require(self.next()["type"] == "error", "Invalid command was accepted")
         state = self.state()
-        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "rosters", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount", "injectedGoalCount", "lineupEditCount"):
+        for key in ("generation", "homeID", "awayID", "seed", "stepCount", "engineUnits", "homeScore", "awayScore", "players", "rosters", "sharedModernCalls", "homeOnPitch", "awayOnPitch", "withdrawalCount", "injectedGoalCount", "lineupEditCount", "matchSeconds", "clock", "timelineCursor", "timelineSize", "matchEvents", "substitutionCount"):
             require(state.get(key) == preserved.get(key), f"Rejected command changed {key}")
 
     def close(self, *, eof=False):
@@ -93,6 +93,62 @@ def lineup(state):
         require(len({p["staffID"] for p in active}) == 11, "Unique actual starters")
         require(len({p["position"] for p in active}) == 11, "Unique original positions")
         require(all(p["name"] and p["staffID"] >= 0 for p in active), "Resolved actual player names")
+
+
+def lab_controls(worker, initial):
+    for side in (0, 1):
+        require(len([p for p in initial["players"] if p["team"] == side and p["present"] and not p["active"]]) == 9,
+                "Actual bench players are missing")
+    for command in ({"command": "back"}, {"command": "seek", "seconds": True},
+                    {"command": "seek", "seconds": -1}, {"command": "seek", "seconds": 10801},
+                    {"command": "forward", "extra": 1},
+                    {"command": "substitute", "team": 0, "actor": 8, "staffID": initial["players"][11]["staffID"]}):
+        worker.rejected(command, initial)
+    worker.send({"command": "forward"})
+    kickoff = worker.state(status="paused", stepCount=1)
+    seconds = kickoff["matchSeconds"]
+    require(seconds > 0 and kickoff["clock"] == f"{seconds // 60:02}:{seconds % 60:02}" and
+            kickoff["matchEvents"][0]["description"] == "Kickoff" and kickoff["matchEvents"][0]["clock"] == "00:00",
+            "Readable original clock or kickoff is missing")
+    worker.send({"command": "goal", "team": 0, "actor": 8})
+    goal = worker.state(status="paused", homeScore=1)
+    require(any(e["source"] == "Injected" and "scores for Arsenal" in e["description"] for e in goal["matchEvents"]),
+            "Named injected goal is missing from football events")
+    worker.send({"command": "back"})
+    undone = worker.state(status="paused", homeScore=0)
+    require(undone["players"] == kickoff["players"] and undone["matchEvents"] == kickoff["matchEvents"],
+            "Back retained a future goal or player effects")
+    worker.send({"command": "forward"})
+    redone = worker.state(status="paused", homeScore=1)
+    require(redone["players"] == goal["players"] and redone["matchEvents"] == goal["matchEvents"], "Redo lost the original goal")
+    worker.send({"command": "back"})
+    worker.state(status="paused", homeScore=0)
+    worker.send({"command": "goal", "team": 1, "actor": 8})
+    branch = worker.state(status="paused", awayScore=1, homeScore=0)
+    require(branch["timelineSize"] == goal["timelineSize"], "Editing the past retained the obsolete future")
+    outgoing, incoming = 8, 11
+    for number in range(1, 7):
+        candidate = next(p for p in branch["players"] if p["team"] == 0 and p["actor"] == incoming)
+        worker.send({"command": "substitute", "team": 0, "actor": outgoing, "staffID": candidate["staffID"]})
+        branch = worker.state(status="paused", substitutionCount=number)
+        require(branch["homeOnPitch"] == 11 and any(e["source"] == "Injected" and
+                candidate["name"] + " on" in e["description"] for e in branch["matchEvents"]),
+                "Unlimited named substitution/re-entry did not reach the actual engine")
+        outgoing, incoming = incoming, outgoing
+    worker.send({"command": "seek", "seconds": 0})
+    rewound = worker.state(status="paused", stepCount=0)
+    require(rewound["players"] == initial["players"] and not rewound["matchEvents"] and rewound["substitutionCount"] == 0,
+            "Seeking kickoff retained interventions")
+    worker.send({"command": "seek", "seconds": branch["matchSeconds"]})
+    future = worker.state(status="paused", substitutionCount=6)
+    require(future["players"] == branch["players"] and future["matchEvents"] == branch["matchEvents"],
+            "Seeking the recorded future lost events or player effects")
+    worker.send({"command": "seek", "seconds": 60})
+    advanced = worker.state()
+    require(advanced["matchSeconds"] >= 60 or advanced["stepCount"] > future["stepCount"], "Future seek did not advance the real engine")
+    require(any(e["source"] == "Match" and e["code"] >= 0 for e in advanced["matchEvents"]) and
+            all("<" not in e["description"] and "{s}" not in e["description"] for e in advanced["matchEvents"]),
+            "Committed original commentary is absent or contains unresolved wording tokens")
 
 
 def main():
@@ -125,7 +181,7 @@ def main():
             for command in ({"command": "player", "team": 0, "actor": 11, "staffID": initial["rosters"][1][0]["staffID"]},
                             {"command": "player", "team": 0, "actor": True, "staffID": free["staffID"]},
                             {"command": "player", "team": 0, "actor": 20, "staffID": free["staffID"]},
-                            {"command": "position", "team": 0, "actor": 11, "position": 8},
+                            {"command": "position", "team": 0, "actor": 20, "position": 8},
                             {"command": "position", "team": 0, "actor": 8, "position": False},
                             {"command": "position", "team": 0, "actor": 8, "position": -2},
                             {"command": "position", "team": 0, "actor": 8, "position": 1.5}):
@@ -251,8 +307,9 @@ def main():
                     "Reset retained original injury intervention state")
             require(len(list(first.root.iterdir())) == 1, "Reset retained obsolete experiment backing")
             second.close(eof=True)
+            lab_controls(first, reset)
             first.close()
-            print("PASS: two actual pairings/processes, full actor slots/real rosters, original reserve initialization and pre-kickoff position swaps/benching/logs, named starting elevens, productive C++23 steps, run/pause, original scorer/team/kickoff goals and following steps, real injury withdrawal/log, rejected commands, seeded reset, independent state, immediate old-backing cleanup, normal quit/EOF cleanup")
+            print("PASS: two actual pairings/processes, full actor slots/real rosters, original reserve initialization and pre-kickoff position swaps/benching/logs, named starting elevens, productive C++23 steps, run/pause, original scorer/team/kickoff goals and following steps, real injury withdrawal/log, rejected commands, seeded reset, independent state, readable original clock/commentary, guest-state Back/redo/branch/seek and six unrestricted named substitutions, immediate old-backing cleanup, normal quit/EOF cleanup")
         finally:
             for worker in workers:
                 if worker.process.poll() is None:
