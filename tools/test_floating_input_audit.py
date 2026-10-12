@@ -19,8 +19,8 @@ class FloatingInputManifestTests(unittest.TestCase):
     def test_one_entry_and_preserved_prior_manifest(self):
         self.assertEqual(FLOATING_INPUT_ENTRIES,(0x1077de10,))
         self.assertEqual(INSTRUCTION_COUNTS,(1025,))
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),606)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),606)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),629)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),629)
         self.assertEqual(SEMANTIC_REPLACEMENTS[99:100],((0x1077de10,'floating_input_adapter'),))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:78]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

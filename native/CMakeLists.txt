@@ -41,6 +41,7 @@ target_sources(cm_aot PRIVATE record_history.cpp record_history_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
+target_sources(cm_aot PRIVATE spatial_role.cpp spatial_role_adapter.cpp)
 add_library(cm_match_debugger_database STATIC match_debugger_database.cpp)
 target_include_directories(cm_match_debugger_database PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(cm_match_debugger_database PUBLIC "-framework CoreFoundation")
@@ -126,6 +127,22 @@ enable_testing()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(CM_SPATIAL_ROLE_REFERENCE "${CMAKE_BINARY_DIR}/spatial_role_reference.cpp")
+    add_custom_command(OUTPUT "${CM_SPATIAL_ROLE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_spatial_role_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_SPATIAL_ROLE_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_spatial_role_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/spatial_role_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-spatial-role-checks spatial_role_checks.cpp "${CM_SPATIAL_ROLE_REFERENCE}")
+    target_link_libraries(cm-spatial-role-checks PRIVATE cm_aot)
+    target_compile_options(cm-spatial-role-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME spatial_role_component_equivalence COMMAND cm-spatial-role-checks)
+endif()
+if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     set(CM_ACTOR_CONSTRUCTION_REFERENCE "${CMAKE_BINARY_DIR}/actor_construction_reference.cpp")
     add_custom_command(OUTPUT "${CM_ACTOR_CONSTRUCTION_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_construction_reference.py"
@@ -159,6 +176,12 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 endif()
 add_executable(cm-match-actor-production-checks match_actor_production_checks.cpp)
 add_executable(cm-actor-construction-production-checks actor_construction_production_checks.cpp)
+add_executable(cm-spatial-role-production-checks spatial_role_production_checks.cpp)
+target_link_libraries(cm-spatial-role-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-spatial-role-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-spatial-role-transfer-checks spatial_role_transfer_checks.cpp)
+target_link_libraries(cm-spatial-role-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-spatial-role-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 target_link_libraries(cm-actor-construction-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-construction-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-actor-construction-transfer-checks actor_construction_transfer_checks.cpp)
@@ -347,6 +370,15 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     add_test(NAME match_debugger_actual_lineup COMMAND cm-match-debugger-lineup-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)
+    add_test(NAME spatial_role_actual_production COMMAND cm-spatial-role-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/spatial-role-production-checks")
+    add_test(NAME spatial_role_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-spatial-role-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/spatial-role-profile-checks" "${CMAKE_BINARY_DIR}/spatial-role-live-profile.snapshot")
+    set_tests_properties(spatial_role_actual_production PROPERTIES FIXTURES_SETUP SpatialRoleLiveProfile)
+    set_tests_properties(spatial_role_original_profile PROPERTIES FIXTURES_REQUIRED SpatialRoleLiveProfile)
+    add_test(NAME spatial_role_nonlocal_transfer COMMAND cm-spatial-role-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/spatial-role-transfer-checks")
     add_test(NAME actor_construction_actual_production COMMAND cm-actor-construction-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-construction-production-checks")
     add_test(NAME actor_construction_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1

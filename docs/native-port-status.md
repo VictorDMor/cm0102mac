@@ -36,11 +36,26 @@ The input image was already mounted read/write when work began. The tools create
 here only read the supplied media; do not infer an original-distribution image
 checksum from the current mounted copy.
 
-## Match actor construction reconstructed
+## Spatial membership and tactical roles reconstructed
+
+The [spatial/role block](native-match-spatial-role-reconstruction.md) adds 23
+complete C++23 entries / 754 instructions, bringing the current manifest to
+**629** with the complete 606-entry prefix preserved. Role lookup, coordinate
+and marking access, cell insertion/removal and both-side goalkeeper resolution
+now execute the same semantic code in the game and debugger. Eight focused
+CTests, original/source audits, 33 changed manifest assertions and affected-unit
+UBSAN checks pass. All 23 entries have individual component/negative and actual
+direct/generated/CFM, original/profile and nonlocal runtime evidence. Installed
+signed ARM64 bundles and a real worker reserve/goal/keeper-withdrawal/replacement
+sequence are verified. Remaining movement/football dependencies and the full
+debugger product contract remain unfinished; final visual acceptance is pending.
+Save/Load is **not retested** and performance is **not benchmarked**.
+
+## Prior match actor construction reconstruction
 
 The [complete actor-construction block](native-match-actor-construction-reconstruction.md)
 adds two C++23 entries / 2,778 indexed instructions, bringing the current manifest
-to **606** with the complete 604-entry prefix preserved. Preparation and player
+to that phase's **606** with the complete 604-entry prefix preserved. Preparation and player
 initialization now run in both production apps, including the debugger roster
 editor. Six focused CTests, pinned original/source audits, 32 changed manifest
 assertions and affected-unit UBSAN checks pass. Both entries have dedicated

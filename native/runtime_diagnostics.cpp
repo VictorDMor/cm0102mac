@@ -8,6 +8,7 @@
 #include "match_engine_adapter.hpp"
 #include "match_actor_adapter.hpp"
 #include "actor_construction_adapter.hpp"
+#include "spatial_role_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -23,9 +24,18 @@ struct RuntimeDiagnostics {
     MatchEngineDiagnostics match_engine;
     MatchActorDiagnostics match_actor;
     ActorConstructionDiagnostics actor_construction;
+    SpatialRoleDiagnostics spatial_role;
 };
 State::State() = default;
 State::~State() = default;
+SpatialRoleDiagnostics& spatial_role_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->spatial_role;
+}
+const SpatialRoleDiagnostics& spatial_role_diagnostics(const State& state) {
+    static const SpatialRoleDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->spatial_role : empty;
+}
 ActorConstructionDiagnostics& actor_construction_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->actor_construction;
