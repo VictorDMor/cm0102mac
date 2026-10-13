@@ -18,6 +18,7 @@
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
+#include "movement_choice_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -43,7 +44,16 @@ struct RuntimeDiagnostics {
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
+    MovementChoiceDiagnostics movement_choice;
 };
+MovementChoiceDiagnostics& movement_choice_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->movement_choice;
+}
+const MovementChoiceDiagnostics& movement_choice_diagnostics(const State& state) {
+    static const MovementChoiceDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->movement_choice : empty;
+}
 ActorOrderDiagnostics& actor_order_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->actor_order;

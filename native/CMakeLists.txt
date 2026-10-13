@@ -47,6 +47,8 @@ target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
 target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
 target_sources(cm_aot PRIVATE actor_motion.cpp actor_motion_adapter.cpp)
 target_sources(cm_aot PRIVATE
+    movement_choice.cpp
+    movement_choice_adapter.cpp
     actor_order.cpp
     actor_order_adapter.cpp
     pitch_distance.cpp
@@ -216,6 +218,18 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_link_libraries(cm-match-random-checks PRIVATE cm_aot)
     target_compile_options(cm-match-random-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME match_random_component_equivalence COMMAND cm-match-random-checks)
+    set(CM_MOVEMENT_CHOICE_REFERENCE "${CMAKE_BINARY_DIR}/movement_choice_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MOVEMENT_CHOICE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_movement_choice_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MOVEMENT_CHOICE_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_movement_choice_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/movement_choice_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-movement-choice-checks movement_choice_checks.cpp "${CM_MOVEMENT_CHOICE_REFERENCE}")
+    target_link_libraries(cm-movement-choice-checks PRIVATE cm_aot)
+    target_compile_options(cm-movement-choice-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME movement_choice_component_equivalence COMMAND cm-movement-choice-checks)
     set(CM_ACTOR_ORDER_REFERENCE "${CMAKE_BINARY_DIR}/actor_order_reference.cpp")
     add_custom_command(OUTPUT "${CM_ACTOR_ORDER_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_order_reference.py"
@@ -389,6 +403,9 @@ target_compile_options(cm-match-random-benchmark PRIVATE -Wall -Wextra -Werror -
 add_executable(cm-match-random-production-checks match_random_production_checks.cpp)
 target_link_libraries(cm-match-random-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-movement-choice-production-checks movement_choice_production_checks.cpp)
+target_link_libraries(cm-movement-choice-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-movement-choice-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-actor-order-production-checks actor_order_production_checks.cpp)
 target_link_libraries(cm-actor-order-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-order-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -401,6 +418,9 @@ target_compile_options(cm-team-spatial-production-checks PRIVATE -Wall -Wextra -
 add_executable(cm-match-random-transfer-checks match_random_transfer_checks.cpp)
 target_link_libraries(cm-match-random-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-movement-choice-transfer-checks movement_choice_transfer_checks.cpp)
+target_link_libraries(cm-movement-choice-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-movement-choice-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-actor-order-transfer-checks actor_order_transfer_checks.cpp)
 target_link_libraries(cm-actor-order-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-order-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -641,6 +661,16 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/match-random-live-profile")
     set_tests_properties(match_random_actual_production PROPERTIES FIXTURES_SETUP MatchRandomLiveProfile TIMEOUT 180)
     set_tests_properties(match_random_original_profile match_random_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MatchRandomLiveProfile TIMEOUT 180)
+    add_test(NAME movement_choice_actual_production COMMAND cm-movement-choice-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/movement-choice-production-checks")
+    add_test(NAME movement_choice_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-movement-choice-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/movement-choice-profile-checks" "${CMAKE_BINARY_DIR}/movement-choice-live-profile")
+    add_test(NAME movement_choice_nonlocal_transfer COMMAND cm-movement-choice-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/movement-choice-transfer-checks"
+        "${CMAKE_BINARY_DIR}/movement-choice-live-profile")
+    set_tests_properties(movement_choice_actual_production PROPERTIES FIXTURES_SETUP MovementChoiceLiveProfile TIMEOUT 180)
+    set_tests_properties(movement_choice_original_profile movement_choice_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MovementChoiceLiveProfile TIMEOUT 180)
     add_test(NAME actor_order_actual_production COMMAND cm-actor-order-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-order-production-checks")
     add_test(NAME actor_order_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1

@@ -194,6 +194,13 @@ public:
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
         floating_result_status(result, std::isnan(x) || std::isnan(y), true);
     }
+    void floating_sum_single(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
+        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
+        const auto result = double(float_value<4>(float_bits<4>(x + y)));
+        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
+        floating_result_status(result, std::isnan(x) || std::isnan(y), true);
+    }
     void floating_product_sum(unsigned destination, unsigned first, unsigned second, unsigned addend, bool single = false) {
         step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
         const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));

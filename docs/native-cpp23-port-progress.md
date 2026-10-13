@@ -9,10 +9,20 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest [actor processing-order reconstruction](native-actor-order-reconstruction.md)
+The latest [movement-choice reconstruction](native-movement-choice-reconstruction.md)
+adds four complete operations: neighbouring-cell selection, its adjustment query
+and two pitch-region predicates. The accepted production manifest contains **672
+semantic entry replacements**, preserving its previous 668-entry prefix.
+Independent comparisons cover all 749 original instructions; 6,518 component
+cases, 48 production comparisons, 12 profile controls and 35 nonlocal comparisons
+pass. Five focused CTests, seven boundary audits, 44 updated manifest assertions
+and three affected-unit UBSAN runs pass. Forty paired 600-tick intervals retain
+complete final-state equality. Timing varies between batches; this block claims
+accurate reconstruction, with no consistent speedup established.
+
+The preceding [actor processing-order reconstruction](native-actor-order-reconstruction.md)
 adds five complete operations: the active queue, its comparison callback and
-three comparison values. The accepted production manifest contains **668 semantic
-entry replacements**, preserving its previous 663-entry prefix. Independent
+three comparison values, reaching the 668-entry milestone. Independent
 comparisons cover all 202 original instructions; 3,529 component cases, 60
 production comparisons, 15 profile controls and 42 nonlocal comparisons pass.
 Five focused CTests, seven boundary audits, 43 updated manifest assertions and
@@ -51,11 +61,11 @@ focused CTests, seven boundary audits, 40 updated manifest assertions and three
 affected-unit UBSAN runs pass.
 
 The game and independent debugger share the accepted implementation, including
-the actor queue/comparator, distance queries, four team queries and dispatch
+movement choice, the actor queue/comparator, distance queries, four team queries and dispatch
 optimization. Both signed ARM64 applications are installed; the
 installed worker protocol, real match completion and game menu/normal exit pass.
 The game executable SHA-256 is
-`9ba9abc99fe8bbc4fe4c3121fdc74d6197904ecca3f81a1bc15907db5c436be8`.
+`16e994df607fe8566b837578f903d69646dd8c0da739dd949def7da99aa96572`.
 The [complete movement](native-player-movement-reconstruction.md),
 [foul/referee](native-match-discipline-reconstruction.md) and
 [debugger lab](native-match-debugger-lab.md) reports retain their own evidence.
@@ -120,6 +130,11 @@ the whole game is complete. Newly exposed dependencies are added to the work
 as their actual callers and contracts are characterized.
 
 ## Execution discipline
+
+The current priority is accurate conversion of the entire game to C++23.
+Choose complete remaining behavior and its dependencies by conversion value;
+runtime speed is not the selection or acceptance target. Defer optimization
+until after conversion. Retain earlier measurements as historical evidence.
 
 Work proceeds through coherent subsystems with shared final acceptance, while
 retaining individual ABI, ordered guest effects, negative controls and normal
