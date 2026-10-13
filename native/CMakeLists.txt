@@ -47,6 +47,8 @@ target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
 target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
 target_sources(cm_aot PRIVATE actor_motion.cpp actor_motion_adapter.cpp)
 target_sources(cm_aot PRIVATE
+    actor_order.cpp
+    actor_order_adapter.cpp
     pitch_distance.cpp
     pitch_distance_adapter.cpp
     team_spatial.cpp
@@ -214,6 +216,18 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_link_libraries(cm-match-random-checks PRIVATE cm_aot)
     target_compile_options(cm-match-random-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME match_random_component_equivalence COMMAND cm-match-random-checks)
+    set(CM_ACTOR_ORDER_REFERENCE "${CMAKE_BINARY_DIR}/actor_order_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ACTOR_ORDER_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_order_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ACTOR_ORDER_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_order_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/actor_order_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-actor-order-checks actor_order_checks.cpp "${CM_ACTOR_ORDER_REFERENCE}")
+    target_link_libraries(cm-actor-order-checks PRIVATE cm_aot)
+    target_compile_options(cm-actor-order-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME actor_order_component_equivalence COMMAND cm-actor-order-checks)
     set(CM_PITCH_DISTANCE_REFERENCE "${CMAKE_BINARY_DIR}/pitch_distance_reference.cpp")
     add_custom_command(OUTPUT "${CM_PITCH_DISTANCE_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_pitch_distance_reference.py"
@@ -375,6 +389,9 @@ target_compile_options(cm-match-random-benchmark PRIVATE -Wall -Wextra -Werror -
 add_executable(cm-match-random-production-checks match_random_production_checks.cpp)
 target_link_libraries(cm-match-random-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-actor-order-production-checks actor_order_production_checks.cpp)
+target_link_libraries(cm-actor-order-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-actor-order-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-pitch-distance-production-checks pitch_distance_production_checks.cpp)
 target_link_libraries(cm-pitch-distance-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-pitch-distance-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -384,6 +401,9 @@ target_compile_options(cm-team-spatial-production-checks PRIVATE -Wall -Wextra -
 add_executable(cm-match-random-transfer-checks match_random_transfer_checks.cpp)
 target_link_libraries(cm-match-random-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-actor-order-transfer-checks actor_order_transfer_checks.cpp)
+target_link_libraries(cm-actor-order-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-actor-order-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-pitch-distance-transfer-checks pitch_distance_transfer_checks.cpp)
 target_link_libraries(cm-pitch-distance-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-pitch-distance-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -621,6 +641,16 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/match-random-live-profile")
     set_tests_properties(match_random_actual_production PROPERTIES FIXTURES_SETUP MatchRandomLiveProfile TIMEOUT 180)
     set_tests_properties(match_random_original_profile match_random_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MatchRandomLiveProfile TIMEOUT 180)
+    add_test(NAME actor_order_actual_production COMMAND cm-actor-order-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-order-production-checks")
+    add_test(NAME actor_order_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-actor-order-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/actor-order-profile-checks" "${CMAKE_BINARY_DIR}/actor-order-live-profile")
+    add_test(NAME actor_order_nonlocal_transfer COMMAND cm-actor-order-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-order-transfer-checks"
+        "${CMAKE_BINARY_DIR}/actor-order-live-profile")
+    set_tests_properties(actor_order_actual_production PROPERTIES FIXTURES_SETUP ActorOrderLiveProfile TIMEOUT 180)
+    set_tests_properties(actor_order_original_profile actor_order_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED ActorOrderLiveProfile TIMEOUT 180)
     add_test(NAME pitch_distance_actual_production COMMAND cm-pitch-distance-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/pitch-distance-production-checks")
     add_test(NAME pitch_distance_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
