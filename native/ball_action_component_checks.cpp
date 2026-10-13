@@ -2,20 +2,25 @@
 #include "semantic_io_checks.hpp"
 #include <set>
 
-namespace cm::aot { bool ball_action_preparation_reference(State&);bool ball_action_orientation_reference(State&);bool ball_action_facing_reference(State&);bool ball_action_area_reference(State&);bool ball_action_elevated_reference(State&);bool ball_action_low_reference(State&);bool ball_action_selected_reference(State&); }
+namespace cm::aot { bool ball_action_preparation_reference(State&);bool ball_action_orientation_reference(State&);bool ball_action_facing_reference(State&);bool ball_action_area_reference(State&);bool ball_action_elevated_reference(State&);bool ball_action_low_reference(State&);bool ball_action_selected_reference(State&);bool ball_action_contact_reference(State&);bool ball_action_contact_resolution_reference(State&);bool ball_action_contact_outcome_reference(State&); }
 namespace {
 using namespace cm::semantic_io_checks;
 namespace action=cm::aot::ball_action;
 constexpr auto match=fixture+0x1000,actor=fixture+0x11000,doubles=fixture+0x12000;
 constexpr auto singles=fixture+0x12400,stream=fixture+0x12800,globals=fixture+0x12a00;
+constexpr auto recipient=actor+0x600,teams=fixture+0x800,home=fixture+0x900,away=fixture+0xa00,staff=fixture+0xb00;
 struct Options {
     unsigned interrupt=0,force_wide=0;
     unsigned adjustment=0;int adjustment_wide=0;
     bool own_negative=false,child_negative=false,mutate_fitness=false,mutate_owner=false,mutate_facing=false,mutate_area=false;
-    bool mutate_elevated=false,zero_elevated_threshold=false,mutate_low=false;
+    bool mutate_elevated=false,zero_elevated_threshold=false,mutate_low=false,mutate_contact=false,mutate_resolution=false;
     std::int32_t sampled=9;
     std::int32_t facing_interval=200;
     std::uint32_t random=0xabcd5678,facing_gate=0,area_status=0,lane_clear=0,elevated_preference=0,low_alignment=1;
+    std::uint32_t contact_result=1,contact_x=7,contact_y=5;
+    std::uint32_t resolved_contact=1,reaction_result=1;
+    std::uint32_t recipient_result=recipient,recipient_gate=1,recipient_second=1,actor_gate=1,contact_end_gate=0;
+    bool mutate_outcome=false;
     double distance=25.25;
 };
 struct Trace final:SemanticGuestObserver {
@@ -40,6 +45,10 @@ struct Trace final:SemanticGuestObserver {
         if(options.force_wide==12&&pc==0x1023df50)s.wr<4>(56,std::uint32_t(-65536));
         if(options.force_wide==13&&pc==0x1023e0b0)s.wr<4>(68,65536);
         if(options.force_wide==14&&pc==0x1023e0c0)s.wr<4>(68,std::uint32_t(-65536));
+        if(options.force_wide==15&&pc==0x1023f024)s.wr<4>(72,65536);
+        if(options.force_wide==16&&pc==0x1023f034)s.wr<4>(72,std::uint32_t(-65536));
+        if(options.force_wide==17&&pc==0x1023f30c)s.wr<4>(72,65536);
+        if(options.force_wide==18&&pc==0x1023f31c)s.wr<4>(72,std::uint32_t(-65536));
         if(options.zero_elevated_threshold&&pc==0x1023dc74)s.wr<4>(68,std::uint32_t(-70));
         if(options.adjustment_wide) {
             const auto base=action::selected_action_phase+options.adjustment*0x188;
@@ -55,8 +64,8 @@ struct Model final:SemanticDependencyDispatch {
     bool original;Options options;unsigned phase;std::vector<Event> calls;
     Model(bool old,Options value,unsigned part):original(old),options(value),phase(part){}
     void reference(State& s) {
-        const auto done=phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase?action::action_bias_phase:action::orientation_phase;
-        while(s.pc!=done&&!(phase>=5&&phase<=10&&s.pc==action::selected_action_phase)) {
+        const auto done=phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase?action::action_bias_phase:action::orientation_phase;
+        while(s.pc!=done&&!(phase>=5&&phase<=10&&s.pc==action::selected_action_phase)&&!(phase>=13&&s.pc==action::action_execution_phase)) {
             if(s.pc>=action::entry&&s.pc<action::orientation_phase)
                 require(ball_action_preparation_reference(s),"Missing original ball-action preparation");
             else if(s.pc>=action::orientation_phase&&s.pc<action::action_bias_phase)
@@ -71,6 +80,12 @@ struct Model final:SemanticDependencyDispatch {
                 require(ball_action_low_reference(s),"Missing original ball-action low-ball selection");
             else if(s.pc>=action::selected_action_phase&&s.pc<action::contact_selection_phase)
                 require(ball_action_selected_reference(s),"Missing original ball-action selected-action sampling");
+            else if(s.pc>=action::contact_selection_phase&&s.pc<action::contact_resolution_phase)
+                require(ball_action_contact_reference(s),"Missing original ball-action contact preparation");
+            else if(s.pc>=action::contact_resolution_phase&&s.pc<action::contact_outcome_phase)
+                require(ball_action_contact_resolution_reference(s),"Missing original ball-action contact resolution");
+            else if(s.pc>=action::contact_outcome_phase&&s.pc<action::action_execution_phase)
+                require(ball_action_contact_outcome_reference(s),"Missing original ball-action contact outcome");
             else call(s,s.pc,std::uint32_t(s.r<4>(4128)));
         }
     }
@@ -80,7 +95,10 @@ struct Model final:SemanticDependencyDispatch {
         case 0x10245160:
             if(options.mutate_owner)s.memory.write<4>(actor+0x1a4,match+1);
             break;
-        case 0x1077b770:result=options.random;break;
+        case 0x1077b770:
+            result=options.random;
+            if(options.mutate_contact){s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x41,0);s.memory.write<4>(singles+0x3c,float_bits<4>(-2));}
+            break;
         case 0x10226520:result=std::uint32_t(options.sampled);break;
         case 0x10775540: {
             const auto input=std::uint32_t(s.r<4>(12));result=std::bit_cast<std::int32_t>(input)<0?0u-input:input;
@@ -115,6 +133,39 @@ struct Model final:SemanticDependencyDispatch {
             if(options.child_negative&&!original)bits^=1;
             s.memory.write<4>(std::uint32_t(s.r<4>(12))+0x50,bits);break;
         }
+        case 0x101f50c0:
+            s.memory.write<1>(std::uint32_t(s.r<4>(24)),options.contact_x);s.memory.write<1>(std::uint32_t(s.r<4>(28)),options.contact_y);
+            result=options.contact_result;if(options.child_negative&&!original)result^=1;
+            break;
+        case 0x101d68f0:
+            s.memory.write<4>(globals+0x20,s.r<4>(16));s.memory.write<4>(globals+0x24,s.r<4>(32));break;
+        case 0x101f5180:
+            s.memory.write<1>(std::uint32_t(s.r<4>(20)),options.resolved_contact);
+            s.memory.write<4>(std::uint32_t(s.r<4>(36)),std::uint32_t(float_bits<4>(12.5))^unsigned(options.child_negative&&!original));
+            break;
+        case 0x10201180:
+            s.memory.write<4>(globals+0x40+std::uint32_t(calls.size())*4,s.r<4>(16));
+            if(options.mutate_resolution&&s.r<4>(16)==0x1fe8) {
+                s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x41,6);s.memory.write<4>(actor+0x1a4,match+4);
+                s.memory.write<1>(actor+0x27,1);s.memory.write<1>(actor+0x105,4);s.memory.write<1>(actor+0x106,10);
+            }
+            if(options.mutate_outcome) {
+                s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x41,7);s.memory.write<1>(actor+0x27,1);
+                s.memory.write<1>(recipient+0x106,0);s.memory.write<4>(actor+0x1a4,match+4);
+            }
+            break;
+        case 0x10288f30:result=options.reaction_result;break;
+        case 0x1022ba10:s.memory.write<4>(std::uint32_t(s.r<4>(12))+0x54,0x12340000|s.r<4>(16));break;
+        case 0x101f1530:s.memory.write<4>(std::uint32_t(s.r<4>(16))+0x5c,0x34560000|s.r<4>(20));break;
+        case 0x101f3a30:result=options.recipient_result;break;
+        case 0x102720a0:result=options.actor_gate;break;
+        case 0x10272150:
+            result=std::any_of(calls.begin(),calls.end(),[](const Event& e){return e.target==0x10272150;})?options.recipient_second:options.recipient_gate;
+            break;
+        case 0x101ee530:
+            result=options.contact_end_gate;s.memory.write<4>(globals+0x200,s.r<4>(16)^unsigned(options.child_negative&&!original));break;
+        case 0x101d6780:s.memory.write<4>(globals+0x208,float_bits<4>(float_value<8>(s.r<8>(0x4010))));break;
+        case 0x102884d0:s.memory.write<4>(std::uint32_t(s.r<4>(12))+0x58,0x56780000|s.r<4>(16));break;
         default:throw std::runtime_error("Unknown ball-action dependency "+hex_address(target));
         }
         for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xac000000+n*17);
@@ -142,7 +193,7 @@ std::unique_ptr<State> seed() {
     return s;
 }
 unsigned cases=0,completed=0,interruptions=0,negatives=0,structural=0;
-std::array<unsigned,13> phase_cases{},phase_completed{};
+std::array<unsigned,19> phase_cases{},phase_completed{};
 std::set<std::uint32_t> sites;
 struct Result {std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
 Result compare(const State& input,Options options={},unsigned phase=0) {
@@ -154,13 +205,17 @@ Result compare(const State& input,Options options={},unsigned phase=0) {
     a->memory.date_observer=&x;b->memory.date_observer=&y;Trace old_trace(options),new_trace(options);
     Model old(true,options,phase),modern(false,options,phase);
     const auto run=[&](State& s,Model& m,bool original){try{if(original){original_trace=&old_trace;m.reference(s);}else {
-            if(phase==0||phase==2||phase==4||phase==6||phase==8||phase==10||phase==12)action::prepare(s,&m,&new_trace);
-            if(phase==1||phase==2||phase==4||phase==6||phase==8||phase==10||phase==12)action::orient(s,&m,&new_trace);
-            if(phase==3||phase==4||phase==6||phase==8||phase==10||phase==12)action::face_action(s,&m,&new_trace);
-            if(phase==5||phase==6||phase==8||phase==10||phase==12)action::select_area_action(s,&m,&new_trace);
-            if((phase==7||phase==8||phase==10||phase==12)&&s.pc!=action::selected_action_phase)action::select_elevated_action(s,&m,&new_trace);
-            if(phase==9||((phase==10||phase==12)&&s.pc==action::low_ball_selection_phase))action::select_low_ball_action(s,&m,&new_trace);
-            if(phase>=11)action::sample_selected_action(s,&m,&new_trace);
+            const bool prefix=phase>0&&phase%2==0;
+            if(phase==0||prefix)action::prepare(s,&m,&new_trace);
+            if(phase==1||prefix)action::orient(s,&m,&new_trace);
+            if(phase==3||(prefix&&phase>=4))action::face_action(s,&m,&new_trace);
+            if(phase==5||(prefix&&phase>=6))action::select_area_action(s,&m,&new_trace);
+            if((phase==7||(prefix&&phase>=8))&&s.pc!=action::selected_action_phase)action::select_elevated_action(s,&m,&new_trace);
+            if(phase==9||(prefix&&phase>=10&&s.pc==action::low_ball_selection_phase))action::select_low_ball_action(s,&m,&new_trace);
+            if(phase==11||(prefix&&phase>=12))action::sample_selected_action(s,&m,&new_trace);
+            if(phase==13||(prefix&&phase>=14))action::prepare_contact(s,&m,&new_trace);
+            if((phase==15||(prefix&&phase>=16))&&s.pc!=action::action_execution_phase)action::resolve_contact(s,&m,&new_trace);
+            if((phase==17||(prefix&&phase>=18))&&s.pc==action::contact_outcome_phase)action::complete_contact(s,&m,&new_trace);
         }}
         catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}original_trace=nullptr;return std::string{};};
     const auto expected=run(*a,old,true),actual=run(*b,modern,false);a->memory.date_observer=b->memory.date_observer=nullptr;
@@ -225,6 +280,26 @@ std::unique_ptr<State> low_seed() {
 std::unique_ptr<State> selected_seed() {
     auto s=low_seed();s->pc=action::selected_action_phase;s->wr<4>(52,12);s->wr<4>(68,200);s->wr<4>(64,700);
     s->wr<4>(84,117);s->wr<4>(80,88);s->memory.write<4>(singles+0xe0,float_bits<4>(0.5));return s;
+}
+std::unique_ptr<State> contact_seed() {
+    auto s=selected_seed();s->pc=action::contact_selection_phase;s->memory.write<4>(singles,float_bits<4>(0));
+    s->memory.write<4>(singles+0x3c,float_bits<4>(0));s->memory.write<4>(singles+0x2c,float_bits<4>(20));return s;
+}
+std::unique_ptr<State> resolution_seed() {
+    auto s=contact_seed();s->pc=action::contact_resolution_phase;s->memory.write<1>(actor+0x106,1);
+    s->memory.write<1>(actor+0x2f,12);s->memory.write<2>(actor+0x36,250);s->memory.write<1>(actor+0x366,2);
+    s->memory.write<4>(match+0x79f4,globals+0x100);s->memory.write<4>(match+0x79f8,globals+0x180);
+    s->memory.write<1>(stack-0x150+0x41,1);s->memory.write<1>(stack-0x150+0x43,1);s->memory.write<1>(stack-0x150+0x44,7);
+    return s;
+}
+std::unique_ptr<State> outcome_seed() {
+    auto s=resolution_seed();s->pc=action::contact_outcome_phase;s->wr<4>(64,0xffffffff);s->wr<4>(68,0x1f79);
+    s->memory.write<1>(stack-0x150+0x42,0);s->memory.write<4>(stack-0x150+0x4c,float_bits<4>(12.5));
+    s->memory.write<1>(recipient+0x2f,23);s->memory.write<1>(recipient+0x105,4);s->memory.write<1>(recipient+0x106,6);
+    s->memory.write<4>(match+0x3118,teams);s->memory.write<4>(match+0x311c,teams);
+    s->memory.write<4>(teams+0x1c,home);s->memory.write<4>(teams+0x20,away);
+    s->memory.write<4>(home+0x2c,staff);s->memory.write<4>(away+0x2c,staff);s->memory.write<1>(staff+0x119,8);
+    return s;
 }
 }
 namespace cm::aot {void ball_action_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
@@ -478,8 +553,168 @@ int main(){try {
         s->memory.write<2>(actor+0x19e,heading);s->memory.write<4>(actor+0x50,float_bits<4>(fitness));s->memory.write<1>(match+0x791f,state);compare(*s,{},12);
     }
     {auto s=low_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);boundaries(*s,{},12);}
-    for(auto pc=action::entry;pc<action::contact_selection_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==1865,"All original ball-action preparation, initial selection and adjustment sites covered");
+    for(auto flag:{0u,1u,2u,127u,128u,255u,0x100u,0x1ffu})for(auto interval:{0,1,2,7,20,119,-1,-20,-119,32767,-32768}){
+        auto s=contact_seed();s->memory.write<4>(singles+0x2c,float_bits<4>(interval));Options o;o.contact_result=flag;
+        auto result=compare(*s,o,13);const auto sampled=interval==0?0:interval>0?119%interval:-(119%interval);
+        require(result.state->pc==((flag&255)==0||sampled==0?action::action_execution_phase:action::contact_resolution_phase),"Independent contact screening decision");
+        const auto reports=std::count_if(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x101d68f0;});
+        require(reports==int((flag&255)!=0&&sampled==0),"Immediate contact action only for an active zero sample");
+    }
+    for(unsigned byte=0;byte<256;++byte){auto s=contact_seed();s->memory.write<4>(singles+0x2c,float_bits<4>(0));Options o;o.contact_x=byte;o.contact_y=255-byte;
+        auto result=compare(*s,o,13);require(result.state->memory.read<4>(stack-0x150+0x38)==byte&&result.state->memory.read<4>(stack-0x150+0x3c)==255-byte,"Contact coordinate output bytes reach ordered call spills");}
+    for(auto constant:{0.0,0.25,1.0,20.0,65535.0,65536.0,-65535.0,-65536.0,2147483520.0,-2147483648.0})
+        for(auto multiplier:{0.0,0.2,-2.0,10000.0}){
+            auto s=contact_seed();s->memory.write<4>(singles+0x2c,float_bits<4>(constant));s->memory.write<4>(singles+0x3c,float_bits<4>(multiplier));compare(*s,{},13);
+        }
+    for(auto flag:{0u,1u,255u})for(auto interval:{0.0,0.25,1.0,20.0,-20.0,65536.0,-65536.0}){
+        auto s=contact_seed();s->memory.write<4>(singles+0x2c,float_bits<4>(interval));Options o;o.contact_result=flag;boundaries(*s,o,13);
+    }
+    for(auto interval:{65536.0,-65536.0})for(auto sampled:{-100000,0,10000000}){
+        auto s=contact_seed();s->memory.write<4>(singles+0x2c,float_bits<4>(interval));Options o;o.sampled=sampled;boundaries(*s,o,13);
+    }
+    for(auto bits:{0x7fc12345u,0x7f812345u,0xffc12345u,0x7f800000u,0xff800000u})for(auto offset:{0u,0x2cu,0x3cu}){
+        auto s=contact_seed();s->memory.write<4>(singles+offset,bits);compare(*s,{},13);
+    }
+    for(auto distance:{-1.0e100,-1.0,0.0,1.0,100.0,1.0e100}){auto s=contact_seed();s->wr<8>(0x4000+29*16,float_bits<8>(distance));
+        s->memory.write<4>(singles+0x3c,float_bits<4>(2));compare(*s,{},13);}
+    {auto s=contact_seed();s->memory.write<4>(singles,float_bits<4>(20));auto result=compare(*s,{},13);
+        require(result.state->memory.read<4>(globals+8)==stream&&result.state->pc==action::action_execution_phase,"Mutable float equality baseline skips random advancement");}
+    for(bool mutation:{false,true}){auto s=contact_seed();s->memory.write<4>(globals+8,stream+126);Options o;o.mutate_contact=mutation;boundaries(*s,o,13);}
+    for(auto random:{0u,0x7fffffffu,0x80000000u,0xffffffffu}){auto s=contact_seed();s->memory.write<4>(globals,random);compare(*s,{},13);}
+    for(auto ptr:{0u,actor+1,stack-0x150,globals}){auto s=contact_seed();s->wr<4>(60,ptr);compare(*s,{},13);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*contact_seed(),o,13);}
+    for(auto state:{0u,2u,3u,4u})for(auto fitness:{7500,10000,-32768})for(auto heading:{20u,90u,270u}){
+        auto s=contact_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+1,32);s->memory.write<1>(match+0x7920,2);
+        s->memory.write<2>(actor+0x19e,heading);s->memory.write<4>(actor+0x50,float_bits<4>(fitness));s->memory.write<1>(match+0x791f,state);compare(*s,{},14);
+    }
+    {auto s=contact_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);boundaries(*s,{},14);}
+    for(unsigned flag=0;flag<256;++flag)for(auto coordinate:{0u,1u,2u,3u,127u,128u,255u}) {
+        auto s=resolution_seed();s->memory.write<1>(stack-0x150+0x43,coordinate);Options o;o.resolved_contact=flag;
+        auto result=compare(*s,o,15);const auto message=flag==2?0x1ff9u:flag==3?0x1ff7u:flag==4?0x1ff8u:flag==6?0x1ff5u:
+            std::int32_t(signed_value<1>(coordinate))>2?0x210au:0xffffffffu;
+        require(result.state->r<4>(64)==message,"Independent signed contact classification and coordinate threshold");
+        require(result.state->memory.read<1>(match+0x7928)==(flag==7?7u:5u),"Raw contact seven bypasses the area reaction");
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{0u,1u,2u,4u,6u,7u,127u,128u,255u})
+        for(auto column:{0u,1u,2u,9u,10u,11u,12u,127u,128u,255u})for(auto flag:{1u,2u,7u}) {
+            auto s=resolution_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);
+            s->memory.write<1>(actor+0x106,column);Options o;o.resolved_contact=flag;auto result=compare(*s,o,15);
+            const bool inside=row>=2&&row<=6&&(side==1?(column>=10&&column<=11):column<=1);
+            const auto status=flag==7?7u:inside?5u:6u;
+            require(result.state->memory.read<1>(match+0x7928)==status,"Independent live contact area status");
+            require(result.state->r<4>(68)==(status==5?0x1f7au:0x1f79u),"Contact outcome message follows the resulting area status");
+            require(result.state->memory.read<2>(actor+0x36)==(status==5?0xff06u:250u),"Contact halfword decrement wraps without saturation");
+        }
+    for(auto trait:{0u,1u,2u,7u,20u,119u,127u,128u,255u})for(auto random:{0u,17u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+        auto s=resolution_seed();s->memory.write<1>(actor+0x366,trait);s->memory.write<4>(globals,random);
+        Options o;o.resolved_contact=2;auto result=compare(*s,o,15);const auto interval=std::int32_t(signed_value<1>(trait));
+        const auto number=std::bit_cast<std::int32_t>(random+102u);
+        const auto sample=interval==0?0:interval>0?number%interval:-(number%interval);
+        require(result.state->r<4>(56)==std::uint32_t(sample),"Independent contact reaction signed sample");
+        const auto reactions=std::count_if(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x10288f30;});
+        require(reactions==int(sample==0),"Only a zero reaction sample calls the actor reaction dependency");
+    }
+    for(auto flag:{1u,2u,3u,4u,6u,7u,128u,255u}){Options o;o.resolved_contact=flag;boundaries(*resolution_seed(),o,15);}
+    for(auto side:{0u,1u})for(auto row:{1u,4u,7u})for(auto column:{0u,2u,10u,12u}) {
+        auto s=resolution_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);
+        s->memory.write<1>(actor+0x106,column);boundaries(*s,{},15);
+    }
+    for(auto random:{0u,1u,2u,0x80000000u,0x80000001u,0xfffffffdu,0xffffffffu}){auto s=resolution_seed();s->memory.write<4>(globals,random);boundaries(*s,{},15);}
+    for(auto trait:{0u,1u,2u,128u,255u})for(auto result:{0u,1u,0x100u,0x1ffu}) {
+        auto s=resolution_seed();s->memory.write<1>(actor+0x366,trait);Options o;o.reaction_result=result;
+        auto observed=compare(*s,o,15);const auto reactions=std::count_if(observed.calls.begin(),observed.calls.end(),[](const Event& e){return e.target==0x10288f30;});
+        const auto transitions=std::count_if(observed.calls.begin(),observed.calls.end(),[](const Event& e){return e.target==0x1022ba10;});
+        require(transitions==int(reactions!=0&&(result&255)!=0),"Actor transition uses only the reaction result low byte");
+        boundaries(*s,o,15);
+    }
+    for(unsigned wide:{15u,16u})for(auto sampled:{-100000,0,10000000}){Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*resolution_seed(),o,15);}
+    for(auto cursor:{stream+120,stream+122,stream+124,stream+126}){auto s=resolution_seed();s->memory.write<4>(globals+8,cursor);boundaries(*s,{},15);}
+    {auto s=resolution_seed();s->memory.write<4>(globals+8,stream+126);s->memory.write<1>(actor+0x366,0);Options o;o.resolved_contact=2;boundaries(*s,o,15);}
+    {auto s=resolution_seed();s->memory.write<4>(globals,0x80000001);s->memory.write<1>(stack-0x150+0x43,128);boundaries(*s,{},15);}
+    {Options o;o.mutate_resolution=true;boundaries(*resolution_seed(),o,15);}
+    for(auto ptr:{0u,actor+1,stack-0x150,globals}){auto s=resolution_seed();s->wr<4>(60,ptr);compare(*s,{},15);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*resolution_seed(),o,15);}
+    for(auto state:{0u,2u,3u,4u})for(auto flag:{1u,2u,7u})for(auto column:{1u,6u,10u}) {
+        auto s=resolution_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+1,32);s->memory.write<1>(match+0x7920,2);
+        s->memory.write<1>(actor+0x106,column);s->memory.write<1>(match+0x791f,state);Options o;o.resolved_contact=flag;compare(*s,o,16);
+    }
+    for(auto flag:{0u,1u}){auto s=resolution_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);
+        Options o;o.contact_result=flag;boundaries(*s,o,16);}
+    for(unsigned flag=0;flag<256;++flag)for(auto message:{0u,0x1ff9u,0x7fffu,0x8000u,0xffffu}) {
+        auto s=outcome_seed();s->wr<4>(64,0xabcd0000|message);s->wr<4>(68,0x12341f7a);s->memory.write<1>(stack-0x150+0x41,flag);
+        auto result=compare(*s,{},17);const auto responses=std::count_if(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x101f1530;});
+        require(responses==int(std::int32_t(signed_value<2>(message))>-1&&flag>=3&&flag<=6),"Independent contact response gate uses signed message and raw flag");
+        require(result.state->memory.read<2>(actor+0x36)==225,"Contact outcome always subtracts twenty-five from the actor halfword");
+        require(result.state->pc==action::return_phase,"Contact outcome leaves through the shared original return");
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{0u,4u,128u,255u})for(auto column:{0u,1u,10u,128u,255u}) {
+        auto s=outcome_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);
+        auto result=compare(*s,{},17);
+        require(result.state->memory.read<1>(match+0x791d)==row&&result.state->memory.read<1>(match+0x791e)==column,"Ball receives raw actor coordinates");
+        require(result.state->memory.read<1>(match+0x7924)==unsigned(side==0)&&result.state->memory.read<4>(match+0xe000)==0,"Contact ownership inversion and destination clearing");
+    }
+    for(auto side:{0u,1u,2u,255u})for(auto flag:{1u,7u})for(auto message:{0x1f79u,0x1f7au,0x1234u})
+        for(auto result:{0u,recipient})for(auto disabled:{0u,1u,128u,255u}) {
+            auto s=outcome_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(stack-0x150+0x41,flag);
+            s->memory.write<1>(stack-0x150+0x42,disabled);s->wr<4>(68,message);Options o;o.recipient_result=result;compare(*s,o,17);
+        }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{1u,2u,6u,7u,128u})for(auto column:{0u,1u,2u,9u,10u,11u,12u,128u}) {
+        auto s=outcome_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(stack-0x150+0x41,7);
+        s->memory.write<1>(recipient+0x105,row);s->memory.write<1>(recipient+0x106,column);auto result=compare(*s,{},17);
+        const bool inside=row>=2&&row<=6&&(side==1?(column>=10&&column<=11):column<=1);
+        const auto comments=std::count_if(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x10201180&&read_be<4>(e.before.data()+16)==0x21e1;});
+        require(comments==int(!inside),"Eligible contact-seven recipient outside the actor-side area receives the extra message");
+    }
+    for(auto actor_gate:{0u,1u,0x100u,0x1ffu})for(auto recipient_gate:{0u,1u,0x100u,0x1ffu})for(auto second:{0u,1u}) {
+        Options o;o.actor_gate=actor_gate;o.recipient_gate=recipient_gate;o.recipient_second=second;boundaries(*outcome_seed(),o,17);
+    }
+    for(auto side:{0u,1u})for(auto row:{1u,4u,7u})for(auto column:{0u,2u,10u,12u}) {
+        auto s=outcome_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(stack-0x150+0x41,7);
+        s->memory.write<1>(recipient+0x105,row);s->memory.write<1>(recipient+0x106,column);boundaries(*s,{},17);
+    }
+    for(auto message:{0x1f79u,0x1f7au,0x1234u})for(auto result:{0u,recipient})for(auto disabled:{0u,1u}) {
+        auto s=outcome_seed();s->wr<4>(68,message);s->memory.write<1>(stack-0x150+0x42,disabled);Options o;o.recipient_result=result;boundaries(*s,o,17);
+    }
+    for(auto side:{0u,1u})for(auto pointer:{0u,staff})for(auto role:{0u,8u,255u}) {
+        auto s=outcome_seed();s->wr<4>(64,0x1ff9);s->memory.write<4>(globals,2);s->memory.write<1>(stack-0x150+0x43,127);
+        s->memory.write<1>(actor+0x27,side);s->memory.write<4>((side?home:away)+0x2c,pointer);s->memory.write<1>(staff+0x119,role);boundaries(*s,{},17);
+    }
+    for(auto interval:{0u,1u,2u,127u,128u,255u}) {
+        auto s=outcome_seed();s->wr<4>(64,0x1ff9);s->memory.write<4>(globals,2);s->memory.write<1>(stack-0x150+0x43,interval);boundaries(*s,{},17);
+    }
+    for(auto wide:{17u,18u})for(auto sampled:{-100000,0,10000000}) {
+        auto s=outcome_seed();s->wr<4>(64,0x1ff9);s->memory.write<4>(globals,2);Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*s,o,17);
+    }
+    for(auto gate:{0u,1u,0x100u,0x1ffu}){Options o;o.contact_end_gate=gate;boundaries(*outcome_seed(),o,17);}
+    for(auto message:{0x1f79u,0x1f7au})for(auto flag:{1u,3u,4u,5u,6u,7u,128u,255u})for(auto second:{2u,3u})for(auto third:{2u,3u}) {
+        auto s=outcome_seed();s->wr<4>(68,message);s->memory.write<1>(stack-0x150+0x41,flag);s->memory.write<4>(globals,0);
+        s->memory.write<2>(stream+2,18);s->memory.write<2>(stream+4,second);s->memory.write<2>(stream+6,third);boundaries(*s,{},17);
+    }
+    for(auto random:{0u,1u,0x7fffffffu,0x80000000u,0x80000001u,0xffffffffu}){
+        auto s=outcome_seed();s->wr<4>(64,0x1ff9);s->memory.write<4>(globals,random);compare(*s,{},17);
+    }
+    for(auto cursor:{stream+120,stream+122,stream+124,stream+126}) {
+        auto s=outcome_seed();s->wr<4>(64,0x1ff9);s->memory.write<4>(globals,2);s->memory.write<4>(globals+8,cursor);boundaries(*s,{},17);
+    }
+    {auto s=outcome_seed();s->wr<4>(64,0x1ff9);s->memory.write<4>(globals,2);s->memory.write<4>(globals+8,stream+124);
+        s->memory.write<1>(stack-0x150+0x43,0);boundaries(*s,{},17);}
+    {auto s=outcome_seed();s->memory.write<4>(globals+8,stream+126);boundaries(*s,{},17);}
+    for(auto limit:{stream+2,stream+4}) {
+        auto s=outcome_seed();s->wr<4>(68,0x1f7a);s->memory.write<4>(globals,0);s->memory.write<4>(globals+4,limit);
+        s->memory.write<2>(stream,3);s->memory.write<2>(stream+2,18);s->memory.write<2>(stream+4,3);Options o;o.random=0;boundaries(*s,o,17);
+    }
+    {Options o;o.mutate_outcome=true;auto s=outcome_seed();s->wr<4>(64,0x1ff9);boundaries(*s,o,17);}
+    for(auto ptr:{0u,actor+1,stack-0x150,globals}){auto s=outcome_seed();s->wr<4>(60,ptr);compare(*s,{},17);}
+    for(auto value:{0u,1u,24u,25u,32768u,65535u}){auto s=outcome_seed();s->memory.write<2>(actor+0x36,value);compare(*s,{},17);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*outcome_seed(),o,17);}
+    for(auto state:{0u,2u,3u,4u})for(auto flag:{1u,2u,7u})for(auto column:{1u,6u,10u}) {
+        auto s=outcome_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+1,32);s->memory.write<1>(match+0x7920,2);
+        s->memory.write<1>(actor+0x106,column);s->memory.write<1>(match+0x791f,state);Options o;o.resolved_contact=flag;compare(*s,o,18);
+    }
+    for(auto flag:{0u,1u}){auto s=outcome_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);
+        Options o;o.contact_result=flag;boundaries(*s,o,18);}
+    for(auto pc=action::entry;pc<action::action_execution_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==2895,"All original ball-action preparation through contact-outcome sites covered");
     for(unsigned p=0;p<phase_cases.size();++p){require(phase_completed[p]>0,"Each ball-action phase completed");
         std::cout<<"Phase "<<p<<": "<<phase_cases[p]<<" comparisons, "<<phase_completed[p]<<" completions\n";}
     std::cout<<"PASS: "<<cases<<" ball-action component comparisons; "<<completed<<" phase completions, "<<interruptions

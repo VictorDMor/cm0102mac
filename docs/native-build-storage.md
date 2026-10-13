@@ -5,6 +5,14 @@ cycle. Keep the latest accepted consistent build and the active phase. Preserve
 application bundles, original/private inputs, references, receipts, handoffs,
 saves and user settings. Build only the explicitly required targets.
 
+Include standalone check executables and their debug-symbol bundles in each
+cycle's inventory. Earlier checks also live directly in phase directories or
+custom sanitizer folders, so scanning only CMake/build directories misses them.
+Use an exact reviewed removal list, verify regular paths and idle processes,
+and retain their source, original references, validation logs and build recipes.
+Do not classify archived baseline/reference programs as disposable solely by
+their size or executable format.
+
 ## Independent generated-source reuse
 
 `tools/compile_recomp.py` accepts `--reuse-generated PREVIOUS_GENERATED_DIR`

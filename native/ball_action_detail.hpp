@@ -2,6 +2,7 @@
 #include "semantic_guest_call.hpp"
 
 namespace cm::aot::ball_action::detail {
+void advance_action_random(SemanticGuestCall&, std::uint32_t start);
 // Preserve the common word-interval sampling schedule. Callers own the zero
 // interval gate and keep their interval and result in nonvolatile registers.
 void sample_action_interval(SemanticGuestCall&, std::uint32_t start, unsigned interval, unsigned result);
@@ -9,5 +10,5 @@ void sample_action_interval(SemanticGuestCall&, std::uint32_t start, unsigned in
 // The original rectangles repeatedly read the actor's live signed coordinates.
 // The right rectangle has one extra comparison and jumps to the shared join.
 void area_coordinates(SemanticGuestCall&,std::uint32_t start,std::uint32_t join,
-                      bool right,unsigned coordinate,unsigned truth,unsigned result);
+                      bool right,unsigned coordinate,unsigned truth,unsigned result,unsigned actor = 15);
 }

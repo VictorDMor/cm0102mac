@@ -17,7 +17,9 @@ from compile_recomp import generate_page
 COMPONENTS = {'preparation': (ENTRY, 0x1023d184), 'orientation': (0x1023d184, 0x1023d344),
               'facing': (0x1023d344, 0x1023d5e4), 'area': (0x1023d5e4, 0x1023d8f8),
               'elevated': (0x1023d8f8, 0x1023de18), 'low': (0x1023de18, 0x1023e404),
-              'selected': (0x1023e404, 0x1023ea44)}
+              'selected': (0x1023e404, 0x1023ea44), 'contact': (0x1023ea44, 0x1023ecf4),
+              'contact_resolution': (0x1023ecf4, 0x1023f1e8),
+              'contact_outcome': (0x1023f1e8, 0x1023fa5c)}
 
 
 def render_reference(records, userops, component):

@@ -1,6 +1,12 @@
 #include "ball_action_detail.hpp"
 
 namespace cm::aot::ball_action::detail {
+void advance_action_random(SemanticGuestCall& a,std::uint32_t start) {
+    a.at(start);a.load(3,30,0);a.load(0,29,0);a.offset(3,3,2);a.compare_registers(3,0,false);a.store(30,0,3);
+    if(!a.nonpositive()){a.store(30,0,28);a.call(0x1077b770);a.mask(0,3,0xffff);a.store(27,0,0);}
+    a.at(start+0x28);
+}
+
 void sample_action_interval(SemanticGuestCall& a,std::uint32_t start,unsigned interval,unsigned result) {
     const auto done=start+0x15c;
     a.at(start);a.load(3,30,0);a.load(0,29,0);a.offset(3,3,2);a.compare_registers(3,0,false);a.store(30,0,3);
@@ -30,14 +36,14 @@ void sample_action_interval(SemanticGuestCall& a,std::uint32_t start,unsigned in
 }
 
 void area_coordinates(SemanticGuestCall& a,std::uint32_t start,std::uint32_t join,
-                      bool right,unsigned coordinate,unsigned truth,unsigned result) {
-    a.at(start);a.load<1>(coordinate,15,0x105);a.value(truth,0);a.sign8(coordinate,coordinate);a.compare(coordinate,2);
+                      bool right,unsigned coordinate,unsigned truth,unsigned result,unsigned actor) {
+    a.at(start);a.load<1>(coordinate,actor,0x105);a.value(truth,0);a.sign8(coordinate,coordinate);a.compare(coordinate,2);
     bool inside=!a.less();
-    if(inside){a.load<1>(coordinate,15,0x105);a.sign8(coordinate,coordinate);a.compare(coordinate,6);inside=!a.positive();}
-    if(inside){a.load<1>(coordinate,15,0x106);a.sign8(coordinate,coordinate,!right);
+    if(inside){a.load<1>(coordinate,actor,0x105);a.sign8(coordinate,coordinate);a.compare(coordinate,6);inside=!a.positive();}
+    if(inside){a.load<1>(coordinate,actor,0x106);a.sign8(coordinate,coordinate,!right);
         if(right)a.compare(coordinate,10);
         inside=!a.less();}
-    if(inside){a.load<1>(coordinate,15,0x106);a.sign8(coordinate,coordinate);a.compare(coordinate,right?11:1);inside=!a.positive();}
+    if(inside){a.load<1>(coordinate,actor,0x106);a.sign8(coordinate,coordinate);a.compare(coordinate,right?11:1);inside=!a.positive();}
     if(inside)a.value(truth,1);
     a.at(start+(right?0x48:0x44));a.sign8(result,truth);
     if(right)a.jump(join);

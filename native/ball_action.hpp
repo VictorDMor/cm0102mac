@@ -10,6 +10,10 @@ inline constexpr std::uint32_t ball_state_selection_phase = 0x1023d8f8;
 inline constexpr std::uint32_t low_ball_selection_phase = 0x1023de18;
 inline constexpr std::uint32_t selected_action_phase = 0x1023e404;
 inline constexpr std::uint32_t contact_selection_phase = 0x1023ea44;
+inline constexpr std::uint32_t contact_resolution_phase = 0x1023ecf4;
+inline constexpr std::uint32_t contact_outcome_phase = 0x1023f1e8;
+inline constexpr std::uint32_t action_execution_phase = 0x1023fa5c;
+inline constexpr std::uint32_t return_phase = 0x10244c38;
 inline constexpr std::uint32_t end = 0x10244c58;
 
 // Components remain outside production dispatch until the complete coordinator
@@ -21,4 +25,7 @@ void select_area_action(State&, SemanticDependencyDispatch* = nullptr, SemanticG
 void select_elevated_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void select_low_ball_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void sample_selected_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void prepare_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void resolve_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void complete_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 }

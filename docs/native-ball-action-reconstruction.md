@@ -37,7 +37,10 @@ generated reference bodies and runtime artifacts remain outside version control.
 | Elevated ball-state selection | `0x1023d8f8..0x1023de18` | 328 |
 | Low ball-state selection | `0x1023de18..0x1023e404` | 379 |
 | Selected-action adjustments and fitness dependency | `0x1023e404..0x1023ea44` | 400 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x1023ea44`** | **1,865** |
+| Contact screening and immediate-action exit | `0x1023ea44..0x1023ecf4` | 172 |
+| Contact classification and area reaction | `0x1023ecf4..0x1023f1e8` | 317 |
+| Contact outcome, recipient and messages | `0x1023f1e8..0x1023fa5c` | 541 |
+| **Validated contiguous prefix** | **`0x1023cd20..0x1023fa5c`** | **2,895** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -46,6 +49,16 @@ accounting. Identical word-interval sampling schedules and area predicates share
 semantic helpers; the distinct halfword adjustment schedule remains separate.
 `SemanticGuestCall::sign16` now supports the original record form while keeping
 the existing non-record behavior as its default.
+
+Contact screening compares the live single-precision expression with its
+mutable zero baseline before integer truncation, reloads it around random
+renewal and preserves both the immediate-action and contact-resolution exits.
+Contact resolution preserves raw versus signed flag tests, area status changes,
+wrapped actor halfword updates, ordered reports and conditional actor reactions.
+The outcome component updates ball coordinates and ownership, reloads opposing
+team links, selects a recipient, preserves repeated eligibility calls and emits
+the original message sequence. Its exit is the shared return at `0x10244c38`;
+the return itself is not yet implemented by this candidate.
 
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
@@ -56,12 +69,12 @@ runtime acceptance.
 
 ## Component evidence
 
-The current check contains 59,219 comparisons:
+The current check contains 127,001 comparisons:
 
-- 12,142 successful component or prefix completions;
-- 47,063 instruction-budget, memory-hole or dependency interruptions;
-- 14 rejected own-result/dependency negative controls;
-- all 1,865 original instruction sites, including dormant branches;
+- 18,199 successful component or prefix completions;
+- 108,782 instruction-budget, memory-hole or dependency interruptions;
+- 20 rejected own-result/dependency negative controls;
+- all 2,895 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
@@ -73,7 +86,7 @@ interior edges, and the unchanged production manifest. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-15,581 of the comparisons use paired checkpoint injections to reach dormant
+19,835 of the comparisons use paired checkpoint injections to reach dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -87,8 +100,8 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x1023ea44` with contact selection and action execution. The remaining
-6,277 original instructions, all five computed decision tables, tail/error paths
+Continue at `0x1023fa5c` with action execution. The remaining
+5,247 original instructions, all five computed decision tables, tail/error paths
 and common return still require reconstruction and equivalence evidence.
 
 Before installing the replacement, validate the complete root, nonlocal transfers
@@ -102,3 +115,11 @@ game, runtime and handoff artifacts are unchanged. After complete acceptance,
 the planned follow-up is an updated Match Debugger containing the conversion
 and clearer controls and match information. That UI/UX work is not implemented
 or delivered by this checkpoint.
+
+At this checkpoint, cycle cleanup removed 43 obsolete standalone checks and
+the three current conformance executables after validation, plus associated
+debug symbols: 103 files and 6,446,007,277 logical bytes. Available space
+increased by 6,447,804,416 bytes during cleanup; concurrent filesystem activity
+can affect that observation. All 845 protected artifacts, both installed signed
+ARM64 apps, original inputs, source references and the reusable production
+library were verified unchanged. Private cleanup plans and receipts are retained.
