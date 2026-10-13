@@ -114,6 +114,8 @@ from match_discipline_audit import (require_match_discipline_contract, require_m
 
 from match_random_audit import (require_match_random_contract, require_match_random_index,
                                 require_match_random_hooks, match_random_hook, MATCH_RANDOM_ENTRIES)
+from team_spatial_audit import (require_team_spatial_contract, require_team_spatial_index,
+                                require_team_spatial_hooks, team_spatial_hook, TEAM_SPATIAL_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -159,7 +161,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "actor_motion_adapter") for entry in ACTOR_MOTION_ENTRIES) +
     tuple((entry, "player_movement_adapter") for entry in PLAYER_MOVEMENT_ENTRIES) +
     tuple((entry, "match_discipline_adapter") for entry in MATCH_DISCIPLINE_ENTRIES) +
-    tuple((entry, "match_random_adapter") for entry in MATCH_RANDOM_ENTRIES))
+    tuple((entry, "match_random_adapter") for entry in MATCH_RANDOM_ENTRIES) +
+    tuple((entry, "team_spatial_adapter") for entry in TEAM_SPATIAL_ENTRIES))
 
 
 def integer(value):
@@ -391,7 +394,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -439,6 +442,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_marking_pressure_contract(page, instructions, selected)
     if match_random_hooks:
         require_match_random_contract(page, instructions, selected)
+    if team_spatial_hooks:
+        require_team_spatial_contract(page, instructions, selected)
     if match_discipline_hooks:
         require_match_discipline_contract(page, instructions, selected)
     if player_movement_hooks:
@@ -508,6 +513,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "marking_pressure_adapter.hpp"')
     if match_random_hooks and page_addresses & set(MATCH_RANDOM_ENTRIES):
         code.insert(1, '#include "match_random_adapter.hpp"')
+    if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
+        code.insert(1, '#include "team_spatial_adapter.hpp"')
     if match_discipline_hooks and page_addresses & set(MATCH_DISCIPLINE_ENTRIES):
         code.insert(1, '#include "match_discipline_adapter.hpp"')
     if player_movement_hooks and page_addresses & set(PLAYER_MOVEMENT_ENTRIES):
@@ -676,6 +683,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(marking_pressure_hook(a))
         if match_random_hooks and a in MATCH_RANDOM_ENTRIES:
             code.append(match_random_hook(a))
+        if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
+            code.append(team_spatial_hook(a))
         if match_discipline_hooks and a in MATCH_DISCIPLINE_ENTRIES:
             code.append(match_discipline_hook(a))
         if player_movement_hooks and a in PLAYER_MOVEMENT_ENTRIES:
@@ -882,6 +891,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_marking_pressure_hooks(page, instructions, result)
     if match_random_hooks:
         require_match_random_hooks(page, instructions, result)
+    if team_spatial_hooks:
+        require_team_spatial_hooks(page, instructions, result)
     if match_discipline_hooks:
         require_match_discipline_hooks(page, instructions, result)
     if player_movement_hooks:
@@ -974,6 +985,7 @@ def main():
         require_player_decision_index(db, None if args.all_analyzed else selected)
         require_actor_motion_index(db, None if args.all_analyzed else selected)
         require_match_random_index(db, None if args.all_analyzed else selected)
+        require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_match_discipline_index(db, None if args.all_analyzed else selected)
         require_player_movement_index(db, None if args.all_analyzed else selected)
         if args.all_analyzed:

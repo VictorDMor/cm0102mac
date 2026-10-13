@@ -9,7 +9,17 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest [dispatch runtime optimization](native-dispatch-runtime-performance.md)
+The latest [team spatial reconstruction](native-team-spatial-reconstruction.md)
+adds four complete, frequently used queries: nearest actor, minimum distance,
+nearby weight and both teams' column limits. The accepted production manifest
+contains **660 semantic entry replacements**, retaining its previous 656-entry
+prefix. Independent comparisons cover all 1,624 original instructions, complete
+state/effects, exact accounting, faults and nonlocal transfers. Five focused
+CTests, seven boundary audits, 41 updated manifest assertions and three
+affected-unit UBSAN runs pass. Twenty paired 600-tick comparisons retain
+complete final-state equality but establish **no consistent additional speedup**.
+
+The preceding [dispatch runtime optimization](native-dispatch-runtime-performance.md)
 removes a repeated environment lookup identified by native CPU sampling.
 Twenty paired 600-tick comparisons show approximately **31.6% less simulation
 time** for the two measured matchups, with complete final-state equality and
@@ -17,20 +27,20 @@ unchanged instruction/import accounting. Eight focused CTests and the installed
 debugger protocol/full-time checks pass. This runtime improvement adds no
 semantic replacement entries.
 
-The accepted production manifest contains **656 semantic entry replacements**.
 The [match range sampler report](native-match-random-reconstruction.md)
-adds one complete 110-instruction operation with 415 indexed call sites,
-preserving the previous 655-entry prefix. A fresh 200-tick match records 33,962
+records the preceding 656-entry milestone: one complete 110-instruction
+operation with 415 indexed call sites, preserving its 655-entry prefix.
+A fresh 200-tick match recorded 33,962
 calls to this operation. Independent comparisons cover every original source
 site, complete state/effects, recursion, faults and nonlocal transfers. Five
 focused CTests, seven boundary audits, 40 updated manifest assertions and three
 affected-unit UBSAN runs pass.
 
 The game and independent debugger share the accepted implementation, including
-the dispatch optimization. Both signed ARM64 applications are installed; the
+the four team queries and dispatch optimization. Both signed ARM64 applications are installed; the
 installed worker protocol, real match completion and game menu/normal exit pass.
 The game executable SHA-256 is
-`c82e61010361ebbca1b919afa8ab777c436a27cec8b94ad439401f2639e81e37`.
+`f51bf607f03820ee1d0bb19985da1ecd9c791a5f3ee7e699fad8282a067d8284`.
 The [complete movement](native-player-movement-reconstruction.md),
 [foul/referee](native-match-discipline-reconstruction.md) and
 [debugger lab](native-match-debugger-lab.md) reports retain their own evidence.

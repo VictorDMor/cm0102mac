@@ -47,6 +47,8 @@ target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
 target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
 target_sources(cm_aot PRIVATE actor_motion.cpp actor_motion_adapter.cpp)
 target_sources(cm_aot PRIVATE
+    team_spatial.cpp
+    team_spatial_adapter.cpp
     match_random.cpp
     match_random_adapter.cpp
     match_discipline_adapter.cpp
@@ -210,6 +212,18 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_link_libraries(cm-match-random-checks PRIVATE cm_aot)
     target_compile_options(cm-match-random-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME match_random_component_equivalence COMMAND cm-match-random-checks)
+    set(CM_TEAM_SPATIAL_REFERENCE "${CMAKE_BINARY_DIR}/team_spatial_reference.cpp")
+    add_custom_command(OUTPUT "${CM_TEAM_SPATIAL_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_team_spatial_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_TEAM_SPATIAL_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_team_spatial_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/team_spatial_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-team-spatial-checks team_spatial_checks.cpp "${CM_TEAM_SPATIAL_REFERENCE}")
+    target_link_libraries(cm-team-spatial-checks PRIVATE cm_aot)
+    target_compile_options(cm-team-spatial-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME team_spatial_component_equivalence COMMAND cm-team-spatial-checks)
     set(CM_MATCH_DISCIPLINE_REFERENCE "${CMAKE_BINARY_DIR}/match_discipline_reference.cpp")
     add_custom_command(OUTPUT "${CM_MATCH_DISCIPLINE_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_discipline_reference.py"
@@ -347,9 +361,15 @@ target_compile_options(cm-match-random-benchmark PRIVATE -Wall -Wextra -Werror -
 add_executable(cm-match-random-production-checks match_random_production_checks.cpp)
 target_link_libraries(cm-match-random-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-team-spatial-production-checks team_spatial_production_checks.cpp)
+target_link_libraries(cm-team-spatial-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-team-spatial-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-random-transfer-checks match_random_transfer_checks.cpp)
 target_link_libraries(cm-match-random-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-team-spatial-transfer-checks team_spatial_transfer_checks.cpp)
+target_link_libraries(cm-team-spatial-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-team-spatial-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-discipline-production-checks match_discipline_production_checks.cpp)
 target_link_libraries(cm-match-discipline-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-discipline-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -581,6 +601,16 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/match-random-live-profile")
     set_tests_properties(match_random_actual_production PROPERTIES FIXTURES_SETUP MatchRandomLiveProfile TIMEOUT 180)
     set_tests_properties(match_random_original_profile match_random_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MatchRandomLiveProfile TIMEOUT 180)
+    add_test(NAME team_spatial_actual_production COMMAND cm-team-spatial-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/team-spatial-production-checks")
+    add_test(NAME team_spatial_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-team-spatial-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/team-spatial-profile-checks" "${CMAKE_BINARY_DIR}/team-spatial-live-profile")
+    add_test(NAME team_spatial_nonlocal_transfer COMMAND cm-team-spatial-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/team-spatial-transfer-checks"
+        "${CMAKE_BINARY_DIR}/team-spatial-live-profile")
+    set_tests_properties(team_spatial_actual_production PROPERTIES FIXTURES_SETUP TeamSpatialLiveProfile TIMEOUT 180)
+    set_tests_properties(team_spatial_original_profile team_spatial_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED TeamSpatialLiveProfile TIMEOUT 180)
     add_test(NAME match_discipline_actual_production COMMAND cm-match-discipline-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-discipline-production-checks")
     add_test(NAME match_discipline_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
