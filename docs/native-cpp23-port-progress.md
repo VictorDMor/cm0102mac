@@ -9,8 +9,16 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The latest [dispatch runtime optimization](native-dispatch-runtime-performance.md)
+removes a repeated environment lookup identified by native CPU sampling.
+Twenty paired 600-tick comparisons show approximately **31.6% less simulation
+time** for the two measured matchups, with complete final-state equality and
+unchanged instruction/import accounting. Eight focused CTests and the installed
+debugger protocol/full-time checks pass. This runtime improvement adds no
+semantic replacement entries.
+
 The accepted production manifest contains **656 semantic entry replacements**.
-The latest [match range sampler report](native-match-random-reconstruction.md)
+The [match range sampler report](native-match-random-reconstruction.md)
 adds one complete 110-instruction operation with 415 indexed call sites,
 preserving the previous 655-entry prefix. A fresh 200-tick match records 33,962
 calls to this operation. Independent comparisons cover every original source
@@ -18,15 +26,17 @@ site, complete state/effects, recursion, faults and nonlocal transfers. Five
 focused CTests, seven boundary audits, 40 updated manifest assertions and three
 affected-unit UBSAN runs pass.
 
-The game and independent debugger share the accepted implementation. Both signed
-ARM64 applications are installed; the installed worker protocol, real match
-completion and game menu/normal exit pass. The game executable SHA-256 is
-`a6b42be75302bf96a1e4eb4cd8698bb1945abac025f1191167b75cdbcbd40953`.
+The game and independent debugger share the accepted implementation, including
+the dispatch optimization. Both signed ARM64 applications are installed; the
+installed worker protocol, real match completion and game menu/normal exit pass.
+The game executable SHA-256 is
+`c82e61010361ebbca1b919afa8ab777c436a27cec8b94ad439401f2639e81e37`.
 The [complete movement](native-player-movement-reconstruction.md),
 [foul/referee](native-match-discipline-reconstruction.md) and
 [debugger lab](native-match-debugger-lab.md) reports retain their own evidence.
-Save/Load is **not retested** in this cycle. Eighteen measured paired 600-tick
-intervals show original/C++23 state equality but **no consistent speedup**.
+Save/Load is **not retested** in this cycle. The preceding sampler-only delivery's
+eighteen paired intervals showed original/C++23 state equality but **no consistent
+speedup**; its measurements are separate from the runtime gain above.
 The semantic entry count is not a completion percentage or a CPU-share measure.
 
 ## Historical register-context acceptance

@@ -463,7 +463,12 @@ The latest precise stop and verification state are recorded in
 `reports/generated/aot-status.json`.
 
 For targeted diagnostics, `CM_AOT_TRACE_IMPORTS=1` records native API calls and
-results. `CM_AOT_DUMP_ADDRESSES` accepts comma-separated original data addresses
+results. Set it before launching the process: import tracing captures whether the
+variable is present at the first engine dispatch and keeps that policy for the
+process lifetime, including nested calls and additional game states. An empty
+value or `0` also enables it; omit the variable to disable it. This avoids repeated
+environment searches on every semantic dependency call.
+`CM_AOT_DUMP_ADDRESSES` accepts comma-separated original data addresses
 and dumps 256 bytes at each on failure. Keep such runtime artifacts under `.local`.
 `CM_AOT_INSTRUCTION_BUDGET` sets a positive diagnostic limit (default 10,000,000,
 maximum 10,000,000,000, or `unlimited`; the diagnostic Finder launcher selects

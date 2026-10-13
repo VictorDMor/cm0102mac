@@ -158,7 +158,10 @@ std::vector<std::pair<std::uint32_t, std::uint64_t>> Memory::mapped_ranges() con
 }
 void run_until(State& s, std::uint32_t return_pc) {
     GuestDispatchScope dispatch(s, return_pc);
-    const bool trace = std::getenv("CM_AOT_TRACE_IMPORTS") != nullptr;
+    // Launch-time diagnostic policy, shared by nested dispatch and every State.
+    // Semantic dependency calls can enter here millions of times per match;
+    // looking up the process environment on every call dominates that path.
+    static const bool trace = std::getenv("CM_AOT_TRACE_IMPORTS") != nullptr;
     for (;;) {
     try {
     while (s.pc != return_pc) {
