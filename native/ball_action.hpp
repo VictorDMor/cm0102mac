@@ -13,6 +13,11 @@ inline constexpr std::uint32_t contact_selection_phase = 0x1023ea44;
 inline constexpr std::uint32_t contact_resolution_phase = 0x1023ecf4;
 inline constexpr std::uint32_t contact_outcome_phase = 0x1023f1e8;
 inline constexpr std::uint32_t action_execution_phase = 0x1023fa5c;
+inline constexpr std::uint32_t execution_message_phase = 0x1023ff48;
+inline constexpr std::uint32_t receiver_resolution_phase = 0x10240178;
+inline constexpr std::uint32_t receiver_outcome_phase = 0x1024060c;
+inline constexpr std::uint32_t execution_result_phase = 0x10240ff8;
+inline constexpr std::uint32_t no_receiver_phase = 0x102425f4;
 inline constexpr std::uint32_t return_phase = 0x10244c38;
 inline constexpr std::uint32_t end = 0x10244c58;
 
@@ -28,4 +33,7 @@ void sample_selected_action(State&, SemanticDependencyDispatch* = nullptr, Seman
 void prepare_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void resolve_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void complete_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void prepare_execution(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void describe_execution(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void resolve_receiver(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 }

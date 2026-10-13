@@ -40,7 +40,10 @@ generated reference bodies and runtime artifacts remain outside version control.
 | Contact screening and immediate-action exit | `0x1023ea44..0x1023ecf4` | 172 |
 | Contact classification and area reaction | `0x1023ecf4..0x1023f1e8` | 317 |
 | Contact outcome, recipient and messages | `0x1023f1e8..0x1023fa5c` | 541 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x1023fa5c`** | **2,895** |
+| Execution recipient, screening and warning | `0x1023fa5c..0x1023ff48` | 315 |
+| First live execution-message table | `0x1023ff48..0x10240178` | 140 |
+| Receiver-contact classification and area reaction | `0x10240178..0x1024060c` | 293 |
+| **Validated contiguous prefix** | **`0x1023cd20..0x1024060c`** | **3,643** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -60,6 +63,22 @@ team links, selects a recipient, preserves repeated eligibility calls and emits
 the original message sequence. Its exit is the shared return at `0x10244c38`;
 the return itself is not yet implemented by this candidate.
 
+Execution preparation preserves the ordered temporary actor link, recipient
+selection and notification, clearing through the live owner, null-recipient
+exit, conditional contact attempt, receiver warning and immediate-action exit.
+The first message table reads its current TOC pointer and indexed word. All 47
+entries and all 12 message destinations are exercised, including substituted
+destinations, relocated/unaligned pointers, aliases, read-time pointer mutation,
+default-path table bypass, and direct message entrances. Unrecognized targets
+remain explicit guest continuations for the future complete coordinator; these
+component checks do not claim execution beyond those continuation boundaries.
+The fixture table is generated privately from the pinned original input.
+
+Receiver resolution distinguishes contact five from six, uses the initiating
+actor's inverted side for the area test, retains that actor in the match link,
+and applies the wrapped decrement and reaction to the selected receiver. These
+differences from the earlier initiating-actor contact are preserved separately.
+
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
 that record full register state before and after calls, clobber volatile
@@ -69,12 +88,12 @@ runtime acceptance.
 
 ## Component evidence
 
-The current check contains 127,001 comparisons:
+The current check contains 164,480 comparisons:
 
-- 18,199 successful component or prefix completions;
-- 108,782 instruction-budget, memory-hole or dependency interruptions;
-- 20 rejected own-result/dependency negative controls;
-- all 2,895 original instruction sites, including dormant branches;
+- 23,831 successful component or prefix completions;
+- 140,623 instruction-budget, memory-hole or dependency interruptions;
+- 26 rejected own-result/dependency negative controls;
+- all 3,643 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
@@ -86,7 +105,7 @@ interior edges, and the unchanged production manifest. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-19,835 of the comparisons use paired checkpoint injections to reach dormant
+23,061 of the comparisons use paired checkpoint injections to reach dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -100,9 +119,10 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x1023fa5c` with action execution. The remaining
-5,247 original instructions, all five computed decision tables, tail/error paths
-and common return still require reconstruction and equivalence evidence.
+Continue at `0x1024060c` with receiver-contact outcomes and the remaining action
+execution. The remaining 4,499 original instructions, four further computed
+decision tables, tail/error paths and common return still require reconstruction
+and equivalence evidence.
 
 Before installing the replacement, validate the complete root, nonlocal transfers
 and faults, hook its generated destination label, prove dedicated production
@@ -116,10 +136,16 @@ the planned follow-up is an updated Match Debugger containing the conversion
 and clearer controls and match information. That UI/UX work is not implemented
 or delivered by this checkpoint.
 
-At this checkpoint, cycle cleanup removed 43 obsolete standalone checks and
-the three current conformance executables after validation, plus associated
+At the preceding contact checkpoint, cycle cleanup removed 43 obsolete standalone
+checks and the three current conformance executables after validation, plus associated
 debug symbols: 103 files and 6,446,007,277 logical bytes. Available space
 increased by 6,447,804,416 bytes during cleanup; concurrent filesystem activity
 can affect that observation. All 845 protected artifacts, both installed signed
 ARM64 apps, original inputs, source references and the reusable production
 library were verified unchanged. Private cleanup plans and receipts are retained.
+
+The execution/receiver checkpoint used only the focused CMake and sanitizer
+executables, then removed both and their debug symbols: five files and
+302,183,780 logical bytes. Available space increased by 302,161,920 bytes during
+that cleanup. The same 845 protected artifacts, app identities and production
+library hash remained intact.

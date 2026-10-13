@@ -1,14 +1,16 @@
 #include "ball_action.hpp"
 #include "semantic_io_checks.hpp"
 #include <set>
+#include "execution-message-table.hpp"
 
-namespace cm::aot { bool ball_action_preparation_reference(State&);bool ball_action_orientation_reference(State&);bool ball_action_facing_reference(State&);bool ball_action_area_reference(State&);bool ball_action_elevated_reference(State&);bool ball_action_low_reference(State&);bool ball_action_selected_reference(State&);bool ball_action_contact_reference(State&);bool ball_action_contact_resolution_reference(State&);bool ball_action_contact_outcome_reference(State&); }
+namespace cm::aot { bool ball_action_preparation_reference(State&);bool ball_action_orientation_reference(State&);bool ball_action_facing_reference(State&);bool ball_action_area_reference(State&);bool ball_action_elevated_reference(State&);bool ball_action_low_reference(State&);bool ball_action_selected_reference(State&);bool ball_action_contact_reference(State&);bool ball_action_contact_resolution_reference(State&);bool ball_action_contact_outcome_reference(State&);bool ball_action_execution_reference(State&);bool ball_action_execution_message_reference(State&);bool ball_action_receiver_reference(State&); }
 namespace {
 using namespace cm::semantic_io_checks;
 namespace action=cm::aot::ball_action;
 constexpr auto match=fixture+0x1000,actor=fixture+0x11000,doubles=fixture+0x12000;
 constexpr auto singles=fixture+0x12400,stream=fixture+0x12800,globals=fixture+0x12a00;
 constexpr auto recipient=actor+0x600,teams=fixture+0x800,home=fixture+0x900,away=fixture+0xa00,staff=fixture+0xb00;
+constexpr auto execution_table=fixture+0x12d00;
 struct Options {
     unsigned interrupt=0,force_wide=0;
     unsigned adjustment=0;int adjustment_wide=0;
@@ -21,6 +23,8 @@ struct Options {
     std::uint32_t resolved_contact=1,reaction_result=1;
     std::uint32_t recipient_result=recipient,recipient_gate=1,recipient_second=1,actor_gate=1,contact_end_gate=0;
     bool mutate_outcome=false;
+    std::uint32_t execution_receiver=recipient,execution_kind=45,execution_rating=200,execution_contact=1,execution_blocked=0,execution_disabled=0;
+    bool mutate_execution=false,mutate_table=false;
     double distance=25.25;
 };
 struct Trace final:SemanticGuestObserver {
@@ -49,6 +53,10 @@ struct Trace final:SemanticGuestObserver {
         if(options.force_wide==16&&pc==0x1023f034)s.wr<4>(72,std::uint32_t(-65536));
         if(options.force_wide==17&&pc==0x1023f30c)s.wr<4>(72,65536);
         if(options.force_wide==18&&pc==0x1023f31c)s.wr<4>(72,std::uint32_t(-65536));
+        if(options.force_wide==19&&pc==0x1023fc9c)s.wr<4>(76,65536);
+        if(options.force_wide==20&&pc==0x1023fcac)s.wr<4>(76,std::uint32_t(-65536));
+        if(options.force_wide==21&&pc==0x10240448)s.wr<4>(72,65536);
+        if(options.force_wide==22&&pc==0x10240458)s.wr<4>(72,std::uint32_t(-65536));
         if(options.zero_elevated_threshold&&pc==0x1023dc74)s.wr<4>(68,std::uint32_t(-70));
         if(options.adjustment_wide) {
             const auto base=action::selected_action_phase+options.adjustment*0x188;
@@ -64,8 +72,18 @@ struct Model final:SemanticDependencyDispatch {
     bool original;Options options;unsigned phase;std::vector<Event> calls;
     Model(bool old,Options value,unsigned part):original(old),options(value),phase(part){}
     void reference(State& s) {
-        const auto done=phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase?action::action_bias_phase:action::orientation_phase;
-        while(s.pc!=done&&!(phase>=5&&phase<=10&&s.pc==action::selected_action_phase)&&!(phase>=13&&s.pc==action::action_execution_phase)) {
+        if(phase==21) {
+            for(;;) {
+                if(s.pc>=action::execution_message_phase&&s.pc<action::receiver_resolution_phase)
+                    require(ball_action_execution_message_reference(s),"Missing original ball-action execution message");
+                else if(s.pc==0x10201180&&s.r<4>(4128)>action::execution_message_phase&&s.r<4>(4128)<=action::receiver_resolution_phase)
+                    call(s,s.pc,std::uint32_t(s.r<4>(4128)));
+                else return;
+            }
+        }
+        const auto done=phase>=23?action::receiver_outcome_phase:phase>=21?action::receiver_resolution_phase:phase>=19?action::execution_message_phase:phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase?action::action_bias_phase:action::orientation_phase;
+        while(s.pc!=done&&!(phase>=5&&phase<=10&&s.pc==action::selected_action_phase)&&!(phase>=13&&phase<=18&&s.pc==action::action_execution_phase)
+              &&!(phase>=19&&(s.pc==action::return_phase||s.pc==action::execution_result_phase||s.pc==action::no_receiver_phase))) {
             if(s.pc>=action::entry&&s.pc<action::orientation_phase)
                 require(ball_action_preparation_reference(s),"Missing original ball-action preparation");
             else if(s.pc>=action::orientation_phase&&s.pc<action::action_bias_phase)
@@ -86,6 +104,12 @@ struct Model final:SemanticDependencyDispatch {
                 require(ball_action_contact_resolution_reference(s),"Missing original ball-action contact resolution");
             else if(s.pc>=action::contact_outcome_phase&&s.pc<action::action_execution_phase)
                 require(ball_action_contact_outcome_reference(s),"Missing original ball-action contact outcome");
+            else if(s.pc>=action::action_execution_phase&&s.pc<action::execution_message_phase)
+                require(ball_action_execution_reference(s),"Missing original ball-action execution preparation");
+            else if(s.pc>=action::execution_message_phase&&s.pc<action::receiver_resolution_phase)
+                require(ball_action_execution_message_reference(s),"Missing original ball-action execution message");
+            else if(s.pc>=action::receiver_resolution_phase&&s.pc<action::receiver_outcome_phase)
+                require(ball_action_receiver_reference(s),"Missing original ball-action receiver resolution");
             else call(s,s.pc,std::uint32_t(s.r<4>(4128)));
         }
     }
@@ -144,7 +168,7 @@ struct Model final:SemanticDependencyDispatch {
             s.memory.write<4>(std::uint32_t(s.r<4>(36)),std::uint32_t(float_bits<4>(12.5))^unsigned(options.child_negative&&!original));
             break;
         case 0x10201180:
-            s.memory.write<4>(globals+0x40+std::uint32_t(calls.size())*4,s.r<4>(16));
+            s.memory.write<4>(globals+0x40+std::uint32_t(calls.size())*4,s.r<4>(16)^unsigned(options.child_negative&&!original&&phase>=21));
             if(options.mutate_resolution&&s.r<4>(16)==0x1fe8) {
                 s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x41,6);s.memory.write<4>(actor+0x1a4,match+4);
                 s.memory.write<1>(actor+0x27,1);s.memory.write<1>(actor+0x105,4);s.memory.write<1>(actor+0x106,10);
@@ -153,9 +177,10 @@ struct Model final:SemanticDependencyDispatch {
                 s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x41,7);s.memory.write<1>(actor+0x27,1);
                 s.memory.write<1>(recipient+0x106,0);s.memory.write<4>(actor+0x1a4,match+4);
             }
+            if(options.mutate_execution)s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x40,0);
             break;
         case 0x10288f30:result=options.reaction_result;break;
-        case 0x1022ba10:s.memory.write<4>(std::uint32_t(s.r<4>(12))+0x54,0x12340000|s.r<4>(16));break;
+        case 0x1022ba10:s.memory.write<4>(std::uint32_t(s.r<4>(12))+0x54,(0x12340000|s.r<4>(16))^unsigned(options.child_negative&&!original&&phase==23));break;
         case 0x101f1530:s.memory.write<4>(std::uint32_t(s.r<4>(16))+0x5c,0x34560000|s.r<4>(20));break;
         case 0x101f3a30:result=options.recipient_result;break;
         case 0x102720a0:result=options.actor_gate;break;
@@ -166,6 +191,24 @@ struct Model final:SemanticDependencyDispatch {
             result=options.contact_end_gate;s.memory.write<4>(globals+0x200,s.r<4>(16)^unsigned(options.child_negative&&!original));break;
         case 0x101d6780:s.memory.write<4>(globals+0x208,float_bits<4>(float_value<8>(s.r<8>(0x4010))));break;
         case 0x102884d0:s.memory.write<4>(std::uint32_t(s.r<4>(12))+0x58,0x56780000|s.r<4>(16));break;
+        case 0x101eaf60:
+            s.memory.write<1>(std::uint32_t(s.r<4>(28)),7u^unsigned(options.child_negative&&!original));
+            s.memory.write<1>(std::uint32_t(s.r<4>(32)),5);s.memory.write<2>(std::uint32_t(s.r<4>(36)),options.execution_rating);
+            s.memory.write<1>(std::uint32_t(s.r<4>(40)),options.execution_kind);
+            s.memory.write<1>(std::uint32_t(s.memory.read<4>(std::uint32_t(s.r<4>(4))+0x38)),options.execution_disabled);
+            result=options.execution_receiver;break;
+        case 0x101f5350:
+            s.memory.write<4>(globals+0x220,s.r<4>(24));
+            if(options.mutate_execution){s.memory.write<4>(actor+0x1a4,match+4);s.memory.write<1>(actor+0x27,1);s.memory.write<1>(recipient+0x106,1);}
+            break;
+        case 0x101f5050:
+            s.memory.write<1>(std::uint32_t(s.r<4>(32)),options.contact_x);s.memory.write<1>(std::uint32_t(s.r<4>(36)),options.contact_y);
+            s.memory.write<1>(std::uint32_t(s.r<4>(40)),options.execution_blocked);result=options.execution_contact;break;
+        case 0x101f5110:
+            s.memory.write<1>(std::uint32_t(s.r<4>(24)),options.resolved_contact);
+            s.memory.write<4>(std::uint32_t(s.r<4>(40)),float_bits<4>(12.5));
+            if(options.mutate_execution){s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x48,1);s.memory.write<4>(toc-0x5204,execution_table+0x200);}
+            break;
         default:throw std::runtime_error("Unknown ball-action dependency "+hex_address(target));
         }
         for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xac000000+n*17);
@@ -193,13 +236,17 @@ std::unique_ptr<State> seed() {
     return s;
 }
 unsigned cases=0,completed=0,interruptions=0,negatives=0,structural=0;
-std::array<unsigned,19> phase_cases{},phase_completed{};
+std::array<unsigned,25> phase_cases{},phase_completed{};
 std::set<std::uint32_t> sites;
 struct Result {std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
 Result compare(const State& input,Options options={},unsigned phase=0) {
     auto a=clone(input),b=clone(input);Effects x,y;x.state=a.get();y.state=b.get();
     if(options.mutate_fitness) {
         auto edit=[](State& s,Effects& e,std::uint32_t at,unsigned){if(at==actor+0x50&&!e.mutated){e.mutated=true;s.memory.write<4>(at,float_bits<4>(-32768));}};
+        x.on_read=edit;y.on_read=edit;
+    }
+    if(options.mutate_table) {
+        auto edit=[](State& s,Effects& e,std::uint32_t at,unsigned){if(at==toc-0x5204&&!e.mutated){e.mutated=true;s.memory.write<4>(at,execution_table+0x200);}};
         x.on_read=edit;y.on_read=edit;
     }
     a->memory.date_observer=&x;b->memory.date_observer=&y;Trace old_trace(options),new_trace(options);
@@ -216,13 +263,19 @@ Result compare(const State& input,Options options={},unsigned phase=0) {
             if(phase==13||(prefix&&phase>=14))action::prepare_contact(s,&m,&new_trace);
             if((phase==15||(prefix&&phase>=16))&&s.pc!=action::action_execution_phase)action::resolve_contact(s,&m,&new_trace);
             if((phase==17||(prefix&&phase>=18))&&s.pc==action::contact_outcome_phase)action::complete_contact(s,&m,&new_trace);
+            if((phase==19||(prefix&&phase>=20))&&s.pc==action::action_execution_phase)action::prepare_execution(s,&m,&new_trace);
+            if(phase==21||(prefix&&phase>=22&&s.pc==action::execution_message_phase))action::describe_execution(s,&m,&new_trace);
+            if((phase==23||(prefix&&phase>=24))&&s.pc==action::receiver_resolution_phase)action::resolve_receiver(s,&m,&new_trace);
         }}
         catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}original_trace=nullptr;return std::string{};};
     const auto expected=run(*a,old,true),actual=run(*b,modern,false);a->memory.date_observer=b->memory.date_observer=nullptr;
     const auto label="Ball-action phase="+std::to_string(phase)+" case="+std::to_string(cases);
     require(!expected.starts_with("Unknown ball-action dependency"),expected);require(expected==actual,label+" original="+expected+" modern="+actual);
     if(options.own_negative)b->wr<4>(52,b->r<4>(52)^1);
-    bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!options.own_negative&&!options.child_negative)throw;rejected=true;}
+    bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!options.own_negative&&!options.child_negative){
+        std::cerr<<"Input "<<hex_address(input.pc)<<" budget "<<input.budget<<"; final "<<hex_address(a->pc)<<" / "<<hex_address(b->pc)
+            <<"; steps "<<old_trace.order.size()<<" / "<<new_trace.order.size()<<"; calls "<<old.calls.size()<<" / "<<modern.calls.size()<<'\n';
+        throw;}rejected=true;}
     require(rejected==(options.own_negative||options.child_negative),label+" discriminating negative");
     if(!rejected) {
         require(x.bytes==y.bytes,label+" ordered effects");require(a->executed==b->executed,label+" accounting");
@@ -299,6 +352,23 @@ std::unique_ptr<State> outcome_seed() {
     s->memory.write<4>(match+0x3118,teams);s->memory.write<4>(match+0x311c,teams);
     s->memory.write<4>(teams+0x1c,home);s->memory.write<4>(teams+0x20,away);
     s->memory.write<4>(home+0x2c,staff);s->memory.write<4>(away+0x2c,staff);s->memory.write<1>(staff+0x119,8);
+    return s;
+}
+std::unique_ptr<State> execution_seed() {
+    auto s=outcome_seed();s->pc=action::action_execution_phase;s->wr<4>(68,200);s->wr<4>(52,0xabcd002d);
+    s->memory.write<1>(match+0x7931,1);s->memory.write<1>(match+0x7935,1);
+    s->memory.write<1>(recipient+0x27,1);s->memory.write<1>(recipient+0x106,10);s->memory.write<2>(recipient+0x32,20);
+    s->memory.write<4>(toc-0x5204,execution_table);
+    for(unsigned n=0;n<47;++n){s->memory.write<4>(execution_table+n*4,original_execution_message_table[n]);s->memory.write<4>(execution_table+0x200+n*4,original_execution_message_table[46-n]);}
+    return s;
+}
+std::unique_ptr<State> execution_message_seed() {
+    auto s=execution_seed();s->pc=action::execution_message_phase;s->wr<4>(56,recipient);s->memory.write<1>(stack-0x150+0x48,45);return s;
+}
+std::unique_ptr<State> receiver_seed() {
+    auto s=execution_message_seed();s->pc=action::receiver_resolution_phase;s->memory.write<1>(actor+0x106,10);
+    s->memory.write<1>(stack-0x150+0x40,2);s->memory.write<1>(stack-0x150+0x43,1);
+    s->memory.write<2>(recipient+0x36,400);s->memory.write<4>(recipient+0x6c,recipient+0x300);s->memory.write<1>(recipient+0x366,0);
     return s;
 }
 }
@@ -713,8 +783,142 @@ int main(){try {
     }
     for(auto flag:{0u,1u}){auto s=outcome_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);
         Options o;o.contact_result=flag;boundaries(*s,o,18);}
-    for(auto pc=action::entry;pc<action::action_execution_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==2895,"All original ball-action preparation through contact-outcome sites covered");
+    for(auto rating:{0u,1u,199u,200u,201u,32767u,32768u,65535u})for(auto bound:{0u,200u,32767u,32768u,65535u})
+        for(auto random:{0u,17u,18u,0x80000000u,0xffffffffu})for(auto flag:{0u,1u,0x100u,0x1ffu}) {
+            auto s=execution_seed();s->wr<4>(68,0xabcd0000|bound);s->memory.write<4>(globals,random);s->memory.write<1>(match+0x7931,0);
+            Options o;o.execution_rating=rating;o.execution_contact=flag;auto result=compare(*s,o,19);
+            unsigned draws=0;const auto draw=[&](){return std::bit_cast<std::int32_t>(random+100u+2*++draws);};
+            const bool attempt=signed_value<2>(rating)>=signed_value<2>(bound)||draw()%5==0;
+            const bool immediate=attempt&&(flag&255)!=0&&draw()%30==0;
+            require(result.state->pc==(attempt&&(flag&255)&&!immediate?action::execution_message_phase:action::execution_result_phase),"Independent receiver-contact attempt and immediate-action decision");
+            require(result.state->memory.read<4>(match+0xe000)==0,"Selected actor ownership is cleared after the notification");
+            require(result.state->memory.read<4>(globals+8)==stream+draws*2,"Receiver-contact random consumption follows the live gates");
+        }
+    for(auto target:{0u,recipient,actor,actor+1,stack-0x150}) {
+        Options o;o.execution_receiver=target;auto result=compare(*execution_seed(),o,19);
+        if(!target){require(result.state->pc==action::no_receiver_phase&&result.calls.size()==2,"Null receiver is reported before the distinct fallback");boundaries(*execution_seed(),o,19);}
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{1u,2u,6u,7u,128u,255u})for(auto column:{0u,1u,2u,9u,10u,11u,12u,128u}) {
+        auto s=execution_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(recipient+0x105,row);s->memory.write<1>(recipient+0x106,column);
+        auto result=compare(*s,{},19);const bool inside=row>=2&&row<=6&&(side==0?(column>=10&&column<=11):column<=1);
+        const auto checks=std::count_if(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x101ee530;});
+        require(checks==int(inside),"Receiver warning checks use the inverted actor side and live receiver coordinates");
+    }
+    for(auto trait:{0u,1u,20u,127u,32767u,32768u,65516u,65535u})for(auto random:{0u,17u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+        auto s=execution_seed();s->memory.write<2>(recipient+0x32,trait);s->memory.write<4>(globals,random);compare(*s,{},19);
+    }
+    for(auto enabled:{0u,1u,128u,255u})for(auto gate:{0u,1u,0x100u,0x1ffu})for(auto blocked:{0u,1u,128u,255u}) {
+        auto s=execution_seed();s->memory.write<1>(match+0x7931,enabled);Options o;o.contact_end_gate=gate;o.execution_blocked=blocked;compare(*s,o,19);
+    }
+    for(auto side:{0u,1u})for(auto row:{1u,4u,7u})for(auto column:{0u,2u,10u,12u}) {
+        auto s=execution_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(recipient+0x105,row);s->memory.write<1>(recipient+0x106,column);boundaries(*s,{},19);
+    }
+    for(auto trait:{0u,20u,32768u,65516u}){auto s=execution_seed();s->memory.write<2>(recipient+0x32,trait);boundaries(*s,{},19);}
+    for(auto wide:{19u,20u})for(auto sampled:{-100000,0,10000000}){Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*execution_seed(),o,19);}
+    for(auto gate:{0u,1u})for(auto blocked:{0u,1u}){Options o;o.contact_end_gate=gate;o.execution_blocked=blocked;boundaries(*execution_seed(),o,19);}
+    for(auto disabled:{0u,1u,128u,255u})for(auto contact:{0u,1u,0x100u,0x1ffu}) {
+        auto s=execution_seed();s->memory.write<1>(match+0x7931,0);s->memory.write<4>(globals,18);Options o;o.execution_disabled=disabled;o.execution_contact=contact;boundaries(*s,o,19);
+    }
+    for(unsigned kind=0;kind<256;++kind){auto s=execution_seed();s->memory.write<1>(match+0x7931,0);Options o;o.execution_kind=kind;compare(*s,o,19);}
+    for(auto cursor:{stream+122,stream+124,stream+126})for(auto gate:{0u,1u}) {
+        auto s=execution_seed();s->memory.write<4>(globals+8,cursor);Options o;o.contact_end_gate=gate;boundaries(*s,o,19);
+    }
+    {auto s=execution_seed();s->memory.write<4>(globals+8,stream+126);Options o;o.execution_rating=0;boundaries(*s,o,19);}
+    {auto s=execution_seed();s->memory.write<4>(globals+8,stream+126);s->memory.write<1>(match+0x7931,0);boundaries(*s,{},19);}
+    for(auto gate:{0u,1u}){Options o;o.mutate_execution=true;o.contact_end_gate=gate;boundaries(*execution_seed(),o,19);}
+    for(auto ptr:{0u,actor+1,stack-0x150,globals}){auto s=execution_seed();s->wr<4>(60,ptr);compare(*s,{},19);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*execution_seed(),o,19);}
+    for(auto state:{0u,2u,3u,4u})for(auto contact:{0u,1u})for(auto target:{0u,recipient}) {
+        auto s=execution_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x791f,state);Options o;o.contact_result=contact;o.execution_receiver=target;compare(*s,o,20);
+    }
+    for(auto target:{0u,recipient}){auto s=execution_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);
+        Options o;o.contact_result=0;o.execution_receiver=target;boundaries(*s,o,20);}
+    const std::array<std::pair<std::uint32_t,unsigned>,12> execution_messages{{
+        {0x1023ff6c,0x1fea},{0x1023ff98,0x1feb},{0x1023ffc4,0x1fec},{0x1023fff0,0x1fed},
+        {0x1024001c,0x1fee},{0x10240048,0x1ff2},{0x10240074,0x1fef},{0x102400a0,0x1ff1},
+        {0x102400cc,0x1ff0},{0x102400f8,0x1ff3},{0x10240124,0x1ff4},{0x10240150,0x1fe9}}};
+    for(unsigned kind=0;kind<256;++kind) {
+        auto s=execution_message_seed();s->memory.write<1>(stack-0x150+0x48,kind);auto result=compare(*s,{},21);
+        const auto target=kind<=46?original_execution_message_table[kind]:0x10240150;
+        const auto expected=std::find_if(execution_messages.begin(),execution_messages.end(),[&](const auto& entry){return entry.first==target;})->second;
+        require(result.calls.size()==1&&read_be<4>(result.calls[0].before.data()+16)==expected,"Original action table and signed-to-unsigned bounds select the message");
+    }
+    for(unsigned index=0;index<47;++index)for(auto [target,message]:execution_messages) {
+        auto s=execution_message_seed();s->memory.write<1>(stack-0x150+0x48,index);s->memory.write<4>(execution_table+index*4,target);
+        auto result=compare(*s,{},21);require(read_be<4>(result.calls[0].before.data()+16)==message,"Live table replacement overrides the original action mapping");
+    }
+    for(auto [target,message]:execution_messages) {
+        auto s=execution_message_seed();s->memory.write<4>(execution_table+45*4,target);boundaries(*s,{},21);
+        s->pc=target;auto result=compare(*s,{},21);require(read_be<4>(result.calls[0].before.data()+16)==message,"Direct destination does not replay table access");boundaries(*s,{},21);
+    }
+    for(auto target:{0u,action::receiver_resolution_phase,action::execution_result_phase,action::no_receiver_phase,action::return_phase,return_sentinel,0x12345679u}) {
+        auto s=execution_message_seed();s->memory.write<4>(execution_table+45*4,target);auto result=compare(*s,{},21);
+        require(result.state->pc==target&&result.calls.empty(),"Non-message live target remains an explicit continuation");boundaries(*s,{},21);
+    }
+    for(auto pointer:{0u,execution_table+1,execution_table+0x200,toc-0x5204,stack-0x150}) {
+        auto s=execution_message_seed();s->memory.write<4>(toc-0x5204,pointer);compare(*s,{},21);
+    }
+    {Options o;o.mutate_table=true;boundaries(*execution_message_seed(),o,21);}
+    for(auto kind:{47u,128u,255u}){auto s=execution_message_seed();s->memory.write<1>(stack-0x150+0x48,kind);s->memory.write<4>(toc-0x5204,0);boundaries(*s,{},21);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*execution_message_seed(),o,21);}
+    for(auto state:{0u,2u,3u,4u})for(auto contact:{0u,1u})for(auto target:{0u,recipient}) {
+        auto s=execution_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x791f,state);Options o;o.contact_result=contact;o.execution_receiver=target;compare(*s,o,22);
+    }
+    for(auto target:{0u,recipient}){auto s=execution_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);
+        Options o;o.contact_result=0;o.execution_receiver=target;boundaries(*s,o,22);}
+    {auto s=execution_seed();s->pc=action::entry;s->wr<4>(4,stack);Options o;o.contact_result=0;o.mutate_execution=true;boundaries(*s,o,22);}
+    for(unsigned flag=0;flag<256;++flag)for(auto coordinate:{0u,1u,2u,3u,127u,128u,255u}) {
+        auto s=receiver_seed();s->memory.write<1>(stack-0x150+0x40,flag);s->memory.write<1>(stack-0x150+0x43,coordinate);
+        auto result=compare(*s,{},23);const auto message=flag==2?0x1ff9u:flag==3?0x1ff7u:flag==4?0x1ff8u:flag==5?0x1ff6u:
+            std::int32_t(signed_value<1>(coordinate))>2?0x210au:0xffffffffu;
+        require(result.state->r<4>(64)==message,"Receiver-contact classification distinguishes five from six");
+        require(result.state->memory.read<1>(match+0x7928)==(flag==7?7u:5u),"Receiver-contact seven bypasses area effects");
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{0u,1u,2u,4u,6u,7u,128u,255u})
+        for(auto column:{0u,1u,2u,9u,10u,11u,12u,128u,255u})for(auto flag:{1u,2u,7u}) {
+            auto s=receiver_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);
+            s->memory.write<1>(actor+0x106,column);s->memory.write<1>(stack-0x150+0x40,flag);auto result=compare(*s,{},23);
+            const bool inside=row>=2&&row<=6&&(side==0?(column>=10&&column<=11):column<=1);
+            const auto status=flag==7?7u:inside?5u:6u;
+            require(result.state->memory.read<1>(match+0x7928)==status&&result.state->r<4>(68)==(status==5?0x1f7au:0x1f79u),"Independent receiver-contact inverted area decision");
+            require(result.state->memory.read<2>(recipient+0x36)==(status==5?0xff9cu:400u),"Receiver-contact decrement applies to the selected recipient");
+            require(result.state->memory.read<2>(actor+0x36)==250,"Receiver-contact leaves the initiating actor halfword intact");
+            require(result.state->memory.read<4>(match+0x3110)==(status==5?actor:0u),"Major receiver contact retains the initiating actor link");
+        }
+    for(auto trait:{0u,1u,2u,7u,20u,119u,127u,128u,255u})for(auto random:{0u,17u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+        auto s=receiver_seed();s->memory.write<1>(recipient+0x366,trait);s->memory.write<4>(globals,random);auto result=compare(*s,{},23);
+        const auto interval=std::int32_t(signed_value<1>(trait)),number=std::bit_cast<std::int32_t>(random+102u);
+        const auto sample=interval==0?0:interval>0?number%interval:-(number%interval);
+        require(result.state->r<4>(52)==std::uint32_t(sample),"Independent receiver reaction sample replaces the earlier action register");
+    }
+    for(auto flag:{1u,2u,3u,4u,5u,6u,7u,128u,255u}){auto s=receiver_seed();s->memory.write<1>(stack-0x150+0x40,flag);boundaries(*s,{},23);}
+    for(auto side:{0u,1u})for(auto row:{1u,4u,7u})for(auto column:{0u,2u,10u,12u}) {
+        auto s=receiver_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);
+        s->memory.write<1>(actor+0x106,column);boundaries(*s,{},23);
+    }
+    for(auto random:{0u,1u,2u,0x80000000u,0x80000001u,0xffffffffu}) {
+        auto s=receiver_seed();s->memory.write<1>(stack-0x150+0x40,1);s->memory.write<1>(stack-0x150+0x43,128);s->memory.write<4>(globals,random);boundaries(*s,{},23);
+    }
+    for(auto trait:{0u,1u,2u,128u,255u})for(auto result:{0u,1u,0x100u,0x1ffu}) {
+        auto s=receiver_seed();s->memory.write<1>(recipient+0x366,trait);Options o;o.reaction_result=result;boundaries(*s,o,23);
+    }
+    for(auto wide:{21u,22u})for(auto sampled:{-100000,0,10000000}) {
+        auto s=receiver_seed();s->memory.write<1>(recipient+0x366,2);Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*s,o,23);
+    }
+    for(auto cursor:{stream+120,stream+122,stream+124,stream+126})for(auto flag:{1u,2u})for(auto trait:{0u,2u}) {
+        auto s=receiver_seed();s->memory.write<1>(stack-0x150+0x40,flag);s->memory.write<1>(recipient+0x366,trait);s->memory.write<4>(globals+8,cursor);boundaries(*s,{},23);
+    }
+    {auto s=receiver_seed();s->memory.write<1>(stack-0x150+0x40,1);Options o;o.mutate_outcome=true;boundaries(*s,o,23);}
+    for(auto ptr:{0u,actor,recipient+1,stack-0x150,globals}){auto s=receiver_seed();s->wr<4>(56,ptr);compare(*s,{},23);}
+    for(auto value:{0u,1u,499u,500u,32768u,65535u}){auto s=receiver_seed();s->memory.write<2>(recipient+0x36,value);compare(*s,{},23);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*receiver_seed(),o,23);}
+    for(auto state:{0u,2u,3u,4u})for(auto contact:{0u,1u})for(auto target:{0u,recipient})for(auto flag:{1u,2u,7u}) {
+        auto s=receiver_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x791f,state);Options o;o.contact_result=contact;o.execution_receiver=target;o.resolved_contact=flag;compare(*s,o,24);
+    }
+    for(auto flag:{1u,2u,7u}){auto s=receiver_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<4>(globals+8,stream+120);
+        Options o;o.contact_result=0;o.resolved_contact=flag;boundaries(*s,o,24);}
+    for(auto pc=action::entry;pc<action::receiver_outcome_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==3643,"All original ball-action preparation through receiver-resolution sites covered");
     for(unsigned p=0;p<phase_cases.size();++p){require(phase_completed[p]>0,"Each ball-action phase completed");
         std::cout<<"Phase "<<p<<": "<<phase_cases[p]<<" comparisons, "<<phase_completed[p]<<" completions\n";}
     std::cout<<"PASS: "<<cases<<" ball-action component comparisons; "<<completed<<" phase completions, "<<interruptions

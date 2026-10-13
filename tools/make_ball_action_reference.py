@@ -19,7 +19,10 @@ COMPONENTS = {'preparation': (ENTRY, 0x1023d184), 'orientation': (0x1023d184, 0x
               'elevated': (0x1023d8f8, 0x1023de18), 'low': (0x1023de18, 0x1023e404),
               'selected': (0x1023e404, 0x1023ea44), 'contact': (0x1023ea44, 0x1023ecf4),
               'contact_resolution': (0x1023ecf4, 0x1023f1e8),
-              'contact_outcome': (0x1023f1e8, 0x1023fa5c)}
+              'contact_outcome': (0x1023f1e8, 0x1023fa5c),
+              'execution': (0x1023fa5c, 0x1023ff48),
+              'execution_message': (0x1023ff48, 0x10240178),
+              'receiver': (0x10240178, 0x1024060c)}
 
 
 def render_reference(records, userops, component):
@@ -52,9 +55,14 @@ def main():
     args = parser.parse_args()
     with sqlite3.connect((args.input / 'instructions.sqlite').resolve().as_uri() + '?mode=ro', uri=True) as db:
         records = load_ball_action(db)
-    load_ball_action_tables(args.input)
+    tables = load_ball_action_tables(args.input)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(render_reference(records, json.loads((args.input / 'program.json').read_text())['userops'], args.component))
+    if args.component == 'execution_message':
+        (args.output.parent / 'execution-message-table.hpp').write_text(
+            '#pragma once\n#include <array>\n#include <cstdint>\n'
+            'inline constexpr std::array<std::uint32_t,47> original_execution_message_table{{' +
+            ','.join(f'0x{word:08x}' for word in tables[0x1023ff68]) + '}};\n')
     start, end = COMPONENTS[args.component]
     print(f'Emitted {(end-start)//4} original {args.component} instructions; complete ball-action body and five tables pinned')
 
