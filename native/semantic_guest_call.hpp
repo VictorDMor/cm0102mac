@@ -59,8 +59,9 @@ public:
         step(); const auto value = signed_value<1>(r(source)); state.wr<4>(destination * 4, std::uint32_t(value));
         if (record) condition(value, 0, true);
     }
-    void sign16(unsigned destination, unsigned source) {
-        step(); state.wr<4>(destination * 4, std::uint32_t(signed_value<2>(r(source))));
+    void sign16(unsigned destination, unsigned source, bool record = false) {
+        step(); const auto value = signed_value<2>(r(source)); state.wr<4>(destination * 4, std::uint32_t(value));
+        if (record) condition(value, 0, true);
     }
     void exclusive_flags(unsigned destination, unsigned source, std::uint32_t bits) {
         step(); state.wr<4>(destination * 4, r(source) ^ bits);

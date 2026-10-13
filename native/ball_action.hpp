@@ -1,0 +1,24 @@
+#pragma once
+#include "semantic_dependency_dispatch.hpp"
+
+namespace cm::aot::ball_action {
+inline constexpr std::uint32_t entry = 0x1023cd20;
+inline constexpr std::uint32_t orientation_phase = 0x1023d184;
+inline constexpr std::uint32_t action_bias_phase = 0x1023d344;
+inline constexpr std::uint32_t area_selection_phase = 0x1023d5e4;
+inline constexpr std::uint32_t ball_state_selection_phase = 0x1023d8f8;
+inline constexpr std::uint32_t low_ball_selection_phase = 0x1023de18;
+inline constexpr std::uint32_t selected_action_phase = 0x1023e404;
+inline constexpr std::uint32_t contact_selection_phase = 0x1023ea44;
+inline constexpr std::uint32_t end = 0x10244c58;
+
+// Components remain outside production dispatch until the complete coordinator
+// has independent original-reference and shared-engine acceptance evidence.
+void prepare(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void orient(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void face_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void select_area_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void select_elevated_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void select_low_ball_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void sample_selected_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+}
