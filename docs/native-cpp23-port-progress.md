@@ -9,15 +9,22 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest [team spatial reconstruction](native-team-spatial-reconstruction.md)
-adds four complete, frequently used queries: nearest actor, minimum distance,
-nearby weight and both teams' column limits. The accepted production manifest
-contains **660 semantic entry replacements**, retaining its previous 656-entry
-prefix. Independent comparisons cover all 1,624 original instructions, complete
-state/effects, exact accounting, faults and nonlocal transfers. Five focused
-CTests, seven boundary audits, 41 updated manifest assertions and three
-affected-unit UBSAN runs pass. Twenty paired 600-tick comparisons retain
-complete final-state equality but establish **no consistent additional speedup**.
+The latest [pitch distance reconstruction](native-pitch-distance-reconstruction.md)
+adds three complete, frequently used queries: point to point, actor to cell and
+actor to attacking goal. The accepted production manifest contains **663 semantic
+entry replacements**, retaining its previous 660-entry prefix. Independent
+comparisons cover all 129 original instructions, complete state/effects, exact
+accounting, faults and nonlocal transfers. Seven focused CTests, seven boundary
+audits, 42 updated manifest assertions and three affected-unit UBSAN runs pass.
+Twenty paired 600-tick comparisons retain complete final-state equality but
+show a small regression: median paired time increases of approximately **0.98%
+and 0.69%**. This block advances reconstruction; it establishes no speedup.
+
+The preceding [team spatial reconstruction](native-team-spatial-reconstruction.md)
+added nearest actor, minimum distance, nearby weight and both teams' column
+limits. Its 48-case production regression passes against the current distance
+implementation. Its earlier acceptance covers all 1,624 original instructions;
+the measured 600-tick intervals established no consistent additional speedup.
 
 The preceding [dispatch runtime optimization](native-dispatch-runtime-performance.md)
 removes a repeated environment lookup identified by native CPU sampling.
@@ -37,10 +44,11 @@ focused CTests, seven boundary audits, 40 updated manifest assertions and three
 affected-unit UBSAN runs pass.
 
 The game and independent debugger share the accepted implementation, including
-the four team queries and dispatch optimization. Both signed ARM64 applications are installed; the
+the distance queries, four team queries and dispatch optimization. Both signed
+ARM64 applications are installed; the
 installed worker protocol, real match completion and game menu/normal exit pass.
 The game executable SHA-256 is
-`f51bf607f03820ee1d0bb19985da1ecd9c791a5f3ee7e699fad8282a067d8284`.
+`193c1ea9d3023b3bb9313de591018546133800af4be5b592fa6aeb25b0f3fb64`.
 The [complete movement](native-player-movement-reconstruction.md),
 [foul/referee](native-match-discipline-reconstruction.md) and
 [debugger lab](native-match-debugger-lab.md) reports retain their own evidence.

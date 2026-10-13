@@ -16,6 +16,7 @@
 #include "match_discipline_adapter.hpp"
 #include "match_random_adapter.hpp"
 #include "team_spatial_adapter.hpp"
+#include "pitch_distance_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -39,7 +40,16 @@ struct RuntimeDiagnostics {
     MatchDisciplineDiagnostics match_discipline;
     MatchRandomDiagnostics match_random;
     TeamSpatialDiagnostics team_spatial;
+    PitchDistanceDiagnostics pitch_distance;
 };
+PitchDistanceDiagnostics& pitch_distance_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->pitch_distance;
+}
+const PitchDistanceDiagnostics& pitch_distance_diagnostics(const State& state) {
+    static const PitchDistanceDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->pitch_distance : empty;
+}
 TeamSpatialDiagnostics& team_spatial_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->team_spatial;
