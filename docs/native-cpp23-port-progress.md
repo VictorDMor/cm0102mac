@@ -9,19 +9,25 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The accepted production manifest contains **601 semantic entry replacements**.
-The latest [match-advancement report](native-match-advancement-reconstruction.md)
-adds three complete entries / 1,940 indexed instructions, preserving the accepted
-598-entry prefix. Seven focused CTests, fourteen boundary/reference audits,
-31 changed manifest assertions and four affected-unit UBSAN runs pass. Actual
-production checks cover each entry through direct/generated/CFM paths; 24 real
-engine steps agree with the original. The owned installed menu check exits
-normally and does not claim match-entry coverage. The standalone debugger's
-session controller shares this engine; its club factory and separate UI remain
-required work under [the debugger contract](native-match-debugger.md).
-The signed installed ARM64 executable SHA-256 is
-`084136e6a0dd6835430ec520b24928149a5abb9db537665fe7aa24766874857c`.
-Save/Load is **not retested** and performance is **not benchmarked** in this cycle.
+The accepted production manifest contains **656 semantic entry replacements**.
+The latest [match range sampler report](native-match-random-reconstruction.md)
+adds one complete 110-instruction operation with 415 indexed call sites,
+preserving the previous 655-entry prefix. A fresh 200-tick match records 33,962
+calls to this operation. Independent comparisons cover every original source
+site, complete state/effects, recursion, faults and nonlocal transfers. Five
+focused CTests, seven boundary audits, 40 updated manifest assertions and three
+affected-unit UBSAN runs pass.
+
+The game and independent debugger share the accepted implementation. Both signed
+ARM64 applications are installed; the installed worker protocol, real match
+completion and game menu/normal exit pass. The game executable SHA-256 is
+`a6b42be75302bf96a1e4eb4cd8698bb1945abac025f1191167b75cdbcbd40953`.
+The [complete movement](native-player-movement-reconstruction.md),
+[foul/referee](native-match-discipline-reconstruction.md) and
+[debugger lab](native-match-debugger-lab.md) reports retain their own evidence.
+Save/Load is **not retested** in this cycle. Eighteen measured paired 600-tick
+intervals show original/C++23 state equality but **no consistent speedup**.
+The semantic entry count is not a completion percentage or a CPU-share measure.
 
 ## Historical register-context acceptance
 
@@ -67,7 +73,7 @@ captured-owner transfer acceptance and installed restoration use no fallback.
 | --- | --- | --- |
 | C/C++ runtime | Allocator and text/number blocks are semantic; many stream, file, sorting, lifecycle and numeric routines remain generated | Named implementations, pinned Mac contracts, ABI/effect/fault comparisons, discriminating negatives and production dispatch evidence for each migrated entry |
 | Simulation engine | Watched/background callers and shared match advancement are semantic; dependent football routines, management, leagues, competition, database and transfers largely remain statically recompiled | Complete coherent semantic subsystems and original-compatible composition; component checks alone do not establish game behavior |
-| Standalone match debugger | Shared-engine session control is implemented; arbitrary-club factory, separate UI and consistent interventions remain pending | A runnable independent ARM64 app, actual club selection, isolated match progression, player/goal edits and observable shared-engine effects |
+| Standalone match debugger | Independent ARM64 app, actual-club factory, shared-engine progression and goal/lineup/substitution/card controls are delivered; full commentary and remaining engine dependencies are unfinished | Complete remaining original-compatible commentary/engine coverage and retain isolated state, timeline and intervention acceptance |
 | Native platform | `native/platform.cpp` explicitly returns Open Transport unsupported initialization; print-job and less-used service coverage is incomplete | Real native services with original Mac ABI/error/lifetime behavior and exercising their actual product flows |
 | Whole-game compatibility | Historical live evidence covers core single-player actions and a post-match save; it is not current whole-release coverage | Current installed-artifact identity plus appropriate management, simulation, competition, persistence and supported multiplayer evidence after affected subsystems migrate |
 | Generated engine retirement | Generated bodies remain the productive implementation of unmigrated routines and the diagnostic oracle | All required productive engine paths have semantic owners before generated bodies can be removed from production |

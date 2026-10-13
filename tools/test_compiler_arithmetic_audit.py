@@ -28,8 +28,8 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(len(baseline), 226)
         self.assertEqual(hashlib.sha256(json.dumps(baseline, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'cd2bf157adfb6e441959706bdfc12f8f4998aa07683b390e03c1ca31d1cfad0c')
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 655)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 655)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 656)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 656)
         self.assertEqual(SEMANTIC_REPLACEMENTS[226:234], tuple((entry, 'compiler_arithmetic_adapter') for entry in COMPILER_ARITHMETIC_ENTRIES))
         for excluded in (0x10773710, 0x107737e0, 0x10773830, 0x10773eb0, 0x10773f30, 0x10773fb0):
             self.assertNotIn(excluded, COMPILER_ARITHMETIC_ENTRIES)

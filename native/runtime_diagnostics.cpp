@@ -14,6 +14,7 @@
 #include "actor_motion_adapter.hpp"
 #include "player_movement_adapter.hpp"
 #include "match_discipline_adapter.hpp"
+#include "match_random_adapter.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -35,7 +36,16 @@ struct RuntimeDiagnostics {
     ActorMotionDiagnostics actor_motion;
     PlayerMovementDiagnostics player_movement;
     MatchDisciplineDiagnostics match_discipline;
+    MatchRandomDiagnostics match_random;
 };
+MatchRandomDiagnostics& match_random_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->match_random;
+}
+const MatchRandomDiagnostics& match_random_diagnostics(const State& state) {
+    static const MatchRandomDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->match_random : empty;
+}
 MatchDisciplineDiagnostics& match_discipline_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->match_discipline;

@@ -47,6 +47,8 @@ target_sources(cm_aot PRIVATE player_decision.cpp player_decision_adapter.cpp)
 target_sources(cm_aot PRIVATE match_debugger_checkpoint.cpp)
 target_sources(cm_aot PRIVATE actor_motion.cpp actor_motion_adapter.cpp)
 target_sources(cm_aot PRIVATE
+    match_random.cpp
+    match_random_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp
     match_discipline_penalties.cpp
@@ -182,6 +184,18 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_executable(cm-player-decision-characterization player_decision_characterization.cpp "${CM_PLAYER_DECISION_REFERENCE}")
     target_link_libraries(cm-player-decision-characterization PRIVATE cm_match_debugger_factory)
     target_compile_options(cm-player-decision-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    set(CM_MATCH_RANDOM_REFERENCE "${CMAKE_BINARY_DIR}/match_random_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MATCH_RANDOM_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_random_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_RANDOM_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_random_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/match_random_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-match-random-checks match_random_checks.cpp "${CM_MATCH_RANDOM_REFERENCE}")
+    target_link_libraries(cm-match-random-checks PRIVATE cm_aot)
+    target_compile_options(cm-match-random-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME match_random_component_equivalence COMMAND cm-match-random-checks)
     set(CM_MATCH_DISCIPLINE_REFERENCE "${CMAKE_BINARY_DIR}/match_discipline_reference.cpp")
     add_custom_command(OUTPUT "${CM_MATCH_DISCIPLINE_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_discipline_reference.py"
@@ -313,6 +327,15 @@ add_executable(cm-match-actor-production-checks match_actor_production_checks.cp
 add_executable(cm-actor-construction-production-checks actor_construction_production_checks.cpp)
 add_executable(cm-spatial-role-production-checks spatial_role_production_checks.cpp)
 add_executable(cm-marking-pressure-production-checks marking_pressure_production_checks.cpp)
+add_executable(cm-match-random-benchmark match_random_benchmark.cpp)
+target_link_libraries(cm-match-random-benchmark PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-random-benchmark PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-random-production-checks match_random_production_checks.cpp)
+target_link_libraries(cm-match-random-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-random-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-random-transfer-checks match_random_transfer_checks.cpp)
+target_link_libraries(cm-match-random-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-random-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-discipline-production-checks match_discipline_production_checks.cpp)
 target_link_libraries(cm-match-discipline-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-discipline-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -534,6 +557,16 @@ add_executable(cm-match-debugger-completion-checks match_debugger_completion_che
 target_link_libraries(cm-match-debugger-completion-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-completion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME match_random_actual_production COMMAND cm-match-random-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-random-production-checks")
+    add_test(NAME match_random_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-match-random-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/match-random-profile-checks" "${CMAKE_BINARY_DIR}/match-random-live-profile")
+    add_test(NAME match_random_nonlocal_transfer COMMAND cm-match-random-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-random-transfer-checks"
+        "${CMAKE_BINARY_DIR}/match-random-live-profile")
+    set_tests_properties(match_random_actual_production PROPERTIES FIXTURES_SETUP MatchRandomLiveProfile TIMEOUT 180)
+    set_tests_properties(match_random_original_profile match_random_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MatchRandomLiveProfile TIMEOUT 180)
     add_test(NAME match_discipline_actual_production COMMAND cm-match-discipline-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-discipline-production-checks")
     add_test(NAME match_discipline_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
