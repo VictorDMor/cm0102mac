@@ -9,10 +9,23 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest [movement-choice reconstruction](native-movement-choice-reconstruction.md)
+The latest [team-line reconstruction](native-team-line-reconstruction.md) adds
+five complete operations: tactical flags, their line-adjustment query, two
+column-limit queries and the opposing row-lane scan. The accepted manifest now
+contains **677 semantic entry replacements**, preserving its previous 672-entry
+prefix. All seventeen direct callees of the movement selector now have semantic
+owners; transitive dependencies and the complete engine remain unfinished.
+Independent comparisons cover all 172 original instructions: 10,358 component
+cases, 60 production comparisons, 15 profile controls and 42 nonlocal comparisons
+pass. Six focused CTests, seven boundary audits, 45 updated manifest checks and
+three affected-unit UBSAN checks pass. A 600-tick actual match compares all five
+roots selected as original versus C++23, preserving complete final state,
+per-tick accounting and import ABI. No speed optimization or timing benchmark
+is part of this cycle.
+
+The preceding [movement-choice reconstruction](native-movement-choice-reconstruction.md)
 adds four complete operations: neighbouring-cell selection, its adjustment query
-and two pitch-region predicates. The accepted production manifest contains **672
-semantic entry replacements**, preserving its previous 668-entry prefix.
+and two pitch-region predicates, reaching the 672-entry milestone.
 Independent comparisons cover all 749 original instructions; 6,518 component
 cases, 48 production comparisons, 12 profile controls and 35 nonlocal comparisons
 pass. Five focused CTests, seven boundary audits, 44 updated manifest assertions
@@ -61,11 +74,11 @@ focused CTests, seven boundary audits, 40 updated manifest assertions and three
 affected-unit UBSAN runs pass.
 
 The game and independent debugger share the accepted implementation, including
-movement choice, the actor queue/comparator, distance queries, four team queries and dispatch
+team-line queries, movement choice, the actor queue/comparator, distance queries and dispatch
 optimization. Both signed ARM64 applications are installed; the
 installed worker protocol, real match completion and game menu/normal exit pass.
 The game executable SHA-256 is
-`16e994df607fe8566b837578f903d69646dd8c0da739dd949def7da99aa96572`.
+`7bbd743a555c1a506aac15075248e38f04ded111ad2fe66535f275e3a8fbc40b`.
 The [complete movement](native-player-movement-reconstruction.md),
 [foul/referee](native-match-discipline-reconstruction.md) and
 [debugger lab](native-match-debugger-lab.md) reports retain their own evidence.

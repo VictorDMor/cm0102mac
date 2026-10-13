@@ -125,6 +125,8 @@ from actor_order_audit import (require_actor_order_contract, require_actor_order
 
 from movement_choice_audit import (require_movement_choice_contract, require_movement_choice_index,
                                   require_movement_choice_hooks, movement_choice_hook, MOVEMENT_CHOICE_ENTRIES)
+from team_line_audit import (require_team_line_contract, require_team_line_index,
+                                  require_team_line_hooks, team_line_hook, TEAM_LINE_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -174,7 +176,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "team_spatial_adapter") for entry in TEAM_SPATIAL_ENTRIES) +
     tuple((entry, "pitch_distance_adapter") for entry in PITCH_DISTANCE_ENTRIES) +
     tuple((entry, "actor_order_adapter") for entry in ACTOR_ORDER_ENTRIES) +
-    tuple((entry, "movement_choice_adapter") for entry in MOVEMENT_CHOICE_ENTRIES))
+    tuple((entry, "movement_choice_adapter") for entry in MOVEMENT_CHOICE_ENTRIES) +
+    tuple((entry, "team_line_adapter") for entry in TEAM_LINE_ENTRIES))
 
 
 def integer(value):
@@ -406,7 +409,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -462,6 +465,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_actor_order_contract(page, instructions, selected)
     if movement_choice_hooks:
         require_movement_choice_contract(page, instructions, selected)
+    if team_line_hooks:
+        require_team_line_contract(page, instructions, selected)
     if match_discipline_hooks:
         require_match_discipline_contract(page, instructions, selected)
     if player_movement_hooks:
@@ -539,6 +544,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "actor_order_adapter.hpp"')
     if movement_choice_hooks and page_addresses & set(MOVEMENT_CHOICE_ENTRIES):
         code.insert(1, '#include "movement_choice_adapter.hpp"')
+    if team_line_hooks and page_addresses & set(TEAM_LINE_ENTRIES):
+        code.insert(1, '#include "team_line_adapter.hpp"')
     if match_discipline_hooks and page_addresses & set(MATCH_DISCIPLINE_ENTRIES):
         code.insert(1, '#include "match_discipline_adapter.hpp"')
     if player_movement_hooks and page_addresses & set(PLAYER_MOVEMENT_ENTRIES):
@@ -715,6 +722,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(actor_order_hook(a))
         if movement_choice_hooks and a in MOVEMENT_CHOICE_ENTRIES:
             code.append(movement_choice_hook(a))
+        if team_line_hooks and a in TEAM_LINE_ENTRIES:
+            code.append(team_line_hook(a))
         if match_discipline_hooks and a in MATCH_DISCIPLINE_ENTRIES:
             code.append(match_discipline_hook(a))
         if player_movement_hooks and a in PLAYER_MOVEMENT_ENTRIES:
@@ -929,6 +938,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_actor_order_hooks(page, instructions, result)
     if movement_choice_hooks:
         require_movement_choice_hooks(page, instructions, result)
+    if team_line_hooks:
+        require_team_line_hooks(page, instructions, result)
     if match_discipline_hooks:
         require_match_discipline_hooks(page, instructions, result)
     if player_movement_hooks:
@@ -1025,6 +1036,7 @@ def main():
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)
         require_movement_choice_index(db, None if args.all_analyzed else selected)
+        require_team_line_index(db, None if args.all_analyzed else selected)
         require_match_discipline_index(db, None if args.all_analyzed else selected)
         require_player_movement_index(db, None if args.all_analyzed else selected)
         if args.all_analyzed:
