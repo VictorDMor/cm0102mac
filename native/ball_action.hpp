@@ -36,4 +36,5 @@ void complete_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGue
 void prepare_execution(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void describe_execution(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void resolve_receiver(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void complete_receiver_contact(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 }

@@ -43,7 +43,8 @@ generated reference bodies and runtime artifacts remain outside version control.
 | Execution recipient, screening and warning | `0x1023fa5c..0x1023ff48` | 315 |
 | First live execution-message table | `0x1023ff48..0x10240178` | 140 |
 | Receiver-contact classification and area reaction | `0x10240178..0x1024060c` | 293 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x1024060c`** | **3,643** |
+| Receiver outcome, restart selection and messages | `0x1024060c..0x10240ff8` | 635 |
+| **Validated contiguous prefix** | **`0x1023cd20..0x10240ff8`** | **4,278** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -79,6 +80,13 @@ actor's inverted side for the area test, retains that actor in the match link,
 and applies the wrapped decrement and reaction to the selected receiver. These
 differences from the earlier initiating-actor contact are preserved separately.
 
+Receiver outcome keeps the initiating actor, contacted receiver and selected
+restart player distinct. It preserves raw-side ball ownership, blocked-action
+messages, signed message gates, receiver marking, opposing-team reloads,
+repeated initiating-actor eligibility calls, restart-player message identity,
+random-dependent report order and the receiver's wrapped halfword decrement.
+The common return remains an explicit continuation boundary.
+
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
 that record full register state before and after calls, clobber volatile
@@ -88,12 +96,12 @@ runtime acceptance.
 
 ## Component evidence
 
-The current check contains 164,480 comparisons:
+The current check contains 222,031 comparisons:
 
-- 23,831 successful component or prefix completions;
-- 140,623 instruction-budget, memory-hole or dependency interruptions;
-- 26 rejected own-result/dependency negative controls;
-- all 3,643 original instruction sites, including dormant branches;
+- 28,991 successful component or prefix completions;
+- 193,012 instruction-budget, memory-hole or dependency interruptions;
+- 28 rejected own-result/dependency negative controls;
+- all 4,278 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
@@ -105,7 +113,7 @@ interior edges, and the unchanged production manifest. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-23,061 of the comparisons use paired checkpoint injections to reach dormant
+25,503 of the comparisons use paired checkpoint injections to reach dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -119,8 +127,8 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x1024060c` with receiver-contact outcomes and the remaining action
-execution. The remaining 4,499 original instructions, four further computed
+Continue at `0x10240ff8` with the remaining action execution. The remaining
+3,864 original instructions, four further computed
 decision tables, tail/error paths and common return still require reconstruction
 and equivalence evidence.
 
@@ -149,3 +157,9 @@ executables, then removed both and their debug symbols: five files and
 302,183,780 logical bytes. Available space increased by 302,161,920 bytes during
 that cleanup. The same 845 protected artifacts, app identities and production
 library hash remained intact.
+
+The receiver-outcome checkpoint likewise removed both check executables and
+their debug symbols after validation: five files and 304,070,860 logical bytes.
+Available space increased by 304,078,848 bytes during cleanup. All 845 protected
+artifacts, both installed signed ARM64 apps and the production library hash
+were verified unchanged; sources, original references and evidence are retained.
