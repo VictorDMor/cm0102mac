@@ -26,11 +26,6 @@
       "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-cpp23-port-progress.md"
     }
   ],
-  "help": [
-    "Reconstruct remaining simulation routines in C++23",
-    "Characterize original behavior and gameplay regressions",
-    "Improve native macOS compatibility"
-  ],
   "tags": [
     "apple-silicon",
     "powerpc",
