@@ -1,9 +1,14 @@
 # Native recompilation of the original Mac program
 
-This is an experimental route toward the requested native ARM64 game. It has not
-produced a playable application. The existing Windows reconstruction has both
-32-bit pointer assumptions and unfinished gameplay/UI functions; compiling its
-current files alone cannot supply the complete game.
+This pipeline produces the playable ARM64 development build described in the
+[current port status](native-port-status.md). It recompiles the original Mac
+program and progressively replaces generated routines with reconstructed C++23.
+The separate Windows reconstruction has 32-bit pointer assumptions and unfinished
+gameplay/UI functions; it is not the active game build.
+
+The implementation notes below retain historical checkpoints. Their individual
+verification limits describe the stage recorded there; consult the current status
+and subsystem reports for subsequent gameplay and integration evidence.
 
 ## Build pipeline
 

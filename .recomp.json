@@ -1,0 +1,40 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Championship Manager 01/02",
+  "system": "Mac",
+  "type": "recomp",
+  "project": "CM 01/02 for Apple Silicon",
+  "status": "playable",
+  "targets": [
+    "macOS"
+  ],
+  "toolchain": "CM0102 AOT",
+  "approach": "Ghidra-based PowerPC-to-C++ static recompilation, native ARM64 macOS bridges, and incremental C++23 reconstruction.",
+  "maintainers": [
+    {
+      "name": "VictorDMor",
+      "link": "https://github.com/VictorDMor"
+    }
+  ],
+  "links": [
+    {
+      "label": "Port status",
+      "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-port-status.md"
+    },
+    {
+      "label": "C++23 progress",
+      "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-cpp23-port-progress.md"
+    }
+  ],
+  "help": [
+    "Reconstruct remaining simulation routines in C++23",
+    "Characterize original behavior and gameplay regressions",
+    "Improve native macOS compatibility"
+  ],
+  "tags": [
+    "apple-silicon",
+    "powerpc",
+    "c++23"
+  ],
+  "notes": "Playable development build for Apple Silicon. Local checks cover career creation/loading, club management, date advancement, complete matches, saving and reloading. Reconstruction remains incomplete; much of the simulation still uses generated code. Multiplayer and some services are unfinished. No public binary release yet."
+}

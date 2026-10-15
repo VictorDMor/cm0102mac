@@ -1,155 +1,117 @@
-# Championship Manager 01/02 — Apple Silicon native port research
+# CM 01/02 for Apple Silicon
 
-**Status: native development build; core single-player gameplay verified.**
-The game runs as ARM64 with no CPU emulator, Wine, or legacy Mac OS virtual
-machine. Live checks cover creating/loading a managed game, advancing dates,
-completing a match, returning to the club, saving, and normal exit. Multiplayer
-and some less-used services remain unfinished. The engine uses original routines
-statically recompiled to ARM64, with native macOS integration.
+A native ARM64 macOS port of **Championship Manager 01/02**, built through static
+recompilation of the original PowerPC Mac executable and ongoing C++23
+reconstruction of its routines.
 
-The CD contains a PowerPC PEF executable and data, with no original source files.
-The existing Windows ReCM decompilation/reimplementation discovered locally is a
-potential engine source. Its full engine does not currently compile for ARM64.
-See [the current investigation](docs/native-port-status.md).
+**Status: playable development build, actively being developed.** Core
+single-player gameplay has been verified in local use: creating and loading a
+career, managing a club, advancing dates, completing matches, returning to
+management, saving and reloading. Multiplayer and some less-used services remain
+unfinished. There is no public binary release yet.
 
-The active implementation also explores recompiling the original Mac executable
-ahead of time, preserving its simulation code and data layouts. See the
-[native recompilation pipeline and its limits](docs/aot-port.md).
+## How it works
 
-## Run the current prototype
+- A custom Ghidra-based pipeline translates the original 32-bit PowerPC program
+  into C++, which Apple Clang compiles ahead of time for ARM64.
+- Native macOS bridges provide windows, input, drawing, audio and file services.
+- Reconstructed C++23 subsystems progressively replace generated routines while
+  preserving calling conventions, data layouts and observable effects.
+- The runtime contains no CPU interpreter or JIT and runs without Wine or a
+  legacy Mac OS virtual machine. It retains a checked, big-endian 32-bit data
+  address space for the original game's pointers and structures.
 
-Open `CM-01-02.cdr` once, then double-click `Install Native Prototype.command` in
-Finder. The installer uses the existing ARM64 build, verifies the supplied Mac
-release, and copies 809 files (the game folder plus the CD's `Extras` folder),
-preserving resource forks and Finder metadata.
-It installs `~/Applications/CM 01-02 Native Prototype.app` and stores game data in
-`~/Library/Application Support/CM 01-02 Native/Game`. The original program segments
-are bundled with the app. No compilation is required to install the existing build.
+The latest accepted production manifest contains **678 reconstructed entry points**.
+This is an integration count, not a percentage of the game recovered. Much of the
+simulation still uses generated code. See the
+[C++23 progress report](docs/native-cpp23-port-progress.md) and
+[current status and limitations](docs/native-port-status.md).
 
-After installation, eject the CD image and open the installed application. Its
-original opening and main menu have been observed on screen with the CD unmounted.
-The original CD check also passed with the image unmounted after installing its
-required `Extras/qpr for the cup` file. Database and league initialization completed,
-and the user selected Cruzeiro and entered its original squad screen. Opening a
-player then exposed the missing `num2dec` service, now implemented and covered by
-the original number-formatting routines; the user has now opened a player in the
-reloaded game. Save testing exposed two further boundaries: canonically equivalent accented
-filenames and final save-file renaming. Both are implemented; the recovered
-save also exposed an English club-name ordering mismatch in the supplied data.
-A verified private language correction is now installed for new games, and
-`Mac-Teste-Recuperado.sav` successfully loaded the managed Cruzeiro squad.
-Opening its competition exposed another null background lookup; the installed
-correction passes original-routine tests and the user confirmed the competition opens.
-The user then saved normally as `Mac-Teste-Validado` and loaded that new file
-successfully without repair. A correction to the arithmetic translation allowed
-`Continue Game` to advance from 21 December 2001 into January 2002. The user
-confirmed advancement. After a second arithmetic correction, a friendly against
-Anapolina completed, ending 1–0 at minute 93. Continuing from full time exposed
-an audio callback running during sound-data cleanup. The corrected build has
-now passed that transition, advanced further, saved normally as
-`Mac-Teste-Validado-Pos-Jogo`, and exited normally. The user subsequently
-confirmed that this save loads and preserves the Anapolina result in Last Game.
-Existing prototype
-preferences are copied on first installation. Later installation runs verify
-installed data, update the native app, and preserve preferences and saves; they
-do not require the CD again. Changed installed assets stop verification rather
-than being overwritten.
+## What is included
 
-This remains a development build. Opening takes about 30 seconds on the current
-machine. The installed app has no diagnostic instruction limit and records each
-run in `~/Library/Application Support/CM 01-02 Native/Runs`; private preferences
-and game-created files use the adjacent `Runtime` directory. An unfinished native
-service stops execution with a diagnostic message. Day advancement and normal
-save/reload, match simulation, and returning from full time are verified.
-Multiplayer remains unavailable; its initialization
-now returns an explicit unsupported error to the original game.
+| Area | Contents |
+| --- | --- |
+| Native game | ARM64 runtime, macOS bridges and application shell |
+| C++23 reconstruction | Runtime, calendar, storage and simulation subsystems with focused equivalence checks |
+| Match Debugger | Native match inspection, deterministic scenarios and history controls |
+| Recompilation tools | Ghidra exporters, indexed code generation and reference harness generators |
+| Asset inspector | Optional Swift tools for examining locally supplied game assets |
 
-## Presentation and named commands
+This repository contains project source and documentation. Original game files,
+generated program payloads, saves, application bundles and private validation
+artifacts are excluded. **You must supply your own original Mac release.** The
+Windows executable is not supported by this pipeline. Original game content
+remains the property of its respective owners.
 
-The native app provides `View > Interface Scale`: 100%, 125%, 150%, 200% and
-Fit to Screen. Native text outlines and geometric controls are drawn at the
-backing resolution while the original layout and raster artwork remain intact.
-Oversized choices are disabled; the effective choice is checked and stored
-separately from saves.
+## Developer build
 
-`Game` exposes Continue (Command-Return), Save (also File > Save / Command-S),
-Load (Command-O, start screen only), Game Options (Command-comma), and Back or
-Cancel (Command-[). Commands follow original enabled controls and dialogs.
-To load another career, save, quit normally, reopen, then use Load.
+The current workflow targets **Apple Silicon and macOS 13 or later**. It requires
+Apple Command Line Tools with C++23 support, CMake 3.28+, Python 3, and Ghidra with
+a compatible JDK. Ghidra 12.0 with its native ARM64 decompiler was used for the
+recorded builds. Swift 6 is needed only for the optional asset inspector.
 
-Native text/control drawing and mouse menu selections are validated and installed.
-Live checks cover an external 1x display, the built-in Retina display, and a
-keyboard Save/exit/reopen/Load cycle at 125%. The user confirmed physical clicks
-and accepted the appearance. Backgrounds and pictures retain their original bitmap
-resolution. See the
-[presentation and command report](docs/native-presentation-and-direct-commands.md)
-for controls, dispatch, evidence and limits.
+With your original Mac media mounted, analyze it and build locally:
 
-## Saved game snapshot
+```sh
+git clone https://github.com/VictorDMor/cm0102mac.git
+cd cm0102mac
 
-`saves/Mac-Teste-Validado-Pos-Jogo.sav` is a Git LFS snapshot of the latest
-verified post-match save. It was copied from the installed game's
-`Runtime/Files/games` directory; the installed save remains in place. After
-cloning, run `git lfs pull` if Git has not downloaded the save automatically.
-Other local saves stay outside the repository.
+JAVA_HOME='/path/to/jdk/Contents/Home' bash tools/analyze_mac.sh \
+  '/path/to/ghidra' '/Volumes/CM 01-02'
+JAVA_HOME='/path/to/jdk/Contents/Home' bash tools/build_aot.sh \
+  '/path/to/ghidra'
+```
 
-`Run Native Prototype.command` remains a diagnostic alternative using the local
-build and installed game data. It limits execution to 10 billion original
-instructions by default, writes `.local/prototype-runs/run.XXXXXX`, and leaves
-Terminal open after stopping. `CM_AOT_INSTRUCTION_BUDGET=unlimited` removes that
-limit. Retained images are application buffers, not physical-screen captures.
-Audio transitions are logged; detailed OS-call tracing is opt-in with
-`CM_AOT_TRACE_IMPORTS=1` because the original waits make millions of native calls.
+The build script exports and indexes the analyzed program, generates C++, builds
+the native targets and runs the configured checks. Generated inputs and builds
+remain under `.local/`. Initial compilation covers roughly 1,922 translation
+units. This is a development workflow; unsupported original addresses or native
+services stop with explicit diagnostics.
 
-## Native asset checks
+After building, double-click `Install Native Prototype.command` in Finder with
+the original media still mounted for the first installation. The installer
+verifies the supported executable and resource fork, copies the required data,
+and installs `~/Applications/CM 01-02 Native Prototype.app`. Game data and saves
+use `~/Library/Application Support/CM 01-02 Native/`. Later installations verify
+the existing data and preserve saves.
 
-Requires macOS 13+ on Apple Silicon and Swift 6 Command Line Tools. The executable
-checks do not require XCTest, an Xcode application, or a system configuration change.
+The installer requires your local build; cloning this repository alone does not
+provide a prebuilt application. See the
+[recompilation pipeline](docs/aot-port.md) for technical details and
+[Match Debugger documentation](docs/native-match-debugger-application.md) for its
+separate development workflow.
+
+## Validation and contributions
+
+Reconstruction work is accepted in bounded subsystems. Reports distinguish
+component comparisons against original routines, production integration, installed
+application checks and real-match evidence. Passing an isolated comparison does
+not mean that a subsystem is installed or that the whole port is complete.
+
+Useful contributions include reconstructing remaining simulation routines,
+characterizing original behavior, improving macOS compatibility and reproducing
+gameplay regressions. Open an issue describing the behavior, macOS version and
+source revision. Keep original game content, saves and private runtime files out
+of issues and pull requests.
+
+For the optional asset inspector, independent checks can run without game data:
 
 ```sh
 swift run cm-assets-checks
-swift build -c release
-.build/release/cm-assets '/Volumes/CM 01-02/Championship Manager/Data' reports/generated/assets
-file .build/release/cm-assets
 ```
 
-The inspector reads original data and writes its JSON report and PNG previews only
-to the output directory. It reports unsupported image variants explicitly. The
-images are previews of disc assets; they are not screenshots of a running game.
+The root CMake project is an older, optional comparison against an external ReCM
+checkout; the active game build uses `native/` through `tools/build_aot.sh`.
 
-## Disc audit
+## Project reports
 
-With the supplied image already mounted:
+- [Native port status](docs/native-port-status.md)
+- [C++23 reconstruction progress](docs/native-cpp23-port-progress.md)
+- [Static recompilation architecture](docs/aot-port.md)
+- [Match Debugger](docs/native-match-debugger-application.md)
+- [Native presentation and commands](docs/native-presentation-and-direct-commands.md)
+- [Latest accepted ball-action reconstruction](docs/native-ball-action-reconstruction.md)
 
-```sh
-python3 tools/audit_media.py '/Volumes/CM 01-02'
-```
-
-This records PEF sections, imports, executable and resource-fork checksums, file
-inventory, and source filename hints. Hints embedded in compiled code are not
-source files. Generated reports and all proprietary media stay untracked.
-
-## Existing Windows source: native compatibility check
-
-Requires CMake 3.28+ and Apple Clang with C++23. Set the source path explicitly:
-
-```sh
-cmake -S . -B .local/native-checks -DRECM_SOURCE_DIR='/path/to/recm-0102'
-cmake --build .local/native-checks
-ctest --test-dir .local/native-checks --output-on-failure
-```
-
-This compiles the existing record-layout tests into ARM64 without changing the
-source project. It does not compile or execute the whole game. Passing these
-tests does not establish compatibility with Mac `.dam` tables.
-
-## Mac binary analysis
-
-```sh
-JAVA_HOME='/path/to/jdk/Contents/Home' bash tools/analyze_mac.sh '/path/to/ghidra' '/Volumes/CM 01-02'
-```
-
-Ghidra 12.0 with its ARM64 decompiler was used locally. The wrapper selects the
-correct PowerPC language explicitly and preserves the project under `.local`.
-The analysis exports function metadata and entry-point pseudocode. It produces
-analysis material, not reconstructed, buildable game source.
+Individual reports retain the evidence and limitations of their delivery dates.
+The root [`.recomp.json`](.recomp.json) supplies the project's listing metadata
+using the [recomp.board specification](https://recomp.fyi/spec).
