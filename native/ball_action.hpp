@@ -1,8 +1,10 @@
 #pragma once
 #include "semantic_dependency_dispatch.hpp"
+#include <array>
 
 namespace cm::aot::ball_action {
 inline constexpr std::uint32_t entry = 0x1023cd20;
+inline constexpr std::array<std::uint32_t,1> entries{entry};
 inline constexpr std::uint32_t orientation_phase = 0x1023d184;
 inline constexpr std::uint32_t action_bias_phase = 0x1023d344;
 inline constexpr std::uint32_t area_selection_phase = 0x1023d5e4;
@@ -30,12 +32,18 @@ inline constexpr std::uint32_t failed_message_phase = 0x1024366c;
 inline constexpr std::uint32_t failed_comment_phase = 0x1024389c;
 inline constexpr std::uint32_t failed_fallback_phase = 0x102439d0;
 inline constexpr std::uint32_t failed_outcome_phase = 0x10243ba4;
+inline constexpr std::uint32_t receiver_sampling_phase = 0x10243ca0;
+inline constexpr std::uint32_t receiver_marker_phase = 0x102440c0;
+inline constexpr std::uint32_t receiver_position_phase = 0x102440d8;
+inline constexpr std::uint32_t receiver_assessment_phase = 0x102441a8;
+inline constexpr std::uint32_t receiver_effects_phase = 0x10244494;
+inline constexpr std::uint32_t receiver_final_reaction_phase = 0x10244b44;
 inline constexpr std::uint32_t missing_receiver_phase = 0x10244bd8;
 inline constexpr std::uint32_t return_phase = 0x10244c38;
 inline constexpr std::uint32_t end = 0x10244c58;
 
-// Components remain outside production dispatch until the complete coordinator
-// has independent original-reference and shared-engine acceptance evidence.
+// The root owns the guest frame across these original-compatible phases.
+void act(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void prepare(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void orient(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void face_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
@@ -63,4 +71,13 @@ void prepare_failed_action(State&, SemanticDependencyDispatch* = nullptr, Semant
 void describe_failed_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void describe_failed_comment(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void describe_failed_fallback(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void prepare_receiver_outcome(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void sample_receiver_counter(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void handle_receiver_marker(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void position_receiver(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void assess_receiver(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void complete_receiver_outcome(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void react_to_receiver_outcome(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void report_missing_receiver(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void return_action_frame(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 }

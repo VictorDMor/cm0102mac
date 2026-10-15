@@ -36,7 +36,16 @@ COMPONENTS = {'preparation': (ENTRY, 0x1023d184), 'orientation': (0x1023d184, 0x
               'failed_preparation': (0x102433d4, 0x1024366c),
               'failed_message': (0x1024366c, 0x1024389c),
               'failed_comment': (0x1024389c, 0x102439d0),
-              'failed_fallback': (0x102439d0, 0x10243ba4)}
+              'failed_fallback': (0x102439d0, 0x10243ba4),
+              'receiver_selection': (0x10243ba4, 0x10243ca0),
+              'receiver_sampling': (0x10243ca0, 0x102440c0),
+              'receiver_marker': (0x102440c0, 0x102440d8),
+              'receiver_position': (0x102440d8, 0x102441a8),
+              'receiver_assessment': (0x102441a8, 0x10244494),
+              'receiver_effects': (0x10244494, 0x10244b44),
+              'receiver_final_reaction': (0x10244b44, 0x10244bd8),
+              'missing_receiver': (0x10244bd8, 0x10244c38),
+              'return': (0x10244c38, 0x10244c58)}
 
 
 def render_reference(records, userops, component):

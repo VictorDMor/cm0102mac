@@ -13,6 +13,7 @@
 #include "player_decision_adapter.hpp"
 #include "actor_motion_adapter.hpp"
 #include "player_movement_adapter.hpp"
+#include "ball_action_adapter.hpp"
 #include "match_discipline_adapter.hpp"
 #include "match_random_adapter.hpp"
 #include "team_spatial_adapter.hpp"
@@ -40,6 +41,7 @@ struct RuntimeDiagnostics {
     PlayerDecisionDiagnostics player_decision;
     ActorMotionDiagnostics actor_motion;
     PlayerMovementDiagnostics player_movement;
+    BallActionDiagnostics ball_action;
     MatchDisciplineDiagnostics match_discipline;
     MatchRandomDiagnostics match_random;
     TeamSpatialDiagnostics team_spatial;
@@ -103,6 +105,14 @@ MatchDisciplineDiagnostics& match_discipline_diagnostics(State& state) {
 const MatchDisciplineDiagnostics& match_discipline_diagnostics(const State& state) {
     static const MatchDisciplineDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->match_discipline : empty;
+}
+BallActionDiagnostics& ball_action_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->ball_action;
+}
+const BallActionDiagnostics& ball_action_diagnostics(const State& state) {
+    static const BallActionDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->ball_action : empty;
 }
 PlayerMovementDiagnostics& player_movement_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();

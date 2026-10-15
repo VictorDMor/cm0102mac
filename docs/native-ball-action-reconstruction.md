@@ -1,10 +1,11 @@
 # Ball-action coordinator reconstruction
 
-Status: **partial C++23 implementation with component acceptance; production replacement pending**.
+Status: **complete C++23 coordinator integrated into both native ARM64 apps**.
 Accuracy and complete behavioral conversion take priority over optimization.
-The original coordinator still runs in production, and the accepted production
-manifest remains at 677 semantic entries. These components are linked only into
-their conformance executable, not into `cm_aot` or either app.
+All 8,142 original instructions have independent component or complete-root
+fixture evidence. Productive generated-entry, shared-engine, nonlocal-transfer
+and complete-match checks pass. The accepted manifest contains 678 semantic
+entries, preserving the prior 677-entry prefix.
 
 ## Complete original contract
 
@@ -18,7 +19,7 @@ The canonical original-body SHA-256 is
 `tools/ball_action_audit.py` pins every fragment and the five original relocated
 decision tables. Their word counts are 47, 57, 47, 10 and 47, with 12, 12, 12, 3
 and 7 distinct destinations respectively. Table pins characterize the original
-input; the eventual coordinator must still read mutable guest tables at runtime.
+input; the coordinator reads mutable guest tables at runtime.
 External static interior entrances are rejected.
 
 Each component reference is emitted only after the complete body and tables
@@ -57,7 +58,16 @@ generated reference bodies and runtime artifacts remain outside version control.
 | Third live action-message table | `0x1024366c..0x1024389c` | 140 |
 | Live ten-word failed-comment table and default | `0x1024389c..0x102439d0` | 77 |
 | Live failed-fallback table, callback and floating comparison | `0x102439d0..0x10243ba4` | 117 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x10243ba4`** | **7,073** |
+| Receiver selection and balance | `0x10243ba4..0x10243ca0` | 63 |
+| Custom receiver counter sample | `0x10243ca0..0x102440c0` | 264 |
+| Receiver marker | `0x102440c0..0x102440d8` | 6 |
+| Receiver positioning | `0x102440d8..0x102441a8` | 52 |
+| Receiver performance assessment | `0x102441a8..0x10244494` | 187 |
+| Final receiver effects | `0x10244494..0x10244b44` | 428 |
+| Final receiver report | `0x10244b44..0x10244bd8` | 37 |
+| Missing-receiver diagnostics | `0x10244bd8..0x10244c38` | 24 |
+| Complete caller-frame return | `0x10244c38..0x10244c58` | 8 |
+| **Complete coordinator** | **`0x1023cd20..0x10244c58`** | **8,142** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -157,7 +167,8 @@ targets and explicit continuations. The fallback callback receives the signed
 rating-minus-score difference and may return early; its alternative floating
 comparison preserves both single-precision additions/subtraction and their
 original order around the random sixth. All five coordinator tables now have
-component evidence. Whole-root continuation/production acceptance is still open.
+component evidence. The complete coordinator now composes these continuations;
+actual production acceptance now passes.
 
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
@@ -166,26 +177,43 @@ registers, produce observable writes, and support interruptions and mutations.
 This checks caller contracts; it does not establish new dependency or production
 runtime acceptance.
 
+The receiver tail reconstructs the signed narrowed rating-minus-score balance,
+both clamps, live post-call owner/status reloads, the custom three-draw receiver
+sample, the blocked marker, signed destination clamping and performance reports.
+All 65,536 combinations of the two receiver traits have an independent sample
+expectation. The report ratios retain single-precision arithmetic and zero
+denominator gates; regular/special rewards preserve separate ordered writes to
+both players. The diagnostic tail keeps all four calls and clears its original
+error flag. The common return restores every saved integer/floating register,
+the stack and the actual caller.
+
+`ball_action::act` owns the complete guest frame across the named phases,
+computed message destinations and common return. Complete-root fixture cases
+use this coordinator, while the independent original driver retains every
+original label and instruction checkpoint. Structural cases are kept distinct
+from naturally reached paths.
+
 ## Component evidence
 
-The current check contains 382,287 comparisons:
+The current check contains 518,549 comparisons:
 
-- 61,668 successful component or prefix completions;
-- 320,565 instruction-budget, memory-hole or dependency interruptions;
-- 54 rejected own-result/dependency negative controls;
-- all 7,073 original instruction sites, including dormant branches;
+- 148,201 successful component or prefix completions;
+- 370,275 instruction-budget, memory-hole or dependency interruptions;
+- 73 rejected own-result/dependency negative controls;
+- all 8,142 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
 The same checks pass in the normal C++23 build and a focused UndefinedBehaviorSanitizer
-build with floating-point contraction disabled. Eight Python audit tests check
+build with floating-point contraction disabled. Ten Python audit tests check
 whole-body/fragment integrity, truncated and reordered input rejection, all 208
 table words and five pointers, isolated component labels/checkpoints, external
-interior edges, and the unchanged production manifest. Record-form narrowing
+interior edges, productive hook placement, coordinator ownership, and the preserved
+677-entry prefix with one complete-root addition. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-37,354 of the comparisons configure paired checkpoint injections for dormant
+44,287 of the comparisons configure paired checkpoint injections for dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -199,22 +227,30 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x10243ba4` with receiver selection, effects and remaining reports.
-The remaining 1,069 original instructions, diagnostic tail and common return
-still require reconstruction and equivalence evidence. No computed table remains
-unimplemented at the component level.
+The complete coordinator has both component and productive acceptance:
 
-Before installing the replacement, validate the complete root, nonlocal transfers
-and faults, hook its generated destination label, prove dedicated production
-entry counters and shared-engine behavior, and verify the installed ARM64 app
-identity. Partial component results do not increment the production entry count.
-Save/Load is **not retested** in this component checkpoint.
+- 72 direct/generated/CFM comparisons from six actual engine-call captures,
+  including six discriminating result negatives and twelve budget stops;
+- three original-profile controls using the captured original entry;
+- fourteen nonlocal-transfer comparisons at preparation and post-preparation
+  reads, including eight restore/handler faults and abandoned continuations;
+- a complete Cruzeiro/Manchester United match (seed 12345): 789 advances,
+  444 productive C++23 action calls and 444 independent original controls,
+  identical complete final state, intermediate states and every-tick accounting;
+- the existing movement-root production matrix and actual Match Debugger
+  completion/regression checks.
 
-The installed apps remain the accepted team-line build, and all 845 protected
-game, runtime and handoff artifacts are unchanged. After complete acceptance,
-the planned follow-up is an updated Match Debugger containing the conversion
-and clearer controls and match information. That UI/UX work is not implemented
-or delivered by this checkpoint.
+Both signed ARM64 app executables contain the accepted conversion and their
+installed hashes equal the candidate builds. The previous installed apps are
+retained as private references. The installed Match Debugger also completes the
+789-step match at 1–2, 92:38, retaining full-time undo/redo and normal cleanup.
+Its worker protocol is checked separately. All 845 protected game, runtime and
+handoff files remain unchanged. Save/Load is **not retested**.
+
+Generated contact dependencies remain the next implementation block: four
+contact facades, action-contact description and the receiver-failure reaction.
+The full-port goal stays active beyond this coordinator delivery. No performance
+improvement is claimed.
 
 At the preceding contact checkpoint, cycle cleanup removed 43 obsolete standalone
 checks and the three current conformance executables after validation, plus associated
@@ -260,3 +296,9 @@ symbols after matching Release/UBSAN acceptance: five files and 315,254,804
 logical bytes. Available space increased by 315,035,648 bytes during cleanup.
 All 845 protected files, both signed ARM64 apps and the production library hash
 remained unchanged; source references and evidence are retained.
+
+The complete-coordinator cycle removed eight reproducible check executables,
+their debug symbols, a private probe object and obsolete component-only objects:
+62 files, 1,183,028,801 logical bytes. Observed available space increased by
+1,184,522,240 bytes. Current apps, prior app references, the production library,
+all original inputs/references and all 845 protected files were verified intact.

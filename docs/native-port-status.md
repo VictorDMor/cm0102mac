@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-12
+# Native port investigation — updated 2026-10-14
 
 ## Required outcome
 
@@ -6,11 +6,23 @@ Run the actual Championship Manager 01/02 simulation as an ARM64 macOS applicati
 without an emulator. Asset viewers, recompiled test programs, decompiler output,
 and a native launcher around a legacy runtime do not satisfy this outcome.
 
-The current native build has completed the core single-player flow in live use:
+A previously accepted native build completed the core single-player flow in live use:
 managed game creation/loading, player and competition screens, date advancement,
 a full match, return to management, saving, normal exit, and reloading the
 post-match save with the Anapolina result preserved (user confirmed). Multiplayer and some other services remain
 unfinished; this is a working development build, not a fully validated release.
+
+## Latest C++23 coordinator delivery
+
+The complete [ball-action coordinator](native-ball-action-reconstruction.md),
+`0x1023cd20..0x10244c58`, is now installed in both signed ARM64 apps. Its 8,142
+original instructions have 518,549 Release/UBSAN comparisons and the accepted
+manifest has 678 entries, retaining every prior entry. Productive calls,
+original/profile controls, nonlocal transfers and a complete paired match pass:
+789 advances and 444 C++23 actions match 444 original controls with equal final
+state and per-tick instruction accounting. The installed Match Debugger reaches
+full time and retains undo/redo. Contact dependencies remain generated and are
+next in the active full-port goal. Save/Load was not retested for this delivery.
 
 ## Original Mac media: observed facts
 

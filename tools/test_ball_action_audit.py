@@ -9,8 +9,8 @@ import re
 import sqlite3
 import unittest
 
-from ball_action_audit import ENTRY, END, COUNT, FRAGMENTS, TABLES, load_ball_action, load_ball_action_tables, require_ball_action_body, require_ball_action_edges, require_ball_action_tables
-from compile_recomp import SEMANTIC_REPLACEMENTS
+from ball_action_audit import ENTRY, END, COUNT, FRAGMENTS, TABLES, load_ball_action, load_ball_action_tables, require_ball_action_body, require_ball_action_edges, require_ball_action_tables, require_ball_action_contract, require_ball_action_index, require_ball_action_hooks, ball_action_hook
+from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
 from make_ball_action_reference import COMPONENTS, render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,16 +24,32 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(sum(count for _, count, _ in FRAGMENTS), COUNT)
         self.assertGreater(END, ENTRY + 30564)
 
-    def test_partial_components_are_not_production_replacements(self):
+    def test_only_the_complete_root_extends_the_prior_manifest(self):
         manifest = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(manifest), 677)
-        self.assertEqual(hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+        self.assertEqual(len(manifest), 678)
+        self.assertEqual(hashlib.sha256(json.dumps(manifest[:677], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'bf8519e9fb7ff93e6741076af5a6d27074007dfe67a4d22ebac6c95c0b244822')
+        self.assertEqual(manifest[677:], [{'entry': '0x1023cd20', 'module': 'ball_action_adapter'}])
+        self.assertEqual(len({row['entry'] for row in manifest}), 678)
         for source in (ROOT / 'native').glob('ball_action*.cpp'):
-            if 'checks' in source.name:
+            if 'checks' in source.name or source.name == 'ball_action_adapter.cpp':
                 continue
             for forbidden in ('_reference(', 'dispatch_page', 'pcode', 'i_102'):
                 self.assertNotIn(forbidden, source.read_text(), source.name)
+
+    def test_coordinator_and_adapter_own_the_complete_root(self):
+        source = (ROOT / 'native/ball_action_coordinator.cpp').read_text()
+        self.assertIn('GuestNativeScope scope(state,entry)', source)
+        self.assertIn('scope.frame(std::uint32_t(state.r<4>(4)))', source)
+        self.assertIn('while(state.pc!=caller)', source)
+        self.assertIn('return_action_frame(state,dependencies,observer)', source)
+        adapter = (ROOT / 'native/ball_action_adapter.cpp').read_text()
+        self.assertIn('ball_action::act(s, nullptr, d.observer)', adapter)
+        self.assertIn('d.original_body == entry', adapter)
+        self.assertIn('match_pc_profile_enabled()', adapter)
+        for address in (ENTRY + 4, END - 4):
+            with self.assertRaises(ValueError):
+                ball_action_hook(address)
 
     def test_only_the_complete_root_is_an_external_entrance(self):
         require_ball_action_edges([(0, ENTRY), (ENTRY, END - 4), (END - 4, END)])
@@ -50,6 +66,21 @@ class ContractTests(unittest.TestCase):
             cls.records = load_ball_action(db)
         cls.userops = json.loads((INPUT / 'program.json').read_text())['userops']
         cls.tables = load_ball_action_tables(INPUT)
+
+    def test_productive_hook_precedes_the_original_step_and_references_disable_it(self):
+        selected = {row['address'] for row in self.records}
+        for page, *_ in FRAGMENTS:
+            part = [row for row in self.records if row['address'] >> 12 == page]
+            code = generate_page(page, part, selected, userops=self.userops)
+            require_ball_action_hooks(page, part, code)
+            self.assertEqual(code.count(ball_action_hook(ENTRY)), int(page == ENTRY >> 12))
+            require_ball_action_contract(page, part, selected)
+            if page == ENTRY >> 12:
+                for changed in (code.replace(ball_action_hook(ENTRY), ''), code.replace(ball_action_hook(ENTRY), ball_action_hook(ENTRY) * 2)):
+                    with self.assertRaises(ValueError):
+                        require_ball_action_hooks(page, part, changed)
+        with closing(sqlite3.connect((INPUT / 'instructions.sqlite').resolve().as_uri() + '?mode=ro', uri=True)) as db:
+            require_ball_action_index(db)
 
     def test_every_source_field_is_pinned_on_every_fragment(self):
         for page, *_ in FRAGMENTS:

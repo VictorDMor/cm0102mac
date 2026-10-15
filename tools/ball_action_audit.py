@@ -91,3 +91,46 @@ def load_ball_action_tables(input_directory):
         raise ValueError(f'Missing original ball-action table word at {address:x}')
 
     return require_ball_action_tables(read_word)
+
+
+BALL_ACTION_ENTRIES = (ENTRY,)
+
+
+def require_ball_action_contract(page, records, selected=None):
+    if not any(page == fragment_page for fragment_page, *_ in FRAGMENTS):
+        return
+    addresses = {row['address'] for row in records} | set(selected or ())
+    if not any(ENTRY <= address < END for address in addresses):
+        return
+    part = [row for row in records if ENTRY <= row['address'] < END]
+    _, count, digest = next(fragment for fragment in FRAGMENTS if fragment[0] == page)
+    if len(part) != count or fingerprint(part) != digest:
+        raise ValueError(f'Original ball-action fragment changed or incomplete at {page:x}')
+
+
+def require_ball_action_index(db, selected=None):
+    if selected is None:
+        load_ball_action(db)
+    else:
+        records = [row for _, row in sorted(selected.items())]
+        for page, *_ in FRAGMENTS:
+            require_ball_action_contract(page, records, selected)
+        require_ball_action_edges(db.execute("""SELECT i.address,e.value FROM instructions AS i,
+            json_each(json_insert(json_extract(i.body,'$.flows'),'$[#]',json_extract(i.body,'$.fallthrough'))) AS e
+            WHERE e.value>? AND e.value<?""", (ENTRY, END)))
+
+
+def ball_action_hook(entry):
+    if entry != ENTRY:
+        raise ValueError('Only the complete ball-action root is callable')
+    return f'if (try_modern_ball_action(s, 0x{entry:x})) return true;'
+
+
+def require_ball_action_hooks(page, records, code):
+    if page != ENTRY >> 12 or ENTRY not in {row['address'] for row in records}:
+        return
+    hook = ball_action_hook(ENTRY)
+    fragment = code.split(f'i_{ENTRY:x}:', 1)[-1].split(f'i_{ENTRY + 4:x}:', 1)[0]
+    steps = [token for token in (f's.step(0x{ENTRY:x});', f'counter.step(0x{ENTRY:x});') if token in fragment]
+    if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+        raise ValueError('Missing or misplaced complete ball-action hook')

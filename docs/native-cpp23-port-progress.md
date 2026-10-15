@@ -9,21 +9,20 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [ball-action coordinator](native-ball-action-reconstruction.md) remains a
-component-only candidate. Its contiguous reconstructed prefix now covers
-**7,073 of 8,142 original instructions**, including all five live computed
-tables and the failed-action preparation/messages/fallback. Independent
-comparisons cover all prefix source sites in 382,287 cases, with complete
-state, ordered effects, dependency ABI, faults and instruction
-accounting. The production coordinator remains generated and the accepted
-manifest stays at **677**. The unsuccessful-action tail and whole-root production
-acceptance remain required.
+The [ball-action coordinator](native-ball-action-reconstruction.md) now covers
+**all 8,142 original instructions** and is installed in both signed ARM64 apps.
+Independent Release/UBSAN comparisons agree in 518,549 cases, covering full
+state, ordered effects, dependency ABI, faults, source-site order and accounting.
+The **678-entry accepted manifest** preserves its prior 677 entries. Actual
+entry/profile/nonlocal-transfer checks pass. A complete paired 789-advance
+match executes 444 C++23 actions against 444 original controls with identical
+final state and per-tick accounting. Installed Debugger completion also passes.
+Contact dependencies and the rest of the engine remain under reconstruction.
 
-The latest [team-line reconstruction](native-team-line-reconstruction.md) adds
+The preceding [team-line reconstruction](native-team-line-reconstruction.md) added
 five complete operations: tactical flags, their line-adjustment query, two
-column-limit queries and the opposing row-lane scan. The accepted manifest now
-contains **677 semantic entry replacements**, preserving its previous 672-entry
-prefix. All seventeen direct callees of the movement selector now have semantic
+column-limit queries and the opposing row-lane scan. That checkpoint brought the manifest to
+**677 semantic entry replacements**, preserving its previous 672-entry prefix. All seventeen direct callees of the movement selector now have semantic
 owners; transitive dependencies and the complete engine remain unfinished.
 Independent comparisons cover all 172 original instructions: 10,358 component
 cases, 60 production comparisons, 15 profile controls and 42 nonlocal comparisons

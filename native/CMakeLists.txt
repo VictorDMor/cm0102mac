@@ -63,6 +63,32 @@ target_sources(cm_aot PRIVATE
     match_discipline_facades.cpp
     match_discipline_penalties.cpp
     match_discipline_referee.cpp
+    ball_action_adapter.cpp
+    ball_action_coordinator.cpp
+    ball_action_preparation.cpp
+    ball_action_orientation.cpp
+    ball_action_facing.cpp
+    ball_action_area.cpp
+    ball_action_elevated.cpp
+    ball_action_low.cpp
+    ball_action_sampling.cpp
+    ball_action_selected.cpp
+    ball_action_contact.cpp
+    ball_action_contact_resolution.cpp
+    ball_action_contact_outcome.cpp
+    ball_action_execution.cpp
+    ball_action_execution_message.cpp
+    ball_action_receiver.cpp
+    ball_action_receiver_outcome.cpp
+    ball_action_result.cpp
+    ball_action_result_message.cpp
+    ball_action_result_resolution.cpp
+    ball_action_result_outcome.cpp
+    ball_action_unopposed.cpp
+    ball_action_success.cpp
+    ball_action_failed_messages.cpp
+    ball_action_receiver_selection.cpp
+    ball_action_receiver_effects.cpp
     player_movement_adapter.cpp
     player_movement_coordinator.cpp
     player_movement.cpp
@@ -183,11 +209,10 @@ endforeach()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    # Ball-action components are still under reconstruction. Keep them out of
-    # cm_aot and the app until the complete coordinator is accepted.
+    # Independent original components retain every site without productive hooks.
     set(CM_BALL_ACTION_COMPONENT_DIR "${CMAKE_BINARY_DIR}/ball-action-components")
     set(CM_BALL_ACTION_COMPONENT_REFERENCES)
-    foreach(component IN ITEMS preparation orientation facing area elevated low selected contact contact_resolution contact_outcome execution execution_message receiver receiver_outcome result result_message result_resolution result_outcome unopposed final_preparation special_effects regular_effects success_reaction failed_preparation failed_message failed_comment failed_fallback)
+    foreach(component IN ITEMS preparation orientation facing area elevated low selected contact contact_resolution contact_outcome execution execution_message receiver receiver_outcome result result_message result_resolution result_outcome unopposed final_preparation special_effects regular_effects success_reaction failed_preparation failed_message failed_comment failed_fallback receiver_selection receiver_sampling receiver_marker receiver_position receiver_assessment receiver_effects receiver_final_reaction missing_receiver return)
         set(reference "${CM_BALL_ACTION_COMPONENT_DIR}/${component}.cpp")
         set(table_header)
         if(component STREQUAL "execution_message")
@@ -209,14 +234,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         list(APPEND CM_BALL_ACTION_COMPONENT_REFERENCES "${reference}" ${table_header})
     endforeach()
     add_executable(cm-ball-action-component-checks ball_action_component_checks.cpp
-        ball_action_preparation.cpp ball_action_orientation.cpp ball_action_facing.cpp
-        ball_action_area.cpp ball_action_elevated.cpp ball_action_low.cpp ball_action_sampling.cpp ball_action_selected.cpp
-        ball_action_contact.cpp ball_action_contact_resolution.cpp ball_action_contact_outcome.cpp
-        ball_action_execution.cpp ball_action_execution_message.cpp ball_action_receiver.cpp ball_action_receiver_outcome.cpp
-        ball_action_result.cpp ball_action_result_message.cpp ball_action_result_resolution.cpp
-        ball_action_result_outcome.cpp ball_action_unopposed.cpp
-        ball_action_success.cpp
-        ball_action_failed_messages.cpp
         ${CM_BALL_ACTION_COMPONENT_REFERENCES})
     target_include_directories(cm-ball-action-component-checks PRIVATE "${CM_BALL_ACTION_COMPONENT_DIR}")
     target_link_libraries(cm-ball-action-component-checks PRIVATE cm_aot)
@@ -496,9 +513,18 @@ target_compile_options(cm-match-discipline-production-checks PRIVATE -Wall -Wext
 add_executable(cm-match-discipline-transfer-checks match_discipline_transfer_checks.cpp)
 target_link_libraries(cm-match-discipline-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-discipline-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-ball-action-match-checks ball_action_match_checks.cpp)
+target_link_libraries(cm-ball-action-match-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-ball-action-match-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-ball-action-production-checks ball_action_production_checks.cpp)
+target_link_libraries(cm-ball-action-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-ball-action-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-player-movement-production-checks player_movement_production_checks.cpp)
 target_link_libraries(cm-player-movement-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-player-movement-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-ball-action-transfer-checks ball_action_transfer_checks.cpp)
+target_link_libraries(cm-ball-action-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-ball-action-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-player-movement-transfer-checks player_movement_transfer_checks.cpp)
 target_link_libraries(cm-player-movement-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-player-movement-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -801,6 +827,19 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)
     if(TARGET cm-player-decision-characterization)
+        add_test(NAME ball_action_actual_full_match COMMAND cm-ball-action-match-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-action-match-checks")
+        set_tests_properties(ball_action_actual_full_match PROPERTIES TIMEOUT 360)
+        add_test(NAME ball_action_actual_production COMMAND cm-ball-action-production-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-action-production-checks")
+        add_test(NAME ball_action_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+            $<TARGET_FILE:cm-ball-action-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+            "${CMAKE_BINARY_DIR}/ball-action-profile-checks" "${CMAKE_BINARY_DIR}/ball-action-live-profile.snapshot")
+        set_tests_properties(ball_action_actual_production PROPERTIES FIXTURES_SETUP BallActionLiveProfile TIMEOUT 240)
+        set_tests_properties(ball_action_original_profile PROPERTIES FIXTURES_REQUIRED BallActionLiveProfile TIMEOUT 180)
+        add_test(NAME ball_action_nonlocal_transfer COMMAND cm-ball-action-transfer-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-action-transfer-checks")
+        set_tests_properties(ball_action_nonlocal_transfer PROPERTIES TIMEOUT 180)
         add_test(NAME player_movement_actual_production COMMAND cm-player-movement-production-checks
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-movement-production-checks")
         add_test(NAME player_movement_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
