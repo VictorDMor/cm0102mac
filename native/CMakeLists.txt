@@ -210,6 +210,34 @@ set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     # Independent original components retain every site without productive hooks.
+    set(CM_BALL_CONTACT_FACADE_REFERENCE "${CMAKE_BINARY_DIR}/ball_contact_facade_reference.cpp")
+    add_custom_command(OUTPUT "${CM_BALL_CONTACT_FACADE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_BALL_CONTACT_FACADE_REFERENCE}" --component facades
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/ball_contact_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
+        VERBATIM)
+    add_executable(cm-ball-contact-facade-checks ball_contact_facade_checks.cpp ball_contact_facades.cpp "${CM_BALL_CONTACT_FACADE_REFERENCE}")
+    target_link_libraries(cm-ball-contact-facade-checks PRIVATE cm_aot)
+    target_compile_options(cm-ball-contact-facade-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME ball_contact_facade_equivalence COMMAND cm-ball-contact-facade-checks)
+    set(CM_BALL_CONTACT_FAILURE_REFERENCE "${CMAKE_BINARY_DIR}/ball_contact_failure_reference.cpp")
+    add_custom_command(OUTPUT "${CM_BALL_CONTACT_FAILURE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_BALL_CONTACT_FAILURE_REFERENCE}" --component failure
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/ball_contact_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
+        VERBATIM)
+    add_executable(cm-ball-contact-failure-checks ball_contact_failure_checks.cpp ball_contact_failure.cpp "${CM_BALL_CONTACT_FAILURE_REFERENCE}")
+    target_link_libraries(cm-ball-contact-failure-checks PRIVATE cm_aot)
+    target_compile_options(cm-ball-contact-failure-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME ball_contact_failure_equivalence COMMAND cm-ball-contact-failure-checks)
     set(CM_BALL_ACTION_COMPONENT_DIR "${CMAKE_BINARY_DIR}/ball-action-components")
     set(CM_BALL_ACTION_COMPONENT_REFERENCES)
     foreach(component IN ITEMS preparation orientation facing area elevated low selected contact contact_resolution contact_outcome execution execution_message receiver receiver_outcome result result_message result_resolution result_outcome unopposed final_preparation special_effects regular_effects success_reaction failed_preparation failed_message failed_comment failed_fallback receiver_selection receiver_sampling receiver_marker receiver_position receiver_assessment receiver_effects receiver_final_reaction missing_receiver return)

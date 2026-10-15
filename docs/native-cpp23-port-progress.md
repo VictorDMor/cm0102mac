@@ -19,6 +19,12 @@ match executes 444 C++23 actions against 444 original controls with identical
 final state and per-tick accounting. Installed Debugger completion also passes.
 Contact dependencies and the rest of the engine remain under reconstruction.
 
+The next [ball-contact block](native-ball-contact-reconstruction.md) has component
+implementations for five of six entries: four argument facades and the complete
+failed-contact reaction. All 639 implemented original instructions have 21,463
+normal/UBSAN comparisons; the 1,404-instruction description and whole-block
+production acceptance remain open. The installed manifest stays at **678**.
+
 The preceding [team-line reconstruction](native-team-line-reconstruction.md) added
 five complete operations: tactical flags, their line-adjustment query, two
 column-limit queries and the opposing row-lane scan. That checkpoint brought the manifest to
