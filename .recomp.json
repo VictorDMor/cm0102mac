@@ -1,15 +1,20 @@
 {
   "$schema": "https://recomp.fyi/schema/v1.json",
   "game": "Championship Manager 01/02",
+  "wikidata": "Q1037535",
   "system": "Mac",
   "type": "recomp",
+  "original": {
+    "revision": "3.9.62",
+    "sha1": "a767c5b8edc139598c28afb16e404435d4877024"
+  },
   "project": "CM 01/02 for Apple Silicon",
   "status": "playable",
   "targets": [
     "macOS"
   ],
   "toolchain": "CM0102 AOT",
-  "approach": "Ghidra-based PowerPC-to-C++ static recompilation, native ARM64 macOS bridges, and incremental C++23 reconstruction.",
+  "approach": "PowerPC Mac PEF statically recompiled through Ghidra to native ARM64, with AppKit integration and incremental C++23 routine reconstruction.",
   "maintainers": [
     {
       "name": "VictorDMor",
@@ -18,18 +23,37 @@
   ],
   "links": [
     {
-      "label": "Port status",
+      "label": "Features and requirements",
+      "url": "https://github.com/VictorDMor/cm0102mac#readme"
+    },
+    {
+      "label": "Supported original release",
+      "url": "https://github.com/VictorDMor/cm0102mac#supported-original-release"
+    },
+    {
+      "label": "Port status and limitations",
       "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-port-status.md"
     },
     {
-      "label": "C++23 progress",
+      "label": "C++23 reconstruction progress",
       "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-cpp23-port-progress.md"
+    },
+    {
+      "label": "Match Debugger",
+      "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-match-debugger-application.md"
+    },
+    {
+      "label": "Build and architecture",
+      "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/aot-port.md"
     }
   ],
   "tags": [
     "apple-silicon",
+    "native-arm64",
     "powerpc",
-    "c++23"
+    "c++23",
+    "classic-mac",
+    "football-management"
   ],
-  "notes": "Playable development build for Apple Silicon. Local checks cover career creation/loading, club management, date advancement, complete matches, saving and reloading. Reconstruction remains incomplete; much of the simulation still uses generated code. Multiplayer and some services are unfinished. No public binary release yet."
+  "notes": "Apple Silicon / macOS 13+. Verified local gameplay: career creation/loading, club and player screens, date advancement, full matches, return to management, saving and reloading. Native interface scaling, keyboard commands and audio. Separate Match Debugger offers seeded simulations, substitutions, events and rewind/redo. 678 reconstructed C++23 entry points; remaining routines use generated code. Incomplete: multiplayer and some services are unsupported. Requires the original Mac 3.9.62 release and a local build; no public binary release yet."
 }

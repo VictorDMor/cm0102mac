@@ -43,6 +43,39 @@ artifacts are excluded. **You must supply your own original Mac release.** The
 Windows executable is not supported by this pipeline. Original game content
 remains the property of its respective owners.
 
+## Supported original release
+
+The current pipeline supports the **original PowerPC Mac version 3.9.62**,
+published on Macintosh by Feral Interactive. Both `vers` resources in the audited
+executable identify version 3.9.62. The installer checks the executable and its
+resource fork before copying game data.
+
+| Original executable | Expected value |
+| --- | --- |
+| File | `Championship Manager/CM 01-02` |
+| Data fork size | 9,394,972 bytes |
+| Data fork SHA-1 | `a767c5b8edc139598c28afb16e404435d4877024` |
+| Data fork SHA-256 | `91692f95df17cf851e7c1d6dbdecd0bd0a5809ce1937133e209aee859a6b516b` |
+| Resource fork SHA-256 | `1f4ae4f499d43f163b9153026939b19a2ad022a8b4181690ba7b1b49cf5e551c` |
+
+These hashes identify the executable's forks, not a disc image or a native build.
+The game is catalogued as
+[Championship Manager: Season 01/02 (Wikidata Q1037535)](https://www.wikidata.org/wiki/Q1037535).
+Other original releases, Windows executables and community patches have not
+been accepted as inputs to this pipeline.
+
+## Features and current limits
+
+| Area | Verified behavior and limits |
+| --- | --- |
+| Career play | Create/load a career, manage a club, inspect players and competitions, advance dates, play complete matches and return to management |
+| Persistence | Normal save, exit, reopen and reload have passed in local use; individual later subsystem reports state when persistence was not retested |
+| macOS presentation | Native text/control drawing, 100–200% interface scaling and Fit to Screen, keyboard commands and audio |
+| Match Debugger | Separate native application with seeded matches, player/event inspection, substitutions and rewind/redo; its full product contract remains incomplete |
+| Reconstruction | 678 accepted C++23 entry points coexist with statically generated original routines; this count is not a completion percentage |
+| Availability | Developer source workflow for Apple Silicon / macOS 13+; your original Mac files and local compilation are required |
+| Remaining work | Multiplayer and some services remain unsupported; the whole game port is unfinished and no public binary release is available |
+
 ## Developer build
 
 The current workflow targets **Apple Silicon and macOS 13 or later**. It requires
