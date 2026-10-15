@@ -32,7 +32,11 @@ COMPONENTS = {'preparation': (ENTRY, 0x1023d184), 'orientation': (0x1023d184, 0x
               'final_preparation': (0x102425f4, 0x102426c8),
               'special_effects': (0x102426c8, 0x10242cc0),
               'regular_effects': (0x10242cc0, 0x10242f3c),
-              'success_reaction': (0x10242f3c, 0x102433d4)}
+              'success_reaction': (0x10242f3c, 0x102433d4),
+              'failed_preparation': (0x102433d4, 0x1024366c),
+              'failed_message': (0x1024366c, 0x1024389c),
+              'failed_comment': (0x1024389c, 0x102439d0),
+              'failed_fallback': (0x102439d0, 0x10243ba4)}
 
 
 def render_reference(records, userops, component):
@@ -78,6 +82,12 @@ def main():
             '#pragma once\n#include <array>\n#include <cstdint>\n'
             'inline constexpr std::array<std::uint32_t,57> original_result_message_table{{' +
             ','.join(f'0x{word:08x}' for word in tables[0x10241470]) + '}};\n')
+    if args.component == 'failed_message':
+        source='#pragma once\n#include <array>\n#include <cstdint>\n'
+        for name,site in [('action',0x1024368c),('comment',0x10243918),('fallback',0x102439f0)]:
+            words=tables[site]
+            source+=f'inline constexpr std::array<std::uint32_t,{len(words)}> original_failed_{name}_table{{{{'+','.join(f'0x{word:08x}' for word in words)+'}};\n'
+        (args.output.parent/'failed-message-tables.hpp').write_text(source)
     start, end = COMPONENTS[args.component]
     print(f'Emitted {(end-start)//4} original {args.component} instructions; complete ball-action body and five tables pinned')
 

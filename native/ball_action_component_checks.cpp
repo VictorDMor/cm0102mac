@@ -3,10 +3,12 @@
 #include <set>
 #include "execution-message-table.hpp"
 #include "result-message-table.hpp"
+#include "failed-message-tables.hpp"
 
 namespace cm::aot { bool ball_action_preparation_reference(State&);bool ball_action_orientation_reference(State&);bool ball_action_facing_reference(State&);bool ball_action_area_reference(State&);bool ball_action_elevated_reference(State&);bool ball_action_low_reference(State&);bool ball_action_selected_reference(State&);bool ball_action_contact_reference(State&);bool ball_action_contact_resolution_reference(State&);bool ball_action_contact_outcome_reference(State&);bool ball_action_execution_reference(State&);bool ball_action_execution_message_reference(State&);bool ball_action_receiver_reference(State&);bool ball_action_receiver_outcome_reference(State&);bool ball_action_result_reference(State&);bool ball_action_result_message_reference(State&);bool ball_action_result_resolution_reference(State&); }
 namespace cm::aot { bool ball_action_result_outcome_reference(State&);bool ball_action_unopposed_reference(State&); }
 namespace cm::aot { bool ball_action_final_preparation_reference(State&);bool ball_action_special_effects_reference(State&);bool ball_action_regular_effects_reference(State&);bool ball_action_success_reaction_reference(State&); }
+namespace cm::aot { bool ball_action_failed_preparation_reference(State&);bool ball_action_failed_message_reference(State&);bool ball_action_failed_comment_reference(State&);bool ball_action_failed_fallback_reference(State&); }
 namespace {
 using namespace cm::semantic_io_checks;
 namespace action=cm::aot::ball_action;
@@ -17,6 +19,7 @@ constexpr auto execution_table=fixture+0x12d00;
 constexpr auto result_table=fixture+0xc00;
 constexpr auto restart_player=actor+0xa00;
 constexpr auto actor_profile=fixture+0x400,receiver_profile=fixture+0x500;
+constexpr auto failed_table=fixture+0x10000,failed_comment_table=failed_table+0x100,failed_fallback_table=failed_table+0x200;
 struct Options {
     unsigned interrupt=0,force_wide=0;
     unsigned adjustment=0;int adjustment_wide=0;
@@ -36,6 +39,8 @@ struct Options {
     std::array<std::uint32_t,3> receiver_kinds{};
     std::uint32_t final_gate=1,regular_gate=1,regular_second_gate=1;
     bool mutate_final=false,zero_special_interval=false;
+    std::uint32_t failed_result=1;
+    std::int32_t mutate_failed_slot=0;
     bool mutate_execution=false,mutate_table=false,mutate_result=false,mutate_result_table=false;
     double distance=25.25;
 };
@@ -83,6 +88,8 @@ struct Trace final:SemanticGuestObserver {
         if(options.force_wide==34&&pc==0x10242f9c)s.wr<4>(56,std::uint32_t(-65536));
         if(options.force_wide==35&&pc==0x10243258)s.wr<4>(52,65536);
         if(options.force_wide==36&&pc==0x10243268)s.wr<4>(52,std::uint32_t(-65536));
+        if(options.force_wide==37&&pc==0x10243440)s.wr<4>(64,65536);
+        if(options.force_wide==38&&pc==0x10243450)s.wr<4>(64,std::uint32_t(-65536));
         if(options.zero_special_interval&&pc==0x10242a98)s.wr<4>(12,std::uint32_t(-70));
         if(options.zero_elevated_threshold&&pc==0x1023dc74)s.wr<4>(68,std::uint32_t(-70));
         if(options.adjustment_wide) {
@@ -99,21 +106,25 @@ struct Model final:SemanticDependencyDispatch {
     bool original;Options options;unsigned phase;std::vector<Event> calls;
     Model(bool old,Options value,unsigned part):original(old),options(value),phase(part){}
     void reference(State& s) {
-        if(phase==21||phase==29) {
-            const auto start=phase==21?action::execution_message_phase:action::result_message_phase;
-            const auto finish=phase==21?action::receiver_resolution_phase:action::result_resolution_phase;
+        if(phase==21||phase==29||phase==47||phase==49||phase==51) {
+            auto start=action::execution_message_phase,finish=action::receiver_resolution_phase;auto reference=ball_action_execution_message_reference;
+            if(phase==29){start=action::result_message_phase;finish=action::result_resolution_phase;reference=ball_action_result_message_reference;}
+            if(phase==47){start=action::failed_message_phase;finish=action::failed_comment_phase;reference=ball_action_failed_message_reference;}
+            if(phase==49){start=action::failed_comment_phase;finish=action::failed_fallback_phase;reference=ball_action_failed_comment_reference;}
+            if(phase==51){start=action::failed_fallback_phase;finish=action::failed_outcome_phase;reference=ball_action_failed_fallback_reference;}
             for(;;) {
                 if(s.pc>=start&&s.pc<finish)
-                    require(phase==21?ball_action_execution_message_reference(s):ball_action_result_message_reference(s),"Missing original ball-action message");
-                else if(s.pc==0x10201180&&s.r<4>(4128)>start&&s.r<4>(4128)<=finish)
+                    require(reference(s),"Missing original ball-action message");
+                else if((s.pc==0x10201180||s.pc==0x1077b770||s.pc==0x10270320)&&s.r<4>(4128)>start&&s.r<4>(4128)<=finish)
                     call(s,s.pc,std::uint32_t(s.r<4>(4128)));
                 else return;
             }
         }
-        const auto done=phase>=43?action::return_phase:phase>=39?action::success_reaction_phase:phase>=37?action::final_effects_phase:phase>=35?action::no_receiver_phase:phase>=33?action::return_phase:phase>=31?action::result_outcome_phase:phase>=29?action::result_resolution_phase:phase>=27?action::result_message_phase:phase>=25?action::return_phase:phase>=23?action::receiver_outcome_phase:phase>=21?action::receiver_resolution_phase:phase>=19?action::execution_message_phase:phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase>=1?action::action_bias_phase:action::orientation_phase;
+        const auto done=phase>=49?action::failed_outcome_phase:phase>=47?action::failed_comment_phase:phase>=45?action::failed_message_phase:phase>=43?action::return_phase:phase>=39?action::success_reaction_phase:phase>=37?action::final_effects_phase:phase>=35?action::no_receiver_phase:phase>=33?action::return_phase:phase>=31?action::result_outcome_phase:phase>=29?action::result_resolution_phase:phase>=27?action::result_message_phase:phase>=25?action::return_phase:phase>=23?action::receiver_outcome_phase:phase>=21?action::receiver_resolution_phase:phase>=19?action::execution_message_phase:phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase>=1?action::action_bias_phase:action::orientation_phase;
         while(s.pc!=done&&!(phase>=5&&phase<=10&&s.pc==action::selected_action_phase)&&!(phase>=13&&phase<=18&&s.pc==action::action_execution_phase)
               &&!(phase>=19&&(s.pc==action::return_phase||(phase<=36&&s.pc==action::no_receiver_phase)||(phase<=26&&s.pc==action::execution_result_phase)||(phase>=27&&phase<=34&&s.pc==action::unopposed_result_phase)))
-              &&!(phase>=37&&(s.pc==action::unsuccessful_action_phase||(phase<=40&&s.pc==action::regular_effects_phase)))) {
+              &&!(phase>=37&&((phase<=44&&s.pc==action::unsuccessful_action_phase)||(phase<=40&&s.pc==action::regular_effects_phase)))
+              &&!(phase>=45&&(s.pc==action::missing_receiver_phase||s.pc==action::failed_outcome_phase||(phase<=50&&s.pc==action::failed_fallback_phase)))) {
             if(s.pc>=action::entry&&s.pc<action::orientation_phase)
                 require(ball_action_preparation_reference(s),"Missing original ball-action preparation");
             else if(s.pc>=action::orientation_phase&&s.pc<action::action_bias_phase)
@@ -160,6 +171,14 @@ struct Model final:SemanticDependencyDispatch {
                 require(ball_action_regular_effects_reference(s),"Missing original ball-action regular effects");
             else if(s.pc>=action::success_reaction_phase&&s.pc<action::unsuccessful_action_phase)
                 require(ball_action_success_reaction_reference(s),"Missing original ball-action success reaction");
+            else if(s.pc>=action::unsuccessful_action_phase&&s.pc<action::failed_message_phase)
+                require(ball_action_failed_preparation_reference(s),"Missing original ball-action failed preparation");
+            else if(s.pc>=action::failed_message_phase&&s.pc<action::failed_comment_phase)
+                require(ball_action_failed_message_reference(s),"Missing original ball-action failed message");
+            else if(s.pc>=action::failed_comment_phase&&s.pc<action::failed_fallback_phase)
+                require(ball_action_failed_comment_reference(s),"Missing original ball-action failed comment");
+            else if(s.pc>=action::failed_fallback_phase&&s.pc<action::failed_outcome_phase)
+                require(ball_action_failed_fallback_reference(s),"Missing original ball-action failed fallback");
             else call(s,s.pc,std::uint32_t(s.r<4>(4128)));
         }
     }
@@ -281,6 +300,7 @@ struct Model final:SemanticDependencyDispatch {
         case 0x102721a0:result=options.regular_second_gate;break;
         case 0x102775e0:s.memory.write<4>(globals+0x26c,s.r<4>(12)^unsigned(options.child_negative&&!original&&phase==43));break;
         case 0x102865a0:s.memory.write<4>(globals+0x270,float_bits<4>(float_value<8>(s.r<8>(0x4010))));break;
+        case 0x10270320:result=options.failed_result^unsigned(options.child_negative&&!original&&phase==51);break;
         default:throw std::runtime_error("Unknown ball-action dependency "+hex_address(target));
         }
         for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xac000000+n*17);
@@ -308,7 +328,7 @@ std::unique_ptr<State> seed() {
     return s;
 }
 unsigned cases=0,completed=0,interruptions=0,negatives=0,structural=0;
-std::array<unsigned,45> phase_cases{},phase_completed{};
+std::array<unsigned,53> phase_cases{},phase_completed{};
 std::set<std::uint32_t> sites;
 struct Result {std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
 Result compare(const State& input,Options options={},unsigned phase=0) {
@@ -323,6 +343,10 @@ Result compare(const State& input,Options options={},unsigned phase=0) {
     }
     if(options.mutate_result_table) {
         auto edit=[](State& s,Effects& e,std::uint32_t at,unsigned){if(at==toc-0x5208&&!e.mutated){e.mutated=true;s.memory.write<4>(at,result_table+0x200);}};
+        x.on_read=edit;y.on_read=edit;
+    }
+    if(options.mutate_failed_slot) {
+        auto edit=[slot=options.mutate_failed_slot](State& s,Effects& e,std::uint32_t at,unsigned){if(at==toc+slot&&!e.mutated){e.mutated=true;s.memory.write<4>(at,(slot==-0x520c?failed_table:slot==-0x5210?failed_comment_table:failed_fallback_table)+0x400);}};
         x.on_read=edit;y.on_read=edit;
     }
     a->memory.date_observer=&x;b->memory.date_observer=&y;Trace old_trace(options),new_trace(options);
@@ -352,6 +376,10 @@ Result compare(const State& input,Options options={},unsigned phase=0) {
             if((phase==39||(prefix&&phase>=40))&&s.pc==action::final_effects_phase)action::complete_special_action(s,&m,&new_trace);
             if((phase==41||(prefix&&phase>=42))&&s.pc==action::regular_effects_phase)action::complete_regular_action(s,&m,&new_trace);
             if((phase==43||(prefix&&phase>=44))&&s.pc==action::success_reaction_phase)action::react_to_completed_action(s,&m,&new_trace);
+            if((phase==45||(prefix&&phase>=46))&&s.pc==action::unsuccessful_action_phase)action::prepare_failed_action(s,&m,&new_trace);
+            if(phase==47||(prefix&&phase>=48&&s.pc==action::failed_message_phase))action::describe_failed_action(s,&m,&new_trace);
+            if(phase==49||(prefix&&phase>=50&&s.pc==action::failed_comment_phase))action::describe_failed_comment(s,&m,&new_trace);
+            if(phase==51||(prefix&&phase>=52&&s.pc==action::failed_fallback_phase))action::describe_failed_fallback(s,&m,&new_trace);
         }}
         catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}original_trace=nullptr;return std::string{};};
     const auto expected=run(*a,old,true),actual=run(*b,modern,false);a->memory.date_observer=b->memory.date_observer=nullptr;
@@ -500,6 +528,17 @@ std::unique_ptr<State> final_seed() {
 std::unique_ptr<State> special_effects_seed() {auto s=final_seed();s->pc=action::final_effects_phase;s->wr<4>(88,4);return s;}
 std::unique_ptr<State> regular_effects_seed() {auto s=final_seed();s->pc=action::regular_effects_phase;s->wr<4>(88,1);return s;}
 std::unique_ptr<State> success_reaction_seed() {auto s=final_seed();s->pc=action::success_reaction_phase;s->wr<4>(88,4);s->memory.write<2>(actor+0x1a0,200);return s;}
+std::unique_ptr<State> failed_seed() {
+    auto s=final_seed();s->pc=action::unsuccessful_action_phase;s->memory.write<1>(recipient+0x105,4);s->memory.write<1>(recipient+0x106,10);
+    s->memory.write<2>(recipient+0x32,65516);s->memory.write<4>(globals,18);s->memory.write<1>(stack-0x150+0x48,45);
+    s->memory.write<4>(toc-0x520c,failed_table);s->memory.write<4>(toc-0x5210,failed_comment_table);s->memory.write<4>(toc-0x5214,failed_fallback_table);
+    const auto copy=[&](auto table,const auto& values){for(unsigned n=0;n<values.size();++n){s->memory.write<4>(table+n*4,values[n]);s->memory.write<4>(table+0x400+n*4,values[values.size()-1-n]);}};
+    copy(failed_table,original_failed_action_table);copy(failed_comment_table,original_failed_comment_table);copy(failed_fallback_table,original_failed_fallback_table);
+    s->memory.write<4>(singles+0xe4,float_bits<4>(1));s->memory.write<4>(recipient+0xb0,float_bits<4>(2));s->memory.write<4>(actor+0xb0,float_bits<4>(5));return s;
+}
+std::unique_ptr<State> failed_message_seed() {auto s=failed_seed();s->pc=action::failed_message_phase;return s;}
+std::unique_ptr<State> failed_comment_seed() {auto s=failed_seed();s->pc=action::failed_comment_phase;return s;}
+std::unique_ptr<State> failed_fallback_seed() {auto s=failed_seed();s->pc=action::failed_fallback_phase;return s;}
 }
 namespace cm::aot {void ball_action_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
 int main(){try {
@@ -1440,8 +1479,77 @@ int main(){try {
         if(phase==44)require(result.state->pc==action::return_phase&&std::any_of(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x102775e0;}),"Original-root prefix reaches completed special-action reaction");
         boundaries(*s,o,phase);
     }
-    for(auto pc=action::entry;pc<action::unsuccessful_action_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==6573,"All original ball-action preparation through completed-action reaction sites covered");
+    for(auto gate:{0u,1u,0x100u,0x1ffu})for(auto blocked:{0u,1u,128u,255u})for(auto trait:{0u,1u,20u,32768u,65516u,65535u}) {
+        auto s=failed_seed();s->memory.write<1>(stack-0x150+0x42,blocked);s->memory.write<2>(recipient+0x32,trait);Options o;o.contact_end_gate=gate;compare(*s,o,45);
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{0u,1u,2u,4u,6u,7u,128u})for(auto column:{0u,1u,2u,9u,10u,11u,12u,128u}) {
+        auto s=failed_seed();s->memory.write<1>(recipient+0x27,side);s->memory.write<1>(recipient+0x105,row);s->memory.write<1>(recipient+0x106,column);Options o;o.contact_end_gate=1;
+        auto result=compare(*s,o,45);const bool area=row>=2&&row<=6&&(side==1?(column>=10&&column<=11):column<=1);
+        require(result.state->pc==(area?action::failed_message_phase:action::failed_fallback_phase),"Failed area report uses the receiver's raw side and coordinates before its even random gate");
+    }
+    for(auto gate:{0u,1u})for(auto blocked:{0u,1u})for(auto trait:{0u,32768u,65516u})for(auto random:{16u,17u,18u}) {
+        auto s=failed_seed();s->memory.write<1>(stack-0x150+0x42,blocked);s->memory.write<2>(recipient+0x32,trait);s->memory.write<4>(globals,random);Options o;o.contact_end_gate=gate;boundaries(*s,o,45);
+    }
+    for(auto wide:{37u,38u})for(auto sampled:{-100000,0,10000000}){Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*failed_seed(),o,45);}
+    for(auto cursor:{stream+124,stream+126})for(auto gate:{0u,1u}){auto s=failed_seed();s->memory.write<4>(globals+8,cursor);Options o;o.contact_end_gate=gate;boundaries(*s,o,45);}
+    {auto s=failed_seed();s->wr<4>(56,0);auto result=compare(*s,{},45);require(result.calls.empty()&&result.state->pc==action::missing_receiver_phase,"Null failed receiver transfers to the original diagnostic tail");boundaries(*s,{},45);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*failed_seed(),o,45);}
+    const std::array<std::pair<std::uint32_t,unsigned>,12> failed_messages{{
+        {0x10243690,0x1fea},{0x102436bc,0x1feb},{0x102436e8,0x1fec},{0x10243714,0x1fed},
+        {0x10243740,0x1fee},{0x1024376c,0x1ff2},{0x10243798,0x1fef},{0x102437c4,0x1ff1},
+        {0x102437f0,0x1ff0},{0x1024381c,0x1ff3},{0x10243848,0x1ff4},{0x10243874,0x1fe9}}};
+    for(unsigned kind=0;kind<256;++kind) {
+        auto s=failed_message_seed();s->memory.write<1>(stack-0x150+0x48,kind);auto result=compare(*s,{},47);const auto target=kind<=46?original_failed_action_table[kind]:0x10243874;
+        const auto expected=std::find_if(failed_messages.begin(),failed_messages.end(),[&](const auto& v){return v.first==target;})->second;
+        require(result.calls.size()==1&&read_be<4>(result.calls[0].before.data()+16)==expected,"Failed action table selects its original receiver-first message");
+    }
+    for(unsigned index=0;index<47;++index)for(auto [target,message]:failed_messages){auto s=failed_message_seed();s->memory.write<1>(stack-0x150+0x48,index);s->memory.write<4>(failed_table+index*4,target);auto result=compare(*s,{},47);require(read_be<4>(result.calls[0].before.data()+16)==message,"Mutable failed action table overrides canonical mapping");}
+    for(auto [target,message]:failed_messages){auto s=failed_message_seed();s->memory.write<4>(failed_table+45*4,target);boundaries(*s,{},47);s->pc=target;auto result=compare(*s,{},47);require(read_be<4>(result.calls[0].before.data()+16)==message,"Direct failed message skips its table read");boundaries(*s,{},47);}
+    for(auto target:{0u,action::failed_outcome_phase,action::return_phase,action::missing_receiver_phase,0x12345679u}){auto s=failed_message_seed();s->memory.write<4>(failed_table+45*4,target);auto result=compare(*s,{},47);require(result.calls.empty()&&result.state->pc==target,"Unknown failed message target remains a continuation");boundaries(*s,{},47);}
+    for(auto pointer:{0u,failed_table+1,failed_table+0x400,toc-0x520c,stack-0x150}){auto s=failed_message_seed();s->memory.write<4>(toc-0x520c,pointer);compare(*s,{},47);}
+    for(auto kind:{47u,128u,255u}){auto s=failed_message_seed();s->memory.write<1>(stack-0x150+0x48,kind);s->memory.write<4>(toc-0x520c,0);boundaries(*s,{},47);}
+    {Options o;o.mutate_failed_slot=-0x520c;boundaries(*failed_message_seed(),o,47);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*failed_message_seed(),o,47);}
+    const std::array<std::pair<std::uint32_t,unsigned>,3> failed_comments{{{0x1024391c,0x20eb},{0x10243958,0x20ea},{0x10243994,0x20e8}}};
+    for(unsigned state=0;state<256;++state)for(unsigned draw=0;draw<50;++draw) {
+        auto s=failed_comment_seed();s->wr<4>(88,0xabcd0000|state);s->memory.write<4>(globals,0);s->memory.write<2>(stream+2,draw);auto result=compare(*s,{},49);
+        if(signed_value<1>(state)>=4)require(result.calls.empty()&&result.state->pc==action::failed_outcome_phase,"Signed state four or higher skips the failed comment and random consumption");
+        else {const auto target=draw<=9?original_failed_comment_table[draw]:0x10243994;const auto expected=std::find_if(failed_comments.begin(),failed_comments.end(),[&](const auto& v){return v.first==target;})->second;require(result.calls.size()==1&&read_be<4>(result.calls[0].before.data()+16)==expected,"Random fiftieth selects the ten-word failed comment table or default");}
+    }
+    for(unsigned index=0;index<10;++index)for(auto [target,message]:failed_comments){auto s=failed_comment_seed();s->memory.write<4>(globals,0);s->memory.write<2>(stream+2,index);s->memory.write<4>(failed_comment_table+index*4,target);auto result=compare(*s,{},49);require(read_be<4>(result.calls[0].before.data()+16)==message,"Mutable failed-comment table selects each message at every live index");boundaries(*s,{},49);}
+    for(auto [target,message]:failed_comments){auto s=failed_comment_seed();s->pc=target;auto result=compare(*s,{},49);require(read_be<4>(result.calls[0].before.data()+16)==message,"Direct failed comment skips its random and table reads");boundaries(*s,{},49);}
+    for(auto side:{0u,1u,2u,128u,255u}){auto s=failed_comment_seed();s->memory.write<1>(recipient+0x27,side);auto result=compare(*s,{},49);require(read_be<4>(result.calls[0].before.data()+28)==unsigned(side==0),"Failed comment uses the receiver's inverted side");}
+    for(auto random:{0u,0x7fffffffu,0x80000000u,0xffffffffu}){auto s=failed_comment_seed();s->memory.write<4>(globals,random);boundaries(*s,{},49);}
+    {auto s=failed_comment_seed();s->memory.write<4>(globals+8,stream+126);boundaries(*s,{},49);}
+    for(auto pointer:{0u,failed_comment_table+1,failed_comment_table+0x400,toc-0x5210,stack-0x150}){auto s=failed_comment_seed();s->memory.write<4>(globals,0);s->memory.write<2>(stream+2,0);s->memory.write<4>(toc-0x5210,pointer);compare(*s,{},49);}
+    {auto s=failed_comment_seed();s->memory.write<4>(globals,0);s->memory.write<2>(stream+2,0);Options o;o.mutate_failed_slot=-0x5210;boundaries(*s,o,49);}
+    for(auto target:{0u,action::failed_outcome_phase,action::failed_fallback_phase,action::return_phase,0x12345679u}){auto s=failed_comment_seed();s->memory.write<4>(globals,0);s->memory.write<2>(stream+2,0);s->memory.write<4>(failed_comment_table,target);auto result=compare(*s,{},49);require(result.state->pc==target&&result.calls.empty(),"Unknown failed comment target remains a continuation");boundaries(*s,{},49);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*failed_comment_seed(),o,49);}
+    const std::array<std::uint32_t,9> fallback_targets{{0x102439f4,0x10243a14,0x10243a40,0x10243a6c,0x10243a98,0x10243ac4,0x10243b50,0x10243b7c,action::failed_outcome_phase}};
+    for(unsigned kind=0;kind<256;++kind){auto s=failed_fallback_seed();s->memory.write<1>(stack-0x150+0x48,kind);compare(*s,{},51);}
+    for(unsigned index=0;index<47;++index)for(auto target:fallback_targets){auto s=failed_fallback_seed();s->memory.write<1>(stack-0x150+0x48,index);s->memory.write<4>(failed_fallback_table+index*4,target);compare(*s,{},51);}
+    for(auto target:fallback_targets){auto s=failed_fallback_seed();s->pc=target;boundaries(*s,{},51);if(target!=action::failed_outcome_phase){s->pc=action::failed_fallback_phase;s->memory.write<4>(failed_fallback_table+45*4,target);boundaries(*s,{},51);}}
+    for(auto result_value:{0u,1u,0x100u,0x1ffu})for(auto score:{0u,32767u,32768u,65535u})for(auto rating:{0u,32767u,32768u,65535u}) {
+        auto s=failed_fallback_seed();s->pc=0x102439f4;s->wr<4>(68,0xabcd0000|score);s->memory.write<2>(stack-0x150+0x4a,rating);Options o;o.failed_result=result_value;auto result=compare(*s,o,51);
+        require(result.state->pc==((result_value&255)?action::failed_outcome_phase:action::return_phase),"Failed fallback respects the low-byte receiver result and its early return");
+        require(read_be<4>(result.calls[0].before.data()+16)==std::uint32_t(signed_value<2>(rating-score)),"Failed receiver dependency receives the signed narrowed rating-minus-score difference");
+    }
+    for(auto field:{0u,1u,2u})for(auto bits:{0u,0x80000000u,0x3f800000u,0x40000000u,0x7f800000u,0xff800000u,0x7fc12345u,0x7f812345u}) {
+        auto s=failed_fallback_seed();s->pc=0x10243ac4;s->memory.write<4>(field==0?singles+0xe4:field==1?recipient+0xb0:actor+0xb0,bits);boundaries(*s,{},51);
+    }
+    for(auto random:{0u,1u,17u,0x7fffffffu,0x80000000u,0xffffffffu}){auto s=failed_fallback_seed();s->pc=0x10243ac4;s->memory.write<4>(globals,random);compare(*s,{},51);}
+    {auto s=failed_fallback_seed();s->pc=0x10243ac4;s->memory.write<4>(globals+8,stream+126);boundaries(*s,{},51);}
+    for(auto pointer:{0u,failed_fallback_table+1,failed_fallback_table+0x400,toc-0x5214,stack-0x150}){auto s=failed_fallback_seed();s->memory.write<4>(toc-0x5214,pointer);compare(*s,{},51);}
+    {Options o;o.mutate_failed_slot=-0x5214;boundaries(*failed_fallback_seed(),o,51);}
+    for(auto kind:{47u,128u,255u}){auto s=failed_fallback_seed();s->memory.write<1>(stack-0x150+0x48,kind);s->memory.write<4>(toc-0x5214,0);boundaries(*s,{},51);}
+    for(auto target:{0u,action::missing_receiver_phase,action::return_phase,0x12345679u}){auto s=failed_fallback_seed();s->memory.write<4>(failed_fallback_table+45*4,target);auto result=compare(*s,{},51);require(result.state->pc==target&&result.calls.empty(),"Unknown failed fallback target remains a continuation");boundaries(*s,{},51);}
+    for(bool child:{false,true}){auto s=failed_fallback_seed();s->pc=0x102439f4;Options o;o.own_negative=!child;o.child_negative=child;compare(*s,o,51);}
+    for(auto phase:{46u,48u,50u,52u})for(auto gate:{0u,1u}) {
+        auto s=failed_seed();s->pc=action::entry;s->wr<4>(4,stack);Options o;o.contact_result=0;o.execution_contact=0;o.result_contact=0;o.execution_rating=32767;o.contact_end_gate=gate;auto result=compare(*s,o,phase);
+        require(std::any_of(result.calls.begin(),result.calls.end(),[](const Event& e){return e.continuation==0x102433e8;}),"Original-root prefix enters failed-action receiver handling");boundaries(*s,o,phase);
+    }
+    for(auto pc=action::entry;pc<action::failed_outcome_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==7073,"All original ball-action preparation through failed-action tables covered");
     for(unsigned p=0;p<phase_cases.size();++p){require(phase_completed[p]>0,"Each ball-action phase completed");
         std::cout<<"Phase "<<p<<": "<<phase_cases[p]<<" comparisons, "<<phase_completed[p]<<" completions\n";}
     std::cout<<"PASS: "<<cases<<" ball-action component comparisons; "<<completed<<" phase completions, "<<interruptions

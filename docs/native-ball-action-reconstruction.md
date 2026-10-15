@@ -53,7 +53,11 @@ generated reference bodies and runtime artifacts remain outside version control.
 | Special state-four profiles, counters, receiver reaction and balance | `0x102426c8..0x10242cc0` | 382 |
 | Regular-action messages and balance | `0x10242cc0..0x10242f3c` | 159 |
 | Completed-action trigger, area gate and player reaction | `0x10242f3c..0x102433d4` | 294 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x102433d4`** | **6,573** |
+| Failed-action receiver/area gates and signed reaction sample | `0x102433d4..0x1024366c` | 166 |
+| Third live action-message table | `0x1024366c..0x1024389c` | 140 |
+| Live ten-word failed-comment table and default | `0x1024389c..0x102439d0` | 77 |
+| Live failed-fallback table, callback and floating comparison | `0x102439d0..0x10243ba4` | 117 |
+| **Validated contiguous prefix** | **`0x1023cd20..0x10243ba4`** | **7,073** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -145,6 +149,16 @@ covered by paired injections; they are not claimed as natural game paths.
 Four additional original-root prefixes reach these phases and compare all
 state, effects, source sites and instruction accounting.
 
+Failed-action preparation retains its null-receiver diagnostic continuation,
+dependency/blocked/signed-sample gates, receiver-area query and even random
+selection. Its three live tables preserve their separate 47/10/47-word extents,
+receiver-first and inverted-side message ABI, direct message entrances, altered
+targets and explicit continuations. The fallback callback receives the signed
+rating-minus-score difference and may return early; its alternative floating
+comparison preserves both single-precision additions/subtraction and their
+original order around the random sixth. All five coordinator tables now have
+component evidence. Whole-root continuation/production acceptance is still open.
+
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
 that record full register state before and after calls, clobber volatile
@@ -154,12 +168,12 @@ runtime acceptance.
 
 ## Component evidence
 
-The current check contains 345,190 comparisons:
+The current check contains 382,287 comparisons:
 
-- 46,474 successful component or prefix completions;
-- 298,670 instruction-budget, memory-hole or dependency interruptions;
-- 46 rejected own-result/dependency negative controls;
-- all 6,573 original instruction sites, including dormant branches;
+- 61,668 successful component or prefix completions;
+- 320,565 instruction-budget, memory-hole or dependency interruptions;
+- 54 rejected own-result/dependency negative controls;
+- all 7,073 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
@@ -171,7 +185,7 @@ interior edges, and the unchanged production manifest. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-36,254 of the comparisons configure paired checkpoint injections for dormant
+37,354 of the comparisons configure paired checkpoint injections for dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -185,10 +199,10 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x102433d4` with the unsuccessful-action receiver reaction and
-remaining reports. The remaining 1,569 original instructions, three further computed
-decision tables, tail/error paths and common return still require reconstruction
-and equivalence evidence.
+Continue at `0x10243ba4` with receiver selection, effects and remaining reports.
+The remaining 1,069 original instructions, diagnostic tail and common return
+still require reconstruction and equivalence evidence. No computed table remains
+unimplemented at the component level.
 
 Before installing the replacement, validate the complete root, nonlocal transfers
 and faults, hook its generated destination label, prove dedicated production
@@ -240,3 +254,9 @@ Release/UBSAN acceptance: seven files and 457,440,944 logical bytes. Available
 space increased by 458,780,672 bytes during cleanup. All 845 protected files,
 both signed ARM64 apps and the production library hash remained unchanged;
 diagnostic sources and evidence are retained.
+
+The failed-messages checkpoint removed both conformance executables and debug
+symbols after matching Release/UBSAN acceptance: five files and 315,254,804
+logical bytes. Available space increased by 315,035,648 bytes during cleanup.
+All 845 protected files, both signed ARM64 apps and the production library hash
+remained unchanged; source references and evidence are retained.

@@ -26,6 +26,11 @@ inline constexpr std::uint32_t final_effects_phase = 0x102426c8;
 inline constexpr std::uint32_t regular_effects_phase = 0x10242cc0;
 inline constexpr std::uint32_t success_reaction_phase = 0x10242f3c;
 inline constexpr std::uint32_t unsuccessful_action_phase = 0x102433d4;
+inline constexpr std::uint32_t failed_message_phase = 0x1024366c;
+inline constexpr std::uint32_t failed_comment_phase = 0x1024389c;
+inline constexpr std::uint32_t failed_fallback_phase = 0x102439d0;
+inline constexpr std::uint32_t failed_outcome_phase = 0x10243ba4;
+inline constexpr std::uint32_t missing_receiver_phase = 0x10244bd8;
 inline constexpr std::uint32_t return_phase = 0x10244c38;
 inline constexpr std::uint32_t end = 0x10244c58;
 
@@ -54,4 +59,8 @@ void prepare_final_action(State&, SemanticDependencyDispatch* = nullptr, Semanti
 void complete_special_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void complete_regular_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void react_to_completed_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void prepare_failed_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void describe_failed_action(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void describe_failed_comment(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void describe_failed_fallback(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 }

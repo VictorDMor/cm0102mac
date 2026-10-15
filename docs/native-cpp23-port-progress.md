@@ -11,11 +11,10 @@ reconstructed engine are separate claims.
 
 The [ball-action coordinator](native-ball-action-reconstruction.md) remains a
 component-only candidate. Its contiguous reconstructed prefix now covers
-**6,573 of 8,142 original instructions**, including both execution-message
-tables, the second contact attempt/resolution/outcome, and unopposed receiver
-effects, final action preparation, special/regular effects and completed-action
-reaction. Independent comparisons cover all prefix source sites in 345,190 cases,
-with complete state, ordered effects, dependency ABI, faults and instruction
+**7,073 of 8,142 original instructions**, including all five live computed
+tables and the failed-action preparation/messages/fallback. Independent
+comparisons cover all prefix source sites in 382,287 cases, with complete
+state, ordered effects, dependency ABI, faults and instruction
 accounting. The production coordinator remains generated and the accepted
 manifest stays at **677**. The unsuccessful-action tail and whole-root production
 acceptance remain required.
