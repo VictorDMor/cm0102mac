@@ -44,4 +44,6 @@ void complete_receiver_contact(State&, SemanticDependencyDispatch* = nullptr, Se
 void prepare_execution_result(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void describe_execution_result(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void resolve_execution_result(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void complete_execution_result(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void complete_unopposed_execution(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 }

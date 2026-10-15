@@ -187,7 +187,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     # cm_aot and the app until the complete coordinator is accepted.
     set(CM_BALL_ACTION_COMPONENT_DIR "${CMAKE_BINARY_DIR}/ball-action-components")
     set(CM_BALL_ACTION_COMPONENT_REFERENCES)
-    foreach(component IN ITEMS preparation orientation facing area elevated low selected contact contact_resolution contact_outcome execution execution_message receiver receiver_outcome result result_message result_resolution)
+    foreach(component IN ITEMS preparation orientation facing area elevated low selected contact contact_resolution contact_outcome execution execution_message receiver receiver_outcome result result_message result_resolution result_outcome unopposed)
         set(reference "${CM_BALL_ACTION_COMPONENT_DIR}/${component}.cpp")
         set(table_header)
         if(component STREQUAL "execution_message")
@@ -212,6 +212,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         ball_action_contact.cpp ball_action_contact_resolution.cpp ball_action_contact_outcome.cpp
         ball_action_execution.cpp ball_action_execution_message.cpp ball_action_receiver.cpp ball_action_receiver_outcome.cpp
         ball_action_result.cpp ball_action_result_message.cpp ball_action_result_resolution.cpp
+        ball_action_result_outcome.cpp ball_action_unopposed.cpp
         ${CM_BALL_ACTION_COMPONENT_REFERENCES})
     target_include_directories(cm-ball-action-component-checks PRIVATE "${CM_BALL_ACTION_COMPONENT_DIR}")
     target_link_libraries(cm-ball-action-component-checks PRIVATE cm_aot)

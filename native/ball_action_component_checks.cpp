@@ -5,6 +5,7 @@
 #include "result-message-table.hpp"
 
 namespace cm::aot { bool ball_action_preparation_reference(State&);bool ball_action_orientation_reference(State&);bool ball_action_facing_reference(State&);bool ball_action_area_reference(State&);bool ball_action_elevated_reference(State&);bool ball_action_low_reference(State&);bool ball_action_selected_reference(State&);bool ball_action_contact_reference(State&);bool ball_action_contact_resolution_reference(State&);bool ball_action_contact_outcome_reference(State&);bool ball_action_execution_reference(State&);bool ball_action_execution_message_reference(State&);bool ball_action_receiver_reference(State&);bool ball_action_receiver_outcome_reference(State&);bool ball_action_result_reference(State&);bool ball_action_result_message_reference(State&);bool ball_action_result_resolution_reference(State&); }
+namespace cm::aot { bool ball_action_result_outcome_reference(State&);bool ball_action_unopposed_reference(State&); }
 namespace {
 using namespace cm::semantic_io_checks;
 namespace action=cm::aot::ball_action;
@@ -28,6 +29,8 @@ struct Options {
     bool mutate_outcome=false;
     std::uint32_t execution_receiver=recipient,execution_kind=45,execution_rating=200,execution_contact=1,execution_blocked=0,execution_disabled=0;
     std::uint32_t result_contact=1;
+    std::uint32_t area_status_second=0;
+    bool separate_area_status=false,mutate_unopposed=false;
     bool mutate_execution=false,mutate_table=false,mutate_result=false,mutate_result_table=false;
     double distance=25.25;
 };
@@ -67,6 +70,8 @@ struct Trace final:SemanticGuestObserver {
         if(options.force_wide==26&&pc==0x102411c8)s.wr<4>(76,std::uint32_t(-65536));
         if(options.force_wide==27&&pc==0x10241960)s.wr<4>(76,65536);
         if(options.force_wide==28&&pc==0x10241970)s.wr<4>(76,std::uint32_t(-65536));
+        if(options.force_wide==29&&pc==0x10241c48)s.wr<4>(76,65536);
+        if(options.force_wide==30&&pc==0x10241c58)s.wr<4>(76,std::uint32_t(-65536));
         if(options.zero_elevated_threshold&&pc==0x1023dc74)s.wr<4>(68,std::uint32_t(-70));
         if(options.adjustment_wide) {
             const auto base=action::selected_action_phase+options.adjustment*0x188;
@@ -93,9 +98,9 @@ struct Model final:SemanticDependencyDispatch {
                 else return;
             }
         }
-        const auto done=phase>=31?action::result_outcome_phase:phase>=29?action::result_resolution_phase:phase>=27?action::result_message_phase:phase>=25?action::return_phase:phase>=23?action::receiver_outcome_phase:phase>=21?action::receiver_resolution_phase:phase>=19?action::execution_message_phase:phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase>=1?action::action_bias_phase:action::orientation_phase;
+        const auto done=phase>=35?action::no_receiver_phase:phase>=33?action::return_phase:phase>=31?action::result_outcome_phase:phase>=29?action::result_resolution_phase:phase>=27?action::result_message_phase:phase>=25?action::return_phase:phase>=23?action::receiver_outcome_phase:phase>=21?action::receiver_resolution_phase:phase>=19?action::execution_message_phase:phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase>=1?action::action_bias_phase:action::orientation_phase;
         while(s.pc!=done&&!(phase>=5&&phase<=10&&s.pc==action::selected_action_phase)&&!(phase>=13&&phase<=18&&s.pc==action::action_execution_phase)
-              &&!(phase>=19&&(s.pc==action::return_phase||s.pc==action::no_receiver_phase||(phase<=26&&s.pc==action::execution_result_phase)||(phase>=27&&s.pc==action::unopposed_result_phase)))) {
+              &&!(phase>=19&&(s.pc==action::return_phase||s.pc==action::no_receiver_phase||(phase<=26&&s.pc==action::execution_result_phase)||(phase>=27&&phase<=34&&s.pc==action::unopposed_result_phase)))) {
             if(s.pc>=action::entry&&s.pc<action::orientation_phase)
                 require(ball_action_preparation_reference(s),"Missing original ball-action preparation");
             else if(s.pc>=action::orientation_phase&&s.pc<action::action_bias_phase)
@@ -130,6 +135,10 @@ struct Model final:SemanticDependencyDispatch {
                 require(ball_action_result_message_reference(s),"Missing original ball-action result message");
             else if(s.pc>=action::result_resolution_phase&&s.pc<action::result_outcome_phase)
                 require(ball_action_result_resolution_reference(s),"Missing original ball-action result resolution");
+            else if(s.pc>=action::result_outcome_phase&&s.pc<action::unopposed_result_phase)
+                require(ball_action_result_outcome_reference(s),"Missing original ball-action result outcome");
+            else if(s.pc>=action::unopposed_result_phase&&s.pc<action::no_receiver_phase)
+                require(ball_action_unopposed_reference(s),"Missing original ball-action unopposed execution");
             else call(s,s.pc,std::uint32_t(s.r<4>(4128)));
         }
     }
@@ -157,8 +166,10 @@ struct Model final:SemanticDependencyDispatch {
             s.memory.write<2>(std::uint32_t(s.r<4>(12))+0x19e,((s.r<4>(24)&255)<<8)|(s.r<4>(28)&255));
             break;
         case 0x101e3d50:
-            result=options.area_status;if(options.child_negative&&!original)result^=1;
+            result=continuation==0x102425cc&&options.separate_area_status?options.area_status_second:options.area_status;
+            if(options.child_negative&&!original)result^=phase==35?0x10u:1u;
             if(options.mutate_area){s.memory.write<1>(actor+0x105,0);s.memory.write<1>(actor+0x27,1);}
+            if(options.mutate_unopposed&&continuation==0x102425b8){s.memory.write<4>(actor+0x1a4,match+4);s.memory.write<2>(recipient+0x36,65535);}
             break;
         case 0x101e4ed0:
             result=options.lane_clear;
@@ -261,7 +272,7 @@ std::unique_ptr<State> seed() {
     return s;
 }
 unsigned cases=0,completed=0,interruptions=0,negatives=0,structural=0;
-std::array<unsigned,33> phase_cases{},phase_completed{};
+std::array<unsigned,37> phase_cases{},phase_completed{};
 std::set<std::uint32_t> sites;
 struct Result {std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
 Result compare(const State& input,Options options={},unsigned phase=0) {
@@ -299,6 +310,8 @@ Result compare(const State& input,Options options={},unsigned phase=0) {
             if((phase==27||(prefix&&phase>=28))&&s.pc==action::execution_result_phase)action::prepare_execution_result(s,&m,&new_trace);
             if(phase==29||(prefix&&phase>=30&&s.pc==action::result_message_phase))action::describe_execution_result(s,&m,&new_trace);
             if((phase==31||(prefix&&phase>=32))&&s.pc==action::result_resolution_phase)action::resolve_execution_result(s,&m,&new_trace);
+            if((phase==33||(prefix&&phase>=34))&&s.pc==action::result_outcome_phase)action::complete_execution_result(s,&m,&new_trace);
+            if((phase==35||(prefix&&phase>=36))&&s.pc==action::unopposed_result_phase)action::complete_unopposed_execution(s,&m,&new_trace);
         }}
         catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}original_trace=nullptr;return std::string{};};
     const auto expected=run(*a,old,true),actual=run(*b,modern,false);a->memory.date_observer=b->memory.date_observer=nullptr;
@@ -422,6 +435,13 @@ std::unique_ptr<State> result_message_seed() {
 }
 std::unique_ptr<State> result_resolution_seed() {
     auto s=result_seed();s->pc=action::result_resolution_phase;s->memory.write<1>(stack-0x150+0x40,2);s->memory.write<1>(actor+0x366,0);return s;
+}
+std::unique_ptr<State> result_outcome_seed() {
+    auto s=result_resolution_seed();s->pc=action::result_outcome_phase;s->wr<4>(64,0x1ff9);s->wr<4>(68,0x1f79);return s;
+}
+std::unique_ptr<State> unopposed_seed() {
+    auto s=result_seed();s->pc=action::unopposed_result_phase;s->wr<4>(88,2);s->memory.write<1>(stack-0x150+0x42,1);
+    s->memory.write<1>(stack-0x150+0x45,0);s->memory.write<1>(stack-0x150+0xd0,0x5a);s->memory.write<1>(recipient+4,255);return s;
 }
 }
 namespace cm::aot {void ball_action_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
@@ -1178,8 +1198,103 @@ int main(){try {
             "Original-root prefix reaches the second contact and result resolver");
         boundaries(*s,o,phase);
     }
-    for(auto pc=action::entry;pc<action::result_outcome_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==4993,"All original ball-action preparation through execution-result resolution sites covered");
+    for(unsigned flag=0;flag<256;++flag)for(auto message:{0u,0x1ff9u,0x7fffu,0x8000u,0xffffu}) {
+        auto s=result_outcome_seed();s->wr<4>(64,0xabcd0000|message);s->memory.write<1>(stack-0x150+0x40,flag);Options o;o.contact_end_gate=1;
+        auto result=compare(*s,o,33);const auto count=std::count_if(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x101f1530;});
+        require(count==int(signed_value<2>(message)>-1&&flag>=3&&flag<=6),"Execution-result response uses the signed message and raw contact class");
+        for(const auto& event:result.calls)if(event.target==0x101f1530)require(read_be<4>(event.before.data()+16)==actor,"Execution-result response targets the initiating player");
+    }
+    for(unsigned flag=0;flag<256;++flag)for(auto restart:{0x1f79u,0x1f7au}) {
+        auto s=result_outcome_seed();s->wr<4>(68,restart);s->memory.write<1>(stack-0x150+0x40,flag);s->memory.write<1>(stack-0x150+0x42,1);
+        auto result=compare(*s,{},33);
+        require(result.state->memory.read<1>(recipient+0x16)==(flag==4||flag==5||flag==6?1u:0x5au),"Blocked execution-result ending marks receiver contact six as well as four and five");
+        require(result.state->memory.read<2>(actor+0x36)==225&&result.state->memory.read<2>(recipient+0x36)==400,"Execution-result outcome subtracts twenty-five only from the initiating player");
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{0u,4u,128u,255u})for(auto column:{0u,1u,10u,128u,255u}) {
+        auto s=result_outcome_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);
+        auto result=compare(*s,{},33);require(result.state->memory.read<1>(match+0x791d)==row&&result.state->memory.read<1>(match+0x791e)==column&&result.state->memory.read<1>(match+0x7924)==unsigned(side==0),
+            "Execution-result outcome publishes the raw initiating coordinates and inverted side");
+        for(const auto& event:result.calls)if(event.target==0x101f3a30)require(read_be<4>(event.before.data()+16)==unsigned(side==0),"Result restart selection receives the inverted initiating side");
+    }
+    for(auto restart:{0x1f79u,0x1f7au})for(auto flag:{1u,2u,3u,4u,5u,6u,7u,128u,255u})for(auto blocked:{0u,1u}) {
+        auto s=result_outcome_seed();s->wr<4>(68,restart);s->memory.write<1>(stack-0x150+0x40,flag);s->memory.write<1>(stack-0x150+0x42,blocked);boundaries(*s,{},33);
+    }
+    for(auto player:{0u,restart_player})for(auto gate:{0u,1u,0x100u,0x1ffu})for(auto again:{0u,1u})for(auto actor_gate:{0u,1u}) {
+        auto s=result_outcome_seed();Options o;o.recipient_result=player;o.recipient_gate=gate;o.recipient_second=again;o.actor_gate=actor_gate;compare(*s,o,33);
+    }
+    for(auto side:{0u,1u})for(auto row:{1u,4u,7u})for(auto column:{0u,2u,10u,12u})for(auto flag:{1u,7u}) {
+        auto s=result_outcome_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(restart_player+0x105,row);s->memory.write<1>(restart_player+0x106,column);s->memory.write<1>(stack-0x150+0x40,flag);
+        auto o=receiver_outcome_options();boundaries(*s,o,33);
+        for(const auto& event:compare(*s,o,33).calls)if(event.target==0x10272150)require(read_be<4>(event.before.data()+12)==restart_player,"Result followup queries the selected restart player");
+    }
+    for(auto player:{0u,restart_player}){auto o=receiver_outcome_options();o.recipient_result=player;boundaries(*result_outcome_seed(),o,33);}
+    for(auto gate:{0u,1u})for(auto again:{0u,1u})for(auto actor_gate:{0u,1u}) {
+        auto o=receiver_outcome_options();o.recipient_gate=gate;o.recipient_second=again;o.actor_gate=actor_gate;boundaries(*result_outcome_seed(),o,33);
+    }
+    for(auto side:{0u,1u,2u})for(auto pointer:{0u,staff})for(auto role:{0u,8u,9u}) {
+        auto s=result_outcome_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<4>(home+0x2c,pointer);s->memory.write<4>(away+0x2c,pointer);s->memory.write<1>(staff+0x119,role);
+        s->memory.write<4>(globals,0);s->memory.write<2>(stream+2,4);s->memory.write<2>(stream+4,99);s->memory.write<2>(stream+6,0);s->memory.write<1>(stack-0x150+0x43,100);boundaries(*s,{},33);
+    }
+    for(auto wide:{29u,30u})for(auto sampled:{-100000,0,10000000}) {
+        auto s=result_outcome_seed();s->memory.write<4>(globals,18);Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*s,o,33);
+    }
+    for(auto coordinate:{0u,1u,127u,128u,255u})for(auto random:{0u,1u,2u,17u,18u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+        auto s=result_outcome_seed();s->memory.write<1>(stack-0x150+0x43,coordinate);s->memory.write<4>(globals,random);compare(*s,{},33);
+    }
+    for(auto cursor:{stream+120,stream+122,stream+124,stream+126})for(auto random:{17u,18u}) {
+        auto s=result_outcome_seed();s->memory.write<4>(globals+8,cursor);s->memory.write<4>(globals,random);boundaries(*s,{},33);
+    }
+    for(auto coordinate:{0u,1u}) {
+        auto s=result_outcome_seed();s->memory.write<4>(globals,18);s->memory.write<4>(globals+8,stream+(coordinate?122:124));
+        s->memory.write<2>(stream+124,2);s->memory.write<1>(stack-0x150+0x43,coordinate);boundaries(*s,{},33);
+    }
+    for(auto blocked:{0u,1u})for(auto limit:{stream-2,stream,stream+2}) {
+        auto s=result_outcome_seed();s->wr<4>(64,0xffffffff);s->wr<4>(68,0x1f7a);s->memory.write<1>(stack-0x150+0x42,blocked);
+        s->memory.write<4>(globals,0);s->memory.write<4>(globals+4,limit);s->memory.write<4>(globals+8,stream+126);
+        for(unsigned n=0;n<128;n+=2)s->memory.write<2>(stream+n,9);Options o;o.random=0;boundaries(*s,o,33);
+    }
+    for(bool mutate:{false,true}){Options o;o.mutate_outcome=mutate;o.mutate_execution=!mutate;boundaries(*result_outcome_seed(),o,33);}
+    for(auto value:{0u,1u,24u,25u,32768u,65535u}){auto s=result_outcome_seed();s->memory.write<2>(actor+0x36,value);compare(*s,{},33);}
+    for(auto pointer:{0u,actor,recipient+1,stack-0x150,globals}){auto s=result_outcome_seed();s->wr<4>(56,pointer);compare(*s,{},33);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*result_outcome_seed(),o,33);}
+    for(auto contact:{0u,1u})for(auto flag:{0u,1u,2u,7u}) {
+        auto s=result_seed();s->pc=action::entry;s->wr<4>(4,stack);Options o;o.contact_result=0;o.execution_contact=contact;o.resolved_contact=flag;compare(*s,o,34);
+    }
+    {auto s=result_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x7931,0);Options o;o.contact_result=0;o.execution_contact=0;o.execution_rating=0;
+        auto result=compare(*s,o,34);require(result.state->pc==action::return_phase&&std::any_of(result.calls.begin(),result.calls.end(),[](const Event& e){return e.continuation==0x102421cc;}),
+            "Root prefix reaches the complete execution-result outcome");boundaries(*s,o,34);}
+    for(unsigned kind=0;kind<256;++kind)for(auto state:{0u,4u,0x104u,0x180u})for(auto status:{0u,0x10u,0x880u,0x890u,0x8b0u,0xffffu}) {
+        auto s=unopposed_seed();s->wr<4>(88,state);s->memory.write<1>(stack-0x150+0x48,kind);Options o;o.area_status=status;auto result=compare(*s,o,35);
+        const bool skip=(state&255)==4,smaller=(status&0x30)&&(status&0x880);
+        require(result.state->memory.read<2>(recipient+0x19c)==std::uint16_t(signed_value<1>(kind)),"Unopposed action stores the signed action byte in the receiver halfword");
+        require(result.state->memory.read<1>(recipient+4)==(skip?255u:0u)&&result.state->memory.read<2>(recipient+0x36)==(skip?400u:smaller?341u:330u),
+            "Unopposed receiver counter wraps and status gates select the original halfword decrement");
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{1u,2u,4u,6u,7u,128u})for(auto column:{0u,1u,2u,9u,10u,11u,12u,128u})for(auto blocked:{0u,1u})for(auto disabled:{0u,1u,128u}) {
+        auto s=unopposed_seed();s->wr<4>(88,4);s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);
+        s->memory.write<1>(stack-0x150+0x42,blocked);s->memory.write<1>(stack-0x150+0x45,disabled);auto result=compare(*s,{},35);
+        const bool area=row>=2&&row<=6&&(side==0?(column>=10&&column<=11):column<=1);
+        require(result.state->memory.read<1>(stack-0x150+0xd0)==(blocked&&(area||disabled)?1u:0x5au),"Unopposed blocked marker combines the inverted area and live disabled byte");
+    }
+    for(auto status:{0u,0x10u,0x880u,0x890u})for(auto second:{0u,0x10u,0x880u,0x890u}) {
+        Options o;o.area_status=status;o.area_status_second=second;o.separate_area_status=true;auto result=compare(*unopposed_seed(),o,35);
+        require(result.calls.size()==((status&0x30)?2u:1u)&&result.state->memory.read<2>(recipient+0x36)==((status&0x30)&&(second&0x880)?341u:330u),
+            "Unopposed status queries are repeated and use independent live results");boundaries(*unopposed_seed(),o,35);
+    }
+    for(auto side:{0u,1u})for(auto row:{1u,4u,7u})for(auto column:{0u,2u,10u,12u}) {
+        auto s=unopposed_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);boundaries(*s,{},35);
+    }
+    for(auto pointer:{0u,actor,recipient+1,stack-0x150,globals}){auto s=unopposed_seed();s->wr<4>(56,pointer);compare(*s,{},35);}
+    for(auto value:{0u,1u,58u,59u,69u,70u,32768u,65535u})for(auto status:{0u,0x890u}){auto s=unopposed_seed();s->memory.write<2>(recipient+0x36,value);Options o;o.area_status=status;compare(*s,o,35);}
+    {Options o;o.mutate_unopposed=true;o.area_status=0x890;boundaries(*unopposed_seed(),o,35);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;o.area_status=0x890;compare(*unopposed_seed(),o,35);}
+    for(auto contact:{0u,1u})for(auto flag:{0u,1u,2u,7u}) {
+        auto s=result_seed();s->pc=action::entry;s->wr<4>(4,stack);Options o;o.contact_result=0;o.execution_contact=contact;o.resolved_contact=flag;o.result_contact=0;compare(*s,o,36);
+    }
+    {auto s=result_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x7931,0);Options o;o.contact_result=0;o.execution_contact=0;o.execution_rating=0;o.result_contact=0;
+        auto result=compare(*s,o,36);require(result.state->pc==action::no_receiver_phase,"Root prefix reaches the unopposed continuation");boundaries(*s,o,36);}
+    for(auto pc=action::entry;pc<action::no_receiver_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==5685,"All original ball-action preparation through unopposed-execution sites covered");
     for(unsigned p=0;p<phase_cases.size();++p){require(phase_completed[p]>0,"Each ball-action phase completed");
         std::cout<<"Phase "<<p<<": "<<phase_cases[p]<<" comparisons, "<<phase_completed[p]<<" completions\n";}
     std::cout<<"PASS: "<<cases<<" ball-action component comparisons; "<<completed<<" phase completions, "<<interruptions

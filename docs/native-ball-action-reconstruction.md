@@ -47,7 +47,9 @@ generated reference bodies and runtime artifacts remain outside version control.
 | Execution-result contact attempt, warning and cancellation | `0x10240ff8..0x10241454` | 279 |
 | Second live execution-message table | `0x10241454..0x10241680` | 139 |
 | Execution-result classification and initiating-player reaction | `0x10241680..0x10241b24` | 297 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x10241b24`** | **4,993** |
+| Execution-result outcome, restart selection and messages | `0x10241b24..0x102424ac` | 610 |
+| Unopposed action marker, receiver counter and status effects | `0x102424ac..0x102425f4` | 82 |
+| **Validated contiguous prefix** | **`0x1023cd20..0x102425f4`** | **5,685** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -107,6 +109,21 @@ fixtures independently configure the two contact attempts and require actual
 entry into the second resolver, rather than accepting an earlier exit as its
 composition evidence.
 
+Execution-result outcome publishes the inverted initiating side, reports the
+initiating player's contact, then overwrites the selected message register with
+the restart-player pointer. Followup eligibility and area queries use that
+selected player. Blocked endings retain the receiver's identity in their
+message and mark contact six as well as four/five. Final movement/reset and
+the wrapped twenty-five decrement apply to the initiating player. These
+distinctions from receiver outcome remain explicit.
+
+The unopposed path preserves the conditional stack marker, signed action-byte
+storage, wrapped receiver count, and its special state-four bypass. Its two
+status queries retain their ordered ABI and separate live results; the second
+query is conditional and chooses between the original 59/70 decrements. The
+receiver is still accessed before the later null gate, preserving the original
+fault behavior. Both new phases have actual original-root fixture prefixes.
+
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
 that record full register state before and after calls, clobber volatile
@@ -116,12 +133,12 @@ runtime acceptance.
 
 ## Component evidence
 
-The current check contains 259,341 comparisons:
+The current check contains 310,969 comparisons:
 
-- 34,042 successful component or prefix completions;
-- 225,265 instruction-budget, memory-hole or dependency interruptions;
-- 34 rejected own-result/dependency negative controls;
-- all 4,993 original instruction sites, including dormant branches;
+- 44,061 successful component or prefix completions;
+- 266,870 instruction-budget, memory-hole or dependency interruptions;
+- 38 rejected own-result/dependency negative controls;
+- all 5,685 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
@@ -133,7 +150,7 @@ interior edges, and the unchanged production manifest. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-28,367 of the comparisons use paired checkpoint injections to reach dormant
+31,071 of the comparisons use paired checkpoint injections to reach dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -147,8 +164,8 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x10241b24` with the execution-result outcome and unopposed action.
-The remaining 3,149 original instructions, three further computed
+Continue at `0x102425f4` with the final action/receiver effects and reports.
+The remaining 2,457 original instructions, three further computed
 decision tables, tail/error paths and common return still require reconstruction
 and equivalence evidence.
 
@@ -189,3 +206,9 @@ debug symbols after matching Release/UBSAN acceptance: five files and
 307,009,956 logical bytes. Available space increased by 307,019,776 bytes during
 cleanup. All 845 protected files, both signed ARM64 apps and the production
 library hash remained unchanged.
+
+The result-outcome checkpoint removed its two conformance executables and debug
+symbols after matching Release/UBSAN acceptance: five files and 309,440,204
+logical bytes. Available space increased by 310,484,992 bytes during cleanup;
+concurrent filesystem activity can affect that observation. All 845 protected
+files, both signed ARM64 apps and the production library hash remained unchanged.
