@@ -44,7 +44,10 @@ generated reference bodies and runtime artifacts remain outside version control.
 | First live execution-message table | `0x1023ff48..0x10240178` | 140 |
 | Receiver-contact classification and area reaction | `0x10240178..0x1024060c` | 293 |
 | Receiver outcome, restart selection and messages | `0x1024060c..0x10240ff8` | 635 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x10240ff8`** | **4,278** |
+| Execution-result contact attempt, warning and cancellation | `0x10240ff8..0x10241454` | 279 |
+| Second live execution-message table | `0x10241454..0x10241680` | 139 |
+| Execution-result classification and initiating-player reaction | `0x10241680..0x10241b24` | 297 |
+| **Validated contiguous prefix** | **`0x1023cd20..0x10241b24`** | **4,993** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -87,6 +90,23 @@ repeated initiating-actor eligibility calls, restart-player message identity,
 random-dependent report order and the receiver's wrapped halfword decrement.
 The common return remains an explicit continuation boundary.
 
+Execution-result preparation clears an existing contact without consuming a
+random sample. A new contact uses the signed score/rating comparison and a
+conditional random fifth; its warning queries the initiating player's area,
+then samples the receiver's signed halfword. The cancellation tenth reports
+the current contact and clears it before resolution. The second table reads
+its own live 57-word mapping from the saved action register, with the initiating
+player before the receiver in its message ABI. All twelve message destinations,
+mutable targets, direct entrances and explicit continuation boundaries are checked.
+
+Result classification uses the initiating side without inversion. Major contact
+retains the receiver in the match link, subtracts 500 from the initiating
+player's wrapped halfword, and samples that player's reaction. This differs
+from receiver resolution in both ownership and side selection. Root-prefix
+fixtures independently configure the two contact attempts and require actual
+entry into the second resolver, rather than accepting an earlier exit as its
+composition evidence.
+
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
 that record full register state before and after calls, clobber volatile
@@ -96,12 +116,12 @@ runtime acceptance.
 
 ## Component evidence
 
-The current check contains 222,031 comparisons:
+The current check contains 259,341 comparisons:
 
-- 28,991 successful component or prefix completions;
-- 193,012 instruction-budget, memory-hole or dependency interruptions;
-- 28 rejected own-result/dependency negative controls;
-- all 4,278 original instruction sites, including dormant branches;
+- 34,042 successful component or prefix completions;
+- 225,265 instruction-budget, memory-hole or dependency interruptions;
+- 34 rejected own-result/dependency negative controls;
+- all 4,993 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
@@ -113,7 +133,7 @@ interior edges, and the unchanged production manifest. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-25,503 of the comparisons use paired checkpoint injections to reach dormant
+28,367 of the comparisons use paired checkpoint injections to reach dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -127,8 +147,8 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x10240ff8` with the remaining action execution. The remaining
-3,864 original instructions, four further computed
+Continue at `0x10241b24` with the execution-result outcome and unopposed action.
+The remaining 3,149 original instructions, three further computed
 decision tables, tail/error paths and common return still require reconstruction
 and equivalence evidence.
 
@@ -163,3 +183,9 @@ their debug symbols after validation: five files and 304,070,860 logical bytes.
 Available space increased by 304,078,848 bytes during cleanup. All 845 protected
 artifacts, both installed signed ARM64 apps and the production library hash
 were verified unchanged; sources, original references and evidence are retained.
+
+The execution-result checkpoint removed its two conformance executables and
+debug symbols after matching Release/UBSAN acceptance: five files and
+307,009,956 logical bytes. Available space increased by 307,019,776 bytes during
+cleanup. All 845 protected files, both signed ARM64 apps and the production
+library hash remained unchanged.

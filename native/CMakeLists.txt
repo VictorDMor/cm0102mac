@@ -187,11 +187,13 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     # cm_aot and the app until the complete coordinator is accepted.
     set(CM_BALL_ACTION_COMPONENT_DIR "${CMAKE_BINARY_DIR}/ball-action-components")
     set(CM_BALL_ACTION_COMPONENT_REFERENCES)
-    foreach(component IN ITEMS preparation orientation facing area elevated low selected contact contact_resolution contact_outcome execution execution_message receiver receiver_outcome)
+    foreach(component IN ITEMS preparation orientation facing area elevated low selected contact contact_resolution contact_outcome execution execution_message receiver receiver_outcome result result_message result_resolution)
         set(reference "${CM_BALL_ACTION_COMPONENT_DIR}/${component}.cpp")
         set(table_header)
         if(component STREQUAL "execution_message")
             set(table_header "${CM_BALL_ACTION_COMPONENT_DIR}/execution-message-table.hpp")
+        elseif(component STREQUAL "result_message")
+            set(table_header "${CM_BALL_ACTION_COMPONENT_DIR}/result-message-table.hpp")
         endif()
         add_custom_command(OUTPUT "${reference}" ${table_header}
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_action_reference.py"
@@ -209,6 +211,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         ball_action_area.cpp ball_action_elevated.cpp ball_action_low.cpp ball_action_sampling.cpp ball_action_selected.cpp
         ball_action_contact.cpp ball_action_contact_resolution.cpp ball_action_contact_outcome.cpp
         ball_action_execution.cpp ball_action_execution_message.cpp ball_action_receiver.cpp ball_action_receiver_outcome.cpp
+        ball_action_result.cpp ball_action_result_message.cpp ball_action_result_resolution.cpp
         ${CM_BALL_ACTION_COMPONENT_REFERENCES})
     target_include_directories(cm-ball-action-component-checks PRIVATE "${CM_BALL_ACTION_COMPONENT_DIR}")
     target_link_libraries(cm-ball-action-component-checks PRIVATE cm_aot)

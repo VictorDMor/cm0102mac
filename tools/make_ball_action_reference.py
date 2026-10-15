@@ -23,7 +23,10 @@ COMPONENTS = {'preparation': (ENTRY, 0x1023d184), 'orientation': (0x1023d184, 0x
               'execution': (0x1023fa5c, 0x1023ff48),
               'execution_message': (0x1023ff48, 0x10240178),
               'receiver': (0x10240178, 0x1024060c),
-              'receiver_outcome': (0x1024060c, 0x10240ff8)}
+              'receiver_outcome': (0x1024060c, 0x10240ff8),
+              'result': (0x10240ff8, 0x10241454),
+              'result_message': (0x10241454, 0x10241680),
+              'result_resolution': (0x10241680, 0x10241b24)}
 
 
 def render_reference(records, userops, component):
@@ -64,6 +67,11 @@ def main():
             '#pragma once\n#include <array>\n#include <cstdint>\n'
             'inline constexpr std::array<std::uint32_t,47> original_execution_message_table{{' +
             ','.join(f'0x{word:08x}' for word in tables[0x1023ff68]) + '}};\n')
+    if args.component == 'result_message':
+        (args.output.parent / 'result-message-table.hpp').write_text(
+            '#pragma once\n#include <array>\n#include <cstdint>\n'
+            'inline constexpr std::array<std::uint32_t,57> original_result_message_table{{' +
+            ','.join(f'0x{word:08x}' for word in tables[0x10241470]) + '}};\n')
     start, end = COMPONENTS[args.component]
     print(f'Emitted {(end-start)//4} original {args.component} instructions; complete ball-action body and five tables pinned')
 

@@ -9,6 +9,15 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The [ball-action coordinator](native-ball-action-reconstruction.md) remains a
+component-only candidate. Its contiguous reconstructed prefix now covers
+**4,993 of 8,142 original instructions**, including both execution-message
+tables and the second contact attempt/resolution. Independent comparisons cover
+all prefix source sites in 259,341 cases, with complete state, ordered effects,
+dependency ABI, faults and instruction accounting. The production coordinator
+remains generated and the accepted manifest stays at **677**. Outcome/tail
+reconstruction and whole-root production acceptance remain required.
+
 The latest [team-line reconstruction](native-team-line-reconstruction.md) adds
 five complete operations: tactical flags, their line-adjustment query, two
 column-limit queries and the opposing row-lane scan. The accepted manifest now
