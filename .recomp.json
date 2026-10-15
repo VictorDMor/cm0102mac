@@ -23,28 +23,16 @@
   ],
   "links": [
     {
-      "label": "Features and requirements",
+      "label": "Overview",
       "url": "https://github.com/VictorDMor/cm0102mac#readme"
     },
     {
-      "label": "Supported original release",
-      "url": "https://github.com/VictorDMor/cm0102mac#supported-original-release"
-    },
-    {
-      "label": "Port status and limitations",
-      "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-port-status.md"
-    },
-    {
-      "label": "C++23 reconstruction progress",
+      "label": "Progress",
       "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-cpp23-port-progress.md"
     },
     {
       "label": "Match Debugger",
       "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/native-match-debugger-application.md"
-    },
-    {
-      "label": "Build and architecture",
-      "url": "https://github.com/VictorDMor/cm0102mac/blob/main/docs/aot-port.md"
     }
   ],
   "tags": [
@@ -55,5 +43,5 @@
     "classic-mac",
     "football-management"
   ],
-  "notes": "Apple Silicon / macOS 13+. Verified local gameplay: career creation/loading, club and player screens, date advancement, full matches, return to management, saving and reloading. Native interface scaling, keyboard commands and audio. Separate Match Debugger offers seeded simulations, substitutions, events and rewind/redo. 678 reconstructed C++23 entry points; remaining routines use generated code. Incomplete: multiplayer and some services are unsupported. Requires the original Mac 3.9.62 release and a local build; no public binary release yet."
+  "notes": "Career play, full matches, save/load and a Match Debugger. Requires original Mac 3.9.62 files and a local build. Multiplayer is unsupported; reconstruction is ongoing."
 }
