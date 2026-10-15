@@ -6,6 +6,7 @@
 
 namespace cm::aot { bool ball_action_preparation_reference(State&);bool ball_action_orientation_reference(State&);bool ball_action_facing_reference(State&);bool ball_action_area_reference(State&);bool ball_action_elevated_reference(State&);bool ball_action_low_reference(State&);bool ball_action_selected_reference(State&);bool ball_action_contact_reference(State&);bool ball_action_contact_resolution_reference(State&);bool ball_action_contact_outcome_reference(State&);bool ball_action_execution_reference(State&);bool ball_action_execution_message_reference(State&);bool ball_action_receiver_reference(State&);bool ball_action_receiver_outcome_reference(State&);bool ball_action_result_reference(State&);bool ball_action_result_message_reference(State&);bool ball_action_result_resolution_reference(State&); }
 namespace cm::aot { bool ball_action_result_outcome_reference(State&);bool ball_action_unopposed_reference(State&); }
+namespace cm::aot { bool ball_action_final_preparation_reference(State&);bool ball_action_special_effects_reference(State&);bool ball_action_regular_effects_reference(State&);bool ball_action_success_reaction_reference(State&); }
 namespace {
 using namespace cm::semantic_io_checks;
 namespace action=cm::aot::ball_action;
@@ -15,6 +16,7 @@ constexpr auto recipient=actor+0x600,teams=fixture+0x800,home=fixture+0x900,away
 constexpr auto execution_table=fixture+0x12d00;
 constexpr auto result_table=fixture+0xc00;
 constexpr auto restart_player=actor+0xa00;
+constexpr auto actor_profile=fixture+0x400,receiver_profile=fixture+0x500;
 struct Options {
     unsigned interrupt=0,force_wide=0;
     unsigned adjustment=0;int adjustment_wide=0;
@@ -31,6 +33,9 @@ struct Options {
     std::uint32_t result_contact=1;
     std::uint32_t area_status_second=0;
     bool separate_area_status=false,mutate_unopposed=false;
+    std::array<std::uint32_t,3> receiver_kinds{};
+    std::uint32_t final_gate=1,regular_gate=1,regular_second_gate=1;
+    bool mutate_final=false,zero_special_interval=false;
     bool mutate_execution=false,mutate_table=false,mutate_result=false,mutate_result_table=false;
     double distance=25.25;
 };
@@ -72,6 +77,13 @@ struct Trace final:SemanticGuestObserver {
         if(options.force_wide==28&&pc==0x10241970)s.wr<4>(76,std::uint32_t(-65536));
         if(options.force_wide==29&&pc==0x10241c48)s.wr<4>(76,65536);
         if(options.force_wide==30&&pc==0x10241c58)s.wr<4>(76,std::uint32_t(-65536));
+        if(options.force_wide==31&&pc==0x10242ad8)s.wr<4>(64,65536);
+        if(options.force_wide==32&&pc==0x10242ae8)s.wr<4>(64,std::uint32_t(-65536));
+        if(options.force_wide==33&&pc==0x10242f8c)s.wr<4>(56,65536);
+        if(options.force_wide==34&&pc==0x10242f9c)s.wr<4>(56,std::uint32_t(-65536));
+        if(options.force_wide==35&&pc==0x10243258)s.wr<4>(52,65536);
+        if(options.force_wide==36&&pc==0x10243268)s.wr<4>(52,std::uint32_t(-65536));
+        if(options.zero_special_interval&&pc==0x10242a98)s.wr<4>(12,std::uint32_t(-70));
         if(options.zero_elevated_threshold&&pc==0x1023dc74)s.wr<4>(68,std::uint32_t(-70));
         if(options.adjustment_wide) {
             const auto base=action::selected_action_phase+options.adjustment*0x188;
@@ -98,9 +110,10 @@ struct Model final:SemanticDependencyDispatch {
                 else return;
             }
         }
-        const auto done=phase>=35?action::no_receiver_phase:phase>=33?action::return_phase:phase>=31?action::result_outcome_phase:phase>=29?action::result_resolution_phase:phase>=27?action::result_message_phase:phase>=25?action::return_phase:phase>=23?action::receiver_outcome_phase:phase>=21?action::receiver_resolution_phase:phase>=19?action::execution_message_phase:phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase>=1?action::action_bias_phase:action::orientation_phase;
+        const auto done=phase>=43?action::return_phase:phase>=39?action::success_reaction_phase:phase>=37?action::final_effects_phase:phase>=35?action::no_receiver_phase:phase>=33?action::return_phase:phase>=31?action::result_outcome_phase:phase>=29?action::result_resolution_phase:phase>=27?action::result_message_phase:phase>=25?action::return_phase:phase>=23?action::receiver_outcome_phase:phase>=21?action::receiver_resolution_phase:phase>=19?action::execution_message_phase:phase>=17?action::return_phase:phase>=15?action::contact_outcome_phase:phase>=13?action::contact_resolution_phase:phase>=11?action::contact_selection_phase:phase>=9?action::selected_action_phase:phase>=7?action::low_ball_selection_phase:phase>=5?action::ball_state_selection_phase:phase>=3?action::area_selection_phase:phase>=1?action::action_bias_phase:action::orientation_phase;
         while(s.pc!=done&&!(phase>=5&&phase<=10&&s.pc==action::selected_action_phase)&&!(phase>=13&&phase<=18&&s.pc==action::action_execution_phase)
-              &&!(phase>=19&&(s.pc==action::return_phase||s.pc==action::no_receiver_phase||(phase<=26&&s.pc==action::execution_result_phase)||(phase>=27&&phase<=34&&s.pc==action::unopposed_result_phase)))) {
+              &&!(phase>=19&&(s.pc==action::return_phase||(phase<=36&&s.pc==action::no_receiver_phase)||(phase<=26&&s.pc==action::execution_result_phase)||(phase>=27&&phase<=34&&s.pc==action::unopposed_result_phase)))
+              &&!(phase>=37&&(s.pc==action::unsuccessful_action_phase||(phase<=40&&s.pc==action::regular_effects_phase)))) {
             if(s.pc>=action::entry&&s.pc<action::orientation_phase)
                 require(ball_action_preparation_reference(s),"Missing original ball-action preparation");
             else if(s.pc>=action::orientation_phase&&s.pc<action::action_bias_phase)
@@ -139,6 +152,14 @@ struct Model final:SemanticDependencyDispatch {
                 require(ball_action_result_outcome_reference(s),"Missing original ball-action result outcome");
             else if(s.pc>=action::unopposed_result_phase&&s.pc<action::no_receiver_phase)
                 require(ball_action_unopposed_reference(s),"Missing original ball-action unopposed execution");
+            else if(s.pc>=action::no_receiver_phase&&s.pc<action::final_effects_phase)
+                require(ball_action_final_preparation_reference(s),"Missing original ball-action final preparation");
+            else if(s.pc>=action::final_effects_phase&&s.pc<action::regular_effects_phase)
+                require(ball_action_special_effects_reference(s),"Missing original ball-action special effects");
+            else if(s.pc>=action::regular_effects_phase&&s.pc<action::success_reaction_phase)
+                require(ball_action_regular_effects_reference(s),"Missing original ball-action regular effects");
+            else if(s.pc>=action::success_reaction_phase&&s.pc<action::unsuccessful_action_phase)
+                require(ball_action_success_reaction_reference(s),"Missing original ball-action success reaction");
             else call(s,s.pc,std::uint32_t(s.r<4>(4128)));
         }
     }
@@ -245,6 +266,21 @@ struct Model final:SemanticDependencyDispatch {
             if(options.mutate_execution){s.memory.write<1>(std::uint32_t(s.r<4>(4))+0x48,1);s.memory.write<4>(toc-0x5204,execution_table+0x200);}
             if(options.mutate_result)s.memory.write<4>(toc-0x5208,result_table+0x200);
             break;
+        case 0x1022e3a0:
+            s.memory.write<4>(globals+0x260,s.r<4>(12)^unsigned(options.child_negative&&!original&&phase==37));
+            if(options.mutate_final){s.memory.write<4>(actor+0x1a4,match+4);s.memory.write<2>(actor+0x36,65535);s.memory.write<1>(recipient+0x2c,255);}
+            break;
+        case 0x10289560: {
+            const auto index=std::min<std::size_t>(2,std::count_if(calls.begin(),calls.end(),[](const Event& e){return e.target==0x10289560;}));
+            result=options.receiver_kinds[index];s.memory.write<4>(globals+0x264,s.r<4>(12)^unsigned(options.child_negative&&!original&&phase==39));
+            if(options.mutate_final){s.memory.write<4>(actor+0x70,receiver_profile+1);s.memory.write<2>(recipient+0x36,65535);}
+            break;
+        }
+        case 0x10270ba0:result=options.final_gate;break;
+        case 0x10272050:result=options.regular_gate;s.memory.write<4>(globals+0x268,s.r<4>(12)^unsigned(options.child_negative&&!original&&phase==41));break;
+        case 0x102721a0:result=options.regular_second_gate;break;
+        case 0x102775e0:s.memory.write<4>(globals+0x26c,s.r<4>(12)^unsigned(options.child_negative&&!original&&phase==43));break;
+        case 0x102865a0:s.memory.write<4>(globals+0x270,float_bits<4>(float_value<8>(s.r<8>(0x4010))));break;
         default:throw std::runtime_error("Unknown ball-action dependency "+hex_address(target));
         }
         for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xac000000+n*17);
@@ -272,7 +308,7 @@ std::unique_ptr<State> seed() {
     return s;
 }
 unsigned cases=0,completed=0,interruptions=0,negatives=0,structural=0;
-std::array<unsigned,37> phase_cases{},phase_completed{};
+std::array<unsigned,45> phase_cases{},phase_completed{};
 std::set<std::uint32_t> sites;
 struct Result {std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
 Result compare(const State& input,Options options={},unsigned phase=0) {
@@ -312,6 +348,10 @@ Result compare(const State& input,Options options={},unsigned phase=0) {
             if((phase==31||(prefix&&phase>=32))&&s.pc==action::result_resolution_phase)action::resolve_execution_result(s,&m,&new_trace);
             if((phase==33||(prefix&&phase>=34))&&s.pc==action::result_outcome_phase)action::complete_execution_result(s,&m,&new_trace);
             if((phase==35||(prefix&&phase>=36))&&s.pc==action::unopposed_result_phase)action::complete_unopposed_execution(s,&m,&new_trace);
+            if((phase==37||(prefix&&phase>=38))&&s.pc==action::no_receiver_phase)action::prepare_final_action(s,&m,&new_trace);
+            if((phase==39||(prefix&&phase>=40))&&s.pc==action::final_effects_phase)action::complete_special_action(s,&m,&new_trace);
+            if((phase==41||(prefix&&phase>=42))&&s.pc==action::regular_effects_phase)action::complete_regular_action(s,&m,&new_trace);
+            if((phase==43||(prefix&&phase>=44))&&s.pc==action::success_reaction_phase)action::react_to_completed_action(s,&m,&new_trace);
         }}
         catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}original_trace=nullptr;return std::string{};};
     const auto expected=run(*a,old,true),actual=run(*b,modern,false);a->memory.date_observer=b->memory.date_observer=nullptr;
@@ -324,14 +364,20 @@ Result compare(const State& input,Options options={},unsigned phase=0) {
         throw;}rejected=true;}
     require(rejected==(options.own_negative||options.child_negative),label+" discriminating negative");
     if(!rejected) {
-        require(x.bytes==y.bytes,label+" ordered effects");require(a->executed==b->executed,label+" accounting");
+        require(x.bytes==y.bytes,label+" ordered effects");
+        if(a->executed!=b->executed) {
+            std::cerr<<label<<" accounting "<<a->executed<<" / "<<b->executed<<"; sites "<<old_trace.order.size()<<" / "<<new_trace.order.size()<<'\n';
+            for(unsigned n=0;n<std::min(old_trace.order.size(),new_trace.order.size());++n)if(old_trace.order[n]!=new_trace.order[n]){
+                std::cerr<<"First accounting site "<<hex_address(old_trace.order[n])<<" / "<<hex_address(new_trace.order[n])<<'\n';break;}
+        }
+        require(a->executed==b->executed,label+" accounting");
         require(old.calls==modern.calls,label+" dependency ABI");
         if(old_trace.order!=new_trace.order)for(unsigned n=0;n<std::min(old_trace.order.size(),new_trace.order.size());++n)if(old_trace.order[n]!=new_trace.order[n]){
             std::cerr<<"First site "<<hex_address(old_trace.order[n])<<" / "<<hex_address(new_trace.order[n])<<'\n';break;}
         require(old_trace.order==new_trace.order,label+" original-site order");
     }
     ++cases;++phase_cases[phase];phase_completed[phase]+=expected.empty()&&!rejected;
-    negatives+=rejected;interruptions+=!expected.empty();structural+=options.force_wide!=0||options.facing_interval!=200||options.zero_elevated_threshold||options.adjustment_wide!=0;
+    negatives+=rejected;interruptions+=!expected.empty();structural+=options.force_wide!=0||options.facing_interval!=200||options.zero_elevated_threshold||options.adjustment_wide!=0||options.zero_special_interval;
     completed+=expected.empty()&&!rejected;sites.insert(old_trace.order.begin(),old_trace.order.end());
     return {std::move(a),x.log,old.calls};
 }
@@ -443,6 +489,17 @@ std::unique_ptr<State> unopposed_seed() {
     auto s=result_seed();s->pc=action::unopposed_result_phase;s->wr<4>(88,2);s->memory.write<1>(stack-0x150+0x42,1);
     s->memory.write<1>(stack-0x150+0x45,0);s->memory.write<1>(stack-0x150+0xd0,0x5a);s->memory.write<1>(recipient+4,255);return s;
 }
+std::unique_ptr<State> final_seed() {
+    auto s=result_seed();s->pc=action::no_receiver_phase;s->wr<4>(64,200);s->wr<4>(68,300);s->wr<4>(88,2);s->wr<4>(92,0);s->wr<4>(96,actor);
+    s->memory.write<8>(doubles+0x330,float_bits<8>(10));s->memory.write<4>(match+0x3108,0x7ffffffe);s->memory.write<4>(match+0x310c,0xfffffffe);
+    s->memory.write<1>(stack-0x150+0x46,10);s->memory.write<1>(recipient+0x2c,250);s->memory.write<2>(actor+0x1a0,0);
+    s->memory.write<2>(actor+0x32,65516);s->memory.write<1>(actor+7,255);s->memory.write<1>(actor+8,255);s->memory.write<1>(actor+9,255);s->memory.write<1>(recipient+7,255);
+    s->memory.write<4>(actor+0x70,actor_profile);s->memory.write<4>(recipient+0x70,receiver_profile);s->memory.write<1>(actor_profile+0x2e,40);s->memory.write<1>(receiver_profile+0x2e,40);
+    s->memory.write<1>(actor+0x106,1);s->memory.write<4>(singles+0x18,float_bits<4>(0.75));return s;
+}
+std::unique_ptr<State> special_effects_seed() {auto s=final_seed();s->pc=action::final_effects_phase;s->wr<4>(88,4);return s;}
+std::unique_ptr<State> regular_effects_seed() {auto s=final_seed();s->pc=action::regular_effects_phase;s->wr<4>(88,1);return s;}
+std::unique_ptr<State> success_reaction_seed() {auto s=final_seed();s->pc=action::success_reaction_phase;s->wr<4>(88,4);s->memory.write<2>(actor+0x1a0,200);return s;}
 }
 namespace cm::aot {void ball_action_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
 int main(){try {
@@ -1293,8 +1350,98 @@ int main(){try {
     }
     {auto s=result_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x7931,0);Options o;o.contact_result=0;o.execution_contact=0;o.execution_rating=0;o.result_contact=0;
         auto result=compare(*s,o,36);require(result.state->pc==action::no_receiver_phase,"Root prefix reaches the unopposed continuation");boundaries(*s,o,36);}
-    for(auto pc=action::entry;pc<action::no_receiver_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==5685,"All original ball-action preparation through unopposed-execution sites covered");
+    for(auto receiver:{0u,recipient})for(auto score:{0u,100u,101u,32767u,32768u,65535u})for(auto rating:{0u,100u,32767u,32768u,65535u}) {
+        auto s=final_seed();s->wr<4>(56,receiver);s->wr<4>(68,0xabcd0000|score);s->memory.write<2>(stack-0x150+0x4a,rating);auto result=compare(*s,{},37);
+        const bool successful=!receiver||signed_value<2>(score)>signed_value<2>(rating);require(result.state->pc==(successful?action::final_effects_phase:action::unsuccessful_action_phase),"Final action gate uses the signed score only when a receiver exists");
+        if(successful){const auto delta=std::int32_t(signed_value<2>(score))/10;
+            require(result.state->memory.read<4>(match+0x3108)==0x7ffffffeu+std::uint32_t(delta)&&result.state->memory.read<4>(match+0x310c)==0xfffffffeu+std::uint32_t(delta),"Final action adds both independently converted score fractions with word wrap");
+            require(result.state->memory.read<2>(actor+0x36)==254&&result.state->memory.read<2>(actor+0x19c)==45,"Final preparation retains the action byte and adds four to the initiating halfword");
+            if(receiver)require(result.state->memory.read<1>(receiver+0x2c)==4,"Final receiver byte wraps after the live stack increment");}
+    }
+    for(auto divisor:{0.0,-1.0,1.0,10.0,1.0e100}){auto s=final_seed();s->memory.write<8>(doubles+0x330,float_bits<8>(divisor));boundaries(*s,{},37);}
+    for(auto bits:{0x7ff8000000001234ull,0x7ff0000000001234ull,0x7ff0000000000000ull,0xfff0000000000000ull}){auto s=final_seed();s->memory.write<8>(doubles+0x330,bits);compare(*s,{},37);}
+    for(auto receiver:{0u,recipient}){auto s=final_seed();s->wr<4>(56,receiver);boundaries(*s,{},37);}
+    {auto s=final_seed();s->wr<4>(68,0);boundaries(*s,{},37);}
+    {Options o;o.mutate_final=true;boundaries(*final_seed(),o,37);}
+    for(auto receiver:{actor,recipient+1,stack-0x150,globals}){auto s=final_seed();s->wr<4>(56,receiver);compare(*s,{},37);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*final_seed(),o,37);}
+    for(auto phase:{38u,40u,42u,44u})for(auto state:{0u,2u,4u}) {
+        auto s=final_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x791f,state);Options o;o.contact_result=0;o.execution_receiver=0;compare(*s,o,phase);
+    }
+    for(unsigned state=0;state<256;++state){auto s=special_effects_seed();s->wr<4>(88,0xabcd0000|state);auto result=compare(*s,{},39);
+        if(state!=4)require(result.state->pc==action::regular_effects_phase&&result.calls.empty(),"Only raw state four enters the special action effects");}
+    for(auto first:{0u,1u,40u,127u,128u,255u})for(auto second:{0u,1u,40u,127u,128u,255u})for(auto kind:{0u,1u,0x10001u,0xffffu}) {
+        auto s=special_effects_seed();s->memory.write<1>(actor_profile+0x2e,first);s->memory.write<1>(receiver_profile+0x2e,second);Options o;o.receiver_kinds.fill(kind);auto result=compare(*s,o,39);
+        require(result.state->memory.read<2>(actor+0x19c)==123&&result.state->memory.read<1>(actor+7)==0&&result.state->memory.read<1>(actor+8)==0&&result.state->memory.read<1>(recipient+7)==0,"Special effects preserve the ordered action replacement and wrapped actor/receiver counters");
+        require(result.state->memory.read<2>(recipient+0x36)==(signed_value<2>(kind)==1?65336u:390u),"Special receiver decrement uses the live signed classification");
+        require(result.state->memory.read<2>(actor+0x36)==590&&result.state->memory.read<1>(actor+9)==0,"Eligible special action applies separate minus-ten, plus-fifty and plus-three-hundred writes");
+    }
+    for(auto first:{0u,actor_profile})for(auto second:{0u,receiver_profile})for(auto kind:{0u,1u})for(auto random:{16u,17u,18u}) {
+        auto s=special_effects_seed();s->memory.write<4>(actor+0x70,first);s->memory.write<4>(recipient+0x70,second);s->memory.write<4>(globals,random);Options o;o.receiver_kinds.fill(kind);boundaries(*s,o,39);
+    }
+    for(auto side:{0u,1u,2u})for(auto row:{1u,3u,4u,5u,6u})for(auto column:{0u,1u,11u})for(auto gate:{0u,1u})for(auto alignment:{0u,1u}) {
+        auto s=special_effects_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);Options o;o.final_gate=gate;o.low_alignment=alignment;compare(*s,o,39);
+    }
+    for(auto trait:{0u,1u,127u,128u,255u})for(auto response:{0u,1u,0x100u,0x1ffu}) {
+        auto s=special_effects_seed();s->memory.write<1>(recipient+0x17,trait);s->memory.write<4>(globals,14);Options o;o.reaction_result=response;boundaries(*s,o,39);
+    }
+    for(auto wide:{31u,32u})for(auto sampled:{-100000,0,10000000}){Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*special_effects_seed(),o,39);}
+    for(auto cursor:{stream,stream+122}){auto s=special_effects_seed();s->memory.write<4>(globals+8,cursor);Options o;o.zero_special_interval=true;boundaries(*s,o,39);}
+    for(auto cursor:{stream+120,stream+122,stream+124,stream+126})for(auto kind:{0u,1u}) {
+        auto s=special_effects_seed();s->memory.write<4>(globals+8,cursor);Options o;o.receiver_kinds.fill(kind);boundaries(*s,o,39);
+    }
+    for(auto balance:{0u,199u,200u,201u,32767u,32768u,65335u,65336u,65535u})for(auto score:{0u,300u,1000u,32768u,65535u}) {
+        auto s=special_effects_seed();s->wr<4>(56,0);s->wr<4>(68,0xabcd0000|score);s->memory.write<2>(actor+0x1a0,balance);auto result=compare(*s,{},39);
+        const auto delta=signed_value<2>(std::uint32_t(score-100-200));const auto updated=signed_value<2>(std::uint32_t(signed_value<2>(balance)+delta));
+        require(result.state->memory.read<2>(actor+0x1a0)==std::uint16_t(std::clamp<std::int64_t>(updated,-200,200)),"Special action narrows before applying both balance clamps");
+    }
+    for(auto balance:{0u,199u,65335u}){auto s=special_effects_seed();s->wr<4>(56,0);s->memory.write<2>(actor+0x1a0,balance);s->wr<4>(68,balance==199?1000u:0u);boundaries(*s,{},39);}
+    {Options o;o.receiver_kinds={0,1,0};o.mutate_final=true;boundaries(*special_effects_seed(),o,39);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*special_effects_seed(),o,39);}
+    for(unsigned flag=0;flag<256;++flag){auto s=regular_effects_seed();s->wr<4>(92,0xabcd0000|flag);auto result=compare(*s,{},41);
+        if(flag)require(result.calls.size()==1&&read_be<4>(result.calls[0].before.data()+16)==0x216e&&result.state->memory.read<2>(actor+0x1a0)==0,"Recorded regular flag reports without applying the balance update");}
+    for(auto owner:{actor,recipient})for(auto state:{0u,1u,2u,4u,127u,128u,255u})for(auto row:{0u,2u,3u,4u,5u,6u,128u})for(auto column:{0u,1u,11u}) {
+        auto s=regular_effects_seed();s->wr<4>(96,owner);s->wr<4>(88,state);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);compare(*s,{},41);
+    }
+    for(auto score:{0u,500u,65035u,65036u,32768u,65535u})for(auto first:{0u,1u,0x100u,0x1ffu})for(auto second:{0u,1u,0x100u,0x1ffu}) {
+        auto s=regular_effects_seed();s->wr<4>(64,score);Options o;o.regular_gate=first;o.regular_second_gate=second;compare(*s,o,41);
+    }
+    for(auto score:{200u,65035u})for(auto first:{0u,1u})for(auto second:{0u,1u})for(auto random:{17u,18u}) {
+        auto s=regular_effects_seed();s->wr<4>(64,score);s->memory.write<4>(globals,random);s->memory.write<2>(stream+4,103);Options o;o.regular_gate=first;o.regular_second_gate=second;boundaries(*s,o,41);
+    }
+    for(auto owner:{actor,recipient})for(auto balance:{199u,65335u}){auto s=regular_effects_seed();s->wr<4>(96,owner);s->wr<4>(68,balance==199?1000u:0u);s->memory.write<2>(actor+0x1a0,balance);boundaries(*s,{},41);}
+    for(auto cursor:{stream+124,stream+126}){auto s=regular_effects_seed();s->memory.write<4>(globals+8,cursor);s->memory.write<4>(globals,18);boundaries(*s,{},41);}
+    for(auto side:{0u,1u})for(auto row:{2u,4u,6u})for(auto column:{0u,1u,11u}){auto s=regular_effects_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);boundaries(*s,{},41);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*regular_effects_seed(),o,41);}
+    for(unsigned state=0;state<256;++state) {
+        auto s=success_reaction_seed();s->wr<4>(88,0xabcd0000|state);s->memory.write<2>(actor+0x1a0,1);s->memory.write<2>(actor+0x32,0);
+        s->memory.write<4>(globals,0);s->memory.write<2>(stream+2,0);s->memory.write<2>(stream+4,0);auto result=compare(*s,{},43);
+        require(std::any_of(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x102775e0;}),"Completed-action trigger is reached for the forced zero threshold");
+        require(result.state->memory.read<1>(match+0x1c0)==unsigned(signed_value<1>(state)<4),"Completed-action state gate controls the match flag independently of its trigger call");
+    }
+    for(auto state:{0u,1u,4u,5u,128u,255u})for(auto balance:{0u,1u,199u,200u,65336u,65535u})for(auto trait:{0u,1u,20u,32767u,32768u,65516u}) {
+        auto s=success_reaction_seed();s->wr<4>(88,state);s->memory.write<2>(actor+0x1a0,balance);s->memory.write<2>(actor+0x32,trait);compare(*s,{},43);
+    }
+    for(auto side:{0u,1u,2u,128u,255u})for(auto row:{1u,2u,4u,6u,7u,128u})for(auto column:{0u,1u,2u,9u,10u,11u,12u,128u}) {
+        auto s=success_reaction_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);compare(*s,{},43);
+    }
+    for(auto wide:{33u,34u,35u,36u})for(auto sampled:{-100000,0,10000000}) {
+        auto s=success_reaction_seed();if(wide<=34)s->wr<4>(88,1);Options o;o.force_wide=wide;o.sampled=sampled;boundaries(*s,o,43);
+    }
+    for(auto cursor:{stream+120,stream+122,stream+124,stream+126})for(auto state:{1u,4u})for(auto balance:{0u,200u}) {
+        auto s=success_reaction_seed();s->wr<4>(88,state);s->memory.write<2>(actor+0x1a0,balance);s->memory.write<4>(globals+8,cursor);boundaries(*s,{},43);
+    }
+    for(auto side:{0u,1u})for(auto row:{1u,4u,7u})for(auto column:{0u,2u,10u,12u}){auto s=success_reaction_seed();s->memory.write<1>(actor+0x27,side);s->memory.write<1>(actor+0x105,row);s->memory.write<1>(actor+0x106,column);boundaries(*s,{},43);}
+    for(auto trait:{0u,1u,32768u,65516u}){auto s=success_reaction_seed();s->memory.write<2>(actor+0x32,trait);boundaries(*s,{},43);}
+    for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*success_reaction_seed(),o,43);}
+    for(auto phase:{38u,40u,42u,44u}) {
+        auto s=final_seed();s->pc=action::entry;s->wr<4>(4,stack);s->memory.write<1>(match+0x791f,4);Options o;o.contact_result=0;o.execution_receiver=0;const auto result=compare(*s,o,phase);
+        require(std::any_of(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x1022e3a0;}),"Original-root prefix enters final preparation");
+        if(phase==44)require(result.state->pc==action::return_phase&&std::any_of(result.calls.begin(),result.calls.end(),[](const Event& e){return e.target==0x102775e0;}),"Original-root prefix reaches completed special-action reaction");
+        boundaries(*s,o,phase);
+    }
+    for(auto pc=action::entry;pc<action::unsuccessful_action_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==6573,"All original ball-action preparation through completed-action reaction sites covered");
     for(unsigned p=0;p<phase_cases.size();++p){require(phase_completed[p]>0,"Each ball-action phase completed");
         std::cout<<"Phase "<<p<<": "<<phase_cases[p]<<" comparisons, "<<phase_completed[p]<<" completions\n";}
     std::cout<<"PASS: "<<cases<<" ball-action component comparisons; "<<completed<<" phase completions, "<<interruptions

@@ -49,7 +49,11 @@ generated reference bodies and runtime artifacts remain outside version control.
 | Execution-result classification and initiating-player reaction | `0x10241680..0x10241b24` | 297 |
 | Execution-result outcome, restart selection and messages | `0x10241b24..0x102424ac` | 610 |
 | Unopposed action marker, receiver counter and status effects | `0x102424ac..0x102425f4` | 82 |
-| **Validated contiguous prefix** | **`0x1023cd20..0x102425f4`** | **5,685** |
+| Final receiver/score gate and independently converted aggregates | `0x102425f4..0x102426c8` | 53 |
+| Special state-four profiles, counters, receiver reaction and balance | `0x102426c8..0x10242cc0` | 382 |
+| Regular-action messages and balance | `0x10242cc0..0x10242f3c` | 159 |
+| Completed-action trigger, area gate and player reaction | `0x10242f3c..0x102433d4` | 294 |
+| **Validated contiguous prefix** | **`0x1023cd20..0x102433d4`** | **6,573** |
 
 The named components preserve live reloads, signed-byte/halfword narrowing,
 wrapped word arithmetic, reciprocal division, floating-point status, scratch
@@ -124,6 +128,23 @@ query is conditional and chooses between the original 59/70 decrements. The
 receiver is still accessed before the later null gate, preserving the original
 fault behavior. Both new phases have actual original-root fixture prefixes.
 
+Final preparation preserves the nullable receiver/score gate, initiating-player
+callback, two independent floating conversions and aggregate updates, and the
+receiver's wrapped byte increment. Special state four retains repeated profile
+and classification queries, message selection, separate counter/rating writes,
+receiver reaction and the signed balance clamp. Regular actions retain their
+flag/owner/state/coordinate gates and distinct report paths. The three balance
+copies preserve their original control flow: the final lower clamp falls through
+where the earlier copies branch, which matters for accounting and budget stops.
+
+Completed-action reaction keeps its signed balance sample and random threshold,
+conditional match flags/aggregates, trigger call, inverted-area gate and signed
+initiating-player reaction sample. Word sampling still uses the shared audited
+schedule. Dormant wide intervals and the structurally zero special interval are
+covered by paired injections; they are not claimed as natural game paths.
+Four additional original-root prefixes reach these phases and compare all
+state, effects, source sites and instruction accounting.
+
 The conformance harness checks each component individually and every successive
 prefix from the original root. Dependencies are opaque deterministic fixtures
 that record full register state before and after calls, clobber volatile
@@ -133,12 +154,12 @@ runtime acceptance.
 
 ## Component evidence
 
-The current check contains 310,969 comparisons:
+The current check contains 345,190 comparisons:
 
-- 44,061 successful component or prefix completions;
-- 266,870 instruction-budget, memory-hole or dependency interruptions;
-- 38 rejected own-result/dependency negative controls;
-- all 5,685 original instruction sites, including dormant branches;
+- 46,474 successful component or prefix completions;
+- 298,670 instruction-budget, memory-hole or dependency interruptions;
+- 46 rejected own-result/dependency negative controls;
+- all 6,573 original instruction sites, including dormant branches;
 - complete architectural state, mapped memory, ordered accesses, dependency ABI,
   original-site order and instruction accounting comparisons.
 
@@ -150,7 +171,7 @@ interior edges, and the unchanged production manifest. Record-form narrowing
 also checks all 256 initial condition bytes, both overflow bits and three signed
 halfword classes at the first interruption boundary.
 
-31,071 of the comparisons use paired checkpoint injections to reach dormant
+36,254 of the comparisons configure paired checkpoint injections for dormant
 wide-interval or zero-threshold branches. These are structural equivalence
 evidence, not naturally reachable gameplay coverage. Other cases include live
 dependency mutations, aliases, null and unaligned pointers, random renewal,
@@ -164,8 +185,8 @@ contract tests explicitly skip when original inputs are unavailable.
 
 ## Remaining acceptance
 
-Continue at `0x102425f4` with the final action/receiver effects and reports.
-The remaining 2,457 original instructions, three further computed
+Continue at `0x102433d4` with the unsuccessful-action receiver reaction and
+remaining reports. The remaining 1,569 original instructions, three further computed
 decision tables, tail/error paths and common return still require reconstruction
 and equivalence evidence.
 
@@ -212,3 +233,10 @@ symbols after matching Release/UBSAN acceptance: five files and 309,440,204
 logical bytes. Available space increased by 310,484,992 bytes during cleanup;
 concurrent filesystem activity can affect that observation. All 845 protected
 files, both signed ARM64 apps and the production library hash remained unchanged.
+
+The success-effects checkpoint removed the two conformance executables, its
+private diagnostic executable/object and debug symbols after matching
+Release/UBSAN acceptance: seven files and 457,440,944 logical bytes. Available
+space increased by 458,780,672 bytes during cleanup. All 845 protected files,
+both signed ARM64 apps and the production library hash remained unchanged;
+diagnostic sources and evidence are retained.

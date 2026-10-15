@@ -28,7 +28,11 @@ COMPONENTS = {'preparation': (ENTRY, 0x1023d184), 'orientation': (0x1023d184, 0x
               'result_message': (0x10241454, 0x10241680),
               'result_resolution': (0x10241680, 0x10241b24),
               'result_outcome': (0x10241b24, 0x102424ac),
-              'unopposed': (0x102424ac, 0x102425f4)}
+              'unopposed': (0x102424ac, 0x102425f4),
+              'final_preparation': (0x102425f4, 0x102426c8),
+              'special_effects': (0x102426c8, 0x10242cc0),
+              'regular_effects': (0x10242cc0, 0x10242f3c),
+              'success_reaction': (0x10242f3c, 0x102433d4)}
 
 
 def render_reference(records, userops, component):
