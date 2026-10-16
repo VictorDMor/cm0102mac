@@ -12,7 +12,16 @@ from compile_recomp import generate_page
 
 def render_reference(records, userops, component):
     require_ball_contact_bodies(records)
-    chosen = CONTRACTS[:4] if component == 'facades' else (CONTRACTS[4 if component == 'description' else 5],)
+    components = {'facades': CONTRACTS[:4], 'description': CONTRACTS[4:5],
+                  'description_preparation': ((0x101f5350, 0x101f5800),),
+                  'description_exit': ((0x101f5800, 0x101f5a0c),),
+                  'description_weight': ((0x101f5a2c, 0x101f5ea4),),
+                  'description_assessment': ((0x101f5ea4, 0x101f5f58),),
+                  'description_reactions': ((0x101f5f58, 0x101f6914),),
+                  'description_players': ((0x101f5a0c, 0x101f5a2c),),
+                  'description_next': ((0x101f6914, 0x101f6924),),
+                  'description_return': ((0x101f6924, 0x101f6940),), 'failure': CONTRACTS[5:]}
+    chosen = components[component]
     body = [row for row in records if any(start <= row['address'] < end for start, end, *_ in chosen)]
     disabled = {name: False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name == 'guest_context_transfers'}
     units = []
@@ -35,14 +44,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path)
     parser.add_argument('output', type=Path)
-    parser.add_argument('--component', choices=('facades', 'description', 'failure'), required=True)
+    parser.add_argument('--component', choices=('facades', 'description', 'description_preparation', 'description_exit', 'description_players', 'description_next', 'description_return', 'description_weight', 'description_assessment', 'description_reactions', 'failure'), required=True)
     args = parser.parse_args()
     with sqlite3.connect((args.input / 'instructions.sqlite').resolve().as_uri() + '?mode=ro', uri=True) as db:
         records = load_ball_contact(db)
-    load_ball_contact_tables(args.input)
+    tables = load_ball_contact_tables(args.input)
     userops = json.loads((args.input / 'program.json').read_text())['userops']
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(render_reference(records, userops, args.component))
+    if args.component == 'description_weight':
+        header = '#pragma once\n#include <array>\n#include <cstdint>\n'
+        for name, site in (('weight', 0x101f5ab4), ('style', 0x101f6428), ('random', 0x101f66b0)):
+            words = tables[site]
+            header += f'inline constexpr std::array<std::uint32_t,{len(words)}> original_contact_{name}_table{{' + ','.join(f'0x{word:x}' for word in words) + '};\n'
+        args.output.with_name('ball_contact_description_tables.hpp').write_text(header)
     print(f'Emitted independent {args.component}; all six contact bodies and three tables pinned')
 
 

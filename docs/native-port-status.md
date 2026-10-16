@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-14
+# Native port investigation — updated 2026-10-15
 
 ## Required outcome
 
@@ -21,8 +21,11 @@ manifest has 678 entries, retaining every prior entry. Productive calls,
 original/profile controls, nonlocal transfers and a complete paired match pass:
 789 advances and 444 C++23 actions match 444 original controls with equal final
 state and per-tick instruction accounting. The installed Match Debugger reaches
-full time and retains undo/redo. Contact dependencies remain generated and are
-next in the active full-port goal. Save/Load was not retested for this delivery.
+full time and retains undo/redo. The six contact dependencies now have complete
+C++23 candidate bodies with 198,811 Release/UBSAN component comparisons covering
+all 2,043 original instructions. They remain generated in the installed game
+until production, real-match and performance acceptance is complete. Save/Load
+was not retested for these deliveries.
 
 ## Original Mac media: observed facts
 

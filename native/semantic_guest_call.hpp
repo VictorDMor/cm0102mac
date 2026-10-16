@@ -258,6 +258,9 @@ public:
     void floating_indexed_single(unsigned destination, unsigned base, unsigned index) {
         step(); state.wr<8>(0x4000 + destination * 16, float_bits<8>(float_value<4>(state.memory.read<4>(r(base) + r(index)))));
     }
+    void floating_indexed_store_single(unsigned source, unsigned base, unsigned index) {
+        step(); state.memory.write<4>(r(base) + r(index), float_bits<4>(float_value<8>(state.r<8>(0x4000 + source * 16))));
+    }
     void floating_product_single(unsigned destination, unsigned first, unsigned second) {
         step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
         const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));

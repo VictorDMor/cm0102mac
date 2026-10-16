@@ -26,13 +26,13 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(len(manifest), 678)
         self.assertEqual(hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'a7ed184a519e48bfbe1612d909630b90c35527dc12ec2c88972b77c4831f419f')
-        for filename in ('ball_contact_facades.cpp', 'ball_contact_failure.cpp'):
+        for filename in ('ball_contact_facades.cpp', 'ball_contact_failure.cpp', 'ball_contact_description_preparation.cpp', 'ball_contact_description_flow.cpp', 'ball_contact_description_weight.cpp', 'ball_contact_description_assessment.cpp', 'ball_contact_description_reactions.cpp', 'ball_contact_description.cpp'):
             source = (ROOT / 'native' / filename).read_text()
             for forbidden in ('_reference(', 'dispatch_page', 'pcode', 'i_101'):
                 self.assertNotIn(forbidden, source)
         cmake = (ROOT / 'native/CMakeLists.txt').read_text().split('target_sources(cm_aot PRIVATE', 1)[1].split('add_library(cm_match_debugger_database', 1)[0]
-        self.assertNotIn('ball_contact_facades.cpp', cmake)
-        self.assertNotIn('ball_contact_failure.cpp', cmake)
+        for source in (ROOT / 'native').glob('ball_contact*.cpp'):
+            self.assertNotIn(source.name, cmake)
 
     def test_external_interiors_fail_for_each_complete_root(self):
         for start, end, *_ in CONTRACTS:
@@ -64,7 +64,7 @@ class ContractTests(unittest.TestCase):
                     render_reference(changed, self.userops, 'facades')
 
     def test_all_independent_reference_labels_and_steps_remain_without_hooks(self):
-        for component, contracts in (('facades', CONTRACTS[:4]), ('description', CONTRACTS[4:5]), ('failure', CONTRACTS[5:])):
+        for component, contracts in (('facades', CONTRACTS[:4]), ('description', CONTRACTS[4:5]), ('description_preparation', ((0x101f5350, 0x101f5800),)), ('description_exit', ((0x101f5800, 0x101f5a0c),)), ('description_weight', ((0x101f5a2c, 0x101f5ea4),)), ('description_assessment', ((0x101f5ea4, 0x101f5f58),)), ('description_reactions', ((0x101f5f58, 0x101f6914),)), ('description_players', ((0x101f5a0c, 0x101f5a2c),)), ('description_next', ((0x101f6914, 0x101f6924),)), ('description_return', ((0x101f6924, 0x101f6940),)), ('failure', CONTRACTS[5:])):
             code = render_reference(self.records, self.userops, component)
             expected = [f'{address:x}' for start, end, *_ in contracts for address in range(start, end, 4)]
             self.assertEqual(re.findall(r'^i_([0-9a-f]+):', code, re.MULTILINE), expected)

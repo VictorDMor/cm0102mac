@@ -210,6 +210,40 @@ set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     # Independent original components retain every site without productive hooks.
+    set(CM_BALL_CONTACT_DESCRIPTION_PREPARATION_REFERENCE "${CMAKE_BINARY_DIR}/ball_contact_description_preparation_reference.cpp")
+    add_custom_command(OUTPUT "${CM_BALL_CONTACT_DESCRIPTION_PREPARATION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_BALL_CONTACT_DESCRIPTION_PREPARATION_REFERENCE}" --component description_preparation
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/ball_contact_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
+        VERBATIM)
+    set(CM_BALL_CONTACT_DESCRIPTION_FLOW_REFERENCES)
+    foreach(part IN ITEMS description_exit description_players description_next description_return description_weight description_assessment description_reactions description)
+        set(reference "${CMAKE_BINARY_DIR}/ball_contact_${part}_reference.cpp")
+        set(table_header)
+        if(part STREQUAL "description_weight")
+            set(table_header "${CMAKE_BINARY_DIR}/ball_contact_description_tables.hpp")
+        endif()
+        add_custom_command(OUTPUT "${reference}" ${table_header}
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+                "${CM_ORACLE_DIR}" "${reference}" --component "${part}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/ball_contact_audit.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+                "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+                "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
+            VERBATIM)
+        list(APPEND CM_BALL_CONTACT_DESCRIPTION_FLOW_REFERENCES "${reference}" ${table_header})
+    endforeach()
+    add_executable(cm-ball-contact-description-checks ball_contact_description_checks.cpp ball_contact_description_preparation.cpp ball_contact_description_flow.cpp ball_contact_description_weight.cpp ball_contact_description_assessment.cpp ball_contact_description_reactions.cpp ball_contact_description.cpp "${CM_BALL_CONTACT_DESCRIPTION_PREPARATION_REFERENCE}" ${CM_BALL_CONTACT_DESCRIPTION_FLOW_REFERENCES})
+    target_include_directories(cm-ball-contact-description-checks PRIVATE "${CMAKE_BINARY_DIR}")
+    target_link_libraries(cm-ball-contact-description-checks PRIVATE cm_aot)
+    target_compile_options(cm-ball-contact-description-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME ball_contact_description_equivalence COMMAND cm-ball-contact-description-checks)
+    set_tests_properties(ball_contact_description_equivalence PROPERTIES TIMEOUT 240)
     set(CM_BALL_CONTACT_FACADE_REFERENCE "${CMAKE_BINARY_DIR}/ball_contact_facade_reference.cpp")
     add_custom_command(OUTPUT "${CM_BALL_CONTACT_FACADE_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_ball_contact_reference.py"
