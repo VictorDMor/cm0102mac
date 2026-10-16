@@ -9,23 +9,24 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [ball-action coordinator](native-ball-action-reconstruction.md) now covers
-**all 8,142 original instructions** and is installed in both signed ARM64 apps.
-Independent Release/UBSAN comparisons agree in 518,549 cases, covering full
-state, ordered effects, dependency ABI, faults, source-site order and accounting.
-The **678-entry accepted manifest** preserves its prior 677 entries. Actual
-entry/profile/nonlocal-transfer checks pass. A complete paired 789-advance
-match executes 444 C++23 actions against 444 original controls with identical
-final state and per-tick accounting. Installed Debugger completion also passes.
-Contact dependencies and the rest of the engine remain under reconstruction.
+The [ball-contact block](native-ball-contact-reconstruction.md) is integrated and
+installed in both signed ARM64 apps. Its six complete roots cover 2,043 original
+instructions: four new entries plus two accepted discipline facades reused with
+their existing owners. The **682-entry manifest** retains all previous 678 entries.
+Component evidence totals 198,811 comparisons per Release/UBSAN mode. Real caller
+checks cover 72 production cases, 18 profile controls and 49 nonlocal transfers.
+A paired 789-advance match preserves full final state and per-tick accounting;
+the description executes 13,063 times. Installed Debugger completion also passes.
 
-The next [ball-contact block](native-ball-contact-reconstruction.md) now has all
-six complete component implementations: four argument facades, the 1,404-site
-description and the 541-site failed-contact reaction. All 2,043 original
-instructions are covered by 198,811 comparisons per Release/UBSAN mode, including
-complete description calls. Whole-block production integration, actual-match
-acceptance and performance measurement remain open. The installed manifest
-stays at **678**.
+Final grouped 600-tick measurements show median paired runtime reductions of
+0.58% and 0.21%. These are small and close to measurement variation; no large
+speedup is established. The initial slower candidate was revised before installation.
+Save/Load was not retested, and the complete port remains unfinished.
+
+The preceding [ball-action coordinator](native-ball-action-reconstruction.md)
+delivery covered all 8,142 original instructions and reached the 678-entry
+milestone. Its 518,549 Release/UBSAN comparisons and paired complete match agreed,
+including 444 C++23 action calls against 444 original controls.
 
 The preceding [team-line reconstruction](native-team-line-reconstruction.md) added
 five complete operations: tactical flags, their line-adjustment query, two

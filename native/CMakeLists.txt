@@ -63,6 +63,15 @@ target_sources(cm_aot PRIVATE
     match_discipline_facades.cpp
     match_discipline_penalties.cpp
     match_discipline_referee.cpp
+    ball_contact_adapter.cpp
+    ball_contact_facades.cpp
+    ball_contact_failure.cpp
+    ball_contact_description.cpp
+    ball_contact_description_assessment.cpp
+    ball_contact_description_flow.cpp
+    ball_contact_description_preparation.cpp
+    ball_contact_description_reactions.cpp
+    ball_contact_description_weight.cpp
     ball_action_adapter.cpp
     ball_action_coordinator.cpp
     ball_action_preparation.cpp
@@ -238,7 +247,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             VERBATIM)
         list(APPEND CM_BALL_CONTACT_DESCRIPTION_FLOW_REFERENCES "${reference}" ${table_header})
     endforeach()
-    add_executable(cm-ball-contact-description-checks ball_contact_description_checks.cpp ball_contact_description_preparation.cpp ball_contact_description_flow.cpp ball_contact_description_weight.cpp ball_contact_description_assessment.cpp ball_contact_description_reactions.cpp ball_contact_description.cpp "${CM_BALL_CONTACT_DESCRIPTION_PREPARATION_REFERENCE}" ${CM_BALL_CONTACT_DESCRIPTION_FLOW_REFERENCES})
+    add_executable(cm-ball-contact-description-checks ball_contact_description_checks.cpp "${CM_BALL_CONTACT_DESCRIPTION_PREPARATION_REFERENCE}" ${CM_BALL_CONTACT_DESCRIPTION_FLOW_REFERENCES})
     target_include_directories(cm-ball-contact-description-checks PRIVATE "${CMAKE_BINARY_DIR}")
     target_link_libraries(cm-ball-contact-description-checks PRIVATE cm_aot)
     target_compile_options(cm-ball-contact-description-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -254,7 +263,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
             "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
         VERBATIM)
-    add_executable(cm-ball-contact-facade-checks ball_contact_facade_checks.cpp ball_contact_facades.cpp "${CM_BALL_CONTACT_FACADE_REFERENCE}")
+    add_executable(cm-ball-contact-facade-checks ball_contact_facade_checks.cpp "${CM_BALL_CONTACT_FACADE_REFERENCE}")
     target_link_libraries(cm-ball-contact-facade-checks PRIVATE cm_aot)
     target_compile_options(cm-ball-contact-facade-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME ball_contact_facade_equivalence COMMAND cm-ball-contact-facade-checks)
@@ -268,7 +277,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
             "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
         VERBATIM)
-    add_executable(cm-ball-contact-failure-checks ball_contact_failure_checks.cpp ball_contact_failure.cpp "${CM_BALL_CONTACT_FAILURE_REFERENCE}")
+    add_executable(cm-ball-contact-failure-checks ball_contact_failure_checks.cpp "${CM_BALL_CONTACT_FAILURE_REFERENCE}")
     target_link_libraries(cm-ball-contact-failure-checks PRIVATE cm_aot)
     target_compile_options(cm-ball-contact-failure-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME ball_contact_failure_equivalence COMMAND cm-ball-contact-failure-checks)
@@ -578,12 +587,18 @@ target_compile_options(cm-match-discipline-transfer-checks PRIVATE -Wall -Wextra
 add_executable(cm-ball-action-match-checks ball_action_match_checks.cpp)
 target_link_libraries(cm-ball-action-match-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-ball-action-match-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-ball-contact-production-checks ball_contact_production_checks.cpp)
+target_link_libraries(cm-ball-contact-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-ball-contact-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-ball-action-production-checks ball_action_production_checks.cpp)
 target_link_libraries(cm-ball-action-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-ball-action-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-player-movement-production-checks player_movement_production_checks.cpp)
 target_link_libraries(cm-player-movement-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-player-movement-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-ball-contact-transfer-checks ball_contact_transfer_checks.cpp)
+target_link_libraries(cm-ball-contact-transfer-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-ball-contact-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-ball-action-transfer-checks ball_action_transfer_checks.cpp)
 target_link_libraries(cm-ball-action-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-ball-action-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -819,6 +834,16 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/movement-choice-live-profile")
     set_tests_properties(movement_choice_actual_production PROPERTIES FIXTURES_SETUP MovementChoiceLiveProfile TIMEOUT 180)
     set_tests_properties(movement_choice_original_profile movement_choice_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MovementChoiceLiveProfile TIMEOUT 180)
+    add_test(NAME ball_contact_actual_production COMMAND cm-ball-contact-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-contact-production-checks")
+    add_test(NAME ball_contact_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-ball-contact-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/ball-contact-profile-checks" "${CMAKE_BINARY_DIR}/ball-contact-live-profile")
+    add_test(NAME ball_contact_nonlocal_transfer COMMAND cm-ball-contact-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-contact-transfer-checks"
+        "${CMAKE_BINARY_DIR}/ball-contact-live-profile")
+    set_tests_properties(ball_contact_actual_production PROPERTIES FIXTURES_SETUP BallContactLiveProfile TIMEOUT 180)
+    set_tests_properties(ball_contact_original_profile ball_contact_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED BallContactLiveProfile TIMEOUT 180)
     add_test(NAME team_line_actual_production COMMAND cm-team-line-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/team-line-production-checks")
     add_test(NAME team_line_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1

@@ -12,20 +12,20 @@ a full match, return to management, saving, normal exit, and reloading the
 post-match save with the Anapolina result preserved (user confirmed). Multiplayer and some other services remain
 unfinished; this is a working development build, not a fully validated release.
 
-## Latest C++23 coordinator delivery
+## Latest C++23 delivery
 
-The complete [ball-action coordinator](native-ball-action-reconstruction.md),
-`0x1023cd20..0x10244c58`, is now installed in both signed ARM64 apps. Its 8,142
-original instructions have 518,549 Release/UBSAN comparisons and the accepted
-manifest has 678 entries, retaining every prior entry. Productive calls,
-original/profile controls, nonlocal transfers and a complete paired match pass:
-789 advances and 444 C++23 actions match 444 original controls with equal final
-state and per-tick instruction accounting. The installed Match Debugger reaches
-full time and retains undo/redo. The six contact dependencies now have complete
-C++23 candidate bodies with 198,811 Release/UBSAN component comparisons covering
-all 2,043 original instructions. They remain generated in the installed game
-until production, real-match and performance acceptance is complete. Save/Load
-was not retested for these deliveries.
+The complete [ball-contact block](native-ball-contact-reconstruction.md) is now
+installed in both signed ARM64 apps. Four new roots and two reused discipline
+facades cover 2,043 original instructions; the manifest has **682 unique entries**,
+preserving its previous 678 entries. Component, actual-caller, profile, nonlocal
+and installed-worker checks pass. The paired complete match reaches 789 advances
+with identical final state and per-tick accounting, including 13,063 description
+calls. Final timing medians improve by 0.58% and 0.21% in two 600-tick scenarios;
+this is not evidence of a large speedup. Save/Load was not retested.
+
+The preceding [ball-action coordinator](native-ball-action-reconstruction.md)
+remains integrated: its 8,142 instructions have independent component and complete
+match acceptance. The rest of the engine and full native port remain unfinished.
 
 ## Original Mac media: observed facts
 

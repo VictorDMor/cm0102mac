@@ -20,8 +20,8 @@ class FormattedInputManifestTests(unittest.TestCase):
         self.assertEqual(FORMATTED_INPUT_ENTRIES,(0x1077b7a0,0x1077bf20,0x1077d960,0x1077da70,0x1077dad0,0x1077d8d0,0x1077d9f0))
         self.assertEqual(INSTRUCTION_COUNTS,(478,1631,36,22,17,33,31))
         self.assertEqual(sum(INSTRUCTION_COUNTS),2248)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),678)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),678)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),682)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),682)
         self.assertEqual(SEMANTIC_REPLACEMENTS[71:78],tuple((e,'formatted_input_adapter') for e in FORMATTED_INPUT_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:71]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

@@ -227,5 +227,5 @@ int main(){try {
     for(auto kind:{0u,5u})for(auto mode:{0u,4u}){auto s=seed();s->wr<4>(20,kind);s->wr<4>(28,kind);s->memory.write<1>(match+0x791f,mode);Options o;o.mutate_context=true;o.mutate_players=true;boundaries(*s,o,11);}
     for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*seed(),o,11);}
     for(auto pc=contact::description_entry;pc<contact::description_exit_phase;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';require(sites.size()==1404,"All 1404 description original sites covered");
-    std::cout<<"PASS: "<<cases<<" description component comparisons; "<<completed<<" completions, "<<interruptions<<" interruptions, "<<negatives<<" own/child negatives; all "<<sites.size()<<" original sites; full state/effects/ABI/accounting; production unchanged\n";
+    std::cout<<"PASS: "<<cases<<" description component comparisons; "<<completed<<" completions, "<<interruptions<<" interruptions, "<<negatives<<" own/child negatives; all "<<sites.size()<<" original sites; full state/effects/ABI/accounting; independent original references\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

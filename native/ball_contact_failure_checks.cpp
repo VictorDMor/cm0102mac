@@ -105,5 +105,5 @@ int main(){try {
         auto s=seed();s->memory.write<1>(actor+0x109,hard?127:0);s->memory.write<4>(globals+4,stream+last);Options o;o.random=0;boundaries(*s,o);
     }
     for(auto pc=contact::failure_entry;pc<0x10270b94;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';require(sites.size()==541,"All 541 contact-failure original sites covered");
-    std::cout<<"PASS: "<<cases<<" contact-failure comparisons; "<<completed<<" completions, "<<interruptions<<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()<<" original sites; full state/effects/ABI/accounting; production unchanged\n";
+    std::cout<<"PASS: "<<cases<<" contact-failure comparisons; "<<completed<<" completions, "<<interruptions<<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()<<" original sites; full state/effects/ABI/accounting; independent original references\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

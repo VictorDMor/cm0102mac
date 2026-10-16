@@ -60,7 +60,8 @@ void prepare_player_weight(Call& a,bool second) {
     adjust_fitness_weight(a,second);adjust_profile_weight(a,second);adjust_context_weight(a,second);
 }
 }
-void prepare_description(State& state,SemanticDependencyDispatch* dependencies,SemanticGuestObserver* observer) {
+// Keep fixed register selections visible to the optimizer across both players.
+[[gnu::flatten]] void prepare_description(State& state,SemanticDependencyDispatch* dependencies,SemanticGuestObserver* observer) {
     Call a(state,description_entry,dependencies,observer);a.link();a.move(11,1);a.call(0x10773804);a.multiple(21,false,-0x30);a.save_link();a.frame(0xc0);
     a.move(29,3);a.move(27,4);a.store<2>(1,0xe2,5);a.move(26,6);a.store<2>(1,0xea,7);a.store<1>(1,0xef,8);
     a.load(25,2,-0x7ba0);a.load(28,2,-0x52c8);a.load(30,2,-0x52c4);a.load<2>(0,2,-0x3914);a.store<2>(1,0x3a,0);a.offset(22,1,0x3a);

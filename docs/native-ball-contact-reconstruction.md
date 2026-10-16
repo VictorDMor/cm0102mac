@@ -1,24 +1,29 @@
 # Ball-contact dependency reconstruction
 
-Status: **all six complete entries have component acceptance; production integration and runtime acceptance pending**.
+Status: **complete block integrated and installed in both signed ARM64 apps**.
 
-The installed production manifest remains at 678 semantic entries, including the
-accepted ball-action coordinator. This work reconstructs six direct contact
-dependencies, totaling 2,043 original instructions. All six entries are implemented
-and exercised against independent original references, including the complete
-1,404-instruction description from entry through return.
-These candidate components are linked only into their conformance executables.
+The accepted production manifest has **682 unique entries**, retaining all 678
+previous entries and adding four contact roots. Application (`0x101f5110`) and
+resolution (`0x101f5180`) already belonged to `match_discipline_adapter`; they
+keep those owners and their tested implementations. The contact facade API reuses
+them instead of maintaining duplicate bodies or adding duplicate hooks.
+
+The complete six-entry block covers 2,043 original instructions; 1,991 belong
+to the four newly integrated entries. Components, real callers, original/profile
+controls, nonlocal transfers and a paired full match pass. Generation retains
+1,953,334 original instructions across 1,922 units, with no missing or pending
+targets. Only the two units containing new entry hooks changed.
 
 ## Complete original boundaries
 
 | Operation | Original range (exclusive end) | Instructions | State |
 | --- | --- | ---: | --- |
-| Contact screening facade | `0x101f5050..0x101f50b8` | 26 | Component accepted |
-| Contact attempt facade | `0x101f50c0..0x101f5110` | 20 | Component accepted |
-| Contact application facade | `0x101f5110..0x101f5180` | 28 | Component accepted |
-| Contact resolution facade | `0x101f5180..0x101f51e0` | 24 | Component accepted |
-| Action-contact description | `0x101f5350..0x101f6940` | 1,404 | Component accepted |
-| Failed-contact reaction | `0x10270320..0x10270b94` | 541 | Component accepted |
+| Contact screening facade | `0x101f5050..0x101f50b8` | 26 | Integrated |
+| Contact attempt facade | `0x101f50c0..0x101f5110` | 20 | Integrated |
+| Contact application facade | `0x101f5110..0x101f5180` | 28 | Reused discipline owner |
+| Contact resolution facade | `0x101f5180..0x101f51e0` | 24 | Reused discipline owner |
+| Action-contact description | `0x101f5350..0x101f6940` | 1,404 | Integrated |
+| Failed-contact reaction | `0x10270320..0x10270b94` | 541 | Integrated |
 | **Complete block** | **Six entries** | **2,043** | **2,043 instructions implemented** |
 
 `tools/ball_contact_audit.py` pins every field of each complete original body and
@@ -94,9 +99,10 @@ the existing shared runtime library is reused. These are component observations,
 not captures from an installed game.
 
 The paired wide/zero second-interval injections are structural evidence and are
-not claimed as naturally reached gameplay. Five Python audit tests cover the
+not claimed as naturally reached gameplay. Six Python audit tests cover the
 complete scope, altered/missing/reordered source rejection, reference labels,
-three live-table contracts and unchanged production selection.
+three live-table contracts, complete entry hooks and the unchanged 678-entry
+prefix. All 49 affected audit tests also pass.
 
 Build `cm-ball-contact-facade-checks`, `cm-ball-contact-failure-checks` and
 `cm-ball-contact-description-checks` with the private `CM_ORACLE_DIR`. Run
@@ -104,21 +110,68 @@ Build `cm-ball-contact-facade-checks`, `cm-ball-contact-failure-checks` and
 `ball_contact_description_equivalence`. Public audit entry point:
 `python3 -m unittest discover -s tools -p test_ball_contact_audit.py -v`.
 
-## Remaining acceptance
+## Shared-engine and nonlocal acceptance
 
-Integrate all six actual entry labels with dedicated counters, original/profile
-controls, nonlocal transfers and shared-engine acceptance. Compare a complete
-real match against the original routines, measure paired simulation timings,
-and verify the installed app identities and completion. Component equivalence
-alone does not satisfy these gates.
+The actual Cruzeiro/Manchester United match (seed 12345) completes 789 advances
+with all six roots selected as original versus C++23. Every advance preserves
+instruction accounting and return status; intermediate and final states and the
+import ABI agree. Natural calls/returns are:
 
-The six component results do not increment the production entry count and do
-not establish new runtime behavior for the installed apps. Save/Load is **not
-retested**. No performance improvement is claimed. The complete-port goal remains
-active beyond this contact block.
+| Entry | Calls | Returns |
+| --- | ---: | ---: |
+| Screening | 100 | 100 |
+| Attempt | 474 | 474 |
+| Application, reused owner | 1 | 1 |
+| Resolution, reused owner | 1 | 1 |
+| Description | 13,063 | 13,063 |
+| Failure reaction | 1 | 1 |
 
-The earlier five-entry cycle cleanup removed 4 reproducible conformance executables and their debug
-symbols (10 files, 577,715,454 logical bytes). Available space
-increased by 576,786,432 bytes during cleanup. All 845 protected files, current
-installed/candidate apps, prior app references, reusable production objects and
-library, original inputs and independent references were verified intact.
+All six actual entry captures pass 72 direct/generated/CFM comparisons, including
+12 budget stops and six discriminating negatives. Eighteen profile controls
+select the original bodies. Forty-nine nonlocal comparisons cover each root and
+the description after preparation, including 28 restore/handler faults; abandoned
+frames do not resume. Dedicated counters record each owner without double counting
+shared entries. The complete production comparison and match also pass with
+UBSAN instrumentation on the new adapter, contact bodies and reused facades.
+
+## Measured performance
+
+An initial timing run was noisy. Grouping five identical 600-tick intervals per
+sample confirmed that the first integrated candidate was slower: median paired
+runtime changes were +1.88% and +0.86%. Inspection showed that the compiler kept
+small preparation operations as separate calls. `prepare_description` now uses
+`gnu::flatten` to expose fixed register selections across both players. Arithmetic,
+observation order, budget checkpoints and nonlocal behavior are unchanged; the
+177,348-case Release/UBSAN matrix, actual match and nonlocal checks pass again.
+
+The final comparison uses the retained pre-integration 678-entry library as the
+baseline, with no original-selection wrapper overhead. Each scenario has ten
+measured pairs after warmup; each sample averages five runs, alternating execution
+order. Complete 126,967,858-byte snapshots, instructions and host inputs agree.
+
+| Scenario against Manchester United | Median paired runtime reduction | Faster samples |
+| --- | ---: | ---: |
+| Arsenal | 0.58% | 9/10 |
+| Cruzeiro | 0.21% | 6/10 |
+
+These are small interval measurements, close to timing variation. This delivery
+establishes accurate reconstruction and removes duplicated ownership; it does
+**not establish a large speedup** or a whole-game performance improvement.
+
+## Installed delivery
+
+Both candidate and installed executables are ARM64 with verified signatures and
+matching hashes. Original program resources agree with the private source.
+The previous applications remain private backups; all 845 protected files were
+verified intact before and after atomic installation.
+
+| Installed executable | SHA-256 |
+| --- | --- |
+| CM 01-02 Native Prototype | `fd070a5bbd78e04de657bbbd8f5441dada508cac631b18c8bbf07f15acf6c43b` |
+| CM Match Debugger | `2054db1cc3f620b5cf4923b857a8beb65e16cd42498dbe474eb493185456eb89` |
+
+The installed Debugger completes the same match in 789 steps, 1–2 at 92:38,
+with a readable Full time event, completed-step rejection, undo/redo and normal
+backing cleanup. The main game shares the validated library; its management UI
+was not separately exercised in this cycle. Save/Load is **not retested**.
+The full native-port objective remains active beyond this block.

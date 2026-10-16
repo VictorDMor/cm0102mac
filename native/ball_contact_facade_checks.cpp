@@ -87,5 +87,5 @@ int main(){try {
         for(bool child:{false,true}){Options o;o.own_negative=!child;o.child_negative=child;compare(*initial,index,o);}
     }
     require(sites.size()==98,"All 98 original facade instruction sites covered");
-    std::cout<<"PASS: "<<cases<<" contact-facade comparisons; "<<completions<<" completions, "<<interruptions<<" interruptions, "<<negatives<<" own/child negatives; all "<<sites.size()<<" original sites; full state, ordered effects, ABI and accounting; production unchanged\n";
+    std::cout<<"PASS: "<<cases<<" contact-facade comparisons; "<<completions<<" completions, "<<interruptions<<" interruptions, "<<negatives<<" own/child negatives; all "<<sites.size()<<" original sites; full state, ordered effects, ABI and accounting; independent original references\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

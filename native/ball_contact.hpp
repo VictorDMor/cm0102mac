@@ -10,8 +10,10 @@ inline constexpr std::uint32_t description_players_phase=0x101f5a0c, description
 inline constexpr std::uint32_t description_assessment_phase=0x101f5ea4;
 inline constexpr std::uint32_t description_reaction_phase=0x101f5f58;
 inline constexpr std::uint32_t description_next_phase=0x101f6914, description_test_phase=0x101f6918, description_return_phase=0x101f6924;
-// These candidates enter production only after complete contact-block
-// original-reference and shared-engine acceptance.
+inline constexpr std::array<std::uint32_t,6> entries{facade_entries[0],facade_entries[1],facade_entries[2],facade_entries[3],description_entry,failure_entry};
+inline constexpr std::array<std::uint32_t,4> replacement_entries{facade_entries[0],facade_entries[1],description_entry,failure_entry};
+// Application and resolution retain their accepted match-discipline owners.
+// Complete roots preserve their original ABI and own their guest frames.
 void screen(State&,SemanticDependencyDispatch* = nullptr,SemanticGuestObserver* = nullptr);
 void attempt(State&,SemanticDependencyDispatch* = nullptr,SemanticGuestObserver* = nullptr);
 void apply(State&,SemanticDependencyDispatch* = nullptr,SemanticGuestObserver* = nullptr);
