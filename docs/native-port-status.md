@@ -14,6 +14,14 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
+The [spatial-role query optimization](native-spatial-role-performance.md) is
+installed in the game. Two 600-tick scenarios show median paired runtime
+reductions of **5.14% and 4.14%**, with identical complete snapshots. All 23
+spatial-role entries retain original-reference, production and nonlocal acceptance;
+a complete paired 798-advance match also agrees. The manifest remains at 682.
+The installed Match Debugger was preserved. This cycle did not separately retest
+the installed management UI or Save/Load.
+
 The complete [ball-contact block](native-ball-contact-reconstruction.md) is now
 installed in both signed ARM64 apps. Four new roots and two reused discipline
 facades cover 2,043 original instructions; the manifest has **682 unique entries**,

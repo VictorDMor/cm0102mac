@@ -1,10 +1,66 @@
 #include "spatial_role.hpp"
 #include "semantic_guest_call.hpp"
+#include "spatial_role_adapter.hpp"
+#include "match_turbo.hpp"
 
 namespace cm::aot::spatial_role {
 namespace {
 using Call = SemanticGuestCall;
 constexpr std::uint32_t address(Entry entry) { return entries[unsigned(entry)]; }
+struct PositionDispatch final:DependencyDispatch {
+    void call(State& state,std::uint32_t target,std::uint32_t continuation)override{
+        // Role tables deliberately reload position up to three times. Route
+        // each two-instruction query through its existing adapter, retaining
+        // its counters and ABI, without another general dispatcher scope when
+        // no callback or interruption can transfer control from the leaf.
+        if(target==address(Entry::current_position) || target==address(Entry::previous_position)){
+            const auto index=target==address(Entry::current_position)?0u:10u;
+            const auto& d=spatial_role_diagnostics(state);
+            if(!state.memory.observer && !state.memory.date_observer && !d.observer &&
+                !d.original && !d.entry_original[index] && !d.original_body &&
+                !match_pc_profile_enabled() && state.executed<=state.budget && state.budget-state.executed>=2){
+                if(try_modern_spatial_role(state,target))return;
+            }
+        }
+        run_until(state,continuation);
+    }
+};
+// These unframed field accesses never call another guest routine. Only memory
+// observers can introduce a callback and nonlocal transfer, so keep a native
+// continuation scope precisely when an observer can run. Both paths execute
+// the same body, with every original checkpoint and memory fault retained.
+template<class Body>
+[[gnu::always_inline]] inline void field_access(State& state, Entry entry, Body body) {
+    if (state.memory.observer || state.memory.date_observer) {
+        GuestNativeScope scope(state, address(entry));
+        body();
+    } else body();
+}
+template<unsigned N, std::uint32_t offset, bool sign = false>
+void read_field(State& state, Entry entry) {
+    field_access(state, entry, [&] {
+        state.step(address(entry));
+        const auto value = state.memory.read<N>(std::uint32_t(state.r<4>(12)) + offset);
+        state.wr<4>(12, sign ? std::uint32_t(signed_value<N>(value)) : value);
+        state.step(address(entry) + 4); state.pc = std::uint32_t(state.r<4>(4128));
+    });
+}
+template<unsigned N, std::uint32_t offset>
+void write_field(State& state, Entry entry) {
+    field_access(state, entry, [&] {
+        state.step(address(entry));
+        state.memory.write<N>(std::uint32_t(state.r<4>(12)) + offset, state.r<4>(16));
+        state.step(address(entry) + 4); state.pc = std::uint32_t(state.r<4>(4128));
+    });
+}
+void clear_marking_count(State& state) {
+    field_access(state, Entry::clear_marking_list, [&] {
+        constexpr auto root = address(Entry::clear_marking_list);
+        state.step(root); state.wr<4>(0, 0);
+        state.step(root + 4); state.memory.write<1>(std::uint32_t(state.r<4>(12)) + 0x104u, state.r<4>(0));
+        state.step(root + 8); state.pc = std::uint32_t(state.r<4>(4128));
+    });
+}
 void role_table(Call& a, Entry entry) {
     const auto root=address(entry), position=address(entry==Entry::previous_role?Entry::previous_position:Entry::current_position);
     a.link();a.save(31);a.save(30);a.save_link();a.frame(0x40);a.move(30,3);a.move(31,4);
@@ -221,27 +277,32 @@ void resolve_goalkeeper(Call& a){
 }
 void invoke(State& state,Entry entry,DependencyDispatch* dependencies){
     if(unsigned(entry)>=entries.size())throw std::runtime_error("Unknown spatial-role entry");
-    Call a(state,address(entry),dependencies);
     switch(entry){
-    case Entry::current_position:a.load<1>(3,3,0x19);break;
-    case Entry::column:a.load<1>(3,3,0x106);break;
-    case Entry::row:a.load<1>(3,3,0x105);break;
-    case Entry::marking_target:a.load(3,3,0x1b0);break;
-    case Entry::set_marking_target:a.store(3,0x1b0,4);break;
-    case Entry::clear_marking_list:a.value(0,0);a.store<1>(3,0x104,0);break;
-    case Entry::marking_count:a.load<1>(3,3,0x104);break;
+    case Entry::current_position:read_field<1,0x19>(state,entry);return;
+    case Entry::column:read_field<1,0x106>(state,entry);return;
+    case Entry::row:read_field<1,0x105>(state,entry);return;
+    case Entry::marking_target:read_field<4,0x1b0>(state,entry);return;
+    case Entry::set_marking_target:write_field<4,0x1b0>(state,entry);return;
+    case Entry::clear_marking_list:clear_marking_count(state);return;
+    case Entry::marking_count:read_field<1,0x104>(state,entry);return;
+    case Entry::previous_position:read_field<1,0x1a>(state,entry);return;
+    case Entry::set_column:write_field<1,0x106>(state,entry);return;
+    case Entry::set_row:write_field<1,0x105>(state,entry);return;
+    case Entry::set_previous_position:write_field<1,0x1a>(state,entry);return;
+    case Entry::cached_role:read_field<2,0x1c2,true>(state,entry);return;
+    default:break;
+    }
+    PositionDispatch positions;
+    Call a(state,address(entry),dependencies?dependencies:&positions);
+    switch(entry){
     case Entry::current_role:case Entry::secondary_role:case Entry::previous_role:role_table(a,entry);return;
-    case Entry::previous_position:a.load<1>(3,3,0x1a);break;
     case Entry::register_center_cell:register_center_cell(a);return;
-    case Entry::set_column:a.store<1>(3,0x106,4);break;
-    case Entry::set_row:a.store<1>(3,0x105,4);break;
     case Entry::remove_from_cell:remove_from_cell(a);return;
     case Entry::marking_member:a.sign8(0,4);a.mask(5,0,0xfffffffc,false,2);a.offset(0,5,0x1b4);a.indexed_load(3,3,0);break;
     case Entry::clear_goalkeeper:clear_goalkeeper(a);return;
     case Entry::resolve_goalkeeper:resolve_goalkeeper(a);return;
-    case Entry::set_previous_position:a.store<1>(3,0x1a,4);break;
-    case Entry::cached_role:a.load<2>(3,3,0x1c2,true);break;
     case Entry::actor_current_role:case Entry::actor_previous_role:case Entry::actor_secondary_role:owner_role(a,entry);return;
+    default:throw std::runtime_error("Unknown framed spatial-role entry");
     }
     a.finish();
 }

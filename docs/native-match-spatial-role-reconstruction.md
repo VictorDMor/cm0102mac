@@ -1,5 +1,10 @@
 # Actor spatial membership and tactical role reconstruction
 
+The later [query-performance delivery](native-spatial-role-performance.md)
+preserves this complete contract, adds unobserved and observer-fallback coverage,
+and measures the optimized 682-entry game build. The original reconstruction
+checkpoint below records its historical 629-entry delivery.
+
 ## Result and complete entry scope
 
 Twenty-three complete original entries / 754 indexed instructions now execute structured C++23 in the production game and standalone match debugger. This block covers tactical role lookup, raw position/coordinate and marking access, center-cell insertion, cell/mark relation removal, cached goalkeeper invalidation and both-side goalkeeper resolution/emergency replacement.

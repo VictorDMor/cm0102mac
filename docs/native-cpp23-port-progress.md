@@ -9,6 +9,15 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The latest [spatial-role optimization](native-spatial-role-performance.md)
+reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two
+scenarios, faster in all 20 measured pairs. It preserves the complete 23-entry
+subsystem and the 682-entry manifest. Release/UBSAN comparisons cover 4,090
+component cases, 364 production cases and 196 nonlocal cases; 69 profile controls
+also pass. A paired complete 798-advance match preserves full state and accounting.
+Only the game application was updated; the installed Match Debugger is unchanged.
+Save/Load and the installed management UI were not retested in this cycle.
+
 The [ball-contact block](native-ball-contact-reconstruction.md) is integrated and
 installed in both signed ARM64 apps. Its six complete roots cover 2,043 original
 instructions: four new entries plus two accepted discipline facades reused with

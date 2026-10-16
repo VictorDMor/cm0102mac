@@ -78,19 +78,23 @@ std::unique_ptr<State> seed(spatial::Entry entry,const Options& options={}){
 }
 unsigned comparisons=0,normal=0,interruptions=0,negatives=0;
 std::array<unsigned,23> normal_entries{};
-std::vector<Effects::Access> compare(const State& input,spatial::Entry entry,const Options& options={}){
+std::vector<Effects::Access> compare_observation(const State& input,spatial::Entry entry,const Options& options,bool observed){
     auto original=clone(input),modern=clone(input);Model old(options,true),next(options,false);Effects x,y;x.state=original.get();y.state=modern.get();
-    original->memory.date_observer=&x;modern->memory.date_observer=&y;
+    if(observed){original->memory.date_observer=&x;modern->memory.date_observer=&y;}
+    std::vector<std::pair<std::uint32_t,unsigned>> old_trace,new_trace;
+    if(!observed){original->memory.read_trace=&old_trace;modern->memory.read_trace=&new_trace;}
     auto run=[&](State& s,Model& model,bool previous){try{if(previous)model.reference(s,return_sentinel);else spatial::invoke(s,entry,&model);}
         catch(const ApplicationExit&){return std::string("ApplicationExit");}catch(const std::exception& error){return std::string(error.what());}return std::string{};};
     const auto expected=run(*original,old,true),actual=run(*modern,next,false);original->memory.date_observer=modern->memory.date_observer=nullptr;
-    const auto label="spatial-role component "+std::to_string(comparisons)+" root="+hex_address(spatial::entries[unsigned(entry)]);
+    original->memory.read_trace=modern->memory.read_trace=nullptr;
+    const auto label="spatial-role component "+std::to_string(comparisons)+" root="+hex_address(spatial::entries[unsigned(entry)])+" observed="+std::to_string(observed);
     require(!expected.starts_with("Unknown spatial fixture"),label+" incomplete model "+expected);require(expected==actual,label+" original="+expected+" modern="+actual);
     if(options.negative)modern->wr<4>(12,modern->r<4>(12)^1);
     bool rejected=false;try{Image(*original).compare(*modern,label);}catch(const std::runtime_error&){if(!options.negative&&!options.child_negative)throw;rejected=true;}
     require(rejected==(options.negative||options.child_negative),label+" observable own/child negative");
     if(!rejected){
         require(x.bytes==y.bytes,label+" ordered effects");
+        require(old_trace==new_trace,label+" independent read trace");
         if(old.calls!=next.calls){
             for(unsigned n=0;n<std::min(old.calls.size(),next.calls.size());++n)if(old.calls[n]!=next.calls[n]){
                 const auto&a=old.calls[n];const auto&b=next.calls[n];const auto p=std::mismatch(a.before.begin(),a.before.end(),b.before.begin());
@@ -100,6 +104,10 @@ std::vector<Effects::Access> compare(const State& input,spatial::Entry entry,con
         require(original->executed==modern->executed,label+" accounting "+std::to_string(original->executed)+"/"+std::to_string(modern->executed));
     }
     ++comparisons;negatives+=rejected;interruptions+=!expected.empty();if(expected.empty()&&!rejected){++normal;++normal_entries[unsigned(entry)];}return x.log;
+}
+std::vector<Effects::Access> compare(const State& input,spatial::Entry entry,const Options& options={}){
+    compare_observation(input,entry,options,false);
+    return compare_observation(input,entry,options,true);
 }
 }
 int main(){
@@ -111,6 +119,21 @@ int main(){
             for(auto hole:bytes){auto sparse=std::make_unique<State>();sparse->registers=input->registers;sparse->unique=input->unique;sparse->pc=input->pc;
                 for(auto byte:bytes)if(byte!=hole){sparse->memory.map(byte,1);sparse->memory.write<1>(byte,input->memory.read<1>(byte));}compare(*sparse,entry);}
             Options negative;negative.negative=true;compare(*input,entry,negative);
+        }
+        // Unframed field addresses wrap at 32 bits, including multi-byte values.
+        // Compare their successful and partial-mapping fault prefixes against
+        // the independent original, with and without callback observation.
+        struct Field {unsigned index,offset,width;};
+        for(auto field:{Field{0,0x19,1},{1,0x106,1},{2,0x105,1},{3,0x1b0,4},
+            {4,0x1b0,4},{5,0x104,1},{6,0x104,1},{10,0x1a,1},{12,0x106,1},
+            {13,0x105,1},{18,0x1a,1},{19,0x1c2,2}}){
+            for(unsigned mapped=0;mapped<=field.width;++mapped){
+                State input;input.registers.fill(0xa5);input.unique.fill(0xb7);
+                input.wr<4>(12,0xfffffff0);input.wr<4>(16,0xabcdef80);input.wr<4>(4128,return_sentinel);
+                input.pc=spatial::entries[field.index];const auto wrapped=field.offset-0x10;
+                if(mapped){input.memory.map(wrapped,mapped);for(unsigned n=0;n<mapped;++n)input.memory.write<1>(wrapped+n,0x80+n);}
+                compare(input,spatial::Entry(field.index));
+            }
         }
         for(auto entry:{spatial::Entry::current_role,spatial::Entry::secondary_role,spatial::Entry::previous_role}){
             for(auto value:{0u,10u,11u,127u,128u,255u}){auto input=seed(entry);input->memory.write<1>(actor+(entry==spatial::Entry::previous_role?0x1a:0x19),value);compare(*input,entry);}
@@ -135,6 +158,6 @@ int main(){
         }
         for(auto entry:{spatial::Entry::remove_from_cell,spatial::Entry::resolve_goalkeeper})for(unsigned fault=1;fault<=20;++fault){Options o;o.fault_at=fault;compare(*seed(entry,o),entry,o);}
         Options child;child.child_negative=true;compare(*seed(spatial::Entry::current_role),spatial::Entry::current_role,child);
-        std::cout<<"PASS: spatial-role component comparisons="<<comparisons<<" normal="<<normal<<" interrupted="<<interruptions<<" own/child-negatives="<<negatives<<"; all 23 complete entries, full ABI/memory/effects/dependency boundaries/accounting\n";
+        std::cout<<"PASS: spatial-role component comparisons="<<comparisons<<" normal="<<normal<<" interrupted="<<interruptions<<" own/child-negatives="<<negatives<<"; all 23 complete entries, observed and unobserved, full ABI/memory/effects/dependency boundaries/accounting\n";
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
 }

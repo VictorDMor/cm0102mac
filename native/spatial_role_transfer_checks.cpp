@@ -72,15 +72,18 @@ struct Model final : CodeFragmentBoundaryObserver {
 };
 struct Monitor final : MemoryObserver {
     State& state; Model& model; Effects effects;
-    Monitor(State& s, Model& m) : state(s), model(m) { effects.state = &s; s.memory.date_observer = this; }
-    ~Monitor() { state.memory.date_observer = nullptr; }
+    Monitor(State& s, Model& m, bool primary) : state(s), model(m) {
+        effects.state = &s;
+        if(primary)s.memory.observer=this;else s.memory.date_observer=this;
+    }
+    ~Monitor() { state.memory.date_observer = nullptr; state.memory.observer = nullptr; }
     void mapped(std::uint32_t a, std::uint64_t n) override { effects.mapped(a, n); }
     void cleared(std::uint32_t a, std::uint64_t n) override { effects.cleared(a, n); }
     void read(std::uint32_t a, const std::uint8_t* b, unsigned n) override { effects.read(a, b, n); model.interrupt(state); }
     void written(std::uint32_t a, const std::uint8_t* b, std::size_t n) override { effects.written(a, b, n); model.interrupt(state); }
 };
 unsigned cases = 0, fault_cases = 0;
-void compare(const State& seed, unsigned index, Scenario scenario, bool original_context, bool turbo) {
+void compare(const State& seed, unsigned index, Scenario scenario, bool original_context, bool turbo, bool primary=false) {
     auto a = clone(seed), b = clone(seed);
     const auto match=std::uint32_t(seed.r<4>(12)),player=match+0x311c+8*0x1c4;
     for(auto* s:{a.get(),b.get()}){
@@ -91,7 +94,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
     }
     spatial_role_diagnostics(*a).original = true; a->register_context_original = true;
     b->register_context_original = original_context;
-    Model old(index, scenario, *a), modern(index, scenario, *b); Monitor x(*a, old), y(*b, modern);
+    Model old(index, scenario, *a), modern(index, scenario, *b); Monitor x(*a, old, primary), y(*b, modern, primary);
     a->code_fragment_observer = &old; b->code_fragment_observer = &modern;
     const auto execute = [](State& s) {
         try { run_until(s, caller); }
@@ -101,8 +104,9 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
     };
     set_match_turbo_enabled(false); const auto ae = execute(*a);
     set_match_turbo_enabled(turbo); const auto be = execute(*b); set_match_turbo_enabled(false);
-    a->memory.date_observer = b->memory.date_observer = nullptr; a->code_fragment_observer = b->code_fragment_observer = nullptr;
-    const auto label = hex_address(actor::entries[index]) + " nonlocal scenario=" + std::to_string(unsigned(scenario));
+    a->memory.date_observer = b->memory.date_observer = nullptr; a->memory.observer = b->memory.observer = nullptr;
+    a->code_fragment_observer = b->code_fragment_observer = nullptr;
+    const auto label = hex_address(actor::entries[index]) + " nonlocal scenario=" + std::to_string(unsigned(scenario))+" primary-observer="+std::to_string(primary);
     require(ae == be && !ae.empty() == (scenario != Scenario::jump), label + " outcomes original=" + ae + " modern=" + be);
     if (scenario == Scenario::restore_fault) require(ae.starts_with("Unmapped data access at "), label + " restore fault prefix");
     if (scenario == Scenario::handler_fault) require(ae == "Fixture match resumed-handler fault", label + " handler fault");
@@ -132,6 +136,14 @@ int main(int argc, char** argv) {
                 for (bool original_context : {false,true}) compare(*seed, root, scenario, original_context, false);
             compare(*seed, root, Scenario::jump, false, true);
         }
+        // Writes can also call out through the independent transcript observer.
+        // Its presence must retain the unframed native continuation scope.
+        for(unsigned root:{4u,5u,12u,13u,18u}){
+            for(auto scenario:{Scenario::jump,Scenario::restore_fault,Scenario::handler_fault})
+                for(bool original_context:{false,true})compare(*seed,root,scenario,original_context,false,true);
+            compare(*seed,root,Scenario::jump,false,true,true);
+        }
+        require(cases==196 && fault_cases==112,"Complete spatial-role transfer matrix with both observer channels");
         std::cout << cases << " productive nonlocal spatial-role comparisons; " << fault_cases
             << " restore/handler faults; unframed leaves and 64/96/160-byte role/cell/keeper scopes and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
