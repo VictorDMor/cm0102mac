@@ -132,6 +132,9 @@ from ball_action_audit import (require_ball_action_contract, require_ball_action
 from ball_contact_audit import (require_ball_contact_contract, require_ball_contact_index,
                                   require_ball_contact_hooks, ball_contact_hook, BALL_CONTACT_ENTRIES)
 
+from actor_attributes_audit import (require_actor_attributes_contract, require_actor_attributes_index,
+                                    require_actor_attributes_hooks, actor_attributes_hook, ACTOR_ATTRIBUTES_ENTRIES)
+
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
     tuple((entry, "date_subsystem_adapter") for entry in DATE_SUBSYSTEM_ENTRIES) +
@@ -183,7 +186,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "movement_choice_adapter") for entry in MOVEMENT_CHOICE_ENTRIES) +
     tuple((entry, "team_line_adapter") for entry in TEAM_LINE_ENTRIES) +
     tuple((entry, "ball_action_adapter") for entry in BALL_ACTION_ENTRIES) +
-    tuple((entry, "ball_contact_adapter") for entry in BALL_CONTACT_ENTRIES))
+    tuple((entry, "ball_contact_adapter") for entry in BALL_CONTACT_ENTRIES) +
+    tuple((entry, "actor_attributes_adapter") for entry in ACTOR_ATTRIBUTES_ENTRIES))
 
 
 def integer(value):
@@ -415,7 +419,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -463,6 +467,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_marking_pressure_contract(page, instructions, selected)
     if match_random_hooks:
         require_match_random_contract(page, instructions, selected)
+    if actor_attributes_hooks:
+        require_actor_attributes_contract(page, instructions, selected)
     if team_spatial_hooks:
         require_team_spatial_contract(page, instructions, selected)
     if pitch_distance_hooks:
@@ -546,6 +552,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "marking_pressure_adapter.hpp"')
     if match_random_hooks and page_addresses & set(MATCH_RANDOM_ENTRIES):
         code.insert(1, '#include "match_random_adapter.hpp"')
+    if actor_attributes_hooks and page_addresses & set(ACTOR_ATTRIBUTES_ENTRIES):
+        code.insert(1, '#include "actor_attributes_adapter.hpp"')
     if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
         code.insert(1, '#include "team_spatial_adapter.hpp"')
     if pitch_distance_hooks and page_addresses & set(PITCH_DISTANCE_ENTRIES):
@@ -728,6 +736,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(marking_pressure_hook(a))
         if match_random_hooks and a in MATCH_RANDOM_ENTRIES:
             code.append(match_random_hook(a))
+        if actor_attributes_hooks and a in ACTOR_ATTRIBUTES_ENTRIES:
+            code.append(actor_attributes_hook(a))
         if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
             code.append(team_spatial_hook(a))
         if pitch_distance_hooks and a in PITCH_DISTANCE_ENTRIES:
@@ -948,6 +958,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_marking_pressure_hooks(page, instructions, result)
     if match_random_hooks:
         require_match_random_hooks(page, instructions, result)
+    if actor_attributes_hooks:
+        require_actor_attributes_hooks(page, instructions, result)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
@@ -1054,6 +1066,7 @@ def main():
         require_player_decision_index(db, None if args.all_analyzed else selected)
         require_actor_motion_index(db, None if args.all_analyzed else selected)
         require_match_random_index(db, None if args.all_analyzed else selected)
+        require_actor_attributes_index(db, None if args.all_analyzed else selected)
         require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)

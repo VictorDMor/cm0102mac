@@ -14,11 +14,19 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [actor action-attribute reconstruction](native-actor-attributes-reconstruction.md)
-now has complete, independently checked components for 1,349 original
-instructions. Release and UBSAN each pass 32,703 comparisons. Production
-integration and match/performance acceptance are pending; the accepted manifest
-and installed applications are unchanged.
+The [actor action-attribute candidate](native-actor-attributes-reconstruction.md)
+now passes component and shared-engine acceptance for 1,349 original instructions:
+32,703 component comparisons per Release/UBSAN mode, 31 production comparisons
+plus one null-actor fault, six profile controls and 42 nonlocal comparisons.
+A complete paired 798-advance match agrees, including 17,728 refresh calls and
+70,912 maximum calls. Eight source/hook audits and 48 manifest checks also pass.
+
+**Performance acceptance fails:** median paired runtime increases by 2.11%
+and 1.18% in two 600-tick scenarios. The candidate is preserved on
+`codex/actor-attributes-integration-validation`, with 684 candidate entries.
+It is withheld from `main`, whose accepted manifest stays at 682. Both installed
+applications remain unchanged; the game retains the accepted spatial-role build.
+The user requested a pause after this bounded cycle; further work awaits resume.
 
 The [spatial-role query optimization](native-spatial-role-performance.md) is
 installed in the game. Two 600-tick scenarios show median paired runtime

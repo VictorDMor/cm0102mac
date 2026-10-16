@@ -1,16 +1,18 @@
 """Complete actor-attribute component boundaries and independent references."""
 from contextlib import closing
 from copy import deepcopy
+import hashlib
+import inspect
 import json
 from pathlib import Path
 import re
 import sqlite3
 import unittest
-from compile_recomp import SEMANTIC_REPLACEMENTS
+from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
 from make_actor_attributes_reference import render_reference
 from actor_attributes_audit import (CONTRACTS, FRAGMENTS, ACTOR_ATTRIBUTES_ENTRIES,
     require_actor_attributes_bodies, require_actor_attributes_contract,
-    require_actor_attributes_edges, require_actor_attributes_index)
+    require_actor_attributes_edges, require_actor_attributes_hooks, require_actor_attributes_index)
 
 ROOT = Path(__file__).resolve().parent.parent
 INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
@@ -19,9 +21,12 @@ class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS),1349)
         self.assertEqual(sum(row[2] for row in FRAGMENTS),1349)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),682)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),682)
-        self.assertFalse(set(ACTOR_ATTRIBUTES_ENTRIES) & {entry for entry,_ in SEMANTIC_REPLACEMENTS})
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),684)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),684)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[682:],tuple((entry,'actor_attributes_adapter') for entry in ACTOR_ATTRIBUTES_ENTRIES))
+        prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:682]]
+        self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+            '0da57a2d0a0463cf13a501936c55b7795da6218e670ef21d37375d7ea75c61d3')
         self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0))
 
     def test_external_interior_edges_fail(self):
@@ -83,5 +88,17 @@ class ContractTests(unittest.TestCase):
                     body=[row for row in rows if entry<=row['address']<end]
                     with self.assertRaises(ValueError):
                         require_actor_attributes_contract(page,[row for row in rows if row not in body],{entry})
+
+    def test_productive_hooks_precede_accounting(self):
+        for page in sorted({row[1] for row in FRAGMENTS}):
+            rows=[row for row in self.records if row['address']>>12==page]
+            disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks')}
+            disabled['actor_attributes_hooks']=True
+            code=generate_page(page,rows,{row['address'] for row in self.records},userops=self.userops,**disabled)
+            require_actor_attributes_hooks(page,rows,code)
+            for entry in ACTOR_ATTRIBUTES_ENTRIES:
+                if entry>>12!=page:continue
+                hook=f'if (try_modern_actor_attributes(s, 0x{entry:x})) return true;'
+                with self.assertRaises(ValueError):require_actor_attributes_hooks(page,rows,code.replace(hook,''))
 
 if __name__=='__main__':unittest.main()

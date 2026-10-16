@@ -58,3 +58,18 @@ def require_actor_attributes_index(db, selected=None):
         FROM instructions AS i,
           json_each(json_insert(json_extract(i.body,'$.flows'),'$[#]',json_extract(i.body,'$.fallthrough'))) AS e
         WHERE e.value>=? AND e.value<?""", (CONTRACTS[0][0], CONTRACTS[-1][1])))
+
+
+def actor_attributes_hook(entry):
+    return f'if (try_modern_actor_attributes(s, 0x{entry:x})) return true;'
+
+
+def require_actor_attributes_hooks(page, instructions, code):
+    addresses = {r['address'] for r in instructions}
+    for entry in ACTOR_ATTRIBUTES_ENTRIES:
+        if entry >> 12 != page or entry not in addresses: continue
+        label, hook = f'i_{entry:x}:', actor_attributes_hook(entry)
+        fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        steps = [token for token in (f's.step(0x{entry:x});', f'counter.step(0x{entry:x});') if token in fragment]
+        if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+            raise ValueError(f'Missing or misplaced actor-attributes hook at {entry:x}')

@@ -89,8 +89,11 @@ void condition_adjusted_pair(Call& a) {
 }
 }
 
-void refresh(State& state, SemanticDependencyDispatch* dependencies, SemanticGuestObserver* observer) {
-    Call a(state,refresh_entry,dependencies,observer);
+// Keep the named phases while exposing their constant source sites, offsets and
+// register selections to the optimizer across all fourteen sampling locations.
+template<bool Observed>
+[[gnu::flatten]] void refresh_body(State& state, SemanticDependencyDispatch* dependencies, SemanticGuestObserver* observer) {
+    Call a(state,refresh_entry,dependencies,Observed ? observer : nullptr);
     a.link(); a.multiple(23); a.load(25,2,-0x51e0); a.move(28,3); a.load(30,2,-0x51e8);
     a.floating_load(0,25,0xa8,true); a.load(29,2,-0x7b90); a.load(27,2,-0x7b8c);
     a.load(26,2,-0x7b88); a.load(31,2,-0x7b84); a.save_link(); a.frame(0x80);
@@ -105,6 +108,11 @@ void refresh(State& state, SemanticDependencyDispatch* dependencies, SemanticGue
     single_trait(a,0x102370a4,0x119,0x110);
     trait_draw<23,24>(a,0x10237218,0x11a);
     a.at(0x10237388); a.store<1>(28,0x10f,24); a.pop(0x80); a.multiple(23,true); a.finish();
+}
+
+void refresh(State& state, SemanticDependencyDispatch* dependencies, SemanticGuestObserver* observer) {
+    if (observer) refresh_body<true>(state, dependencies, observer);
+    else refresh_body<false>(state, dependencies, nullptr);
 }
 
 void signed_maximum(State& state, SemanticDependencyDispatch* dependencies, SemanticGuestObserver* observer) {

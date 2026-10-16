@@ -59,6 +59,8 @@ target_sources(cm_aot PRIVATE
     team_spatial_adapter.cpp
     match_random.cpp
     match_random_adapter.cpp
+    actor_attributes.cpp
+    actor_attributes_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp
     match_discipline_penalties.cpp
@@ -336,7 +338,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_executable(cm-player-decision-characterization player_decision_characterization.cpp "${CM_PLAYER_DECISION_REFERENCE}")
     target_link_libraries(cm-player-decision-characterization PRIVATE cm_match_debugger_factory)
     target_compile_options(cm-player-decision-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-    # Component reconstruction only: these bodies are not selected in production yet.
     set(CM_ACTOR_ATTRIBUTES_REFERENCE "${CMAKE_BINARY_DIR}/actor_attributes_reference.cpp")
     add_custom_command(OUTPUT "${CM_ACTOR_ATTRIBUTES_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_attributes_reference.py"
@@ -345,7 +346,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/actor_attributes_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-actor-attributes-checks actor_attributes.cpp actor_attributes_checks.cpp "${CM_ACTOR_ATTRIBUTES_REFERENCE}")
+    add_executable(cm-actor-attributes-checks actor_attributes_checks.cpp "${CM_ACTOR_ATTRIBUTES_REFERENCE}")
     target_link_libraries(cm-actor-attributes-checks PRIVATE cm_aot)
     target_compile_options(cm-actor-attributes-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME actor_attributes_component_equivalence COMMAND cm-actor-attributes-checks)
@@ -556,6 +557,12 @@ add_executable(cm-marking-pressure-production-checks marking_pressure_production
 add_executable(cm-match-random-benchmark match_random_benchmark.cpp)
 target_link_libraries(cm-match-random-benchmark PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-benchmark PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-actor-attributes-production-checks actor_attributes_production_checks.cpp)
+target_link_libraries(cm-actor-attributes-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-actor-attributes-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-actor-attributes-transfer-checks actor_attributes_transfer_checks.cpp)
+target_link_libraries(cm-actor-attributes-transfer-checks PRIVATE cm_aot)
+target_compile_options(cm-actor-attributes-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-random-production-checks match_random_production_checks.cpp)
 target_link_libraries(cm-match-random-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -828,6 +835,16 @@ add_executable(cm-match-debugger-completion-checks match_debugger_completion_che
 target_link_libraries(cm-match-debugger-completion-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-completion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME actor_attributes_actual_production COMMAND cm-actor-attributes-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-attributes-production-checks")
+    add_test(NAME actor_attributes_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-actor-attributes-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/actor-attributes-profile-checks" "${CMAKE_BINARY_DIR}/actor-attributes-live-profile")
+    add_test(NAME actor_attributes_nonlocal_transfer COMMAND cm-actor-attributes-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-attributes-transfer-checks"
+        "${CMAKE_BINARY_DIR}/actor-attributes-live-profile")
+    set_tests_properties(actor_attributes_actual_production PROPERTIES FIXTURES_SETUP ActorAttributesLiveProfile TIMEOUT 180)
+    set_tests_properties(actor_attributes_original_profile actor_attributes_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED ActorAttributesLiveProfile TIMEOUT 180)
     add_test(NAME match_random_actual_production COMMAND cm-match-random-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-random-production-checks")
     add_test(NAME match_random_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
