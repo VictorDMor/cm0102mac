@@ -9,6 +9,13 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The next [actor action-attribute block](native-actor-attributes-reconstruction.md)
+has complete C++23 components for 1,349 original instructions. All source sites
+and 32,703 comparisons pass in both Release and UBSAN, plus seven source audits.
+The components are not selected in production yet: the manifest stays at 682,
+and runtime integration, complete-match and timing acceptance remain pending.
+Neither installed application changed during this component cycle.
+
 The latest [spatial-role optimization](native-spatial-role-performance.md)
 reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two
 scenarios, faster in all 20 measured pairs. It preserves the complete 23-entry

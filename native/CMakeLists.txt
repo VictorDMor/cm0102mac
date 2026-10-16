@@ -336,6 +336,20 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_executable(cm-player-decision-characterization player_decision_characterization.cpp "${CM_PLAYER_DECISION_REFERENCE}")
     target_link_libraries(cm-player-decision-characterization PRIVATE cm_match_debugger_factory)
     target_compile_options(cm-player-decision-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    # Component reconstruction only: these bodies are not selected in production yet.
+    set(CM_ACTOR_ATTRIBUTES_REFERENCE "${CMAKE_BINARY_DIR}/actor_attributes_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ACTOR_ATTRIBUTES_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_attributes_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ACTOR_ATTRIBUTES_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_attributes_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/actor_attributes_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-actor-attributes-checks actor_attributes.cpp actor_attributes_checks.cpp "${CM_ACTOR_ATTRIBUTES_REFERENCE}")
+    target_link_libraries(cm-actor-attributes-checks PRIVATE cm_aot)
+    target_compile_options(cm-actor-attributes-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME actor_attributes_component_equivalence COMMAND cm-actor-attributes-checks)
+    set_tests_properties(actor_attributes_component_equivalence PROPERTIES TIMEOUT 180)
     set(CM_MATCH_RANDOM_REFERENCE "${CMAKE_BINARY_DIR}/match_random_reference.cpp")
     add_custom_command(OUTPUT "${CM_MATCH_RANDOM_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_random_reference.py"

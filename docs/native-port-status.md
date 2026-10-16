@@ -14,6 +14,12 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
+The [actor action-attribute reconstruction](native-actor-attributes-reconstruction.md)
+now has complete, independently checked components for 1,349 original
+instructions. Release and UBSAN each pass 32,703 comparisons. Production
+integration and match/performance acceptance are pending; the accepted manifest
+and installed applications are unchanged.
+
 The [spatial-role query optimization](native-spatial-role-performance.md) is
 installed in the game. Two 600-tick scenarios show median paired runtime
 reductions of **5.14% and 4.14%**, with identical complete snapshots. All 23
