@@ -63,6 +63,7 @@ target_sources(cm_aot PRIVATE
     actor_condition.cpp
     actor_condition_restore.cpp
     actor_condition_records.cpp
+    actor_condition_refresh.cpp
     actor_attributes_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp

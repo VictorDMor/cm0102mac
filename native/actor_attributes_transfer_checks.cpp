@@ -88,6 +88,9 @@ struct Model final : CodeFragmentBoundaryObserver {
                 point=primary ? s.pc==(site==Site::before_draws?0x10187684u:site==Site::after_maximum?0x101876a4u:0x101876a8u) :
                     s.pc==(site==Site::before_draws?0x10187738u:site==Site::after_maximum?0x10187748u:0x101877bcu);
                 frame=primary?0:128;
+            } else if(index==9) {
+                point=s.pc==(site==Site::before_draws?0x10187a44u:site==Site::after_maximum?0x10187b6cu:0x10188454u);
+                frame=site==Site::before_draws?0:224;
             } else {
                 point=primary ? s.pc==(site==Site::before_draws?0x101878d4u:site==Site::after_maximum?0x101878ecu:0x101878f0u) :
                     s.pc==(site==Site::before_draws?0x10187958u:site==Site::after_maximum?0x1018795cu:0x10187a00u);
@@ -175,9 +178,9 @@ int main(int argc, char** argv) {
         require(argc == 5 && !match_pc_profile_enabled(), "Original program/game/private root and original-caller capture directory with profiling disabled");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u}) {
+        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u}) {
             State seed; load_program(seed,argv[1]);
-            load_match_snapshot(seed,std::filesystem::path(argv[4])/(hex_address(line::entries[index])+".snapshot"));
+            load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":hex_address(line::entries[index])+".snapshot"));
             require(seed.pc==line::entries[index],"Transfer input must be a captured original caller scope");
             seed.memory.map(fixture, 0x1000); seed.memory.copy_in(fixture, std::vector<std::uint8_t>(0x1000, 0xa7));
             for(bool primary:{false,true})for(auto site:{Site::before_draws,Site::after_maximum,Site::final_output}) {
@@ -188,7 +191,7 @@ int main(int argc, char** argv) {
                 compare(seed,index,Scenario::jump,false,true,site,primary);
             }
         }
-        require(cases==280 && fault_cases==160,"Complete actor attribute/condition callback transfer matrix");
+        require(cases==322 && fault_cases==184,"Complete actor attribute/condition callback transfer matrix");
         std::cout << cases << " productive nonlocal actor-attributes comparisons; " << fault_cases
             << " restore/handler faults; actor-attribute scopes, integer/float saves and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

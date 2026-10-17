@@ -1,5 +1,9 @@
 # Actor condition restoration and record queries reconstructed
 
+This report records the preceding 691-entry delivery. The subsequent
+[daily record refresh](native-condition-record-refresh.md) extends the component
+to ten entries and the manifest to 692.
+
 This delivery extends the [periodic condition/consumption block](native-actor-condition-reconstruction.md)
 with four complete C++23 operations. The manifest contains **691 unique semantic
 entry replacements**, retaining the preceding 687 entries exactly. The nine-entry

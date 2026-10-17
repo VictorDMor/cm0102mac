@@ -30,13 +30,17 @@ struct Clock:CodeFragmentBoundaryObserver {
 struct Capture:ActorAttributesBoundaryObserver {
     std::array<std::unique_ptr<State>,attributes::entries.size()> inputs;
     std::unique_ptr<State> periodic_candidate;
-    bool periodic_updated=false;
-    void before_step(State&,std::uint32_t pc)override { if(pc==0x10239574)periodic_updated=true; }
+    bool periodic_updated=false,daily_updated=false,observe_daily_writes=false;
+    std::unique_ptr<State> daily_candidate,daily_input;
+    void before_step(State&,std::uint32_t pc)override { if(pc==0x10239574)periodic_updated=true;if(pc==0x10188454)daily_updated=true; }
     void enter(const State& s,std::uint32_t root,bool original)override {
         if(original)return;
         const auto entry=std::find(attributes::entries.begin(),attributes::entries.end(),root);
         require(entry!=attributes::entries.end(),"Unknown actor-attribute capture");
         auto& input=inputs[unsigned(entry-attributes::entries.begin())];
+        if(root==attributes::record_refresh_entry && observe_daily_writes) {
+            daily_candidate=clone(s);daily_candidate->platform=s.platform;daily_candidate->wr<4>(4128,return_sentinel);daily_updated=false;
+        }
         if(input)return;
         if(root==attributes::restoration_entry && !s.memory.read<4>(s.r<4>(12)+0x70))return;
         if(root==attributes::periodic_entry) {
@@ -46,6 +50,10 @@ struct Capture:ActorAttributesBoundaryObserver {
         input=clone(s);input->platform=s.platform;input->wr<4>(4128,return_sentinel);
     }
     void leave(State&,std::uint32_t entry,bool,ActorAttributesOutcome result)override {
+        if(entry==attributes::record_refresh_entry && daily_candidate) {
+            if(daily_updated && result==ActorAttributesOutcome::returned)daily_input=std::move(daily_candidate);
+            else daily_candidate.reset();
+        }
         if(entry==attributes::periodic_entry && periodic_candidate) {
             if(periodic_updated && result==ActorAttributesOutcome::returned) inputs[3]=std::move(periodic_candidate);
             else periodic_candidate.reset();
@@ -127,7 +135,7 @@ auto complete_match(const State& seed,std::uint32_t match,Capture& capture){
     require(next.calls[0]>0 && next.calls[1]==4*next.calls[0] && !next.dispatch_escapes,"Paired actor-attributes match exercised refresh and four maximum children");
     std::cout<<"PASS: paired actor-attributes full match advances="<<advances<<" refreshCalls="<<next.calls[0]<<" maximumCalls="<<next.calls[1]
         <<" recoveryCalls="<<next.calls[2]<<" periodicCalls="<<next.calls[3]<<" consumptionCalls="<<next.calls[4]
-        <<" restorationCalls="<<next.calls[5]<<" recordScaleCalls="<<next.calls[6]<<" availabilityCalls="<<next.calls[7]<<" effectiveConditionCalls="<<next.calls[8]
+        <<" restorationCalls="<<next.calls[5]<<" recordScaleCalls="<<next.calls[6]<<" availabilityCalls="<<next.calls[7]<<" effectiveConditionCalls="<<next.calls[8]<<" recordRefreshCalls="<<next.calls[9]
         <<"; complete state, import ABI and per-tick accounting\n";
     return next.calls;
 }
@@ -153,9 +161,34 @@ void matrix(const State& input,unsigned index,bool profile) {
         compare(input,index,Path::generated,Mode::modern,50000000,true);
         for(auto limit:{0u,1u,2u,3u})compare(input,index,Path::generated,Mode::modern,limit);
         if(index==4)for(auto limit:{4u,14u,18u})compare(input,index,Path::generated,Mode::modern,limit);
-        else if(index!=1 && index!=6)for(auto limit:{12u,13u,index==2?36u:index==7?30u:index==8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit);
+        else if(index!=1 && index!=6)for(auto limit:{12u,13u,index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit);
     }
 }
+std::unique_ptr<State> daily_rollover(const State& parent) {
+    auto old=clone(parent),modern=clone(parent);old->platform=modern->platform=parent.platform;
+    const auto date=parent.memory.read<4>(parent.r<4>(8)-0x7b80);
+    const auto year=parent.memory.read<2>(date+2),day=parent.memory.read<2>(date);
+    for(auto* s:{old.get(),modern.get()}) {
+        s->wr<4>(12,date);s->wr<4>(16,year);s->wr<4>(20,day+1);s->wr<4>(4128,return_sentinel);
+        s->pc=0x107156b0;s->budget=s->executed+1000000;run_until(*s,return_sentinel);
+        s->wr<4>(12,parent.r<4>(12));s->wr<4>(16,parent.r<4>(16));s->wr<4>(4128,return_sentinel);
+        s->pc=attributes::availability_entry;s->budget=s->executed+50000000;
+    }
+    actor_attributes_diagnostics(*old).original=true;Capture capture;capture.observe_daily_writes=true;actor_attributes_diagnostics(*modern).observer=&capture;
+    Clock xclock,yclock;xclock.base=yclock.base=1000000000;old->code_fragment_observer=&xclock;modern->code_fragment_observer=&yclock;
+    Effects x,y;x.state=old.get();y.state=modern.get();old->memory.date_observer=&x;modern->memory.date_observer=&y;
+    run_until(*old,return_sentinel);run_until(*modern,return_sentinel);
+    old->memory.date_observer=modern->memory.date_observer=nullptr;old->code_fragment_observer=modern->code_fragment_observer=nullptr;
+    actor_attributes_diagnostics(*modern).observer=nullptr;
+    Image(*old).compare(*modern,"Original availability caller after controlled original date advance");
+    require(x.bytes==y.bytes && old->executed==modern->executed && xclock.events==yclock.events,"Daily rollover ordered effects/accounting/import ABI");
+    require(bool(capture.daily_input),"Daily rollover must complete an actual record write");
+    const auto& d=actor_attributes_diagnostics(*modern);
+    require(d.calls[9]>0 && d.calls[9]==d.returns[9] && !d.original_calls[9] && !d.faults[9] && !d.dispatch_escapes,"Productive daily cache-miss counters");
+    std::cout<<"PASS: controlled original date advance and actual availability caller complete daily record writes; complete state/effects/import ABI/accounting; recordRefreshCalls="<<d.calls[9]<<std::endl;
+    return std::move(capture.daily_input);
+}
+
 }
 int main(int argc,char** argv){try {
     require(argc==4 || argc==5,"Expected original program, game, fresh backing and optional profile directory");
@@ -168,6 +201,8 @@ int main(int argc,char** argv){try {
             load_match_snapshot(input,std::filesystem::path(argv[4])/(hex_address(attributes::entries[index])+".snapshot"));
             require(input.pc==attributes::entries[index],"Snapshot is not an actual original-caller actor-attribute entry");matrix(input,index,true);
         }
+        State updated;load_program(updated,argv[1]);updated.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
+        load_match_snapshot(updated,std::filesystem::path(argv[4])/"daily-updated.snapshot");matrix(updated,9,true);
     } else {
         auto game=cm::aot::match_debugger::create_match({argv[1],argv[2],root},{677,5677,12345,2001,194});auto& world=*game.state;
         Capture capture;const auto calls=complete_match(world,game.match,capture);
@@ -183,7 +218,9 @@ int main(int argc,char** argv){try {
 
             std::cout<<"Integrated actor-attribute source="<<"natural complete match"<<" entry="<<hex_address(attributes::entries[index])<<" calls="<<calls[index]<<" returns="<<calls[index]<<std::endl;
         }
-        require(cases==147 && negatives==9 && budgets==57,"Real actor-attribute matrix incomplete");
+        auto updated=daily_rollover(*capture.inputs[7]);
+        save_runtime_snapshot(*updated,snapshots/"daily-updated.snapshot");matrix(*updated,9,false);
+        require(cases==181 && negatives==11 && budgets==71,"Real actor-attribute matrix incomplete");
     }
     std::cout<<"PASS: production actor-attributes cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives
         <<"; real match caller direct/generated/CFM, original/profile controls, dedicated productive counts, complete state/effects/accounting/import boundaries\n";

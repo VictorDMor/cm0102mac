@@ -14,15 +14,15 @@ constexpr std::uint32_t condition_doubles=fixture+0x2000, condition_singles=fixt
 constexpr std::uint32_t controller=fixture+0x3000, records=fixture+0x3400, staff=fixture+0x3800;
 constexpr std::uint32_t injuries=fixture+0x3c00, record_limit=fixture+0x4000, controller_slot=fixture+0x4004;
 constexpr std::uint32_t diagnostic=fixture+0x4100, record_constants=fixture+0x4400, percentage_divisor=fixture+0x4480;
-constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,9> ranges{{
+constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,10> ranges{{
     {attributes::refresh_entry,0x102373a0},{attributes::maximum_entry,0x102373b4},{attributes::recovery_entry,0x10235e9c},
     {attributes::periodic_entry,0x1023958c},{attributes::consumption_entry,0x1023978c},{attributes::restoration_entry,0x10239d10},
-    {attributes::record_scale_entry,0x10187680},{attributes::availability_entry,0x101877dc},{attributes::effective_condition_entry,0x10187a1c}}};
+    {attributes::record_scale_entry,0x10187680},{attributes::availability_entry,0x101877dc},{attributes::effective_condition_entry,0x10187a1c},{attributes::record_refresh_entry,0x10188488}}};
 void modern_root(State& s,SemanticDependencyDispatch* dependencies,SemanticGuestObserver* observer) {
     using Function=void(*)(State&,SemanticDependencyDispatch*,SemanticGuestObserver*);
     constexpr Function methods[]{attributes::refresh,attributes::signed_maximum,attributes::recover_condition,
         attributes::refresh_condition,attributes::consume_condition,attributes::restore_condition,
-        attributes::record_condition_scale,attributes::record_availability,attributes::effective_condition};
+        attributes::record_condition_scale,attributes::record_availability,attributes::effective_condition,attributes::refresh_condition_record};
     const auto found=std::find(attributes::entries.begin(),attributes::entries.end(),s.pc);
     require(found!=attributes::entries.end(),"Unknown actor component root");methods[found-attributes::entries.begin()](s,dependencies,observer);
 }
@@ -36,6 +36,8 @@ struct Options {
     std::uint32_t random=0x1234567;
     double power=2.0;
     std::uint32_t role=2; std::int16_t days=20; std::uint16_t years=0;
+    std::int16_t injury_days=20;std::uint32_t calendar_first=2,calendar_second=20,scheduled=1,cache_wide=0;
+    std::uint32_t forced_condition_site=0;std::uint8_t forced_condition_bits=0;
     bool own_negative=false, child_negative=false, mutate=false;
 };
 struct Trace final : SemanticGuestObserver {
@@ -44,6 +46,8 @@ struct Trace final : SemanticGuestObserver {
     explicit Trace(Options o) : options(o) {}
     void before_step(State& s, std::uint32_t pc) override {
         sites.push_back(pc);
+        if(options.forced_condition_site==pc)s.wr<1>(2304,options.forced_condition_bits);
+        if(options.cache_wide && pc==0x10187e98)s.wr<4>(21*4,options.cache_wide);
         if (options.forced_draw && pc==draws[options.forced_draw-1]+0x28)
             s.wr<4>(bounds[options.forced_draw-1]*4,std::uint32_t(options.wide));
     }
@@ -79,7 +83,8 @@ struct Model final : SemanticDependencyDispatch {
             else modern_root(s,this,&trace);
         } else {
             require(target==0x1077b770 || target==0x10226520 || target==attributes::refresh_entry || target==0x10780fc0 || target==0x10289560 || target==0x10187a40 || target==0x10717dd0 ||
-                target==0x10739890 || target==0x10768810 || target==0x1077b720 || target==0x10769b60,
+                target==0x10739890 || target==0x10768810 || target==0x1077b720 || target==0x10769b60 || target==0x10715880 || target==0x1018b9f0 || target==0x102ae9c0 ||
+                target==0x102af650 || target==0x101929b0 || target==0x10718130 || target==0x101864a0,
                 "Unknown actor-attributes dependency");
             s.memory.write<4>(globals+0x100+std::uint32_t(calls.size())*4,target^std::uint32_t(s.r<4>(12)));
             if(options.mutate) {
@@ -95,13 +100,28 @@ struct Model final : SemanticDependencyDispatch {
                 const auto row=s.memory.read<4>(s.r<4>(12))+s.memory.read<4>(s.r<4>(16))*0x24;
                 s.memory.write<4>(row+0x10,0);
             }
-            if(target==0x10717dd0) {s.memory.write<2>(s.r<4>(12),std::uint16_t(options.days));s.memory.write<2>(s.r<4>(12)+2,options.years);}
+            if(target==0x10717dd0) {
+                const auto days=continuation==0x10187c14?options.injury_days:options.days;
+                s.memory.write<2>(s.r<4>(12),std::uint16_t(days+(options.child_negative&&!original)));s.memory.write<2>(s.r<4>(12)+2,options.years);
+            }
+            if(target==0x10715880)s.memory.write<8>(s.r<4>(12),0);
+            if(target==0x1018b9f0) {
+                const auto row=s.memory.read<4>(s.r<4>(12))+s.memory.read<4>(s.r<4>(16))*0x24;
+                s.memory.write<4>(row+0x10,0xffffffff);
+            }
+            if(target==0x101929b0) {
+                s.memory.write<4>(s.r<4>(16),0x000ac001);s.memory.write<4>(s.r<4>(16)+4,0x01000000);
+                s.memory.write<4>(s.r<4>(20),0x0014c001);s.memory.write<4>(s.r<4>(20)+4,0x02000000);
+            }
             if(target==0x10739890) {s.memory.write<4>(s.r<4>(24),0x12345678);s.memory.write<4>(s.r<4>(28),0x87654321);}
             for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xac000000+n*17);
             for(unsigned n=0;n<=13;++n)s.wr<8>(0x4000+n*16,float_bits<8>(-11.0-n));
             s.wr<1>(2304,5); s.wr<1>(1027,1);
             s.wr<4>(12,target==0x1077b770 ? options.random : std::uint32_t(options.correction));
             if(target==0x10289560)s.wr<4>(12,options.role);
+            if(target==0x102af650)s.wr<4>(12,fixture+0x4740);
+            if(target==0x101929b0)s.wr<4>(12,options.scheduled);
+            if(target==0x10718130)s.wr<4>(12,continuation==0x10187e08?options.calendar_first:options.calendar_second);
             if(target==0x10780fc0) {
                 s.memory.write<4>(s.r<4>(4)+0x14,s.r<4>(8));
                 s.wr<8>(0x4010,float_bits<8>(options.power));
@@ -176,7 +196,7 @@ Result compare(const State& input, Options options={}) {
         require(old.calls==modern.calls,label+" dependency ABI"); require(old_trace.sites==new_trace.sites,label+" original-site order");
     }
     ++cases; completed+=expected.empty()&&!rejected; interruptions+=!expected.empty(); negatives+=rejected;
-    structural+=options.forced_draw!=0; sites.insert(old_trace.sites.begin(),old_trace.sites.end());
+    structural+=options.forced_draw!=0 || options.cache_wide!=0 || options.forced_condition_site!=0; sites.insert(old_trace.sites.begin(),old_trace.sites.end());
     return {std::move(a),x.log,old.calls};
 }
 void boundaries(const State& input,Options options={}) {
@@ -412,6 +432,89 @@ void restoration_checks() {
     }
 }
 
+std::unique_ptr<State> cache_seed() {
+    auto s=restoration_seed(attributes::record_refresh_entry);
+    for(auto [slot,pointer]:std::array<std::pair<int,unsigned>,5>{{{-0x5450,fixture+0x4600},{-0x544c,fixture+0x4620},
+        {-0x5448,fixture+0x4640},{-0x7b9c,fixture+0x4660},{-0x7a64,fixture+0x4680}}})s->memory.write<4>(toc+slot,pointer);
+    s->memory.write<4>(fixture+0x4660,fixture+0x4900);s->memory.write<4>(fixture+0x4680,fixture+0x46a0);
+    s->memory.write<4>(controller+8,2);s->memory.write<4>(staff+0x14,condition_profile);s->memory.write<4>(staff+0x20,0);s->memory.write<4>(staff+0x24,0);
+    s->memory.write<1>(staff+0x67,6);s->memory.write<1>(records+0x24+0x22,10);
+    for(auto offset:{-0x3947,-0x3948,-0x3949,-0x394a,-0x394c})s->memory.write<1>(toc+offset,1);
+    s->memory.write<4>(records+0x24,0x000a07d1);s->memory.write<4>(records+0x24+4,0x01000000);
+    s->memory.write<4>(diagnostic+0x210,0x000c07d1);s->memory.write<4>(diagnostic+0x214,0x02000000);
+    s->memory.write<4>(fixture+0x4740,0x000c07d1);s->memory.write<4>(fixture+0x4744,0x03000000);
+    for(auto [offset,value]:std::array<std::pair<unsigned,double>,10>{{{0,65535},{0x28,0.5},{0x30,0.15},{0x38,0.35},
+        {0x40,0.75},{0x48,0.75},{0x50,1},{0x58,1.5},{0x60,0.0005},{0x68,0.8}}})s->memory.write<8>(record_constants+offset,float_bits<8>(value));
+    return s;
+}
+void cache_checks() {
+    auto input=cache_seed();boundaries(*input);Options negative;negative.own_negative=true;compare(*input,negative);
+    negative.own_negative=false;negative.child_negative=true;compare(*input,negative);
+    for(auto flags:{0u,1u,128u,255u}) {auto s=cache_seed();for(auto offset:{-0x3947,-0x3948,-0x3949,-0x394a,-0x394c})s->memory.write<1>(toc+offset,flags);boundaries(*s);}
+    for(auto pointer:{0u,staff,stack-0x100}) {auto s=cache_seed();s->wr<4>(16,pointer);boundaries(*s);}
+    for(auto index:{0u,1u,2u,0xffffffffu,0x80000000u,0x7fffffffu}) {auto s=cache_seed();s->memory.write<4>(staff,index);boundaries(*s);}
+    for(auto pointer:{0u,condition_profile,stack-0x100}) {auto s=cache_seed();s->memory.write<4>(staff+0x14,pointer);boundaries(*s);}
+    for(auto [day,year]:std::array<std::pair<unsigned,unsigned>,5>{{{12,2001},{10,2001},{12,2000},{12,2002},{65535,65535}}}) {
+        auto s=cache_seed();s->memory.write<2>(records+0x24,day);s->memory.write<2>(records+0x24+2,year);boundaries(*s);
+    }
+    for(auto days:{-32768,-1,0,1,2,10,20,31,32767}) {Options o;o.days=std::int16_t(days);compare(*cache_seed(),o);}
+    for(auto injury:{0xffffffffu,0u,1u,2u,3u,0xfffffffeu,0x80000000u}) {
+        auto s=cache_seed();s->memory.write<4>(records+0x24+0x10,injury);boundaries(*s);
+    }
+    for(auto injury_days:{0,9,10,11,20,29,30,31,40})for(auto days:{1,2,10,20,35,45}) {
+        auto s=cache_seed();s->memory.write<4>(records+0x24+0x10,0);Options o;o.days=std::int16_t(days);o.injury_days=std::int16_t(injury_days);
+        compare(*s,o);if(days==20)boundaries(*s,o);
+    }
+    for(auto team:{0u,fixture+0x4700})for(auto day:{11u,12u,13u})for(auto year:{2000u,2001u,2002u}) {
+        auto s=cache_seed();s->memory.write<4>(staff+0x20,team);s->memory.write<4>(staff+0x24,fixture+0x4800);
+        s->memory.write<2>(fixture+0x4740,day);s->memory.write<2>(fixture+0x4742,year);Options o;o.scheduled=0;boundaries(*s,o);
+    }
+    for(bool equal:{false,true})for(auto day:{0u,12u})for(auto scheduled:{0u,1u,255u}) {
+        auto s=cache_seed();s->memory.write<4>(staff+0x24,fixture+0x4800);s->memory.write<4>(toc-0x3944,equal?fixture+0x4800:0);
+        s->memory.write<2>(fixture+0x4640,day);s->memory.write<2>(fixture+0x4642,2001);s->memory.write<1>(toc-0x394b,scheduled);
+        Options o;o.scheduled=scheduled;boundaries(*s,o);
+    }
+    for(auto first:{0u,1u,2u,15u,20u,25u})for(auto second:{0u,14u,15u,16u,20u,25u}) {
+        auto s=cache_seed();s->memory.write<4>(staff+0x24,fixture+0x4800);Options o;o.scheduled=0;o.calendar_first=first;o.calendar_second=second;o.days=2;
+        compare(*s,o);if(first==2 || first==20)boundaries(*s,o);
+    }
+    for(auto counter:{0u,49u,50u,255u})for(auto trait:{0u,6u,127u,128u,250u,255u}) {
+        auto s=cache_seed();s->memory.write<4>(staff+0x24,fixture+0x4800);s->memory.write<1>(staff+0x67,trait);s->memory.write<1>(fixture+0x4900+110,counter);
+        Options o;o.scheduled=0;o.days=2;boundaries(*s,o);
+    }
+    for(auto wide:{65536u,0xffff0000u,0x7fffffffu,0x80000000u})for(auto correction:{-100000,0,10000000}) {
+        auto s=cache_seed();s->memory.write<4>(staff+0x24,fixture+0x4800);Options o;o.scheduled=0;o.days=1;o.cache_wide=wide;o.correction=correction;
+        boundaries(*s,o);
+    }
+    for(auto cursor:{stream+126,stream+128,0xfffffffeu}) {auto s=cache_seed();s->memory.write<4>(staff+0x24,fixture+0x4800);s->memory.write<4>(globals+8,cursor);Options o;o.scheduled=0;o.days=1;o.mutate=true;boundaries(*s,o);}
+    for(auto current:{0u,100u,3999u,4000u,6999u,7000u,8999u,9000u,9001u,9849u,9850u,9851u,9999u,10000u,32767u,32768u,65535u})for(auto trait:{0u,10u,127u,128u,255u}) {
+        auto s=cache_seed();s->memory.write<2>(records+0x24+8,current);s->memory.write<1>(condition_profile+0x34,trait);s->memory.write<1>(records+0x24+0x22,trait);
+        Options o;o.days=2;compare(*s,o);if(trait==10)boundaries(*s,o);
+    }
+    for(auto scale:{0u,1000u,1001u,2000u,32767u,32768u,65535u})for(auto capacity:{0u,9999u,10000u,32767u,65535u}) {
+        auto s=cache_seed();s->memory.write<2>(records+0x24+12,scale);s->memory.write<2>(records+0x24+10,capacity);boundaries(*s);
+    }
+    for(auto offset:{0x28u,0x30u,0x38u,0x40u,0x48u,0x50u,0x58u,0x60u,0x68u})for(auto bits:std::array<std::uint64_t,7>{0,0x8000000000000000ULL,0x7ff0000000000000ULL,0xfff0000000000000ULL,0x7ff8123456789000ULL,0x7ff0123456789000ULL,1}) {
+        auto s=cache_seed();s->memory.write<8>(record_constants+offset,bits);s->memory.write<2>(records+0x24+12,2000);boundaries(*s);
+        s->wr<1>(1304,1);s->wr<1>(1308,1);compare(*s);
+    }
+    {auto s=cache_seed();s->memory.write<2>(records+0x24+8,9000);boundaries(*s);}
+    for(auto first:{2u,20u})for(auto cursor:{stream,stream+126,stream+128,0xfffffffeu}) {
+        auto s=cache_seed();s->memory.write<2>(records+0x24+8,7000);s->memory.write<2>(records+0x24+10,7000);
+        s->memory.write<4>(staff+0x24,fixture+0x4800);s->memory.write<4>(globals+8,cursor);
+        Options o;o.scheduled=0;o.days=2;o.calendar_first=first;boundaries(*s,o);
+    }
+    // Preserve source branches that ordinary predicate invariants cannot reach.
+    for(auto site:{0x10187c88u,0x1018801cu,0x1018838cu}) {
+        auto s=cache_seed();Options o;o.forced_condition_site=site;o.forced_condition_bits=site==0x1018838c?4:8;
+        if(site==0x10187c88) {s->memory.write<4>(records+0x24+0x10,0);o.injury_days=31;o.days=2;}
+        if(site==0x1018801c) {s->memory.write<4>(staff+0x24,fixture+0x4800);o.scheduled=0;o.calendar_first=20;}
+        boundaries(*s,o);
+    }
+    for(auto slot:{-0x5450,-0x544c,-0x5448,-0x7b9c,-0x543c,-0x7b80,-0x7be4}) {auto s=cache_seed();s->memory.write<4>(toc+slot,0);boundaries(*s);}
+    {auto s=cache_seed();constexpr auto relocated=toc+0x10000;s->memory.map(relocated-0x8000,0x9000);s->memory.copy_in(relocated-0x8000,s->memory.copy_out(toc-0x8000,0x9000));s->wr<4>(8,relocated);boundaries(*s);}
+}
+
 }
 namespace cm::aot {void actor_attributes_step_seen(State& s,std::uint32_t pc) {if(original_trace)original_trace->before_step(s,pc);}}
 int main() {try {
@@ -478,9 +581,10 @@ int main() {try {
     recovery_checks();
     condition_checks();
     restoration_checks();
+    cache_checks();
     for(auto [start,end]:ranges)
         for(auto pc=start;pc<end;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==2184,"All 2184 actor-attribute/condition original sites covered");
+    require(sites.size()==2842,"All 2842 actor-attribute/condition original sites covered");
     std::cout<<"PASS: "<<cases<<" actor-attribute comparisons; "<<completed<<" completions, "<<interruptions
         <<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()
         <<" original sites; full state/effects/ABI/accounting; independent original references\n";

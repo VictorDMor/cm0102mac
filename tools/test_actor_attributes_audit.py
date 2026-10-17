@@ -20,17 +20,19 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):
-        self.assertEqual(sum(row[2] for row in CONTRACTS),2184)
-        self.assertEqual(sum(row[2] for row in FRAGMENTS),2184)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),691)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),691)
+        self.assertEqual(sum(row[2] for row in CONTRACTS),2842)
+        self.assertEqual(sum(row[2] for row in FRAGMENTS),2842)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),692)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),692)
         self.assertEqual(SEMANTIC_REPLACEMENTS[682:],tuple((entry,'actor_attributes_adapter') for entry in ACTOR_ATTRIBUTES_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:682]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
             '0da57a2d0a0463cf13a501936c55b7795da6218e670ef21d37375d7ea75c61d3')
         prior687=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:687]]
         self.assertEqual(hashlib.sha256(json.dumps(prior687,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'1ef92c7ae2c54953f333207d90239e4355786e71b0a977d4ef5183e3d5d9ce4a')
-        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0,0x102393c0,0x10239590,0x10239790,0x10187650,0x10187680,0x101878d0))
+        prior691=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:691]]
+        self.assertEqual(hashlib.sha256(json.dumps(prior691,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'cacde5364e3e7d40066422b10cfb480bc9fc819b32bc8b879c7d2e39cd9c4b47')
+        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0,0x102393c0,0x10239590,0x10239790,0x10187650,0x10187680,0x101878d0,0x10187a40))
 
     def test_external_interior_edges_fail(self):
         for entry,end,*_ in CONTRACTS:
@@ -40,11 +42,11 @@ class ScopeTests(unittest.TestCase):
                     require_actor_attributes_edges([(0,target)])
 
     def test_named_component_bodies_do_not_replay(self):
-        source=''.join((ROOT/'native'/name).read_text() for name in ('actor_attributes.cpp','actor_condition.cpp','actor_condition_restore.cpp','actor_condition_records.cpp'))
+        source=''.join((ROOT/'native'/name).read_text() for name in ('actor_attributes.cpp','actor_condition.cpp','actor_condition_restore.cpp','actor_condition_records.cpp','actor_condition_refresh.cpp'))
         for forbidden in ('actor_attributes_reference','dispatch_page','run_until','pcode','i_101'):
             self.assertNotIn(forbidden,source)
         for name in ('advance_pool','wide_sample','condition_adjusted_pair','paired_trait','single_trait','recover_condition',
-                     'refresh_condition','consume_condition','periodic_pool_draw','movement_condition_cost','action_condition_cost','restore_condition','record_condition_scale','record_availability','effective_condition'):
+                     'refresh_condition','consume_condition','periodic_pool_draw','movement_condition_cost','action_condition_cost','restore_condition','record_condition_scale','record_availability','effective_condition','refresh_condition_record','partition_injury_days','partition_training_days'):
             self.assertIn(name,source)
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').exists(),'Private original source unavailable')

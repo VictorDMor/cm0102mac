@@ -9,23 +9,22 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [actor condition restoration and record-query block](native-actor-condition-restoration.md)
-adds four complete C++23 operations and 534 original instructions, bringing the
-accepted manifest from 687 to **691 entries**. The combined nine-entry
-attribute/condition scope covers **2,184 original instructions**. Release and
-affected-unit UBSAN each pass 154,185 component comparisons, 147 production
-comparisons plus eight null faults, and 280 nonlocal comparisons. Twenty-seven
-separate original-profile controls, nine source/reference audits and 48 historical
-manifest checks pass.
+The [daily condition record refresh](native-condition-record-refresh.md) adds
+one complete 658-instruction C++23 operation, bringing the accepted manifest from
+691 to **692 entries**. The combined ten-entry attribute/condition scope covers
+**2,842 original instructions**. Release and affected-unit UBSAN each pass 299,010
+component comparisons, 181 production comparisons plus nine null faults, and
+322 nonlocal comparisons. Thirty-three original-profile controls, nine source/
+reference audits and 48 historical manifest checks pass.
 
 A complete paired 798-advance match preserves full state, import ABI and every
-tick's accounting. The new roots execute naturally: restoration 80, record scalar
-80, availability 22 and effective condition 22 calls. The signed ARM64 game is
-installed with executable SHA-256
-`3737b26d609455d1d128b59c3eb17e295e526550c9ae3d00f28d38753dc9893a`.
+tick's accounting, including **13,799 natural daily-refresh calls**. A separate
+controlled original date advance and actual availability caller complete the
+record writes with identical state, effects and accounting. The signed ARM64 game
+is installed with executable SHA-256
+`119af966b7bf8f5e71fd5aa45d9b99cd9b3ef32532c1d6c523782352f45d12db`.
 All 845 protected files and the installed Match Debugger are preserved. Installed
-Prepare Game rendering and normal exit pass after manual unlock, also resolving
-the preceding delivery's deferred smoke. Save/Load is **not retested**. No new
+Prepare Game rendering and normal exit pass. Save/Load is **not retested**. No new
 timing or speedup is claimed; accurate conversion remains the priority and the
 full goal stays active.
 
@@ -126,7 +125,7 @@ the actor queue/comparator, distance queries and dispatch optimization, includin
 its worker protocol and real match completion. The installed Debugger remains
 at its preserved earlier artifact; only the game receives the attribute/condition
 deliveries. The current game executable SHA-256 is
-`3737b26d609455d1d128b59c3eb17e295e526550c9ae3d00f28d38753dc9893a`.
+`119af966b7bf8f5e71fd5aa45d9b99cd9b3ef32532c1d6c523782352f45d12db`.
 The [complete movement](native-player-movement-reconstruction.md),
 [foul/referee](native-match-discipline-reconstruction.md) and
 [debugger lab](native-match-debugger-lab.md) reports retain their own evidence.

@@ -60,7 +60,7 @@ bool try_modern_actor_attributes(State& s, std::uint32_t entry) {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
             constexpr Function methods[]{actor_attributes::refresh, actor_attributes::signed_maximum, actor_attributes::recover_condition,
                 actor_attributes::refresh_condition, actor_attributes::consume_condition, actor_attributes::restore_condition,
-                actor_attributes::record_condition_scale, actor_attributes::record_availability, actor_attributes::effective_condition};
+                actor_attributes::record_condition_scale, actor_attributes::record_availability, actor_attributes::effective_condition, actor_attributes::refresh_condition_record};
             AttributeDispatch dependencies;
             methods[index](s, &dependencies, d.observer);
         }
