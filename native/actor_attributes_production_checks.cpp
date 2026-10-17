@@ -38,6 +38,7 @@ struct Capture:ActorAttributesBoundaryObserver {
         require(entry!=attributes::entries.end(),"Unknown actor-attribute capture");
         auto& input=inputs[unsigned(entry-attributes::entries.begin())];
         if(input)return;
+        if(root==attributes::restoration_entry && !s.memory.read<4>(s.r<4>(12)+0x70))return;
         if(root==attributes::periodic_entry) {
             periodic_candidate=clone(s);periodic_candidate->platform=s.platform;
             periodic_candidate->wr<4>(4128,return_sentinel);periodic_updated=false;return;
@@ -126,6 +127,7 @@ auto complete_match(const State& seed,std::uint32_t match,Capture& capture){
     require(next.calls[0]>0 && next.calls[1]==4*next.calls[0] && !next.dispatch_escapes,"Paired actor-attributes match exercised refresh and four maximum children");
     std::cout<<"PASS: paired actor-attributes full match advances="<<advances<<" refreshCalls="<<next.calls[0]<<" maximumCalls="<<next.calls[1]
         <<" recoveryCalls="<<next.calls[2]<<" periodicCalls="<<next.calls[3]<<" consumptionCalls="<<next.calls[4]
+        <<" restorationCalls="<<next.calls[5]<<" recordScaleCalls="<<next.calls[6]<<" availabilityCalls="<<next.calls[7]<<" effectiveConditionCalls="<<next.calls[8]
         <<"; complete state, import ABI and per-tick accounting\n";
     return next.calls;
 }
@@ -151,7 +153,7 @@ void matrix(const State& input,unsigned index,bool profile) {
         compare(input,index,Path::generated,Mode::modern,50000000,true);
         for(auto limit:{0u,1u,2u,3u})compare(input,index,Path::generated,Mode::modern,limit);
         if(index==4)for(auto limit:{4u,14u,18u})compare(input,index,Path::generated,Mode::modern,limit);
-        else if(index!=1)for(auto limit:{12u,13u,index==2?36u:100u})compare(input,index,Path::generated,Mode::modern,limit);
+        else if(index!=1 && index!=6)for(auto limit:{12u,13u,index==2?36u:index==7?30u:index==8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit);
     }
 }
 }
@@ -181,7 +183,7 @@ int main(int argc,char** argv){try {
 
             std::cout<<"Integrated actor-attribute source="<<"natural complete match"<<" entry="<<hex_address(attributes::entries[index])<<" calls="<<calls[index]<<" returns="<<calls[index]<<std::endl;
         }
-        require(cases==82 && negatives==5 && budgets==32,"Real actor-attribute matrix incomplete");
+        require(cases==147 && negatives==9 && budgets==57,"Real actor-attribute matrix incomplete");
     }
     std::cout<<"PASS: production actor-attributes cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives
         <<"; real match caller direct/generated/CFM, original/profile controls, dedicated productive counts, complete state/effects/accounting/import boundaries\n";

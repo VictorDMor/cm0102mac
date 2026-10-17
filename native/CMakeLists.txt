@@ -61,6 +61,8 @@ target_sources(cm_aot PRIVATE
     match_random_adapter.cpp
     actor_attributes.cpp
     actor_condition.cpp
+    actor_condition_restore.cpp
+    actor_condition_records.cpp
     actor_attributes_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp

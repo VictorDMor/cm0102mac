@@ -1,5 +1,9 @@
 # Periodic actor condition and action consumption
 
+This is the preceding 687-entry delivery. The subsequent
+[restoration and record-query block](native-actor-condition-restoration.md) extends
+the component to nine entries and the accepted manifest to 691.
+
 Two complete original operations now have named C++23 bodies in the existing
 actor-attribute subsystem: periodic refresh (`102393c0..1023958c`, 115 indexed
 instructions) and condition consumption (`10239590..1023978c`, 127). The first
@@ -122,11 +126,12 @@ installs the signed ARM64 executable with SHA-256
 `ea8cb2efdcfdc9f2619434187f742b60d9fece9adec20b7be7db8649d72dbd67`.
 Candidate and installed identities, strict deep signatures and all four original
 payloads agree. All 845 protected files and the installed Match Debugger are
-preserved. The Mac was locked when CUA attempted the installed-app check; no game
-process was launched. Installed rendering and normal exit are **not exercised**
-in this cycle. Shared-engine original-reference acceptance and installation
-identity are separately verified; the lock does not turn a missing UI witness
-into a pass.
+preserved. The initial installed UI attempt was blocked by the Mac lock. After
+manual unlock, a supplemental check reached Prepare Game, displayed the original
+exit confirmation and exited normally after 9,059,733,818 statically recompiled
+instructions. The installed executable identity matched the 687-entry artifact.
+That deferred smoke is now resolved; its private receipt is
+`delivery/unlocked-smoke.json`.
 
 Receipts remain private under `.local/actor-condition-reconstruction`.
 Save/Load is **not retested**. No new timing is measured and no speedup is claimed:

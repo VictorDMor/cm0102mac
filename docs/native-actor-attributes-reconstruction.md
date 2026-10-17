@@ -1,5 +1,8 @@
 # Actor action attributes and condition recovery
 
+The latest [restoration/query delivery](native-actor-condition-restoration.md)
+extends this component to nine entries and the accepted manifest to 691.
+
 This report records the preceding 685-entry delivery. The subsequent
 [periodic condition and consumption block](native-actor-condition-reconstruction.md)
 extends the same owner to five entries and 687 total replacements; its separate

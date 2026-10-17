@@ -235,6 +235,14 @@ public:
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
         floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
     }
+    void floating_product_difference(unsigned destination, unsigned first, unsigned second, unsigned subtrahend) {
+        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
+        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
+        const auto z = float_value<8>(state.r<8>(0x4000 + subtrahend * 16));
+        const auto product = x * y; const auto result = product - z;
+        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
+        floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
+    }
     void floating_round_single(unsigned destination, unsigned source) {
         step(); const auto input = float_value<8>(state.r<8>(0x4000 + source * 16));
         const auto result = double(float_value<4>(float_bits<4>(input)));

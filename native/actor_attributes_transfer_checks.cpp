@@ -74,11 +74,33 @@ struct Model final : CodeFragmentBoundaryObserver {
         constexpr std::array<std::uint32_t,3> periodic_sites{0x10235ea4,0x10239400,0x10239574};
         constexpr std::array<std::uint32_t,11> consumption_stores{0x102395cc,0x102395fc,0x1023962c,0x1023964c,
             0x10239664,0x102396c8,0x102396dc,0x1023971c,0x10239730,0x10239770,0x10239784};
+        if(index>=5) {
+            bool point=false;unsigned frame=0;
+            if(index==5) {
+                if(site==Site::before_draws)point=s.pc==0x10239794;
+                else if(site==Site::final_output) {point=s.pc==0x10239ce0;frame=112;}
+                else {
+                    constexpr std::array<std::uint32_t,8> scratch{0x10239844,0x102398bc,0x10239904,0x10239998,0x10239a08,0x10239af4,0x10239b64,0x10239c20};
+                    point=std::find(scratch.begin(),scratch.end(),s.pc)!=scratch.end();frame=112;
+                }
+            } else if(index==6) {point=!primary && s.pc==(site==Site::before_draws?0x10187650u:0x10187674u);}
+            else if(index==7) {
+                point=primary ? s.pc==(site==Site::before_draws?0x10187684u:site==Site::after_maximum?0x101876a4u:0x101876a8u) :
+                    s.pc==(site==Site::before_draws?0x10187738u:site==Site::after_maximum?0x10187748u:0x101877bcu);
+                frame=primary?0:128;
+            } else {
+                point=primary ? s.pc==(site==Site::before_draws?0x101878d4u:site==Site::after_maximum?0x101878ecu:0x101878f0u) :
+                    s.pc==(site==Site::before_draws?0x10187958u:site==Site::after_maximum?0x1018795cu:0x10187a00u);
+                frame=primary?0:96;
+            }
+            if(stage!=1 || !point || s.r<4>(4)!=parent_frame-frame)return;
+        } else {
         const auto pc=index==3 ? periodic_sites[unsigned(site)] : index==2 ? recovery_sites[unsigned(site)] :
             primary && site==Site::before_draws ? 0x10235ee4u : interrupted_sites[unsigned(site)];
         const auto frame=index==4?0u:index==3?96u:index==2?80u:128u;
         const bool point=index==4 ? std::find(consumption_stores.begin(),consumption_stores.end(),s.pc)!=consumption_stores.end() : s.pc==pc;
         if(stage!=1 || !point || s.r<4>(4)!=parent_frame-frame)return;
+        }
         ++callbacks; stage = 2;
         s.wr<4>(12, scenario == Scenario::restore_fault ? fixture + 0xffe : saved_context); s.wr<4>(16, 7);
         invoke_register_context(s, 0x10773f30);
@@ -135,7 +157,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
     require(d.calls[index] == 1 && !d.returns[index] && !d.original_calls[index] && !d.original_body && !d.dispatch_escapes &&
         d.transfers[index] == unsigned(scenario != Scenario::restore_fault) && d.faults[index] == unsigned(scenario == Scenario::restore_fault) &&
         !d.terminations[index] && !a->register_context_unknown_transfers && !b->register_context_unknown_transfers, label + " dedicated productive transfer evidence");
-    const auto helpers=index==2 || index==4 || site==Site::before_draws?0u:index==3?4u:site==Site::after_maximum?1u:4u;
+    const auto helpers=index>=5 || index==2 || index==4 || site==Site::before_draws?0u:index==3?4u:site==Site::after_maximum?1u:4u;
     require(d.calls[1]==helpers && d.returns[1]==helpers && !d.transfers[1] && !d.faults[1],label+" completed maximum children");
     if(index==3) {
         const bool interrupted_child=site==Site::before_draws;
@@ -153,20 +175,21 @@ int main(int argc, char** argv) {
         require(argc == 5 && !match_pc_profile_enabled(), "Original program/game/private root and original-caller capture directory with profiling disabled");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        for (unsigned index : {0u,2u,3u,4u}) {
+        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u}) {
             State seed; load_program(seed,argv[1]);
             load_match_snapshot(seed,std::filesystem::path(argv[4])/(hex_address(line::entries[index])+".snapshot"));
             require(seed.pc==line::entries[index],"Transfer input must be a captured original caller scope");
             seed.memory.map(fixture, 0x1000); seed.memory.copy_in(fixture, std::vector<std::uint8_t>(0x1000, 0xa7));
             for(bool primary:{false,true})for(auto site:{Site::before_draws,Site::after_maximum,Site::final_output}) {
                 if(index==4 && site!=Site::final_output)continue;
+                if(index==6 && (primary || site==Site::final_output))continue;
                 for(auto scenario:{Scenario::jump,Scenario::restore_fault,Scenario::handler_fault})
                     for(bool original_context:{false,true})compare(seed,index,scenario,original_context,false,site,primary);
                 compare(seed,index,Scenario::jump,false,true,site,primary);
             }
         }
-        require(cases==140 && fault_cases==80,"Complete actor attribute/condition callback transfer matrix");
+        require(cases==280 && fault_cases==160,"Complete actor attribute/condition callback transfer matrix");
         std::cout << cases << " productive nonlocal actor-attributes comparisons; " << fault_cases
-            << " restore/handler faults; actor-attribute scopes, integer saves and callback continuations abandoned\n";
+            << " restore/handler faults; actor-attribute scopes, integer/float saves and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

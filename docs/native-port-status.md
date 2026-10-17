@@ -14,24 +14,25 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [periodic actor-condition and consumption block](native-actor-condition-reconstruction.md)
-adds two complete C++23 operations and 242 original instructions, bringing the
-accepted manifest from 685 to **687 entries**. The combined five-entry
-attribute/condition scope covers **1,650 original instructions**. Release and
-affected-unit UBSAN each pass 49,380 component comparisons, 82 production
-comparisons plus four null faults, and 140 nonlocal comparisons. Fifteen separate
-original-profile controls, nine boundary/table/reference audits and 48 historical
+The [actor condition restoration and record-query block](native-actor-condition-restoration.md)
+adds four complete C++23 operations and 534 original instructions, bringing the
+accepted manifest from 687 to **691 entries**. The combined nine-entry
+attribute/condition scope covers **2,184 original instructions**. Release and
+affected-unit UBSAN each pass 154,185 component comparisons, 147 production
+comparisons plus eight null faults, and 280 nonlocal comparisons. Twenty-seven
+separate original-profile controls, nine source/reference audits and 48 historical
 manifest checks pass.
 
 A complete paired 798-advance match preserves full state, import ABI and every
-tick's accounting, including 17,490 periodic calls and 13,119 consumption calls.
-The signed ARM64 game is installed with executable SHA-256
-`ea8cb2efdcfdc9f2619434187f742b60d9fece9adec20b7be7db8649d72dbd67`.
-All 845 protected files and the installed Match Debugger are preserved. The Mac
-was locked, so the installed UI smoke is **not exercised** in this cycle;
-installation identity/signature and the shared-engine checks are independently
-verified. Save/Load is **not retested**. No new timing or speedup is claimed;
-accurate conversion remains the priority and the full goal stays active.
+tick's accounting. The new roots execute naturally: restoration 80, record scalar
+80, availability 22 and effective condition 22 calls. The signed ARM64 game is
+installed with executable SHA-256
+`3737b26d609455d1d128b59c3eb17e295e526550c9ae3d00f28d38753dc9893a`.
+All 845 protected files and the installed Match Debugger are preserved. Installed
+Prepare Game rendering and normal exit pass after manual unlock, also resolving
+the preceding delivery's deferred smoke. Save/Load is **not retested**. No new
+timing or speedup is claimed; accurate conversion remains the priority and the
+full goal stays active.
 
 The [spatial-role query optimization](native-spatial-role-performance.md) is
 installed in the game. Two 600-tick scenarios show median paired runtime
