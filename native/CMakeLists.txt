@@ -89,6 +89,10 @@ target_sources(cm_aot PRIVATE
     injury_reporting_notice.cpp
     injury_reporting_context.cpp
     injury_reporting_adapter.cpp
+    injury_bootstrap.cpp
+    injury_bootstrap_status.cpp
+    injury_bootstrap_population.cpp
+    injury_bootstrap_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp
     match_discipline_penalties.cpp
@@ -452,6 +456,20 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-injury-reporting-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME injury_reporting_component_equivalence COMMAND cm-injury-reporting-checks)
     set_tests_properties(injury_reporting_component_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_INJURY_BOOTSTRAP_REFERENCE "${CMAKE_BINARY_DIR}/injury_bootstrap_reference.cpp")
+    add_custom_command(OUTPUT "${CM_INJURY_BOOTSTRAP_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_injury_bootstrap_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_INJURY_BOOTSTRAP_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_injury_bootstrap_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/injury_bootstrap_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-injury-bootstrap-checks injury_bootstrap_checks.cpp "${CM_INJURY_BOOTSTRAP_REFERENCE}")
+    target_include_directories(cm-injury-bootstrap-checks PRIVATE "${CMAKE_BINARY_DIR}")
+    target_link_libraries(cm-injury-bootstrap-checks PRIVATE cm_aot)
+    target_compile_options(cm-injury-bootstrap-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME injury_bootstrap_component_equivalence COMMAND cm-injury-bootstrap-checks)
+    set_tests_properties(injury_bootstrap_component_equivalence PROPERTIES TIMEOUT 180)
     set(CM_MATCH_RANDOM_REFERENCE "${CMAKE_BINARY_DIR}/match_random_reference.cpp")
     add_custom_command(OUTPUT "${CM_MATCH_RANDOM_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_random_reference.py"
@@ -682,6 +700,12 @@ target_compile_options(cm-injury-reporting-production-checks PRIVATE -Wall -Wext
 add_executable(cm-injury-reporting-transfer-checks injury_reporting_transfer_checks.cpp)
 target_link_libraries(cm-injury-reporting-transfer-checks PRIVATE cm_aot)
 target_compile_options(cm-injury-reporting-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-injury-bootstrap-production-checks injury_bootstrap_production_checks.cpp)
+target_link_libraries(cm-injury-bootstrap-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-injury-bootstrap-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-injury-bootstrap-transfer-checks injury_bootstrap_transfer_checks.cpp)
+target_link_libraries(cm-injury-bootstrap-transfer-checks PRIVATE cm_aot)
+target_compile_options(cm-injury-bootstrap-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-injury-record-production-checks injury_record_production_checks.cpp)
 target_link_libraries(cm-injury-record-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-injury-record-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -988,6 +1012,17 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/injury-reporting-transfer-checks"
         "${CMAKE_BINARY_DIR}/injury-reporting-live-profile")
     set_tests_properties(injury_reporting_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED InjuryReportingLiveProfile TIMEOUT 180)
+    add_test(NAME injury_bootstrap_actual_production COMMAND cm-injury-bootstrap-production-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/injury-bootstrap-production-checks")
+    add_test(NAME injury_bootstrap_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
+        $<TARGET_FILE:cm-injury-bootstrap-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
+        "${CMAKE_BINARY_DIR}/injury-bootstrap-profile-checks" "${CMAKE_BINARY_DIR}/injury-bootstrap-live-profile")
+    set_tests_properties(injury_bootstrap_actual_production PROPERTIES FIXTURES_SETUP InjuryBootstrapLiveProfile TIMEOUT 240)
+    set_tests_properties(injury_bootstrap_original_profile PROPERTIES FIXTURES_REQUIRED InjuryBootstrapLiveProfile TIMEOUT 180)
+    add_test(NAME injury_bootstrap_nonlocal_transfer COMMAND cm-injury-bootstrap-transfer-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/injury-bootstrap-transfer-checks"
+        "${CMAKE_BINARY_DIR}/injury-bootstrap-live-profile")
+    set_tests_properties(injury_bootstrap_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED InjuryBootstrapLiveProfile TIMEOUT 180)
     add_test(NAME injury_club_events_actual_production COMMAND cm-injury-club-events-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/injury-club-events-production-checks")
     add_test(NAME injury_club_events_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1

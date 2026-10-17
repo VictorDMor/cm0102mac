@@ -1,5 +1,9 @@
 # Injury reporting and history invalidation
 
+This report records the preceding 726-entry delivery. The subsequent
+[injury controller bootstrap block](native-injury-controller-bootstrap.md)
+extends the manifest to 732 with a separate owner and preserves these four entries.
+
 Four complete original operations now have named C++23 bodies under a separate
 `injury_reporting` owner. The accepted manifest extends from **722 to 726
 entries**, preserving its exact prior prefix and every preceding owner. The

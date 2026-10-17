@@ -23,6 +23,7 @@
 #include "injury_club_events_adapter.hpp"
 #include "injury_readouts_adapter.hpp"
 #include "injury_reporting_adapter.hpp"
+#include "injury_bootstrap_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -58,6 +59,7 @@ struct RuntimeDiagnostics {
     InjuryClubEventsDiagnostics injury_club_events;
     InjuryReadoutsDiagnostics injury_readouts;
     InjuryReportingDiagnostics injury_reporting;
+    InjuryBootstrapDiagnostics injury_bootstrap;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -143,6 +145,14 @@ InjuryReportingDiagnostics& injury_reporting_diagnostics(State& state) {
 const InjuryReportingDiagnostics& injury_reporting_diagnostics(const State& state) {
     static const InjuryReportingDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->injury_reporting : empty;
+}
+InjuryBootstrapDiagnostics& injury_bootstrap_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->injury_bootstrap;
+}
+const InjuryBootstrapDiagnostics& injury_bootstrap_diagnostics(const State& state) {
+    static const InjuryBootstrapDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->injury_bootstrap : empty;
 }
 ActorAttributesDiagnostics& actor_attributes_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();

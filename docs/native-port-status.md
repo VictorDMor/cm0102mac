@@ -14,31 +14,30 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [injury reporting and history block](native-injury-reporting.md) adds four
-complete operations and **749 original instructions**, extending the accepted
-manifest from 722 to **726 entries** with its exact prior prefix intact. Release
-and affected-unit UBSAN each pass 20,547 component, 272 production and 210
-nonlocal comparisons, plus four actual pointer faults. All 749 source sites,
-48 Release profile controls, nineteen new/preceding readout audits, 54 historical
-manifest methods and four focused CTests pass.
+The [injury controller bootstrap block](native-injury-controller-bootstrap.md)
+adds six complete operations and **566 original instructions**, extending the
+accepted manifest from 726 to **732 entries** with its exact prior prefix intact.
+Release and affected-unit UBSAN each pass 18,053 component, 255 production and
+259 nonlocal comparisons, plus six actual pointer faults. All 566 source sites,
+45 Release profile controls, eighteen new/preceding reporting audits, 55
+historical manifest methods and four focused CTests pass.
 
+Actual match setup naturally constructs and populates the injury controller.
 A paired 798-advance match preserves state, imports and per-tick accounting; all
-four roots have zero natural calls in that stepper. Prepared actual-data original
-BLs exercise the type-81 predicate, notice composition, match context and history
-reference invalidation, including existing reconstructed type/form/category text.
-Sixteen captured/prepared inputs retain actual history and original archive
-backing. This is prepared runtime coverage, distinct from unmodified management
-UI. Invalidation preserves the starting offset and archived file bytes.
+six roots have zero calls within that stepper. Prepared actual-data original BLs
+cover every root and nested constructor/population/registration owners. The
+original national-team schedule constructor supplies the missing career service
+for actual availability queries. Six primary inputs and nine variants are retained.
+This prepared coverage is distinct from unmodified management UI.
 
 The strict-signed ARM64 game is installed with SHA-256
-`a339dd009d9fa1dcff54a726484ce711c181368c25206257a296fe9aebc7d097`.
+`e890162cb2549a0eb797dec37218ecbdb715847cb5f54b21c08b1fec8c3b8799`.
 Prepare Game rendering and normal exit pass. Debugger sources and the installed
-debugger are preserved. All 845 cycle-start protected files and eighteen prior
-feature prompts are unchanged. A new user save is added before installation;
-all 846 files retain their preinstallation hashes. Six linked checks are cleaned;
-fifty-one task-owned snapshots receive verified transparent compression.
-Save/Load is **not retested**; no
-performance benchmark or gameplay change is claimed. The full goal stays active.
+debugger are preserved. All 846 protected files, including both user career saves,
+and eighteen prior feature prompts retain their hashes. Six linked checks are
+cleaned; forty-eight task-owned snapshots receive verified transparent compression.
+Save/Load is **not retested**; no performance benchmark or gameplay change is
+claimed. The full goal stays active.
 
 The [spatial-role query optimization](native-spatial-role-performance.md) is
 installed in the game. Two 600-tick scenarios show median paired runtime
