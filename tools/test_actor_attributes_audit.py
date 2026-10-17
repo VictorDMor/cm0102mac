@@ -20,10 +20,10 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):
-        self.assertEqual(sum(row[2] for row in CONTRACTS),3982)
-        self.assertEqual(sum(row[2] for row in FRAGMENTS),3982)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),700)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),700)
+        self.assertEqual(sum(row[2] for row in CONTRACTS),4107)
+        self.assertEqual(sum(row[2] for row in FRAGMENTS),4107)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),701)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),701)
         self.assertEqual(SEMANTIC_REPLACEMENTS[682:],tuple((entry,'actor_attributes_adapter') for entry in ACTOR_ATTRIBUTES_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:682]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
@@ -40,7 +40,9 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(json.dumps(prior697,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'9786cd19cece1bba86b2fe5cbd8c4a978c3ecc2a30f1dc888de980e8f0696b17')
         prior699=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:699]]
         self.assertEqual(hashlib.sha256(json.dumps(prior699,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'54583b41fe58d632b4ca976e90548ea2ccdaf26f6f67a82d4620f1b7f240b5c1')
-        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0,0x102393c0,0x10239590,0x10239790,0x10187650,0x10187680,0x101878d0,0x10187a40,0x101877e0,0x10186a20,0x1018b9f0,0x10186ea0,0x101864a0,0x10186cd0,0x10186e10,0x10186fc0))
+        prior700=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:700]]
+        self.assertEqual(hashlib.sha256(json.dumps(prior700,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'79d4b26eeb3b8843509bcb537653f65740224620a88ebabf196e517024b7b941')
+        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0,0x102393c0,0x10239590,0x10239790,0x10187650,0x10187680,0x101878d0,0x10187a40,0x101877e0,0x10186a20,0x1018b9f0,0x10186ea0,0x101864a0,0x10186cd0,0x10186e10,0x10186fc0,0x10187450))
 
     def test_external_interior_edges_fail(self):
         for entry,end,*_ in CONTRACTS:
@@ -54,7 +56,7 @@ class ScopeTests(unittest.TestCase):
         for forbidden in ('actor_attributes_reference','dispatch_page','run_until','pcode','i_101'):
             self.assertNotIn(forbidden,source)
         for name in ('advance_pool','wide_sample','condition_adjusted_pair','paired_trait','single_trait','recover_condition',
-                     'refresh_condition','consume_condition','periodic_pool_draw','movement_condition_cost','action_condition_cost','restore_condition','record_condition_scale','record_availability','effective_condition','refresh_condition_record','partition_injury_days','partition_training_days','record_capacity','assign_capacity','retire_injury','reset_condition_record','sample_condition_range','scaled_condition_draw','recursive_correction_draw','merge_condition_update','find_condition_update','merge_first_update','apply_match_condition','match_minutes','match_scalar_effect','apply_queued_injuries'):
+                     'refresh_condition','consume_condition','periodic_pool_draw','movement_condition_cost','action_condition_cost','restore_condition','record_condition_scale','record_availability','effective_condition','refresh_condition_record','partition_injury_days','partition_training_days','record_capacity','assign_capacity','retire_injury','reset_condition_record','sample_condition_range','scaled_condition_draw','recursive_correction_draw','merge_condition_update','find_condition_update','merge_first_update','apply_match_condition','match_minutes','match_scalar_effect','apply_queued_injuries','maintain_condition_scalar','decay_condition_scalar','advance_scalar_pool'):
             self.assertIn(name,source)
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').exists(),'Private original source unavailable')

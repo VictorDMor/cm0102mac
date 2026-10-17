@@ -61,7 +61,7 @@ bool try_modern_actor_attributes(State& s, std::uint32_t entry) {
             constexpr Function methods[]{actor_attributes::refresh, actor_attributes::signed_maximum, actor_attributes::recover_condition,
                 actor_attributes::refresh_condition, actor_attributes::consume_condition, actor_attributes::restore_condition,
                 actor_attributes::record_condition_scale, actor_attributes::record_availability, actor_attributes::effective_condition, actor_attributes::refresh_condition_record,
-                actor_attributes::record_capacity, actor_attributes::assign_capacity, actor_attributes::retire_injury, actor_attributes::reset_condition_record, actor_attributes::sample_condition_range,actor_attributes::merge_condition_update,actor_attributes::find_condition_update,actor_attributes::apply_match_condition};
+                actor_attributes::record_capacity, actor_attributes::assign_capacity, actor_attributes::retire_injury, actor_attributes::reset_condition_record, actor_attributes::sample_condition_range,actor_attributes::merge_condition_update,actor_attributes::find_condition_update,actor_attributes::apply_match_condition,actor_attributes::maintain_condition_scalar};
             AttributeDispatch dependencies;
             methods[index](s, &dependencies, d.observer);
         }

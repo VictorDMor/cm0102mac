@@ -1,7 +1,7 @@
 # Actor action attributes and condition recovery
 
-The latest [post-match condition delivery](native-post-match-condition.md)
-extends this component to eighteen entries and the accepted manifest to 700.
+The latest [scalar-maintenance delivery](native-condition-scalar-maintenance.md)
+extends this component to nineteen entries and the accepted manifest to 701.
 
 This report records the preceding 685-entry delivery. The subsequent
 [periodic condition and consumption block](native-actor-condition-reconstruction.md)

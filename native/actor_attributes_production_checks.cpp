@@ -157,7 +157,7 @@ auto complete_match(const State& seed,std::uint32_t match,Capture& capture){
         <<" recoveryCalls="<<next.calls[2]<<" periodicCalls="<<next.calls[3]<<" consumptionCalls="<<next.calls[4]
         <<" restorationCalls="<<next.calls[5]<<" recordScaleCalls="<<next.calls[6]<<" availabilityCalls="<<next.calls[7]<<" effectiveConditionCalls="<<next.calls[8]<<" recordRefreshCalls="<<next.calls[9]
         <<" capacityCalls="<<next.calls[10]<<" capacityAssignmentCalls="<<next.calls[11]<<" injuryRetirementCalls="<<next.calls[12]<<" recordResetCalls="<<next.calls[13]<<" conditionSamplingCalls="<<next.calls[14]
-        <<" queueMergeCalls="<<next.calls[15]<<" queueLookupCalls="<<next.calls[16]<<" postMatchCalls="<<next.calls[17]
+        <<" queueMergeCalls="<<next.calls[15]<<" queueLookupCalls="<<next.calls[16]<<" postMatchCalls="<<next.calls[17]<<" scalarMaintenanceCalls="<<next.calls[18]
         <<"; complete state, import ABI and per-tick accounting\n";
     capture.full_time=clone(*modern);capture.full_time->platform=seed.platform;
     return next.calls;
@@ -176,6 +176,11 @@ void actual_fault(const State& input,unsigned index) {
     require(d.calls[index]==1 && d.faults[index]==1 && !d.returns[index] && !d.dispatch_escapes && !d.original_body,"Actor null fault diagnostics");
 }
 void matrix(const State& input,unsigned index,bool profile,bool recursive=false) {
+    bool scalar_guard=false;
+    if(index==18) {
+        const auto limit=input.memory.read<4>(input.memory.read<4>(input.r<4>(8)-0x7be4));
+        scalar_guard=signed_value<4>(input.r<4>(16))>=signed_value<4>(limit);
+    }
     for(auto path:{Path::direct,Path::generated,Path::cfm}){
         if(profile)compare(input,index,path,Mode::profile,50000000,false,recursive);
         else for(auto mode:{Mode::modern,Mode::original,Mode::entry_original})compare(input,index,path,mode,50000000,false,recursive);
@@ -184,7 +189,7 @@ void matrix(const State& input,unsigned index,bool profile,bool recursive=false)
         compare(input,index,Path::generated,Mode::modern,50000000,true,recursive);
         for(auto limit:{0u,1u,2u,3u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
         if(index==4)for(auto limit:{4u,14u,18u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
-        else if(index!=1 && index!=6)for(auto limit:{index==17?40u:index>=14?4u:12u,index==17?150u:index>=14?9u:13u,index==17?500u:index>=14?12u:index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
+        else if(index!=1 && index!=6)for(auto limit:{index==18 && !scalar_guard?20u:index==17?40u:index>=14?4u:12u,index==18 && !scalar_guard?30u:index==17?150u:index>=14?9u:13u,index==18 && !scalar_guard?40u:index==17?500u:index>=14?12u:index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
     }
 }
 std::unique_ptr<State> daily_rollover(const State& parent) {
@@ -362,19 +367,44 @@ void post_match_production(const State& parent,std::uint32_t match,const std::fi
     std::cout<<"PASS: controlled original post-match BLs with actual full-time match, original statistics builder, capacity assignment, queued injury selection/retirement/registration and native history IO"<<std::endl;
 }
 
+void scalar_production(const State& parent,const std::filesystem::path& snapshots) {
+    const auto manager=std::uint32_t(parent.r<4>(12)),staff=std::uint32_t(parent.r<4>(16)),toc=std::uint32_t(parent.r<4>(8));
+    const auto index=std::uint32_t(parent.memory.read<4>(staff)),row=std::uint32_t(parent.memory.read<4>(manager))+index*0x24;
+    const auto profile=std::uint32_t(parent.memory.read<4>(staff+0x14));require(profile!=0,"Actual scalar maintenance player profile");
+    auto prepared=clone(parent);prepared->platform=parent.platform;prepared->wr<4>(16,index);
+    auto base=source_caller(*prepared,18,0x1011c4b4);save_runtime_snapshot(*base,snapshots/(hex_address(attributes::scalar_maintenance_entry)+".snapshot"));matrix(*base,18,false);actual_fault(*base,18);
+    for(auto [value,trait,flag,name]:std::array<std::tuple<std::uint16_t,unsigned,unsigned,const char*>,7>{{
+        {64336,25,20,"scalar-deficit.snapshot"},{64836,10,10,"scalar-low-trait.snapshot"},{100,25,10,"scalar-fixed.snapshot"},
+        {1500,25,20,"scalar-cap.snapshot"},{100,128,10,"scalar-wrap-first.snapshot"},{100,128,10,"scalar-wrap-second.snapshot"},{0,25,10,"scalar-guard.snapshot"}}}) {
+        auto input=clone(*base);input->platform=parent.platform;input->memory.write<2>(row+12,value);input->memory.write<2>(staff+0x5c,trait);input->memory.write<1>(profile+15,flag);
+        const std::string_view variant(name);
+        if(variant=="scalar-guard.snapshot") {
+            input->wr<4>(12,0);input->wr<4>(16,input->memory.read<4>(input->memory.read<4>(toc-0x7be4)));
+        } else if(variant=="scalar-deficit.snapshot" || variant=="scalar-wrap-first.snapshot" || variant=="scalar-wrap-second.snapshot") {
+            const auto limit=input->memory.read<4>(input->memory.read<4>(toc-0x7b88));
+            input->memory.write<4>(input->memory.read<4>(toc-0x7b84),limit-(variant=="scalar-wrap-second.snapshot"?2:0));
+        }
+        save_runtime_snapshot(*input,snapshots/name);matrix(*input,18,false);
+    }
+    std::cout<<"PASS: controlled original scalar-maintenance BL with actual controller/index/profile; deficit, low trait, fixed decrement, special cap, both pool wraps and guarded null-controller return"<<std::endl;
+}
+
 }
 int main(int argc,char** argv){try {
+    const bool scalar=argc==6 && std::string_view(argv[5])=="--scalar";
     const bool post_match=argc==7 && std::string_view(argv[5])=="--post-match";
     const bool queue=argc==6 && std::string_view(argv[5])=="--queue";
     const bool sampling=argc==6 && std::string_view(argv[5])=="--sampling";
-    const bool focused=(argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling || queue)) || post_match;
+    const bool focused=(argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling || queue || scalar)) || post_match;
     require(argc==4 || argc==5 || focused,"Expected original program, game, fresh backing and optional profile directory or focused lifecycle snapshot");
     const bool profile=argc==5;require(profile==match_pc_profile_enabled(),"Profile request/flag mismatch");set_match_turbo_enabled(false);
     const auto root=std::filesystem::path(argv[3])/std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     OwnedBacking cleanup{root};
     if(focused) {
         State seed;load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);load_match_snapshot(seed,argv[4]);
-        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(post_match?"post-match-focused-profile":queue?"queue-focused-profile":sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(scalar?"scalar-focused-profile":post_match?"post-match-focused-profile":queue?"queue-focused-profile":sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        if(scalar) {scalar_production(seed,snapshots);require(cases==136 && returns==80 && budgets==56 && negatives==8,"Focused scalar matrix incomplete");
+            std::cout<<"PASS: focused scalar cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         if(post_match) {post_match_production(seed,std::uint32_t(std::stoul(argv[6],nullptr,0)),snapshots);require(cases==102 && returns==60 && budgets==42 && negatives==6,"Focused post-match matrix incomplete");
             std::cout<<"PASS: focused post-match cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         if(queue) {queue_production(seed,snapshots);require(cases==153 && returns==90 && budgets==63 && negatives==9,"Focused queue matrix incomplete");
@@ -406,6 +436,10 @@ int main(int argc,char** argv){try {
             State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
             load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,17,true);
         }
+        for(const auto* name:{"scalar-deficit.snapshot","scalar-low-trait.snapshot","scalar-fixed.snapshot","scalar-cap.snapshot","scalar-wrap-first.snapshot","scalar-wrap-second.snapshot","scalar-guard.snapshot"}) {
+            State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
+            load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,18,true);
+        }
         State recursive;load_program(recursive,argv[1]);recursive.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
         load_match_snapshot(recursive,std::filesystem::path(argv[4])/"sampling-recursive.snapshot");matrix(recursive,14,true,true);
     } else {
@@ -431,7 +465,8 @@ int main(int argc,char** argv){try {
         require(bool(capture.full_time),"Complete-match world capture");
         save_runtime_snapshot(*capture.full_time,snapshots/"post-match-world.snapshot");std::ofstream(snapshots/"post-match-world-match.txt")<<hex_address(game.match);
         post_match_production(*capture.full_time,game.match,snapshots);
-        require(cases==606 && negatives==36 && budgets==246,"Real actor-attribute matrix incomplete");
+        scalar_production(*capture.inputs[7],snapshots);
+        require(cases==742 && negatives==44 && budgets==302,"Real actor-attribute matrix incomplete");
     }
     std::cout<<"PASS: production actor-attributes cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives
         <<"; real match caller direct/generated/CFM, original/profile controls, dedicated productive counts, complete state/effects/accounting/import boundaries\n";

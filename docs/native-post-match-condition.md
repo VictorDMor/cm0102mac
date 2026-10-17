@@ -1,5 +1,9 @@
 # Post-match condition application
 
+This report records the preceding 700-entry delivery. The subsequent
+[condition scalar maintenance](native-condition-scalar-maintenance.md) extends the
+component to nineteen entries and the accepted manifest to 701.
+
 This phase reconstructs the complete `0x10186fc0..0x10187450` operation: both
 20-player team loops, elapsed-minute selection, capacity/scalar effects and queued
 injury application. Its 292 original indexed instructions span two generated
