@@ -120,4 +120,28 @@ void signed_maximum(State& state, SemanticDependencyDispatch* dependencies, Sema
     a.compare_registers(3,4); if (!a.nonpositive()) a.move(4,3);
     a.at(0x102373ac); a.move(3,4); a.finish();
 }
+
+void recover_condition(State& state, SemanticDependencyDispatch* dependencies, SemanticGuestObserver* observer) {
+    Call a(state,recovery_entry,dependencies,observer);
+    a.link(); a.save(31); a.load(31,2,-0x7b90); a.save(30); a.move(30,3);
+    a.load(5,2,-0x7b8c); a.save(29); a.load(4,2,-0x7b88); a.save_link();
+    a.value(0,103); a.load(29,2,-0x7b84); a.frame(0x50);
+    a.store<2>(3,0x19c,0); a.load<1>(0,3,0x2c); a.sign8(0,0,true);
+    if (a.equal()) { a.value(0,1); a.store<1>(30,0x2c,0); }
+    a.at(0x10235df8); a.load(3,29,0); a.load(0,4,0); a.offset(3,3,2);
+    a.compare_registers(3,0,false); a.store(29,0,3);
+    if (!a.nonpositive()) {
+        a.store(29,0,5); a.call(0x1077b770); a.mask(0,3,0xffff); a.store(31,0,0);
+    }
+    // The signed remainder, separate single-precision subtraction/addition and
+    // live condition reload are observable, including after reseed callbacks.
+    a.at(0x10235e20); a.load(5,29,0); a.value(4,0x66660000); a.value(0,0x43300000);
+    a.load(3,2,-0x51e8); a.load<2>(6,5,0); a.offset(4,4,0x6667);
+    a.load(5,31,0); a.store(1,0x38,0); a.add(5,6,5); a.floating_load(1,3,0x80);
+    a.multiply_high(0,4,5); a.floating_load(2,30,0x50,true); a.shift_right(0,0,1);
+    a.mask(3,0,1,false,1); a.add(0,0,3); a.multiply(0,0,5); a.subtract(3,0,5);
+    a.offset(0,3,5); a.exclusive_flags(0,0,0x80000000); a.store(1,0x3c,0);
+    a.floating_load(0,1,0x38); a.floating_subtract(0,0,1,true); a.floating_sum_single(0,2,0);
+    a.floating_store_single(0,30,0x50); a.pop(0x50); a.restore(31); a.restore(30); a.restore(29); a.finish();
+}
 }

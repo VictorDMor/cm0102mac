@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-15
+# Native port investigation — updated 2026-10-17
 
 ## Required outcome
 
@@ -14,19 +14,24 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [actor action-attribute candidate](native-actor-attributes-reconstruction.md)
-now passes component and shared-engine acceptance for 1,349 original instructions:
-32,703 component comparisons per Release/UBSAN mode, 31 production comparisons
-plus one null-actor fault, six profile controls and 42 nonlocal comparisons.
-A complete paired 798-advance match agrees, including 17,728 refresh calls and
-70,912 maximum calls. Eight source/hook audits and 48 manifest checks also pass.
+The [actor action-attribute and condition-recovery block](native-actor-attributes-reconstruction.md)
+is integrated in the game: three complete C++23 roots cover **1,408 original
+instructions**, bringing the accepted manifest from 682 to **685 entries**.
+Release and affected-unit UBSAN each pass 35,404 component comparisons,
+48 production comparisons plus two null faults, and 84 nonlocal comparisons.
+Nine separate original-profile controls, eight boundary audits and 48 historical
+manifest checks pass. A complete paired 798-advance match agrees in state,
+import ABI and accounting, including 17,728 refresh calls, 70,912 maximum calls
+and 117 recovery calls.
 
-**Performance acceptance fails:** median paired runtime increases by 2.11%
-and 1.18% in two 600-tick scenarios. The candidate is preserved on
-`codex/actor-attributes-integration-validation`, with 684 candidate entries.
-It is withheld from `main`, whose accepted manifest stays at 682. Both installed
-applications remain unchanged; the game retains the accepted spatial-role build.
-The user requested a pause after this bounded cycle; further work awaits resume.
+The resumed objective prioritizes accurate conversion and defers optimization.
+The earlier two-root candidate's 2.11%/1.18% timing regressions remain historical
+evidence; no new timing or speedup claim is made. The signed ARM64 game is
+installed with executable SHA-256
+`2d8ac630790d9d46c5bacb61d1201381267ee3f91a60f06d0c4028bff37179bd`.
+The installed menu and normal exit pass; 845 protected files and the installed
+Match Debugger are preserved. Save/Load is **not retested**. The full conversion
+goal remains active.
 
 The [spatial-role query optimization](native-spatial-role-performance.md) is
 installed in the game. Two 600-tick scenarios show median paired runtime

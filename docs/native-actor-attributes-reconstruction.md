@@ -1,14 +1,17 @@
-# Actor action attributes: validated integration candidate
+# Actor action attributes and condition recovery
 
-The complete actor action-attribute refresh (`10235ea0..102373a0`) and its
-signed-maximum helper (`102373a0..102373b4`) now have named C++23 component
-implementations. They cover **1,349 indexed original instructions** across
-three generated pages. Both roots are selected by destination hooks in the candidate
-shared game engine on `codex/actor-attributes-integration-validation`. Its **684-entry manifest**
-retains the preceding 682 entries in exactly the same order and with the same
-owners. This integration is withheld from `main` and the installed game because
-paired measurements show a runtime regression. Functional equivalence passes;
-performance acceptance does not.
+The complete actor action-attribute refresh (`10235ea0..102373a0`), signed
+maximum (`102373a0..102373b4`) and condition recovery (`10235db0..10235e9c`)
+now have named C++23 implementations. They cover **1,408 indexed original
+instructions**. All three roots are selected in the shared game engine; the
+**685-entry manifest** preserves its preceding 682 entries and the two earlier
+attribute candidate entries in order and ownership.
+
+The resumed whole-port goal follows the committed conversion-first discipline:
+accurate reconstruction and technical acceptance determine integration;
+optimization is deferred. The earlier two-root candidate was withheld because
+of a small timing regression. Those measurements remain historical evidence
+below; this delivery makes no speedup claim.
 
 ## Scope and selection
 
@@ -21,8 +24,9 @@ to this root. Paired timing is reported separately below.
 The original index contains two external calls to the refresh root, from
 `1022e380` and `102393ec`, and four calls from refresh to the maximum helper.
 There are no indexed external entrances into either body interior, including
-fall-through edges. The adjacent condition-recovery operation is outside this
-scope. The separate sampler at `10226520` and random refresh at `1077b770`
+fall-through edges. Condition recovery is included in this resumed delivery; its
+two indexed callers are `10277a54` and `10277ce4`, with no external interior
+entrances. The separate sampler at `10226520` and random refresh at `1077b770`
 remain explicit dependencies.
 
 ## Original behavior retained
@@ -63,22 +67,46 @@ reads/writes, faults and instruction charges agree with isolated original
 references. The maximum helper preserves its signed comparison and register
 effects, including equal operands.
 
+## Condition recovery contract
+
+Recovery writes action marker 103 at actor `+19c`, sets the byte at `+2c` to one
+only if it was zero, and advances the shared random pool once. The live limit,
+wrap/reseed result and salt retain original ordering. A signed remainder modulo
+five plus five is converted through the original double scratch, narrowed during
+the single-precision subtraction, then added to live condition at `+50` with a
+separate single-precision addition and store. Condition is not capped at 100.
+The reseed callback can change condition before that later load.
+
+The complete 80-byte frame, three individual integer saves, volatile register
+residues, floating flags, memory effects and fault prefixes are retained. The
+new body extends the existing adapter and private diagnostics. Source fingerprints,
+page fragments and isolated references cover all 59 added original instructions;
+the incoming-edge audit uses the extrema of every contract, independent of
+manifest ordering.
+
 ## Component evidence
 
-Release and UBSAN each pass **32,703 comparisons**: 2,956 normal completions,
-29,744 interruptions and three discriminating own/helper negatives. Of these,
+Release and UBSAN each pass **35,404 comparisons**: 3,167 normal completions,
+32,232 interruptions and five discriminating own/helper negatives. Of these,
 10,995 are paired structural cases using an explicitly injected wide bound.
-All 1,349 original source sites are reached. Every nonnegative comparison checks
+All 1,408 original source sites are reached. Every nonnegative comparison checks
 the full architectural and temporary state, mapped memory, allocator/import
 state, ordered memory effects, dependency ABI, source order and accounting.
 
-The matrix includes all 256 encodings of each baseline byte; condition and
+The refresh matrix includes all 256 encodings of each baseline byte; condition and
 constant IEEE edge values; enabled floating exceptions; positive/negative wide
 bounds and correction extremes; every wrap position among the fourteen draws;
 dependency mutations and interruptions; aliased slots, actor/stack overlaps,
 relocated TOC; every instruction budget and every accessed byte hole along
 representative paths. Independent expectations check ordinary output bytes,
 pool advancement, zero consumption and signed maximum results.
+
+Recovery additionally covers initially zero/nonzero flags, signed remainder and
+word32 carry extremes, single-precision IEEE edge values, enabled exception
+flags, pool-limit and wrap positions, callback mutation/interruption, aliased
+slots and actor/stack overlaps, relocated TOC, every instruction budget and every
+accessed byte hole on representative paths. Independent assertions establish
+its output marker, flag preservation, one-word consumption and numeric increment.
 
 Eight Python audits pass for source fingerprints, boundaries, incomplete or
 mutated records, isolated references and all page fragments, including destination hooks before original instruction
@@ -91,54 +119,56 @@ stderr is empty. Private inputs, generated references and receipts stay under
 
 ## Production and complete-match acceptance
 
-Natural engine callers capture both roots without synthetic argument setup.
-The fresh-world and caller-capture interval records 44 refresh calls and 176
-maximum calls, with equal
-return counts and no original fallback, faults or dispatch escapes. A paired
-Arsenal/Manchester United match, seed 12345, reaches full time after **798
-advances** with 17,728 refresh calls and 70,912 maximum calls. Every tick agrees
-in return and instruction accounting; intermediate and final complete states,
-host inputs and import ABI also agree.
+Natural engine callers capture all three roots without synthetic argument setup.
+A paired Arsenal/Manchester United match, seed 12345, reaches full time after
+**798 advances** with 17,728 refresh calls, 70,912 maximum calls and **117 recovery
+calls**. Every tick agrees in return and instruction accounting; intermediate
+and final complete states, host inputs and import ABI also agree. Dedicated
+normal call/return counts agree for every root, with zero original selection,
+faults, budget stops or dispatch escapes on that complete match.
 
-Release and UBSAN each pass 31 actual-production comparisons plus one explicit
-null-actor fault after frame creation. The matrix covers direct, generated and
-CFM descriptor entry paths; global/per-entry original selection; two negative
-controls; and eleven budget stops, including completed frame creation and the
-maximum helper. Six original-profile controls pass
-separately. All 48 affected historical manifest checks pass.
+Release and UBSAN each pass **48 actual-production comparisons**, plus two
+explicit null-actor faults after the respective frame setup. The matrix covers
+direct, generated and CFM descriptor entry paths, global/per-entry original
+selection, three negative controls and eighteen budget stops. Nine original-profile
+controls pass separately in Release. All 48 affected historical manifest checks
+pass; the eight subsystem audits retain their body/hook/reference coverage.
 
-Both modes also pass **42 nonlocal comparisons**, including 24 context-restore
-or resumed-handler faults. Interruptions occur before the first draw, after a
-maximum child returns, and at the final attribute store. Both memory observer
-channels are exercised; the primary channel's first point uses a scratch write
-because that channel does not report reads. The maximum leaf has no memory or
-external call boundary inside its five instructions; its complete instruction
-budget matrix is checked separately. Abandoned refresh frames execute no later
-stores, epilogues or callback continuations. Completed child counts remain
-exact. Original/modern context dependencies and turbo controls are included.
+Both modes also pass **84 nonlocal comparisons**, including 48 context-restore
+or resumed-handler faults. Refresh interruptions occur before the first draw,
+after a maximum child returns, and at the final attribute store. Recovery is
+interrupted at its initial action store, conversion scratch store and final
+condition store. Both memory observer channels are exercised. The primary
+channel's first refresh point uses a scratch write because it does not report
+reads. The maximum leaf has no memory or external call boundary inside its five
+instructions; its complete instruction-budget matrix is checked separately.
+Abandoned frames execute no later stores, epilogues or callback continuations.
+Completed child counts remain exact. Original/modern context dependencies and
+turbo controls are included.
 
-Four focused CTests have passing results. The initial transfer fixture attempted
-a read interruption on the write-only primary observer; it was corrected and
-the affected Release/UBSAN transfer checks rerun successfully. This fixture
-correction did not change the production implementation.
+Four focused CTests pass in 20.14 seconds. Seven affected units are separately
+instrumented with UBSAN, and all three linked comparison binaries pass with
+empty sanitizer stderr. Generated pages and unchanged linked archives retain
+the consistent Release build. Historical fixture corrections remain recorded in
+the earlier candidate commit; none changed this delivery's production behavior.
 
 Generation retains all 1,953,334 instructions, 1,922 pages and zero missing or
 pending targets. Only `page_10235.cpp` and `page_10237.cpp` differ among the
 1,923 generated C++ files. Full-body/page fingerprints and all indexed incoming
 edges remain audited. State layout is unchanged; diagnostics are private.
 
-## Performance and installation
+## Historical performance experiment
 
-The first integrated candidate was slower by median 7.67% and 2.71% in the two
-600-tick scenarios. The final candidate exposes constant instruction sites and
+The earlier two-root integrated candidate was slower by median 7.67% and 2.71%
+in the two 600-tick scenarios. The final candidate exposes constant instruction sites and
 register selections across named phases, specializes the absent-observer path,
 and routes unobserved, unprofiled maximum calls with sufficient budget directly
 through their existing adapter. Original controls, counters and interrupted-call
 handling remain intact. Release and UBSAN acceptance was repeated after these
 changes. These adjustments do not establish a performance gain.
 
-Final timing compares the actual pre-integration library with the final candidate
-in alternating order: ten measured groups of five runs per mode, after warm-up,
+The earlier final timing compares the actual pre-integration library with that
+candidate in alternating order: ten measured groups of five runs per mode, after warm-up,
 for each 600-tick scenario. The median paired runtime increase is **2.11% for
 Arsenal and 1.18% for Cruzeiro**. The candidate is faster in only 1/10 and 3/10
 groups respectively. Full 126,967,858-byte snapshots, instruction accounting,
@@ -151,10 +181,29 @@ clock requests, bridge calls and sampler calls agree in both scenarios.
 
 The paired percentage is the median of group ratios, not the ratio of the two
 independent medians. Benchmark receipts and original inputs remain private.
-This closes the integration experiment with functional acceptance and a failed
-performance gate.
-The integration is withheld from `main`; the installed game remains the accepted
-spatial-role build. Neither application was replaced in this cycle. Match
-Debugger source is unchanged. Save/Load and installed management UI behavior
-are **not retested**. Further optimization requires an explicit goal resume;
-no additional subsystem is started as part of this cycle.
+That two-root integration experiment passed functional acceptance and failed its
+then-applied performance gate. It was preserved in `a37e44d` without installing.
+These measurements predate recovery integration and are not a fresh benchmark of
+the 685-entry artifact. The resumed complete-port objective prioritizes accurate
+conversion and defers optimization, as stated in the committed progress ledger.
+No speedup is claimed.
+
+## Installation and remaining scope
+
+The protected update preserves the previous game as a private reference and
+installs the signed ARM64 executable with SHA-256
+`2d8ac630790d9d46c5bacb61d1201381267ee3f91a60f06d0c4028bff37179bd`.
+Candidate, installed and running executable identities agree; strict deep signing,
+all four bundled original-program payloads and 845 protected files pass. The
+installed app renders Prepare Game and exits through Command-Q and its original
+confirmation. An accessibility query reopened the app after the first exit;
+that second owned process was also closed normally. Final process inspection
+finds no game process. Per-root runtime coverage belongs to the complete paired
+match, not the initial-menu smoke. Only the game application is updated; the
+installed Match Debugger and its source are preserved.
+The complete port remains active. Save/Load is **not retested** for this bounded
+actor-attribute and recovery delivery.
+
+Cleanup removes ten reproducible comparison executables (1,436,560,792 logical
+bytes), recovering 1,420,857,344 observed free bytes. Objects, linked libraries,
+generated references, recipes, receipts, app bundles and protected inputs remain.

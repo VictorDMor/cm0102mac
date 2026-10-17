@@ -10,8 +10,8 @@ struct ActorAttributesBoundaryObserver : SemanticGuestObserver {
 };
 struct ActorAttributesDiagnostics {
     bool original = false;
-    std::array<bool, 2> entry_original{};
-    std::array<std::uint64_t, 2> calls{}, original_calls{}, returns{}, faults{}, budget_stops{}, transfers{}, terminations{}, profile_original_calls{};
+    std::array<bool, actor_attributes::entries.size()> entry_original{};
+    std::array<std::uint64_t, actor_attributes::entries.size()> calls{}, original_calls{}, returns{}, faults{}, budget_stops{}, transfers{}, terminations{}, profile_original_calls{};
     std::uint32_t original_body = 0;
     std::uint64_t dispatch_escapes = 0;
     ActorAttributesBoundaryObserver* observer = nullptr;

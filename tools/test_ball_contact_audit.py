@@ -23,7 +23,7 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(ENTRIES, (0x101f5050, 0x101f50c0, 0x101f5110, 0x101f5180, 0x101f5350, 0x10270320))
         self.assertEqual(FACADE_ENTRIES, ENTRIES[:4])
         manifest = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(manifest), 684)
+        self.assertEqual(len(manifest), 685)
         self.assertEqual(hashlib.sha256(json.dumps(manifest[:678], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'a7ed184a519e48bfbe1612d909630b90c35527dc12ec2c88972b77c4831f419f')
         for filename in ('ball_contact_facades.cpp', 'ball_contact_failure.cpp', 'ball_contact_description_preparation.cpp', 'ball_contact_description_flow.cpp', 'ball_contact_description_weight.cpp', 'ball_contact_description_assessment.cpp', 'ball_contact_description_reactions.cpp', 'ball_contact_description.cpp'):
@@ -31,7 +31,7 @@ class ScopeTests(unittest.TestCase):
             for forbidden in ('_reference(', 'dispatch_page', 'pcode', 'i_101'):
                 self.assertNotIn(forbidden, source)
         self.assertEqual(manifest[678:682], [{'entry': f'0x{entry:x}', 'module': 'ball_contact_adapter'} for entry in BALL_CONTACT_ENTRIES])
-        self.assertEqual(len({row['entry'] for row in manifest}), 684)
+        self.assertEqual(len({row['entry'] for row in manifest}), 685)
         cmake = (ROOT / 'native/CMakeLists.txt').read_text().split('target_sources(cm_aot PRIVATE', 1)[1].split('add_library(cm_match_debugger_database', 1)[0]
         for source in (ROOT / 'native').glob('ball_contact*.cpp'):
             if 'checks' not in source.name:self.assertIn(source.name, cmake)

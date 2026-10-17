@@ -9,19 +9,24 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [actor action-attribute candidate](native-actor-attributes-reconstruction.md)
-now passes component and shared-engine acceptance for 1,349 original instructions:
-32,703 component comparisons per Release/UBSAN mode, 31 production comparisons
-plus one null-actor fault, six profile controls and 42 nonlocal comparisons.
-A complete paired 798-advance match agrees, including 17,728 refresh calls and
-70,912 maximum calls. Eight source/hook audits and 48 manifest checks also pass.
+The [actor action-attribute and condition-recovery block](native-actor-attributes-reconstruction.md)
+is integrated in the game: three complete C++23 roots cover **1,408 original
+instructions**, bringing the accepted manifest from 682 to **685 entries**.
+Release and affected-unit UBSAN each pass 35,404 component comparisons,
+48 production comparisons plus two null faults, and 84 nonlocal comparisons.
+Nine separate original-profile controls, eight boundary audits and 48 historical
+manifest checks pass. A complete paired 798-advance match agrees in state,
+import ABI and accounting, including 17,728 refresh calls, 70,912 maximum calls
+and 117 recovery calls.
 
-**Performance acceptance fails:** median paired runtime increases by 2.11%
-and 1.18% in two 600-tick scenarios. The candidate is preserved on
-`codex/actor-attributes-integration-validation`, with 684 candidate entries.
-It is withheld from `main`, whose accepted manifest stays at 682. Both installed
-applications remain unchanged; the game retains the accepted spatial-role build.
-The user requested a pause after this bounded cycle; further work awaits resume.
+The resumed objective prioritizes accurate conversion and defers optimization.
+The earlier two-root candidate's 2.11%/1.18% timing regressions remain historical
+evidence; no new timing or speedup claim is made. The signed ARM64 game is
+installed with executable SHA-256
+`2d8ac630790d9d46c5bacb61d1201381267ee3f91a60f06d0c4028bff37179bd`.
+The installed menu and normal exit pass; 845 protected files and the installed
+Match Debugger are preserved. Save/Load is **not retested**. The full conversion
+goal remains active.
 
 The latest [spatial-role optimization](native-spatial-role-performance.md)
 reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two
@@ -114,12 +119,13 @@ site, complete state/effects, recursion, faults and nonlocal transfers. Five
 focused CTests, seven boundary audits, 40 updated manifest assertions and three
 affected-unit UBSAN runs pass.
 
-The game and independent debugger share the accepted implementation, including
-team-line queries, movement choice, the actor queue/comparator, distance queries and dispatch
-optimization. Both signed ARM64 applications are installed; the
-installed worker protocol, real match completion and game menu/normal exit pass.
-The game executable SHA-256 is
-`7bbd743a555c1a506aac15075248e38f04ded111ad2fe66535f275e3a8fbc40b`.
+The accepted source engine is shared by the game and independent debugger.
+Earlier installed-debugger acceptance covers team-line queries, movement choice,
+the actor queue/comparator, distance queries and dispatch optimization, including
+its worker protocol and real match completion. The installed Debugger remains
+at its preserved earlier artifact; only the game receives this attribute/recovery
+delivery. The current game executable SHA-256 is
+`2d8ac630790d9d46c5bacb61d1201381267ee3f91a60f06d0c4028bff37179bd`.
 The [complete movement](native-player-movement-reconstruction.md),
 [foul/referee](native-match-discipline-reconstruction.md) and
 [debugger lab](native-match-debugger-lab.md) reports retain their own evidence.

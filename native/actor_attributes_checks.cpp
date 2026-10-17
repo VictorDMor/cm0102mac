@@ -41,10 +41,11 @@ struct Model final : SemanticDependencyDispatch {
     std::vector<Event> calls;
     Model(bool old, Options o, Trace& t) : original(old), options(o), trace(t) {}
     void reference(State& s, std::uint32_t stop=return_sentinel) {
-        const bool helper=s.pc==attributes::maximum_entry;
+        const auto entry=s.pc;
+        const auto end=entry==attributes::refresh_entry ? attributes::maximum_entry :
+            entry==attributes::maximum_entry ? 0x102373b4u : 0x10235e9cu;
         while(s.pc!=stop) {
-            if((!helper && s.pc>=attributes::refresh_entry && s.pc<attributes::maximum_entry) ||
-               (helper && s.pc>=attributes::maximum_entry && s.pc<0x102373b4))
+            if(s.pc>=entry && s.pc<end)
                 require(actor_attributes_reference(s),"Missing independent actor-attributes reference");
             else call(s,s.pc,std::uint32_t(s.r<4>(4128)));
         }
@@ -101,7 +102,8 @@ Result compare(const State& input, Options options={}) {
         try {
             if(reference) {original_trace=&old_trace;m.reference(s);}
             else if(input.pc==attributes::refresh_entry) attributes::refresh(s,&m,&new_trace);
-            else attributes::signed_maximum(s,&m,&new_trace);
+            else if(input.pc==attributes::maximum_entry) attributes::signed_maximum(s,&m,&new_trace);
+            else attributes::recover_condition(s,&m,&new_trace);
             original_trace=nullptr; return std::string{};
         } catch(const std::exception& e) {original_trace=nullptr;return std::string(e.what());}
     };
@@ -141,6 +143,49 @@ void boundaries(const State& input,Options options={}) {
         compare(*s,options);
     }
     for(unsigned n=1;n<=baseline.calls.size();++n) {auto o=options;o.interrupt=n;compare(input,o);}
+}
+
+void recovery_checks() {
+    auto basic=compare(*seed(attributes::recovery_entry));
+    require(basic.state->memory.read<4>(actor+0x50)==float_bits<4>(106.0),"Independent recovery increment");
+    require(basic.state->memory.read<2>(actor+0x19c)==103 && basic.state->memory.read<1>(actor+0x2c)==1,
+        "Recovery marker and initially clear flag");
+    require(basic.state->memory.read<4>(globals+8)==stream+2,"Recovery consumes one pool word");
+    boundaries(*seed(attributes::recovery_entry));
+    for(auto flag:{0u,1u,127u,128u,255u})for(auto sample:{0u,1u,4u,5u,32767u,65535u})
+        for(auto salt:{0u,1u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+            auto s=seed(attributes::recovery_entry);s->memory.write<1>(actor+0x2c,flag);
+            s->memory.write<2>(stream+2,sample);s->memory.write<4>(globals,salt);
+            auto result=compare(*s);const auto value=std::bit_cast<std::int32_t>(sample+salt);
+            require(result.state->memory.read<4>(actor+0x50)==float_bits<4>(100.0+(value%5)+5),"Independent signed recovery remainder");
+            require(result.state->memory.read<1>(actor+0x2c)==(flag?flag:1),"Nonzero recovery flag retained");
+        }
+    for(auto bits:std::array<std::uint32_t,10>{0,0x80000000u,0x7f800000u,0xff800000u,0x7fc12345u,0x7f812345u,
+        std::uint32_t(float_bits<4>(-100.0)),std::uint32_t(float_bits<4>(99.5)),0x7f7fffffu,1}) {
+        auto s=seed(attributes::recovery_entry);s->memory.write<4>(actor+0x50,bits);boundaries(*s);
+        s->wr<1>(1304,1);s->wr<1>(1308,1);compare(*s);
+    }
+    for(auto cursor:{stream+124,stream+126,stream+128,0xfffffffeu}) {
+        auto s=seed(attributes::recovery_entry);s->memory.write<4>(globals+8,cursor);
+        Options o;o.mutate=true;boundaries(*s,o);
+    }
+    for(auto offset:{-0x51e8,-0x7b90,-0x7b8c,-0x7b88,-0x7b84})
+        for(auto pointer:{0u,actor,stack-0x50,globals}) {
+            auto s=seed(attributes::recovery_entry);s->memory.write<4>(toc+offset,pointer);compare(*s);
+        }
+    for(auto pointer:{stack-0x160,globals-0x100,stream-0x50}) {
+        auto s=seed(attributes::recovery_entry);s->wr<4>(12,pointer);boundaries(*s);
+    }
+    {
+        auto s=seed(attributes::recovery_entry);constexpr auto relocated=toc+0x10000;
+        s->memory.map(relocated-0x8000,0x9000);
+        s->memory.copy_in(relocated-0x8000,s->memory.copy_out(toc-0x8000,0x9000));
+        s->wr<4>(8,relocated);boundaries(*s);
+    }
+    for(bool child:{false,true}) {
+        auto s=seed(attributes::recovery_entry);s->memory.write<4>(globals+8,stream+126);
+        Options o;o.own_negative=!child;o.child_negative=child;compare(*s,o);
+    }
 }
 }
 namespace cm::aot {void actor_attributes_step_seen(State& s,std::uint32_t pc) {if(original_trace)original_trace->before_step(s,pc);}}
@@ -205,8 +250,10 @@ int main() {try {
         }
     for(bool child:{false,true}) {Options o;o.own_negative=!child;o.child_negative=child;compare(*seed(),o);}
     {Options o;o.own_negative=true;compare(*seed(attributes::maximum_entry),o);}
-    for(auto pc=attributes::refresh_entry;pc<0x102373b4;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==1349,"All 1349 actor-attribute original sites covered");
+    recovery_checks();
+    for(auto [start,end]:std::array<std::pair<unsigned,unsigned>,2>{{{attributes::refresh_entry,0x102373b4},{attributes::recovery_entry,0x10235e9c}}})
+        for(auto pc=start;pc<end;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==1408,"All 1408 actor-attribute/recovery original sites covered");
     std::cout<<"PASS: "<<cases<<" actor-attribute comparisons; "<<completed<<" completions, "<<interruptions
         <<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()
         <<" original sites; full state/effects/ABI/accounting; independent original references\n";

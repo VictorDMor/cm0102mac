@@ -19,15 +19,15 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):
-        self.assertEqual(sum(row[2] for row in CONTRACTS),1349)
-        self.assertEqual(sum(row[2] for row in FRAGMENTS),1349)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),684)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),684)
+        self.assertEqual(sum(row[2] for row in CONTRACTS),1408)
+        self.assertEqual(sum(row[2] for row in FRAGMENTS),1408)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),685)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),685)
         self.assertEqual(SEMANTIC_REPLACEMENTS[682:],tuple((entry,'actor_attributes_adapter') for entry in ACTOR_ATTRIBUTES_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:682]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
             '0da57a2d0a0463cf13a501936c55b7795da6218e670ef21d37375d7ea75c61d3')
-        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0))
+        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0))
 
     def test_external_interior_edges_fail(self):
         for entry,end,*_ in CONTRACTS:
@@ -40,7 +40,7 @@ class ScopeTests(unittest.TestCase):
         source=(ROOT/'native/actor_attributes.cpp').read_text()
         for forbidden in ('actor_attributes_reference','dispatch_page','run_until','pcode','i_101'):
             self.assertNotIn(forbidden,source)
-        for name in ('advance_pool','wide_sample','condition_adjusted_pair','paired_trait','single_trait'):
+        for name in ('advance_pool','wide_sample','condition_adjusted_pair','paired_trait','single_trait','recover_condition'):
             self.assertIn(name,source)
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').exists(),'Private original source unavailable')

@@ -70,8 +70,10 @@ struct Model final : CodeFragmentBoundaryObserver {
     void interrupt(State& s, bool primary) {
         // The primary observer reports writes only. Use the conversion scratch
         // store before the first draw; the secondary channel also covers reads.
-        const auto pc=primary && site==Site::before_draws ? 0x10235ee4u : interrupted_sites[unsigned(site)];
-        if(stage!=1 || s.pc!=pc || s.r<4>(4)!=parent_frame-128)return;
+        constexpr std::array<std::uint32_t,3> recovery_sites{0x10235de0,0x10235e3c,0x10235e7c};
+        const auto pc=index==2 ? recovery_sites[unsigned(site)] :
+            primary && site==Site::before_draws ? 0x10235ee4u : interrupted_sites[unsigned(site)];
+        if(stage!=1 || s.pc!=pc || s.r<4>(4)!=parent_frame-(index==2?80:128))return;
         ++callbacks; stage = 2;
         s.wr<4>(12, scenario == Scenario::restore_fault ? fixture + 0xffe : saved_context); s.wr<4>(16, 7);
         invoke_register_context(s, 0x10773f30);
@@ -128,7 +130,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
     require(d.calls[index] == 1 && !d.returns[index] && !d.original_calls[index] && !d.original_body && !d.dispatch_escapes &&
         d.transfers[index] == unsigned(scenario != Scenario::restore_fault) && d.faults[index] == unsigned(scenario == Scenario::restore_fault) &&
         !d.terminations[index] && !a->register_context_unknown_transfers && !b->register_context_unknown_transfers, label + " dedicated productive transfer evidence");
-    const auto helpers=site==Site::before_draws?0u:site==Site::after_maximum?1u:4u;
+    const auto helpers=index==2 || site==Site::before_draws?0u:site==Site::after_maximum?1u:4u;
     require(d.calls[1]==helpers && d.returns[1]==helpers && !d.transfers[1] && !d.faults[1],label+" completed maximum children");
     require(old.callbacks == 1 && modern.callbacks == 1 && old.handlers == modern.handlers && modern.handlers == unsigned(scenario != Scenario::restore_fault),
         label + " exact interrupted callback and resumed handler counts");
@@ -140,7 +142,7 @@ int main(int argc, char** argv) {
         require(argc == 5 && !match_pc_profile_enabled(), "Original program/game/private root and original-caller capture directory with profiling disabled");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        for (unsigned index = 0; index < 1; ++index) {
+        for (unsigned index : {0u,2u}) {
             State seed; load_program(seed,argv[1]);
             load_match_snapshot(seed,std::filesystem::path(argv[4])/(hex_address(line::entries[index])+".snapshot"));
             require(seed.pc==line::entries[index],"Transfer input must be a captured original caller scope");
@@ -151,7 +153,7 @@ int main(int argc, char** argv) {
                 compare(seed,index,Scenario::jump,false,true,site,primary);
             }
         }
-        require(cases==42 && fault_cases==24,"Complete attribute refresh callback transfer matrix");
+        require(cases==84 && fault_cases==48,"Complete attribute refresh/recovery callback transfer matrix");
         std::cout << cases << " productive nonlocal actor-attributes comparisons; " << fault_cases
             << " restore/handler faults; actor-attribute scopes, integer saves and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

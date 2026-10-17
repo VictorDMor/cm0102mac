@@ -28,7 +28,7 @@ struct Clock:CodeFragmentBoundaryObserver {
     }
 };
 struct Capture:ActorAttributesBoundaryObserver {
-    std::array<std::unique_ptr<State>,2> inputs;
+    std::array<std::unique_ptr<State>,attributes::entries.size()> inputs;
     void enter(const State& s,std::uint32_t root,bool original)override {
         if(original)return;
         const auto entry=std::find(attributes::entries.begin(),attributes::entries.end(),root);
@@ -86,9 +86,10 @@ void compare(const State& input,unsigned index,Path path,Mode mode,unsigned limi
     else {require(!d.calls[index] && !d.returns[index],label+" original control entered C++ root");require(mode==Mode::profile?d.profile_original_calls[index]>=1:d.original_calls[index]>=1,label+" selected original/profile not reached");}
     ++cases;returns+=expected.empty();budgets+=!expected.empty();
 }
-void complete_match(const State& seed,std::uint32_t match){
+auto complete_match(const State& seed,std::uint32_t match,Capture& capture){
     auto original=clone(seed),modern=clone(seed);original->platform=modern->platform=seed.platform;
     actor_attributes_diagnostics(*original).original=true;
+    actor_attributes_diagnostics(*modern).observer=&capture;
     Clock old_clock,new_clock;old_clock.base=new_clock.base=1000000000ULL;original->code_fragment_observer=&old_clock;modern->code_fragment_observer=&new_clock;
     unsigned advances=0;
     for(;advances<1400;++advances){
@@ -101,6 +102,7 @@ void complete_match(const State& seed,std::uint32_t match){
         if(modern->r<4>(12)==2){++advances;break;}
     }
     original->code_fragment_observer=modern->code_fragment_observer=nullptr;
+    actor_attributes_diagnostics(*modern).observer=nullptr;
     require(advances<1400 && modern->r<4>(12)==2,"Paired actor-attributes match reached full time");
     Image(*original).compare(*modern,"Paired actor-attributes complete match state");
     require(old_clock.count==new_clock.count && old_clock.events==new_clock.events,"Paired actor-attributes match host inputs/import ABI");
@@ -110,20 +112,22 @@ void complete_match(const State& seed,std::uint32_t match){
             !next.original_calls[i] && !next.profile_original_calls[i] && !next.faults[i] && !next.budget_stops[i],"Paired actor-attributes match entry accounting");
     }
     require(next.calls[0]>0 && next.calls[1]==4*next.calls[0] && !next.dispatch_escapes,"Paired actor-attributes match exercised refresh and four maximum children");
-    std::cout<<"PASS: paired actor-attributes full match advances="<<advances<<" refreshCalls="<<next.calls[0]<<" maximumCalls="<<next.calls[1]<<"; complete state, import ABI and per-tick accounting\n";
+    std::cout<<"PASS: paired actor-attributes full match advances="<<advances<<" refreshCalls="<<next.calls[0]<<" maximumCalls="<<next.calls[1]
+        <<" recoveryCalls="<<next.calls[2]<<"; complete state, import ABI and per-tick accounting\n";
+    return next.calls;
 }
-void actual_fault(const State& input) {
+void actual_fault(const State& input,unsigned index) {
     auto a=clone(input),b=clone(input);a->platform=b->platform=input.platform;
-    for(auto* s:{a.get(),b.get()}){s->pc=attributes::refresh_entry;s->wr<4>(12,0);s->wr<4>(4128,return_sentinel);s->budget=s->executed+50000000;}
+    for(auto* s:{a.get(),b.get()}){s->pc=attributes::entries[index];s->wr<4>(12,0);s->wr<4>(4128,return_sentinel);s->budget=s->executed+50000000;}
     actor_attributes_diagnostics(*a).original=true;
     Effects x,y;x.state=a.get();y.state=b.get();a->memory.date_observer=&x;b->memory.date_observer=&y;
-    const auto expected=execute(*a,Path::generated,0),actual=execute(*b,Path::generated,0);
+    const auto expected=execute(*a,Path::generated,index),actual=execute(*b,Path::generated,index);
     a->memory.date_observer=b->memory.date_observer=nullptr;
     require(expected==actual && expected.starts_with("Unmapped data access at "),"Actor null fault after original frame");
     Image(*a).compare(*b,"Actor null fault state");
     require(x.bytes==y.bytes && a->executed==b->executed,"Actor null fault effects/accounting");
     const auto& d=actor_attributes_diagnostics(*b);
-    require(d.calls[0]==1 && d.faults[0]==1 && !d.returns[0] && !d.dispatch_escapes && !d.original_body,"Actor null fault diagnostics");
+    require(d.calls[index]==1 && d.faults[index]==1 && !d.returns[index] && !d.dispatch_escapes && !d.original_body,"Actor null fault diagnostics");
 }
 void matrix(const State& input,unsigned index,bool profile) {
     for(auto path:{Path::direct,Path::generated,Path::cfm}){
@@ -133,7 +137,7 @@ void matrix(const State& input,unsigned index,bool profile) {
     if(!profile){
         compare(input,index,Path::generated,Mode::modern,50000000,true);
         for(auto limit:{0u,1u,2u,3u})compare(input,index,Path::generated,Mode::modern,limit);
-        if(!index)for(auto limit:{12u,13u,100u})compare(input,index,Path::generated,Mode::modern,limit);
+        if(index!=1)for(auto limit:{12u,13u,index==2?36u:100u})compare(input,index,Path::generated,Mode::modern,limit);
     }
 }
 }
@@ -150,29 +154,20 @@ int main(int argc,char** argv){try {
         }
     } else {
         auto game=cm::aot::match_debugger::create_match({argv[1],argv[2],root},{677,5677,12345,2001,194});auto& world=*game.state;
-        complete_match(world,game.match);
-        Capture capture; actor_attributes_diagnostics(world).observer=&capture;
-        unsigned step=0;
-        while(step++<10 && (!capture.inputs[0] || !capture.inputs[1])){
-            world.wr<4>(12,game.match);world.wr<4>(16,1);world.wr<4>(4128,return_sentinel);world.pc=0x101d3f60;
-            world.budget=world.executed+cm::aot::match_debugger::fresh_match_step_limit;run_until(world,return_sentinel);
-        }
-        actor_attributes_diagnostics(world).observer=nullptr;
+        Capture capture;const auto calls=complete_match(world,game.match,capture);
         const auto snapshots=std::filesystem::path(argv[3]).parent_path()/"actor-attributes-live-profile";
         std::filesystem::create_directories(snapshots);
 
         for(unsigned index=0;index<attributes::entries.size();++index){
             require(bool(capture.inputs[index]),"Missing original-caller actor-attribute capture "+hex_address(attributes::entries[index]));
-            const auto& diagnostics=actor_attributes_diagnostics(world);
-            require(diagnostics.calls[index]>0 && diagnostics.calls[index]==diagnostics.returns[index] && !diagnostics.original_calls[index] &&
-                !diagnostics.faults[index] && !diagnostics.budget_stops[index] && !diagnostics.dispatch_escapes,"Original-caller actor-attributes coverage/outcome mismatch");
+            require(calls[index]>0,"Original-caller actor-attributes coverage/outcome mismatch");
             save_runtime_snapshot(*capture.inputs[index],snapshots/(hex_address(attributes::entries[index])+".snapshot"));
             matrix(*capture.inputs[index],index,false);
-            if(!index)actual_fault(*capture.inputs[index]);
+            if(index!=1)actual_fault(*capture.inputs[index],index);
 
-            std::cout<<"Integrated actor-attribute source="<<"natural match tick"<<" entry="<<hex_address(attributes::entries[index])<<" calls="<<diagnostics.calls[index]<<" returns="<<diagnostics.returns[index]<<std::endl;
+            std::cout<<"Integrated actor-attribute source="<<"natural complete match"<<" entry="<<hex_address(attributes::entries[index])<<" calls="<<calls[index]<<" returns="<<calls[index]<<std::endl;
         }
-        require(cases==31 && negatives==2 && budgets==11,"Real actor-attribute matrix incomplete");
+        require(cases==48 && negatives==3 && budgets==18,"Real actor-attribute matrix incomplete");
     }
     std::cout<<"PASS: production actor-attributes cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives
         <<"; real match caller direct/generated/CFM, original/profile controls, dedicated productive counts, complete state/effects/accounting/import boundaries\n";

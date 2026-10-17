@@ -5,12 +5,14 @@ import json
 CONTRACTS = (
     (0x10235ea0, 0x102373a0, 1344, 'a65bfe1809ad4e6fb714b913d35b9c7093adf4fe78f9c9595588a77c2c2d4e60'),
     (0x102373a0, 0x102373b4, 5, '7b3379b11aede3d3f834c85c1e0c343e03f480a62ba9034ca67ce459d749ebad'),
+    (0x10235db0, 0x10235e9c, 59, '17e5a34c3733548ffc95d3e909a4ae354ea8663a5e9cbe62629ded0dc939d3b9'),
 )
 FRAGMENTS = (
     (0x10235ea0, 0x10235, 88, '45665d75865ef78ca968b68d3ce392dac9ebad88484f795c921040bd8088e8ff'),
     (0x10235ea0, 0x10236, 1024, '30dca2158a57debcd27adbf414eeaaac96f2184619ed9de3948311403fbb1a0b'),
     (0x10235ea0, 0x10237, 232, '7f6438ff1b3e15b39c948e96385f18ef9ef28b0edb7d321071bcebc7f47df7e0'),
     (0x102373a0, 0x10237, 5, '7b3379b11aede3d3f834c85c1e0c343e03f480a62ba9034ca67ce459d749ebad'),
+    (0x10235db0, 0x10235, 59, '17e5a34c3733548ffc95d3e909a4ae354ea8663a5e9cbe62629ded0dc939d3b9'),
 )
 ACTOR_ATTRIBUTES_ENTRIES = tuple(start for start, _, _, _ in CONTRACTS)
 
@@ -57,7 +59,7 @@ def require_actor_attributes_index(db, selected=None):
     require_actor_attributes_edges(db.execute("""SELECT i.address,e.value
         FROM instructions AS i,
           json_each(json_insert(json_extract(i.body,'$.flows'),'$[#]',json_extract(i.body,'$.fallthrough'))) AS e
-        WHERE e.value>=? AND e.value<?""", (CONTRACTS[0][0], CONTRACTS[-1][1])))
+        WHERE e.value>=? AND e.value<?""", (min(c[0] for c in CONTRACTS), max(c[1] for c in CONTRACTS))))
 
 
 def actor_attributes_hook(entry):
