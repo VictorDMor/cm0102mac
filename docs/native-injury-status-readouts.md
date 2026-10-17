@@ -1,5 +1,9 @@
 # Injury status, history and text readouts
 
+This report records the preceding 722-entry delivery. The subsequent
+[injury reporting and history block](native-injury-reporting.md) extends the
+manifest to 726 with a separate owner and preserves these eight entries.
+
 Eight complete original operations now have named C++23 bodies under the separate
 `injury_readouts` owner. The accepted manifest extends from **714 to 722 entries**,
 preserving its exact prior prefix and every preceding semantic owner. Existing

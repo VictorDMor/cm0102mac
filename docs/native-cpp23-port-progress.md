@@ -9,28 +9,31 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [injury status and text readouts](native-injury-status-readouts.md) add eight
-complete operations and **1,656 original instructions**, extending the accepted
-manifest from 714 to **722 entries** with its exact prior prefix intact. Release
-and affected-unit UBSAN each pass 29,121 component, 323 production and 308
-nonlocal comparisons, plus eight actual pointer faults. All 1,656 source sites,
-57 Release profile controls, 37 new/preceding injury audits, 53 historical manifest
-methods and four focused CTests pass.
+The [injury reporting and history block](native-injury-reporting.md) adds four
+complete operations and **749 original instructions**, extending the accepted
+manifest from 722 to **726 entries** with its exact prior prefix intact. Release
+and affected-unit UBSAN each pass 20,547 component, 272 production and 210
+nonlocal comparisons, plus four actual pointer faults. All 749 source sites,
+48 Release profile controls, nineteen new/preceding readout audits, 54 historical
+manifest methods and four focused CTests pass.
 
-A paired 798-advance match preserves state, imports and per-tick accounting,
-including 13,777 natural calls to the risk multiplier. The other seven roots
-receive prepared actual-data original-BL coverage, including nested current/type
-text, a completed history record, a new active injury and deferred risk. Nineteen
-captured/prepared inputs retain actual history backing. This is prepared runtime
-coverage, distinct from unmodified management-UI coverage.
+A paired 798-advance match preserves state, imports and per-tick accounting; all
+four roots have zero natural calls in that stepper. Prepared actual-data original
+BLs exercise the type-81 predicate, notice composition, match context and history
+reference invalidation, including existing reconstructed type/form/category text.
+Sixteen captured/prepared inputs retain actual history and original archive
+backing. This is prepared runtime coverage, distinct from unmodified management
+UI. Invalidation preserves the starting offset and archived file bytes.
 
 The strict-signed ARM64 game is installed with SHA-256
-`a8f5f657e5cb1633408dd1d84d9750d72bf9e8a42ae8def6b38b2c2490c576cf`.
+`a339dd009d9fa1dcff54a726484ce711c181368c25206257a296fe9aebc7d097`.
 Prepare Game rendering and normal exit pass. Debugger sources and the installed
-debugger are preserved. All 845 protected files and eighteen preexisting
-feature prompts are unchanged. Six linked checks are cleaned; sixty task-owned
-snapshots receive verified transparent compression. Save/Load is **not retested**;
-no performance benchmark or gameplay change is claimed. The full goal stays active.
+debugger are preserved. All 845 cycle-start protected files and eighteen prior
+feature prompts are unchanged. A new user save is added before installation;
+all 846 files retain their preinstallation hashes. Six linked checks are cleaned;
+fifty-one task-owned snapshots receive verified transparent compression.
+Save/Load is **not retested**; no
+performance benchmark or gameplay change is claimed. The full goal stays active.
 
 The latest [spatial-role optimization](native-spatial-role-performance.md)
 reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two
