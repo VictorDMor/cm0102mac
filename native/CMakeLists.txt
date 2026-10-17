@@ -60,6 +60,7 @@ target_sources(cm_aot PRIVATE
     match_random.cpp
     match_random_adapter.cpp
     actor_attributes.cpp
+    actor_condition.cpp
     actor_attributes_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp
@@ -340,6 +341,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-player-decision-characterization PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     set(CM_ACTOR_ATTRIBUTES_REFERENCE "${CMAKE_BINARY_DIR}/actor_attributes_reference.cpp")
     add_custom_command(OUTPUT "${CM_ACTOR_ATTRIBUTES_REFERENCE}"
+        BYPRODUCTS "${CMAKE_BINARY_DIR}/actor_attributes_tables.hpp"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_attributes_reference.py"
             "${CM_ORACLE_DIR}" "${CM_ACTOR_ATTRIBUTES_REFERENCE}"
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_attributes_reference.py"
@@ -347,6 +349,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
     add_executable(cm-actor-attributes-checks actor_attributes_checks.cpp "${CM_ACTOR_ATTRIBUTES_REFERENCE}")
+    target_include_directories(cm-actor-attributes-checks PRIVATE "${CMAKE_BINARY_DIR}")
     target_link_libraries(cm-actor-attributes-checks PRIVATE cm_aot)
     target_compile_options(cm-actor-attributes-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME actor_attributes_component_equivalence COMMAND cm-actor-attributes-checks)

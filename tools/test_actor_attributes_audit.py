@@ -12,22 +12,23 @@ from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
 from make_actor_attributes_reference import render_reference
 from actor_attributes_audit import (CONTRACTS, FRAGMENTS, ACTOR_ATTRIBUTES_ENTRIES,
     require_actor_attributes_bodies, require_actor_attributes_contract,
-    require_actor_attributes_edges, require_actor_attributes_hooks, require_actor_attributes_index)
+    require_actor_attributes_edges, require_actor_attributes_hooks, require_actor_attributes_index,
+    COST_TABLE, load_actor_attributes_tables, require_actor_attributes_tables)
 
 ROOT = Path(__file__).resolve().parent.parent
 INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):
-        self.assertEqual(sum(row[2] for row in CONTRACTS),1408)
-        self.assertEqual(sum(row[2] for row in FRAGMENTS),1408)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),685)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),685)
+        self.assertEqual(sum(row[2] for row in CONTRACTS),1650)
+        self.assertEqual(sum(row[2] for row in FRAGMENTS),1650)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),687)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),687)
         self.assertEqual(SEMANTIC_REPLACEMENTS[682:],tuple((entry,'actor_attributes_adapter') for entry in ACTOR_ATTRIBUTES_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:682]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
             '0da57a2d0a0463cf13a501936c55b7795da6218e670ef21d37375d7ea75c61d3')
-        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0))
+        self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0,0x102393c0,0x10239590))
 
     def test_external_interior_edges_fail(self):
         for entry,end,*_ in CONTRACTS:
@@ -37,10 +38,11 @@ class ScopeTests(unittest.TestCase):
                     require_actor_attributes_edges([(0,target)])
 
     def test_named_component_bodies_do_not_replay(self):
-        source=(ROOT/'native/actor_attributes.cpp').read_text()
+        source=(ROOT/'native/actor_attributes.cpp').read_text()+(ROOT/'native/actor_condition.cpp').read_text()
         for forbidden in ('actor_attributes_reference','dispatch_page','run_until','pcode','i_101'):
             self.assertNotIn(forbidden,source)
-        for name in ('advance_pool','wide_sample','condition_adjusted_pair','paired_trait','single_trait','recover_condition'):
+        for name in ('advance_pool','wide_sample','condition_adjusted_pair','paired_trait','single_trait','recover_condition',
+                     'refresh_condition','consume_condition','periodic_pool_draw','movement_condition_cost','action_condition_cost'):
             self.assertIn(name,source)
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').exists(),'Private original source unavailable')
@@ -52,6 +54,16 @@ class ContractTests(unittest.TestCase):
             cls.records=[json.loads(row[0]) for start,end,*_ in CONTRACTS for row in db.execute(
                 'SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address',(start,end))]
         cls.userops=json.loads((INPUT/'program.json').read_text())['userops']
+
+    def test_original_action_table_pointer_and_every_word_are_pinned(self):
+        words=load_actor_attributes_tables(INPUT);slot,table,count,_=COST_TABLE
+        live={slot:table,**{table+n*4:word for n,word in enumerate(words)}}
+        self.assertEqual(require_actor_attributes_tables(live.__getitem__),words)
+        self.assertEqual(len(words),count)
+        for address in live:
+            changed=dict(live);changed[address]^=4
+            with self.subTest(address=hex(address)),self.assertRaises(ValueError):
+                require_actor_attributes_tables(changed.__getitem__)
 
     def test_changed_source_fields_fail(self):
         for entry,page,*_ in FRAGMENTS:

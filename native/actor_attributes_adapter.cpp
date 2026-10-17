@@ -58,7 +58,8 @@ bool try_modern_actor_attributes(State& s, std::uint32_t entry) {
             if (s.pc != caller) run_until(s, caller);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
-            constexpr Function methods[]{actor_attributes::refresh, actor_attributes::signed_maximum, actor_attributes::recover_condition};
+            constexpr Function methods[]{actor_attributes::refresh, actor_attributes::signed_maximum, actor_attributes::recover_condition,
+                actor_attributes::refresh_condition, actor_attributes::consume_condition};
             AttributeDispatch dependencies;
             methods[index](s, &dependencies, d.observer);
         }

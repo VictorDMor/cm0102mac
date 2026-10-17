@@ -157,6 +157,12 @@ public:
         step(); state.wr<4>(2440, r(2)); state.wr<4>(4128, next); state.pc = target;
         if (dependencies) dependencies->call(state, target, next); else run_until(state, next);
     }
+    void transfer(std::uint32_t target) {
+        const auto continuation = std::uint32_t(state.r<4>(4128));
+        state.pc = target;
+        if (dependencies) dependencies->call(state, target, continuation);
+        else run_until(state, continuation);
+    }
     void pop(unsigned bytes) {
         load(0, 1, bytes + 8); offset(1, 1, bytes); step(); state.wr<4>(4128, r(0));
     }
@@ -164,6 +170,12 @@ public:
     bool finish_if_equal() {
         step();
         const bool returned = (state.r<1>(2304) & 2) != 0;
+        if (returned) state.pc = std::uint32_t(state.r<4>(4128));
+        return returned;
+    }
+    bool finish_if_at_least() {
+        step();
+        const bool returned = (state.r<1>(2304) & 8) == 0;
         if (returned) state.pc = std::uint32_t(state.r<4>(4128));
         return returned;
     }
@@ -210,6 +222,16 @@ public:
         // Production is compiled with contraction disabled, preserving both.
         const auto product = x * y; const auto sum = product + z;
         const auto result = single ? double(float_value<4>(float_bits<4>(sum))) : sum;
+        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
+        floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
+    }
+    void floating_negative_product_difference(unsigned destination, unsigned first, unsigned second, unsigned subtrahend) {
+        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
+        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
+        const auto z = float_value<8>(state.r<8>(0x4000 + subtrahend * 16));
+        // The indexed operation rounds multiply, subtract and negate separately.
+        const auto product = x * y; const auto difference = product - z;
+        const auto result = -difference;
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
         floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
     }

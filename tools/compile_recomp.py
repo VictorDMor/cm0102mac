@@ -1077,6 +1077,8 @@ def main():
         require_match_discipline_index(db, None if args.all_analyzed else selected)
         require_player_movement_index(db, None if args.all_analyzed else selected)
         if args.all_analyzed:
+            from actor_attributes_audit import load_actor_attributes_tables
+            load_actor_attributes_tables(args.export)
             from player_movement_audit import load_player_movement_tables
             load_player_movement_tables(args.export)
             from ball_action_audit import load_ball_action_tables

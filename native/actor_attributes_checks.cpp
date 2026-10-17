@@ -1,4 +1,5 @@
 #include "actor_attributes.hpp"
+#include "actor_attributes_tables.hpp"
 #include "semantic_io_checks.hpp"
 #include <set>
 
@@ -8,6 +9,8 @@ using namespace cm::semantic_io_checks;
 namespace attributes = cm::aot::actor_attributes;
 constexpr std::uint32_t actor=fixture+0x1000, singles=fixture+0x400, doubles=fixture+0x500;
 constexpr std::uint32_t globals=fixture+0x600, stream=fixture+0x800;
+constexpr std::uint32_t condition_profile=fixture+0x1800, cost_table=fixture+0x1c00;
+constexpr std::uint32_t condition_doubles=fixture+0x2000, condition_singles=fixture+0x2400;
 constexpr std::array<std::uint32_t,14> draws{0x10235f04,0x10236098,0x10236218,0x10236388,
     0x10236508,0x1023667c,0x102367f0,0x10236964,0x10236ad4,0x10236c54,0x10236dc4,
     0x10236f44,0x102370b8,0x1023722c};
@@ -16,6 +19,7 @@ struct Options {
     unsigned forced_draw=0, interrupt=0;
     std::int32_t wide=65536, correction=0;
     std::uint32_t random=0x1234567;
+    double power=2.0;
     bool own_negative=false, child_negative=false, mutate=false;
 };
 struct Trace final : SemanticGuestObserver {
@@ -43,7 +47,8 @@ struct Model final : SemanticDependencyDispatch {
     void reference(State& s, std::uint32_t stop=return_sentinel) {
         const auto entry=s.pc;
         const auto end=entry==attributes::refresh_entry ? attributes::maximum_entry :
-            entry==attributes::maximum_entry ? 0x102373b4u : 0x10235e9cu;
+            entry==attributes::maximum_entry ? 0x102373b4u : entry==attributes::recovery_entry ? 0x10235e9cu :
+            entry==attributes::periodic_entry ? 0x1023958cu : 0x1023978cu;
         while(s.pc!=stop) {
             if(s.pc>=entry && s.pc<end)
                 require(actor_attributes_reference(s),"Missing independent actor-attributes reference");
@@ -52,11 +57,13 @@ struct Model final : SemanticDependencyDispatch {
     }
     void call(State& s, std::uint32_t target, std::uint32_t continuation) override {
         Event e{target,continuation,s.registers,{}};
+        if(target==0x12345678) throw std::runtime_error("Fixture actor-condition external destination");
         if(target==attributes::maximum_entry) {
             if(original) reference(s,continuation);
             else attributes::signed_maximum(s,this,&trace);
         } else {
-            require(target==0x1077b770 || target==0x10226520,"Unknown actor-attributes dependency");
+            require(target==0x1077b770 || target==0x10226520 || target==attributes::refresh_entry || target==0x10780fc0,
+                "Unknown actor-attributes dependency");
             s.memory.write<4>(globals+0x100+std::uint32_t(calls.size())*4,target^std::uint32_t(s.r<4>(12)));
             if(options.mutate) {
                 s.memory.write<1>(actor+0x111,31); s.memory.write<1>(actor+0x113,13);
@@ -67,6 +74,12 @@ struct Model final : SemanticDependencyDispatch {
             for(unsigned n=0;n<=13;++n)s.wr<8>(0x4000+n*16,float_bits<8>(-11.0-n));
             s.wr<1>(2304,5); s.wr<1>(1027,1);
             s.wr<4>(12,target==0x1077b770 ? options.random : std::uint32_t(options.correction));
+            if(target==0x10780fc0) {
+                s.memory.write<4>(s.r<4>(4)+0x14,s.r<4>(8));
+                s.wr<8>(0x4010,float_bits<8>(options.power));
+            }
+            if(target==attributes::refresh_entry && options.child_negative && !original)
+                s.memory.write<4>(actor+0x50,float_bits<4>(-31.0));
             s.pc=continuation;
         }
         if(options.child_negative&&!original)s.wr<4>(12,s.r<4>(12)^1);
@@ -103,7 +116,9 @@ Result compare(const State& input, Options options={}) {
             if(reference) {original_trace=&old_trace;m.reference(s);}
             else if(input.pc==attributes::refresh_entry) attributes::refresh(s,&m,&new_trace);
             else if(input.pc==attributes::maximum_entry) attributes::signed_maximum(s,&m,&new_trace);
-            else attributes::recover_condition(s,&m,&new_trace);
+            else if(input.pc==attributes::recovery_entry) attributes::recover_condition(s,&m,&new_trace);
+            else if(input.pc==attributes::periodic_entry) attributes::refresh_condition(s,&m,&new_trace);
+            else attributes::consume_condition(s,&m,&new_trace);
             original_trace=nullptr; return std::string{};
         } catch(const std::exception& e) {original_trace=nullptr;return std::string(e.what());}
     };
@@ -187,6 +202,97 @@ void recovery_checks() {
         Options o;o.own_negative=!child;o.child_negative=child;compare(*s,o);
     }
 }
+
+std::unique_ptr<State> condition_seed(std::uint32_t entry) {
+    auto s=seed(entry);
+    s->memory.write<4>(toc-0x51e8,condition_doubles);s->memory.write<4>(toc-0x51e0,condition_singles);
+    s->memory.write<4>(toc-0x5200,cost_table);
+    for(unsigned n=0;n<original_attribute_cost_table.size();++n)s->memory.write<4>(cost_table+n*4,original_attribute_cost_table[n]);
+    for(auto [offset,value]:std::array<std::pair<unsigned,double>,12>{{{0,0},{0x34,1},{0x5c,10},{0x64,12},
+        {0x70,0.25},{0xb4,25},{0xb8,9500},{0xbc,11},{0xc0,8750},{0xc4,7750},{0xc8,8},{0xcc,6}}})
+        s->memory.write<4>(condition_singles+offset,float_bits<4>(value));
+    for(auto [offset,value]:std::array<std::pair<unsigned,double>,12>{{{0x10,1},{0x28,0.5},{0x38,200},
+        {0x80,4503601774854144.0},{0x168,1.25},{0x170,0.35},{0x1f0,12},{0x2d8,25},
+        {0x2e0,10000},{0x2e8,8.5},{0x2f0,11},{0x2f8,0.15}}})
+        s->memory.write<8>(condition_doubles+offset,float_bits<8>(value));
+    s->memory.write<4>(actor+0x70,condition_profile);s->memory.write<1>(condition_profile+0x25,20);
+    s->memory.write<4>(actor+0x50,float_bits<4>(9000.0));s->memory.write<4>(actor+0x5c,float_bits<4>(1.0));
+    s->memory.write<4>(actor+0xd8,float_bits<4>(10.0));s->memory.write<1>(actor+1,50);
+    s->memory.write<1>(actor+0x102,20);s->memory.write<1>(actor+0x103,20);
+    s->memory.write<2>(stream+2,11);s->wr<4>(20,19);s->wr<8>(0x4010,float_bits<8>(11.0));return s;
+}
+
+void condition_checks() {
+    auto periodic=condition_seed(attributes::periodic_entry);auto result=compare(*periodic);
+    require(result.state->memory.read<4>(actor+0x50)==float_bits<4>(9001.0) &&
+        result.state->memory.read<4>(actor+0x5c)==float_bits<4>(0.0),"Independent periodic drift and exact sentinel reset");
+    require(result.state->memory.read<1>(actor+0x102)==19,"Independent periodic exertion decrement");
+    require(result.calls.size()==1 && result.calls[0].target==attributes::refresh_entry,"Periodic refresh keeps its semantic child boundary");
+    boundaries(*periodic);
+    for(auto value:{0u,1u,10u,11u,22u,65535u})for(auto salt:{0u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+        auto s=condition_seed(attributes::periodic_entry);s->memory.write<2>(stream+2,value);s->memory.write<4>(globals,salt);compare(*s);
+    }
+    for(auto load_level:{0u,49u,50u,51u,75u,127u,255u})for(auto exertion:{0u,1u,127u,128u,255u}) {
+        auto s=condition_seed(attributes::periodic_entry);s->memory.write<1>(actor+1,load_level);
+        s->memory.write<1>(actor+0x102,exertion);s->memory.write<1>(actor+0x103,exertion);
+        s->memory.write<1>(condition_profile+0x25,exertion);compare(*s);
+    }
+    for(auto condition:{-1.0,0.0,1.0,9999.0,10000.0,20000.0})for(auto drift:{-10.0,0.0,1.0,2.0}) {
+        auto s=condition_seed(attributes::periodic_entry);s->memory.write<4>(actor+0x50,float_bits<4>(condition));
+        s->memory.write<4>(actor+0x5c,float_bits<4>(drift));boundaries(*s);
+    }
+    for(auto power:std::array<double,8>{-1.0,-0.0,0.0,1.0,100.0,101.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}) {
+        auto s=condition_seed(attributes::periodic_entry);s->memory.write<1>(actor+1,75);Options o;o.power=power;boundaries(*s,o);
+    }
+    for(auto cursor:{stream+126,stream+128,0xfffffffeu}) {
+        auto s=condition_seed(attributes::periodic_entry);s->memory.write<4>(globals+8,cursor);Options o;o.mutate=true;boundaries(*s,o);
+    }
+    for(auto action:{0u,18u,19u,20u,21u,33u,36u,46u,47u,127u,32767u,32768u,65534u,65535u,0x1234ffffu}) {
+        auto s=condition_seed(attributes::consumption_entry);s->wr<4>(20,action);boundaries(*s);
+    }
+    for(unsigned action=19;action<=46;++action)for(auto target:{0x10239690u,0x102396e4u,0x10239738u}) {
+        auto s=condition_seed(attributes::consumption_entry);s->wr<4>(20,action);s->memory.write<4>(cost_table+(action-19)*4,target);compare(*s);
+    }
+    for(auto action:{19u,20u,21u}) {
+        auto s=condition_seed(attributes::consumption_entry);s->wr<4>(20,action);
+        s->memory.write<4>(actor+0x50,float_bits<4>(-1.0));boundaries(*s);
+    }
+    {
+        auto s=condition_seed(attributes::consumption_entry);s->memory.copy_in(cost_table+0x100,s->memory.copy_out(cost_table,112));
+        s->memory.write<4>(toc-0x5200,cost_table+0x100);boundaries(*s);
+        s->memory.write<4>(cost_table+0x100,0x12345678);auto r=compare(*s);
+        require(r.state->pc==0x12345678 && r.state->r<4>(4128)==return_sentinel,"Mutated table retains external destination and LR");
+    }
+    for(auto condition:{-10.0,0.0,1.0,7749.0,7750.0,7751.0,8749.0,8750.0,8751.0,9499.0,9500.0,9501.0,10000.0}) {
+        auto s=condition_seed(attributes::consumption_entry);s->wr<4>(20,0xffffffff);s->memory.write<4>(actor+0x50,float_bits<4>(condition));
+        boundaries(*s);
+        if(condition>0) {
+            const auto factor=condition>9500?12:condition>8750?10:condition>7750?8:6;
+            auto r=compare(*s);require(r.state->memory.read<4>(actor+0x50)==float_bits<4>(std::max(0.0,condition-factor)),"Independent movement cost threshold and floor");
+        }
+    }
+    for(auto bits:std::array<std::uint32_t,8>{0,0x80000000u,0x7f800000u,0xff800000u,0x7fc12345u,0x7f812345u,0x7f7fffffu,1}) {
+        for(auto entry:{attributes::periodic_entry,attributes::consumption_entry}) {
+            auto s=condition_seed(entry);s->memory.write<4>(actor+0x50,bits);boundaries(*s);
+            s=condition_seed(entry);s->memory.write<4>(actor+(entry==attributes::periodic_entry?0x5c:0xd8),bits);compare(*s);
+            s->wr<1>(1304,1);s->wr<1>(1308,1);compare(*s);
+        }
+    }
+    for(auto offset:{0x28u,0x38u,0x2e8u,0x1f0u,0x2f0u})for(auto bits:std::array<std::uint64_t,6>{0,0x8000000000000000ULL,
+        0x7ff0000000000000ULL,0xfff0000000000000ULL,0x7ff8123456789000ULL,0x7ff0123456789000ULL}) {
+        auto s=condition_seed(attributes::consumption_entry);s->memory.write<8>(condition_doubles+offset,bits);compare(*s);
+    }
+    for(auto entry:{attributes::periodic_entry,attributes::consumption_entry}) {
+        for(auto pointer:{0u,stack-0x160,globals-0x100,condition_doubles}) {
+            auto s=condition_seed(entry);s->wr<4>(12,pointer);boundaries(*s);
+        }
+        auto s=condition_seed(entry);constexpr auto relocated=toc+0x10000;
+        s->memory.map(relocated-0x8000,0x9000);s->memory.copy_in(relocated-0x8000,s->memory.copy_out(toc-0x8000,0x9000));
+        s->wr<4>(8,relocated);boundaries(*s);
+        Options own;own.own_negative=true;compare(*condition_seed(entry),own);
+    }
+    {Options o;o.child_negative=true;compare(*periodic,o);}
+}
 }
 namespace cm::aot {void actor_attributes_step_seen(State& s,std::uint32_t pc) {if(original_trace)original_trace->before_step(s,pc);}}
 int main() {try {
@@ -251,9 +357,11 @@ int main() {try {
     for(bool child:{false,true}) {Options o;o.own_negative=!child;o.child_negative=child;compare(*seed(),o);}
     {Options o;o.own_negative=true;compare(*seed(attributes::maximum_entry),o);}
     recovery_checks();
-    for(auto [start,end]:std::array<std::pair<unsigned,unsigned>,2>{{{attributes::refresh_entry,0x102373b4},{attributes::recovery_entry,0x10235e9c}}})
+    condition_checks();
+    for(auto [start,end]:std::array<std::pair<unsigned,unsigned>,4>{{{attributes::refresh_entry,0x102373b4},{attributes::recovery_entry,0x10235e9c},
+        {attributes::periodic_entry,0x1023958c},{attributes::consumption_entry,0x1023978c}}})
         for(auto pc=start;pc<end;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==1408,"All 1408 actor-attribute/recovery original sites covered");
+    require(sites.size()==1650,"All 1650 actor-attribute/condition original sites covered");
     std::cout<<"PASS: "<<cases<<" actor-attribute comparisons; "<<completed<<" completions, "<<interruptions
         <<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()
         <<" original sites; full state/effects/ABI/accounting; independent original references\n";

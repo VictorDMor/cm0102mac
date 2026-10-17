@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 import sqlite3
 from compile_recomp import generate_page
-from actor_attributes_audit import CONTRACTS, require_actor_attributes_bodies
+from actor_attributes_audit import CONTRACTS, require_actor_attributes_bodies, load_actor_attributes_tables
 
 
 def render_reference(records, userops):
@@ -42,7 +42,12 @@ def main():
         records = [json.loads(row[0]) for start, end, _, _ in CONTRACTS for row in db.execute(
             'SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address', (start, end))]
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(render_reference(records, json.loads((args.input / 'program.json').read_text())['userops']))
+    source = render_reference(records, json.loads((args.input / 'program.json').read_text())['userops'])
+    words = load_actor_attributes_tables(args.input)
+    args.output.write_text(source)
+    args.output.with_name('actor_attributes_tables.hpp').write_text(
+        '#pragma once\n#include <array>\n#include <cstdint>\ninline constexpr std::array<std::uint32_t,28> original_attribute_cost_table{' +
+        ','.join(f'0x{word:x}' for word in words) + '};\n')
     print(f'Emitted {len(records)} original actor-attributes instructions')
 
 

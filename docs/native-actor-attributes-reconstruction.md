@@ -1,5 +1,10 @@
 # Actor action attributes and condition recovery
 
+This report records the preceding 685-entry delivery. The subsequent
+[periodic condition and consumption block](native-actor-condition-reconstruction.md)
+extends the same owner to five entries and 687 total replacements; its separate
+report contains current installation and combined acceptance evidence.
+
 The complete actor action-attribute refresh (`10235ea0..102373a0`), signed
 maximum (`102373a0..102373b4`) and condition recovery (`10235db0..10235e9c`)
 now have named C++23 implementations. They cover **1,408 indexed original
@@ -74,7 +79,8 @@ only if it was zero, and advances the shared random pool once. The live limit,
 wrap/reseed result and salt retain original ordering. A signed remainder modulo
 five plus five is converted through the original double scratch, narrowed during
 the single-precision subtraction, then added to live condition at `+50` with a
-separate single-precision addition and store. Condition is not capped at 100.
+separate single-precision addition and store. Recovery itself does not clamp
+condition; the later periodic routine has separate bounds in internal units.
 The reseed callback can change condition before that later load.
 
 The complete 80-byte frame, three individual integer saves, volatile register
