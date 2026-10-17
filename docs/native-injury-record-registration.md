@@ -1,5 +1,9 @@
 # Injury registration, notice preparation and risk propagation
 
+This report records the preceding 707-entry delivery. The subsequent
+[daily injury progression block](native-injury-daily-progression.md) extends the
+manifest to 711 with a separate owner and preserves these three entries.
+
 This cohesive block reconstructs three complete original operations as named
 C++23 components under a separate `injury_record` owner. The accepted manifest
 extends from **704 to 707 entries**, preserving its exact prior prefix. The

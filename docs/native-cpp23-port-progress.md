@@ -9,27 +9,30 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [injury registration block](native-injury-record-registration.md) adds three
-complete operations and **2,617 original instructions**, bringing the accepted
-manifest from 704 to **707 entries** with its exact prior prefix intact. The
-separate injury owner preserves the preceding 22-entry actor/condition block.
-Release and affected-unit UBSAN each pass 193,453 component, 289 production and
-182 nonlocal comparisons, plus three actual pointer faults. All 2,617 source
-sites, 51 Release profile controls, nine new and ten existing actor audits,
-50 historical manifest-only methods and four focused CTests pass.
+The [daily injury progression block](native-injury-daily-progression.md) adds four
+complete operations and **1,815 original instructions**, extending the accepted
+manifest from 707 to **711 entries** with its exact prior prefix intact. A separate
+owner retains the prior actor/condition and injury-registration components.
+Release and affected-unit UBSAN each pass 211,301 component, 238 production and
+210 nonlocal comparisons, plus four actual pointer faults. All 1,815 source sites,
+42 Release profile controls, nine new and nine prior injury-record audits,
+51 historical manifest-only methods and four focused CTests pass.
 
 A paired 798-advance match preserves final state, imports and per-tick accounting;
-the three new roots have zero natural calls in that stepper. Complete prepared
-original post-match traversal reaches all three roots and preserves actual
-history-file effects. Seventeen actual-data inputs also cover recursive
-registration, replacement, allocation, notices and risk variants. This is prepared
-runtime coverage, separate from unmodified natural management-UI coverage.
+the four new roots have zero natural calls in that stepper. Prepared actual-data
+daily traversal through an original BL reaches notice handling and both original
+bsearch CFM callbacks, with matching state and effects. Fourteen captured/prepared
+inputs cover queue timing, risk, guards and date order. This is prepared runtime
+coverage, distinct from unmodified management-UI coverage. The fixture corrects
+constructor argument order and uses a valid broadcast recipient channel; debugger
+sources and native message behavior are preserved.
+
 The strict-signed ARM64 game is installed with SHA-256
-`fca3dc9acce34bfdb76d01da71c42518e87d4f839184d68492dcdf684ab16e95`. Prepare Game rendering
-and normal exit pass. All 845 protected files and the installed Match Debugger
-are preserved. Six linked checks are cleaned; task-owned snapshots receive
-verified transparent compression. Save/Load is **not retested** and no performance
-benchmark is claimed. The full goal stays active.
+`cfbf05db0d1c24c7319cda953deb2de1eee8e8732530847c03e38c46dc4781f7`.
+Prepare Game rendering and normal exit pass. All 845 protected files and the
+installed Match Debugger remain unchanged. Six linked checks are cleaned and
+task-owned snapshots receive verified transparent compression. Save/Load is
+**not retested**; no performance benchmark is claimed. The full goal stays active.
 
 The latest [spatial-role optimization](native-spatial-role-performance.md)
 reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two
