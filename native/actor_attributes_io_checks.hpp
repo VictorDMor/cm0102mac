@@ -86,7 +86,7 @@ struct ActorAttributesIoPair {
         }
     }
     ActorAttributesIoPair(const State& input,unsigned index):original(input.platform),modern(input.platform) {
-        if(index<12)return;
+        if(index!=12 && index!=13)return;
         require(bool(input.platform),"Actual lifecycle IO requires a platform");static unsigned serial=0;
         root=input.platform->writable_directory().parent_path()/("lifecycle-io-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+"-"+std::to_string(++serial));
         require(!std::filesystem::exists(root),"Private IO pair must be new");working=root/"working";

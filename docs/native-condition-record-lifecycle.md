@@ -1,5 +1,9 @@
 # Condition record capacity and lifecycle reconstructed
 
+This report records the preceding 696-entry delivery. The subsequent
+[condition range sampler](native-condition-biased-sampling.md) extends the component
+to fifteen entries and the accepted manifest to 697.
+
 Four complete operations now have named C++23 implementations. Their **388
 original instructions** extend the accepted manifest from 692 to **696 unique
 entry replacements**, preserving the previous 692 entries exactly. The combined

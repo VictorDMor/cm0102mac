@@ -32,7 +32,7 @@ struct ContextCharges final:RegisterContextBoundaryObserver {
     }
 };
 struct Model final : CodeFragmentBoundaryObserver {
-    ActorAttributesIoPair* io=nullptr;bool modern_run=false;
+    ActorAttributesIoPair* io=nullptr;bool modern_run=false,recursive=false;unsigned forced=0;
     unsigned index, stage = 0, parent_after = 0, callback_after = 0, callbacks = 0, handlers = 0;
     Scenario scenario;
     Site site;
@@ -44,8 +44,8 @@ struct Model final : CodeFragmentBoundaryObserver {
         bool operator==(const Event&) const = default;
     };
     std::vector<Event> imports;
-    Model(unsigned root, Scenario kind, const State& s, Site point) : index(root), scenario(kind), site(point),
-        arguments{std::uint32_t(s.r<4>(12)), std::uint32_t(s.r<4>(16)), std::uint32_t(s.r<4>(20)),std::uint32_t(s.r<4>(24)),std::uint32_t(s.r<4>(28)),std::uint32_t(s.r<4>(32)),std::uint32_t(s.r<4>(36)),std::uint32_t(s.r<4>(40))} {}
+    Model(unsigned root, Scenario kind, const State& s, Site point, bool recursive_scope=false) : index(root), scenario(kind), site(point),
+        arguments{std::uint32_t(s.r<4>(12)), std::uint32_t(s.r<4>(16)), std::uint32_t(s.r<4>(20)),std::uint32_t(s.r<4>(24)),std::uint32_t(s.r<4>(28)),std::uint32_t(s.r<4>(32)),std::uint32_t(s.r<4>(36)),std::uint32_t(s.r<4>(40))} {recursive=recursive_scope;}
     void enter(const State&, std::uint32_t, bool) override {}
     void leave(State&, std::uint32_t, bool) override {}
     void import_enter(const State& s, const char* name) override { imports.push_back({false, name, s.registers, s.pc}); }
@@ -71,6 +71,13 @@ struct Model final : CodeFragmentBoundaryObserver {
         parent.restore_link(); parent.finish(); return true;
     }
     void interrupt(State& s, bool primary) {
+        if(recursive && stage==1 && s.r<4>(4)==parent_frame-128) {
+            constexpr std::array<std::uint32_t,3> stores{0x101865b0,0x1018669c,0x10186788};
+            constexpr std::array<unsigned,3> registers{22,21,20};
+            for(unsigned n=0;n<3;++n)if(s.pc==stores[n]) {
+                s.wr<4>(registers[n]*4,65536);s.wr<1>(2304,(s.r<1>(2304)&0xf0)|4|(s.r<1>(1024)&1));++forced;
+            }
+        }
         // The primary observer reports writes only. Use the conversion scratch
         // store before the first draw; the secondary channel also covers reads.
         constexpr std::array<std::uint32_t,3> recovery_sites{0x10235de0,0x10235e3c,0x10235e7c};
@@ -79,7 +86,9 @@ struct Model final : CodeFragmentBoundaryObserver {
             0x10239664,0x102396c8,0x102396dc,0x1023971c,0x10239730,0x10239770,0x10239784};
         if(index>=5) {
             bool point=false;unsigned frame=0;
-            if(index>=10) {
+            if(index==14 && recursive) {point=s.pc==0x101864a4;frame=128;}
+            else if(index==14) {point=s.pc==(site==Site::before_draws?0x101864a4u:site==Site::after_maximum?0x10186524u:0x101865b0u);frame=site==Site::before_draws?0:128;}
+            else if(index>=10) {
                 if(index==10) {point=s.pc==(site==Site::before_draws?0x101877e4u:site==Site::after_maximum?0x10187868u:0x10187894u);frame=site==Site::before_draws?0:96;}
                 else if(index==11) {
                     constexpr std::array<std::uint32_t,3> final_stores{0x10186ae4,0x10186b28,0x10186cb8};
@@ -137,14 +146,14 @@ struct OwnedBacking {
         std::filesystem::remove_all(directory,e);}
 };
 unsigned cases = 0, fault_cases = 0;
-void compare(const State& seed, unsigned index, Scenario scenario, bool original_context, bool turbo, Site site, bool primary) {
+void compare(const State& seed, unsigned index, Scenario scenario, bool original_context, bool turbo, Site site, bool primary,bool recursive=false) {
     ActorAttributesIoPair io(seed,index);auto a = clone(seed), b = clone(seed);a->platform=io.original;b->platform=io.modern;
     for(auto* s:{a.get(),b.get()}){
         s->pc = parent_import; s->wr<4>(4128, caller); s->budget = s->executed + 1000000;
     }
     actor_attributes_diagnostics(*a).original = true; a->register_context_original = true;
     b->register_context_original = original_context;
-    Model old(index, scenario, *a, site), modern(index, scenario, *b, site); Monitor x(*a, old,primary), y(*b, modern,primary);
+    Model old(index, scenario, *a, site,recursive), modern(index, scenario, *b, site,recursive); Monitor x(*a, old,primary), y(*b, modern,primary);
     old.io=modern.io=&io;modern.modern_run=true;
     a->code_fragment_observer = &old; b->code_fragment_observer = &modern;
     a->register_context_observer=&old.context;b->register_context_observer=&modern.context;
@@ -170,8 +179,8 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
     require(!old.parent_after && !modern.parent_after && !old.callback_after && !modern.callback_after && b->memory.read<4>(marker) == 0xa7a7a7a7,
         label + " abandoned host continuations");
     const auto& d = actor_attributes_diagnostics(*b);
-    require(d.calls[index] == 1 && !d.returns[index] && !d.original_calls[index] && !d.original_body && !d.dispatch_escapes &&
-        d.transfers[index] == unsigned(scenario != Scenario::restore_fault) && d.faults[index] == unsigned(scenario == Scenario::restore_fault) &&
+    require(d.calls[index] == (recursive?2u:1u) && !d.returns[index] && !d.original_calls[index] && !d.original_body && !d.dispatch_escapes &&
+        d.transfers[index] == (recursive?2u:1u)*unsigned(scenario != Scenario::restore_fault) && d.faults[index] == (recursive?2u:1u)*unsigned(scenario == Scenario::restore_fault) &&
         !d.terminations[index] && !a->register_context_unknown_transfers && !b->register_context_unknown_transfers, label + " dedicated productive transfer evidence");
     const auto helpers=index>=5 || index==2 || index==4 || site==Site::before_draws?0u:index==3?4u:site==Site::after_maximum?1u:4u;
     require(d.calls[1]==helpers && d.returns[1]==helpers && !d.transfers[1] && !d.faults[1],label+" completed maximum children");
@@ -185,6 +194,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
             d.transfers[0]==unsigned(interrupted_child && scenario!=Scenario::restore_fault) &&
             d.faults[0]==unsigned(interrupted_child && scenario==Scenario::restore_fault),label+" nested refresh outcome counts");
     }
+    if(recursive)require(old.forced==3 && modern.forced==3,label+" three equal structural inline-bound controls before recursive transfer");
     require(old.callbacks == 1 && modern.callbacks == 1 && old.handlers == modern.handlers && modern.handlers == unsigned(scenario != Scenario::restore_fault),
         label + " exact interrupted callback and resumed handler counts");
     ++cases; fault_cases += scenario != Scenario::jump;
@@ -195,9 +205,9 @@ int main(int argc, char** argv) {
         require(argc == 5 && !match_pc_profile_enabled(), "Original program/game/private root and original-caller capture directory with profiling disabled");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u}) {
+        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u,14u}) {
             State seed; load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root/"inputs",AudioMode::offline);
-            load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":index==10?"capacity-percentage.snapshot":hex_address(line::entries[index])+".snapshot"));
+            load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":index==10?"capacity-percentage.snapshot":index==14?"sampling-wide.snapshot":hex_address(line::entries[index])+".snapshot"));
             require(seed.pc==line::entries[index],"Transfer input must be a captured original caller scope");
             seed.memory.map(fixture, 0x1000); seed.memory.copy_in(fixture, std::vector<std::uint8_t>(0x1000, 0xa7));
             for(bool primary:{false,true})for(auto site:{Site::before_draws,Site::after_maximum,Site::final_output}) {
@@ -207,8 +217,13 @@ int main(int argc, char** argv) {
                     for(bool original_context:{false,true})compare(seed,index,scenario,original_context,false,site,primary);
                 compare(seed,index,Scenario::jump,false,true,site,primary);
             }
+            if(index==14)for(bool primary:{false,true}) {
+                for(auto scenario:{Scenario::jump,Scenario::restore_fault,Scenario::handler_fault})for(bool original_context:{false,true})
+                    compare(seed,index,scenario,original_context,false,Site::final_output,primary,true);
+                compare(seed,index,Scenario::jump,false,true,Site::final_output,primary,true);
+            }
         }
-        require(cases==490 && fault_cases==280,"Complete actor attribute/condition callback transfer matrix");
+        require(cases==546 && fault_cases==312,"Complete actor attribute/condition callback transfer matrix");
         std::cout << cases << " productive nonlocal actor-attributes comparisons; " << fault_cases
             << " restore/handler faults; actor-attribute scopes, integer/float saves and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

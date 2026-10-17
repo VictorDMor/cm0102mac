@@ -14,27 +14,27 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [condition record capacity and lifecycle block](native-condition-record-lifecycle.md)
-adds four complete C++23 operations / **388 original instructions**, bringing the
-accepted manifest from 692 to **696 entries** with its previous prefix intact.
-The fourteen-entry attribute/condition scope covers **3,230 original instructions**.
-Release and affected-unit UBSAN each pass 337,694 component comparisons, 266
-production comparisons plus thirteen null faults, and 490 nonlocal comparisons.
-Forty-eight original-profile controls, nine subsystem audits and 48 historical
+The [condition range sampler](native-condition-biased-sampling.md) adds one
+complete **350-instruction** C++23 operation, bringing the accepted manifest from
+696 to **697 entries** with the previous prefix intact. The fifteen-entry
+attribute/condition component covers **3,580 original instructions**. Release and
+affected-unit UBSAN each pass 366,713 component comparisons, 351 production
+comparisons plus thirteen preceding null faults, and 546 nonlocal comparisons.
+Sixty-three original-profile controls, nine subsystem audits and 48 historical
 manifest checks pass.
 
-A paired 798-advance match preserves full state, imports and per-tick accounting,
-including 13,799 daily-refresh calls. The four new roots have **zero natural
-calls** in that match. Separate controlled original callsites using actual player/
-controller data prove capacity readout, random assignment, injury retirement and
-queue-backed reset, with identical state, effects and native history file bytes.
-The warm-file history path uses explicit stable host fork-number inputs; cold
-file creation is not claimed. The signed ARM64 game is installed with SHA-256
-`f627cef77acc0940c73a68bc77bcdff579c2c744ef3b07fc505310af3a3054ef`.
+A paired 798-advance match preserves full state, imports and every tick's
+accounting, including 13,799 daily-refresh calls. The sampler has **zero natural
+calls** in that match. Its production evidence uses a controlled original BL with
+live TOC/pool state and prepared inputs. Explicit structural controls additionally
+prove the recursive C++ child and abandonment of both active scopes on nonlocal
+transfer. These are distinct from natural gameplay events. The signed ARM64 game
+is installed with SHA-256
+`1a90aed13a465ebdf58d3ed0d50e87faeefcb5c26072e6fa7b9b8f4ff6fe8dc3`.
 All 845 protected files and the installed Match Debugger are preserved. Installed
 Prepare Game rendering and normal exit pass. Save/Load is **not retested**.
-Accurate conversion remains the priority; no new speedup is claimed and the full
-goal stays active.
+Accurate conversion remains the priority; no speedup is claimed and the full goal
+stays active.
 
 The [spatial-role query optimization](native-spatial-role-performance.md) is
 installed in the game. Two 600-tick scenarios show median paired runtime
