@@ -9,30 +9,29 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [daily injury progression block](native-injury-daily-progression.md) adds four
-complete operations and **1,815 original instructions**, extending the accepted
-manifest from 707 to **711 entries** with its exact prior prefix intact. A separate
-owner retains the prior actor/condition and injury-registration components.
-Release and affected-unit UBSAN each pass 211,301 component, 238 production and
-210 nonlocal comparisons, plus four actual pointer faults. All 1,815 source sites,
-42 Release profile controls, nine new and nine prior injury-record audits,
-51 historical manifest-only methods and four focused CTests pass.
+The [club injury event queue](native-injury-club-events.md) adds three complete
+operations and **448 original instructions**, extending the accepted manifest
+from 711 to **714 entries** with its exact prior prefix intact. A separate owner
+preserves the preceding injury-registration and daily-progression components.
+Release and affected-unit UBSAN each pass 54,873 component, 238 production and
+154 nonlocal comparisons, plus three actual pointer faults. All 448 source sites,
+42 Release profile controls, 27 new/preceding injury audits, 52 historical manifest
+methods and four focused CTests pass.
 
-A paired 798-advance match preserves final state, imports and per-tick accounting;
-the four new roots have zero natural calls in that stepper. Prepared actual-data
-daily traversal through an original BL reaches notice handling and both original
-bsearch CFM callbacks, with matching state and effects. Fourteen captured/prepared
-inputs cover queue timing, risk, guards and date order. This is prepared runtime
-coverage, distinct from unmodified management-UI coverage. The fixture corrects
-constructor argument order and uses a valid broadcast recipient channel; debugger
-sources and native message behavior are preserved.
+A paired 798-advance match preserves state, imports and per-tick accounting; the
+three new roots have zero natural calls in that stepper. Prepared actual-data
+original BLs traverse insertion and processing, reach six actual qsort comparator
+callbacks and invoke the existing reconstructed injury-registration owner.
+Fourteen captured/prepared inputs cover queue storage, timing, context, roster
+guards and date order. This is prepared runtime coverage, distinct from unmodified
+management-UI coverage. Debugger sources and the installed debugger are preserved.
 
 The strict-signed ARM64 game is installed with SHA-256
-`cfbf05db0d1c24c7319cda953deb2de1eee8e8732530847c03e38c46dc4781f7`.
-Prepare Game rendering and normal exit pass. All 845 protected files and the
-installed Match Debugger remain unchanged. Six linked checks are cleaned and
-task-owned snapshots receive verified transparent compression. Save/Load is
-**not retested**; no performance benchmark is claimed. The full goal stays active.
+`39b59e694b81691c7b44c1861c6feaa63e3be6cfabb23249a3a1f4ac5ded6c24`.
+Prepare Game rendering and normal exit pass. All 845 protected files are unchanged.
+Six linked checks are cleaned and task-owned snapshots receive verified transparent
+compression. Save/Load is **not retested**; no performance benchmark is claimed.
+The full goal stays active.
 
 The latest [spatial-role optimization](native-spatial-role-performance.md)
 reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two

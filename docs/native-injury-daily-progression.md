@@ -1,5 +1,9 @@
 # Daily injury progression and queued-date comparisons
 
+This report records the preceding 711-entry delivery. The subsequent
+[club injury event queue](native-injury-club-events.md) extends the manifest to
+714 with a separate owner and preserves these four entries.
+
 Four complete original operations now have named C++23 bodies under a separate
 `injury_progression` owner. The accepted manifest extends from **707 to 711
 entries**, preserving its exact prior prefix and all prior owners. The preceding
