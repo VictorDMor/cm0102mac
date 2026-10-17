@@ -85,16 +85,25 @@ struct ActorAttributesIoPair {
             else if(item.is_regular_file()) {std::filesystem::copy_file(item.path(),path);std::filesystem::last_write_time(path,std::filesystem::last_write_time(item.path()));}
         }
     }
-    ActorAttributesIoPair(const State& input,unsigned index):original(input.platform),modern(input.platform) {
-        if(index!=12 && index!=13 && index!=17)return;
+    ActorAttributesIoPair(const State& input,unsigned index,std::uint32_t root_entry=0,
+                          std::function<void(State&)> original_control={}):original(input.platform),modern(input.platform) {
+        if(!root_entry && index!=12 && index!=13 && index!=17)return;
         require(bool(input.platform),"Actual lifecycle IO requires a platform");static unsigned serial=0;
         root=input.platform->writable_directory().parent_path()/("lifecycle-io-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+"-"+std::to_string(++serial));
         require(!std::filesystem::exists(root),"Private IO pair must be new");working=root/"working";
         copy(input.platform->writable_directory(),working);copy(input.platform->writable_directory(),root/"probe");
         {
             auto probe=clone(input);probe->platform=std::make_shared<NativePlatform>(input.platform->game_directory(),root/"probe",AudioMode::offline);
-            actor_attributes_diagnostics(*probe).original=true;probe->pc=actor_attributes::entries[index];probe->wr<4>(4128,return_sentinel);
-            probe->budget=probe->executed+50000000;run_until(*probe,return_sentinel);
+            actor_attributes_diagnostics(*probe).original=true;
+            if(original_control)original_control(*probe);
+            probe->pc=root_entry?root_entry:actor_attributes::entries[index];probe->wr<4>(4128,return_sentinel);
+            probe->budget=probe->executed+50000000;
+            try {run_until(*probe,return_sentinel);}
+            catch(const std::exception& error) {
+                std::cerr<<"Original private-IO probe entry="<<hex_address(root_entry?root_entry:actor_attributes::entries[index])
+                    <<" pc="<<hex_address(probe->pc)<<" reason="<<error.what()<<std::endl;
+                throw;
+            }
         }
         const auto initial=files(working);
         for(const auto& [name,bytes]:files(root/"probe")) {

@@ -52,6 +52,12 @@ public:
         step(); const auto value = state.memory.read<N>(r(base) + std::uint32_t(displacement));
         state.wr<4>(destination * 4, sign ? std::uint32_t(signed_value<N>(value)) : value);
     }
+    template<unsigned N = 4> void load_update(unsigned destination, unsigned base, std::int32_t displacement, bool sign = false) {
+        step(); const auto address = r(base) + std::uint32_t(displacement);
+        const auto value = state.memory.read<N>(address);
+        state.wr<4>(destination * 4, sign ? std::uint32_t(signed_value<N>(value)) : value);
+        state.wr<4>(base * 4, address);
+    }
     template<unsigned N = 4> void store(unsigned base, std::int32_t displacement, unsigned source) {
         step(); state.memory.write<N>(r(base) + std::uint32_t(displacement), r(source));
     }
@@ -165,6 +171,11 @@ public:
         state.pc = target;
         if (dependencies) dependencies->call(state, target, continuation);
         else run_until(state, continuation);
+    }
+    void resume(std::uint32_t target, std::uint32_t stop) {
+        state.pc = target;
+        if (dependencies) dependencies->resume(state, target, stop);
+        else run_until(state, stop);
     }
     void pop(unsigned bytes) {
         load(0, 1, bytes + 8); offset(1, 1, bytes); step(); state.wr<4>(4128, r(0));
@@ -286,6 +297,10 @@ public:
     }
     void restore_link() { step(); state.wr<4>(4128, r(0)); }
     void count_destination(unsigned source) { step(); state.wr<4>(4132, r(source)); }
+    bool count_nonzero() {
+        step(); const auto count = std::uint32_t(state.r<4>(4132)) - 1;
+        state.wr<4>(4132, count); return count != 0;
+    }
     std::uint32_t count_branch() { step(); state.pc = std::uint32_t(state.r<4>(4132)); return state.pc; }
 
     void floating_indexed_single(unsigned destination, unsigned base, unsigned index) {

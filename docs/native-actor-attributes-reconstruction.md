@@ -1,7 +1,9 @@
 # Actor action attributes and condition recovery
 
 The latest [injury-selection delivery](native-injury-selection.md) extends this
-component to twenty-two entries and the accepted manifest to 704.
+component to twenty-two entries and the accepted manifest to 704. The subsequent
+[injury-registration block](native-injury-record-registration.md) has a separate
+owner and extends the manifest to 707 while retaining these twenty-two entries.
 
 This report records the preceding 685-entry delivery. The subsequent
 [periodic condition and consumption block](native-actor-condition-reconstruction.md)

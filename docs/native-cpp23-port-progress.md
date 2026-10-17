@@ -9,25 +9,27 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [injury selection block](native-injury-selection.md) adds three complete
-operations and **298 original instructions**, bringing the accepted manifest
-from 701 to **704 entries** with its exact prior prefix intact. Twenty-two
-actor/condition entries cover **4,405 original instructions**. Release and
-affected-unit UBSAN each pass 641,223 component, 994 production and 861 nonlocal
-comparisons, plus nineteen separate null faults. The 177 original-profile
-controls, ten scope/source/table audits, 50 historical manifest-only methods
-and all four focused CTests pass.
+The [injury registration block](native-injury-record-registration.md) adds three
+complete operations and **2,617 original instructions**, bringing the accepted
+manifest from 704 to **707 entries** with its exact prior prefix intact. The
+separate injury owner preserves the preceding 22-entry actor/condition block.
+Release and affected-unit UBSAN each pass 193,453 component, 289 production and
+182 nonlocal comparisons, plus three actual pointer faults. All 2,617 source
+sites, 51 Release profile controls, nine new and ten existing actor audits,
+50 historical manifest-only methods and four focused CTests pass.
 
-A paired 798-advance match preserves full state, imports and per-tick accounting.
-Current-injury lookup executes naturally 13,777 times. Selection/classification
-have zero natural calls in that stepper; controlled original BL coverage uses
-actual players/controllers, original reset/registration, live tables and prepared
-repeat/severity/wrap/index/guard variants. The signed ARM64 game is installed with
-SHA-256 `65a7bdd7fcd78afca56cf8e3d84fea15430176dc1dd14e1dda734454764efe81`.
-Prepare Game rendering and normal exit pass. All 845 protected files and the
-installed Match Debugger are preserved. Six reviewed linked checks are cleaned,
-and task-owned snapshots receive verified transparent compression. Save/Load is
-**not retested**; no performance benchmark is claimed. The full goal stays active.
+A paired 798-advance match preserves final state, imports and per-tick accounting;
+the three new roots have zero natural calls in that stepper. Complete prepared
+original post-match traversal reaches all three roots and preserves actual
+history-file effects. Seventeen actual-data inputs also cover recursive
+registration, replacement, allocation, notices and risk variants. This is prepared
+runtime coverage, separate from unmodified natural management-UI coverage.
+The strict-signed ARM64 game is installed with SHA-256
+`fca3dc9acce34bfdb76d01da71c42518e87d4f839184d68492dcdf684ab16e95`. Prepare Game rendering
+and normal exit pass. All 845 protected files and the installed Match Debugger
+are preserved. Six linked checks are cleaned; task-owned snapshots receive
+verified transparent compression. Save/Load is **not retested** and no performance
+benchmark is claimed. The full goal stays active.
 
 The latest [spatial-role optimization](native-spatial-role-performance.md)
 reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two

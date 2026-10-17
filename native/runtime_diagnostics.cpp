@@ -18,6 +18,7 @@
 #include "match_discipline_adapter.hpp"
 #include "match_random_adapter.hpp"
 #include "actor_attributes_adapter.hpp"
+#include "injury_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -48,6 +49,7 @@ struct RuntimeDiagnostics {
     MatchDisciplineDiagnostics match_discipline;
     MatchRandomDiagnostics match_random;
     ActorAttributesDiagnostics actor_attributes;
+    InjuryRecordDiagnostics injury_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -93,6 +95,14 @@ TeamSpatialDiagnostics& team_spatial_diagnostics(State& state) {
 const TeamSpatialDiagnostics& team_spatial_diagnostics(const State& state) {
     static const TeamSpatialDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->team_spatial : empty;
+}
+InjuryRecordDiagnostics& injury_record_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->injury_record;
+}
+const InjuryRecordDiagnostics& injury_record_diagnostics(const State& state) {
+    static const InjuryRecordDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->injury_record : empty;
 }
 ActorAttributesDiagnostics& actor_attributes_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();

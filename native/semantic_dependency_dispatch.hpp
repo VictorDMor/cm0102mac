@@ -8,6 +8,11 @@ struct State;
 struct SemanticDependencyDispatch {
     virtual ~SemanticDependencyDispatch() = default;
     virtual void call(State&, std::uint32_t target, std::uint32_t continuation) = 0;
+    // A changed computed destination resumes existing guest control flow. It
+    // does not write a new LR or create a synthetic source-call boundary.
+    virtual void resume(State& state, std::uint32_t target, std::uint32_t stop) {
+        call(state, target, stop);
+    }
 };
 // Optional process-local instruction/dependency evidence. An absent observer
 // has no architectural effect and is never part of a guest save or setting.
