@@ -86,7 +86,18 @@ struct Model final : CodeFragmentBoundaryObserver {
             0x10239664,0x102396c8,0x102396dc,0x1023971c,0x10239730,0x10239770,0x10239784};
         if(index>=5) {
             bool point=false;unsigned frame=0;
-            if(index==18) {point=s.pc==(site==Site::before_draws?0x10187454u:site==Site::after_maximum?0x101874a4u:0x1018762cu);frame=site==Site::before_draws?0:96;}
+            if(index==19) {
+                if(post_child==21) {point=s.pc==0x1018c344;frame=160;}
+                else if(post_child==20) {point=!primary && s.pc==0x1018c190;frame=160;}
+                else if(primary) {point=site==Site::before_draws?s.pc==0x10188934:site==Site::after_maximum?s.pc==0x10188978:(s.pc==0x10188ab8 || s.pc==0x10188b34);frame=site==Site::final_output?160:0;}
+                else {point=s.pc==(site==Site::before_draws?0x10188940u:site==Site::after_maximum?0x10188a50u:0x10188c90u);frame=site==Site::before_draws?0:160;}
+            }
+            else if(index==20) {point=!primary && s.pc==(site==Site::before_draws?0x1018c184u:0x1018c190u);}
+            else if(index==21) {
+                if(primary) {point=s.pc==(site==Site::before_draws?0x1018c344u:site==Site::after_maximum?0x1018c34cu:0x1018c368u);}
+                else {point=s.pc==(site==Site::before_draws?0x1018c348u:site==Site::after_maximum?0x1018c3fcu:0x1018c408u);frame=site==Site::before_draws?0:112;}
+            }
+            else if(index==18) {point=s.pc==(site==Site::before_draws?0x10187454u:site==Site::after_maximum?0x101874a4u:0x1018762cu);frame=site==Site::before_draws?0:96;}
             else if(index==17) {
                 if(post_child==11) {point=s.pc==0x10186a70;frame=288;}
                 else if(post_child==12) {point=s.pc==0x1018b9f4;frame=176;}
@@ -195,7 +206,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
         !d.terminations[index] && !a->register_context_unknown_transfers && !b->register_context_unknown_transfers, label + " dedicated productive transfer evidence");
     const auto helpers=index>=5 || index==2 || index==4 || site==Site::before_draws?0u:index==3?4u:site==Site::after_maximum?1u:4u;
     require(d.calls[1]==helpers && d.returns[1]==helpers && !d.transfers[1] && !d.faults[1],label+" completed maximum children");
-    if(index==17 && post_child)require(d.calls[post_child]==1 && !d.returns[post_child] &&
+    if((index==17 || index==19) && post_child)require(d.calls[post_child]==1 && !d.returns[post_child] &&
         d.transfers[post_child]==unsigned(scenario!=Scenario::restore_fault) && d.faults[post_child]==unsigned(scenario==Scenario::restore_fault),label+" both active parent and child scopes abandoned");
     if(index==13) {
         const auto completed=site==Site::before_draws?0u:1u;
@@ -218,17 +229,23 @@ int main(int argc, char** argv) {
         require(argc == 5 && !match_pc_profile_enabled(), "Original program/game/private root and original-caller capture directory with profiling disabled");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u,14u,15u,16u,17u,18u}) {
+        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u,14u,15u,16u,17u,18u,19u,20u,21u}) {
             State seed; load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root/"inputs",AudioMode::offline);
-            load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":index==10?"capacity-percentage.snapshot":index==14?"sampling-wide.snapshot":index==17?"post-match-injury.snapshot":index==18?"scalar-deficit.snapshot":hex_address(line::entries[index])+".snapshot"));
+            load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":index==10?"capacity-percentage.snapshot":index==14?"sampling-wide.snapshot":index==17?"post-match-injury.snapshot":index==18?"scalar-deficit.snapshot":index==19?"injury-repeat.snapshot":index==21?"injury-lookup-active.snapshot":hex_address(line::entries[index])+".snapshot"));
             require(seed.pc==line::entries[index],"Transfer input must be a captured original caller scope");
             seed.memory.map(fixture, 0x1000); seed.memory.copy_in(fixture, std::vector<std::uint8_t>(0x1000, 0xa7));
             for(bool primary:{false,true})for(auto site:{Site::before_draws,Site::after_maximum,Site::final_output}) {
                 if(index==4 && site!=Site::final_output)continue;
-                if(index==6 && (primary || site==Site::final_output))continue;
+                if((index==6 || index==20) && (primary || site==Site::final_output))continue;
                 for(auto scenario:{Scenario::jump,Scenario::restore_fault,Scenario::handler_fault})
                     for(bool original_context:{false,true})compare(seed,index,scenario,original_context,false,site,primary);
                 compare(seed,index,Scenario::jump,false,true,site,primary);
+            }
+            if(index==19)for(unsigned child:{20u,21u})for(bool primary:{false,true}) {
+                if(child==20 && primary)continue;
+                for(auto scenario:{Scenario::jump,Scenario::restore_fault,Scenario::handler_fault})for(bool original_context:{false,true})
+                    compare(seed,index,scenario,original_context,false,Site::final_output,primary,false,child);
+                compare(seed,index,Scenario::jump,false,true,Site::final_output,primary,false,child);
             }
             if(index==17)for(unsigned child:{11u,12u})for(bool primary:{false,true}) {
                 for(auto scenario:{Scenario::jump,Scenario::restore_fault,Scenario::handler_fault})for(bool original_context:{false,true})
@@ -241,7 +258,7 @@ int main(int argc, char** argv) {
                 compare(seed,index,Scenario::jump,false,true,Site::final_output,primary,true);
             }
         }
-        require(cases==742 && fault_cases==424,"Complete actor attribute/condition callback transfer matrix");
+        require(cases==861 && fault_cases==492,"Complete actor attribute/condition callback transfer matrix");
         std::cout << cases << " productive nonlocal actor-attributes comparisons; " << fault_cases
             << " restore/handler faults; actor-attribute scopes, integer/float saves and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

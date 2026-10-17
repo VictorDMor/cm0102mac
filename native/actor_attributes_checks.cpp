@@ -14,18 +14,18 @@ constexpr std::uint32_t condition_doubles=fixture+0x2000, condition_singles=fixt
 constexpr std::uint32_t controller=fixture+0x3000, records=fixture+0x3400, staff=fixture+0x3800;
 constexpr std::uint32_t injuries=fixture+0x3c00, record_limit=fixture+0x4000, controller_slot=fixture+0x4004;
 constexpr std::uint32_t diagnostic=fixture+0x4100, record_constants=fixture+0x4400, percentage_divisor=fixture+0x4480;
-constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,19> ranges{{
+constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,22> ranges{{
     {attributes::refresh_entry,0x102373a0},{attributes::maximum_entry,0x102373b4},{attributes::recovery_entry,0x10235e9c},
     {attributes::periodic_entry,0x1023958c},{attributes::consumption_entry,0x1023978c},{attributes::restoration_entry,0x10239d10},
     {attributes::record_scale_entry,0x10187680},{attributes::availability_entry,0x101877dc},{attributes::effective_condition_entry,0x10187a1c},{attributes::record_refresh_entry,0x10188488},
     {attributes::capacity_entry,0x101878d0},{attributes::capacity_assignment_entry,0x10186cd0},
-    {attributes::retirement_entry,0x1018bb4c},{attributes::reset_entry,0x10186fb4},{attributes::sampling_entry,0x10186a18},{attributes::queue_merge_entry,0x10186e0c},{attributes::queue_lookup_entry,0x10186e94},{attributes::post_match_entry,0x10187450},{attributes::scalar_maintenance_entry,0x10187644}}};
+    {attributes::retirement_entry,0x1018bb4c},{attributes::reset_entry,0x10186fb4},{attributes::sampling_entry,0x10186a18},{attributes::queue_merge_entry,0x10186e0c},{attributes::queue_lookup_entry,0x10186e94},{attributes::post_match_entry,0x10187450},{attributes::scalar_maintenance_entry,0x10187644},{attributes::injury_selection_entry,0x10188cbc},{attributes::injury_category_entry,0x1018c198},{attributes::current_injury_entry,0x1018c448}}};
 void modern_root(State& s,SemanticDependencyDispatch* dependencies,SemanticGuestObserver* observer) {
     using Function=void(*)(State&,SemanticDependencyDispatch*,SemanticGuestObserver*);
     constexpr Function methods[]{attributes::refresh,attributes::signed_maximum,attributes::recover_condition,
         attributes::refresh_condition,attributes::consume_condition,attributes::restore_condition,
         attributes::record_condition_scale,attributes::record_availability,attributes::effective_condition,attributes::refresh_condition_record,
-        attributes::record_capacity,attributes::assign_capacity,attributes::retire_injury,attributes::reset_condition_record,attributes::sample_condition_range,attributes::merge_condition_update,attributes::find_condition_update,attributes::apply_match_condition,attributes::maintain_condition_scalar};
+        attributes::record_capacity,attributes::assign_capacity,attributes::retire_injury,attributes::reset_condition_record,attributes::sample_condition_range,attributes::merge_condition_update,attributes::find_condition_update,attributes::apply_match_condition,attributes::maintain_condition_scalar,attributes::select_injury,attributes::injury_category,attributes::current_injury};
     const auto found=std::find(attributes::entries.begin(),attributes::entries.end(),s.pc);
     require(found!=attributes::entries.end(),"Unknown actor component root");methods[found-attributes::entries.begin()](s,dependencies,observer);
 }
@@ -44,7 +44,7 @@ struct Options {
     std::uint32_t assignment_wide=0,retire_eligible=1;std::vector<std::uint32_t> queue;
     bool lifecycle_chain=false,lifecycle_mutate=false,sampling_chain=false,recursive_negative=false;
     std::uint32_t injury_result=2;bool post_match_chain=false,post_match_mutate=false;
-    bool scalar_mutate=false;
+    bool scalar_mutate=false,injury_mutate=false,injury_pool_mutate=false;std::uint32_t injury_wide=0;
     bool rich_queue=false,allocation_failure=false,queue_mutate=false;
     unsigned sampling_mask=0;std::array<std::uint32_t,3> sampling_bounds{};
     bool own_negative=false, child_negative=false, mutate=false;
@@ -61,6 +61,7 @@ struct Trace final : SemanticGuestObserver {
             const auto bound=options.sampling_bounds[n];s.wr<4>(sampling_registers[n]*4,bound);
             s.wr<1>(2304,(s.r<1>(2304)&0xf0)|(std::bit_cast<std::int32_t>(bound)<0?8:bound?4:2)|(s.r<1>(1024)&1));
         }
+        if(options.injury_wide && pc==0x10188b18) {s.wr<4>(16*4,options.injury_wide);s.wr<1>(2304,(s.r<1>(2304)&0xf0)|(std::bit_cast<std::int32_t>(options.injury_wide)<0?8:4)|(s.r<1>(1024)&1));}
         if(options.assignment_wide && pc==0x10186b78)s.wr<4>(28*4,options.assignment_wide);
         if(options.forced_condition_site==pc)s.wr<1>(2304,options.forced_condition_bits);
         if(options.cache_wide && pc==0x10187e98)s.wr<4>(21*4,options.cache_wide);
@@ -95,7 +96,7 @@ struct Model final : SemanticDependencyDispatch {
     void call(State& s, std::uint32_t target, std::uint32_t continuation) override {
         Event e{target,continuation,s.registers,{}};
         if(target==0x12345678) throw std::runtime_error("Fixture actor-condition external destination");
-        if((target==attributes::capacity_assignment_entry && options.post_match_chain) || (target==attributes::sampling_entry && options.sampling_chain) || (target==attributes::retirement_entry && options.lifecycle_chain) || target==attributes::maximum_entry || target==attributes::record_scale_entry ||
+        if(target==attributes::current_injury_entry || target==attributes::injury_category_entry || (target==attributes::capacity_assignment_entry && options.post_match_chain) || (target==attributes::sampling_entry && options.sampling_chain) || (target==attributes::retirement_entry && options.lifecycle_chain) || target==attributes::maximum_entry || target==attributes::record_scale_entry ||
             target==attributes::availability_entry || target==attributes::effective_condition_entry) {
             if(original) reference(s,continuation);
             else modern_root(s,this,&trace);
@@ -114,6 +115,13 @@ struct Model final : SemanticDependencyDispatch {
             if(target==0x1077b770 && options.scalar_mutate) {
                 s.memory.write<2>(staff+0x5c,128);s.memory.write<4>(controller,fixture+0x4e00);
                 s.memory.write<2>(fixture+0x4e00+0x24+12,1199);s.memory.write<1>(condition_profile+15,10);
+            }
+            if(target==attributes::record_refresh_entry && options.injury_mutate) {
+                s.memory.write<4>(staff,2);s.memory.write<4>(controller,fixture+0x4d00);s.memory.write<4>(fixture+0x4d00+2*0x24+0x10,2);
+                s.memory.write<4>(controller+4,injuries+0x80);s.memory.write<1>(fixture+0x4d00+2*0x24+0x14,1);
+            }
+            if(target==0x1077b770 && options.injury_pool_mutate) {
+                s.memory.write<1>(fixture+0xac00+2,0);s.memory.write<1>(fixture+0x9800+10,3);
             }
             if(target==0x10187a40 && options.mutate) {
                 const auto row=s.memory.read<4>(s.r<4>(12))+s.memory.read<4>(s.r<4>(16))*0x24;
@@ -263,7 +271,7 @@ Result compare(const State& input, Options options={}) {
         require(old_trace.sites==new_trace.sites,label+" original-site order");
     }
     ++cases; completed+=expected.empty()&&!rejected; interruptions+=!expected.empty(); negatives+=rejected;
-    structural+=options.sampling_mask!=0 || options.forced_draw!=0 || options.cache_wide!=0 || options.assignment_wide!=0 || options.forced_condition_site!=0; sites.insert(old_trace.sites.begin(),old_trace.sites.end());
+    structural+=options.injury_wide!=0 || options.sampling_mask!=0 || options.forced_draw!=0 || options.cache_wide!=0 || options.assignment_wide!=0 || options.forced_condition_site!=0; sites.insert(old_trace.sites.begin(),old_trace.sites.end());
     return {std::move(a),x.log,old.calls};
 }
 void boundaries(const State& input,Options options={}) {
@@ -847,9 +855,89 @@ void scalar_checks() {
     {Options n;n.own_negative=true;compare(*scalar_seed(),n);n.own_negative=false;n.child_negative=true;auto s=scalar_seed(100,128);s->memory.write<4>(globals+8,stream+126);compare(*s,n);}
 }
 
+constexpr std::uint32_t injury_details=fixture+0x9800,injury_groups=fixture+0xac00;
+std::unique_ptr<State> injury_seed(std::uint32_t entry=attributes::injury_selection_entry) {
+    auto s=lifecycle_seed(entry);s->memory.map(fixture+0x9000,0x2000);
+    s->memory.write<4>(toc-0x64d4,injury_details);s->memory.write<4>(toc-0x64d0,injury_groups);
+    for(int n=-128;n<128;++n) {
+        s->memory.write<1>(injury_details+12*n+1,(n+256)*37);s->memory.write<1>(injury_details+12*n+2,7);
+        s->memory.write<1>(injury_details+12*n+10,255);
+        s->memory.write<1>(injury_groups+3*n+1,0);s->memory.write<1>(injury_groups+3*n+2,2);
+    }
+    s->memory.write<4>(records+0x24+0x10,0xffffffff);s->memory.write<1>(records+0x24+0x14,255);
+    s->wr<4>(16,entry==attributes::current_injury_entry?staff:0);s->wr<4>(20,255);s->wr<4>(24,staff);return s;
+}
+void injury_checks() {
+    const auto signed_byte=[](unsigned v){return int(v&255)<128?int(v&255):int(v&255)-256;};
+    for(auto high:{0u,0x12340000u,0xffffff00u})for(unsigned n=0;n<256;++n) {
+        auto s=injury_seed(attributes::injury_category_entry);s->wr<4>(12,0);s->wr<4>(16,high|n);
+        const auto r=compare(*s);require(r.state->r<4>(12)==unsigned((signed_byte(n)+256)*37&255),"Independent signed category index and unsigned category result");
+        if(high==0)boundaries(*s);
+    }
+    for(auto id:{0u,1u,2u,3u,0x7fffffffu,0x80000000u,0xffffffffu})for(auto index:{0u,1u,2u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+        auto s=injury_seed(attributes::current_injury_entry);s->memory.write<4>(staff,id);s->memory.write<4>(records+0x24+0x10,index);boundaries(*s);
+    }
+    {auto s=injury_seed(attributes::current_injury_entry);Options o;o.injury_mutate=true;boundaries(*s,o);const auto r=compare(*s,o);
+     require(r.state->r<4>(12)==injuries+0x80+2*0x38,"Current injury reloads ID, table and base after refresh callback");}
+    {auto s=injury_seed(attributes::current_injury_entry);s->wr<4>(16,0);boundaries(*s);}
+    {auto s=injury_seed(attributes::current_injury_entry);Options o;o.forced_condition_site=0x1018c3cc;o.forced_condition_bits=2;boundaries(*s,o);}
+    for(auto kind:{0u,1u,127u,128u,255u,256u,0xffffff00u})for(auto severity:{0u,1u,2u,3u,127u,128u,255u,0xffffffffu}) {
+        auto s=injury_seed();s->wr<4>(16,kind);s->wr<4>(20,severity);boundaries(*s);
+    }
+    for(unsigned type=0;type<256;++type) {
+        auto s=injury_seed();s->memory.write<4>(records+0x24+0x10,0);s->memory.write<1>(injuries,type);
+        auto r=compare(*s);const bool allowed=type<=4 || (type>=76 && type<=81);
+        if(!allowed)require(r.state->r<4>(12)==type,"Blocked selection returns raw current injury type");
+        if(type<=5 || type>=75)boundaries(*s);
+    }
+    for(auto previous:{0u,1u,2u,5u,127u,128u,255u})for(auto salt:{0u,0x7fffffffu,0x80000000u,0xffffffffu})for(auto word:{0u,1u,2u,3u,65535u}) {
+        auto s=injury_seed();s->memory.write<1>(records+0x24+0x14,previous);s->memory.write<1>(injury_details+12*signed_byte(previous)+1,0);
+        s->memory.write<4>(globals,salt);for(unsigned n=1;n<=3;++n)s->memory.write<2>(stream+2*n,word);
+        auto r=compare(*s);int best=100,result=-1;
+        for(unsigned candidate=0;candidate<3;++candidate) {
+            const auto draw=std::bit_cast<std::int32_t>(salt+word);const auto score=candidate==previous?draw%3-1:draw%7;
+            if(score<best){best=score;result=int(candidate);}
+        }
+        require(r.state->r<4>(12)==std::uint32_t(result),"Independent strict-first signed candidate score and repeated injury score");
+    }
+    for(auto previous:{0u,1u,2u,255u})for(auto severity:{0u,1u,2u,3u,255u})for(auto detail_severity:{0u,2u,3u,128u,255u}) {
+        auto s=injury_seed();s->wr<4>(20,severity);s->memory.write<1>(records+0x24+0x14,previous);s->memory.write<1>(injury_details+12*signed_byte(previous)+1,0);
+        for(unsigned n=0;n<3;++n)s->memory.write<1>(injury_details+12*n+10,detail_severity);boundaries(*s);
+    }
+    for(auto weight:{0u,1u,127u,128u,255u})for(auto cursor:{stream,stream+126,stream+128,0xfffffffeu}) {
+        auto s=injury_seed();for(unsigned n=0;n<3;++n)s->memory.write<1>(injury_details+12*n+2,weight);s->memory.write<4>(globals+8,cursor);boundaries(*s);
+        Options m;m.injury_pool_mutate=true;boundaries(*s,m);
+    }
+    for(auto cursor:{stream+126,stream+128,0xfffffffeu}) {auto s=injury_seed();s->memory.write<1>(records+0x24+0x14,0);s->memory.write<1>(injury_details+1,0);s->memory.write<4>(globals+8,cursor);boundaries(*s);}
+    for(auto start:{0u,2u,3u,127u,128u,255u})for(auto end:{0u,1u,2u,126u,128u,255u}) {
+        auto s=injury_seed();s->memory.write<1>(injury_groups+1,start);s->memory.write<1>(injury_groups+2,end);compare(*s);
+        if(start==2 || (start==128 && end==128))boundaries(*s);
+    }
+    for(auto wide:{65536u,0xffff0000u,0x7fffffffu,0x80000000u})for(auto correction:{-100000,0,10000000}) {
+        auto s=injury_seed();s->memory.write<1>(injury_groups+2,0);Options o;o.injury_wide=wide;o.correction=correction;boundaries(*s,o);
+        o.sampling_chain=true;compare(*s,o);
+    }
+    for(auto pointer:{0u,controller,stack-160}) {auto s=injury_seed();s->wr<4>(12,pointer);boundaries(*s);}
+    for(auto slot:{-0x64d4,-0x64d0,-0x7be4,-0x5438,-0x7ba8,-0x7bac,-0x7b84,-0x7b88}) {auto s=injury_seed();s->memory.write<4>(toc+slot,0);boundaries(*s);}
+    for(auto entry:{attributes::injury_selection_entry,attributes::injury_category_entry,attributes::current_injury_entry}) {
+        auto s=injury_seed(entry);Options n;n.own_negative=true;compare(*s,n);
+        constexpr auto relocated=toc+0x10000;s->memory.map(relocated-0x8000,0x9000);s->memory.copy_in(relocated-0x8000,s->memory.copy_out(toc-0x8000,0x9000));s->wr<4>(8,relocated);boundaries(*s);
+    }
+    {auto s=injury_seed();Options o;o.injury_mutate=true;boundaries(*s,o);}
+    {auto s=injury_seed(attributes::current_injury_entry);Options n;n.child_negative=true;compare(*s,n);}
+    {auto s=injury_seed();s->memory.write<4>(records+0x24+0x10,0);s->memory.write<1>(injuries,6);Options n;n.child_negative=true;compare(*s,n);}
+}
+
 }
 namespace cm::aot {void actor_attributes_step_seen(State& s,std::uint32_t pc) {if(original_trace)original_trace->before_step(s,pc);}}
 int main(int argc,char** argv) {try {
+    if(argc==2 && std::string(argv[1])=="--injury") {
+        injury_checks();for(auto [start,end]:ranges)if(start==attributes::injury_selection_entry || start==attributes::injury_category_entry || start==attributes::current_injury_entry)
+            for(auto pc=start;pc<end;pc+=4)if(pc!=0x10188a64 && !sites.contains(pc))std::cerr<<"Uncovered injury "<<hex_address(pc)<<std::endl;
+        // Chained selector tests may also visit the accepted range sampler.
+        unsigned covered=0;for(auto pc:sites)if((pc>=0x10188930 && pc<0x10188cbc)||(pc>=0x1018c180 && pc<0x1018c198)||(pc>=0x1018c340 && pc<0x1018c448))++covered;
+        require(covered==298,"Complete injury selection/classification/lookup source coverage");std::cout<<"Focused injury comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interruptions<<" negatives="<<negatives<<" structural="<<structural<<" sourceSites="<<covered<<std::endl;return 0;
+    }
     if(argc==2 && std::string(argv[1])=="--scalar") {
         scalar_checks();for(auto pc=attributes::scalar_maintenance_entry;pc<0x10187644;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered scalar "<<hex_address(pc)<<std::endl;
         require(sites.size()==125,"Complete scalar maintenance source coverage");std::cout<<"Focused scalar comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interruptions<<" negatives="<<negatives<<" sourceSites="<<sites.size()<<std::endl;return 0;
@@ -860,7 +948,7 @@ int main(int argc,char** argv) {try {
     }
     if(argc==2 && std::string(argv[1])=="--queue") {
         queue_checks();for(auto [start,end]:ranges)if(start==attributes::queue_merge_entry || start==attributes::queue_lookup_entry)
-            for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && !sites.contains(pc))std::cerr<<"Uncovered queue "<<hex_address(pc)<<std::endl;
+            for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && pc!=0x10188a64 && !sites.contains(pc))std::cerr<<"Uncovered queue "<<hex_address(pc)<<std::endl;
         require(sites.size()==110,"Complete queue source coverage");std::cout<<"Focused queue comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interruptions<<" negatives="<<negatives<<" sourceSites="<<sites.size()<<std::endl;return 0;
     }
     if(argc==2 && std::string(argv[1])=="--sampling") {
@@ -944,9 +1032,10 @@ int main(int argc,char** argv) {try {
     queue_checks();
     post_match_checks();
     scalar_checks();
+    injury_checks();
     for(auto [start,end]:ranges)
-        for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && !sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==4107,"All 4107 actor-attribute/condition original sites covered");
+        for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && pc!=0x10188a64 && !sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==4405,"All 4405 actor-attribute/condition original sites covered");
     std::cout<<"PASS: "<<cases<<" actor-attribute comparisons; "<<completed<<" completions, "<<interruptions
         <<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()
         <<" original sites; full state/effects/ABI/accounting; independent original references\n";

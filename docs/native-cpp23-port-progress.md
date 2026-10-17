@@ -9,25 +9,25 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [condition scalar maintenance](native-condition-scalar-maintenance.md) adds
-one complete **125-instruction** C++23 operation, bringing the accepted manifest
-from 700 to **701 entries** with the exact prior prefix intact. Nineteen
-attribute/condition entries cover **4,107 original instructions**. Release and
-affected-unit UBSAN each pass 486,622 component, 742 production and 742 nonlocal
-comparisons, plus seventeen separate null faults. The 132 original-profile
-controls, nine scope audits, 50 historical manifest-only methods and all four
-focused CTests pass.
+The [injury selection block](native-injury-selection.md) adds three complete
+operations and **298 original instructions**, bringing the accepted manifest
+from 701 to **704 entries** with its exact prior prefix intact. Twenty-two
+actor/condition entries cover **4,405 original instructions**. Release and
+affected-unit UBSAN each pass 641,223 component, 994 production and 861 nonlocal
+comparisons, plus nineteen separate null faults. The 177 original-profile
+controls, ten scope/source/table audits, 50 historical manifest-only methods
+and all four focused CTests pass.
 
-A paired 798-advance match preserves full state, imports and per-tick accounting;
-the scalar-maintenance root has 0 natural calls in that stepper. Controlled
-original BL coverage uses the actual controller/index/profile and prepared
-threshold, deficit, cap, wrap and guarded-null cases. The signed ARM64 game is
-installed with SHA-256
-`e34a2933d4fcf5150c2331442d6c202ede170c251124fd6203ae17b60a88fc78`.
+A paired 798-advance match preserves full state, imports and per-tick accounting.
+Current-injury lookup executes naturally 13,777 times. Selection/classification
+have zero natural calls in that stepper; controlled original BL coverage uses
+actual players/controllers, original reset/registration, live tables and prepared
+repeat/severity/wrap/index/guard variants. The signed ARM64 game is installed with
+SHA-256 `65a7bdd7fcd78afca56cf8e3d84fea15430176dc1dd14e1dda734454764efe81`.
 Prepare Game rendering and normal exit pass. All 845 protected files and the
-installed Match Debugger are preserved; six reviewed linked checks are cleaned
-after acceptance. Save/Load is **not retested**. Accurate conversion remains the
-priority; no speedup is claimed and the full goal stays active.
+installed Match Debugger are preserved. Six reviewed linked checks are cleaned,
+and task-owned snapshots receive verified transparent compression. Save/Load is
+**not retested**; no performance benchmark is claimed. The full goal stays active.
 
 The latest [spatial-role optimization](native-spatial-role-performance.md)
 reduces measured 600-tick match runtime by median **5.14% and 4.14%** in two

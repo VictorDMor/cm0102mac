@@ -1,7 +1,7 @@
 # Actor action attributes and condition recovery
 
-The latest [scalar-maintenance delivery](native-condition-scalar-maintenance.md)
-extends this component to nineteen entries and the accepted manifest to 701.
+The latest [injury-selection delivery](native-injury-selection.md) extends this
+component to twenty-two entries and the accepted manifest to 704.
 
 This report records the preceding 685-entry delivery. The subsequent
 [periodic condition and consumption block](native-actor-condition-reconstruction.md)

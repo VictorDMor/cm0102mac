@@ -22,8 +22,11 @@ inline constexpr std::uint32_t queue_merge_entry = 0x10186cd0;
 inline constexpr std::uint32_t queue_lookup_entry = 0x10186e10;
 inline constexpr std::uint32_t post_match_entry = 0x10186fc0;
 inline constexpr std::uint32_t scalar_maintenance_entry = 0x10187450;
-inline constexpr std::array<std::uint32_t, 19> entries{refresh_entry, maximum_entry, recovery_entry, periodic_entry, consumption_entry,
-    restoration_entry, record_scale_entry, availability_entry, effective_condition_entry, record_refresh_entry, capacity_entry, capacity_assignment_entry, retirement_entry, reset_entry, sampling_entry, queue_merge_entry, queue_lookup_entry, post_match_entry, scalar_maintenance_entry};
+inline constexpr std::uint32_t injury_selection_entry = 0x10188930;
+inline constexpr std::uint32_t injury_category_entry = 0x1018c180;
+inline constexpr std::uint32_t current_injury_entry = 0x1018c340;
+inline constexpr std::array<std::uint32_t, 22> entries{refresh_entry, maximum_entry, recovery_entry, periodic_entry, consumption_entry,
+    restoration_entry, record_scale_entry, availability_entry, effective_condition_entry, record_refresh_entry, capacity_entry, capacity_assignment_entry, retirement_entry, reset_entry, sampling_entry, queue_merge_entry, queue_lookup_entry, post_match_entry, scalar_maintenance_entry, injury_selection_entry, injury_category_entry, current_injury_entry};
 // Refresh the ten transient action attributes from the actor's live baseline
 // traits and condition. Preserve the shared random stream and ordered writes.
 void refresh(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
@@ -45,6 +48,10 @@ void find_condition_update(State&, SemanticDependencyDispatch* = nullptr, Semant
 void apply_match_condition(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 // Maintain the signed record scalar with live traits and the shared pool.
 void maintain_condition_scalar(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+// Select from live injury groups, preserving signed scores and pool order.
+void select_injury(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void injury_category(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+void current_injury(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void sample_condition_range(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void record_capacity(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void assign_capacity(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);

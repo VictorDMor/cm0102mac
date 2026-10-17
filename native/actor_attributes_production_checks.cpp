@@ -157,7 +157,7 @@ auto complete_match(const State& seed,std::uint32_t match,Capture& capture){
         <<" recoveryCalls="<<next.calls[2]<<" periodicCalls="<<next.calls[3]<<" consumptionCalls="<<next.calls[4]
         <<" restorationCalls="<<next.calls[5]<<" recordScaleCalls="<<next.calls[6]<<" availabilityCalls="<<next.calls[7]<<" effectiveConditionCalls="<<next.calls[8]<<" recordRefreshCalls="<<next.calls[9]
         <<" capacityCalls="<<next.calls[10]<<" capacityAssignmentCalls="<<next.calls[11]<<" injuryRetirementCalls="<<next.calls[12]<<" recordResetCalls="<<next.calls[13]<<" conditionSamplingCalls="<<next.calls[14]
-        <<" queueMergeCalls="<<next.calls[15]<<" queueLookupCalls="<<next.calls[16]<<" postMatchCalls="<<next.calls[17]<<" scalarMaintenanceCalls="<<next.calls[18]
+        <<" queueMergeCalls="<<next.calls[15]<<" queueLookupCalls="<<next.calls[16]<<" postMatchCalls="<<next.calls[17]<<" scalarMaintenanceCalls="<<next.calls[18]<<" injurySelectionCalls="<<next.calls[19]<<" injuryCategoryCalls="<<next.calls[20]<<" currentInjuryCalls="<<next.calls[21]
         <<"; complete state, import ABI and per-tick accounting\n";
     capture.full_time=clone(*modern);capture.full_time->platform=seed.platform;
     return next.calls;
@@ -189,6 +189,7 @@ void matrix(const State& input,unsigned index,bool profile,bool recursive=false)
         compare(input,index,Path::generated,Mode::modern,50000000,true,recursive);
         for(auto limit:{0u,1u,2u,3u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
         if(index==4)for(auto limit:{4u,14u,18u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
+        else if(index==20)for(auto limit:{4u,5u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
         else if(index!=1 && index!=6)for(auto limit:{index==18 && !scalar_guard?20u:index==17?40u:index>=14?4u:12u,index==18 && !scalar_guard?30u:index==17?150u:index>=14?9u:13u,index==18 && !scalar_guard?40u:index==17?500u:index>=14?12u:index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
     }
 }
@@ -389,20 +390,61 @@ void scalar_production(const State& parent,const std::filesystem::path& snapshot
     std::cout<<"PASS: controlled original scalar-maintenance BL with actual controller/index/profile; deficit, low trait, fixed decrement, special cap, both pool wraps and guarded null-controller return"<<std::endl;
 }
 
+constexpr std::array<std::pair<unsigned,const char*>,12> injury_variants{{
+    {19,"injury-repeat.snapshot"},{19,"injury-severity-zero.snapshot"},{19,"injury-severity-one.snapshot"},
+    {19,"injury-severity-two.snapshot"},{19,"injury-severity-three.snapshot"},{19,"injury-wrap.snapshot"},
+    {19,"injury-repeat-wrap.snapshot"},{19,"injury-last-group.snapshot"},
+    {20,"injury-category-last.snapshot"},{20,"injury-category-negative.snapshot"},
+    {21,"injury-lookup-active.snapshot"},{21,"injury-lookup-guard.snapshot"}}};
+void injury_production(const State& parent,const std::filesystem::path& snapshots) {
+    const auto manager=std::uint32_t(parent.r<4>(12)),staff=std::uint32_t(parent.r<4>(16)),toc=std::uint32_t(parent.r<4>(8));
+    const auto id=std::uint32_t(parent.memory.read<4>(staff)),row=std::uint32_t(parent.memory.read<4>(manager))+id*0x24;
+    auto prepared=clone(parent);prepared->platform=parent.platform;invoke_original(*prepared,attributes::reset_entry,{manager,id});
+    prepared->wr<4>(12,manager);prepared->wr<4>(16,0);prepared->wr<4>(20,0xffffffff);prepared->wr<4>(24,staff);
+    auto selection=source_caller(*prepared,19,0x1018736c);save_runtime_snapshot(*selection,snapshots/(hex_address(attributes::injury_selection_entry)+".snapshot"));matrix(*selection,19,false);actual_fault(*selection,19);
+    auto category_input=clone(*selection);category_input->platform=parent.platform;category_input->wr<4>(16,0);
+    auto category=source_caller(*category_input,20,0x10188a18);save_runtime_snapshot(*category,snapshots/(hex_address(attributes::injury_category_entry)+".snapshot"));matrix(*category,20,false);
+    auto lookup_input=clone(*selection);lookup_input->platform=parent.platform;lookup_input->wr<4>(16,staff);
+    auto lookup=source_caller(*lookup_input,21,0x1018897c);save_runtime_snapshot(*lookup,snapshots/(hex_address(attributes::current_injury_entry)+".snapshot"));matrix(*lookup,21,false);actual_fault(*lookup,21);
+    for(auto [index,name]:injury_variants) {
+        const auto label=std::string_view(name);auto input=clone(index==19?*selection:index==20?*category:*lookup);input->platform=parent.platform;
+        if(label=="injury-repeat.snapshot" || label=="injury-repeat-wrap.snapshot")input->memory.write<1>(row+0x14,0);
+        if(label=="injury-severity-zero.snapshot")input->wr<4>(20,0);
+        if(label=="injury-severity-one.snapshot")input->wr<4>(20,1);
+        if(label=="injury-severity-two.snapshot")input->wr<4>(20,2);
+        if(label=="injury-severity-three.snapshot")input->wr<4>(20,3);
+        if(label=="injury-wrap.snapshot" || label=="injury-repeat-wrap.snapshot")input->memory.write<4>(input->memory.read<4>(toc-0x7b84),input->memory.read<4>(input->memory.read<4>(toc-0x7b88)));
+        if(label=="injury-last-group.snapshot")input->wr<4>(16,11);
+        if(label=="injury-category-last.snapshot")input->wr<4>(16,81);
+        if(label=="injury-category-negative.snapshot")input->wr<4>(16,0xffffffff);
+        if(label=="injury-lookup-active.snapshot") {
+            const auto sp=std::uint32_t(input->r<4>(4));input->wr<4>(4,sp-0x80);input->memory.write<4>(sp-0x80+0x38,0);
+            invoke_original(*input,0x10188cc0,{manager,0,0,staff,0,0,0xffffffff,0});input->wr<4>(4,sp);input->wr<4>(12,manager);input->wr<4>(16,staff);input->pc=attributes::current_injury_entry;
+            require(signed_value<4>(input->memory.read<4>(row+0x10))>=0,"Original registration prepares an actual active injury lookup");
+        }
+        if(label=="injury-lookup-guard.snapshot")input->memory.write<4>(staff,input->memory.read<4>(input->memory.read<4>(toc-0x7be4)));
+        save_runtime_snapshot(*input,snapshots/name);matrix(*input,index,false);
+    }
+    std::cout<<"PASS: controlled original selector/category/current-injury BLs with actual player/controller, live original tables, original reset/registration and repeat/severity/wrap/signed-index/guard variants"<<std::endl;
+}
+
 }
 int main(int argc,char** argv){try {
+    const bool injury=argc==6 && std::string_view(argv[5])=="--injury";
     const bool scalar=argc==6 && std::string_view(argv[5])=="--scalar";
     const bool post_match=argc==7 && std::string_view(argv[5])=="--post-match";
     const bool queue=argc==6 && std::string_view(argv[5])=="--queue";
     const bool sampling=argc==6 && std::string_view(argv[5])=="--sampling";
-    const bool focused=(argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling || queue || scalar)) || post_match;
+    const bool focused=(argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling || queue || scalar || injury)) || post_match;
     require(argc==4 || argc==5 || focused,"Expected original program, game, fresh backing and optional profile directory or focused lifecycle snapshot");
     const bool profile=argc==5;require(profile==match_pc_profile_enabled(),"Profile request/flag mismatch");set_match_turbo_enabled(false);
     const auto root=std::filesystem::path(argv[3])/std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     OwnedBacking cleanup{root};
     if(focused) {
         State seed;load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);load_match_snapshot(seed,argv[4]);
-        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(scalar?"scalar-focused-profile":post_match?"post-match-focused-profile":queue?"queue-focused-profile":sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(injury?"injury-focused-profile":scalar?"scalar-focused-profile":post_match?"post-match-focused-profile":queue?"queue-focused-profile":sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        if(injury) {injury_production(seed,snapshots);require(cases==252 && returns==150 && budgets==102 && negatives==15,"Focused injury matrix incomplete");
+            std::cout<<"PASS: focused injury cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         if(scalar) {scalar_production(seed,snapshots);require(cases==136 && returns==80 && budgets==56 && negatives==8,"Focused scalar matrix incomplete");
             std::cout<<"PASS: focused scalar cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         if(post_match) {post_match_production(seed,std::uint32_t(std::stoul(argv[6],nullptr,0)),snapshots);require(cases==102 && returns==60 && budgets==42 && negatives==6,"Focused post-match matrix incomplete");
@@ -440,6 +482,10 @@ int main(int argc,char** argv){try {
             State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
             load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,18,true);
         }
+        for(auto [index,name]:injury_variants) {
+            State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
+            load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,index,true);
+        }
         State recursive;load_program(recursive,argv[1]);recursive.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
         load_match_snapshot(recursive,std::filesystem::path(argv[4])/"sampling-recursive.snapshot");matrix(recursive,14,true,true);
     } else {
@@ -466,7 +512,8 @@ int main(int argc,char** argv){try {
         save_runtime_snapshot(*capture.full_time,snapshots/"post-match-world.snapshot");std::ofstream(snapshots/"post-match-world-match.txt")<<hex_address(game.match);
         post_match_production(*capture.full_time,game.match,snapshots);
         scalar_production(*capture.inputs[7],snapshots);
-        require(cases==742 && negatives==44 && budgets==302,"Real actor-attribute matrix incomplete");
+        injury_production(*capture.inputs[7],snapshots);
+        require(cases==994 && negatives==59 && budgets==404,"Real actor-attribute matrix incomplete");
     }
     std::cout<<"PASS: production actor-attributes cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives
         <<"; real match caller direct/generated/CFM, original/profile controls, dedicated productive counts, complete state/effects/accounting/import boundaries\n";

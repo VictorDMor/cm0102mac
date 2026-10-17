@@ -23,6 +23,9 @@ CONTRACTS = (
     (0x10186e10, 0x10186e94, 32, '0e43b4a707330fd55f6c2bbaae07146a5ea81be5f942215d1a3f99f8333bf8f2'),
     (0x10186fc0, 0x10187450, 292, 'd211eefe533981f76b63231f1f5de7ef85d9cf6d20c7ffba3c21644abfe014a0'),
     (0x10187450, 0x10187644, 125, 'b02282701eb9a35594724b34a1f671d4a00f52bf159bb31b1eddc5eb1b62f9b8'),
+    (0x10188930, 0x10188cbc, 226, 'a3650b7e70c764f9b3d0fed8f4a47aad13045b7abcd64039f60dd95c6b152fd3'),
+    (0x1018c180, 0x1018c198, 6, 'ada0940110193bb62c7a0e3be7f15ea8607cc8881a9260e35550fece189c3719'),
+    (0x1018c340, 0x1018c448, 66, '1487bae06605321b1cbeadbd482fe804e2b2242b24bb8ed7e2d2765e06ba9930'),
 )
 FRAGMENTS = (
     (0x10235ea0, 0x10235, 88, '45665d75865ef78ca968b68d3ce392dac9ebad88484f795c921040bd8088e8ff'),
@@ -48,9 +51,24 @@ FRAGMENTS = (
     (0x10186fc0, 0x10186, 16, '1258c0cfecb350f3434ef15e12a71d52809b619ef631971ed8d5b86f9ffb3c02'),
     (0x10186fc0, 0x10187, 276, '1c5c39ec07d88a67335f592a9970822cdd7f1a4a5df7b02f42eb040361457c55'),
     (0x10187450, 0x10187, 125, 'b02282701eb9a35594724b34a1f671d4a00f52bf159bb31b1eddc5eb1b62f9b8'),
+    (0x10188930, 0x10188, 226, 'a3650b7e70c764f9b3d0fed8f4a47aad13045b7abcd64039f60dd95c6b152fd3'),
+    (0x1018c180, 0x1018c, 6, 'ada0940110193bb62c7a0e3be7f15ea8607cc8881a9260e35550fece189c3719'),
+    (0x1018c340, 0x1018c, 66, '1487bae06605321b1cbeadbd482fe804e2b2242b24bb8ed7e2d2765e06ba9930'),
 )
 ACTOR_ATTRIBUTES_ENTRIES = tuple(start for start, _, _, _ in CONTRACTS)
 COST_TABLE = (0x108b6890, 0x108cd814, 28, '4471df4ee72c2421688d5d0aac3fdfe2f63ee36d31fa0e391a8850b95fb22e8d')
+
+INJURY_TABLES = ((277566908, 277657824, 246, 'b248e4d53091f6e220e694dd4b053ca878eede63059a959e7ae52480e1f6be51'), (277566912, 277658808, 9, 'f251cb28bdb36b9aa1005af30eb86f639c95fbd34ea1e1428bf77dc5020553d5'))
+
+def require_injury_tables(read_word):
+    result=[]
+    for slot,table,count,digest in INJURY_TABLES:
+        if read_word(slot)!=table:raise ValueError("Changed original injury table pointer")
+        words=[read_word(table+4*n) for n in range(count)]
+        if hashlib.sha256(b"".join(struct.pack(">I",w) for w in words)).hexdigest()!=digest:
+            raise ValueError("Changed original injury table bytes")
+        result.append(words)
+    return result
 
 
 def require_actor_attributes_tables(read_word):
@@ -73,9 +91,10 @@ def load_actor_attributes_tables(input_directory):
             if base <= address and address + 4 <= base + len(data):
                 return struct.unpack_from('>I', data, address - base)[0]
         raise ValueError(f'Missing actor-condition table word at {address:x}')
-    for address in (0x10186d24, 0x10186e4c):
+    for address in (0x10186d24, 0x10186e4c, 0x10188a64):
         if read_word(address) != 0x60000000:
             raise ValueError('Changed skipped queue alignment word')
+    require_injury_tables(read_word)
     return require_actor_attributes_tables(read_word)
 
 
