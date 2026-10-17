@@ -18,8 +18,10 @@ inline constexpr std::uint32_t capacity_assignment_entry = 0x10186a20;
 inline constexpr std::uint32_t retirement_entry = 0x1018b9f0;
 inline constexpr std::uint32_t reset_entry = 0x10186ea0;
 inline constexpr std::uint32_t sampling_entry = 0x101864a0;
-inline constexpr std::array<std::uint32_t, 15> entries{refresh_entry, maximum_entry, recovery_entry, periodic_entry, consumption_entry,
-    restoration_entry, record_scale_entry, availability_entry, effective_condition_entry, record_refresh_entry, capacity_entry, capacity_assignment_entry, retirement_entry, reset_entry, sampling_entry};
+inline constexpr std::uint32_t queue_merge_entry = 0x10186cd0;
+inline constexpr std::uint32_t queue_lookup_entry = 0x10186e10;
+inline constexpr std::array<std::uint32_t, 17> entries{refresh_entry, maximum_entry, recovery_entry, periodic_entry, consumption_entry,
+    restoration_entry, record_scale_entry, availability_entry, effective_condition_entry, record_refresh_entry, capacity_entry, capacity_assignment_entry, retirement_entry, reset_entry, sampling_entry, queue_merge_entry, queue_lookup_entry};
 // Refresh the ten transient action attributes from the actor's live baseline
 // traits and condition. Preserve the shared random stream and ordered writes.
 void refresh(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
@@ -33,6 +35,10 @@ void record_condition_scale(State&, SemanticDependencyDispatch* = nullptr, Seman
 void record_availability(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void effective_condition(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void refresh_condition_record(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+// Merge the first matching update, or append the original eight-byte record.
+void merge_condition_update(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
+// Return a borrowed queue item pointer; reset and advance the original cursor.
+void find_condition_update(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void sample_condition_range(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void record_capacity(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);
 void assign_capacity(State&, SemanticDependencyDispatch* = nullptr, SemanticGuestObserver* = nullptr);

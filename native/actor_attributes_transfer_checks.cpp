@@ -86,7 +86,12 @@ struct Model final : CodeFragmentBoundaryObserver {
             0x10239664,0x102396c8,0x102396dc,0x1023971c,0x10239730,0x10239770,0x10239784};
         if(index>=5) {
             bool point=false;unsigned frame=0;
-            if(index==14 && recursive) {point=s.pc==0x101864a4;frame=128;}
+            if(index==15) {point=s.pc==(site==Site::before_draws?0x10186cd4u:site==Site::after_maximum?0x10186d1cu:0x10186db4u);frame=site==Site::before_draws?0:96;}
+            else if(index==16) {
+                point=s.pc==(site==Site::before_draws?0x10186e14u:site==Site::after_maximum?0x10186e44u:primary?0x10186e24u:0x10186e54u);
+                frame=site==Site::before_draws || (primary && site==Site::final_output)?0:64;
+            }
+            else if(index==14 && recursive) {point=s.pc==0x101864a4;frame=128;}
             else if(index==14) {point=s.pc==(site==Site::before_draws?0x101864a4u:site==Site::after_maximum?0x10186524u:0x101865b0u);frame=site==Site::before_draws?0:128;}
             else if(index>=10) {
                 if(index==10) {point=s.pc==(site==Site::before_draws?0x101877e4u:site==Site::after_maximum?0x10187868u:0x10187894u);frame=site==Site::before_draws?0:96;}
@@ -205,7 +210,7 @@ int main(int argc, char** argv) {
         require(argc == 5 && !match_pc_profile_enabled(), "Original program/game/private root and original-caller capture directory with profiling disabled");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u,14u}) {
+        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u,14u,15u,16u}) {
             State seed; load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root/"inputs",AudioMode::offline);
             load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":index==10?"capacity-percentage.snapshot":index==14?"sampling-wide.snapshot":hex_address(line::entries[index])+".snapshot"));
             require(seed.pc==line::entries[index],"Transfer input must be a captured original caller scope");
@@ -223,7 +228,7 @@ int main(int argc, char** argv) {
                 compare(seed,index,Scenario::jump,false,true,Site::final_output,primary,true);
             }
         }
-        require(cases==546 && fault_cases==312,"Complete actor attribute/condition callback transfer matrix");
+        require(cases==630 && fault_cases==360,"Complete actor attribute/condition callback transfer matrix");
         std::cout << cases << " productive nonlocal actor-attributes comparisons; " << fault_cases
             << " restore/handler faults; actor-attribute scopes, integer/float saves and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

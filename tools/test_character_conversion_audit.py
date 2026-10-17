@@ -20,8 +20,8 @@ class CharacterConversionManifestTests(unittest.TestCase):
         self.assertEqual(CHARACTER_CONVERSION_ENTRIES,(0x10777f60,0x10778050,0x10778170,0x10778190,0x10778240,0x10778260))
         self.assertEqual(INSTRUCTION_COUNTS,(59,72,8,41,8,40))
         self.assertEqual(sum(INSTRUCTION_COUNTS),228)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),697)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),697)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),699)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),699)
         self.assertEqual(SEMANTIC_REPLACEMENTS[93:99],tuple((e,'character_conversion_adapter') for e in CHARACTER_CONVERSION_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:78]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

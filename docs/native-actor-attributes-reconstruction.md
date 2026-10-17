@@ -1,7 +1,7 @@
 # Actor action attributes and condition recovery
 
-The latest [condition sampler delivery](native-condition-biased-sampling.md)
-extends this component to fifteen entries and the accepted manifest to 697.
+The latest [condition update queue delivery](native-condition-update-queue.md)
+extends this component to seventeen entries and the accepted manifest to 699.
 
 This report records the preceding 685-entry delivery. The subsequent
 [periodic condition and consumption block](native-actor-condition-reconstruction.md)

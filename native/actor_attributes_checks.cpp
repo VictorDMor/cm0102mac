@@ -14,18 +14,18 @@ constexpr std::uint32_t condition_doubles=fixture+0x2000, condition_singles=fixt
 constexpr std::uint32_t controller=fixture+0x3000, records=fixture+0x3400, staff=fixture+0x3800;
 constexpr std::uint32_t injuries=fixture+0x3c00, record_limit=fixture+0x4000, controller_slot=fixture+0x4004;
 constexpr std::uint32_t diagnostic=fixture+0x4100, record_constants=fixture+0x4400, percentage_divisor=fixture+0x4480;
-constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,15> ranges{{
+constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,17> ranges{{
     {attributes::refresh_entry,0x102373a0},{attributes::maximum_entry,0x102373b4},{attributes::recovery_entry,0x10235e9c},
     {attributes::periodic_entry,0x1023958c},{attributes::consumption_entry,0x1023978c},{attributes::restoration_entry,0x10239d10},
     {attributes::record_scale_entry,0x10187680},{attributes::availability_entry,0x101877dc},{attributes::effective_condition_entry,0x10187a1c},{attributes::record_refresh_entry,0x10188488},
     {attributes::capacity_entry,0x101878d0},{attributes::capacity_assignment_entry,0x10186cd0},
-    {attributes::retirement_entry,0x1018bb4c},{attributes::reset_entry,0x10186fb4},{attributes::sampling_entry,0x10186a18}}};
+    {attributes::retirement_entry,0x1018bb4c},{attributes::reset_entry,0x10186fb4},{attributes::sampling_entry,0x10186a18},{attributes::queue_merge_entry,0x10186e0c},{attributes::queue_lookup_entry,0x10186e94}}};
 void modern_root(State& s,SemanticDependencyDispatch* dependencies,SemanticGuestObserver* observer) {
     using Function=void(*)(State&,SemanticDependencyDispatch*,SemanticGuestObserver*);
     constexpr Function methods[]{attributes::refresh,attributes::signed_maximum,attributes::recover_condition,
         attributes::refresh_condition,attributes::consume_condition,attributes::restore_condition,
         attributes::record_condition_scale,attributes::record_availability,attributes::effective_condition,attributes::refresh_condition_record,
-        attributes::record_capacity,attributes::assign_capacity,attributes::retire_injury,attributes::reset_condition_record,attributes::sample_condition_range};
+        attributes::record_capacity,attributes::assign_capacity,attributes::retire_injury,attributes::reset_condition_record,attributes::sample_condition_range,attributes::merge_condition_update,attributes::find_condition_update};
     const auto found=std::find(attributes::entries.begin(),attributes::entries.end(),s.pc);
     require(found!=attributes::entries.end(),"Unknown actor component root");methods[found-attributes::entries.begin()](s,dependencies,observer);
 }
@@ -43,6 +43,7 @@ struct Options {
     std::uint32_t forced_condition_site=0;std::uint8_t forced_condition_bits=0;
     std::uint32_t assignment_wide=0,retire_eligible=1;std::vector<std::uint32_t> queue;
     bool lifecycle_chain=false,lifecycle_mutate=false,sampling_chain=false,recursive_negative=false;
+    bool rich_queue=false,allocation_failure=false,queue_mutate=false;
     unsigned sampling_mask=0;std::array<std::uint32_t,3> sampling_bounds{};
     bool own_negative=false, child_negative=false, mutate=false;
 };
@@ -100,7 +101,7 @@ struct Model final : SemanticDependencyDispatch {
             require(target==0x1077b770 || target==0x10226520 || target==attributes::refresh_entry || target==0x10780fc0 || target==0x10289560 || target==0x10187a40 || target==0x10717dd0 ||
                 target==0x10739890 || target==0x10768810 || target==0x1077b720 || target==0x10769b60 || target==0x10715880 || target==0x1018b9f0 || target==0x102ae9c0 ||
                 target==0x102af650 || target==0x101929b0 || target==0x10718130 || target==0x101864a0 || target==0x10748ce0 || target==0x1014c2e0 || target==0x1018dcb0 ||
-                target==0x10738e00 || target==0x10738e60 || target==0x1018fdf0,
+                target==0x10738e00 || target==0x10738e60 || target==0x1018fdf0 || target==0x10773520 || target==0x10738c00 || target==0x10738d10,
                 "Unknown actor-attributes dependency");
             s.memory.write<4>(globals+0x100+std::uint32_t(calls.size())*4,target^std::uint32_t(s.r<4>(12)));
             if(options.mutate) {
@@ -136,9 +137,26 @@ struct Model final : SemanticDependencyDispatch {
                 if(options.lifecycle_mutate)s.memory.write<4>(staff,0);
             }
             if(target==0x1018fdf0 && options.child_negative && !original)s.memory.write<1>(records+0x24+0x20,1);
-            if(target==0x10738e00 && queue_position<options.queue.size()) {
+            if(target==0x10738e00 && !options.rich_queue && queue_position<options.queue.size()) {
                 queue_result=fixture+0x4c00+8*queue_position;
                 s.memory.write<4>(queue_result,options.queue[queue_position++]);
+            }
+            if(options.rich_queue) {
+                const auto q=std::uint32_t(s.r<4>(12));
+                if(target==0x10773520)queue_result=options.allocation_failure?0:fixture+0x4a00;
+                if(target==0x10738c00) {
+                    s.memory.write<4>(q+4,fixture+0x4c00);s.memory.write<4>(q+8,0);s.memory.write<4>(q+12,fixture+0x4c00);
+                }
+                if(target==0x10738e00) {
+                    const auto cursor=s.memory.read<4>(q+12),base=s.memory.read<4>(q+4),count=s.memory.read<4>(q+8);
+                    if(cursor<base+count*8) {queue_result=std::uint32_t(cursor);s.memory.write<4>(q+12,cursor+8);}
+                    if(options.queue_mutate) {s.memory.write<1>(fixture+0x4b00,7);s.memory.write<1>(fixture+0x4b01,99);}
+                }
+                if(target==0x10738d10) {
+                    const auto size=std::uint32_t(s.r<4>(20)),input=std::uint32_t(s.r<4>(16));
+                    const auto base=s.memory.read<4>(q+4),count=s.memory.read<4>(q+8);
+                    s.memory.copy_in(std::uint32_t(base+8*count),s.memory.copy_out(input,size));s.memory.write<4>(q+8,count+1);
+                }
             }
             if(target==0x10738e60)s.memory.write<1>(fixture+0x4df0,1);
             for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xac000000+n*17);
@@ -146,7 +164,7 @@ struct Model final : SemanticDependencyDispatch {
             s.wr<1>(2304,5); s.wr<1>(1027,1);
             s.wr<4>(12,target==0x1077b770 ? options.random : std::uint32_t(options.correction));
             if(target==0x1014c2e0)s.wr<4>(12,options.retire_eligible);
-            if(target==0x10738e00)s.wr<4>(12,queue_result);
+            if(target==0x10738e00 || target==0x10773520)s.wr<4>(12,queue_result);
             if(target==0x10289560)s.wr<4>(12,options.role);
             if(target==0x102af650)s.wr<4>(12,fixture+0x4740);
             if(target==0x101929b0)s.wr<4>(12,options.scheduled);
@@ -160,7 +178,10 @@ struct Model final : SemanticDependencyDispatch {
             s.pc=continuation;
         }
         if(options.recursive_negative && !original && target==attributes::sampling_entry)s.wr<4>(12,s.r<4>(12)+10000000);
-        if(options.child_negative&&!original)s.wr<4>(12,s.r<4>(12)^1);
+        if(options.child_negative&&!original) {
+            if(options.rich_queue)s.memory.write<1>(fixture+0x4c05,s.memory.read<1>(fixture+0x4c05)^1);
+            else s.wr<4>(12,s.r<4>(12)^1);
+        }
         e.after=s.registers; calls.push_back(e);
         if(options.interrupt && calls.size()>=options.interrupt)
             throw std::runtime_error("Fixture actor-attributes dependency interruption");
@@ -656,9 +677,67 @@ void sampling_checks() {
     }
 }
 
+constexpr std::uint32_t update_queue=fixture+0x4a00,update_bytes=fixture+0x4b00,update_items=fixture+0x4c00;
+std::unique_ptr<State> queue_seed(std::uint32_t entry=attributes::queue_merge_entry,unsigned count=1) {
+    auto s=seed(entry);s->wr<4>(12,controller);s->wr<4>(16,staff);s->wr<4>(20,update_bytes);s->wr<4>(24,update_bytes+1);
+    s->memory.write<4>(controller+0x28,update_queue);s->memory.write<4>(staff,1);
+    s->memory.write<4>(update_queue+4,update_items);s->memory.write<4>(update_queue+8,count);s->memory.write<4>(update_queue+12,0xfeedbeef);
+    for(unsigned n=0;n<count;++n) {s->memory.write<4>(update_items+8*n,n==1?2:1);s->memory.write<4>(update_items+8*n+4,0x0132aabb);}
+    s->memory.write<1>(update_bytes,1);s->memory.write<1>(update_bytes+1,20);
+    s->memory.write<2>(stack-96+0x3e,0xc3d4);return s;
+}
+void queue_checks() {
+    Options o;o.rich_queue=true;
+    const auto signed_byte=[](unsigned value){return value<128?int(value):int(value)-256;};
+    for(auto old_kind:{0u,1u,127u,128u,255u})for(auto new_kind:{0u,1u,127u,128u,255u})
+        for(auto old_amount:{0u,1u,50u,99u,100u,127u,128u,155u,255u})for(auto amount:{0u,1u,50u,99u,100u,127u,128u,155u,255u}) {
+            auto s=queue_seed();s->memory.write<1>(update_items+4,old_kind);s->memory.write<1>(update_items+5,old_amount);
+            s->memory.write<1>(update_bytes,new_kind);s->memory.write<1>(update_bytes+1,amount);auto r=compare(*s,o);
+            const auto expected_kind=old_kind==new_kind || signed_byte(amount)<=signed_byte(old_amount)?old_kind:new_kind;
+            const auto expected_amount=old_kind==new_kind?unsigned(std::min(100,signed_byte(old_amount)+signed_byte(amount)))&255:
+                signed_byte(amount)>signed_byte(old_amount)?amount:old_amount;
+            require(r.state->memory.read<1>(update_items+4)==expected_kind && r.state->memory.read<1>(update_items+5)==expected_amount,"Independent signed queue merge");
+            require(r.state->memory.read<1>(update_bytes)==expected_kind && r.state->memory.read<1>(update_bytes+1)==expected_amount,"Retained queue bytes copied to caller");
+        }
+    for(auto count:{0u,1u,3u})for(auto key:{1u,2u,3u,0xffffffffu})for(auto root:{attributes::queue_merge_entry,attributes::queue_lookup_entry}) {
+        auto s=queue_seed(root,count);s->memory.write<4>(staff,key);auto r=compare(*s,o);boundaries(*s,o);
+        if(root==attributes::queue_merge_entry && (count==0 || (key!=1 && (count<2 || key!=2)))) {
+            const auto tail=update_items+8*count;
+            require(r.state->memory.read<4>(tail)==key && r.state->memory.read<4>(tail+4)==0x0114c3d4,"Append preserves uninitialized original tail padding");
+        }
+        if(root==attributes::queue_lookup_entry) {
+            const auto expected=count && key==1?update_items:count>=2 && key==2?update_items+8:0;
+            require(r.state->r<4>(12)==expected,"Borrowed first-match pointer or null");
+            if(expected) {r.state->memory.write<1>(expected+5,93);require(r.state->memory.read<1>(expected+5)==93,"Borrowed item remains live");}
+        }
+    }
+    for(auto root:{attributes::queue_merge_entry,attributes::queue_lookup_entry}) {
+        auto s=queue_seed(root,0);s->memory.write<4>(controller+0x28,0);boundaries(*s,o);
+        auto negative=o;negative.own_negative=true;compare(*queue_seed(root),negative);
+        negative=o;negative.child_negative=true;compare(*queue_seed(root),negative);
+        for(auto argument:{12u,16u,20u,24u}) {auto z=queue_seed(root);z->wr<4>(argument,0);boundaries(*z,o);}
+        for(auto key:{update_items,update_queue+4,stack-20}) {auto z=queue_seed(root,3);z->wr<4>(16,key);boundaries(*z,o);}
+    }
+    {auto s=queue_seed(attributes::queue_merge_entry,0);s->memory.write<4>(controller+0x28,0);auto failure=o;failure.allocation_failure=true;auto r=compare(*s,failure);
+        require(r.state->pc==0x10186d18 && r.state->memory.read<4>(controller+0x28)==0,"Allocation failure stores null then faults at original queue read");boundaries(*s,failure);}
+    for(auto old_amount:{50u,100u,128u})for(auto amount:{1u,100u,255u})for(auto kind:{1u,7u}) {
+        auto s=queue_seed();s->memory.write<1>(update_items+5,old_amount);s->memory.write<1>(update_bytes+1,amount);s->memory.write<1>(update_bytes,kind);boundaries(*s,o);
+    }
+    for(auto first:{update_bytes,update_items,update_items+4,update_items+5,update_items+6,stack-96+0x3c,stack-20})
+        for(auto second:{first,first+1,update_bytes+1}) {
+            auto s=queue_seed();s->wr<4>(20,first);s->wr<4>(24,second);boundaries(*s,o);
+        }
+    auto mutating=o;mutating.queue_mutate=true;boundaries(*queue_seed(),mutating);
+}
+
 }
 namespace cm::aot {void actor_attributes_step_seen(State& s,std::uint32_t pc) {if(original_trace)original_trace->before_step(s,pc);}}
 int main(int argc,char** argv) {try {
+    if(argc==2 && std::string(argv[1])=="--queue") {
+        queue_checks();for(auto [start,end]:ranges)if(start==attributes::queue_merge_entry || start==attributes::queue_lookup_entry)
+            for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && !sites.contains(pc))std::cerr<<"Uncovered queue "<<hex_address(pc)<<std::endl;
+        require(sites.size()==110,"Complete queue source coverage");std::cout<<"Focused queue comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interruptions<<" negatives="<<negatives<<" sourceSites="<<sites.size()<<std::endl;return 0;
+    }
     if(argc==2 && std::string(argv[1])=="--sampling") {
         sampling_checks();for(auto pc=attributes::sampling_entry;pc<0x10186a18;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered sampling "<<hex_address(pc)<<std::endl;
         require(sites.size()==350,"Complete sampling source coverage");std::cout<<"Focused sampling comparisons="<<cases<<" sourceSites="<<sites.size()<<std::endl;return 0;
@@ -737,9 +816,10 @@ int main(int argc,char** argv) {try {
     cache_checks();
     lifecycle_checks();
     sampling_checks();
+    queue_checks();
     for(auto [start,end]:ranges)
-        for(auto pc=start;pc<end;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==3580,"All 3580 actor-attribute/condition original sites covered");
+        for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && !sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
+    require(sites.size()==3690,"All 3690 actor-attribute/condition original sites covered");
     std::cout<<"PASS: "<<cases<<" actor-attribute comparisons; "<<completed<<" completions, "<<interruptions
         <<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()
         <<" original sites; full state/effects/ABI/accounting; independent original references\n";

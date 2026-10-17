@@ -1,5 +1,9 @@
 # Condition range sampling reconstructed
 
+This report records the preceding 697-entry delivery. The subsequent
+[condition update queue](native-condition-update-queue.md) extends the component
+to seventeen entries and the accepted manifest to 699.
+
 The complete condition sampler at `0x101864a0..0x10186a18` now has a named C++23
 implementation. Its **350 original instructions** extend the accepted manifest
 from 696 to **697 unique entry replacements**, preserving all previous entries

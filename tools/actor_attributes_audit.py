@@ -19,6 +19,8 @@ CONTRACTS = (
     (0x1018b9f0, 0x1018bb4c, 87, 'be53226d6f82a3dc3b25728cb6b98bdb51e04709eedc10016ebbce41c306b414'),
     (0x10186ea0, 0x10186fb4, 69, 'b1ff37bf028514b2d2a29be693cd75a106d05454f282acf9f333a3eef9ea3d3b'),
     (0x101864a0, 0x10186a18, 350, 'c6fcc213738beaab174a2845f46e84be546ec0db41c68898fff3fb5a705fa470'),
+    (0x10186cd0, 0x10186e0c, 78, 'f37de68c8d508f7542fd369dbd7f2b94998fee537c8269db0ea805b0d37f8a57'),
+    (0x10186e10, 0x10186e94, 32, '0e43b4a707330fd55f6c2bbaae07146a5ea81be5f942215d1a3f99f8333bf8f2'),
 )
 FRAGMENTS = (
     (0x10235ea0, 0x10235, 88, '45665d75865ef78ca968b68d3ce392dac9ebad88484f795c921040bd8088e8ff'),
@@ -39,6 +41,8 @@ FRAGMENTS = (
     (0x1018b9f0, 0x1018b, 87, 'be53226d6f82a3dc3b25728cb6b98bdb51e04709eedc10016ebbce41c306b414'),
     (0x10186ea0, 0x10186, 69, 'b1ff37bf028514b2d2a29be693cd75a106d05454f282acf9f333a3eef9ea3d3b'),
     (0x101864a0, 0x10186, 350, 'c6fcc213738beaab174a2845f46e84be546ec0db41c68898fff3fb5a705fa470'),
+    (0x10186cd0, 0x10186, 78, 'f37de68c8d508f7542fd369dbd7f2b94998fee537c8269db0ea805b0d37f8a57'),
+    (0x10186e10, 0x10186, 32, '0e43b4a707330fd55f6c2bbaae07146a5ea81be5f942215d1a3f99f8333bf8f2'),
 )
 ACTOR_ATTRIBUTES_ENTRIES = tuple(start for start, _, _, _ in CONTRACTS)
 COST_TABLE = (0x108b6890, 0x108cd814, 28, '4471df4ee72c2421688d5d0aac3fdfe2f63ee36d31fa0e391a8850b95fb22e8d')
@@ -58,12 +62,15 @@ def require_actor_attributes_tables(read_word):
 def load_actor_attributes_tables(input_directory):
     program = json.loads((input_directory / 'program.json').read_text())
     segments = [(segment['address'], (input_directory / segment['file']).read_bytes())
-                for segment in program['segments'] if segment.get('file') and not segment.get('execute')]
+                for segment in program['segments'] if segment.get('file')]
     def read_word(address):
         for base, data in segments:
             if base <= address and address + 4 <= base + len(data):
                 return struct.unpack_from('>I', data, address - base)[0]
         raise ValueError(f'Missing actor-condition table word at {address:x}')
+    for address in (0x10186d24, 0x10186e4c):
+        if read_word(address) != 0x60000000:
+            raise ValueError('Changed skipped queue alignment word')
     return require_actor_attributes_tables(read_word)
 
 

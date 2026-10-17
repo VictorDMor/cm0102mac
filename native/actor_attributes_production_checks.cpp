@@ -157,6 +157,7 @@ auto complete_match(const State& seed,std::uint32_t match,Capture& capture){
         <<" recoveryCalls="<<next.calls[2]<<" periodicCalls="<<next.calls[3]<<" consumptionCalls="<<next.calls[4]
         <<" restorationCalls="<<next.calls[5]<<" recordScaleCalls="<<next.calls[6]<<" availabilityCalls="<<next.calls[7]<<" effectiveConditionCalls="<<next.calls[8]<<" recordRefreshCalls="<<next.calls[9]
         <<" capacityCalls="<<next.calls[10]<<" capacityAssignmentCalls="<<next.calls[11]<<" injuryRetirementCalls="<<next.calls[12]<<" recordResetCalls="<<next.calls[13]<<" conditionSamplingCalls="<<next.calls[14]
+        <<" queueMergeCalls="<<next.calls[15]<<" queueLookupCalls="<<next.calls[16]
         <<"; complete state, import ABI and per-tick accounting\n";
     return next.calls;
 }
@@ -182,7 +183,7 @@ void matrix(const State& input,unsigned index,bool profile,bool recursive=false)
         compare(input,index,Path::generated,Mode::modern,50000000,true,recursive);
         for(auto limit:{0u,1u,2u,3u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
         if(index==4)for(auto limit:{4u,14u,18u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
-        else if(index!=1 && index!=6)for(auto limit:{index==14?4u:12u,index==14?9u:13u,index==14?12u:index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
+        else if(index!=1 && index!=6)for(auto limit:{index>=14?4u:12u,index>=14?9u:13u,index>=14?12u:index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
     }
 }
 std::unique_ptr<State> daily_rollover(const State& parent) {
@@ -286,17 +287,51 @@ void sampling_production(const State& parent,const std::filesystem::path& snapsh
     std::cout<<"PASS: controlled original sampler BL with actual live TOC/random pool; prepared small, wide, zero and pool-wrap inputs; full state/effects/import ABI/accounting"<<std::endl;
 }
 
+void queue_production(const State& parent,const std::filesystem::path& snapshots) {
+    auto prepared=clone(parent);prepared->platform=parent.platform;
+    const auto manager=std::uint32_t(parent.r<4>(12)),staff=std::uint32_t(parent.r<4>(16));
+    const auto index=std::uint32_t(parent.memory.read<4>(staff)),sp=std::uint32_t(parent.r<4>(4));
+    const auto item=sp-0x100,kind=sp-0x110,amount=kind+1;
+    const auto queue=invoke_original(*prepared,0x10773520,{16});require(queue!=0,"Original update queue allocation");
+    invoke_original(*prepared,0x10738c00,{queue});prepared->memory.write<4>(manager+0x28,queue);
+    for(auto key:{index,index?0u:1u,index}) {
+        prepared->memory.write<4>(item,key);prepared->memory.write<4>(item+4,0x0132aabb);invoke_original(*prepared,0x10738d10,{queue,item,8});
+    }
+    const auto setup=[&](State& s,unsigned root,unsigned new_kind,unsigned new_amount) {
+        s.memory.write<1>(kind,new_kind);s.memory.write<1>(amount,new_amount);
+        s.wr<4>(12,manager);s.wr<4>(16,staff);s.wr<4>(20,kind);s.wr<4>(24,amount);s.pc=attributes::entries[root];
+    };
+    setup(*prepared,15,1,20);
+    auto merge=source_caller(*prepared,15,0x101f69e4);save_runtime_snapshot(*merge,snapshots/(hex_address(attributes::queue_merge_entry)+".snapshot"));matrix(*merge,15,false);actual_fault(*merge,15);
+    setup(*prepared,16,1,20);
+    auto lookup=source_caller(*prepared,16,0x10397d58);save_runtime_snapshot(*lookup,snapshots/(hex_address(attributes::queue_lookup_entry)+".snapshot"));matrix(*lookup,16,false);actual_fault(*lookup,16);
+    for(auto [new_kind,new_amount,name]:std::array<std::tuple<unsigned,unsigned,const char*>,5>{{
+        {1,100,"queue-cap.snapshot"},{7,10,"queue-keep.snapshot"},{7,99,"queue-replace.snapshot"},{1,128,"queue-negative.snapshot"},{1,20,"queue-allocation.snapshot"}}}) {
+        auto input=clone(*merge);input->platform=parent.platform;setup(*input,15,new_kind,new_amount);
+        if(std::string_view(name)=="queue-allocation.snapshot")input->memory.write<4>(manager+0x28,0);
+        save_runtime_snapshot(*input,snapshots/name);matrix(*input,15,false);
+    }
+    auto missing=clone(*lookup);missing->platform=parent.platform;missing->wr<4>(16,item);missing->memory.write<4>(item,0xffffffff);
+    save_runtime_snapshot(*missing,snapshots/"queue-missing.snapshot");matrix(*missing,16,false);
+    auto empty=clone(*lookup);empty->platform=parent.platform;empty->memory.write<4>(manager+0x28,0);empty->wr<4>(16,0);
+    save_runtime_snapshot(*empty,snapshots/"queue-null.snapshot");matrix(*empty,16,false);
+    std::cout<<"PASS: controlled actual-data update queue: original allocation/constructor/append/iteration; merge cap, signed amounts, retained/replaced kinds, first duplicate, missing and null lookup"<<std::endl;
+}
+
 }
 int main(int argc,char** argv){try {
+    const bool queue=argc==6 && std::string_view(argv[5])=="--queue";
     const bool sampling=argc==6 && std::string_view(argv[5])=="--sampling";
-    const bool focused=argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling);
+    const bool focused=argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling || queue);
     require(argc==4 || argc==5 || focused,"Expected original program, game, fresh backing and optional profile directory or focused lifecycle snapshot");
     const bool profile=argc==5;require(profile==match_pc_profile_enabled(),"Profile request/flag mismatch");set_match_turbo_enabled(false);
     const auto root=std::filesystem::path(argv[3])/std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     OwnedBacking cleanup{root};
     if(focused) {
         State seed;load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);load_match_snapshot(seed,argv[4]);
-        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(queue?"queue-focused-profile":sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        if(queue) {queue_production(seed,snapshots);require(cases==153 && returns==90 && budgets==63 && negatives==9,"Focused queue matrix incomplete");
+            std::cout<<"PASS: focused queue cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         if(sampling) {sampling_production(seed,snapshots);require(cases==85 && returns==50 && budgets==35 && negatives==5,"Focused sampler matrix incomplete");
             std::cout<<"PASS: focused sampler cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         lifecycle_production(seed,snapshots);require(cases==85 && returns==50 && budgets==35 && negatives==5,"Focused lifecycle matrix incomplete");
@@ -315,6 +350,10 @@ int main(int argc,char** argv){try {
         for(const auto* name:{"sampling-wide.snapshot","sampling-zero.snapshot","sampling-wrap.snapshot"}) {
             State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
             load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,14,true);
+        }
+        for(auto [index,name]:std::array<std::pair<unsigned,const char*>,7>{{{15,"queue-cap.snapshot"},{15,"queue-keep.snapshot"},{15,"queue-replace.snapshot"},{15,"queue-negative.snapshot"},{15,"queue-allocation.snapshot"},{16,"queue-missing.snapshot"},{16,"queue-null.snapshot"}}}) {
+            State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
+            load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,index,true);
         }
         State recursive;load_program(recursive,argv[1]);recursive.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
         load_match_snapshot(recursive,std::filesystem::path(argv[4])/"sampling-recursive.snapshot");matrix(recursive,14,true,true);
@@ -337,7 +376,8 @@ int main(int argc,char** argv){try {
         save_runtime_snapshot(*updated,snapshots/"daily-updated.snapshot");matrix(*updated,9,false);
         lifecycle_production(*capture.inputs[7],snapshots);
         sampling_production(*capture.inputs[7],snapshots);
-        require(cases==351 && negatives==21 && budgets==141,"Real actor-attribute matrix incomplete");
+        queue_production(*capture.inputs[7],snapshots);
+        require(cases==504 && negatives==30 && budgets==204,"Real actor-attribute matrix incomplete");
     }
     std::cout<<"PASS: production actor-attributes cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives
         <<"; real match caller direct/generated/CFM, original/profile controls, dedicated productive counts, complete state/effects/accounting/import boundaries\n";
