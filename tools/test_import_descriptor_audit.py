@@ -26,8 +26,8 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(IMPORT_DESCRIPTOR_ENTRIES[:-1], tuple(range(0x1077fad8, 0x10781320, 24)))
         self.assertEqual(IMPORT_DESCRIPTOR_ENTRIES[-1], 0x10781320)
         baseline = [{'entry': f'0x{a:x}', 'module': m} for a, m in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(baseline), 692)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 692)
+        self.assertEqual(len(baseline), 696)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 696)
         self.assertEqual(hashlib.sha256(json.dumps(baseline[:276], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'ba418ebeea27f3e546fe4f02aed4ddaa192bbcafa009d0c8552411a739b4ebb2')
         self.assertEqual(SEMANTIC_REPLACEMENTS[276:536], tuple((a, 'import_descriptor_adapter') for a in IMPORT_DESCRIPTOR_ENTRIES))

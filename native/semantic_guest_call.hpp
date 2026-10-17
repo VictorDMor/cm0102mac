@@ -124,6 +124,9 @@ public:
         step(); const auto value = std::rotl(r(source), int(rotate)) & mask; state.wr<4>(destination * 4, value);
         if (record) condition(std::bit_cast<std::int32_t>(value), 0, true);
     }
+    void insert_mask(unsigned destination, unsigned source, std::uint32_t mask, unsigned rotate) {
+        step(); state.wr<4>(destination * 4, (r(destination) & ~mask) | (std::rotl(r(source), int(rotate)) & mask));
+    }
     void flags(unsigned destination, unsigned source, std::uint32_t bits) {
         step(); state.wr<4>(destination * 4, r(source) | bits);
     }

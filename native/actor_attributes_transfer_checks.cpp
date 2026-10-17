@@ -1,4 +1,5 @@
 #include "actor_attributes_adapter.hpp"
+#include "actor_attributes_io_checks.hpp"
 #include "match_replay.hpp"
 #include <chrono>
 #include "code_fragment_adapter.hpp"
@@ -31,6 +32,7 @@ struct ContextCharges final:RegisterContextBoundaryObserver {
     }
 };
 struct Model final : CodeFragmentBoundaryObserver {
+    ActorAttributesIoPair* io=nullptr;bool modern_run=false;
     unsigned index, stage = 0, parent_after = 0, callback_after = 0, callbacks = 0, handlers = 0;
     Scenario scenario;
     Site site;
@@ -49,6 +51,7 @@ struct Model final : CodeFragmentBoundaryObserver {
     void import_enter(const State& s, const char* name) override { imports.push_back({false, name, s.registers, s.pc}); }
     void import_leave(const State& s, const char* name) override { imports.push_back({true, name, s.registers, s.pc}); }
     bool import_fixture(State& s, const char* name) override {
+        if(io && io->dispatch(s,name,modern_run))return true;
         if (s.pc != parent_import) return false;
         require(std::string_view(name) == "CarbonLib::Gestalt", "Explicit surviving match transfer parent import");
         if (stage == 2) {
@@ -76,7 +79,15 @@ struct Model final : CodeFragmentBoundaryObserver {
             0x10239664,0x102396c8,0x102396dc,0x1023971c,0x10239730,0x10239770,0x10239784};
         if(index>=5) {
             bool point=false;unsigned frame=0;
-            if(index==5) {
+            if(index>=10) {
+                if(index==10) {point=s.pc==(site==Site::before_draws?0x101877e4u:site==Site::after_maximum?0x10187868u:0x10187894u);frame=site==Site::before_draws?0:96;}
+                else if(index==11) {
+                    constexpr std::array<std::uint32_t,3> final_stores{0x10186ae4,0x10186b28,0x10186cb8};
+                    point=site==Site::before_draws?s.pc==0x10186a24:site==Site::after_maximum?s.pc==0x10186a70:
+                        std::find(final_stores.begin(),final_stores.end(),s.pc)!=final_stores.end();frame=site==Site::before_draws?0:112;
+                } else if(index==12) {point=s.pc==(site==Site::before_draws?0x1018b9f4u:site==Site::after_maximum?0x1018bb20u:0x1018bb34u);frame=site==Site::before_draws?0:128;}
+                else {point=s.pc==(site==Site::before_draws?0x10186ea4u:site==Site::after_maximum?0x10186f50u:0x10186f9cu);frame=site==Site::before_draws?0:80;}
+            } else             if(index==5) {
                 if(site==Site::before_draws)point=s.pc==0x10239794;
                 else if(site==Site::final_output) {point=s.pc==0x10239ce0;frame=112;}
                 else {
@@ -127,13 +138,14 @@ struct OwnedBacking {
 };
 unsigned cases = 0, fault_cases = 0;
 void compare(const State& seed, unsigned index, Scenario scenario, bool original_context, bool turbo, Site site, bool primary) {
-    auto a = clone(seed), b = clone(seed);
+    ActorAttributesIoPair io(seed,index);auto a = clone(seed), b = clone(seed);a->platform=io.original;b->platform=io.modern;
     for(auto* s:{a.get(),b.get()}){
         s->pc = parent_import; s->wr<4>(4128, caller); s->budget = s->executed + 1000000;
     }
     actor_attributes_diagnostics(*a).original = true; a->register_context_original = true;
     b->register_context_original = original_context;
     Model old(index, scenario, *a, site), modern(index, scenario, *b, site); Monitor x(*a, old,primary), y(*b, modern,primary);
+    old.io=modern.io=&io;modern.modern_run=true;
     a->code_fragment_observer = &old; b->code_fragment_observer = &modern;
     a->register_context_observer=&old.context;b->register_context_observer=&modern.context;
     const auto execute = [](State& s) {
@@ -142,7 +154,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
         catch (const std::exception& e) { return std::string(e.what()); }
         return std::string{};
     };
-    set_match_turbo_enabled(false); const auto ae = execute(*a);
+    set_match_turbo_enabled(false); const auto ae = execute(*a);a->platform.reset();io.between();
     set_match_turbo_enabled(turbo); const auto be = execute(*b); set_match_turbo_enabled(false);
     a->memory.observer=b->memory.observer=nullptr; a->memory.date_observer = b->memory.date_observer = nullptr; a->code_fragment_observer = b->code_fragment_observer = nullptr;
     a->register_context_observer=b->register_context_observer=nullptr;
@@ -151,6 +163,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
     require(ae == be && !ae.empty() == (scenario != Scenario::jump), label + " outcomes original=" + ae + " modern=" + be);
     if (scenario == Scenario::restore_fault) require(ae.starts_with("Unmapped data access at "), label + " restore fault prefix");
     if (scenario == Scenario::handler_fault) require(ae == "Fixture match resumed-handler fault", label + " handler fault");
+    io.compare();
     Image(*a).compare(*b, label); require(x.effects.bytes == y.effects.bytes && old.imports == modern.imports, label + " ordered effects and actual import boundaries");
     if (original_context) require(a->executed == b->executed, label + " accounting with original context dependency");
     require(a->executed - old.context.total == b->executed - modern.context.total, label + " accounting outside measured context dependency");
@@ -162,6 +175,10 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
         !d.terminations[index] && !a->register_context_unknown_transfers && !b->register_context_unknown_transfers, label + " dedicated productive transfer evidence");
     const auto helpers=index>=5 || index==2 || index==4 || site==Site::before_draws?0u:index==3?4u:site==Site::after_maximum?1u:4u;
     require(d.calls[1]==helpers && d.returns[1]==helpers && !d.transfers[1] && !d.faults[1],label+" completed maximum children");
+    if(index==13) {
+        const auto completed=site==Site::before_draws?0u:1u;
+        require(d.calls[12]==completed && d.returns[12]==completed && !d.faults[12] && !d.transfers[12],label+" completed nested injury retirement");
+    }
     if(index==3) {
         const bool interrupted_child=site==Site::before_draws;
         require(d.calls[0]==1 && d.returns[0]==unsigned(!interrupted_child) &&
@@ -178,9 +195,9 @@ int main(int argc, char** argv) {
         require(argc == 5 && !match_pc_profile_enabled(), "Original program/game/private root and original-caller capture directory with profiling disabled");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         OwnedBacking cleanup{root};
-        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u}) {
-            State seed; load_program(seed,argv[1]);
-            load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":hex_address(line::entries[index])+".snapshot"));
+        for (unsigned index : {0u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u}) {
+            State seed; load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root/"inputs",AudioMode::offline);
+            load_match_snapshot(seed,std::filesystem::path(argv[4])/(index==9?"daily-updated.snapshot":index==10?"capacity-percentage.snapshot":hex_address(line::entries[index])+".snapshot"));
             require(seed.pc==line::entries[index],"Transfer input must be a captured original caller scope");
             seed.memory.map(fixture, 0x1000); seed.memory.copy_in(fixture, std::vector<std::uint8_t>(0x1000, 0xa7));
             for(bool primary:{false,true})for(auto site:{Site::before_draws,Site::after_maximum,Site::final_output}) {
@@ -191,7 +208,7 @@ int main(int argc, char** argv) {
                 compare(seed,index,Scenario::jump,false,true,site,primary);
             }
         }
-        require(cases==322 && fault_cases==184,"Complete actor attribute/condition callback transfer matrix");
+        require(cases==490 && fault_cases==280,"Complete actor attribute/condition callback transfer matrix");
         std::cout << cases << " productive nonlocal actor-attributes comparisons; " << fault_cases
             << " restore/handler faults; actor-attribute scopes, integer/float saves and callback continuations abandoned\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

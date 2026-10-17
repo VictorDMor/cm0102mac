@@ -1,5 +1,9 @@
 # Daily condition record refresh reconstructed
 
+This report records the preceding 692-entry delivery. The subsequent
+[capacity and lifecycle block](native-condition-record-lifecycle.md) extends the
+component to fourteen entries and the accepted manifest to 696.
+
 The complete daily record refresh at `0x10187a40..0x10188488` now has a named
 C++23 implementation. Its **658 original instructions** extend the accepted
 manifest from 691 to **692 unique entry replacements**, preserving the previous

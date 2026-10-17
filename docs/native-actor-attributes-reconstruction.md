@@ -1,7 +1,7 @@
 # Actor action attributes and condition recovery
 
-The latest [daily record refresh](native-condition-record-refresh.md)
-extends this component to ten entries and the accepted manifest to 692.
+The latest [capacity and lifecycle delivery](native-condition-record-lifecycle.md)
+extends this component to fourteen entries and the accepted manifest to 696.
 
 This report records the preceding 685-entry delivery. The subsequent
 [periodic condition and consumption block](native-actor-condition-reconstruction.md)
