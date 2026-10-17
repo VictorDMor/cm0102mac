@@ -20,10 +20,10 @@ class ScopeTests(unittest.TestCase):
     def test_complete_block_and_exact_prior_manifest(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS),566)
         self.assertEqual(sum(row[2] for row in FRAGMENTS),566)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),732)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),732)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),734)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),734)
         self.assertEqual(INJURY_BOOTSTRAP_ENTRIES,(0x101840e0,0x10184310,0x101843d0,0x10187a20,0x10188490,0x101885f0))
-        self.assertEqual(SEMANTIC_REPLACEMENTS[726:],tuple((entry,'injury_bootstrap_adapter') for entry in INJURY_BOOTSTRAP_ENTRIES))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[726:732],tuple((entry,'injury_bootstrap_adapter') for entry in INJURY_BOOTSTRAP_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:726]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'e35be48e0c922894019094999afa4ef2a217f9b48e00038299d0e475a1933fc8')
 

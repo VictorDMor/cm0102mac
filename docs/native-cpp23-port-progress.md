@@ -9,28 +9,27 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [injury controller bootstrap block](native-injury-controller-bootstrap.md)
-adds six complete operations and **566 original instructions**, extending the
-accepted manifest from 726 to **732 entries** with its exact prior prefix intact.
-Release and affected-unit UBSAN each pass 18,053 component, 255 production and
-259 nonlocal comparisons, plus six actual pointer faults. All 566 source sites,
-45 Release profile controls, eighteen new/preceding reporting audits, 55
-historical manifest methods and four focused CTests pass.
+The [injury controller persistence block](native-injury-controller-persistence.md)
+adds two complete operations and **945 original instructions**, extending the
+accepted manifest from 732 to **734 entries** with its exact prior prefix intact.
+Release and affected-unit UBSAN each pass 34,717 component, 85 actual private-file
+and 112 nonlocal comparisons, plus two actual pointer faults. All 945 source
+sites, fifteen Release profile controls, eighteen new/preceding bootstrap audits,
+56 historical manifest methods and four focused CTests pass.
 
-Actual match setup naturally constructs and populates the injury controller.
-A paired 798-advance match preserves state, imports and per-tick accounting; all
-six roots have zero calls within that stepper. Prepared actual-data original BLs
-cover every root and nested constructor/population/registration owners. The
-original national-team schedule constructor supplies the missing career service
-for actual availability queries. Six primary inputs and nine variants are retained.
-This prepared coverage is distinct from unmodified management UI.
+A paired 798-advance match preserves state, imports and per-tick accounting; both
+roots have zero calls in that stepper. Prepared actual-data original BLs cover
+loading, writing, legacy date conversion, optional arrays and lists. Two primary
+inputs and three variants retain original-written private archive files, bounded
+actual rows and explicit file-version context. This prepared coverage is distinct
+from complete management UI and user career persistence.
 
 The strict-signed ARM64 game is installed with SHA-256
-`e890162cb2549a0eb797dec37218ecbdb715847cb5f54b21c08b1fec8c3b8799`.
+`1aad17166edc1f9229baa02118fc804ae5822971460d41aa2eb801157fb660ac`.
 Prepare Game rendering and normal exit pass. Debugger sources and the installed
 debugger are preserved. All 846 protected files, including both user career saves,
-and eighteen prior feature prompts retain their hashes. Six linked checks are
-cleaned; forty-eight task-owned snapshots receive verified transparent compression.
+and eighteen prior feature prompts retain their hashes. Seven linked checks are
+cleaned; eighteen task-owned snapshots receive verified transparent compression.
 Save/Load is **not retested**; no performance benchmark or gameplay change is
 claimed. The full goal stays active.
 

@@ -1,5 +1,9 @@
 # Injury controller construction and initial staff state
 
+This report records the preceding 732-entry delivery. The subsequent
+[injury controller persistence block](native-injury-controller-persistence.md)
+extends the manifest to 734 with a separate owner and preserves these six entries.
+
 Six complete original operations have named C++23 bodies under the separate
 `injury_bootstrap` owner. The accepted manifest extends **726 to 732 entries**,
 with its exact prior prefix intact.
