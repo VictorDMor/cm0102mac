@@ -67,6 +67,7 @@ target_sources(cm_aot PRIVATE
     actor_condition_lifecycle.cpp
     actor_condition_sampling.cpp
     actor_condition_queue.cpp
+    actor_condition_match.cpp
     actor_attributes_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp

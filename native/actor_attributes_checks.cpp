@@ -14,18 +14,18 @@ constexpr std::uint32_t condition_doubles=fixture+0x2000, condition_singles=fixt
 constexpr std::uint32_t controller=fixture+0x3000, records=fixture+0x3400, staff=fixture+0x3800;
 constexpr std::uint32_t injuries=fixture+0x3c00, record_limit=fixture+0x4000, controller_slot=fixture+0x4004;
 constexpr std::uint32_t diagnostic=fixture+0x4100, record_constants=fixture+0x4400, percentage_divisor=fixture+0x4480;
-constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,17> ranges{{
+constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,18> ranges{{
     {attributes::refresh_entry,0x102373a0},{attributes::maximum_entry,0x102373b4},{attributes::recovery_entry,0x10235e9c},
     {attributes::periodic_entry,0x1023958c},{attributes::consumption_entry,0x1023978c},{attributes::restoration_entry,0x10239d10},
     {attributes::record_scale_entry,0x10187680},{attributes::availability_entry,0x101877dc},{attributes::effective_condition_entry,0x10187a1c},{attributes::record_refresh_entry,0x10188488},
     {attributes::capacity_entry,0x101878d0},{attributes::capacity_assignment_entry,0x10186cd0},
-    {attributes::retirement_entry,0x1018bb4c},{attributes::reset_entry,0x10186fb4},{attributes::sampling_entry,0x10186a18},{attributes::queue_merge_entry,0x10186e0c},{attributes::queue_lookup_entry,0x10186e94}}};
+    {attributes::retirement_entry,0x1018bb4c},{attributes::reset_entry,0x10186fb4},{attributes::sampling_entry,0x10186a18},{attributes::queue_merge_entry,0x10186e0c},{attributes::queue_lookup_entry,0x10186e94},{attributes::post_match_entry,0x10187450}}};
 void modern_root(State& s,SemanticDependencyDispatch* dependencies,SemanticGuestObserver* observer) {
     using Function=void(*)(State&,SemanticDependencyDispatch*,SemanticGuestObserver*);
     constexpr Function methods[]{attributes::refresh,attributes::signed_maximum,attributes::recover_condition,
         attributes::refresh_condition,attributes::consume_condition,attributes::restore_condition,
         attributes::record_condition_scale,attributes::record_availability,attributes::effective_condition,attributes::refresh_condition_record,
-        attributes::record_capacity,attributes::assign_capacity,attributes::retire_injury,attributes::reset_condition_record,attributes::sample_condition_range,attributes::merge_condition_update,attributes::find_condition_update};
+        attributes::record_capacity,attributes::assign_capacity,attributes::retire_injury,attributes::reset_condition_record,attributes::sample_condition_range,attributes::merge_condition_update,attributes::find_condition_update,attributes::apply_match_condition};
     const auto found=std::find(attributes::entries.begin(),attributes::entries.end(),s.pc);
     require(found!=attributes::entries.end(),"Unknown actor component root");methods[found-attributes::entries.begin()](s,dependencies,observer);
 }
@@ -43,6 +43,7 @@ struct Options {
     std::uint32_t forced_condition_site=0;std::uint8_t forced_condition_bits=0;
     std::uint32_t assignment_wide=0,retire_eligible=1;std::vector<std::uint32_t> queue;
     bool lifecycle_chain=false,lifecycle_mutate=false,sampling_chain=false,recursive_negative=false;
+    std::uint32_t injury_result=2;bool post_match_chain=false,post_match_mutate=false;
     bool rich_queue=false,allocation_failure=false,queue_mutate=false;
     unsigned sampling_mask=0;std::array<std::uint32_t,3> sampling_bounds{};
     bool own_negative=false, child_negative=false, mutate=false;
@@ -93,7 +94,7 @@ struct Model final : SemanticDependencyDispatch {
     void call(State& s, std::uint32_t target, std::uint32_t continuation) override {
         Event e{target,continuation,s.registers,{}};
         if(target==0x12345678) throw std::runtime_error("Fixture actor-condition external destination");
-        if((target==attributes::sampling_entry && options.sampling_chain) || (target==attributes::retirement_entry && options.lifecycle_chain) || target==attributes::maximum_entry || target==attributes::record_scale_entry ||
+        if((target==attributes::capacity_assignment_entry && options.post_match_chain) || (target==attributes::sampling_entry && options.sampling_chain) || (target==attributes::retirement_entry && options.lifecycle_chain) || target==attributes::maximum_entry || target==attributes::record_scale_entry ||
             target==attributes::availability_entry || target==attributes::effective_condition_entry) {
             if(original) reference(s,continuation);
             else modern_root(s,this,&trace);
@@ -101,7 +102,7 @@ struct Model final : SemanticDependencyDispatch {
             require(target==0x1077b770 || target==0x10226520 || target==attributes::refresh_entry || target==0x10780fc0 || target==0x10289560 || target==0x10187a40 || target==0x10717dd0 ||
                 target==0x10739890 || target==0x10768810 || target==0x1077b720 || target==0x10769b60 || target==0x10715880 || target==0x1018b9f0 || target==0x102ae9c0 ||
                 target==0x102af650 || target==0x101929b0 || target==0x10718130 || target==0x101864a0 || target==0x10748ce0 || target==0x1014c2e0 || target==0x1018dcb0 ||
-                target==0x10738e00 || target==0x10738e60 || target==0x1018fdf0 || target==0x10773520 || target==0x10738c00 || target==0x10738d10,
+                target==0x10738e00 || target==0x10738e60 || target==0x1018fdf0 || target==0x10773520 || target==0x10738c00 || target==0x10738d10 || target==attributes::capacity_assignment_entry || target==0x10188930 || target==0x10188cc0,
                 "Unknown actor-attributes dependency");
             s.memory.write<4>(globals+0x100+std::uint32_t(calls.size())*4,target^std::uint32_t(s.r<4>(12)));
             if(options.mutate) {
@@ -126,6 +127,10 @@ struct Model final : SemanticDependencyDispatch {
                 const auto row=s.memory.read<4>(s.r<4>(12))+s.memory.read<4>(s.r<4>(16))*0x24;
                 s.memory.write<4>(row+0x10,0xffffffff);
             }
+            if(target==attributes::capacity_assignment_entry && options.post_match_mutate) {
+                s.memory.write<1>(fixture+0x6000+0x1b3,0);s.memory.write<1>(fixture+0x7800+0x40,0);
+            }
+            if(target==0x10188cc0) {s.memory.write<4>(fixture+0x4df8,s.r<4>(16));s.memory.write<4>(fixture+0x4dfc,s.r<4>(28));}
             if(target==0x101929b0) {
                 s.memory.write<4>(s.r<4>(16),0x000ac001);s.memory.write<4>(s.r<4>(16)+4,0x01000000);
                 s.memory.write<4>(s.r<4>(20),0x0014c001);s.memory.write<4>(s.r<4>(20)+4,0x02000000);
@@ -163,6 +168,7 @@ struct Model final : SemanticDependencyDispatch {
             for(unsigned n=0;n<=13;++n)s.wr<8>(0x4000+n*16,float_bits<8>(-11.0-n));
             s.wr<1>(2304,5); s.wr<1>(1027,1);
             s.wr<4>(12,target==0x1077b770 ? options.random : std::uint32_t(options.correction));
+            if(target==0x10188930)s.wr<4>(12,options.injury_result ^ (options.child_negative && !original?1u:0u));
             if(target==0x1014c2e0)s.wr<4>(12,options.retire_eligible);
             if(target==0x10738e00 || target==0x10773520)s.wr<4>(12,queue_result);
             if(target==0x10289560)s.wr<4>(12,options.role);
@@ -730,9 +736,79 @@ void queue_checks() {
     auto mutating=o;mutating.queue_mutate=true;boundaries(*queue_seed(),mutating);
 }
 
+constexpr std::uint32_t match_rows=fixture+0x6000,match_context=fixture+0x7800,match_limit_date=fixture+0x7880;
+std::unique_ptr<State> post_match_seed(unsigned team=0,unsigned position=0) {
+    auto s=lifecycle_seed(attributes::post_match_entry);s->memory.map(fixture+0x6000,0x2000);
+    s->wr<4>(12,controller);s->wr<4>(16,match_context);s->wr<4>(20,match_rows);s->wr<4>(18*4,0x12345678);
+    s->memory.write<4>(toc-0x7a9c,match_limit_date);s->memory.write<4>(match_limit_date,0x000c07d1);
+    s->memory.write<8>(record_constants+0x20,float_bits<8>(0.5));s->memory.write<2>(staff+0x5c,25);
+    for(unsigned side=0;side<2;++side)for(unsigned n=0;n<20;++n)s->memory.write<4>(match_rows+side*0x664+n*0x4c+0x194,0xffffffff);
+    const auto row=match_rows+team*0x664+position*0x4c;
+    s->memory.write<4>(row+0x194,1);s->memory.write<1>(row+0x1c4,255);s->memory.write<1>(row+0x1c6,255);s->memory.write<1>(row+0x1c8,255);
+    s->memory.write<2>(row+0x1ca,9000);s->memory.write<2>(match_rows+0x4e,90);s->memory.write<4>(match_context,0xfffffffe);
+    s->memory.write<4>(controller+0x28,update_queue);s->memory.write<4>(update_queue+4,update_items);s->memory.write<4>(update_queue+8,1);
+    s->memory.write<4>(update_queue+12,0);s->memory.write<4>(update_items,1);s->memory.write<4>(update_items+4,0x0163aabb);
+    s->memory.write<1>(row+0x1b3,1);s->memory.write<1>(condition_profile+15,20);return s;
+}
+void post_match_checks() {
+    Options o;o.rich_queue=true;
+    boundaries(*post_match_seed(),o);
+    for(unsigned team=0;team<2;++team)for(unsigned position=0;position<20;++position) {
+        auto s=post_match_seed(team,position);auto r=compare(*s,o);
+        const auto assignments=std::count_if(r.calls.begin(),r.calls.end(),[](const auto& e){return e.target==attributes::capacity_assignment_entry;});
+        require(assignments==1,"Exactly the selected team/position reaches capacity assignment");
+    }
+    for(auto position:{0u,11u})for(auto full:{0u,1u})for(auto end:{0u,70u,127u,128u,255u})for(auto earlier:{30u,255u})for(auto start:{20u,255u}) {
+        auto s=post_match_seed(0,position);const auto row=match_rows+position*0x4c;
+        s->memory.write<1>(match_rows+0x4c,full);s->memory.write<1>(row+0x1c8,end);s->memory.write<1>(row+0x1c4,earlier);s->memory.write<1>(row+0x1c6,start);
+        auto r=compare(*s,o);auto e=std::find_if(r.calls.begin(),r.calls.end(),[](const auto& e){return e.target==attributes::capacity_assignment_entry;});require(e!=r.calls.end(),"Minutes assignment call");
+        const auto sign=[](unsigned x){return x<128?int(x):int(x)-256;};
+        const auto stop=sign(end)>-1?sign(end):sign(earlier)>-1?sign(earlier):90;
+        const auto minutes=position<11?(full?90:stop):start==255?0:sign((unsigned(stop)-start) & 255);
+        const auto expected=(minutes+10)/2;
+        require(signed_value<4>(read_be<4>(e->before.data()+24))==expected,"Independent minutes plus depletion, halved for inactive context");
+        if(end==255 && earlier==255)boundaries(*s,o);
+    }
+    for(auto trait:{0u,25u,35u,127u,128u,255u})for(auto cursor:{stream,stream+124,stream+126}) {
+        auto s=post_match_seed();s->memory.write<1>(match_context+0x40,1);s->memory.write<2>(staff+0x5c,trait);s->memory.write<4>(globals+8,cursor);boundaries(*s,o);
+        for(auto salt:{0u,0x7fffffffu,0x80000000u,0xffffffffu}) {s->memory.write<4>(globals,salt);compare(*s,o);}
+    }
+    for(auto value:{0u,1u,32767u,32768u,65535u}) {auto s=post_match_seed();s->memory.write<2>(match_rows+0x1ca,value);boundaries(*s,o);}
+    for(auto current:std::array<std::uint32_t,7>{0x000107d0,0x000107d2,0x000b07d1,0x000c07d1,0x000d07d1,0x800007d1,0x7fff07d1}) {
+        auto s=post_match_seed();s->memory.write<4>(diagnostic+0x210,current);boundaries(*s,o);
+    }
+    for(auto amount:{0u,50u,51u,65u,66u,95u,96u,127u,128u,255u})for(auto kind:{1u,7u,255u})for(auto result:{0u,2u,127u,128u,255u}) {
+        auto s=post_match_seed();s->memory.write<1>(update_items+4,kind);s->memory.write<1>(update_items+5,amount);auto m=o;m.injury_result=result;auto r=compare(*s,m);
+        const auto select=std::find_if(r.calls.begin(),r.calls.end(),[](const auto& e){return e.target==0x10188930;});require(select!=r.calls.end(),"Queued injury selector");
+        auto snap=clone(*s);snap->registers=select->before;
+        const auto severity=amount>=128 || amount<=50?0x12345678u:amount>95?2u:amount>65?1u:0u;
+        require(snap->r<4>(20)==severity,"Independent strict signed severity thresholds and incoming-register residue");
+        if(kind==1 && result==2)boundaries(*s,m);
+    }
+    for(auto trait:{0u,14u,15u,127u,128u,255u}) {auto s=post_match_seed();s->memory.write<1>(update_items+4,7);s->memory.write<1>(condition_profile+15,trait);boundaries(*s,o);}
+    for(auto context:{0u,0xfffffffeu}) {auto s=post_match_seed();s->memory.write<4>(match_context,context);boundaries(*s,o);}
+    for(auto queue:{0u,update_queue})for(auto flag:{0u,1u,128u,255u}) {auto s=post_match_seed();s->memory.write<4>(controller+0x28,queue);s->memory.write<1>(match_rows+0x1b3,flag);boundaries(*s,o);}
+    {auto s=post_match_seed();s->memory.write<4>(update_queue+8,3);s->memory.write<4>(update_items+8,2);s->memory.write<4>(update_items+16,1);s->memory.write<4>(update_items+20,0x0132aabb);boundaries(*s,o);}
+    for(auto id:{0u,2u,0xffffffffu,0x80000000u}) {auto s=post_match_seed();s->memory.write<4>(match_rows+0x194,id);boundaries(*s,o);}
+    {auto s=post_match_seed();s->memory.write<4>(fixture+0x4880,0xffffff90);s->memory.write<1>(match_rows+0x1b3,0);boundaries(*s,o);}
+    for(auto arg:{12u,16u,20u}) {auto s=post_match_seed();s->wr<4>(arg,0);boundaries(*s,o);}
+    {auto s=post_match_seed();constexpr auto relocated=toc+0x10000;s->memory.map(relocated-0x8000,0x9000);s->memory.copy_in(relocated-0x8000,s->memory.copy_out(toc-0x8000,0x9000));s->wr<4>(8,relocated);boundaries(*s,o);}
+    {auto s=post_match_seed();auto m=o;m.post_match_mutate=true;boundaries(*s,m);}
+    {auto s=post_match_seed();auto m=o;m.post_match_chain=m.lifecycle_chain=true;boundaries(*s,m);}
+    for(bool own:{false,true}) {auto m=o;m.own_negative=own;m.child_negative=!own;compare(*post_match_seed(),m);}
+    for(auto alias:{stack-176+0x50,globals+8,stream}) {auto s=post_match_seed();s->memory.write<4>(toc-0x7a9c,alias);boundaries(*s,o);}
+    for(auto bits:std::array<std::uint64_t,8>{0,0x8000000000000000ULL,0x7ff0000000000000ULL,0xfff0000000000000ULL,0x7ff8123456789000ULL,0x7ff0123456789000ULL,1,0x3ff0000000000001ULL}) {
+        auto s=post_match_seed();s->memory.write<1>(match_context+0x40,1);s->memory.write<2>(staff+0x5c,127);s->memory.write<8>(record_constants+0x20,bits);boundaries(*s,o);s->wr<1>(1304,1);s->wr<1>(1308,1);compare(*s,o);
+    }
+}
+
 }
 namespace cm::aot {void actor_attributes_step_seen(State& s,std::uint32_t pc) {if(original_trace)original_trace->before_step(s,pc);}}
 int main(int argc,char** argv) {try {
+    if(argc==2 && std::string(argv[1])=="--post-match") {
+        post_match_checks();unsigned covered=0;for(auto pc=attributes::post_match_entry;pc<0x10187450;pc+=4) {covered+=sites.contains(pc);if(!sites.contains(pc))std::cerr<<"Uncovered post-match "<<hex_address(pc)<<std::endl;}
+        require(covered==292,"Complete post-match source coverage");std::cout<<"Focused post-match comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interruptions<<" negatives="<<negatives<<" sourceSites="<<covered<<std::endl;return 0;
+    }
     if(argc==2 && std::string(argv[1])=="--queue") {
         queue_checks();for(auto [start,end]:ranges)if(start==attributes::queue_merge_entry || start==attributes::queue_lookup_entry)
             for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && !sites.contains(pc))std::cerr<<"Uncovered queue "<<hex_address(pc)<<std::endl;
@@ -817,9 +893,10 @@ int main(int argc,char** argv) {try {
     lifecycle_checks();
     sampling_checks();
     queue_checks();
+    post_match_checks();
     for(auto [start,end]:ranges)
         for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && !sites.contains(pc))std::cerr<<"Uncovered "<<hex_address(pc)<<'\n';
-    require(sites.size()==3690,"All 3690 actor-attribute/condition original sites covered");
+    require(sites.size()==3982,"All 3982 actor-attribute/condition original sites covered");
     std::cout<<"PASS: "<<cases<<" actor-attribute comparisons; "<<completed<<" completions, "<<interruptions
         <<" interruptions, "<<negatives<<" own/child negatives, "<<structural<<" paired structural cases; all "<<sites.size()
         <<" original sites; full state/effects/ABI/accounting; independent original references\n";

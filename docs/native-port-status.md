@@ -14,24 +14,23 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [condition update queue](native-condition-update-queue.md) adds two complete
-C++23 operations covering **110 original instructions**, bringing the accepted
-manifest from 697 to **699 entries** with the exact prior prefix intact. Seventeen
-attribute/condition entries cover **3,690 original instructions**. Release and
-affected-unit UBSAN each pass 377,174 component comparisons, 504 production
-comparisons plus fifteen separate null faults, and 630 nonlocal comparisons.
-Ninety original-profile controls, nine scope audits and 50 historical manifest-only
-methods pass. All four focused CTests pass.
+The [post-match condition application](native-post-match-condition.md) adds one
+complete **292-instruction** C++23 operation, bringing the accepted manifest from
+699 to **700 entries** with its exact prior prefix intact. Eighteen attribute/
+condition entries cover **3,982 original instructions**. Release and affected-unit
+UBSAN each pass 461,968 component, 606 production and 700 nonlocal comparisons,
+plus sixteen separate null faults. The 108 original-profile controls, nine scope
+audits, 50 historical manifest-only methods and all four focused CTests pass.
 
 A paired 798-advance match preserves full state, imports and per-tick accounting.
-Queue merge/insert has nine natural calls and returns in this match; lookup has
-zero. Additional production proof uses controlled original BLs with actual
-controller/staff state and the original queue helpers, including allocation,
-merge and borrowed lookup variants.
+The post-match root has zero natural calls in that stepper. Controlled original
+BLs use the actual full-time world and original statistics builder, including a
+prepared queued replacement injury that must alter a native history file.
+Nested transfers abandon both the parent and actual reconstructed child scopes.
 The signed ARM64 game is installed with SHA-256
-`a1ca827870a6a896986db5ac00d5b249d2747b730715ed682674905691327624`.
-Prepare Game rendering and normal exit pass. All 845 protected files and
-the installed Match Debugger are preserved; the six reviewed linked checks are
+`44380ecd8bdce0eabe8e7c808096535761a964ac4fffcb4062ce465efc6e64a6`.
+Prepare Game rendering and normal exit pass. All 845 protected files and the
+installed Match Debugger are preserved; the six reviewed linked checks are
 cleaned after acceptance. Save/Load is **not retested**. Accurate conversion
 remains the priority; no speedup is claimed and the full goal stays active.
 

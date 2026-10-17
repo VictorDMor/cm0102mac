@@ -1,5 +1,9 @@
 # Native condition update queue
 
+This report records the preceding 699-entry delivery. The subsequent
+[post-match condition application](native-post-match-condition.md) extends the
+component to eighteen entries and the accepted manifest to 700.
+
 This block reconstructs the complete queue merge/insert (`0x10186cd0`) and
 borrowed lookup (`0x10186e10`) functions in C++23. The queue allocator,
 constructor, append and iterator remain explicit original dependencies. Post-match

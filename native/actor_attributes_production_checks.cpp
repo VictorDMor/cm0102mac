@@ -35,7 +35,7 @@ struct Clock:CodeFragmentBoundaryObserver {
 };
 struct Capture:ActorAttributesBoundaryObserver {
     std::array<std::unique_ptr<State>,attributes::entries.size()> inputs;
-    std::unique_ptr<State> periodic_candidate;
+    std::unique_ptr<State> periodic_candidate,full_time;
     bool periodic_updated=false,daily_updated=false,observe_daily_writes=false;
     std::unique_ptr<State> daily_candidate,daily_input;
     void before_step(State&,std::uint32_t pc)override { if(pc==0x10239574)periodic_updated=true;if(pc==0x10188454)daily_updated=true; }
@@ -157,8 +157,9 @@ auto complete_match(const State& seed,std::uint32_t match,Capture& capture){
         <<" recoveryCalls="<<next.calls[2]<<" periodicCalls="<<next.calls[3]<<" consumptionCalls="<<next.calls[4]
         <<" restorationCalls="<<next.calls[5]<<" recordScaleCalls="<<next.calls[6]<<" availabilityCalls="<<next.calls[7]<<" effectiveConditionCalls="<<next.calls[8]<<" recordRefreshCalls="<<next.calls[9]
         <<" capacityCalls="<<next.calls[10]<<" capacityAssignmentCalls="<<next.calls[11]<<" injuryRetirementCalls="<<next.calls[12]<<" recordResetCalls="<<next.calls[13]<<" conditionSamplingCalls="<<next.calls[14]
-        <<" queueMergeCalls="<<next.calls[15]<<" queueLookupCalls="<<next.calls[16]
+        <<" queueMergeCalls="<<next.calls[15]<<" queueLookupCalls="<<next.calls[16]<<" postMatchCalls="<<next.calls[17]
         <<"; complete state, import ABI and per-tick accounting\n";
+    capture.full_time=clone(*modern);capture.full_time->platform=seed.platform;
     return next.calls;
 }
 void actual_fault(const State& input,unsigned index) {
@@ -183,7 +184,7 @@ void matrix(const State& input,unsigned index,bool profile,bool recursive=false)
         compare(input,index,Path::generated,Mode::modern,50000000,true,recursive);
         for(auto limit:{0u,1u,2u,3u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
         if(index==4)for(auto limit:{4u,14u,18u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
-        else if(index!=1 && index!=6)for(auto limit:{index>=14?4u:12u,index>=14?9u:13u,index>=14?12u:index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
+        else if(index!=1 && index!=6)for(auto limit:{index==17?40u:index>=14?4u:12u,index==17?150u:index>=14?9u:13u,index==17?500u:index>=14?12u:index==2?36u:index==7?30u:index>=8?40u:100u})compare(input,index,Path::generated,Mode::modern,limit,false,recursive);
     }
 }
 std::unique_ptr<State> daily_rollover(const State& parent) {
@@ -220,7 +221,7 @@ std::uint32_t invoke_original(State& s,std::uint32_t entry,std::initializer_list
     }
     actor_attributes_diagnostics(s).original=false;return std::uint32_t(s.r<4>(12));
 }
-std::unique_ptr<State> source_caller(const State& input,unsigned index,std::uint32_t callsite) {
+std::unique_ptr<State> source_caller(const State& input,unsigned index,std::uint32_t callsite,bool require_history=false) {
     ActorAttributesIoPair io(input,index);auto old=clone(input),modern=clone(input);old->platform=io.original;modern->platform=io.modern;
     for(auto* s:{old.get(),modern.get()}) {s->pc=callsite;s->budget=s->executed+50000000;}
     actor_attributes_diagnostics(*old).original=true;Capture capture;actor_attributes_diagnostics(*modern).observer=&capture;
@@ -234,7 +235,7 @@ std::unique_ptr<State> source_caller(const State& input,unsigned index,std::uint
     require(a.bytes==b.bytes && old->executed==modern->executed && aclock.events==bclock.events,label+" ordered effects/accounting/import ABI");
     const auto& diag=actor_attributes_diagnostics(*modern);
     require(capture.inputs[index] && diag.calls[index]==1 && diag.returns[index]==1 && !diag.original_calls[index] && !diag.faults[index] && !diag.dispatch_escapes,label+" productive C++ root");
-    io.compare();if(index==12 || index==13)require(io.expected!=io.baseline,label+" must produce an actual history file change");
+    io.compare();if(index==12 || index==13 || require_history)require(io.expected!=io.baseline,label+" must produce an actual history file change");
     capture.inputs[index]->platform=input.platform;
     std::cout<<"PASS: "<<label<<" using captured live-world state and original remaining callees"<<std::endl;
     return std::move(capture.inputs[index]);
@@ -318,18 +319,64 @@ void queue_production(const State& parent,const std::filesystem::path& snapshots
     std::cout<<"PASS: controlled actual-data update queue: original allocation/constructor/append/iteration; merge cap, signed amounts, retained/replaced kinds, first duplicate, missing and null lookup"<<std::endl;
 }
 
+void post_match_production(const State& parent,std::uint32_t match,const std::filesystem::path& snapshots) {
+    auto prepared=clone(parent);prepared->platform=parent.platform;
+    const auto toc=std::uint32_t(parent.r<4>(8)),manager=std::uint32_t(parent.memory.read<4>(parent.memory.read<4>(toc-0x7ba0)));
+    const auto fixture=std::uint32_t(parent.memory.read<4>(match+0x3118));
+    const auto stats=invoke_original(*prepared,0x10773520,{0x1000});require(stats!=0,"Original match statistics allocation");
+    const auto service=std::uint32_t(prepared->memory.read<4>(prepared->memory.read<4>(toc-0x7b4c)));
+    invoke_original(*prepared,0x1029f920,{service,match,stats,0});
+    const auto setup=[&](State& s,std::uint32_t context) {s.wr<4>(12,manager);s.wr<4>(16,context);s.wr<4>(20,stats);s.pc=attributes::post_match_entry;};
+    setup(*prepared,fixture);
+    auto base=source_caller(*prepared,17,0x101cdc60);save_runtime_snapshot(*base,snapshots/(hex_address(attributes::post_match_entry)+".snapshot"));matrix(*base,17,false);actual_fault(*base,17);
+    const auto first=std::uint32_t(base->memory.read<4>(stats+0x194));
+    const auto staff_base=std::uint32_t(base->memory.read<4>(base->memory.read<4>(toc-0x7be0))),staff=staff_base+first*0x70;
+    require(first!=0xffffffff && base->memory.read<4>(staff)==first,"Original full-time statistics contain the first actual player");
+    auto injury=clone(*base);injury->platform=parent.platform;
+    const auto caller_stack=std::uint32_t(injury->r<4>(4)),record=std::uint32_t(injury->memory.read<4>(manager))+first*0x24;
+    injury->wr<4>(4,caller_stack-0x80);injury->memory.write<4>(caller_stack-0x80+0x38,0);
+    invoke_original(*injury,0x10188cc0,{manager,0,0,staff,0,0,0xffffffff,0});injury->wr<4>(4,caller_stack);
+    require(signed_value<4>(injury->memory.read<4>(record+0x10))>=0,"Original post-match setup creates an existing injury to retire");
+    unsigned request_kind=0;bool eligible=false;
+    for(unsigned kind=0;kind<8;++kind) {
+        auto probe=clone(*injury);probe->platform=parent.platform;
+        const auto result=invoke_original(*probe,0x10188930,{manager,kind,2,staff});
+        if(signed_value<1>(result)>=0) {request_kind=kind;eligible=true;break;}
+    }
+    require(eligible,"Original injury tables contain an eligible severity-two request");
+    std::cout<<"Post-match original-table request kind="<<request_kind<<" severity=2; replacing an originally registered injury"<<std::endl;
+    const auto queue=invoke_original(*injury,0x10773520,{16});require(queue!=0,"Original post-match request queue allocation");invoke_original(*injury,0x10738c00,{queue});
+    injury->memory.write<4>(manager+0x28,queue);const auto item=stats+0xf00;injury->memory.write<4>(item,first);injury->memory.write<4>(item+4,(request_kind<<24)|0x00630000);invoke_original(*injury,0x10738d10,{queue,item,8});
+    injury->memory.write<1>(stats+0x1b3,1);setup(*injury,fixture);
+    auto applied=source_caller(*injury,17,0x10371cd8,true);save_runtime_snapshot(*applied,snapshots/"post-match-injury.snapshot");matrix(*applied,17,false);
+    for(auto name:{"post-match-isolated.snapshot","post-match-active-high.snapshot","post-match-active-low.snapshot","post-match-no-queue.snapshot"}) {
+        auto input=clone(*applied);input->platform=parent.platform;
+        if(std::string_view(name)=="post-match-isolated.snapshot")input->memory.write<4>(fixture,0xfffffffe);
+        else if(std::string_view(name)=="post-match-no-queue.snapshot")input->memory.write<4>(manager+0x28,0);
+        else {
+            input->memory.write<1>(fixture+0x40,1);
+            input->memory.write<2>(staff+0x5c,std::string_view(name)=="post-match-active-high.snapshot"?127:0);
+        }
+        save_runtime_snapshot(*input,snapshots/name);matrix(*input,17,false);
+    }
+    std::cout<<"PASS: controlled original post-match BLs with actual full-time match, original statistics builder, capacity assignment, queued injury selection/retirement/registration and native history IO"<<std::endl;
+}
+
 }
 int main(int argc,char** argv){try {
+    const bool post_match=argc==7 && std::string_view(argv[5])=="--post-match";
     const bool queue=argc==6 && std::string_view(argv[5])=="--queue";
     const bool sampling=argc==6 && std::string_view(argv[5])=="--sampling";
-    const bool focused=argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling || queue);
+    const bool focused=(argc==6 && (std::string_view(argv[5])=="--lifecycle" || sampling || queue)) || post_match;
     require(argc==4 || argc==5 || focused,"Expected original program, game, fresh backing and optional profile directory or focused lifecycle snapshot");
     const bool profile=argc==5;require(profile==match_pc_profile_enabled(),"Profile request/flag mismatch");set_match_turbo_enabled(false);
     const auto root=std::filesystem::path(argv[3])/std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     OwnedBacking cleanup{root};
     if(focused) {
         State seed;load_program(seed,argv[1]);seed.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);load_match_snapshot(seed,argv[4]);
-        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(queue?"queue-focused-profile":sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        const auto snapshots=std::filesystem::path(argv[3]).parent_path()/(post_match?"post-match-focused-profile":queue?"queue-focused-profile":sampling?"sampling-focused-profile":"lifecycle-focused-profile");std::filesystem::create_directories(snapshots);
+        if(post_match) {post_match_production(seed,std::uint32_t(std::stoul(argv[6],nullptr,0)),snapshots);require(cases==102 && returns==60 && budgets==42 && negatives==6,"Focused post-match matrix incomplete");
+            std::cout<<"PASS: focused post-match cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         if(queue) {queue_production(seed,snapshots);require(cases==153 && returns==90 && budgets==63 && negatives==9,"Focused queue matrix incomplete");
             std::cout<<"PASS: focused queue cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<std::endl;return 0;}
         if(sampling) {sampling_production(seed,snapshots);require(cases==85 && returns==50 && budgets==35 && negatives==5,"Focused sampler matrix incomplete");
@@ -355,6 +402,10 @@ int main(int argc,char** argv){try {
             State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
             load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,index,true);
         }
+        for(const auto* name:{"post-match-injury.snapshot","post-match-isolated.snapshot","post-match-active-high.snapshot","post-match-active-low.snapshot","post-match-no-queue.snapshot"}) {
+            State input;load_program(input,argv[1]);input.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
+            load_match_snapshot(input,std::filesystem::path(argv[4])/name);matrix(input,17,true);
+        }
         State recursive;load_program(recursive,argv[1]);recursive.platform=std::make_shared<NativePlatform>(argv[2],root,AudioMode::offline);
         load_match_snapshot(recursive,std::filesystem::path(argv[4])/"sampling-recursive.snapshot");matrix(recursive,14,true,true);
     } else {
@@ -377,7 +428,10 @@ int main(int argc,char** argv){try {
         lifecycle_production(*capture.inputs[7],snapshots);
         sampling_production(*capture.inputs[7],snapshots);
         queue_production(*capture.inputs[7],snapshots);
-        require(cases==504 && negatives==30 && budgets==204,"Real actor-attribute matrix incomplete");
+        require(bool(capture.full_time),"Complete-match world capture");
+        save_runtime_snapshot(*capture.full_time,snapshots/"post-match-world.snapshot");std::ofstream(snapshots/"post-match-world-match.txt")<<hex_address(game.match);
+        post_match_production(*capture.full_time,game.match,snapshots);
+        require(cases==606 && negatives==36 && budgets==246,"Real actor-attribute matrix incomplete");
     }
     std::cout<<"PASS: production actor-attributes cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives
         <<"; real match caller direct/generated/CFM, original/profile controls, dedicated productive counts, complete state/effects/accounting/import boundaries\n";
