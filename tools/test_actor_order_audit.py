@@ -21,8 +21,8 @@ class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS),202)
         self.assertEqual(sum(row[2] for row in FRAGMENTS),202)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),714)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),714)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),722)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),722)
         self.assertEqual(SEMANTIC_REPLACEMENTS[663:668],tuple((entry,'actor_order_adapter') for entry in ACTOR_ORDER_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:663]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

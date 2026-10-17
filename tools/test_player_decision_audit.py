@@ -19,7 +19,7 @@ class ScopeTests(unittest.TestCase):
     def test_complete_original_scope_and_preserved_642_entry_prefix(self):
         self.assertEqual(sum(count for _, count, _ in FRAGMENTS), COUNT)
         self.assertEqual((ENTRY, END, COUNT), (0x102836a0, 0x10285748, 2090))
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 714)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 722)
         self.assertEqual(SEMANTIC_REPLACEMENTS[642:643], ((ENTRY, 'player_decision_adapter'),))
         import hashlib
         prior = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS[:642]]

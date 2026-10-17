@@ -142,6 +142,8 @@ from injury_progression_audit import (require_injury_progression_contract, requi
     require_injury_progression_hooks, injury_progression_hook, INJURY_PROGRESSION_ENTRIES)
 from injury_club_events_audit import (require_injury_club_events_contract, require_injury_club_events_index,
     require_injury_club_events_hooks, injury_club_events_hook, INJURY_CLUB_EVENTS_ENTRIES)
+from injury_readouts_audit import (require_injury_readouts_contract, require_injury_readouts_index,
+    require_injury_readouts_hooks, injury_readouts_hook, INJURY_READOUTS_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -198,7 +200,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "actor_attributes_adapter") for entry in ACTOR_ATTRIBUTES_ENTRIES) +
     tuple((entry, "injury_record_adapter") for entry in INJURY_RECORD_ENTRIES) +
     tuple((entry, "injury_progression_adapter") for entry in INJURY_PROGRESSION_ENTRIES) +
-    tuple((entry, "injury_club_events_adapter") for entry in INJURY_CLUB_EVENTS_ENTRIES))
+    tuple((entry, "injury_club_events_adapter") for entry in INJURY_CLUB_EVENTS_ENTRIES) +
+    tuple((entry, "injury_readouts_adapter") for entry in INJURY_READOUTS_ENTRIES))
 
 
 def integer(value):
@@ -430,7 +433,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -486,6 +489,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_injury_progression_contract(page, instructions, selected)
     if injury_club_events_hooks:
         require_injury_club_events_contract(page, instructions, selected)
+    if injury_readouts_hooks:
+        require_injury_readouts_contract(page, instructions, selected)
     if team_spatial_hooks:
         require_team_spatial_contract(page, instructions, selected)
     if pitch_distance_hooks:
@@ -577,6 +582,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "injury_progression_adapter.hpp"')
     if injury_club_events_hooks and page_addresses & set(INJURY_CLUB_EVENTS_ENTRIES):
         code.insert(1, '#include "injury_club_events_adapter.hpp"')
+    if injury_readouts_hooks and page_addresses & set(INJURY_READOUTS_ENTRIES):
+        code.insert(1, '#include "injury_readouts_adapter.hpp"')
     if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
         code.insert(1, '#include "team_spatial_adapter.hpp"')
     if pitch_distance_hooks and page_addresses & set(PITCH_DISTANCE_ENTRIES):
@@ -767,6 +774,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(injury_progression_hook(a))
         if injury_club_events_hooks and a in INJURY_CLUB_EVENTS_ENTRIES:
             code.append(injury_club_events_hook(a))
+        if injury_readouts_hooks and a in INJURY_READOUTS_ENTRIES:
+            code.append(injury_readouts_hook(a))
         if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
             code.append(team_spatial_hook(a))
         if pitch_distance_hooks and a in PITCH_DISTANCE_ENTRIES:
@@ -995,6 +1004,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_injury_progression_hooks(page, instructions, result)
     if injury_club_events_hooks:
         require_injury_club_events_hooks(page, instructions, result)
+    if injury_readouts_hooks:
+        require_injury_readouts_hooks(page, instructions, result)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
@@ -1105,6 +1116,7 @@ def main():
         require_injury_record_index(db, None if args.all_analyzed else selected)
         require_injury_progression_index(db, None if args.all_analyzed else selected)
         require_injury_club_events_index(db, None if args.all_analyzed else selected)
+        require_injury_readouts_index(db, None if args.all_analyzed else selected)
         require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)
@@ -1123,6 +1135,8 @@ def main():
             load_injury_progression_tables(args.export)
             from injury_club_events_audit import load_injury_club_events_tables
             load_injury_club_events_tables(args.export)
+            from injury_readouts_audit import load_injury_readouts_tables
+            load_injury_readouts_tables(args.export)
             from player_movement_audit import load_player_movement_tables
             load_player_movement_tables(args.export)
             from ball_action_audit import load_ball_action_tables

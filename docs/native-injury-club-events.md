@@ -1,5 +1,9 @@
 # Club injury event queue
 
+This report records the preceding 714-entry delivery. The subsequent
+[injury status and text readouts](native-injury-status-readouts.md) extend the
+manifest to 722 with a separate owner and preserve these three entries.
+
 Three complete original operations now have named C++23 bodies under a separate
 `injury_club_events` owner. The accepted manifest extends from **711 to 714 entries**,
 retaining its exact prior prefix and all prior semantic owners.

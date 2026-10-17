@@ -14,29 +14,28 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [club injury event queue](native-injury-club-events.md) adds three complete
-operations and **448 original instructions**, extending the accepted manifest
-from 711 to **714 entries** with its exact prior prefix intact. A separate owner
-preserves the preceding injury-registration and daily-progression components.
-Release and affected-unit UBSAN each pass 54,873 component, 238 production and
-154 nonlocal comparisons, plus three actual pointer faults. All 448 source sites,
-42 Release profile controls, 27 new/preceding injury audits, 52 historical manifest
+The [injury status and text readouts](native-injury-status-readouts.md) add eight
+complete operations and **1,656 original instructions**, extending the accepted
+manifest from 714 to **722 entries** with its exact prior prefix intact. Release
+and affected-unit UBSAN each pass 29,121 component, 323 production and 308
+nonlocal comparisons, plus eight actual pointer faults. All 1,656 source sites,
+57 Release profile controls, 37 new/preceding injury audits, 53 historical manifest
 methods and four focused CTests pass.
 
-A paired 798-advance match preserves state, imports and per-tick accounting; the
-three new roots have zero natural calls in that stepper. Prepared actual-data
-original BLs traverse insertion and processing, reach six actual qsort comparator
-callbacks and invoke the existing reconstructed injury-registration owner.
-Fourteen captured/prepared inputs cover queue storage, timing, context, roster
-guards and date order. This is prepared runtime coverage, distinct from unmodified
-management-UI coverage. Debugger sources and the installed debugger are preserved.
+A paired 798-advance match preserves state, imports and per-tick accounting,
+including 13,777 natural calls to the risk multiplier. The other seven roots
+receive prepared actual-data original-BL coverage, including nested current/type
+text, a completed history record, a new active injury and deferred risk. Nineteen
+captured/prepared inputs retain actual history backing. This is prepared runtime
+coverage, distinct from unmodified management-UI coverage.
 
 The strict-signed ARM64 game is installed with SHA-256
-`39b59e694b81691c7b44c1861c6feaa63e3be6cfabb23249a3a1f4ac5ded6c24`.
-Prepare Game rendering and normal exit pass. All 845 protected files are unchanged.
-Six linked checks are cleaned and task-owned snapshots receive verified transparent
-compression. Save/Load is **not retested**; no performance benchmark is claimed.
-The full goal stays active.
+`a8f5f657e5cb1633408dd1d84d9750d72bf9e8a42ae8def6b38b2c2490c576cf`.
+Prepare Game rendering and normal exit pass. Debugger sources and the installed
+debugger are preserved. All 845 protected files and eighteen preexisting
+feature prompts are unchanged. Six linked checks are cleaned; sixty task-owned
+snapshots receive verified transparent compression. Save/Load is **not retested**;
+no performance benchmark or gameplay change is claimed. The full goal stays active.
 
 The [spatial-role query optimization](native-spatial-role-performance.md) is
 installed in the game. Two 600-tick scenarios show median paired runtime

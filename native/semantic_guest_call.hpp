@@ -324,6 +324,9 @@ public:
         state.wr<4>(destination * 4, value);
         if (record) condition(std::bit_cast<std::int32_t>(value), 0, true);
     }
+    void complement_union(unsigned destination, unsigned first, unsigned second) {
+        step(); state.wr<4>(destination * 4, ~(r(first) | r(second)));
+    }
     void compare_less_or_equal_bit() {
         step(); const auto bits = state.r<1>(2304);
         state.wr<1>(2304, (bits & ~2u) | ((bits & 10u) ? 2u : 0u));
