@@ -7,9 +7,9 @@ indexed instructions at `0x100031b0..0x10009ee8`. No indexed external edge enter
 the interior of any operation. Eleven non-indexed padding no-ops are identified.
 The following CASH string helper remains outside this source block.
 
-Nineteen operations now have prepared C++23 implementations and passing direct
-comparisons. They cover 5,433 indexed instructions. **Production integration is
-pending** until the remaining two operations complete the coherent AWOL batch.
+All 21 operations now have prepared C++23 implementations and passing direct
+comparisons, covering all 6,958 indexed instructions. **Production integration,
+actual runtime and installation acceptance remain pending.**
 The accepted manifest and installed game remain at 735 entries. Every prepared
 entry was checked to have no accepted semantic owner before implementation;
 existing actor/condition implementations remain unchanged.
@@ -37,6 +37,8 @@ existing actor/condition implementations remain unchanged.
 | `0x100072e0` | `0x10007a4c` | 475 | Describe primary absences in brief and detailed views |
 | `0x10008b60` | `0x1000909c` | 335 | Describe training absences and discipline in both views |
 | `0x10009b60` | `0x10009ee8` | 226 | Describe fitness concerns and related player/club links |
+| `0x10007a50` | `0x10008770` | 840 | Process training absence, conversion, fitness effects and discipline |
+| `0x100090a0` | `0x10009b54` | 685 | Register fitness concerns, choose a reporter and apply discipline |
 
 ## Preserved contracts
 
@@ -74,6 +76,11 @@ pending records that fail their recovery check keep scanning. A null iterator
 result exits the entire controller, rather than just its current list. Signed
 counts, cached pointers, live count reloads and missing-profile faults remain
 unchanged.
+
+Daily linked comparisons now execute the complete training-event child as well.
+After removing an expired secondary item, that original child can set the flag
+again and append a replacement event. Independent expectations retain this
+composition rather than assuming the post-removal count/flag remain final.
 
 Return-from-leave and unapproved-return paths preserve their distinct gates and
 trait effects. In particular, two unapproved-return decrements require a
@@ -118,12 +125,22 @@ fixture emission advances by each table's page-rounded size, placing the FP
 block after the complete text without overlap. An independent emitted-payload
 audit reconstructs the initializer's writes and checks both original hashes.
 
+The final two event bodies retain their 176/384-byte frames, constructor-before-
+validation order, signed staff checks and live lookups. Training absence keeps
+both mood/contract-flag conversion paths, sixteen-byte event append, byte counter
+wrap and signed fitness reduction. Fitness concerns retain the twenty-byte
+append, ten-field notice, missing-coach fields and original retry loop, including
+matching budget exhaustion when no reporter is found. Both preserve manager
+eligibility, decoded attributes, eleven additional inline draw variants and both
+discipline actions. Register reuse, distinct scratch layouts, correction-register
+variants, null-profile mutation faults and callback ordering remain observable.
+
 ## Direct evidence
 
 The isolated Release component check, linked against the accepted 735-entry
-libraries, passes **1,581 comparisons**: 854 complete agreements, 689 matching
-interrupted/faulted outcomes and 38 rejected negatives. It observes every one of
-the **5,433 indexed sites**. Sixty-nine comparisons use explicit structural controls;
+libraries, passes **1,819 comparisons**: 991 complete agreements, 786 matching
+interrupted/faulted outcomes and 42 rejected negatives. It observes every one of
+the **6,958 indexed sites**. Ninety-one comparisons use explicit structural controls;
 these are component evidence, not natural gameplay observations.
 
 The daily-only matrix adds 455 comparisons: 297 complete agreements, 156 matching
@@ -158,6 +175,17 @@ relocation, output aliases, changed message fields and relocated TOC. Selected
 complete paths also compare measured budget cuts, sampled missing bytes and
 each dependency interruption.
 
+The final two event operations add 238 comparisons: 137 complete agreements,
+97 matching interrupted/faulted outcomes and four rejected negatives, with
+22 structural cases. All 1,525 new sites are covered, plus selected complete
+prepared children. Independent expectations check primary conversion, training
+flag/date/record effects, fitness subtraction, byte wrap, both discipline actions,
+fitness notice type/missing reporter fields and the original retry budget stop.
+Fixtures include both conversion flags, signed mood/traits/IDs, live lookup
+changes, profile mutation, missing manager/profile, every late draw wrap and
+relocated TOC. Shared draw extensions retain the previously validated default
+register/scratch behavior; the complete 21-operation component matrix passes.
+
 Renderer dependency services are stateful component fixtures. Their name,
 formatting, output and link effects and input/output ABI are compared, but this
 does not claim real language-service/layout acceptance or natural management-UI
@@ -186,15 +214,10 @@ under `.local/awol-reconstruction`. Source-guard tests requiring the original
 private input skip when it is absent. No original game code, data, snapshots or
 saves are published.
 
-## Remaining coherent batch
+## Combined integration milestone
 
-The remaining two operations contain 1,525 instructions: the record/event
-bodies at `0x10007a50` (840 instructions) and `0x100090a0` (685 instructions).
-Complete instruction boundaries and call dependencies are recorded;
-remaining semantic/table characterization, implementation and direct comparisons
-are pending.
-
-Production hooks, generation/build, actual runtime, sanitizers and one installed
-application smoke are deferred to the combined AWOL integration milestone.
+All complete source bodies are prepared. Productive hooks, consistent generation
+and build, actual original-service runtime, focused sanitizers and one installed
+application smoke remain the combined AWOL integration milestone.
 Save/Load: **not retested**. Performance: **not benchmarked**. The complete-game
 reconstruction goal remains active.

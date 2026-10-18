@@ -20,7 +20,7 @@ class PreparedOwnershipTests(unittest.TestCase):
         from awol_records_audit import AWOL_RECORDS_ENTRIES
         self.assertEqual(len(SEMANTIC_REPLACEMENTS),735)
         self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),735)
-        self.assertEqual(len(AWOL_RECORDS_ENTRIES),19)
+        self.assertEqual(len(AWOL_RECORDS_ENTRIES),21)
         self.assertFalse(set(AWOL_RECORDS_ENTRIES)&{entry for entry,_ in SEMANTIC_REPLACEMENTS})
         require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,*((entry,'awol_adapter') for entry in AWOL_RECORDS_ENTRIES)))
 
@@ -40,8 +40,8 @@ class PreparedBatchTests(unittest.TestCase):
         cls.userops=json.loads((INPUT/'program.json').read_text())['userops']
 
     def test_complete_boundaries_and_discriminating_source_guards(self):
-        self.assertEqual(sum(len(records) for _,_,records in self.groups),5433)
-        self.assertEqual(sum(len(audit.CONTRACTS) for _,audit,_ in self.groups),19)
+        self.assertEqual(sum(len(records) for _,_,records in self.groups),6958)
+        self.assertEqual(sum(len(audit.CONTRACTS) for _,audit,_ in self.groups),21)
         for owner,audit,records in self.groups:
             check=getattr(audit,'require_'+owner+'_bodies')
             check(records,complete=True)
@@ -94,7 +94,7 @@ class PreparedBatchTests(unittest.TestCase):
                     with self.subTest(owner=owner,address=hex(address)),self.assertRaises(ValueError):check(changed.__getitem__)
 
     def test_named_semantics_do_not_replay_original_instructions(self):
-        for name in ('awol_records_lifecycle.cpp','awol_records_load.cpp','awol_records_save.cpp','awol_records_queries.cpp','awol_records_notice.cpp','awol_sampling.cpp','awol_daily.cpp','awol_daily_return.cpp','awol_daily_detail.hpp','awol_registration.cpp','awol_training_notice.cpp','awol_event_random.hpp','awol_primary_message.cpp','awol_training_message.cpp','awol_fitness_message.cpp','awol_message_detail.hpp'):
+        for name in ('awol_records_lifecycle.cpp','awol_records_load.cpp','awol_records_save.cpp','awol_records_queries.cpp','awol_records_notice.cpp','awol_sampling.cpp','awol_daily.cpp','awol_daily_return.cpp','awol_daily_detail.hpp','awol_registration.cpp','awol_training_notice.cpp','awol_event_random.hpp','awol_primary_message.cpp','awol_training_message.cpp','awol_fitness_message.cpp','awol_message_detail.hpp','awol_absence_events.cpp','awol_fitness_events.cpp'):
             source=(ROOT/'native'/name).read_text()
             for token in ('_reference(', 'dispatch_page(', 'run_until(', 'pcode', 'i_101'):
                 self.assertNotIn(token,source)

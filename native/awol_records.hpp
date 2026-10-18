@@ -11,10 +11,13 @@ inline constexpr std::uint32_t remove_secondary_item_entry=0x100067d0,remove_sec
 inline constexpr std::uint32_t notice_entry=0x10007100,sampling_entry=0x10006080,daily_entry=0x10004070;
 inline constexpr std::uint32_t registration_entry=0x10006900,training_notice_entry=0x10008770;
 inline constexpr std::uint32_t primary_text_entry=0x100072e0,training_text_entry=0x10008b60,fitness_text_entry=0x10009b60;
+inline constexpr std::uint32_t training_event_entry=0x10007a50,fitness_event_entry=0x100090a0;
 // Prepared components only. No production adapter owns these entries yet.
 inline constexpr std::array record_entries{constructor_entry,destructor_entry,load_entry,save_entry,
     primary_status_entry,secondary_status_entry,pending_status_entry,remove_primary_staff_entry,
-    remove_primary_item_entry,remove_secondary_item_entry,remove_secondary_staff_entry,notice_entry,sampling_entry,daily_entry,registration_entry,training_notice_entry,primary_text_entry,training_text_entry,fitness_text_entry};
+    remove_primary_item_entry,remove_secondary_item_entry,remove_secondary_staff_entry,notice_entry,sampling_entry,daily_entry,registration_entry,training_notice_entry,primary_text_entry,training_text_entry,fitness_text_entry,training_event_entry,fitness_event_entry};
+void process_training_absence(State&,SemanticDependencyDispatch* =nullptr,SemanticGuestObserver* =nullptr);
+void process_fitness_concern(State&,SemanticDependencyDispatch* =nullptr,SemanticGuestObserver* =nullptr);
 void describe_primary_absence(State&,SemanticDependencyDispatch* =nullptr,SemanticGuestObserver* =nullptr);
 void describe_training_absence(State&,SemanticDependencyDispatch* =nullptr,SemanticGuestObserver* =nullptr);
 void describe_fitness_concern(State&,SemanticDependencyDispatch* =nullptr,SemanticGuestObserver* =nullptr);
