@@ -680,6 +680,23 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME shortlist_category_component_equivalence COMMAND cm-shortlist-category-checks)
     set_tests_properties(shortlist_category_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_SHORTLIST_LINKS_REFERENCE "${CMAKE_BINARY_DIR}/shortlist_links_reference.cpp")
+    add_custom_command(OUTPUT "${CM_SHORTLIST_LINKS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_shortlist_links_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_SHORTLIST_LINKS_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_shortlist_links_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/shortlist_links_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-shortlist-links-checks shortlist_links_checks.cpp
+        shortlist_links_queries.cpp shortlist_links_storage.cpp shortlist_links_transition.cpp
+        shortlist_links_markers.cpp "${CM_SHORTLIST_LINKS_REFERENCE}")
+    target_link_libraries(cm-shortlist-links-checks PRIVATE cm_aot)
+    target_compile_options(cm-shortlist-links-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME shortlist_links_component_equivalence COMMAND cm-shortlist-links-checks)
+    set_tests_properties(shortlist_links_component_equivalence PROPERTIES TIMEOUT 180)
+
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
