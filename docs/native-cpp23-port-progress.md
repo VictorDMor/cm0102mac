@@ -33,8 +33,20 @@ strict-signed executable has SHA-256
 `c6764fa21abd200562ec8c3b3172f93234a77957ae9c0ea84a8d341e9bdf9a8f`.
 Prepare Game, original quit confirmation and normal exit are verified; all 846
 protected files, eighteen unrelated prompts and the previous 871-owner app are
-preserved. The cumulative Portuguese guide is edition 37. Save/Load is **not
+preserved. The cumulative Portuguese guide is edition 38. Save/Load is **not
 retested**; performance is **not benchmarked**. The whole-game goal remains active.
+
+After that installed milestone, the [complete currency configuration](native-money-configuration.md)
+is prepared as an isolated component. Its single complete 25-choice operation
+spans 834 instructions and passes 2,102 comparisons: 1,718 complete returns,
+382 matching stops and two discriminating negatives. All sites are covered in
+own-root complete comparisons, with no structural exceptions. Ten source/data
+checks and its focused CTest pass. Bytewise copying and four diagnostics have
+explicit models; productive integration, actual-service/caller proof and focused
+UBSAN remain for a consolidated milestone. The shared helper and previously
+accepted bodies are unchanged. The installed count remains 884; adding this root
+would reach 885. The complete-game goal remains active.
+
 The records below document preceding installed milestones.
 
 The [automatic proposal builder integration](native-transfer-synthesis-integration.md)

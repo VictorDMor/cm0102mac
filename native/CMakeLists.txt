@@ -838,6 +838,22 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/money_text_coverage.txt")
     set_tests_properties(money_text_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_MONEY_CONFIGURATION_REFERENCE "${CMAKE_BINARY_DIR}/money_configuration_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MONEY_CONFIGURATION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_money_configuration_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MONEY_CONFIGURATION_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_money_configuration_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/money_configuration_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-money-configuration-checks money_configuration_checks.cpp money_configuration.cpp
+        money_configuration_profiles.cpp "${CM_MONEY_CONFIGURATION_REFERENCE}")
+    target_link_libraries(cm-money-configuration-checks PRIVATE cm_aot)
+    target_compile_options(cm-money-configuration-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME money_configuration_component_equivalence COMMAND cm-money-configuration-checks
+        "${CMAKE_BINARY_DIR}/money_configuration_coverage.txt")
+    set_tests_properties(money_configuration_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_PROFILE_QUALIFICATION_REFERENCE "${CMAKE_BINARY_DIR}/profile_qualification_reference.cpp")
     add_custom_command(OUTPUT "${CM_PROFILE_QUALIFICATION_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_profile_qualification_reference.py"
