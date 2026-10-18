@@ -42,6 +42,7 @@
 #include "shortlist_quotation_adapter.hpp"
 #include "shortlist_policy_adapter.hpp"
 #include "profile_qualification_adapter.hpp"
+#include "contract_draft_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -97,6 +98,7 @@ struct RuntimeDiagnostics {
     ShortlistQuotationDiagnostics shortlist_quotation;
     ShortlistPolicyDiagnostics shortlist_policy;
     ProfileQualificationDiagnostics profile_qualification;
+    ContractDraftDiagnostics contract_draft;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -532,5 +534,13 @@ ProfileQualificationDiagnostics& profile_qualification_diagnostics(State& state)
 const ProfileQualificationDiagnostics& profile_qualification_diagnostics(const State& state) {
     static const ProfileQualificationDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->profile_qualification : empty;
+}
+ContractDraftDiagnostics& contract_draft_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->contract_draft;
+}
+const ContractDraftDiagnostics& contract_draft_diagnostics(const State& state) {
+    static const ContractDraftDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->contract_draft : empty;
 }
 }

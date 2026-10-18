@@ -12,6 +12,7 @@
 #include "shortlist_quotation_adapter.hpp"
 #include "shortlist_policy_adapter.hpp"
 #include "profile_qualification_adapter.hpp"
+#include "contract_draft_adapter.hpp"
 #include "contract_query_adapter.hpp"
 #include "contract_storage_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
@@ -30,7 +31,7 @@ constexpr std::array<std::uint32_t,1> roots{0x104126d0};
 constexpr std::array<std::uint32_t,1> ends{0x10415e4c};
 enum class Path {direct,generated,cfm};
 enum class Mode {modern,original,entry_original,profile};
-void original_contracts(State& s){profile_qualification_diagnostics(s).original=true;shortlist_policy_diagnostics(s).original=true;shortlist_quotation_diagnostics(s).original=true;shortlist_assessment_diagnostics(s).original=true;shortlist_recruitment_diagnostics(s).original=true;shortlist_links_diagnostics(s).original=true;shortlist_category_diagnostics(s).original=true;club_shortlist_storage_diagnostics(s).original=true;contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;transfer_record_diagnostics(s).original=true;transfer_valuation_diagnostics(s).original=true;transfer_synthesis_diagnostics(s).original=true;}
+void original_contracts(State& s){contract_draft_diagnostics(s).original=true;profile_qualification_diagnostics(s).original=true;shortlist_policy_diagnostics(s).original=true;shortlist_quotation_diagnostics(s).original=true;shortlist_assessment_diagnostics(s).original=true;shortlist_recruitment_diagnostics(s).original=true;shortlist_links_diagnostics(s).original=true;shortlist_category_diagnostics(s).original=true;club_shortlist_storage_diagnostics(s).original=true;contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;transfer_record_diagnostics(s).original=true;transfer_valuation_diagnostics(s).original=true;transfer_synthesis_diagnostics(s).original=true;}
 
 struct Clock:CodeFragmentBoundaryObserver {
     unsigned count=0;ActorAttributesIoPair* io=nullptr;bool modern=false;
@@ -65,6 +66,7 @@ std::string execute(State& s,unsigned index,Path path,unsigned limit,std::uint64
 }catch(const std::exception& e){return e.what();}return {};}
 unsigned cases=0,returns=0,budgets=0,negatives=0,faults=0;
 std::uint64_t policy_row_returns=0;
+std::uint64_t draft_child_returns=0;
 void between(ActorAttributesIoPair& io){for(const auto& [guest,native]:io.old_forks.references){(void)guest;require(io.old_forks.forks.close(native)==0,"Release original transfer native fork");}io.old_forks.references.clear();io.between();}
 std::uint64_t compare(const State& input,unsigned index,Path path,Mode mode,unsigned limit=50000000,bool negative=false,bool fault=false){
     Clock probe;ActorAttributesIoPair io(input,index,roots[index],[&](State& s){original_contracts(s);s.code_fragment_observer=&probe;});
@@ -81,6 +83,7 @@ std::uint64_t compare(const State& input,unsigned index,Path path,Mode mode,unsi
     require(old_clock.count==new_clock.count&&old_clock.events==new_clock.events,label+" host-input/import ABI");
     if(negative){bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){rejected=true;}require(rejected,label+" negative not discriminating");++negatives;}else{Image(*a).compare(*b,label);require(x.bytes==y.bytes&&a->executed==b->executed&&old_steps==new_steps,label+" ordered effects/accounting");}
     if(mode==Mode::modern&&expected.empty()&&!negative)policy_row_returns+=shortlist_policy_diagnostics(*b).returns[2];
+    if(mode==Mode::modern&&expected.empty()&&!negative)draft_child_returns+=contract_draft_diagnostics(*b).returns[0];
     io.compare();const auto audit=[&](const auto& d,unsigned n){require(!d.original_body&&!d.dispatch_escapes,label+" leaked original scope or dispatch escape");if(mode==Mode::modern){require(d.calls[n]>=1&&!d.original_calls[n]&&!d.profile_original_calls[n],label+" dedicated modern call");require(d.returns[n]+d.faults[n]+d.budget_stops[n]==d.calls[n],label+" balanced productive outcomes");require(expected.empty()?d.returns[n]==d.calls[n]:fault?d.faults[n]>=1&&!d.budget_stops[n]:d.budget_stops[n]>=1&&!d.faults[n],label+" productive outcome counters");}else{require(!d.calls[n]&&!d.returns[n],label+" original control entered C++");require(mode==Mode::profile?d.profile_original_calls[n]>=1:d.original_calls[n]>=1,label+" original control not reached");}};
     audit(transfer_synthesis_diagnostics(*b),0);
     require(!transfer_synthesis_diagnostics(*b).original_body&&!transfer_record_diagnostics(*b).original_body&&!transfer_valuation_diagnostics(*b).original_body,label+" nested original scope residue");
@@ -94,8 +97,8 @@ void matrix(const State& input,unsigned index,bool profile){
     compare(input,index,Path::generated,Mode::modern,50000000,false,true);std::cout<<"PASS: transfer synthesis runtime root="<<hex_address(roots[index])<<" sites="<<runtime_sites[index].size()<<std::endl;
 }
 std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args){
-    std::array<bool*,16> selected{&profile_qualification_diagnostics(s).original,&shortlist_policy_diagnostics(s).original,&shortlist_quotation_diagnostics(s).original,&shortlist_assessment_diagnostics(s).original,&shortlist_recruitment_diagnostics(s).original,&shortlist_links_diagnostics(s).original,&shortlist_category_diagnostics(s).original,&club_shortlist_storage_diagnostics(s).original,&contract_query_diagnostics(s).original,&contract_storage_diagnostics(s).original,&contract_terms_diagnostics(s).original,&contract_review_diagnostics(s).original,&transfer_offer_diagnostics(s).original,&transfer_record_diagnostics(s).original,&transfer_valuation_diagnostics(s).original,&transfer_synthesis_diagnostics(s).original};
-    struct Restore{std::array<bool*,16> flags;std::array<bool,16> before{};explicit Restore(std::array<bool*,16> f):flags(f){for(unsigned n=0;n<flags.size();++n){before[n]=*flags[n];*flags[n]=true;}}~Restore(){for(unsigned n=0;n<flags.size();++n)*flags[n]=before[n];}}restore{selected};
+    std::array<bool*,17> selected{&contract_draft_diagnostics(s).original,&profile_qualification_diagnostics(s).original,&shortlist_policy_diagnostics(s).original,&shortlist_quotation_diagnostics(s).original,&shortlist_assessment_diagnostics(s).original,&shortlist_recruitment_diagnostics(s).original,&shortlist_links_diagnostics(s).original,&shortlist_category_diagnostics(s).original,&club_shortlist_storage_diagnostics(s).original,&contract_query_diagnostics(s).original,&contract_storage_diagnostics(s).original,&contract_terms_diagnostics(s).original,&contract_review_diagnostics(s).original,&transfer_offer_diagnostics(s).original,&transfer_record_diagnostics(s).original,&transfer_valuation_diagnostics(s).original,&transfer_synthesis_diagnostics(s).original};
+    struct Restore{std::array<bool*,17> flags;std::array<bool,17> before{};explicit Restore(std::array<bool*,17> f):flags(f){for(unsigned n=0;n<flags.size();++n){before[n]=*flags[n];*flags[n]=true;}}~Restore(){for(unsigned n=0;n<flags.size();++n)*flags[n]=before[n];}}restore{selected};
     unsigned n=3;for(auto value:args)s.wr<4>(n++*4,value);s.pc=entry;s.wr<4>(4128,return_sentinel);s.budget=s.executed+500000000;
     try{run_until(s,return_sentinel);}catch(const std::exception& e){if(auto* clock=dynamic_cast<Clock*>(s.code_fragment_observer)){const auto first=clock->events.size()>16?clock->events.size()-16:0;for(auto n=first;n<clock->events.size();++n){const auto& event=clock->events[n];std::uint32_t value=0;for(unsigned b=12;b<16;++b)value=(value<<8)|event.registers[b];std::cerr<<"Setup import "<<event.name<<" leave="<<event.leave<<" r3="<<hex_address(value)<<std::endl;}}throw std::runtime_error("Transfer setup entry="+hex_address(entry)+" pc="+hex_address(s.pc)+" reason="+e.what());}return std::uint32_t(s.r<4>(12));
 }
@@ -153,7 +156,16 @@ int main(int argc,char** argv){try{
     require(terms&&source.memory.read<1>(terms)==11,"Original-constructed policy row");
     check(player,buyers[0],terms,0xffffffff,0,fixture+0x200,true);
     check(player,buyers[0],terms,std::uint32_t(source.memory.read<4>(terms+8)),0,fixture+0x200,false);
+    // The ordinary published primary contract follows the pricing route.
+    // A controlled kind-five byte on that same actual contract exercises the
+    // original scheduling shortcut, including its real draft allocation and
+    // manager preparation; no dependency result or register is substituted.
+    const auto prior_kind=std::uint8_t(source.memory.read<1>(record+0x38));
+    source.memory.write<1>(record+0x38,(prior_kind&3u)|(5u<<2));
+    check(player,buyers[0],terms,0xffffffff,0,fixture+0x200,true);
+    source.memory.write<1>(record+0x38,prior_kind);
     if(!profile){std::ofstream out(std::filesystem::path(argv[3]).parent_path()/"transfer-synthesis-runtime-sites.txt");require(!runtime_sites[0].empty(),"Actual-service synthesis sites");for(auto pc:runtime_sites[0])out<<0<<" "<<hex_address(pc)<<'\n';}
     if(!profile){require(policy_row_returns,"Synthesis must complete modern row-policy children");std::cout<<"Completed modern row-policy children="<<policy_row_returns<<std::endl;}
+    if(!profile){require(draft_child_returns,"Caller must complete modern draft initialization");std::cout<<"Completed modern draft children="<<draft_child_returns<<std::endl;}
     std::cout<<"PASS: transfer synthesis production cases="<<cases<<" returns="<<returns<<" budgets="<<budgets<<" negatives="<<negatives<<" faults="<<faults<<std::endl;
 }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}

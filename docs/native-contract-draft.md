@@ -1,12 +1,11 @@
 # Contract draft initialization and preparation
 
-Status: **prepared and accepted as an isolated component**. Three complete
-native operations match independent original references. Productive integration,
-actual original-service/caller comparison, focused UBSAN and installation remain
-for the consolidated milestone. The installed application remains at revision
-`c1f2ea876c07a9c086d2c50645d66ff9786b458c`, with 868 unique semantic owners.
-The prospective count of 871 is not an installed result. The whole-game goal
-remains active.
+Status: **integrated and accepted at the 871-owner milestone**. Three complete
+native operations match independent original references and execute on the
+productive path. Actual original-service comparisons, completed recruitment and
+proposal-synthesis children, focused UBSAN and protected installation pass.
+See [integration evidence](native-contract-draft-integration.md). The complete-game
+goal remains active.
 
 ## Scope and provenance
 
@@ -106,13 +105,15 @@ forwarding, wrapped signed arithmetic and the missing-contract return residue.
 
 Each root rejects an own-result corruption and an extra memory effect restored
 before return. Equal final images are required for the effect negative, so an
-image-only comparator cannot pass it. Nine source/data checks pass, covering the
+image-only comparator cannot pass it. Ten source/data checks pass, covering productive hook placement, the
 exact unchanged 868-owner prefix, complete bodies, owned dependency boundaries,
 every pinned byte, external interior-entry rejection and independent references.
 The focused CTest `contract_draft_component_equivalence` passes on ARM64 with
 `-ffp-contract=off`, `-Wall -Wextra -Werror -Wpedantic`.
 
-The cumulative Portuguese guide records this prepared block and examples.
-Productive dispatch, actual original services/callers, focused UBSAN and protected
-installation remain for the consolidated milestone. Save/Load is **not retested**;
-performance is **not benchmarked**. The complete-game goal remains active.
+The cumulative Portuguese guide, edition 33, records this block and its
+productive integration. Actual-service coverage reaches 206 selected sites;
+the isolated component retains all 228 in complete returns. The missing-primary
+diagnostic path retains explicit-model component evidence. Save/Load is
+**not retested**; performance is **not benchmarked**. The complete-game goal
+remains active.

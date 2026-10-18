@@ -70,6 +70,8 @@ target_sources(cm_aot PRIVATE shortlist_policy_offer.cpp shortlist_policy_countr
     shortlist_policy_row.cpp shortlist_policy_adapter.cpp)
 target_sources(cm_aot PRIVATE profile_qualification_masks.cpp profile_qualification_classify.cpp
     profile_qualification_category.cpp profile_qualification_adapter.cpp)
+target_sources(cm_aot PRIVATE contract_draft_initialize.cpp contract_draft_new.cpp
+    contract_draft_primary.cpp contract_draft_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -780,8 +782,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_draft_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-contract-draft-checks contract_draft_checks.cpp contract_draft_initialize.cpp
-        contract_draft_new.cpp contract_draft_primary.cpp "${CM_CONTRACT_DRAFT_REFERENCE}")
+    add_executable(cm-contract-draft-checks contract_draft_checks.cpp "${CM_CONTRACT_DRAFT_REFERENCE}")
     target_link_libraries(cm-contract-draft-checks PRIVATE cm_aot)
     target_compile_options(cm-contract-draft-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_draft_component_equivalence COMMAND cm-contract-draft-checks
@@ -2294,3 +2295,7 @@ target_compile_options(cm-shortlist-policy-production-checks PRIVATE -Wall -Wext
 add_executable(cm-profile-qualification-production-checks profile_qualification_production_checks.cpp)
 target_link_libraries(cm-profile-qualification-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-profile-qualification-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-contract-draft-production-checks contract_draft_production_checks.cpp)
+target_link_libraries(cm-contract-draft-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-contract-draft-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
