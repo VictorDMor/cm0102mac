@@ -789,6 +789,22 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/contract_draft_coverage.txt")
     set_tests_properties(contract_draft_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_CONTRACT_DISPLAY_REFERENCE "${CMAKE_BINARY_DIR}/contract_display_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_DISPLAY_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_display_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_DISPLAY_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_display_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_display_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-contract-display-checks contract_display_checks.cpp contract_display.cpp
+        "${CM_CONTRACT_DISPLAY_REFERENCE}")
+    target_link_libraries(cm-contract-display-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-display-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_display_component_equivalence COMMAND cm-contract-display-checks
+        "${CMAKE_BINARY_DIR}/contract_display_coverage.txt")
+    set_tests_properties(contract_display_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_PROFILE_QUALIFICATION_REFERENCE "${CMAKE_BINARY_DIR}/profile_qualification_reference.cpp")
     add_custom_command(OUTPUT "${CM_PROFILE_QUALIFICATION_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_profile_qualification_reference.py"

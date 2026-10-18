@@ -9,6 +9,30 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The latest installed milestone is **871 unique semantic owners**, at
+`d0910402c867a5d0faa42830e1b7d1fb55c70541`. The
+[contract-draft integration](native-contract-draft-integration.md) retains the
+exact 868-owner prefix and adds three complete creation/preparation operations.
+The 2,491-comparison component covers all 228 sites in complete returns. The
+actual-service matrix passes 62 comparisons and observes 206 selected sites;
+38 original/profile controls, 41 recruitment comparisons and 66 synthesis
+comparisons pass. Successful positive complete parents contain 12 completed
+modern default-draft children in recruitment and six in proposal synthesis.
+Four focused UBSAN executables pass; all three actual-world outputs match
+Release. The missing-primary diagnostic path retains explicit-model component
+evidence. The installed executable SHA-256 is
+`497d6864d1084a77b1c66099fc438f873384966602829741b1c5a9a1f4d4a9ef`.
+Prepare Game and normal exit are verified, and all 846 protected files remain
+unchanged. Save/Load is **not retested**; performance is **not benchmarked**.
+
+The next [contract-display component](native-contract-display.md) is prepared:
+two complete wage/end presentation operations, 4,791 isolated comparisons and
+all 136 sites in complete returns. Its five external services have explicit
+models; productive integration and real-service/caller proof remain for a
+consolidated milestone. The installed count remains 871; the prospective 873 is
+not an installed result. The cumulative Portuguese PDF is edition 34. The
+whole-game goal remains active. The records below document preceding milestones.
+
 The [automatic proposal builder integration](native-transfer-synthesis-integration.md)
 adds the complete 3,551-instruction operation after the exact 831-entry prefix,
 reaching **832 installed entries**. Three component CTests pass 21,489 comparisons;
