@@ -1,10 +1,10 @@
 # Transfer-offer valuation, comparison and exchange editing
 
-Eight complete original operations (1,188 instructions) are reconstructed and
-prepared for production integration. Together with the preceding eight record
-operations, this forms a 16-operation candidate: 831 unique owners after the
-exact accepted 815-entry prefix. Neither prepared component adds production
-ownership yet. The installed application remains at `b976b2b`.
+Eight complete original operations (1,188 instructions), prepared in `d8f4294`,
+are now [integrated and installed](native-transfer-proposal-integration.md)
+alongside the preceding eight record operations. Sixteen unique owners extend
+the exact accepted 815-entry prefix to **831 installed entries**. The component
+evidence below retains its original scope.
 
 ## Complete boundaries
 
@@ -121,7 +121,7 @@ interruption. Independent expectations cover the installment discount, plain and
 service exchange values, final scales, normalized amounts, duplicate asymmetry,
 status mutation, cache wrapping and all payment distribution branches.
 
-Twelve source/data guards pin the exact installed prefix, absent ownership,
+The initial twelve source/data guards pinned the then-installed prefix, absent ownership,
 complete original bodies, edges, three live tables/pointers, shared diagnostic,
 sampler layout differences and independent-reference labels/steps/sites.
 The accepted 21-operation contract-terms component also passes its complete
@@ -129,11 +129,12 @@ The accepted 21-operation contract-terms component also passes its complete
 of the shared sampler. The preceding record component's sources remain unchanged.
 Warnings are errors and floating contraction is disabled.
 
-New semantic units are linked only into component checks. Production generation,
-actual-service coverage, focused sanitizers and installation remain for a
-consolidated milestone. Generated sources, the installed game, protected files
-and eighteen unrelated prompts are unchanged. Private references, tables and
-receipts stay outside publication under `.local/transfer-valuation-reconstruction`.
+The consolidated milestone links these units through `cm_aot`, audits productive
+hooks and includes actual-service, focused sanitizer and installed-app acceptance.
+The semantic bodies, shared sampler and common call helper are unchanged.
+Original references, tables and component receipts remain private under
+`.local/transfer-valuation-reconstruction`; integration receipts live under
+`.local/transfer-proposal-integration`.
 Save/Load is **not retested**; performance is **not benchmarked**. The cumulative
 Portuguese PDF adds these mechanisms and practical examples. The full goal remains
 active.

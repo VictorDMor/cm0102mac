@@ -46,6 +46,10 @@ target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp co
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
     transfer_offer_selection.cpp transfer_offer_adapter.cpp)
+target_sources(cm_aot PRIVATE transfer_record_lifecycle.cpp transfer_record_initialization.cpp
+    transfer_record_persistence.cpp transfer_record_value.cpp transfer_record_adapter.cpp
+    transfer_valuation_sampling.cpp transfer_valuation_amounts.cpp transfer_valuation_comparison.cpp
+    transfer_valuation_exchange.cpp transfer_valuation_rebalance.cpp transfer_valuation_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -607,8 +611,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_record_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-transfer-record-checks transfer_record_checks.cpp transfer_record_lifecycle.cpp
-        transfer_record_initialization.cpp transfer_record_persistence.cpp transfer_record_value.cpp "${CM_TRANSFER_RECORD_REFERENCE}")
+    add_executable(cm-transfer-record-checks transfer_record_checks.cpp "${CM_TRANSFER_RECORD_REFERENCE}")
     target_link_libraries(cm-transfer-record-checks PRIVATE cm_aot)
     target_compile_options(cm-transfer-record-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME transfer_record_component_equivalence COMMAND cm-transfer-record-checks)
@@ -622,8 +625,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_valuation_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-transfer-valuation-checks transfer_valuation_checks.cpp transfer_valuation_sampling.cpp
-        transfer_valuation_amounts.cpp transfer_valuation_comparison.cpp transfer_valuation_exchange.cpp transfer_valuation_rebalance.cpp "${CM_TRANSFER_VALUATION_REFERENCE}")
+    add_executable(cm-transfer-valuation-checks transfer_valuation_checks.cpp "${CM_TRANSFER_VALUATION_REFERENCE}")
     target_link_libraries(cm-transfer-valuation-checks PRIVATE cm_aot)
     target_compile_options(cm-transfer-valuation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME transfer_valuation_component_equivalence COMMAND cm-transfer-valuation-checks)
@@ -2080,3 +2082,7 @@ target_compile_options(cm-contract-review-production-checks PRIVATE -Wall -Wextr
 add_executable(cm-transfer-offer-production-checks transfer_offer_production_checks.cpp)
 target_link_libraries(cm-transfer-offer-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-transfer-offer-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-transfer-proposal-production-checks transfer_proposal_production_checks.cpp)
+target_link_libraries(cm-transfer-proposal-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-transfer-proposal-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

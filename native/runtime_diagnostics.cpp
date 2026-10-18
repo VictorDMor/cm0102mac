@@ -32,6 +32,8 @@
 #include "contract_terms_adapter.hpp"
 #include "contract_review_adapter.hpp"
 #include "transfer_offer_adapter.hpp"
+#include "transfer_valuation_adapter.hpp"
+#include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -76,6 +78,8 @@ struct RuntimeDiagnostics {
     ContractTermsDiagnostics contract_terms;
     ContractReviewDiagnostics contract_review;
     TransferOfferDiagnostics transfer_offer;
+    TransferValuationDiagnostics transfer_valuation;
+    TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -416,5 +420,27 @@ TransferOfferDiagnostics& transfer_offer_diagnostics(State& state) {
 const TransferOfferDiagnostics& transfer_offer_diagnostics(const State& state) {
     static const TransferOfferDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->transfer_offer : empty;
+}
+}
+
+namespace cm::aot {
+TransferRecordDiagnostics& transfer_record_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->transfer_record;
+}
+const TransferRecordDiagnostics& transfer_record_diagnostics(const State& state) {
+    static const TransferRecordDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->transfer_record : empty;
+}
+}
+
+namespace cm::aot {
+TransferValuationDiagnostics& transfer_valuation_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->transfer_valuation;
+}
+const TransferValuationDiagnostics& transfer_valuation_diagnostics(const State& state) {
+    static const TransferValuationDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->transfer_valuation : empty;
 }
 }

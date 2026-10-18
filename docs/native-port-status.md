@@ -14,18 +14,21 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [transfer-offer query/policy integration](native-transfer-offer-integration.md)
-extends the exact 796-entry prefix to **815 installed reconstructed entries**.
-Nineteen operations cover membership, markers, rejection policy, descriptions,
-collections, filtering and selection. Release and focused UBSAN each pass 10,429
-component and 248 actual-service comparisons; all roots, five adjacent seams,
-96 profile controls and six component CTests pass. Installed identity, Prepare
-Game and normal exit are verified with protected data and the prior app retained.
+The [combined transfer-offer record and valuation integration](native-transfer-proposal-integration.md)
+extends the exact 815-entry prefix to **831 installed reconstructed entries**.
+Sixteen operations cover record lifecycle, persistence, initialization, value,
+normalized comparison, exchange editing and payment rebalance. Eight component
+CTests pass 46,000 comparisons, including 13,709 covering every original site of
+the two new blocks. Release and focused UBSAN each pass 182 actual-service
+comparisons across all sixteen roots. Six adjacent seams, 54 original profile
+controls and nine focused sanitizer runs pass. Installed identity, Prepare Game,
+original quit confirmation and normal exit are verified; protected data and the
+prior 815-entry app are retained.
 
 These prepared actual-service and startup witnesses do not establish completion
-of all transfer negotiation or whole-game behavior. Save/Load is **not retested**;
-performance is **not benchmarked**. See the linked report and
-[progress ledger](native-cpp23-port-progress.md) for exact scope and boundaries.
+of automatic transfer synthesis, acceptance, negotiation or whole-game behavior.
+Save/Load is **not retested**; performance is **not benchmarked**. See the linked
+report and [progress ledger](native-cpp23-port-progress.md) for exact boundaries.
 
 ## Historical injury-controller delivery
 

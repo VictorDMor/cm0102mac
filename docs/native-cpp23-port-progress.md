@@ -9,24 +9,23 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [transfer-offer valuation and exchange block](native-transfer-valuation.md) is
-**prepared, not integrated**: eight complete operations and 1,188 instructions
-pass 7,559 focused comparisons with every source site required, including fifteen
-rejected negatives and 25 identified structural comparisons. Twelve source/data
-guards pass. Shared sampling now serves both offer and contract layouts; the
-existing contract-terms component passes all 5,242 comparisons and 1,203 sites,
-and its twelve guards, after the extraction. Together with the preceding record
-block this prepares sixteen operations for a later 831-entry integration. The
-installed game remains at 815; actual services, sanitizers and installation of
-these prepared operations remain pending. The full goal remains active.
+The [combined transfer-offer record and valuation integration](native-transfer-proposal-integration.md)
+adds sixteen complete operations and 1,994 original instructions after the exact
+accepted 815-entry prefix, reaching **831 installed entries**. Eight component
+CTests pass 46,000 comparisons; the new blocks retain 13,709 component
+comparisons with every original source site required. Both Release and focused
+UBSAN pass 182 actual-service comparisons across all sixteen roots and 1,038
+sites. Fifty-four original profile controls, eighty source/data/hook guards and
+63 historical manifest methods pass. Six adjacent runtime seams pass on both
+builds. All nine focused sanitizer runs have empty stderr; runtime and seam
+stdout match Release exactly. The full reconstruction goal remains active.
 
-The next [transfer-offer record block](native-transfer-records.md) is **prepared,
-not integrated**: eight complete operations and 806 original instructions cover
-lifecycle, raw record IO, explicit initialization and value composition. Its
-focused Release CTest passes 6,150 comparisons with all source sites required,
-including sixteen rejected negatives and thirteen identified structural cases.
-Ten source/data guards pass. The installed game retains 815 entries; productive
-integration, actual services and focused sanitizer remain pending.
+The strict-signed arm64 executable has SHA-256
+`fbe0ac56c93c33bc923947e9711c642e475dc92a35eb32c64be1c35b2fe3e27d`.
+Prepare Game rendering, original quit confirmation and normal exit pass.
+All 846 protected files, the prior 815-entry application, eighteen unrelated
+prompts and installed Match Debugger are preserved. Save/Load is **not retested**;
+performance is **not benchmarked**. The cumulative Portuguese PDF is updated.
 
 The [transfer-offer query/policy integration](native-transfer-offer-integration.md)
 adds nineteen complete operations and 1,111 original instructions after the exact

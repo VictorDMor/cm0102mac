@@ -1,9 +1,10 @@
 # Transfer-offer record lifecycle, persistence and value
 
-The complete **eight-operation, 806-instruction** record block is prepared and
-compared with independent original references. Production integration remains
-pending. The installed game retains 815 accepted entries at `b976b2b`; appending
-these eight unique owners would produce 823 entries after its exact prefix.
+The complete **eight-operation, 806-instruction** record block, prepared in
+`d94ea3c`, is now [integrated and installed](native-transfer-proposal-integration.md)
+alongside the eight valuation/exchange operations. Their sixteen unique owners
+extend the exact accepted 815-entry prefix to **831 installed entries**. The
+component evidence below retains its original scope.
 
 ## Complete boundaries
 
@@ -91,7 +92,7 @@ Thirteen comparisons from one mapped-zero structural input complete the changed
 second-contract-lookup path. The same unmapped lookup separately proves the
 original fault. This structural path is not natural career execution.
 
-Ten source/data guards pin the complete 815-entry prefix, absent ownership,
+The initial ten source/data guards pinned the then-complete 815-entry prefix, absent ownership,
 boundaries/fragments, fields/order, interior edges, a live 38-byte diagnostic
 table/pointer, fourteen normalized complete diagnostics and all original labels,
 steps and required sites. Every semantic hook is disabled in the independent
@@ -101,12 +102,12 @@ disabled with `-ffp-contract=off`.
 
 ## Delivery boundary
 
-The new semantic units are linked only into their component checks. Production
-ownership/generation, actual-service execution, focused sanitizer acceptance and
-installation remain for a consolidated integration milestone. Generated engine
-sources, the installed app and protected files are unchanged. Private originals,
-reference/table payloads and receipts remain under
-`.local/transfer-record-reconstruction` and outside publication.
+The consolidated integration links these units through `cm_aot`, audits
+productive hooks and includes actual-service, focused sanitizer and installed-app
+acceptance. The semantic bodies and common helper are unchanged. The original
+component references/table payloads remain private under
+`.local/transfer-record-reconstruction`; integration receipts live under
+`.local/transfer-proposal-integration`.
 
 Save/Load is **not retested**; performance is **not benchmarked**. The cumulative
 Portuguese PDF adds practical explanations of shared ownership, record persistence

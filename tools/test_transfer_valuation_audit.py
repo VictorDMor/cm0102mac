@@ -8,10 +8,10 @@ import re
 import sqlite3
 import unittest
 from unittest.mock import patch
-from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
+from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements, generate_page
 from transfer_valuation_audit import (CONTRACTS, FRAGMENTS, TRANSFER_VALUATION_ENTRIES,
     TABLES, load_transfer_valuation_tables, require_transfer_valuation_tables, require_transfer_valuation_bodies, require_transfer_valuation_contract,
-    require_transfer_valuation_edges, require_transfer_valuation_index)
+    require_transfer_valuation_edges, require_transfer_valuation_index, require_transfer_valuation_hooks, transfer_valuation_hook)
 from make_transfer_valuation_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,17 +19,16 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_complete_scope_preserves_installed_manifest(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),815)
-        self.assertEqual(len(TRANSFER_VALUATION_ENTRIES),8)
-        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS]
+    def test_exact_accepted_prefix_and_complete_candidate_owner(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),831)
+        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:815]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'2f665ed4572db48950a695d15f1a72f5f19ad23efd1931aab81c10dba229c96e')
-        self.assertFalse(set(TRANSFER_VALUATION_ENTRIES)&{entry for entry,_ in SEMANTIC_REPLACEMENTS})
-        require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,*((entry,'transfer_valuation_adapter') for entry in TRANSFER_VALUATION_ENTRIES)))
-        from transfer_record_audit import TRANSFER_RECORD_ENTRIES
-        self.assertFalse(set(TRANSFER_RECORD_ENTRIES)&set(TRANSFER_VALUATION_ENTRIES))
-        combined=(*SEMANTIC_REPLACEMENTS,*((entry,'transfer_record_adapter') for entry in TRANSFER_RECORD_ENTRIES),*((entry,'transfer_valuation_adapter') for entry in TRANSFER_VALUATION_ENTRIES))
-        self.assertEqual(len(combined),831);require_unique_semantic_replacements(combined)
+        self.assertEqual(len(TRANSFER_VALUATION_ENTRIES),8)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[823:831],tuple((entry,'transfer_valuation_adapter') for entry in TRANSFER_VALUATION_ENTRIES))
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry in TRANSFER_VALUATION_ENTRIES:
+            with self.subTest(entry=hex(entry)),self.assertRaisesRegex(ValueError,'Duplicate semantic replacement'):
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'other_owner')))
 
     def test_complete_boundaries_and_external_interior_edges(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS), 1188)
@@ -135,6 +134,26 @@ class OriginalContractTests(unittest.TestCase):
                 if start >> 12 <= page <= (end-1) >> 12:
                     with self.assertRaises(ValueError):
                         require_transfer_valuation_contract(page, [row for row in rows if not start <= row['address'] < end], {start})
+
+    def test_productive_hooks_precede_original_accounting(self):
+        import inspect
+        disabled = {name: False for name in inspect.signature(generate_page).parameters
+                    if name.endswith('_hooks') or name == 'guest_context_transfers'}
+        disabled['transfer_valuation_hooks'] = True
+        for page in sorted({r['address'] >> 12 for r in self.records}):
+            part = [r for r in self.records if r['address'] >> 12 == page]
+            selected = {r['address'] for r in self.records}
+            code = generate_page(page, part, selected, userops=self.userops, **disabled)
+            require_transfer_valuation_hooks(page, part, code)
+            for entry in TRANSFER_VALUATION_ENTRIES:
+                if entry >> 12 != page: continue
+                hook = transfer_valuation_hook(entry)
+                step = f's.step(0x{entry:x});'
+                for changed in (code.replace(hook, '', 1),
+                                code.replace(hook, '', 1).replace(step, step+'\n'+hook, 1),
+                                code.replace(hook, hook+'\n'+hook, 1)):
+                    with self.subTest(entry=hex(entry)), self.assertRaises(ValueError):
+                        require_transfer_valuation_hooks(page, part, changed)
 
     def test_reference_retains_all_steps_without_semantic_hooks(self):
         source = render_reference(self.records, self.userops)

@@ -1,6 +1,8 @@
 #include "contract_terms_adapter.hpp"
 #include "contract_review_adapter.hpp"
 #include "transfer_offer_adapter.hpp"
+#include "transfer_record_adapter.hpp"
+#include "transfer_valuation_adapter.hpp"
 #include "contract_query_adapter.hpp"
 #include "contract_storage_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
@@ -20,7 +22,7 @@ constexpr auto roots=offers::entries;
 constexpr std::array<std::uint32_t,19> ends{0x103e6358,0x103e6464,0x103e64dc,0x103ea26c,0x103ea28c,0x103ea348,0x103ea43c,0x103ea5f8,0x103ea75c,0x103ea83c,0x103eb014,0x103eb1e4,0x103eb358,0x103eb434,0x103eb464,0x103eb494,0x103f43a4,0x103f4594,0x103fb3f8};
 enum class Path {direct,generated,cfm};
 enum class Mode {modern,original,entry_original,profile};
-void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;}
+void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;transfer_record_diagnostics(s).original=true;transfer_valuation_diagnostics(s).original=true;}
 
 struct Clock:CodeFragmentBoundaryObserver {
     unsigned count=0;ActorAttributesIoPair* io=nullptr;bool modern=false;
@@ -77,7 +79,8 @@ void matrix(const State& input,unsigned index,bool profile){
     compare(input,index,Path::generated,Mode::modern,50000000,false,true);
     std::cout<<"PASS: transfer offer runtime root="<<hex_address(roots[index])<<" sites="<<runtime_sites[index].size()<<std::endl;
 }
-std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args){
+struct ProposalOriginalScope {bool& records;bool& valuation;bool old_records,old_valuation;explicit ProposalOriginalScope(State& s):records(transfer_record_diagnostics(s).original),valuation(transfer_valuation_diagnostics(s).original),old_records(records),old_valuation(valuation){records=valuation=true;}~ProposalOriginalScope(){records=old_records;valuation=old_valuation;}};
+std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args){ProposalOriginalScope original_proposals(s);
     std::array<bool*,5> selected{&contract_query_diagnostics(s).original,&contract_storage_diagnostics(s).original,&contract_terms_diagnostics(s).original,&contract_review_diagnostics(s).original,&transfer_offer_diagnostics(s).original};
     struct Restore{std::array<bool*,5> flags;std::array<bool,5> before{};explicit Restore(std::array<bool*,5> f):flags(f){for(unsigned n=0;n<flags.size();++n){before[n]=*flags[n];*flags[n]=true;}}~Restore(){for(unsigned n=0;n<flags.size();++n)*flags[n]=before[n];}}restore{selected};
     unsigned n=3;for(auto value:args)s.wr<4>(n++*4,value);s.pc=entry;s.wr<4>(4128,return_sentinel);s.budget=s.executed+500000000;
@@ -116,7 +119,7 @@ int main(int argc,char** argv){try{
     // Register a second actual player with the current player included in exchange.
     std::uint32_t other=0;for(unsigned n=0;n<count;++n){const auto candidate=staff_base+n*0x70;if(source.memory.read<4>(candidate+0x24)==buyers[0]&&source.memory.read<4>(candidate+0x14)){other=candidate;break;}}
     require(other!=0,"Actual exchange-offer target");const auto other_contract=setup(source,0x10084be0,{manager,other,buyers[0],1,0xffffffff,0});if(!setup(source,0x10082f20,{manager,other}))setup(source,0x10078e70,{manager,other,other_contract});
-    const auto exchange_list=setup(source,0x10773520,{16});require(exchange_list&&setup(source,0x10738c00,{exchange_list})==exchange_list,"Original exchange list constructor");source.memory.write<4>(fixture+0x100,source.memory.read<4>(player));setup(source,0x10738d10,{exchange_list,fixture+0x100,4});
+    const auto exchange_list=setup(source,0x10773520,{16});require(exchange_list&&setup(source,0x10738c00,{exchange_list})==exchange_list,"Original exchange list constructor");source.memory.write<4>(fixture+0x100,source.memory.read<4>(player));source.memory.write<4>(fixture+0x104,0);setup(source,0x10738d10,{exchange_list,fixture+0x100,8});
     const auto exchange_input=new_offer(other,club,5000);source.memory.write<4>(exchange_input+4,exchange_list);setup(source,0x103e25d0,{transfer,exchange_input,0});const auto exchange_index=std::uint32_t(source.memory.read<4>(exchange_input+0x28)),exchange_offer=std::uint32_t(source.memory.read<4>(source.memory.read<4>(transfer)+exchange_index*4));require(exchange_offer!=0,"Original exchange offer publication");
     const auto exchange_alternate=new_offer(other,club,9000);source.memory.write<4>(exchange_alternate+4,exchange_list);setup(source,0x103e2db0,{transfer,exchange_offer,exchange_alternate,0});
     setup(source,roots[0],{transfer,player,1,0xffffffff});
