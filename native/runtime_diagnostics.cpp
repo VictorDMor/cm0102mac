@@ -26,6 +26,7 @@
 #include "injury_bootstrap_adapter.hpp"
 #include "injury_persistence_adapter.hpp"
 #include "injury_daily_adapter.hpp"
+#include "awol_records_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -64,6 +65,7 @@ struct RuntimeDiagnostics {
     InjuryBootstrapDiagnostics injury_bootstrap;
     InjuryPersistenceDiagnostics injury_persistence;
     InjuryDailyDiagnostics injury_daily;
+    AwolRecordsDiagnostics awol_records;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -173,6 +175,14 @@ InjuryDailyDiagnostics& injury_daily_diagnostics(State& state) {
 const InjuryDailyDiagnostics& injury_daily_diagnostics(const State& state) {
     static const InjuryDailyDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->injury_daily : empty;
+}
+AwolRecordsDiagnostics& awol_records_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->awol_records;
+}
+const AwolRecordsDiagnostics& awol_records_diagnostics(const State& state) {
+    static const AwolRecordsDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->awol_records : empty;
 }
 ActorAttributesDiagnostics& actor_attributes_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();

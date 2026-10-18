@@ -1,4 +1,5 @@
 #include "injury_daily_adapter.hpp"
+#include "awol_records_adapter.hpp"
 #include "injury_readouts_adapter.hpp"
 #include "injury_record_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
@@ -136,7 +137,15 @@ void prepare_management_services(State& s) {
     // original allocation, constructor and publication at 0x1034530c..0x1034532c.
     const auto before=s.executed;const auto object=invoke_setup(s,0x10773520,{16});
     require(object!=0,"Original daily availability-service allocation");
-    require(invoke_setup(s,0x100031b0,{object,0})==object,"Original daily availability-service constructor");
+    {
+        auto& diagnostics=awol_records_diagnostics(s);
+        struct RestoreOriginal {
+            bool& selected;bool previous;
+            ~RestoreOriginal(){selected=previous;}
+        } restore{diagnostics.original,diagnostics.original};
+        diagnostics.original=true;
+        require(invoke_setup(s,0x100031b0,{object,0})==object,"Original daily availability-service constructor");
+    }
     require(s.memory.read<4>(object+12)!=0,"Original constructor allocates full staff availability flags");
     s.memory.write<4>(slot,object);
     std::cout<<"Prepared original availability service instructions="<<s.executed-before<<std::endl;

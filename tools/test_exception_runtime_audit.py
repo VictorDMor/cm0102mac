@@ -28,8 +28,8 @@ class ScopeTests(unittest.TestCase):
         prior = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS[:205]]
         self.assertEqual(hashlib.sha256(json.dumps(prior, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '9045711f1a6d4d64eb731a58039a9a69cd9e1e113a9e20628031df85a54b7cfc')
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 735)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 735)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 756)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 756)
         self.assertEqual(SEMANTIC_REPLACEMENTS[205:226], tuple((entry, 'exception_runtime_adapter') for entry in EXCEPTION_RUNTIME_ENTRIES))
         self.assertNotIn(0x107724f4, {entry for entry, _ in SEMANTIC_REPLACEMENTS})
         for previous in (0x10771150, 0x107713e0, 0x107715f0, 0x10771620, 0x10772df0, 0x10772e10, 0x10773150):

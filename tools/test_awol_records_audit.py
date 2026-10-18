@@ -1,7 +1,9 @@
-"""Original-source guards for the prepared AWOL records components."""
+"""Original-source and candidate-integration guards for the AWOL records block."""
 from contextlib import closing
 from copy import deepcopy
 import importlib
+import hashlib
+import inspect
 import json
 from pathlib import Path
 import re
@@ -14,15 +16,22 @@ INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 OWNERS=('awol_records',)
 
 
-class PreparedOwnershipTests(unittest.TestCase):
-    def test_all_prepared_entries_have_no_accepted_owner(self):
+class ManifestTests(unittest.TestCase):
+    def test_exact_accepted_prefix_and_complete_candidate_owner(self):
         from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
         from awol_records_audit import AWOL_RECORDS_ENTRIES
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),735)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),735)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),756)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),756)
         self.assertEqual(len(AWOL_RECORDS_ENTRIES),21)
-        self.assertFalse(set(AWOL_RECORDS_ENTRIES)&{entry for entry,_ in SEMANTIC_REPLACEMENTS})
-        require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,*((entry,'awol_adapter') for entry in AWOL_RECORDS_ENTRIES)))
+        prefix=[{'entry':f'0x{entry:x}','module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:735]]
+        self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                         'aa3d2cc801e513cc3fca8d7c83d1f0f250baee4d9d2dcb78a0c09c19580e3dc5')
+        self.assertEqual(SEMANTIC_REPLACEMENTS[735:],tuple((entry,'awol_records_adapter') for entry in AWOL_RECORDS_ENTRIES))
+        self.assertNotIn(0x10009ef0,{entry for entry,_ in SEMANTIC_REPLACEMENTS})
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry in AWOL_RECORDS_ENTRIES:
+            with self.subTest(entry=hex(entry)),self.assertRaisesRegex(ValueError,'Duplicate semantic replacement'):
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'other_owner')))
 
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').is_file(),'Private original source unavailable')
@@ -61,6 +70,31 @@ class PreparedBatchTests(unittest.TestCase):
             self.assertEqual(re.findall(r'^i_([0-9a-f]+):',source,re.MULTILINE),expected)
             self.assertEqual(re.findall(owner+r'_step_seen\(s, 0x([0-9a-f]+)\)',source),expected)
             self.assertNotIn('try_modern_',source)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        from compile_recomp import generate_page
+        disabled={name:False for name in inspect.signature(generate_page).parameters
+                  if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['awol_records_hooks']=True
+        covered=set();pages=set()
+        for owner,audit,records in self.groups:
+            selected={row['address'] for row in records}
+            for page in sorted({row['address']>>12 for row in records}):
+                pages.add(page)
+                part=[row for row in records if row['address']>>12==page]
+                code=generate_page(page,part,selected,userops=self.userops,**disabled)
+                audit.require_awol_records_hooks(page,part,code)
+                for entry in audit.AWOL_RECORDS_ENTRIES:
+                    if entry>>12!=page:continue
+                    covered.add(entry)
+                    hook=audit.awol_records_hook(entry)
+                    step=next(token for token in (f's.step(0x{entry:x});',f'counter.step(0x{entry:x});') if token in code)
+                    for changed in (code.replace(hook,'',1),code.replace(hook,'',1).replace(step,step+'\n'+hook,1),
+                                    code.replace(hook,hook+'\n'+hook,1)):
+                        with self.subTest(entry=hex(entry)),self.assertRaises(ValueError):
+                            audit.require_awol_records_hooks(page,part,changed)
+        self.assertEqual(len(pages),7)
+        self.assertEqual(len(covered),21)
 
     def test_index_edge_scan_covers_non_sorted_contracts(self):
         # Deliberately reverse contract order so first/last endpoints cannot

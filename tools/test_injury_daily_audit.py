@@ -20,12 +20,12 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 class ManifestTests(unittest.TestCase):
     def test_exact_accepted_prefix_and_one_new_owner(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 735)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 735)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 756)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 756)
         prefix = [{'entry': f'0x{entry:x}', 'module': owner} for entry, owner in SEMANTIC_REPLACEMENTS[:734]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'c8e02f08c40cfd609332fbf48036d1be9a1d6461da13e47452f9da786a0ea93e')
-        self.assertEqual(SEMANTIC_REPLACEMENTS[734:], ((0x10185410, 'injury_daily_adapter'),))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[734:735], ((0x10185410, 'injury_daily_adapter'),))
 
     def test_duplicate_ownership_is_rejected_before_generation(self):
         require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)

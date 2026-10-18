@@ -100,6 +100,22 @@ target_sources(cm_aot PRIVATE
     injury_daily_selection.cpp
     injury_daily_effects.cpp
     injury_daily_adapter.cpp
+    awol_records_lifecycle.cpp
+    awol_records_load.cpp
+    awol_records_save.cpp
+    awol_records_queries.cpp
+    awol_records_notice.cpp
+    awol_sampling.cpp
+    awol_daily.cpp
+    awol_daily_return.cpp
+    awol_registration.cpp
+    awol_training_notice.cpp
+    awol_primary_message.cpp
+    awol_training_message.cpp
+    awol_fitness_message.cpp
+    awol_absence_events.cpp
+    awol_fitness_events.cpp
+    awol_records_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp
     match_discipline_penalties.cpp
@@ -504,6 +520,19 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-injury-daily-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME injury_daily_component_equivalence COMMAND cm-injury-daily-checks)
     set_tests_properties(injury_daily_component_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
+    add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_AWOL_RECORDS_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/awol_records_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-awol-records-checks awol_records_checks.cpp "${CM_AWOL_RECORDS_REFERENCE}")
+    target_link_libraries(cm-awol-records-checks PRIVATE cm_aot)
+    target_compile_options(cm-awol-records-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME awol_records_component_equivalence COMMAND cm-awol-records-checks)
+    set_tests_properties(awol_records_component_equivalence PROPERTIES TIMEOUT 180)
     set(CM_MATCH_RANDOM_REFERENCE "${CMAKE_BINARY_DIR}/match_random_reference.cpp")
     add_custom_command(OUTPUT "${CM_MATCH_RANDOM_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_random_reference.py"
@@ -740,6 +769,9 @@ target_compile_options(cm-injury-persistence-transfer-checks PRIVATE -Wall -Wext
 add_executable(cm-injury-daily-production-checks injury_daily_production_checks.cpp)
 target_link_libraries(cm-injury-daily-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-injury-daily-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-awol-records-production-checks awol_records_production_checks.cpp)
+target_link_libraries(cm-awol-records-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-awol-records-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-injury-persistence-production-checks injury_persistence_production_checks.cpp)
 target_link_libraries(cm-injury-persistence-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-injury-persistence-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

@@ -7,14 +7,14 @@ indexed instructions at `0x100031b0..0x10009ee8`. No indexed external edge enter
 the interior of any operation. Eleven non-indexed padding no-ops are identified.
 The following CASH string helper remains outside this source block.
 
-All 21 operations now have prepared C++23 implementations and passing direct
-comparisons, covering all 6,958 indexed instructions. **Production integration,
-actual runtime and installation acceptance remain pending.**
-The accepted manifest and installed game remain at 735 entries. Every prepared
+All 21 operations have accepted C++23 implementations, covering all 6,958 indexed
+instructions. The consistently generated, built and installed game contains
+756 unique entries and passes the actual-world Release matrix, focused sanitizer
+checks and installed startup/normal-exit smoke. Every prepared
 entry was checked to have no accepted semantic owner before implementation;
 existing actor/condition implementations remain unchanged.
 
-## Prepared operations
+## Reconstructed operations
 
 | Entry | Exclusive end | Instructions | Operation |
 | --- | --- | ---: | --- |
@@ -186,10 +186,10 @@ changes, profile mutation, missing manager/profile, every late draw wrap and
 relocated TOC. Shared draw extensions retain the previously validated default
 register/scratch behavior; the complete 21-operation component matrix passes.
 
-Renderer dependency services are stateful component fixtures. Their name,
-formatting, output and link effects and input/output ABI are compared, but this
-does not claim real language-service/layout acceptance or natural management-UI
-traversal. Those remain part of the complete AWOL actual-runtime milestone.
+Renderer dependency services in the component matrix are stateful fixtures.
+Their name, formatting, output and link effects and input/output ABI are compared.
+The combined actual-world matrix below separately exercises original language,
+message and rich-text services. Natural management-UI traversal is not claimed.
 
 Comparisons cover full register/temporary/mapped-memory and allocator/import
 state, ordered effects, dependency ABI, source order, instruction accounting and
@@ -198,9 +198,9 @@ bytes per selected fixture and selected dependency interruptions remain focused.
 Controlled constructor-to-reader, status-to-removal and recursive-sampling cases
 execute complete original and C++ components through their dependency boundary.
 
-Seven source-guard tests pass, including complete boundaries, metadata mutations,
+Eight source-guard tests pass, including complete boundaries, metadata mutations,
 independent reference labels, table/pointer/padding mutations, absence of an
-instruction replay path, and rejection of overlap with already accepted owners.
+instruction replay path, unique ownership and productive hook placement.
 An explicit reversed-contract negative verifies that the index scan still
 rejects external entrances into the highest-address body independently of
 contract insertion order.
@@ -216,8 +216,63 @@ saves are published.
 
 ## Combined integration milestone
 
-All complete source bodies are prepared. Productive hooks, consistent generation
-and build, actual original-service runtime, focused sanitizers and one installed
-application smoke remain the combined AWOL integration milestone.
+The candidate appends all 21 entries after the exact accepted 735-entry prefix.
+Full generation retains 1,953,334 instructions, 1,922 pages and 1,923 C++ files,
+with no missing or pending targets. Exactly six generated pages change:
+`page_10003.cpp`, `page_10004.cpp`, `page_10006.cpp`, `page_10007.cpp`,
+`page_10008.cpp` and `page_10009.cpp`. Original bodies and global, per-entry and
+profiling controls remain available. Eight source/hook/ownership guards and
+59 focused historical manifest methods pass. Historical test edits change only
+the current total and bound the preceding daily-controller suffix.
+
+The consistent Release build passes the focused AWOL CTest. Actual-world
+validation retains all 153,796 staff and prepares missing management services
+with their original constructors and publication sequences. A selected real
+player and club gain their contract through the original population helpers;
+the checks use original list allocation, message builders, rich-text output and
+native private-file services. No gameplay dependency is stubbed.
+
+All 21 roots pass **189 paired comparisons**: 105 ordinary completions,
+63 budget stops and 21 discriminating negatives, plus **21 separate matching
+pointer faults**. Direct, generated and CFM paths, global/per-entry original
+controls, complete state, ordered effects, import ABI, file bytes and instruction
+accounting agree. Runtime witnesses reach **2,057 source sites**; full-body
+coverage comes from the independent component matrix. This is prepared
+actual-data coverage, not natural career-UI traversal. Another **42 profiling
+controls** keep the selected roots original. The existing daily injury seam
+passes eleven paired cases plus its separate pointer fault.
+
+Archive setup preserves the original rejection of duplicate component names by
+using a populated load archive and a separate empty original header for saves.
+Interrupted comparisons release outstanding original native write forks before
+restoring the same private baseline for the modern run. This host cleanup does
+not access guest memory or add guest imports; guest state and effects remain
+fully compared. Four interrupted native forks exercise that cleanup.
+
+The focused sanitizer build instruments all fifteen semantic units, the adapter,
+runtime diagnostics, both check harnesses and the independent reference. Its
+component matrix passes all 1,819 comparisons and 6,958 sites; the actual-world
+matrix repeats all 189 comparisons and 21 pointer faults. Both runs finish with
+empty sanitizer stderr, and all twenty source identities and ten shared/new
+header identities are verified. Unchanged dependencies and generated pages
+remain Release. This is not a whole-engine sanitizer claim.
+
+The strict-signed arm64 application is installed with executable SHA-256
+`626df9fa62ec13a0ebd5a3c19f96d0b60e996eb40df88872fdb563d8d71b61d2`.
+Candidate and installed identities and all four original payload files agree.
+The installed process visibly reaches **Preparar Jogo**, displays the original
+quit confirmation and exits normally. Its exact process identity and native
+normal-exit log are retained. Startup smoke is separate from the dedicated
+actual-world checks and does not establish natural career traversal.
+
+The installation preserves all 846 protected runtime/handoff files, including
+the user's careers and eighteen existing private feature prompts. The previous
+735-entry application is retained as a private reference; the installed Match
+Debugger is unchanged. Original inputs, snapshots, comparison recipes, source
+identities and installation receipts remain private under
+`.local/awol-reconstruction`.
+Seven reproducible linked check executables were removed after acceptance,
+releasing 1,018,839,712 logical bytes. Their objects, libraries, build recipes,
+logs and original references remain available for relinking.
 Save/Load: **not retested**. Performance: **not benchmarked**. The complete-game
 reconstruction goal remains active.

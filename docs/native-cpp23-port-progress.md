@@ -9,7 +9,30 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [injury controller persistence block](native-injury-controller-persistence.md)
+The complete [AWOL block](native-awol-records.md) adds 21 operations and
+6,958 original instructions after the daily injury controller's accepted
+735-entry prefix. The generated, built and installed manifest contains
+**756 unique entries**. Release and focused UBSAN each pass 1,819 component
+comparisons covering every source site, plus 189 prepared actual-world
+comparisons and 21 separate pointer faults. Forty-two Release profile controls,
+eight source/hook guards and 59 focused historical manifest methods pass.
+Actual-world checks retain 153,796 staff and use original management, contract,
+list, message, text and private-file services. This prepared coverage is distinct
+from natural career-UI traversal; no repeated full-match campaign ran.
+
+The strict-signed arm64 game is installed with executable SHA-256
+`626df9fa62ec13a0ebd5a3c19f96d0b60e996eb40df88872fdb563d8d71b61d2`.
+Prepare Game rendering, original quit confirmation and normal exit pass.
+All 846 protected files, prior application, eighteen existing feature prompts
+and installed Match Debugger are preserved. Save/Load is **not retested** and
+performance is **not benchmarked**. The full reconstruction goal remains active.
+
+The preceding [daily injury controller](native-injury-daily-controller.md)
+adds one complete 1,060-instruction operation and rejects duplicate semantic
+ownership before generation. Its existing actual-world seam also passes after
+AWOL integration.
+
+The earlier [injury controller persistence block](native-injury-controller-persistence.md)
 adds two complete operations and **945 original instructions**, extending the
 accepted manifest from 732 to **734 entries** with its exact prior prefix intact.
 Release and affected-unit UBSAN each pass 34,717 component, 85 actual private-file

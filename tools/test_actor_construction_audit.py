@@ -24,8 +24,8 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(sum(n for _, _, n, _ in CONTRACTS), 2778)
         self.assertEqual(ACTOR_CONSTRUCTION_ENTRIES, tuple(sorted(set(ACTOR_CONSTRUCTION_ENTRIES))))
         baseline = [{'entry': f'0x{a:x}', 'module': m} for a, m in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(baseline), 735)
-        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 735)
+        self.assertEqual(len(baseline), 756)
+        self.assertEqual(len({a for a, _ in SEMANTIC_REPLACEMENTS}), 756)
         self.assertEqual(hashlib.sha256(json.dumps(baseline[:604], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '1e4935c4e56744dd4024373da1a601be905d5bd79540ea70241b93ac830163b6')
         self.assertEqual(SEMANTIC_REPLACEMENTS[604:606], tuple((a, 'actor_construction_adapter') for a in ACTOR_CONSTRUCTION_ENTRIES))
