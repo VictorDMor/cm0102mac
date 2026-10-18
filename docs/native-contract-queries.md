@@ -1,11 +1,11 @@
 # Staff contract queries
 
-All three complete staff-contract lookup operations have prepared C++23
-implementations and passing independent original comparisons. They cover 145
-indexed instructions on two original pages. Production hooks, actual-world
-runtime, sanitizer and installation acceptance remain pending for the coherent
-contract integration batch. The accepted manifest and installed game remain at
-**756 entries**.
+All three complete staff-contract lookup operations have accepted C++23
+implementations, integrated with the complete storage creation block. They
+cover 145 indexed instructions on two original pages. The generated, built and
+installed game contains **762 entries**, preserving its exact prior 756-entry
+prefix. See the [combined integration report](native-contract-integration.md)
+for real-service runtime, sanitizer, installation and preservation evidence.
 
 ## Original boundaries
 
@@ -67,17 +67,17 @@ results. The secondary lookup executes complete original/C++ bodies within
 the club query; the external club resolver is a stateful component fixture
 with byte-output, caller-clobber and live-mutation behavior.
 
-Eight Python source guards pass, covering complete bodies/fragments, metadata
+Nine Python source guards pass, covering complete bodies/fragments, metadata
 mutation, missing/duplicate/reordered bodies, external interior edges, a
-reversed-contract edge scan, independent reference completeness and ownership.
+reversed-contract edge scan, independent reference completeness, ownership and productive hook placement.
 References contain all original labels and steps with semantic hooks disabled.
 Named C++ queries do not replay generated instruction bodies.
 
 The exact accepted 756-entry prefix remains unchanged, with canonical SHA-256
 `227fca872a4b07455474488cab1d1d46728cd5bed1cbc2aa82e71ca0b3cb98f9`.
-The new CMake target compiles these functions only into the component check;
-they are not added to the production library or manifest. No generated game
-pages or installed application were replaced during this preparation.
+The query functions now compile into the shared production library and have
+productive hooks under `contract_query_adapter`. Their independent component
+reference retains original bodies with all semantic hooks disabled.
 
 Original instruction data, generated references and execution receipts remain
 private under `.local/contract-query-reconstruction`. Save/Load: **not retested**.

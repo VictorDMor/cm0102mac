@@ -20,13 +20,13 @@ class ManifestTests(unittest.TestCase):
     def test_exact_accepted_prefix_and_complete_candidate_owner(self):
         from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
         from awol_records_audit import AWOL_RECORDS_ENTRIES
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),756)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),756)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),762)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),762)
         self.assertEqual(len(AWOL_RECORDS_ENTRIES),21)
         prefix=[{'entry':f'0x{entry:x}','module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:735]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
                          'aa3d2cc801e513cc3fca8d7c83d1f0f250baee4d9d2dcb78a0c09c19580e3dc5')
-        self.assertEqual(SEMANTIC_REPLACEMENTS[735:],tuple((entry,'awol_records_adapter') for entry in AWOL_RECORDS_ENTRIES))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[735:756],tuple((entry,'awol_records_adapter') for entry in AWOL_RECORDS_ENTRIES))
         self.assertNotIn(0x10009ef0,{entry for entry,_ in SEMANTIC_REPLACEMENTS})
         require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         for entry in AWOL_RECORDS_ENTRIES:

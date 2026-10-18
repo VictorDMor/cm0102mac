@@ -8,10 +8,10 @@ import re
 import sqlite3
 import unittest
 from unittest.mock import patch
-from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
+from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements, generate_page
 from contract_query_audit import (CONTRACTS, FRAGMENTS, CONTRACT_QUERY_ENTRIES,
     require_contract_query_bodies, require_contract_query_contract,
-    require_contract_query_edges, require_contract_query_index)
+    require_contract_query_edges, require_contract_query_index, require_contract_query_hooks, contract_query_hook)
 from make_contract_query_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,15 +19,17 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_all_three_roots_have_no_existing_owner(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 756)
+    def test_exact_accepted_prefix_and_complete_candidate_owner(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 762)
         self.assertEqual(CONTRACT_QUERY_ENTRIES, (0x10082f20, 0x10082f90, 0x10083110))
-        prefix = [{'entry': f'0x{entry:x}', 'module': owner} for entry, owner in SEMANTIC_REPLACEMENTS]
+        prefix = [{'entry': f'0x{entry:x}', 'module': owner} for entry, owner in SEMANTIC_REPLACEMENTS[:756]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '227fca872a4b07455474488cab1d1d46728cd5bed1cbc2aa82e71ca0b3cb98f9')
-        self.assertFalse(set(CONTRACT_QUERY_ENTRIES) & {entry for entry, _ in SEMANTIC_REPLACEMENTS})
-        require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,
-                                            *((entry, 'contract_query_adapter') for entry in CONTRACT_QUERY_ENTRIES)))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[756:759], tuple((entry, 'contract_query_adapter') for entry in CONTRACT_QUERY_ENTRIES))
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry in CONTRACT_QUERY_ENTRIES:
+            with self.subTest(entry=hex(entry)), self.assertRaisesRegex(ValueError, 'Duplicate semantic replacement'):
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS, (entry, 'other_owner')))
 
     def test_complete_boundaries_and_external_interior_edges(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS), 145)
@@ -81,6 +83,26 @@ class OriginalContractTests(unittest.TestCase):
                 if start >> 12 <= page <= (end-1) >> 12:
                     with self.assertRaises(ValueError):
                         require_contract_query_contract(page, [row for row in rows if not start <= row['address'] < end], {start})
+
+    def test_productive_hooks_precede_original_accounting(self):
+        import inspect
+        disabled = {name: False for name in inspect.signature(generate_page).parameters
+                    if name.endswith('_hooks') or name == 'guest_context_transfers'}
+        disabled['contract_query_hooks'] = True
+        for page in sorted({r['address'] >> 12 for r in self.records}):
+            part = [r for r in self.records if r['address'] >> 12 == page]
+            selected = {r['address'] for r in self.records}
+            code = generate_page(page, part, selected, userops=self.userops, **disabled)
+            require_contract_query_hooks(page, part, code)
+            for entry in CONTRACT_QUERY_ENTRIES:
+                if entry >> 12 != page: continue
+                hook = contract_query_hook(entry)
+                step = f's.step(0x{entry:x});'
+                for changed in (code.replace(hook, '', 1),
+                                code.replace(hook, '', 1).replace(step, step+'\n'+hook, 1),
+                                code.replace(hook, hook+'\n'+hook, 1)):
+                    with self.subTest(entry=hex(entry)), self.assertRaises(ValueError):
+                        require_contract_query_hooks(page, part, changed)
 
     def test_reference_retains_all_steps_without_semantic_hooks(self):
         source = render_reference(self.records, self.userops)

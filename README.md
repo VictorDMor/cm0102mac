@@ -21,7 +21,7 @@ unfinished. There is no public binary release yet.
   legacy Mac OS virtual machine. It retains a checked, big-endian 32-bit data
   address space for the original game's pointers and structures.
 
-The latest accepted production manifest contains **756 reconstructed entry points**.
+The latest accepted production manifest contains **762 reconstructed entry points**.
 This is an integration count, not a percentage of the game recovered. Much of the
 simulation still uses generated code. See the
 [C++23 progress report](docs/native-cpp23-port-progress.md) and
@@ -72,7 +72,7 @@ been accepted as inputs to this pipeline.
 | Persistence | Normal save, exit, reopen and reload have passed in local use; individual later subsystem reports state when persistence was not retested |
 | macOS presentation | Native text/control drawing, 100–200% interface scaling and Fit to Screen, keyboard commands and audio |
 | Match Debugger | Separate native application with seeded matches, player/event inspection, substitutions and rewind/redo; its full product contract remains incomplete |
-| Reconstruction | 756 accepted C++23 entry points coexist with statically generated original routines; this count is not a completion percentage |
+| Reconstruction | 762 accepted C++23 entry points coexist with statically generated original routines; this count is not a completion percentage |
 | Availability | Developer source workflow for Apple Silicon / macOS 13+; your original Mac files and local compilation are required |
 | Remaining work | Multiplayer and some services remain unsupported; the whole game port is unfinished and no public binary release is available |
 
@@ -144,6 +144,7 @@ checkout; the active game build uses `native/` through `tools/build_aot.sh`.
 - [Match Debugger](docs/native-match-debugger-application.md)
 - [Native presentation and commands](docs/native-presentation-and-direct-commands.md)
 - [AWOL records and absence processing](docs/native-awol-records.md)
+- [Staff contract lookup and creation](docs/native-contract-integration.md)
 - [Daily injury controller](docs/native-injury-daily-controller.md)
 - [Injury controller persistence](docs/native-injury-controller-persistence.md)
 - [Injury controller bootstrap](docs/native-injury-controller-bootstrap.md)

@@ -27,6 +27,8 @@
 #include "injury_persistence_adapter.hpp"
 #include "injury_daily_adapter.hpp"
 #include "awol_records_adapter.hpp"
+#include "contract_query_adapter.hpp"
+#include "contract_storage_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -66,6 +68,8 @@ struct RuntimeDiagnostics {
     InjuryPersistenceDiagnostics injury_persistence;
     InjuryDailyDiagnostics injury_daily;
     AwolRecordsDiagnostics awol_records;
+    ContractQueryDiagnostics contract_query;
+    ContractStorageDiagnostics contract_storage;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -352,4 +356,26 @@ const MatchEngineDiagnostics& match_engine_diagnostics(const State& state) {
     return state.runtime_diagnostics ? state.runtime_diagnostics->match_engine : empty;
 }
 
+}
+
+namespace cm::aot {
+ContractQueryDiagnostics& contract_query_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->contract_query;
+}
+const ContractQueryDiagnostics& contract_query_diagnostics(const State& state) {
+    static const ContractQueryDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->contract_query : empty;
+}
+}
+
+namespace cm::aot {
+ContractStorageDiagnostics& contract_storage_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->contract_storage;
+}
+const ContractStorageDiagnostics& contract_storage_diagnostics(const State& state) {
+    static const ContractStorageDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->contract_storage : empty;
+}
 }

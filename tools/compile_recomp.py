@@ -154,6 +154,10 @@ from injury_daily_audit import (require_injury_daily_contract, require_injury_da
     require_injury_daily_hooks, injury_daily_hook, INJURY_DAILY_ENTRIES)
 from awol_records_audit import (require_awol_records_contract, require_awol_records_index,
     require_awol_records_hooks, awol_records_hook, AWOL_RECORDS_ENTRIES)
+from contract_query_audit import (require_contract_query_contract, require_contract_query_index,
+    require_contract_query_hooks, contract_query_hook, CONTRACT_QUERY_ENTRIES)
+from contract_storage_audit import (require_contract_storage_contract, require_contract_storage_index,
+    require_contract_storage_hooks, contract_storage_hook, CONTRACT_STORAGE_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -216,7 +220,9 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "injury_bootstrap_adapter") for entry in INJURY_BOOTSTRAP_ENTRIES) +
     tuple((entry, "injury_persistence_adapter") for entry in INJURY_PERSISTENCE_ENTRIES) +
     tuple((entry, "injury_daily_adapter") for entry in INJURY_DAILY_ENTRIES) +
-    tuple((entry, "awol_records_adapter") for entry in AWOL_RECORDS_ENTRIES))
+    tuple((entry, "awol_records_adapter") for entry in AWOL_RECORDS_ENTRIES) +
+    tuple((entry, "contract_query_adapter") for entry in CONTRACT_QUERY_ENTRIES) +
+    tuple((entry, "contract_storage_adapter") for entry in CONTRACT_STORAGE_ENTRIES))
 
 
 def require_unique_semantic_replacements(replacements):
@@ -459,7 +465,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -527,6 +533,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_injury_daily_contract(page, instructions, selected)
     if awol_records_hooks:
         require_awol_records_contract(page, instructions, selected)
+    if contract_query_hooks:
+        require_contract_query_contract(page, instructions, selected)
+    if contract_storage_hooks:
+        require_contract_storage_contract(page, instructions, selected)
     if team_spatial_hooks:
         require_team_spatial_contract(page, instructions, selected)
     if pitch_distance_hooks:
@@ -630,6 +640,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "injury_daily_adapter.hpp"')
     if awol_records_hooks and page_addresses & set(AWOL_RECORDS_ENTRIES):
         code.insert(1, '#include "awol_records_adapter.hpp"')
+    if contract_query_hooks and page_addresses & set(CONTRACT_QUERY_ENTRIES):
+        code.insert(1, '#include "contract_query_adapter.hpp"')
+    if contract_storage_hooks and page_addresses & set(CONTRACT_STORAGE_ENTRIES):
+        code.insert(1, '#include "contract_storage_adapter.hpp"')
     if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
         code.insert(1, '#include "team_spatial_adapter.hpp"')
     if pitch_distance_hooks and page_addresses & set(PITCH_DISTANCE_ENTRIES):
@@ -832,6 +846,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(injury_daily_hook(a))
         if awol_records_hooks and a in AWOL_RECORDS_ENTRIES:
             code.append(awol_records_hook(a))
+        if contract_query_hooks and a in CONTRACT_QUERY_ENTRIES:
+            code.append(contract_query_hook(a))
+        if contract_storage_hooks and a in CONTRACT_STORAGE_ENTRIES:
+            code.append(contract_storage_hook(a))
         if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
             code.append(team_spatial_hook(a))
         if pitch_distance_hooks and a in PITCH_DISTANCE_ENTRIES:
@@ -1072,6 +1090,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_injury_daily_hooks(page, instructions, result)
     if awol_records_hooks:
         require_awol_records_hooks(page, instructions, result)
+    if contract_query_hooks:
+        require_contract_query_hooks(page, instructions, result)
+    if contract_storage_hooks:
+        require_contract_storage_hooks(page, instructions, result)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
@@ -1188,6 +1210,8 @@ def main():
         require_injury_persistence_index(db, None if args.all_analyzed else selected)
         require_injury_daily_index(db, None if args.all_analyzed else selected)
         require_awol_records_index(db, None if args.all_analyzed else selected)
+        require_contract_query_index(db, None if args.all_analyzed else selected)
+        require_contract_storage_index(db, None if args.all_analyzed else selected)
         require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)
@@ -1218,6 +1242,8 @@ def main():
             load_injury_daily_tables(args.export)
             from awol_records_audit import load_awol_records_tables
             load_awol_records_tables(args.export)
+            from contract_storage_audit import load_contract_storage_tables
+            load_contract_storage_tables(args.export)
             from player_movement_audit import load_player_movement_tables
             load_player_movement_tables(args.export)
             from ball_action_audit import load_ball_action_tables

@@ -1,12 +1,11 @@
 # Contract storage creation
 
-All three complete operations in this storage creation block have prepared,
+All three complete operations in this storage creation block have accepted,
 directly compared C++23 implementations. Their **2,016 indexed instructions**
-cover row reservation, primary staff binding and full contract initialization.
-The functions compile only into the component checks. Production hooks,
-actual-world runtime, sanitizers and installation remain a combined contract
-integration milestone with the [prepared queries](native-contract-queries.md).
-The accepted manifest and installed game remain at **756 entries**.
+cover row reservation, primary staff binding and full initialization. They are
+integrated with the three queries in the **762-entry installed game**, retaining
+the exact prior 756-entry prefix. The [combined integration report](native-contract-integration.md)
+records real-service runtime, sanitizer, installation and preservation evidence.
 
 ## Original scope
 
@@ -107,13 +106,13 @@ Cases include signed and floating boundaries, NaN/infinity, both date paths,
 profile/competition guards, live callback mutation, every inline reseed site,
 both sampler scratch variants, record-flag preservation, null faults and
 complete nested calls. External date, value, rule, RNG and allocator services
-are stateful component fixtures; actual-world integration is still pending.
+are stateful component fixtures; actual-world coverage is recorded separately in the integration report.
 
-Eleven Python guards pin all original instructions/page fragments, three tables
+Twelve Python guards pin all original instructions/page fragments, three tables
 totaling 780 bytes, their pointers and two padding words. They reject altered,
 missing, duplicate or reordered bodies, partial pages, ownership overlap and
 external interior edges, including reversed contract order. They also verify
-sampler normalization and the three record-flag sites. Independent references
+sampler normalization, the three record-flag sites and productive hook placement. Independent references
 retain every original label and step with semantic hooks disabled. Named C++
 functions do not replay generated instruction bodies.
 

@@ -50,3 +50,18 @@ def require_contract_query_index(db, selected=None):
         FROM instructions AS i,
           json_each(json_insert(json_extract(i.body,'$.flows'),'$[#]',json_extract(i.body,'$.fallthrough'))) AS e
         WHERE e.value>=? AND e.value<?""", (min(c[0] for c in CONTRACTS), max(c[1] for c in CONTRACTS))))
+
+
+def contract_query_hook(entry):
+    return f'if (try_modern_contract_query(s, 0x{entry:x})) return true;'
+
+
+def require_contract_query_hooks(page, instructions, code):
+    addresses = {r['address'] for r in instructions}
+    for entry in CONTRACT_QUERY_ENTRIES:
+        if entry >> 12 != page or entry not in addresses: continue
+        label, hook = f'i_{entry:x}:', contract_query_hook(entry)
+        fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        steps = [token for token in (f's.step(0x{entry:x});', f'counter.step(0x{entry:x});') if token in fragment]
+        if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+            raise ValueError(f'Missing or misplaced contract-query hook at {entry:x}')

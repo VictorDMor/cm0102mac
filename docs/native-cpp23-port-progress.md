@@ -9,23 +9,28 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [contract storage creation block](native-contract-storage.md) has prepared
-row reservation and primary binding: 509 component comparisons cover all 116
-instructions of those two operations. Nine source/data guards pin the full
-2,016-instruction original scope. The remaining 1,900-instruction initializer
-is characterized and still required; full storage reconstruction and contract
-production integration remain pending. The installed manifest stays at 756.
+The [contract lookup and creation batch](native-contract-integration.md) adds
+six complete operations and **2,161 original instructions**, extending the
+accepted prefix from 756 to **762 unique entries**. Release and focused UBSAN
+each pass 6,113 component comparisons covering every site and 120 prepared
+actual-world comparisons, including twelve pointer faults and twelve rejected
+negatives. Twenty-four profile controls, 21 source/hook guards and 59 historical
+manifest methods pass. Exactly four generated root pages change. The existing
+AWOL and daily injury runtime seams pass with both contract owners selected
+original on their reference side. This is prepared actual-data coverage, not
+natural career traversal or completion of all contract services.
 
-The [staff contract queries](native-contract-queries.md) have three prepared
-operations covering all 145 original instructions. Eight source guards and
-2,738 complete-state component comparisons pass. These functions are compiled
-only into their focused check target; production integration and actual-world
-acceptance remain pending for the coherent contract batch. The installed and
-accepted manifest remains at 756 entries.
+The strict-signed arm64 application is installed with executable SHA-256
+`40c724fbcdfeaee09067aa1b90c9b6a7de68325fa36cc19dbc2b1c8dce32e246`.
+Prepare Game rendering, original exit confirmation and normal exit pass.
+All 846 protected files, previous application and installed Match Debugger are
+preserved. Save/Load is **not retested**; performance is **not benchmarked**.
+The cumulative Portuguese companion guide is updated alongside each cycle.
+The whole-game reconstruction goal remains active.
 
-The complete [AWOL block](native-awol-records.md) adds 21 operations and
+The preceding [AWOL block](native-awol-records.md) adds 21 operations and
 6,958 original instructions after the daily injury controller's accepted
-735-entry prefix. The generated, built and installed manifest contains
+735-entry prefix. That generated, built and installed delivery contained
 **756 unique entries**. Release and focused UBSAN each pass 1,819 component
 comparisons covering every source site, plus 189 prepared actual-world
 comparisons and 21 separate pointer faults. Forty-two Release profile controls,
@@ -34,7 +39,7 @@ Actual-world checks retain 153,796 staff and use original management, contract,
 list, message, text and private-file services. This prepared coverage is distinct
 from natural career-UI traversal; no repeated full-match campaign ran.
 
-The strict-signed arm64 game is installed with executable SHA-256
+At that AWOL milestone, the strict-signed arm64 game had executable SHA-256
 `626df9fa62ec13a0ebd5a3c19f96d0b60e996eb40df88872fdb563d8d71b61d2`.
 Prepare Game rendering, original quit confirmation and normal exit pass.
 All 846 protected files, prior application, eighteen existing feature prompts
