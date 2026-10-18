@@ -38,6 +38,7 @@
 #include "shortlist_category_adapter.hpp"
 #include "shortlist_links_adapter.hpp"
 #include "shortlist_recruitment_adapter.hpp"
+#include "shortlist_assessment_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -89,6 +90,7 @@ struct RuntimeDiagnostics {
     ShortlistCategoryDiagnostics shortlist_category;
     ShortlistLinksDiagnostics shortlist_links;
     ShortlistRecruitmentDiagnostics shortlist_recruitment;
+    ShortlistAssessmentDiagnostics shortlist_assessment;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -492,5 +494,13 @@ ShortlistRecruitmentDiagnostics& shortlist_recruitment_diagnostics(State& state)
 const ShortlistRecruitmentDiagnostics& shortlist_recruitment_diagnostics(const State& state) {
     static const ShortlistRecruitmentDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->shortlist_recruitment : empty;
+}
+ShortlistAssessmentDiagnostics& shortlist_assessment_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->shortlist_assessment;
+}
+const ShortlistAssessmentDiagnostics& shortlist_assessment_diagnostics(const State& state) {
+    static const ShortlistAssessmentDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->shortlist_assessment : empty;
 }
 }

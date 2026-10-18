@@ -150,3 +150,18 @@ def load_shortlist_assessment_structural_proofs(directory, instructions):
             if base<=address and address+size<=base+len(data):return data[address-base:address-base+size]
         raise ValueError('Missing original structural-proof data')
     return require_shortlist_assessment_structural_proofs(instructions,read)
+
+
+def shortlist_assessment_hook(entry):
+    return f'if (try_modern_shortlist_assessment(s, 0x{entry:x})) return true;'
+
+
+def require_shortlist_assessment_hooks(page, instructions, code):
+    addresses = {r['address'] for r in instructions}
+    for entry in SHORTLIST_ASSESSMENT_ENTRIES:
+        if entry >> 12 != page or entry not in addresses: continue
+        label, hook = f'i_{entry:x}:', shortlist_assessment_hook(entry)
+        fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        steps = [token for token in (f's.step(0x{entry:x});', f'counter.step(0x{entry:x});') if token in fragment]
+        if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+            raise ValueError(f'Missing or misplaced shortlist-assessment hook at {entry:x}')

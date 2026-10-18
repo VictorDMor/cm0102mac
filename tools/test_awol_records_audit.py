@@ -20,8 +20,8 @@ class ManifestTests(unittest.TestCase):
     def test_exact_accepted_prefix_and_complete_candidate_owner(self):
         from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
         from awol_records_audit import AWOL_RECORDS_ENTRIES
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),857)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),857)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),859)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),859)
         self.assertEqual(len(AWOL_RECORDS_ENTRIES),21)
         prefix=[{'entry':f'0x{entry:x}','module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:735]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

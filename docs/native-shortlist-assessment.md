@@ -1,10 +1,11 @@
 # Candidate contribution and club-interest assessment
 
 Two complete original operations have been reconstructed and compared as an
-isolated component. They cover **5,797 indexed instructions**. Production remains
-at the accepted **857 installed owners**: these two entries have no production
-adapter or replacement hook. A later consolidated integration would reach 859
-only after preserving that exact prefix and establishing actual-service proof.
+isolated component. They cover **5,797 indexed instructions**. Prepared in
+`331bc1f`, they are now integrated after the exact accepted 857-entry prefix,
+reaching **859 installed owners**. The [integration report](native-shortlist-assessment-integration.md)
+records actual-service comparisons, productive dispatch controls and installed
+delivery. The component evidence below retains its declared dependency fixtures.
 
 ## Complete boundaries
 
@@ -124,5 +125,6 @@ source/data checks passed. Shared guest support, floating support, earlier
 recruitment bodies and the productive owner manifest remain unchanged.
 
 Productive generation, actual-service integration, focused UBSAN and app
-installation are deferred to the consolidated milestone. Save/Load: **not
-retested**. Performance: **not benchmarked**. The whole-game goal remains active.
+installation are recorded in the separate integration report. They do not change
+the scope of the component evidence above. Save/Load: **not retested**.
+Performance: **not benchmarked**. The whole-game goal remains active.
