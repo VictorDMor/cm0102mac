@@ -9,6 +9,15 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The next [transfer-offer query/policy block](native-transfer-offer-queries.md) is
+**prepared, not integrated**: nineteen complete operations and 1,111 original
+instructions cover membership and cached markers, rejection reasons/eligibility,
+offer collections, filtering and selection. Its focused Release CTest passes
+10,429 comparisons with every source site required, including 33 rejected
+negatives and thirteen identified structural comparisons. Ten source/data guards
+pass. Productive integration, actual services, focused sanitizer and installation
+remain pending; the installed game retains 796 entries.
+
 The [contract review/status integration](native-contract-review-integration.md)
 adds thirteen complete operations and 1,447 original instructions after the exact
 accepted 783-entry prefix, reaching **796 installed entries**. Release and focused
