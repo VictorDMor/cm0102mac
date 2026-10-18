@@ -9,6 +9,14 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The next [transfer-offer record block](native-transfer-records.md) is **prepared,
+not integrated**: eight complete operations and 806 original instructions cover
+lifecycle, raw record IO, explicit initialization and value composition. Its
+focused Release CTest passes 6,150 comparisons with all source sites required,
+including sixteen rejected negatives and thirteen identified structural cases.
+Ten source/data guards pass. The installed game retains 815 entries; productive
+integration, actual services and focused sanitizer remain pending.
+
 The [transfer-offer query/policy integration](native-transfer-offer-integration.md)
 adds nineteen complete operations and 1,111 original instructions after the exact
 accepted 796-entry prefix, reaching **815 installed entries**. Release and focused

@@ -599,6 +599,21 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME transfer_offer_component_equivalence COMMAND cm-transfer-offer-checks)
     set_tests_properties(transfer_offer_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_TRANSFER_RECORD_REFERENCE "${CMAKE_BINARY_DIR}/transfer_record_reference.cpp")
+    add_custom_command(OUTPUT "${CM_TRANSFER_RECORD_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_record_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_TRANSFER_RECORD_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_record_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_record_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-transfer-record-checks transfer_record_checks.cpp transfer_record_lifecycle.cpp
+        transfer_record_initialization.cpp transfer_record_persistence.cpp transfer_record_value.cpp "${CM_TRANSFER_RECORD_REFERENCE}")
+    target_link_libraries(cm-transfer-record-checks PRIVATE cm_aot)
+    target_compile_options(cm-transfer-record-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME transfer_record_component_equivalence COMMAND cm-transfer-record-checks)
+    set_tests_properties(transfer_record_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
