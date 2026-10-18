@@ -9,6 +9,15 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The next [contract terms block](native-contract-terms.md) is **prepared, not
+integrated**: 21 complete operations and 1,203 original instructions cover
+clause/bonus editing and eligibility, labels, end descriptions, shared sampling
+and expiry bands. Its focused Release CTest passes 5,242 comparisons, including
+31 rejected negatives, and requires every source site. Eleven source/data
+guards pass. Production and actual-service integration, focused sanitizer
+acceptance and installation remain pending the next consolidated milestone;
+the accepted installed manifest remains at 762 entries.
+
 The [contract lookup and creation batch](native-contract-integration.md) adds
 six complete operations and **2,161 original instructions**, extending the
 accepted prefix from 756 to **762 unique entries**. Release and focused UBSAN
