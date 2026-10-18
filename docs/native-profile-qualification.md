@@ -1,12 +1,11 @@
 # Profile qualifications and category references
 
-Status: **prepared and accepted as an isolated component**. Four complete native
-operations match independent original references. Productive integration,
-actual-service comparison and installation belong to the next consolidated
-milestone. The installed application remains at revision
-`3286384d304af9c7fc6835d5426bb8695d8a9c37`, with 864 unique semantic owners.
-The prospective count of 868 is not an installed result. The complete-game goal
-remains active.
+Status: **integrated and accepted at the 868-owner milestone**. All four
+complete native operations match independent original references and now execute
+on the productive path. The exact previous 864-owner prefix is preserved. The
+actual-world matrix, completed candidate/recruitment children, focused UBSAN and
+protected installation pass. See [integration evidence](native-profile-qualification-integration.md).
+The complete-game goal remains active.
 
 ## Scope and provenance
 
@@ -112,14 +111,16 @@ accessed bytes and interrupted dependencies. Each root rejects an own-result
 corruption and an extra memory effect restored before return. The effect
 negative requires equal final images, so an image-only comparison cannot pass it.
 
-Nine source/data checks pass, including exact installed-prefix preservation,
+Ten source/data checks pass, including exact installed-prefix preservation,
 changed/missing/reordered bodies, every pinned byte, external interior-entry
-rejection and independent references. The focused CTest
+rejection, productive hook placement and independent references. The focused CTest
 `profile_qualification_component_equivalence` passes on ARM64 with
 `-ffp-contract=off`, `-Wall -Wextra -Werror -Wpedantic`.
 
-The cumulative Portuguese guide records this prepared block and practical
-examples. Productive hooks, actual original-service/caller proof, focused UBSAN
-and installation remain for the consolidated milestone. Save/Load is **not
-retested**; performance is **not benchmarked**. The complete-game goal remains
-active.
+The cumulative Portuguese guide records this block and practical examples.
+The separate consolidated integration proves productive dispatch, prepared
+original-world inputs, completed candidate/recruitment children, focused UBSAN
+and installation. Actual-world coverage is separate from the isolated 287-site
+proof; the null-profile diagnostic branch is not exercised with actual diagnostic
+services in this milestone. Save/Load is **not retested**; performance is **not
+benchmarked**. The complete-game goal remains active.

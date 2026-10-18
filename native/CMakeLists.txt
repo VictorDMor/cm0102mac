@@ -68,6 +68,8 @@ target_sources(cm_aot PRIVATE shortlist_quotation.cpp shortlist_quotation_contex
     shortlist_quotation_quote_profile.cpp shortlist_quotation_quote_country.cpp shortlist_quotation_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_policy_offer.cpp shortlist_policy_country.cpp
     shortlist_policy_row.cpp shortlist_policy_adapter.cpp)
+target_sources(cm_aot PRIVATE profile_qualification_masks.cpp profile_qualification_classify.cpp
+    profile_qualification_category.cpp profile_qualification_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -778,8 +780,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/profile_qualification_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-profile-qualification-checks profile_qualification_checks.cpp profile_qualification_masks.cpp
-        profile_qualification_classify.cpp profile_qualification_category.cpp "${CM_PROFILE_QUALIFICATION_REFERENCE}")
+    add_executable(cm-profile-qualification-checks profile_qualification_checks.cpp "${CM_PROFILE_QUALIFICATION_REFERENCE}")
     target_link_libraries(cm-profile-qualification-checks PRIVATE cm_aot)
     target_compile_options(cm-profile-qualification-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME profile_qualification_component_equivalence COMMAND cm-profile-qualification-checks
@@ -2273,3 +2274,7 @@ target_compile_options(cm-shortlist-quotation-production-checks PRIVATE -Wall -W
 add_executable(cm-shortlist-policy-production-checks shortlist_policy_production_checks.cpp)
 target_link_libraries(cm-shortlist-policy-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-shortlist-policy-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-profile-qualification-production-checks profile_qualification_production_checks.cpp)
+target_link_libraries(cm-profile-qualification-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-profile-qualification-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

@@ -41,6 +41,7 @@
 #include "shortlist_assessment_adapter.hpp"
 #include "shortlist_quotation_adapter.hpp"
 #include "shortlist_policy_adapter.hpp"
+#include "profile_qualification_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -95,6 +96,7 @@ struct RuntimeDiagnostics {
     ShortlistAssessmentDiagnostics shortlist_assessment;
     ShortlistQuotationDiagnostics shortlist_quotation;
     ShortlistPolicyDiagnostics shortlist_policy;
+    ProfileQualificationDiagnostics profile_qualification;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -522,5 +524,13 @@ ShortlistPolicyDiagnostics& shortlist_policy_diagnostics(State& state) {
 const ShortlistPolicyDiagnostics& shortlist_policy_diagnostics(const State& state) {
     static const ShortlistPolicyDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->shortlist_policy : empty;
+}
+ProfileQualificationDiagnostics& profile_qualification_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->profile_qualification;
+}
+const ProfileQualificationDiagnostics& profile_qualification_diagnostics(const State& state) {
+    static const ProfileQualificationDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->profile_qualification : empty;
 }
 }

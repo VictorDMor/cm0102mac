@@ -1,4 +1,6 @@
 """Prepared complete profile qualification and category-reference contracts."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -10,21 +12,20 @@ from compile_recomp import SEMANTIC_REPLACEMENTS,require_unique_semantic_replace
 from profile_qualification_audit import (CONTRACTS,FRAGMENTS,PROFILE_QUALIFICATION_ENTRIES,TABLES,PADDING,
     load_profile_qualification_tables,require_profile_qualification_tables,require_profile_qualification_padding,
     require_profile_qualification_bodies,require_profile_qualification_contract,require_profile_qualification_edges,
-    require_profile_qualification_index)
+    require_profile_qualification_index,require_profile_qualification_hooks,profile_qualification_hook)
 from make_profile_qualification_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_prefix_and_four_unowned_roots(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),864)
-        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS]
+    def test_exact_prefix_and_four_productive_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),868)
+        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:864]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'9ecc35d26bb22037787db2192fafcb04402e5704d7e9d12205f17925e3091359')
-        self.assertFalse(set(PROFILE_QUALIFICATION_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*((e,'profile_qualification_adapter') for e in PROFILE_QUALIFICATION_ENTRIES))
-        self.assertEqual(len(candidate),868);require_unique_semantic_replacements(candidate)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[864:],tuple((e,'profile_qualification_adapter') for e in PROFILE_QUALIFICATION_ENTRIES))
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         for e in PROFILE_QUALIFICATION_ENTRIES:
-            with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(e,'duplicate')))
+            with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(e,'duplicate')))
 
     def test_whole_boundaries_and_holes(self):
         self.assertEqual(sum(x[2] for x in CONTRACTS),287)
@@ -46,7 +47,7 @@ class PreparedScopeTests(unittest.TestCase):
             self.assertNotIn(token,source)
         for token in ('combine_qualification_masks','classify_profile_qualifications','candidate_category_reference','club_category_reference','scan_primary_qualifications','scan_secondary_qualifications','report_missing_profile','category_four_reference'):
             self.assertIn(token,source)
-        self.assertNotIn('profile_qualification_adapter',(ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('profile_qualification_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
         self.assertNotIn('0x107a6ba8',source);self.assertNotIn('0x107a6bb8',source)
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').is_file(),'Private original source unavailable')
@@ -84,6 +85,19 @@ class OriginalContractTests(unittest.TestCase):
                 if a<=address<a+n:b[address-a]^=1
                 return bytes(b)
             with self.assertRaises(ValueError):require_profile_qualification_padding(changed)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['profile_qualification_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_profile_qualification_hooks(page,rows,source)
+            for entry in PROFILE_QUALIFICATION_ENTRIES:
+                if entry>>12!=page:continue
+                hook=profile_qualification_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_profile_qualification_hooks(page,rows,changed)
 
     def test_reference_keeps_every_original_instruction_and_disables_all_hooks(self):
         source=render_reference(self.records,self.userops);self.assertNotIn('try_modern_',source);self.assertNotIn('_impl<true,',source)
