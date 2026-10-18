@@ -35,6 +35,7 @@
 #include "transfer_valuation_adapter.hpp"
 #include "transfer_synthesis_adapter.hpp"
 #include "club_shortlist_storage_adapter.hpp"
+#include "shortlist_category_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -83,6 +84,7 @@ struct RuntimeDiagnostics {
     TransferValuationDiagnostics transfer_valuation;
     TransferSynthesisDiagnostics transfer_synthesis;
     ClubShortlistStorageDiagnostics club_shortlist_storage;
+    ShortlistCategoryDiagnostics shortlist_category;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -462,5 +464,13 @@ ClubShortlistStorageDiagnostics& club_shortlist_storage_diagnostics(State& state
 const ClubShortlistStorageDiagnostics& club_shortlist_storage_diagnostics(const State& state) {
     static const ClubShortlistStorageDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->club_shortlist_storage : empty;
+}
+ShortlistCategoryDiagnostics& shortlist_category_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->shortlist_category;
+}
+const ShortlistCategoryDiagnostics& shortlist_category_diagnostics(const State& state) {
+    static const ShortlistCategoryDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->shortlist_category : empty;
 }
 }

@@ -1,9 +1,10 @@
 # Shortlist category eligibility, row review and pair comparison
 
-Five complete original operations are prepared and compared as a component.
-They cover **467 indexed instructions**. No production owners or hooks have
-been added: the installed application remains at **839 accepted entries**.
-Their later integration would add five unique owners after that exact prefix.
+Five complete original operations were prepared and compared as a component
+in `5936f4f`. They cover **467 indexed instructions**. Their productive
+[integration](native-shortlist-category-integration.md) now adds five unique
+owners after the exact accepted 839-entry prefix, reaching **844 entries**.
+The component evidence below retains its separate scope.
 
 ## Complete boundaries
 
@@ -131,9 +132,10 @@ pruning, retained fields, invalid-ID cleanup, category-eleven flag and comparato
 edge cases. Twelve source/data guards pin the complete bodies, fragments, tables,
 padding, entry boundaries, absence of new owners and isolated references.
 
-The prepared CMake target links the two semantic units only into the component
-executable. Production generation, ownership, real-service composition and
-installation remain for the integration milestone. Membership is used by both
-passes of the already installed shortlist reset, making it a coherent continuation
-of that storage block. No whole-manager or natural-career coverage is inferred.
+At the preparation milestone the CMake target linked the two semantic units only
+into the component executable. The later integration links those unchanged units
+into the runtime and adds the adapter, real-service matrix and installed delivery
+described in the integration report. Membership is used by both passes of the
+shortlist reset, making it a coherent continuation of that storage block.
+No whole-manager or natural-career coverage is inferred.
 Save/Load: **not retested**. Performance: **not benchmarked**.

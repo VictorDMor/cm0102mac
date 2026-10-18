@@ -1,4 +1,4 @@
-"""Prepared complete shortlist category, query and pair-comparison contracts."""
+"""Complete shortlist category, query and pair-comparison contracts with productive ownership."""
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -13,18 +13,18 @@ from shortlist_category_audit import (CONTRACTS, FRAGMENTS, SHORTLIST_CATEGORY_E
     TABLES, PADDING, load_shortlist_category_tables, require_shortlist_category_tables,
     require_shortlist_category_padding, require_shortlist_category_bodies,
     require_shortlist_category_contract, require_shortlist_category_edges,
-    require_shortlist_category_index)
+    require_shortlist_category_index, require_shortlist_category_hooks, shortlist_category_hook)
 from make_shortlist_category_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_prefix_and_absent_new_owners(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),839)
-        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS]
+    def test_exact_prefix_and_five_new_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),844)
+        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:839]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'2614f691b5971a5c67f3e38f92f71466fb3f4aba9252fd5802fd29433fef1b71')
-        self.assertFalse(set(SHORTLIST_CATEGORY_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*((entry,'shortlist_category_adapter') for entry in SHORTLIST_CATEGORY_ENTRIES))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[839:],tuple((entry,'shortlist_category_adapter') for entry in SHORTLIST_CATEGORY_ENTRIES))
+        candidate=SEMANTIC_REPLACEMENTS
         self.assertEqual(len(candidate),844);require_unique_semantic_replacements(candidate)
         for entry in SHORTLIST_CATEGORY_ENTRIES:
             with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(entry,'duplicate')))
@@ -50,7 +50,7 @@ class PreparedScopeTests(unittest.TestCase):
             self.assertNotIn(forbidden,source)
         for name in ('eligible_for_category','count_and_prune_club_rows','refresh_unassigned_rows','compare_pairs_by_second','compare_pairs_by_first'):
             self.assertIn(name,source)
-        self.assertNotIn('shortlist_category_adapter',(ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('shortlist_category_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').is_file(),'Private original source unavailable')
 class OriginalContractTests(unittest.TestCase):
@@ -105,6 +105,27 @@ class OriginalContractTests(unittest.TestCase):
         new=[x['assembly'] for x in self.records if 0x10366030<=x['address']<0x10366078]
         def normalize(rows):return [re.sub(r'li r8,0x[0-9a-f]+','LINE',re.sub(r'addi r([67]),r1,0x[0-9a-f]+',r'SCRATCH_\1',text)) for text in rows]
         self.assertEqual(len(new),18);self.assertEqual(normalize(new),normalize(old))
+
+    def test_original_reset_callers_and_pair_transition_vectors(self):
+        with closing(sqlite3.connect((INPUT/'instructions.sqlite').resolve().as_uri()+'?mode=ro',uri=True)) as db:
+            for pc in (0x103569a0,0x10356ad0):
+                self.assertEqual(json.loads(db.execute('SELECT body FROM instructions WHERE address=?',(pc,)).fetchone()[0])['assembly'],'bl 0x10365d10')
+        for slot,pointer,entry in ((0x108b57e8,0x108b920c,0x10366410),(0x108b57f8,0x108b922c,0x103663b0)):
+            self.assertEqual(int.from_bytes(self.read(slot,4),'big'),pointer)
+            self.assertEqual(self.read(pointer,8),entry.to_bytes(4,'big')+(0x108bba90).to_bytes(4,'big'))
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['shortlist_category_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_shortlist_category_hooks(page,rows,source)
+            for entry in SHORTLIST_CATEGORY_ENTRIES:
+                if entry>>12!=page:continue
+                hook=shortlist_category_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_shortlist_category_hooks(page,rows,changed)
 
     def test_reference_has_all_sites_with_all_productive_hooks_disabled(self):
         source=render_reference(self.records,self.userops)

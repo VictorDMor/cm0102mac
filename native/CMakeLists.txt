@@ -56,6 +56,7 @@ target_sources(cm_aot PRIVATE transfer_synthesis.cpp transfer_synthesis_preparat
 target_sources(cm_aot PRIVATE club_shortlist_storage_lifecycle.cpp club_shortlist_storage_reset.cpp
     club_shortlist_storage_sampling.cpp club_shortlist_storage_load.cpp
     club_shortlist_storage_save.cpp club_shortlist_storage_adapter.cpp)
+target_sources(cm_aot PRIVATE shortlist_category_membership.cpp shortlist_category_queries.cpp shortlist_category_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -673,8 +674,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/shortlist_category_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-shortlist-category-checks shortlist_category_checks.cpp
-        shortlist_category_membership.cpp shortlist_category_queries.cpp "${CM_SHORTLIST_CATEGORY_REFERENCE}")
+    add_executable(cm-shortlist-category-checks shortlist_category_checks.cpp "${CM_SHORTLIST_CATEGORY_REFERENCE}")
     target_link_libraries(cm-shortlist-category-checks PRIVATE cm_aot)
     target_compile_options(cm-shortlist-category-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME shortlist_category_component_equivalence COMMAND cm-shortlist-category-checks)
@@ -2143,3 +2143,7 @@ target_compile_options(cm-transfer-synthesis-production-checks PRIVATE -Wall -We
 add_executable(cm-club-shortlist-storage-production-checks club_shortlist_storage_production_checks.cpp)
 target_link_libraries(cm-club-shortlist-storage-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-club-shortlist-storage-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-shortlist-category-production-checks shortlist_category_production_checks.cpp)
+target_link_libraries(cm-shortlist-category-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-shortlist-category-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

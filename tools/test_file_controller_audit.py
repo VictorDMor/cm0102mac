@@ -25,8 +25,8 @@ class ScopeTests(unittest.TestCase):
             self.assertNotIn(entry, FILE_CONTROLLER_ENTRIES)
 
     def test_exact_prior_149_and_26_production_entries(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 839)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 839)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 844)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 844)
         self.assertEqual(SEMANTIC_REPLACEMENTS[149:175], tuple((e, 'file_controller_adapter') for e in FILE_CONTROLLER_ENTRIES))
         prior = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS[:149]]
         self.assertEqual(hashlib.sha256(json.dumps(prior, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),

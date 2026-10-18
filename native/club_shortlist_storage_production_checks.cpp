@@ -5,6 +5,7 @@
 #include "transfer_valuation_adapter.hpp"
 #include "transfer_synthesis_adapter.hpp"
 #include "club_shortlist_storage_adapter.hpp"
+#include "shortlist_category_adapter.hpp"
 #include "contract_query_adapter.hpp"
 #include "contract_storage_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
@@ -26,7 +27,7 @@ constexpr std::array<std::uint32_t,7> ends{0x103567a8,0x103568d4,0x10356e3c,0x10
 constexpr unsigned full_limit=4000000000u;
 enum class Path {direct,generated,cfm};
 enum class Mode {modern,original,entry_original,profile};
-void original_contracts(State& s){club_shortlist_storage_diagnostics(s).original=true;contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;transfer_record_diagnostics(s).original=true;transfer_valuation_diagnostics(s).original=true;transfer_synthesis_diagnostics(s).original=true;}
+void original_contracts(State& s){shortlist_category_diagnostics(s).original=true;club_shortlist_storage_diagnostics(s).original=true;contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;transfer_record_diagnostics(s).original=true;transfer_valuation_diagnostics(s).original=true;transfer_synthesis_diagnostics(s).original=true;}
 
 struct Clock:CodeFragmentBoundaryObserver {
     unsigned count=0;ActorAttributesIoPair* io=nullptr;bool modern=false;
@@ -105,6 +106,7 @@ std::uint64_t compare(const State& input,unsigned index,Path path,Mode mode,unsi
     if(negative){bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){rejected=true;}require(rejected,label+" negative not discriminating");++negatives;}else{Image(*a).compare(*b,label);require(x.events==y.events&&x.bytes==y.bytes&&x.digest()==y.digest()&&a->executed==b->executed&&old_steps==new_steps,label+" ordered effects/accounting");}
     io.compare();const auto audit=[&](const auto& d,unsigned n){require(!d.original_body&&!d.dispatch_escapes,label+" leaked original scope or dispatch escape");if(mode==Mode::modern){require(d.calls[n]>=1&&!d.original_calls[n]&&!d.profile_original_calls[n],label+" dedicated modern call");require(d.returns[n]+d.faults[n]+d.budget_stops[n]==d.calls[n],label+" balanced productive outcomes");require(expected.empty()?d.returns[n]==d.calls[n]:fault?d.faults[n]>=1&&!d.budget_stops[n]:d.budget_stops[n]>=1&&!d.faults[n],label+" productive outcome counters");}else{require(!d.calls[n]&&!d.returns[n],label+" original control entered C++");require(mode==Mode::profile?d.profile_original_calls[n]>=1:d.original_calls[n]>=1,label+" original control not reached");}};
     audit(club_shortlist_storage_diagnostics(*b),index);
+    if(index==2&&mode==Mode::modern&&!fault&&limit==full_limit){const auto& child=shortlist_category_diagnostics(*b);require(child.calls[0]>0&&child.calls[0]==child.returns[0]&&!child.faults[0]&&!child.original_calls[0]&&!child.original_body&&!child.dispatch_escapes,label+" actual category child coverage");std::cout<<"Full-population category child calls="<<child.calls[0]<<std::endl;}
     require(!club_shortlist_storage_diagnostics(*b).original_body&&!transfer_record_diagnostics(*b).original_body&&!transfer_valuation_diagnostics(*b).original_body,label+" nested original scope residue");
     std::cout<<"case="<<cases<<" root="<<hex_address(roots[index])<<" mode="<<unsigned(mode)<<" steps="<<old_steps<<" effect_events="<<x.events<<" effect_bytes="<<x.bytes<<std::endl;
     ++cases;returns+=expected.empty();budgets+=!fault&&!expected.empty();faults+=fault;return old_steps;
@@ -117,15 +119,15 @@ void matrix(const State& input,unsigned index,bool profile){
     compare(input,index,Path::generated,Mode::modern,full_limit,false,true);std::cout<<"PASS: club shortlist storage runtime root="<<hex_address(roots[index])<<" sites="<<runtime_sites[index].size()<<std::endl;
 }
 std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args){
-    std::array<bool*,9> selected{&club_shortlist_storage_diagnostics(s).original,&contract_query_diagnostics(s).original,&contract_storage_diagnostics(s).original,&contract_terms_diagnostics(s).original,&contract_review_diagnostics(s).original,&transfer_offer_diagnostics(s).original,&transfer_record_diagnostics(s).original,&transfer_valuation_diagnostics(s).original,&transfer_synthesis_diagnostics(s).original};
-    struct Restore{std::array<bool*,9> flags;std::array<bool,9> before{};explicit Restore(std::array<bool*,9> f):flags(f){for(unsigned n=0;n<flags.size();++n){before[n]=*flags[n];*flags[n]=true;}}~Restore(){for(unsigned n=0;n<flags.size();++n)*flags[n]=before[n];}}restore{selected};
+    std::array<bool*,10> selected{&shortlist_category_diagnostics(s).original,&club_shortlist_storage_diagnostics(s).original,&contract_query_diagnostics(s).original,&contract_storage_diagnostics(s).original,&contract_terms_diagnostics(s).original,&contract_review_diagnostics(s).original,&transfer_offer_diagnostics(s).original,&transfer_record_diagnostics(s).original,&transfer_valuation_diagnostics(s).original,&transfer_synthesis_diagnostics(s).original};
+    struct Restore{std::array<bool*,10> flags;std::array<bool,10> before{};explicit Restore(std::array<bool*,10> f):flags(f){for(unsigned n=0;n<flags.size();++n){before[n]=*flags[n];*flags[n]=true;}}~Restore(){for(unsigned n=0;n<flags.size();++n)*flags[n]=before[n];}}restore{selected};
     unsigned n=3;for(auto value:args)s.wr<4>(n++*4,value);s.pc=entry;s.wr<4>(4128,return_sentinel);s.budget=s.executed+full_limit;
     try{run_until(s,return_sentinel);}catch(const std::exception& e){if(auto* clock=dynamic_cast<Clock*>(s.code_fragment_observer)){const auto first=clock->events.size()>16?clock->events.size()-16:0;for(auto n=first;n<clock->events.size();++n){const auto& event=clock->events[n];std::uint32_t value=0;for(unsigned b=12;b<16;++b)value=(value<<8)|event.registers[b];std::cerr<<"Setup import "<<event.name<<" leave="<<event.leave<<" r3="<<hex_address(value)<<std::endl;}}throw std::runtime_error("Transfer setup entry="+hex_address(entry)+" pc="+hex_address(s.pc)+" reason="+e.what());}return std::uint32_t(s.r<4>(12));
 }
 struct OwnedBacking {std::filesystem::path path;~OwnedBacking(){std::error_code e;if(!std::filesystem::exists(path,e)||e||std::filesystem::is_symlink(path,e)||e)return;for(const auto& p:std::filesystem::recursive_directory_iterator(path,e))if(e||p.is_symlink(e)||e)return;std::filesystem::remove_all(path,e);}};
 }
 int main(int argc,char** argv){try{
-    require(argc==5||(argc==6&&(std::string_view(argv[5])=="--profile"||std::string_view(argv[5])=="--probe")),"Expected export, game, backing and original prepared snapshot, optionally --profile or --probe");
+    require(argc==5||(argc==6&&(std::string_view(argv[5])=="--profile"||std::string_view(argv[5])=="--probe"||std::string_view(argv[5])=="--category-seam")),"Expected export, game, backing and original prepared snapshot, optionally --profile or --probe");
     {DigestEffects a,b;const std::array<std::uint8_t,2> first{1,2},second{1,3};a.written(0x1000,first.data(),first.size());b.written(0x1000,second.data(),second.size());require(a.events==b.events&&a.bytes==b.bytes&&a.digest()!=b.digest(),"Ordered-effect digest discriminates differing payload bytes");}
     const bool profile=argc==6&&std::string_view(argv[5])=="--profile",probe=argc==6&&std::string_view(argv[5])=="--probe";require(profile==match_pc_profile_enabled(),"Shortlist profile flag mismatch");set_match_turbo_enabled(false);
     const auto directory=std::filesystem::path(argv[3])/std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());require(!std::filesystem::exists(directory),"New private shortlist backing");OwnedBacking cleanup{directory};
@@ -151,6 +153,11 @@ int main(int argc,char** argv){try{
     std::uint64_t category_entries=0;for(unsigned n=0;n<16;++n)category_entries+=source.memory.read<4>(object+0x98+n*4);
     const auto club_count=source.memory.read<4>(source.memory.read<4>(toc-0x7b50));
     std::cout<<"Original shortlist dimensions staff="<<count<<" clubs="<<club_count<<" categoryEntries="<<category_entries<<" capacity="<<source.memory.read<4>(object+0xd8)<<" pairs="<<source.memory.read<4>(object+0x10)<<" logicalBytes="<<(4+source.memory.read<4>(object+0x10)*8+64+4+category_entries*24+club_count*(12+40*44))<<std::endl;
+    if(argc==6&&std::string_view(argv[5])=="--category-seam"){
+        auto input=clone(source);input->platform=source.platform;input->wr<4>(12,object);
+        compare(*input,2,Path::generated,Mode::modern);
+        std::cout<<"PASS: full-population shortlist reset/category seam cases="<<cases<<std::endl;return 0;
+    }
     const auto stream=setup(source,0x107475b0,{fixture+0x600,fixture+0x720,1,0x16,4});require(stream!=0,"Original shortlist archive open");setup(source,roots[6],{object,stream});source.memory.write<4>(fixture+0x740,stream);setup(source,0x10747900,{fixture+0x740});require(!source.memory.read<4>(fixture+0x740),"Original shortlist archive flushed");
     require(std::filesystem::file_size(directory/"club-shortlist-storage.dat")>1000,"Original complete shortlist archive bytes");
     const auto fresh=setup(source,0x10773520,{0xe0}),auxiliary=setup(source,0x10773520,{0x2c});require(fresh&&auxiliary,"Original shortlist object allocations");
