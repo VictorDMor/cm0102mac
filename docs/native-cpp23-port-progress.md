@@ -9,17 +9,24 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The next [contract review/status block](native-contract-review.md) is
-**prepared, not integrated**: thirteen complete operations and 1,447 original
-instructions cover state/condition review, consequences, squad/release
-presentation and a start-date window. Its focused Release CTest passes 10,507
-comparisons with every source site required, including 23 rejected negatives
-and 354 identified structural comparisons. Eleven source/data guards pass.
-The installed game remains at 783 entries; production and actual-service
-integration, focused sanitizer acceptance and installation are deferred to the
-next consolidated milestone.
+The [contract review/status integration](native-contract-review-integration.md)
+adds thirteen complete operations and 1,447 original instructions after the exact
+accepted 783-entry prefix, reaching **796 installed entries**. Release and focused
+UBSAN each pass 10,507 component comparisons with every source site required and
+519 actual-service comparisons across all thirteen roots. Forty-five contract
+guards, 61 historical manifest methods, 104 profile controls, five component
+CTests and four adjacent runtime seams pass. All six focused sanitizer runs have
+empty stderr; their runtime/seam output matches Release exactly.
 
-The [contract terms integration](native-contract-terms-integration.md) adds
+The strict-signed arm64 executable has SHA-256
+`22320cfc824699fb265d7e27a863b70a7872f3c46e85aa905aef8bd1297ed600`.
+Prepare Game rendering, original quit confirmation and normal exit pass.
+All 846 protected files, the prior application, eighteen unrelated prompts and
+the installed Match Debugger are preserved. Save/Load is **not retested**;
+performance is **not benchmarked**. The cumulative Portuguese PDF is updated.
+The whole-game goal remains active.
+
+The preceding [contract terms integration](native-contract-terms-integration.md) adds
 21 complete operations and 1,203 original instructions, extending the exact
 accepted 762-entry prefix to **783 installed entries**. Clause/bonus editing and
 eligibility, labels, end descriptions, shared sampling and expiry bands pass

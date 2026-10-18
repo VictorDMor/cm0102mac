@@ -1,11 +1,12 @@
 # Contract review, status and presentation
 
 The complete **13-operation, 1,447-instruction** block below is implemented and
-directly compared with the original. It is **prepared, not integrated**. The
-accepted installed game retains 783 entries; its preceding
-[terms integration](native-contract-terms-integration.md) remains the latest
-installed milestone. Offer generation, valuation and negotiation remain outside
-this review block.
+directly compared with the original. Prepared in `a3db7f3`, it is now
+[integrated and installed](native-contract-review-integration.md) after the exact
+783-entry prefix, reaching 796 entries. This report preserves the original
+component evidence; the integration report records actual services, focused
+sanitizer and installed-application acceptance. Offer generation, valuation and
+negotiation remain outside this review block.
 
 ## Original boundaries
 
@@ -141,8 +142,9 @@ combinations cover those sites without changing the semantic bodies. Earlier
 diagnostic runs do not count as accepted complete coverage.
 
 Original data, references and receipts remain private under
-`.local/contract-review-reconstruction`. Productive adapters, manifest selection,
-generation, actual-service comparisons, focused sanitizer acceptance and
-installation remain pending the next consolidated integration milestone.
+`.local/contract-review-reconstruction`. The subsequent
+[integration milestone](native-contract-review-integration.md) adds productive
+adapters, manifest selection, generation, actual-service comparisons, focused
+sanitizer acceptance and installation. Its receipts remain separately identified.
 Save/Load is **not retested**. Performance is **not benchmarked**. The cumulative
 Portuguese guide explains this cycle. The full reconstruction goal remains active.

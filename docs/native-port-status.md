@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-17
+# Native port investigation — updated 2026-10-18
 
 ## Required outcome
 
@@ -13,6 +13,21 @@ post-match save with the Anapolina result preserved (user confirmed). Multiplaye
 unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
+
+The [contract review/status integration](native-contract-review-integration.md)
+extends the exact 783-entry prefix to **796 installed reconstructed entries**.
+Thirteen operations cover review conditions/consequences, status, descriptions
+and a start-date window. Release and focused UBSAN each pass 10,507 component and
+519 actual-service comparisons; all roots, adjacent contract/injury/absence seams,
+profile controls and five component CTests pass. Installed identity, Prepare Game
+and normal exit are verified with protected data and the prior app retained.
+
+These are prepared actual-service and startup witnesses, not completion of all
+contract negotiation or whole-game behavior. Save/Load is **not retested** and
+performance is **not benchmarked**. See the linked integration report and the
+[progress ledger](native-cpp23-port-progress.md) for current scope and boundaries.
+
+## Historical injury-controller delivery
 
 The [injury controller persistence block](native-injury-controller-persistence.md)
 adds two complete operations and **945 original instructions**, extending the

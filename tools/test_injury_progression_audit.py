@@ -21,8 +21,8 @@ class ScopeTests(unittest.TestCase):
     def test_complete_block_and_exact_prior_manifest(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS),1815)
         self.assertEqual(sum(row[2] for row in FRAGMENTS),1815)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),783)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),783)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),796)
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),796)
         self.assertEqual(INJURY_PROGRESSION_ENTRIES,(0x1018b2b0,0x1018dcb0,0x1018ff10,0x1018ffe0))
         self.assertEqual(SEMANTIC_REPLACEMENTS[707:711],tuple((entry,'injury_progression_adapter') for entry in INJURY_PROGRESSION_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:707]]

@@ -42,6 +42,8 @@ target_sources(cm_aot PRIVATE contract_queries.cpp contract_query_adapter.cpp co
     contract_initializer.cpp contract_initializer_options.cpp contract_initializer_nations.cpp contract_storage_adapter.cpp)
 target_sources(cm_aot PRIVATE contract_terms.cpp contract_terms_sampling.cpp contract_terms_presentation.cpp
     contract_terms_expiry.cpp contract_terms_adapter.cpp)
+target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
+    contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -576,8 +578,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_review_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-contract-review-checks contract_review_checks.cpp contract_review.cpp contract_review_scoring.cpp
-        contract_review_consequences.cpp contract_review_presentation.cpp "${CM_CONTRACT_REVIEW_REFERENCE}")
+    add_executable(cm-contract-review-checks contract_review_checks.cpp "${CM_CONTRACT_REVIEW_REFERENCE}")
     target_link_libraries(cm-contract-review-checks PRIVATE cm_aot)
     target_compile_options(cm-contract-review-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_review_component_equivalence COMMAND cm-contract-review-checks)
@@ -2025,3 +2026,7 @@ target_compile_options(cm-native-drawing-checks PRIVATE -Wall -Wextra -Werror -W
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME native_vector_drawing COMMAND cm-native-drawing-checks "${CM_ORACLE_DIR}")
 endif()
+
+add_executable(cm-contract-review-production-checks contract_review_production_checks.cpp)
+target_link_libraries(cm-contract-review-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-contract-review-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

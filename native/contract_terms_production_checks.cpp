@@ -1,4 +1,5 @@
 #include "contract_terms_adapter.hpp"
+#include "contract_review_adapter.hpp"
 #include "contract_query_adapter.hpp"
 #include "contract_storage_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
@@ -18,7 +19,7 @@ constexpr auto roots=terms::entries;
 constexpr std::array<std::uint32_t,21> ends{0x10374ae8,0x10374b34,0x10374b54,0x10374b74,0x10374b98,0x10374bd4,0x10374ca4,0x10374cd8,0x10374d04,0x10374d44,0x10374d74,0x10374f44,0x103802f4,0x103803ac,0x10380400,0x10380520,0x10380554,0x10380630,0x10380700,0x10380708,0x10380c04};
 enum class Path {direct,generated,cfm};
 enum class Mode {modern,original,entry_original,profile};
-void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;}
+void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;}
 struct Clock:CodeFragmentBoundaryObserver {
     unsigned count=0;ActorAttributesIoPair* io=nullptr;bool modern=false;
     struct Event {bool leave;std::string name;decltype(State::registers) registers;std::uint32_t pc;bool operator==(const Event&)const=default;};
@@ -74,7 +75,7 @@ void matrix(const State& input,unsigned index,bool profile){
     compare(input,index,Path::generated,Mode::modern,50000000,false,true);
     std::cout<<"PASS: contract terms runtime root="<<hex_address(roots[index])<<" sites="<<runtime_sites[index].size()<<std::endl;
 }
-std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args){auto& q=contract_query_diagnostics(s).original;auto& c=contract_storage_diagnostics(s).original;auto& t=contract_terms_diagnostics(s).original;struct Restore{bool& q;bool& c;bool& t;bool a,b,d;~Restore(){q=a;c=b;t=d;}}restore{q,c,t,q,c,t};q=c=t=true;unsigned n=3;for(auto v:args)s.wr<4>(n++*4,v);s.pc=entry;s.wr<4>(4128,return_sentinel);s.budget=s.executed+50000000;run_until(s,return_sentinel);return std::uint32_t(s.r<4>(12));}
+std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args){auto& q=contract_query_diagnostics(s).original;auto& c=contract_storage_diagnostics(s).original;auto& t=contract_terms_diagnostics(s).original;auto& v=contract_review_diagnostics(s).original;struct Restore{bool& q;bool& c;bool& t;bool& v;bool a,b,d,e;~Restore(){q=a;c=b;t=d;v=e;}}restore{q,c,t,v,q,c,t,v};q=c=t=v=true;unsigned n=3;for(auto v:args)s.wr<4>(n++*4,v);s.pc=entry;s.wr<4>(4128,return_sentinel);s.budget=s.executed+50000000;run_until(s,return_sentinel);return std::uint32_t(s.r<4>(12));}
 struct OwnedBacking {std::filesystem::path path;~OwnedBacking(){std::error_code e;if(!std::filesystem::exists(path,e)||e||std::filesystem::is_symlink(path,e)||e)return;for(const auto& p:std::filesystem::recursive_directory_iterator(path,e))if(e||p.is_symlink(e)||e)return;std::filesystem::remove_all(path,e);}};
 }
 int main(int argc,char** argv){try{

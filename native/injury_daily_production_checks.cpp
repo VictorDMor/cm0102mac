@@ -3,6 +3,7 @@
 #include "contract_query_adapter.hpp"
 #include "contract_storage_adapter.hpp"
 #include "contract_terms_adapter.hpp"
+#include "contract_review_adapter.hpp"
 #include "injury_readouts_adapter.hpp"
 #include "injury_record_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
@@ -83,11 +84,11 @@ std::string execute(State& s,Path path,unsigned index) {
 std::uint64_t compare(const State& input,unsigned index,Path path,Mode mode,unsigned limit=50000000,bool negative=false,bool budget_expected=true) {
     Clock probe_clock;probe_clock.base=1000000000;
     ActorAttributesIoPair io=[&]() {
-        try {return ActorAttributesIoPair(input,index,injury::entries[index],[&](State& x){injury_daily_diagnostics(x).original=true;contract_query_diagnostics(x).original=true;contract_storage_diagnostics(x).original=true;contract_terms_diagnostics(x).original=true;x.code_fragment_observer=&probe_clock;});}
+        try {return ActorAttributesIoPair(input,index,injury::entries[index],[&](State& x){injury_daily_diagnostics(x).original=true;contract_query_diagnostics(x).original=true;contract_storage_diagnostics(x).original=true;contract_terms_diagnostics(x).original=true;contract_review_diagnostics(x).original=true;x.code_fragment_observer=&probe_clock;});}
         catch(...) {for(auto it=probe_clock.events.rbegin();it!=probe_clock.events.rend() && it<probe_clock.events.rbegin()+std::min<std::size_t>(8,probe_clock.events.size());++it)std::cerr<<"Probe import "<<it->name<<" leave="<<it->leave<<" pc="<<hex_address(it->pc)<<std::endl;throw;}
     }();auto a=clone(input),b=clone(input);a->platform=io.original;b->platform=io.modern;
     for(auto* s:{a.get(),b.get()}){s->memory.map(fixture,0x1000);s->pc=injury::entries[index];s->wr<4>(4128,return_sentinel);s->budget=s->executed+limit;}
-    injury_daily_diagnostics(*a).original=true;actor_attributes_diagnostics(*a).original=true;injury_readouts_diagnostics(*a).original=true;injury_record_diagnostics(*a).original=true;contract_query_diagnostics(*a).original=true;contract_storage_diagnostics(*a).original=true;contract_terms_diagnostics(*a).original=true;auto& d=injury_daily_diagnostics(*b);
+    injury_daily_diagnostics(*a).original=true;actor_attributes_diagnostics(*a).original=true;injury_readouts_diagnostics(*a).original=true;injury_record_diagnostics(*a).original=true;contract_query_diagnostics(*a).original=true;contract_storage_diagnostics(*a).original=true;contract_terms_diagnostics(*a).original=true;contract_review_diagnostics(*a).original=true;auto& d=injury_daily_diagnostics(*b);
     if(mode==Mode::original){d.original=true;actor_attributes_diagnostics(*b).original=true;}if(mode==Mode::entry_original)d.entry_original[index]=true;
     Negative mutation(index);Witness witness;if(negative)d.observer=&mutation;else if(mode==Mode::modern)d.observer=&witness;
     Clock old_clock,new_clock;old_clock.io=new_clock.io=&io;new_clock.modern=true;old_clock.base=new_clock.base=1000000000;a->code_fragment_observer=&old_clock;b->code_fragment_observer=&new_clock;
@@ -112,13 +113,13 @@ std::uint64_t compare(const State& input,unsigned index,Path path,Mode mode,unsi
 
 unsigned fault_cases=0;
 void actual_fault(const State& input,unsigned index) {
-    Clock probe;probe.base=1000000000;ActorAttributesIoPair io(input,index,injury::entries[index],[&](State& x){injury_daily_diagnostics(x).original=true;contract_query_diagnostics(x).original=true;contract_storage_diagnostics(x).original=true;contract_terms_diagnostics(x).original=true;x.code_fragment_observer=&probe;});
+    Clock probe;probe.base=1000000000;ActorAttributesIoPair io(input,index,injury::entries[index],[&](State& x){injury_daily_diagnostics(x).original=true;contract_query_diagnostics(x).original=true;contract_storage_diagnostics(x).original=true;contract_terms_diagnostics(x).original=true;contract_review_diagnostics(x).original=true;x.code_fragment_observer=&probe;});
     auto old=clone(input),modern=clone(input);old->platform=io.original;modern->platform=io.modern;
     for(auto* s:{old.get(),modern.get()}) {
         constexpr std::uint32_t bad=0xf0000000;s->wr<4>(12,bad);
         s->pc=injury::entries[index];s->wr<4>(4128,return_sentinel);s->budget=s->executed+50000000;
     }
-    injury_daily_diagnostics(*old).original=true;actor_attributes_diagnostics(*old).original=true;injury_readouts_diagnostics(*old).original=true;contract_query_diagnostics(*old).original=true;contract_storage_diagnostics(*old).original=true;contract_terms_diagnostics(*old).original=true;Clock a,b;a.io=b.io=&io;b.modern=true;a.base=b.base=1000000000;old->code_fragment_observer=&a;modern->code_fragment_observer=&b;
+    injury_daily_diagnostics(*old).original=true;actor_attributes_diagnostics(*old).original=true;injury_readouts_diagnostics(*old).original=true;contract_query_diagnostics(*old).original=true;contract_storage_diagnostics(*old).original=true;contract_terms_diagnostics(*old).original=true;contract_review_diagnostics(*old).original=true;Clock a,b;a.io=b.io=&io;b.modern=true;a.base=b.base=1000000000;old->code_fragment_observer=&a;modern->code_fragment_observer=&b;
     Effects x,y;x.state=old.get();y.state=modern.get();old->memory.date_observer=&x;modern->memory.date_observer=&y;
     const auto expected=execute(*old,Path::generated,index);old->platform.reset();io.between();const auto actual=execute(*modern,Path::generated,index);
     old->memory.date_observer=modern->memory.date_observer=nullptr;old->code_fragment_observer=modern->code_fragment_observer=nullptr;
