@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import sqlite3
 import unittest
+from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
@@ -19,7 +20,7 @@ class PreparedOwnershipTests(unittest.TestCase):
         from awol_records_audit import AWOL_RECORDS_ENTRIES
         self.assertEqual(len(SEMANTIC_REPLACEMENTS),735)
         self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),735)
-        self.assertEqual(len(AWOL_RECORDS_ENTRIES),14)
+        self.assertEqual(len(AWOL_RECORDS_ENTRIES),16)
         self.assertFalse(set(AWOL_RECORDS_ENTRIES)&{entry for entry,_ in SEMANTIC_REPLACEMENTS})
         require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,*((entry,'awol_adapter') for entry in AWOL_RECORDS_ENTRIES)))
 
@@ -39,8 +40,8 @@ class PreparedBatchTests(unittest.TestCase):
         cls.userops=json.loads((INPUT/'program.json').read_text())['userops']
 
     def test_complete_boundaries_and_discriminating_source_guards(self):
-        self.assertEqual(sum(len(records) for _,_,records in self.groups),3635)
-        self.assertEqual(sum(len(audit.CONTRACTS) for _,audit,_ in self.groups),14)
+        self.assertEqual(sum(len(records) for _,_,records in self.groups),4397)
+        self.assertEqual(sum(len(audit.CONTRACTS) for _,audit,_ in self.groups),16)
         for owner,audit,records in self.groups:
             check=getattr(audit,'require_'+owner+'_bodies')
             check(records,complete=True)
@@ -62,16 +63,17 @@ class PreparedBatchTests(unittest.TestCase):
             self.assertNotIn('try_modern_',source)
 
     def test_index_edge_scan_covers_non_sorted_contracts(self):
-        # The appended daily root is below the already prepared notice root.
-        # Selecting only first/last contract endpoints would miss this edge.
+        # Deliberately reverse contract order so first/last endpoints cannot
+        # stand in for the complete interval containing all prepared roots.
         for owner,audit,records in self.groups:
             with closing(sqlite3.connect(':memory:')) as db:
                 db.execute('CREATE TABLE instructions(address INTEGER PRIMARY KEY,body TEXT)')
                 db.executemany('INSERT INTO instructions VALUES(?,?)',[(r['address'],json.dumps(r)) for r in records])
-                getattr(audit,'require_'+owner+'_index')(db)
-                high_root=max(start for start,*_ in audit.CONTRACTS)
-                db.execute('INSERT INTO instructions VALUES(?,?)',(0,json.dumps({'address':0,'flows':[high_root+4]})))
-                with self.assertRaises(ValueError):getattr(audit,'require_'+owner+'_index')(db)
+                with patch.object(audit,'CONTRACTS',tuple(reversed(audit.CONTRACTS))):
+                    getattr(audit,'require_'+owner+'_index')(db)
+                    high_root=max(start for start,*_ in audit.CONTRACTS)
+                    db.execute('INSERT INTO instructions VALUES(?,?)',(0,json.dumps({'address':0,'flows':[high_root+4]})))
+                    with self.assertRaises(ValueError):getattr(audit,'require_'+owner+'_index')(db)
 
     def test_original_constant_and_pointer_mutations_fail(self):
         import struct
@@ -92,7 +94,7 @@ class PreparedBatchTests(unittest.TestCase):
                     with self.subTest(owner=owner,address=hex(address)),self.assertRaises(ValueError):check(changed.__getitem__)
 
     def test_named_semantics_do_not_replay_original_instructions(self):
-        for name in ('awol_records_lifecycle.cpp','awol_records_load.cpp','awol_records_save.cpp','awol_records_queries.cpp','awol_records_notice.cpp','awol_sampling.cpp','awol_daily.cpp','awol_daily_return.cpp','awol_daily_detail.hpp'):
+        for name in ('awol_records_lifecycle.cpp','awol_records_load.cpp','awol_records_save.cpp','awol_records_queries.cpp','awol_records_notice.cpp','awol_sampling.cpp','awol_daily.cpp','awol_daily_return.cpp','awol_daily_detail.hpp','awol_registration.cpp','awol_training_notice.cpp','awol_event_random.hpp'):
             source=(ROOT/'native'/name).read_text()
             for token in ('_reference(', 'dispatch_page(', 'run_until(', 'pcode', 'i_101'):
                 self.assertNotIn(token,source)
