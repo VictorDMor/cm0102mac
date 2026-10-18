@@ -9,6 +9,17 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The [transfer-offer valuation and exchange block](native-transfer-valuation.md) is
+**prepared, not integrated**: eight complete operations and 1,188 instructions
+pass 7,559 focused comparisons with every source site required, including fifteen
+rejected negatives and 25 identified structural comparisons. Twelve source/data
+guards pass. Shared sampling now serves both offer and contract layouts; the
+existing contract-terms component passes all 5,242 comparisons and 1,203 sites,
+and its twelve guards, after the extraction. Together with the preceding record
+block this prepares sixteen operations for a later 831-entry integration. The
+installed game remains at 815; actual services, sanitizers and installation of
+these prepared operations remain pending. The full goal remains active.
+
 The next [transfer-offer record block](native-transfer-records.md) is **prepared,
 not integrated**: eight complete operations and 806 original instructions cover
 lifecycle, raw record IO, explicit initialization and value composition. Its

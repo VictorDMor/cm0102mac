@@ -40,7 +40,7 @@ class PreparedScopeTests(unittest.TestCase):
                     require_contract_terms_edges([(0, target)])
 
     def test_named_operations_do_not_replay_original_bodies(self):
-        source='\n'.join((ROOT/'native'/name).read_text() for name in ['contract_terms.cpp','contract_terms_sampling.cpp','contract_terms_presentation.cpp','contract_terms_expiry.cpp'])
+        source='\n'.join((ROOT/'native'/name).read_text() for name in ['contract_terms.cpp','range_sampling_detail.hpp','contract_terms_sampling.cpp','contract_terms_presentation.cpp','contract_terms_expiry.cpp'])
         for forbidden in ('contract_terms_reference','dispatch_page','run_until','pcode','i_1037','i_1038'):
             self.assertNotIn(forbidden,source)
         for name in ('sample_contract_range','enable_option','reset_terms','supports_option','describe_bonus','expiry_band'):

@@ -614,6 +614,21 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME transfer_record_component_equivalence COMMAND cm-transfer-record-checks)
     set_tests_properties(transfer_record_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_TRANSFER_VALUATION_REFERENCE "${CMAKE_BINARY_DIR}/transfer_valuation_reference.cpp")
+    add_custom_command(OUTPUT "${CM_TRANSFER_VALUATION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_valuation_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_TRANSFER_VALUATION_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_valuation_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_valuation_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-transfer-valuation-checks transfer_valuation_checks.cpp transfer_valuation_sampling.cpp
+        transfer_valuation_amounts.cpp transfer_valuation_comparison.cpp transfer_valuation_exchange.cpp transfer_valuation_rebalance.cpp "${CM_TRANSFER_VALUATION_REFERENCE}")
+    target_link_libraries(cm-transfer-valuation-checks PRIVATE cm_aot)
+    target_compile_options(cm-transfer-valuation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME transfer_valuation_component_equivalence COMMAND cm-transfer-valuation-checks)
+    set_tests_properties(transfer_valuation_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
