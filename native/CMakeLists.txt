@@ -648,6 +648,23 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME transfer_synthesis_component_equivalence COMMAND cm-transfer-synthesis-checks)
     set_tests_properties(transfer_synthesis_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_CLUB_SHORTLIST_STORAGE_REFERENCE "${CMAKE_BINARY_DIR}/club_shortlist_storage_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CLUB_SHORTLIST_STORAGE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_club_shortlist_storage_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CLUB_SHORTLIST_STORAGE_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_club_shortlist_storage_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/club_shortlist_storage_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-club-shortlist-storage-checks club_shortlist_storage_checks.cpp
+        club_shortlist_storage_lifecycle.cpp club_shortlist_storage_reset.cpp
+        club_shortlist_storage_sampling.cpp club_shortlist_storage_load.cpp
+        club_shortlist_storage_save.cpp "${CM_CLUB_SHORTLIST_STORAGE_REFERENCE}")
+    target_link_libraries(cm-club-shortlist-storage-checks PRIVATE cm_aot)
+    target_compile_options(cm-club-shortlist-storage-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME club_shortlist_storage_component_equivalence COMMAND cm-club-shortlist-storage-checks)
+    set_tests_properties(club_shortlist_storage_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"

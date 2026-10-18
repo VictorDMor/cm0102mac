@@ -2,9 +2,9 @@
 #include "semantic_guest_call.hpp"
 
 namespace cm::aot::range_sampling_detail {
-struct Layout {std::uint32_t entry;std::int32_t table_slot,divisor;};
-// The two audited 350-instruction bodies differ only in their location and
-// live table/divisor slots. All offsets below refer to the shared body layout.
+struct Layout {std::uint32_t entry;std::int32_t table_slot,divisor,bias=0xc0;};
+// The three audited 350-instruction bodies differ only in their location and
+// live table/divisor/bias slots. Offsets below refer to the shared body layout.
 class Call final : public SemanticGuestCall {
     Layout layout;
 public:
@@ -14,6 +14,7 @@ public:
     void jump(std::uint32_t offset){SemanticGuestCall::jump(layout.entry+offset);}
     void recurse(){SemanticGuestCall::call(layout.entry);}
     std::int32_t divisor_offset()const{return layout.divisor;}
+    std::int32_t bias_offset()const{return layout.bias;}
 };
 inline void advance_inline_pool(Call& a,std::uint32_t start) {
     // Later inline draws advance the pointer left in r3 by the preceding draw.
@@ -32,7 +33,7 @@ template<unsigned Bound,unsigned Result,unsigned Child,unsigned Converted>
 inline void scaled_inline_draw(Call& a,std::uint32_t start) {
     a.at(start);a.value(9,0x43300000);a.exclusive_flags(0,Bound,0x80000000);a.store(1,Converted==0x38?0x4c:0x3c,0);
     a.value(5,0x80010000);a.load(3,29,0);a.value(4,0x10000);a.store(1,Converted==0x38?0x48:0x38,9);
-    a.offset(6,5,-0x7fff);a.floating_load(2,25,0xc0);a.multiply(0,Bound,10);a.floating_load(1,1,Converted==0x38?0x48:0x38);
+    a.offset(6,5,-0x7fff);a.floating_load(2,25,a.bias_offset());a.multiply(0,Bound,10);a.floating_load(1,1,Converted==0x38?0x48:0x38);
     a.offset(5,4,-1);a.floating_load(0,25,a.divisor_offset());a.floating_subtract(1,1,2);a.multiply_high(4,6,0);a.load<2>(8,3,0);
     a.load(7,26,0);a.floating_difference(1,1,0,true);a.store(1,0x40,9);a.add(7,8,7);a.multiply_high(6,6,7);
     a.add(0,4,0);a.add(4,6,7);a.shift_right(4,4,15);a.mask(6,4,1,false,1);a.shift_right(0,0,15);
@@ -60,7 +61,7 @@ inline void add_correction(Call& a,std::uint32_t start,std::uint32_t join) {
 inline void recursive_correction_draw(Call& a) {
     a.at(0x340);a.value(4,0x43300000);a.exclusive_flags(0,20,0x80000000);a.store(1,0x3c,0);
     a.value(5,0x80010000);a.load(7,29,0);a.value(3,0x10000);a.store(1,0x38,4);a.offset(6,5,-0x7fff);
-    a.floating_load(2,25,0xc0);a.multiply(0,20,10);a.floating_load(1,1,0x38);a.offset(5,3,-1);a.floating_load(0,25,a.divisor_offset());
+    a.floating_load(2,25,a.bias_offset());a.multiply(0,20,10);a.floating_load(1,1,0x38);a.offset(5,3,-1);a.floating_load(0,25,a.divisor_offset());
     a.floating_subtract(1,1,2);a.multiply_high(3,6,0);a.load<2>(8,7,0);a.load(7,26,0);a.floating_difference(1,1,0,true);
     a.store(1,0x40,4);a.add(7,8,7);a.multiply_high(4,6,7);a.add(0,3,0);a.add(3,4,7);a.shift_right(3,3,15);
     a.mask(4,3,1,false,1);a.shift_right(0,0,15);a.add(3,3,4);a.product(4,3,5);a.mask(3,0,1,false,1);
