@@ -33,6 +33,7 @@
 #include "contract_review_adapter.hpp"
 #include "transfer_offer_adapter.hpp"
 #include "transfer_valuation_adapter.hpp"
+#include "transfer_synthesis_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -79,6 +80,7 @@ struct RuntimeDiagnostics {
     ContractReviewDiagnostics contract_review;
     TransferOfferDiagnostics transfer_offer;
     TransferValuationDiagnostics transfer_valuation;
+    TransferSynthesisDiagnostics transfer_synthesis;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -442,5 +444,13 @@ TransferValuationDiagnostics& transfer_valuation_diagnostics(State& state) {
 const TransferValuationDiagnostics& transfer_valuation_diagnostics(const State& state) {
     static const TransferValuationDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->transfer_valuation : empty;
+}
+TransferSynthesisDiagnostics& transfer_synthesis_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->transfer_synthesis;
+}
+const TransferSynthesisDiagnostics& transfer_synthesis_diagnostics(const State& state) {
+    static const TransferSynthesisDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->transfer_synthesis : empty;
 }
 }

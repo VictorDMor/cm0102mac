@@ -1,9 +1,9 @@
 # Automatic transfer-offer synthesis
 
-The complete automatic proposal builder is reconstructed as named C++23 logic
-and passes component equivalence. This is a **prepared component**, with no new
-productive owner or installation. The accepted manifest remains **831 entries**;
-adding this complete boundary would make a candidate of 832. The full game goal
+The complete automatic proposal builder, prepared in `d957670`, is now
+[integrated and installed](native-transfer-synthesis-integration.md). Its unique
+owner extends the exact accepted 831-entry prefix to **832 installed entries**.
+The component evidence below retains its original scope. The full game goal
 remains active.
 
 ## Original boundary and dependencies
@@ -126,10 +126,11 @@ reference, repeated arithmetic layouts and rejection of altered source fields.
 Warnings are errors; floating contraction is disabled. Existing semantic bodies
 and their common call helper remain unchanged.
 
-Actual-service composition, productive-hook integration, focused sanitizer
-acceptance and installed-app execution for this new component are **pending**
-and will be consolidated with the next integration batch. No generated production
-page or installed executable was replaced for this component. Save/Load is
-**not retested**; performance is **not benchmarked**. Private references, fixtures,
-logs and receipts remain under `.local/transfer-synthesis-reconstruction`.
-The cumulative Portuguese guide explains the mechanism and this prepared status.
+The consolidated [productive integration](native-transfer-synthesis-integration.md)
+adds actual-service, productive-hook, focused sanitizer and installed-app
+acceptance. It retains these semantic bodies and component checks unchanged.
+Original references, fixtures and component logs remain under
+`.local/transfer-synthesis-reconstruction`; integration receipts are under
+`.local/transfer-synthesis-integration`. Save/Load is **not retested**; performance
+is **not benchmarked**. The cumulative Portuguese guide explains the mechanism
+and distinguishes its prepared and installed milestones.

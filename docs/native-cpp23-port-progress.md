@@ -9,14 +9,23 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The [complete automatic proposal builder](native-transfer-synthesis.md) is now a
-prepared semantic component: 3,551 original instructions, 7,780 comparisons,
-complete source-site coverage and ten source/data guards. Its forty explicit
-service dependencies and 46 possible rollover sites retain ordered effects.
-This adds no productive owner: **831 entries remain installed**. Actual-service
-composition, productive integration, focused sanitizer acceptance and installation
-are pending for a consolidated batch. The cumulative Portuguese guide records
-this distinction; the full reconstruction goal remains active.
+The [automatic proposal builder integration](native-transfer-synthesis-integration.md)
+adds the complete 3,551-instruction operation after the exact 831-entry prefix,
+reaching **832 installed entries**. Three component CTests pass 21,489 comparisons;
+the new root retains 7,780 comparisons and complete original-site coverage.
+Release and focused UBSAN each pass 56 actual-service comparisons, with 580
+source sites, plus the adjacent 182-comparison proposal runtime. Fifty-eight
+original profile controls, 37 source/data/hook guards and 63 historical manifest
+methods pass. All three focused sanitizer runs have empty stderr; runtime stdout
+matches Release. The semantic bodies and common call helper remain unchanged.
+
+The strict-signed arm64 executable has SHA-256
+`c56c18120eace83d759ed76036c18d1b916be55f27669366593cf43857bb03c6`.
+Prepare Game, original quit confirmation and normal exit pass. All 846 protected
+files, the prior 831-entry application, eighteen unrelated prompts and Match
+Debugger are preserved. Save/Load is **not retested**; performance is
+**not benchmarked**. The cumulative Portuguese guide is updated, and the full
+reconstruction goal remains active.
 
 The [combined transfer-offer record and valuation integration](native-transfer-proposal-integration.md)
 adds sixteen complete operations and 1,994 original instructions after the exact

@@ -14,11 +14,15 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [automatic proposal builder](native-transfer-synthesis.md) is prepared as a
-complete 3,551-instruction semantic component. Release equivalence passes 7,780
-comparisons with all original sites required, plus ten source/data guards.
-Productive integration and actual-service/installed acceptance are pending;
-the installed application still has **831 reconstructed entries**.
+The [automatic proposal builder integration](native-transfer-synthesis-integration.md)
+extends the exact 831-entry prefix to **832 installed reconstructed entries**.
+Its complete 3,551-instruction boundary retains 7,780 component comparisons.
+Three component CTests pass 21,489 comparisons; Release and focused UBSAN each
+pass 56 actual-service comparisons, plus the 182-case adjacent proposal runtime.
+Fifty-eight original controls, 37 source guards, 63 historical manifest methods
+and three focused sanitizer runs pass. Installed identity, Prepare Game, original
+quit confirmation and normal exit are verified, with protected data and the
+prior application preserved. The full reconstruction goal remains active.
 
 The [combined transfer-offer record and valuation integration](native-transfer-proposal-integration.md)
 extends the exact 815-entry prefix to **831 installed reconstructed entries**.

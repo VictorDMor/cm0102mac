@@ -50,6 +50,9 @@ target_sources(cm_aot PRIVATE transfer_record_lifecycle.cpp transfer_record_init
     transfer_record_persistence.cpp transfer_record_value.cpp transfer_record_adapter.cpp
     transfer_valuation_sampling.cpp transfer_valuation_amounts.cpp transfer_valuation_comparison.cpp
     transfer_valuation_exchange.cpp transfer_valuation_rebalance.cpp transfer_valuation_adapter.cpp)
+target_sources(cm_aot PRIVATE transfer_synthesis.cpp transfer_synthesis_preparation.cpp
+    transfer_synthesis_base.cpp transfer_synthesis_terms.cpp transfer_synthesis_distribution.cpp
+    transfer_synthesis_refinement.cpp transfer_synthesis_finalization.cpp transfer_synthesis_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -639,10 +642,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_synthesis_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-transfer-synthesis-checks transfer_synthesis_checks.cpp transfer_synthesis.cpp
-        transfer_synthesis_preparation.cpp transfer_synthesis_base.cpp transfer_synthesis_terms.cpp
-        transfer_synthesis_distribution.cpp transfer_synthesis_refinement.cpp transfer_synthesis_finalization.cpp
-        "${CM_TRANSFER_SYNTHESIS_REFERENCE}")
+    add_executable(cm-transfer-synthesis-checks transfer_synthesis_checks.cpp "${CM_TRANSFER_SYNTHESIS_REFERENCE}")
     target_link_libraries(cm-transfer-synthesis-checks PRIVATE cm_aot)
     target_compile_options(cm-transfer-synthesis-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME transfer_synthesis_component_equivalence COMMAND cm-transfer-synthesis-checks)
@@ -2103,3 +2103,7 @@ target_compile_options(cm-transfer-offer-production-checks PRIVATE -Wall -Wextra
 add_executable(cm-transfer-proposal-production-checks transfer_proposal_production_checks.cpp)
 target_link_libraries(cm-transfer-proposal-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-transfer-proposal-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-transfer-synthesis-production-checks transfer_synthesis_production_checks.cpp)
+target_link_libraries(cm-transfer-synthesis-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-transfer-synthesis-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

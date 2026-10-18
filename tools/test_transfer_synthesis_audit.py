@@ -7,23 +7,24 @@ from pathlib import Path
 import re
 import sqlite3
 import unittest
-from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
+from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements, generate_page
 from transfer_synthesis_audit import (CONTRACTS,FRAGMENTS,TABLES,TRANSFER_SYNTHESIS_ENTRIES,
     require_transfer_synthesis_bodies,require_transfer_synthesis_edges,require_transfer_synthesis_contract,
-    require_transfer_synthesis_index,require_transfer_synthesis_tables,load_transfer_synthesis_tables)
+    require_transfer_synthesis_index,require_transfer_synthesis_tables,load_transfer_synthesis_tables,
+    require_transfer_synthesis_hooks,transfer_synthesis_hook)
 from make_transfer_synthesis_reference import render_reference
 
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_accepted_prefix_is_unchanged_and_candidate_is_not_installed(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),831)
-        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS]
+    def test_accepted_prefix_is_unchanged_and_candidate_has_one_new_owner(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),832)
+        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:831]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'04f640a10822a7b413181c6611ca8fcb874072e85da005a69c9b597888321c8d')
         self.assertEqual(TRANSFER_SYNTHESIS_ENTRIES,(0x104126d0,))
-        self.assertFalse(set(TRANSFER_SYNTHESIS_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*( (entry,'transfer_synthesis_adapter') for entry in TRANSFER_SYNTHESIS_ENTRIES))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[831:],((0x104126d0,'transfer_synthesis_adapter'),))
+        candidate=SEMANTIC_REPLACEMENTS
         self.assertEqual(len(candidate),832);require_unique_semantic_replacements(candidate)
         with self.assertRaisesRegex(ValueError,'Duplicate semantic replacement'):
             require_unique_semantic_replacements((*candidate,(0x104126d0,'other_owner')))
@@ -94,6 +95,40 @@ class OriginalContractTests(unittest.TestCase):
         self.assertEqual(re.findall(r'transfer_synthesis_step_seen\(s, 0x([0-9a-f]+)\)',source),expected)
         self.assertNotIn('try_modern_',source);self.assertNotIn('complete_context_transfer',source)
         self.assertIn(','.join(hex(r['address']) for r in self.records),source)
+
+    def test_productive_hook_precedes_original_accounting(self):
+        import inspect
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['transfer_synthesis_hooks']=True
+        page=0x104126d0>>12;part=[r for r in self.records if r['address']>>12==page]
+        source=generate_page(page,part,{r['address'] for r in self.records},userops=self.userops,**disabled)
+        require_transfer_synthesis_hooks(page,part,source);hook=transfer_synthesis_hook(0x104126d0);step='s.step(0x104126d0);'
+        for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+            with self.assertRaises(ValueError):require_transfer_synthesis_hooks(page,part,changed)
+
+    def test_actual_call_forms_and_original_policy_row_layout(self):
+        with closing(sqlite3.connect((INPUT/'instructions.sqlite').resolve().as_uri()+'?mode=ro',uri=True)) as db:
+            def assembly(pc):
+                row=db.execute('SELECT body FROM instructions WHERE address=?',(pc,)).fetchone()
+                self.assertIsNotNone(row);return json.loads(row[0])['assembly']
+            for pc in (0x1036e198,0x103e358c,0x10411eec):self.assertEqual(assembly(pc),'bl 0x104126d0')
+            self.assertEqual(assembly(0x1036e190),'add r6,r0,r23')
+            self.assertEqual(assembly(0x1036e194),'lwz r7,0x8(r6)')
+            self.assertEqual(assembly(0x103e3584),'li r6,0x0')
+            for pc,zero in ((0x1009e51c,0x1009e50c),(0x10417f3c,0x10417f30),(0x10423344,0x10423338)):
+                self.assertEqual(assembly(pc),'bl 0x10411ea0');self.assertEqual(assembly(zero),'li r6,0x0')
+            self.assertEqual(assembly(0x103df4c0),'bl 0x10356410')
+            self.assertEqual(assembly(0x103df4c8),'stw r23,0x988(r3)')
+            self.assertEqual(assembly(0x10356630),'li r4,0xb')
+            self.assertEqual(assembly(0x1035664c),'stbx r4,r3,r26')
+            self.assertEqual(assembly(0x1035672c),'cmpwi r22,0x28')
+            self.assertEqual(assembly(0x10356730),'addi r26,r26,0x2c')
+
+    def test_original_staff_status_service_preparation(self):
+        expected={0x1034530c:'li r3,0x10',0x1034531c:'li r4,0x0',0x10345320:'bl 0x100031b0',0x10345324:'lwz r3,-0x7b24(r2)',0x1034532c:'stw r15,0x0(r3)',0x100031d4:'stw r0,0xc(r3)',0x1000328c:'bl 0x10775200'}
+        with closing(sqlite3.connect((INPUT/'instructions.sqlite').resolve().as_uri()+'?mode=ro',uri=True)) as db:
+            for pc,assembly in expected.items():
+                row=db.execute('SELECT body FROM instructions WHERE address=?',(pc,)).fetchone();self.assertIsNotNone(row);self.assertEqual(json.loads(row[0])['assembly'],assembly)
 
     def test_ordinary_amount_blocks_have_only_declared_increment_changes(self):
         def normalized(start,increment):

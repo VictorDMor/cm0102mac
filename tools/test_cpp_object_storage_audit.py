@@ -25,8 +25,8 @@ class ScopeTests(unittest.TestCase):
             self.assertNotIn(entry, CPP_OBJECT_STORAGE_ENTRIES)
 
     def test_exact_prior_193_and_twelve_production_entries(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 831)
-        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 831)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 832)
+        self.assertEqual(len({entry for entry, _ in SEMANTIC_REPLACEMENTS}), 832)
         self.assertEqual(SEMANTIC_REPLACEMENTS[193:205], tuple((e, 'cpp_object_storage_adapter') for e in CPP_OBJECT_STORAGE_ENTRIES))
         prior = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS[:193]]
         self.assertEqual(hashlib.sha256(json.dumps(prior, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
