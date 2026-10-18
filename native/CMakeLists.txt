@@ -770,6 +770,22 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/shortlist_policy_coverage.txt")
     set_tests_properties(shortlist_policy_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_PROFILE_QUALIFICATION_REFERENCE "${CMAKE_BINARY_DIR}/profile_qualification_reference.cpp")
+    add_custom_command(OUTPUT "${CM_PROFILE_QUALIFICATION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_profile_qualification_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_PROFILE_QUALIFICATION_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_profile_qualification_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/profile_qualification_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-profile-qualification-checks profile_qualification_checks.cpp profile_qualification_masks.cpp
+        profile_qualification_classify.cpp profile_qualification_category.cpp "${CM_PROFILE_QUALIFICATION_REFERENCE}")
+    target_link_libraries(cm-profile-qualification-checks PRIVATE cm_aot)
+    target_compile_options(cm-profile-qualification-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME profile_qualification_component_equivalence COMMAND cm-profile-qualification-checks
+        "${CMAKE_BINARY_DIR}/profile_qualification_coverage.txt")
+    set_tests_properties(profile_qualification_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
