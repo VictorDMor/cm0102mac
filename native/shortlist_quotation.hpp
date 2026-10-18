@@ -1,0 +1,13 @@
+#pragma once
+#include "aot_runtime.hpp"
+#include "semantic_dependency_dispatch.hpp"
+namespace cm::aot::shortlist_quotation {
+inline constexpr std::uint32_t evaluate_candidate_context_entry=0x10366470;
+inline constexpr std::uint32_t calculate_reference_quote_entry=0x1037b6f0;
+inline constexpr std::array<std::uint32_t,2> entries{evaluate_candidate_context_entry,calculate_reference_quote_entry};
+inline constexpr std::array<std::uint32_t,75> structurally_unreachable{
+    0x10366658,0x1036665c,0x103670cc,0x103670d0,0x103670d4,0x103670d8,0x103670e8,0x103670ec,0x103670f0,0x10367480,0x103674c0,0x103683b4,0x10368400,0x10368adc,0x10368f60,0x10368f88,0x10368f8c,0x1037c92c,0x1037c930,0x1037c934,0x1037c938,0x1037cf68,0x1037de20,0x1037de24,0x1037de28,0x1037de2c,0x1037de30,0x1037de34,0x1037de38,0x1037de3c,0x1037de40,0x1037de44,0x1037de48,0x1037de4c,0x1037de50,0x1037de54,0x1037de58,0x1037de5c,0x1037de60,0x1037de64,0x1037de68,0x1037de6c,0x1037de70,0x1037de74,0x1037de78,0x1037de7c,0x1037de80,0x1037de84,0x1037de88,0x1037de8c,0x1037de90,0x1037de94,0x1037de98,0x1037de9c,0x1037dea0,0x1037dea4,0x1037dea8,0x1037deac,0x1037deb0,0x1037deb4,0x1037deb8,0x1037debc,0x1037dec0,0x1037dec4,0x1037dec8,0x1037decc,0x1037ded0,0x1037ded4,0x1037ded8,0x1037dedc,0x1037dee0,0x1037dee4,0x1037dee8,0x1037deec,0x1037def0
+};
+void evaluate_candidate_context(State&,SemanticDependencyDispatch* = nullptr,SemanticGuestObserver* = nullptr);
+void calculate_reference_quote(State&,SemanticDependencyDispatch* = nullptr,SemanticGuestObserver* = nullptr);
+}

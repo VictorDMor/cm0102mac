@@ -730,6 +730,29 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME shortlist_assessment_component_equivalence COMMAND cm-shortlist-assessment-checks)
     set_tests_properties(shortlist_assessment_component_equivalence PROPERTIES TIMEOUT 300)
 
+    set(CM_SHORTLIST_QUOTATION_REFERENCE "${CMAKE_BINARY_DIR}/shortlist_quotation_reference.cpp")
+    set(CM_SHORTLIST_QUOTATION_CASES "${CMAKE_BINARY_DIR}/shortlist_quotation_cases.inc")
+    add_custom_command(OUTPUT "${CM_SHORTLIST_QUOTATION_REFERENCE}" "${CM_SHORTLIST_QUOTATION_CASES}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_shortlist_quotation_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_SHORTLIST_QUOTATION_REFERENCE}" --cases-output "${CM_SHORTLIST_QUOTATION_CASES}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_shortlist_quotation_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/shortlist_quotation_audit.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/shortlist_quotation_proofs.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/shortlist_quotation_cases.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/testdata/shortlist_quotation_cases.json" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    set_source_files_properties("${CM_SHORTLIST_QUOTATION_CASES}" PROPERTIES HEADER_FILE_ONLY TRUE)
+    add_executable(cm-shortlist-quotation-checks shortlist_quotation_checks.cpp "${CM_SHORTLIST_QUOTATION_REFERENCE}" "${CM_SHORTLIST_QUOTATION_CASES}")
+    target_include_directories(cm-shortlist-quotation-checks PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(cm-shortlist-quotation-checks PRIVATE cm_aot)
+    target_sources(cm-shortlist-quotation-checks PRIVATE shortlist_quotation.cpp shortlist_quotation_context.cpp
+        shortlist_quotation_quote_profile.cpp shortlist_quotation_quote_country.cpp)
+    target_compile_options(cm-shortlist-quotation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME shortlist_quotation_component_equivalence COMMAND cm-shortlist-quotation-checks
+        "${CMAKE_BINARY_DIR}/shortlist_quotation_coverage.txt")
+    set_tests_properties(shortlist_quotation_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
