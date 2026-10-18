@@ -1,22 +1,26 @@
 #include "injury_fitness.hpp"
 #include "injury_random.hpp"
+#include "injury_maintenance.hpp"
 #include "semantic_io_checks.hpp"
 #include "application_exit.hpp"
 #include <set>
 
-namespace cm::aot {bool injury_fitness_reference(State&);bool injury_random_reference(State&);void injury_fitness_fixture_tables(State&,std::uint32_t,std::uint32_t);}
+namespace cm::aot {bool injury_fitness_reference(State&);bool injury_random_reference(State&);bool injury_maintenance_reference(State&);void injury_fitness_fixture_tables(State&,std::uint32_t,std::uint32_t);}
 namespace {
 using namespace cm::semantic_io_checks;
 namespace fitness=cm::aot::injury_fitness;
 namespace random_draw=cm::aot::injury_random;
-constexpr std::array entries{fitness::entries[0],fitness::entries[1],fitness::entries[2],fitness::entries[3],fitness::entries[4],fitness::entries[5],random_draw::entry};
+namespace maintenance=cm::aot::injury_maintenance;
+constexpr std::array entries{fitness::entries[0],fitness::entries[1],fitness::entries[2],fitness::entries[3],fitness::entries[4],fitness::entries[5],random_draw::entry,maintenance::apply_fitness_entry,maintenance::merge_pending_entry,maintenance::find_pending_entry,maintenance::reset_staff_entry,maintenance::apply_match_entry};
 constexpr std::uint32_t manager=fixture+0x1000,staff=fixture+0x2000,rows=fixture+0x4000,random_words=fixture+0x8000;
 constexpr std::uint32_t objects=fixture+0xc000,tables=fixture+0x30000,profile=fixture+0x3000;
-constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,7> ranges{{{0x10187450,0x10187644},{0x10187650,0x10187680},{0x10187680,0x101877dc},{0x101877e0,0x101878d0},{0x101878d0,0x10187a1c},{0x10187a40,0x10188488},{0x101864a0,0x10186a18}}};
+constexpr std::uint32_t pending=fixture+0x10000,pending_rows=fixture+0x11000,values=fixture+0x12000,match=fixture+0x17000,roster=fixture+0x18000;
+constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,12> ranges{{{0x10187450,0x10187644},{0x10187650,0x10187680},{0x10187680,0x101877dc},{0x101877e0,0x101878d0},{0x101878d0,0x10187a1c},{0x10187a40,0x10188488},{0x101864a0,0x10186a18},{0x10186a20,0x10186cd0},{0x10186cd0,0x10186e0c},{0x10186e10,0x10186e94},{0x10186ea0,0x10186fb4},{0x10186fc0,0x10187450}}};
 struct Control {std::uint32_t pc;unsigned reg;std::uint32_t value;int cr=-1;};
 struct Options {
     unsigned interrupt=0;std::uint32_t random_seed=0,phase_result=1,row_days=3,injury_days=5,start_distance=2,end_distance=20,schedule_status=0,schedule_day=193,schedule_year=2001,nested_random_result=0;
-    bool own_negative=false,child_negative=false,real_random=false;
+    bool own_negative=false,child_negative=false,real_random=false,real_maintenance=false;
+    std::uint32_t allocation_result=pending,injury_result=0xffffffff;
     std::uint32_t force_pc=0,force_value=0;unsigned force_register=0;int force_cr=-1;
     std::vector<Control> controls;
 };
@@ -32,7 +36,7 @@ thread_local Trace* original_trace=nullptr;
 struct Event {std::uint32_t target,continuation;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
 void modern_root(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o) {
     using Function=void(*)(State&,SemanticDependencyDispatch*,SemanticGuestObserver*);
-    constexpr Function methods[]{fitness::update_staff_condition,fitness::read_staff_condition,fitness::classify_injury_recovery,fitness::read_staff_fitness,fitness::read_effective_fitness,fitness::refresh_staff_fitness,random_draw::draw_signed_bounded};
+    constexpr Function methods[]{fitness::update_staff_condition,fitness::read_staff_condition,fitness::classify_injury_recovery,fitness::read_staff_fitness,fitness::read_effective_fitness,fitness::refresh_staff_fitness,random_draw::draw_signed_bounded,maintenance::apply_staff_fitness,maintenance::merge_pending_injury,maintenance::find_pending_injury,maintenance::reset_staff_physical_state,maintenance::apply_match_physical_state};
     const auto entry=std::find(entries.begin(),entries.end(),s.pc);require(entry!=entries.end(),"Known injury fitness root");methods[entry-entries.begin()](s,d,o);
 }
 struct Model final:SemanticDependencyDispatch {
@@ -40,13 +44,14 @@ struct Model final:SemanticDependencyDispatch {
     Model(bool old,Options value,Trace& observer):original(old),options(value),trace(observer){}
     void reference(State& s,std::uint32_t stop=return_sentinel) {
         const auto entry=s.pc;const auto range=std::find_if(ranges.begin(),ranges.end(),[&](auto r){return r.first==entry;});require(range!=ranges.end(),"Known original injury fitness root");
-        bool first=true;while(s.pc!=stop){if(s.pc>=entry && s.pc<range->second && (first||s.pc!=entry))require(entry==random_draw::entry?injury_random_reference(s):injury_fitness_reference(s),"Complete injury fitness reference");else call(s,s.pc,std::uint32_t(s.r<4>(4128)));first=false;}
+        bool first=true;while(s.pc!=stop){if(s.pc>=entry && s.pc<range->second && (first||s.pc!=entry))require(entry==random_draw::entry?injury_random_reference(s):entry>=maintenance::apply_fitness_entry && entry<0x10187450?injury_maintenance_reference(s):injury_fitness_reference(s),"Complete injury fitness reference");else call(s,s.pc,std::uint32_t(s.r<4>(4128)));first=false;}
     }
     void call(State& s,std::uint32_t target,std::uint32_t continuation)override {
-        constexpr std::array<std::uint32_t,15> allowed{0x1077b770,0x10739890,0x10768810,0x1077b720,0x10769b60,fitness::refresh_entry,fitness::recovery_phase_entry,0x10717dd0,0x10715880,0x1018b9f0,0x102ae9c0,0x102af650,0x101929b0,0x10718130,0x101864a0};
+        constexpr std::array allowed{0x1077b770u,0x10739890u,0x10768810u,0x1077b720u,0x10769b60u,fitness::refresh_entry,fitness::recovery_phase_entry,0x10717dd0u,0x10715880u,0x1018b9f0u,0x102ae9c0u,0x102af650u,0x101929b0u,0x10718130u,0x101864a0u,0x10773520u,0x10738c00u,0x10738e00u,0x10738d10u,0x10738e60u,0x10188930u,maintenance::apply_fitness_entry,0x1018fdf0u,0x10188cc0u};
         require(std::find(allowed.begin(),allowed.end(),target)!=allowed.end(),"Known fitness dependency "+hex_address(target));
         Event event{target,continuation,s.registers,{}};
         if(target==random_draw::entry && options.real_random){if(original)reference(s,continuation);else random_draw::draw_signed_bounded(s,this,&trace);event.after=s.registers;calls.push_back(event);return;}
+        if(target==maintenance::apply_fitness_entry && options.real_maintenance){if(original)reference(s,continuation);else maintenance::apply_staff_fitness(s,this,&trace);event.after=s.registers;calls.push_back(event);return;}
         const auto arg=[&](unsigned n){return std::uint32_t(s.r<4>(n*4));};
         s.memory.write<4>(fixture+0x50000+unsigned(calls.size())*4,target^arg(3));std::uint32_t result=0;
         if(target==0x1077b770)result=options.random_seed;
@@ -61,6 +66,12 @@ struct Model final:SemanticDependencyDispatch {
         if(target==0x101929b0){result=options.schedule_status;for(auto n:{4u,5u}){s.memory.write<2>(arg(n),193);s.memory.write<2>(arg(n)+2,2001);s.memory.write<4>(arg(n)+4,0);}}
         if(target==0x10718130)result=continuation==0x10187e08?options.start_distance:options.end_distance;
         if(target==0x101864a0)result=options.nested_random_result;
+        if(target==0x10773520)result=options.allocation_result;
+        if(target==0x10738c00){s.memory.write<4>(arg(3),0);s.memory.write<4>(arg(3)+4,0);s.memory.write<4>(arg(3)+12,0);}
+        if(target==0x10738e00){const std::uint32_t object=arg(3),cursor=std::uint32_t(s.memory.read<4>(object+12)),count=std::uint32_t(s.memory.read<4>(object));if(cursor<count){result=pending_rows+cursor*8;s.memory.write<4>(object+12,cursor+1);}}
+        if(target==0x10738d10){const std::uint32_t object=arg(3),count=std::uint32_t(s.memory.read<4>(object));s.memory.copy_in(pending_rows+count*8,s.memory.copy_out(arg(4),arg(5)));s.memory.write<4>(object,count+1);}
+        if(target==0x10738e60){const std::uint32_t object=arg(3),cursor=std::uint32_t(s.memory.read<4>(object+12)),count=std::uint32_t(s.memory.read<4>(object));require(cursor>0 && cursor<=count,"Valid pending fixture removal");for(auto n=cursor;n<count;++n)s.memory.copy_in(pending_rows+(n-1)*8,s.memory.copy_out(pending_rows+n*8,8));s.memory.write<4>(object,count-1);s.memory.write<4>(object+12,cursor-1);}
+        if(target==0x10188930)result=options.injury_result;
         for(unsigned n=0;n<=12;++n)if(n!=1 && n!=2)s.wr<4>(n*4,0xac000000+n*17);
         for(unsigned n=0;n<14;++n)s.wr<8>(0x4000+n*16,float_bits<8>(-20.0-n));
         s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=continuation;
@@ -77,7 +88,19 @@ std::unique_ptr<State> seed(unsigned index) {
     s->memory.write<4>(manager,rows);s->memory.write<4>(manager+4,rows+0x1000);s->memory.write<4>(manager+8,1);s->memory.write<4>(staff,0);s->memory.write<4>(staff+0x14,profile);s->memory.write<4>(staff+0x20,objects+0x2000);s->memory.write<4>(staff+0x24,objects+0x3000);s->memory.write<1>(staff+0x67,9);s->memory.write<2>(staff+0x5c,25);s->memory.write<1>(profile+0x34,20);
     s->memory.write<2>(objects+0x500,194);s->memory.write<2>(objects+0x502,2001);s->memory.write<1>(objects+0x504,2);s->memory.write<2>(rows,192);s->memory.write<2>(rows+2,2001);s->memory.write<2>(rows+8,8000);s->memory.write<2>(rows+10,7000);s->memory.write<2>(rows+12,500);s->memory.write<4>(rows+0x10,0);s->memory.write<1>(rows+0x22,50);s->memory.write<2>(rows+0x1000+0x30,8);s->memory.write<2>(rows+0x1000+0x32,2);
     injury_fitness_fixture_tables(*s,toc,tables);
-    s->wr<4>(12,index==6?100u:manager);s->wr<4>(16,index<2?0u:staff);s->wr<4>(20,0);return s;
+    s->wr<4>(12,index==6?100u:manager);s->wr<4>(16,index<2?0u:staff);s->wr<4>(20,0);
+    if(index>=7) {
+        s->memory.write<4>(toc-0x7a9c,objects+0x900);s->memory.write<2>(objects+0x900,193);s->memory.write<2>(objects+0x902,2001);
+        s->memory.write<4>(manager+0x28,pending);s->memory.write<4>(pending,2);s->memory.write<4>(pending+4,0);s->memory.write<4>(pending+12,0);
+        for(unsigned n=0;n<2;++n){s->memory.write<4>(pending_rows+n*8,n);s->memory.write<1>(pending_rows+n*8+4,n+1);s->memory.write<1>(pending_rows+n*8+5,50+n*10);}
+        s->memory.write<4>(values,0);s->memory.write<1>(values+4,1);s->memory.write<1>(values+5,40);s->memory.write<1>(profile+0x44,30);s->memory.write<1>(profile+0x3c,30);s->memory.write<1>(objects+0x1000+13,255);
+        if(index==7){s->wr<4>(20,9000);s->wr<4>(24,20);}
+        if(index==8){s->wr<4>(16,values);s->wr<4>(20,values+4);s->wr<4>(24,values+5);}
+        if(index==9)s->wr<4>(16,values);
+        if(index==10)s->wr<4>(16,0);
+        if(index==11){s->wr<4>(16,match);s->wr<4>(20,roster);s->memory.write<4>(match,0xfffffffe);s->memory.write<1>(match+0x40,1);s->memory.write<2>(roster+0x4e,90);for(unsigned side=0;side<2;++side)for(unsigned player=0;player<20;++player){auto slot=roster+side*0x664+player*0x4c;s->memory.write<4>(slot+0x194,0xffffffff);s->memory.write<1>(slot+0x1c8,255);s->memory.write<1>(slot+0x1c4,255);s->memory.write<1>(slot+0x1c6,255);s->memory.write<2>(slot+0x1ca,9000);}s->memory.write<4>(roster+0x194,0);}
+    }
+    return s;
 }
 unsigned cases=0,completed=0,interruptions=0,negatives=0,structural=0;std::set<std::uint32_t> sites;
 struct Result {std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
@@ -186,14 +209,44 @@ void random_cases() {
     auto own=actual;own.own_negative=true;compare(*seed(6),own);auto child=actual;child.child_negative=true;compare(*wrapped,child);
     auto fitness_dependency=seed(5);fitness_dependency->memory.write<4>(rows+0x10,0xffffffff);auto o=actual;o.force_pc=0x10187e98;o.force_register=21;o.force_value=65536;compare(*fitness_dependency,o);
 }
+void maintenance_cases() {
+    for(unsigned index=7;index<12;++index)boundaries(*seed(index));
+    for(unsigned index=7;index<12;++index){auto s=seed(index);s->wr<4>(12,0);compare(*s);Options own;own.own_negative=true;compare(*seed(index),own);}
+    for(auto id:{1u,2u,0x7fffffffu,0xffffffffu}){auto s=seed(7);s->memory.write<4>(staff,id);compare(*s);}
+    auto absent=seed(7);absent->wr<4>(16,0);compare(*absent);
+    for(auto debt:{-32768,-1001,-1000,500,1130,1131,1200,1249,1250,32767})for(auto delta:{-32768,-1,0,20,32767,65536}){auto s=seed(7);s->memory.write<2>(rows+12,std::uint16_t(debt));s->wr<4>(24,std::uint32_t(delta));compare(*s);}
+    auto wrapped=seed(7);wrapped->memory.write<2>(rows+12,1200);wrapped->memory.write<4>(objects+0x234,random_words);boundaries(*wrapped);
+    for(auto bound:{65536u,0xffff0000u}){Options o;o.force_pc=0x10186b78;o.force_register=28;o.force_value=bound;o.real_random=true;compare(*wrapped,o);}
+    for(unsigned index:{8u,9u}) {
+        auto missing=seed(index);missing->memory.write<4>(manager+0x28,0);boundaries(*missing);
+        for(auto id:{0u,1u,2u}){auto s=seed(index);s->memory.write<4>(values,id);compare(*s);}
+    }
+    auto allocation_fail=seed(8);allocation_fail->memory.write<4>(manager+0x28,0);Options failed;failed.allocation_result=0;compare(*allocation_fail,failed);
+    for(auto [type,weight]:{std::pair{1u,40u},std::pair{1u,60u},std::pair{1u,128u},std::pair{2u,40u},std::pair{2u,60u},std::pair{2u,128u}}){auto s=seed(8);s->memory.write<1>(values+4,type);s->memory.write<1>(values+5,weight);compare(*s);}
+    auto no_queue=seed(10);no_queue->memory.write<4>(manager+0x28,0);no_queue->memory.write<4>(rows+0x10,0xffffffff);compare(*no_queue);
+    auto repeated=seed(10);repeated->memory.write<4>(pending_rows+8,0);compare(*repeated);
+    for(auto age:{18u,25u,40u,128u,255u}){auto s=seed(11);s->memory.write<2>(staff+0x5c,age);compare(*s);}
+    auto friendly=seed(11);friendly->memory.write<1>(match+0x40,0);compare(*friendly);
+    auto fixed_minutes=seed(11);fixed_minutes->memory.write<1>(roster+0x4c,1);compare(*fixed_minutes);
+    for(auto offset:{0x1c8u,0x1c4u}){auto s=seed(11);s->memory.write<1>(roster+offset,60);compare(*s);}
+    for(auto incoming:{255u,20u})for(auto outgoing:{255u,60u}){auto s=seed(11);s->memory.write<4>(roster+0x194,0xffffffff);auto slot=roster+11*0x4c;s->memory.write<4>(slot+0x194,0);s->memory.write<1>(slot+0x1c6,incoming);s->memory.write<1>(slot+0x1c8,outgoing);compare(*s);}
+    auto substitute=seed(11);substitute->memory.write<4>(roster+0x194,0xffffffff);auto substitute_slot=roster+11*0x4c;substitute->memory.write<4>(substitute_slot+0x194,0);substitute->memory.write<1>(substitute_slot+0x1c6,20);substitute->memory.write<1>(substitute_slot+0x1c4,60);compare(*substitute);
+    for(auto [year,day]:{std::pair{2000u,194u},std::pair{2001u,192u},std::pair{2001u,194u},std::pair{2002u,194u}}){auto s=seed(11);s->memory.write<2>(objects+0x502,year);s->memory.write<2>(objects+0x500,day);compare(*s);}
+    auto wrapped_match=seed(11);wrapped_match->memory.write<4>(objects+0x234,random_words);compare(*wrapped_match);
+    for(auto weight:{50u,51u,65u,66u,95u,96u,128u})for(auto type:{1u,7u}){auto s=seed(11);s->memory.write<1>(roster+0x1b3,1);s->memory.write<1>(pending_rows+4,type);s->memory.write<1>(pending_rows+5,weight);Options o;o.injury_result=1;compare(*s,o);}
+    auto competitive=seed(11);competitive->memory.write<4>(match,1);competitive->memory.write<1>(roster+0x1b3,1);Options injury;injury.injury_result=1;compare(*competitive,injury);
+    auto real=seed(11);Options linked;linked.real_maintenance=true;auto r=compare(*real,linked);require(r.state->memory.read<2>(rows+10)==9000 && r.state->memory.read<2>(rows+12)==600,"Independent match-to-staff fitness effects");
+    for(unsigned index=7;index<12;++index){auto s=seed(index);if(index==7){s->memory.write<2>(rows+12,1200);s->memory.write<4>(objects+0x234,random_words);}Options o;o.child_negative=true;compare(*s,o);}
 }
-namespace cm::aot {void injury_fitness_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}void injury_random_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
+}
+namespace cm::aot {void injury_fitness_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}void injury_random_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}void injury_maintenance_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
 int main(int argc,char** argv){try {
     const auto mode=argc==2?std::string_view(argv[1]):std::string_view{};
     if(mode.empty()||mode=="--boundaries")core_boundaries();if(mode.empty()||mode=="--readouts")guard_and_readout_cases();if(mode.empty()||mode=="--condition")condition_cases();if(mode.empty()||mode=="--refresh")refresh_cases();
     if(mode.empty()||mode=="--random")random_cases();
+    if(mode.empty()||mode=="--maintenance")maintenance_cases();
     if(mode.empty())for(unsigned index=0;index<6;++index){Options o;o.own_negative=true;compare(*seed(index),o);o.own_negative=false;o.child_negative=true;if(index!=1){auto s=seed(index);if(index==0)s->memory.write<4>(objects+0x234,random_words);compare(*s,o);}}
-    for(auto [start,end]:ranges)for(auto pc=start;pc<end;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered injury fitness "<<hex_address(pc)<<std::endl;
-    if(mode.empty())require(sites.size()==1375,"Complete fitness and supporting random source coverage");
+    for(auto [start,end]:ranges)for(auto pc=start;pc<end;pc+=4)if(pc!=0x10186d24 && pc!=0x10186e4c && !sites.contains(pc))std::cerr<<"Uncovered injury fitness "<<hex_address(pc)<<std::endl;
+    if(mode.empty())require(sites.size()==2018,"Complete fitness, maintenance and supporting random source coverage");
     std::cout<<"Fitness comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interruptions<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<std::endl;
 }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
