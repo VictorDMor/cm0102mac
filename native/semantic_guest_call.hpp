@@ -284,6 +284,10 @@ public:
     void product(unsigned destination, unsigned first, unsigned second) {
         step(); state.wr<4>(destination * 4, r(first) * r(second));
     }
+    void negate_record(unsigned destination, unsigned source) {
+        step(); const auto value = 0u - r(source); state.wr<4>(destination * 4, value);
+        condition(std::bit_cast<std::int32_t>(value), 0, true);
+    }
     void negate(unsigned destination, unsigned source) {
         step(); state.wr<4>(destination * 4, 0u - r(source));
     }

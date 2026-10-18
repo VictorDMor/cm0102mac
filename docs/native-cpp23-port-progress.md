@@ -25,19 +25,25 @@ evidence. The installed executable SHA-256 is
 Prepare Game and normal exit are verified, and all 846 protected files remain
 unchanged. Save/Load is **not retested**; performance is **not benchmarked**.
 
-Two functional blocks are prepared after that installed milestone. The
-[monetary value component](native-money-value.md) has seven complete conversion,
-rounding and editing operations: 22,508 comparisons, with every root separately
-covering all its own sites in complete returns (593 total). Three arithmetic
-helpers were added to the shared guest-call class while preserving all existing
-members byte for byte. Ten new source/data checks pass. The retained
-[contract-display component](native-contract-display.md) passes its nine guards
-and 4,791 comparisons again, with all 136 sites in complete returns. Both focused
-CTests pass. Five accepted arithmetic/register bodies are reused within the new
-component; four diagnostic services have explicit models. Productive integration,
-actual-service/caller proof and focused UBSAN remain for a consolidated milestone.
-The installed count remains 871; the two prepared blocks together would reach
-880 if integrated. The cumulative Portuguese PDF is edition 35. The whole-game
+Three functional blocks are prepared after that installed milestone. The new
+[money-text component](native-money-text.md) adds four complete operations:
+symbol length, setting byte, currency label and numeric formatting. It passes
+2,948 comparisons (2,747 complete returns, 193 matching stops and eight negatives),
+with every root separately covering all its own instructions in complete returns
+(1,420 total). All 25 labels, grouped and compact layouts, fifteen-digit cap,
+optional decimal zero trimming, empty-suffix fallback and space substitution are
+retained. Two accepted arithmetic bodies are reused; strings, printf and four
+diagnostic services have explicit models. Ten source/data checks pass.
+
+The retained [monetary value component](native-money-value.md) passes its 22,508
+comparisons and 593 own-root sites; the [contract-display component](native-contract-display.md)
+passes 4,791 comparisons and 136 sites again. All three focused CTests pass.
+The common guest-call class adds only a recorded negation operation; removing it
+reproduces the preceding header byte for byte. Productive hooks, actual-service/
+caller proof, focused UBSAN and protected installation remain for a consolidated
+milestone. The installed count remains 871; these thirteen prepared operations
+would reach 884 if integrated. The cumulative Portuguese PDF is edition 36.
+Save/Load is **not retested**; performance is **not benchmarked**. The whole-game
 goal remains active. The records below document preceding installed milestones.
 
 The [automatic proposal builder integration](native-transfer-synthesis-integration.md)

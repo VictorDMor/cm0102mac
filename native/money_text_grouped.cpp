@@ -1,0 +1,570 @@
+#include "money_text_detail.hpp"
+namespace cm::aot::money_text::detail {
+namespace {
+// 0 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_0(Call& a){
+    a.at(0x1000bcfc);
+    a.move(3,15);
+    a.move(5,30);
+    a.move(6,28);
+    a.offset(4,29,0x352);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 1 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_1(Call& a){
+    a.at(0x1000bcdc);
+    a.load<1>(6,1,0xa0);
+    a.move(3,15);
+    a.move(5,30);
+    a.move(7,28);
+    a.offset(4,29,0x34b);
+    a.sign8(6,6);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 2 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_2(Call& a){
+    a.at(0x1000bcb4);
+    a.load<1>(6,1,0xa0);
+    a.move(3,15);
+    a.load<1>(7,1,0xa1);
+    a.move(5,30);
+    a.move(8,28);
+    a.offset(4,29,0x342);
+    a.sign8(6,6);
+    a.sign8(7,7);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 3 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_3(Call& a){
+    a.at(0x1000bc84);
+    a.load<1>(6,1,0xa0);
+    a.move(3,15);
+    a.load<1>(7,1,0xa1);
+    a.move(5,30);
+    a.load<1>(8,1,0xa2);
+    a.move(9,28);
+    a.offset(4,29,0x337);
+    a.sign8(6,6);
+    a.sign8(7,7);
+    a.sign8(8,8);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 4 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_4(Call& a){
+    a.at(0x1000bc00);
+    a.load<1>(0,2,-0x3b01);
+    a.sign8(0,0,true);
+    if(a.equal()){
+    a.at(0x1000bc0c);
+    a.store(1,0x38,28);
+    a.move(3,15);
+    a.move(5,30);
+    a.offset(4,29,0x31b);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,2,-0x3aff);
+    a.load<1>(8,1,0xa1);
+    a.sign8(6,6);
+    a.load<1>(9,1,0xa2);
+    a.sign8(7,7);
+    a.load<1>(10,1,0xa3);
+    a.sign8(8,8);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+    }a.at(0x1000bc4c);
+    a.load<1>(6,1,0xa0);
+    a.move(3,15);
+    a.load<1>(7,1,0xa1);
+    a.move(5,30);
+    a.load<1>(8,1,0xa2);
+    a.move(10,28);
+    a.load<1>(9,1,0xa3);
+    a.offset(4,29,0x32a);
+    a.sign8(6,6);
+    a.sign8(7,7);
+    a.sign8(8,8);
+    a.sign8(9,9);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 5 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_5(Call& a){
+    a.at(0x1000bbb4);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.move(5,30);
+    a.offset(4,29,0x30a);
+    a.sign8(0,0);
+    a.store(1,0x38,0);
+    a.store(1,0x3c,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(8,2,-0x3aff);
+    a.sign8(6,6);
+    a.load<1>(9,1,0xa2);
+    a.sign8(7,7);
+    a.load<1>(10,1,0xa3);
+    a.sign8(8,8);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 6 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_6(Call& a){
+    a.at(0x1000bb5c);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.move(5,30);
+    a.offset(4,29,0x2f7);
+    a.sign8(0,0);
+    a.store(1,0x38,0);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x3c,0);
+    a.store(1,0x40,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(8,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(9,2,-0x3aff);
+    a.sign8(7,7);
+    a.load<1>(10,1,0xa3);
+    a.sign8(8,8);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 7 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_7(Call& a){
+    a.at(0x1000baf4);
+    a.load<1>(7,2,-0x3aff);
+    a.move(3,15);
+    a.move(5,30);
+    a.offset(4,29,0x2e0);
+    a.sign8(7,7);
+    a.store(1,0x38,7);
+    a.load<1>(0,1,0xa4);
+    a.sign8(0,0);
+    a.store(1,0x3c,0);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x40,0);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.store(1,0x48,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(8,1,0xa1);
+    a.load<1>(9,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(8,8);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 8 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_8(Call& a){
+    a.at(0x1000ba80);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.load<1>(8,2,-0x3aff);
+    a.move(5,30);
+    a.sign8(0,0);
+    a.offset(4,29,0x2c7);
+    a.store(1,0x38,0);
+    a.sign8(8,8);
+    a.store(1,0x3c,8);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x40,0);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x48,0);
+    a.store(1,0x4c,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(9,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(7,7);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 9 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_9(Call& a){
+    a.at(0x1000ba00);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.load<1>(9,2,-0x3aff);
+    a.move(5,30);
+    a.sign8(0,0);
+    a.offset(4,29,0x2ac);
+    a.store(1,0x38,0);
+    a.sign8(9,9);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x3c,0);
+    a.store(1,0x40,9);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x48,0);
+    a.load<1>(0,1,0xa8);
+    a.sign8(0,0);
+    a.store(1,0x4c,0);
+    a.store(1,0x50,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(8,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(7,7);
+    a.sign8(8,8);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 10 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_10(Call& a){
+    a.at(0x1000b970);
+    a.load<1>(7,2,-0x3aff);
+    a.move(3,15);
+    a.move(5,30);
+    a.offset(4,29,0x28d);
+    a.sign8(7,7);
+    a.store(1,0x38,7);
+    a.load<1>(0,1,0xa4);
+    a.sign8(0,0);
+    a.store(1,0x3c,0);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x40,0);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.store(1,0x48,7);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x4c,0);
+    a.load<1>(0,1,0xa8);
+    a.sign8(0,0);
+    a.store(1,0x50,0);
+    a.load<1>(0,1,0xa9);
+    a.sign8(0,0);
+    a.store(1,0x54,0);
+    a.store(1,0x58,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(8,1,0xa1);
+    a.load<1>(9,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(8,8);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 11 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_11(Call& a){
+    a.at(0x1000b8d4);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.load<1>(8,2,-0x3aff);
+    a.move(5,30);
+    a.sign8(0,0);
+    a.offset(4,29,0x26c);
+    a.store(1,0x38,0);
+    a.sign8(8,8);
+    a.store(1,0x3c,8);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x40,0);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x48,0);
+    a.store(1,0x4c,8);
+    a.load<1>(0,1,0xa8);
+    a.sign8(0,0);
+    a.store(1,0x50,0);
+    a.load<1>(0,1,0xa9);
+    a.sign8(0,0);
+    a.store(1,0x54,0);
+    a.load<1>(0,1,0xaa);
+    a.sign8(0,0);
+    a.store(1,0x58,0);
+    a.store(1,0x5c,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(9,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(7,7);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 12 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_12(Call& a){
+    a.at(0x1000b82c);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.load<1>(9,2,-0x3aff);
+    a.move(5,30);
+    a.sign8(0,0);
+    a.offset(4,29,0x249);
+    a.store(1,0x38,0);
+    a.sign8(9,9);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x3c,0);
+    a.store(1,0x40,9);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x48,0);
+    a.load<1>(0,1,0xa8);
+    a.sign8(0,0);
+    a.store(1,0x4c,0);
+    a.store(1,0x50,9);
+    a.load<1>(0,1,0xa9);
+    a.sign8(0,0);
+    a.store(1,0x54,0);
+    a.load<1>(0,1,0xaa);
+    a.sign8(0,0);
+    a.store(1,0x58,0);
+    a.load<1>(0,1,0xab);
+    a.sign8(0,0);
+    a.store(1,0x5c,0);
+    a.store(1,0x60,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(8,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(7,7);
+    a.sign8(8,8);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 13 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_13(Call& a){
+    a.at(0x1000b774);
+    a.load<1>(7,2,-0x3aff);
+    a.move(3,15);
+    a.move(5,30);
+    a.offset(4,29,0x222);
+    a.sign8(7,7);
+    a.store(1,0x38,7);
+    a.load<1>(0,1,0xa4);
+    a.sign8(0,0);
+    a.store(1,0x3c,0);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x40,0);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.store(1,0x48,7);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x4c,0);
+    a.load<1>(0,1,0xa8);
+    a.sign8(0,0);
+    a.store(1,0x50,0);
+    a.load<1>(0,1,0xa9);
+    a.sign8(0,0);
+    a.store(1,0x54,0);
+    a.store(1,0x58,7);
+    a.load<1>(0,1,0xaa);
+    a.sign8(0,0);
+    a.store(1,0x5c,0);
+    a.load<1>(0,1,0xab);
+    a.sign8(0,0);
+    a.store(1,0x60,0);
+    a.load<1>(0,1,0xac);
+    a.sign8(0,0);
+    a.store(1,0x64,0);
+    a.store(1,0x68,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(8,1,0xa1);
+    a.load<1>(9,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(8,8);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 14 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_14(Call& a){
+    a.at(0x1000b6b0);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.load<1>(8,2,-0x3aff);
+    a.move(5,30);
+    a.sign8(0,0);
+    a.offset(4,29,0x1f9);
+    a.store(1,0x38,0);
+    a.sign8(8,8);
+    a.store(1,0x3c,8);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x40,0);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x48,0);
+    a.store(1,0x4c,8);
+    a.load<1>(0,1,0xa8);
+    a.sign8(0,0);
+    a.store(1,0x50,0);
+    a.load<1>(0,1,0xa9);
+    a.sign8(0,0);
+    a.store(1,0x54,0);
+    a.load<1>(0,1,0xaa);
+    a.sign8(0,0);
+    a.store(1,0x58,0);
+    a.store(1,0x5c,8);
+    a.load<1>(0,1,0xab);
+    a.sign8(0,0);
+    a.store(1,0x60,0);
+    a.load<1>(0,1,0xac);
+    a.sign8(0,0);
+    a.store(1,0x64,0);
+    a.load<1>(0,1,0xad);
+    a.sign8(0,0);
+    a.store(1,0x68,0);
+    a.store(1,0x6c,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(9,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(7,7);
+    a.sign8(9,9);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+// 15 decimal characters: preserve argument registers, spill order and suffix selection.
+void digits_15(Call& a){
+    a.at(0x1000b5e0);
+    a.load<1>(0,1,0xa4);
+    a.move(3,15);
+    a.load<1>(9,2,-0x3aff);
+    a.move(5,30);
+    a.sign8(0,0);
+    a.offset(4,29,0x1ce);
+    a.store(1,0x38,0);
+    a.sign8(9,9);
+    a.load<1>(0,1,0xa5);
+    a.sign8(0,0);
+    a.store(1,0x3c,0);
+    a.store(1,0x40,9);
+    a.load<1>(0,1,0xa6);
+    a.sign8(0,0);
+    a.store(1,0x44,0);
+    a.load<1>(0,1,0xa7);
+    a.sign8(0,0);
+    a.store(1,0x48,0);
+    a.load<1>(0,1,0xa8);
+    a.sign8(0,0);
+    a.store(1,0x4c,0);
+    a.store(1,0x50,9);
+    a.load<1>(0,1,0xa9);
+    a.sign8(0,0);
+    a.store(1,0x54,0);
+    a.load<1>(0,1,0xaa);
+    a.sign8(0,0);
+    a.store(1,0x58,0);
+    a.load<1>(0,1,0xab);
+    a.sign8(0,0);
+    a.store(1,0x5c,0);
+    a.store(1,0x60,9);
+    a.load<1>(0,1,0xac);
+    a.sign8(0,0);
+    a.store(1,0x64,0);
+    a.load<1>(0,1,0xad);
+    a.sign8(0,0);
+    a.store(1,0x68,0);
+    a.load<1>(0,1,0xae);
+    a.sign8(0,0);
+    a.store(1,0x6c,0);
+    a.store(1,0x70,28);
+    a.load<1>(6,1,0xa0);
+    a.load<1>(7,1,0xa1);
+    a.load<1>(8,1,0xa2);
+    a.sign8(6,6);
+    a.load<1>(10,1,0xa3);
+    a.sign8(7,7);
+    a.sign8(8,8);
+    a.sign8(10,10);
+    a.call(0x1077b720);
+    a.jump(0x1000c71c);
+    return;
+}
+}
+void render_grouped(Call& a,std::uint32_t destination){
+    switch(destination){
+    case 0x1000bcfc:digits_0(a);return;
+    case 0x1000bcdc:digits_1(a);return;
+    case 0x1000bcb4:digits_2(a);return;
+    case 0x1000bc84:digits_3(a);return;
+    case 0x1000bc00:digits_4(a);return;
+    case 0x1000bbb4:digits_5(a);return;
+    case 0x1000bb5c:digits_6(a);return;
+    case 0x1000baf4:digits_7(a);return;
+    case 0x1000ba80:digits_8(a);return;
+    case 0x1000ba00:digits_9(a);return;
+    case 0x1000b970:digits_10(a);return;
+    case 0x1000b8d4:digits_11(a);return;
+    case 0x1000b82c:digits_12(a);return;
+    case 0x1000b774:digits_13(a);return;
+    case 0x1000b6b0:digits_14(a);return;
+    case 0x1000b5e0:digits_15(a);return;
+    default:throw std::runtime_error("Unknown grouped money layout destination");
+    }
+}
+}
