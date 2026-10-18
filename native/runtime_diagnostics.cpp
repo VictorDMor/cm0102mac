@@ -31,6 +31,7 @@
 #include "contract_storage_adapter.hpp"
 #include "contract_terms_adapter.hpp"
 #include "contract_review_adapter.hpp"
+#include "transfer_offer_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -74,6 +75,7 @@ struct RuntimeDiagnostics {
     ContractStorageDiagnostics contract_storage;
     ContractTermsDiagnostics contract_terms;
     ContractReviewDiagnostics contract_review;
+    TransferOfferDiagnostics transfer_offer;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -403,5 +405,16 @@ ContractReviewDiagnostics& contract_review_diagnostics(State& state) {
 const ContractReviewDiagnostics& contract_review_diagnostics(const State& state) {
     static const ContractReviewDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->contract_review : empty;
+}
+}
+
+namespace cm::aot {
+TransferOfferDiagnostics& transfer_offer_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->transfer_offer;
+}
+const TransferOfferDiagnostics& transfer_offer_diagnostics(const State& state) {
+    static const TransferOfferDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->transfer_offer : empty;
 }
 }

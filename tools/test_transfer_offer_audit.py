@@ -8,10 +8,10 @@ import re
 import sqlite3
 import unittest
 from unittest.mock import patch
-from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
+from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements, generate_page
 from transfer_offer_audit import (CONTRACTS, FRAGMENTS, TRANSFER_OFFER_ENTRIES,
     TABLES, load_transfer_offer_tables, require_transfer_offer_tables, require_transfer_offer_bodies, require_transfer_offer_contract,
-    require_transfer_offer_edges, require_transfer_offer_index)
+    require_transfer_offer_edges, require_transfer_offer_index, require_transfer_offer_hooks, transfer_offer_hook)
 from make_transfer_offer_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,13 +19,16 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_complete_scope_has_no_existing_owner(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),796)
+    def test_exact_accepted_prefix_and_complete_candidate_owner(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),815)
         self.assertEqual(len(TRANSFER_OFFER_ENTRIES),19)
-        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS]
+        prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:796]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'743dfb24d871008bdef6aef5e8ce29a1a6b97239982f52d0c2a05947968229c9')
-        self.assertFalse(set(TRANSFER_OFFER_ENTRIES)&{entry for entry,_ in SEMANTIC_REPLACEMENTS})
-        require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,*((entry,'transfer_offer_adapter') for entry in TRANSFER_OFFER_ENTRIES)))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[796:815],tuple((entry,'transfer_offer_adapter') for entry in TRANSFER_OFFER_ENTRIES))
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry in TRANSFER_OFFER_ENTRIES:
+            with self.subTest(entry=hex(entry)),self.assertRaisesRegex(ValueError,'Duplicate semantic replacement'):
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'other_owner')))
 
     def test_complete_boundaries_and_external_interior_edges(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS), 1111)
@@ -104,6 +107,26 @@ class OriginalContractTests(unittest.TestCase):
                 if start >> 12 <= page <= (end-1) >> 12:
                     with self.assertRaises(ValueError):
                         require_transfer_offer_contract(page, [row for row in rows if not start <= row['address'] < end], {start})
+
+    def test_productive_hooks_precede_original_accounting(self):
+        import inspect
+        disabled = {name: False for name in inspect.signature(generate_page).parameters
+                    if name.endswith('_hooks') or name == 'guest_context_transfers'}
+        disabled['transfer_offer_hooks'] = True
+        for page in sorted({r['address'] >> 12 for r in self.records}):
+            part = [r for r in self.records if r['address'] >> 12 == page]
+            selected = {r['address'] for r in self.records}
+            code = generate_page(page, part, selected, userops=self.userops, **disabled)
+            require_transfer_offer_hooks(page, part, code)
+            for entry in TRANSFER_OFFER_ENTRIES:
+                if entry >> 12 != page: continue
+                hook = transfer_offer_hook(entry)
+                step = f's.step(0x{entry:x});'
+                for changed in (code.replace(hook, '', 1),
+                                code.replace(hook, '', 1).replace(step, step+'\n'+hook, 1),
+                                code.replace(hook, hook+'\n'+hook, 1)):
+                    with self.subTest(entry=hex(entry)), self.assertRaises(ValueError):
+                        require_transfer_offer_hooks(page, part, changed)
 
     def test_reference_retains_all_steps_without_semantic_hooks(self):
         source = render_reference(self.records, self.userops)

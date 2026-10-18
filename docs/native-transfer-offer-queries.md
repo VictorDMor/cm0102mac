@@ -1,9 +1,10 @@
 # Transfer-offer queries and rejection policy
 
-The complete **19-operation, 1,111-instruction** block is prepared and compared
-with independent original references. It is **not integrated**. The accepted
-installed game remains at 796 entries, revision `1e1f641`. The exact accepted
-manifest prefix is pinned; the nineteen candidates have no existing owner.
+The complete **19-operation, 1,111-instruction** block was prepared in `ec00f7d`
+and is now [integrated and installed](native-transfer-offer-integration.md).
+Nineteen unique owners extend the exact accepted 796-entry prefix to 815 entries.
+This report retains component evidence; the integration report records actual
+services, focused sanitizer and installed-application acceptance.
 
 ## Complete original boundaries
 
@@ -93,7 +94,8 @@ latter completes one source site otherwise followed immediately by a null fault;
 the same changed lookup without that mapping separately proves the original
 fault prefix. These cases are not natural career execution.
 
-Ten Python guards pin ownership, bodies/fragments, source fields and order,
+Eleven Python guards pin productive hook placement, ownership, bodies/fragments,
+source fields and order,
 external edges, table bytes/pointer, complete diagnostic normalization and
 independent reference labels/steps with every semantic hook disabled. Named
 operations never replay the original bodies. Compilation uses warnings as
@@ -107,13 +109,14 @@ Earlier diagnostic attempts do not count as accepted complete coverage.
 
 ## Delivery boundary
 
-The component target links the four new semantic units only into its checks.
-Production ownership, generation, actual-service comparisons, focused sanitizer
-acceptance and installation are pending the next consolidated milestone. The
-796-entry generated sources, installed executable and protected files remain
-unchanged. Private original inputs, references and receipts stay under
-.local/transfer-offer-reconstruction and are excluded from publication.
+The subsequent [integration milestone](native-transfer-offer-integration.md)
+links the four semantic units and productive adapter into the production engine,
+adds manifest ownership and complete generation, and records actual-service,
+focused sanitizer and protected installation evidence separately. Original
+inputs and component references remain private under
+`.local/transfer-offer-reconstruction`; integration receipts remain under
+`.local/transfer-offer-integration`.
 
 Save/Load is **not retested**; performance is **not benchmarked**. The cumulative
 Portuguese PDF explains this block with practical examples and identifies the
-prepared/installed boundary. The full reconstruction goal remains active.
+component/installed evidence boundary. The full reconstruction goal remains active.

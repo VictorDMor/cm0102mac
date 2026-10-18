@@ -14,18 +14,18 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [contract review/status integration](native-contract-review-integration.md)
-extends the exact 783-entry prefix to **796 installed reconstructed entries**.
-Thirteen operations cover review conditions/consequences, status, descriptions
-and a start-date window. Release and focused UBSAN each pass 10,507 component and
-519 actual-service comparisons; all roots, adjacent contract/injury/absence seams,
-profile controls and five component CTests pass. Installed identity, Prepare Game
-and normal exit are verified with protected data and the prior app retained.
+The [transfer-offer query/policy integration](native-transfer-offer-integration.md)
+extends the exact 796-entry prefix to **815 installed reconstructed entries**.
+Nineteen operations cover membership, markers, rejection policy, descriptions,
+collections, filtering and selection. Release and focused UBSAN each pass 10,429
+component and 248 actual-service comparisons; all roots, five adjacent seams,
+96 profile controls and six component CTests pass. Installed identity, Prepare
+Game and normal exit are verified with protected data and the prior app retained.
 
-These are prepared actual-service and startup witnesses, not completion of all
-contract negotiation or whole-game behavior. Save/Load is **not retested** and
-performance is **not benchmarked**. See the linked integration report and the
-[progress ledger](native-cpp23-port-progress.md) for current scope and boundaries.
+These prepared actual-service and startup witnesses do not establish completion
+of all transfer negotiation or whole-game behavior. Save/Load is **not retested**;
+performance is **not benchmarked**. See the linked report and
+[progress ledger](native-cpp23-port-progress.md) for exact scope and boundaries.
 
 ## Historical injury-controller delivery
 

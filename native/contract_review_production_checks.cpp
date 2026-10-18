@@ -1,5 +1,6 @@
 #include "contract_terms_adapter.hpp"
 #include "contract_review_adapter.hpp"
+#include "transfer_offer_adapter.hpp"
 #include "contract_query_adapter.hpp"
 #include "contract_storage_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
@@ -19,7 +20,7 @@ constexpr auto roots=review::entries;
 constexpr std::array<std::uint32_t,13> ends{0x1037f110,0x1037f588,0x1037f7c4,0x1037f830,0x1037f898,0x1037fa48,0x1037fa60,0x1037fa6c,0x1037fa78,0x10380264,0x10380d4c,0x10380f1c,0x103810d0};
 enum class Path {direct,generated,cfm};
 enum class Mode {modern,original,entry_original,profile};
-void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;}
+void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;}
 struct Clock:CodeFragmentBoundaryObserver {
     unsigned count=0;ActorAttributesIoPair* io=nullptr;bool modern=false;
     struct Event {bool leave;std::string name;decltype(State::registers) registers;std::uint32_t pc;bool operator==(const Event&)const=default;};
@@ -77,8 +78,8 @@ void matrix(const State& input,unsigned index,bool profile){
 }
 std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args){
     auto& q=contract_query_diagnostics(s).original;auto& c=contract_storage_diagnostics(s).original;
-    auto& terms=contract_terms_diagnostics(s).original;auto& v=contract_review_diagnostics(s).original;
-    struct Restore{bool& q;bool& c;bool& t;bool& v;bool a,b,d,e;~Restore(){q=a;c=b;t=d;v=e;}}restore{q,c,terms,v,q,c,terms,v};q=c=terms=v=true;
+    auto& terms=contract_terms_diagnostics(s).original;auto& v=contract_review_diagnostics(s).original;auto& offers=transfer_offer_diagnostics(s).original;
+    struct Restore{bool& q;bool& c;bool& t;bool& v;bool& offers;bool a,b,d,e,f;~Restore(){q=a;c=b;t=d;v=e;offers=f;}}restore{q,c,terms,v,offers,q,c,terms,v,offers};q=c=terms=v=offers=true;
     unsigned n=3;for(auto value:args)s.wr<4>(n++*4,value);s.pc=entry;s.wr<4>(4128,return_sentinel);s.budget=s.executed+500000000;try{run_until(s,return_sentinel);}catch(const std::exception& e){throw std::runtime_error("Review setup entry="+hex_address(entry)+" pc="+hex_address(s.pc)+" reason="+e.what());}return std::uint32_t(s.r<4>(12));
 }
 struct OwnedBacking {std::filesystem::path path;~OwnedBacking(){std::error_code e;if(!std::filesystem::exists(path,e)||e||std::filesystem::is_symlink(path,e)||e)return;for(const auto& p:std::filesystem::recursive_directory_iterator(path,e))if(e||p.is_symlink(e)||e)return;std::filesystem::remove_all(path,e);}};

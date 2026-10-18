@@ -2,6 +2,7 @@
 #include "contract_storage_adapter.hpp"
 #include "contract_terms_adapter.hpp"
 #include "contract_review_adapter.hpp"
+#include "transfer_offer_adapter.hpp"
 #include "actor_attributes_io_checks.hpp"
 #include "code_fragment_adapter.hpp"
 #include "match_turbo.hpp"
@@ -18,7 +19,7 @@ constexpr std::array roots{0x10082f20u,0x10082f90u,0x10083110u,0x10078e70u,0x100
 constexpr std::array ends{0x10082f84u,0x10083108u,0x10083178u,0x10078ef8u,0x10079048u,0x10374570u};
 enum class Path {direct,generated,cfm};
 enum class Mode {modern,original,entry_original,profile};
-void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;}
+void original_contracts(State& s){contract_query_diagnostics(s).original=true;contract_storage_diagnostics(s).original=true;contract_terms_diagnostics(s).original=true;contract_review_diagnostics(s).original=true;transfer_offer_diagnostics(s).original=true;}
 struct Clock:CodeFragmentBoundaryObserver {
     unsigned count=0;ActorAttributesIoPair* io=nullptr;bool modern=false;
     struct Event {bool leave;std::string name;decltype(State::registers) registers;std::uint32_t pc;bool operator==(const Event&)const=default;};
@@ -91,8 +92,8 @@ void matrix(const State& input,unsigned index,bool profile) {
     std::cout<<"PASS: contract runtime root="<<hex_address(roots[index])<<" sites="<<runtime_sites[index].size()<<std::endl;
 }
 std::uint32_t setup(State& s,std::uint32_t entry,std::initializer_list<std::uint32_t> args) {
-    auto& q=contract_query_diagnostics(s).original;auto& c=contract_storage_diagnostics(s).original;auto& terms=contract_terms_diagnostics(s).original;auto& review=contract_review_diagnostics(s).original;
-    struct Restore {bool& q;bool& c;bool& terms;bool& review;bool oldq,oldc,oldt,oldr;~Restore(){q=oldq;c=oldc;terms=oldt;review=oldr;}} restore{q,c,terms,review,q,c,terms,review};q=c=terms=review=true;
+    auto& q=contract_query_diagnostics(s).original;auto& c=contract_storage_diagnostics(s).original;auto& terms=contract_terms_diagnostics(s).original;auto& review=contract_review_diagnostics(s).original;auto& offers=transfer_offer_diagnostics(s).original;
+    struct Restore {bool& q;bool& c;bool& terms;bool& review;bool& offers;bool oldq,oldc,oldt,oldr,oldo;~Restore(){q=oldq;c=oldc;terms=oldt;review=oldr;offers=oldo;}} restore{q,c,terms,review,offers,q,c,terms,review,offers};q=c=terms=review=offers=true;
     unsigned n=3;for(auto v:args)s.wr<4>(n++*4,v);s.pc=entry;s.wr<4>(4128,return_sentinel);s.budget=s.executed+50000000;
     run_until(s,return_sentinel);return std::uint32_t(s.r<4>(12));
 }

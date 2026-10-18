@@ -44,6 +44,8 @@ target_sources(cm_aot PRIVATE contract_terms.cpp contract_terms_sampling.cpp con
     contract_terms_expiry.cpp contract_terms_adapter.cpp)
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
+target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
+    transfer_offer_selection.cpp transfer_offer_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -591,8 +593,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_offer_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-transfer-offer-checks transfer_offer_checks.cpp transfer_offer_membership.cpp transfer_offer_policy.cpp
-        transfer_offer_collections.cpp transfer_offer_selection.cpp "${CM_TRANSFER_OFFER_REFERENCE}")
+    add_executable(cm-transfer-offer-checks transfer_offer_checks.cpp "${CM_TRANSFER_OFFER_REFERENCE}")
     target_link_libraries(cm-transfer-offer-checks PRIVATE cm_aot)
     target_compile_options(cm-transfer-offer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME transfer_offer_component_equivalence COMMAND cm-transfer-offer-checks)
@@ -2045,3 +2046,7 @@ endif()
 add_executable(cm-contract-review-production-checks contract_review_production_checks.cpp)
 target_link_libraries(cm-contract-review-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-contract-review-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-transfer-offer-production-checks transfer_offer_production_checks.cpp)
+target_link_libraries(cm-transfer-offer-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-transfer-offer-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

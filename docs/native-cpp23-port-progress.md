@@ -9,16 +9,24 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The next [transfer-offer query/policy block](native-transfer-offer-queries.md) is
-**prepared, not integrated**: nineteen complete operations and 1,111 original
-instructions cover membership and cached markers, rejection reasons/eligibility,
-offer collections, filtering and selection. Its focused Release CTest passes
-10,429 comparisons with every source site required, including 33 rejected
-negatives and thirteen identified structural comparisons. Ten source/data guards
-pass. Productive integration, actual services, focused sanitizer and installation
-remain pending; the installed game retains 796 entries.
+The [transfer-offer query/policy integration](native-transfer-offer-integration.md)
+adds nineteen complete operations and 1,111 original instructions after the exact
+accepted 796-entry prefix, reaching **815 installed entries**. Release and focused
+UBSAN each pass 10,429 component comparisons with complete source coverage and
+248 actual-service comparisons covering all nineteen roots and 941 sites.
+Fifty-six source guards, 62 historical manifest methods, 96 profile controls,
+six component CTests and five adjacent runtime seams pass. All seven focused
+sanitizer runs have empty stderr; runtime/seam output matches Release exactly.
 
-The [contract review/status integration](native-contract-review-integration.md)
+The strict-signed arm64 executable has SHA-256
+`5070fffa74fdc72a21a86db85cde4cb606bf25f419ff7927d79d0490dea3878c`.
+Prepare Game rendering, original quit confirmation and normal exit pass.
+All 846 protected files, the prior application, eighteen unrelated prompts and
+the installed Match Debugger are preserved. Save/Load is **not retested**;
+performance is **not benchmarked**. The cumulative Portuguese PDF is updated.
+The full reconstruction goal remains active.
+
+The preceding [contract review/status integration](native-contract-review-integration.md)
 adds thirteen complete operations and 1,447 original instructions after the exact
 accepted 783-entry prefix, reaching **796 installed entries**. Release and focused
 UBSAN each pass 10,507 component comparisons with every source site required and
