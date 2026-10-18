@@ -1,10 +1,11 @@
 # Shortlist link indices, row transitions and contract markers
 
-Ten complete operations are prepared and compared against independent original
-references, covering **1,122 indexed instructions**. The installed application
-remains at **844 accepted owners**. No production hooks, ownership additions,
-generation or installation are part of this preparation milestone. Later
-integration would add ten unique owners after that exact prefix, reaching 854.
+Ten complete operations were prepared in `ecc9be0`, covering **1,122 indexed
+instructions**. That preparation milestone retained 844 installed owners.
+The subsequent [productive integration](native-shortlist-links-integration.md)
+adds all ten unique owners after the exact accepted prefix, reaching **854**.
+The component evidence below retains its own scope and does not replace the
+separate actual-service, generated dispatch and installed-application evidence.
 
 ## Complete boundaries
 
@@ -150,7 +151,7 @@ The independent references keep all original instructions with every productive
 hook disabled. External search, sorting, allocation, list, date, club, contract
 and notification services are declared dependency fixtures; their internal
 algorithms and actual-service composition are not proved by this component.
-Ten source/data guards pass. The four semantic units link only into the prepared
-component target. Production ownership, actual-service composition, focused
-sanitizers and installation remain for the consolidated integration milestone.
+Ten source/data guards passed at preparation. The integration subsequently adds
+the four semantic units and their adapter to production; its report records the
+extended guards, actual services, focused sanitizers and installed artifact.
 Save/Load: **not retested**. Performance: **not benchmarked**.
