@@ -568,6 +568,20 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-contract-terms-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_terms_component_equivalence COMMAND cm-contract-terms-checks)
     set_tests_properties(contract_terms_component_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_CONTRACT_REVIEW_REFERENCE "${CMAKE_BINARY_DIR}/contract_review_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_REVIEW_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_review_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_REVIEW_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_review_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_review_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-contract-review-checks contract_review_checks.cpp contract_review.cpp contract_review_scoring.cpp
+        contract_review_consequences.cpp contract_review_presentation.cpp "${CM_CONTRACT_REVIEW_REFERENCE}")
+    target_link_libraries(cm-contract-review-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-review-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_review_component_equivalence COMMAND cm-contract-review-checks)
+    set_tests_properties(contract_review_component_equivalence PROPERTIES TIMEOUT 180)
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"

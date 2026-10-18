@@ -9,6 +9,16 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The next [contract review/status block](native-contract-review.md) is
+**prepared, not integrated**: thirteen complete operations and 1,447 original
+instructions cover state/condition review, consequences, squad/release
+presentation and a start-date window. Its focused Release CTest passes 10,507
+comparisons with every source site required, including 23 rejected negatives
+and 354 identified structural comparisons. Eleven source/data guards pass.
+The installed game remains at 783 entries; production and actual-service
+integration, focused sanitizer acceptance and installation are deferred to the
+next consolidated milestone.
+
 The [contract terms integration](native-contract-terms-integration.md) adds
 21 complete operations and 1,203 original instructions, extending the exact
 accepted 762-entry prefix to **783 installed entries**. Clause/bonus editing and

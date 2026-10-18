@@ -321,6 +321,18 @@ public:
     void intersect(unsigned destination, unsigned first, unsigned second, bool complement = false) {
         step(); state.wr<4>(destination * 4, r(first) & (complement ? ~r(second) : r(second)));
     }
+    void intersect_record(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto value = r(first) & r(second); state.wr<4>(destination * 4, value);
+        condition(std::bit_cast<std::int32_t>(value), 0, true);
+    }
+    void add_register_carry(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto sum = std::uint64_t(r(first)) + r(second);
+        state.wr<1>(1027, sum > UINT32_MAX); state.wr<4>(destination * 4, std::uint32_t(sum));
+    }
+    void subtract_extended(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto sum = std::uint64_t(~r(first)) + r(second) + state.r<1>(1027);
+        state.wr<1>(1027, sum > UINT32_MAX); state.wr<4>(destination * 4, std::uint32_t(sum));
+    }
     void combine(unsigned destination, unsigned first, unsigned second, bool record = false, bool exclusive = false) {
         step(); const auto value = exclusive ? r(first) ^ r(second) : r(first) | r(second);
         state.wr<4>(destination * 4, value);
