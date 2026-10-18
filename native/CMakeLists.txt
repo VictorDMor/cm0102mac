@@ -53,6 +53,9 @@ target_sources(cm_aot PRIVATE transfer_record_lifecycle.cpp transfer_record_init
 target_sources(cm_aot PRIVATE transfer_synthesis.cpp transfer_synthesis_preparation.cpp
     transfer_synthesis_base.cpp transfer_synthesis_terms.cpp transfer_synthesis_distribution.cpp
     transfer_synthesis_refinement.cpp transfer_synthesis_finalization.cpp transfer_synthesis_adapter.cpp)
+target_sources(cm_aot PRIVATE club_shortlist_storage_lifecycle.cpp club_shortlist_storage_reset.cpp
+    club_shortlist_storage_sampling.cpp club_shortlist_storage_load.cpp
+    club_shortlist_storage_save.cpp club_shortlist_storage_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -656,10 +659,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/club_shortlist_storage_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-club-shortlist-storage-checks club_shortlist_storage_checks.cpp
-        club_shortlist_storage_lifecycle.cpp club_shortlist_storage_reset.cpp
-        club_shortlist_storage_sampling.cpp club_shortlist_storage_load.cpp
-        club_shortlist_storage_save.cpp "${CM_CLUB_SHORTLIST_STORAGE_REFERENCE}")
+    add_executable(cm-club-shortlist-storage-checks club_shortlist_storage_checks.cpp "${CM_CLUB_SHORTLIST_STORAGE_REFERENCE}")
     target_link_libraries(cm-club-shortlist-storage-checks PRIVATE cm_aot)
     target_compile_options(cm-club-shortlist-storage-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME club_shortlist_storage_component_equivalence COMMAND cm-club-shortlist-storage-checks)
@@ -2124,3 +2124,7 @@ target_compile_options(cm-transfer-proposal-production-checks PRIVATE -Wall -Wex
 add_executable(cm-transfer-synthesis-production-checks transfer_synthesis_production_checks.cpp)
 target_link_libraries(cm-transfer-synthesis-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-transfer-synthesis-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-club-shortlist-storage-production-checks club_shortlist_storage_production_checks.cpp)
+target_link_libraries(cm-club-shortlist-storage-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-club-shortlist-storage-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

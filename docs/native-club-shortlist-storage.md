@@ -1,10 +1,10 @@
 # Club shortlist storage, reset and persistence
 
-Seven complete operations from the original `SHORTLIST_MANAGER.CPP` are
-prepared and compared independently. They cover **1,945 indexed instructions**.
-They have no production adapter or replacement ownership yet: the accepted
-installed application remains at **832 entries**. A later integration milestone
-must validate the real service composition before adding these seven owners.
+Seven complete operations from the original `SHORTLIST_MANAGER.CPP`, prepared
+in `83ce12c`, are now [integrated and installed](native-club-shortlist-storage-integration.md).
+Their seven unique owners extend the exact accepted 832-entry prefix to
+**839 installed entries**. The component evidence below retains its original
+1,945-instruction scope.
 
 ## Complete boundaries
 
@@ -127,9 +127,9 @@ stream bytes and stream position are compared at returns and matching failures.
 - The shared sampler change also passed all **5,242 contract-term** and
   **7,559 transfer-valuation** comparisons.
 
-The new CMake target compiles the five semantic translation units only into
-the component executable. No new production hooks, generated production
-pages, installed executable or protected game assets were changed. Membership,
+At preparation, the CMake target compiled the five semantic units only into
+the component executable, without production hooks or an installed update.
+The later integration is recorded separately; protected assets remain unchanged. Membership,
 selection, pricing, scheduling, allocation, date, archive, copy, sort, version,
 diagnostic and contract services remain explicit dependency boundaries. Their
 fixture models are not claims of reconstructed internals. Full shortlist AI,
