@@ -10,7 +10,7 @@ namespace awol=cm::aot::awol;
 constexpr std::uint32_t manager=fixture+0x1000,staff=fixture+0x2000,flags=fixture+0x3000;
 constexpr std::uint32_t lists=fixture+0x4000,rows=fixture+0x8000,objects=fixture+0x10000;
 constexpr std::uint32_t stream=fixture+0x18000,path=fixture+0x19000,globals=fixture+0x20000,dynamic=fixture+0x30000,random_words=fixture+0x28000;
-constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,13> ranges{{{0x100031b0,0x100032f8},{0x10003300,0x100033b8},{0x100033c0,0x100036dc},{0x100036e0,0x10003dc0},{0x10003dc0,0x10003ec0},{0x10003ec0,0x10003fa0},{0x10003fa0,0x10004068},{0x10006600,0x100066d0},{0x100066d0,0x100067d0},{0x100067d0,0x10006828},{0x10006830,0x10006900},{0x10007100,0x100072e0},{0x10006080,0x100065f8}}};
+constexpr std::array<std::pair<std::uint32_t,std::uint32_t>,14> ranges{{{0x100031b0,0x100032f8},{0x10003300,0x100033b8},{0x100033c0,0x100036dc},{0x100036e0,0x10003dc0},{0x10003dc0,0x10003ec0},{0x10003ec0,0x10003fa0},{0x10003fa0,0x10004068},{0x10006600,0x100066d0},{0x100066d0,0x100067d0},{0x100067d0,0x10006828},{0x10006830,0x10006900},{0x10007100,0x100072e0},{0x10006080,0x100065f8},{0x10004070,0x10006074}}};
 struct Control {std::uint32_t pc;unsigned reg=32;std::uint32_t value=0;int cr=-1;};
 struct Options {
     unsigned interrupt=0,allocation_fail=0,read_fail=0,write_fail=0,next_fail=0;
@@ -18,6 +18,8 @@ struct Options {
     std::array<std::int32_t,3> counts{1,1,1};
     bool open_fail=false,partial_load=false,real_children=false,own_negative=false,child_negative=false;
     bool grow_on_next=false,clear_club_on_message=false;
+    std::uint32_t contract=objects+0x500,contract_flags=0;
+    bool clear_profile_on_register=false;
     std::vector<Control> controls;
 };
 struct Trace:SemanticGuestObserver {
@@ -28,7 +30,7 @@ struct Trace:SemanticGuestObserver {
 thread_local Trace* original_trace=nullptr;
 void modern_root(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o) {
     using Function=void(*)(State&,SemanticDependencyDispatch*,SemanticGuestObserver*);
-    constexpr Function methods[]{awol::construct_records,awol::destroy_records,awol::load_records,awol::save_records,awol::primary_absence_status,awol::secondary_absence_status,awol::has_pending_record,awol::remove_primary_by_staff,awol::remove_primary_item,awol::remove_secondary_item,awol::remove_secondary_by_staff,awol::notify_absence_change,awol::sample_absence_range};
+    constexpr Function methods[]{awol::construct_records,awol::destroy_records,awol::load_records,awol::save_records,awol::primary_absence_status,awol::secondary_absence_status,awol::has_pending_record,awol::remove_primary_by_staff,awol::remove_primary_item,awol::remove_secondary_item,awol::remove_secondary_by_staff,awol::notify_absence_change,awol::sample_absence_range,awol::process_daily_absences};
     auto it=std::find(awol::record_entries.begin(),awol::record_entries.end(),s.pc);require(it!=awol::record_entries.end(),"Known AWOL component root");methods[it-awol::record_entries.begin()](s,d,o);
 }
 struct Event {std::uint32_t target,continuation;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
@@ -46,7 +48,7 @@ struct Model:SemanticDependencyDispatch {
     }
     static std::uint32_t row_base(std::uint32_t object) {return object>=dynamic?fixture+0x40000+(object-dynamic)/0x100*0x1000:rows+(object-lists)/0x100*0x1000;}
     void call(State& s,std::uint32_t target,std::uint32_t continuation)override {
-        constexpr std::array allowed{0x1077b770u,0x10738c00u,0x10738c20u,0x10773520u,0x107735a0u,0x10775170u,0x10775200u,0x10775130u,0x10715880u,0x10738d10u,0x10738e00u,0x10738e60u,0x107475b0u,0x10747900u,0x10747a80u,0x10747cc0u,0x10775550u,0x10739890u,0x10768810u,0x10769b60u,0x1077b720u,0x10082f20u,0x102bdf90u,0x102cb4b0u,0x102cc400u,0x102cc8e0u};
+        constexpr std::array allowed{0x1077b770u,0x10738c00u,0x10738c20u,0x10773520u,0x107735a0u,0x10775170u,0x10775200u,0x10775130u,0x10715880u,0x10738d10u,0x10738e00u,0x10738e60u,0x107475b0u,0x10747900u,0x10747a80u,0x10747cc0u,0x10775550u,0x10739890u,0x10768810u,0x10769b60u,0x1077b720u,0x10082f20u,0x102bdf90u,0x102cb4b0u,0x102cc400u,0x102cc8e0u,0x10717a10u,0x10082f90u,0x1037fa70u,0x1037f8a0u,0x10649fb0u,0x10007a50u};
         const bool own=std::find(awol::record_entries.begin(),awol::record_entries.end(),target)!=awol::record_entries.end();
         require(own||std::find(allowed.begin(),allowed.end(),target)!=allowed.end(),"Known AWOL dependency "+hex_address(target));
         const auto serial=calls.size();calls.push_back({target,continuation,s.registers,{}});
@@ -74,6 +76,11 @@ struct Model:SemanticDependencyDispatch {
                 if(target==0x10739890){s.memory.write<4>(arg(6),0x12345678);s.memory.write<4>(arg(7),0x87654321);}
                 if(target==0x1077b720){s.memory.write<4>(first,second);s.memory.write<4>(first+4,third);}
                 if(target==0x10082f20)result=options.lookup;
+                if(target==0x10082f90)result=options.contract;
+                if(target==0x1037fa70)result=options.contract_flags;
+                if(target==0x1037f8a0)s.memory.write<1>(first+0x61,second);
+                if(target==0x10007a50 && options.clear_profile_on_register)s.memory.write<4>(second+0x14,0);
+                if(target==0x10717a10){const auto date=s.memory.copy_out(second,8);s.memory.copy_in(first,date);s.memory.write<2>(first,std::uint16_t(s.memory.read<2>(first)+third));}
                 if(target==0x102bdf90){s.memory.write<4>(first,second);for(unsigned n=0;n<9;++n)s.memory.write<4>(first+4+n*4,0);if(options.clear_club_on_message)s.memory.write<4>(staff+0x24,0);}
                 if(target==0x102cb4b0)s.memory.write<4>(first+4+second*4,third);
                 for(unsigned n=3;n<=12;++n)s.wr<4>(n*4,0xde000000|n*0x101);
@@ -176,14 +183,77 @@ void sampling_cases() {
     auto nested=actual;nested.controls={{0x101865b8u+0xffe7fbe0u,22,65536,4},{0x101866a4u+0xffe7fbe0u,21,65536,4},{0x10186790u+0xffe7fbe0u,20,65536,4}};compare(*wrapped,nested);
 }
 
+std::unique_ptr<State> daily_seed(unsigned slot,unsigned mode=1,std::uint16_t random=0) {
+    auto s=seed(13);
+    for(auto [off,pointer]:{std::pair{-0x7b90,globals+0x180},std::pair{-0x7b8c,random_words},std::pair{-0x7b88,globals+0x184},std::pair{-0x7b84,globals+0x188},std::pair{-0x7b80,globals+0x190},std::pair{-0x7b94,globals+0x1a0}})s->memory.write<4>(toc+off,pointer);
+    s->memory.write<4>(globals+0x180,0);s->memory.write<4>(globals+0x184,random_words+512);s->memory.write<4>(globals+0x188,random_words);s->memory.write<2>(globals+0x190,100);s->memory.write<2>(globals+0x192,2001);s->memory.write<4>(globals+0x1a0,objects+0x600);
+    for(unsigned n=0;n<256;++n)s->memory.write<2>(random_words+n*2,random);
+    for(unsigned n=0;n<3;++n){s->memory.write<2>(lists+n*0x100,n==slot?1:0);const auto data=rows+n*0x1000;s->memory.copy_in(data,std::vector<std::uint8_t>(20));s->memory.write<2>(data+(n==2?8:4),80);s->memory.write<2>(data+(n==2?10:6),2001);s->memory.write<1>(data+(n==2?16:12),mode);}
+    s->memory.write<4>(objects+0x80+4,0);s->memory.write<4>(globals+0x20,objects+0x1000);s->memory.write<1>(objects+0x500+0x60,1);
+    for(unsigned n=0;n<4;++n){const auto person=staff+n*0x70,profile=objects+n*0x100;s->memory.write<4>(person,n);s->memory.write<4>(person+0x14,n==3?0:profile);s->memory.write<2>(person+0x5c,n==1?25:20);s->memory.write<1>(person+0x67,n?18:4);s->memory.write<1>(person+0x69,3);s->memory.write<1>(person+0x63,15);s->memory.write<2>(profile+10,6000);s->memory.write<1>(profile+0x44,3);s->memory.write<4>(objects+0x1000+0x98+n*4,person);}
+    s->wr<4>(12,manager);return s;
+}
+void daily_cases() {
+    for(unsigned slot=0;slot<3;++slot)for(unsigned mode=0;mode<2;++mode)boundaries(*daily_seed(slot,mode));
+    auto empty=daily_seed(3);boundaries(*empty);empty->wr<4>(12,0);compare(*empty);
+    for(unsigned slot=0;slot<3;++slot) {
+        auto s=daily_seed(slot);s->memory.write<4>(manager+slot*4,0);compare(*s);
+        for(auto count:{0u,65535u}){s=daily_seed(slot);s->memory.write<2>(lists+slot*0x100,count);compare(*s);}
+        Options fail;fail.next_fail=1;compare(*daily_seed(slot),fail);
+        for(auto day:{79u,80u,81u,82u,100u,101u,32768u,65535u}){s=daily_seed(slot);s->memory.write<2>(globals+0x190,day);compare(*s);}
+        for(auto year:{2000u,2002u,32768u,65535u}){s=daily_seed(slot);s->memory.write<2>(globals+0x192,year);compare(*s);}
+        s=daily_seed(slot);const auto data=rows+slot*0x1000;s->memory.write<2>(lists+slot*0x100,2);s->memory.copy_in(data+32,s->memory.copy_out(data,32));s->memory.write<2>(data+(slot==2?8:4),120);compare(*s);
+        Options linked;linked.real_children=true;compare(*daily_seed(slot),linked);
+    }
+    for(unsigned slot=0;slot<3;++slot)for(unsigned delta=0;delta<3;++delta) {
+        auto s=daily_seed(slot);s->memory.write<2>(globals+0x190,80+delta);const auto r=compare(*s);
+        const auto target=slot==0?awol::remove_primary_item_entry:slot==1?awol::remove_secondary_item_entry:0x10738e60u;
+        const auto removals=std::count_if(r.calls.begin(),r.calls.end(),[&](const auto& c){return c.target==target;});
+        require(removals==(delta>(slot==0?0u:1u)?1:0),"Independent primary/adjusted secondary/pending expiry dates");
+    }
+    for(unsigned slot=0;slot<3;++slot) {
+        auto s=daily_seed(slot);const auto data=rows+slot*0x1000;s->memory.write<2>(lists+slot*0x100,2);s->memory.copy_in(data+32,s->memory.copy_out(data,32));Options o;o.real_children=true;const auto r=compare(*s,o);
+        require(r.state->memory.read<2>(lists+slot*0x100)==1,"Independent daily review removes at most one expired item per list");
+        if(slot<2)require(r.state->memory.read<1>(flags)==(slot==0?2u:1u),"Independent daily expiry clears only its own absence flag");
+        s=daily_seed(slot);s->memory.write<2>(data+(slot==2?8:4),120);o.real_children=false;o.grow_on_next=true;compare(*s,o);
+    }
+    for(unsigned slot:{1u,2u})for(unsigned mode=0;mode<2;++mode) {
+        for(auto trait:{0u,1u,2u,15u,20u,127u,128u,255u})for(auto random:{0u,1u,12345u,65535u}) {
+            auto s=daily_seed(slot,mode,std::uint16_t(random));s->memory.write<1>(staff+0x67,trait);s->memory.write<1>(staff+0x69,trait);s->memory.write<1>(objects+0x44,trait);compare(*s);
+        }
+        auto s=daily_seed(slot,mode);s->memory.write<4>(staff+0x14,0);compare(*s);
+    }
+    for(auto lookup:{0u,objects+0x80})for(auto contract:{0u,objects+0x500})for(auto flags:{0u,2u}){Options o;o.lookup=lookup;o.contract=contract;o.contract_flags=flags;compare(*daily_seed(1,0),o);}
+    auto contract=daily_seed(1,0);contract->memory.write<2>(random_words+2,17);const auto changed=compare(*contract);require(changed.state->memory.read<1>(objects+0x500+0x61)==2,"Independent older peer contract flag update");
+    for(auto kind:{0u,2u,3u}){auto s=clone(*contract);s->memory.write<1>(objects+0x500+0x60,kind);compare(*s);}
+    for(auto ability:{5250u,5251u,32768u})for(auto age:{20u,21u,23u,24u,128u}){auto s=clone(*contract);s->memory.write<2>(objects+0x100+10,ability);s->memory.write<2>(staff+0x70+0x5c,age);compare(*s);}
+    Options missing_club;missing_club.lookup=0;
+    auto decremented=daily_seed(1,0);decremented->memory.write<2>(random_words+6,1);decremented->memory.write<2>(random_words+8,1);const auto own=compare(*decremented,missing_club);require(own.state->memory.read<1>(staff+0x67)==3 && own.state->memory.read<1>(objects+0x44)==2,"Independent unapproved return nonzero-draw trait decrements");
+    auto no_profile=missing_club;no_profile.clear_profile_on_register=true;compare(*daily_seed(1,0),no_profile);no_profile.lookup=objects+0x80;compare(*daily_seed(1,0),no_profile);
+    for(unsigned slot:{1u,2u})for(unsigned mode=0;mode<2;++mode){auto s=daily_seed(slot,mode);s->memory.write<4>(globals+0x184,random_words);Options o;o.random_seed=0x80000000;boundaries(*s,o);}
+    struct Draw {std::uint32_t pool;unsigned bound,slot,mode;bool cached;};
+    constexpr Draw draws[]{{0x10004224,15,1,1,false},{0x10004388,15,1,1,false},{0x100044f8,15,1,1,false},{0x10004674,15,1,1,false},{0x100048c8,16,1,0,false},{0x10004afc,15,1,0,false},{0x10004c80,15,1,0,false},{0x10004e00,15,1,0,false},{0x10004f94,14,1,0,false},{0x1000516c,14,1,0,true},{0x100052e8,14,1,0,false},{0x100055a0,14,2,1,false},{0x10005704,14,2,1,false},{0x10005874,14,2,1,false},{0x100059f0,14,2,1,false},{0x10005b84,15,2,0,false},{0x10005d58,15,2,0,true},{0x10005edc,15,2,0,false}};
+    for(auto draw:draws) {
+        for(auto bound:{65536u,0xffff0000u}){auto s=daily_seed(draw.slot,draw.mode);Options o;o.controls={{draw.pool+(draw.cached?0x24u:0x28u),draw.bound,bound}};compare(*s,o);}
+        // Explicit controls cover the zero guard behind an earlier >1 check.
+        auto s=daily_seed(draw.slot,draw.mode);Options o;o.controls={{draw.pool-12,draw.bound,0,2}};compare(*s,o);
+    }
+    auto moved=daily_seed(1,0);constexpr auto relocated=toc+0x10000;moved->memory.map(relocated-0x8000,0x9000);moved->memory.copy_in(relocated-0x8000,moved->memory.copy_out(toc-0x8000,0x9000));moved->wr<4>(8,relocated);compare(*moved);
+    auto negative=daily_seed(1,0);Options o;o.own_negative=true;compare(*negative,o);o.own_negative=false;o.child_negative=true;compare(*negative,o);
+}
+
 }
 namespace cm::aot {void awol_records_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
 int main(int argc,char** argv){try {
     const auto mode=argc==2?std::string_view(argv[1]):std::string_view{};
     if(mode.empty()||mode=="--lifecycle")lifecycle_cases();if(mode.empty()||mode=="--queries")query_cases();if(mode.empty()||mode=="--notice")notice_cases();
     if(mode.empty()||mode=="--sampling")sampling_cases();
+    if(mode.empty()||mode=="--daily")daily_cases();
     if(mode.empty())for(unsigned index=0;index<13;++index){Options o;o.own_negative=true;compare(*seed(index),o);o.own_negative=false;o.child_negative=true;auto child=seed(index);if(index==12)child->memory.write<4>(globals+0x184,random_words);compare(*child,o);}
-    for(auto [start,end]:ranges)for(auto pc=start;pc<end;pc+=4)if(pc!=0x10003540 && pc!=0x100035dc && pc!=0x10003694 && pc!=0x100039e0 && pc!=0x10003b78 && pc!=0x10003d10 && !sites.contains(pc))std::cerr<<"Uncovered AWOL "<<hex_address(pc)<<std::endl;
-    if(mode.empty())require(sites.size()==1591,"Complete prepared AWOL records source coverage");
+    constexpr std::array padding{0x10003540u,0x100035dcu,0x10003694u,0x100039e0u,0x10003b78u,0x10003d10u,0x100040c4u,0x1000413cu,0x1000484cu,0x10005588u,0x10005b5cu};
+    unsigned uncovered=0;
+    for(auto [start,end]:ranges)if(mode.empty() || (mode=="--daily" && start==awol::daily_entry))for(auto pc=start;pc<end;pc+=4)if(std::find(padding.begin(),padding.end(),pc)==padding.end() && !sites.contains(pc)){++uncovered;std::cerr<<"Uncovered AWOL "<<hex_address(pc)<<std::endl;}
+    require(uncovered==0,"Every selected original AWOL source site covered");
+    if(mode.empty())require(sites.size()==3635,"Complete prepared AWOL records source coverage");
     std::cout<<"AWOL records comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<std::endl;
 }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
