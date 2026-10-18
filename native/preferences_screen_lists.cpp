@@ -1,0 +1,221 @@
+#include "preferences_screen.hpp"
+#include "preferences_screen_detail.hpp"
+
+namespace cm::aot::preferences_screen::detail {
+namespace {
+void append_selectable_language(Call& a){
+    a.at(0x1033d660);
+    a.value(0,0x10);a.value(3,0x1);a.store(1,0x38,0);a.offset(12,1,0x8c);a.value(13,0x0);a.sign8(0,17);
+    a.load<2>(6,26,0x0);a.value(4,0x2);a.value(5,0x0);a.value(7,0x0);a.store(1,0x3c,6);a.value(6,0x0);a.value(8,0x0);
+    a.value(9,0x0);a.load<2>(11,27,0x0);a.value(10,0x0);a.store(1,0x40,11);a.store(1,0x44,3);a.store(1,0x48,3);
+    a.load<2>(3,25,0x0);a.store(1,0x4c,3);a.value(3,0x2a);a.store(1,0x50,12);a.store(1,0x54,13);a.store(1,0x58,3);
+    a.store(1,0x5c,0);a.store(1,0x60,16);a.load<2>(0,23,0x0,true);a.multiply(3,0,0x2c0);a.offset(0,3,0x24);
+    a.indexed_load(3,29,0);a.call(0x10719740);a.jump(0x1033d760);
+}
+void append_language_rows(Call& a){
+    while(true){
+        a.at(0x1033d768);a.sign8(0,17);a.compare(0,11);
+        if(!a.less())break;
+        a.at(0x1033d5b4);
+        a.move(3,17);a.call(0x10726da0);a.sign8(0,3,true);
+        if(a.equal()){
+        }else{
+            a.at(0x1033d5c4);
+            a.sign8(0,17);a.load(4,2,-0x62c0);a.mask(0,0,0xfffffffc,false,2);a.offset(3,1,0x8c);a.indexed_load(4,4,0);
+            a.call(0x1077dbf0);a.load<1>(0,21,0x8);a.sign8(3,17);a.sign8(0,0);a.compare_registers(3,0);
+            if(!a.equal()){
+            }else{
+                a.at(0x1033d5f0);
+                a.move(3,28);a.offset(4,30,0x26e);a.offset(5,1,0x8c);a.call(0x1077b720);a.load<2>(0,27,0x0);a.move(3,29);
+                a.move(4,24);a.value(5,0x1);a.store(1,0x38,0);a.value(6,0x0);a.value(7,0x1);a.value(8,0x0);
+                a.store(1,0x3c,28);a.value(9,0x1);a.value(10,0x2);a.call(0x107445a0);
+            }
+            a.at(0x1033d630);
+            a.compare(31,3,false);
+            if(a.equal()){
+            }else{
+                a.at(0x1033d638);
+                a.sign8(0,17,true);
+                if(a.equal()){
+                    append_selectable_language(a);
+                }else{
+                    a.at(0x1033d640);
+                    a.load(3,2,-0x7b98);a.load(0,3,0x0);a.compare(0,0,false);
+                    if(a.equal()){
+                        append_selectable_language(a);
+                    }else{
+                        a.at(0x1033d650);
+                        a.move(3,17);a.call(0x100b8b80);a.sign8(0,3,true);
+                        if(a.equal()){
+                            a.at(0x1033d6e4);
+                            a.value(0,0x10);a.value(3,0x21);a.store(1,0x38,0);a.value(12,0x1);a.offset(13,1,0x8c);
+                            a.value(0,0x0);a.load<2>(7,26,0x0);a.value(4,0x2);a.value(5,0x0);a.value(6,0x0);
+                            a.store(1,0x3c,7);a.value(7,0x0);a.value(8,0x0);a.value(9,0x0);a.load<2>(11,27,0x0);
+                            a.value(10,0x0);a.store(1,0x40,11);a.store(1,0x44,3);a.store(1,0x48,12);a.load<2>(3,25,0x0);
+                            a.store(1,0x4c,3);a.store(1,0x50,13);a.store(1,0x54,0);a.store(1,0x58,0);a.store(1,0x5c,0);
+                            a.store(1,0x60,16);a.load<2>(0,23,0x0,true);a.multiply(3,0,0x2c0);a.offset(0,3,0x24);
+                            a.indexed_load(3,29,0);a.call(0x10719740);
+                        }else{
+                            append_selectable_language(a);
+                        }
+                    }
+                }
+            }
+        }
+        a.at(0x1033d760);
+        a.offset(0,17,0x1);a.sign8(17,0);
+    }
+}
+void append_currency_rows(Call& a){
+    while(true){
+        a.at(0x1033d984);a.sign8(0,16);a.compare(0,25);
+        if(!a.less())break;
+        a.at(0x1033d894);
+        a.move(5,16);a.offset(3,1,0x8c);a.value(4,0xc8);a.call(0x1000b160);a.load<1>(0,21,0x9);a.sign8(3,16);a.sign8(0,0);
+        a.compare_registers(3,0);
+        if(!a.equal()){
+        }else{
+            a.at(0x1033d8b8);
+            a.move(3,28);a.offset(4,30,0x26e);a.offset(5,1,0x8c);a.call(0x1077b720);a.load<2>(0,27,0x0);a.move(3,29);
+            a.move(4,24);a.move(6,17);a.store(1,0x38,0);a.value(5,0x1);a.value(7,0x1);a.value(8,0x0);a.store(1,0x3c,28);
+            a.value(9,0x1);a.value(10,0x2);a.call(0x107445a0);
+        }
+        a.at(0x1033d8f8);
+        a.compare(31,3,false);
+        if(a.equal()){
+        }else{
+            a.at(0x1033d900);
+            a.value(0,0x10);a.value(3,0x1);a.store(1,0x38,0);a.offset(12,1,0x8c);a.value(13,0x0);a.sign8(0,16);
+            a.load<2>(6,26,0x0);a.value(4,0x2);a.value(5,0x0);a.value(7,0x0);a.store(1,0x3c,6);a.value(6,0x0);
+            a.value(8,0x0);a.value(9,0x0);a.load<2>(11,27,0x0);a.value(10,0x0);a.store(1,0x40,11);a.store(1,0x44,3);
+            a.store(1,0x48,3);a.load<2>(3,25,0x0);a.store(1,0x4c,3);a.value(3,0x2b);a.store(1,0x50,12);a.store(1,0x54,13);
+            a.store(1,0x58,3);a.store(1,0x5c,0);a.store(1,0x60,15);a.load<2>(0,23,0x0,true);a.multiply(3,0,0x2c0);
+            a.offset(0,3,0x24);a.indexed_load(3,29,0);a.call(0x10719740);
+        }
+        a.at(0x1033d980);
+        a.offset(16,16,0x1);
+    }
+}
+void append_video_rows(Call& a){
+    while(true){
+        a.at(0x1033dce4);a.compare_registers(24,15);
+        if(!a.less())break;
+        a.at(0x1033dc58);
+        a.move(3,24);a.offset(4,1,0x8c);a.value(5,0xc8);a.call(0x10750b60);a.value(3,0x10);a.value(0,0x1);
+        a.store(1,0x38,3);a.value(11,0x0);a.value(12,0x3d);a.value(4,0x2);a.load<2>(3,26,0x0);a.value(5,0x0);
+        a.value(6,0x0);a.value(7,0x0);a.store(1,0x3c,3);a.value(8,0x0);a.value(9,0x0);a.value(10,0x0);a.load<2>(3,27,0x0);
+        a.store(1,0x40,3);a.store(1,0x44,0);a.store(1,0x48,0);a.load<2>(0,25,0x0);a.store(1,0x4c,0);a.store(1,0x50,13);
+        a.store(1,0x54,11);a.store(1,0x58,12);a.store(1,0x5c,24);a.store(1,0x60,16);a.load<2>(0,23,0x0,true);
+        a.multiply(3,0,0x2c0);a.offset(0,3,0x24);a.indexed_load(3,29,0);a.call(0x10719740);a.offset(24,24,0x1);
+    }
+}
+}
+
+void build_language_selector(Call& a){
+    a.at(0x1033d480);
+    a.sign8(0,20);a.value(17,0x0);a.compare(0,1);a.move(24,3);
+    if(a.nonpositive()){
+    }else{
+        a.at(0x1033d494);
+        a.move(3,28);a.offset(4,30,0x8ae);a.call(0x10727890);a.load(3,2,-0x7b10);a.move(4,24);a.value(5,0x0);
+        a.value(6,0x0);a.load<2>(0,3,0x0);a.move(3,29);a.value(7,0x1);a.value(8,0x0);a.store(1,0x38,0);a.value(9,0x1);
+        a.value(10,0x3);a.store(1,0x3c,28);a.call(0x107445a0);a.compare(31,3,false);
+        if(a.equal()){
+            a.at(0x1033d570);
+            a.load(3,2,-0x7bc8);a.value(0,0x0);a.move(4,24);a.value(6,0x0);a.load<2>(5,3,0x0);a.move(3,29);
+            a.value(7,0x30);a.value(9,0xc);a.store(1,0x38,5);a.value(5,0x2);a.value(10,0x1);a.store(1,0x3c,0);
+            a.load<2>(8,25,0x0);a.call(0x107445a0);
+        }else{
+            a.at(0x1033d4dc);
+            a.load(3,2,-0x7bc8);a.value(0,0x0);a.move(4,24);a.value(6,0x0);a.load<2>(5,3,0x0);a.move(3,29);
+            a.value(7,0x30);a.value(9,0xc);a.store(1,0x38,5);a.value(5,0x2);a.value(10,0x1);a.store(1,0x3c,0);
+            a.store(1,0x40,0);a.store(1,0x44,0);a.load<2>(8,25,0x0);a.call(0x107444e0);a.value(0,0x0);
+            a.value(4,0x100000);a.store(1,0x38,0);a.offset(0,4,0x30);a.value(4,0x0);a.value(5,0x0);a.store(1,0x3c,0);
+            a.value(6,0x0);a.value(7,0x0);a.value(8,0x0);a.load<2>(0,26,0x0);a.value(9,0x0);a.value(10,0x0);
+            a.store(1,0x40,0);a.store(1,0x44,3);a.load<2>(0,23,0x0,true);a.multiply(0,0,0x2c0);a.indexed_load(3,22,0);
+            a.call(0x107198c0);a.move(16,3);a.jump(0x1033d5a8);
+        }
+        a.at(0x1033d5a8);
+        a.value(17,0x0);a.jump(0x1033d768);
+        append_language_rows(a);
+        a.at(0x1033d774);
+        a.value(17,0x1);
+    }
+}
+
+void build_currency_selector(Call& a){
+    a.at(0x1033d778);
+    a.move(3,28);a.offset(4,30,0x8b8);a.call(0x10727890);a.load(3,2,-0x7b10);a.move(4,24);a.move(6,17);a.value(5,0x0);
+    a.load<2>(0,3,0x0);a.move(3,29);a.value(7,0x1);a.value(8,0x0);a.store(1,0x38,0);a.value(9,0x1);a.value(10,0x3);
+    a.store(1,0x3c,28);a.call(0x107445a0);a.compare(31,3,false);
+    if(a.equal()){
+        a.at(0x1033d854);
+        a.load(3,2,-0x7bc8);a.value(0,0x0);a.move(4,24);a.move(6,17);a.load<2>(5,3,0x0);a.move(3,29);a.value(7,0x30);
+        a.value(9,0xc);a.store(1,0x38,5);a.value(5,0x2);a.value(10,0x1);a.store(1,0x3c,0);a.load<2>(8,25,0x0);
+        a.call(0x107445a0);
+    }else{
+        a.at(0x1033d7c0);
+        a.load(3,2,-0x7bc8);a.value(0,0x0);a.move(4,24);a.move(6,17);a.load<2>(5,3,0x0);a.move(3,29);a.value(7,0x30);
+        a.value(9,0xc);a.store(1,0x38,5);a.value(5,0x2);a.value(10,0x1);a.store(1,0x3c,0);a.store(1,0x40,0);
+        a.store(1,0x44,0);a.load<2>(8,25,0x0);a.call(0x107444e0);a.value(0,0x0);a.value(4,0x100000);a.store(1,0x38,0);
+        a.offset(0,4,0x30);a.value(4,0x0);a.value(5,0x0);a.store(1,0x3c,0);a.value(6,0x0);a.value(7,0x0);
+        a.value(8,0x0);a.load<2>(0,26,0x0);a.value(9,0x0);a.value(10,0x0);a.store(1,0x40,0);a.store(1,0x44,3);
+        a.load<2>(0,23,0x0,true);a.multiply(0,0,0x2c0);a.indexed_load(3,22,0);a.call(0x107198c0);a.move(15,3);
+        a.jump(0x1033d88c);
+    }
+    a.at(0x1033d88c);
+    a.value(16,0x0);a.jump(0x1033d984);
+    append_currency_rows(a);
+}
+
+void build_font_selector(Call& a){
+    a.at(0x1033d990);
+    a.move(3,28);a.offset(4,30,0x8c2);a.offset(5,30,0x130);a.call(0x10727890);a.load(3,2,-0x7b10);a.move(4,24);
+    a.offset(6,17,0x1);a.value(5,0x0);a.load<2>(0,3,0x0);a.move(3,29);a.value(7,0x1);a.value(8,0x0);a.store(1,0x38,0);
+    a.value(9,0x1);a.value(10,0x3);a.store(1,0x3c,28);a.call(0x107445a0);a.load(3,2,-0x7bc8);a.value(0,0x0);
+    a.move(4,24);a.offset(6,17,0x1);a.load<2>(5,3,0x0);a.move(3,29);a.value(7,0x30);a.value(9,0xc);a.store(1,0x38,5);
+    a.value(5,0x2);a.value(10,0x1);a.store(1,0x3c,0);a.store(1,0x40,0);a.store(1,0x44,0);a.load<2>(8,25,0x0);
+    a.call(0x107444e0);a.value(0,0x0);a.value(4,0x100000);a.store(1,0x38,0);a.offset(0,4,0x30);a.value(4,0x0);
+    a.value(5,0x0);a.store(1,0x3c,0);a.value(6,0x0);a.value(7,0x0);a.value(8,0x0);a.load<2>(0,26,0x0);a.value(9,0x0);
+    a.value(10,0x0);a.store(1,0x40,0);a.store(1,0x44,3);a.load<2>(0,23,0x0,true);a.multiply(0,0,0x2c0);
+    a.indexed_load(3,22,0);a.call(0x107198c0);a.move(16,3);a.move(3,21);a.call(0x101406e0);a.move(4,28);
+    a.value(5,0x7d0);a.call(0x10750b60);a.load<2>(8,27,0x0);a.move(3,29);a.move(4,24);a.offset(6,17,0x1);
+    a.store(1,0x38,8);a.value(5,0x1);a.value(7,0x1);a.value(9,0x1);a.store(1,0x3c,28);a.value(10,0x2);
+    a.call(0x107445a0);a.compare(31,3,false);
+    if(a.equal()){
+    }else{
+        a.at(0x1033daac);
+        a.move(3,28);a.offset(4,30,0x8e7);a.offset(5,30,0x130);a.call(0x10727890);a.value(0,0x10);a.value(12,0x1);
+        a.store(1,0x38,0);a.value(11,0x0);a.value(3,0x3d);a.value(0,0xffffffff);a.load<2>(7,26,0x0);a.value(4,0x2);
+        a.value(5,0x0);a.value(6,0x0);a.store(1,0x3c,7);a.value(7,0x0);a.value(8,0x0);a.value(9,0x0);
+        a.load<2>(13,27,0x0);a.value(10,0x0);a.store(1,0x40,13);a.store(1,0x44,12);a.store(1,0x48,12);
+        a.load<2>(12,25,0x0);a.store(1,0x4c,12);a.store(1,0x50,28);a.store(1,0x54,11);a.store(1,0x58,3);
+        a.store(1,0x5c,0);a.store(1,0x60,16);a.load<2>(0,23,0x0,true);a.multiply(0,0,0x2c0);a.indexed_load(3,22,0);
+        a.call(0x10719740);a.move(3,28);a.offset(4,30,0x909);a.offset(5,30,0x130);a.call(0x10727890);a.value(0,0x10);
+        a.value(12,0x1);a.store(1,0x38,0);a.value(11,0x0);a.value(3,0x3d);a.value(0,0xfffffffe);a.load<2>(7,26,0x0);
+        a.value(4,0x2);a.value(5,0x0);a.value(6,0x0);a.store(1,0x3c,7);a.value(7,0x0);a.value(8,0x0);a.value(9,0x0);
+        a.load<2>(13,27,0x0);a.value(10,0x0);a.store(1,0x40,13);a.store(1,0x44,12);a.store(1,0x48,12);
+        a.load<2>(12,25,0x0);a.store(1,0x4c,12);a.store(1,0x50,28);a.store(1,0x54,11);a.store(1,0x58,3);
+        a.store(1,0x5c,0);a.store(1,0x60,16);a.load<2>(0,23,0x0,true);a.multiply(0,0,0x2c0);a.indexed_load(3,22,0);
+        a.call(0x10719740);a.call(0x10750b00);a.compare(3,20);a.value(15,0x14);
+        if(a.at_least()){
+        }else{
+            a.at(0x1033dbcc);
+            a.move(15,3);
+        }
+        a.at(0x1033dbd0);
+        a.compare(15,0);
+        if(a.nonpositive()){
+        }else{
+            a.at(0x1033dbd8);
+            a.value(4,0x1000000);a.value(3,0x1);a.offset(4,4,0x10);a.value(0,0x0);a.store(1,0x38,4);a.value(4,0x1);
+            a.value(5,0x0);a.value(6,0x0);a.load<2>(10,26,0x0);a.value(7,0x0);a.value(8,0x0);a.value(9,0x0);
+            a.store(1,0x3c,10);a.value(10,0x0);a.load<2>(11,27,0x0);a.store(1,0x40,11);a.store(1,0x44,3);
+            a.store(1,0x48,3);a.load<2>(3,25,0x0);a.store(1,0x4c,3);a.store(1,0x50,0);a.store(1,0x54,0);
+            a.store(1,0x58,0);a.store(1,0x5c,0);a.store(1,0x60,16);a.load<2>(0,23,0x0,true);a.multiply(0,0,0x2c0);
+            a.indexed_load(3,22,0);a.call(0x10719740);a.offset(13,1,0x8c);a.value(24,0x0);a.jump(0x1033dce4);
+            append_video_rows(a);
+        }
+    }
+}
+}

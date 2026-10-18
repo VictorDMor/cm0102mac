@@ -19,9 +19,10 @@ pointer/data contracts pin the UI context, primary preference cell, language
 panel cell and both callback descriptors. The opening callbacks name the full
 presentation builder at `0x1033d030` and action controller at `0x1033f840`.
 
-The **2,562-instruction presentation builder** is separate and remains
-unreconstructed. Its original source is inspected and pinned only as context
-for identifying the auto-save menu. The adjacent `0x1033fc60` operation opens a
+The separate **2,562-instruction presentation builder** is now
+[reconstructed and accepted as its own isolated component](native-preferences-screen.md).
+Within this action component its source pin remains contextual evidence for
+the auto-save menu. The adjacent `0x1033fc60` operation opens a
 different screen; it is not an options cleanup routine or part of this block.
 
 ## Editable-session ownership

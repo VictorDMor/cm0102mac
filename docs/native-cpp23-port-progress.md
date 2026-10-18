@@ -58,10 +58,22 @@ ten source/data guards and the focused CTest pass. UI, allocation, preference
 children and panel refresh remain explicit boundary models. Existing preference
 bodies and the shared helper are unchanged. Productive integration is pending;
 the installed owner count remains 897 and these three roots would reach 900.
-The original 2,562-instruction presentation builder is pinned only as source
-context, establishing the Auto Save menu's 7/14/30/90/180/360 choices. Its
-reconstruction and the calendar scheduler remain separate work. PDF updates
-remain paused; the complete-game goal remains active.
+The original presentation source establishes the Auto Save menu's
+7/14/30/90/180/360 choices. The calendar scheduler remains separate work.
+
+The [complete preferences presentation builder](native-preferences-screen.md)
+is now also prepared: one whole 2,562-instruction operation in twenty named
+stages and four structured enumeration loops. It passes 292 comparisons:
+248 complete returns, 42 matching stops and two discriminating negatives.
+All 2,562 own sites have complete starting-root coverage; returning parents
+complete 6,200 independent-original-compared currency-label children and 248
+video-getter children. Ten source/data guards and the focused CTest pass.
+UI, formatting and language/device availability remain declared models;
+actual native rendering and productive acceptance remain pending. The three
+session/action roots plus this builder would reach 901 owners after the exact
+897 prefix; the installed count remains 897. Existing accepted bodies and
+the shared helper are unchanged. PDF updates remain paused; the complete-game
+goal remains active.
 
 The records below document preceding installed milestones.
 
