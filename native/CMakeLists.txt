@@ -533,6 +533,12 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-contract-storage-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_storage_prepared_equivalence COMMAND cm-contract-storage-checks)
     set_tests_properties(contract_storage_prepared_equivalence PROPERTIES TIMEOUT 180)
+    add_executable(cm-contract-initializer-checks contract_initializer_checks.cpp contract_storage.cpp
+        contract_initializer.cpp contract_initializer_options.cpp contract_initializer_nations.cpp "${CM_CONTRACT_STORAGE_REFERENCE}")
+    target_link_libraries(cm-contract-initializer-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-initializer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_initializer_component_equivalence COMMAND cm-contract-initializer-checks)
+    set_tests_properties(contract_initializer_component_equivalence PROPERTIES TIMEOUT 180)
     set(CM_CONTRACT_QUERY_REFERENCE "${CMAKE_BINARY_DIR}/contract_query_reference.cpp")
     add_custom_command(OUTPUT "${CM_CONTRACT_QUERY_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_query_reference.py"

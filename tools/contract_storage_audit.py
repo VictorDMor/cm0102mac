@@ -1,4 +1,4 @@
-"""Pinned complete contract storage creation scope; initializer implementation pending."""
+"""Pinned complete contract storage creation scope; three operations prepared."""
 import hashlib
 import json
 import struct
@@ -6,7 +6,7 @@ import struct
 CONTRACTS = ((268930672, 268930808, 34, '96a249ddc2b00ae5b8378bb68555c6e04fc33370481c9faa99a770e5c7ab8ebc'), (268930816, 268931144, 82, '4684d8fb2895b578ffcd256ce1056b6ac98e98bc74a4f22f9c7bf55c76415552'), (272050112, 272057712, 1900, '41f20d8cf1998f947d031ea3a1415f128f30833dfb6b30fb4be10940b1165b10'))
 FRAGMENTS = ((268930672, 65656, 34, '96a249ddc2b00ae5b8378bb68555c6e04fc33370481c9faa99a770e5c7ab8ebc'), (268930816, 65656, 64, '31792d1bd0d7724952fc1e2948041473db13d5c01f9d31f52305387fe137466b'), (268930816, 65657, 18, 'ee786ed5467c693bb95e486abd9adbdcc6b9815b85a94cceb6cdfe03952522ea'), (272050112, 66418, 528, 'ab7aa43529fa5d358071d10f38709fcbd5d9d8636de7e9a20a5da1f8b03a4a1c'), (272050112, 66419, 1024, '656724a38d13c95ac6ed83ba8ffbefd091ab787021a04d1f18422da1d1f9bb89'), (272050112, 66420, 348, '1f352c7da8f1bdf84632de25ea5d2d56b7358d7c5e51ea29be7c5c7b9fe628f8'))
 CONTRACT_STORAGE_ENTRIES = tuple(start for start, _, _, _ in CONTRACTS)
-PREPARED_CONTRACT_STORAGE_ENTRIES = CONTRACT_STORAGE_ENTRIES[:2]
+PREPARED_CONTRACT_STORAGE_ENTRIES = CONTRACT_STORAGE_ENTRIES
 
 
 def fingerprint(body):

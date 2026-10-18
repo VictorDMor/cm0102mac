@@ -1,4 +1,4 @@
-"""Complete contract storage creation scope; two operations currently prepared."""
+"""Complete contract storage creation scope; three operations prepared."""
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -32,7 +32,7 @@ class PreparedScopeTests(unittest.TestCase):
 
     def test_complete_boundaries_and_external_interior_edges(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS), 2016)
-        self.assertEqual(PREPARED_CONTRACT_STORAGE_ENTRIES, (0x10078e70, 0x10078f00))
+        self.assertEqual(PREPARED_CONTRACT_STORAGE_ENTRIES, CONTRACT_STORAGE_ENTRIES)
         self.assertEqual(sum(row[2] for row in FRAGMENTS), 2016)
         for start, end, *_ in CONTRACTS:
             require_contract_storage_edges([(0, start), (start, end-4), (end-4, end)])
@@ -40,11 +40,15 @@ class PreparedScopeTests(unittest.TestCase):
                 with self.subTest(entry=hex(start)), self.assertRaises(ValueError):
                     require_contract_storage_edges([(0, target)])
 
-    def test_named_queries_do_not_replay_original_bodies(self):
-        source = (ROOT / 'native/contract_storage.cpp').read_text()
+    def test_named_operations_do_not_replay_original_bodies(self):
+        paths = ['contract_storage.cpp', 'contract_initializer.cpp', 'contract_initializer_detail.hpp',
+                 'contract_initializer_options.cpp', 'contract_initializer_nations.cpp']
+        source = '\n'.join((ROOT / 'native' / name).read_text() for name in paths)
         for forbidden in ('contract_storage_reference', 'dispatch_page', 'run_until', 'pcode', 'i_1007', 'i_1037'):
             self.assertNotIn(forbidden, source)
-        for name in ('bind_primary', 'reserve_record', 'reuse_empty_record', 'append_record', 'report_allocation_failure'):
+        for name in ('bind_primary', 'reserve_record', 'reuse_empty_record', 'append_record', 'report_allocation_failure',
+                     'initialize_contract', 'prepare_identity_and_rating', 'select_dates_and_base_value',
+                     'select_contract_options', 'apply_nation_value_rules', 'finish_contract'):
             self.assertIn(name, source)
 
 
@@ -111,6 +115,33 @@ class OriginalContractTests(unittest.TestCase):
         self.assertEqual(re.findall(r'contract_storage_step_seen\(s, 0x([0-9a-f]+)\)', source), expected)
         self.assertNotIn('try_modern_', source)
         self.assertNotIn('complete_context_transfer', source)
+
+    def test_shared_sampler_normalization_and_distinct_final_variant(self):
+        blocks = [(0x1037304c, 14, 15, 0x84), (0x10373294, 14, 15, 0x84),
+                  (0x103735f4, 13, 14, 0x6c), (0x10373884, 13, 14, 0x6c),
+                  (0x10373a5c, 13, 14, 0x6c), (0x10373c10, 13, 14, 0x6c)]
+        normalized = []
+        for start, bound, result, scratch in blocks:
+            body = [r for r in self.records if start <= r['address'] < start+0x120]
+            self.assertEqual(len(body), 72)
+            canonical = []
+            for record in body:
+                asm = re.sub(r'0x[0-9a-f]+(?=\(r1\))', lambda m: f'SP+{int(m.group(), 16)-scratch}', record['assembly'])
+                asm = re.sub(r'0x[0-9a-f]+', lambda m: f'BLOCK+{int(m.group(), 16)-start}'
+                             if start <= int(m.group(), 16) <= start+0x120 else m.group(), asm)
+                asm = re.sub(r'\br(\d+)\b', lambda m: 'BOUND' if int(m.group(1)) == bound
+                             else 'RESULT' if int(m.group(1)) == result else m.group(), asm)
+                canonical.append(asm)
+            normalized.append(canonical)
+        for body in normalized[1:5]: self.assertEqual(body, normalized[0])
+        self.assertNotEqual(normalized[5], normalized[0])
+
+    def test_complete_initializer_record_flag_sites(self):
+        record_sites = [(r['address'], r['assembly']) for r in self.records
+                        if r['assembly'].startswith(('addze.', 'srawi.'))]
+        self.assertEqual(record_sites, [(0x10373014, 'addze. r14,r0'),
+                                      (0x10373260, 'addze. r14,r0'),
+                                      (0x103735bc, 'srawi. r13,r0,0x1')])
 
     def test_reversed_contract_index_rejects_highest_interior_edge(self):
         with closing(sqlite3.connect(':memory:')) as db:

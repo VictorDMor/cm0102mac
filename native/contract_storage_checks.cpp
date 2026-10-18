@@ -68,8 +68,9 @@ struct Model final:SemanticDependencyDispatch {
                     if(options.mutate_controller)s.memory.write<4>(manager+8,7);
                 }
                 if(target==storage::initializer_entry) {
-                    // The full 1,900-instruction initializer remains required
-                    // work. Here it is a stateful dependency, not a copy.
+                    // Keep this isolated reservation/binding matrix focused on
+                    // its stateful dependency boundary. The separate initializer
+                    // matrix executes the complete three-operation composition.
                     s.memory.write<4>(first+4,s.memory.read<4>(second));s.memory.write<4>(first+12,third);
                     s.memory.write<1>(first+0x38,s.memory.read<1>(first+0x38)|1);result=0x12345678;
                 }
@@ -186,5 +187,5 @@ int main(){try {
     }
     for(auto [start,end]:ranges)for(auto pc=start;pc<end;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered contract storage "<<hex_address(pc)<<std::endl;
     require(sites.size()==116,"Complete prepared reservation/binding source coverage");
-    std::cout<<"Prepared contract storage comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" sites="<<sites.size()<<" pendingInitializerSites=1900"<<std::endl;
+    std::cout<<"Prepared contract storage comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" sites="<<sites.size()<<" initializerDependencyFixture=1"<<std::endl;
 }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
