@@ -1,4 +1,6 @@
 """Prepared complete shortlist recruitment distribution and registration contracts."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -10,22 +12,20 @@ from compile_recomp import SEMANTIC_REPLACEMENTS,require_unique_semantic_replace
 from shortlist_recruitment_audit import (CONTRACTS,FRAGMENTS,SHORTLIST_RECRUITMENT_ENTRIES,TABLES,PADDING,
     load_shortlist_recruitment_tables,require_shortlist_recruitment_tables,require_shortlist_recruitment_padding,
     require_shortlist_recruitment_bodies,require_shortlist_recruitment_contract,require_shortlist_recruitment_edges,
-    require_shortlist_recruitment_index)
+    require_shortlist_recruitment_index,require_shortlist_recruitment_hooks,shortlist_recruitment_hook)
 from make_shortlist_recruitment_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_prefix_and_unowned_prepared_roots(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),854)
-        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS]
+    def test_exact_prefix_and_three_productive_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),857)
+        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:854]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'1b93e2d35b496b6ed2a83fd4086f58cba8a0d17147b2af01db9df1b6f6337982')
-        self.assertEqual(len(SHORTLIST_RECRUITMENT_ENTRIES),3)
-        self.assertFalse(set(SHORTLIST_RECRUITMENT_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*((e,'shortlist_recruitment_adapter') for e in SHORTLIST_RECRUITMENT_ENTRIES))
-        self.assertEqual(len(candidate),857);require_unique_semantic_replacements(candidate)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[854:],tuple((e,'shortlist_recruitment_adapter') for e in SHORTLIST_RECRUITMENT_ENTRIES))
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         for e in SHORTLIST_RECRUITMENT_ENTRIES:
-            with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(e,'duplicate')))
+            with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(e,'duplicate')))
 
     def test_whole_boundaries_exclude_adjacent_loan_and_scanning_controllers(self):
         self.assertEqual(sum(x[2] for x in CONTRACTS),1591)
@@ -48,7 +48,7 @@ class PreparedScopeTests(unittest.TestCase):
         for token in ('shortlist_recruitment_reference','dispatch_page','run_until','pcode','i_1036','page_1036'):self.assertNotIn(token,source)
         self.assertIn('prepare_registration',source);self.assertIn('requested_previous_contribution',source)
         self.assertIn('expand_role_qualifications',(ROOT/'native/shortlist_recruitment_detail.hpp').read_text())
-        self.assertNotIn('shortlist_recruitment_adapter',(ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('shortlist_recruitment_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').is_file(),'Private original source unavailable')
 class OriginalContractTests(unittest.TestCase):
@@ -86,6 +86,19 @@ class OriginalContractTests(unittest.TestCase):
                 if a<=address<a+n:b[address-a]^=1
                 return bytes(b)
             with self.assertRaises(ValueError):require_shortlist_recruitment_padding(changed)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['shortlist_recruitment_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_shortlist_recruitment_hooks(page,rows,source)
+            for entry in SHORTLIST_RECRUITMENT_ENTRIES:
+                if entry>>12!=page:continue
+                hook=shortlist_recruitment_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_shortlist_recruitment_hooks(page,rows,changed)
 
     def test_reference_keeps_every_original_instruction_and_disables_all_hooks(self):
         source=render_reference(self.records,self.userops);self.assertNotIn('try_modern_',source);self.assertNotIn('_impl<true,',source)

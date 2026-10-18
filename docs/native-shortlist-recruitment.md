@@ -1,11 +1,12 @@
 # Shortlist recruitment distribution and registration
 
-Three complete operations are prepared and compared with independent original
-references, covering **1,591 indexed instructions**. The installed application
-retains **854 accepted owners** and manifest SHA-256
-`1b93e2d35b496b6ed2a83fd4086f58cba8a0d17147b2af01db9df1b6f6337982`.
-The new operations have no productive hooks or owners yet. A later integration
-would add three unique owners after this exact prefix, reaching 857.
+Three complete operations cover **1,591 indexed instructions** and passed
+independent original-reference comparison before integration. Prepared in
+`ed6a5df`, they are now integrated after the exact accepted 854-entry prefix,
+reaching **857 installed owners**. The [integration report](native-shortlist-recruitment-integration.md)
+records actual original-service comparisons, dispatch controls, focused checks
+and the installed delivery. The component evidence below retains its original
+scope and declared dependency fixtures.
 
 ## Complete boundaries and dependencies
 
@@ -142,8 +143,8 @@ component. Ten original-source/data guards pass. The three semantic units link
 only into the prepared component target; its CTest registration was verified,
 and the comparison executable itself was run directly.
 
-Production ownership, generation, original-service integration, focused
-sanitizers and installation remain for the next consolidated milestone.
-The installed 854-owner executable is unchanged. Career Save/Load:
-**not retested**. Performance: **not benchmarked**. The full-game reconstruction
-goal remains active.
+Production ownership, generation, actual original-service integration, focused
+sanitizers and installation subsequently passed in the
+[integration milestone](native-shortlist-recruitment-integration.md). The installed
+application now has 857 owners. Career Save/Load: **not retested**. Performance:
+**not benchmarked**. The full-game reconstruction goal remains active.
