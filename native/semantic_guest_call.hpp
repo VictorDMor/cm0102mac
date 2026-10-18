@@ -143,6 +143,10 @@ public:
         step(); const auto product = std::int64_t(std::bit_cast<std::int32_t>(r(first))) * std::bit_cast<std::int32_t>(r(second));
         state.wr<4>(destination * 4, std::uint32_t(std::bit_cast<std::uint64_t>(product) >> 32));
     }
+    void unsigned_multiply_high(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto product = std::uint64_t(r(first)) * r(second);
+        state.wr<4>(destination * 4, std::uint32_t(product >> 32));
+    }
     void shift_right(unsigned destination, unsigned source, unsigned shift, bool record = false) {
         step(); const auto value = r(source);
         state.wr<1>(1027, std::bit_cast<std::int32_t>(value) < 0 && (value & ((UINT32_C(1) << shift) - 1)));
@@ -296,6 +300,14 @@ public:
         step(); const auto sum = std::uint64_t(r(source)) + state.r<1>(1027);
         state.wr<1>(1027, sum > UINT32_MAX); state.wr<4>(destination * 4, std::uint32_t(sum));
         if (record) condition(std::bit_cast<std::int32_t>(std::uint32_t(sum)), 0, true);
+    }
+    void add_extended(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto sum = std::uint64_t(r(first)) + r(second) + state.r<1>(1027);
+        state.wr<1>(1027, sum > UINT32_MAX); state.wr<4>(destination * 4, std::uint32_t(sum));
+    }
+    void subtract_register_carry(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto sum = std::uint64_t(r(second)) + std::uint32_t(~r(first)) + 1u;
+        state.wr<1>(1027, sum > UINT32_MAX); state.wr<4>(destination * 4, std::uint32_t(sum));
     }
     void restore_link() { step(); state.wr<4>(4128, r(0)); }
     void count_destination(unsigned source) { step(); state.wr<4>(4132, r(source)); }

@@ -25,13 +25,20 @@ evidence. The installed executable SHA-256 is
 Prepare Game and normal exit are verified, and all 846 protected files remain
 unchanged. Save/Load is **not retested**; performance is **not benchmarked**.
 
-The next [contract-display component](native-contract-display.md) is prepared:
-two complete wage/end presentation operations, 4,791 isolated comparisons and
-all 136 sites in complete returns. Its five external services have explicit
-models; productive integration and real-service/caller proof remain for a
-consolidated milestone. The installed count remains 871; the prospective 873 is
-not an installed result. The cumulative Portuguese PDF is edition 34. The
-whole-game goal remains active. The records below document preceding milestones.
+Two functional blocks are prepared after that installed milestone. The
+[monetary value component](native-money-value.md) has seven complete conversion,
+rounding and editing operations: 22,508 comparisons, with every root separately
+covering all its own sites in complete returns (593 total). Three arithmetic
+helpers were added to the shared guest-call class while preserving all existing
+members byte for byte. Ten new source/data checks pass. The retained
+[contract-display component](native-contract-display.md) passes its nine guards
+and 4,791 comparisons again, with all 136 sites in complete returns. Both focused
+CTests pass. Five accepted arithmetic/register bodies are reused within the new
+component; four diagnostic services have explicit models. Productive integration,
+actual-service/caller proof and focused UBSAN remain for a consolidated milestone.
+The installed count remains 871; the two prepared blocks together would reach
+880 if integrated. The cumulative Portuguese PDF is edition 35. The whole-game
+goal remains active. The records below document preceding installed milestones.
 
 The [automatic proposal builder integration](native-transfer-synthesis-integration.md)
 adds the complete 3,551-instruction operation after the exact 831-entry prefix,
