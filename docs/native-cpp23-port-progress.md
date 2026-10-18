@@ -33,7 +33,7 @@ strict-signed executable has SHA-256
 `c6764fa21abd200562ec8c3b3172f93234a77957ae9c0ea84a8d341e9bdf9a8f`.
 Prepare Game, original quit confirmation and normal exit are verified; all 846
 protected files, eighteen unrelated prompts and the previous 871-owner app are
-preserved. The cumulative Portuguese guide is edition 38. Save/Load is **not
+preserved. The cumulative Portuguese guide is edition 39. Save/Load is **not
 retested**; performance is **not benchmarked**. The whole-game goal remains active.
 
 After that installed milestone, the [complete currency configuration](native-money-configuration.md)
@@ -46,6 +46,21 @@ explicit models; productive integration, actual-service/caller proof and focused
 UBSAN remain for a consolidated milestone. The shared helper and previously
 accepted bodies are unchanged. The installed count remains 884; adding this root
 would reach 885. The complete-game goal remains active.
+
+The [complete twelve-entry preference lifecycle](native-preferences.md) is now
+prepared separately: initialization/load, copy/destruction, defaults/options,
+language/currency/interval setters, and whole apply/persist and video operations.
+Its 1,444 instructions pass 2,339 comparisons: 2,185 modeled complete returns,
+130 matching stops and 24 discriminating negatives. Every root covers all of its
+own sites. Eight source/data guards and its focused CTest pass. There are 152
+completed currency configurations compared against the independent original
+dependency. Platform, strings, diagnostics, audio/video and file services remain
+explicit models. Thirteen complete cases use a returning process-exit model;
+five stops use a terminating model. Those are not production exit-return claims.
+All thirteen prepared roots together would reach 897 owners. The installed
+application remains at 884; productive acceptance is reserved for the next
+consolidated milestone. The existing shared engine and accepted bodies are
+unchanged, and the whole-game goal remains active.
 
 The records below document preceding installed milestones.
 

@@ -854,6 +854,23 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/money_configuration_coverage.txt")
     set_tests_properties(money_configuration_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_PREFERENCES_REFERENCE "${CMAKE_BINARY_DIR}/preferences_reference.cpp")
+    add_custom_command(OUTPUT "${CM_PREFERENCES_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_preferences_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_PREFERENCES_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_preferences_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/preferences_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-preferences-checks preferences_checks.cpp preferences_lifecycle.cpp preferences_options.cpp
+        preferences_setters.cpp preferences_apply.cpp money_configuration.cpp money_configuration_profiles.cpp
+        "${CM_PREFERENCES_REFERENCE}" "${CM_MONEY_CONFIGURATION_REFERENCE}")
+    target_link_libraries(cm-preferences-checks PRIVATE cm_aot)
+    target_compile_options(cm-preferences-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME preferences_component_equivalence COMMAND cm-preferences-checks
+        "${CMAKE_BINARY_DIR}/preferences_coverage.txt")
+    set_tests_properties(preferences_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_PROFILE_QUALIFICATION_REFERENCE "${CMAKE_BINARY_DIR}/profile_qualification_reference.cpp")
     add_custom_command(OUTPUT "${CM_PROFILE_QUALIFICATION_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_profile_qualification_reference.py"

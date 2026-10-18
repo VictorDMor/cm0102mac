@@ -1,0 +1,171 @@
+#include "preferences.hpp"
+#include "semantic_guest_call.hpp"
+namespace cm::aot::preferences {
+// A validated language also selects its default currency and refreshes presentation.
+void set_language(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
+    SemanticGuestCall a(s,set_language_entry,d,o);
+    a.at(0x1013fb60);
+    a.link();a.store(1,-0x4,31);a.load(31,2,-0x54e8);a.store(1,-0x8,30);a.load(30,2,-0x7ba8);a.store(1,-0xc,29);
+    a.move(29,4);a.store(1,-0x10,28);a.move(28,3);a.move(3,29);a.store(1,0x8,0);a.frame(0x70);a.call(0x10726da0);
+    a.sign8(0,3,true);
+    if(!a.equal()){
+        a.at(0x1013fbf8);
+        a.store<1>(28,0x8,29);a.move(3,28);a.call(0x1013fd00);a.load<1>(3,28,0x8);a.value(4,0x1);a.call(0x10726e90);
+        a.load(3,2,-0x7bb0);a.value(4,0x1);a.value(5,0x1);a.call(0x10742ec0);a.value(3,0x1);
+    }else{
+        a.at(0x1013fb9c);
+        a.offset(3,31,0x16);a.offset(6,1,0x40);a.offset(7,1,0x38);a.value(4,0x0);a.value(5,0x0);a.call(0x10739890);
+        a.call(0x10768810);a.move(5,3);a.move(3,30);a.offset(4,31,0x26);a.offset(6,1,0x40);a.offset(7,1,0x38);
+        a.value(8,0x20d);a.call(0x1077b720);a.move(4,30);a.offset(3,31,0x33);a.value(5,0x0);a.call(0x10769b60);
+        a.load(4,2,-0x7bac);a.value(0,0x0);a.value(3,0x0);a.store<1>(4,0x0,0);a.jump(0x1013fc24);
+    }
+    a.at(0x1013fc24);
+    a.load(0,1,0x78);a.offset(1,1,0x70);a.restore_link();a.load(31,1,-0x4);a.load(30,1,-0x8);a.load(29,1,-0xc);
+    a.load(28,1,-0x10);a.finish();
+}
+// Changing the stored index alone does not configure the live monetary tables.
+void set_currency(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
+    SemanticGuestCall a(s,set_currency_entry,d,o);
+    a.at(0x1013fc50);
+    a.link();a.store(1,-0x4,31);a.load(31,2,-0x54e8);a.store(1,-0x8,30);a.load(30,2,-0x7ba8);a.store(1,0x8,0);
+    a.sign8(0,4,true);a.frame(0x70);
+    if(a.less()){
+        a.at(0x1013fc80);
+        a.offset(3,31,0x16);a.offset(6,1,0x40);a.offset(7,1,0x38);a.value(4,0x0);a.value(5,0x0);a.call(0x10739890);
+        a.call(0x10768810);a.move(5,3);a.move(3,30);a.offset(4,31,0x26);a.offset(6,1,0x40);a.offset(7,1,0x38);
+        a.value(8,0x22d);a.call(0x1077b720);a.move(4,30);a.offset(3,31,0x33);a.value(5,0x0);a.call(0x10769b60);
+        a.load(4,2,-0x7bac);a.value(0,0x0);a.value(3,0x0);a.store<1>(4,0x0,0);a.jump(0x1013fce4);
+    }else{
+        a.at(0x1013fc74);
+        a.sign8(0,4);a.compare(0,25);
+        if(a.less()){
+            a.at(0x1013fcdc);
+            a.store<1>(3,0x9,4);a.value(3,0x1);
+        }else{
+            a.at(0x1013fc80);
+            a.offset(3,31,0x16);a.offset(6,1,0x40);a.offset(7,1,0x38);a.value(4,0x0);a.value(5,0x0);
+            a.call(0x10739890);a.call(0x10768810);a.move(5,3);a.move(3,30);a.offset(4,31,0x26);a.offset(6,1,0x40);
+            a.offset(7,1,0x38);a.value(8,0x22d);a.call(0x1077b720);a.move(4,30);a.offset(3,31,0x33);a.value(5,0x0);
+            a.call(0x10769b60);a.load(4,2,-0x7bac);a.value(0,0x0);a.value(3,0x0);a.store<1>(4,0x0,0);
+            a.jump(0x1013fce4);
+        }
+    }
+    a.at(0x1013fce4);
+    a.load(0,1,0x78);a.offset(1,1,0x70);a.restore_link();a.load(31,1,-0x4);a.load(30,1,-0x8);a.finish();
+}
+// Map the signed language byte to its original default currency index.
+void currency_for_language(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
+    SemanticGuestCall a(s,currency_for_language_entry,d,o);
+    a.at(0x1013fd00);
+    a.load<1>(4,3,0x8);a.sign8(0,4,true);
+    if(!a.equal()){
+        a.at(0x1013fd18);
+        a.sign8(0,4);a.compare(0,1);
+        if(!a.equal()){
+            a.at(0x1013fd30);
+            a.compare(0,2);
+            if(!a.equal()){
+                a.at(0x1013fd44);
+                a.compare(0,3);
+                if(!a.equal()){
+                    a.at(0x1013fd58);
+                    a.compare(0,4);
+                    if(!a.equal()){
+                        a.at(0x1013fd6c);
+                        a.compare(0,5);
+                        if(!a.equal()){
+                            a.at(0x1013fd80);
+                            a.compare(0,6);
+                            if(!a.equal()){
+                                a.at(0x1013fd94);
+                                a.compare(0,7);
+                                if(!a.equal()){
+                                    a.at(0x1013fda8);
+                                    a.compare(0,8);
+                                    if(!a.equal()){
+                                        a.at(0x1013fdbc);
+                                        a.compare(0,9);
+                                        if(!a.equal()){
+                                            a.at(0x1013fdd0);
+                                            a.compare(0,10);
+                                            if(!a.equal()){
+                                                a.at(0x1013fde4);
+                                                a.value(0,0x0);a.store<1>(3,0x9,0);
+                                            }else{
+                                                a.at(0x1013fdd8);
+                                                a.value(0,0x15);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                                            }
+                                        }else{
+                                            a.at(0x1013fdc4);
+                                            a.value(0,0x12);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                                        }
+                                    }else{
+                                        a.at(0x1013fdb0);
+                                        a.value(0,0x10);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                                    }
+                                }else{
+                                    a.at(0x1013fd9c);
+                                    a.value(0,0xb);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                                }
+                            }else{
+                                a.at(0x1013fd88);
+                                a.value(0,0x6);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                            }
+                        }else{
+                            a.at(0x1013fd74);
+                            a.value(0,0x14);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                        }
+                    }else{
+                        a.at(0x1013fd60);
+                        a.value(0,0xe);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                    }
+                }else{
+                    a.at(0x1013fd4c);
+                    a.value(0,0xa);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+                }
+            }else{
+                a.at(0x1013fd38);
+                a.value(0,0x9);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+            }
+        }else{
+            a.at(0x1013fd24);
+            a.value(0,0x18);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+        }
+    }else{
+        a.at(0x1013fd0c);
+        a.value(0,0x0);a.store<1>(3,0x9,0);a.jump(0x1013fdec);
+    }
+    a.at(0x1013fdec);
+    a.value(3,0x1);a.finish();
+}
+// The signed low halfword must be within the inclusive interval 7..365.
+void set_interval(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
+    SemanticGuestCall a(s,set_interval_entry,d,o);
+    a.at(0x1013fe00);
+    a.link();a.store(1,-0x4,31);a.load(31,2,-0x54e8);a.store(1,-0x8,30);a.load(30,2,-0x7ba8);a.store(1,0x8,0);
+    a.sign16(0,4);a.compare(0,7);a.frame(0x70);
+    if(a.less()){
+        a.at(0x1013fe30);
+        a.offset(3,31,0x16);a.offset(6,1,0x40);a.offset(7,1,0x38);a.value(4,0x0);a.value(5,0x0);a.call(0x10739890);
+        a.call(0x10768810);a.move(5,3);a.move(3,30);a.offset(4,31,0x26);a.offset(6,1,0x40);a.offset(7,1,0x38);
+        a.value(8,0x26b);a.call(0x1077b720);a.move(4,30);a.offset(3,31,0x33);a.value(5,0x0);a.call(0x10769b60);
+        a.load(4,2,-0x7bac);a.value(0,0x0);a.value(3,0x0);a.store<1>(4,0x0,0);a.jump(0x1013fe94);
+    }else{
+        a.at(0x1013fe28);
+        a.compare(0,365);
+        if(a.nonpositive()){
+            a.at(0x1013fe8c);
+            a.store<2>(3,0xa,4);a.value(3,0x1);
+        }else{
+            a.at(0x1013fe30);
+            a.offset(3,31,0x16);a.offset(6,1,0x40);a.offset(7,1,0x38);a.value(4,0x0);a.value(5,0x0);
+            a.call(0x10739890);a.call(0x10768810);a.move(5,3);a.move(3,30);a.offset(4,31,0x26);a.offset(6,1,0x40);
+            a.offset(7,1,0x38);a.value(8,0x26b);a.call(0x1077b720);a.move(4,30);a.offset(3,31,0x33);a.value(5,0x0);
+            a.call(0x10769b60);a.load(4,2,-0x7bac);a.value(0,0x0);a.value(3,0x0);a.store<1>(4,0x0,0);
+            a.jump(0x1013fe94);
+        }
+    }
+    a.at(0x1013fe94);
+    a.load(0,1,0x78);a.offset(1,1,0x70);a.restore_link();a.load(31,1,-0x4);a.load(30,1,-0x8);a.finish();
+}
+}
