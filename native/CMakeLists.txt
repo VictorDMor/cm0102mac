@@ -713,6 +713,23 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME shortlist_recruitment_component_equivalence COMMAND cm-shortlist-recruitment-checks)
     set_tests_properties(shortlist_recruitment_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_SHORTLIST_ASSESSMENT_REFERENCE "${CMAKE_BINARY_DIR}/shortlist_assessment_reference.cpp")
+    add_custom_command(OUTPUT "${CM_SHORTLIST_ASSESSMENT_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_shortlist_assessment_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_SHORTLIST_ASSESSMENT_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_shortlist_assessment_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/shortlist_assessment_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-shortlist-assessment-checks shortlist_assessment_checks.cpp
+        shortlist_assessment.cpp shortlist_assessment_contribution.cpp shortlist_assessment_interest_context.cpp
+        shortlist_assessment_interest_preferences.cpp shortlist_assessment_interest_score.cpp
+        "${CM_SHORTLIST_ASSESSMENT_REFERENCE}")
+    target_link_libraries(cm-shortlist-assessment-checks PRIVATE cm_aot)
+    target_compile_options(cm-shortlist-assessment-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME shortlist_assessment_component_equivalence COMMAND cm-shortlist-assessment-checks)
+    set_tests_properties(shortlist_assessment_component_equivalence PROPERTIES TIMEOUT 300)
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
