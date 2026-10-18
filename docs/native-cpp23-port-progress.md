@@ -9,6 +9,13 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The [contract storage creation block](native-contract-storage.md) has prepared
+row reservation and primary binding: 509 component comparisons cover all 116
+instructions of those two operations. Nine source/data guards pin the full
+2,016-instruction original scope. The remaining 1,900-instruction initializer
+is characterized and still required; full storage reconstruction and contract
+production integration remain pending. The installed manifest stays at 756.
+
 The [staff contract queries](native-contract-queries.md) have three prepared
 operations covering all 145 original instructions. Eight source guards and
 2,738 complete-state component comparisons pass. These functions are compiled
