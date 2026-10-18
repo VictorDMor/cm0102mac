@@ -82,9 +82,11 @@ compares the stored choice with the current display setting, then calls the
 [complete configuration](native-money-configuration.md) when needed.
 
 The interval setter accepts the signed low halfword from 7 through 365 inclusive.
-Initialization defaults it to 30. Its user-facing meaning is not yet established;
-it is not described as game speed. Loading reads its halfword directly without
-calling this setter, so out-of-range saved values are preserved by the original
+Initialization defaults it to 30. The original options presentation and
+[action controller](native-preferences-actions.md) establish its Auto Save UI
+meaning: week/two weeks/month/three months/six months/year use 7/14/30/90/180/360.
+The calendar scheduler remains unreconstructed. Loading reads the halfword
+directly without calling this setter, so out-of-range saved values are preserved by the original
 loader. This distinction is covered explicitly rather than silently hardened.
 
 ## Preference file, command line and devices

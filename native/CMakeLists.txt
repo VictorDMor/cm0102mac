@@ -871,6 +871,22 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/preferences_coverage.txt")
     set_tests_properties(preferences_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_PREFERENCES_ACTIONS_REFERENCE "${CMAKE_BINARY_DIR}/preferences_actions_reference.cpp")
+    add_custom_command(OUTPUT "${CM_PREFERENCES_ACTIONS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_preferences_actions_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_PREFERENCES_ACTIONS_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_preferences_actions_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/preferences_actions_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-preferences-actions-checks preferences_actions_checks.cpp
+        preferences_actions_opening.cpp preferences_actions_dispatch.cpp "${CM_PREFERENCES_ACTIONS_REFERENCE}")
+    target_link_libraries(cm-preferences-actions-checks PRIVATE cm_aot)
+    target_compile_options(cm-preferences-actions-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME preferences_actions_component_equivalence COMMAND cm-preferences-actions-checks
+        "${CMAKE_BINARY_DIR}/preferences_actions_coverage.txt")
+    set_tests_properties(preferences_actions_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_PROFILE_QUALIFICATION_REFERENCE "${CMAKE_BINARY_DIR}/profile_qualification_reference.cpp")
     add_custom_command(OUTPUT "${CM_PROFILE_QUALIFICATION_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_profile_qualification_reference.py"

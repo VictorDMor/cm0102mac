@@ -50,6 +50,19 @@ installed 884 owners, adding thirteen operations after the 871-owner prefix.
 isolated-model evidence; their combined production acceptance is the current
 897-owner milestone above.
 
+After that installation, [preference-session opening and action controllers](native-preferences-actions.md)
+are prepared as one three-entry component, with 371 original instructions.
+It passes 2,476 comparisons: 2,332 complete returns, 138 matching stops and six
+discriminating negatives. All own sites have complete starting-root coverage;
+ten source/data guards and the focused CTest pass. UI, allocation, preference
+children and panel refresh remain explicit boundary models. Existing preference
+bodies and the shared helper are unchanged. Productive integration is pending;
+the installed owner count remains 897 and these three roots would reach 900.
+The original 2,562-instruction presentation builder is pinned only as source
+context, establishing the Auto Save menu's 7/14/30/90/180/360 choices. Its
+reconstruction and the calendar scheduler remain separate work. PDF updates
+remain paused; the complete-game goal remains active.
+
 The records below document preceding installed milestones.
 
 The [automatic proposal builder integration](native-transfer-synthesis-integration.md)
