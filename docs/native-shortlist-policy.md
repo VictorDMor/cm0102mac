@@ -1,11 +1,12 @@
 # Recruitment offer, country and row policies
 
-Status: **prepared and accepted as an isolated component**. Three complete native
-operations match independent original references. Their productive integration,
-actual-service comparison and installation remain pending. The installed
-application remains at revision `bd27aad728074cee6932340eaac4785a036f4a86`, with
-861 unique semantic owners. The prospective count of 864 is not an installed
-result.
+Status: **integrated and accepted at the 864-owner milestone**. Three complete
+native operations match independent original references and now execute with
+actual original services. Productive generation, related callers, focused UBSAN
+and protected installation pass. See [integration evidence](native-shortlist-policy-integration.md).
+
+The exact previous 861-owner prefix is retained, followed atomically by three
+new policy owners. The whole-game reconstruction goal remains active.
 
 ## Scope and provenance
 
@@ -90,14 +91,16 @@ images; the ordered-effect comparator must still reject it. The country effect
 negative is required to reach an actual declared dependency, rather than
 pretending an early-return path exercised one.
 
-Ten source/data checks pass, including exact full boundaries, changed/missing/
+Eleven source/data checks pass, including exact full boundaries, changed/missing/
 reordered source, page fragments, padding, every pinned bank byte, independent
-references and the exact unchanged 861-owner manifest. The focused CTest
+references, productive hook placement and the exact retained 861-owner prefix. The focused CTest
 `shortlist_policy_component_equivalence` passes on ARM64 with
 `-ffp-contract=off`, `-Wall -Wextra -Werror -Wpedantic`.
 
-The cumulative Portuguese guide records this prepared block and practical
-examples. Productive hooks, actual original-service/caller proof, focused UBSAN
-and installation belong to the next consolidated milestone. Save/Load is **not
-retested**; performance is **not benchmarked**. The complete-game goal remains
-active.
+The cumulative Portuguese guide records this block and practical examples.
+The isolated comparison uses declared external-service models. Its consolidated
+integration separately proves productive dispatch, actual original services,
+completed recruitment/synthesis children, focused UBSAN and installation. See the
+integration document for measured scope and controlled inputs. Save/Load is
+**not retested**; performance is **not benchmarked**. The complete-game goal
+remains active.

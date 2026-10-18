@@ -1,4 +1,6 @@
 """Prepared complete recruitment offer, country and row policy contracts."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -10,21 +12,20 @@ from compile_recomp import SEMANTIC_REPLACEMENTS,require_unique_semantic_replace
 from shortlist_policy_audit import (CONTRACTS,FRAGMENTS,SHORTLIST_POLICY_ENTRIES,TABLES,PADDING,
     load_shortlist_policy_tables,require_shortlist_policy_tables,require_shortlist_policy_padding,
     require_shortlist_policy_bodies,require_shortlist_policy_contract,require_shortlist_policy_edges,
-    require_shortlist_policy_index)
+    require_shortlist_policy_index,require_shortlist_policy_hooks,shortlist_policy_hook)
 from make_shortlist_policy_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_prefix_and_three_unowned_policy_roots(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),861)
-        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS]
+    def test_exact_prefix_and_three_productive_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),864)
+        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:861]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'c8ebc8fec83b167643076597f8053526e60ee5f50206ae4d7777eda376cb7c5e')
-        self.assertFalse(set(SHORTLIST_POLICY_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*((e,'shortlist_policy_adapter') for e in SHORTLIST_POLICY_ENTRIES))
-        self.assertEqual(len(candidate),864);require_unique_semantic_replacements(candidate)
-        for entry in SHORTLIST_POLICY_ENTRIES:
-            with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(entry,'duplicate')))
+        self.assertEqual(SEMANTIC_REPLACEMENTS[861:],tuple((e,'shortlist_policy_adapter') for e in SHORTLIST_POLICY_ENTRIES))
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for e in SHORTLIST_POLICY_ENTRIES:
+            with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(e,'duplicate')))
 
     def test_whole_boundaries_exclude_role_and_text_helpers(self):
         self.assertEqual(sum(x[2] for x in CONTRACTS),511)
@@ -47,7 +48,7 @@ class PreparedScopeTests(unittest.TestCase):
             self.assertNotIn(token,source)
         for token in ('prepare_offer_policy','check_requested_profile_limits','compare_offer_value_limits','prepare_country_policy','prepare_row_contract_gate'):
             self.assertIn(token,source)
-        self.assertNotIn('shortlist_policy_adapter',(ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('shortlist_policy_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
         helper=(ROOT/'native/shortlist_policy_detail.hpp').read_text()
         self.assertIn('subtract_carry_at',helper);self.assertIn('negate_record_at',helper)
 
@@ -86,6 +87,19 @@ class OriginalContractTests(unittest.TestCase):
                 if a<=address<a+n:b[address-a]^=1
                 return bytes(b)
             with self.assertRaises(ValueError):require_shortlist_policy_padding(changed)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['shortlist_policy_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_shortlist_policy_hooks(page,rows,source)
+            for entry in SHORTLIST_POLICY_ENTRIES:
+                if entry>>12!=page:continue
+                hook=shortlist_policy_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_shortlist_policy_hooks(page,rows,changed)
 
     def test_reference_keeps_every_original_instruction_and_disables_all_hooks(self):
         source=render_reference(self.records,self.userops);self.assertNotIn('try_modern_',source);self.assertNotIn('_impl<true,',source)
