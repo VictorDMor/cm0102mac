@@ -43,6 +43,9 @@
 #include "shortlist_policy_adapter.hpp"
 #include "profile_qualification_adapter.hpp"
 #include "contract_draft_adapter.hpp"
+#include "contract_display_adapter.hpp"
+#include "money_value_adapter.hpp"
+#include "money_text_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -99,6 +102,9 @@ struct RuntimeDiagnostics {
     ShortlistPolicyDiagnostics shortlist_policy;
     ProfileQualificationDiagnostics profile_qualification;
     ContractDraftDiagnostics contract_draft;
+    ContractDisplayDiagnostics contract_display;
+    MoneyValueDiagnostics money_value;
+    MoneyTextDiagnostics money_text;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -542,5 +548,29 @@ ContractDraftDiagnostics& contract_draft_diagnostics(State& state) {
 const ContractDraftDiagnostics& contract_draft_diagnostics(const State& state) {
     static const ContractDraftDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->contract_draft : empty;
+}
+ContractDisplayDiagnostics& contract_display_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->contract_display;
+}
+const ContractDisplayDiagnostics& contract_display_diagnostics(const State& state) {
+    static const ContractDisplayDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->contract_display : empty;
+}
+MoneyValueDiagnostics& money_value_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->money_value;
+}
+const MoneyValueDiagnostics& money_value_diagnostics(const State& state) {
+    static const MoneyValueDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->money_value : empty;
+}
+MoneyTextDiagnostics& money_text_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->money_text;
+}
+const MoneyTextDiagnostics& money_text_diagnostics(const State& state) {
+    static const MoneyTextDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->money_text : empty;
 }
 }

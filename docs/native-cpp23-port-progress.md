@@ -9,42 +9,33 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest installed milestone is **871 unique semantic owners**, at
-`d0910402c867a5d0faa42830e1b7d1fb55c70541`. The
-[contract-draft integration](native-contract-draft-integration.md) retains the
-exact 868-owner prefix and adds three complete creation/preparation operations.
-The 2,491-comparison component covers all 228 sites in complete returns. The
-actual-service matrix passes 62 comparisons and observes 206 selected sites;
-38 original/profile controls, 41 recruitment comparisons and 66 synthesis
-comparisons pass. Successful positive complete parents contain 12 completed
-modern default-draft children in recruitment and six in proposal synthesis.
-Four focused UBSAN executables pass; all three actual-world outputs match
-Release. The missing-primary diagnostic path retains explicit-model component
-evidence. The installed executable SHA-256 is
-`497d6864d1084a77b1c66099fc438f873384966602829741b1c5a9a1f4d4a9ef`.
-Prepare Game and normal exit are verified, and all 846 protected files remain
-unchanged. Save/Load is **not retested**; performance is **not benchmarked**.
+The latest installed milestone is **884 unique semantic owners**. The
+[contract display and money-presentation integration](native-money-presentation-integration.md)
+retains the exact 871-owner prefix and adds thirteen complete operations:
+two contract-display, seven money-value and four money-text roots. The prepared
+semantic bodies and shared call helper remain byte-identical.
 
-Three functional blocks are prepared after that installed milestone. The new
-[money-text component](native-money-text.md) adds four complete operations:
-symbol length, setting byte, currency label and numeric formatting. It passes
-2,948 comparisons (2,747 complete returns, 193 matching stops and eight negatives),
-with every root separately covering all its own instructions in complete returns
-(1,420 total). All 25 labels, grouped and compact layouts, fifteen-digit cap,
-optional decimal zero trimming, empty-suffix fallback and space substitution are
-retained. Two accepted arithmetic bodies are reused; strings, printf and four
-diagnostic services have explicit models. Ten source/data checks pass.
+The combined actual-service matrix passes 282 comparisons: 231 completed
+executions including thirteen deliberate-corruption controls, 38 matching budget
+stops and thirteen required-memory faults. It observes 1,643 selected sites in
+complete comparisons; every root has a complete actual-service return. Successful
+positive wage parents complete 44 conversion, 44 text and 44 quantum children.
+The original currency configuration prepares all 25 choices. Another 179 original
+PC-profile controls pass. The three isolated components retain their 30,247
+comparisons and all 2,149 own-entry complete-return sites. Thirty-two focused
+source/data/hook checks and 75 historical manifest methods pass.
 
-The retained [monetary value component](native-money-value.md) passes its 22,508
-comparisons and 593 own-root sites; the [contract-display component](native-contract-display.md)
-passes 4,791 comparisons and 136 sites again. All three focused CTests pass.
-The common guest-call class adds only a recorded negation operation; removing it
-reproduces the preceding header byte for byte. Productive hooks, actual-service/
-caller proof, focused UBSAN and protected installation remain for a consolidated
-milestone. The installed count remains 871; these thirteen prepared operations
-would reach 884 if integrated. The cumulative Portuguese PDF is edition 36.
-Save/Load is **not retested**; performance is **not benchmarked**. The whole-game
-goal remains active. The records below document preceding installed milestones.
+Four focused UBSAN executables instrument nineteen translation units with
+nineteen pinned headers. All four outputs match Release and sanitizer stderr is
+empty. One full generation changes only five pages; all 1,953,334 instructions
+and 1,922 pages remain, with no missing or pending targets. The installed ARM64,
+strict-signed executable has SHA-256
+`c6764fa21abd200562ec8c3b3172f93234a77957ae9c0ea84a8d341e9bdf9a8f`.
+Prepare Game, original quit confirmation and normal exit are verified; all 846
+protected files, eighteen unrelated prompts and the previous 871-owner app are
+preserved. The cumulative Portuguese guide is edition 37. Save/Load is **not
+retested**; performance is **not benchmarked**. The whole-game goal remains active.
+The records below document preceding installed milestones.
 
 The [automatic proposal builder integration](native-transfer-synthesis-integration.md)
 adds the complete 3,551-instruction operation after the exact 831-entry prefix,

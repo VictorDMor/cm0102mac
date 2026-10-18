@@ -1,14 +1,12 @@
 # Monetary value conversion, rounding and editing
 
-Status: **prepared and accepted as an isolated component**. Seven complete native
-operations match independent original references. The installed application
-remains at `d0910402c867a5d0faa42830e1b7d1fb55c70541`, with 871 unique semantic
-owners. Productive integration, actual-service/caller proof, focused UBSAN and
-installation remain for a consolidated milestone. The separate prepared
-[contract-display component](native-contract-display.md) retains its two roots.
-Integrating these seven roots alone would reach 878 owners; combining both
-prepared blocks would reach 880. Neither number is an installed result. The
-complete-game goal remains active.
+Status: **accepted and installed as part of the consolidated money-presentation
+milestone**. The [integration report](native-money-presentation-integration.md)
+records the exact 871-owner prefix, thirteen added operations, 884 installed
+owners, actual original-service/caller comparisons, focused UBSAN and protected
+application delivery. The isolated contract and evidence below describe this
+component's own scope; their explicit external models remain distinct from the
+integrated runtime corpus. The whole-game goal remains active.
 
 ## Complete scope and source data
 
@@ -135,8 +133,9 @@ wide signed-pair/word frontiers, signed lengths, aliases, final helper residues,
 measured budget cuts, removed accessed bytes and interrupted callees.
 
 Each entry rejects a wrong own result and a temporary extra memory effect
-restored before return. Equal final images are required for the latter. Ten
-money-value source/data checks and nine retained display checks pass. Both
+restored before return. Equal final images are required for the latter. Eleven current
+money-value source/data/hook checks pass. The retained display and new text
+components pass alongside this one. Both
 `money_value_component_equivalence` and
 `contract_display_component_equivalence` pass on ARM64 with C++23,
 `-ffp-contract=off` and `-Wall -Wextra -Werror -Wpedantic`.
@@ -147,8 +146,7 @@ methods reproduces its previous header byte for byte; existing members are
 unchanged. The retained 4,791-comparison display component also passes with the
 extended class.
 
-The cumulative Portuguese guide, edition 35, explains the conversion, step
-boundary and preset rules. Productive dispatch, real services/callers, focused
-UBSAN and installation remain for a consolidated milestone. Save/Load is
-**not retested**; performance is **not benchmarked**. The full reconstruction
-goal remains active.
+The cumulative Portuguese guide is edition 37. The integration report records
+productive dispatch, actual services/callers, focused UBSAN and protected
+installation. Save/Load is **not retested**; performance is **not benchmarked**.
+The full reconstruction goal remains active.

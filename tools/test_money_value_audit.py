@@ -1,4 +1,6 @@
 """Prepared complete monetary conversion, rounding and editing contracts."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib,json,sqlite3,unittest
@@ -6,22 +8,24 @@ from pathlib import Path
 from compile_recomp import SEMANTIC_REPLACEMENTS,require_unique_semantic_replacements
 from money_value_audit import (CONTRACTS,FRAGMENTS,MONEY_VALUE_ENTRIES,TABLES,WORDS,PADDING,
     load_money_value_tables,require_money_value_tables,require_money_value_words,require_money_value_padding,
-    require_money_value_bodies,require_money_value_contract,require_money_value_edges,require_money_value_index)
+    require_money_value_bodies,require_money_value_contract,require_money_value_edges,require_money_value_index,require_money_value_hooks,money_value_hook)
 from contract_display_audit import CONTRACT_DISPLAY_ENTRIES
 from make_money_value_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_prefix_and_seven_unowned_roots(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),871)
-        prefix=[{'entry':hex(e),'module':m}for e,m in SEMANTIC_REPLACEMENTS]
+    def test_exact_prefix_and_thirteen_productive_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),884)
+        prefix=[{'entry':hex(e),'module':m}for e,m in SEMANTIC_REPLACEMENTS[:871]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'78870ba89f43481d334e7ab2b0da6a9cfa478cc6f42a343fdc4ff2ed5616e2ec')
-        self.assertFalse(set(MONEY_VALUE_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*((e,'money_value_adapter')for e in MONEY_VALUE_ENTRIES))
-        self.assertEqual(len(candidate),878);require_unique_semantic_replacements(candidate)
-        combined=(*candidate,*((e,'contract_display_adapter')for e in CONTRACT_DISPLAY_ENTRIES));self.assertEqual(len(combined),880);require_unique_semantic_replacements(combined)
-        for e in MONEY_VALUE_ENTRIES:
-            with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(e,'duplicate')))
+        from contract_display_audit import CONTRACT_DISPLAY_ENTRIES
+        from money_value_audit import MONEY_VALUE_ENTRIES
+        from money_text_audit import MONEY_TEXT_ENTRIES
+        expected=tuple((e,m+'_adapter')for m,es in [('contract_display',CONTRACT_DISPLAY_ENTRIES),('money_value',MONEY_VALUE_ENTRIES),('money_text',MONEY_TEXT_ENTRIES)]for e in es)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[871:],expected);require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry,_ in expected:
+            with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'duplicate')))
+
     def test_whole_value_editing_scope_and_owned_dependency_boundary(self):
         self.assertEqual(sum(x[2]for x in CONTRACTS),593);self.assertEqual(sum(x[2]for x in FRAGMENTS),593)
         self.assertEqual(tuple(x[2]for x in CONTRACTS),(58,19,65,63,47,68,273));self.assertEqual(len(PADDING),11)
@@ -39,7 +43,7 @@ class PreparedScopeTests(unittest.TestCase):
             self.assertNotIn(token,source)
         for token in ('to_display_amount','from_display_amount','increase_amount','decrease_amount','select_standard_amount','select_table_amount','amount_quantum','align_scaled_pair','large_steps','fine_steps'):
             self.assertIn(token,source)
-        self.assertNotIn('money_value_adapter',(ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('money_value_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').is_file(),'Private original source unavailable')
 class OriginalContractTests(unittest.TestCase):
@@ -86,6 +90,19 @@ class OriginalContractTests(unittest.TestCase):
                 if a<=address<a+n:b[address-a]^=1
                 return bytes(b)
             with self.assertRaises(ValueError):require_money_value_padding(changed)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['money_value_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_money_value_hooks(page,rows,source)
+            for entry in MONEY_VALUE_ENTRIES:
+                if entry>>12!=page:continue
+                hook=money_value_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_money_value_hooks(page,rows,changed)
 
     def test_reference_keeps_every_original_instruction_and_disables_all_hooks(self):
         source=render_reference(self.records,self.userops);self.assertNotIn('try_modern_',source);self.assertNotIn('_impl<true,',source)

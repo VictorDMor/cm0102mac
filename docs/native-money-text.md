@@ -1,13 +1,12 @@
 # Money text formatting, currency labels and settings
 
-Status: **prepared and accepted as an isolated component**. Four complete
-operations match independent original references. The installed application
-remains at `d0910402c867a5d0faa42830e1b7d1fb55c70541`, with 871 unique semantic
-owners. Together with the two prepared contract-display and seven money-value
-operations, this forms a thirteen-root batch that would reach 884 owners when
-integrated. Productive hooks, actual-service/caller comparisons, focused UBSAN
-and protected installation remain for that consolidated milestone. The whole-game
-goal remains active.
+Status: **accepted and installed as part of the consolidated money-presentation
+milestone**. The [integration report](native-money-presentation-integration.md)
+records the exact 871-owner prefix, thirteen added operations, 884 installed
+owners, actual original-service/caller comparisons, focused UBSAN and protected
+application delivery. The isolated contract and evidence below describe this
+component's own scope; their explicit external models remain distinct from the
+integrated runtime corpus. The whole-game goal remains active.
 
 ## Complete original scope
 
@@ -30,7 +29,7 @@ buffers and their TOC pointers are pinned at their initial zero image. They are
 mutable runtime inputs, not immutable suffix constants. Four contiguous settings
 bytes initially contain `ff 00 00 00`. The fixtures relocate the pinned banks;
 native code reads guest data rather than embedding their bytes. The adjacent
-text parser and preference initialization/configuration bodies remain outside
+currency configuration and other preference initialization bodies remain outside
 this complete formatting boundary.
 
 ## Symbol, setting and label contracts
@@ -121,7 +120,8 @@ The existing signed remainder (`0x10773b70`) and quotient (`0x10773960`) bodies
 run on both sides of the dependency boundary. Their previous proofs and productive
 adapter accounting are not redefined. Strlen, string copy, byte printf and the
 four diagnostic services have explicit external models here. Actual-service
-composition remains pending and is not inferred from these model results.
+composition is recorded in the integration report and is not inferred from these
+model results.
 
 The corpus includes all 256 setting, currency index and flag bytes, signed
 capacity frontiers, symbol lengths through 1,022, null faults, amounts around
@@ -129,7 +129,7 @@ powers of ten, every complete layout and decimal-trimming arm, zero and wide
 negative values, empty/nonempty fallback suffixes, special separator bytes,
 controlled symbol/suffix strings and output aliases with auxiliary fields.
 Measured instruction cuts, removed accessed bytes and interrupted callees match.
-Ten new source/data checks and three focused CTests pass on ARM64 C++23 with
+Eleven current source/data/hook checks and three focused CTests pass on ARM64 C++23 with
 `-ffp-contract=off` and `-Wall -Wextra -Werror -Wpedantic`. The retained value and
 display components pass their 22,508 and 4,791 comparisons.
 
@@ -138,7 +138,8 @@ original instruction and preserving the record condition. Removing that new
 method reproduces the previous header byte for byte. The other shared members
 and accepted arithmetic/string/formatting bodies remain unchanged.
 
-The cumulative Portuguese guide is edition 36. Save/Load is **not retested**;
+The cumulative Portuguese guide is edition 37. Save/Load is **not retested**;
 performance is **not benchmarked**. Original data, generated listings, comparison
-logs and the PDF source/QA journal remain private. No productive owner or installed
-artifact is changed by this prepared-component milestone.
+logs and the PDF source/QA journal remain private. The isolated acceptance was
+followed by the consolidated productive integration
+and installed artifact recorded in the integration report.

@@ -1,11 +1,12 @@
 # Contract wage and end presentation
 
-Status: **prepared and accepted as an isolated component**. Two complete native
-operations match independent original references. The installed application
-remains at `d0910402c867a5d0faa42830e1b7d1fb55c70541`, with 871 unique semantic
-owners. The prospective count of 873 is not an installed result. Productive
-integration, actual-service/caller comparisons, focused UBSAN and installation
-remain for a consolidated milestone. The complete-game goal remains active.
+Status: **accepted and installed as part of the consolidated money-presentation
+milestone**. The [integration report](native-money-presentation-integration.md)
+records the exact 871-owner prefix, thirteen added operations, 884 installed
+owners, actual original-service/caller comparisons, focused UBSAN and protected
+application delivery. The isolated contract and evidence below describe this
+component's own scope; their explicit external models remain distinct from the
+integrated runtime corpus. The whole-game goal remains active.
 
 ## Complete boundary and provenance
 
@@ -107,13 +108,14 @@ no-suffix output preservation, unchanged stored fields and Date delegation.
 
 Each root rejects an own-result corruption and an extra memory effect restored
 before return. The restored-effect negative first requires equal final images,
-so an image-only comparator cannot accept it. Nine source/data checks pass,
-including the exact 871-owner prefix, absent productive owners, full body and
-reference guards, every label-bank byte, padding and external-interior rejection.
+so an image-only comparator cannot accept it. Ten current source/data/hook checks
+pass, including the exact 871-owner prefix, all thirteen productive additions,
+hook ordering, full body/reference guards, every label-bank byte, padding and
+external-interior rejection.
 The focused CTest `contract_display_component_equivalence` passes on ARM64 with
 C++23, `-ffp-contract=off` and `-Wall -Wextra -Werror -Wpedantic`.
 
-The cumulative Portuguese guide, edition 34, explains these rules and the
-prepared status. Actual services/callers, productive dispatch, focused UBSAN and
-installation remain for a consolidated milestone. Save/Load is **not retested**;
-performance is **not benchmarked**. The complete-game goal remains active.
+The cumulative Portuguese guide is edition 37. The integrated original-service
+chains, productive dispatch, focused UBSAN and protected application delivery
+are recorded in the integration report. Save/Load is **not retested**; performance
+is **not benchmarked**. The complete-game goal remains active.
