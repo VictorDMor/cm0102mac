@@ -194,6 +194,10 @@ from money_value_audit import (require_money_value_contract, require_money_value
     require_money_value_hooks, money_value_hook, MONEY_VALUE_ENTRIES)
 from money_text_audit import (require_money_text_contract, require_money_text_index,
     require_money_text_hooks, money_text_hook, MONEY_TEXT_ENTRIES)
+from money_configuration_audit import (require_money_configuration_contract, require_money_configuration_index,
+    require_money_configuration_hooks, money_configuration_hook, MONEY_CONFIGURATION_ENTRIES)
+from preferences_audit import (require_preferences_contract, require_preferences_index,
+    require_preferences_hooks, preferences_hook, PREFERENCES_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -276,7 +280,9 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "contract_draft_adapter") for entry in CONTRACT_DRAFT_ENTRIES) +
     tuple((entry, "contract_display_adapter") for entry in CONTRACT_DISPLAY_ENTRIES) +
     tuple((entry, "money_value_adapter") for entry in MONEY_VALUE_ENTRIES) +
-    tuple((entry, "money_text_adapter") for entry in MONEY_TEXT_ENTRIES))
+    tuple((entry, "money_text_adapter") for entry in MONEY_TEXT_ENTRIES) +
+    tuple((entry, "money_configuration_adapter") for entry in MONEY_CONFIGURATION_ENTRIES) +
+    tuple((entry, "preferences_adapter") for entry in PREFERENCES_ENTRIES))
 
 
 def require_unique_semantic_replacements(replacements):
@@ -519,7 +525,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -627,6 +633,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_money_value_contract(page, instructions, selected)
     if money_text_hooks:
         require_money_text_contract(page, instructions, selected)
+    if money_configuration_hooks:
+        require_money_configuration_contract(page, instructions, selected)
+    if preferences_hooks:
+        require_preferences_contract(page, instructions, selected)
     if team_spatial_hooks:
         require_team_spatial_contract(page, instructions, selected)
     if pitch_distance_hooks:
@@ -770,6 +780,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "money_value_adapter.hpp"')
     if money_text_hooks and page_addresses & set(MONEY_TEXT_ENTRIES):
         code.insert(1, '#include "money_text_adapter.hpp"')
+    if money_configuration_hooks and page_addresses & set(MONEY_CONFIGURATION_ENTRIES):
+        code.insert(1, '#include "money_configuration_adapter.hpp"')
+    if preferences_hooks and page_addresses & set(PREFERENCES_ENTRIES):
+        code.insert(1, '#include "preferences_adapter.hpp"')
     if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
         code.insert(1, '#include "team_spatial_adapter.hpp"')
     if pitch_distance_hooks and page_addresses & set(PITCH_DISTANCE_ENTRIES):
@@ -1012,6 +1026,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(money_value_hook(a))
         if money_text_hooks and a in MONEY_TEXT_ENTRIES:
             code.append(money_text_hook(a))
+        if money_configuration_hooks and a in MONEY_CONFIGURATION_ENTRIES:
+            code.append(money_configuration_hook(a))
+        if preferences_hooks and a in PREFERENCES_ENTRIES:
+            code.append(preferences_hook(a))
         if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
             code.append(team_spatial_hook(a))
         if pitch_distance_hooks and a in PITCH_DISTANCE_ENTRIES:
@@ -1292,6 +1310,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_money_value_hooks(page, instructions, result)
     if money_text_hooks:
         require_money_text_hooks(page, instructions, result)
+    if money_configuration_hooks:
+        require_money_configuration_hooks(page, instructions, result)
+    if preferences_hooks:
+        require_preferences_hooks(page, instructions, result)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
@@ -1428,6 +1450,8 @@ def main():
         require_contract_display_index(db, None if args.all_analyzed else selected)
         require_money_value_index(db, None if args.all_analyzed else selected)
         require_money_text_index(db, None if args.all_analyzed else selected)
+        require_money_configuration_index(db, None if args.all_analyzed else selected)
+        require_preferences_index(db, None if args.all_analyzed else selected)
         require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)
@@ -1496,6 +1520,10 @@ def main():
             load_money_value_tables(args.export)
             from money_text_audit import load_money_text_tables
             load_money_text_tables(args.export)
+            from money_configuration_audit import load_money_configuration_tables
+            load_money_configuration_tables(args.export)
+            from preferences_audit import load_preferences_tables
+            load_preferences_tables(args.export)
             from player_movement_audit import load_player_movement_tables
             load_player_movement_tables(args.export)
             from ball_action_audit import load_ball_action_tables

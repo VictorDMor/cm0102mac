@@ -75,6 +75,8 @@ target_sources(cm_aot PRIVATE contract_draft_initialize.cpp contract_draft_new.c
 target_sources(cm_aot PRIVATE contract_display.cpp contract_display_adapter.cpp
     money_value.cpp money_value_quantum.cpp money_value_presets.cpp money_value_adapter.cpp
     money_text.cpp money_text_digits.cpp money_text_grouped.cpp money_text_compact.cpp money_text_adapter.cpp)
+target_sources(cm_aot PRIVATE money_configuration.cpp money_configuration_profiles.cpp money_configuration_adapter.cpp
+    preferences_lifecycle.cpp preferences_options.cpp preferences_setters.cpp preferences_apply.cpp preferences_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -846,8 +848,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/money_configuration_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-money-configuration-checks money_configuration_checks.cpp money_configuration.cpp
-        money_configuration_profiles.cpp "${CM_MONEY_CONFIGURATION_REFERENCE}")
+    add_executable(cm-money-configuration-checks money_configuration_checks.cpp "${CM_MONEY_CONFIGURATION_REFERENCE}")
     target_link_libraries(cm-money-configuration-checks PRIVATE cm_aot)
     target_compile_options(cm-money-configuration-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME money_configuration_component_equivalence COMMAND cm-money-configuration-checks
@@ -862,8 +863,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/preferences_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-preferences-checks preferences_checks.cpp preferences_lifecycle.cpp preferences_options.cpp
-        preferences_setters.cpp preferences_apply.cpp money_configuration.cpp money_configuration_profiles.cpp
+    add_executable(cm-preferences-checks preferences_checks.cpp
         "${CM_PREFERENCES_REFERENCE}" "${CM_MONEY_CONFIGURATION_REFERENCE}")
     target_link_libraries(cm-preferences-checks PRIVATE cm_aot)
     target_compile_options(cm-preferences-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -2385,3 +2385,7 @@ target_compile_options(cm-contract-draft-production-checks PRIVATE -Wall -Wextra
 add_executable(cm-money-presentation-production-checks money_presentation_production_checks.cpp)
 target_link_libraries(cm-money-presentation-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-money-presentation-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-preferences-production-checks preferences_production_checks.cpp)
+target_link_libraries(cm-preferences-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-preferences-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

@@ -46,6 +46,8 @@
 #include "contract_display_adapter.hpp"
 #include "money_value_adapter.hpp"
 #include "money_text_adapter.hpp"
+#include "money_configuration_adapter.hpp"
+#include "preferences_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -105,6 +107,8 @@ struct RuntimeDiagnostics {
     ContractDisplayDiagnostics contract_display;
     MoneyValueDiagnostics money_value;
     MoneyTextDiagnostics money_text;
+    MoneyConfigurationDiagnostics money_configuration;
+    PreferencesDiagnostics preferences;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -572,5 +576,21 @@ MoneyTextDiagnostics& money_text_diagnostics(State& state) {
 const MoneyTextDiagnostics& money_text_diagnostics(const State& state) {
     static const MoneyTextDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->money_text : empty;
+}
+MoneyConfigurationDiagnostics& money_configuration_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->money_configuration;
+}
+const MoneyConfigurationDiagnostics& money_configuration_diagnostics(const State& state) {
+    static const MoneyConfigurationDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->money_configuration : empty;
+}
+PreferencesDiagnostics& preferences_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->preferences;
+}
+const PreferencesDiagnostics& preferences_diagnostics(const State& state) {
+    static const PreferencesDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->preferences : empty;
 }
 }

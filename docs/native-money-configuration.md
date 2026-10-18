@@ -1,14 +1,14 @@
 # Complete currency configuration
 
-Status: **prepared and accepted as an isolated component**. The complete
-25-choice currency configuration at `0x1000a440` matches an independent original
-reference. The installed application remains at
-`90d533b1e20a12220be6206ada5d2b3ecfdf8f4f`, with 884 unique semantic owners and
-executable SHA-256 `c6764fa21abd200562ec8c3b3172f93234a77957ae9c0ea84a8d341e9bdf9a8f`.
-Productive hooks, actual-service/caller comparisons, focused UBSAN and protected
-installation of this operation remain for a consolidated milestone. Adding this
-root would reach 885 owners; that is not an installed result. The whole-game goal
-remains active.
+Status: **integrated and installed** with the complete preference lifecycle at
+897 unique semantic owners. The complete 25-choice root matches its independent
+original reference, and all 25 choices run through the actual production services.
+The [combined integration](native-preferences-integration.md) records whole
+initialize/apply callers, focused UBSAN, preserved 884-owner prefix, protected
+installation, Prepare Game and normal quit. The installed ARM64 executable has
+SHA-256 `7af41b4b2882a5dbc16d679884cb60caa2175cc7242cf3074733c8076bb9e00d`.
+The whole-game goal remains active. The isolated component's models and full
+source proof below remain distinct from actual-service coverage.
 
 ## Full scope and source contract
 

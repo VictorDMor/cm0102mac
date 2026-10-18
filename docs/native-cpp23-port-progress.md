@@ -9,58 +9,46 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest installed milestone is **884 unique semantic owners**. The
-[contract display and money-presentation integration](native-money-presentation-integration.md)
-retains the exact 871-owner prefix and adds thirteen complete operations:
-two contract-display, seven money-value and four money-text roots. The prepared
-semantic bodies and shared call helper remain byte-identical.
+The latest installed milestone is **897 unique semantic owners**. The
+[currency configuration and preference lifecycle integration](native-preferences-integration.md)
+retains the exact 884-owner prefix and adds thirteen complete operations:
+the 25-choice currency configuration and the twelve-entry preference lifecycle.
+The prepared bodies and shared call helper remain byte-identical; native-platform
+behavior is unchanged.
 
-The combined actual-service matrix passes 282 comparisons: 231 completed
-executions including thirteen deliberate-corruption controls, 38 matching budget
-stops and thirteen required-memory faults. It observes 1,643 selected sites in
-complete comparisons; every root has a complete actual-service return. Successful
-positive wage parents complete 44 conversion, 44 text and 44 quantum children.
-The original currency configuration prepares all 25 choices. Another 179 original
-PC-profile controls pass. The three isolated components retain their 30,247
-comparisons and all 2,149 own-entry complete-return sites. Thirty-two focused
-source/data/hook checks and 75 historical manifest methods pass.
+The actual-service matrix passes 241 comparisons: 190 completed executions
+including thirteen deliberate-corruption controls, 38 matching budget stops and
+thirteen required-memory faults. It observes 1,651 selected sites in completed
+productive comparisons, with at least three productive starting returns per root.
+A separate 138-case profiling run remains original. Whole initialize/apply callers
+finish 3 and 28 configuration children, and the linked edit record finishes its
+recursive primary apply. Successful preference writes independently match the
+actual 303-byte eight-field layout. Host clock and opaque handle-number inputs
+are declared; native resources, display/audio and file services remain actual.
 
-Four focused UBSAN executables instrument nineteen translation units with
-nineteen pinned headers. All four outputs match Release and sanitizer stderr is
-empty. One full generation changes only five pages; all 1,953,334 instructions
-and 1,922 pages remain, with no missing or pending targets. The installed ARM64,
-strict-signed executable has SHA-256
-`c6764fa21abd200562ec8c3b3172f93234a77957ae9c0ea84a8d341e9bdf9a8f`.
-Prepare Game, original quit confirmation and normal exit are verified; all 846
-protected files, eighteen unrelated prompts and the previous 871-owner app are
-preserved. The cumulative Portuguese guide is edition 39. Save/Load is **not
-retested**; performance is **not benchmarked**. The whole-game goal remains active.
+The two components retain 4,441 comparisons and all 2,278 own source sites in
+complete starting comparisons. Twenty source/data guards and 78 focused manifest
+controls pass. Three focused UBSAN executables match release stdout with no
+sanitizer warnings; 14 units are instrumented and 18 headers pinned. This is not
+whole-game sanitizer or actual-service coverage of every original branch.
 
-After that installed milestone, the [complete currency configuration](native-money-configuration.md)
-is prepared as an isolated component. Its single complete 25-choice operation
-spans 834 instructions and passes 2,102 comparisons: 1,718 complete returns,
-382 matching stops and two discriminating negatives. All sites are covered in
-own-root complete comparisons, with no structural exceptions. Ten source/data
-checks and its focused CTest pass. Bytewise copying and four diagnostics have
-explicit models; productive integration, actual-service/caller proof and focused
-UBSAN remain for a consolidated milestone. The shared helper and previously
-accepted bodies are unchanged. The installed count remains 884; adding this root
-would reach 885. The complete-game goal remains active.
+The strict-signed ARM64 executable has SHA-256
+`7af41b4b2882a5dbc16d679884cb60caa2175cc7242cf3074733c8076bb9e00d`.
+Prepare Game, original quit confirmation and normal exit are verified. All 846
+protected files retain their baseline hashes through installation and the
+controlled exit. Subsequent application activity updated one career save, whose
+current contents are preserved; the other 845 hashes still match. Eighteen
+unrelated prompts and the previous 884-owner app remain preserved.
+PDF updates are paused at the user's request; the last accepted guide
+is edition 39, which predates this milestone. Save/Load is **not retested**;
+performance is **not benchmarked**. The whole-game goal remains active.
 
-The [complete twelve-entry preference lifecycle](native-preferences.md) is now
-prepared separately: initialization/load, copy/destruction, defaults/options,
-language/currency/interval setters, and whole apply/persist and video operations.
-Its 1,444 instructions pass 2,339 comparisons: 2,185 modeled complete returns,
-130 matching stops and 24 discriminating negatives. Every root covers all of its
-own sites. Eight source/data guards and its focused CTest pass. There are 152
-completed currency configurations compared against the independent original
-dependency. Platform, strings, diagnostics, audio/video and file services remain
-explicit models. Thirteen complete cases use a returning process-exit model;
-five stops use a terminating model. Those are not production exit-return claims.
-All thirteen prepared roots together would reach 897 owners. The installed
-application remains at 884; productive acceptance is reserved for the next
-consolidated milestone. The existing shared engine and accepted bodies are
-unchanged, and the whole-game goal remains active.
+The prior [contract display and money-presentation integration](native-money-presentation-integration.md)
+installed 884 owners, adding thirteen operations after the 871-owner prefix.
+[Complete currency configuration](native-money-configuration.md) and
+[preferences](native-preferences.md) retain their individual source/data and
+isolated-model evidence; their combined production acceptance is the current
+897-owner milestone above.
 
 The records below document preceding installed milestones.
 

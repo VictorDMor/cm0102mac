@@ -1,18 +1,20 @@
 # Complete preference lifecycle
 
-Status: **prepared and accepted as an isolated component**. Twelve complete
-operations reconstruct preference initialization, copying, destruction, defaults,
-option selection, language, currency, interval and video setters, and application
-with persistence. They span **1,444 original instructions**, with individual
-complete-return coverage and two discriminating negatives per root.
+Status: **integrated and installed**. Twelve complete operations reconstruct
+preference initialization, copying, destruction, defaults, option selection,
+language, currency, interval and video setters, and application with persistence.
+They span **1,444 original instructions**, with individual complete-return
+coverage and two discriminating negatives per root.
 
-The installed application retains 884 unique owners at revision
-`90d533b1e20a12220be6206ada5d2b3ecfdf8f4f`, executable SHA-256
-`c6764fa21abd200562ec8c3b3172f93234a77957ae9c0ea84a8d341e9bdf9a8f`.
-These twelve roots and the separately prepared currency configuration have no
-productive hooks yet. Adding all thirteen would reach 897 owners; that is not
-an installed result. Actual-service/caller proof, focused UBSAN and protected
-installation remain for a consolidated milestone. The whole-game goal is active.
+The [combined integration](native-preferences-integration.md) adds these roots
+and the complete currency configuration after the exact 884-owner prefix,
+reaching **897 installed owners**. It records actual platform/file services,
+whole load/apply callers, independent 303-byte preference-file layout, original
+controls, focused UBSAN and protected installation. Prepare Game and normal quit
+are verified. The installed ARM64 executable has SHA-256
+`7af41b4b2882a5dbc16d679884cb60caa2175cc7242cf3074733c8076bb9e00d`.
+The whole-game goal remains active; isolated modeled proof below is separate
+from the integration's actual-service coverage.
 
 ## Full operations and source boundaries
 

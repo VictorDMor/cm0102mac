@@ -16,14 +16,14 @@ ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_thirteen_productive_owners(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),884)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),897)
         prefix=[{'entry':hex(e),'module':m}for e,m in SEMANTIC_REPLACEMENTS[:871]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'78870ba89f43481d334e7ab2b0da6a9cfa478cc6f42a343fdc4ff2ed5616e2ec')
         from contract_display_audit import CONTRACT_DISPLAY_ENTRIES
         from money_value_audit import MONEY_VALUE_ENTRIES
         from money_text_audit import MONEY_TEXT_ENTRIES
         expected=tuple((e,m+'_adapter')for m,es in [('contract_display',CONTRACT_DISPLAY_ENTRIES),('money_value',MONEY_VALUE_ENTRIES),('money_text',MONEY_TEXT_ENTRIES)]for e in es)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[871:],expected);require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[871:884],expected);require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         for entry,_ in expected:
             with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'duplicate')))
 

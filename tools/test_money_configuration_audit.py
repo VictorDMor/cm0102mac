@@ -1,4 +1,6 @@
-"""Prepared complete currency configuration contracts."""
+"""Complete currency configuration and productive integration contracts."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib,json,sqlite3,unittest
@@ -6,20 +8,21 @@ from pathlib import Path
 from compile_recomp import SEMANTIC_REPLACEMENTS,require_unique_semantic_replacements
 from money_configuration_audit import (CONTRACTS,FRAGMENTS,MONEY_CONFIGURATION_ENTRIES,TABLES,WORDS,PADDING,
     load_money_configuration_tables,require_money_configuration_tables,require_money_configuration_words,require_money_configuration_padding,
-    require_money_configuration_bodies,require_money_configuration_contract,require_money_configuration_edges,require_money_configuration_index)
+    require_money_configuration_bodies,require_money_configuration_contract,require_money_configuration_edges,require_money_configuration_index,require_money_configuration_hooks,money_configuration_hook)
 from make_money_configuration_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_prefix_and_unowned_configuration(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),884)
-        prefix=[{'entry':hex(e),'module':m}for e,m in SEMANTIC_REPLACEMENTS]
+    def test_exact_884_prefix_and_thirteen_productive_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),897)
+        prefix=[{'entry':hex(e),'module':m}for e,m in SEMANTIC_REPLACEMENTS[:884]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'7a8921cdc98b39bccdab14d402aa2c570b036df8041f4d7b9035762c328ba493')
-        self.assertFalse(set(MONEY_CONFIGURATION_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*((e,'money_configuration_adapter')for e in MONEY_CONFIGURATION_ENTRIES))
-        self.assertEqual(len(candidate),885);require_unique_semantic_replacements(candidate)
-        for entry in MONEY_CONFIGURATION_ENTRIES:
-            with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(entry,'duplicate')))
+        from money_configuration_audit import MONEY_CONFIGURATION_ENTRIES
+        from preferences_audit import PREFERENCES_ENTRIES
+        expected=tuple((e,m+'_adapter')for m,es in [('money_configuration',MONEY_CONFIGURATION_ENTRIES),('preferences',PREFERENCES_ENTRIES)]for e in es)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[884:],expected);require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry,_ in expected:
+            with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'duplicate')))
 
     def test_whole_configuration_scope_and_owned_dependency_boundary(self):
         self.assertEqual(sum(x[2]for x in CONTRACTS),834);self.assertEqual(sum(x[2]for x in FRAGMENTS),834)
@@ -37,7 +40,7 @@ class PreparedScopeTests(unittest.TestCase):
             self.assertNotIn(token,source)
         for token in ('configure_currency','apply_profile','copy_suffixes','shared_separator','distinct_separators'):
             self.assertIn(token,source)
-        self.assertNotIn('money_configuration_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('money_configuration_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').is_file(),'Private original source unavailable')
 class OriginalContractTests(unittest.TestCase):
@@ -84,6 +87,19 @@ class OriginalContractTests(unittest.TestCase):
                 if a<=address<a+n:b[address-a]^=1
                 return bytes(b)
             with self.assertRaises(ValueError):require_money_configuration_padding(changed)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['money_configuration_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_money_configuration_hooks(page,rows,source)
+            for entry in MONEY_CONFIGURATION_ENTRIES:
+                if entry>>12!=page:continue
+                hook=money_configuration_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_money_configuration_hooks(page,rows,changed)
 
     def test_reference_keeps_every_original_instruction_and_disables_all_hooks(self):
         source=render_reference(self.records,self.userops);self.assertNotIn('try_modern_',source);self.assertNotIn('_impl<true,',source)
