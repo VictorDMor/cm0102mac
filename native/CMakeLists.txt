@@ -96,6 +96,10 @@ target_sources(cm_aot PRIVATE
     injury_persistence_load.cpp
     injury_persistence_save.cpp
     injury_persistence_adapter.cpp
+    injury_daily.cpp
+    injury_daily_selection.cpp
+    injury_daily_effects.cpp
+    injury_daily_adapter.cpp
     match_discipline_adapter.cpp
     match_discipline_facades.cpp
     match_discipline_penalties.cpp
@@ -487,6 +491,19 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-injury-persistence-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME injury_persistence_component_equivalence COMMAND cm-injury-persistence-checks)
     set_tests_properties(injury_persistence_component_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_INJURY_DAILY_REFERENCE "${CMAKE_BINARY_DIR}/injury_daily_reference.cpp")
+    add_custom_command(OUTPUT "${CM_INJURY_DAILY_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_injury_daily_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_INJURY_DAILY_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_injury_daily_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/injury_daily_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-injury-daily-checks injury_daily_checks.cpp "${CM_INJURY_DAILY_REFERENCE}" "${CM_ACTOR_ATTRIBUTES_REFERENCE}")
+    target_link_libraries(cm-injury-daily-checks PRIVATE cm_aot)
+    target_compile_options(cm-injury-daily-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME injury_daily_component_equivalence COMMAND cm-injury-daily-checks)
+    set_tests_properties(injury_daily_component_equivalence PROPERTIES TIMEOUT 180)
     set(CM_MATCH_RANDOM_REFERENCE "${CMAKE_BINARY_DIR}/match_random_reference.cpp")
     add_custom_command(OUTPUT "${CM_MATCH_RANDOM_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_random_reference.py"
@@ -720,6 +737,9 @@ target_compile_options(cm-injury-reporting-transfer-checks PRIVATE -Wall -Wextra
 add_executable(cm-injury-persistence-transfer-checks injury_persistence_transfer_checks.cpp)
 target_link_libraries(cm-injury-persistence-transfer-checks PRIVATE cm_aot)
 target_compile_options(cm-injury-persistence-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-injury-daily-production-checks injury_daily_production_checks.cpp)
+target_link_libraries(cm-injury-daily-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-injury-daily-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-injury-persistence-production-checks injury_persistence_production_checks.cpp)
 target_link_libraries(cm-injury-persistence-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-injury-persistence-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

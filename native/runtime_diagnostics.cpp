@@ -25,6 +25,7 @@
 #include "injury_reporting_adapter.hpp"
 #include "injury_bootstrap_adapter.hpp"
 #include "injury_persistence_adapter.hpp"
+#include "injury_daily_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -62,6 +63,7 @@ struct RuntimeDiagnostics {
     InjuryReportingDiagnostics injury_reporting;
     InjuryBootstrapDiagnostics injury_bootstrap;
     InjuryPersistenceDiagnostics injury_persistence;
+    InjuryDailyDiagnostics injury_daily;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -163,6 +165,14 @@ InjuryPersistenceDiagnostics& injury_persistence_diagnostics(State& state) {
 const InjuryPersistenceDiagnostics& injury_persistence_diagnostics(const State& state) {
     static const InjuryPersistenceDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->injury_persistence : empty;
+}
+InjuryDailyDiagnostics& injury_daily_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->injury_daily;
+}
+const InjuryDailyDiagnostics& injury_daily_diagnostics(const State& state) {
+    static const InjuryDailyDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->injury_daily : empty;
 }
 ActorAttributesDiagnostics& actor_attributes_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();

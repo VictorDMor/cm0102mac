@@ -150,6 +150,8 @@ from injury_bootstrap_audit import (require_injury_bootstrap_contract, require_i
     require_injury_bootstrap_hooks, injury_bootstrap_hook, INJURY_BOOTSTRAP_ENTRIES)
 from injury_persistence_audit import (require_injury_persistence_contract, require_injury_persistence_index,
     require_injury_persistence_hooks, injury_persistence_hook, INJURY_PERSISTENCE_ENTRIES)
+from injury_daily_audit import (require_injury_daily_contract, require_injury_daily_index,
+    require_injury_daily_hooks, injury_daily_hook, INJURY_DAILY_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -210,7 +212,19 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "injury_readouts_adapter") for entry in INJURY_READOUTS_ENTRIES) +
     tuple((entry, "injury_reporting_adapter") for entry in INJURY_REPORTING_ENTRIES) +
     tuple((entry, "injury_bootstrap_adapter") for entry in INJURY_BOOTSTRAP_ENTRIES) +
-    tuple((entry, "injury_persistence_adapter") for entry in INJURY_PERSISTENCE_ENTRIES))
+    tuple((entry, "injury_persistence_adapter") for entry in INJURY_PERSISTENCE_ENTRIES) +
+    tuple((entry, "injury_daily_adapter") for entry in INJURY_DAILY_ENTRIES))
+
+
+def require_unique_semantic_replacements(replacements):
+    owners = {}
+    for entry, owner in replacements:
+        if entry in owners:
+            raise ValueError(f"Duplicate semantic replacement at {entry:x}: {owners[entry]} and {owner}")
+        owners[entry] = owner
+
+
+require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
 
 
 def integer(value):
@@ -442,7 +456,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -506,6 +520,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_injury_bootstrap_contract(page, instructions, selected)
     if injury_persistence_hooks:
         require_injury_persistence_contract(page, instructions, selected)
+    if injury_daily_hooks:
+        require_injury_daily_contract(page, instructions, selected)
     if team_spatial_hooks:
         require_team_spatial_contract(page, instructions, selected)
     if pitch_distance_hooks:
@@ -605,6 +621,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "injury_bootstrap_adapter.hpp"')
     if injury_persistence_hooks and page_addresses & set(INJURY_PERSISTENCE_ENTRIES):
         code.insert(1, '#include "injury_persistence_adapter.hpp"')
+    if injury_daily_hooks and page_addresses & set(INJURY_DAILY_ENTRIES):
+        code.insert(1, '#include "injury_daily_adapter.hpp"')
     if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
         code.insert(1, '#include "team_spatial_adapter.hpp"')
     if pitch_distance_hooks and page_addresses & set(PITCH_DISTANCE_ENTRIES):
@@ -803,6 +821,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(injury_bootstrap_hook(a))
         if injury_persistence_hooks and a in INJURY_PERSISTENCE_ENTRIES:
             code.append(injury_persistence_hook(a))
+        if injury_daily_hooks and a in INJURY_DAILY_ENTRIES:
+            code.append(injury_daily_hook(a))
         if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
             code.append(team_spatial_hook(a))
         if pitch_distance_hooks and a in PITCH_DISTANCE_ENTRIES:
@@ -1039,6 +1059,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_injury_bootstrap_hooks(page, instructions, result)
     if injury_persistence_hooks:
         require_injury_persistence_hooks(page, instructions, result)
+    if injury_daily_hooks:
+        require_injury_daily_hooks(page, instructions, result)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
@@ -1153,6 +1175,7 @@ def main():
         require_injury_reporting_index(db, None if args.all_analyzed else selected)
         require_injury_bootstrap_index(db, None if args.all_analyzed else selected)
         require_injury_persistence_index(db, None if args.all_analyzed else selected)
+        require_injury_daily_index(db, None if args.all_analyzed else selected)
         require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)
@@ -1179,6 +1202,8 @@ def main():
             load_injury_bootstrap_tables(args.export)
             from injury_persistence_audit import load_injury_persistence_tables
             load_injury_persistence_tables(args.export)
+            from injury_daily_audit import load_injury_daily_tables
+            load_injury_daily_tables(args.export)
             from player_movement_audit import load_player_movement_tables
             load_player_movement_tables(args.export)
             from ball_action_audit import load_ball_action_tables
