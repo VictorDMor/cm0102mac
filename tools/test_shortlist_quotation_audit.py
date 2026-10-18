@@ -1,4 +1,6 @@
 """Complete shortlist context and reference-quotation contracts under characterization."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -11,7 +13,7 @@ from compile_recomp import SEMANTIC_REPLACEMENTS,require_unique_semantic_replace
 from shortlist_quotation_audit import (CONTRACTS,FRAGMENTS,SHORTLIST_QUOTATION_ENTRIES,TABLES,PADDING,
     load_shortlist_quotation_tables,require_shortlist_quotation_tables,require_shortlist_quotation_padding,
     require_shortlist_quotation_bodies,require_shortlist_quotation_contract,require_shortlist_quotation_edges,
-    require_shortlist_quotation_index)
+    require_shortlist_quotation_index,require_shortlist_quotation_hooks,shortlist_quotation_hook)
 from make_shortlist_quotation_reference import render_reference
 from shortlist_quotation_proofs import (STRUCTURALLY_UNREACHABLE,
     require_shortlist_quotation_structural_proofs)
@@ -20,15 +22,14 @@ ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_prefix_and_two_unowned_operations(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),859)
-        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS]
+    def test_exact_prefix_and_two_productive_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),861)
+        prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:859]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'80d0e741d08631bb20bafa1b5e563d20fb02f0b8ce2759b5f07a07f408c81a53')
-        self.assertFalse(set(SHORTLIST_QUOTATION_ENTRIES)&dict(SEMANTIC_REPLACEMENTS).keys())
-        candidate=(*SEMANTIC_REPLACEMENTS,*((e,'shortlist_quotation_adapter') for e in SHORTLIST_QUOTATION_ENTRIES))
-        self.assertEqual(len(candidate),861);require_unique_semantic_replacements(candidate)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[859:],tuple((e,'shortlist_quotation_adapter') for e in SHORTLIST_QUOTATION_ENTRIES))
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         for e in SHORTLIST_QUOTATION_ENTRIES:
-            with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(e,'duplicate')))
+            with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(e,'duplicate')))
 
     def test_whole_boundaries_exclude_adjacent_loan_and_scanning_controllers(self):
         self.assertEqual(sum(x[2] for x in CONTRACTS),5689)
@@ -51,7 +52,7 @@ class PreparedScopeTests(unittest.TestCase):
         for token in ('shortlist_quotation_reference','dispatch_page','run_until','pcode','i_1036','page_1036','quotation_stage_103','switch(s.pc)','while(s.pc'):
             self.assertNotIn(token,source)
         self.assertIn('prepare_candidate_context',source);self.assertIn('finish_quote_contract_limits',source)
-        self.assertNotIn('shortlist_quotation_adapter',(ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('shortlist_quotation_adapter.cpp',(ROOT/'native/CMakeLists.txt').read_text())
         support=(ROOT/'native/shortlist_quotation_detail.hpp').read_text()
         for token in ('divide_record_at','product_difference_single_at','negative_product_difference_single_at'):
             self.assertIn(token,support)
@@ -129,6 +130,19 @@ class OriginalContractTests(unittest.TestCase):
                 if a<=address<a+n:b[address-a]^=1
                 return bytes(b)
             with self.assertRaises(ValueError):require_shortlist_quotation_padding(changed)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['shortlist_quotation_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_shortlist_quotation_hooks(page,rows,source)
+            for entry in SHORTLIST_QUOTATION_ENTRIES:
+                if entry>>12!=page:continue
+                hook=shortlist_quotation_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_shortlist_quotation_hooks(page,rows,changed)
 
     def test_reference_keeps_every_original_instruction_and_disables_all_hooks(self):
         source=render_reference(self.records,self.userops);self.assertNotIn('try_modern_',source);self.assertNotIn('_impl<true,',source)

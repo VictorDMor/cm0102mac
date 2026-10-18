@@ -64,6 +64,8 @@ target_sources(cm_aot PRIVATE shortlist_recruitment_notify.cpp shortlist_recruit
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
     shortlist_assessment_interest_context.cpp shortlist_assessment_interest_preferences.cpp
     shortlist_assessment_interest_score.cpp shortlist_assessment_adapter.cpp)
+target_sources(cm_aot PRIVATE shortlist_quotation.cpp shortlist_quotation_context.cpp
+    shortlist_quotation_quote_profile.cpp shortlist_quotation_quote_country.cpp shortlist_quotation_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -746,8 +748,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_executable(cm-shortlist-quotation-checks shortlist_quotation_checks.cpp "${CM_SHORTLIST_QUOTATION_REFERENCE}" "${CM_SHORTLIST_QUOTATION_CASES}")
     target_include_directories(cm-shortlist-quotation-checks PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
     target_link_libraries(cm-shortlist-quotation-checks PRIVATE cm_aot)
-    target_sources(cm-shortlist-quotation-checks PRIVATE shortlist_quotation.cpp shortlist_quotation_context.cpp
-        shortlist_quotation_quote_profile.cpp shortlist_quotation_quote_country.cpp)
     target_compile_options(cm-shortlist-quotation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME shortlist_quotation_component_equivalence COMMAND cm-shortlist-quotation-checks
         "${CMAKE_BINARY_DIR}/shortlist_quotation_coverage.txt")
@@ -2232,3 +2232,7 @@ target_compile_options(cm-shortlist-recruitment-production-checks PRIVATE -Wall 
 add_executable(cm-shortlist-assessment-production-checks shortlist_assessment_production_checks.cpp)
 target_link_libraries(cm-shortlist-assessment-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-shortlist-assessment-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-shortlist-quotation-production-checks shortlist_quotation_production_checks.cpp)
+target_link_libraries(cm-shortlist-quotation-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-shortlist-quotation-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

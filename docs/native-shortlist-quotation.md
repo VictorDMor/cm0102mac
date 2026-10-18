@@ -1,15 +1,13 @@
 # Candidate context and reference quotation
 
-Status: **prepared and accepted as an isolated component**. Both complete C++
-operations match independent original references across the retained inputs,
-explicit boundary cases and discriminating negatives. Productive integration and
-installation remain pending.
+Status: **integrated and accepted at the 861-owner milestone**. Both complete C++
+operations match independent original references. Productive hooks, actual
+original-service matrices, related callers, focused UBSAN and protected
+installation now pass. See [integration evidence](native-shortlist-quotation-integration.md).
 
-The installed milestone remains `b76ac9b93115ff4bd81709b2e4e8db11dcede933`, with
-859 unique semantic owners. These two entries are unowned in the productive
-manifest. Their eventual integration would require the exact 859-entry prefix
-and two distinct new owners. A count of 861 is a candidate, not an installed or
-accepted result.
+The exact previous 859-owner prefix is retained, followed atomically by these
+two distinct owners under `shortlist_quotation_adapter`. The installed milestone
+is separate from the complete-game goal, which remains active.
 
 ## Complete operation boundaries
 
@@ -107,17 +105,19 @@ The scalar date-difference dependency is modeled as a scalar result; a
 same-player comparison can depend on staff nationality separately from club
 country. Interface labels for raw fields and reason bits remain unassigned.
 
-Fourteen source/data checks pass, including full boundaries, page fragments,
+Fifteen source/data checks pass, including full boundaries, page fragments,
 changed/missing/reordered source, nonindexed words, all pinned data bytes,
-structural premises, the exact installed prefix, and synthetic-input validation.
+structural premises, the exact installed prefix, productive hook placement and synthetic-input validation.
 The focused CTest `shortlist_quotation_component_equivalence` passes with
 `-ffp-contract=off`, `-Wall -Wextra -Werror -Wpedantic` on ARM64.
 
-This is component evidence with synthetic external-service results/effects.
-Productive generation, original-service integration, focused UBSAN and
-installation belong to the consolidated milestone. Save/Load is **not retested**;
-performance is **not benchmarked**. The installed application remains at 859
-accepted owners, and the whole-game reconstruction goal remains active.
+The isolated component uses synthetic external-service results/effects. The
+consolidated milestone separately compares both operations with actual original
+services and checks completed modern children through contextual evaluation,
+club interest and recruitment. See the integration document for measured scope,
+controlled inputs and installation identity. Save/Load is **not retested**;
+performance is **not benchmarked**. The whole-game reconstruction goal remains
+active.
 
-The cumulative Portuguese guide records the prepared pair, practical examples
+The cumulative Portuguese guide records the integrated pair, practical examples
 and this distinction between component acceptance and installed behavior.
