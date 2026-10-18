@@ -40,6 +40,8 @@ target_sources(cm_aot PRIVATE record_query.cpp record_query_adapter.cpp)
 target_sources(cm_aot PRIVATE record_history.cpp record_history_adapter.cpp)
 target_sources(cm_aot PRIVATE contract_queries.cpp contract_query_adapter.cpp contract_storage.cpp
     contract_initializer.cpp contract_initializer_options.cpp contract_initializer_nations.cpp contract_storage_adapter.cpp)
+target_sources(cm_aot PRIVATE contract_terms.cpp contract_terms_sampling.cpp contract_terms_presentation.cpp
+    contract_terms_expiry.cpp contract_terms_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -561,8 +563,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_terms_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-contract-terms-checks contract_terms_checks.cpp contract_terms.cpp contract_terms_sampling.cpp
-        contract_terms_presentation.cpp contract_terms_expiry.cpp "${CM_CONTRACT_TERMS_REFERENCE}")
+    add_executable(cm-contract-terms-checks contract_terms_checks.cpp "${CM_CONTRACT_TERMS_REFERENCE}")
     target_link_libraries(cm-contract-terms-checks PRIVATE cm_aot)
     target_compile_options(cm-contract-terms-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_terms_component_equivalence COMMAND cm-contract-terms-checks)
@@ -822,6 +823,9 @@ target_compile_options(cm-awol-records-production-checks PRIVATE -Wall -Wextra -
 add_executable(cm-contract-production-checks contract_production_checks.cpp)
 target_link_libraries(cm-contract-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-contract-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-contract-terms-production-checks contract_terms_production_checks.cpp)
+target_link_libraries(cm-contract-terms-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-contract-terms-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-injury-persistence-production-checks injury_persistence_production_checks.cpp)
 target_link_libraries(cm-injury-persistence-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-injury-persistence-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

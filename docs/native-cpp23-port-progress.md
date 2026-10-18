@@ -9,16 +9,23 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The next [contract terms block](native-contract-terms.md) is **prepared, not
-integrated**: 21 complete operations and 1,203 original instructions cover
-clause/bonus editing and eligibility, labels, end descriptions, shared sampling
-and expiry bands. Its focused Release CTest passes 5,242 comparisons, including
-31 rejected negatives, and requires every source site. Eleven source/data
-guards pass. Production and actual-service integration, focused sanitizer
-acceptance and installation remain pending the next consolidated milestone;
-the accepted installed manifest remains at 762 entries.
+The [contract terms integration](native-contract-terms-integration.md) adds
+21 complete operations and 1,203 original instructions, extending the exact
+accepted 762-entry prefix to **783 installed entries**. Clause/bonus editing and
+eligibility, labels, end descriptions, shared sampling and expiry bands pass
+5,242 component comparisons with complete source coverage, and 559 prepared
+actual-service comparisons covering all 21 roots. Thirty-three contract guards,
+60 historical manifest methods, 112 profile controls and three adjacent seams
+pass. The focused 12-unit UBSAN build passes all five runs with empty stderr.
 
-The [contract lookup and creation batch](native-contract-integration.md) adds
+The strict-signed arm64 game has executable SHA-256
+`25b596bb1824a4387e0032050cc5cef4d6d2168debec6b8ee67247fb8cabc7cd`.
+Prepare Game rendering, original exit confirmation and normal exit pass. All
+846 protected files, prior application and installed Match Debugger are
+preserved. Save/Load is **not retested**; performance is **not benchmarked**.
+The cumulative Portuguese PDF is updated. The whole-game goal remains active.
+
+The preceding [contract lookup and creation batch](native-contract-integration.md) adds
 six complete operations and **2,161 original instructions**, extending the
 accepted prefix from 756 to **762 unique entries**. Release and focused UBSAN
 each pass 6,113 component comparisons covering every site and 120 prepared

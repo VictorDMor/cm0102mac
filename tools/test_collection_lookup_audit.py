@@ -20,7 +20,7 @@ class CollectionManifestTests(unittest.TestCase):
                          (0x1074dd40, 0x1074df60, 0x1074df90, 0x1074e150, 0x1074e5b0))
         self.assertEqual(INSTRUCTION_COUNTS, (21, 11, 10, 277, 288))
         self.assertEqual(sum(INSTRUCTION_COUNTS), 607)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 762)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 783)
         self.assertEqual(SEMANTIC_REPLACEMENTS[41:46], tuple(
             (entry, 'collection_lookup_adapter') for entry in COLLECTION_LOOKUP_ENTRIES))
         self.assertTrue(all(module != 'collection_lookup_adapter'

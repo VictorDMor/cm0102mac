@@ -3,8 +3,9 @@
 All three complete staff-contract lookup operations have accepted C++23
 implementations, integrated with the complete storage creation block. They
 cover 145 indexed instructions on two original pages. The generated, built and
-installed game contains **762 entries**, preserving its exact prior 756-entry
-prefix. See the [combined integration report](native-contract-integration.md)
+installed delivery established the **762-entry milestone**, preserving its exact
+prior 756-entry prefix. The later [terms integration](native-contract-terms-integration.md)
+extends the installed game to 783 entries. See the [combined integration report](native-contract-integration.md)
 for real-service runtime, sanitizer, installation and preservation evidence.
 
 ## Original boundaries

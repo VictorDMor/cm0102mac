@@ -29,6 +29,7 @@
 #include "awol_records_adapter.hpp"
 #include "contract_query_adapter.hpp"
 #include "contract_storage_adapter.hpp"
+#include "contract_terms_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
 #include "actor_order_adapter.hpp"
@@ -70,6 +71,7 @@ struct RuntimeDiagnostics {
     AwolRecordsDiagnostics awol_records;
     ContractQueryDiagnostics contract_query;
     ContractStorageDiagnostics contract_storage;
+    ContractTermsDiagnostics contract_terms;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
     ActorOrderDiagnostics actor_order;
@@ -377,5 +379,16 @@ ContractStorageDiagnostics& contract_storage_diagnostics(State& state) {
 const ContractStorageDiagnostics& contract_storage_diagnostics(const State& state) {
     static const ContractStorageDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->contract_storage : empty;
+}
+}
+
+namespace cm::aot {
+ContractTermsDiagnostics& contract_terms_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->contract_terms;
+}
+const ContractTermsDiagnostics& contract_terms_diagnostics(const State& state) {
+    static const ContractTermsDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->contract_terms : empty;
 }
 }

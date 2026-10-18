@@ -72,3 +72,18 @@ def load_contract_terms_tables(directory):
         raise ValueError("Missing original terms table")
     require_contract_terms_tables(read)
     return tuple(read(base,size) for _,base,size,_ in TABLES)
+
+
+def contract_terms_hook(entry):
+    return f'if (try_modern_contract_terms(s, 0x{entry:x})) return true;'
+
+
+def require_contract_terms_hooks(page, instructions, code):
+    addresses = {r['address'] for r in instructions}
+    for entry in CONTRACT_TERMS_ENTRIES:
+        if entry >> 12 != page or entry not in addresses: continue
+        label, hook = f'i_{entry:x}:', contract_terms_hook(entry)
+        fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        steps = [token for token in (f's.step(0x{entry:x});', f'counter.step(0x{entry:x});') if token in fragment]
+        if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+            raise ValueError(f'Missing or misplaced contract-terms hook at {entry:x}')

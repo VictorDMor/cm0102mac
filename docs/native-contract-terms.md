@@ -1,10 +1,10 @@
 # Contract terms, presentation and expiry bands
 
 This complete **21-operation, 1,203-instruction** block is implemented and
-directly compared with the original. It is **prepared, not integrated**. The
-accepted production manifest and installed application retain 762 entries;
-the preceding [contract lookup and creation batch](native-contract-integration.md)
-remains the installed contract milestone.
+directly compared with the original. It is **integrated and installed** in the
+783-entry game, preserving the exact accepted 762-entry prefix. The
+[integration report](native-contract-terms-integration.md) records actual-service,
+focused sanitizer, installation and startup acceptance.
 
 ## Original scope
 
@@ -32,9 +32,9 @@ remains the installed contract milestone.
 | `0x10380700` | `0x10380708` | 2 | Set release amount |
 | `0x10380710` | `0x10380c04` | 317 | Classify expiry band |
 
-All complete bodies and both source pages have pinned fingerprints. The index
-contains 146 incoming root edges, no accepted semantic owner for these roots
-and no external entrance into an interior. Offer construction, negotiation and
+All complete bodies and both source pages have pinned fingerprints. Initial
+characterization found 146 incoming root edges, no existing semantic owner for
+these roots and no external entrance into an interior. Offer construction, negotiation and
 the larger satisfaction/relationship routines remain outside this scope.
 
 ## Terms and eligibility
@@ -105,7 +105,7 @@ the relocated conversion bias. The C++ implementation is still compared with
 its own complete independent original reference; equality is not inferred from
 the earlier sampler's test result.
 
-## Prepared evidence and limits
+## Component evidence and limits
 
 The focused Release CTest passes **5,242 comparisons**: **4,438 complete
 agreements**, **773 matching interruptions or unmapped-memory faults**, and
@@ -132,11 +132,12 @@ narrow samples and reference-date band equality. External services remain
 stateful fixtures, including date, formatting, adjustment and competition
 services. This is not real-world integration evidence.
 
-Eleven Python guards pin the complete bodies, both pages and three original
+Twelve Python guards pin the complete bodies, both pages and three original
 tables totaling 1,122 bytes with their live pointers. They verify sampler and
 numeric-adjustment normalization, reject changed/missing/duplicate/reordered
 bodies and partial pages, reject ownership overlap and external interior edges,
-and require every independent reference label/step with hooks disabled. Named
+require productive hooks before original accounting, and require every
+independent reference label/step with hooks disabled. Named
 operations do not replay the generated bodies. Compilation uses
 `-ffp-contract=off` and treats warnings as errors.
 
@@ -146,8 +147,9 @@ was corrected before the accepted matrix. Earlier incomplete coverage runs are
 diagnostic history, not accepted evidence. Logs, original data and generated
 references remain private under `.local/contract-terms-reconstruction`.
 
-Production adapters, manifest selection, generation, actual-service comparisons,
-focused sanitizer acceptance and installation for these 21 operations remain
-pending the next consolidated integration milestone. Save/Load is **not
+Production adapters, manifest selection, consistent generation, actual-service
+comparisons, focused sanitizer acceptance and installation pass in the combined
+integration milestone. The component services described above remain fixtures;
+actual-service evidence is reported separately. Save/Load is **not
 retested**. Performance is **not benchmarked**. The cumulative Portuguese guide
 is updated for this cycle. The whole-game goal remains active.

@@ -1,10 +1,13 @@
 # Staff contract lookup and creation: integrated delivery
 
 Six complete original operations are integrated under `contract_query_adapter`
-and `contract_storage_adapter`. The consistently generated, built and installed
-ARM64 game contains **762 unique entries**, preserving its exact accepted
+and `contract_storage_adapter`. This consistently generated, built and installed
+ARM64 delivery established **762 unique entries**, preserving its exact accepted
 756-entry prefix. This covers lookup and initial creation; negotiation,
 transfers, expiry and other contract services remain outside this block.
+
+The later [terms integration](native-contract-terms-integration.md) extends the
+installed game to 783 entries, adding a separate complete terms/expiry block.
 
 | Entry | Operation | Instructions |
 | --- | --- | ---: |

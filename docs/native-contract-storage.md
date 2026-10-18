@@ -3,8 +3,9 @@
 All three complete operations in this storage creation block have accepted,
 directly compared C++23 implementations. Their **2,016 indexed instructions**
 cover row reservation, primary staff binding and full initialization. They are
-integrated with the three queries in the **762-entry installed game**, retaining
-the exact prior 756-entry prefix. The [combined integration report](native-contract-integration.md)
+integrated with the three queries at the **762-entry installed milestone**, retaining
+the exact prior 756-entry prefix. The later [terms integration](native-contract-terms-integration.md)
+extends the installed game to 783 entries. The [combined integration report](native-contract-integration.md)
 records real-service runtime, sanitizer, installation and preservation evidence.
 
 ## Original scope

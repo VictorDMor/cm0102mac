@@ -21,7 +21,7 @@ unfinished. There is no public binary release yet.
   legacy Mac OS virtual machine. It retains a checked, big-endian 32-bit data
   address space for the original game's pointers and structures.
 
-The latest accepted production manifest contains **762 reconstructed entry points**.
+The latest accepted production manifest contains **783 reconstructed entry points**.
 This is an integration count, not a percentage of the game recovered. Much of the
 simulation still uses generated code. See the
 [C++23 progress report](docs/native-cpp23-port-progress.md) and
