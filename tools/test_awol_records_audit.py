@@ -20,7 +20,7 @@ class PreparedOwnershipTests(unittest.TestCase):
         from awol_records_audit import AWOL_RECORDS_ENTRIES
         self.assertEqual(len(SEMANTIC_REPLACEMENTS),735)
         self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),735)
-        self.assertEqual(len(AWOL_RECORDS_ENTRIES),16)
+        self.assertEqual(len(AWOL_RECORDS_ENTRIES),19)
         self.assertFalse(set(AWOL_RECORDS_ENTRIES)&{entry for entry,_ in SEMANTIC_REPLACEMENTS})
         require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,*((entry,'awol_adapter') for entry in AWOL_RECORDS_ENTRIES)))
 
@@ -40,8 +40,8 @@ class PreparedBatchTests(unittest.TestCase):
         cls.userops=json.loads((INPUT/'program.json').read_text())['userops']
 
     def test_complete_boundaries_and_discriminating_source_guards(self):
-        self.assertEqual(sum(len(records) for _,_,records in self.groups),4397)
-        self.assertEqual(sum(len(audit.CONTRACTS) for _,audit,_ in self.groups),16)
+        self.assertEqual(sum(len(records) for _,_,records in self.groups),5433)
+        self.assertEqual(sum(len(audit.CONTRACTS) for _,audit,_ in self.groups),19)
         for owner,audit,records in self.groups:
             check=getattr(audit,'require_'+owner+'_bodies')
             check(records,complete=True)
@@ -94,10 +94,27 @@ class PreparedBatchTests(unittest.TestCase):
                     with self.subTest(owner=owner,address=hex(address)),self.assertRaises(ValueError):check(changed.__getitem__)
 
     def test_named_semantics_do_not_replay_original_instructions(self):
-        for name in ('awol_records_lifecycle.cpp','awol_records_load.cpp','awol_records_save.cpp','awol_records_queries.cpp','awol_records_notice.cpp','awol_sampling.cpp','awol_daily.cpp','awol_daily_return.cpp','awol_daily_detail.hpp','awol_registration.cpp','awol_training_notice.cpp','awol_event_random.hpp'):
+        for name in ('awol_records_lifecycle.cpp','awol_records_load.cpp','awol_records_save.cpp','awol_records_queries.cpp','awol_records_notice.cpp','awol_sampling.cpp','awol_daily.cpp','awol_daily_return.cpp','awol_daily_detail.hpp','awol_registration.cpp','awol_training_notice.cpp','awol_event_random.hpp','awol_primary_message.cpp','awol_training_message.cpp','awol_fitness_message.cpp','awol_message_detail.hpp'):
             source=(ROOT/'native'/name).read_text()
             for token in ('_reference(', 'dispatch_page(', 'run_until(', 'pcode', 'i_101'):
                 self.assertNotIn(token,source)
+
+    def test_emitted_fixture_payloads_retain_original_hashes_without_overlap(self):
+        import hashlib
+        import struct
+        for owner,audit,_ in self.groups:
+            generator=importlib.import_module('make_'+owner+'_reference')
+            source=generator.render_fixture_tables(getattr(audit,'load_'+owner+'_tables')(INPUT))
+            cursor=0;slots={};memory={}
+            for line in source.splitlines():
+                if match:=re.fullmatch(r's.memory.write<4>\(toc \+ \((-?\d+)\), base\);',line):slots[int(match[1])]=cursor
+                elif match:=re.fullmatch(r's.memory.write<4>\(base \+ (\d+), 0x([0-9a-f]+)u\);',line):
+                    address=cursor+int(match[1]);self.assertNotIn(address,memory);memory[address]=int(match[2],16)
+                elif match:=re.fullmatch(r'base \+= 0x([0-9a-f]+);',line):cursor+=int(match[1],16)
+            self.assertEqual(slots,{-0x5a08:0,-0x5a0c:0x2000})
+            for offset,(_,_,size,expected) in zip((-0x5a08,-0x5a0c),audit.TABLES):
+                data=b''.join(struct.pack('>I',memory[slots[offset]+n]) for n in range(0,size,4))
+                self.assertEqual(hashlib.sha256(data).hexdigest(),expected)
 
 
 if __name__=='__main__':unittest.main()

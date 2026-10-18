@@ -34,6 +34,15 @@ def render_reference(records, userops):
     return re.sub(r's.step\((0x[0-9a-f]+)\);', r'awol_records_step_seen(s, \1); s.step(\1);', source)
 
 
+def render_fixture_tables(tables):
+    source='\nnamespace cm::aot { void awol_records_fixture_tables(State& s, std::uint32_t toc, std::uint32_t base) {\n'
+    for offset,words in zip((-0x5a08,-0x5a0c),tables):
+        source+=f's.memory.write<4>(toc + ({offset}), base);\n'
+        source+=''.join(f's.memory.write<4>(base + {4*n}, 0x{word:x}u);\n' for n,word in enumerate(words))
+        source+=f'base += 0x{(len(words)*4+0xfff)&~0xfff:x};\n'
+    return source+'} }\n'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path); parser.add_argument('output', type=Path)
@@ -43,13 +52,7 @@ def main():
             'SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address', (start, end))]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     source = render_reference(records, json.loads((args.input / 'program.json').read_text())['userops'])
-    tables=load_awol_records_tables(args.input)
-    source+='\nnamespace cm::aot { void awol_records_fixture_tables(State& s, std::uint32_t toc, std::uint32_t base) {\n'
-    for offset,words in zip((-0x5a08,-0x5a0c),tables):
-        source+=f's.memory.write<4>(toc + ({offset}), base);\n'
-        source+=''.join(f's.memory.write<4>(base + {4*n}, 0x{word:x}u);\n' for n,word in enumerate(words))
-        source+='base += 0x1000;\n'
-    source+='} }\n'
+    source+=render_fixture_tables(load_awol_records_tables(args.input))
     args.output.write_text(source)
     print(f'Emitted {len(records)} original AWOL-records instructions')
 

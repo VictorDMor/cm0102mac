@@ -7,9 +7,9 @@ indexed instructions at `0x100031b0..0x10009ee8`. No indexed external edge enter
 the interior of any operation. Eleven non-indexed padding no-ops are identified.
 The following CASH string helper remains outside this source block.
 
-Sixteen operations now have prepared C++23 implementations and passing direct
-comparisons. They cover 4,397 indexed instructions. **Production integration is
-pending** until the remaining five operations complete the coherent AWOL batch.
+Nineteen operations now have prepared C++23 implementations and passing direct
+comparisons. They cover 5,433 indexed instructions. **Production integration is
+pending** until the remaining two operations complete the coherent AWOL batch.
 The accepted manifest and installed game remain at 735 entries. Every prepared
 entry was checked to have no accepted semantic owner before implementation;
 existing actor/condition implementations remain unchanged.
@@ -34,6 +34,9 @@ existing actor/condition implementations remain unchanged.
 | `0x10004070` | `0x10006074` | 2,044 | Review primary, secondary and pending absence records daily |
 | `0x10006900` | `0x10007100` | 512 | Register a primary absence, physical effects, relationships and notice |
 | `0x10008770` | `0x10008b58` | 250 | Construct and route an eleven-field training-absence notice |
+| `0x100072e0` | `0x10007a4c` | 475 | Describe primary absences in brief and detailed views |
+| `0x10008b60` | `0x1000909c` | 335 | Describe training absences and discipline in both views |
+| `0x10009b60` | `0x10009ee8` | 226 | Describe fitness concerns and related player/club links |
 
 ## Preserved contracts
 
@@ -100,12 +103,27 @@ channels, repeated pointer loads and callback mutations retain their original
 order. Registration and notice helpers preserve every guest access, scratch
 layout, ABI residue and floating status; they do not reinterpret original code.
 
+The three message renderers retain their separate 528/928/7,120-byte frames,
+signed low-byte view selection, full field-query order, name styles, personal
+versus general templates, scratch buffers and optional links. Primary brief
+view still queries field six twice, including live changes between the calls.
+Unsupported primary types retain the existing scratch text. Training reporter
+checks compare exactly against -1, whereas fitness reporter checks use the
+original signed >-1 condition. Club/nation gender bytes, signed IDs/remainders,
+below-frame argument writes, callback mutations and live table reloads remain
+unchanged. No invented ID bounds, null guards or default messages are added.
+
+All 5,916 original AWOL text bytes and their pointer are now pinned. Private
+fixture emission advances by each table's page-rounded size, placing the FP
+block after the complete text without overlap. An independent emitted-payload
+audit reconstructs the initializer's writes and checks both original hashes.
+
 ## Direct evidence
 
 The isolated Release component check, linked against the accepted 735-entry
-libraries, passes **1,116 comparisons**: 623 complete agreements, 461 matching
-interrupted/faulted outcomes and 32 rejected negatives. It observes every one of
-the **4,397 indexed sites**. Sixty-nine comparisons use explicit structural controls;
+libraries, passes **1,581 comparisons**: 854 complete agreements, 689 matching
+interrupted/faulted outcomes and 38 rejected negatives. It observes every one of
+the **5,433 indexed sites**. Sixty-nine comparisons use explicit structural controls;
 these are component evidence, not natural gameplay observations.
 
 The daily-only matrix adds 455 comparisons: 297 complete agreements, 156 matching
@@ -129,6 +147,22 @@ Boundary fixtures include interrupted calls, sampled missing bytes and measured
 budget stops. Live profile/manager mutations, signed metric/selector/ID limits,
 relocated TOC and complete registration-to-notice calls are included.
 
+The three-renderer matrix adds 465 comparisons: 231 complete agreements, 228
+matching interrupted/faulted outcomes and six rejected negatives. It covers
+all 1,036 renderer sites without explicit structural controls. Independent
+expectations check every selected template family, retained unsupported-type
+text, repeated/live field-six reads and the distinct negative-reporter rules.
+Fixtures include personal/general and brief/full views, every selector band,
+missing reporters/context/club, signed ID and gender boundaries, live table
+relocation, output aliases, changed message fields and relocated TOC. Selected
+complete paths also compare measured budget cuts, sampled missing bytes and
+each dependency interruption.
+
+Renderer dependency services are stateful component fixtures. Their name,
+formatting, output and link effects and input/output ABI are compared, but this
+does not claim real language-service/layout acceptance or natural management-UI
+traversal. Those remain part of the complete AWOL actual-runtime milestone.
+
 Comparisons cover full register/temporary/mapped-memory and allocator/import
 state, ordered effects, dependency ABI, source order, instruction accounting and
 archive input/output bytes. Representative budget cuts, four sampled missing
@@ -136,7 +170,7 @@ bytes per selected fixture and selected dependency interruptions remain focused.
 Controlled constructor-to-reader, status-to-removal and recursive-sampling cases
 execute complete original and C++ components through their dependency boundary.
 
-Six source-guard tests pass, including complete boundaries, metadata mutations,
+Seven source-guard tests pass, including complete boundaries, metadata mutations,
 independent reference labels, table/pointer/padding mutations, absence of an
 instruction replay path, and rejection of overlap with already accepted owners.
 An explicit reversed-contract negative verifies that the index scan still
@@ -154,9 +188,8 @@ saves are published.
 
 ## Remaining coherent batch
 
-The remaining five operations contain 2,561 instructions: the record/event
-bodies at `0x10007a50` and `0x100090a0`, and the complete message renderers at
-`0x100072e0`, `0x10008b60` and `0x10009b60`.
+The remaining two operations contain 1,525 instructions: the record/event
+bodies at `0x10007a50` (840 instructions) and `0x100090a0` (685 instructions).
 Complete instruction boundaries and call dependencies are recorded;
 remaining semantic/table characterization, implementation and direct comparisons
 are pending.
