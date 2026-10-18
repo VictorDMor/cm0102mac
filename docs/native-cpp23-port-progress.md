@@ -9,6 +9,13 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The [staff contract queries](native-contract-queries.md) have three prepared
+operations covering all 145 original instructions. Eight source guards and
+2,738 complete-state component comparisons pass. These functions are compiled
+only into their focused check target; production integration and actual-world
+acceptance remain pending for the coherent contract batch. The installed and
+accepted manifest remains at 756 entries.
+
 The complete [AWOL block](native-awol-records.md) adds 21 operations and
 6,958 original instructions after the daily injury controller's accepted
 735-entry prefix. The generated, built and installed manifest contains
