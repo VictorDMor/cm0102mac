@@ -14,6 +14,12 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
+The [automatic proposal builder](native-transfer-synthesis.md) is prepared as a
+complete 3,551-instruction semantic component. Release equivalence passes 7,780
+comparisons with all original sites required, plus ten source/data guards.
+Productive integration and actual-service/installed acceptance are pending;
+the installed application still has **831 reconstructed entries**.
+
 The [combined transfer-offer record and valuation integration](native-transfer-proposal-integration.md)
 extends the exact 815-entry prefix to **831 installed reconstructed entries**.
 Sixteen operations cover record lifecycle, persistence, initialization, value,

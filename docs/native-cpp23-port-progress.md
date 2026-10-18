@@ -9,6 +9,15 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+The [complete automatic proposal builder](native-transfer-synthesis.md) is now a
+prepared semantic component: 3,551 original instructions, 7,780 comparisons,
+complete source-site coverage and ten source/data guards. Its forty explicit
+service dependencies and 46 possible rollover sites retain ordered effects.
+This adds no productive owner: **831 entries remain installed**. Actual-service
+composition, productive integration, focused sanitizer acceptance and installation
+are pending for a consolidated batch. The cumulative Portuguese guide records
+this distinction; the full reconstruction goal remains active.
+
 The [combined transfer-offer record and valuation integration](native-transfer-proposal-integration.md)
 adds sixteen complete operations and 1,994 original instructions after the exact
 accepted 815-entry prefix, reaching **831 installed entries**. Eight component

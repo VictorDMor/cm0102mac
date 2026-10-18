@@ -631,6 +631,23 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME transfer_valuation_component_equivalence COMMAND cm-transfer-valuation-checks)
     set_tests_properties(transfer_valuation_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_TRANSFER_SYNTHESIS_REFERENCE "${CMAKE_BINARY_DIR}/transfer_synthesis_reference.cpp")
+    add_custom_command(OUTPUT "${CM_TRANSFER_SYNTHESIS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_synthesis_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_TRANSFER_SYNTHESIS_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_synthesis_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_synthesis_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-transfer-synthesis-checks transfer_synthesis_checks.cpp transfer_synthesis.cpp
+        transfer_synthesis_preparation.cpp transfer_synthesis_base.cpp transfer_synthesis_terms.cpp
+        transfer_synthesis_distribution.cpp transfer_synthesis_refinement.cpp transfer_synthesis_finalization.cpp
+        "${CM_TRANSFER_SYNTHESIS_REFERENCE}")
+    target_link_libraries(cm-transfer-synthesis-checks PRIVATE cm_aot)
+    target_compile_options(cm-transfer-synthesis-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME transfer_synthesis_component_equivalence COMMAND cm-transfer-synthesis-checks)
+    set_tests_properties(transfer_synthesis_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_AWOL_RECORDS_REFERENCE "${CMAKE_BINARY_DIR}/awol_records_reference.cpp")
     add_custom_command(OUTPUT "${CM_AWOL_RECORDS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_awol_records_reference.py"
