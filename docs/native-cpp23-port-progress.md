@@ -9,71 +9,56 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest installed milestone is **897 unique semantic owners**. The
-[currency configuration and preference lifecycle integration](native-preferences-integration.md)
-retains the exact 884-owner prefix and adds thirteen complete operations:
-the 25-choice currency configuration and the twelve-entry preference lifecycle.
-The prepared bodies and shared call helper remain byte-identical; native-platform
-behavior is unchanged.
+The latest installed milestone is **901 unique semantic owners**. The
+[complete preference-session and screen integration](native-preferences-ui-integration.md)
+retains the exact 897-owner prefix and adds four whole operations: two session
+openings, action dispatch and the complete presentation builder. Together they
+contain 2,933 original instructions. Accepted bodies and the shared semantic-call
+helper remain byte-identical; native-platform behavior is unchanged.
 
-The actual-service matrix passes 241 comparisons: 190 completed executions
-including thirteen deliberate-corruption controls, 38 matching budget stops and
-thirteen required-memory faults. It observes 1,651 selected sites in completed
-productive comparisons, with at least three productive starting returns per root.
-A separate 138-case profiling run remains original. Whole initialize/apply callers
-finish 3 and 28 configuration children, and the linked edit record finishes its
-recursive primary apply. Successful preference writes independently match the
-actual 303-byte eight-field layout. Host clock and opaque handle-number inputs
-are declared; native resources, display/audio and file services remain actual.
+The actual-service matrix passes **60 comparisons**: 44 completed executions
+including four deliberate-corruption controls, twelve matching budget stops and
+four required-context pointer faults. It observes **2,372 selected source sites**
+in complete productive comparisons, with at least three productive starting
+returns per root. A separate 28-return profiling-original matrix passes. Actual
+returning calls finish 150 currency-label, six video-getter, twelve copy, three
+apply and two destruction children, excluding preparation calls. UI, text,
+allocation, layout, device, resource and file services remain actual; host time
+and opaque resource/fork identities are declared controlled inputs.
 
-The two components retain 4,441 comparisons and all 2,278 own source sites in
-complete starting comparisons. Twenty source/data guards and 78 focused manifest
-controls pass. Three focused UBSAN executables match release stdout with no
-sanitizer warnings; 14 units are instrumented and 18 headers pinned. This is not
-whole-game sanitizer or actual-service coverage of every original branch.
+The two components retain **2,768 comparisons** and all **2,933 own source sites**
+in complete starting-root comparisons. Twenty-two source/data/hook guards and
+eighty focused manifest methods pass. Four complete independent reference outputs
+remain byte-identical. Three focused UBSAN executables match Release stdout with
+empty stderr; fifteen units are instrumented and twenty-two headers pinned. This
+is not whole-game sanitizer or actual-service coverage of every original branch.
 
-The strict-signed ARM64 executable has SHA-256
-`7af41b4b2882a5dbc16d679884cb60caa2175cc7242cf3074733c8076bb9e00d`.
-Prepare Game, original quit confirmation and normal exit are verified. All 846
-protected files retain their baseline hashes through installation and the
-controlled exit. Subsequent application activity updated one career save, whose
-current contents are preserved; the other 845 hashes still match. Eighteen
-unrelated prompts and the previous 884-owner app remain preserved.
-PDF updates are paused at the user's request; the last accepted guide
-is edition 39, which predates this milestone. Save/Load is **not retested**;
-performance is **not benchmarked**. The whole-game goal remains active.
+Full generation retains 1,953,334 indexed instructions and 1,922 pages with no
+missing/pending targets. Only three generated source pages change. The installed
+strict-signed ARM64 executable has SHA-256
+`0bef3b58a6880f6f68f8cf85842b8b8d81f5354d605ac93dcedec861fc8a173c`.
+The installed process renders Prepare Game and the original Portuguese options
+screen, returns through Back or Cancel and exits through original confirmation.
+All **846 protected files**, including the current career save, retain baseline
+hashes. Eighteen unrelated prompts, the installed Match Debugger and the prior
+897-owner application are preserved.
 
-The prior [contract display and money-presentation integration](native-money-presentation-integration.md)
-installed 884 owners, adding thirteen operations after the 871-owner prefix.
-[Complete currency configuration](native-money-configuration.md) and
-[preferences](native-preferences.md) retain their individual source/data and
-isolated-model evidence; their combined production acceptance is the current
-897-owner milestone above.
+The [session/action report](native-preferences-actions.md) and
+[presentation report](native-preferences-screen.md) retain their individual
+component contracts and explicit model boundaries. The original Auto Save menu
+uses 7/14/30/90/180/360 payloads; the calendar scheduler remains separate,
+unreconstructed work. PDF updates remain paused at the user's request; the last
+accepted guide is edition 39 and predates this milestone. Save/Load is **not
+retested**; performance is **not benchmarked**. The whole-game goal remains active.
 
-After that installation, [preference-session opening and action controllers](native-preferences-actions.md)
-are prepared as one three-entry component, with 371 original instructions.
-It passes 2,476 comparisons: 2,332 complete returns, 138 matching stops and six
-discriminating negatives. All own sites have complete starting-root coverage;
-ten source/data guards and the focused CTest pass. UI, allocation, preference
-children and panel refresh remain explicit boundary models. Existing preference
-bodies and the shared helper are unchanged. Productive integration is pending;
-the installed owner count remains 897 and these three roots would reach 900.
-The original presentation source establishes the Auto Save menu's
-7/14/30/90/180/360 choices. The calendar scheduler remains separate work.
-
-The [complete preferences presentation builder](native-preferences-screen.md)
-is now also prepared: one whole 2,562-instruction operation in twenty named
-stages and four structured enumeration loops. It passes 292 comparisons:
-248 complete returns, 42 matching stops and two discriminating negatives.
-All 2,562 own sites have complete starting-root coverage; returning parents
-complete 6,200 independent-original-compared currency-label children and 248
-video-getter children. Ten source/data guards and the focused CTest pass.
-UI, formatting and language/device availability remain declared models;
-actual native rendering and productive acceptance remain pending. The three
-session/action roots plus this builder would reach 901 owners after the exact
-897 prefix; the installed count remains 897. Existing accepted bodies and
-the shared helper are unchanged. PDF updates remain paused; the complete-game
-goal remains active.
+The preceding [currency configuration and preference lifecycle integration](native-preferences-integration.md)
+installed 897 owners after the exact 884-owner prefix. Its thirteen operations
+retain 241 actual-service comparisons, 138 original-profile controls, 4,441
+component comparisons and all 2,278 own component sites. Complete initialize/apply
+callers, recursive linked application and the actual 303-byte preference file
+layout were accepted independently. The preceding
+[contract display and money-presentation integration](native-money-presentation-integration.md)
+installed 884 owners. Their reports retain their individual acceptance boundaries.
 
 The records below document preceding installed milestones.
 

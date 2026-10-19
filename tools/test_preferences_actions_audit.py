@@ -1,4 +1,6 @@
-"""Whole preference-session opening/action contracts, without productive hooks."""
+"""Whole preference-session opening/action contracts, with productive hooks."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -12,7 +14,7 @@ from preferences_actions_audit import (
     load_preferences_actions_tables, require_preferences_actions_tables,
     require_preferences_actions_padding, require_preferences_actions_bodies,
     require_preferences_actions_contract, require_preferences_actions_edges,
-    require_preferences_actions_index, fingerprint)
+    require_preferences_actions_index, fingerprint, require_preferences_actions_hooks, preferences_actions_hook)
 from make_preferences_actions_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,18 +22,20 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_897_prefix_and_three_unowned_roots(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 897)
-        manifest = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS]
+    def test_exact_897_prefix_and_four_productive_ui_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 901)
+        manifest = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS[:897]]
         self.assertEqual(hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '0977c8a7fdc1b5f94cc74d9a6e641cc62f466e49d1ae3335a7c85ed81d05a8aa')
-        self.assertFalse(set(PREFERENCES_ACTIONS_ENTRIES) & {e for e, _ in SEMANTIC_REPLACEMENTS})
-        proposed = (*SEMANTIC_REPLACEMENTS, *((e, 'prepared_preferences_actions') for e in PREFERENCES_ACTIONS_ENTRIES))
-        require_unique_semantic_replacements(proposed)
-        self.assertEqual(len(proposed), 900)
-        for entry in PREFERENCES_ACTIONS_ENTRIES:
+        from preferences_actions_audit import PREFERENCES_ACTIONS_ENTRIES
+        from preferences_screen_audit import PREFERENCES_SCREEN_ENTRIES
+        expected = tuple((e, module+'_adapter') for module, entries in (
+            ('preferences_actions', PREFERENCES_ACTIONS_ENTRIES), ('preferences_screen', PREFERENCES_SCREEN_ENTRIES)) for e in entries)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[897:], expected)
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry, _ in expected:
             with self.assertRaises(ValueError):
-                require_unique_semantic_replacements((*proposed, (entry, 'duplicate')))
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS, (entry, 'duplicate')))
 
     def test_whole_session_action_scope_and_interior_edge_rejection(self):
         self.assertEqual(tuple(row[2] for row in CONTRACTS), (41, 66, 264))
@@ -55,7 +59,7 @@ class PreparedScopeTests(unittest.TestCase):
         for token in ('open_with_mode', 'open_from_game_state', 'dispatch_action',
                       'select_action', 'action_is', 'event_value'):
             self.assertIn(token, source)
-        self.assertNotIn('preferences_actions_adapter.cpp', (ROOT / 'native/CMakeLists.txt').read_text())
+        self.assertIn('preferences_actions_adapter.cpp', (ROOT / 'native/CMakeLists.txt').read_text())
 
 
 @unittest.skipUnless((INPUT / 'instructions.sqlite').is_file(), 'Private original source unavailable')
@@ -122,6 +126,19 @@ class OriginalContractTests(unittest.TestCase):
             self.assertEqual(by_address[label_pc], f'addi r4,r30,0x{offset:x}')
             self.assertEqual(by_address[value_pc-4], 'li r3,0x2d')
             self.assertEqual(by_address[value_pc], f'li r0,0x{value:x}')
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['preferences_actions_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_preferences_actions_hooks(page,rows,source)
+            for entry in PREFERENCES_ACTIONS_ENTRIES:
+                if entry>>12!=page:continue
+                hook=preferences_actions_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_preferences_actions_hooks(page,rows,changed)
 
     def test_complete_reference_with_every_productive_hook_disabled(self):
         source = render_reference(self.records, self.userops)

@@ -48,6 +48,8 @@
 #include "money_text_adapter.hpp"
 #include "money_configuration_adapter.hpp"
 #include "preferences_adapter.hpp"
+#include "preferences_actions_adapter.hpp"
+#include "preferences_screen_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -109,6 +111,8 @@ struct RuntimeDiagnostics {
     MoneyTextDiagnostics money_text;
     MoneyConfigurationDiagnostics money_configuration;
     PreferencesDiagnostics preferences;
+    PreferencesActionsDiagnostics preferences_actions;
+    PreferencesScreenDiagnostics preferences_screen;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -592,5 +596,21 @@ PreferencesDiagnostics& preferences_diagnostics(State& state) {
 const PreferencesDiagnostics& preferences_diagnostics(const State& state) {
     static const PreferencesDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->preferences : empty;
+}
+PreferencesActionsDiagnostics& preferences_actions_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->preferences_actions;
+}
+const PreferencesActionsDiagnostics& preferences_actions_diagnostics(const State& state) {
+    static const PreferencesActionsDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->preferences_actions : empty;
+}
+PreferencesScreenDiagnostics& preferences_screen_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->preferences_screen;
+}
+const PreferencesScreenDiagnostics& preferences_screen_diagnostics(const State& state) {
+    static const PreferencesScreenDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->preferences_screen : empty;
 }
 }

@@ -95,3 +95,18 @@ def require_preferences_screen_words(read):
     for address,size,expected in WORDS:
         if hashlib.sha256(read(address,size)).hexdigest()!=expected:
             raise ValueError("Changed original preference initialization")
+
+
+def preferences_screen_hook(entry):
+    return f'if (try_modern_preferences_screen(s, 0x{entry:x})) return true;'
+
+
+def require_preferences_screen_hooks(page, instructions, code):
+    addresses = {r['address'] for r in instructions}
+    for entry in PREFERENCES_SCREEN_ENTRIES:
+        if entry >> 12 != page or entry not in addresses: continue
+        label, hook = f'i_{entry:x}:', preferences_screen_hook(entry)
+        fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        steps = [token for token in (f's.step(0x{entry:x});', f'counter.step(0x{entry:x});') if token in fragment]
+        if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):
+            raise ValueError(f'Missing or misplaced preferences_screen hook at {entry:x}')

@@ -1,6 +1,7 @@
 # Complete preferences presentation builder
 
-Status: **prepared and accepted as an isolated component**. The complete
+Status: **integrated and installed** in the
+[four-root options milestone](native-preferences-ui-integration.md). The complete
 `0x1033d030..0x1033f840` operation reconstructs the original settings screen in
 twenty named stages and four structured enumeration loops. It contains **2,562
 indexed instructions**, across three page fragments of 1,010, 1,024 and 528
@@ -9,10 +10,9 @@ counted as executed source sites. No indexed external edge enters its interior.
 The original screen callback descriptor is retained by the
 [session-opening component](native-preferences-actions.md).
 
-The installed application remains at **897 unique owners**, executable SHA-256
-`7af41b4b2882a5dbc16d679884cb60caa2175cc7242cf3074733c8076bb9e00d`.
-This root and the three prepared session/action roots would reach **901** when
-integrated and accepted through production. That is not an installed result.
+This root and the three session/action roots extend the exact **897-owner**
+prefix to **901 unique installed owners**. The installed executable SHA-256 is
+`0bef3b58a6880f6f68f8cf85842b8b8d81f5354d605ac93dcedec861fc8a173c`.
 The four prepared bodies together contain 2,933 original instructions.
 
 ## Original screen construction
@@ -81,7 +81,7 @@ all discovered productive hooks and guest-context substitutions. The existing
 currency-label and video-getter bodies are also compared with their complete
 independent original references; neither is replaced by a label/getter stub.
 
-## Isolated evidence and remaining integration
+## Isolated component evidence
 
 The component passes **292 comparisons**: **248 complete returns**, **42 matching
 stops** and **two discriminating negatives**. All **2,562 own source sites** occur
@@ -113,8 +113,9 @@ acceptance run. The currency-label and video-getter children are actual semantic
 bodies compared to original references, with their remaining string-service
 boundary declared separately.
 
-Productive hooks, actual-service/whole-caller proof, focused UBSAN and protected
-installation remain for the consolidated four-root milestone. Existing accepted
+The separate [integration report](native-preferences-ui-integration.md) records
+productive hooks, actual-service/whole-caller proof, focused UBSAN and protected
+installation for the consolidated four-root milestone. Existing accepted
 bodies and the shared semantic helper remain unchanged. Save/Load is **not
 retested**; performance is **not benchmarked**. PDF updates remain paused at the
 user's request. The complete-game goal remains active. Original payloads,

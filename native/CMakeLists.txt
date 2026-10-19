@@ -77,6 +77,8 @@ target_sources(cm_aot PRIVATE contract_display.cpp contract_display_adapter.cpp
     money_text.cpp money_text_digits.cpp money_text_grouped.cpp money_text_compact.cpp money_text_adapter.cpp)
 target_sources(cm_aot PRIVATE money_configuration.cpp money_configuration_profiles.cpp money_configuration_adapter.cpp
     preferences_lifecycle.cpp preferences_options.cpp preferences_setters.cpp preferences_apply.cpp preferences_adapter.cpp)
+target_sources(cm_aot PRIVATE preferences_actions_opening.cpp preferences_actions_dispatch.cpp preferences_actions_adapter.cpp
+    preferences_screen.cpp preferences_screen_lists.cpp preferences_screen_options.cpp preferences_screen_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -879,8 +881,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/preferences_actions_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-preferences-actions-checks preferences_actions_checks.cpp
-        preferences_actions_opening.cpp preferences_actions_dispatch.cpp "${CM_PREFERENCES_ACTIONS_REFERENCE}")
+    add_executable(cm-preferences-actions-checks preferences_actions_checks.cpp "${CM_PREFERENCES_ACTIONS_REFERENCE}")
     target_link_libraries(cm-preferences-actions-checks PRIVATE cm_aot)
     target_compile_options(cm-preferences-actions-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME preferences_actions_component_equivalence COMMAND cm-preferences-actions-checks
@@ -896,7 +897,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
     add_executable(cm-preferences-screen-checks preferences_screen_checks.cpp
-        preferences_screen.cpp preferences_screen_lists.cpp preferences_screen_options.cpp
         "${CM_PREFERENCES_SCREEN_REFERENCE}" "${CM_MONEY_TEXT_REFERENCE}" "${CM_PREFERENCES_REFERENCE}")
     target_link_libraries(cm-preferences-screen-checks PRIVATE cm_aot)
     target_compile_options(cm-preferences-screen-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -2422,3 +2422,7 @@ target_compile_options(cm-money-presentation-production-checks PRIVATE -Wall -We
 add_executable(cm-preferences-production-checks preferences_production_checks.cpp)
 target_link_libraries(cm-preferences-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-preferences-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-preferences-ui-production-checks preferences_ui_production_checks.cpp)
+target_link_libraries(cm-preferences-ui-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-preferences-ui-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

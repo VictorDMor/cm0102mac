@@ -1,4 +1,6 @@
-"""Complete preferences presentation builder contracts, without productive hooks."""
+"""Complete preferences presentation builder contracts, with productive hooks."""
+import inspect
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import hashlib
@@ -12,7 +14,7 @@ from preferences_screen_audit import (
     CONTRACTS, FRAGMENTS, PREFERENCES_SCREEN_ENTRIES, TABLES, LANGUAGE_NAMES, WORDS, PADDING,
     load_preferences_screen_tables, require_preferences_screen_tables, require_preferences_screen_words,
     require_preferences_screen_padding, require_preferences_screen_bodies,
-    require_preferences_screen_contract, require_preferences_screen_edges, require_preferences_screen_index)
+    require_preferences_screen_contract, require_preferences_screen_edges, require_preferences_screen_index, require_preferences_screen_hooks, preferences_screen_hook)
 from make_preferences_screen_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,20 +22,20 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_exact_installed_897_prefix_and_four_unowned_prepared_roots(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 897)
-        manifest = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS]
+    def test_exact_897_prefix_and_four_productive_ui_owners(self):
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 901)
+        manifest = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS[:897]]
         self.assertEqual(hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '0977c8a7fdc1b5f94cc74d9a6e641cc62f466e49d1ae3335a7c85ed81d05a8aa')
-        prepared = (*PREFERENCES_ACTIONS_ENTRIES, *PREFERENCES_SCREEN_ENTRIES)
-        self.assertEqual(len(prepared), 4)
-        self.assertFalse(set(prepared) & {entry for entry, _ in SEMANTIC_REPLACEMENTS})
-        proposed = (*SEMANTIC_REPLACEMENTS, *((e, 'prepared_preferences_ui') for e in prepared))
-        require_unique_semantic_replacements(proposed)
-        self.assertEqual(len(proposed), 901)
-        for entry in prepared:
+        from preferences_actions_audit import PREFERENCES_ACTIONS_ENTRIES
+        from preferences_screen_audit import PREFERENCES_SCREEN_ENTRIES
+        expected = tuple((e, module+'_adapter') for module, entries in (
+            ('preferences_actions', PREFERENCES_ACTIONS_ENTRIES), ('preferences_screen', PREFERENCES_SCREEN_ENTRIES)) for e in entries)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[897:], expected)
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry, _ in expected:
             with self.assertRaises(ValueError):
-                require_unique_semantic_replacements((*proposed, (entry, 'duplicate')))
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS, (entry, 'duplicate')))
 
     def test_whole_builder_scope_and_reject_external_interior_entries(self):
         self.assertEqual(tuple(row[2] for row in CONTRACTS), (2562,))
@@ -65,7 +67,7 @@ class PreparedScopeTests(unittest.TestCase):
                      'append_video_rows', 'append_inactive_choice'):
             self.assertIn(name, source)
         self.assertEqual(source.count('while(true)'), 4)
-        self.assertNotIn('preferences_screen_adapter.cpp', (ROOT/'native/CMakeLists.txt').read_text())
+        self.assertIn('preferences_screen_adapter.cpp', (ROOT/'native/CMakeLists.txt').read_text())
 
 
 @unittest.skipUnless((INPUT/'instructions.sqlite').is_file(), 'Private original source unavailable')
@@ -128,6 +130,19 @@ class OriginalContractTests(unittest.TestCase):
                 return bytes(value)
             with self.assertRaises(ValueError):
                 require_preferences_screen_padding(changed)
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['preferences_screen_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_preferences_screen_hooks(page,rows,source)
+            for entry in PREFERENCES_SCREEN_ENTRIES:
+                if entry>>12!=page:continue
+                hook=preferences_screen_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_preferences_screen_hooks(page,rows,changed)
 
     def test_complete_reference_keeps_all_sites_and_disables_every_hook(self):
         source = render_reference(self.records, self.userops)

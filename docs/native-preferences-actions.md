@@ -1,11 +1,12 @@
 # Preference-session opening and action controllers
 
-Status: **prepared and accepted as an isolated component**. Three complete
+Status: **integrated and installed** with the complete presentation builder in
+the [four-root options milestone](native-preferences-ui-integration.md).
+Three complete
 operations cover opening an editable preference session and handling its actions.
-They contain **371 original instructions**. The installed application and
-productive manifest retain **897 owners**, executable SHA-256
-`7af41b4b2882a5dbc16d679884cb60caa2175cc7242cf3074733c8076bb9e00d`.
-Adding these three roots would reach 900; that is not an installed result.
+They contain **371 original instructions**. The combined installed milestone
+extends the exact 897-owner prefix to **901 unique owners**. The component
+evidence below retains its independently characterized boundaries.
 
 | Root | Exclusive end | Instructions | Operation |
 | --- | --- | ---: | --- |
@@ -20,7 +21,7 @@ panel cell and both callback descriptors. The opening callbacks name the full
 presentation builder at `0x1033d030` and action controller at `0x1033f840`.
 
 The separate **2,562-instruction presentation builder** is now
-[reconstructed and accepted as its own isolated component](native-preferences-screen.md).
+[reconstructed and integrated with these roots](native-preferences-screen.md).
 Within this action component its source pin remains contextual evidence for
 the auto-save menu. The adjacent `0x1033fc60` operation opens a
 different screen; it is not an options cleanup routine or part of this block.
@@ -112,8 +113,9 @@ UI selection, allocation, user data, preference children and language-panel
 refresh are **explicit boundary models**. Their record mutations support caller
 ABI/order checks; they are not replacements for the previously accepted
 preference implementations, real native services, real allocation or actual file
-writes. Productive hooks, actual-service/whole-caller proof, focused UBSAN and
-protected installation remain for a consolidated milestone. Existing preference
+writes. The separate [integration report](native-preferences-ui-integration.md)
+records productive hooks, actual-service/whole-caller proof, focused UBSAN and
+protected installation for the four-root milestone. Existing preference
 bodies and the shared semantic helper remain byte-identical.
 
 Save/Load is **not retested**; performance is **not benchmarked**. PDF updates
