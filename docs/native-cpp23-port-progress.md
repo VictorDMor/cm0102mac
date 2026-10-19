@@ -51,6 +51,18 @@ unreconstructed work. PDF updates remain paused at the user's request; the last
 accepted guide is edition 39 and predates this milestone. Save/Load is **not
 retested**; performance is **not benchmarked**. The whole-game goal remains active.
 
+The next [localization lookup component](native-localization-lookup-reconstruction.md)
+is prepared with three complete operations and **441 original instructions**. Its
+isolated CTest passes **614 comparisons**, including 466 complete returns, 142
+matching stops and six discriminating negatives; all 441 own source sites have
+complete starting-root witnesses. Nine source/data/reference guards pass. Its
+string, allocation, search and file dependencies are declared component models.
+No productive owners have been added: installed ownership remains **901**.
+The complete 730-instruction phrase formatter is the next related component,
+before consolidated production integration, actual-service evidence and focused
+UBSAN. Protected files and the current installed executable remain unchanged.
+PDF updates remain paused; Save/Load is not retested and no benchmark is claimed.
+
 The preceding [currency configuration and preference lifecycle integration](native-preferences-integration.md)
 installed 897 owners after the exact 884-owner prefix. Its thirteen operations
 retain 241 actual-service comparisons, 138 original-profile controls, 4,441

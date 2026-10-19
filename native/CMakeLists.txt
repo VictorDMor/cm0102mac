@@ -873,6 +873,22 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/preferences_coverage.txt")
     set_tests_properties(preferences_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_LOCALIZATION_LOOKUP_REFERENCE "${CMAKE_BINARY_DIR}/localization_lookup_reference.cpp")
+    add_custom_command(OUTPUT "${CM_LOCALIZATION_LOOKUP_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_localization_lookup_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_LOCALIZATION_LOOKUP_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_localization_lookup_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/localization_lookup_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-localization-lookup-checks localization_lookup.cpp localization_lookup_checks.cpp
+        "${CM_LOCALIZATION_LOOKUP_REFERENCE}")
+    target_link_libraries(cm-localization-lookup-checks PRIVATE cm_aot)
+    target_compile_options(cm-localization-lookup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME localization_lookup_component_equivalence COMMAND cm-localization-lookup-checks
+        "${CMAKE_BINARY_DIR}/localization_lookup_coverage.txt")
+    set_tests_properties(localization_lookup_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_PREFERENCES_ACTIONS_REFERENCE "${CMAKE_BINARY_DIR}/preferences_actions_reference.cpp")
     add_custom_command(OUTPUT "${CM_PREFERENCES_ACTIONS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_preferences_actions_reference.py"
