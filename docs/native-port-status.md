@@ -14,7 +14,20 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [selection context/mode and score reconstruction](native-match-selection-support-reconstruction.md)
+The [actor encounter response and score reconstruction](native-actor-encounter-reconstruction.md)
+installs **930 semantic owners** after the exact 926-owner prefix. Four complete
+operations contain 1,809 original instructions. The component passes 716 comparisons:
+1,669 sites have ordinary complete coverage; 140 further sites have only explicit
+checkpoint-forced coverage. Seventy-one actual-service comparisons and twelve
+original-profile controls pass, including complete peer/team/score/response
+composition and actual reseeding/sampling. Actual comparisons cover 1,210 own sites.
+Three focused CTests pass 7,124 comparisons; source/manifest guards, composed UBSAN
+and installed opening/options/cancel/exit checks pass. Protected files, prior app
+and installed debugger are preserved. Whole-engine semantic reconstruction and
+complete match-event coverage remain unfinished. Save/Load is **not retested**;
+performance **not benchmarked**; PDF updates remain paused.
+
+The preceding [selection context/mode and score reconstruction](native-match-selection-support-reconstruction.md)
 installs **926 semantic owners** after the exact 923-owner prefix. Three complete
 operations contain 400 original instructions. The component passes 1,636 comparisons;
 48 actual-service comparisons and nine original-profile controls pass. The leaf is

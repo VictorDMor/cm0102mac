@@ -1,5 +1,10 @@
 # Match selection context, modes and score reconstruction
 
+The later [actor encounter block](native-actor-encounter-reconstruction.md) raises
+the installed total to **930 owners**. This component and its independent reference
+remain unchanged and pass the focused integration regression check. The evidence
+and app identity below describe their earlier accepted milestone.
+
 Three complete operations now execute semantic C++23 by default in the installed
 ARM64 game. The manifest contains **926 unique owners**, retaining the exact
 **923-owner prefix**. This block contains **400 original instructions**.

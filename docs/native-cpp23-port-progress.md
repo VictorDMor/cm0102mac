@@ -17,7 +17,25 @@ routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **926 unique semantic owners**. The
+The latest installed milestone is **930 unique semantic owners**. The
+[actor encounter response and score block](native-actor-encounter-reconstruction.md)
+retains the exact 926-owner prefix and adds four complete operations containing
+1,809 original instructions. Its component passes 716 comparisons, including six
+explicit branch-condition fixture completions: 1,669 ordinary sites and 140 further
+checkpoint-only sites. Seventy-one actual-service comparisons and twelve original-profile
+controls pass, with 1,210 actual sites and complete prepared peer/team/score/response
+composition. The actual reseeder and shared sampler also execute. Three roots have
+13,280, 141 and 45 natural calls in 600 advances; team scaling is captured through a
+prepared complete peer and original BL. This does not establish complete match-event
+coverage. Three focused CTests pass 7,124 comparisons; ten source guards, 89 manifest
+methods and composed component/runtime UBSAN pass. Three generated pages change.
+Installed ARM64 SHA-256: `2690424fd32bbf313b41aea906841e64eb46798c2c43936bfd851dd4b655b49f`.
+Opening, original Portuguese options/cancel and normal exit are verified. All 846
+protected files, eighteen private prompts, prior 926-owner app and installed debugger
+are preserved. Save/Load is **not retested**; performance **not benchmarked**; PDF
+updates remain paused at edition 39. The full reconstruction goal remains active.
+
+The preceding installed milestone had **926 unique semantic owners**. The
 [selection context/mode and score block](native-match-selection-support-reconstruction.md)
 retains the exact 923-owner prefix and adds three complete operations containing
 400 original instructions. Its component passes 1,636 comparisons and all 400 own

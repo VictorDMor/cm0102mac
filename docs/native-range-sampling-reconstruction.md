@@ -1,5 +1,10 @@
 # Shared match and general range sampling reconstruction
 
+The later [actor encounter block](native-actor-encounter-reconstruction.md) raises
+the installed total to **930 owners**. This component and its independent reference
+remain unchanged and pass the focused integration regression check. The evidence
+and app identity below describe their earlier accepted milestone.
+
 This report records the accepted 911-owner milestone. The later
 [target/control block](native-match-target-reconstruction.md) raises the installed
 total to 919 and reconstructs `0x101e31a0`; the sampler bodies and their evidence
