@@ -80,6 +80,7 @@ target_sources(cm_aot PRIVATE money_configuration.cpp money_configuration_profil
 target_sources(cm_aot PRIVATE preferences_actions_opening.cpp preferences_actions_dispatch.cpp preferences_actions_adapter.cpp
     preferences_screen.cpp preferences_screen_lists.cpp preferences_screen_options.cpp preferences_screen_adapter.cpp)
 target_sources(cm_aot PRIVATE localization_lookup.cpp localization_lookup_adapter.cpp localization_format.cpp localization_format_adapter.cpp)
+target_sources(cm_aot PRIVATE localization_catalog.cpp localization_catalog_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -915,7 +916,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
             "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
         VERBATIM)
-    add_executable(cm-localization-catalog-checks localization_catalog.cpp localization_catalog_checks.cpp
+    add_executable(cm-localization-catalog-checks localization_catalog_checks.cpp
         "${CM_LOCALIZATION_CATALOG_REFERENCE}")
     target_link_libraries(cm-localization-catalog-checks PRIVATE cm_aot)
     target_compile_options(cm-localization-catalog-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -2480,3 +2481,7 @@ target_compile_options(cm-preferences-ui-production-checks PRIVATE -Wall -Wextra
 add_executable(cm-localization-production-checks localization_production_checks.cpp)
 target_link_libraries(cm-localization-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-localization-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-localization-catalog-production-checks localization_catalog_production_checks.cpp)
+target_link_libraries(cm-localization-catalog-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-localization-catalog-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

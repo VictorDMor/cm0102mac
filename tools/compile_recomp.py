@@ -206,6 +206,8 @@ from localization_lookup_audit import (require_localization_lookup_contract, req
     require_localization_lookup_hooks, localization_lookup_hook, LOCALIZATION_LOOKUP_ENTRIES)
 from localization_format_audit import (require_localization_format_contract, require_localization_format_index,
     require_localization_format_hooks, localization_format_hook, LOCALIZATION_FORMAT_ENTRIES)
+from localization_catalog_audit import (require_localization_catalog_contract, require_localization_catalog_index,
+    require_localization_catalog_hooks, localization_catalog_hook, LOCALIZATION_CATALOG_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -294,7 +296,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "preferences_actions_adapter") for entry in PREFERENCES_ACTIONS_ENTRIES) +
     tuple((entry, "preferences_screen_adapter") for entry in PREFERENCES_SCREEN_ENTRIES) +
     tuple((entry, "localization_lookup_adapter") for entry in LOCALIZATION_LOOKUP_ENTRIES) +
-    tuple((entry, "localization_format_adapter") for entry in LOCALIZATION_FORMAT_ENTRIES))
+    tuple((entry, "localization_format_adapter") for entry in LOCALIZATION_FORMAT_ENTRIES) +
+    tuple((entry, "localization_catalog_adapter") for entry in LOCALIZATION_CATALOG_ENTRIES))
 
 
 def require_unique_semantic_replacements(replacements):
@@ -537,7 +540,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -657,6 +660,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_localization_lookup_contract(page, instructions, selected)
     if localization_format_hooks:
         require_localization_format_contract(page, instructions, selected)
+    if localization_catalog_hooks:
+        require_localization_catalog_contract(page, instructions, selected)
     if team_spatial_hooks:
         require_team_spatial_contract(page, instructions, selected)
     if pitch_distance_hooks:
@@ -812,6 +817,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "localization_lookup_adapter.hpp"')
     if localization_format_hooks and page_addresses & set(LOCALIZATION_FORMAT_ENTRIES):
         code.insert(1, '#include "localization_format_adapter.hpp"')
+    if localization_catalog_hooks and page_addresses & set(LOCALIZATION_CATALOG_ENTRIES):
+        code.insert(1, '#include "localization_catalog_adapter.hpp"')
     if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
         code.insert(1, '#include "team_spatial_adapter.hpp"')
     if pitch_distance_hooks and page_addresses & set(PITCH_DISTANCE_ENTRIES):
@@ -1066,6 +1073,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(localization_lookup_hook(a))
         if localization_format_hooks and a in LOCALIZATION_FORMAT_ENTRIES:
             code.append(localization_format_hook(a))
+        if localization_catalog_hooks and a in LOCALIZATION_CATALOG_ENTRIES:
+            code.append(localization_catalog_hook(a))
         if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
             code.append(team_spatial_hook(a))
         if pitch_distance_hooks and a in PITCH_DISTANCE_ENTRIES:
@@ -1358,6 +1367,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_localization_lookup_hooks(page, instructions, result)
     if localization_format_hooks:
         require_localization_format_hooks(page, instructions, result)
+    if localization_catalog_hooks:
+        require_localization_catalog_hooks(page, instructions, result)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
@@ -1500,6 +1511,7 @@ def main():
         require_preferences_screen_index(db, None if args.all_analyzed else selected)
         require_localization_lookup_index(db, None if args.all_analyzed else selected)
         require_localization_format_index(db, None if args.all_analyzed else selected)
+        require_localization_catalog_index(db, None if args.all_analyzed else selected)
         require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)
@@ -1580,6 +1592,8 @@ def main():
             load_localization_lookup_tables(args.export)
             from localization_format_audit import load_localization_format_tables
             load_localization_format_tables(args.export)
+            from localization_catalog_audit import load_localization_catalog_tables
+            load_localization_catalog_tables(args.export)
             from player_movement_audit import load_player_movement_tables
             load_player_movement_tables(args.export)
             from ball_action_audit import load_ball_action_tables

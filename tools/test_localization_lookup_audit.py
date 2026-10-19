@@ -29,7 +29,7 @@ class PreparedScopeTests(unittest.TestCase):
         self.assertEqual(len(PADDING), 3)
         self.assertEqual(len(TABLES), 7)
         self.assertEqual(len(WORDS), 6)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 905)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 909)
         prefix = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS[:901]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
                          'ad5345c3598b6b7d56d4ccba2e74d516c274d8c25a08a2affa059c24ad7728db')
@@ -37,7 +37,7 @@ class PreparedScopeTests(unittest.TestCase):
         from localization_format_audit import LOCALIZATION_FORMAT_ENTRIES
         expected = tuple((e, module+'_adapter') for module, entries in (
             ('localization_lookup',LOCALIZATION_LOOKUP_ENTRIES),('localization_format',LOCALIZATION_FORMAT_ENTRIES)) for e in entries)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[901:], expected)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[901:905], expected)
         require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         for entry, _ in expected:
             with self.assertRaises(ValueError):

@@ -52,6 +52,7 @@
 #include "preferences_screen_adapter.hpp"
 #include "localization_lookup_adapter.hpp"
 #include "localization_format_adapter.hpp"
+#include "localization_catalog_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -117,6 +118,7 @@ struct RuntimeDiagnostics {
     PreferencesScreenDiagnostics preferences_screen;
     LocalizationLookupDiagnostics localization_lookup;
     LocalizationFormatDiagnostics localization_format;
+    LocalizationCatalogDiagnostics localization_catalog;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -632,5 +634,13 @@ LocalizationFormatDiagnostics& localization_format_diagnostics(State& state) {
 const LocalizationFormatDiagnostics& localization_format_diagnostics(const State& state) {
     static const LocalizationFormatDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->localization_format : empty;
+}
+LocalizationCatalogDiagnostics& localization_catalog_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->localization_catalog;
+}
+const LocalizationCatalogDiagnostics& localization_catalog_diagnostics(const State& state) {
+    static const LocalizationCatalogDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->localization_catalog : empty;
 }
 }

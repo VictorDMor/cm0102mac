@@ -20,12 +20,12 @@ INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_accepted_prefix_and_seven_candidate_owners(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),905)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),909)
         prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:832]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'6f8529d62a92287d805616952ddcf5af6b888c861f45fae25b0a8e8aa2ca580c')
         self.assertEqual(SEMANTIC_REPLACEMENTS[832:839],tuple((entry,'club_shortlist_storage_adapter') for entry in CLUB_SHORTLIST_STORAGE_ENTRIES))
         candidate=SEMANTIC_REPLACEMENTS
-        self.assertEqual(len(candidate),905);require_unique_semantic_replacements(candidate)
+        self.assertEqual(len(candidate),909);require_unique_semantic_replacements(candidate)
         for entry in CLUB_SHORTLIST_STORAGE_ENTRIES:
             with self.assertRaises(ValueError):require_unique_semantic_replacements((*candidate,(entry,'duplicate')))
 

@@ -1,5 +1,7 @@
-"""Complete localization catalog contracts and isolated component ownership boundaries."""
+"""Complete localization catalog contracts and productive ownership boundaries."""
+import inspect
 import hashlib
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import json
@@ -12,7 +14,7 @@ from localization_catalog_audit import (
     fingerprint, load_localization_catalog_tables, require_localization_catalog_bodies,
     require_localization_catalog_contract, require_localization_catalog_edges,
     require_localization_catalog_index, require_localization_catalog_padding,
-    require_localization_catalog_tables, require_localization_catalog_words,
+    require_localization_catalog_tables, require_localization_catalog_words, require_localization_catalog_hooks, localization_catalog_hook,
 )
 from make_localization_catalog_reference import render_reference
 
@@ -21,16 +23,20 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_complete_scope_and_unmodified905_production_prefix(self):
+    def test_complete_scope_and_exact905_prefix_with_four_owners(self):
         self.assertEqual(tuple(row[2] for row in CONTRACTS), (17,34,58,625))
         self.assertEqual(sum(row[2] for row in FRAGMENTS), 734)
         self.assertEqual(len(PADDING), 10)
         self.assertEqual(len(TABLES), 11)
         self.assertEqual(len(WORDS), 7)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 905)
-        prefix = [{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS]
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 909)
+        prefix = [{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:905]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(), 'a38fb0f0a0c3dc15205ff9131bd725dec1500c95fc53ef4699e8ca037103d4e9')
-        self.assertFalse(set(LOCALIZATION_CATALOG_ENTRIES) & {e for e,_ in SEMANTIC_REPLACEMENTS})
+        expected=tuple((e,'localization_catalog_adapter') for e in LOCALIZATION_CATALOG_ENTRIES)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[905:],expected)
+        for entry,_ in expected:
+            with self.assertRaises(ValueError):
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'duplicate')))
         require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         self.assertNotIn(0x10727890, LOCALIZATION_CATALOG_ENTRIES)
         self.assertNotIn(0x10728ac0, LOCALIZATION_CATALOG_ENTRIES)
@@ -44,7 +50,7 @@ class PreparedScopeTests(unittest.TestCase):
                       'pcode', 'while(s.pc', 'memory.clear', 'memset'):
             self.assertNotIn(token, source)
         cmake = (ROOT / 'native/CMakeLists.txt').read_text()
-        self.assertIn('add_executable(cm-localization-catalog-checks localization_catalog.cpp localization_catalog_checks.cpp', cmake)
+        self.assertIn('add_executable(cm-localization-catalog-checks localization_catalog_checks.cpp', cmake)
 
     def test_external_interior_entrances_fail_closed(self):
         for start, end, *_ in CONTRACTS:
@@ -101,6 +107,19 @@ class OriginalContractTests(unittest.TestCase):
             for byte in range(size):
                 with self.assertRaises(ValueError):
                     require_localization_catalog_words(self.mutated(address+byte))
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['localization_catalog_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_localization_catalog_hooks(page,rows,source)
+            for entry in LOCALIZATION_CATALOG_ENTRIES:
+                if entry>>12!=page:continue
+                hook=localization_catalog_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_localization_catalog_hooks(page,rows,changed)
 
     def test_independent_reference_has_all_734_sites_and_no_productive_hooks(self):
         source = render_reference(self.records, self.userops)

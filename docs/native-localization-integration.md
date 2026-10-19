@@ -1,5 +1,9 @@
 # Localization lookup and phrase-formatting production integration
 
+This report retains the accepted 905-owner milestone. The subsequent
+[catalog lifecycle integration](native-localization-catalog-integration.md) installs
+909 owners while preserving these raw operations and their original references.
+
 Four complete semantic C++23 operations now run by default in the ARM64 game:
 record initialization, current-language reading, cached/file catalog lookup and
 whole localized phrase formatting. They extend the exact **901-owner prefix to

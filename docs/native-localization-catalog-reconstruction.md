@@ -1,11 +1,11 @@
 # Localization catalog lifecycle and initialization reconstruction
 
-Four complete original operations now have isolated semantic C++23 component
-implementations, covering **734 original instructions**. The component matrix and
-focused sanitizer pass. These operations are **not yet productive owners**: the
-installed application retains its accepted **905-owner** manifest and executable.
-Actual-service integration and installed acceptance remain required before this
-block can be described as delivered in the application. The full goal stays active.
+Four complete original operations have semantic C++23 implementations covering
+**734 original instructions**. The isolated component was accepted independently
+and is now productive in the [909-owner milestone](native-localization-catalog-integration.md).
+The contracts and historical component evidence below retain their model boundaries;
+actual-service, composed sanitizer and installed evidence are recorded separately.
+The full goal stays active.
 
 ## Original contracts
 
@@ -114,22 +114,22 @@ dependency controls, not claims that these branches naturally occur in a game.
 The component's sort model checks its ABI; it does not prove the original sorting
 child's behavior or productive callback execution.
 
-Nine focused source/data/reference guards pass without skips. A focused UBSAN
+At component acceptance, nine focused source/data/reference guards passed without skips. A focused UBSAN
 build instruments the component, harness and independent reference, with eleven
 pinned headers. Its complete matrix matches Release output and coverage and has
 empty stderr. This is component sanitizer evidence, not whole-game or actual-service
 sanitizer coverage.
 
-## Remaining integration and preserved state
+## Component history and current integration
 
-Productive adapters, destination hooks, per-entry runtime counters, actual native
-services and installed UI acceptance are pending for all four new roots. The
-existing [localization lookup and formatter milestone](native-localization-integration.md)
-remains installed at 905 owners. Its executable SHA-256 is
-`8cf3dcb465b2e6cbf6508688da1fa9813423aa3376b1770e3a8cfed76929c553`.
-The exact production manifest, twelve accepted dependency sources, all 846 protected
-files and eighteen unrelated private prompts retain their baseline hashes.
+At standalone component acceptance, production remained at 905 owners with executable
+SHA-256 `8cf3dcb465b2e6cbf6508688da1fa9813423aa3376b1770e3a8cfed76929c553`.
+The exact manifest, twelve accepted dependency sources, 846 protected files and
+eighteen unrelated private prompts retained their baseline hashes.
 
-Catalog sorting/comparators, native allocator/stream policy and the large
-substitution engine retain their separate ownership. Save/Load is **not retested**;
-performance is **not benchmarked**. PDF updates remain paused at edition 39.
+All four roots now share [909-owner integration](native-localization-catalog-integration.md),
+with raw bodies, reference and helper unchanged. The joint report records actual
+services/callbacks, composed sanitizer scope, installed identity and visual acceptance.
+Sorting/comparators and the large substitution child retain separate ownership.
+Save/Load is **not retested**; performance **not benchmarked**. PDF updates remain
+paused at edition 39. The whole-game goal remains active.

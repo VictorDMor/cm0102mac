@@ -7,19 +7,33 @@ engine. Most of that engine still consists of generated routines rather than
 named semantic C++23 operations. The native application and a completely
 reconstructed engine are separate claims.
 
+The match simulation already executes as statically recompiled C++23, including
+complete-match validation recorded in the [ball-action report](native-ball-action-reconstruction.md).
+Its semantic reconstruction is still incomplete: the reconstructed match loop
+calls generated helper `0x101e31a0`, and actor attributes call generated helper
+`0x10226520`. Running a complete match does not establish that every simulation
+routine has a semantic replacement.
+
 ## Current evidence
 
-Four complete [catalog lifecycle operations](native-localization-catalog-reconstruction.md)
-are now accepted as isolated semantic components: catalog release, record destruction,
-language availability and whole initialization. Their **734 original instructions**
-pass **617 paired comparisons**, with all own sites exercised in complete starting-root
-runs, eight discriminating negatives and nine source/data/reference guards. Focused
-component UBSAN matches Release with three instrumented units and eleven pinned
-headers. Productive adapters, actual native-service acceptance and installed evidence
-are still pending for this block; the installed manifest and executable remain at
-**905 owners**. Sorting and the large substitution child retain separate ownership.
+The latest installed milestone is **909 unique semantic owners**. The
+[catalog lifecycle integration](native-localization-catalog-integration.md) preserves
+the exact 905-owner prefix and adds four complete 734-instruction operations.
+Raw bodies, all three localization references, shared helper and platform behavior
+remain unchanged. Fifty-four actual-service comparisons, 21 original-profile controls,
+three component CTests, thirty source/data/hook guards and 84 manifest methods pass.
+The actual matrix observes 521 own sites and returning constructor/destructor/sort
+children; the three components retain 1,754 comparisons and all 1,905 own sites.
+Composed component/runtime UBSAN matches Release with eight instrumented units and
+21 pinned headers. Full generation changes one page and retains no missing/pending
+targets. Installed ARM64 SHA-256: `76ddfe835a7d599586c2176c3d378d223479c3fb5dcf6a55ca598ebb11378224`.
+Prepare Game, original Portuguese options/cancel and normal exit are verified.
+All 846 protected files, eighteen private prompts, the prior 905-owner app and the
+independently pinned installed debugger are preserved. Save/Load is **not retested**;
+performance **not benchmarked**; PDF updates remain paused at edition 39.
+The full goal stays active.
 
-The latest installed milestone is **905 unique semantic owners**. The
+The preceding installed milestone had **905 unique semantic owners**. The
 [localization integration](native-localization-integration.md) preserves the exact
 901-owner prefix and adds four whole operations: record initialization,
 current-language reading, cached/file lookup and complete phrase formatting.
@@ -55,7 +69,7 @@ are preserved. The installed Match Debugger is outside this installation scope.
 
 The [lookup report](native-localization-lookup-reconstruction.md) and
 [formatter report](native-localization-format-reconstruction.md) retain their
-component contracts and model boundaries. Catalog lifecycle/sorting and the
+component contracts and model boundaries. Catalog lifecycle is subsequently integrated above; sorting and the
 large substitution child retain separate ownership. PDF updates remain paused;
 the last accepted guide is edition 39 and predates this milestone. Save/Load is
 **not retested**; performance is **not benchmarked**. The whole-game goal remains active.

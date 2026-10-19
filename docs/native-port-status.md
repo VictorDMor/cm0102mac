@@ -1,4 +1,4 @@
-# Native port investigation — updated 2026-10-18
+# Native port investigation — updated 2026-10-19
 
 ## Required outcome
 
@@ -14,7 +14,16 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [automatic proposal builder integration](native-transfer-synthesis-integration.md)
+The [catalog lifecycle integration](native-localization-catalog-integration.md) now
+installs **909 semantic owners**, preserving the exact 905-owner prefix. Four complete
+operations cover 734 original instructions. Fifty-four actual-service comparisons,
+21 original-profile controls, composed UBSAN and installed visual acceptance pass.
+Protected data and the installed debugger are preserved. Static generation of the
+analyzed code is complete; semantic reconstruction and whole-game validation remain
+unfinished. See the [progress ledger](native-cpp23-port-progress.md) for current scope.
+Save/Load is **not retested**; performance **not benchmarked**; PDF updates remain paused.
+
+An earlier [automatic proposal builder integration](native-transfer-synthesis-integration.md)
 extends the exact 831-entry prefix to **832 installed reconstructed entries**.
 Its complete 3,551-instruction boundary retains 7,780 component comparisons.
 Three component CTests pass 21,489 comparisons; Release and focused UBSAN each
@@ -85,7 +94,7 @@ this is not evidence of a large speedup. Save/Load was not retested.
 
 The preceding [ball-action coordinator](native-ball-action-reconstruction.md)
 remains integrated: its 8,142 instructions have independent component and complete
-match acceptance. The rest of the engine and full native port remain unfinished.
+match acceptance. The remaining semantic reconstruction and full native port remain unfinished.
 
 ## Original Mac media: observed facts
 

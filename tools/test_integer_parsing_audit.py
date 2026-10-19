@@ -20,8 +20,8 @@ class IntegerParsingManifestTests(unittest.TestCase):
         self.assertEqual(INTEGER_PARSING_ENTRIES,(0x1077ee20,0x1077f180,0x1077f570,0x1077f670,0x1077f6a0))
         self.assertEqual(INSTRUCTION_COUNTS,(215,249,61,10,10))
         self.assertEqual(sum(INSTRUCTION_COUNTS),545)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),905)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),905)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),909)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),909)
         self.assertEqual(SEMANTIC_REPLACEMENTS[66:71],tuple((e,'integer_parsing_adapter') for e in INTEGER_PARSING_ENTRIES))
         prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:66]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
