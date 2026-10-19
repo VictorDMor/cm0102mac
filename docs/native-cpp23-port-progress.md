@@ -9,61 +9,51 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
-The latest installed milestone is **901 unique semantic owners**. The
-[complete preference-session and screen integration](native-preferences-ui-integration.md)
-retains the exact 897-owner prefix and adds four whole operations: two session
-openings, action dispatch and the complete presentation builder. Together they
-contain 2,933 original instructions. Accepted bodies and the shared semantic-call
-helper remain byte-identical; native-platform behavior is unchanged.
+The latest installed milestone is **905 unique semantic owners**. The
+[localization integration](native-localization-integration.md) preserves the exact
+901-owner prefix and adds four whole operations: record initialization,
+current-language reading, cached/file lookup and complete phrase formatting.
+Together they contain **1,171 original instructions**. Accepted raw bodies,
+independent references and the common semantic-call helper remain byte-identical;
+native-platform behavior is unchanged.
 
-The actual-service matrix passes **60 comparisons**: 44 completed executions
-including four deliberate-corruption controls, twelve matching budget stops and
-four required-context pointer faults. It observes **2,372 selected source sites**
-in complete productive comparisons, with at least three productive starting
-returns per root. A separate 28-return profiling-original matrix passes. Actual
-returning calls finish 150 currency-label, six video-getter, twelve copy, three
-apply and two destruction children, excluding preparation calls. UI, text,
-allocation, layout, device, resource and file services remain actual; host time
-and opaque resource/fork identities are declared controlled inputs.
+The actual-service matrix passes **49 paired comparisons**: 34 completions
+including five deliberate-corruption controls, eleven matching budget stops and
+four required-pointer faults. It observes **721 own source sites** in complete
+productive comparisons, with at least three productive returns per root. A separate
+17-return profiling-original matrix passes. Productive completions finish three
+lookup, five formatted-output and one substitution child, excluding preparation.
+The original initializer loads the real 9,807-row, ten-language catalog before
+observation; cache and file paths use actual strings, allocation and native forks.
+This is not actual-service coverage of every original branch or language.
 
-The two components retain **2,768 comparisons** and all **2,933 own source sites**
-in complete starting-root comparisons. Twenty-two source/data/hook guards and
-eighty focused manifest methods pass. Four complete independent reference outputs
-remain byte-identical. Three focused UBSAN executables match Release stdout with
-empty stderr; fifteen units are instrumented and twenty-two headers pinned. This
-is not whole-game sanitizer or actual-service coverage of every original branch.
+The two components retain **1,137 comparisons** and all **1,171 own source sites**
+in complete starting-root comparisons. Twenty source/data/hook guards and 82
+focused historical manifest methods pass. Both independent original reference
+outputs remain byte-identical. Three focused UBSAN runs match Release stdout with
+empty stderr; twelve units are instrumented and eighteen headers pinned. This
+is not whole-game sanitizer coverage.
 
 Full generation retains 1,953,334 indexed instructions and 1,922 pages with no
-missing/pending targets. Only three generated source pages change. The installed
+missing/pending targets. Only two generated pages change. The installed
 strict-signed ARM64 executable has SHA-256
-`0bef3b58a6880f6f68f8cf85842b8b8d81f5354d605ac93dcedec861fc8a173c`.
-The installed process renders Prepare Game and the original Portuguese options
-screen, returns through Back or Cancel and exits through original confirmation.
-All **846 protected files**, including the current career save, retain baseline
-hashes. Eighteen unrelated prompts, the installed Match Debugger and the prior
-897-owner application are preserved.
+`8cf3dcb465b2e6cbf6508688da1fa9813423aa3376b1770e3a8cfed76929c553`.
+Prepare Game and the original Portuguese options screen render, Back or Cancel
+returns to Prepare Game, and original confirmation exits normally. All **846
+protected files**, eighteen unrelated prompts and the prior 901-owner application
+are preserved. The installed Match Debugger is outside this installation scope.
 
-The [session/action report](native-preferences-actions.md) and
-[presentation report](native-preferences-screen.md) retain their individual
-component contracts and explicit model boundaries. The original Auto Save menu
-uses 7/14/30/90/180/360 payloads; the calendar scheduler remains separate,
-unreconstructed work. PDF updates remain paused at the user's request; the last
-accepted guide is edition 39 and predates this milestone. Save/Load is **not
-retested**; performance is **not benchmarked**. The whole-game goal remains active.
+The [lookup report](native-localization-lookup-reconstruction.md) and
+[formatter report](native-localization-format-reconstruction.md) retain their
+component contracts and model boundaries. Catalog lifecycle/sorting and the
+large substitution child retain separate ownership. PDF updates remain paused;
+the last accepted guide is edition 39 and predates this milestone. Save/Load is
+**not retested**; performance is **not benchmarked**. The whole-game goal remains active.
 
-The [localization lookup](native-localization-lookup-reconstruction.md) and
-[whole phrase formatter](native-localization-format-reconstruction.md) are now
-prepared as **four complete operations / 1,171 original instructions**. Their
-two isolated CTests pass **1,137 comparisons**, including 886 complete returns,
-242 matching stops and nine discriminating negatives. All 1,171 own sites have
-complete starting-root witnesses. The formatter adds 523 comparisons and nine
-source/data/reference guards; the lookup retains its accepted 614 comparisons.
-Lookup, formatting, substitution, string, allocation and file dependencies are
-declared component models. Productive composition and actual-service coverage
-remain pending. Installed ownership remains **901**. Joint localization
-integration, focused UBSAN and one protected installation are the next milestone.
-Protected files and the installed executable remain unchanged. PDF updates are
-paused; Save/Load is not retested and no benchmark is claimed.
+The preceding [preference-session and screen integration](native-preferences-ui-integration.md)
+installed 901 owners after the exact 897-owner prefix, with four complete operations,
+2,933 source instructions, 60 actual-service comparisons and three focused UBSAN
+runs. Its report retains the detailed installed and preservation acceptance.
 
 The preceding [currency configuration and preference lifecycle integration](native-preferences-integration.md)
 installed 897 owners after the exact 884-owner prefix. Its thirteen operations

@@ -3,9 +3,11 @@
 Three complete original operations have semantic C++23 component implementations:
 record initialization, current-language lookup and translation-record lookup through
 both the in-memory catalog and the disk file. They cover **441 original instructions**.
-The component is accepted independently; it is **not yet a productive owner**.
-The exact 901-entry production manifest and installed application remain unchanged.
-The complete-game reconstruction goal remains active.
+The component was accepted independently and is now integrated by default in the
+[905-owner localization milestone](native-localization-integration.md). The report
+below retains its original component contracts and distinguishes that model-based
+matrix from the subsequent actual-service and installed evidence. The full-game
+reconstruction goal remains active.
 
 ## Complete source and data contracts
 
@@ -100,25 +102,22 @@ occurs in an ordinary game session.
 Nine focused source/data/reference guards pass without skips. String, allocation,
 comparator search, file and error-reporting children use explicit component models.
 They do not establish actual native-service or productive child coverage. Productive
-hooks, actual-service composition, focused UBSAN and installation are deferred to the
-consolidated localization integration milestone.
+hooks, actual-service composition, focused UBSAN and installation are now accepted
+in the [joint localization report](native-localization-integration.md).
 
-## Preservation and continuation
+## Component history and current integration
 
-All **846 protected files**, eighteen unrelated private prompts and 25 accepted
-preference/shared-helper sources retain their baseline hashes. The production
-901-owner manifest remains byte-identical, with canonical array SHA-256
-`ad5345c3598b6b7d56d4ccba2e74d516c274d8c25a08a2affa059c24ad7728db`.
-The installed ARM64 executable remains
+At standalone component acceptance, all **846 protected files**, eighteen unrelated
+private prompts and the accepted dependency sources retained their baseline hashes.
+Production then contained 901 owners, with installed ARM64 executable SHA-256
 `0bef3b58a6880f6f68f8cf85842b8b8d81f5354d605ac93dcedec861fc8a173c`.
 
-The adjacent [whole phrase formatter](native-localization-format-reconstruction.md)
-at `0x10727890..0x107283f8` is now accepted as a separate 730-instruction component.
-The four prepared localization operations can share the next productive integration,
-actual-service composition, focused UBSAN and protected installation. The formatter
-calls the much larger substitution engine at `0x10728ac0`; catalog initialization,
-sorting, that child and native platform services retain separate ownership.
+The lookup and whole formatter now share
+[905-owner productive integration](native-localization-integration.md), preserving
+the exact previous prefix, raw bodies, independent references and shared helper.
+Current actual-service evidence, sanitizer scope, installed identity and visual
+acceptance are recorded in that joint report. Catalog lifecycle/sorting and the
+large substitution child retain their existing separate ownership.
 
 Save/Load is **not retested**; performance is **not benchmarked**. PDF updates remain
-paused at the user's explicit request. No production installation or UI smoke is
-claimed for this component, and the whole-game goal is not complete.
+paused. Whole-game completion is not established.

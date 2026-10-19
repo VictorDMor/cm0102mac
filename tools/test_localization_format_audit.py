@@ -1,17 +1,20 @@
-"""Complete phrase formatting contracts and prepared-component boundaries."""
+"""Complete phrase formatting contracts and productive ownership boundaries."""
+import inspect
+import hashlib
+from compile_recomp import generate_page
 from contextlib import closing
 from copy import deepcopy
 import json
 from pathlib import Path
 import sqlite3
 import unittest
-from compile_recomp import SEMANTIC_REPLACEMENTS
+from compile_recomp import SEMANTIC_REPLACEMENTS, require_unique_semantic_replacements
 from localization_format_audit import (
     CONTRACTS, FRAGMENTS, LOCALIZATION_FORMAT_ENTRIES, TABLES, PADDING, WORDS,
     fingerprint, load_localization_format_tables, require_localization_format_bodies,
     require_localization_format_contract, require_localization_format_edges,
     require_localization_format_index, require_localization_format_padding,
-    require_localization_format_tables, require_localization_format_words,
+    require_localization_format_tables, require_localization_format_words, require_localization_format_hooks, localization_format_hook,
 )
 from make_localization_format_reference import render_reference
 
@@ -20,14 +23,25 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 
 class PreparedScopeTests(unittest.TestCase):
-    def test_complete_scope_without_productive_ownership(self):
+    def test_complete_scope_and_exact901_prefix_with_four_owners(self):
         self.assertEqual(tuple(row[2] for row in CONTRACTS), (730,))
         self.assertEqual(sum(row[2] for row in FRAGMENTS), 730)
         self.assertEqual(len(PADDING), 2)
         self.assertEqual(len(TABLES), 5)
         self.assertEqual(len(WORDS), 2)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 901)
-        self.assertFalse(set(LOCALIZATION_FORMAT_ENTRIES) & {entry for entry, _ in SEMANTIC_REPLACEMENTS})
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 905)
+        prefix = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS[:901]]
+        self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                         'ad5345c3598b6b7d56d4ccba2e74d516c274d8c25a08a2affa059c24ad7728db')
+        from localization_lookup_audit import LOCALIZATION_LOOKUP_ENTRIES
+        from localization_format_audit import LOCALIZATION_FORMAT_ENTRIES
+        expected = tuple((e, module+'_adapter') for module, entries in (
+            ('localization_lookup',LOCALIZATION_LOOKUP_ENTRIES),('localization_format',LOCALIZATION_FORMAT_ENTRIES)) for e in entries)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[901:], expected)
+        require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        for entry, _ in expected:
+            with self.assertRaises(ValueError):
+                require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'duplicate')))
         self.assertNotIn(0x10728400, LOCALIZATION_FORMAT_ENTRIES)
         self.assertNotIn(0x10728ac0, LOCALIZATION_FORMAT_ENTRIES)
 
@@ -40,8 +54,8 @@ class PreparedScopeTests(unittest.TestCase):
                       'pcode', 'while(s.pc', 'memory.clear', 'memset'):
             self.assertNotIn(token, source)
         cmake = (ROOT / 'native/CMakeLists.txt').read_text()
-        self.assertIn('add_executable(cm-localization-format-checks localization_format.cpp', cmake)
-        self.assertNotIn('target_sources(cm_aot PRIVATE localization_format', cmake)
+        self.assertIn('add_executable(cm-localization-format-checks localization_format_checks.cpp', cmake)
+        self.assertIn('localization_format_adapter.cpp', cmake)
 
     def test_external_interior_entrances_fail_closed(self):
         for start, end, *_ in CONTRACTS:
@@ -98,6 +112,19 @@ class OriginalContractTests(unittest.TestCase):
             for byte in range(size):
                 with self.assertRaises(ValueError):
                     require_localization_format_words(self.mutated(address+byte))
+
+    def test_productive_hooks_precede_original_accounting(self):
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled['localization_format_hooks']=True
+        for page in sorted({f[1] for f in FRAGMENTS}):
+            rows=[r for r in self.records if r['address']>>12==page]
+            source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+            require_localization_format_hooks(page,rows,source)
+            for entry in LOCALIZATION_FORMAT_ENTRIES:
+                if entry>>12!=page:continue
+                hook=localization_format_hook(entry);step=f's.step(0x{entry:x});'
+                for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
+                    with self.assertRaises(ValueError):require_localization_format_hooks(page,rows,changed)
 
     def test_independent_reference_has_all_730_sites_and_no_productive_hooks(self):
         source = render_reference(self.records, self.userops)

@@ -79,6 +79,7 @@ target_sources(cm_aot PRIVATE money_configuration.cpp money_configuration_profil
     preferences_lifecycle.cpp preferences_options.cpp preferences_setters.cpp preferences_apply.cpp preferences_adapter.cpp)
 target_sources(cm_aot PRIVATE preferences_actions_opening.cpp preferences_actions_dispatch.cpp preferences_actions_adapter.cpp
     preferences_screen.cpp preferences_screen_lists.cpp preferences_screen_options.cpp preferences_screen_adapter.cpp)
+target_sources(cm_aot PRIVATE localization_lookup.cpp localization_lookup_adapter.cpp localization_format.cpp localization_format_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -881,7 +882,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/localization_lookup_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-localization-lookup-checks localization_lookup.cpp localization_lookup_checks.cpp
+    add_executable(cm-localization-lookup-checks localization_lookup_checks.cpp
         "${CM_LOCALIZATION_LOOKUP_REFERENCE}")
     target_link_libraries(cm-localization-lookup-checks PRIVATE cm_aot)
     target_compile_options(cm-localization-lookup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -897,7 +898,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/localization_format_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-localization-format-checks localization_format.cpp localization_format_checks.cpp
+    add_executable(cm-localization-format-checks localization_format_checks.cpp
         "${CM_LOCALIZATION_FORMAT_REFERENCE}")
     target_link_libraries(cm-localization-format-checks PRIVATE cm_aot)
     target_compile_options(cm-localization-format-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -2458,3 +2459,7 @@ target_compile_options(cm-preferences-production-checks PRIVATE -Wall -Wextra -W
 add_executable(cm-preferences-ui-production-checks preferences_ui_production_checks.cpp)
 target_link_libraries(cm-preferences-ui-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-preferences-ui-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-localization-production-checks localization_production_checks.cpp)
+target_link_libraries(cm-localization-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-localization-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
