@@ -26,7 +26,7 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(tuple(v[2] for v in CONTRACTS), (22, 491, 60, 9, 77, 58, 62, 6))
         self.assertEqual(sum(v[2] for v in FRAGMENTS), 785)
         self.assertEqual(MATCH_TARGET_ENTRIES, (0x101d5760, 0x101e28b0, 0x101e3060, 0x101e3150, 0x101e31a0, 0x102860c0, 0x102861b0, 0x10113e10))
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 939)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 946)
         self.assertEqual(SEMANTIC_REPLACEMENTS[911:919], tuple((e, 'match_target_adapter') for e in MATCH_TARGET_ENTRIES))
         prefix = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS[:911]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),

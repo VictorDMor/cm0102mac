@@ -1,5 +1,11 @@
 # Match target, control and nearest-candidate reconstruction
 
+The later [actor strategy flag query block](native-actor-flags-reconstruction.md)
+raises the installed total to **946 owners**. This module retains ownership of
+its mode policies and shared strategy reader; its bodies, adapter and independent
+reference remain unchanged and pass the focused integration regression check.
+The evidence and app identity below describe their earlier accepted milestone.
+
 This report records the accepted 919-owner milestone. The later
 [team-selection and preset-target block](native-match-selection-reconstruction.md)
 raises the installed total to 923. The eight target/control bodies remain

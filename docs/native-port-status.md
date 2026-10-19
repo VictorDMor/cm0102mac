@@ -14,7 +14,19 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [match event construction, transition and history block](native-match-event-reconstruction.md)
+The [actor strategy flag query reconstruction](native-actor-flags-reconstruction.md)
+installs **946 semantic owners** after the exact 939-owner prefix. Seven complete
+queries contain 185 original instructions and preserve existing shared-reader/mode
+ownership. All 185 own sites pass both component and actual-context comparisons,
+without source-checkpoint mutation: 16,368 component cases, 108 actual cases and
+21 profile-original controls. Every root has a natural indexed BL caller; 37,210
+calls return in 600 advances. Ten prepared actual-context alternatives are separate
+from those natural calls. Two focused CTests pass 20,510 comparisons; source/manifest
+guards, composed UBSAN and installed opening/options/cancel/exit checks pass.
+Whole-engine semantic reconstruction and complete event coverage remain open.
+Save/Load is **not retested**; performance **not benchmarked**; PDF updates remain paused.
+
+The preceding [match event construction, transition and history block](native-match-event-reconstruction.md)
 installs **939 semantic owners** after the exact 930-owner prefix. Nine complete
 operations contain 2,917 original instructions and pass 20,786 component comparisons.
 There are 2,628 ordinary component sites and 289 further checkpoint-only sites.

@@ -12,13 +12,30 @@ complete-match validation recorded in the [ball-action report](native-ball-actio
 Its semantic reconstruction is still incomplete. The match loop's nearest-candidate
 predicate `0x101e31a0` and a coherent target/control query block now have semantic
 replacements, as do the shared match/general samplers and the event construction/
-transition/history family. Other simulation helpers
+transition/history family and actor strategy flag queries. Other simulation helpers
 remain generated. Running a complete match does not establish that every simulation
 routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **939 unique semantic owners**. The
+The latest installed milestone is **946 unique semantic owners**. The
+[actor strategy flag query block](native-actor-flags-reconstruction.md) preserves
+the exact 939-owner prefix and adds seven complete operations containing 185
+original instructions. The existing shared reader and mode policies retain their
+ownership. Its 16,368 component comparisons and 108 actual-context comparisons
+cover all 185 own sites without source-checkpoint mutation. All seven roots have
+indexed original BL callers, with 37,210 productive calls in 600 advances. Ten
+prepared actual-context alternatives remain separate from natural caller evidence.
+Twenty-one profile-original controls and 30 complete actual shared-reader returns
+pass. Two focused CTests pass 20,510 comparisons; nine source guards, 91 manifest
+methods and composed UBSAN pass. Only one generated page changes. Installed ARM64
+SHA-256: `aea9750591a4d9bddecabcc39840165cc64bd23a55b51a5d60c2828467838939`.
+Opening, original Portuguese options/cancel and normal exit are verified. All 846
+protected files, eighteen private prompts, prior 939-owner app and installed debugger
+are preserved. Save/Load is **not retested**; performance **not benchmarked**; PDF
+updates remain paused at edition 39. The full reconstruction goal remains active.
+
+The preceding installed milestone had **939 unique semantic owners**. The
 [match event construction, transition and history block](native-match-event-reconstruction.md)
 preserves the exact 930-owner prefix and adds nine complete operations containing
 2,917 original instructions. Its 20,786 component comparisons cover 2,628 ordinary
