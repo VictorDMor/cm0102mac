@@ -1,5 +1,11 @@
 # Actor encounter response and score reconstruction
 
+The later [event construction and history block](native-match-event-reconstruction.md)
+raises the installed total to **939 owners** and reconstructs the previously generated
+event dependency `0x10201180`. This component and independent reference remain
+unchanged and pass the focused integration regression check. The evidence and app
+identity below describe their earlier accepted milestone.
+
 Four complete original operations execute structured C++23 by default in the
 installed ARM64 game, with **930 unique semantic owners**. The semantic ownership manifest appends four entries after the exact
 926-owner prefix. This coherent block covers the five response probability

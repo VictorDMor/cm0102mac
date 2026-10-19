@@ -1,5 +1,11 @@
 # Shared match and general range sampling reconstruction
 
+The later [event construction and history block](native-match-event-reconstruction.md)
+raises the installed total to **939 owners** and reconstructs the previously generated
+event dependency `0x10201180`. This component and independent reference remain
+unchanged and pass the focused integration regression check. The evidence and app
+identity below describe their earlier accepted milestone.
+
 The later [actor encounter block](native-actor-encounter-reconstruction.md) raises
 the installed total to **930 owners**. This component and its independent reference
 remain unchanged and pass the focused integration regression check. The evidence

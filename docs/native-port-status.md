@@ -14,7 +14,20 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [actor encounter response and score reconstruction](native-actor-encounter-reconstruction.md)
+The [match event construction, transition and history block](native-match-event-reconstruction.md)
+installs **939 semantic owners** after the exact 930-owner prefix. Nine complete
+operations contain 2,917 original instructions and pass 20,786 component comparisons.
+There are 2,628 ordinary component sites and 289 further checkpoint-only sites.
+All nine entries pass actual-context validation: 131 comparisons, 27 original-profile
+controls, 890 actual sites and 22 completed owned children. The prepared complete
+emitter composes its side/qualifier/jitter/transition/classification helpers and
+actual reseeding; complete transition inputs compose both participant comparators.
+Three focused CTests pass 26,274 comparisons. Source/manifest guards, composed UBSAN
+and installed opening/options/cancel/exit checks pass. Whole-engine semantic
+reconstruction and complete event coverage remain open. Save/Load is **not retested**;
+performance **not benchmarked**; PDF updates remain paused.
+
+The preceding [actor encounter response and score reconstruction](native-actor-encounter-reconstruction.md)
 installs **930 semantic owners** after the exact 926-owner prefix. Four complete
 operations contain 1,809 original instructions. The component passes 716 comparisons:
 1,669 sites have ordinary complete coverage; 140 further sites have only explicit

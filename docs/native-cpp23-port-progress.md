@@ -11,13 +11,33 @@ The match simulation already executes as statically recompiled C++23, including
 complete-match validation recorded in the [ball-action report](native-ball-action-reconstruction.md).
 Its semantic reconstruction is still incomplete. The match loop's nearest-candidate
 predicate `0x101e31a0` and a coherent target/control query block now have semantic
-replacements, as do the shared match/general samplers. Other simulation helpers
+replacements, as do the shared match/general samplers and the event construction/
+transition/history family. Other simulation helpers
 remain generated. Running a complete match does not establish that every simulation
 routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **930 unique semantic owners**. The
+The latest installed milestone is **939 unique semantic owners**. The
+[match event construction, transition and history block](native-match-event-reconstruction.md)
+preserves the exact 930-owner prefix and adds nine complete operations containing
+2,917 original instructions. Its 20,786 component comparisons cover 2,628 ordinary
+sites and 289 further checkpoint-only sites, with 22 explicitly mutated-checkpoint
+completions. Actual-context validation passes 131 comparisons and 27 original-profile
+controls, with 890 own sites and 22 completed owned children. Seven entries occur
+naturally in 600 advances; address and jitter have prepared original-BL coverage.
+A complete prepared emitter composes side/qualifier/jitter/transition/classification
+and real reseeding; two complete transition inputs compose the participant helpers.
+This does not prove all match events. Three focused CTests pass 26,274 comparisons;
+ten source guards, ninety manifest methods and composed UBSAN pass. Four generated
+pages change. Installed ARM64 SHA-256:
+`5109e2148643fe75106039d1c03f0ba58dfcb570565e9dadb8bcfad57dd09f18`.
+Opening, original Portuguese options/cancel and normal exit are verified. All 846
+protected files, eighteen private prompts, prior 930-owner app and installed debugger
+are preserved. Save/Load is **not retested**; performance **not benchmarked**; PDF
+updates remain paused at edition 39. The full reconstruction goal remains active.
+
+The preceding installed milestone had **930 unique semantic owners**. The
 [actor encounter response and score block](native-actor-encounter-reconstruction.md)
 retains the exact 926-owner prefix and adds four complete operations containing
 1,809 original instructions. Its component passes 716 comparisons, including six

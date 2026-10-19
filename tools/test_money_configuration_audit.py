@@ -14,7 +14,7 @@ ROOT=Path(__file__).resolve().parent.parent
 INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_884_prefix_and_thirteen_productive_owners(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),930)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),939)
         prefix=[{'entry':hex(e),'module':m}for e,m in SEMANTIC_REPLACEMENTS[:884]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'7a8921cdc98b39bccdab14d402aa2c570b036df8041f4d7b9035762c328ba493')
         from money_configuration_audit import MONEY_CONFIGURATION_ENTRIES
