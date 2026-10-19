@@ -13,6 +13,33 @@ and retain their source, original references, validation logs and build recipes.
 Do not classify archived baseline/reference programs as disposable solely by
 their size or executable format.
 
+## Cycle storage control on 2026-10-19
+
+The user reaffirmed removal of old artifacts that can be recreated and storage
+control after every reconstruction cycle. The accepted 958-owner production
+build remains reusable. Older linked checks can be removed from that shared
+build while retaining their objects, libraries and exact CMake link recipes.
+Current focused actor-action, target-acceptance and range-sampling checks remain.
+
+The reviewed cleanup removes **410 reproducible outputs** in two exact batches.
+Transparent macOS compression preserves the original paths and ordinary-read
+SHA-256 of **193 snapshots**. All 385 reviewed snapshots are hashed; the other
+192 retain their original files because compression copies change their system
+provenance attribute. No snapshot is renamed to an archive extension. Existing
+readers continue to use the same paths without a decompression step.
+
+Available space is observed at **8,856,231,936 bytes before cleanup** and
+**47,479,332,864 bytes afterward**, an increase of approximately **38.6 GB**.
+This is an available-space observation, not an exclusive APFS extent calculation.
+All 856 protected file hashes and metadata for 2,052 application files are
+unchanged. Original inputs, saves, application bundles, reference sources,
+validation logs, build recipes and the current production build are retained.
+
+Each following cycle reuses the consistent production build, creates only its
+required fixtures, removes reviewed obsolete check outputs and compacts newly
+retained snapshots when their content and metadata can be preserved. Inventory
+and preservation receipts stay private under the cycle's local storage records.
+
 ## Independent generated-source reuse
 
 `tools/compile_recomp.py` accepts `--reuse-generated PREVIOUS_GENERATED_DIR`
