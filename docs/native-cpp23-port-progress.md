@@ -17,7 +17,24 @@ routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **923 unique semantic owners**. The
+The latest installed milestone is **926 unique semantic owners**. The
+[selection context/mode and score block](native-match-selection-support-reconstruction.md)
+retains the exact 923-owner prefix and adds three complete operations containing
+400 original instructions. Its component passes 1,636 comparisons and all 400 own
+sites without source mutations. Forty-eight actual-service comparisons and nine
+original-profile controls pass, with 373 actual sites, 55 returning owned score
+children and 839 selected external-helper returns. The score helper has 222 natural
+calls in 600 advances; two selectors have prepared original-BL coverage. Both leaf
+formulas and the mode policy's two offsets have actual evidence; complete event
+parents remain unproven. Three focused CTests pass 6,061 comparisons; ten source guards, 88 manifest
+methods and composed component/runtime UBSAN pass. Two generated pages change.
+Installed ARM64 SHA-256: `ae4fc14c55252c23eaee57116500a532a4bb179823e12e483d03b6d8dae92ce7`.
+Opening, original Portuguese options/cancel and normal exit are verified. All 846
+protected files, eighteen private prompts, prior 923-owner app and installed debugger
+are preserved. Save/Load is **not retested**; performance **not benchmarked**; PDF
+updates remain paused at edition 39. The full reconstruction goal remains active.
+
+The preceding installed milestone had **923 unique semantic owners**. The
 [team-selection and preset-target block](native-match-selection-reconstruction.md)
 preserves the exact 919-owner prefix and adds four complete operations containing
 815 original instructions. Its component passes 2,369 comparisons and all 815 own

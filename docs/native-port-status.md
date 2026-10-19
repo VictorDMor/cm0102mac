@@ -14,8 +14,19 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [team-selection and preset-target reconstruction](native-match-selection-reconstruction.md)
-installs **923 semantic owners** after the exact 919-owner prefix. Four complete
+The [selection context/mode and score reconstruction](native-match-selection-support-reconstruction.md)
+installs **926 semantic owners** after the exact 923-owner prefix. Three complete
+operations contain 400 original instructions. The component passes 1,636 comparisons;
+48 actual-service comparisons and nine original-profile controls pass. The leaf is
+naturally invoked; two selectors use prepared original BLs with actual match data.
+Both leaf formulas and mode-policy offsets, complete query/score composition, three focused
+CTests, source/manifest guards, composed UBSAN and installed opening/options/cancel/
+exit checks pass. Protected files, prior app and installed debugger are preserved.
+Complete event-parent coverage and whole-game semantic reconstruction remain open.
+Save/Load is **not retested**; performance **not benchmarked**; PDF updates remain paused.
+
+The preceding [team-selection and preset-target reconstruction](native-match-selection-reconstruction.md)
+installed **923 semantic owners** after the exact 919-owner prefix. Four complete
 operations contain 815 original instructions. The component passes 2,369 comparisons;
 59 actual-service comparisons and twelve original-profile controls pass. The preset
 lookup is naturally invoked; three selectors use prepared original BLs with real

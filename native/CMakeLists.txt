@@ -84,6 +84,7 @@ target_sources(cm_aot PRIVATE localization_catalog.cpp localization_catalog_adap
 target_sources(cm_aot PRIVATE range_sampling_match.cpp range_sampling_general.cpp range_sampling_adapter.cpp)
 target_sources(cm_aot PRIVATE match_target_policy.cpp match_target_queries.cpp match_target_nearest.cpp match_target_adapter.cpp)
 target_sources(cm_aot PRIVATE match_selection_attributes.cpp match_selection_role.cpp match_selection_profile.cpp match_selection_targets.cpp match_selection_adapter.cpp)
+target_sources(cm_aot PRIVATE match_selection_support_context.cpp match_selection_support_mode.cpp match_selection_support_score.cpp match_selection_support_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -986,6 +987,21 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-awol-records-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME awol_records_component_equivalence COMMAND cm-awol-records-checks)
     set_tests_properties(awol_records_component_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_MATCH_SELECTION_SUPPORT_REFERENCE "${CMAKE_BINARY_DIR}/match_selection_support_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MATCH_SELECTION_SUPPORT_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_selection_support_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_SELECTION_SUPPORT_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_selection_support_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/match_selection_support_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-match-selection-support-checks match_selection_support_checks.cpp "${CM_MATCH_SELECTION_SUPPORT_REFERENCE}")
+    target_link_libraries(cm-match-selection-support-checks PRIVATE cm_aot)
+    target_compile_options(cm-match-selection-support-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME match_selection_support_component_equivalence COMMAND cm-match-selection-support-checks
+        "${CMAKE_BINARY_DIR}/match_selection_support_coverage.txt")
+    set_tests_properties(match_selection_support_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_MATCH_SELECTION_REFERENCE "${CMAKE_BINARY_DIR}/match_selection_reference.cpp")
     add_custom_command(OUTPUT "${CM_MATCH_SELECTION_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_selection_reference.py"
@@ -2545,3 +2561,7 @@ target_compile_options(cm-match-target-production-checks PRIVATE -Wall -Wextra -
 add_executable(cm-match-selection-production-checks match_selection_production_checks.cpp)
 target_link_libraries(cm-match-selection-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-selection-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-match-selection-support-production-checks match_selection_support_production_checks.cpp)
+target_link_libraries(cm-match-selection-support-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-selection-support-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

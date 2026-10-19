@@ -1,5 +1,9 @@
 # Original match range sampler reconstructed
 
+The later [context/mode and score block](native-match-selection-support-reconstruction.md)
+installs 926 owners and adds two complete selection policies that consume this
+unchanged sampler. Its 2,056-case component passes alongside both selection blocks.
+
 This report retains the original sampler milestone. The later
 [team-selection block](native-match-selection-reconstruction.md) installs 923 owners
 and adds three complete policies that consume this unchanged sampler. Its

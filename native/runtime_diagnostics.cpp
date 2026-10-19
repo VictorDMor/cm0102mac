@@ -56,6 +56,7 @@
 #include "range_sampling_adapter.hpp"
 #include "match_target_adapter.hpp"
 #include "match_selection_adapter.hpp"
+#include "match_selection_support_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -125,6 +126,7 @@ struct RuntimeDiagnostics {
     RangeSamplingDiagnostics range_sampling;
     MatchTargetDiagnostics match_target;
     MatchSelectionDiagnostics match_selection;
+    MatchSelectionSupportDiagnostics match_selection_support;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -672,5 +674,13 @@ MatchSelectionDiagnostics& match_selection_diagnostics(State& state) {
 const MatchSelectionDiagnostics& match_selection_diagnostics(const State& state) {
     static const MatchSelectionDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->match_selection : empty;
+}
+MatchSelectionSupportDiagnostics& match_selection_support_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->match_selection_support;
+}
+const MatchSelectionSupportDiagnostics& match_selection_support_diagnostics(const State& state) {
+    static const MatchSelectionSupportDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->match_selection_support : empty;
 }
 }

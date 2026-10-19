@@ -1,5 +1,10 @@
 # Match team selection and preset-target reconstruction
 
+This report records the accepted 923-owner milestone. The later
+[context/mode and score block](native-match-selection-support-reconstruction.md)
+raises the installed total to 926. The four bodies below remain byte-identical;
+their 2,369-case component passes alongside the new composed selector/score block.
+
 Four complete team-query operations now execute semantic C++23 by default in the
 installed ARM64 game. The manifest contains **923 unique owners**, preserving the
 exact **919-owner prefix**. The block contains **815 original instructions**.
