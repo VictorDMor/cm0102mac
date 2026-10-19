@@ -14,8 +14,17 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [catalog lifecycle integration](native-localization-catalog-integration.md) now
-installs **909 semantic owners**, preserving the exact 905-owner prefix. Four complete
+The [shared match/general sampler reconstruction](native-range-sampling-reconstruction.md)
+installs **911 semantic owners** after the exact 909-owner prefix. Two whole operations
+contain 1,103 original instructions. Original/component, actual-service, profile,
+composed UBSAN and installed visual acceptance pass. A natural match call and an
+explicit general-helper fixture are distinguished. Protected files and the installed
+debugger are preserved. Other simulation dependencies remain generated; semantic
+match-engine and whole-game completion are still unproven. Save/Load is **not
+retested**; performance **not benchmarked**; PDF updates remain paused.
+
+The preceding [catalog lifecycle integration](native-localization-catalog-integration.md)
+installed **909 semantic owners**, preserving the exact 905-owner prefix. Four complete
 operations cover 734 original instructions. Fifty-four actual-service comparisons,
 21 original-profile controls, composed UBSAN and installed visual acceptance pass.
 Protected data and the installed debugger are preserved. Static generation of the

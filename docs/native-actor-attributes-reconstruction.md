@@ -1,5 +1,9 @@
 # Actor action attributes and condition recovery
 
+The subsequent [shared sampler reconstruction](native-range-sampling-reconstruction.md)
+converts the `0x10226520` dependency mentioned below and installs 911 owners.
+The historical attribute contracts and acceptance recorded here remain unchanged.
+
 The latest [injury-selection delivery](native-injury-selection.md) extends this
 component to twenty-two entries and the accepted manifest to 704. The subsequent
 [injury-registration block](native-injury-record-registration.md) has a separate

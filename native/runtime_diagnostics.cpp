@@ -53,6 +53,7 @@
 #include "localization_lookup_adapter.hpp"
 #include "localization_format_adapter.hpp"
 #include "localization_catalog_adapter.hpp"
+#include "range_sampling_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -119,6 +120,7 @@ struct RuntimeDiagnostics {
     LocalizationLookupDiagnostics localization_lookup;
     LocalizationFormatDiagnostics localization_format;
     LocalizationCatalogDiagnostics localization_catalog;
+    RangeSamplingDiagnostics range_sampling;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -642,5 +644,13 @@ LocalizationCatalogDiagnostics& localization_catalog_diagnostics(State& state) {
 const LocalizationCatalogDiagnostics& localization_catalog_diagnostics(const State& state) {
     static const LocalizationCatalogDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->localization_catalog : empty;
+}
+RangeSamplingDiagnostics& range_sampling_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->range_sampling;
+}
+const RangeSamplingDiagnostics& range_sampling_diagnostics(const State& state) {
+    static const RangeSamplingDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->range_sampling : empty;
 }
 }

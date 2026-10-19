@@ -10,13 +10,29 @@ reconstructed engine are separate claims.
 The match simulation already executes as statically recompiled C++23, including
 complete-match validation recorded in the [ball-action report](native-ball-action-reconstruction.md).
 Its semantic reconstruction is still incomplete: the reconstructed match loop
-calls generated helper `0x101e31a0`, and actor attributes call generated helper
+still calls generated helper `0x101e31a0`. The shared match/general samplers now
+have semantic replacements, including the former actor-attribute dependency
 `0x10226520`. Running a complete match does not establish that every simulation
 routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **909 unique semantic owners**. The
+The latest installed milestone is **911 unique semantic owners**. The
+[shared sampler reconstruction](native-range-sampling-reconstruction.md) retains
+the exact 909-owner prefix and adds the sampler used by match actors and ball
+actions plus its related general helper: 1,103 original instructions. The block passes 4,772 original comparisons;
+42 actual-service and six original-profile controls pass, with 289 complete actual
+sites. A natural match tick invokes the match sampler; the general helper has
+explicit real-context coverage. Two focused CTests, ten source/hook guards, 85
+manifest methods and composed component/runtime UBSAN pass. Only two generated
+root pages change. Installed ARM64 SHA-256: `955e121c728d0a52b8884b651c36ac2cab3e1ce99a784c25641167fcd32712d4`.
+Original menu/options/cancel and normal exit are verified. All 846 protected files,
+eighteen private prompts, prior 909-owner app and installed debugger are preserved.
+Save/Load is **not retested**; performance **not benchmarked**; PDF updates remain
+paused at edition 39.
+The complete match engine and whole-game semantic reconstruction remain unfinished.
+
+The preceding installed milestone had **909 unique semantic owners**. The
 [catalog lifecycle integration](native-localization-catalog-integration.md) preserves
 the exact 905-owner prefix and adds four complete 734-instruction operations.
 Raw bodies, all three localization references, shared helper and platform behavior

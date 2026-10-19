@@ -1,5 +1,9 @@
 # Original match range sampler reconstructed
 
+The subsequent [shared sampler reconstruction](native-range-sampling-reconstruction.md)
+adds the complete `0x10226520` and `0x107124e0` bodies and installs 911 owners.
+This report retains the historical 656-owner milestone and its measurements.
+
 The complete `101d3c90..101d3e48` range sampler now executes structured C++23
 in the game and standalone match debugger. Its 110 indexed instructions have
 415 indexed direct call sites, including its recursive call. The ordered

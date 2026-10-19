@@ -20,7 +20,7 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_accepted_prefix_and_complete_candidate_owner(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),909)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),911)
         self.assertEqual(len(TRANSFER_OFFER_ENTRIES),19)
         prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:796]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'743dfb24d871008bdef6aef5e8ce29a1a6b97239982f52d0c2a05947968229c9')
