@@ -14,7 +14,24 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [periodic actor balance/counter reconstruction](native-actor-effects-reconstruction.md)
+The [target-facing, eligibility and corridor block](native-target-acceptance-reconstruction.md)
+installs **953 semantic owners** after the exact 949-owner prefix. Four complete
+operations contain 758 original instructions and pass 12,477 component comparisons:
+701 ordinary prepared sites plus 57 checkpoint-only sites in four complete diagnostic
+cases. The actual matrix passes 87 comparisons and twelve profile-original controls,
+covering 655 complete own sites. All roots have natural indexed BL callers and
+44,968 productive invocations in 600 advances. Complete native parent/child and
+actual coordinate/area/side/distance/reseed composition, plus two generated response
+returns, are observed; no actual generic sampler calls are claimed. Thirty prepared
+actual alternatives remain separate from natural provenance. Three focused CTests
+pass 29,261 comparisons; source/manifest guards, 29-unit composed UBSAN and installed
+opening/options/cancel/normal exit checks pass. Prior owners and helper bodies,
+846 protected files, 18 private prompts, prior 949-owner app and installed debugger are preserved.
+Save/Load is **not retested**; performance **not benchmarked**; PDF updates remain
+paused at edition 39. Whole-engine semantic reconstruction and complete event coverage
+remain unfinished; the full objective stays active.
+
+The preceding [periodic actor balance/counter reconstruction](native-actor-effects-reconstruction.md)
 installs **949 semantic owners** after the exact 946-owner prefix. Three complete
 operations contain 1,569 original instructions and pass 18,373 component comparisons:
 1,364 ordinary prepared sites plus 205 further checkpoint-only sites. Sixty-six

@@ -224,6 +224,8 @@ from actor_flags_audit import (require_actor_flags_contract, require_actor_flags
     require_actor_flags_hooks, actor_flags_hook, ACTOR_FLAGS_ENTRIES)
 from actor_effects_audit import (require_actor_effects_contract, require_actor_effects_index,
     require_actor_effects_hooks, actor_effects_hook, ACTOR_EFFECTS_ENTRIES)
+from target_acceptance_audit import (require_target_acceptance_contract, require_target_acceptance_index,
+    require_target_acceptance_hooks, target_acceptance_hook, TARGET_ACCEPTANCE_ENTRIES)
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -321,7 +323,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "actor_encounter_adapter") for entry in ACTOR_ENCOUNTER_ENTRIES) +
     tuple((entry, "match_event_adapter") for entry in MATCH_EVENT_ENTRIES) +
     tuple((entry, "actor_flags_adapter") for entry in ACTOR_FLAGS_ENTRIES) +
-    tuple((entry, "actor_effects_adapter") for entry in ACTOR_EFFECTS_ENTRIES))
+    tuple((entry, "actor_effects_adapter") for entry in ACTOR_EFFECTS_ENTRIES) +
+    tuple((entry, "target_acceptance_adapter") for entry in TARGET_ACCEPTANCE_ENTRIES))
 
 
 def require_unique_semantic_replacements(replacements):
@@ -564,7 +567,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -702,6 +705,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_actor_flags_contract(page, instructions, selected)
     if actor_effects_hooks:
         require_actor_effects_contract(page, instructions, selected)
+    if target_acceptance_hooks:
+        require_target_acceptance_contract(page, instructions, selected)
     if team_spatial_hooks:
         require_team_spatial_contract(page, instructions, selected)
     if pitch_distance_hooks:
@@ -875,6 +880,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "actor_flags_adapter.hpp"')
     if actor_effects_hooks and page_addresses & set(ACTOR_EFFECTS_ENTRIES):
         code.insert(1, '#include "actor_effects_adapter.hpp"')
+    if target_acceptance_hooks and page_addresses & set(TARGET_ACCEPTANCE_ENTRIES):
+        code.insert(1, '#include "target_acceptance_adapter.hpp"')
     if team_spatial_hooks and page_addresses & set(TEAM_SPATIAL_ENTRIES):
         code.insert(1, '#include "team_spatial_adapter.hpp"')
     if pitch_distance_hooks and page_addresses & set(PITCH_DISTANCE_ENTRIES):
@@ -1147,6 +1154,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(actor_flags_hook(a))
         if actor_effects_hooks and a in ACTOR_EFFECTS_ENTRIES:
             code.append(actor_effects_hook(a))
+        if target_acceptance_hooks and a in TARGET_ACCEPTANCE_ENTRIES:
+            code.append(target_acceptance_hook(a))
         if team_spatial_hooks and a in TEAM_SPATIAL_ENTRIES:
             code.append(team_spatial_hook(a))
         if pitch_distance_hooks and a in PITCH_DISTANCE_ENTRIES:
@@ -1457,6 +1466,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_actor_flags_hooks(page, instructions, result)
     if actor_effects_hooks:
         require_actor_effects_hooks(page, instructions, result)
+    if target_acceptance_hooks:
+        require_target_acceptance_hooks(page, instructions, result)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
@@ -1608,6 +1619,7 @@ def main():
         require_match_event_index(db, None if args.all_analyzed else selected)
         require_actor_flags_index(db, None if args.all_analyzed else selected)
         require_actor_effects_index(db, None if args.all_analyzed else selected)
+        require_target_acceptance_index(db, None if args.all_analyzed else selected)
         require_team_spatial_index(db, None if args.all_analyzed else selected)
         require_pitch_distance_index(db, None if args.all_analyzed else selected)
         require_actor_order_index(db, None if args.all_analyzed else selected)

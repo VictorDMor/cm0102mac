@@ -19,7 +19,7 @@ INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_four_productive_owners(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),949)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),953)
         prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:864]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'9ecc35d26bb22037787db2192fafcb04402e5704d7e9d12205f17925e3091359')
         self.assertEqual(SEMANTIC_REPLACEMENTS[864:868],tuple((e,'profile_qualification_adapter') for e in PROFILE_QUALIFICATION_ENTRIES))

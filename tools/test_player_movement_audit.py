@@ -23,7 +23,7 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual((ENTRY, END, COUNT), (0x1022e7e0, 0x10235da4, 7537))
         self.assertEqual(SEMANTIC_REPLACEMENTS[648], (ENTRY, "player_movement_adapter"))
         manifest = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(manifest), 949)
+        self.assertEqual(len(manifest), 953)
         self.assertEqual(hashlib.sha256(json.dumps(manifest[:643], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '3f290aa60e8a00b40e6bceba6d3abfbe86e6a32413fa267d7ec7c2e07a7c1398')
 

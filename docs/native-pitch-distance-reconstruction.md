@@ -144,3 +144,13 @@ references, captured inputs, source and evidence remain. All 845 protected
 files and installed/candidate identities are verified again afterward.
 
 Save/Load is **not retested** in this cycle. Whole-port completion remains open.
+
+## Later target/corridor caller acceptance
+
+The [target acceptance block](native-target-acceptance-reconstruction.md) appends four
+owners after the exact 949-owner prefix, for 953 owners. Existing bodies/owners remain unchanged,
+including actor-motion `0x10245050`. Its 12,477 component comparisons, 87 actual-service
+comparisons, twelve profile controls and selected composed UBSAN pass. Returning
+native coordinate/area/side/distance composition is explicit. No actual generic
+sampler caller composition is claimed. Whole-engine reconstruction remains open;
+SaveLoad not retested, performance not benchmarked, PDF updates paused at edition 39.

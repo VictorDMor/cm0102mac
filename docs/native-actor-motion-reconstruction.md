@@ -39,3 +39,13 @@ UBSAN checks the changed semantic body, adapter and component/production/nonloca
 Both strict ad-hoc signed ARM64 apps are installed through metadata-preserving APFS clones and protected atomic swaps. Their previous signed bundles are retained privately. Candidate/installed internal-executable identities and all four packaged original-program files are verified. Installed game acceptance observes the original menu in its 800×600 content window, the original quit confirmation and a logged normal exit. Menu match counters are zero; entry coverage comes from the individual actual production checks. The installed debugger creates a real Arsenal/Manchester United experiment and reaches 01:00 with original turns, passes and headers; it exits with its worker and private root removed. Candidate, installed and running internal-executable identities agree: game `076a6becb670672b7fde28d9e6a0f9a957ed3356e1338e71c2853330a5d9768c`, debugger `a3b45eb7a4ed5c56e9b4c8cf6b9553c24b35aca52ca27e0c4e93ea57be2d1d69`. All 845 protected original game/runtime/save/handoff files are verified unchanged.
 
 The accepted cycle removes 21 validated disposable targets and recovers 1.68 GB. Reusable production objects, accepted apps/references, current private fixtures and source/runtime evidence remain available. Original game/database files, career runtime files, saves and private handoffs remain protected. Save/Load is **not retested**; performance is **not benchmarked**. The whole match engine, complete movement coordinator and complete native port remain unfinished; the full goal remains active.
+
+## Later target/corridor caller acceptance
+
+The [target acceptance block](native-target-acceptance-reconstruction.md) appends four
+owners after the exact 949-owner prefix, for 953 owners. Existing bodies/owners remain unchanged,
+including actor-motion `0x10245050`. Its 12,477 component comparisons, 87 actual-service
+comparisons, twelve profile controls and selected composed UBSAN pass. Returning
+native coordinate/area/side/distance composition is explicit. No actual generic
+sampler caller composition is claimed. Whole-engine reconstruction remains open;
+SaveLoad not retested, performance not benchmarked, PDF updates paused at edition 39.

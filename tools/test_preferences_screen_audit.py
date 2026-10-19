@@ -23,7 +23,7 @@ INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_897_prefix_and_four_productive_ui_owners(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 949)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 953)
         manifest = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS[:897]]
         self.assertEqual(hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          '0977c8a7fdc1b5f94cc74d9a6e641cc62f466e49d1ae3335a7c85ed81d05a8aa')
