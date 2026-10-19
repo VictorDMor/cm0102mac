@@ -1,5 +1,10 @@
 # Original match range sampler reconstructed
 
+This report retains the original sampler milestone. The later
+[team-selection block](native-match-selection-reconstruction.md) installs 923 owners
+and adds three complete policies that consume this unchanged sampler. Its
+2,056-case component passes alongside the selection and target components.
+
 The subsequent [shared sampler reconstruction](native-range-sampling-reconstruction.md)
 adds the complete `0x10226520` and `0x107124e0` bodies and installs 911 owners.
 This report retains the historical 656-owner milestone and its measurements.

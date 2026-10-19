@@ -1,5 +1,10 @@
 # Match target, control and nearest-candidate reconstruction
 
+This report records the accepted 919-owner milestone. The later
+[team-selection and preset-target block](native-match-selection-reconstruction.md)
+raises the installed total to 923. The eight target/control bodies remain
+byte-identical; their 4,142-case component passes alongside the new block.
+
 Eight complete match operations now execute semantic C++23 by default in the
 installed ARM64 game. The manifest contains **919 unique owners**, preserving
 the exact **911-owner prefix**. This block contains **785 original instructions**.

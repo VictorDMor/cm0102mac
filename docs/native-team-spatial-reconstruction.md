@@ -1,5 +1,10 @@
 # Team spatial queries reconstructed
 
+The [team-selection and preset-target block](native-match-selection-reconstruction.md)
+subsequently installs 923 owners. Its four additional queries retain separate
+original/component/actual-service acceptance; the four spatial bodies below remain
+unchanged.
+
 The four bodies below retain their original 660-owner milestone evidence. The
 later [target/control block](native-match-target-reconstruction.md) installs 919
 owners and adds the complementary nearest-candidate predicate `0x101e31a0`.

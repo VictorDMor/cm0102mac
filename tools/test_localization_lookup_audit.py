@@ -29,7 +29,7 @@ class PreparedScopeTests(unittest.TestCase):
         self.assertEqual(len(PADDING), 3)
         self.assertEqual(len(TABLES), 7)
         self.assertEqual(len(WORDS), 6)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 919)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 923)
         prefix = [{'entry': hex(e), 'module': m} for e, m in SEMANTIC_REPLACEMENTS[:901]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
                          'ad5345c3598b6b7d56d4ccba2e74d516c274d8c25a08a2affa059c24ad7728db')

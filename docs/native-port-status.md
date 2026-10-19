@@ -14,8 +14,19 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [match target/control reconstruction](native-match-target-reconstruction.md)
-installs **919 semantic owners** after the exact 911-owner prefix. Eight complete
+The [team-selection and preset-target reconstruction](native-match-selection-reconstruction.md)
+installs **923 semantic owners** after the exact 919-owner prefix. Four complete
+operations contain 815 original instructions. The component passes 2,369 comparisons;
+59 actual-service comparisons and twelve original-profile controls pass. The preset
+lookup is naturally invoked; three selectors use prepared original BLs with real
+match input. Three focused CTests, source/manifest guards, composed UBSAN and installed
+opening/options/cancel/exit checks pass. Protected files, prior app and installed
+debugger are preserved. Full event-parent coverage and complete semantic reconstruction
+remain open. Save/Load is **not retested**; performance **not benchmarked**; PDF updates
+remain paused.
+
+The preceding [match target/control reconstruction](native-match-target-reconstruction.md)
+installed **919 semantic owners** after the exact 911-owner prefix. Eight complete
 operations contain 785 original instructions. The component passes 4,142 comparisons;
 114 actual-service comparisons and 24 original-profile controls pass. Six roots have
 natural match-tick callers, while two strategy queries have prepared complete-parent

@@ -29,7 +29,7 @@ class PreparedScopeTests(unittest.TestCase):
         self.assertEqual(len(PADDING), 10)
         self.assertEqual(len(TABLES), 11)
         self.assertEqual(len(WORDS), 7)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 919)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 923)
         prefix = [{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:905]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(), 'a38fb0f0a0c3dc15205ff9131bd725dec1500c95fc53ef4699e8ca037103d4e9')
         expected=tuple((e,'localization_catalog_adapter') for e in LOCALIZATION_CATALOG_ENTRIES)

@@ -26,11 +26,11 @@ class ScopeTests(unittest.TestCase):
 
     def test_only_the_complete_root_extends_the_prior_manifest(self):
         manifest = [{'entry': f'0x{entry:x}', 'module': module} for entry, module in SEMANTIC_REPLACEMENTS]
-        self.assertEqual(len(manifest), 919)
+        self.assertEqual(len(manifest), 923)
         self.assertEqual(hashlib.sha256(json.dumps(manifest[:677], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                          'bf8519e9fb7ff93e6741076af5a6d27074007dfe67a4d22ebac6c95c0b244822')
         self.assertEqual(manifest[677:678], [{'entry': '0x1023cd20', 'module': 'ball_action_adapter'}])
-        self.assertEqual(len({row['entry'] for row in manifest}), 919)
+        self.assertEqual(len({row['entry'] for row in manifest}), 923)
         for source in (ROOT / 'native').glob('ball_action*.cpp'):
             if 'checks' in source.name or source.name == 'ball_action_adapter.cpp':
                 continue
