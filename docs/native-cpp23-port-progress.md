@@ -51,17 +51,19 @@ unreconstructed work. PDF updates remain paused at the user's request; the last
 accepted guide is edition 39 and predates this milestone. Save/Load is **not
 retested**; performance is **not benchmarked**. The whole-game goal remains active.
 
-The next [localization lookup component](native-localization-lookup-reconstruction.md)
-is prepared with three complete operations and **441 original instructions**. Its
-isolated CTest passes **614 comparisons**, including 466 complete returns, 142
-matching stops and six discriminating negatives; all 441 own source sites have
-complete starting-root witnesses. Nine source/data/reference guards pass. Its
-string, allocation, search and file dependencies are declared component models.
-No productive owners have been added: installed ownership remains **901**.
-The complete 730-instruction phrase formatter is the next related component,
-before consolidated production integration, actual-service evidence and focused
-UBSAN. Protected files and the current installed executable remain unchanged.
-PDF updates remain paused; Save/Load is not retested and no benchmark is claimed.
+The [localization lookup](native-localization-lookup-reconstruction.md) and
+[whole phrase formatter](native-localization-format-reconstruction.md) are now
+prepared as **four complete operations / 1,171 original instructions**. Their
+two isolated CTests pass **1,137 comparisons**, including 886 complete returns,
+242 matching stops and nine discriminating negatives. All 1,171 own sites have
+complete starting-root witnesses. The formatter adds 523 comparisons and nine
+source/data/reference guards; the lookup retains its accepted 614 comparisons.
+Lookup, formatting, substitution, string, allocation and file dependencies are
+declared component models. Productive composition and actual-service coverage
+remain pending. Installed ownership remains **901**. Joint localization
+integration, focused UBSAN and one protected installation are the next milestone.
+Protected files and the installed executable remain unchanged. PDF updates are
+paused; Save/Load is not retested and no benchmark is claimed.
 
 The preceding [currency configuration and preference lifecycle integration](native-preferences-integration.md)
 installed 897 owners after the exact 884-owner prefix. Its thirteen operations

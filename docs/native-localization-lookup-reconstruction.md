@@ -112,13 +112,12 @@ preference/shared-helper sources retain their baseline hashes. The production
 The installed ARM64 executable remains
 `0bef3b58a6880f6f68f8cf85842b8b8d81f5354d605ac93dcedec861fc8a173c`.
 
-The adjacent complete phrase formatter at `0x10727890..0x107283f8` contains 730
-original instructions and is the next related component. It calls this lookup and
-the much larger substitution engine at `0x10728ac0`. Catalog initialization/sorting,
-that substitution engine, preference policy and native platform services remain
-separate ownership. Source-context inspection does not reconstruct those bodies.
-The prepared lookup and a complete accepted formatter can then share productive
-integration and actual-service/sanitizer acceptance.
+The adjacent [whole phrase formatter](native-localization-format-reconstruction.md)
+at `0x10727890..0x107283f8` is now accepted as a separate 730-instruction component.
+The four prepared localization operations can share the next productive integration,
+actual-service composition, focused UBSAN and protected installation. The formatter
+calls the much larger substitution engine at `0x10728ac0`; catalog initialization,
+sorting, that child and native platform services retain separate ownership.
 
 Save/Load is **not retested**; performance is **not benchmarked**. PDF updates remain
 paused at the user's explicit request. No production installation or UI smoke is

@@ -889,6 +889,22 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/localization_lookup_coverage.txt")
     set_tests_properties(localization_lookup_component_equivalence PROPERTIES TIMEOUT 180)
 
+    set(CM_LOCALIZATION_FORMAT_REFERENCE "${CMAKE_BINARY_DIR}/localization_format_reference.cpp")
+    add_custom_command(OUTPUT "${CM_LOCALIZATION_FORMAT_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_localization_format_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_LOCALIZATION_FORMAT_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_localization_format_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/localization_format_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-localization-format-checks localization_format.cpp localization_format_checks.cpp
+        "${CM_LOCALIZATION_FORMAT_REFERENCE}")
+    target_link_libraries(cm-localization-format-checks PRIVATE cm_aot)
+    target_compile_options(cm-localization-format-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME localization_format_component_equivalence COMMAND cm-localization-format-checks
+        "${CMAKE_BINARY_DIR}/localization_format_coverage.txt")
+    set_tests_properties(localization_format_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_PREFERENCES_ACTIONS_REFERENCE "${CMAKE_BINARY_DIR}/preferences_actions_reference.cpp")
     add_custom_command(OUTPUT "${CM_PREFERENCES_ACTIONS_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_preferences_actions_reference.py"
