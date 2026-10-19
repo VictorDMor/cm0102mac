@@ -19,13 +19,13 @@ INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_accepted_prefix_is_unchanged_and_candidate_has_one_new_owner(self):
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),946)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),949)
         prefix=[{'entry':hex(entry),'module':owner} for entry,owner in SEMANTIC_REPLACEMENTS[:831]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'04f640a10822a7b413181c6611ca8fcb874072e85da005a69c9b597888321c8d')
         self.assertEqual(TRANSFER_SYNTHESIS_ENTRIES,(0x104126d0,))
         self.assertEqual(SEMANTIC_REPLACEMENTS[831:832],((0x104126d0,'transfer_synthesis_adapter'),))
         candidate=SEMANTIC_REPLACEMENTS
-        self.assertEqual(len(candidate),946);require_unique_semantic_replacements(candidate)
+        self.assertEqual(len(candidate),949);require_unique_semantic_replacements(candidate)
         with self.assertRaisesRegex(ValueError,'Duplicate semantic replacement'):
             require_unique_semantic_replacements((*candidate,(0x104126d0,'other_owner')))
 

@@ -12,13 +12,32 @@ complete-match validation recorded in the [ball-action report](native-ball-actio
 Its semantic reconstruction is still incomplete. The match loop's nearest-candidate
 predicate `0x101e31a0` and a coherent target/control query block now have semantic
 replacements, as do the shared match/general samplers and the event construction/
-transition/history family and actor strategy flag queries. Other simulation helpers
+transition/history family, actor strategy flag queries and periodic balance/counter
+maintenance. Other simulation helpers
 remain generated. Running a complete match does not establish that every simulation
 routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **946 unique semantic owners**. The
+The latest installed milestone is **949 unique semantic owners**. The
+[periodic actor balance/counter block](native-actor-effects-reconstruction.md)
+preserves the exact 946-owner prefix and adds three complete operations containing
+1,569 original instructions. Its 18,373 component comparisons cover 1,364 ordinary
+prepared sites and 205 further checkpoint-only sites, with nineteen actually mutated
+checkpoint completions. The actual matrix passes 66 comparisons and nine original-
+profile controls, with 488 complete own sites and returning score/role/reseed
+composition. All roots have natural indexed BL callers, with 13,134, 37 and 863
+productive calls in 600 advances. Twenty-five prepared actual alternatives remain
+separate from natural evidence. No actual generic-sampler caller composition is
+claimed. Three focused CTests pass 23,861 comparisons; nine source guards, 92 manifest
+methods and composed UBSAN pass. Only two generated root pages change. Installed
+ARM64 SHA-256: `ee7d193ea79d148aa0aafa09b076f4f03ef6a386ba65e87fa925c5f424acc8e8`.
+Opening, original Portuguese options/cancel and normal exit are verified. All 846
+protected files, eighteen private prompts, prior 946-owner app and installed debugger
+are preserved. Save/Load is **not retested**; performance **not benchmarked**; PDF
+updates remain paused at edition 39. The full reconstruction goal remains active.
+
+The preceding installed milestone had **946 unique semantic owners**. The
 [actor strategy flag query block](native-actor-flags-reconstruction.md) preserves
 the exact 939-owner prefix and adds seven complete operations containing 185
 original instructions. The existing shared reader and mode policies retain their

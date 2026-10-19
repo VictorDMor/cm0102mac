@@ -14,7 +14,20 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [actor strategy flag query reconstruction](native-actor-flags-reconstruction.md)
+The [periodic actor balance/counter reconstruction](native-actor-effects-reconstruction.md)
+installs **949 semantic owners** after the exact 946-owner prefix. Three complete
+operations contain 1,569 original instructions and pass 18,373 component comparisons:
+1,364 ordinary prepared sites plus 205 further checkpoint-only sites. Sixty-six
+actual-context comparisons and nine profile-original controls pass, covering 488
+complete own sites. Every root has natural indexed BL callers, with 14,034 productive
+calls in 600 advances. Returning actual score/role/reseed composition is observed;
+no actual generic-sampler caller composition is claimed. Three focused CTests pass
+23,861 comparisons; source/manifest guards, composed UBSAN and installed opening/
+options/cancel/exit checks pass. Whole-engine semantic reconstruction and complete
+event coverage remain open. Save/Load is **not retested**; performance **not benchmarked**;
+PDF updates remain paused.
+
+The preceding [actor strategy flag query reconstruction](native-actor-flags-reconstruction.md)
 installs **946 semantic owners** after the exact 939-owner prefix. Seven complete
 queries contain 185 original instructions and preserve existing shared-reader/mode
 ownership. All 185 own sites pass both component and actual-context comparisons,

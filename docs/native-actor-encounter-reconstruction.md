@@ -1,5 +1,12 @@
 # Actor encounter response and score reconstruction
 
+The later [periodic actor balance/counter block](native-actor-effects-reconstruction.md)
+raises the installed total to **949 owners**. This component and its independent
+reference remain unchanged and pass the focused integration regression check.
+The new caller has actual score/role/reseed evidence; generic sampler arms remain
+explicit component checkpoint evidence. The evidence and app identity below
+record their earlier accepted milestone.
+
 The later [event construction and history block](native-match-event-reconstruction.md)
 raises the installed total to **939 owners** and reconstructs the previously generated
 event dependency `0x10201180`. This component and independent reference remain
