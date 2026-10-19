@@ -91,6 +91,7 @@ target_sources(cm_aot PRIVATE actor_flags.cpp actor_flags_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_effects.cpp actor_effects_adapter.cpp)
 target_sources(cm_aot PRIVATE target_acceptance_facing.cpp target_acceptance_eligibility.cpp target_acceptance_route.cpp target_acceptance_cell.cpp target_acceptance_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_action_routing.cpp actor_action_primary.cpp actor_action_destination.cpp actor_action_turn.cpp actor_action_secondary.cpp actor_action_adapter.cpp)
+target_sources(cm_aot PRIVATE actor_policy_context.cpp actor_policy_column.cpp actor_policy_phase.cpp actor_policy_bias.cpp actor_policy_opponent.cpp actor_policy_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -1007,6 +1008,21 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME actor_action_component_equivalence COMMAND cm-actor-action-checks
         "${CM_ORACLE_DIR}" "${CMAKE_BINARY_DIR}/actor_action_coverage.txt")
     set_tests_properties(actor_action_component_equivalence PROPERTIES TIMEOUT 180)
+
+    set(CM_ACTOR_POLICY_REFERENCE "${CMAKE_BINARY_DIR}/actor_policy_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ACTOR_POLICY_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_policy_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ACTOR_POLICY_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_actor_policy_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/actor_policy_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-actor-policy-checks actor_policy_checks.cpp "${CM_ACTOR_POLICY_REFERENCE}")
+    target_link_libraries(cm-actor-policy-checks PRIVATE cm_aot)
+    target_compile_options(cm-actor-policy-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME actor_policy_component_equivalence COMMAND cm-actor-policy-checks
+        "${CM_ORACLE_DIR}" "${CMAKE_BINARY_DIR}/actor_policy_coverage.txt")
+    set_tests_properties(actor_policy_component_equivalence PROPERTIES TIMEOUT 180)
 
     set(CM_TARGET_ACCEPTANCE_REFERENCE "${CMAKE_BINARY_DIR}/target_acceptance_reference.cpp")
     add_custom_command(OUTPUT "${CM_TARGET_ACCEPTANCE_REFERENCE}"
@@ -2686,3 +2702,7 @@ target_compile_options(cm-target-acceptance-production-checks PRIVATE -Wall -Wex
 add_executable(cm-actor-action-production-checks actor_action_production_checks.cpp)
 target_link_libraries(cm-actor-action-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-action-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-actor-policy-production-checks actor_policy_production_checks.cpp)
+target_link_libraries(cm-actor-policy-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-actor-policy-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

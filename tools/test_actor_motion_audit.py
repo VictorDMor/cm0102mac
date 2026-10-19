@@ -18,8 +18,8 @@ INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
 class ScopeTests(unittest.TestCase):
     def test_five_whole_bodies_and_preserved_prefix(self):
         self.assertEqual(sum(row[2] for row in BODIES),462)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),958)
-        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),958)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS),963)
+        self.assertEqual(len({a for a,_ in SEMANTIC_REPLACEMENTS}),963)
         self.assertEqual(SEMANTIC_REPLACEMENTS[643:648],tuple((a,'actor_motion_adapter') for a in ACTOR_MOTION_ENTRIES))
         prior=[{'entry':f'0x{a:x}','module':m} for a,m in SEMANTIC_REPLACEMENTS[:643]]
         self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

@@ -1,5 +1,10 @@
 # Actor action routing and selection reconstruction
 
+The later [actor-policy candidate](native-actor-policy-reconstruction.md) has
+963 owners and passes the focused actor-action regression with its independent
+reference unchanged. Its technical engine checks pass; installed visual acceptance
+is pending the unlocked Mac. Earlier evidence below retains its original scope.
+
 The installed ARM64 build has **958 unique semantic owners**, preserving the
 exact accepted 953-owner prefix. Five complete operations now use named C++23
 bodies on their production destination hooks. The block contains 12,243 original

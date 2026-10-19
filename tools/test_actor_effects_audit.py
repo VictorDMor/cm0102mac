@@ -21,7 +21,7 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(ACTOR_EFFECTS_ENTRIES, (0x10237b50,0x10285ed0,0x10285ee0))
         self.assertEqual(tuple(v[2] for v in CONTRACTS), (1563,4,2))
         self.assertEqual(sum(v[2] for v in FRAGMENTS), 1569)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 958)
+        self.assertEqual(len(SEMANTIC_REPLACEMENTS), 963)
         self.assertEqual(SEMANTIC_REPLACEMENTS[946:949],tuple((e,'actor_effects_adapter') for e in ACTOR_EFFECTS_ENTRIES))
         import hashlib
         prefix=[{'entry':hex(e),'module':m} for e,m in SEMANTIC_REPLACEMENTS[:946]]

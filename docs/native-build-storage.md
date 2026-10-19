@@ -1,9 +1,11 @@
 # Generated-source storage and cycle retention
 
-The native-port goal cleans reproducible build outputs after each accepted
-cycle. Keep the latest accepted consistent build and the active phase. Preserve
-application bundles, original/private inputs, references, receipts, handoffs,
-saves and user settings. Build only the explicitly required targets.
+The native-port goal cleans reproducible build outputs after each cycle. Keep
+the latest consistent build, the active phase, installed applications and
+necessary references. Preserve original/private inputs, receipts, handoffs,
+saves and user settings. Build only the explicitly required targets. Retire an
+older generated validation application only after verifying retained source,
+original inputs and a build recipe; its age alone is insufficient.
 
 Include standalone check executables and their debug-symbol bundles in each
 cycle's inventory. Earlier checks also live directly in phase directories or
@@ -39,6 +41,25 @@ Each following cycle reuses the consistent production build, creates only its
 required fixtures, removes reviewed obsolete check outputs and compacts newly
 retained snapshots when their content and metadata can be preserved. Inventory
 and preservation receipts stay private under the cycle's local storage records.
+
+A subsequent controlled pass compacts the 192 deferred snapshots and fifteen
+new factory captures. Exact ordinary-read content, paths, permissions, ownership,
+timestamps and all original non-provenance attributes are verified. macOS may
+regenerate `com.apple.provenance` on a generated snapshot copy; this is recorded
+separately and is not represented as unchanged metadata. Inputs, saves and
+application bundles are excluded. All 207 files are compressed, and the actual
+C++ loader passes fifteen profile comparisons through the original compressed
+paths with output identical to the earlier uncompressed run.
+
+Across these passes, **400 snapshots are newly compressed** and **426
+reproducible outputs are removed**. After the 963 technical build, its protected
+installation and this cycle's cleanup, available space is observed at
+**59,144,859,648 bytes**. Necessary original references, current production and
+sanitizer executables, source, logs and recipes remain available. The archived
+failing divide-regression executable is retained. Subsequent cycles review
+older seeded factory captures for retirement when their producer, parameters,
+source revision and original inputs are retained; ordinary full-state copies
+must not accumulate indefinitely.
 
 ## Independent generated-source reuse
 

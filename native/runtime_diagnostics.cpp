@@ -63,6 +63,7 @@
 #include "actor_effects_adapter.hpp"
 #include "target_acceptance_adapter.hpp"
 #include "actor_action_adapter.hpp"
+#include "actor_policy_adapter.hpp"
 #include "transfer_record_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "pitch_distance_adapter.hpp"
@@ -139,6 +140,7 @@ struct RuntimeDiagnostics {
     ActorEffectsDiagnostics actor_effects;
     TargetAcceptanceDiagnostics target_acceptance;
     ActorActionDiagnostics actor_action;
+    ActorPolicyDiagnostics actor_policy;
     TransferRecordDiagnostics transfer_record;
     TeamSpatialDiagnostics team_spatial;
     PitchDistanceDiagnostics pitch_distance;
@@ -745,5 +747,16 @@ ActorActionDiagnostics& actor_action_diagnostics(State& state) {
 const ActorActionDiagnostics& actor_action_diagnostics(const State& state) {
     static const ActorActionDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->actor_action : empty;
+}
+}
+
+namespace cm::aot {
+ActorPolicyDiagnostics& actor_policy_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->actor_policy;
+}
+const ActorPolicyDiagnostics& actor_policy_diagnostics(const State& state) {
+    static const ActorPolicyDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->actor_policy : empty;
 }
 }
