@@ -1,5 +1,11 @@
 # Shared match and general range sampling reconstruction
 
+This report records the accepted 911-owner milestone. The later
+[target/control block](native-match-target-reconstruction.md) raises the installed
+total to 919 and reconstructs `0x101e31a0`; the sampler bodies and their evidence
+below remain unchanged. References below to remaining generated match helpers
+describe the earlier milestone.
+
 Two complete range samplers now execute semantic C++23 by default in the installed
 ARM64 game. The manifest contains **911 unique owners**, retaining the exact
 **909-owner prefix**. The complete bodies contain **1,103 original instructions**.

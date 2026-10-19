@@ -1,5 +1,11 @@
 # Team spatial queries reconstructed
 
+The four bodies below retain their original 660-owner milestone evidence. The
+later [target/control block](native-match-target-reconstruction.md) installs 919
+owners and adds the complementary nearest-candidate predicate `0x101e31a0`.
+The existing four spatial bodies remain byte-identical and their focused
+7,456-comparison component check passes alongside the new block.
+
 Four complete team spatial operations now execute named C++23 bodies in the
 shared game/debugger engine. The ordered production manifest grows from 656 to
 **660** replacements, retaining the previous prefix exactly. These operations

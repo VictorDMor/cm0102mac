@@ -9,15 +9,33 @@ reconstructed engine are separate claims.
 
 The match simulation already executes as statically recompiled C++23, including
 complete-match validation recorded in the [ball-action report](native-ball-action-reconstruction.md).
-Its semantic reconstruction is still incomplete: the reconstructed match loop
-still calls generated helper `0x101e31a0`. The shared match/general samplers now
-have semantic replacements, including the former actor-attribute dependency
-`0x10226520`. Running a complete match does not establish that every simulation
+Its semantic reconstruction is still incomplete. The match loop's nearest-candidate
+predicate `0x101e31a0` and a coherent target/control query block now have semantic
+replacements, as do the shared match/general samplers. Other simulation helpers
+remain generated. Running a complete match does not establish that every simulation
 routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **911 unique semantic owners**. The
+The latest installed milestone is **919 unique semantic owners**. The
+[match target/control reconstruction](native-match-target-reconstruction.md)
+preserves the exact 911-owner prefix and adds eight complete operations containing
+785 original instructions. The component passes 4,142 original comparisons and
+covers all 785 own sites, including four explicit source-mutation cases. The
+actual-service matrix passes 114 comparisons and 24 original-profile controls,
+with 385 sites in complete productive comparisons. Six roots occur in twenty
+natural match ticks; two strategy queries are captured through prepared complete
+parent calls. These are separate evidence boundaries. Two focused CTests pass
+11,598 comparisons; ten source guards, 86 historical manifest methods and composed
+component/runtime UBSAN pass. Five generated pages change. Installed ARM64 SHA-256:
+`36b1ab0167a0a6cd4ecaa6f35883f7197a44eaa41fc6ef13c7a66e4375e9ee18`.
+Prepare Game, original Portuguese options/cancel and normal exit are verified.
+All 846 protected files, eighteen private prompts, prior 911-owner app and installed
+debugger are preserved. Save/Load is **not retested**; performance **not benchmarked**;
+PDF updates remain paused at edition 39. Full match-engine and whole-game semantic
+reconstruction remain unfinished; the full goal stays active.
+
+The preceding installed milestone had **911 unique semantic owners**. The
 [shared sampler reconstruction](native-range-sampling-reconstruction.md) retains
 the exact 909-owner prefix and adds the sampler used by match actors and ball
 actions plus its related general helper: 1,103 original instructions. The block passes 4,772 original comparisons;

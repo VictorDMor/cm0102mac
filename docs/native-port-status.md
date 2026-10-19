@@ -14,8 +14,18 @@ unfinished; this is a working development build, not a fully validated release.
 
 ## Latest C++23 delivery
 
-The [shared match/general sampler reconstruction](native-range-sampling-reconstruction.md)
-installs **911 semantic owners** after the exact 909-owner prefix. Two whole operations
+The [match target/control reconstruction](native-match-target-reconstruction.md)
+installs **919 semantic owners** after the exact 911-owner prefix. Eight complete
+operations contain 785 original instructions. The component passes 4,142 comparisons;
+114 actual-service comparisons and 24 original-profile controls pass. Six roots have
+natural match-tick callers, while two strategy queries have prepared complete-parent
+coverage. Two focused CTests, source/manifest guards, composed UBSAN and installed
+opening/options/cancel/exit checks pass. Protected files, prior app and installed
+debugger are preserved. Match-engine and whole-game semantic completion remain open.
+Save/Load is **not retested**; performance **not benchmarked**; PDF updates remain paused.
+
+The preceding [shared match/general sampler reconstruction](native-range-sampling-reconstruction.md)
+installed **911 semantic owners** after the exact 909-owner prefix. Two whole operations
 contain 1,103 original instructions. Original/component, actual-service, profile,
 composed UBSAN and installed visual acceptance pass. A natural match call and an
 explicit general-helper fixture are distinguished. Protected files and the installed

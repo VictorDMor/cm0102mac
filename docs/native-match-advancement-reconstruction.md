@@ -1,5 +1,11 @@
 # Match advancement reconstruction
 
+This report retains the historical 601-owner advancement milestone. The later
+[target/control block](native-match-target-reconstruction.md) installs 919 owners
+and converts eight related queries, including advancement dependency `0x101e31a0`.
+The three advancement bodies below remain unchanged. Other football dependencies
+still require semantic reconstruction.
+
 ## Complete production block
 
 The watched-match caller, background-match caller and shared advancement state

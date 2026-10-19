@@ -82,6 +82,7 @@ target_sources(cm_aot PRIVATE preferences_actions_opening.cpp preferences_action
 target_sources(cm_aot PRIVATE localization_lookup.cpp localization_lookup_adapter.cpp localization_format.cpp localization_format_adapter.cpp)
 target_sources(cm_aot PRIVATE localization_catalog.cpp localization_catalog_adapter.cpp)
 target_sources(cm_aot PRIVATE range_sampling_match.cpp range_sampling_general.cpp range_sampling_adapter.cpp)
+target_sources(cm_aot PRIVATE match_target_policy.cpp match_target_queries.cpp match_target_nearest.cpp match_target_adapter.cpp)
 target_sources(cm_aot PRIVATE match_engine.cpp match_engine_adapter.cpp match_debugger_session.cpp match_debugger_goal.cpp match_debugger_cards.cpp)
 target_sources(cm_aot PRIVATE match_actor.cpp match_actor_adapter.cpp)
 target_sources(cm_aot PRIVATE actor_construction.cpp actor_construction_prepare.cpp actor_construction_adapter.cpp)
@@ -984,6 +985,21 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-awol-records-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME awol_records_component_equivalence COMMAND cm-awol-records-checks)
     set_tests_properties(awol_records_component_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_MATCH_TARGET_REFERENCE "${CMAKE_BINARY_DIR}/match_target_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MATCH_TARGET_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_target_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_TARGET_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_match_target_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/match_target_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-match-target-checks match_target_checks.cpp "${CM_MATCH_TARGET_REFERENCE}")
+    target_link_libraries(cm-match-target-checks PRIVATE cm_aot)
+    target_compile_options(cm-match-target-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME match_target_component_equivalence COMMAND cm-match-target-checks
+        "${CMAKE_BINARY_DIR}/match_target_coverage.txt")
+    set_tests_properties(match_target_component_equivalence PROPERTIES TIMEOUT 180)
+
     set(CM_RANGE_SAMPLING_REFERENCE "${CMAKE_BINARY_DIR}/range_sampling_reference.cpp")
     add_custom_command(OUTPUT "${CM_RANGE_SAMPLING_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_range_sampling_reference.py"
@@ -2505,3 +2521,7 @@ target_compile_options(cm-localization-catalog-production-checks PRIVATE -Wall -
 add_executable(cm-range-sampling-production-checks range_sampling_production_checks.cpp)
 target_link_libraries(cm-range-sampling-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-range-sampling-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+add_executable(cm-match-target-production-checks match_target_production_checks.cpp)
+target_link_libraries(cm-match-target-production-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-target-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
