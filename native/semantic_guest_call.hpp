@@ -281,6 +281,16 @@ public:
     void divide(unsigned destination, unsigned first, unsigned second) {
         step(); state.wr<4>(destination * 4, divide_signed<4>(r(first), r(second)));
     }
+    void divide_record(unsigned destination, unsigned first, unsigned second) {
+        step(); const auto numerator = r(first), denominator = r(second);
+        // The pinned divw. source updates OV/SO before attempting division,
+        // including the zero-divisor fault boundary.
+        const bool overflow = denominator == 0 || (numerator == 0x80000000u && denominator == UINT32_MAX);
+        state.wr<1>(1025, overflow); state.wr<1>(1024, state.r<1>(1024) || overflow);
+        const auto value = std::uint32_t(divide_signed<4>(numerator, denominator));
+        state.wr<4>(destination * 4, value);
+        condition(std::bit_cast<std::int32_t>(value), 0, true);
+    }
     void product(unsigned destination, unsigned first, unsigned second) {
         step(); state.wr<4>(destination * 4, r(first) * r(second));
     }

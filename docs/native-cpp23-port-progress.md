@@ -13,13 +13,30 @@ Its semantic reconstruction is still incomplete. The match loop's nearest-candid
 predicate `0x101e31a0` and a coherent target/control query block now have semantic
 replacements, as do the shared match/general samplers and the event construction/
 transition/history family, actor strategy flag queries and periodic balance/counter
-maintenance, target-facing eligibility and corridor accumulation. Other simulation helpers
+maintenance, target-facing eligibility and corridor accumulation, and complete actor action routing/
+primary and secondary selection. Other simulation helpers
 remain generated. Running a complete match does not establish that every simulation
 routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed milestone is **953 unique semantic owners**.
+The latest installed milestone is **958 unique semantic owners**.
+The [actor action routing and selection block](native-actor-action-reconstruction.md)
+installs **958 semantic owners** after the exact 953-owner prefix. Five complete
+operations contain 12,243 original instructions, including the whole primary
+selector. The permanent component check passes 13,729 comparisons and covers all
+own sites: 6,554 ordinary prepared sites and 5,689 additional diagnostic-only
+sites. The actual matrix passes 70 cases and fifteen profile-original controls.
+A paired sequence of 600 consecutive actual advances preserves complete final
+state, each-advance architectural/import/accounting state and ordered memory
+SHA-256, with 23,499 productive own calls and 7,624 natural own sites. Three
+focused CTests pass 30,978 comparisons; thirteen-unit focused UBSAN, source/manifest
+guards and installed opening/options/cancel/normal exit checks pass. The prior
+953 owners, reference app, debugger, 846 protected files and eighteen private
+prompts are preserved. Save/Load is **not retested**; performance **not benchmarked**;
+PDF updates remain paused. Whole-engine semantic reconstruction and complete
+match-event coverage remain unfinished; the full objective stays active.
+
 The [target-facing, eligibility and corridor block](native-target-acceptance-reconstruction.md)
 installs **953 semantic owners** after the exact 949-owner prefix. Four complete
 operations contain 758 original instructions and pass 12,477 component comparisons:

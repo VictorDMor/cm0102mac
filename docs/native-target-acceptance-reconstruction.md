@@ -1,5 +1,11 @@
 # Target facing, eligibility and corridor reconstruction
 
+The later [actor-action routing and selection block](native-actor-action-reconstruction.md)
+installs **958 owners**. This component and its independent reference remain
+unchanged and pass the focused integration regression check. The later report
+separates actual caller evidence from component diagnostics. Earlier evidence
+and application identities below describe their original accepted milestones.
+
 Four complete operations now execute structured C++23 by default in the installed
 ARM64 game. They append after the exact 949-owner prefix, for **953 unique semantic
 owners**. The existing `can_face_destination` at `0x10245050` keeps its actor-motion

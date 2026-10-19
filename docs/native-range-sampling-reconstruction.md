@@ -1,5 +1,11 @@
 # Shared match and general range sampling reconstruction
 
+The later [actor-action routing and selection block](native-actor-action-reconstruction.md)
+installs **958 owners**. This component and its independent reference remain
+unchanged and pass the focused integration regression check. The later report
+separates actual caller evidence from component diagnostics. Earlier evidence
+and application identities below describe their original accepted milestones.
+
 The later [periodic actor balance/counter block](native-actor-effects-reconstruction.md)
 raises the installed total to **949 owners**. This component and its independent
 reference remain unchanged and pass the focused integration regression check.
