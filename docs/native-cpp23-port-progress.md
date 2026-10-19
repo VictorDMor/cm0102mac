@@ -9,6 +9,16 @@ reconstructed engine are separate claims.
 
 ## Current evidence
 
+Four complete [catalog lifecycle operations](native-localization-catalog-reconstruction.md)
+are now accepted as isolated semantic components: catalog release, record destruction,
+language availability and whole initialization. Their **734 original instructions**
+pass **617 paired comparisons**, with all own sites exercised in complete starting-root
+runs, eight discriminating negatives and nine source/data/reference guards. Focused
+component UBSAN matches Release with three instrumented units and eleven pinned
+headers. Productive adapters, actual native-service acceptance and installed evidence
+are still pending for this block; the installed manifest and executable remain at
+**905 owners**. Sorting and the large substitution child retain separate ownership.
+
 The latest installed milestone is **905 unique semantic owners**. The
 [localization integration](native-localization-integration.md) preserves the exact
 901-owner prefix and adds four whole operations: record initialization,
