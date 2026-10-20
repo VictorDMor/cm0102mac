@@ -217,7 +217,8 @@ Reopening the newest all-league copy, creating another full all-league career,
 and completing an all-league day with the checked-read candidate are
 **not retested**.
 
-All three native optimizations are installed. The source executable SHA-256 is
+At the preceding checked-read delivery, the first three native optimizations
+were installed together. That source executable SHA-256 is
 `23d498864565b77db1b127d29b7ad8b8b64c0de2152d564f87ad45c0cc4cda53`;
 the isolated tested executable is
 `bdd3ec5a14d5e40860063d75aec1e3520444612fe34bfb8ba5f2db2b0e4254c9`;
@@ -233,3 +234,78 @@ historical baseline; the newer file was preserved.
 The broader performance goal remains active. Near-instant loading is not
 achieved. Private programs, snapshots, saved careers, profiles, transcripts and
 build artifacts remain under `.local/`.
+
+## Native sorting closure
+
+The 8-byte heapsort at `0x10768660` now has a generated scalar-register frame
+covering its generic descriptor tail and both pure pair comparators. This
+removes repeated dispatcher crossings while retaining the original algorithm,
+comparison order, duplicate handling, arithmetic overflow, memory order and
+instruction accounting. The four original contracts contain 159 instructions;
+their complete fingerprints are checked before output files are changed.
+No original instruction bodies are committed.
+
+Hooks cover the actual entry label, including intra-page calls whose published
+PC still belongs to the previous instruction. Unrecognized descriptor targets
+publish the complete frame and resume ordinary dispatch. Finite budgets,
+original-PC profiling, active observers and original-body policies retain the
+ordinary path. Passive native drawing remains eligible. Exception unwinding
+publishes partial writes and exact architectural residues, and existing
+descriptor/comparator outcome diagnostics remain balanced. A process-local
+attempt counter provides coverage evidence without changing saved games.
+
+Six alternating pairs against the preceding checked-read build produced these
+median paired reductions, with all six pairs faster on both clocks:
+
+| Complete captured operation | Wall reduction | Process CPU reduction |
+| --- | ---: | ---: |
+| Actual 4,246-record heapsort | 58.12% | 58.19% |
+| Entire staff-link transition containing the sort | 14.76% | 14.76% |
+
+Each sort process used two warmups plus 20 measured executions; each daily
+process used two plus ten. Only one process ran during timing, with no game,
+compiler or profiler active. Both complete final snapshots and all original
+instruction/import counts match. The sort executes 3,675,371 instructions and
+zero native OS calls; its entire daily parent executes 15,254,185 instructions
+and 114 native OS calls. The previous world normalization and both 600-advance
+shared-engine scenarios also preserve complete state and accounting, with no
+material measured regression under the declared one-percent rule. These are
+component-operation measurements, not an entire all-league day or creation time.
+
+The final build passes 14 focused CTests. The new native checks compare 2,810
+complete states, including 2,194 matching faults and every one of 1,610
+instruction-counter overflow prefixes across both comparators. Cases include
+ties, sentinel values, extreme signed values, unaligned records, stack/array/
+descriptor aliases, partial faults, dynamic descriptor side exits, policy and
+profile fallbacks, and real drawing surfaces. Ten Python audits pass across
+the sort and shared scalar-register lowering. Complete generation still has
+1,953,334 instructions, zero pending targets, and 963 semantic owners; only
+one existing generated page and the new private sort unit change.
+
+The isolated application reopened the newest 26-country career and logged a
+real native 4,030-record sort returning to `0x10768318`. A bounded Continue
+processed background fixtures and reached date formatting for 24 December
+night. A separate three-second host sample shows the shared match engine and
+actor-action path dominating that simulation phase. The original UI was still
+processing when this owned diagnostic was stopped; a complete interactive day
+and whole-advance timing are **not retested**. The starting private saves remain
+unchanged. This identifies the next performance target without attributing the
+entire remaining cost to loading or sorting.
+
+The sorting candidate also completed a fresh watched match from the unchanged
+private pre-match career. Turbo was visibly checked by default. Cruzeiro won
+3-0, with Oseas scoring at 12, Leonardo at 17 and Alex at 68; other afternoon
+fixtures returned results. A new private save was written, the app exited
+normally, and reopening confirmed the calendar score and one goal for each
+scorer. This is functional evidence, not a matched live timing comparison.
+
+The sorting optimization is installed. Source executable SHA-256:
+`8e08062e71fb2409708329ceda3e0d34c018451023dbba6c6f8eab652b5ea020`;
+tested isolated executable:
+`8ad470263abc16971f42a0a2ed66e5d4b45ed5d21217e19eb3a62f56a6a5d803`;
+installed signed executable:
+`34987dc9fbfe59a36517449773b55166f01f15aca0e51e96f06ab727eb95fcf5`.
+All native section bytes, addresses, sizes and flags match. Strict signature
+verification passes, and only the installed executable changed. All 846
+protected files retained their immediately preceding hashes. The broader
+near-instant loading and all-league processing objective remains active.

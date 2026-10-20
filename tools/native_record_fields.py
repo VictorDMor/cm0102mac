@@ -50,26 +50,33 @@ def load_leaves(connection, selected=None):
     return leaves
 
 
-def _registers(text):
+def _registers(text, extra_slots=None):
     accesses = [(int(width), int(offset)) for width, offset in re.findall(r"s\.(?:r|wr)<(\d+)>\((\d+)", text)]
+    layout = {**dict.fromkeys(range(0, 128, 4), 4), 1024: 1, 2304: 1, 4128: 4}
+    for base, size in (extra_slots or {}).items():
+        if size not in (1, 4) or any(base < other + width and base + size > other
+                                   for other, width in layout.items()):
+            raise ValueError("Overlapping or unsupported native scalar register layout")
+        layout[base] = size
     slots = {}
     for width, offset in accesses:
-        base = offset // 4 * 4 if offset < 128 or 4128 <= offset < 4132 else offset
-        size = 4 if base < 128 or base == 4128 else 1
-        if base not in (*range(0, 128, 4), 1024, 2304, 4128) or offset + width > base + size:
+        field = next(((base, size) for base, size in layout.items()
+                      if base <= offset and offset + width <= base + size), None)
+        if field is None:
             raise ValueError("Unsupported record-field register slice")
+        base, size = field
         slots[base] = size
     return slots
 
 
-def _promote(first, text):
+def _promote(first, text, *, extra_slots=None):
     if set(re.findall(r"s\.([A-Za-z_]+)", text)) - {"r", "wr", "memory", "step", "pc"}:
         raise ValueError("Record-field leaf has an unhandled State operation")
-    slots = _registers(text)
+    slots = _registers(text, extra_slots)
 
     def locate(offset, width):
-        base = offset // 4 * 4 if offset < 128 or 4128 <= offset < 4132 else offset
-        size = slots[base]
+        base, size = next((base, size) for base, size in slots.items()
+                          if base <= offset and offset + width <= base + size)
         return base, size, (base + size - offset - width) * 8
 
     def read(match):

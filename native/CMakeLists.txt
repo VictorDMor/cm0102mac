@@ -2518,6 +2518,12 @@ target_compile_options(cm-native-record-field-checks PRIVATE -Wall -Wextra -Werr
 add_test(NAME native_record_field_equivalence COMMAND cm-native-record-field-checks)
 add_test(NAME original_record_field_profile COMMAND "${CMAKE_COMMAND}" -E env
     CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-native-record-field-checks> --profile)
+add_executable(cm-native-sort8-checks native_sort8_checks.cpp)
+target_link_libraries(cm-native-sort8-checks PRIVATE cm_aot)
+target_compile_options(cm-native-sort8-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME native_sort8_equivalence COMMAND cm-native-sort8-checks)
+add_test(NAME original_sort8_profile COMMAND "${CMAKE_COMMAND}" -E env
+    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-native-sort8-checks> --profile)
 add_executable(cm-shutdown-checks shutdown_checks.cpp)
 target_link_libraries(cm-shutdown-checks PRIVATE cm_probe_host)
 target_compile_options(cm-shutdown-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)

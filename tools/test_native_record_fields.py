@@ -48,6 +48,17 @@ class NativeRecordFieldAudit(unittest.TestCase):
         with self.assertRaises(ValueError):
             generate_native_record_fields(self.leaves, changed_render)
 
+    def test_extended_scalar_slots_remain_explicit_and_disjoint(self):
+        from native_record_fields import _registers
+        with self.assertRaises(ValueError):
+            _registers('s.r<4>(4132)')
+        self.assertEqual(_registers('s.r<2>(4133)', {4132: 4}), {4132: 4})
+        for layout in ({127: 4}, {1024: 1}, {4131: 4}, {5000: 8}):
+            with self.assertRaises(ValueError):
+                _registers('s.r<4>(0)', layout)
+        with self.assertRaises(ValueError):
+            _registers('s.r<4>(4133)', {4132: 4})
+
     def test_full_lowering_and_entry_hooks(self):
         from compile_recomp import generate_page
         result = generate_native_record_fields(self.leaves, lambda page, records, selected:

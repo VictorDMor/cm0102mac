@@ -8,6 +8,7 @@ import argparse
 from collections import defaultdict, deque
 import json
 import hashlib
+import inspect
 from pathlib import Path
 import sqlite3
 import struct
@@ -17,6 +18,7 @@ from match_presentation_audit import require_match_presentation_context
 from match_speed_audit import require_match_speed_context, MATCH_SPEED_PAGES
 from local_temporaries import LocalTemporaries
 from native_record_fields import CONTRACTS as NATIVE_RECORD_FIELDS, load_leaves, generate_native_record_fields
+from native_sort8 import ENTRY as NATIVE_SORT8_ENTRY, load_sort8, require_sort8_page, generate_sort8
 from vector_context_lowering import lower_vector_intrinsic
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
@@ -575,7 +577,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_leaf_lowering=False):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -778,6 +780,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     code = ['#include "aot_runtime.hpp"', "namespace cm::aot {",
             (f"template <bool Turbo, bool Finite> bool page_{page:x}_impl(State& s) {{" if match_hot_page
              else f"bool page_{page:x}(State& s) {{")]
+    if native_sort8_hooks:
+        require_sort8_page(page, instructions, selected)
+        if NATIVE_SORT8_ENTRY in page_addresses:
+            code.insert(1, '#include "native_sort8.hpp"')
     if native_record_field_hooks and page_addresses & NATIVE_RECORD_FIELDS.keys():
         code.insert(1, '#include "native_record_fields.hpp"')
     if transfer_hooks:
@@ -1015,6 +1021,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
+        if native_sort8_hooks and a == NATIVE_SORT8_ENTRY:
+            code.append("if (try_native_sort8(s)) return true;")
         if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
             code.append(f"if (try_native_record_fields(s, 0x{a:x})) return true;")
         if a == 0x1028d558:
@@ -1761,6 +1769,7 @@ def main():
         require_record_group_index(db, None if args.all_analyzed else selected)
     with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
         native_leaves = load_leaves(db, None if args.all_analyzed else selected)
+        native_sort = load_sort8(db, None if args.all_analyzed else selected)
     if args.reuse_generated:
         reused = seed_generated(args.reuse_generated, args.output)
         print(f"Seeded generated C++: {reused['clonedFiles']} copy-on-write files; {reused['copiedFiles']} regular copies", flush=True)
@@ -1840,6 +1849,10 @@ def main():
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
             native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops']))
+    sort_hooks = {name: False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks')}
+    outputs["native_sort8.cpp"] = generate_sort8(native_sort,
+        lambda page, records, chosen: generate_page(page, records, chosen,
+            **sort_hooks, native_leaf_lowering=True, userops=metadata['userops']))
     # Remove only stale generated pages, after all code generation has succeeded.
     for stale in args.output.glob("page_*.cpp"):
         if stale.name not in outputs: stale.unlink()
