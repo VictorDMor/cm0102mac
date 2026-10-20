@@ -410,3 +410,94 @@ on normal quit; reopening is **not retested**. The initial save and all 846
 protected files remain unchanged. Near-instant loading and progression remain
 unachieved. The next priority is the complete daily world/recruitment/utility
 work, using this completed scenario to judge useful improvements.
+
+## Daily world cost by function
+
+A second private diagnostic measures actual recruitment, policy, link and
+heapsort entries rather than inferring their identity from a generated page.
+The compiler merges instruction suffixes within a page, so a sampled host
+address can represent several original continuations. Page membership alone
+does not distinguish sorting from other work.
+
+The unchanged 26-country career again advances from 21 to 28 December morning,
+returning to the original news screen. This run disables only the private
+ordered RNG-boundary digest; it retains the original RNG and input handling.
+Its observed Continue takes 481.334 wall / 481.815 process CPU seconds and
+227,666,002,891 original instructions. Real clock inputs, transfer outcomes and
+match workloads differ from the first diagnosis, so the elapsed difference is
+**not** an accepted speedup. No compiler or host profiler ran during this run.
+
+The additional timers report these process-wide totals, including load and
+save. Parent times include nested children and must not be added together:
+
+| Entry | Calls | Inclusive wall seconds |
+| --- | ---: | ---: |
+| Distribute staff interest | 2,423 | 76.305 |
+| Register club interest, nested in distribution | 13,517,821 | 71.515 |
+| Transition staff links | 3,199 | 62.076 |
+| Check candidate country policy | 46,479,823 | 13.833 |
+| Evaluate row contract gate | 15,191,016 | 17.712 |
+| All heapsorts | 9,606 | 23.023 |
+
+The existing two native pair-comparator sorts account for approximately 12.020
+seconds of that sort total. Another eight-byte comparator (`0x10309a00`) accounts
+for 10.580 seconds across 75 sorts and 7,560,945 rows. Other sort configurations
+are substantially smaller in this run. The repeated recruitment/link work is
+the larger next target; this measurement does not justify attributing all
+remaining delay to the sort routine.
+
+The diagnostic executable is private and not installed, SHA-256
+`eb2e24a4cf1f773ad9f0ca026395dcc6903af45311a73749d4c0cf553045a5e8`.
+It wrote a new private weekly result and exited normally. Reopening is **not
+retested**. The starting career and all 846 protected files remain unchanged.
+
+A separate compiler experiment forced inlining of 83 existing guest-operation
+methods across 240 production translation units. Four alternating pairs retain
+identical complete final states and accounting in the daily transition, world
+normalization and both shared-engine intervals. It fails the declared gain
+threshold: the daily transition is 1.12% slower on wall time and 1.11% slower on
+process CPU; the other scenarios show no useful gain. This experiment is
+rejected and is not installed. Broader inlining alone does not solve the
+repeated world-operation cost.
+
+A private native-endian register-cache experiment also retains complete states
+and accounting. Its corrected variant permits dependency dispatch with canonical
+register publication and reload. It fails the declared control-scenario gain
+threshold: daily transition is 0.48% slower on wall time, world normalization is
+unchanged, and one match interval is 2.21% slower while the other is 0.90% faster. Broad
+deployment is rejected. These controls do not capture the dominant complete
+recruitment-distribution pass, so they cannot establish its speedup.
+
+## Accumulated bounded-operation gains
+
+A direct comparison uses the frozen production AOT/UI archives from `4bc51cd`
+and the currently accepted archives at `582532a` (performance source `7430110`).
+The reference already contains the first native-default-Turbo delivery; gains
+already present in that delivery are outside this comparison. This measures
+accumulated improvements directly rather than adding earlier percentages.
+
+Both versions run the same harness and immutable complete captured inputs.
+Six alternating pairs per scenario use one process at a time, with warmups,
+separate wall/process CPU clocks, and no game, build or profiler. Every pair
+preserves complete final state and original instruction/import accounting; the
+match cases also preserve clock, sampler and all 23 spatial call/return counts.
+All six pairs are faster on both clocks in every scenario.
+
+| Complete bounded operation | Median paired wall-time reduction | Process CPU reduction |
+| --- | ---: | ---: |
+| Captured staff-link daily transition | 18.42% | 17.63% |
+| World attribute normalization | 15.33% | 15.60% |
+| Arsenal shared-engine interval, 600 advances | 11.37% | 11.66% |
+| Cruzeiro shared-engine interval, 600 advances | 10.63% | 10.37% |
+
+An unrelated Blender process was active during timing and was left untouched.
+These are approximate bounded-operation estimates, supported by alternating
+order and consistent process CPU gains. They do not establish a whole-game,
+whole-match, league-loading or complete-week percentage, nor a percentage of
+completion toward near-instant all-league play. The observed weekly diagnostic
+still takes approximately eight minutes. The target remains unachieved.
+
+Private evidence is retained in
+`.local/native-background-performance/cumulative-progress-01/`: exact archive
+and executable hashes, compiler arguments, individual pairs, full snapshots and
+summary. No new production executable is installed for this comparison.
