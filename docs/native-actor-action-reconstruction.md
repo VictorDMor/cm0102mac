@@ -2,8 +2,8 @@
 
 The later [actor-policy candidate](native-actor-policy-reconstruction.md) has
 963 owners and passes the focused actor-action regression with its independent
-reference unchanged. Its technical engine checks pass; installed visual acceptance
-is pending the unlocked Mac. Earlier evidence below retains its original scope.
+reference unchanged. Its technical engine checks and installed startup, options,
+cancellation and normal quit pass. Earlier evidence below retains its original scope.
 
 The installed ARM64 build has **958 unique semantic owners**, preserving the
 exact accepted 953-owner prefix. Five complete operations now use named C++23

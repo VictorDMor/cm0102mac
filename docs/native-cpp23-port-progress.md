@@ -20,18 +20,19 @@ routine has a semantic replacement.
 
 ## Current evidence
 
-The latest installed technical candidate has **963 unique semantic owners**;
-its visual acceptance is pending the unlocked Mac.
-The [actor decision policy candidate](native-actor-policy-reconstruction.md)
-is technically verified and installed with **963 owners**, preserving the exact
+The latest accepted installed application has **963 unique semantic owners**.
+The [actor decision policy block](native-actor-policy-reconstruction.md)
+is verified and installed with **963 owners**, preserving the exact
 958-owner prefix. Five complete operations cover 640 original instructions and
 pass 2,740 component comparisons, with 469 ordinary sites and 171 additional
 diagnostic-only sites. Actual-context70/profile15 checks and 600 paired advances
 pass, with 31,680 productive own calls and 421 complete natural sites. Three
 focused CTests pass 21,241 comparisons, and twelve-unit focused UBSAN passes.
-**Installed visual acceptance is pending because macOS is locked**; the user has
-been asked to unlock it. Save/Load is not retested, performance not benchmarked,
-and the full objective remains active. Cycle storage cleanup is retained.
+**Installed visual acceptance passed on 2026-10-20**: startup, Game Options,
+cancellation to the menu and normal quit were observed after the user unlocked
+the Mac. The process exited and the installed identity remained valid. Save/Load
+is not retested, performance not benchmarked, and the full objective remains
+unfinished. Cycle storage cleanup is retained.
 
 The [actor action routing and selection block](native-actor-action-reconstruction.md)
 installs **958 semantic owners** after the exact 953-owner prefix. Five complete

@@ -1,10 +1,12 @@
 # Actor decision policy reconstruction
 
-Five complete actor-policy operations are technically verified and installed in
-the ARM64 candidate, for **963 unique semantic owners** after the exact accepted
-958-owner prefix. Installed visual acceptance is **pending**: the computer-use
-tool reported that macOS was locked and could not unlock it. The user has been
-asked to unlock the Mac. Startup, options and normal exit are not claimed here.
+Five complete actor-policy operations are verified and installed in
+the ARM64 application, for **963 unique semantic owners** after the exact accepted
+958-owner prefix. Installed visual acceptance passed on 2026-10-20 after the user
+unlocked the Mac: startup reached the original menu, Game Options opened and
+cancelled back to that menu, and the original quit confirmation closed the game.
+The process was absent after normal quit; the installed executable hash and
+strict signature remained valid.
 
 The full reconstruction objective remains active. Owner totals and this block's
 instruction coverage are not percentages of whole-engine completion or complete
@@ -102,7 +104,7 @@ matches the candidate SHA-256:
 The previous 958-owner application, installed debugger, four original-program
 resources, 846 protected files and eighteen unrelated private prompts are
 preserved. Actual invocation evidence comes from the shared production engine;
-installed visual acceptance remains pending the unlocked Mac.
+installed startup, options, cancellation and normal quit were observed separately.
 
 The cycle reuses the existing production build and retires superseded linked
 checks while retaining sources, recipes, logs and necessary references. Snapshot
