@@ -1,5 +1,6 @@
 #include "file_reference_bridge.hpp"
 #include "aot_runtime.hpp"
+#include "hfs_names.hpp"
 #include <CoreServices/CoreServices.h>
 #include <cstring>
 #include <algorithm>
@@ -152,7 +153,8 @@ std::int16_t native_unicode_name(std::span<const std::uint16_t> characters, std:
     CFRelease(value);
     if (!converted || std::find(characters.begin(), characters.end(), 0) != characters.end()) return bdNamErr;
     result = text.data();
-    if (result == "." || result == ".." || result.find_first_of(":/") != std::string::npos) return bdNamErr;
+    if (result == "." || result == ".." || result.find(':') != std::string::npos) return bdNamErr;
+    result = host_name(result);
     return noErr;
 }
 GuestFileCatalog read_guest_file_catalog(State& s, std::uint32_t address, std::uint32_t bitmap) {

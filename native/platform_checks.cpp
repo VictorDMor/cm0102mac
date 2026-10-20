@@ -660,6 +660,35 @@ int main() {
                 catalog_id("CM 01-02:games:season-new") == season_id &&
                 catalog_id("CM 01-02:games:season-new:child.sav") == child_id,
                 "Directory rename changed existing directory or descendant IDs");
+        // macOS stores a Mac '/' as ':' on disk, as Carbon did.
+        require(rename_named("CM 01-02:games:Renamed.sav", "Cruzeiro 01/02.sav") == 0 &&
+                fs::file_size(user / "Files" / "games" / "Cruzeiro 01:02.sav") == 15 &&
+                catalog_id("CM 01-02:games:Cruzeiro 01/02.sav") == old_id,
+                "A Mac name containing '/' did not round-trip through its host ':' form");
+        require(rename_named("CM 01-02:games:Cruzeiro 01/02.sav", "a:b.sav") == -37,
+                "Rename accepted ':' inside a Mac name");
+        // The game ends a directory scan at its first error. A name MacRoman
+        // cannot hold ("Wisła", sorted first) must not hide the saves after it.
+        const auto listing = user / "Files" / "games" / "listing";
+        fs::create_directory(listing);
+        std::ofstream(listing / "Wis\xc5\x82\x61.sav") << "b";
+        std::ofstream(listing / "a.sav") << "a";
+        std::ofstream(listing / "z:z.sav") << "c";
+        const auto listing_id = catalog_id("CM 01-02:games:listing");
+        require(s.memory.read<2>(pb + 52) == 2, "Directory count includes a name the listing cannot return");
+        std::vector<std::string> listed;
+        for (unsigned index = 1; index <= 4; ++index) {
+            s.memory.clear(pb, 108);
+            s.memory.write<4>(pb + 18, name);
+            s.memory.write<2>(pb + 22, 0xffff);
+            s.memory.write<2>(pb + 28, index);
+            s.memory.write<4>(pb + 48, listing_id);
+            const auto result = call(s, "CarbonLib::PBGetCatInfoSync", {pb});
+            if (result) { require(result == -43, "Directory scan ended with an error other than fnfErr"); break; }
+            listed.push_back(string(s, name));
+        }
+        require(listed == std::vector<std::string>{"a.sav", "z/z.sav"},
+                "A name MacRoman cannot hold hid or misnamed the entries after it");
         bool protected_rename = false;
         try { rename_named("CM 01-02:Data:players.dat", "moved.dat"); }
         catch (const std::runtime_error&) { protected_rename = true; }

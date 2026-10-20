@@ -15,6 +15,7 @@
 #include "fork_io_bridge.hpp"
 #include "unicode_bridge.hpp"
 #include "file_reference_bridge.hpp"
+#include "hfs_names.hpp"
 #include "sound_bridge.hpp"
 #include "performance_trace.hpp"
 #include <bit>
@@ -177,6 +178,22 @@ struct NativePlatform::Impl {
         for (const auto& entry : listing(input)) result.push_back(entry.path);
         return result;
     }
+    // Entries a MacRoman File Manager call can name within the 63 bytes
+    // write_spec accepts. The game stops a directory scan at its first error,
+    // so one Finder-renamed file would otherwise hide every later save.
+    std::vector<fs::path> mac_entries(const fs::path& input) const {
+        std::vector<fs::path> result;
+        for (const auto& entry : listing(input)) {
+            const auto name = entry.path.filename().string();
+            bool fits = name.size() <= 63 && std::ranges::all_of(name, [](unsigned char c) { return c < 0x80; });
+            if (!fits) {
+                try { fits = convert(hfs_name(name), kCFStringEncodingUTF8, kCFStringEncodingMacRoman).size() <= 63; }
+                catch (const FileError&) {}
+            }
+            if (fits) result.push_back(entry.path);
+        }
+        return result;
+    }
     fs::path visible_child(const fs::path& parent, const std::string& name) const {
         const auto paths = catalog_paths(parent);
         const auto found = catalog.child(paths[0], paths[1], paths[2], name);
@@ -208,6 +225,7 @@ struct NativePlatform::Impl {
         if (!under(fs::canonical(target.parent_path()), writable) ||
             (under(logical, game) && fs::exists(fs::symlink_status(logical))))
             throw std::runtime_error("Deleting an original media entry requires private tombstone support: " + target.string());
+        data_forks.make_durable(target.parent_path());
         const auto status = native_delete_object(target);
         if (!status) {
             file_ids.erase(logical);
@@ -216,8 +234,9 @@ struct NativePlatform::Impl {
         return status;
     }
 
+    // `name` is a host name; callers convert Mac names with host_name.
     std::int16_t rename_object(const fs::path& target, const std::string& name, std::uint32_t encoding = UINT32_MAX) {
-        if (name.empty() || name == "." || name == ".." || name.find_first_of(":/") != std::string::npos ||
+        if (name.empty() || name == "." || name == ".." || name.find('/') != std::string::npos ||
             name.find('\0') != std::string::npos) return bad_name;
         if (!fs::exists(fs::symlink_status(target))) return file_not_found;
         const auto logical = logical_path(target);
@@ -229,6 +248,7 @@ struct NativePlatform::Impl {
             throw std::runtime_error("Renaming an original media entry requires private tombstone support: " + target.string());
         const auto destination = visible_child(target.parent_path(), name);
         if (fs::exists(fs::symlink_status(destination)) && !fs::equivalent(target, destination)) return -48;
+        data_forks.make_durable(target.parent_path());
         const auto error = native_rename_object(target, name, encoding);
         if (error) return error;
         const auto renamed = fs::canonical(target.parent_path() / name);
@@ -710,8 +730,7 @@ struct NativePlatform::Impl {
     fs::path path(std::int16_t ref, std::uint32_t id, const std::string& name) const {
         auto base = directory(ref, id);
         if (name.empty()) return base;
-        if (name.find('/') != std::string::npos || name.find('\0') != std::string::npos)
-            throw FileError{bad_name};
+        if (name.find('\0') != std::string::npos) throw FileError{bad_name};
         std::size_t start = 0;
         if (name.front() == ':') start = 1;
         else if (auto colon = name.find(':'); colon != std::string::npos) {
@@ -724,7 +743,7 @@ struct NativePlatform::Impl {
         while (start < name.size()) {
             auto end = name.find(':', start);
             if (end == std::string::npos) end = name.size();
-            const auto component = name.substr(start, end - start);
+            const auto component = host_name(name.substr(start, end - start));
             if (component.empty()) base = base.parent_path();
             else base = visible_child(base, component);
             base = allowed(base);
@@ -773,7 +792,7 @@ struct NativePlatform::Impl {
     }
     void write_spec(State& s, std::uint32_t address, const fs::path& target) {
         const bool root = volume_root(target);
-        const auto name = root ? std::string{} : convert(target.filename().string(), kCFStringEncodingUTF8, kCFStringEncodingMacRoman);
+        const auto name = root ? std::string{} : convert(hfs_name(target.filename().string()), kCFStringEncodingUTF8, kCFStringEncodingMacRoman);
         if (name.size() > 63) throw FileError{bad_name};
         const auto parent = directory_id(root ? target : target.parent_path());
         s.memory.clear(address, 70);
@@ -793,7 +812,7 @@ struct NativePlatform::Impl {
         if (index < 0) target = directory(ref, parent_id);
         else if (!index) target = path(ref, parent_id, read_mac_string(s, name));
         else {
-            const auto children = entries(directory(ref, parent_id));
+            const auto children = mac_entries(directory(ref, parent_id));
             if (std::size_t(index) > children.size()) throw FileError{file_not_found};
             target = children[index - 1];
         }
@@ -808,7 +827,7 @@ struct NativePlatform::Impl {
         s.memory.copy_in(pb + 84, {finder.begin() + 16, finder.end()});
         if (is_directory) {
             s.memory.write<4>(pb + 48, directory_id(target));
-            s.memory.write<2>(pb + 52, std::min<std::size_t>(entries(target).size(), UINT16_MAX));
+            s.memory.write<2>(pb + 52, std::min<std::size_t>(mac_entries(target).size(), UINT16_MAX));
         } else {
             const auto [entry, inserted] = file_ids.try_emplace(logical_path(fs::canonical(target)), next_directory);
             if (inserted) ++next_directory;
@@ -828,7 +847,7 @@ struct NativePlatform::Impl {
         s.memory.write<4>(pb + 80, 0); // No catalog backup date exists for these native files.
         const bool root = volume_root(target);
         s.memory.write<4>(pb + 100, root ? 1 : directory_id(target.parent_path()));
-        if (name && index) write_mac_string(s, name, root ? volume(target) == -1 ? "CM 01-02" : "CM User Data" : target.filename().string());
+        if (name && index) write_mac_string(s, name, root ? volume(target) == -1 ? "CM 01-02" : "CM User Data" : hfs_name(target.filename().string()));
     }
     void set_catalog_info(State& s, std::uint32_t pb) {
         auto target = path(std::int16_t(s.memory.read<2>(pb + 22)), s.memory.read<4>(pb + 48),
@@ -1756,7 +1775,7 @@ bool NativePlatform::dispatch(State& s, const std::string& name) {
             const auto target = impl_->path(std::int16_t(s.memory.read<2>(pb + 22)),
                 s.memory.read<4>(pb + 48), read_mac_string(s, s.memory.read<4>(pb + 18)));
             const auto leaf = read_mac_string(s, replacement);
-            status = impl_->rename_object(target, leaf);
+            status = leaf.find(':') != std::string::npos ? bad_name : impl_->rename_object(target, host_name(leaf));
             if (std::getenv("CM_AOT_TRACE_FILES"))
                 std::fprintf(stderr, "Native file rename: %s -> %s status=%d\n", target.c_str(), leaf.c_str(), status);
         } else if (name == "CarbonLib::PBHDeleteSync") {

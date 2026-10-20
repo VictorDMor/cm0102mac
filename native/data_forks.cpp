@@ -1,6 +1,10 @@
 #include "data_forks.hpp"
+#include "hfs_names.hpp"
 #include <CoreServices/CoreServices.h>
+#include <fcntl.h>
+#include <map>
 #include <set>
+#include <unistd.h>
 #include <vector>
 #include <cstring>
 
@@ -8,8 +12,10 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 namespace cm::aot {
 struct NativeDataForks::Impl {
-    std::set<FSIORefNum> files;
-    ~Impl() { for (auto file : files) ::FSCloseFork(file); }
+    struct File { std::filesystem::path path; bool modified = false; };
+    std::map<FSIORefNum, File> files;
+    std::set<std::filesystem::path> written; // Closed after a write, not yet made durable.
+    ~Impl() { for (const auto& [file, state] : files) ::FSCloseFork(file); }
 };
 NativeDataForks::NativeDataForks() : impl_(std::make_unique<Impl>()) {}
 NativeDataForks::~NativeDataForks() = default;
@@ -27,14 +33,14 @@ std::int16_t NativeDataForks::open(const std::filesystem::path& file, std::span<
     if (error) return error;
     FSIORefNum opened = 0;
     error = ::FSOpenFork(&path, fork_name.size(), fork_name.empty() ? nullptr : fork_name.data(), permission, &opened);
-    if (!error) { impl_->files.insert(opened); ref = opened; }
+    if (!error) { impl_->files.emplace(opened, Impl::File{file}); ref = opened; }
     return error;
 }
 std::int16_t NativeDataForks::create(const std::filesystem::path& file, std::uint32_t creator, std::uint32_t type) {
     FSRef parent;
     const auto error = ::FSPathMakeRef(reinterpret_cast<const UInt8*>(file.parent_path().c_str()), &parent, nullptr);
     if (error) return error;
-    const auto string = CFStringCreateWithCString(nullptr, file.filename().c_str(), kCFStringEncodingUTF8);
+    const auto string = CFStringCreateWithCString(nullptr, hfs_name(file.filename().string()).c_str(), kCFStringEncodingUTF8);
     if (!string) return bdNamErr;
     const auto length = CFStringGetLength(string);
     if (length < 1 || length > 255) { CFRelease(string); return bdNamErr; }
@@ -48,10 +54,25 @@ std::int16_t NativeDataForks::create(const std::filesystem::path& file, std::uin
     return ::FSCreateFileUnicode(&parent, characters.size(), characters.data(), kFSCatInfoFinderInfo, &catalog, nullptr, nullptr);
 }
 std::int16_t NativeDataForks::close(std::int16_t ref) {
-    if (!impl_->files.contains(ref)) return rfNumErr;
+    const auto found = impl_->files.find(ref);
+    if (found == impl_->files.end()) return rfNumErr;
     const auto error = ::FSCloseFork(ref);
-    if (!error) impl_->files.erase(ref);
+    if (!error) {
+        if (found->second.modified) impl_->written.insert(found->second.path);
+        impl_->files.erase(found);
+    }
     return error;
+}
+void NativeDataForks::make_durable(const std::filesystem::path& directory) {
+    for (auto file = impl_->written.begin(); file != impl_->written.end();) {
+        std::error_code error;
+        if (!std::filesystem::equivalent(file->parent_path(), directory, error)) { ++file; continue; }
+        if (const int descriptor = ::open(file->c_str(), O_RDONLY); descriptor >= 0) {
+            ::fcntl(descriptor, F_FULLFSYNC);
+            ::close(descriptor);
+        }
+        file = impl_->written.erase(file);
+    }
 }
 std::int16_t NativeDataForks::size(std::int16_t ref, std::int64_t& bytes) const {
     if (!impl_->files.contains(ref)) return rfNumErr;
@@ -84,21 +105,25 @@ std::int16_t NativeDataForks::read(std::int16_t ref, std::uint16_t mode, std::in
 std::int16_t NativeDataForks::write(std::int16_t ref, std::uint16_t mode, std::int64_t offset,
                                   std::span<const std::uint8_t> buffer, std::uint32_t& actual) {
     actual = 0;
-    if (!impl_->files.contains(ref)) return rfNumErr;
+    const auto found = impl_->files.find(ref);
+    if (found == impl_->files.end()) return rfNumErr;
     ByteCount count = 0;
     const std::uint8_t empty = 0;
     const auto error = ::FSWriteFork(ref, mode, offset, buffer.size(), buffer.empty() ? &empty : buffer.data(), &count);
     actual = count;
+    if (count) found->second.modified = true;
     return error;
 }
 std::int16_t NativeDataForks::resize(std::int16_t ref, std::int64_t bytes) {
-    if (!impl_->files.contains(ref)) return rfNumErr;
-    if (bytes < 0) return paramErr;
-    return ::FSSetForkSize(ref, fsFromStart, bytes);
+    if (bytes < 0 && impl_->files.contains(ref)) return paramErr;
+    return resize(ref, fsFromStart, bytes);
 }
 std::int16_t NativeDataForks::resize(std::int16_t ref, std::uint16_t mode, std::int64_t offset) {
-    if (!impl_->files.contains(ref)) return rfNumErr;
-    return ::FSSetForkSize(ref, mode, offset);
+    const auto found = impl_->files.find(ref);
+    if (found == impl_->files.end()) return rfNumErr;
+    const auto error = ::FSSetForkSize(ref, mode, offset);
+    if (!error) found->second.modified = true;
+    return error;
 }
 }
 #pragma clang diagnostic pop

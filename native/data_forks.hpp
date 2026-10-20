@@ -15,6 +15,11 @@ public:
                       std::int8_t permission, std::int16_t& ref);
     std::int16_t create(const std::filesystem::path& file, std::uint32_t creator, std::uint32_t type);
     std::int16_t close(std::int16_t ref);
+    // The game saves by writing a temporary file, deleting the old save and
+    // renaming the temporary one. Call before a delete or rename in
+    // `directory`: files written there reach stable storage first, so a crash
+    // cannot lose both copies.
+    void make_durable(const std::filesystem::path& directory);
     std::int16_t size(std::int16_t ref, std::int64_t& bytes) const;
     std::int16_t position(std::int16_t ref, std::int64_t& offset) const;
     std::int16_t seek(std::int16_t ref, std::uint16_t mode, std::int64_t offset);

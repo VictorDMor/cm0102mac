@@ -1,4 +1,5 @@
 #include "filesystem_bridge.hpp"
+#include "hfs_names.hpp"
 #include <CoreServices/CoreServices.h>
 #include <algorithm>
 #include <stdexcept>
@@ -23,7 +24,7 @@ std::int16_t native_rename_object(const std::filesystem::path& path, const std::
     const auto error = ::FSPathMakeRefWithOptions(reinterpret_cast<const UInt8*>(path.c_str()),
         kFSPathMakeRefDoNotFollowLeafSymlink, &ref, nullptr);
     if (error) return error;
-    const auto text = CFStringCreateWithCString(nullptr, name.c_str(), kCFStringEncodingUTF8);
+    const auto text = CFStringCreateWithCString(nullptr, hfs_name(name).c_str(), kCFStringEncodingUTF8);
     if (!text) return bdNamErr;
     const auto length = CFStringGetLength(text);
     if (length < 1 || length > 255) { CFRelease(text); return bdNamErr; }

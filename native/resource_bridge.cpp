@@ -1,4 +1,5 @@
 #include "resource_bridge.hpp"
+#include "hfs_names.hpp"
 #include <CoreServices/CoreServices.h>
 #include <cstring>
 #include <map>
@@ -131,7 +132,7 @@ void NativeResources::create(const std::filesystem::path& file, std::uint32_t cr
     FSRef parent;
     impl_->last_error = ::FSPathMakeRef(reinterpret_cast<const UInt8*>(file.parent_path().c_str()), &parent, nullptr);
     if (impl_->last_error) return;
-    const auto name = file.filename().string();
+    const auto name = hfs_name(file.filename().string());
     CFStringRef string = ::CFStringCreateWithCString(nullptr, name.c_str(), kCFStringEncodingUTF8);
     if (!string) { impl_->last_error = bdNamErr; return; }
     std::vector<UniChar> characters(::CFStringGetLength(string));
