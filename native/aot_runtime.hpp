@@ -157,10 +157,9 @@ public:
     std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
     Vector128 read_vector(std::uint64_t address) const;
     void write_vector(std::uint64_t address, const Vector128& value);
-    template <unsigned N> std::uint64_t read(std::uint64_t address) const {
+    template <unsigned N> [[gnu::always_inline]] std::uint64_t read(std::uint64_t address) const {
         check_scalar<N>(address);
-        if (read_trace) read_trace->emplace_back(std::uint32_t(address), N);
-        if (date_observer) date_observer->read(std::uint32_t(address), data_ + address, N);
+        if (read_trace || date_observer) observe_scalar_read(address, N);
         return read_be<N>(data_ + address);
     }
     template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
@@ -171,6 +170,9 @@ public:
         if (date_observer) date_observer->written(std::uint32_t(address), data_ + address, N);
     }
 private:
+    // Keep diagnostic vector growth and virtual callbacks outside ordinary
+    // loads so the native compiler can inline their checked scalar path.
+    [[gnu::noinline]] void observe_scalar_read(std::uint64_t address, unsigned size) const;
     template <unsigned N> void check_scalar(std::uint64_t address) const {
         static_assert(N > 0 && N <= 8);
         // An entry certifies the continuous interval from its 64 KiB boundary

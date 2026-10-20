@@ -131,6 +131,51 @@ The paired replay executable hashes are
 and `8d36682fa4a9492a3f3cc20c8300493ee81d8e1439621cce818f87978ad5ae63`.
 These percentages are separate component measurements and are not additive.
 
+## Checked scalar reads
+
+Host profiles repeatedly place scalar memory reads among the largest costs.
+Their ordinary checked load is now forced inline, while optional read tracing
+and diagnostic callbacks use one out-of-line helper. Bounds validation still
+precedes diagnostics, trace entries still precede callbacks, and the value is
+loaded after callbacks so their writes and exceptions retain their effects.
+No simulation operation, instruction charge, random draw or state layout changes.
+
+A six-page-only screen missed its declared daily threshold. The independently
+measured global implementation covers generated and semantic code. Six
+alternating pairs per scenario use two warmups plus ten measured samples for
+the short daily operation, one plus three for world normalization, and two plus
+four for match intervals. No game app, compiler or profiler ran during timing.
+
+| Captured operation | Wall median, baseline / candidate, seconds | Paired wall reduction | Paired CPU reduction |
+| --- | --- | --- | --- |
+| Daily staff-link transition, all-league career | 0.044308 / 0.043107 | 2.57% | 2.10% |
+| World attribute normalization | 1.811083 / 1.662747 | 8.15% | 8.29% |
+| Arsenal shared-engine interval | 0.497138 / 0.483264 | 2.67% | 2.75% |
+| Cruzeiro shared-engine interval | 0.462862 / 0.446804 | 3.24% | 3.20% |
+
+All six pairs improve both clocks in every scenario. The daily and world cases
+meet the declared greater-than-2% and at-least-5/6 rule; both match cases meet
+the declared no-regression rule. Complete final states and original accounting
+match. The daily operation retains 15,254,185 original instructions and 114
+native calls, with final SHA-256
+`8507d05111e1fe67c96d5ed8b0b0295259b103171cffe30c6a65f328601ae7d4`.
+The other scenarios retain the final hashes documented above. Daily/world
+replay executable hashes are
+`9f1bd73843d0d8c20b1ca116c2be221d85b973e9a1925c17a56cf0464e21cb39`
+(baseline) and
+`f624e7d9529253004b268ebdaeb09afa154dabb45f95e4fd572754e1ef9b48d1`.
+The candidate match executable is
+`bd29b01632c1000e6910d00a08bc0f9f0d6d1980b0a76631869ce86a58ec73a3`;
+its baseline is the preceding observer-filter candidate.
+
+These are bounded subsystem measurements, not a complete day, round or loading
+benchmark. A separate local instruction-counter experiment was slower and was
+discarded. Exact visit counting in the real daily operation identifies two
+8-byte-record heapsorts, including more than 90,000 comparator calls. The first
+sort contains 4,246 records and makes no native OS calls. Its complete standalone
+replay matches captured final state and accounting. Native sorting is the next
+concentrated performance target; that optimization is not implemented here.
+
 ## Validation and delivery status
 
 Eleven focused CTests pass: record conversion and profile fallback, match speed,
@@ -148,22 +193,39 @@ checks. The filter has 256 scalar byte-interest oracle cases, high-address and
 fault-before-callback checks, general/date/bulk observer preservation, and real
 surface expansion, overlap and removal checks.
 
-The candidate loaded the 26-country career, saved and reopened a new copy.
+The checked-read candidate passes 19 focused CTests after its complete rebuild,
+adding original resources, filesystem, input-queue and validation-pointer checks
+to the preceding production/profile, memory and drawing coverage. New read
+checks exercise all four scalar widths, trace-before-callback ordering,
+callback mutation of the returned bytes, callback exceptions and invalid reads
+that must fault before either diagnostic is reached.
+
+The observer-filter candidate loaded the 26-country career, saved and reopened
+a new copy.
 A fresh watched match from the immutable pre-match career completed as Cruzeiro
 3-1 Uberlandia. All other fixtures returned results. Save, normal exit, reopen,
 calendar and player-result verification passed through the original UI. Turbo
 was visibly selected by default. This manual match is functional evidence only;
 its events differ from an earlier run and provide no matched speed comparison.
-Creating another full all-league career and completing an all-league day with
-the candidate are **not retested**.
+The checked-read candidate then loaded that 26-country copy and saved a new
+copy. It completed a fresh watched Cruzeiro 2-1 Uberlandia match, with Alex
+scoring twice and Ze Raimundo once. Other fixtures returned results. A new
+post-match save was written, the app exited normally, and its calendar and
+player goal counts were verified after reopening. Turbo was visibly selected
+by default. These UI observations are functional evidence, not matched timing.
+Reopening the newest all-league copy, creating another full all-league career,
+and completing an all-league day with the checked-read candidate are
+**not retested**.
 
-Both native optimizations are installed. The source executable SHA-256 is
-`fd5103d67aa8681154541bd91efcf7e54eaa11dae4b3c2c2be66901ffbdd17f7`;
+All three native optimizations are installed. The source executable SHA-256 is
+`23d498864565b77db1b127d29b7ad8b8b64c0de2152d564f87ad45c0cc4cda53`;
 the isolated tested executable is
-`0fb67da30e9f8a0bc7a38684d4df9a5f8accf3f9240c1d18b9ca46e7d24ff933`;
+`bdd3ec5a14d5e40860063d75aec1e3520444612fe34bfb8ba5f2db2b0e4254c9`;
 the installed signed executable is
-`1519dbc27cf297b675ed811e446b78fde5ab70d3094f16cf842ed2d9cc8987db`.
-All native Mach-O sections are identical. Only the installed executable changed;
+`975aa1ffc09b6a3cd2ef504ea4ec70fe4353e0db465580f6ecc629c92f49e5f4`.
+All native Mach-O section bytes, addresses, sizes and flags match. The installed
+main menu and normal quit were verified with the expected running binary hash.
+Only the installed executable changed;
 all 846 protected files matched their immediately preceding hashes. One personal
 save had already changed before candidate preparation relative to an older
 historical baseline; the newer file was preserved.

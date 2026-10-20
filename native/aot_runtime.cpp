@@ -126,6 +126,10 @@ void Memory::check(std::uint64_t address, std::uint64_t size) const {
     }
     unmapped_access(address);
 }
+void Memory::observe_scalar_read(std::uint64_t address, unsigned size) const {
+    if (read_trace) read_trace->emplace_back(std::uint32_t(address), size);
+    if (date_observer) date_observer->read(std::uint32_t(address), data_ + address, size);
+}
 void Memory::load(std::uint32_t start, const std::filesystem::path& file, std::uint64_t size) {
     if (std::filesystem::file_size(file) != size) throw std::runtime_error("Segment size mismatch");
     map(start, size);

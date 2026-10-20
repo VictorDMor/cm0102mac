@@ -52,6 +52,71 @@ struct WriteObserver final : MemoryObserver {
     void interval(std::uint64_t begin, std::uint64_t end) { restrict_write_notifications(begin, end); }
 };
 
+struct ReadObserver final : MemoryObserver {
+    Memory& memory;
+    std::vector<std::pair<std::uint32_t, unsigned>>* trace = nullptr;
+    unsigned calls = 0;
+    bool mutate = false, fail = false;
+    explicit ReadObserver(Memory& value) : memory(value) {}
+    void mapped(std::uint32_t, std::uint64_t) override {}
+    void cleared(std::uint32_t, std::uint64_t) override {}
+    void written(std::uint32_t, const std::uint8_t*, std::size_t) override {}
+    void read(std::uint32_t address, const std::uint8_t*, unsigned size) override {
+        ++calls;
+        if (trace) require(!trace->empty() && trace->back() == std::pair(address, size),
+                           "Read observer ran before its trace entry");
+        if (mutate) memory.write<1>(address, 0x9a);
+        if (fail) throw std::runtime_error("Read observer fault");
+    }
+};
+void read_notification_checks() {
+    Memory memory;
+    constexpr std::uint32_t base = 0x36000000;
+    memory.map(base, 128);
+    ReadObserver observer(memory);
+    std::vector<std::pair<std::uint32_t, unsigned>> trace;
+    const auto verify = [&]<unsigned N>() {
+        constexpr auto value = UINT64_C(0x0123456789abcdef) & mask<N>();
+        memory.write<N>(base + 1, value);
+        memory.read_trace = &trace;
+        memory.date_observer = nullptr;
+        const auto before = trace.size();
+        require(memory.read<N>(base + 1) == value && trace.size() == before + 1,
+                "Trace-only scalar read changed");
+        memory.date_observer = &observer;
+        observer.trace = &trace;
+        observer.mutate = true;
+        const auto changed = (value & ~(UINT64_C(255) << ((N - 1) * 8))) |
+                             (UINT64_C(0x9a) << ((N - 1) * 8));
+        require(memory.read<N>(base + 1) == changed,
+                "Scalar value was loaded before the observer's write");
+        memory.read_trace = observer.trace = nullptr;
+        observer.mutate = false;
+        require(memory.read<N>(base + 1) == changed, "Observer-only scalar read changed");
+    };
+    verify.template operator()<1>(); verify.template operator()<2>();
+    verify.template operator()<4>(); verify.template operator()<8>();
+    memory.read_trace = &trace;
+    observer.trace = &trace;
+    observer.mutate = observer.fail = true;
+    bool failed = false;
+    try { (void)memory.read<4>(base + 1); }
+    catch (const std::runtime_error& error) { failed = std::string(error.what()) == "Read observer fault"; }
+    require(failed, "Read observer exception was lost");
+    const auto calls = observer.calls;
+    const auto entries = trace.size();
+    rejected_wide_read(memory, base + 125);
+    require(observer.calls == calls && trace.size() == entries,
+            "Invalid scalar read reached diagnostics");
+    memory.read_trace = nullptr; memory.date_observer = nullptr;
+    require(memory.read<1>(base + 1) == 0x9a, "Faulting observer's completed write was lost");
+    memory.observer = &observer;
+    (void)memory.read<4>(base + 1);
+    require(observer.calls == calls, "Write observer unexpectedly received a read");
+    memory.observer = nullptr;
+    std::cout << "Scalar read trace/callback order, callback mutation and faults passed\n";
+}
+
 void write_notification_checks() {
     Memory memory;
     constexpr std::uint32_t base = 0x35000000;
@@ -105,6 +170,7 @@ void write_notification_checks() {
     std::cout << "256 scalar write-interest byte-oracle cases, general/bulk observer preservation and top-boundary notifications passed\n";
 }
 void checks() {
+    read_notification_checks();
     write_notification_checks();
     constexpr std::uint32_t base = 0x32000000;
     constexpr std::size_t span = 2048;
