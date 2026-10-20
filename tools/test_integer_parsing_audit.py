@@ -12,7 +12,7 @@ from integer_parsing_audit import (CONTRACTS, INTEGER_PARSING_ENTRIES, INSTRUCTI
     require_integer_parsing_edges, require_integer_parsing_index, require_integer_parsing_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class IntegerParsingManifestTests(unittest.TestCase):

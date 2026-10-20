@@ -14,7 +14,7 @@ from actor_effects_audit import (CONTRACTS, FRAGMENTS, ACTOR_EFFECTS_ENTRIES,
 from make_actor_effects_reference import CONTRACTS as REFERENCES, render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_three_root_scope_preserves946_owners(self):

@@ -12,7 +12,7 @@ from code_fragment_audit import (CONTRACTS, CODE_FRAGMENT_ENTRIES, INSTRUCTION_C
     require_code_fragment_edges, require_code_fragment_index, require_code_fragment_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class ScopeTests(unittest.TestCase):

@@ -15,7 +15,7 @@ from record_query_audit import (CONTRACTS, FRAGMENTS, RECORD_QUERY_ENTRIES, requ
 from make_record_query_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_RECORD_QUERY_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_RECORD_QUERY_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

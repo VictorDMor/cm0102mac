@@ -15,7 +15,7 @@ from shortlist_policy_audit import (CONTRACTS,FRAGMENTS,SHORTLIST_POLICY_ENTRIES
     require_shortlist_policy_index,require_shortlist_policy_hooks,shortlist_policy_hook)
 from make_shortlist_policy_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_three_productive_owners(self):

@@ -15,7 +15,7 @@ from match_discipline_audit import (CONTRACTS, FRAGMENTS, MATCH_DISCIPLINE_ENTRI
     require_match_discipline_edges, require_match_discipline_hooks, require_match_discipline_index)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

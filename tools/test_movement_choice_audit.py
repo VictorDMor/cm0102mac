@@ -15,7 +15,7 @@ from movement_choice_audit import (CONTRACTS, FRAGMENTS, MOVEMENT_CHOICE_ENTRIES
     require_movement_choice_edges, require_movement_choice_hooks, require_movement_choice_index)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

@@ -16,7 +16,7 @@ from actor_attributes_audit import (CONTRACTS, FRAGMENTS, ACTOR_ATTRIBUTES_ENTRI
     COST_TABLE, INJURY_TABLES, load_actor_attributes_tables, require_actor_attributes_tables, require_injury_tables)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

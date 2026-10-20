@@ -15,7 +15,7 @@ from match_random_audit import (CONTRACTS, FRAGMENTS, MATCH_RANDOM_ENTRIES,
     require_match_random_edges, require_match_random_hooks, require_match_random_index)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

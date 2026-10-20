@@ -15,7 +15,7 @@ from match_actor_audit import (CONTRACTS, FRAGMENTS, MATCH_ACTOR_ENTRIES, requir
 from make_match_actor_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_MATCH_ACTOR_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_MATCH_ACTOR_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

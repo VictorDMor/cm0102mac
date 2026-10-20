@@ -12,7 +12,7 @@ from contract_display_audit import (CONTRACTS,FRAGMENTS,CONTRACT_DISPLAY_ENTRIES
     require_contract_display_index,require_contract_display_hooks,contract_display_hook)
 from make_contract_display_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_thirteen_productive_owners(self):
         self.assertEqual(len(SEMANTIC_REPLACEMENTS),963)

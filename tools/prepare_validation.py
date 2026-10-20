@@ -21,7 +21,7 @@ REFERENCE_SHA = "82c504f46ce54a723137dbf42c005d458a4d7b18a9abab4c9f92627aa94f08f
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("name", help="Unique lowercase diagnostic run name")
-    parser.add_argument("--app", type=Path, default=ROOT / ".local/aot-build/CM 01-02 Native Prototype.app")
+    parser.add_argument("--app", type=Path, default=ROOT / ".local/current/build/CM 01-02 Native Prototype.app")
     parser.add_argument("--runtime", type=Path, default=Path.home() / "Library/Application Support/CM 01-02 Native/Runtime")
     parser.add_argument("--season-reference-days", type=int, choices=range(1, 8),
                         help="Capture 1 through 7 complete original days with private native-service inputs")
@@ -41,7 +41,7 @@ def main():
     subprocess.run(["ditto", "--rsrc", "--extattr", str(source_runtime), str(runtime)], check=True)
     program = app / "Contents/Resources/OriginalProgram"
     program.mkdir(parents=True, exist_ok=True)
-    for item in [ROOT / ".local/recomp-input/program.json", *sorted((ROOT / ".local/recomp-input").glob("segment-*.bin"))]:
+    for item in [ROOT / ".local/current/export/program.json", *sorted((ROOT / ".local/current/export").glob("segment-*.bin"))]:
         shutil.copy2(item, program / item.name)
     working_save = runtime / "Files/games/Perf-Reference.sav"
     working_save.parent.mkdir(parents=True, exist_ok=True)

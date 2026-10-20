@@ -19,7 +19,7 @@ from shortlist_quotation_proofs import (STRUCTURALLY_UNREACHABLE,
     require_shortlist_quotation_structural_proofs)
 from shortlist_quotation_cases import CASE_PATH, load_shortlist_quotation_cases, render_shortlist_quotation_cases
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_two_productive_owners(self):

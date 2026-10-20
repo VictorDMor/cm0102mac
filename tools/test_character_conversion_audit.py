@@ -12,7 +12,7 @@ from character_conversion_audit import (CONTRACTS, CHARACTER_CONVERSION_ENTRIES,
     require_character_conversion_edges, require_character_conversion_index, require_character_conversion_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class CharacterConversionManifestTests(unittest.TestCase):

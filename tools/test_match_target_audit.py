@@ -18,7 +18,7 @@ from match_target_audit import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class ScopeTests(unittest.TestCase):

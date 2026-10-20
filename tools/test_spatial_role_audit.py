@@ -15,7 +15,7 @@ from spatial_role_audit import (CONTRACTS, FRAGMENTS, SPATIAL_ROLE_ENTRIES, requ
 from make_spatial_role_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_SPATIAL_ROLE_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_SPATIAL_ROLE_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

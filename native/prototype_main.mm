@@ -59,7 +59,7 @@ int main() {
                 }
             }
             auto program = bundle / "Contents/Resources/OriginalProgram";
-            if (!std::filesystem::is_regular_file(program / "program.json")) program = local / "recomp-input";
+            if (!std::filesystem::is_regular_file(program / "program.json")) program = local / "export";
             const auto game = installation / "Game";
             if (!std::filesystem::is_regular_file(program / "program.json"))
                 throw std::runtime_error("Original program data is missing. Run Install Native Prototype.command again.");

@@ -15,7 +15,7 @@ from contract_review_audit import (CONTRACTS, FRAGMENTS, CONTRACT_REVIEW_ENTRIES
 from make_contract_review_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class PreparedScopeTests(unittest.TestCase):

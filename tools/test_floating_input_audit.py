@@ -12,7 +12,7 @@ from floating_input_audit import (CONTRACTS, FLOATING_INPUT_ENTRIES, INSTRUCTION
     require_floating_input_edges, require_floating_input_index, require_floating_input_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class FloatingInputManifestTests(unittest.TestCase):

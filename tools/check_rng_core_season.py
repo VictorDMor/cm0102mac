@@ -91,7 +91,7 @@ def check(executable, fixture, report_path, timeout):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('fixture', type=Path)
-    parser.add_argument('--executable', type=Path, default=Path('.local/aot-build/cm-season-reference'))
+    parser.add_argument('--executable', type=Path, default=Path('.local/current/build/cm-season-reference'))
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=7200)
     args = parser.parse_args()

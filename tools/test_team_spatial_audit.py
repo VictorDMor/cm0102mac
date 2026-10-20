@@ -15,7 +15,7 @@ from team_spatial_audit import (CONTRACTS, FRAGMENTS, TEAM_SPATIAL_ENTRIES,
     require_team_spatial_edges, require_team_spatial_hooks, require_team_spatial_index)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

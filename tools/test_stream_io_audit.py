@@ -12,7 +12,7 @@ from stream_io_audit import (CONTRACTS, STREAM_IO_ENTRIES, INSTRUCTION_COUNTS,
     require_stream_io_index, require_stream_io_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class StreamIoManifestTests(unittest.TestCase):

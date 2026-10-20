@@ -15,7 +15,7 @@ from team_line_audit import (CONTRACTS, FRAGMENTS, TEAM_LINE_ENTRIES,
     require_team_line_edges, require_team_line_hooks, require_team_line_index)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

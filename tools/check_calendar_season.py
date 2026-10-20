@@ -247,7 +247,7 @@ def check_calendar(executable, fixture, edges_directory=None, historical_edges_d
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fixture", type=Path)
-    parser.add_argument("--executable", type=Path, default=Path(__file__).resolve().parent.parent / ".local/aot-build/cm-season-reference")
+    parser.add_argument("--executable", type=Path, default=Path(__file__).resolve().parent.parent / ".local/current/build/cm-season-reference")
     parser.add_argument("--edges-directory", type=Path, help="New private directory retaining separate original CMCAL002, CMMON001, CMDOM001 and CMWKD001 streams")
     parser.add_argument("--historical-edges-directory", type=Path, help="Preserved original CMCAL002/CMMON001/CMDOM001/CMWKD001 directory; require byte-identical original recapture")
     parser.add_argument("--date-subsystem", action="store_true", help="Validate all 34 entries, seven baselines, CMDAT001 and each exercised pending-entry negative")

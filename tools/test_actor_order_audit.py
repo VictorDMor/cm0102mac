@@ -15,7 +15,7 @@ from actor_order_audit import (CONTRACTS, FRAGMENTS, ACTOR_ORDER_ENTRIES,
     require_actor_order_edges, require_actor_order_hooks, require_actor_order_index)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

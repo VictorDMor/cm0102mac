@@ -13,7 +13,7 @@ from allocator_audit import (CONTRACTS, ALLOCATOR_ENTRIES, INSTRUCTION_COUNTS,
     require_allocator_index, require_allocator_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class AllocatorManifestTests(unittest.TestCase):

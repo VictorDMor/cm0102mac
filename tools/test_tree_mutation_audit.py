@@ -15,7 +15,7 @@ from tree_mutation_audit import (CONTRACTS, TREE_MUTATION_ENTRIES, require_tree_
 from make_tree_mutation_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_TREE_MUTATION_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_TREE_MUTATION_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

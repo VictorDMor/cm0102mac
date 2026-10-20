@@ -16,7 +16,7 @@ from exception_runtime_audit import (CONTRACTS, EXCEPTION_RUNTIME_ENTRIES, INSTR
     require_exception_runtime_edges, require_exception_runtime_index, require_exception_runtime_hooks)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_EXCEPTION_RUNTIME_INPUT', ROOT / '.local/recomp-input-exceptions'))
+INPUT = Path(os.environ.get('CM_EXCEPTION_RUNTIME_INPUT', ROOT / '.local/current/export'))
 INDEX = INPUT / 'instructions.sqlite'
 
 

@@ -14,7 +14,7 @@ from target_acceptance_audit import (CONTRACTS, FRAGMENTS, TARGET_ACCEPTANCE_ENT
 from make_target_acceptance_reference import CONTRACTS as REFERENCES, render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_four_root_scope_preserves949_owners(self):

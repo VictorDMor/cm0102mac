@@ -12,7 +12,7 @@ from player_decision_audit import ENTRY, END, COUNT, FRAGMENTS, load_player_deci
 from make_player_decision_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_PLAYER_DECISION_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_PLAYER_DECISION_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

@@ -1,7 +1,7 @@
 """Compile and execute actual Mac instructions through both scratch lowerings.
 
 Usage: python3 tools/test_generated_temporaries.py <instructions.sqlite>
-      [--build-dir .local/aot-build] [--sanitize]
+      [--build-dir .local/current/build] [--sanitize]
 
 Select one original record per normalized instruction pattern, preserving its
 unaltered operations and addresses. Normalize only storage names and constant
@@ -231,7 +231,7 @@ int main() {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("database", type=Path)
-    parser.add_argument("--build-dir", type=Path, default=Path(".local/aot-build"))
+    parser.add_argument("--build-dir", type=Path, default=Path(".local/current/build"))
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
     records = select_records(args.database)

@@ -15,7 +15,7 @@ from engine_initialization_audit import (CONTRACTS, ENGINE_INITIALIZATION_ENTRIE
 from make_engine_initialization_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_ENGINE_INITIALIZATION_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_ENGINE_INITIALIZATION_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

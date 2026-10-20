@@ -14,7 +14,7 @@ from player_movement_audit import ENTRY, END, COUNT, FRAGMENTS, TABLES, load_pla
 from make_player_movement_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_PLAYER_MOVEMENT_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_PLAYER_MOVEMENT_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

@@ -15,7 +15,7 @@ from contract_draft_audit import (CONTRACTS,FRAGMENTS,CONTRACT_DRAFT_ENTRIES,TAB
     require_contract_draft_index,require_contract_draft_hooks,contract_draft_hook)
 from make_contract_draft_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_three_productive_owners(self):

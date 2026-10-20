@@ -19,7 +19,7 @@ from localization_format_audit import (
 from make_localization_format_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class PreparedScopeTests(unittest.TestCase):

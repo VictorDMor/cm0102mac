@@ -15,7 +15,7 @@ from import_descriptor_audit import (CONTRACTS, FRAGMENT_CONTRACTS, IMPORT_DESCR
 from make_import_descriptor_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_IMPORT_DESCRIPTOR_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_IMPORT_DESCRIPTOR_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

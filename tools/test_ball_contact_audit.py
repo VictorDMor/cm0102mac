@@ -13,7 +13,7 @@ from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
 from make_ball_contact_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class ScopeTests(unittest.TestCase):

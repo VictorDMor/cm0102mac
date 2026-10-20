@@ -12,7 +12,7 @@ from file_path_audit import (CONTRACTS, FILE_PATH_ENTRIES, INSTRUCTION_COUNTS,
     require_file_path_edges, require_file_path_index, require_file_path_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class ScopeTests(unittest.TestCase):

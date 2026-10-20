@@ -12,7 +12,7 @@ from preferences_audit import (CONTRACTS, FRAGMENTS, PREFERENCES_ENTRIES, TABLES
 from make_preferences_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class PreparedScopeTests(unittest.TestCase):

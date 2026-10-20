@@ -13,7 +13,7 @@ from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
 from make_actor_motion_reference import render_reference
 
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_five_whole_bodies_and_preserved_prefix(self):

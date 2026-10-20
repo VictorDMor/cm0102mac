@@ -51,7 +51,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fixture", type=Path)
     parser.add_argument("--executable", type=Path,
-                        default=Path(__file__).resolve().parent.parent / ".local/aot-build/cm-season-reference")
+                        default=Path(__file__).resolve().parent.parent / ".local/current/build/cm-season-reference")
     args = parser.parse_args()
     try:
         report = check(args.executable.resolve(strict=True), args.fixture.resolve(strict=True))

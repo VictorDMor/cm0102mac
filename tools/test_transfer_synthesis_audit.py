@@ -15,7 +15,7 @@ from transfer_synthesis_audit import (CONTRACTS,FRAGMENTS,TABLES,TRANSFER_SYNTHE
 from make_transfer_synthesis_reference import render_reference
 
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_accepted_prefix_is_unchanged_and_candidate_has_one_new_owner(self):

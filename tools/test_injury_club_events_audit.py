@@ -14,7 +14,7 @@ from injury_club_events_audit import (CONTRACTS,FRAGMENTS,INJURY_CLUB_EVENTS_ENT
     require_injury_club_events_bodies,require_injury_club_events_contract,require_injury_club_events_edges,
     require_injury_club_events_hooks,require_injury_club_events_index,require_injury_club_events_tables,load_injury_club_events_tables)
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_exact_prior_manifest(self):

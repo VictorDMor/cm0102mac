@@ -15,7 +15,7 @@ from transfer_record_audit import (CONTRACTS, FRAGMENTS, TRANSFER_RECORD_ENTRIES
 from make_transfer_record_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class PreparedScopeTests(unittest.TestCase):

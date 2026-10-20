@@ -615,25 +615,7 @@ as their actual callers and contracts are characterized.
 
 ## Execution discipline
 
-The immediate priority is native match performance, per the user's 2026-10-20
-instruction. Choose work from measured costs in watched and background matches.
-Resume general semantic reconstruction afterward. Retain earlier measurements
-as historical evidence, and distinguish faster presentation from faster
-simulation and whole-season processing.
-
-Work proceeds through coherent subsystems with shared final acceptance, while
-retaining individual ABI, ordered guest effects, negative controls and normal
-execution witnesses. Preserve the original Date leap asymmetry and the productive
-allocator progress guard. Preserve user saves, preferences, original payloads,
-private handoffs and earlier reference artifacts. Implementation artifacts and
-technical reports are in English; discussion remains in Portuguese.
-
-Use focused checks during migration and broaden validation when a changed
-dependency or an actual divergence warrants it. Earlier bounded Save/Load waivers
-remain `not retested`; they are not passes and do not prevent the broader objective
-from requiring persistence evidence when the migrated subsystem affects it.
-Install only technically accepted artifacts, with a protected reference and
-verified internal executable identity. Commit and push reviewed product changes,
-excluding original listings, generated sources, payloads, runtime artifacts and
-private prompts. Keep the overall goal active until current evidence proves
-the complete requested end state.
+How work is done, verified and recorded is defined in [CLAUDE.md](../CLAUDE.md),
+which replaced the earlier process on 2026-10-20; the open work list is
+[TASKS.md](../TASKS.md). Native performance remains the priority before general
+semantic reconstruction resumes.

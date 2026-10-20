@@ -5,7 +5,7 @@ from pathlib import Path
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES, CONTRACTS
 from compile_recomp import generate_page
 
-INDEX = Path(__file__).resolve().parent.parent / ".local/recomp-input/instructions.sqlite"
+INDEX = Path(__file__).resolve().parent.parent / ".local/current/export/instructions.sqlite"
 
 
 @unittest.skipUnless(INDEX.exists(), "Private original calendar export is unavailable")

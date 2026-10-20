@@ -6,7 +6,7 @@ from pathlib import Path
 from compile_recomp import generate_page, operation
 from rng_core_audit import CONTRACTS, RNG_CORE_ENTRIES, require_rng_core_contract
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 @unittest.skipUnless(INDEX.exists(), 'Private Mac export unavailable')

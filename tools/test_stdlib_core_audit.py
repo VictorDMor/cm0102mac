@@ -15,7 +15,7 @@ from stdlib_core_audit import (CONTRACTS, STDLIB_CORE_ENTRIES, require_stdlib_co
 from make_stdlib_core_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_STDLIB_CORE_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_STDLIB_CORE_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

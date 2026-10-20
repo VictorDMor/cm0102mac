@@ -12,7 +12,7 @@ from money_value_audit import (CONTRACTS,FRAGMENTS,MONEY_VALUE_ENTRIES,TABLES,WO
 from contract_display_audit import CONTRACT_DISPLAY_ENTRIES
 from make_money_value_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_thirteen_productive_owners(self):
         self.assertEqual(len(SEMANTIC_REPLACEMENTS),963)

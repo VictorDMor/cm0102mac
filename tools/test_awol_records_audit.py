@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 OWNERS=('awol_records',)
 
 

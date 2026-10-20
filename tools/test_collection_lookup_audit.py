@@ -11,7 +11,7 @@ from collection_lookup_audit import (
     require_collection_lookup_contract)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class CollectionManifestTests(unittest.TestCase):

@@ -16,7 +16,7 @@ from club_shortlist_storage_audit import (CONTRACTS, FRAGMENTS, CLUB_SHORTLIST_S
     require_club_shortlist_storage_index,require_club_shortlist_storage_hooks,club_shortlist_storage_hook)
 from make_club_shortlist_storage_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_accepted_prefix_and_seven_candidate_owners(self):

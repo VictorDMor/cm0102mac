@@ -14,7 +14,7 @@ from injury_readouts_audit import (CONTRACTS,FRAGMENTS,INJURY_READOUTS_ENTRIES,T
     require_injury_readouts_bodies,require_injury_readouts_contract,require_injury_readouts_edges,
     require_injury_readouts_hooks,require_injury_readouts_index,require_injury_readouts_tables,load_injury_readouts_tables)
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_exact_prior_manifest(self):

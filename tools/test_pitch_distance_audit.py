@@ -15,7 +15,7 @@ from pitch_distance_audit import (CONTRACTS, FRAGMENTS, PITCH_DISTANCE_ENTRIES,
     require_pitch_distance_edges, require_pitch_distance_hooks, require_pitch_distance_index)
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):

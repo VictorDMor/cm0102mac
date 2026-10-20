@@ -12,7 +12,7 @@ from formatted_output_audit import (CONTRACTS, FORMATTED_OUTPUT_ENTRIES, INSTRUC
     require_formatted_output_edges, require_formatted_output_index, require_formatted_output_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class FormattedOutputManifestTests(unittest.TestCase):

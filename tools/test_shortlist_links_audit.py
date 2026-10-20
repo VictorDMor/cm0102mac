@@ -15,7 +15,7 @@ from shortlist_links_audit import (CONTRACTS,FRAGMENTS,SHORTLIST_LINKS_ENTRIES,T
     require_shortlist_links_index,require_shortlist_links_hooks,shortlist_links_hook)
 from make_shortlist_links_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_ten_productive_owners(self):

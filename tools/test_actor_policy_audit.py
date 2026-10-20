@@ -13,7 +13,7 @@ from actor_policy_audit import (CONTRACTS, FRAGMENTS, ACTOR_POLICY_ENTRIES,
     require_actor_policy_contract, require_actor_policy_hooks, actor_policy_hook)
 from make_actor_policy_reference import CONTRACTS as REFERENCES, render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 class ScopeTests(unittest.TestCase):
     def test_complete_five_root_scope_preserves958_owners(self):
         self.assertEqual(ACTOR_POLICY_ENTRIES,(0x101f5280,0x10285750,0x10285790,0x102857c0,0x10285ef0))

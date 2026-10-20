@@ -15,7 +15,7 @@ from time_runtime_audit import (CONTRACTS, TIME_RUNTIME_ENTRIES, require_time_ru
 from make_time_runtime_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_TIME_RUNTIME_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_TIME_RUNTIME_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

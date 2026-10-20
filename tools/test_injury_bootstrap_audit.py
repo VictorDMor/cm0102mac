@@ -14,7 +14,7 @@ from injury_bootstrap_audit import (CONTRACTS,FRAGMENTS,INJURY_BOOTSTRAP_ENTRIES
     require_injury_bootstrap_bodies,require_injury_bootstrap_contract,require_injury_bootstrap_edges,
     require_injury_bootstrap_hooks,require_injury_bootstrap_index,require_injury_bootstrap_tables,load_injury_bootstrap_tables)
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class ScopeTests(unittest.TestCase):
     def test_complete_block_and_exact_prior_manifest(self):

@@ -21,9 +21,10 @@ unfinished. There is no public binary release yet.
   legacy Mac OS virtual machine. It retains a checked, big-endian 32-bit data
   address space for the original game's pointers and structures.
 
-The latest accepted production manifest contains **815 reconstructed entry points**.
-This is an integration count, not a percentage of the game recovered. Much of the
-simulation still uses generated code. See the
+The latest accepted production manifest contains **963 reconstructed entry points**
+(unique semantic owners). This is an integration count, not a percentage of the
+game recovered. Much of the simulation still uses generated code. Native
+performance is the current priority, ahead of further reconstruction. See the
 [C++23 progress report](docs/native-cpp23-port-progress.md) and
 [current status and limitations](docs/native-port-status.md).
 
@@ -71,8 +72,10 @@ been accepted as inputs to this pipeline.
 | Career play | Create/load a career, manage a club, inspect players and competitions, advance dates, play complete matches and return to management |
 | Persistence | Normal save, exit, reopen and reload have passed in local use; individual later subsystem reports state when persistence was not retested |
 | macOS presentation | Native text/control drawing, 100–200% interface scaling and Fit to Screen, keyboard commands and audio |
+| Match speed | A native **Turbo** choice in the original match-speed selector, selected by default and remembered across launches; match calculations are unchanged |
 | Match Debugger | Separate native application with seeded matches, player/event inspection, substitutions and rewind/redo; its full product contract remains incomplete |
-| Reconstruction | 815 accepted C++23 entry points coexist with statically generated original routines; this count is not a completion percentage |
+| Reconstruction | 963 accepted C++23 entry points coexist with statically generated original routines; this count is not a completion percentage |
+| Performance | Large multi-league careers are slow: one weekly Continue with 26 playable countries took about eight minutes in local diagnosis, and creating an all-league career stayed CPU-bound for over 40 minutes in an uncontrolled diagnostic run. Optimization is ongoing |
 | Availability | Developer source workflow for Apple Silicon / macOS 13+; your original Mac files and local compilation are required |
 | Remaining work | Multiplayer and some services remain unsupported; the whole game port is unfinished and no public binary release is available |
 
@@ -97,7 +100,9 @@ JAVA_HOME='/path/to/jdk/Contents/Home' bash tools/build_aot.sh \
 
 The build script exports and indexes the analyzed program, generates C++, builds
 the native targets and runs the configured checks. Generated inputs and builds
-remain under `.local/`. Initial compilation covers roughly 1,922 translation
+remain under `.local/current/`. After the first build, `tools/dev.sh` handles
+day-to-day regeneration, incremental builds, tests and installation; see
+[CLAUDE.md](CLAUDE.md) for the development process. Initial compilation covers roughly 1,922 translation
 units. This is a development workflow; unsupported original addresses or native
 services stop with explicit diagnostics.
 
@@ -143,6 +148,8 @@ checkout; the active game build uses `native/` through `tools/build_aot.sh`.
 - [Static recompilation architecture](docs/aot-port.md)
 - [Match Debugger](docs/native-match-debugger-application.md)
 - [Native presentation and commands](docs/native-presentation-and-direct-commands.md)
+- [Native match speed](docs/native-match-speed.md)
+- [Background processing and league loading performance](docs/native-background-performance.md)
 - [AWOL records and absence processing](docs/native-awol-records.md)
 - [Staff contract lookup and creation](docs/native-contract-integration.md)
 - [Daily injury controller](docs/native-injury-daily-controller.md)
@@ -150,7 +157,8 @@ checkout; the active game build uses `native/` through `tools/build_aot.sh`.
 - [Injury controller bootstrap](docs/native-injury-controller-bootstrap.md)
 - [Injury reporting and history](docs/native-injury-reporting.md)
 - [Injury status and text readouts](docs/native-injury-status-readouts.md)
-- [Latest accepted ball-action reconstruction](docs/native-ball-action-reconstruction.md)
+- [Ball-action reconstruction](docs/native-ball-action-reconstruction.md)
+- [Latest accepted reconstruction: actor decision policy](docs/native-actor-policy-reconstruction.md)
 
 Individual reports retain the evidence and limitations of their delivery dates.
 The root [`.recomp.json`](.recomp.json) supplies the project's listing metadata

@@ -13,7 +13,7 @@ from collection_lookup_audit import COLLECTION_LOOKUP_ENTRIES
 from compile_recomp import CALENDAR_ADAPTER_ENTRIES, SEMANTIC_REPLACEMENTS, generate_page, operation
 from rng_core_audit import RNG_CORE_ENTRIES
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class BackgroundManifestTests(unittest.TestCase):

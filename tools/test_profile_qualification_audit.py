@@ -15,7 +15,7 @@ from profile_qualification_audit import (CONTRACTS,FRAGMENTS,PROFILE_QUALIFICATI
     require_profile_qualification_index,require_profile_qualification_hooks,profile_qualification_hook)
 from make_profile_qualification_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_four_productive_owners(self):

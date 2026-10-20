@@ -11,7 +11,7 @@ from money_configuration_audit import (CONTRACTS,FRAGMENTS,MONEY_CONFIGURATION_E
     require_money_configuration_bodies,require_money_configuration_contract,require_money_configuration_edges,require_money_configuration_index,require_money_configuration_hooks,money_configuration_hook)
 from make_money_configuration_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_884_prefix_and_thirteen_productive_owners(self):
         self.assertEqual(len(SEMANTIC_REPLACEMENTS),963)

@@ -15,7 +15,7 @@ from marking_pressure_audit import (CONTRACTS, FRAGMENTS, MARKING_PRESSURE_ENTRI
 from make_marking_pressure_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_MARKING_PRESSURE_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_MARKING_PRESSURE_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

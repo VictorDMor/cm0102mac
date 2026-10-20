@@ -15,7 +15,7 @@ from record_group_audit import (CONTRACTS, FRAGMENTS, RECORD_GROUP_ENTRIES, requ
 from make_record_group_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_RECORD_GROUP_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_RECORD_GROUP_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

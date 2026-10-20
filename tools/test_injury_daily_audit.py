@@ -15,7 +15,7 @@ from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, require_unique_
 from make_injury_daily_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class ManifestTests(unittest.TestCase):

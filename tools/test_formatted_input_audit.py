@@ -12,7 +12,7 @@ from formatted_input_audit import (CONTRACTS, FORMATTED_INPUT_ENTRIES, INSTRUCTI
     require_formatted_input_edges, require_formatted_input_index, require_formatted_input_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class FormattedInputManifestTests(unittest.TestCase):

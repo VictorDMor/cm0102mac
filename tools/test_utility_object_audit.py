@@ -15,7 +15,7 @@ from utility_object_audit import (CONTRACTS, UTILITY_OBJECT_ENTRIES, require_uti
 from make_utility_object_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_UTILITY_OBJECT_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_UTILITY_OBJECT_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

@@ -15,7 +15,7 @@ from native_service_audit import (CONTRACTS, NATIVE_SERVICE_ENTRIES, require_nat
 from make_native_service_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_NATIVE_SERVICE_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_NATIVE_SERVICE_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

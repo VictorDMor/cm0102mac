@@ -15,7 +15,7 @@ from record_history_audit import (CONTRACTS, FRAGMENTS, RECORD_HISTORY_ENTRIES, 
 from make_record_history_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_RECORD_HISTORY_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_RECORD_HISTORY_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

@@ -16,7 +16,7 @@ from register_context_audit import (ROOT_CONTRACTS, ENTRY_CONTRACTS, REGISTER_CO
 from make_register_context_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_REGISTER_CONTEXT_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_REGISTER_CONTEXT_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):

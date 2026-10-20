@@ -16,7 +16,7 @@ from shortlist_assessment_audit import (CONTRACTS,FRAGMENTS,SHORTLIST_ASSESSMENT
     require_shortlist_assessment_hooks,shortlist_assessment_hook)
 from make_shortlist_assessment_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_two_productive_owners(self):

@@ -100,9 +100,16 @@ def check_app(path):
 
 
 def install(source, support, applications):
-    built_app = PROJECT / ".local/aot-build" / APP_NAME
+    destination = applications / APP_NAME
+    running = subprocess.run(["/usr/bin/pgrep", "-f", str(destination / "Contents/MacOS")],
+                             capture_output=True, text=True)
+    if running.returncode not in (0, 1):
+        raise RuntimeError("Cannot check whether the game is running.")
+    if running.returncode == 0:
+        raise RuntimeError("Quit the game before installing a new build.")
+    built_app = PROJECT / ".local/current/build" / APP_NAME
     check_app(built_app)
-    program = PROJECT / ".local/recomp-input"
+    program = PROJECT / ".local/current/export"
     program_files = [program / "program.json", *sorted(program.glob("segment-*.bin"))]
     if not program_files[0].is_file() or len(program_files) < 2:
         raise RuntimeError("The local AOT program data is missing. Build the native prototype first.")
@@ -162,7 +169,6 @@ def install(source, support, applications):
         print("Preserved existing prototype preferences and private files.", flush=True)
     install_index_compatibility(game, runtime)
     print("Verified the private English club-index compatibility file.", flush=True)
-    destination = applications / APP_NAME
     if destination.exists():
         check_app(destination)
     with tempfile.TemporaryDirectory(prefix=".cm-native-", dir=applications) as stage:
@@ -174,6 +180,11 @@ def install(source, support, applications):
             shutil.copy2(item, bundled_program / item.name)
             if digest(item) != digest(bundled_program / item.name):
                 raise RuntimeError("The installed native program data failed verification.")
+        # Seal the added program data with an ad-hoc signature.
+        subprocess.run(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", str(staged_app)],
+                       check=True, capture_output=True)
+        subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(staged_app)],
+                       check=True, capture_output=True)
         check_app(staged_app)
         previous = Path(stage) / "previous.app"
         if destination.exists():

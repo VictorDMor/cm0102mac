@@ -12,7 +12,7 @@ from stream_buffer_audit import (CONTRACTS, STREAM_BUFFER_ENTRIES, INSTRUCTION_C
     require_stream_buffer_index, require_stream_buffer_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page, operation
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class StreamBufferManifestTests(unittest.TestCase):

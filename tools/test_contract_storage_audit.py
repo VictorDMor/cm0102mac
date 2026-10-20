@@ -16,7 +16,7 @@ from contract_storage_audit import (CONTRACTS, FRAGMENTS, CONTRACT_STORAGE_ENTRI
 from make_contract_storage_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = ROOT / '.local/compiler-arithmetic-reconstruction/input'
+INPUT = ROOT / '.local/current/export'
 
 
 class PreparedScopeTests(unittest.TestCase):

@@ -16,7 +16,7 @@ from shortlist_category_audit import (CONTRACTS, FRAGMENTS, SHORTLIST_CATEGORY_E
     require_shortlist_category_index, require_shortlist_category_hooks, shortlist_category_hook)
 from make_shortlist_category_reference import render_reference
 ROOT=Path(__file__).resolve().parent.parent
-INPUT=ROOT/'.local/compiler-arithmetic-reconstruction/input'
+INPUT=ROOT/'.local/current/export'
 
 class PreparedScopeTests(unittest.TestCase):
     def test_exact_prefix_and_five_new_owners(self):
