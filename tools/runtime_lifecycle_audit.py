@@ -1,6 +1,7 @@
 """Pinned Mac runtime-lifecycle contracts; production integration is separately verified."""
 import hashlib
 import json
+from turbo_pages import page_hook
 
 CONTRACTS = (
     (0x10772df0, 0x10772e0c, '50559af8d1871af006b2f1e420ba496a86227d93bdd330e483b80666b9782640'),
@@ -77,7 +78,7 @@ def require_runtime_lifecycle_hooks(page, instructions, code):
         if entry >> 12 != page or entry not in addresses:
             continue
         label = f'i_{entry:x}:'
-        hook = f'if (try_modern_runtime_lifecycle(s, 0x{entry:x})) return true;'
+        hook = page_hook(page, entry, f'try_modern_runtime_lifecycle(s, 0x{entry:x})')
         if code.count(hook) != 1 or label not in code:
             raise ValueError(f'Missing or duplicate runtime_lifecycle hook at {entry:x}')
         fragment = code.split(label, 1)[1].split(f'i_{entry + 4:x}:', 1)[0]

@@ -1,6 +1,7 @@
 """Aggregate and embedded-table lifetime boundaries."""
 import hashlib
 import json
+from turbo_pages import page_hook
 
 CONTRACTS = (
     (0x10718b40, 0x10718ba0, 24, 'e7913fb414349c7180f2498e347e3e3cf15d729a8b69f0ff2eb00c6ac42f9aaf'),
@@ -63,7 +64,7 @@ def require_aggregate_object_hooks(page, instructions, code):
     addresses = {r['address'] for r in instructions}
     for entry in AGGREGATE_OBJECT_ENTRIES:
         if entry >> 12 != page or entry not in addresses: continue
-        label, hook = f'i_{entry:x}:', aggregate_object_hook(entry)
+        label, hook = f'i_{entry:x}:', page_hook(page, entry, f'try_modern_aggregate_object(s, 0x{entry:x})')
         fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
         steps = [token for token in (f's.step(0x{entry:x});', f'counter.step(0x{entry:x});') if token in fragment]
         if code.count(hook) != 1 or hook not in fragment or len(steps) != 1 or fragment.index(hook) > fragment.index(steps[0]):

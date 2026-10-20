@@ -1,6 +1,7 @@
 """Pinned Mac C++ object-storage contracts; production integration is separately verified."""
 import hashlib
 import json
+from turbo_pages import page_hook
 
 CONTRACTS = (
     (0x10773150, 0x10773258, 'a6afda68307478477bd8922640c4873c67f5788eacb600dafc664f56d50f9fe3'),
@@ -80,7 +81,7 @@ def require_cpp_object_storage_hooks(page, instructions, code):
         if entry >> 12 != page or entry not in addresses:
             continue
         label = f'i_{entry:x}:'
-        hook = f'if (try_modern_cpp_object_storage(s, 0x{entry:x})) return true;'
+        hook = page_hook(page, entry, f'try_modern_cpp_object_storage(s, 0x{entry:x})')
         if code.count(hook) != 1 or label not in code:
             raise ValueError(f'Missing or duplicate cpp_object_storage hook at {entry:x}')
         fragment = code.split(label, 1)[1].split(f'i_{entry + 4:x}:', 1)[0]

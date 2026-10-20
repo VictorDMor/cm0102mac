@@ -13,9 +13,10 @@ from aggregate_object_audit import (CONTRACTS, AGGREGATE_OBJECT_ENTRIES, require
                                  require_aggregate_object_edges, require_aggregate_object_index,
                                  require_aggregate_object_contract, require_aggregate_object_hooks, aggregate_object_hook)
 from make_aggregate_object_reference import render_reference
+from turbo_pages import page_hook
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_AGGREGATE_OBJECT_INPUT', ROOT / '.local/compiler-arithmetic-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_AGGREGATE_OBJECT_INPUT', ROOT / '.local/current/export'))
 
 
 class ScopeTests(unittest.TestCase):
@@ -83,7 +84,7 @@ class ContractTests(unittest.TestCase):
             code = generate_page(page, records, {r['address'] for r in self.records}, userops=self.userops)
             require_aggregate_object_hooks(page, records, code)
             for entry in (a for a in AGGREGATE_OBJECT_ENTRIES if a >> 12 == page):
-                hook = aggregate_object_hook(entry)
+                hook = page_hook(page, entry, f'try_modern_aggregate_object(s, 0x{entry:x})')
                 step = f'counter.step(0x{entry:x});' if f'counter.step(0x{entry:x});' in code else f's.step(0x{entry:x});'
                 for broken in (code.replace(hook, ''), code.replace(hook, hook + '\n' + hook),
                                code.replace(hook + '\n' + step, step + '\n' + hook)):

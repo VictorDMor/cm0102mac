@@ -11,8 +11,9 @@ from cpp_object_storage_audit import (CONTRACTS, CPP_OBJECT_STORAGE_ENTRIES, INS
     PAGE_FRAGMENTS, require_cpp_object_storage_contract, require_cpp_object_storage_bodies,
     require_cpp_object_storage_edges, require_cpp_object_storage_index, require_cpp_object_storage_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
+from turbo_pages import page_hook
 
-INDEX = Path(__file__).resolve().parent.parent / '.local/recomp-input/instructions.sqlite'
+INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
 
 
 class ScopeTests(unittest.TestCase):
@@ -91,7 +92,7 @@ class ContractTests(unittest.TestCase):
                 self.assertIn('#include "cpp_object_storage_adapter.hpp"', code)
                 for entry in CPP_OBJECT_STORAGE_ENTRIES:
                     if entry >> 12 != page: continue
-                    hook = f'if (try_modern_cpp_object_storage(s, 0x{entry:x})) return true;'
+                    hook = page_hook(page, entry, f'try_modern_cpp_object_storage(s, 0x{entry:x})')
                     step = f'counter.step(0x{entry:x});' if f'counter.step(0x{entry:x});' in code else f's.step(0x{entry:x});'
                     self.assertIn(f'case 0x{entry:x}: goto i_{entry:x};', code)
                     for bad in (code.replace(hook, ''), code + hook,

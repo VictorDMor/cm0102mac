@@ -12,8 +12,9 @@ from runtime_lifecycle_audit import (CONTRACTS, RUNTIME_LIFECYCLE_ENTRIES, INSTR
     PAGE_FRAGMENTS, require_runtime_lifecycle_contract, require_runtime_lifecycle_bodies,
     require_runtime_lifecycle_edges, require_runtime_lifecycle_index, require_runtime_lifecycle_hooks)
 from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
+from turbo_pages import page_hook
 
-INDEX = Path(os.environ.get('CM_EXCEPTION_RUNTIME_INPUT', Path(__file__).resolve().parent.parent / '.local/recomp-input')) / 'instructions.sqlite'
+INDEX = Path(os.environ.get('CM_EXCEPTION_RUNTIME_INPUT', Path(__file__).resolve().parent.parent / '.local/current/export')) / 'instructions.sqlite'
 
 
 class ScopeTests(unittest.TestCase):
@@ -92,7 +93,7 @@ class ContractTests(unittest.TestCase):
                 self.assertIn('#include "runtime_lifecycle_adapter.hpp"', code)
                 for entry in RUNTIME_LIFECYCLE_ENTRIES:
                     if entry >> 12 != page: continue
-                    hook = f'if (try_modern_runtime_lifecycle(s, 0x{entry:x})) return true;'
+                    hook = page_hook(page, entry, f'try_modern_runtime_lifecycle(s, 0x{entry:x})')
                     step = f'counter.step(0x{entry:x});' if f'counter.step(0x{entry:x});' in code else f's.step(0x{entry:x});'
                     self.assertIn(f'case 0x{entry:x}: goto i_{entry:x};', code)
                     for bad in (code.replace(hook, ''), code + hook,

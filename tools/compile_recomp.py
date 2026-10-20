@@ -234,6 +234,7 @@ from actor_action_audit import (require_actor_action_contract, require_actor_act
     require_actor_action_hooks, actor_action_hook, ACTOR_ACTION_ENTRIES, load_actor_action_table)
 from actor_policy_audit import (require_actor_policy_contract, require_actor_policy_index,
     require_actor_policy_hooks, actor_policy_hook, ACTOR_POLICY_ENTRIES)
+from turbo_pages import TURBO_PAGES, bound_turbo_hook
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
@@ -775,7 +776,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_match_speed_context(page, instructions, selected)
     # Specialize accounting on selected UI/runtime pages while retaining
     # the exact finite-budget path used by validation and probes.
-    match_hot_page = page in (0x1071a, 0x10773, 0x1073c)
+    match_hot_page = page in TURBO_PAGES
     transfer_page = None if native_leaf_lowering else page
     code = ['#include "aot_runtime.hpp"', "namespace cm::aot {",
             (f"template <bool Turbo, bool Finite> bool page_{page:x}_impl(State& s) {{" if match_hot_page
@@ -1021,6 +1022,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
+        hooks_start = len(code)
         if native_sort8_hooks and a == NATIVE_SORT8_ENTRY:
             code.append("if (try_native_sort8(s)) return true;")
         if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
@@ -1243,6 +1245,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("goto i_1071a864;")
             code.append("}")
         if match_hot_page:
+            # The Turbo counter holds the count locally; see turbo_pages.py.
+            code[hooks_start:] = [bound_turbo_hook(a, line) for line in code[hooks_start:]]
+            if any(line.startswith("if (try_") for line in code[hooks_start:]):
+                raise ValueError(f"Semantic hook at {a:x} bypasses the Turbo instruction counter")
             code.append(f"counter.step(0x{a:x});")
         else:
             code.append(f"s.step(0x{a:x});")
