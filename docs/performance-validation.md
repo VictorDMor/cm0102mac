@@ -16,7 +16,8 @@ evidence; timing claims require matched baseline/candidate measurements.
 The [native match-speed report](native-match-speed.md) records the initial
 delivery, source changes, exact identities and measurement boundaries. The
 [background and league-loading report](native-background-performance.md) records
-the subsequent scalar-record, passive-drawing, checked-read and native sorting optimizations,
+the subsequent scalar-record, passive-drawing, checked-read, native sorting
+and read-only spatial query optimizations,
 their installed identity and matched subsystem measurements. These do not
 establish a complete loading or round speedup.
 The latest sorting comparison uses the checked-read revision as its baseline:
@@ -26,6 +27,12 @@ staff-link transition by 14.76% / 14.76%. World normalization and both shared
 engine control cases pass the declared regression rule. Fourteen focused
 CTests and ten generator audits pass. Whole all-league Continue and creation
 timing remain unproven; the linked report records the bounded live observation.
+The next comparison, against that sorting revision, reduces the two identical
+600-advance shared-engine intervals by 7.10%/6.38% wall and 7.09%/6.38% process
+CPU. All ten alternating pairs per scenario improve, preserving complete final
+state, accounting and all 23 spatial entry call/return arrays. Seven focused
+CTests pass, including two complete original/native matches with and without
+drawing, primary/read observer behavior and nonlocal callback interruptions.
 Turbo is now the default sixth choice in the original speed selector, with a
 persistent native preference. The existing runtime shortcuts are enabled by the
 native UI independently of the selected commentary duration.

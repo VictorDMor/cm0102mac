@@ -16,7 +16,9 @@ struct PositionDispatch final:DependencyDispatch {
         if(target==address(Entry::current_position) || target==address(Entry::previous_position)){
             const auto index=target==address(Entry::current_position)?0u:10u;
             const auto& d=spatial_role_diagnostics(state);
-            if(!state.memory.observer && !state.memory.date_observer && !d.observer &&
+            // The primary write observer cannot run during a pure position
+            // load. Read tracing appends data without a guest callback.
+            if(!state.memory.date_observer && !d.observer &&
                 !d.original && !d.entry_original[index] && !d.original_body &&
                 !match_pc_profile_enabled() && state.executed<=state.budget && state.budget-state.executed>=2){
                 if(try_modern_spatial_role(state,target))return;
@@ -25,20 +27,20 @@ struct PositionDispatch final:DependencyDispatch {
         run_until(state,continuation);
     }
 };
-// These unframed field accesses never call another guest routine. Only memory
-// observers can introduce a callback and nonlocal transfer, so keep a native
-// continuation scope precisely when an observer can run. Both paths execute
-// the same body, with every original checkpoint and memory fault retained.
-template<class Body>
+// These unframed fields never call another guest routine. Scalar reads notify
+// only date_observer; the primary observer receives writes. Keep a continuation
+// scope whenever this field can call an observer, including general write
+// observers on stores. Both paths retain every checkpoint and memory fault.
+template<bool Writes = true, class Body>
 [[gnu::always_inline]] inline void field_access(State& state, Entry entry, Body body) {
-    if (state.memory.observer || state.memory.date_observer) {
+    if (state.memory.date_observer || (Writes && state.memory.observer)) {
         GuestNativeScope scope(state, address(entry));
         body();
     } else body();
 }
 template<unsigned N, std::uint32_t offset, bool sign = false>
 void read_field(State& state, Entry entry) {
-    field_access(state, entry, [&] {
+    field_access<false>(state, entry, [&] {
         state.step(address(entry));
         const auto value = state.memory.read<N>(std::uint32_t(state.r<4>(12)) + offset);
         state.wr<4>(12, sign ? std::uint32_t(signed_value<N>(value)) : value);

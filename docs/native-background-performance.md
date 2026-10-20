@@ -309,3 +309,64 @@ All native section bytes, addresses, sizes and flags match. Strict signature
 verification passes, and only the installed executable changed. All 846
 protected files retained their immediately preceding hashes. The broader
 near-instant loading and all-league processing objective remains active.
+
+## Read-only spatial query execution
+
+The subsequent background-match sample identified repeated position/role
+queries and their continuation scopes as another cost in the shared engine.
+Scalar reads notify the separate read observer; the primary memory observer
+receives writes. Pure field reads therefore no longer construct a native
+continuation scope solely because a primary observer is present. The position
+children of role-table queries can also use their existing direct adapter with
+that write observer attached. Their repeated reads and diagnostics still run.
+
+Active read observers retain their continuation scopes. Stores retain scopes
+for either observer channel; original-body/profile policies, boundary
+observers and insufficient instruction headroom retain ordinary dispatch.
+No match detail, scheduling rule, random draw or saved-game layout changes.
+
+Ten alternating pairs against the installed sorting revision, with two warmups
+and five measured executions per process, give these median paired reductions:
+
+| Identical 600-advance shared-engine interval | Wall reduction | Process CPU reduction |
+| --- | ---: | ---: |
+| Arsenal | 7.10% | 7.09% |
+| Cruzeiro | 6.38% | 6.38% |
+
+All ten pairs per scenario improve on both clocks. A real native drawing
+observer is attached in both versions. Complete final snapshots, original
+instruction/import/sampler counts, and all 23 spatial entry call/return arrays
+match exactly. Timing runs one process at a time, without a compiler, profiler
+or game process. These intervals exercise the engine shared by watched and
+background matches; they do not establish whole-round or league-loading time.
+
+Seven focused CTests and seven source audits pass. Production coverage includes
+454 original/native cases, 23 discriminating negative controls, 64 budget stops,
+primary write observers, read traces and child fault prefixes. Two complete
+paired matches, with and without native drawing, finish after 798 advances
+with identical complete state and per-tick accounting. Each executes 3,675,990
+position queries, 1,098,781 role queries and 987,076 actor-role queries. The
+existing 196 nonlocal spatial comparisons preserve all abandoned continuations
+and 112 restore/handler faults across read and write observer channels. Shared
+engine production, original-profile and nonlocal-transfer checks also pass.
+
+The isolated application loaded the unchanged private pre-match save. Turbo was
+visibly selected by default. The original results and player-ratings screens
+confirm Cruzeiro 3-1 Uberlandia on 10 February, with two goals for Maicon and one
+for Rincon; the other afternoon fixtures also returned results. The original
+game wrote a new private save before exiting normally. Reopening that save and
+all-league loading are **not retested** in this read-only follow-up. This is
+functional evidence, not a matched live timing comparison.
+
+This query optimization is installed. Source executable SHA-256:
+`ce427a22d896c54144d15c0a79a4a4ef5154a57a2e7cccaf70aed3dedcec67a9`;
+tested isolated executable:
+`ec5f1bb0fdaf36c7eb7a59b3c6c703624004ff6d6f2350612356ac35a176e16b`;
+installed signed executable:
+`2f4230fa0e0450c13fa3db4b80572b68b2e555bb5b8e60977f8bad828c226cf2`.
+All native sections match byte-for-byte, including addresses, sizes and flags.
+Strict signature verification passes; only the executable changed. The actual
+installed process displayed the original start menu and exited normally. All
+846 protected files retain their immediately preceding hashes. The remaining
+priority is the complete post-match/Continue wait and league initialization;
+the measured engine gain does not meet the near-instant objective.
