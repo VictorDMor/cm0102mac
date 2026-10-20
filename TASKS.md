@@ -48,6 +48,7 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] No App Nap / idle-sleep assertion during long processing.
 - [ ] Run logs accumulate in `Runtime/Runs`; input tracing is on by default.
 - [ ] Mouse-moved events pile up while the game is busy; every small `CopyBits` redraws a full frame.
+- [ ] Idle at the start menu the app uses 100% of a core: the event loop polls `NativeUI::poll` continuously (sampled 2026-10-20; not checked against older builds).
 - [ ] Three jump tables don't match `check_jump_tables.py`'s pattern; inspect them by hand.
 - [ ] 250 of 288 tests can't run here: their binaries aren't built or their inputs were deleted by earlier cleanups. Restore the ones that matter.
 
