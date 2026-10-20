@@ -4,7 +4,10 @@ This document preserves historical performance experiments and their status at
 the time of each run. On 2026-10-20 the user made native match speed the immediate
 priority: Turbo in the original speed selector by default, faster watched and
 background matches, and measured scaling toward all playable leagues. General
-semantic reconstruction resumes after this performance work. The
+semantic reconstruction resumes after this performance work. New-career and
+league loading are explicitly part of this priority. The ongoing
+[background and league-loading investigation](native-background-performance.md)
+separates whole-game observations from measured subsystem improvements. The
 [native season reference](native-season-reference.md) remains behavioral
 evidence; timing claims require matched baseline/candidate measurements.
 

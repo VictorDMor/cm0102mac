@@ -16,6 +16,7 @@ from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
 from match_speed_audit import require_match_speed_context, MATCH_SPEED_PAGES
 from local_temporaries import LocalTemporaries
+from native_record_fields import CONTRACTS as NATIVE_RECORD_FIELDS, load_leaves, generate_native_record_fields
 from vector_context_lowering import lower_vector_intrinsic
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
@@ -389,7 +390,7 @@ def write(node, value):
 
 
 def transfer(address, page, selected):
-    if address >> 12 == page and address in selected:
+    if (page is None or address >> 12 == page) and address in selected:
         return f"goto i_{address:x};"
     return f"s.pc = 0x{address:x}; return true;"
 
@@ -574,7 +575,7 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_leaf_lowering=False):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -773,9 +774,12 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     # Specialize accounting on selected UI/runtime pages while retaining
     # the exact finite-budget path used by validation and probes.
     match_hot_page = page in (0x1071a, 0x10773, 0x1073c)
+    transfer_page = None if native_leaf_lowering else page
     code = ['#include "aot_runtime.hpp"', "namespace cm::aot {",
             (f"template <bool Turbo, bool Finite> bool page_{page:x}_impl(State& s) {{" if match_hot_page
              else f"bool page_{page:x}(State& s) {{")]
+    if native_record_field_hooks and page_addresses & NATIVE_RECORD_FIELDS.keys():
+        code.insert(1, '#include "native_record_fields.hpp"')
     if transfer_hooks:
         code.insert(1, '#include "guest_context_transfer.hpp"')
     if register_context_hooks and page_addresses & set(REGISTER_CONTEXT_ENTRIES):
@@ -1011,6 +1015,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
+        if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
+            code.append(f"if (try_native_record_fields(s, 0x{a:x})) return true;")
         if a == 0x1028d558:
             code.append("if (append_turbo_match_speed(s)) return true;")
         if a in CALENDAR_ADAPTER_ENTRIES:
@@ -1236,7 +1242,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(CAPTURE_OBSERVATIONS[a])
         if a == 0x101fefc8:
             code.append("s.memory.write<1>(std::uint32_t(s.r<4>(12) + 0x4070), native_match_speed_enabled() ? native_match_speed() : s.r<4>(20));")
-            code.append(transfer(a + 4, page, selected))
+            code.append(transfer(a + 4, transfer_page, selected))
             continue
         if a == 0x10774c24:
             # A stale largest-block hint can produce the same pool count after
@@ -1257,7 +1263,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                     ["INT_DIV", ["register", "100", 4], ["register", "16", 4], ["register", "0", 4]]]:
                 raise ValueError("Pool retry no longer matches the audited failed-allocation loop")
             code.extend(["s.wr<4>(100, next_pool_attempt(s.r<4>(100), divide_unsigned(s.r<4>(16), s.r<4>(0))));",
-                         transfer(a + 4, page, selected)])
+                         transfer(a + 4, transfer_page, selected)])
             continue
         if a == 0x101355d4:
             # PowerPC divw without OE/Rc does not trap on a zero divisor; its
@@ -1277,7 +1283,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                     ["INT_SDIV", ["register", "12", 4], ["register", "20", 4], ["register", "16", 4]]]:
                 raise ValueError("Day-advance division no longer matches the audited quotient-independent sequence")
             code.extend(["if (s.r<4>(16) == 0) {", "s.wr<4>(12, 0);",
-                         transfer(a + 4, page, selected), "}"])
+                         transfer(a + 4, transfer_page, selected), "}"])
         if a == 0x1024773c:
             # Same exceptional divw semantics in the match routine. Unlike the
             # day-advance site, r3 is killed along several later branches.
@@ -1291,7 +1297,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 raise ValueError("Match division no longer matches the audited annihilating multiply")
             require_dead_register(by_address, 0x10247754, 12, 4)
             code.extend(["if (s.r<4>(16) == 0) {", "s.wr<4>(12, 0);",
-                         transfer(a + 4, page, selected), "}"])
+                         transfer(a + 4, transfer_page, selected), "}"])
         if a in (0x10713aec, 0x10713b3c):
             # Club and competition fallback callers (10713214 / 107133b8)
             # deliberately pass a null object. The shared selector 107139c0
@@ -1306,7 +1312,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 raise ValueError("Background call site no longer matches the audited release")
             code.extend(["if (s.r<4>(12) == 0) {", "s.wr<4>(2440, s.r<4>(8));",
                          f"s.wr<4>(4128, 0x{continuation:x});",
-                         transfer(continuation, page, selected), "}"])
+                         transfer(continuation, transfer_page, selected), "}"])
         if item["assembly"].startswith("fctiwz "):
             # Ghidra's generic TRUNC does not express PowerPC invalid-result
             # saturation or all FPSCR flags. Lower this instruction explicitly.
@@ -1318,7 +1324,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                ops[5][1] != ["register", str(destination), 8]:
                 raise ValueError(f"Unrecognized fctiwz export at {a:x}")
             code.append(f"original_fctiwz(s, {destination}, {source});")
-            code.append(transfer(a + item["size"], page, selected))
+            code.append(transfer(a + item["size"], transfer_page, selected))
             continue
         labels = set()
         for i, op in enumerate(item["ops"]):
@@ -1332,7 +1338,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("{")
         for i, op in enumerate(item["ops"]):
             if i in labels: code.append(f"op_{a:x}_{i}:")
-            lowered = operation(op, a, i, page, selected, len(item["ops"]),
+            lowered = operation(op, a, i, transfer_page, selected, len(item["ops"]),
                                 read_node=local.read if local else read,
                                 write_node=local.write if local else write,
                                 userops=userops)
@@ -1356,7 +1362,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             reg = 20 if a == 0x102036ac else 0
             code.append(f"s.wr<4>({reg}, match_simulation_speed(std::uint32_t(s.r<4>({reg}))));")
         # This path is reached only if no earlier branch/return transferred out.
-        code.append(transfer(a + item["size"], page, selected))
+        code.append(transfer(a + item["size"], transfer_page, selected))
         if local is not None:
             code.append("}")
     code.append("}")
@@ -1753,6 +1759,8 @@ def main():
             load_actor_action_table(args.export)
         require_record_query_index(db, None if args.all_analyzed else selected)
         require_record_group_index(db, None if args.all_analyzed else selected)
+    with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
+        native_leaves = load_leaves(db, None if args.all_analyzed else selected)
     if args.reuse_generated:
         reused = seed_generated(args.reuse_generated, args.output)
         print(f"Seeded generated C++: {reused['clonedFiles']} copy-on-write files; {reused['copiedFiles']} regular copies", flush=True)
@@ -1829,6 +1837,9 @@ def main():
     code += ["s.memory.map(0x70000000, 0x100000);", "s.wr<4>(4, 0x700fff00);",
              "s.wr<4>(8, 0x108bba90);", f"s.wr<4>(4128, return_sentinel);", "}", "}"]
     outputs["program.cpp"] = "\n".join(code) + "\n"
+    outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
+        lambda page, records, chosen: generate_page(page, records, chosen,
+            native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops']))
     # Remove only stale generated pages, after all code generation has succeeded.
     for stale in args.output.glob("page_*.cpp"):
         if stale.name not in outputs: stale.unlink()
