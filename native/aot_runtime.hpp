@@ -123,6 +123,20 @@ struct MemoryObserver {
     virtual void written(std::uint32_t start, const std::uint8_t* bytes, std::size_t size) = 0;
     virtual void cleared(std::uint32_t start, std::uint64_t size) = 0;
     virtual void read(std::uint32_t, const std::uint8_t*, unsigned) {}
+    // General diagnostics observe every write by default. A passive observer
+    // may declare a conservative interval to avoid irrelevant scalar calls.
+    bool observes_write(std::uint64_t address, unsigned size) const {
+        return !restricted_writes_ || (address < write_end_ && address + size > write_begin_);
+    }
+protected:
+    void restrict_write_notifications(std::uint64_t begin, std::uint64_t end) {
+        write_begin_ = begin;
+        write_end_ = end;
+        restricted_writes_ = true;
+    }
+private:
+    std::uint64_t write_begin_ = 0, write_end_ = 0;
+    bool restricted_writes_ = false;
 };
 class Memory {
 public:
@@ -152,7 +166,8 @@ public:
     template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
         check_scalar<N>(address);
         write_be<N>(data_ + address, value);
-        if (observer) observer->written(std::uint32_t(address), data_ + address, N);
+        if (observer && observer->observes_write(address, N))
+            observer->written(std::uint32_t(address), data_ + address, N);
         if (date_observer) date_observer->written(std::uint32_t(address), data_ + address, N);
     }
 private:

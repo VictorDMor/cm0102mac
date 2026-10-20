@@ -6,6 +6,29 @@ using namespace cm::aot;
 namespace {
 void require(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 constexpr std::uint32_t pixels = 0x33000000, fonts = 0x34000000, mode = 0x35000000, text = 0x35000100, glyph = 0x35000200;
+void write_range_checks() {
+    State state;
+    constexpr auto base = 0x32000000u;
+    state.memory.map(base, 64);
+    NativeDrawingObserver drawing;
+    drawing.register_surface(state, base + 16, 1, 1, 2, 16);
+    state.memory.write<2>(base + 16, 0x7c00);
+    require(drawing.snapshot(state, base + 16)->background[1] == 255, "Initial surface lost its scalar repaint");
+    drawing.register_surface(state, base + 40, 1, 1, 2, 16);
+    state.memory.write<2>(base + 40, 0x03e0);
+    require(drawing.snapshot(state, base + 40)->background[2] == 255, "Higher surface did not extend write interest");
+    drawing.register_surface(state, base + 4, 1, 1, 2, 16);
+    state.memory.write<2>(base + 4, 0x001f);
+    require(drawing.snapshot(state, base + 4)->background[3] == 255, "Lower surface did not extend write interest");
+    state.memory.write<4>(base + 2, 0xaabb7fff);
+    const auto scene = drawing.snapshot(state, base + 4);
+    require(scene->background[1] == 255 && scene->background[2] == 255 && scene->background[3] == 255,
+            "A partially overlapping scalar write lost the surface prefix");
+    drawing.remove_surface(base + 40);
+    state.memory.write<2>(base + 40, 0x7fff);
+    require(!drawing.snapshot(state, base + 40), "Removed surface was retained");
+    state.memory.observer = nullptr;
+}
 void setup(State& s, const std::filesystem::path& program) {
     load_program(s, program);
     s.memory.map(pixels, 4096); s.memory.map(fonts, 0x1404); s.memory.map(mode, 4096);
@@ -25,6 +48,7 @@ void setup(State& s, const std::filesystem::path& program) {
 int main(int argc, char** argv) {
     try {
         require(argc == 2, "Usage: cm-native-drawing-checks ORIGINAL_PROGRAM");
+        write_range_checks();
         auto original = std::make_unique<State>(); auto observed = std::make_unique<State>();
         setup(*original, argv[1]); setup(*observed, argv[1]);
         NativeDrawingObserver observer;

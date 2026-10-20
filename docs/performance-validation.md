@@ -13,8 +13,12 @@ evidence; timing claims require matched baseline/candidate measurements.
 
 ## Native match-speed delivery, 2026-10-20
 
-The [native match-speed report](native-match-speed.md) records the current
-installed delivery, source changes, exact identities and measurement boundaries.
+The [native match-speed report](native-match-speed.md) records the initial
+delivery, source changes, exact identities and measurement boundaries. The
+[background and league-loading report](native-background-performance.md) records
+the subsequent installed optimizations: 8.46% paired wall reduction in complete
+world attribute normalization and about 2% in matched shared-engine intervals
+with a passive drawing observer. These are distinct subsystem measurements.
 Turbo is now the default sixth choice in the original speed selector, with a
 persistent native preference. The existing runtime shortcuts are enabled by the
 native UI independently of the selected commentary duration.

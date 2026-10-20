@@ -35,6 +35,14 @@ processing also accesses the original live window and filesystem identities.
 The incomplete replay is rejected as timing evidence. No matches or native
 effects are skipped to make it finish.
 
+The all-league career subsequently finished creation and was saved through the
+original UI. Loading, saving a new copy and reopening that copy passed in the
+native candidate. An independent daily Continue profile also shows substantial
+player/recruitment/list-transition work. The forced fixture entry alone is not
+the complete processing bottleneck. A later six-record capture began with its
+selected low-detail fixture already calculated; its 4,214,785 instructions and
+41 native calls describe postprocessing, not a full detailed-match benchmark.
+
 ## Bounded record conversion optimization
 
 Four audited record-field leaves now have generated native scalar-register
@@ -93,6 +101,36 @@ the candidate linked against the production archive is
 Both meet the predeclared threshold of at least five faster pairs and more than
 1% median paired reduction for both clocks.
 
+## Passive drawing write notifications
+
+Scalar memory writes now check a passive observer's conservative address
+interval before making its virtual callback. Native drawing maintains that
+interval as surfaces are registered. Writes overlapping even one surface byte
+still notify drawing; replacing or removing surfaces can retain a conservative
+superset. General diagnostic observers keep every scalar callback by default.
+Date diagnostics and bulk-memory notifications retain their original behavior.
+
+Two real initial match states ran 600 shared-engine advances with the actual
+native drawing observer and an 8-by-8 surface outside simulation data. This
+isolates irrelevant write-notification cost; it excludes UI drawing and complete
+rounds. Each case used ten alternating pairs, two warmups and five measured
+samples per process, with no build or profiler. All ten pairs were faster on
+both clocks in both cases, meeting the declared 9/10 and greater-than-1% rule.
+
+| Scenario | Wall median, baseline / candidate | Paired wall reduction | Paired CPU reduction |
+| --- | --- | --- | --- |
+| Arsenal | 0.504969 / 0.494202 seconds | 2.08% | 2.12% |
+| Cruzeiro | 0.469201 / 0.459789 seconds | 2.02% | 2.06% |
+
+Complete final snapshots, original instruction counts, bridge calls and sampler
+counts match. Final snapshot SHA-256 values are
+`8d91351c565e85ad26c656693c49936457e952ff5085d66649606fe4818f3356`
+and `760a47c644b0d0ab8c7af24c8e9e75d1f08e3abd7d9cfe7022ab3deb0e512eb1`.
+The paired replay executable hashes are
+`f279c69b4847cd11ae6fccb01fa583f27c63317862949766f4aa4c95be3a1a08`
+and `8d36682fa4a9492a3f3cc20c8300493ee81d8e1439621cce818f87978ad5ae63`.
+These percentages are separate component measurements and are not additive.
+
 ## Validation and delivery status
 
 Eleven focused CTests pass: record conversion and profile fallback, match speed,
@@ -104,10 +142,32 @@ one optional private-export check skipped; 2,080 differential fixtures pass).
 Complete generation retains all 1,953,334 original instructions, with zero
 missing static or pending targets.
 
-The built app executable is
-`10d1c4bd8a0b118dc61927ade614f92181992c1cccc53e9122cd7ad32d15954d`.
-It is **not installed**. The installed Turbo delivery remains
-`0c6858b069de7eca8745b3a0265594fcba45cefd5bee8ce0acdd9bcb15c1102e`.
-Live candidate new-career, whole-round and persistence checks are **not retested**.
-The broader performance goal remains active. Private programs, snapshots, saved
-careers, profiles, transcripts and build artifacts remain under `.local/`.
+After adding the observer filter, all 15 focused CTests pass, including memory
+bounds, drawing, arithmetic production/profile and the preceding component
+checks. The filter has 256 scalar byte-interest oracle cases, high-address and
+fault-before-callback checks, general/date/bulk observer preservation, and real
+surface expansion, overlap and removal checks.
+
+The candidate loaded the 26-country career, saved and reopened a new copy.
+A fresh watched match from the immutable pre-match career completed as Cruzeiro
+3-1 Uberlandia. All other fixtures returned results. Save, normal exit, reopen,
+calendar and player-result verification passed through the original UI. Turbo
+was visibly selected by default. This manual match is functional evidence only;
+its events differ from an earlier run and provide no matched speed comparison.
+Creating another full all-league career and completing an all-league day with
+the candidate are **not retested**.
+
+Both native optimizations are installed. The source executable SHA-256 is
+`fd5103d67aa8681154541bd91efcf7e54eaa11dae4b3c2c2be66901ffbdd17f7`;
+the isolated tested executable is
+`0fb67da30e9f8a0bc7a38684d4df9a5f8accf3f9240c1d18b9ca46e7d24ff933`;
+the installed signed executable is
+`1519dbc27cf297b675ed811e446b78fde5ab70d3094f16cf842ed2d9cc8987db`.
+All native Mach-O sections are identical. Only the installed executable changed;
+all 846 protected files matched their immediately preceding hashes. One personal
+save had already changed before candidate preparation relative to an older
+historical baseline; the newer file was preserved.
+
+The broader performance goal remains active. Near-instant loading is not
+achieved. Private programs, snapshots, saved careers, profiles, transcripts and
+build artifacts remain under `.local/`.

@@ -40,7 +40,72 @@ void rejected_wide_read(Memory& memory, std::uint64_t address) {
     }
     require(rejected, "Wide or wrapping read was not rejected");
 }
+struct WriteObserver final : MemoryObserver {
+    unsigned calls = 0;
+    std::vector<std::pair<std::uint32_t, std::size_t>> writes;
+    void mapped(std::uint32_t, std::uint64_t) override {}
+    void cleared(std::uint32_t, std::uint64_t) override {}
+    void written(std::uint32_t address, const std::uint8_t*, std::size_t size) override {
+        ++calls;
+        writes.emplace_back(address, size);
+    }
+    void interval(std::uint64_t begin, std::uint64_t end) { restrict_write_notifications(begin, end); }
+};
+
+void write_notification_checks() {
+    Memory memory;
+    constexpr std::uint32_t base = 0x35000000;
+    memory.map(base, 128);
+    std::array<bool, 128> interested{};
+    for (unsigned n = 32; n < 48; ++n) interested[n] = true;
+    WriteObserver filtered, all_writes;
+    filtered.interval(base + 32, base + 48);
+    memory.observer = &filtered;
+    memory.date_observer = &all_writes;
+    const auto verify = [&]<unsigned N>(unsigned offset) {
+        const auto before = filtered.calls, all_before = all_writes.calls;
+        memory.write<N>(base + offset, 0x0123456789abcdef);
+        const bool expected = std::any_of(interested.begin() + offset,
+            interested.begin() + offset + N, [](bool value) { return value; });
+        require(filtered.calls == before + expected, "Scalar write notification missed byte interest");
+        require(all_writes.calls == all_before + 1, "General diagnostics lost a scalar write");
+        if (expected) require(filtered.writes.back() == all_writes.writes.back(), "Filtered write extent changed");
+    };
+    for (unsigned offset = 0; offset < 64; ++offset) {
+        verify.template operator()<1>(offset);
+        verify.template operator()<2>(offset);
+        verify.template operator()<4>(offset);
+        verify.template operator()<8>(offset);
+    }
+    filtered.interval(0, 0);
+    const auto before_empty = filtered.calls;
+    memory.write<8>(base + 32, 0);
+    require(filtered.calls == before_empty, "Empty write interest received a scalar callback");
+    // Bulk notifications retain their complete existing callback contract.
+    memory.copy_in(base, {1, 2, 3});
+    require(filtered.calls == before_empty + 1 && filtered.writes.back().second == 3,
+            "Bulk write notification changed");
+    memory.observer = memory.date_observer = nullptr;
+
+    Memory high;
+    high.map(0xfffffff0, 16);
+    WriteObserver top;
+    top.interval(0xffffffff, UINT64_C(0x100000000));
+    high.observer = &top;
+    high.write<8>(0xfffffff8, 1);
+    require(top.calls == 1 && top.writes.back().first == 0xfffffff8,
+            "Last address-space byte lost its overlapping wide write");
+    const auto before_fault = top.calls;
+    rejected_wide_read(high, 0xfffffff9);
+    bool faulted = false;
+    try { high.write<8>(0xfffffff9, 0); }
+    catch (const std::runtime_error&) { faulted = true; }
+    require(faulted && top.calls == before_fault, "Invalid write reached the observer");
+    high.observer = nullptr;
+    std::cout << "256 scalar write-interest byte-oracle cases, general/bulk observer preservation and top-boundary notifications passed\n";
+}
 void checks() {
+    write_notification_checks();
     constexpr std::uint32_t base = 0x32000000;
     constexpr std::size_t span = 2048;
     Memory memory;

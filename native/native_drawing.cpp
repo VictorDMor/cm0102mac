@@ -217,6 +217,7 @@ void NativeDrawingObserver::register_surface(State& s, std::uint32_t address, in
     impl_->surfaces.insert_or_assign(address, std::move(surface));
     impl_->low = std::min(impl_->low, address);
     impl_->high = std::max(impl_->high, std::uint64_t(address) + std::uint64_t(row_bytes) * height);
+    restrict_write_notifications(impl_->low, impl_->high);
     // Fixture/transcript observers keep exclusive ownership of their stream.
     if (!s.memory.observer) s.memory.observer = this;
 }

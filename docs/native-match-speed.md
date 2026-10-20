@@ -128,9 +128,9 @@ The 18,987,247-byte private save has SHA-256
 These UI observations establish behavior and persistence, not a timing comparison:
 the original UI match uses live timing and produced different scores across runs.
 
-## Installed delivery
+## Initial installed delivery
 
-The accepted ARM64 app is installed at
+The initial accepted ARM64 app was installed at
 `~/Applications/CM 01-02 Native Prototype.app`. Its executable SHA-256 is
 `0c6858b069de7eca8745b3a0265594fcba45cefd5bee8ce0acdd9bcb15c1102e`.
 The compiled executable before bundle signing has SHA-256
@@ -159,3 +159,7 @@ without skipping fixtures, lowering simulation detail or changing random draws.
 Private executables, snapshots, runtime copies and measurement records are kept
 under `.local/native-match-speed`. Original pre-match save SHA-256:
 `ac167b19877e04f6998301acc145d571d010c6a1caa453a58e6c6c1b1b5becdc`.
+
+Subsequent record-conversion and passive-drawing optimizations, their matched
+measurements and the updated installed identity are documented in the
+[background and league-loading report](native-background-performance.md).
