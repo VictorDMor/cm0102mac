@@ -1,0 +1,36 @@
+# Code addresses Ghidra's automatic analysis does not reach on its own.
+# tools/dev.sh export passes every address here to ExportRecomp.java.
+# tools/check_jump_tables.py fails the build when a resolved jump table
+# still points at an address missing from the export; add it here.
+
+# Event-loop jump table at 0x1091c330.
+0x1076ffa8
+0x1076ffb4
+0x1076ffcc
+0x1076ffd8
+0x1076ffe4
+0x10770148
+
+# Competition result table 0x108cc9fc, reached in the 2002 World Cup final.
+0x101b8a4c
+0x101b8908
+0x101b87c0
+0x101b8680
+0x101b8adc
+0x101b8548
+0x101b84cc
+
+# Exception runtime: vector save/restore destinations, the unexpected-exception
+# landing pad and the object cleanup callback use computed LR transfers.
+0x10772698
+0x10772b80
+0x107724c0
+0x107724f4
+0x10772d80
+
+# Jump table 0x108cc97c (bctr 0x101b4b20), cases 14 and 15.
+0x101b4b88
+0x101b4b24
+
+# Jump table at TOC-0x3c88 (bctr 0x10759294), case 18.
+0x107593d4

@@ -4,6 +4,7 @@
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.lang.Register;
+import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.mem.MemoryBlock;
@@ -43,6 +44,15 @@ public class ExportRecomp extends GhidraScript {
             MemoryBlock block = currentProgram.getMemory().getBlock(address);
             if ((offset & 3) != 0 || block == null || !block.isExecute())
                 throw new IllegalArgumentException("Discovery root is not aligned executable code: " + address);
+            Data data = getInstructionAt(address) == null ? getDataContaining(address) : null;
+            if (data != null) {
+                // Analysis can type an unreached switch case as data, which
+                // blocks disassembly. The project is open read-only, so this
+                // clears the listing for this export only; bytes are unchanged.
+                println("Clearing " + data.getDataType().getName() + " at " + data.getAddress()
+                    + " for discovery root " + address);
+                clearListing(data.getAddress(), data.getMaxAddress());
+            }
             if (getInstructionAt(address) == null && !disassemble(address))
                 throw new IllegalStateException("Cannot disassemble original branch destination: " + address);
             if (getInstructionAt(address) == null)
