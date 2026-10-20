@@ -38,7 +38,10 @@ class MatchPresentationAuditTests(unittest.TestCase):
     def test_partial_export_without_relevant_call_or_load(self):
         for page, anchor in ((0x101cc, 0x101cce38), (0x10203, 0x10203738)):
             records = [r for r in self.pages[page] if r["address"] != anchor]
-            generated = generate_page(page, records, {r["address"] for r in records})
+            # This fixture intentionally contains only the presentation slice,
+            # not the complete subsequently reconstructed match-engine caller.
+            generated = generate_page(page, records, {r["address"] for r in records},
+                                      match_engine_hooks=False)
             self.assertNotIn("commentary_presentation_duration(s", generated)
             for item in records:
                 self.assertIn(f"i_{item['address']:x}: // {item['assembly']}", generated)
@@ -51,17 +54,17 @@ class MatchPresentationAuditTests(unittest.TestCase):
                 selected = {r["address"] for r in records} | {anchor}
                 with self.subTest(page=hex(page), missing=hex(originals[missing]["address"])):
                     with self.assertRaises(ValueError):
-                        generate_page(page, records, selected)
+                        generate_page(page, records, selected, match_engine_hooks=False)
 
     def test_complete_callee_keeps_duration_lowering(self):
         records = self.pages[0x10203]
         selected = {r["address"] for r in records}
-        generated = generate_page(0x10203, records, selected)
+        generated = generate_page(0x10203, records, selected, match_engine_hooks=False)
         self.assertIn("commentary_presentation_duration(s", generated)
         changed = deepcopy(records)
         changed[-1]["assembly"] = "nop"
         with self.assertRaises(ValueError):
-            generate_page(0x10203, changed, selected)
+            generate_page(0x10203, changed, selected, match_engine_hooks=False)
 
     def test_all_instructions_required_once_and_selected(self):
         for page, records in self.pages.items():

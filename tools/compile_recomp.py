@@ -14,6 +14,7 @@ import struct
 from generation_storage import seed_generated
 from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
+from match_speed_audit import require_match_speed_context, MATCH_SPEED_PAGES
 from local_temporaries import LocalTemporaries
 from vector_context_lowering import lower_vector_intrinsic
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
@@ -767,6 +768,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     presentation_anchor = {0x101cc: 0x101cce38, 0x10203: 0x10203738}.get(page)
     if presentation_anchor in page_addresses or presentation_anchor in selected:
         require_match_presentation_context(page, instructions, selected)
+    if page in MATCH_SPEED_PAGES:
+        require_match_speed_context(page, instructions, selected)
     # Specialize accounting on selected UI/runtime pages while retaining
     # the exact finite-budget path used by validation and probes.
     match_hot_page = page in (0x1071a, 0x10773, 0x1073c)
@@ -941,6 +944,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.append("MatchPageCounter<Turbo, Finite> counter(s);")
     if page == 0x10203:
         code.insert(1, '#include "match_presentation.hpp"')
+    if page in MATCH_SPEED_PAGES:
+        code.insert(1, '#include "match_speed.hpp"')
     if page in (0x10331, 0x10715, 0x10717, 0x10718):
         code.insert(1, '#include "calendar_adapter.hpp"')
     if page in (0x10715, 0x10716, 0x10717, 0x10718):
@@ -1006,6 +1011,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
+        if a == 0x1028d558:
+            code.append("if (append_turbo_match_speed(s)) return true;")
         if a in CALENDAR_ADAPTER_ENTRIES:
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a in DATE_SUBSYSTEM_ENTRIES:
@@ -1227,6 +1234,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"s.step(0x{a:x});")
         if register_context_hooks and a in CAPTURE_OBSERVATIONS:
             code.append(CAPTURE_OBSERVATIONS[a])
+        if a == 0x101fefc8:
+            code.append("s.memory.write<1>(std::uint32_t(s.r<4>(12) + 0x4070), native_match_speed_enabled() ? native_match_speed() : s.r<4>(20));")
+            code.append(transfer(a + 4, page, selected))
+            continue
         if a == 0x10774c24:
             # A stale largest-block hint can produce the same pool count after
             # a failed allocation, trapping the original replenishment loop.
@@ -1337,6 +1348,13 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append('record_context_frame(s, std::uint32_t(s.r<4>(12)));')
         if a == 0x10203738:
             code.append("s.wr<4>(0, commentary_presentation_duration(s, std::uint32_t(s.r<4>(104)), std::uint32_t(s.r<4>(0))));")
+        if a == 0x10147cf8:
+            code.append("if (native_match_speed_enabled()) s.wr<4>(12, native_match_speed());")
+        if a == 0x10147e50:
+            code.append("select_native_match_speed(std::uint16_t(s.r<4>(16)));")
+        if a in (0x101cce50, 0x10203574, 0x102036ac):
+            reg = 20 if a == 0x102036ac else 0
+            code.append(f"s.wr<4>({reg}, match_simulation_speed(std::uint32_t(s.r<4>({reg}))));")
         # This path is reached only if no earlier branch/return transferred out.
         code.append(transfer(a + item["size"], page, selected))
         if local is not None:

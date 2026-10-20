@@ -1,6 +1,7 @@
 #include "ui_bridge.hpp"
 #include "native_drawing.hpp"
 #include "match_turbo.hpp"
+#include "match_speed.hpp"
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 #include <deque>
@@ -17,6 +18,9 @@
 
 namespace {
 bool match_turbo = false;
+bool native_speed_enabled = false;
+std::uint16_t selected_match_speed = cm::aot::turbo_match_speed;
+std::filesystem::path match_speed_preference;
 bool repeated_key_event(NSEvent* event) {
     // isARepeat is undefined for mouse/accessibility menu events and AppKit
     // raises NSInternalInconsistencyException if queried for a non-key event.
@@ -184,7 +188,6 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)originalQuitAction:(NSMenuItem*)sender;
 - (void)validationClick:(NSMenuItem*)sender;
 - (void)validationMove:(NSMenuItem*)sender;
-- (void)toggleMatchTurbo:(NSMenuItem*)sender;
 @end
 @implementation CMNativeAppDelegate
 - (void)interfaceScaleAction:(NSMenuItem*)sender { selectScale(sender.tag); }
@@ -265,10 +268,6 @@ std::uint8_t original_character(NSEvent* event) {
 }
 - (void)validationClick:(NSMenuItem*)sender { (void)sender; [self validationPosition:YES]; }
 - (void)validationMove:(NSMenuItem*)sender { (void)sender; [self validationPosition:NO]; }
-- (void)toggleMatchTurbo:(NSMenuItem*)sender {
-    cm::aot::set_match_turbo_enabled(!cm::aot::match_turbo_enabled());
-    sender.state = cm::aot::match_turbo_enabled() ? NSControlStateValueOn : NSControlStateValueOff;
-}
 - (void)originalMenuAction:(NSMenuItem*)sender {
     if (!sender.enabled || repeated_key_event(NSApp.currentEvent)) return;
     if (sender.tag == 0x00020001 && selectCommand) { selectCommand(cm::aot::DirectCommand::save_game); return; }
@@ -335,6 +334,28 @@ std::uint8_t original_character(NSEvent* event) {
 namespace cm::aot {
 bool match_turbo_enabled() { return match_turbo; }
 void set_match_turbo_enabled(bool enabled) { match_turbo = enabled; }
+bool native_match_speed_enabled() { return native_speed_enabled; }
+std::uint16_t native_match_speed() { return selected_match_speed; }
+void initialize_native_match_speed(std::uint16_t value) {
+    native_speed_enabled = true;
+    selected_match_speed = valid_match_speed(value) ? value : turbo_match_speed;
+    match_turbo = true;
+}
+void select_native_match_speed(std::uint16_t value) {
+    if (!native_speed_enabled || !valid_match_speed(value) || value == selected_match_speed) return;
+    selected_match_speed = value;
+    if (match_speed_preference.empty()) return;
+    @autoreleasepool {
+        NSDictionary* preference = @{@"Version": @1, @"MatchSpeed": @(value)};
+        NSData* data = [NSPropertyListSerialization dataWithPropertyList:preference
+            format:NSPropertyListXMLFormat_v1_0 options:0 error:nil];
+        std::error_code error;
+        std::filesystem::create_directories(match_speed_preference.parent_path(), error);
+        if (error || !data || ![data writeToFile:[NSString stringWithUTF8String:match_speed_preference.c_str()]
+                options:NSDataWritingAtomic error:nil])
+            std::fprintf(stderr, "Match speed preference could not be saved; the current choice remains usable.\n");
+    }
+}
 std::uint16_t legacy_event_mask(const UIEvent& event) {
     switch (event.kind) {
         case UIEvent::Kind::launch: case UIEvent::Kind::quit: case UIEvent::Kind::open_files: return 0x0400;
@@ -544,6 +565,26 @@ struct NativeUI::Impl {
       @autoreleasepool {
         if (![NSThread isMainThread]) throw std::runtime_error("Native UI requires the macOS main thread");
         [NSApplication sharedApplication];
+        // Presentation preferences are separate from original resources/saves.
+        // Existing installations without this preference start in Turbo.
+        initialize_native_match_speed();
+        match_speed_preference = preference.empty() ? std::filesystem::path{} :
+            preference.parent_path() / "MatchSpeed.plist";
+        if (!match_speed_preference.empty()) {
+            std::error_code error;
+            const auto size = std::filesystem::file_size(match_speed_preference, error);
+            if (!error && size <= 4096) {
+                NSData* data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:match_speed_preference.c_str()]];
+                id value = data ? [NSPropertyListSerialization propertyListWithData:data
+                    options:NSPropertyListImmutable format:nullptr error:nil] : nil;
+                if ([value isKindOfClass:NSDictionary.class] && [value[@"Version"] isEqual:@1] &&
+                    [value[@"MatchSpeed"] isKindOfClass:NSNumber.class]) {
+                    const auto speed = [value[@"MatchSpeed"] integerValue];
+                    if (speed >= 0 && speed <= UINT16_MAX && valid_match_speed(std::uint16_t(speed)))
+                        selected_match_speed = std::uint16_t(speed);
+                }
+            }
+        }
         delegate = [CMNativeAppDelegate new];
         delegate->pending = &pending;
         delegate->gameWindows = &windows;
@@ -1025,16 +1066,6 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
         scale_top.submenu = impl_->scale_menu;
         [view_menu addItem:scale_top]; view_top.submenu = view_menu; [bar addItem:view_top];
         impl_->refresh_presentation();
-        NSMenuItem* match = [[NSMenuItem alloc] initWithTitle:@"Match" action:nil keyEquivalent:@""];
-        NSMenu* match_menu = [[NSMenu alloc] initWithTitle:@"Match"];
-        NSMenuItem* turbo = [[NSMenuItem alloc] initWithTitle:@"Turbo"
-            action:@selector(toggleMatchTurbo:) keyEquivalent:@"t"];
-        turbo.keyEquivalentModifierMask = NSEventModifierFlagCommand;
-        turbo.target = impl_->delegate;
-        turbo.state = match_turbo_enabled() ? NSControlStateValueOn : NSControlStateValueOff;
-        [match_menu addItem:turbo];
-        match.submenu = match_menu;
-        [bar addItem:match];
         if (impl_->event_pointer) {
             NSMenuItem* top = [[NSMenuItem alloc] initWithTitle:@"Validation" action:nil keyEquivalent:@""];
             NSMenu* menu = [[NSMenu alloc] initWithTitle:@"Validation"];

@@ -61,7 +61,9 @@ void clear_marking_count(State& state) {
         state.step(root + 8); state.pc = std::uint32_t(state.r<4>(4128));
     });
 }
-void role_table(Call& a, Entry entry) {
+// These hot queries benefit from keeping the fixed guest-register operations
+// together. All checkpoints, dependency calls and repeated reads still execute.
+[[gnu::flatten]] void role_table(Call& a, Entry entry) {
     const auto root=address(entry), position=address(entry==Entry::previous_role?Entry::previous_position:Entry::current_position);
     a.link();a.save(31);a.save(30);a.save_link();a.frame(0x40);a.move(30,3);a.move(31,4);
     a.move(3,31);a.call(position);a.sign8(0,3);a.compare(0,0);bool valid=!a.less();
@@ -74,7 +76,7 @@ void role_table(Call& a, Entry entry) {
     }
     a.at(root+0x74);a.pop(0x40);a.restore(31);a.restore(30);a.finish();
 }
-void owner_role(Call& a, Entry entry) {
+[[gnu::flatten]] void owner_role(Call& a, Entry entry) {
     const auto root=address(entry);
     const auto target=address(entry==Entry::actor_current_role?Entry::current_role:entry==Entry::actor_previous_role?Entry::previous_role:Entry::secondary_role);
     a.link();a.move(4,3);a.save_link();a.frame(0x40);a.load(0,3,0x1a4);a.compare(0,0,false);

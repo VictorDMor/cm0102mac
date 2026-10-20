@@ -1,9 +1,38 @@
 # Real-game performance validation
 
 This document preserves historical performance experiments and their status at
-the time of each run. The [native season reference](native-season-reference.md)
-now takes priority. New optimization is suspended; use that report for the
-current validated executable, installation and behavior-comparison evidence.
+the time of each run. On 2026-10-20 the user made native match speed the immediate
+priority: Turbo in the original speed selector by default, faster watched and
+background matches, and measured scaling toward all playable leagues. General
+semantic reconstruction resumes after this performance work. The
+[native season reference](native-season-reference.md) remains behavioral
+evidence; timing claims require matched baseline/candidate measurements.
+
+## Native match-speed delivery, 2026-10-20
+
+The [native match-speed report](native-match-speed.md) records the current
+installed delivery, source changes, exact identities and measurement boundaries.
+Turbo is now the default sixth choice in the original speed selector, with a
+persistent native preference. The existing runtime shortcuts are enabled by the
+native UI independently of the selected commentary duration.
+
+Against revision `e263d3e483f8e1593ad74401d94c0a9e82512fab`, localized spatial-role
+execution and dispatch changes reduce paired wall-time medians by **3.07%**
+(Arsenal) and **2.26%** (Cruzeiro); paired CPU reductions are **2.90%** and **2.42%**.
+Each scenario uses ten alternating pairs of identical 600-advance intervals,
+two warmups and five measured samples per process, with byte-identical complete
+final snapshots and unchanged instruction/import/sampler counts. Faster pairs
+are 10/10 and 9/10 for both clocks. General memory-read experiments were rejected
+because their measured gains were absent or inconsistent.
+
+Twelve focused CTests and eighteen source-audit checks pass. The final candidate
+completed a real match and the other afternoon fixtures, then saved, exited,
+reopened and retained the score/report. The signed ARM64 delivery preserves all
+31 native code/data sections of that tested candidate, passes strict signature
+verification, and opened/exited normally after installation. Full-round,
+season and all-playable-league speed are **not measured by these intervals**;
+near-instant all-league processing remains a target. The following sections
+preserve earlier experiments and their original references.
 
 ## Scope and reference
 

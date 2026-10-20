@@ -7,6 +7,12 @@ engine. Most of that engine still consists of generated routines rather than
 named semantic C++23 operations. The native application and a completely
 reconstructed engine are separate claims.
 
+On 2026-10-20 the user prioritized native match performance over the next
+reconstruction blocks: integrate Turbo as the default original speed choice,
+optimize the shared engine for watched and background fixtures, and measure
+larger playable-league configurations. The complete port remains the longer-term
+objective. Performance changes need preserved simulation and measured gains.
+
 The match simulation already executes as statically recompiled C++23, including
 complete-match validation recorded in the [ball-action report](native-ball-action-reconstruction.md).
 Its semantic reconstruction is still incomplete. The match loop's nearest-candidate
@@ -21,6 +27,19 @@ routine has a semantic replacement.
 ## Current evidence
 
 The latest accepted installed application has **963 unique semantic owners**.
+
+The [native match-speed delivery](native-match-speed.md) adds Turbo to the
+original speed selector, defaults to it, and persists the selected speed across
+launches. Localized spatial-role execution and dispatch changes reduce paired
+wall-time medians by **3.07% and 2.26%** in two deterministic 600-advance scenarios,
+with complete final-state agreement. Twelve focused CTests and eighteen source
+audit checks pass. Real UI acceptance includes default/selected speed, a complete
+match, background results, save/exit/reopen and the preserved result/report.
+The installed ARM64 app passes opening and normal-exit checks with SHA-256
+`0c6858b069de7eca8745b3a0265594fcba45cefd5bee8ce0acdd9bcb15c1102e`.
+Near-instant processing with all leagues remains unachieved and unmeasured.
+Native performance remains the priority before general reconstruction resumes.
+
 The [actor decision policy block](native-actor-policy-reconstruction.md)
 is verified and installed with **963 owners**, preserving the exact
 958-owner prefix. Five complete operations cover 640 original instructions and
@@ -596,10 +615,11 @@ as their actual callers and contracts are characterized.
 
 ## Execution discipline
 
-The current priority is accurate conversion of the entire game to C++23.
-Choose complete remaining behavior and its dependencies by conversion value;
-runtime speed is not the selection or acceptance target. Defer optimization
-until after conversion. Retain earlier measurements as historical evidence.
+The immediate priority is native match performance, per the user's 2026-10-20
+instruction. Choose work from measured costs in watched and background matches.
+Resume general semantic reconstruction afterward. Retain earlier measurements
+as historical evidence, and distinguish faster presentation from faster
+simulation and whole-season processing.
 
 Work proceeds through coherent subsystems with shared final acceptance, while
 retaining individual ABI, ordered guest effects, negative controls and normal

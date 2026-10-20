@@ -1,4 +1,5 @@
 #include "match_engine.hpp"
+#include "match_speed.hpp"
 #include "guest_context_transfer.hpp"
 #include "floating_point.hpp"
 #include <bit>
@@ -21,6 +22,7 @@ public:
     MatchAdvanceCall(State& s, std::uint32_t root, DependencyDispatch* d)
         : state(s), next(root), scope(s, root), dependencies(d) {}
     std::uint32_t r(unsigned n) const { return std::uint32_t(state.r<4>(n * 4)); }
+    void presentation_speed(unsigned n) { state.wr<4>(n * 4, match_simulation_speed(r(n))); }
     void at(std::uint32_t address) { next = address; }
     void link() { step(); state.wr<4>(0, state.r<4>(4128)); }
     void save(unsigned n) { step(); state.memory.write<4>(r(1) - (32 - n) * 4, r(n)); }
@@ -325,6 +327,7 @@ void advance_watched_body(MatchAdvanceCall& a) {
         if (a.equal()) { service_background_while_waiting(a); return; }
     }
     a.at(0x101cce44); a.call(0x10746a30); a.load(4, 29, 0x79f4); a.load(5, 30, 0x50); a.load<1>(0, 4, 0x4070);
+    a.presentation_speed(0);
     a.compare(0, 20, false);
     if (a.equal()) { a.value(0, 0); a.jump(0x101cce68); }
     else { a.at(0x101cce64); a.load(0, 30, 0x4c); }

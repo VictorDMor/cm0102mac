@@ -2,11 +2,41 @@
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
-#include <algorithm>
 #include <string_view>
 
 namespace cm::aot {
 namespace {
+// Direct entry dispatch avoids rescanning the complete owner table for every
+// position/role query in the shared match engine.
+unsigned entry_index(std::uint32_t entry) {
+    using spatial_role::Entry;
+    switch (entry) {
+    case spatial_role::entries[unsigned(Entry::current_position)]: return unsigned(Entry::current_position);
+    case spatial_role::entries[unsigned(Entry::column)]: return unsigned(Entry::column);
+    case spatial_role::entries[unsigned(Entry::row)]: return unsigned(Entry::row);
+    case spatial_role::entries[unsigned(Entry::marking_target)]: return unsigned(Entry::marking_target);
+    case spatial_role::entries[unsigned(Entry::set_marking_target)]: return unsigned(Entry::set_marking_target);
+    case spatial_role::entries[unsigned(Entry::clear_marking_list)]: return unsigned(Entry::clear_marking_list);
+    case spatial_role::entries[unsigned(Entry::marking_count)]: return unsigned(Entry::marking_count);
+    case spatial_role::entries[unsigned(Entry::current_role)]: return unsigned(Entry::current_role);
+    case spatial_role::entries[unsigned(Entry::secondary_role)]: return unsigned(Entry::secondary_role);
+    case spatial_role::entries[unsigned(Entry::previous_role)]: return unsigned(Entry::previous_role);
+    case spatial_role::entries[unsigned(Entry::previous_position)]: return unsigned(Entry::previous_position);
+    case spatial_role::entries[unsigned(Entry::register_center_cell)]: return unsigned(Entry::register_center_cell);
+    case spatial_role::entries[unsigned(Entry::set_column)]: return unsigned(Entry::set_column);
+    case spatial_role::entries[unsigned(Entry::set_row)]: return unsigned(Entry::set_row);
+    case spatial_role::entries[unsigned(Entry::remove_from_cell)]: return unsigned(Entry::remove_from_cell);
+    case spatial_role::entries[unsigned(Entry::marking_member)]: return unsigned(Entry::marking_member);
+    case spatial_role::entries[unsigned(Entry::clear_goalkeeper)]: return unsigned(Entry::clear_goalkeeper);
+    case spatial_role::entries[unsigned(Entry::resolve_goalkeeper)]: return unsigned(Entry::resolve_goalkeeper);
+    case spatial_role::entries[unsigned(Entry::set_previous_position)]: return unsigned(Entry::set_previous_position);
+    case spatial_role::entries[unsigned(Entry::cached_role)]: return unsigned(Entry::cached_role);
+    case spatial_role::entries[unsigned(Entry::actor_current_role)]: return unsigned(Entry::actor_current_role);
+    case spatial_role::entries[unsigned(Entry::actor_previous_role)]: return unsigned(Entry::actor_previous_role);
+    case spatial_role::entries[unsigned(Entry::actor_secondary_role)]: return unsigned(Entry::actor_secondary_role);
+    default: throw std::runtime_error("Unknown spatial-role entry");
+    }
+}
 struct OriginalBody {
     State& state; std::uint32_t previous;
     OriginalBody(State& s, std::uint32_t entry) : state(s), previous(spatial_role_diagnostics(s).original_body) {
@@ -27,9 +57,7 @@ void leave(State& s, unsigned index, bool original, SpatialRoleOutcome outcome) 
 }
 }
 bool try_modern_spatial_role(State& s, std::uint32_t entry) {
-    const auto found = std::find(spatial_role::entries.begin(), spatial_role::entries.end(), entry);
-    if (found == spatial_role::entries.end()) throw std::runtime_error("Unknown spatial-role entry");
-    const auto index = unsigned(found - spatial_role::entries.begin()); s.pc = entry;
+    const auto index = entry_index(entry); s.pc = entry;
     auto& d = spatial_role_diagnostics(s);
     if (d.original_body == entry) return false;
     bool original = d.original || d.entry_original[index];

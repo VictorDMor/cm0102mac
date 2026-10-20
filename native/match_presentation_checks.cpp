@@ -64,7 +64,8 @@ void check_channel(bool turbo, unsigned speed, std::uint32_t duration,
             advance(s);
         }
     }
-    const auto effective_duration = turbo && speed == 20 && duration > 20 ? 20 : duration;
+    const auto turbo_speed = native_match_speed_enabled() ? 0u : 20u;
+    const auto effective_duration = turbo && speed == turbo_speed && duration > 20 ? 20 : duration;
     const auto deadline = std::uint32_t(start + effective_duration);
     const bool elapsed = now > deadline || now < start;
     const bool ready = !enabled || (sound_handle != -2 &&
@@ -94,7 +95,8 @@ void check_load_copy(bool turbo, unsigned speed, std::uint32_t duration) {
     set_match_turbo_enabled(turbo);
     auto registers = s.registers;
     const auto memory = s.memory.copy_out(fixture, 0x10000);
-    const auto expected = turbo && speed == 20 && duration > 20 ? 20 : duration;
+    const auto turbo_speed = native_match_speed_enabled() ? 0u : 20u;
+    const auto expected = turbo && speed == turbo_speed && duration > 20 ? 20 : duration;
     s.wr<4>(0, expected);
     const auto expected_registers = s.registers;
     s.registers = registers;
@@ -108,35 +110,38 @@ void check_load_copy(bool turbo, unsigned speed, std::uint32_t duration) {
 int main() {
     try {
         unsigned cases = 0;
-        for (bool turbo : {false, true}) {
-            for (unsigned speed = 0; speed < 256; ++speed) {
-                for (auto duration : {0u, 19u, 20u, 21u, 100u, UINT32_MAX}) {
-                    check_load_copy(turbo, speed, duration);
-                    ++cases;
+        for (bool native : {false, true}) {
+            if (native) initialize_native_match_speed();
+            for (bool turbo : {false, true}) {
+                for (unsigned speed = 0; speed < 256; ++speed) {
+                    for (auto duration : {0u, 19u, 20u, 21u, 100u, UINT32_MAX}) {
+                        check_load_copy(turbo, speed, duration);
+                        ++cases;
+                    }
                 }
-            }
-            for (unsigned speed : {0u, 5u, 10u, 15u, 19u, 20u, 21u, 255u}) {
-                for (auto now : {999u, 1000u, 1020u, 1021u, 1100u, 1101u}) {
-                    for (int handle : {-2, -1, 3}) {
-                        for (bool busy : {false, true}) {
-                            for (unsigned channel : {0u, 15u}) {
-                                check_channel(turbo, speed, 100, 1000, now,
-                                              handle, busy, channel, true);
-                                ++cases;
+                for (unsigned speed : {0u, 5u, 10u, 15u, 19u, 20u, 21u, 55u, 90u, 125u, 150u, 255u}) {
+                    for (auto now : {999u, 1000u, 1020u, 1021u, 1100u, 1101u}) {
+                        for (int handle : {-2, -1, 3}) {
+                            for (bool busy : {false, true}) {
+                                for (unsigned channel : {0u, 15u}) {
+                                    check_channel(turbo, speed, 100, 1000, now,
+                                                  handle, busy, channel, true);
+                                    ++cases;
+                                }
                             }
                         }
                     }
                 }
-            }
-            for (auto duration : {0u, 1u, 19u, 20u, 21u, 100u, UINT32_MAX}) {
-                for (auto now : {0u, 10u, UINT32_MAX - 10, UINT32_MAX}) {
-                    check_channel(turbo, 20, duration, UINT32_MAX - 10, now,
-                                  -1, false, 0, true);
-                    ++cases;
+                for (auto duration : {0u, 1u, 19u, 20u, 21u, 100u, UINT32_MAX}) {
+                    for (auto now : {0u, 10u, UINT32_MAX - 10, UINT32_MAX}) {
+                        check_channel(turbo, native ? 0 : 20, duration, UINT32_MAX - 10, now,
+                                      -1, false, 0, true);
+                        ++cases;
+                    }
                 }
+                check_channel(turbo, native ? 0 : 20, 100, 1000, 1000, -2, true, 15, false);
+                ++cases;
             }
-            check_channel(turbo, 20, 100, 1000, 1000, -2, true, 15, false);
-            ++cases;
         }
         set_match_turbo_enabled(false);
         std::cout << cases << " original commentary duration, sound, sentinel, and state checks passed\n";

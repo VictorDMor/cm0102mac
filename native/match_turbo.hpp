@@ -2,9 +2,9 @@
 #include "aot_runtime.hpp"
 
 namespace cm::aot {
-// The native menu enables audited runtime shortcuts and reduces commentary
-// presentation waits at maximum match speed. Original clocks, decisions,
-// sound completion barriers, and persisted game data remain unchanged.
+// The native UI enables audited runtime shortcuts independently of the chosen
+// presentation speed. Headless reference checks can still toggle this policy.
+// The original speed selector owns the separate Turbo presentation choice.
 bool match_turbo_enabled();
 void set_match_turbo_enabled(bool enabled);
 // Sparse diagnostic samples; enabled only for a separate profile run.
