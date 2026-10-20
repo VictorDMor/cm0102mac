@@ -33,6 +33,13 @@ CPU. All ten alternating pairs per scenario improve, preserving complete final
 state, accounting and all 23 spatial entry call/return arrays. Seven focused
 CTests pass, including two complete original/native matches with and without
 drawing, primary/read observer behavior and nonlocal callback interruptions.
+The subsequent 26-country diagnosis completes one original Continue from
+21 to 28 December morning: 497.314 wall / 495.694 process CPU seconds. Loading
+that unchanged career takes 8.385 / 8.259 seconds. Completed shared-engine
+intervals account for about one third of the wait, with daily recruitment and
+utility work also significant. Extra clocks/logs and four host samples make
+these diagnostic observations, not matched performance acceptance. The linked
+report records the exact boundary, identity and limitations.
 Turbo is now the default sixth choice in the original speed selector, with a
 persistent native preference. The existing runtime shortcuts are enabled by the
 native UI independently of the selected commentary duration.

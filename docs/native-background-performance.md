@@ -370,3 +370,43 @@ installed process displayed the original start menu and exited normally. All
 846 protected files retain their immediately preceding hashes. The remaining
 priority is the complete post-match/Continue wait and league initialization;
 the measured engine gain does not meet the near-instant objective.
+
+## Complete 26-country Continue diagnosis
+
+A separate private diagnostic on revision `7430110` now completes one original
+Continue from 21 December 2001 morning to 28 December morning. The final manager
+news screen was visually verified responsive. No further Continue input was
+sent while it processed. This supersedes the earlier incomplete observations
+as a completed functional weekly advance; it is still not a matched speedup
+comparison or a new-career creation measurement.
+
+From delivered confirmation/Continue input to the final presented frame:
+
+| Complete operation | Wall seconds | Process CPU seconds | Original instructions |
+| --- | ---: | ---: | ---: |
+| Load the unchanged 26-country saved career | 8.385 | 8.259 | 5,934,629,856 |
+| One Continue, seven calendar days | 497.314 | 495.694 | 230,833,069,683 |
+
+The instrumented shared engine records 1,723 completed intervals, comprising
+2,513 advances and 166.629 wall / 165.726 CPU seconds. These include finalization
+of already-calculated low-detail fixtures; the count is not a claim of 1,723
+unique detailed simulations. Recorded completed engine work accounts for about
+one third of the complete wait. The remaining work must be measured and improved
+alongside football simulation. In a separate three-second sample during daily
+world processing, recruitment distribution/club-interest registration accounts
+for 934 of 2,319 main-thread samples; generated utility/descriptor paths are also
+substantial. Three other samples during match processing remain dominated by
+the shared engine and actor actions. These local samples describe their phases,
+not whole-week CPU percentages.
+
+No compiler or other game ran during this diagnosis. It adds clocks and sparse
+completion logs, retains the private validation app's ordered RNG-boundary
+digest, and includes four three-second host samples. These elapsed times are
+diagnostic observations rather than clean benchmark acceptance. The
+private diagnostic executable SHA-256 is
+`a96a2ffc679f4825cb6c82ab5d24bd87631fedfdc1e7f068107912ab2e444d77`;
+its instrumentation is not installed. A new private weekly result was written
+on normal quit; reopening is **not retested**. The initial save and all 846
+protected files remain unchanged. Near-instant loading and progression remain
+unachieved. The next priority is the complete daily world/recruitment/utility
+work, using this completed scenario to judge useful improvements.
