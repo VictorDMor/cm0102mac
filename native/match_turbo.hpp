@@ -1,5 +1,6 @@
 #pragma once
 #include "aot_runtime.hpp"
+#include <cstdlib>
 
 namespace cm::aot {
 // The native UI enables audited runtime shortcuts independently of the chosen
@@ -8,7 +9,12 @@ namespace cm::aot {
 bool match_turbo_enabled();
 void set_match_turbo_enabled(bool enabled);
 // Sparse diagnostic samples; enabled only for a separate profile run.
-bool match_pc_profile_enabled();
+// Set in the process environment at launch; read once. Inline because it is
+// checked on every hot-page entry and semantic hook.
+inline bool match_pc_profile_enabled() {
+    static const bool enabled = std::getenv("CM_AOT_MATCH_PC_PROFILE") != nullptr;
+    return enabled;
+}
 std::uint64_t match_pc_sample_threshold(std::uint64_t executed);
 std::uint64_t record_match_pc_sample(std::uint32_t address);
 bool match_replay_turbo_enabled();

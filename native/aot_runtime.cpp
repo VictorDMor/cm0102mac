@@ -90,10 +90,6 @@ MatchPcProfile& match_pc_profile() {
     return profile;
 }
 }
-bool match_pc_profile_enabled() {
-    static const bool enabled = std::getenv("CM_AOT_MATCH_PC_PROFILE") != nullptr;
-    return enabled;
-}
 bool match_replay_turbo_enabled() {
     return std::getenv("CM_AOT_MATCH_REPLAY_TURBO") != nullptr;
 }
