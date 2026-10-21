@@ -43,6 +43,9 @@ public:
     }
 };
 
+// The exact instructions this file stops at or watches run alone in generated
+// code, so the PC is theirs: tools/compile_recomp.py finds every PC comparison
+// with a literal address in native/ (regenerate after adding one).
 void initialize_staff_records(State& state) {
     // This original allocation/date/fitness/random region belongs to the
     // new-world routine. Its earlier career filters discard unselected clubs;

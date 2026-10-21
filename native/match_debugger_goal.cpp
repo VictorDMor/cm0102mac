@@ -21,6 +21,8 @@ public:
     void cleared(std::uint32_t address, std::uint64_t length) override {
         if (previous_) previous_->cleared(address, length);
     }
+    // Each watched instruction runs alone in generated code, so the PC is
+    // exactly theirs here (tools/compile_recomp.py scans for these).
     void written(std::uint32_t address, const std::uint8_t* bytes, std::size_t length) override {
         if (previous_) previous_->written(address, bytes, length);
         if (stage == Stage::setup && state_.pc == 0x102578d8 && address == match_ + 0x77c2 && length == 2)

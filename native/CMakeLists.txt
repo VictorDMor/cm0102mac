@@ -274,6 +274,11 @@ foreach(capture interest-pass/0 interest-pass/1 interest-pass/2 interest-pass/3 
     string(REPLACE "-" "_" name "${name}")
     add_test(NAME world_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/${capture}")
 endforeach()
+# Generated pages must isolate every instruction that host code or checks
+# watch by exact PC (tools/compile_recomp.py scans native/ for them).
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME generated_block_accounting
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_block_accounting.py")
 # Changing one random number the transition draws must change a game record
 # (the flipped RNG-table byte itself is put back before the comparison). Of
 # the 66 table bytes this transition consumes, only this one alters a result.

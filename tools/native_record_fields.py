@@ -69,8 +69,14 @@ def _registers(text, extra_slots=None):
     return slots
 
 
-def _promote(first, text, *, extra_slots=None):
-    if set(re.findall(r"s\.([A-Za-z_]+)", text)) - {"r", "wr", "memory", "step", "pc"}:
+# Step and charge for a lowered leaf's local count; charge saturates like
+# State::charge.
+FRAME_COUNTING = ("void step(std::uint32_t address){pc=address;++count;}\n"
+                  "void charge(std::uint64_t instructions){count=instructions>UINT64_MAX-count?UINT64_MAX:count+instructions;}")
+
+
+def _promote(first, text, *, extra_slots=None, methods=FRAME_COUNTING):
+    if set(re.findall(r"s\.([A-Za-z_]+)", text)) - {"r", "wr", "memory", "step", "charge", "pc"}:
         raise ValueError("Record-field leaf has an unhandled State operation")
     slots = _registers(text, extra_slots)
 
@@ -102,7 +108,7 @@ def _promote(first, text, *, extra_slots=None):
     code.append(f"~{name}(){{state.pc=pc;state.executed=count;")
     for offset, size in sorted(slots.items()):
         code.append(f"state.wr<{size}>({offset},v{offset});")
-    code.extend(["}", "void step(std::uint32_t address){pc=address;++count;} };",
+    code.extend(["}", methods, "};",
                  f"static bool native_record_fields_{first:x}(State& s) {{ {name} frame(s);"])
     text = re.sub(r'#include[^\n]*\n', '', text)
     prefix = f"namespace cm::aot {{\nbool page_{first >> 12:x}(State& s) {{"
@@ -127,7 +133,7 @@ def _promote(first, text, *, extra_slots=None):
             replacement = (f"frame.v{base}=std::uint{size * 8}_t((std::uint64_t(frame.v{base})&"
                            f"~(mask<{width}>()<<{shift}))|((std::uint64_t({value})&mask<{width}>())<<{shift}))")
         text = text[:match.start()] + replacement + text[at:]
-    text = text.replace("s.step(", "frame.step(").replace("s.pc", "frame.pc")
+    text = text.replace("s.step(", "frame.step(").replace("s.charge(", "frame.charge(").replace("s.pc", "frame.pc")
     if "s.r<" in text or "s.wr<" in text:
         raise ValueError("Unpromoted native record-field register")
     code.extend([text, "}"])

@@ -56,7 +56,9 @@ struct Image {
         native_calls(s.native_calls), memory_error(s.memory_error), allocated(s.allocated), available(s.available) {
         for (const auto& [address, size] : s.memory.mapped_ranges()) memory.emplace_back(address, s.memory.copy_out(address, size));
     }
-    void compare(const State& s, const std::string& label) const {
+    // At a fault, generated code reports the first instruction of the faulting
+    // run as its PC (block accounting); `faulted` leaves the PC out.
+    void compare(const State& s, const std::string& label, bool faulted = false) const {
         if (registers != s.registers) {
             const auto p = std::mismatch(registers.begin(), registers.end(), s.registers.begin());
             throw std::runtime_error(label + " register byte=" + std::to_string(p.first - registers.begin()) +
@@ -67,7 +69,7 @@ struct Image {
             throw std::runtime_error(label + " temporary byte=" + std::to_string(p.first - unique.begin()) +
                 " expected=" + std::to_string(*p.first) + " actual=" + std::to_string(*p.second));
         }
-        require(pc == s.pc, label + " PC expected=" + hex_address(pc) + " actual=" + hex_address(s.pc));
+        require(faulted || pc == s.pc, label + " PC expected=" + hex_address(pc) + " actual=" + hex_address(s.pc));
         require(heap_end == s.heap_end && native_calls == s.native_calls && memory_error == s.memory_error &&
                 allocated == s.allocated && available == s.available, label + " allocator/import mismatch");
         const auto ranges = s.memory.mapped_ranges();

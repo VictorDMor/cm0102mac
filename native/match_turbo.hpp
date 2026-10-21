@@ -50,6 +50,11 @@ public:
             throw;
         }
     }
+    // See State::charge.
+    void charge(std::uint64_t count) {
+        if constexpr (Turbo) count_ = saturating_add(count_, count);
+        else state_.charge(count);
+    }
     void step(std::uint32_t address) {
         if constexpr (Turbo) {
             state_.pc = address;

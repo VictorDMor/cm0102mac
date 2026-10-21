@@ -48,6 +48,7 @@ Benchmark inputs live in `.local/benchmarks`: `match/` (600-advance snapshots), 
 | `tools/dev.sh test [ctest args]` | No arguments: every test that can run here without opening an app window. Use `-R` while iterating; the Match Debugger protocol tests open the debugger, so run them (`-R match_debugger`) only when debugger code changes. |
 | `tools/dev.sh install` | Installs the built app; refuses while the game runs; saves and game data are preserved. |
 
+Generated pages count instructions per straight-line run, so the PC is exact only at run starts. Code that watches an exact guest PC (compares `pc` with a literal address) needs `tools/dev.sh generate` afterwards, which gives that instruction a run of its own; `generated_block_accounting` fails until then.
 Editing `native/aot_runtime.hpp` or another header the generated pages include recompiles ~1,900 pages. Don't build every test target: each test binary is ~170 MB and the disk is nearly full.
 
 ## How much verification

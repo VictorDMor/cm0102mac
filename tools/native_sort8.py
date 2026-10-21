@@ -47,6 +47,9 @@ def replace_once(text, old, new):
     return text.replace(old, new, 1)
 
 
+FUSED_TARGETS = (0x103663b0, 0x10366410, 0x10768774, 0x10768798)
+
+
 def fuse_returns(raw, records):
     for item in records:
         address = item['address']
@@ -76,10 +79,17 @@ s.step(0x10781320);''')
             block = replace_once(block, f's.step(0x{address:x});',
                                  f'frame.category_enter({index});\ns.step(0x{address:x});')
         raw = raw[:start] + block + raw[end:]
+    # The added gotos bypass the switch, so each must land on a run start that
+    # charges itself (block accounting).
+    for target in FUSED_TARGETS:
+        label = f'i_{target:x}:'
+        if label not in raw or f's.step(0x{target:x});' not in raw.split(label, 1)[1].split('\ni_', 1)[0]:
+            raise ValueError(f'Fused sort jumps into the middle of a run at {target:x}')
     return raw
 
 
 FRAME_METHODS = '''void step(std::uint32_t address){pc=address;if(count++==UINT64_MAX)instruction_budget_exhausted();}
+void charge(std::uint64_t instructions){count=instructions>UINT64_MAX-count?UINT64_MAX:count+instructions;}
 int category=-1;bool descriptor=false;ShortlistCategoryDiagnostics* category_stats=nullptr;
 void descriptor_enter(){descriptor=true;++state.import_descriptor_calls[import_descriptor::import_count];}
 void descriptor_tail(){++state.import_descriptor_tails[import_descriptor::import_count];descriptor=false;}
@@ -109,9 +119,8 @@ def generate_sort8(records, render):
     for first, (last, _, _) in CONTRACTS.items():
         require_fragment(first, [r for r in records if first <= r['address'] <= last], chosen)
     raw = fuse_returns(render(ENTRY >> 12, records, chosen), records)
-    frame = _promote(ENTRY, raw, extra_slots={1027: 1, 2432: 4, 2440: 4, 4132: 4})
+    frame = _promote(ENTRY, raw, extra_slots={1027: 1, 2432: 4, 2440: 4, 4132: 4}, methods=FRAME_METHODS.rstrip())
     frame = frame.replace('RecordFieldFrame_10768660', 'Sort8Frame').replace('native_record_fields_10768660', 'native_sort8_body')
-    frame = replace_once(frame, 'void step(std::uint32_t address){pc=address;++count;}', FRAME_METHODS)
     frame = replace_once(frame, 'Sort8Frame frame(s);', 'Sort8Frame frame(s); try{')
     end = frame.rfind('\n}')
     frame = frame[:end] + '''

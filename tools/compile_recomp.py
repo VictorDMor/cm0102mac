@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 import json
 import hashlib
 import inspect
+import re
 from pathlib import Path
 import sqlite3
 import struct
@@ -637,7 +638,112 @@ def require_control_cursor_block(instructions, selected):
             raise ValueError(f"Mac control cursor no longer matches the audited instruction at {address:x}")
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False):
+def ends_run(item):
+    """Whether control can leave a straight-line run after this instruction.
+
+    Exports record Ghidra's flow type; without it the P-code decides alone."""
+    if item.get("flow", "FALL_THROUGH") != "FALL_THROUGH":
+        return True
+    return any(op[0] in ("BRANCHIND", "CALLIND", "RETURN") or
+               (op[0] in ("BRANCH", "CBRANCH", "CALL") and op[2][0] == "ram") for op in item["ops"])
+
+
+# Host code and checks watch exact instructions: an instruction budget that
+# must end right before one, or a memory observer that reads the PC during its
+# access. Each such instruction runs alone, so the PC is its own while it
+# executes. Comparisons of the PC with a literal address anywhere in native/
+# are found by scanning; these come from address tables instead (the reads
+# where native/match_engine_transfer_checks.cpp and
+# spatial_role_transfer_checks.cpp inject a longjmp).
+OBSERVED_INSTRUCTION_TABLES = {0x101ccdf0, 0x101cd5ec, 0x101d3f78,
+    0x101d3b50, 0x101d5680, 0x101d5690, 0x101d56c0, 0x101d5730, 0x101d5744, 0x101d7db0,
+    0x101e3dc4, 0x101e3e54, 0x101e3ee4, 0x101e3f00, 0x101f189c, 0x101f1930, 0x101f1940,
+    0x101f196c, 0x101f1dcc, 0x101f1df4, 0x101f1e2c, 0x101f21c0, 0x10289550, 0x10289570, 0x102895b0, 0x102895f0}
+PC_COMPARISON = re.compile(r"\bpc\s*[!=]=\s*(0x[0-9a-fA-F]{8})\b|\b(0x[0-9a-fA-F]{8})\s*[!=]=\s*[\w>.-]*\bpc\b")
+
+
+def observed_instructions(native=Path(__file__).resolve().parent.parent / "native"):
+    """Addresses the native sources compare the PC with, plus the address tables."""
+    found = set(OBSERVED_INSTRUCTION_TABLES)
+    for path in sorted(native.glob("*")):
+        if path.suffix in (".cpp", ".hpp", ".mm"):
+            for match in PC_COMPARISON.finditer(path.read_text(errors="replace")):
+                found.add(int(match.group(1) or match.group(2), 16))
+    return frozenset(found)
+
+
+HOST_OBSERVED_INSTRUCTIONS = observed_instructions()
+
+
+def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
+    """Charge each straight-line run of instructions once, at its first one.
+
+    Instruction counts are diagnostics (decided 2026-10-20), and a step per
+    instruction cost 16-29% of world processing. A run starts at the page's
+    first instruction, after a gap, after any instruction that can transfer
+    control, at a direct branch target, at any goto other than a
+    fall-through, and at every instruction with a hook or observation
+    (`forced`); an `isolated` instruction (special code after its body, or
+    watched by host code) is a run of its own. Its first instruction keeps its
+    step, which the hook audits
+    look for, and charges the rest of the run with it. Entering a run in the
+    middle through the page switch charges the remainder there, so complete
+    runs keep exact counts. A fault inside a run leaves the whole run charged
+    and the PC at its first instruction; a finite budget can be overrun by
+    less than one run.
+    """
+    addresses = [item["address"] for item in instructions]
+    index = {address: i for i, address in enumerate(addresses)}
+    leaders = {address for address in forced | isolated if address in index}
+    leaders.update(address + instructions[index[address]]["size"] for address in isolated if address in index)
+    for i, item in enumerate(instructions):
+        address = item["address"]
+        if i == 0 or addresses[i - 1] + instructions[i - 1]["size"] != address:
+            leaders.add(address)
+        if ends_run(item) and address + item["size"] in index:
+            leaders.add(address + item["size"])
+        leaders.update(target for target in item.get("flows", ()) if target in index)
+    label = re.compile(r"^i_([0-9a-f]+): //")
+    goto = re.compile(r"goto i_([0-9a-f]+);")
+    current = None
+    for line in code:
+        if match := label.match(line):
+            current = int(match.group(1), 16)
+        elif current is not None:
+            fall_through = current + instructions[index[current]]["size"]
+            leaders.update(target for target in map(lambda t: int(t, 16), goto.findall(line))
+                           if target != fall_through and target in index)
+    remaining, run = {}, []
+    for address in addresses + [None]:
+        if address is None or (address in leaders and run):
+            remaining.update((member, len(run) - k) for k, member in enumerate(run))
+            run = []
+        if address is not None:
+            run.append(address)
+    step, charge = ("counter.step", "counter.charge") if counter else ("s.step", "s.charge")
+    case = re.compile(r"^case 0x([0-9a-f]+): goto i_\1;$")
+    result, current, stepped = [], None, set()
+    for line in code:
+        if match := label.match(line):
+            current = int(match.group(1), 16)
+        elif current is None and (match := case.match(line)) and int(match.group(1), 16) not in leaders:
+            address = int(match.group(1), 16)
+            rest = f" {charge}({remaining[address] - 1});" if remaining[address] > 1 else ""
+            line = f"case 0x{address:x}: {step}(0x{address:x});{rest} goto i_{address:x};"
+        elif current is not None and line == f"{step}(0x{current:x});":
+            stepped.add(current)
+            if current not in leaders:
+                continue
+            if remaining[current] > 1:
+                line += f" {charge}({remaining[current] - 1});"
+        result.append(line)
+    if stepped != set(addresses):
+        missing = sorted(set(addresses) - stepped)
+        raise ValueError(f"Block accounting found no step line for {len(missing)} instructions, first {missing[0]:x}")
+    return result
+
+
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -1080,6 +1186,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         a = item["address"]
         code.append(f"case 0x{a:x}: goto i_{a:x};")
     code.extend(["default: return false;", "}"])
+    hooked, isolated = set(), set(HOST_OBSERVED_INSTRUCTIONS)
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
@@ -1305,6 +1412,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("next_control_cursor_entry(s, counter);")
             code.append("goto i_1071a864;")
             code.append("}")
+        if len(code) > hooks_start or (register_context_hooks and a in CAPTURE_OBSERVATIONS):
+            hooked.add(a)
         if match_hot_page:
             # The Turbo counter holds the count locally; see turbo_pages.py.
             code[hooks_start:] = [bound_turbo_hook(a, line) for line in code[hooks_start:]]
@@ -1318,6 +1427,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if a == 0x101fefc8:
             code.append("s.memory.write<1>(std::uint32_t(s.r<4>(12) + 0x4070), native_match_speed_enabled() ? native_match_speed() : s.r<4>(20));")
             code.append(transfer(a + 4, transfer_page, selected))
+            isolated.add(a)
             continue
         if a == 0x10774c24:
             # A stale largest-block hint can produce the same pool count after
@@ -1424,6 +1534,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 lowered = lowered.replace('return true;', 'complete_context_transfer(s); return true;')
             code.append(lowered)
         if len(ops) in labels: code.append(f"op_{a:x}_{len(ops)}:")
+        body_end = len(code)
         if transfer_hooks and a in (0x107727d4, 0x10772a94):
             code.append('record_context_function(s, std::uint32_t(s.r<4>(20)));')
         if transfer_hooks and a == 0x10772768:
@@ -1437,10 +1548,14 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if a in (0x101cce50, 0x10203574, 0x102036ac):
             reg = 20 if a == 0x102036ac else 0
             code.append(f"s.wr<4>({reg}, match_simulation_speed(std::uint32_t(s.r<4>({reg}))));")
+        if len(code) > body_end:
+            isolated.add(a)
         # This path is reached only if no earlier branch/return transferred out.
         code.append(transfer(a + item["size"], transfer_page, selected))
         if local is not None:
             code.append("}")
+    if block_accounting:
+        code = account_blocks(code, instructions, match_hot_page, hooked, isolated)
     code.append("}")
     if match_hot_page:
         code.extend([f"bool page_{page:x}(State& s) {{",
@@ -1864,7 +1979,7 @@ def main():
                 path = args.output / f"page_{page:x}.cpp"
                 content = generate_page(page, records, {r["address"] for r in records},
                                         local_temporaries=not args.legacy_unique_storage,
-                                        userops=metadata['userops'])
+                                        userops=metadata['userops'], block_accounting=True)
                 if not path.exists() or path.read_text() != content: path.write_text(content)
                 pages[page] = []
                 outputs[path.name] = None
@@ -1875,7 +1990,7 @@ def main():
         if not args.all_analyzed:
             outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected,
                                                        local_temporaries=not args.legacy_unique_storage,
-                                                       userops=metadata['userops'])
+                                                       userops=metadata['userops'], block_accounting=True)
     code = ['#include "aot_runtime.hpp"', '#include "aot_integrity.hpp"', "namespace cm::aot {"]
     for page in pages: code.append(f"bool page_{page:x}(State&);")
     code += ["bool dispatch_page(State& s) {", "switch (s.pc >> 12) {"]
@@ -1919,11 +2034,12 @@ def main():
     outputs["fused_sites.cpp"] = render_fused_sites(fused_sites)
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
-            native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops']))
+            native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops'],
+            block_accounting=True))
     sort_hooks = {name: False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks')}
     outputs["native_sort8.cpp"] = generate_sort8(native_sort,
         lambda page, records, chosen: generate_page(page, records, chosen,
-            **sort_hooks, native_leaf_lowering=True, userops=metadata['userops']))
+            **sort_hooks, native_leaf_lowering=True, userops=metadata['userops'], block_accounting=True))
     # Remove only stale generated pages, after all code generation has succeeded.
     for stale in args.output.glob("page_*.cpp"):
         if stale.name not in outputs: stale.unlink()

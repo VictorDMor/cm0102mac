@@ -114,8 +114,11 @@ int main(int argc, char** argv) {
             bool rejected = false;
             try { (void)finish(*broken, match); }
             catch (const std::runtime_error& error) {
+                // The reported PC is the start of the faulting instruction's
+                // run (block accounting), a few instructions before it.
+                const auto faulting = invalid_competition ? 0x10464744u : 0x101f958cu;
                 rejected = std::string_view(error.what()).starts_with("Unmapped data access") &&
-                    broken->pc == (invalid_competition ? 0x10464744u : 0x101f958cu);
+                    broken->pc <= faulting && faulting - broken->pc < 0x100;
             }
             require(rejected, "Removing a required fixture binding did not expose the original fault");
         }

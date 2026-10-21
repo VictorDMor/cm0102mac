@@ -478,6 +478,13 @@ and dumps 256 bytes at each on failure. Keep such runtime artifacts under `.loca
 `CM_AOT_INSTRUCTION_BUDGET` sets a positive diagnostic limit (default 10,000,000,
 maximum 10,000,000,000, or `unlimited`; the diagnostic Finder launcher selects
 10 billion while the installed app selects `unlimited`).
+Generated pages count instructions per straight-line run (`account_blocks` in
+`tools/compile_recomp.py`): a run's first instruction steps and charges the whole
+run, and a run that starts within the budget finishes, so budget stops fall on run
+starts. Complete runs keep exact counts; at a fault or budget stop the PC is the
+start of the run.
+Host code that must stop at or watch an exact instruction lists it in
+`HOST_OBSERVED_INSTRUCTIONS`, which gives that instruction a run of its own.
 `CM_AOT_CAPTURE_DIRECTORY` saves the native windows' current
 rendered images on failure. These are retained presentation buffers, not screenshots
 proving that a frame was physically displayed. A targeted Ghidra decompilation can

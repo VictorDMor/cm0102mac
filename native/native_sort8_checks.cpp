@@ -97,9 +97,14 @@ void compare(const State& input, bool must_return = false) {
     const auto label = "Sort8 case=" + std::to_string(comparisons);
     require(expected == actual, label + " faults differ: " + expected + " / " + actual);
     require(!must_return || expected.empty(), label + " expected a complete sort: " + expected);
-    Image(*a).compare(*b, label);
-    require(a->executed == b->executed, label + " original accounting differs");
-    diagnostics(*a, *b, label);
+    // A budget stop is compared by outcome only: the reference's C++ owners
+    // stop at the exact instruction, generated code at a run start. At a
+    // fault the PC (the run start) and the count are diagnostics. Complete
+    // sorts are compared whole.
+    const bool budget = expected == "Native instruction budget exhausted";
+    if (!budget) Image(*a).compare(*b, label, !expected.empty());
+    if (expected.empty()) require(a->executed == b->executed, label + " original accounting differs");
+    if (!budget) diagnostics(*a, *b, label);
     require(native_sort8_calls() == before + 1, label + " fused path was not entered once");
     ++comparisons;
     faults += !expected.empty();

@@ -207,6 +207,8 @@ private:
 };
 
 [[noreturn, gnu::cold, gnu::noinline]] void instruction_budget_exhausted();
+// Instruction counts saturate rather than wrap (State::charge).
+constexpr std::uint64_t saturating_add(std::uint64_t a, std::uint64_t b) { return b > UINT64_MAX - a ? UINT64_MAX : a + b; }
 
 struct State {
     State();
@@ -476,6 +478,11 @@ struct State {
         pc = address;
         if (executed++ >= budget) instruction_budget_exhausted();
     }
+    // Generated pages step only the first instruction of a straight-line run
+    // and charge the rest with it (tools/compile_recomp.py, account_blocks).
+    // A run that starts within the budget finishes, so budget stops fall on
+    // run starts. The count saturates so the next step still stops.
+    void charge(std::uint64_t count) { executed = saturating_add(executed, count); }
 };
 
 // Definitions are emitted by the build-time compiler for selected original code.
