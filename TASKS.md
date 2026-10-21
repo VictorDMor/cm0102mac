@@ -5,23 +5,23 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] **Fused multiply-add.** `fmadd`/`fmsub`/`fnmsub` (1,049 sites) are generated as a rounded multiply then an add (`tools/compile_recomp.py:476-478`); PowerPC rounds once. Emitting `std::fma` matches the original hardware but changes simulation results against every current reference, and the semantic replacements copy the double rounding. Decide whether to switch.
-- [ ] **Instruction accounting in performance work.** May an optimization change instruction counts or leftover stack bytes while game state, RNG order and saves stay identical? Unlocks sorted insertion in add-link (~17–22 s per weekly Continue) and row-gate hoisting.
 - [ ] **Prune `.local`.** It holds 160 GB, mostly per-task folders from the old process; the disk is 94% full. Proposal: keep `.local/current`, `.local/exports`, `.local/ghidra`, the captured benchmark inputs and the reference save backups; delete the rest.
 - [ ] **In-game check of the file fixes.** Save a career under a name containing "/" (e.g. "Cruzeiro 01/02"), quit, reopen, load it.
 
 ## Now
 
-- [x] New process: `CLAUDE.md`, `TASKS.md`, `tools/dev.sh`, `.local/current`
-- [x] Installer installs the current build (it pointed at an Oct 11 build), refuses while the game runs, signs the app
-- [x] Three jump-table targets never compiled (`0x101b4b88`, `0x101b4b24`, `0x107593d4`): added to `tools/discovery_roots.txt`; `tools/check_jump_tables.py` now fails generation on any missing target
-- [x] Turbo pages dropped instruction charges from 17 semantic hooks; all hooks there now run inside `counter.semantic_boundary`
-- [x] Removed `Run Native Prototype.command` (ran a diagnostic binary on the real Runtime folder)
-- [x] Saves reach stable storage (`F_FULLFSYNC`) before the game deletes or renames in that folder
-- [x] Mac '/' ↔ host ':' in file names; names MacRoman can't hold no longer end directory scans
-- [x] Generate, build, test, install, commit, push
+- [x] **Fused multiply-add (decided 2026-10-20).** One rounding at all 1,049 sites, in generated code and in the 41+ builder call sites of rewritten routines. Two 600-advance matches: state differs transiently after 4 and 1 advances, final state identical.
+- [ ] Track 1 prototype: measure what better generated code and cheaper routine-to-routine calls gain (see profile notes below).
 
-## Next: speed, same instruction stream
+## Next: rewrite track
+
+The end goal is every routine in C++ (see CLAUDE.md). Start where speed and rewriting overlap.
+
+- [ ] Recruitment distribution and staff-link callees behind the 8-minute Continue: rewrite the hot generated callees (`0x1035e9f0` candidate scan, `0x101b1620` list search, `0x1014c2e0`) as real C++ called directly from their rewritten parents.
+- [ ] Sorted insertion in add-link instead of append + full heapsort (`native/shortlist_links_storage.cpp`), now allowed: ~17–22 s per weekly Continue.
+- [ ] Rebuild a runnable reference test set: only 40 of 288 tests run here.
+
+## Next: speed
 
 From the 2026-10-20 review. Estimates are unmeasured.
 
@@ -50,7 +50,14 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] Mouse-moved events pile up while the game is busy; every small `CopyBits` redraws a full frame.
 - [ ] Idle at the start menu the app uses 100% of a core: the event loop polls `NativeUI::poll` continuously (sampled 2026-10-20; not checked against older builds).
 - [ ] Three jump tables don't match `check_jump_tables.py`'s pattern; inspect them by hand.
+- [ ] Single-precision multiply-add with non-single operands rounds to double, then single (`native/fused_multiply_add.hpp`); exact would need round-to-odd. Rare.
+- [ ] Builder multiply-adds look up their kind per call (binary search over 1,049 sites); resolve per call site if it ever shows in a profile.
 - [ ] 250 of 288 tests can't run here: their binaries aren't built or their inputs were deleted by earlier cleanups. Restore the ones that matter.
+
+## Profile notes
+
+- Match play (600 advances, Arsenal, 2026-10-20): ~12% generated pages; ~28% routine-to-routine plumbing (`run_until`, `dispatch_page`, dispatch/native scopes, thread-local lookups, hook entry, diagnostics checks); ~15% `SemanticGuestCall` instruction methods; `spatial_role::invoke` 12.6%; rewritten bodies ~11%; guest memory ~8%.
+- World processing: no clean profile yet. The interest-pass replay harness spends most time cloning and comparing the 127 MB state; time only the pass.
 
 ## Known test state
 

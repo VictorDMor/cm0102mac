@@ -6,6 +6,11 @@ executable is statically translated to C++ (Ghidra export → `tools/compile_rec
 hand-written C++23 replacements gradually take over generated routines. README.md
 has the overview; `docs/aot-port.md` explains the pipeline.
 
+**The goal is the complete C++23 port**: every routine the game runs gets a
+hand-written replacement, and the generated bodies leave production. Native
+performance comes first for now (decided 2026-10-20); where a slow path can be
+rewritten rather than tuned, rewriting serves both.
+
 ## Working style
 
 When a step doesn't need my input, keep going. Put status notes in the same message as your next action.
@@ -21,8 +26,9 @@ Stop and ask only when you can't continue without me, or before anything destruc
 
 ## Rules that don't bend
 
-- The game must behave as the original: game-visible memory, RNG draw order, save format and UI. For reconstruction work the generated code is the reference. Where the reference itself differs from PowerPC hardware (listed in `TASKS.md`), don't change it silently.
-- Ask before a change that alters simulation results, RNG order or instruction accounting relative to the reference. Keep working on other items while you wait.
+- The game must behave as the original: the memory the game reads, RNG draw order, save format and screens. That is the whole equivalence target. Instruction counts and leftover stack scratch are diagnostics; rewrites and optimizations may change them (decided 2026-10-20).
+- For rewrites the generated code is the reference. Where the reference differs from PowerPC hardware, fix the generator and the rewrites together, as done for multiply-add: one rounding, as on the PowerPC (decided 2026-10-20). Rewritten code uses the builder's multiply-add methods, which take precision from the original instruction.
+- Ask before a change that alters simulation results or RNG order relative to the reference. Keep working on other items while you wait.
 - Fix the generator or runtime; never hand-edit generated pages, which are regenerated.
 - Don't touch original game files, the reference save in `saves/` (Git LFS; test on copies), or `~/Library/Application Support/CM 01-02 Native` except through the installer and normal play.
 - Never commit original game content, exports, generated C++, binaries, saves other than the LFS reference, logs or captures. They live in `.local/`.
@@ -37,7 +43,7 @@ Everything uses `.local/current/{export,generated,build}`; machine settings (Ghi
 | `tools/dev.sh export` | After editing `tools/discovery_roots.txt` or `tools/ExportRecomp.java`. A few minutes. |
 | `tools/dev.sh generate` | After changing the generator or its audits. Rewrites only changed pages and lists them; check the list matches what you meant to change. |
 | `tools/dev.sh build [targets]` | Incremental build of the app and every test binary already built. Name a target (`cm-platform-checks`) to build one more. |
-| `tools/dev.sh test [ctest args]` | No arguments: every test that can run here (38 of 288 today). Use `-R` while iterating. |
+| `tools/dev.sh test [ctest args]` | No arguments: every test that can run here without opening an app window. Use `-R` while iterating; the Match Debugger protocol tests open the debugger, so run them (`-R match_debugger`) only when debugger code changes. |
 | `tools/dev.sh install` | Installs the built app; refuses while the game runs; saves and game data are preserved. |
 
 Editing `native/aot_runtime.hpp` or another header the generated pages include recompiles ~1,900 pages. Don't build every test target: each test binary is ~170 MB and the disk is nearly full.
@@ -53,6 +59,14 @@ Editing `native/aot_runtime.hpp` or another header the generated pages include r
 | File or save handling | All of the above, plus one save and reload on a copy of a career. If you can't drive the UI, put it under Blocked on me |
 
 Before pushing, run `tools/dev.sh test`. A new failure blocks the push; known failures are listed in `TASKS.md`. Check the real game only for paths tests can't reach, and use a copy of a career.
+
+## Rewriting the game
+
+- Rewrite one coherent subsystem per block: routines that call each other and share data. Choose by measured cost first, then by how many callers a block unblocks.
+- Write real C++: named types for game records, plain control flow, direct calls to other rewritten routines rather than through the dispatcher. The instruction-level builder (`SemanticGuestCall`) is a stepping stone, not the target.
+- Check each block against the generated reference: run both from the same captured states (real match and daily-update captures plus edge cases from the code) and compare what the game can observe. Include one case that shows the check fails when it should.
+- Then hook it in the generator, regenerate, run the area's tests, and run one paired replay with identical final state.
+- Independent subsystems can be worked in parallel by subagents. Each block still lands as its own reviewed commit.
 
 ## Recording work
 

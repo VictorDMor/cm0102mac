@@ -3,7 +3,7 @@
 #   export     Ghidra export with tools/discovery_roots.txt, then index and check it
 #   generate   regenerate C++ from the export; rewrites only pages that changed
 #   build      incremental build of the app and every test binary already built
-#   test       run every test whose binary exists, or pass ctest arguments
+#   test       run every test that can run headless here, or pass ctest arguments
 #   install    install the built app; game data and saves are preserved
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -43,15 +43,17 @@ def prop(test, name):
 setup = {}
 for test in tests:
     for fixture in prop(test, "FIXTURES_SETUP"): setup.setdefault(fixture, []).append(test["name"])
+# Tests that start an app bundle show it on screen; run those with -R.
 runnable = {t["name"] for t in tests if t.get("command") and
-            all(os.path.exists(arg) for arg in t["command"] if arg.startswith("/"))}
+            all(os.path.exists(arg) for arg in t["command"] if arg.startswith("/")) and
+            not any(".app/" in arg for arg in t["command"])}
 changed = True
 while changed:
     changed = False
     for test in tests:
         if test["name"] in runnable and any(not set(setup.get(f, [])) <= runnable for f in prop(test, "FIXTURES_REQUIRED")):
             runnable.discard(test["name"]); changed = True
-print(f"Running {len(runnable)} of {len(tests)} tests; the rest lack a built binary or input files.", file=sys.stderr)
+print(f"Running {len(runnable)} of {len(tests)} tests; the rest lack a built binary or input files, or open an app.", file=sys.stderr)
 print("^(" + "|".join(re.escape(n) for n in sorted(runnable)) + ")$")'
 }
 
