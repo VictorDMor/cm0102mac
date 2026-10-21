@@ -12,6 +12,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] **Fused multiply-add (decided 2026-10-20).** One rounding at all 1,049 sites, in generated code and in the 41+ builder call sites of rewritten routines. Two 600-advance matches: state differs transiently after 4 and 1 advances, final state identical.
 - [x] Track 1, first measurements (2026-10-20, 600-advance pairs): big-endian accessors as one load/store + byte swap: **5.3% / 8.3% faster** (Arsenal / Cruzeiro), identical final state; kept. Partial-page bounds entries for globals: 1.6% / 0.3% *slower* in match play; reverted.
+- [x] Plumbing (2026-10-21): scope chains per State (3.6%), inline PC-profile flag (1.5%). With byte-swap: **13.9% / 13.5% faster** match intervals than before today's speed work.
+- [ ] Next plumbing: per-call diagnostics accessors (`spatial_role_diagnostics` ~2%), what dominates `spatial_role::invoke` (~12%), owner→generated calls re-entering `run_until` (track 2 removes these).
 - [ ] **Re-capture the world replays.** Since single-rounding multiply-add, the interest-pass and daily captures no longer replay: the strict check compares every register at each native call, and scratch FPRs (f0, f5) differ at `CarbonLib::pow`. Either re-capture (needs one UI session with the capture app) or check only the registers each import reads. Needed before any world-processing speed work can be measured.
 
 ## Next: rewrite track
@@ -29,7 +31,6 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] Global-variable (TOC) reads miss the inline bounds check (`native/aot_runtime.cpp:54-63`). A begin-offset entry was slower in match play (extra compare on every access); re-test on world processing, where generated code dominates.
 - [ ] Native sort: accept comparator `0x10309a00` (`tools/native_sort8.py`), ~6 s per weekly Continue.
 - [ ] FPSCR bookkeeping is about half the statements on FP-heavy pages; emit one helper, or compute it lazily for its three readers.
-- [ ] Scope chains from `thread_local` into `State` (`native/guest_context_transfer.cpp:7-31`), est. 10–15 s.
 - [ ] Fuse the candidate-scan helpers (`0x101b1620` + iterator `0x10738e00`, `0x1036f590` at `0x1035f734`, `0x10362d70`), est. 8–15 s.
 - [ ] Generator: per-block instruction accounting; switch cases only at entry points; direct calls to known cross-page targets.
 - [ ] Re-profile the weekly Continue with a cheaper counter: the current probe inflates per-entry seconds and ~160 s is unattributed.
