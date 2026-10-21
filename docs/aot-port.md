@@ -483,8 +483,16 @@ Generated pages count instructions per straight-line run (`account_blocks` in
 run, and a run that starts within the budget finishes, so budget stops fall on run
 starts. Complete runs keep exact counts; at a fault or budget stop the PC is the
 start of the run.
-Host code that must stop at or watch an exact instruction lists it in
-`HOST_OBSERVED_INSTRUCTIONS`, which gives that instruction a run of its own.
+Host code that stops at or watches an exact instruction compares the PC with a
+literal address; the generator finds every such comparison in `native/` and
+gives that instruction a run of its own (`generated_block_accounting` checks it).
+Leaf routines (at most six straight-line instructions ending in `blr`) are
+inlined at their direct call sites in generated pages: the original
+instructions run in the caller and are charged, but the leaf's own hook is not
+entered. Only leaves whose hook belongs to an exact game-state owner family
+(`INLINE_OWNER_MODULES`) are inlined, so those owners' call counters see only
+calls from C++ owners, and a check that watches a leaf's PC sees only direct
+entries.
 `CM_AOT_CAPTURE_DIRECTORY` saves the native windows' current
 rendered images on failure. These are retained presentation buffers, not screenshots
 proving that a frame was physically displayed. A targeted Ghidra decompilation can

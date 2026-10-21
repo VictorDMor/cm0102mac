@@ -4,7 +4,8 @@ from pathlib import Path
 import re
 import sqlite3
 import unittest
-from compile_recomp import HOST_OBSERVED_INSTRUCTIONS, account_blocks, ends_run, generate_page
+from compile_recomp import (HOST_OBSERVED_INSTRUCTIONS, SEMANTIC_REPLACEMENTS, INLINE_OWNER_MODULES, Inlining, account_blocks,
+                            ends_run, generate_page, inline_leaves, observed_instructions)
 
 ROOT = Path(__file__).resolve().parent.parent
 INPUT = ROOT / '.local/current/export'
@@ -110,6 +111,44 @@ class ExportedPages(unittest.TestCase):
                         for target in map(lambda t: int(t, 16), re.findall(r'goto i_([0-9a-f]+);', line)):
                             if target != current + 4 and target in selected:
                                 self.assertIn(target, label, f'{current:x} jumps into the middle of a run at {target:x}')
+
+
+@unittest.skipUnless((INPUT / 'instructions.sqlite').exists(), 'Needs the private export')
+class LeafInlining(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.db = sqlite3.connect(f"file:{INPUT / 'instructions.sqlite'}?mode=ro", uri=True)
+        cls.leaves = inline_leaves(cls.db)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.db.close()
+
+    def test_only_exact_owner_families_and_unwatched_instructions_are_inlined(self):
+        owners = dict(SEMANTIC_REPLACEMENTS)
+        watched = observed_instructions(checks=False)
+        self.assertIn(0x101d3b50, self.leaves)   # spatial-role getter
+        self.assertNotIn(0x10773808, self.leaves)  # register context
+        self.assertNotIn(0x10727880, self.leaves)  # localization lookup
+        for target, body in self.leaves.items():
+            for address in range(target, target + 4 * len(body) + 4, 4):
+                self.assertNotIn(address, watched, f'{target:x} contains host-watched {address:x}')
+                if address in owners:
+                    self.assertIn(owners[address], INLINE_OWNER_MODULES, f'{target:x}')
+
+    def test_an_inlined_call_runs_the_body_charges_it_and_returns(self):
+        userops = json.loads((INPUT / 'program.json').read_text())['userops']
+        page = 0x101d2
+        records = [json.loads(row[0]) for row in self.db.execute(
+            'SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address', (page << 12, (page + 1) << 12))]
+        code = generate_page(page, records, {r['address'] for r in records}, userops=userops,
+                             block_accounting=True, inlining=Inlining(self.leaves))
+        site = code.split('i_101d2e38: // bl 0x101d3b50', 1)[1].split('\ni_', 1)[0]
+        self.assertIn('s.wr<4>(4128, UINT64_C(270347836));', site)  # the link the callee would return to
+        self.assertIn('s.memory.read<1>(', site)
+        self.assertIn('s.charge(2); // inlined leaf 0x101d3b50', site)
+        self.assertIn('goto i_101d2e3c;', site)
+        self.assertNotIn('s.pc = 0x101d3b50', site)
 
 
 @unittest.skipUnless((GENERATED / 'program.cpp').exists(), 'Needs generated pages')

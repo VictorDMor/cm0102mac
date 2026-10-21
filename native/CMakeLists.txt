@@ -490,7 +490,8 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_link_libraries(cm-actor-attributes-checks PRIVATE cm_aot)
     target_compile_options(cm-actor-attributes-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME actor_attributes_component_equivalence COMMAND cm-actor-attributes-checks)
-    set_tests_properties(actor_attributes_component_equivalence PROPERTIES TIMEOUT 180)
+    # About 140 s alone (state cloning); allow for the parallel suite.
+    set_tests_properties(actor_attributes_component_equivalence PROPERTIES TIMEOUT 400)
     set(CM_INJURY_RECORD_REFERENCE "${CMAKE_BINARY_DIR}/injury_record_reference.cpp")
     add_custom_command(OUTPUT "${CM_INJURY_RECORD_REFERENCE}"
         BYPRODUCTS "${CMAKE_BINARY_DIR}/injury_record_tables.hpp"

@@ -662,17 +662,91 @@ OBSERVED_INSTRUCTION_TABLES = {0x101ccdf0, 0x101cd5ec, 0x101d3f78,
 PC_COMPARISON = re.compile(r"\bpc\s*[!=]=\s*(0x[0-9a-fA-F]{8})\b|\b(0x[0-9a-fA-F]{8})\s*[!=]=\s*[\w>.-]*\bpc\b")
 
 
-def observed_instructions(native=Path(__file__).resolve().parent.parent / "native"):
-    """Addresses the native sources compare the PC with, plus the address tables."""
-    found = set(OBSERVED_INSTRUCTION_TABLES)
+def observed_instructions(native=Path(__file__).resolve().parent.parent / "native", checks=True):
+    """Addresses the native sources compare the PC with, plus the address
+    tables; with checks=False, only those watched by the game's host code."""
+    found = set(OBSERVED_INSTRUCTION_TABLES) if checks else set()
     for path in sorted(native.glob("*")):
-        if path.suffix in (".cpp", ".hpp", ".mm"):
+        if path.suffix in (".cpp", ".hpp", ".mm") and (checks or not re.search(r"checks|fixture|characterization|benchmark", path.name)):
             for match in PC_COMPARISON.finditer(path.read_text(errors="replace")):
                 found.add(int(match.group(1) or match.group(2), 16))
     return frozenset(found)
 
 
 HOST_OBSERVED_INSTRUCTIONS = observed_instructions()
+
+# Leaf routines (at most six straight-line instructions ending in blr, no
+# frame, no calls) are inlined at their direct call sites in generated code:
+# a call and its return through the dispatcher cost far more than the body.
+# The body runs as the original instructions and is charged as executed. A
+# leaf whose entry has an owner hook is inlined only when the owner is an
+# exact game-state replacement from these families (the owner's own counters
+# then miss those calls); generation fails if an inlined instruction carries
+# any other hook or special lowering.
+INLINE_OWNER_MODULES = frozenset({
+    "spatial_role_adapter", "marking_pressure_adapter", "actor_order_adapter", "team_line_adapter",
+    "movement_choice_adapter", "actor_effects_adapter", "actor_motion_adapter", "match_actor_adapter",
+    "match_target_adapter", "actor_attributes_adapter", "utility_object_adapter", "stdlib_core_adapter",
+    "contract_review_adapter", "contract_terms_adapter"})
+INLINE_LEAF_LIMIT = 6
+LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CALLIND", "RETURN")
+
+
+# Instructions generate_page lowers specially (beyond owner hooks); a leaf
+# containing one is never inlined.
+SPECIAL_LOWERINGS = frozenset({
+    0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x101355d4, 0x1024773c,
+    0x10713aec, 0x10713b3c, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
+    0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
+OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
+
+
+def inline_leaves(db):
+    """Call target -> instruction records of an inlinable leaf, before its blr."""
+    owners = dict(SEMANTIC_REPLACEMENTS)
+    host_observed = observed_instructions(checks=False)
+    special = (SPECIAL_LOWERINGS | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
+               set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) | set(CAPTURE_OBSERVATIONS))
+    targets = set()
+    for (body,) in db.execute("SELECT body FROM instructions WHERE body LIKE '%UNCONDITIONAL_CALL%'"):
+        item = json.loads(body)
+        if item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows"):
+            targets.add(item["flows"][0])
+    leaves = {}
+    for target in targets:
+        records = [json.loads(row[0]) for row in db.execute(
+            "SELECT body FROM instructions WHERE address >= ? AND address < ? ORDER BY address",
+            (target, target + 4 * INLINE_LEAF_LIMIT))]
+        body = []
+        for expected, record in zip(range(target, target + 4 * INLINE_LEAF_LIMIT, 4), records):
+            address = record["address"]
+            if address != expected or address in host_observed or address in special or \
+                    (address in owners and owners[address] not in INLINE_OWNER_MODULES):
+                break
+            if record["assembly"] == "blr":
+                leaves[target] = body
+                break
+            writes = {int(op[1][1]) for op in record["ops"] if op[1] and op[1][0] == "register"}
+            if record.get("flow") != "FALL_THROUGH" or fused_mnemonic(record) or \
+                    record["assembly"].startswith("fctiwz ") or writes & {4, 4128} or \
+                    any(op[0] in LEAF_EXCLUDED_OPS for op in record["ops"]):
+                break
+            body.append(record)
+    return leaves
+
+
+class Inlining:
+    """Leaves to inline at direct call sites, and what generation saw: the
+    inlined leaves and every address with a hook or special lowering."""
+    def __init__(self, leaves):
+        self.leaves, self.inlined, self.special = leaves, {}, set()
+
+    def require_plain(self):
+        """Fails if an inlined instruction has a hook or special lowering."""
+        for target, addresses in self.inlined.items():
+            special = [address for address in addresses if address in self.special]
+            if special:
+                raise ValueError(f"Inlined leaf {target:x} has a hook or special lowering at {special[0]:x}")
 
 
 def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
@@ -690,7 +764,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     middle through the page switch charges the remainder there, so complete
     runs keep exact counts. A fault inside a run leaves the whole run charged
     and the PC at its first instruction; a finite budget can be overrun by
-    less than one run.
+    less than one run, including any leaf inlined into it.
     """
     addresses = [item["address"] for item in instructions]
     index = {address: i for i, address in enumerate(addresses)}
@@ -743,7 +817,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -1186,7 +1260,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         a = item["address"]
         code.append(f"case 0x{a:x}: goto i_{a:x};")
     code.extend(["default: return false;", "}"])
-    hooked, isolated = set(), set(HOST_OBSERVED_INSTRUCTIONS)
+    hooked, isolated, special = set(), set(HOST_OBSERVED_INSTRUCTIONS), set()
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
@@ -1414,6 +1488,11 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("}")
         if len(code) > hooks_start or (register_context_hooks and a in CAPTURE_OBSERVATIONS):
             hooked.add(a)
+            # Only an allowed owner's own hook may sit on an inlined leaf.
+            owner_hooks = [OWNER_HOOK.fullmatch(line) for line in code[hooks_start:]]
+            if a in CAPTURE_OBSERVATIONS or not all(
+                    match and f"{match.group(1)}_adapter" in INLINE_OWNER_MODULES for match in owner_hooks):
+                special.add(a)
         if match_hot_page:
             # The Turbo counter holds the count locally; see turbo_pages.py.
             code[hooks_start:] = [bound_turbo_hook(a, line) for line in code[hooks_start:]]
@@ -1498,6 +1577,27 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.extend(["if (s.r<4>(12) == 0) {", "s.wr<4>(2440, s.r<4>(8));",
                          f"s.wr<4>(4128, 0x{continuation:x});",
                          transfer(continuation, transfer_page, selected), "}"])
+        leaves = inlining.leaves if inlining else {}
+        target = item["flows"][0] if leaves and item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows") else None
+        if target in leaves:
+            if [op[0] for op in item["ops"]] != ["COPY", "COPY", "CALL"] or item["ops"][2][2] != ["ram", str(target), 4]:
+                raise ValueError(f"Unexpected direct call shape at {a:x}")
+            # The bl's own effects (TOC save, link), then the leaf's body.
+            for op in item["ops"][:2]:
+                code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
+            for record in leaves[target]:
+                body_ops = record["ops"]
+                local = LocalTemporaries.for_instruction(body_ops, read, write) if local_temporaries else None
+                code.append("{")
+                for i, op in enumerate(body_ops):
+                    code.append(operation(op, record["address"], i, transfer_page, selected, len(body_ops),
+                                          read_node=local.read if local else read,
+                                          write_node=local.write if local else write, userops=userops))
+                code.append("}")
+            code.append(f"{'counter' if match_hot_page else 's'}.charge({len(leaves[target]) + 1}); // inlined leaf 0x{target:x}")
+            code.append(transfer(a + item["size"], transfer_page, selected))
+            inlining.inlined[target] = [r["address"] for r in leaves[target]] + [target + 4 * len(leaves[target])]
+            continue
         if item["assembly"].startswith("fctiwz "):
             # Ghidra's generic TRUNC does not express PowerPC invalid-result
             # saturation or all FPSCR flags. Lower this instruction explicitly.
@@ -1554,6 +1654,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.append(transfer(a + item["size"], transfer_page, selected))
         if local is not None:
             code.append("}")
+    if inlining is not None:
+        inlining.special.update(special | (isolated - HOST_OBSERVED_INSTRUCTIONS) | (SPECIAL_LOWERINGS & page_addresses))
     if block_accounting:
         code = account_blocks(code, instructions, match_hot_page, hooked, isolated)
     code.append("}")
@@ -1953,6 +2055,8 @@ def main():
     with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
         native_leaves = load_leaves(db, None if args.all_analyzed else selected)
         native_sort = load_sort8(db, None if args.all_analyzed else selected)
+        inlining = Inlining({target: body for target, body in inline_leaves(db).items()
+                             if args.all_analyzed or all(address in selected for address in range(target, target + 4 * len(body) + 4, 4))})
     if args.reuse_generated:
         reused = seed_generated(args.reuse_generated, args.output)
         print(f"Seeded generated C++: {reused['clonedFiles']} copy-on-write files; {reused['copiedFiles']} regular copies", flush=True)
@@ -1979,7 +2083,7 @@ def main():
                 path = args.output / f"page_{page:x}.cpp"
                 content = generate_page(page, records, {r["address"] for r in records},
                                         local_temporaries=not args.legacy_unique_storage,
-                                        userops=metadata['userops'], block_accounting=True)
+                                        userops=metadata['userops'], block_accounting=True, inlining=inlining)
                 if not path.exists() or path.read_text() != content: path.write_text(content)
                 pages[page] = []
                 outputs[path.name] = None
@@ -1990,7 +2094,9 @@ def main():
         if not args.all_analyzed:
             outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected,
                                                        local_temporaries=not args.legacy_unique_storage,
-                                                       userops=metadata['userops'], block_accounting=True)
+                                                       userops=metadata['userops'], block_accounting=True, inlining=inlining)
+    inlining.require_plain()
+    print(f"Inlined leaves: {len(inlining.inlined)} routines", flush=True)
     code = ['#include "aot_runtime.hpp"', '#include "aot_integrity.hpp"', "namespace cm::aot {"]
     for page in pages: code.append(f"bool page_{page:x}(State&);")
     code += ["bool dispatch_page(State& s) {", "switch (s.pc >> 12) {"]

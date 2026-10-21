@@ -64,8 +64,14 @@ void complete_match(const State& seed,std::uint32_t match,bool drawing){
     Image(*original).compare(*modern,"Paired spatial-role complete match state");
     require(old_clock.count==new_clock.count && old_clock.events==new_clock.events,"Paired spatial-role match host inputs/import ABI");
     const auto& old=spatial_role_diagnostics(*original);const auto& next=spatial_role_diagnostics(*modern);
+    // Generated code inlines these field getters at its call sites (leaf
+    // inlining in tools/compile_recomp.py), so only C++ callers reach their
+    // hooks and their counts differ between original and C++ role tables.
+    // Every other entry is entered as often by both.
+    constexpr std::array<unsigned,13> inlined_leaves{0,1,2,3,4,5,6,10,12,13,15,18,19};
     for(unsigned i=0;i<actor::entries.size();++i){
-        require(next.calls[i]==next.returns[i] && next.calls[i]==old.original_calls[i] && !old.calls[i] &&
+        const bool inlined=std::find(inlined_leaves.begin(),inlined_leaves.end(),i)!=inlined_leaves.end();
+        require(next.calls[i]==next.returns[i] && (inlined || next.calls[i]==old.original_calls[i]) && !old.calls[i] &&
             !next.original_calls[i] && !next.profile_original_calls[i] && !next.faults[i] && !next.budget_stops[i],"Paired spatial-role match entry accounting");
     }
     require(next.calls[0]>0 && next.calls[7]>0 && next.calls[20]>0 && !next.dispatch_escapes,"Paired spatial-role match exercised position and role chain");
