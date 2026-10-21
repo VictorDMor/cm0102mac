@@ -123,6 +123,26 @@ void position_fault(unsigned index,bool primary=false){
         !next.returns[index] && !next.returns[child] && !next.dispatch_escapes,"Unobserved position-child fault counters");
     ++cases;
 }
+// A role-table fault inside a per-actor wrapper: the actor's team pointer
+// leads to unmapped memory after three valid position reads.
+void owner_table_fault(unsigned index){
+    State seed;seed.registers.fill(0xa5);seed.unique.fill(0xb7);
+    seed.memory.map(stack-0x300,0x400);seed.memory.map(fixture,0x1000);seed.memory.clear(fixture,0x1000);
+    seed.memory.write<4>(fixture+0x1a4,0x50000000);
+    seed.wr<4>(4,stack);seed.wr<4>(8,toc);seed.wr<4>(12,fixture);seed.wr<4>(4128,return_sentinel);
+    seed.pc=actor::entries[index];
+    auto original=clone(seed),modern=clone(seed);spatial_role_diagnostics(*original).original=true;
+    const unsigned table=index==20?7:index==21?9:8,getter=index==21?10:0;
+    const auto expected=execute(*original,index,Path::generated),actual=execute(*modern,index,Path::generated);
+    require(expected==actual && expected.starts_with(table==8?"Unmapped data access at 0x5000793c":"Unmapped data access at 0x50007934"),
+        "Owner role-table fault outcome index="+std::to_string(index)+" original="+expected+" modern="+actual);
+    Image(*original).compare(*modern,"Owner role-table fault state",true);
+    const auto& next=spatial_role_diagnostics(*modern);
+    require(next.calls[index]==1 && next.faults[index]==1 && next.calls[table]==1 && next.faults[table]==1 &&
+        !next.returns[index] && !next.returns[table] && next.calls[getter]==3 && next.returns[getter]==3 && !next.dispatch_escapes,
+        "Owner role-table fault counters");
+    ++cases;
+}
 void compare(const State& seed, std::uint32_t owner, unsigned index, Path path, Mode mode,
     bool negative = false, std::uint64_t limit = 50000000, bool observed = true,
     bool original_position = false, bool boundary_only = false, bool primary = false, bool tracing = false) {
@@ -228,6 +248,7 @@ int main(int argc, char** argv) {
             }
         }
         if(!profile){
+            for(unsigned index:{20u,21u,22u})owner_table_fault(index);
             for(unsigned index:{7u,8u,9u}){
                 position_fault(index);
                 position_fault(index,true);
@@ -245,7 +266,7 @@ int main(int argc, char** argv) {
             emergency->memory.write<1>(match.match+0x311c+0x20,255);
             compare(*emergency,match.match,unsigned(actor::Entry::resolve_goalkeeper),Path::generated,Mode::modern);
         }
-        require(profile?cases==69:(cases==454 && negatives==23 && budgets==64),"Complete spatial-role production and position-routing matrix");
+        require(profile?cases==69:(cases==457 && negatives==23 && budgets==64),"Complete spatial-role production and position-routing matrix");
         std::cout << "PASS: actual spatial-role production cases=" << cases << " negatives=" << negatives << " budgets=" << budgets
                   << "; direct/generated/CFM, global/entry/profile originals, cell/role/mark/keeper chain, complete guest state/ordered effects/accounting\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

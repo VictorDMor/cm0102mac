@@ -78,9 +78,13 @@ void clear_marking_count(State& state) {
     }
     a.at(root+0x74);a.pop(0x40);a.restore(31);a.restore(30);a.finish();
 }
+// The role table each per-actor wrapper reads.
+constexpr Entry owner_table(Entry entry) {
+    return entry==Entry::actor_current_role?Entry::current_role:entry==Entry::actor_previous_role?Entry::previous_role:Entry::secondary_role;
+}
 [[gnu::flatten]] void owner_role(Call& a, Entry entry) {
     const auto root=address(entry);
-    const auto target=address(entry==Entry::actor_current_role?Entry::current_role:entry==Entry::actor_previous_role?Entry::previous_role:Entry::secondary_role);
+    const auto target=address(owner_table(entry));
     a.link();a.move(4,3);a.save_link();a.frame(0x40);a.load(0,3,0x1a4);a.compare(0,0,false);
     if(!a.equal()){a.load(3,4,0x1a4);a.call(target);a.jump(root+0x2c);}
     else{a.at(root+0x28);a.value(3,0);}
@@ -279,8 +283,123 @@ void resolve_goalkeeper(Call& a){
     a.at(0x101f21ac);a.pop(0x60);a.multiple(23,true);a.finish();
 }
 }
+namespace {
+// Production fast path for the role tables and their per-actor wrappers,
+// ~1.6 million calls per 600 match advances. When nothing observes their
+// steps (no memory or boundary observer, no original selection, no profile,
+// and a budget that covers the longest path), they run as plain C++ that
+// leaves the machine exactly as the original does on the same path: the
+// same reads in order, the same result and volatile registers, the same
+// stack writes and the same instruction charge. Otherwise role_table and
+// owner_role below run instruction by instruction.
+bool unobserved(const State& state, const SpatialRoleDiagnostics& d, std::uint64_t longest) {
+    return !state.memory.observer && !state.memory.date_observer && !state.memory.read_trace && !d.observer &&
+           !d.original && !d.original_body && std::none_of(d.entry_original.begin(), d.entry_original.end(), [](bool b) { return b; }) &&
+           !match_pc_profile_enabled() && state.executed <= state.budget && state.budget - state.executed >= longest;
+}
+void condition(State& state, std::int64_t a, std::int64_t b) { Call::compare_cr0(state, a, b); }
+// The original instructions in order, with each register and memory effect
+// where the original makes it, so a fault leaves the same registers and
+// memory; only the per-instruction steps and the getter dispatch are gone.
+// The charge is added on return, so a fault leaves pc and the instruction
+// count at the entry (diagnostics only). Paths: 22, 29 or 39 instructions,
+// the getter's two each time included.
+//
+// 0x101e3d50 / 0x101e3de0 / 0x101e3e70: position via the getter (up to three
+// times), then the side's table entry for that position, or 0 off the pitch.
+void fast_role_table(State& state, SpatialRoleDiagnostics& d, Entry entry) {
+    const auto root = address(entry);
+    const auto getter = entry == Entry::previous_role ? Entry::previous_position : Entry::current_position;
+    const auto offset = getter == Entry::previous_position ? 0x1au : 0x19u;
+    const auto r = [&](unsigned n) { return std::uint32_t(state.r<4>(n * 4)); };
+    const auto set = [&](unsigned n, std::uint32_t value) { state.wr<4>(n * 4, value); };
+    set(0, std::uint32_t(state.r<4>(4128)));                         // mflr r0
+    state.memory.write<4>(r(1) - 4, r(31));                          // stw r31,-4(r1)
+    state.memory.write<4>(r(1) - 8, r(30));                          // stw r30,-8(r1)
+    state.memory.write<4>(r(1) + 8, r(0));                           // stw r0,8(r1)
+    state.memory.write<4>(r(1) - 0x40, r(1)); set(1, r(1) - 0x40);   // stwu r1,-0x40(r1)
+    set(30, r(3)); set(31, r(4));                                    // or r30,r3 / or r31,r4
+    const auto position = [&](std::uint32_t link) {                  // or r3,r31; bl getter
+        set(3, r(31)); state.wr<4>(2440, state.r<4>(8)); state.wr<4>(4128, root + link);
+        ++d.calls[unsigned(getter)];
+        try { set(3, std::uint32_t(state.memory.read<1>(r(3) + offset))); } // lbz r3,off(r3); blr
+        catch (...) { ++d.faults[unsigned(getter)]; throw; }        // as its adapter counts
+        ++d.returns[unsigned(getter)];
+        set(0, std::uint32_t(std::int32_t(std::int8_t(r(3)))));      // extsb r0,r3
+        return std::int32_t(r(0));
+    };
+    std::uint64_t charge = 22;
+    auto value = position(0x24);
+    condition(state, value, 0);                                      // cmpwi r0,0
+    bool valid = value >= 0;                                         // blt
+    if (valid) {
+        value = position(0x38);
+        condition(state, value, 10);                                 // cmpwi r0,10
+        valid = value <= 10;                                         // ble
+        charge = 29;
+    }
+    if (!valid) set(3, 0);                                           // li r3,0
+    else {
+        position(0x54);
+        set(4, std::rotl(r(0), 1) & 0xfffffffeu);                    // rlwinm r4,r0,1,0,30
+        set(0, std::uint32_t(state.memory.read<1>(r(31) + 0x27)));   // lbz r0,0x27(r31)
+        set(0, std::uint32_t(std::int32_t(std::int8_t(r(0)))));      // extsb r0,r0
+        set(3, std::rotl(r(0), 2) & 0xfffffffcu);                    // rlwinm r3,r0,2,0,29
+        set(0, r(3) + (entry == Entry::secondary_role ? 0x793c : 0x7934)); // addi r0,r3,...
+        set(3, std::uint32_t(state.memory.read<4>(r(30) + r(0))));   // lwzx r3,r30,r0
+        set(3, std::uint32_t(std::int32_t(std::int16_t(state.memory.read<2>(r(3) + r(4)))))); // lhax r3,r3,r4
+        charge = 39;
+    }
+    set(0, std::uint32_t(state.memory.read<4>(r(1) + 0x48)));        // lwz r0,0x48(r1)
+    set(1, r(1) + 0x40); state.wr<4>(4128, r(0));                    // addi r1 / mtlr r0
+    set(31, std::uint32_t(state.memory.read<4>(r(1) - 4)));          // lwz r31,-4(r1)
+    set(30, std::uint32_t(state.memory.read<4>(r(1) - 8)));          // lwz r30,-8(r1)
+    state.executed += charge;
+    state.pc = std::uint32_t(state.r<4>(4128));                      // blr
+}
+// 0x10289560 / 0x102895a0 / 0x102895e0: the actor's team (at +0x1a4), then
+// its role table, or 0 without a team. 12 instructions, or 14 plus the table.
+void fast_owner_role(State& state, SpatialRoleDiagnostics& d, Entry entry) {
+    const auto table = owner_table(entry);
+    const auto root = address(entry);
+    const auto r = [&](unsigned n) { return std::uint32_t(state.r<4>(n * 4)); };
+    const auto set = [&](unsigned n, std::uint32_t value) { state.wr<4>(n * 4, value); };
+    set(0, std::uint32_t(state.r<4>(4128)));                         // mflr r0
+    set(4, r(3));                                                    // or r4,r3
+    state.memory.write<4>(r(1) + 8, r(0));                           // stw r0,8(r1)
+    state.memory.write<4>(r(1) - 0x40, r(1)); set(1, r(1) - 0x40);   // stwu r1,-0x40(r1)
+    set(0, std::uint32_t(state.memory.read<4>(r(3) + 0x1a4)));       // lwz r0,0x1a4(r3)
+    condition(state, r(0), 0);                                       // cmplwi r0,0
+    if (r(0)) {                                                      // beq
+        set(3, std::uint32_t(state.memory.read<4>(r(4) + 0x1a4)));   // lwz r3,0x1a4(r4)
+        state.wr<4>(2440, state.r<4>(8)); state.wr<4>(4128, root + 0x24); // bl table
+        ++d.calls[unsigned(table)];
+        try { fast_role_table(state, d, table); }
+        catch (...) { ++d.faults[unsigned(table)]; throw; }
+        ++d.returns[unsigned(table)];
+        state.executed += 14;                                        // this wrapper's own path
+    } else {
+        set(3, 0);                                                   // li r3,0
+        state.executed += 12;
+    }
+    set(0, std::uint32_t(state.memory.read<4>(r(1) + 0x48)));        // lwz r0,0x48(r1)
+    set(1, r(1) + 0x40); state.wr<4>(4128, r(0));                    // addi r1 / mtlr r0
+    state.pc = std::uint32_t(state.r<4>(4128));                      // blr
+}
+}
 void invoke(State& state,Entry entry,DependencyDispatch* dependencies){
     if(unsigned(entry)>=entries.size())throw std::runtime_error("Unknown spatial-role entry");
+    if(!dependencies){
+        switch(entry){
+        case Entry::current_role:case Entry::secondary_role:case Entry::previous_role:
+            if(auto& d=spatial_role_diagnostics(state);unobserved(state,d,39)){fast_role_table(state,d,entry);return;}
+            break;
+        case Entry::actor_current_role:case Entry::actor_previous_role:case Entry::actor_secondary_role:
+            if(auto& d=spatial_role_diagnostics(state);unobserved(state,d,53)){fast_owner_role(state,d,entry);return;}
+            break;
+        default:break;
+        }
+    }
     switch(entry){
     case Entry::current_position:read_field<1,0x19>(state,entry);return;
     case Entry::column:read_field<1,0x106>(state,entry);return;

@@ -13,11 +13,14 @@ class SemanticGuestCall {
     SemanticDependencyDispatch* dependencies;
     SemanticGuestObserver* observer;
     void step() { if (observer) observer->before_step(state, next); state.step(next); next += 4; }
-    void condition(std::int64_t a, std::int64_t b, bool record = false) {
+    void condition(std::int64_t a, std::int64_t b, bool record = false) { compare_cr0(state, a, b, record); }
+public:
+    // CR0 after a signed or unsigned compare: LT/GT/EQ plus XER[SO]; a
+    // record form keeps the low field's other bits.
+    static void compare_cr0(State& state, std::int64_t a, std::int64_t b, bool record = false) {
         state.wr<1>(2304, (record ? state.r<1>(2304) & 0xf0 : 0) |
             (a < b ? 8 : a > b ? 4 : 2) | (state.r<1>(1024) & 1));
     }
-public:
     SemanticGuestCall(State& s, std::uint32_t root, SemanticDependencyDispatch* d, SemanticGuestObserver* o = nullptr)
         : state(s), next(root), scope(s, root), dependencies(d), observer(o) {}
     std::uint32_t r(unsigned n) const { return std::uint32_t(state.r<4>(n * 4)); }
