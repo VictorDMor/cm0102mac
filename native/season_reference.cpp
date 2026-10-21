@@ -271,15 +271,21 @@ struct Recorder final : MemoryObserver {
 std::unique_ptr<Recorder> recorder;
 std::unique_ptr<Stream> replay;
 unsigned replay_depth = 0;
+std::optional<Event> next_event(std::optional<Input>& input);
 struct ReplayObserver final : MemoryObserver {
     std::array<std::uint32_t, 2> rng_fields;
     std::uint64_t rng_writes = 0;
-    explicit ReplayObserver(const State& s) : rng_fields{pointer(s, 0x108b3f00), pointer(s, 0x108b3f0c)} {}
+    explicit ReplayObserver(const State& s) : rng_fields{pointer(s, 0x108b3f00), pointer(s, 0x108b3f0c)} {
+        // Only the two RNG state words matter; other writes skip the callback.
+        restrict_write_notifications(std::min(rng_fields[0], rng_fields[1]),
+                                     std::uint64_t(std::max(rng_fields[0], rng_fields[1])) + 8);
+    }
     void mapped(std::uint32_t, std::uint64_t) override {}
     void cleared(std::uint32_t, std::uint64_t) override {}
     void written(std::uint32_t start, const std::uint8_t* bytes, std::size_t size) override {
         if (std::find(rng_fields.begin(), rng_fields.end(), start) == rng_fields.end()) return;
-        if (replay->take<Event>() != Event::rng || replay->take<std::uint32_t>() != start ||
+        std::optional<Input> unexpected;
+        if (next_event(unexpected) != Event::rng || replay->take<std::uint32_t>() != start ||
             replay->take<std::uint64_t>() != size)
             throw std::runtime_error("First divergence: original RNG consumption order");
         if (size > 8) throw std::runtime_error("Invalid original RNG state width");
@@ -312,7 +318,8 @@ void season_day_boundary(State& s, std::uint32_t pc) {
         const auto now = date(s);
         if (replay_previous_date && now == *replay_previous_date) return;
         replay_previous_date = now;
-        if (replay->take<Event>() != Event::boundary) throw std::runtime_error("First divergence: missing day boundary");
+        std::optional<Input> unexpected;
+        if (next_event(unexpected) != Event::boundary) throw std::runtime_error("First divergence: missing day boundary");
         check_input(*replay, s);
         const auto final = replay->take<std::uint8_t>();
         if (final > 1) throw std::runtime_error("Invalid private day boundary flag");
@@ -415,17 +422,27 @@ void skip_recorded_import() {
         } else throw std::runtime_error("Invalid private season transcript event in a pure import");
     }
 }
-// The next recorded import this replay does not compute itself; none at the
-// end of a live replay's transcript.
-std::optional<Input> next_recorded_import() {
+// The next recorded event this replay does not compute itself. A live replay
+// skips recorded pure imports, reading an OS import's input ahead into
+// `input`, and has no event at the end of its transcript.
+std::optional<Event> next_event(std::optional<Input>& input) {
     for (;;) {
         if (live_pure_imports && replay->at_end()) return std::nullopt;
-        if (replay->take<Event>() != Event::import) throw std::runtime_error("First divergence: native import order");
-        auto input = take_input(*replay);
-        const char* name = import_name(input.pc);
-        if (!live_pure_imports || !name || !pure_import(name)) return input;
+        const auto event = replay->take<Event>();
+        if (!live_pure_imports || event != Event::import) return event;
+        input = take_input(*replay);
+        const char* name = import_name(input->pc);
+        if (!name || !pure_import(name)) return event;
         skip_recorded_import();
+        input.reset();
     }
+}
+std::optional<Input> next_recorded_import() {
+    std::optional<Input> input;
+    const auto event = next_event(input);
+    if (!event) return std::nullopt;
+    if (*event != Event::import) throw std::runtime_error("First divergence: native import order");
+    return input ? input : take_input(*replay);
 }
 }
 void require_season_replay_eof() {

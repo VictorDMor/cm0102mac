@@ -6,7 +6,9 @@
 // cm-world-replay <capture> [runs] [--write-expected <path>] [--flip <address>]
 //                 [--profile <samples>]
 //   <capture>         directory with initial.snapshot, expected.snapshot and,
-//                     when the operation calls the OS, imports.gz
+//                     when the operation calls the OS, imports.gz; a season
+//                     capture (capture.txt "days=N", recorded by the app with
+//                     CM_AOT_SEASON_REFERENCE) runs to its final day boundary
 //   --write-expected  save the first run's end state instead of checking it,
 //                     to re-reference a capture after a deliberate change to
 //                     the reference
@@ -85,11 +87,10 @@ void write(const std::filesystem::path& path) {
     if (!out) throw std::runtime_error("Cannot write guest profile");
 }
 }
-// A sort capture starts at its routine's entry rather than its saved PC.
-std::optional<std::uint32_t> capture_entry(const std::filesystem::path& capture) {
+std::optional<std::string> capture_field(const std::filesystem::path& capture, std::string_view name) {
     std::ifstream report(capture / "capture.txt");
     for (std::string line; std::getline(report, line);)
-        if (line.starts_with("entry=")) return std::uint32_t(std::stoul(line.substr(6), nullptr, 16));
+        if (line.starts_with(name) && line.size() > name.size() && line[name.size()] == '=') return line.substr(name.size() + 1);
     return std::nullopt;
 }
 }
@@ -116,7 +117,12 @@ int main(int argc, char** argv) {
         auto initial = std::make_unique<State>(), expected = std::make_unique<State>();
         load_match_snapshot(*initial, capture / "initial.snapshot");
         load_match_snapshot(*expected, capture / "expected.snapshot");
-        if (const auto entry = capture_entry(capture)) initial->pc = *entry;
+        // A sort capture starts at its routine's entry rather than its saved PC.
+        if (const auto entry = capture_field(capture, "entry")) initial->pc = std::uint32_t(std::stoul(*entry, nullptr, 16));
+        const auto days = capture_field(capture, "days");
+        const bool season = days && std::stoul(*days) > 0;
+        if (season && !std::filesystem::exists(capture / "imports.gz"))
+            throw std::runtime_error("A season capture needs its imports.gz transcript");
         if (flip) initial->memory.write<1>(*flip, initial->memory.read<1>(*flip) ^ 0xff);
         const bool transcript = std::filesystem::exists(capture / "imports.gz");
         if (profile) guest_profile::samples.resize(1000000);
@@ -128,7 +134,13 @@ int main(int argc, char** argv) {
             if (profile) guest_profile::start(*state);
             const auto begin = std::chrono::steady_clock::now();
             const auto cpu = std::clock();
-            run_until(*state, expected->pc);
+            if (season) {
+                bool complete = false;
+                try { cm::aot::run(*state); } catch (const SeasonReplayComplete&) { complete = true; }
+                if (!complete) throw std::runtime_error("The season replay ended before its final day boundary");
+            } else {
+                run_until(*state, expected->pc);
+            }
             if (profile) guest_profile::stop();
             const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
             const auto cpu_seconds = double(std::clock() - cpu) / CLOCKS_PER_SEC;
