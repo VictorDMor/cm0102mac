@@ -39,6 +39,9 @@ struct Clock final:CodeFragmentBoundaryObserver {
         s.memory.write<8>(s.r<4>(12),1000000000ULL+1000000ULL*++count);s.pc=s.r<4>(4128);return true;
     }
 };
+// Entries that are leaf routines: generated code inlines their calls and
+// run_until runs them directly (tools/compile_recomp.py, inline_leaves).
+bool inlined_leaf(unsigned index){ return is_leaf_entry(actor::entries[index]); }
 void complete_match(const State& seed,std::uint32_t match,bool drawing){
     auto original=clone(seed),modern=clone(seed);original->platform=modern->platform=seed.platform;
     NativeDrawingObserver original_drawing,modern_drawing;
@@ -68,9 +71,8 @@ void complete_match(const State& seed,std::uint32_t match,bool drawing){
     // inlining in tools/compile_recomp.py), so only C++ callers reach their
     // hooks and their counts differ between original and C++ role tables.
     // Every other entry is entered as often by both.
-    constexpr std::array<unsigned,13> inlined_leaves{0,1,2,3,4,5,6,10,12,13,15,18,19};
     for(unsigned i=0;i<actor::entries.size();++i){
-        const bool inlined=std::find(inlined_leaves.begin(),inlined_leaves.end(),i)!=inlined_leaves.end();
+        const bool inlined=inlined_leaf(i);
         require(next.calls[i]==next.returns[i] && (inlined || next.calls[i]==old.original_calls[i]) && !old.calls[i] &&
             !next.original_calls[i] && !next.profile_original_calls[i] && !next.faults[i] && !next.budget_stops[i],"Paired spatial-role match entry accounting");
     }
@@ -166,8 +168,15 @@ void compare(const State& seed, std::uint32_t owner, unsigned index, Path path, 
     // finishes the run it started, the C++ owner stops at the exact
     // instruction. Complete runs above are compared whole.
     require(!next.original_body && !next.dispatch_escapes, label + " original scope residue or escape");
-    if(original_position)require(next.original_calls[position]>0 && !next.calls[position],label+" selected original position child");
-    if (mode == Mode::modern) {
+    // The original position getter now runs as its leaf through run_until
+    // (run_leaf), uncounted; the C++ getter must not have run.
+    if(original_position)require(!next.calls[position],label+" selected original position child");
+    // A getter entered straight through run_until runs as its original leaf
+    // (run_leaf), without its hook; the state comparison above still holds.
+    if (path == Path::generated && inlined_leaf(index)) {
+        require(!next.calls[index] && !next.returns[index] && !next.original_calls[index] && !next.profile_original_calls[index],
+                label + " leaf ran without its hook");
+    } else if (mode == Mode::modern) {
         require(next.calls[index] == 1 && next.returns[index] == unsigned(limit == 50000000) &&
             next.budget_stops[index] == unsigned(limit != 50000000) && !next.original_calls[index], label + " dedicated C++23 root coverage");
 
@@ -212,7 +221,9 @@ int main(int argc, char** argv) {
                 }
             }
             if (!profile) {
-                compare(state, match.match, index, Path::generated, Mode::modern, true);
+                // The negative corrupts state from inside the owner, which a
+                // getter entered through run_until never reaches.
+                compare(state, match.match, index, inlined_leaf(index) ? Path::direct : Path::generated, Mode::modern, true);
                 for (auto limit : {0u, 1u}) compare(state, match.match, index, Path::generated, Mode::modern, false, limit);
             }
         }

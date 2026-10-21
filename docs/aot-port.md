@@ -492,7 +492,10 @@ instructions run in the caller and are charged, but the leaf's own hook is not
 entered. Only leaves whose hook belongs to an exact game-state owner family
 (`INLINE_OWNER_MODULES`) are inlined, so those owners' call counters see only
 calls from C++ owners, and a check that watches a leaf's PC sees only direct
-entries.
+entries. `run_until` also runs a leaf entry directly (`run_leaf` in the generated
+`leaves.cpp`, with the page's own runs), so calls from C++ owners skip the
+dispatcher and the leaf's hook too; `is_leaf_entry` tells checks which entries
+behave this way. Owners in `RUN_LEAF_EXCLUDED_OWNERS` keep their hook there.
 `CM_AOT_CAPTURE_DIRECTORY` saves the native windows' current
 rendered images on failure. These are retained presentation buffers, not screenshots
 proving that a frame was physically displayed. A targeted Ghidra decompilation can

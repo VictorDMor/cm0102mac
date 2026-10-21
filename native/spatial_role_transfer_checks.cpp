@@ -118,7 +118,12 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
     require(!old.parent_after && !modern.parent_after && !old.callback_after && !modern.callback_after && b->memory.read<4>(marker) == 0xa7a7a7a7,
         label + " abandoned host continuations");
     const auto& d = spatial_role_diagnostics(*b);
-    require(d.calls[index] == 1 && !d.returns[index] && !d.original_calls[index] && !d.original_body && !d.dispatch_escapes &&
+    // Leaf entries (getters) run directly through run_until, without their
+    // hook, so the owner records no call or transfer for them.
+    if (is_leaf_entry(actor::entries[index]))
+        require(!d.calls[index] && !d.original_body && !d.dispatch_escapes &&
+            !a->register_context_unknown_transfers && !b->register_context_unknown_transfers, label + " leaf ran without its hook");
+    else require(d.calls[index] == 1 && !d.returns[index] && !d.original_calls[index] && !d.original_body && !d.dispatch_escapes &&
         d.transfers[index] == unsigned(scenario != Scenario::restore_fault) && d.faults[index] == unsigned(scenario == Scenario::restore_fault) &&
         !d.terminations[index] && !a->register_context_unknown_transfers && !b->register_context_unknown_transfers, label + " dedicated productive transfer evidence");
     require(old.callbacks == 1 && modern.callbacks == 1 && old.handlers == modern.handlers && modern.handlers == unsigned(scenario != Scenario::restore_fault),

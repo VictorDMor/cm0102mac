@@ -488,6 +488,11 @@ struct State {
 // Definitions are emitted by the build-time compiler for selected original code.
 bool dispatch_page(State& state);
 const char* import_name(std::uint32_t address);
+// Runs the leaf routine at the PC as its page would and returns true, or
+// returns false when the PC is not a leaf entry (generated leaves.cpp).
+bool run_leaf(State& state);
+// Whether run_until runs the routine at this address as a leaf, without its hook.
+bool is_leaf_entry(std::uint32_t address);
 void load_program(State& state, const std::filesystem::path& directory);
 void run(State& state);
 // Execute a direct dependency call without callback argument marshalling or

@@ -688,6 +688,9 @@ INLINE_OWNER_MODULES = frozenset({
     "movement_choice_adapter", "actor_effects_adapter", "actor_motion_adapter", "match_actor_adapter",
     "match_target_adapter", "actor_attributes_adapter", "utility_object_adapter", "stdlib_core_adapter",
     "contract_review_adapter", "contract_terms_adapter"})
+# run_until still enters these owners' hooks for their leaves: host code (the
+# Match Debugger's lineup edits) relies on them seeing direct calls.
+RUN_LEAF_EXCLUDED_OWNERS = frozenset({"match_actor_adapter"})
 INLINE_LEAF_LIMIT = 6
 LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CALLIND", "RETURN")
 
@@ -735,6 +738,63 @@ def inline_leaves(db):
     return leaves
 
 
+def leaf_body(records, userops, local_temporaries=True):
+    """C++ for a leaf's instructions before its blr; they never branch."""
+    code = []
+    for record in records:
+        ops = record["ops"]
+        local = LocalTemporaries.for_instruction(ops, read, write) if local_temporaries else None
+        code.append("{")
+        for i, op in enumerate(ops):
+            code.append(operation(op, record["address"], i, None, set(), len(ops),
+                                  read_node=local.read if local else read,
+                                  write_node=local.write if local else write, userops=userops))
+        code.append("}")
+    return code
+
+
+def render_leaves(leaves, userops):
+    owners = dict(SEMANTIC_REPLACEMENTS)
+    leaves = {target: body for target, body in leaves.items()
+              if not any(owners.get(target + 4 * n) in RUN_LEAF_EXCLUDED_OWNERS for n in range(len(body) + 1))}
+    """run_leaf: runs the leaf at the PC exactly as its page would (its run's
+    step and charge, then blr), without a dispatcher scope; run_until uses it
+    for calls from C++ owners. Faults and budget stops are the page's."""
+    # A page bitmap rejects most PCs before the switch: owners call run_until
+    # for many more routines than leaves.
+    base, pages = 0x10000000, {target >> 12 for target in leaves}
+    if any(target < base for target in leaves):
+        raise ValueError("A leaf lies below the run_leaf page bitmap")
+    words = (max(pages, default=base >> 12) - (base >> 12)) // 64 + 1
+    bitmap = [0] * words
+    for page in pages:
+        bitmap[(page - (base >> 12)) // 64] |= 1 << ((page - (base >> 12)) % 64)
+    code = ['#include "aot_runtime.hpp"', '#include "floating_point.hpp"', "#include <array>", "namespace cm::aot {",
+            f"static constexpr std::array<std::uint64_t, {words}> leaf_pages{{" +
+            ", ".join(f"0x{word:x}" for word in bitmap) + "};",
+            "bool is_leaf_entry(std::uint32_t address) {",
+            "switch (address) {"] + [f"case 0x{target:x}:" for target in sorted(leaves)] + [
+            "return true;", "default: return false;", "}", "}",
+            "bool run_leaf(State& s) {",
+            f"const auto page = (s.pc - 0x{base:x}u) >> 12;",
+            "if (page >= leaf_pages.size() * 64 || !((leaf_pages[page / 64] >> (page % 64)) & 1)) return false;",
+            "switch (s.pc) {"]
+    for target in sorted(leaves):
+        body = leaves[target]
+        code.append(f"case 0x{target:x}: {{")
+        # Runs split where the page splits them: a watched instruction runs
+        # alone, so the PC is its own (HOST_OBSERVED_INSTRUCTIONS).
+        addresses = [target + 4 * n for n in range(len(body) + 1)]
+        starts = [n for n, address in enumerate(addresses)
+                  if n == 0 or address in HOST_OBSERVED_INSTRUCTIONS or address - 4 in HOST_OBSERVED_INSTRUCTIONS]
+        for start, end in zip(starts, starts[1:] + [len(addresses)]):
+            code.append(f"s.step(0x{addresses[start]:x});" + (f" s.charge({end - start - 1});" if end - start > 1 else ""))
+            code.extend(leaf_body(body[start:min(end, len(body))], userops))
+        code += ["s.pc = std::uint32_t(s.r<4>(4128));", "return true;", "}"]
+    code += ["default: return false;", "}", "}", "}"]
+    return "\n".join(code) + "\n"
+
+
 class Inlining:
     """Leaves to inline at direct call sites, and what generation saw: the
     inlined leaves and every address with a hook or special lowering."""
@@ -742,8 +802,10 @@ class Inlining:
         self.leaves, self.inlined, self.special = leaves, {}, set()
 
     def require_plain(self):
-        """Fails if an inlined instruction has a hook or special lowering."""
-        for target, addresses in self.inlined.items():
+        """Fails if a leaf (inlined, or run directly by run_leaf) has an
+        instruction with a hook or special lowering."""
+        for target, body in self.leaves.items():
+            addresses = range(target, target + 4 * len(body) + 4, 4)
             special = [address for address in addresses if address in self.special]
             if special:
                 raise ValueError(f"Inlined leaf {target:x} has a hook or special lowering at {special[0]:x}")
@@ -1585,15 +1647,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             # The bl's own effects (TOC save, link), then the leaf's body.
             for op in item["ops"][:2]:
                 code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
-            for record in leaves[target]:
-                body_ops = record["ops"]
-                local = LocalTemporaries.for_instruction(body_ops, read, write) if local_temporaries else None
-                code.append("{")
-                for i, op in enumerate(body_ops):
-                    code.append(operation(op, record["address"], i, transfer_page, selected, len(body_ops),
-                                          read_node=local.read if local else read,
-                                          write_node=local.write if local else write, userops=userops))
-                code.append("}")
+            code.extend(leaf_body(leaves[target], userops, local_temporaries))
             code.append(f"{'counter' if match_hot_page else 's'}.charge({len(leaves[target]) + 1}); // inlined leaf 0x{target:x}")
             code.append(transfer(a + item["size"], transfer_page, selected))
             inlining.inlined[target] = [r["address"] for r in leaves[target]] + [target + 4 * len(leaves[target])]
@@ -2138,6 +2192,7 @@ def main():
              "s.wr<4>(8, 0x108bba90);", f"s.wr<4>(4128, return_sentinel);", "}", "}"]
     outputs["program.cpp"] = "\n".join(code) + "\n"
     outputs["fused_sites.cpp"] = render_fused_sites(fused_sites)
+    outputs["leaves.cpp"] = render_leaves(inlining.leaves, metadata['userops'])
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
             native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops'],

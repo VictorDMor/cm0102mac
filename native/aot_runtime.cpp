@@ -157,6 +157,9 @@ std::vector<std::pair<std::uint32_t, std::uint64_t>> Memory::mapped_ranges() con
     return result;
 }
 void run_until(State& s, std::uint32_t return_pc) {
+    // A call into a leaf routine (getters and other short straight-line
+    // bodies) needs no dispatcher scope: it cannot call or transfer.
+    if (s.pc != return_pc && run_leaf(s) && s.pc == return_pc) return;
     GuestDispatchScope dispatch(s, return_pc);
     // Launch-time diagnostic policy, shared by nested dispatch and every State.
     // Semantic dependency calls can enter here millions of times per match;
