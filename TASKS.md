@@ -5,7 +5,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] **In-game check of the file fixes.** Save a career under a name containing "/" (e.g. "Cruzeiro 01/02"), quit, reopen, load it.
+- [ ] **In-game check of the file fixes.** (The game's save-name editor rejects "/", so in-game saves never hit the name mapping; only Finder renames do.) 1) Save a career under a new name, quit, reopen, load. 2) Save again over that same name (old save deleted, temp renamed: the flushed path), reload. 3) Optional: in Finder, duplicate a save in Runtime/Files/games and rename the copy "Copy 01/02"; it should appear in the Load list and load. Rename another copy "Wisła"; the other saves must still be listed.
 
 ## Now
 
