@@ -172,6 +172,10 @@ public:
         step(); state.wr<4>(2440, r(2)); state.wr<4>(4128, next); state.pc = target;
         if (dependencies) dependencies->call(state, target, next); else run_until(state, next);
     }
+    // A call whose effect the caller computed itself with an exact native
+    // replacement: charges the bl and sets the link register as the callee's
+    // return would, so later instructions keep their original addresses.
+    void computed_call() { step(); state.wr<4>(2440, r(2)); state.wr<4>(4128, next); }
     void transfer(std::uint32_t target) {
         const auto continuation = std::uint32_t(state.r<4>(4128));
         state.pc = target;

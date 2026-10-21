@@ -19,6 +19,38 @@ void grow_pair_index(Call& a,std::uint32_t pc,unsigned pointer,unsigned capacity
     a.at(pc+136);a.load(3,25,capacity);a.offset(0,3,100);a.store(25,capacity,0);
 }
 }
+// The two link indexes hold {staff, club} pairs: one ordered by staff, then
+// club (comparator 0x10366410), one by club, then staff (0x103663b0). The
+// original appends a pair and heapsorts the whole index. While every id in
+// the index is non-negative, both comparators are a strict lexicographic
+// order (no -1 wildcard, no wrapping subtraction), so the sorted order is
+// unique and moving the new pair to its place yields the heapsort's index.
+// Anything else (a negative id, a tie, an unsorted index) keeps the sort.
+bool insert_last_pair(State& s, std::uint32_t base, std::uint32_t count, bool club_first) {
+    if (count == 0) return false;
+    const auto key = [&](std::uint32_t index) {
+        const auto staff = std::int32_t(s.memory.read<4>(base + index * 8));
+        const auto club = std::int32_t(s.memory.read<4>(base + index * 8 + 4));
+        return club_first ? std::pair{club, staff} : std::pair{staff, club};
+    };
+    const auto last = count - 1;
+    const auto added = key(last);
+    if (added.first < 0 || added.second < 0) return false;
+    std::uint32_t place = last;
+    auto previous = std::pair{-1, -1};
+    for (std::uint32_t index = 0; index < last; ++index) {
+        const auto current = key(index);
+        if (current.first < 0 || current.second < 0 || !(previous < current) || current == added) return false;
+        if (place == last && added < current) place = index;
+        previous = current;
+    }
+    if (place == last) return true;
+    const auto moved = s.memory.copy_out(base + place * 8, std::size_t(last - place) * 8);
+    const auto pair = s.memory.copy_out(base + last * 8, 8);
+    s.memory.copy_in(base + place * 8 + 8, moved);
+    s.memory.copy_in(base + place * 8, pair);
+    return true;
+}
 void add_staff_club_link(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o) {
     Call a(s,add_staff_club_link_entry,d,o);a.link();a.multiple(25);a.load(28,2,-0x62a8);a.move(25,3);a.load(29,2,-0x7bac);a.move(26,4);a.load(30,2,-0x7ba8);a.move(27,5);a.load(31,2,-0x4dd8);a.save_link();a.frame(0x100);
     ensure_pair_index(a,0x1036331c,0,8,0xc0,0x58,0x157f,true);ensure_pair_index(a,0x103633a0,4,12,0xa0,0x50,0x1588,false);
@@ -34,9 +66,9 @@ void add_staff_club_link(State& s,SemanticDependencyDispatch* d,SemanticGuestObs
     if(a.equal()){
         grow_pair_index(a,0x10363490,0,8,0x10,0x80,0x48,0x15a0);grow_pair_index(a,0x10363524,4,12,0x14,0x60,0x40,0x15a9);
         a.at(0x103635b8);a.load(0,25,0x10);a.move(6,28);a.load(4,26,0);a.value(5,8);a.load(3,25,0);a.mask(0,0,0xfffffff8,false,3);a.indexed_store(4,3,0);
-        a.load(0,25,0x10);a.load(3,25,0);a.mask(0,0,0xfffffff8,false,3);a.load(4,27,0);a.add(3,3,0);a.store(3,4,4);a.load(3,25,0x10);a.offset(0,3,1);a.store(25,0x10,0);a.load(3,25,0);a.load(4,25,0x10);a.call(0x10768300);
+        a.load(0,25,0x10);a.load(3,25,0);a.mask(0,0,0xfffffff8,false,3);a.load(4,27,0);a.add(3,3,0);a.store(3,4,4);a.load(3,25,0x10);a.offset(0,3,1);a.store(25,0x10,0);a.load(3,25,0);a.load(4,25,0x10);if(insert_last_pair(s,a.r(3),a.r(4),false))a.computed_call();else a.call(0x10768300);
         a.load(0,25,0x14);a.value(5,8);a.load(4,26,0);a.load(3,25,4);a.mask(0,0,0xfffffff8,false,3);a.load(6,2,-0x6298);a.indexed_store(4,3,0);
-        a.load(0,25,0x14);a.load(3,25,4);a.mask(0,0,0xfffffff8,false,3);a.load(4,27,0);a.add(3,3,0);a.store(3,4,4);a.load(3,25,0x14);a.offset(0,3,1);a.store(25,0x14,0);a.load(3,25,4);a.load(4,25,0x14);a.call(0x10768300);
+        a.load(0,25,0x14);a.load(3,25,4);a.mask(0,0,0xfffffff8,false,3);a.load(4,27,0);a.add(3,3,0);a.store(3,4,4);a.load(3,25,0x14);a.offset(0,3,1);a.store(25,0x14,0);a.load(3,25,4);a.load(4,25,0x14);if(insert_last_pair(s,a.r(3),a.r(4),true))a.computed_call();else a.call(0x10768300);
         a.move(3,27);a.value(4,0);a.value(5,1);a.value(6,0);a.value(7,0);a.call(0x1014c2e0);a.sign8(0,3,true);
         if(a.equal()){a.load(0,26,0);a.load(4,2,-0x7b9c);a.multiply(3,0,100);a.load(5,4,0);a.offset(6,3,12);a.indexed_load<1>(4,5,6);a.mask(3,4,15,false,28);a.offset(0,3,1);a.insert_mask(4,0,0xf0,4);a.indexed_store<1>(4,5,6);}
     }

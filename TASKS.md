@@ -14,7 +14,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Plumbing (2026-10-21): scope chains per State (3.6%), inline PC-profile flag (1.5%). With byte-swap: **13.9% / 13.5% faster** match intervals than before today's speed work.
 - [ ] Next plumbing: per-call diagnostics accessors (`spatial_role_diagnostics` ~2%), what dominates `spatial_role::invoke` (~12%), owner→generated calls re-entering `run_until` (track 2 removes these).
 - [x] World replays work again (2026-10-21): `cm-world-replay` runs pure imports (pow, BlockMoveData, NewPtr…) live and replays OS imports from the transcript; the import check compares only registers the import reads or its caller keeps. Interest pass ×4, daily transition, attribute world, database and daily sort reach their recorded end states and are ctest checks (`world_replay_*`). `background-fixture` is invalid since single rounding: its match now calls an OS import the capture never recorded (match play is covered by the 677/2262 intervals).
-- [ ] Profile world processing and pick the first rewrite block (in progress).
+- [x] Profiled world processing (guest profiler, 2026-10-21); see Profile notes. The time is spread thin and dominated by mechanism: per-instruction accounting, dispatcher round trips, builder methods, slow global bounds checks.
+- [x] Add-link keeps its link indexes sorted by insertion instead of append + full heapsort, when that provably equals the sort (see commit).
+- [ ] **Block accounting** in generated pages: one step per straight-line run instead of per instruction. Upper bound measured by removing accounting: 16–29% faster on every world capture. Generator change written (`account_blocks`), needs regenerate + full rebuild + paired timing on world and match.
+- [ ] Fast bounds table: bridge the 12-byte loader padding between code, data and imports, so TOC/global accesses (the whole 0x108b page) stop taking `Memory::check`'s slow path (4.4% of the interest pass).
+- [ ] Direct cross-page calls from generated code (skip two dispatcher round trips per call); page frames are 48–96 bytes, so nesting is cheap.
+- [ ] FPSCR: the only reader is `setjmp` (0x10773ecc), which stores it into the jmp_buf; status bits are never used for a decision. Find a way to stop computing them that keeps jmp_buf memory identical.
 
 ## Next: rewrite track
 
@@ -22,7 +27,7 @@ The end goal is every routine in C++ (see CLAUDE.md). Start where speed and rewr
 
 - [ ] Recruitment distribution and staff-link callees behind the 8-minute Continue: rewrite the hot generated callees (`0x1035e9f0` candidate scan, `0x101b1620` list search, `0x1014c2e0`) as real C++ called directly from their rewritten parents.
 - [ ] Sorted insertion in add-link instead of append + full heapsort (`native/shortlist_links_storage.cpp`), now allowed: ~17–22 s per weekly Continue.
-- [ ] Rebuild a runnable reference test set: only 40 of 288 tests run here.
+- [ ] Rebuild a runnable reference test set: only 63 of 298 tests run here. The old component tests (e.g. `shortlist_links_component_equivalence`, not built here) require identical dependency calls, instruction counts and budget cuts — the rule replaced on 2026-10-20 — so they fail on add-link's skipped sort and will fail on block accounting. Rework them to compare what the game observes (as `cm-world-replay` and `cm-shortlist-links-insert-checks` do).
 
 ## Next: speed
 
