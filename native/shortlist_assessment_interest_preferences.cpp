@@ -190,16 +190,16 @@ void adjust_interest_contract_preferences(Call& a) {
                 }
                 a.at(0x1036a7a8);a.sign16(0,0,false);a.value(4,0x43300000);a.exclusive_flags(0,0,0x80000000);
                 a.store<4>(1,0x11c,4);a.floating_load(5,16,0x8,false);a.store<4>(1,0x120,0);a.floating_load(0,1,0x11c,false);
-                a.floating_subtract(0,0,5,false);a.floating_product(0,4,0);a.floating_product_sum(0,2,1,0,false);a.floating_product_sum(0,4,3,0,false);
+                a.floating_subtract(0,0,5,false);a.floating_product(0,4,0);a.floating_product_sum(0,2,1,0);a.floating_product_sum(0,4,3,0);
                 a.floating_integer(0,0);a.floating_store(0,1,0x124);a.load<4>(0,1,0x128,false);a.sign16(0,0,false);
                 a.compare(0,0x1388,true);
                 if(a.at_least()) {
                     a.at(0x1036a860);a.exclusive_flags(3,0,0x80000000);a.sign16(0,31,false);a.store<4>(1,0x110,3);
                     a.exclusive_flags(0,0,0x80000000);a.floating_load(4,16,0x338,false);a.store<4>(1,0x10c,4);a.floating_load(2,16,0x68,false);
                     a.floating_load(0,1,0x10c,false);a.store<4>(1,0x118,0);a.floating_subtract(3,0,5,false);a.floating_load(1,16,0x330,false);
-                    a.store<4>(1,0x114,4);a.floating_load(0,1,0x114,false);a.floating_product_sum(3,4,3,2,false);a.store<4>(1,0x120,0);
+                    a.store<4>(1,0x114,4);a.floating_load(0,1,0x114,false);a.floating_product_sum(3,4,3,2);a.store<4>(1,0x120,0);
                     a.floating_subtract(2,0,5,false);a.store<4>(1,0x11c,4);a.floating_load(0,1,0x11c,false);a.floating_product(2,2,3);
-                    a.floating_subtract(0,0,5,false);a.floating_product_sum(0,1,3,0,false);a.floating_compare(2,0);
+                    a.floating_subtract(0,0,5,false);a.floating_product_sum(0,1,3,0);a.floating_compare(2,0);
                     if(a.at_least()) {
                         a.at(0x1036a8c0);a.floating_move(2,0);
                     } else {
@@ -284,7 +284,7 @@ void adjust_interest_contract_preferences(Call& a) {
     a.store<4>(1,0x110,0);a.floating_subtract(3,1,6,false);a.floating_load(4,16,0x418,false);a.floating_sum_single(0,2,28);
     a.store<4>(1,0x10c,4);a.floating_product(3,4,3);a.floating_load(7,16,0x1b8,false);a.floating_load(5,1,0x10c,false);
     a.floating_sum_single(1,29,0);a.floating_load(0,16,0x158,false);a.floating_subtract(4,5,6,false);a.floating_sum_single(1,30,1);
-    a.floating_product_sum(3,7,4,3,false);a.floating_sum_single(26,2,1);a.floating_integer(1,3);a.floating_compare(26,0);
+    a.floating_product_sum(3,7,4,3);a.floating_sum_single(26,2,1);a.floating_integer(1,3);a.floating_compare(26,0);
     a.floating_store(1,1,0x11c);a.load<4>(3,1,0x120,false);a.compare_less_or_equal_bit();
     if(a.equal()) {
         a.at(0x1036aa84);a.load<4>(4,2,-0x4de8,false);a.floating_load(26,4,0x4,true);
@@ -296,10 +296,10 @@ void adjust_interest_contract_preferences(Call& a) {
     a.exclusive_flags(6,4,0x80000000);a.load<4>(4,2,-0x4de8,false);a.store<4>(1,0xf4,0);a.exclusive_flags(5,3,0x80000000);
     a.floating_product_single(0,28,0);a.floating_load(1,1,0xf4,false);a.store<4>(1,0x100,6);a.floating_subtract(1,1,3,true);
     a.floating_load(4,4,0xc,true);a.store<4>(1,0xfc,0);a.load<1>(3,18,0x23d,false);a.floating_load(2,1,0xfc,false);
-    a.floating_product_sum(0,4,1,0,true);a.store<4>(1,0x108,7);a.compare(3,0x1,true);a.floating_subtract(1,2,3,true);
-    a.store<4>(1,0x104,0);a.floating_load(2,1,0x104,false);a.floating_product_sum(0,29,1,0,true);a.store<4>(1,0x128,5);
-    a.floating_subtract(1,2,3,true);a.store<4>(1,0x124,0);a.floating_load(2,1,0x124,false);a.floating_product_sum(0,30,1,0,true);
-    a.floating_subtract(1,2,3,true);a.floating_product_sum(0,4,1,0,true);a.floating_difference(0,0,26,true,true);a.floating_integer(0,0);
+    a.floating_product_sum(0,4,1,0);a.store<4>(1,0x108,7);a.compare(3,0x1,true);a.floating_subtract(1,2,3,true);
+    a.store<4>(1,0x104,0);a.floating_load(2,1,0x104,false);a.floating_product_sum(0,29,1,0);a.store<4>(1,0x128,5);
+    a.floating_subtract(1,2,3,true);a.store<4>(1,0x124,0);a.floating_load(2,1,0x124,false);a.floating_product_sum(0,30,1,0);
+    a.floating_subtract(1,2,3,true);a.floating_product_sum(0,4,1,0);a.floating_difference(0,0,26,true,true);a.floating_integer(0,0);
     a.floating_store(0,1,0xe4);a.load<4>(31,1,0xe8,false);
     if(!a.equal()) {
         a.at(0x1036ab44);a.compare(27,0x0,false);
@@ -595,7 +595,7 @@ void adjust_interest_contract_preferences(Call& a) {
                                     } else {
                                         a.at(0x1036af6c);a.floating_load(1,4,0x0,false);a.floating_load(0,3,0x0,false);a.floating_load(2,4,0x8,false);
                                         a.floating_subtract(3,1,0,false);a.floating_load(0,3,0x8,false);a.floating_subtract(1,2,0,false);a.floating_product(0,3,3);
-                                        a.floating_product_sum(1,1,1,0,false);a.call(0x10780fd8);a.load<4>(2,1,0x14,false);a.floating_load(2,16,0x420,false);
+                                        a.floating_product_sum(1,1,1,0);a.call(0x10780fd8);a.load<4>(2,1,0x14,false);a.floating_load(2,16,0x420,false);
                                         a.floating_load(0,16,0x98,false);a.floating_product(2,2,1);a.floating_compare(2,0);
                                         if(a.at_least()) {
                                             a.at(0x1036afc8);a.floating_load(0,16,0x88,false);a.floating_compare(2,0);
@@ -833,7 +833,7 @@ void adjust_interest_contract_preferences(Call& a) {
                                         } else {
                                             a.at(0x1036af6c);a.floating_load(1,4,0x0,false);a.floating_load(0,3,0x0,false);a.floating_load(2,4,0x8,false);
                                             a.floating_subtract(3,1,0,false);a.floating_load(0,3,0x8,false);a.floating_subtract(1,2,0,false);a.floating_product(0,3,3);
-                                            a.floating_product_sum(1,1,1,0,false);a.call(0x10780fd8);a.load<4>(2,1,0x14,false);a.floating_load(2,16,0x420,false);
+                                            a.floating_product_sum(1,1,1,0);a.call(0x10780fd8);a.load<4>(2,1,0x14,false);a.floating_load(2,16,0x420,false);
                                             a.floating_load(0,16,0x98,false);a.floating_product(2,2,1);a.floating_compare(2,0);
                                             if(a.at_least()) {
                                                 a.at(0x1036afc8);a.floating_load(0,16,0x88,false);a.floating_compare(2,0);
@@ -950,7 +950,7 @@ void adjust_interest_contract_preferences(Call& a) {
                                     } else {
                                         a.at(0x1036ae54);a.floating_load(1,4,0x0,false);a.floating_load(0,3,0x0,false);a.floating_load(2,4,0x8,false);
                                         a.floating_subtract(1,1,0,false);a.floating_load(0,3,0x8,false);a.floating_subtract(2,2,0,false);a.floating_product(0,1,1);
-                                        a.floating_product_sum(1,2,2,0,false);a.call(0x10780fd8);a.load<4>(2,1,0x14,false);a.floating_load(2,16,0x420,false);
+                                        a.floating_product_sum(1,2,2,0);a.call(0x10780fd8);a.load<4>(2,1,0x14,false);a.floating_load(2,16,0x420,false);
                                         a.floating_load(0,16,0x98,false);a.floating_product(2,2,1);a.floating_compare(2,0);
                                         if(a.at_least()) {
                                             a.at(0x1036aeb0);a.floating_load(0,16,0x88,false);a.floating_compare(2,0);
@@ -1523,16 +1523,16 @@ void calculate_interest_financial_context(Call& a) {
                     }
                     a.at(0x1036be64);a.sign16(0,0,false);a.value(4,0x43300000);a.exclusive_flags(0,0,0x80000000);
                     a.store<4>(1,0xf4,4);a.floating_load(5,16,0x8,false);a.store<4>(1,0xf8,0);a.floating_load(0,1,0xf4,false);
-                    a.floating_subtract(0,0,5,false);a.floating_product(0,4,0);a.floating_product_sum(0,2,1,0,false);a.floating_product_sum(0,4,3,0,false);
+                    a.floating_subtract(0,0,5,false);a.floating_product(0,4,0);a.floating_product_sum(0,2,1,0);a.floating_product_sum(0,4,3,0);
                     a.floating_integer(0,0);a.floating_store(0,1,0xfc);a.load<4>(0,1,0x100,false);a.sign16(0,0,false);
                     a.compare(0,0x1388,true);
                     if(a.at_least()) {
                         a.at(0x1036bf18);a.exclusive_flags(3,0,0x80000000);a.exclusive_flags(0,13,0x80000000);a.store<4>(1,0xe8,3);
                         a.floating_load(4,16,0x338,false);a.store<4>(1,0xe4,4);a.floating_load(2,16,0x68,false);a.floating_load(0,1,0xe4,false);
                         a.store<4>(1,0xf0,0);a.floating_subtract(3,0,5,false);a.floating_load(1,16,0x330,false);a.store<4>(1,0xec,4);
-                        a.floating_load(0,1,0xec,false);a.floating_product_sum(3,4,3,2,false);a.store<4>(1,0xf8,0);a.floating_subtract(2,0,5,false);
+                        a.floating_load(0,1,0xec,false);a.floating_product_sum(3,4,3,2);a.store<4>(1,0xf8,0);a.floating_subtract(2,0,5,false);
                         a.store<4>(1,0xf4,4);a.floating_load(0,1,0xf4,false);a.floating_product(2,2,3);a.floating_subtract(0,0,5,false);
-                        a.floating_product_sum(0,1,3,0,false);a.floating_compare(2,0);
+                        a.floating_product_sum(0,1,3,0);a.floating_compare(2,0);
                         if(a.at_least()) {
                             a.at(0x1036bf74);a.floating_move(2,0);
                         } else {
@@ -1638,15 +1638,15 @@ void calculate_interest_financial_context(Call& a) {
         a.exclusive_flags(4,3,0x80000000);a.floating_load(0,1,0xec,false);a.store<4>(1,0xe8,6);a.floating_subtract(0,0,4,false);
         a.floating_load(1,16,0x418,false);a.store<4>(1,0xe4,0);a.load<2>(3,1,0x12e,true);a.floating_load(2,1,0xe4,false);
         a.floating_product(0,1,0);a.floating_load(5,16,0x1b8,false);a.exclusive_flags(6,3,0x80000000);a.floating_subtract(1,2,4,false);
-        a.store<4>(1,0x120,4);a.load<2>(3,1,0x12c,true);a.floating_product_sum(1,5,1,0,false);a.store<4>(1,0x11c,0);
+        a.store<4>(1,0x120,4);a.load<2>(3,1,0x12c,true);a.floating_product_sum(1,5,1,0);a.store<4>(1,0x11c,0);
         a.exclusive_flags(7,3,0x80000000);a.sign8(3,19,true);a.floating_load(0,1,0x11c,false);a.load<4>(3,2,-0x4de8,false);
         a.floating_subtract(0,0,4,true);a.store<4>(1,0x118,5);a.floating_integer(2,1);a.floating_load(3,3,0xc,true);
         a.store<4>(1,0x114,0);a.floating_product_single(0,28,0);a.floating_load(1,1,0x114,false);a.floating_store(2,1,0xf4);
         a.floating_subtract(1,1,4,true);a.load<4>(3,1,0xf8,false);a.store<4>(1,0x110,6);a.sign16(3,3,false);
-        a.floating_product_sum(0,3,1,0,true);a.store<4>(1,0x10c,0);a.exclusive_flags(3,3,0x80000000);a.floating_load(1,1,0x10c,false);
+        a.floating_product_sum(0,3,1,0);a.store<4>(1,0x10c,0);a.exclusive_flags(3,3,0x80000000);a.floating_load(1,1,0x10c,false);
         a.store<4>(1,0x108,7);a.floating_subtract(1,1,4,true);a.store<4>(1,0x104,0);a.floating_load(2,1,0x104,false);
-        a.floating_product_sum(0,29,1,0,true);a.store<4>(1,0x100,3);a.floating_subtract(1,2,4,true);a.store<4>(1,0xfc,0);
-        a.floating_load(2,1,0xfc,false);a.floating_product_sum(0,30,1,0,true);a.floating_subtract(1,2,4,true);a.floating_product_sum(0,3,1,0,true);
+        a.floating_product_sum(0,29,1,0);a.store<4>(1,0x100,3);a.floating_subtract(1,2,4,true);a.store<4>(1,0xfc,0);
+        a.floating_load(2,1,0xfc,false);a.floating_product_sum(0,30,1,0);a.floating_subtract(1,2,4,true);a.floating_product_sum(0,3,1,0);
         a.floating_difference(0,0,26,true,true);a.floating_integer(0,0);a.floating_store(0,1,0x124);a.load<4>(15,1,0x128,false);
         if(a.equal()) {
             a.at(0x1036c1f0);a.move(3,17);a.value(4,0x0);a.call(0x100d3040);
@@ -2257,7 +2257,7 @@ void calculate_interest_financial_context(Call& a) {
             a.at(0x1036d114);a.floating_move(0,26);
         }
         a.at(0x1036d118);a.floating_load(2,16,0x238,false);a.floating_product(0,28,0);a.floating_subtract(1,2,28,false);
-        a.floating_product_sum(0,1,27,0,false);a.floating_difference(27,0,2,true,false);a.floating_round_single(27,27);
+        a.floating_product_sum(0,1,27,0);a.floating_difference(27,0,2,true,false);a.floating_round_single(27,27);
     }
     a.at(0x1036d130);a.floating_load(0,16,0x3a8,false);a.floating_compare(31,0);
     if(!a.at_least()) {
@@ -2302,7 +2302,7 @@ void calculate_interest_financial_context(Call& a) {
         }
         a.at(0x1036d1e8);a.floating_load(0,16,0x80,false);a.floating_compare(2,0);a.compare_greater_or_equal_bit();
         if(!a.equal()) {
-            a.at(0x1036d200);a.floating_load(1,16,0x238,false);a.floating_subtract(0,1,28,false);a.floating_product_sum(0,2,0,28,false);
+            a.at(0x1036d200);a.floating_load(1,16,0x238,false);a.floating_subtract(0,1,28,false);a.floating_product_sum(0,2,0,28);
             a.floating_difference(0,0,1,true,false);a.floating_difference(0,0,29,true,false);a.floating_product(31,31,0);
         } else {
             a.at(0x1036d1f8);a.floating_product(31,31,2);a.jump(0x1036d218);

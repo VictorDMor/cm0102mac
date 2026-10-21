@@ -15,9 +15,9 @@ void sample_description_byte(Call& a,bool second) {
 }
 void adjust_fitness_weight(Call& a,bool second) {
     const auto start=second?0x101f56a4:0x101f54e0,weight=second?0x44:0x40;const unsigned player=second?26:27,divisor=second?28:29;
-    a.at(start);a.floating_load(2,player,0x50,true);a.floating_load(1,28,0x54,true);a.floating_load(0,28,0xc8,true);a.floating_product_sum(1,2,1,0,true);
+    a.at(start);a.floating_load(2,player,0x50,true);a.floating_load(1,28,0x54,true);a.floating_load(0,28,0xc8,true);a.floating_product_sum(1,2,1,0);
     a.floating_load(0,28,0xdc,true);a.floating_compare(1,0);
-    if(!a.nonpositive()){a.floating_load(2,player,0x50,true);a.floating_load(1,28,0x54,true);a.floating_load(0,28,0xc8,true);a.floating_product_sum(divisor,2,1,0,true);a.jump(start+0x34);}
+    if(!a.nonpositive()){a.floating_load(2,player,0x50,true);a.floating_load(1,28,0x54,true);a.floating_load(0,28,0xc8,true);a.floating_product_sum(divisor,2,1,0);a.jump(start+0x34);}
     else {a.at(start+0x30);a.floating_load(divisor,28,0xdc,true);}
     a.at(start+0x34);a.floating_load(1,1,weight,true);a.floating_load(0,28,0xcc,true);a.floating_difference(0,0,divisor,true,true);
     a.floating_product_single(0,1,0);a.floating_store_single(0,1,weight);

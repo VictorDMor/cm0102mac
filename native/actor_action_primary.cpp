@@ -526,7 +526,7 @@ bool score_cell_pressure(Call& a,[[maybe_unused]] State& state) {
             a.at(0x1027f57c); a.load<1>(3,15,0x17); a.value(0,0x43300000); a.store(1,0xa4,0); a.sign8(0,3);
             a.floating_load(1,26,128); a.multiply(0,0,0x64); a.floating_load(3,31,244,true);
             a.floating_load(2,15,152,true); a.exclusive_flags(0,0,0x80000000); a.store(1,0xa8,0);
-            a.floating_load(0,1,164); a.floating_subtract(0,0,1,true); a.floating_product_sum(0,3,2,0,true);
+            a.floating_load(0,1,164); a.floating_subtract(0,0,1,true); a.floating_product_sum(0,3,2,0);
             a.floating_integer(0,0); a.floating_store(0,1,172); a.load(14,1,0xb0); a.compare(14,0);
             if (!a.equal()) {
                 a.at(0x1027f5cc); a.load(3,30,0x0); a.load(0,29,0x0); a.offset(3,3,0x2);
@@ -3218,7 +3218,7 @@ void primary_phase_340(Call& a,[[maybe_unused]] State& state) {
     a.at(0x1027e64c); a.floating_load(4,31,148,true); a.floating_product_single(1,30,30);
     a.floating_load(3,15,160,true); a.sign8(3,18); a.floating_load(2,31,168,true); a.load<1>(0,1,0xfe);
     a.floating_load(0,26,16);
-    a.floating_product_difference(2,4,3,2); { const auto rounded=-double(float(float_value<8>(state.r<8>(16416)))); state.wr<8>(16416,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(2,4,3,2);
     a.sign8(0,0); a.subtract(4,3,0); a.floating_compare(31,0); a.floating_product_single(0,2,1);
     a.load<1>(0,1,0xfe); a.sign8(3,18); a.sign8(0,0); a.subtract(0,3,0); a.floating_integer(0,0);
     a.multiply(0,0,0x64); a.floating_store(0,1,164); a.subtract(20,0,20); a.load(0,1,0xa8); a.multiply(3,4,0x64);
@@ -3654,7 +3654,7 @@ void primary_phase_312(Call& a,[[maybe_unused]] State& state) {
     a.exclusive_flags(4,4,0x80000000); a.store(1,0xa8,5); a.floating_load(0,15,152,true); a.compare(0,2);
     a.store(1,0xb0,4); a.floating_load(3,26,128); a.floating_product_single(4,1,0); a.store(1,0xac,3);
     a.floating_load(2,1,164); a.floating_load(1,26,128); a.floating_load(0,1,172); a.floating_subtract(2,2,3,true);
-    a.floating_subtract(0,0,1,true); a.floating_product_sum(0,4,2,0,true); a.floating_integer(0,0);
+    a.floating_subtract(0,0,1,true); a.floating_product_sum(0,4,2,0); a.floating_integer(0,0);
     a.floating_store(0,1,180); a.load(0,1,0xb8); a.add(19,19,0);
     if (a.less()) {
         a.at(0x1027e020);
@@ -3890,7 +3890,7 @@ void primary_phase_299(Call& a,[[maybe_unused]] State& state) {
         a.floating_load(1,26,128); a.exclusive_flags(0,0,0x80000000); a.floating_load(4,31,132,true);
         a.store(1,0xa8,0); a.floating_load(3,31,240,true); a.floating_load(0,1,164);
         a.floating_load(2,15,156,true);
-        a.floating_product_difference(3,4,31,3); { const auto rounded=-double(float(float_value<8>(state.r<8>(16432)))); state.wr<8>(16432,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_negative_product_difference(3,4,31,3);
         a.floating_subtract(0,0,1,true); a.floating_sum_single(0,2,0); a.floating_product_single(0,3,0);
         a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.add(21,21,0); a.jump(0x1027e3ac);
     }
@@ -4282,7 +4282,7 @@ void primary_phase_273(Call& a,[[maybe_unused]] State& state) {
         a.floating_load(1,26,128); a.multiply(0,0,0x4b); a.floating_load(2,31,56,true);
         a.exclusive_flags(0,0,0x80000000); a.store(1,0xa8,0); a.floating_load(0,1,164);
         a.floating_subtract(0,0,1,true);
-        a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_product_difference(0,2,31,0);
         a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.subtract(21,0,21);
     }
     a.at(0x1027d610);
@@ -4338,7 +4338,7 @@ void primary_phase_268(Call& a,[[maybe_unused]] State& state) {
         a.floating_load(1,26,128); a.exclusive_flags(0,0,0x80000000); a.floating_load(2,15,156,true);
         a.store(1,0xa8,0); a.floating_load(4,31,132,true); a.floating_load(0,1,164);
         a.floating_load(3,31,240,true); a.floating_subtract(1,0,1,true); a.floating_load(0,15,228,true);
-        a.floating_product_difference(3,4,31,3); { const auto rounded=-double(float(float_value<8>(state.r<8>(16432)))); state.wr<8>(16432,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_negative_product_difference(3,4,31,3);
         a.floating_sum_single(1,2,1); a.floating_subtract(0,1,0,true); a.floating_product_single(0,3,0);
         a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.add(21,21,0); a.jump(0x1027d610);
         primary_phase_274(a,state);
@@ -4776,7 +4776,7 @@ void primary_phase_245(Call& a,[[maybe_unused]] State& state) {
             a.floating_load(2,26,128); a.exclusive_flags(0,0,0x80000000); a.floating_load(3,15,152,true);
             a.store(1,0xa8,0); a.floating_load(4,31,92,true); a.floating_load(1,1,164);
             a.floating_load(0,31,248,true); a.floating_subtract(1,1,2,true); a.floating_sum_single(1,3,1);
-            a.floating_product_difference(0,4,1,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_product_difference(0,4,1,0);
             a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.add(19,19,0);
             a.jump(0x1027ca84);
             primary_phase_247(a,state);
@@ -5287,7 +5287,7 @@ void primary_phase_207(Call& a,[[maybe_unused]] State& state) {
 }
 void primary_phase_206(Call& a,[[maybe_unused]] State& state) {
     a.at(0x1027c500); a.floating_load(1,31,352,true); a.floating_load(0,31,348,true);
-    a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(0,1,29,0);
     a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.subtract(20,0,20);
     primary_phase_207(a,state);
 }
@@ -5695,11 +5695,11 @@ void primary_phase_178(Call& a,[[maybe_unused]] State& state) {
 void primary_phase_177(Call& a,[[maybe_unused]] State& state) {
     a.at(0x1027c018); a.floating_load(1,31,220,true); a.sign8(0,16); a.floating_load(0,31,220,true);
     a.compare(0,4); a.offset(20,20,-0x1388);
-    a.floating_product_difference(0,1,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,1,31,0);
     a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.add(19,19,0);
     if (a.equal()) {
         a.at(0x1027c044); a.floating_load(1,31,216,true); a.floating_load(0,31,220,true);
-        a.floating_product_difference(0,1,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_product_difference(0,1,31,0);
         a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.add(19,19,0);
     }
     a.at(0x1027c060);
@@ -5826,14 +5826,14 @@ void primary_phase_170(Call& a,[[maybe_unused]] State& state) {
 void primary_phase_169(Call& a,[[maybe_unused]] State& state) {
     a.at(0x1027bc58); a.floating_load(1,31,176,true); a.value(4,0x43300000); a.floating_load(0,31,332,true);
     a.value(6,0x80010000); a.load(7,30,0x0); a.value(0,0x43300000);
-    a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(0,1,29,0);
     a.store(1,0xac,4); a.value(5,0x10000); a.value(3,0x80010000); a.load<2>(7,7,0x0); a.offset(6,6,-0x7fff);
     a.floating_integer(0,0); a.load(4,27,0x0); a.floating_load(4,26,128); a.offset(5,5,-0x1); a.add(7,7,4);
     a.floating_load(2,26,0); a.floating_store(0,1,164); a.multiply_high(6,6,7); a.floating_load(1,31,176,true);
     a.offset(3,3,-0x7fff); a.load(4,1,0xa8); a.store(1,0xb4,0); a.exclusive_flags(4,4,0x80000000);
     a.store(1,0xb0,4); a.add(0,6,7); a.shift_right(0,0,0xf); a.floating_load(0,31,332,true);
     a.floating_load(3,1,172); a.mask(4,0,0x1,false,1);
-    a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(0,1,29,0);
     a.add(0,0,4); a.floating_subtract(3,3,4); a.product(0,0,5); a.floating_load(1,26,128); a.floating_integer(0,0);
     a.floating_difference(2,3,2,true); a.subtract(13,0,7); a.floating_store(0,1,196);
     a.exclusive_flags(4,13,0x80000000); a.store(1,0xb8,4); a.load(0,1,0xc8); a.floating_load(0,1,180);
@@ -5841,13 +5841,13 @@ void primary_phase_169(Call& a,[[maybe_unused]] State& state) {
     a.add(0,3,0); a.floating_integer(0,0); a.shift_right(0,0,0xf); a.mask(3,0,0x1,false,1); a.add(3,0,3);
     a.floating_store(0,1,188); a.load(13,1,0xc0); a.call(0x10226520); a.floating_load(1,31,176,true);
     a.value(4,0x66660000); a.floating_load(0,31,332,true); a.offset(0,3,0x5); a.offset(4,4,0x6667);
-    a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(0,1,29,0);
     a.multiply_high(0,4,0); a.floating_integer(0,0); a.shift_right(0,0,0x2); a.floating_store(0,1,204);
     a.mask(4,0,0x1,false,1); a.add(0,0,4); a.load(3,1,0xd0); a.add(13,13,0); a.offset(0,3,-0x1);
     a.compare_registers(13,0);
     if (a.positive()) {
         a.at(0x1027bd7c); a.floating_load(1,31,176,true); a.floating_load(0,31,332,true);
-        a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_negative_product_difference(0,1,29,0);
         a.floating_integer(0,0); a.floating_store(0,1,212); a.load(3,1,0xd8); a.offset(13,3,-0x1);
         a.jump(0x1027bdfc);
     }
@@ -5857,7 +5857,7 @@ void primary_phase_169(Call& a,[[maybe_unused]] State& state) {
 void primary_phase_168(Call& a,[[maybe_unused]] State& state) {
     a.at(0x1027bc08); a.floating_load(1,31,176,true); a.value(3,0x10000); a.floating_load(0,31,332,true);
     a.offset(3,3,-0x1);
-    a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(0,1,29,0);
     a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.compare_registers(0,3);
     if (a.positive()) {
         a.at(0x1027bc58);
@@ -5865,14 +5865,14 @@ void primary_phase_168(Call& a,[[maybe_unused]] State& state) {
     } else {
         a.at(0x1027bc30); a.floating_load(1,31,176,true); a.value(3,0xffff0000); a.floating_load(0,31,332,true);
         a.offset(3,3,0x1);
-        a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_negative_product_difference(0,1,29,0);
         a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.compare_registers(0,3);
         if (a.at_least()) {
             a.at(0x1027bd9c); a.floating_load(1,31,176,true); a.floating_load(0,31,332,true); a.load(3,30,0x0);
-            a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_negative_product_difference(0,1,29,0);
             a.load(0,27,0x0); a.load<2>(3,3,0x0); a.floating_load(1,31,176,true); a.floating_integer(2,0);
             a.floating_load(0,31,332,true); a.add(5,3,0);
-            a.floating_product_difference(0,1,29,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_negative_product_difference(0,1,29,0);
             a.floating_store(2,1,164); a.load(4,1,0xa8); a.floating_integer(0,0); a.divide(3,5,4);
             a.floating_store(0,1,172); a.load(0,1,0xb0); a.compare(0,0); a.product(0,3,4); a.subtract(13,0,5);
             a.negate(0,13);
@@ -5889,7 +5889,7 @@ void primary_phase_168(Call& a,[[maybe_unused]] State& state) {
 }
 void primary_phase_167(Call& a,[[maybe_unused]] State& state) {
     a.at(0x1027bbc0); a.floating_load(2,31,176,true); a.floating_load(1,31,332,true); a.floating_load(0,31,0,true);
-    a.floating_product_difference(1,2,29,1); { const auto rounded=-double(float(float_value<8>(state.r<8>(16400)))); state.wr<8>(16400,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(1,2,29,1);
     a.floating_compare(1,0);
     if (!a.equal()) {
         a.at(0x1027bbe0); a.load(3,30,0x0); a.load(0,29,0x0); a.offset(3,3,0x2); a.compare_registers(3,0,false);
@@ -6110,7 +6110,7 @@ void primary_phase_155(Call& a,[[maybe_unused]] State& state) {
     if (a.positive()) {
         a.at(0x1027b944); a.floating_load(2,31,128,true); a.floating_load(1,15,152,true);
         a.floating_load(0,31,176,true);
-        a.floating_product_difference(0,2,1,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_negative_product_difference(0,2,1,0);
         a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.add(21,21,0);
     }
     a.at(0x1027b964);
@@ -6186,7 +6186,7 @@ void primary_phase_151(Call& a,[[maybe_unused]] State& state) {
             a.floating_load(2,26,128); a.exclusive_flags(0,0,0x80000000); a.floating_load(3,15,152,true);
             a.store(1,0xa8,0); a.floating_load(4,31,28,true); a.floating_load(1,1,164);
             a.floating_load(0,31,332,true); a.floating_subtract(1,1,2,true); a.floating_sum_single(1,3,1);
-            a.floating_product_difference(0,4,1,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_product_difference(0,4,1,0);
             a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.add(19,19,0);
             a.jump(0x1027b964);
         }
@@ -6200,7 +6200,7 @@ void primary_phase_150(Call& a,[[maybe_unused]] State& state) {
     if (a.positive()) {
         a.at(0x1027b668); a.floating_load(2,31,128,true); a.floating_load(1,15,152,true);
         a.floating_load(0,31,220,true);
-        a.floating_product_difference(0,2,1,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_negative_product_difference(0,2,1,0);
         a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.add(21,21,0);
     }
     a.at(0x1027b688);
@@ -6323,7 +6323,7 @@ void primary_phase_143(Call& a,[[maybe_unused]] State& state) {
     if (a.positive()) {
         a.at(0x1027b388); a.floating_load(2,31,28,true); a.floating_load(1,15,152,true);
         a.floating_load(0,31,328,true);
-        a.floating_product_difference(0,2,1,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_negative_product_difference(0,2,1,0);
         a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.add(21,21,0); a.jump(0x1027b964);
     }
     a.at(0x1027b964);
@@ -6681,7 +6681,7 @@ void primary_phase_121(Call& a,[[maybe_unused]] State& state) {
         if (!a.equal()) {
             a.at(0x1027add0); a.floating_load(2,31,248,true); a.floating_load(1,15,160,true);
             a.floating_load(0,31,344,true);
-            a.floating_product_difference(0,2,1,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_negative_product_difference(0,2,1,0);
             a.floating_integer(0,0); a.floating_store(0,1,164); a.load(0,1,0xa8); a.subtract(19,0,19);
         }
         a.at(0x1027adf0);
@@ -7043,7 +7043,7 @@ void primary_phase_98(Call& a,[[maybe_unused]] State& state) {
     a.at(0x1027a878); a.subtract(3,14,13); a.value(0,0x43300000); a.exclusive_flags(3,3,0x80000000);
     a.store(1,0xa4,0); a.value(0,0x1); a.floating_load(3,31,236,true); a.store(1,0xa8,3);
     a.floating_load(2,31,340,true); a.floating_load(1,26,128); a.floating_load(0,1,164);
-    a.floating_product_sum(2,3,31,2,true); a.store<1>(1,0xfc,0); a.floating_subtract(0,0,1,true);
+    a.floating_product_sum(2,3,31,2); a.store<1>(1,0xfc,0); a.floating_subtract(0,0,1,true);
     a.floating_product_single(0,2,0); a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0);
     a.add(19,19,0);
     primary_phase_99(a,state);
@@ -7376,13 +7376,13 @@ void primary_phase_78(Call& a,[[maybe_unused]] State& state) {
     a.exclusive_flags(7,0,0x80000000); a.floating_load(0,1,164); a.value(6,0x43300000); a.value(10,0x43300000);
     a.value(3,0x10000); a.floating_subtract(0,0,1,true); a.floating_load(2,31,144,true); a.value(9,0x43300000);
     a.value(8,0x80010000); a.load<2>(5,5,0x0); a.offset(4,4,-0x7fff);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.load(0,27,0x0); a.store(1,0xd0,7); a.offset(3,3,-0x1); a.add(0,5,0); a.floating_load(1,26,128);
     a.floating_integer(0,0); a.multiply_high(5,4,0); a.store(1,0xcc,6); a.offset(8,8,-0x7fff);
     a.floating_load(4,26,128); a.floating_store(0,1,172); a.floating_load(0,1,204); a.load(4,1,0xb0);
     a.floating_subtract(0,0,1,true); a.store(1,0xb4,10); a.add(5,5,0); a.subtract(4,18,4);
     a.floating_load(2,31,144,true); a.exclusive_flags(4,4,0x80000000); a.store(1,0xb8,4);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.floating_load(3,26,0); a.shift_right(4,5,0xf); a.floating_load(1,1,180); a.mask(5,4,0x1,false,1);
     a.add(4,4,5); a.floating_subtract(1,1,4); a.product(3,4,3); a.floating_integer(0,0); a.store(1,0xbc,9);
     a.floating_load(2,26,128); a.floating_difference(3,1,3,true); a.floating_store(0,1,212); a.subtract(14,3,0);
@@ -7394,14 +7394,14 @@ void primary_phase_78(Call& a,[[maybe_unused]] State& state) {
     a.exclusive_flags(4,4,0x80000000); a.store(1,0xdc,0); a.floating_load(1,26,128); a.offset(3,3,0x5);
     a.store(1,0xe0,4); a.offset(5,5,0x6667); a.multiply_high(0,5,3); a.floating_load(2,31,144,true);
     a.floating_load(0,1,220); a.floating_subtract(0,0,1,true); a.shift_right(0,0,0x2);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.mask(3,0,0x1,false,1); a.add(0,0,3); a.add(14,14,0); a.floating_integer(0,0); a.floating_store(0,1,228);
     a.load(0,1,0xe8); a.subtract(3,18,0); a.offset(0,3,-0x1); a.compare_registers(14,0);
     if (a.positive()) {
         a.at(0x10279f80); a.sign8(3,13); a.value(0,0x43300000); a.mask(3,3,0xfffffffc,false,2); a.store(1,0xec,0);
         a.exclusive_flags(0,3,0x80000000); a.floating_load(1,26,128); a.store(1,0xf0,0);
         a.floating_load(2,31,144,true); a.floating_load(0,1,236); a.floating_subtract(0,0,1,true);
-        a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_product_difference(0,2,31,0);
         a.floating_integer(0,0); a.floating_store(0,1,244); a.load(0,1,0xf8); a.subtract(3,18,0);
         a.offset(14,3,-0x1); a.jump(0x1027a068);
     }
@@ -7413,7 +7413,7 @@ void primary_phase_77(Call& a,[[maybe_unused]] State& state) {
     a.exclusive_flags(4,4,0x80000000); a.value(3,0x10000); a.store(1,0xa8,4); a.offset(3,3,-0x1);
     a.floating_load(1,26,128); a.floating_load(0,1,164); a.floating_load(2,31,144,true);
     a.floating_subtract(0,0,1,true);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.subtract(0,18,0);
     a.compare_registers(0,3);
     if (a.positive()) {
@@ -7424,7 +7424,7 @@ void primary_phase_77(Call& a,[[maybe_unused]] State& state) {
         a.exclusive_flags(4,4,0x80000000); a.value(3,0xffff0000); a.store(1,0xa8,4); a.offset(3,3,0x1);
         a.floating_load(1,26,128); a.floating_load(0,1,164); a.floating_load(2,31,144,true);
         a.floating_subtract(0,0,1,true);
-        a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_product_difference(0,2,31,0);
         a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.subtract(0,18,0);
         a.compare_registers(0,3);
         if (a.at_least()) {
@@ -7433,11 +7433,11 @@ void primary_phase_77(Call& a,[[maybe_unused]] State& state) {
             a.mask(0,0,0xfffffffc,false,2); a.exclusive_flags(3,0,0x80000000); a.value(0,0x43300000);
             a.store(1,0xa4,4); a.floating_load(1,26,128); a.floating_load(0,1,164); a.floating_load(2,31,144,true);
             a.floating_subtract(0,0,1,true); a.load<2>(5,5,0x0); a.load(4,27,0x0); a.store(1,0xb8,3);
-            a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_product_difference(0,2,31,0);
             a.add(5,5,4); a.store(1,0xb4,0); a.floating_load(1,26,128); a.floating_integer(3,0);
             a.floating_load(0,1,180); a.floating_load(2,31,144,true); a.floating_subtract(0,0,1,true);
             a.floating_store(3,1,172); a.load(0,1,0xb0);
-            a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_product_difference(0,2,31,0);
             a.subtract(4,18,0); a.divide(3,5,4); a.floating_integer(0,0); a.floating_store(0,1,188);
             a.load(0,1,0xc0); a.subtract(0,18,0,true); a.product(0,3,4); a.subtract(14,0,5); a.negate(0,14);
             if (a.positive()) {
@@ -7455,7 +7455,7 @@ void primary_phase_76(Call& a,[[maybe_unused]] State& state) {
     a.at(0x10279ce8); a.sign8(3,13); a.value(0,0x43300000); a.mask(3,3,0xfffffffc,false,2); a.store(1,0xa4,0);
     a.exclusive_flags(0,3,0x80000000); a.floating_load(1,26,128); a.store(1,0xa8,0);
     a.floating_load(2,31,144,true); a.floating_load(0,1,164); a.floating_subtract(0,0,1,true);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.floating_integer(0,0); a.floating_store(0,1,172); a.load(0,1,0xb0); a.subtract(0,18,0,true);
     if (!a.equal()) {
         a.at(0x10279d30); a.load(3,30,0x0); a.load(0,29,0x0); a.offset(3,3,0x2); a.compare_registers(3,0,false);
@@ -7482,14 +7482,14 @@ void primary_phase_74(Call& a,[[maybe_unused]] State& state) {
     a.floating_load(1,26,128); a.exclusive_flags(6,0,0x80000000); a.floating_load(0,1,228); a.value(10,0x10000);
     a.floating_load(2,31,144,true); a.value(8,0x43300000); a.floating_subtract(0,0,1,true); a.value(7,0x80010000);
     a.load<2>(4,4,0x0); a.offset(3,3,-0x7fff); a.load(0,27,0x0); a.offset(10,10,-0x1);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.add(0,4,0); a.multiply_high(4,3,0); a.store(1,0xf4,9); a.floating_load(5,26,128); a.offset(7,7,-0x7fff);
     a.floating_integer(0,0); a.store(1,0xd0,6); a.floating_store(0,1,236); a.add(4,4,0); a.floating_load(1,26,128);
     a.load(3,1,0xf0); a.store(1,0xcc,5); a.exclusive_flags(3,3,0x80000000); a.floating_load(4,26,0);
     a.store(1,0xf8,3); a.shift_right(3,4,0xf); a.floating_load(0,1,204); a.mask(4,3,0x1,false,1);
     a.floating_load(3,1,244); a.add(3,3,4); a.floating_subtract(0,0,1,true); a.floating_load(2,31,144,true);
     a.floating_subtract(1,3,5); a.product(3,3,10); a.store(1,0xdc,8);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.floating_difference(2,1,4,true); a.floating_load(3,26,128); a.subtract(18,3,0);
     a.exclusive_flags(0,18,0x80000000); a.store(1,0xe0,0); a.floating_load(1,1,220); a.floating_integer(0,0);
     a.floating_subtract(1,1,3); a.floating_store(0,1,196); a.floating_product(0,2,1); a.load(0,1,0xc8);
@@ -7500,14 +7500,14 @@ void primary_phase_74(Call& a,[[maybe_unused]] State& state) {
     a.offset(3,3,0x5); a.store(1,0xc0,4); a.offset(5,5,0x6667); a.multiply_high(0,5,3);
     a.floating_load(2,31,144,true); a.floating_load(0,1,188); a.floating_subtract(0,0,1,true);
     a.shift_right(0,0,0x2);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.mask(3,0,0x1,false,1); a.add(0,0,3); a.add(18,18,0); a.floating_integer(0,0); a.floating_store(0,1,180);
     a.load(3,1,0xb8); a.offset(0,3,-0x1); a.compare_registers(18,0);
     if (a.positive()) {
         a.at(0x10279c08); a.sign8(3,14); a.value(0,0x43300000); a.mask(3,3,0xfffffffc,false,2); a.store(1,0xac,0);
         a.exclusive_flags(0,3,0x80000000); a.floating_load(1,26,128); a.store(1,0xb0,0);
         a.floating_load(2,31,144,true); a.floating_load(0,1,172); a.floating_subtract(0,0,1,true);
-        a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_product_difference(0,2,31,0);
         a.floating_integer(0,0); a.floating_store(0,1,164); a.load(3,1,0xa8); a.offset(18,3,-0x1);
         a.jump(0x10279ce8);
     }
@@ -7519,7 +7519,7 @@ void primary_phase_73(Call& a,[[maybe_unused]] State& state) {
     a.exclusive_flags(4,4,0x80000000); a.value(3,0x10000); a.store(1,0xe8,4); a.offset(3,3,-0x1);
     a.floating_load(1,26,128); a.floating_load(0,1,228); a.floating_load(2,31,144,true);
     a.floating_subtract(0,0,1,true);
-    a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(0,2,31,0);
     a.floating_integer(0,0); a.floating_store(0,1,236); a.load(0,1,0xf0); a.compare_registers(0,3);
     if (a.positive()) {
         a.at(0x10279a84);
@@ -7529,7 +7529,7 @@ void primary_phase_73(Call& a,[[maybe_unused]] State& state) {
         a.exclusive_flags(4,4,0x80000000); a.value(3,0xffff0000); a.store(1,0xe8,4); a.offset(3,3,0x1);
         a.floating_load(1,26,128); a.floating_load(0,1,228); a.floating_load(2,31,144,true);
         a.floating_subtract(0,0,1,true);
-        a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+        a.floating_product_difference(0,2,31,0);
         a.floating_integer(0,0); a.floating_store(0,1,236); a.load(0,1,0xf0); a.compare_registers(0,3);
         if (a.at_least()) {
             a.at(0x10279c48); a.sign8(0,14); a.value(4,0x43300000); a.mask(0,0,0xfffffffc,false,2);
@@ -7537,11 +7537,11 @@ void primary_phase_73(Call& a,[[maybe_unused]] State& state) {
             a.mask(0,0,0xfffffffc,false,2); a.exclusive_flags(3,0,0x80000000); a.value(0,0x43300000);
             a.store(1,0xa4,4); a.floating_load(1,26,128); a.floating_load(0,1,164); a.floating_load(2,31,144,true);
             a.floating_subtract(0,0,1,true); a.load<2>(5,5,0x0); a.load(4,27,0x0); a.store(1,0xb8,3);
-            a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_product_difference(0,2,31,0);
             a.add(5,5,4); a.store(1,0xb4,0); a.floating_load(1,26,128); a.floating_integer(3,0);
             a.floating_load(0,1,180); a.floating_load(2,31,144,true); a.floating_subtract(0,0,1,true);
             a.floating_store(3,1,172); a.load(4,1,0xb0);
-            a.floating_product_difference(0,2,31,0); { const auto rounded=double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+            a.floating_product_difference(0,2,31,0);
             a.divide(3,5,4); a.floating_integer(0,0); a.floating_store(0,1,188); a.load(0,1,0xc0); a.compare(0,0);
             a.product(0,3,4); a.subtract(18,0,5); a.negate(0,18);
             if (a.positive()) {
@@ -7561,7 +7561,7 @@ void primary_phase_72(Call& a,[[maybe_unused]] State& state) {
     a.floating_load(2,26,128); a.mask(0,0,0xfffffffc,false,2); a.floating_load(3,31,144,true);
     a.exclusive_flags(0,0,0x80000000); a.floating_load(0,31,0,true); a.store(1,0xe8,0); a.load<1>(13,15,0x109);
     a.floating_load(1,1,228); a.floating_subtract(1,1,2,true);
-    a.floating_product_difference(1,3,31,1); { const auto rounded=double(float(float_value<8>(state.r<8>(16400)))); state.wr<8>(16400,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_product_difference(1,3,31,1);
     a.floating_compare(1,0);
     if (!a.equal()) {
         a.at(0x102799cc); a.load(3,30,0x0); a.load(0,29,0x0); a.offset(3,3,0x2); a.compare_registers(3,0,false);
@@ -7625,7 +7625,7 @@ void primary_phase_68(Call& a,[[maybe_unused]] State& state) {
     a.at(0x10279788); a.sign8(3,17); a.value(0,0x43300000); a.multiply(3,3,0x190); a.store(1,0xe4,0);
     a.floating_load(3,31,144,true); a.floating_load(2,15,172,true); a.exclusive_flags(0,3,0x80000000);
     a.floating_load(0,31,328,true); a.store(1,0xe8,0); a.floating_load(1,26,128);
-    a.floating_product_sum(2,3,2,0,true); a.floating_load(0,1,228); a.floating_subtract(0,0,1,true);
+    a.floating_product_sum(2,3,2,0); a.floating_load(0,1,228); a.floating_subtract(0,0,1,true);
     a.floating_subtract(0,2,0,true); a.floating_integer(0,0); a.floating_store(0,1,236); a.load(21,1,0xf0);
     a.jump(0x1027a158);
     primary_phase_83(a,state);
@@ -7658,7 +7658,7 @@ void primary_phase_66(Call& a,[[maybe_unused]] State& state) {
             a.load<2>(5,15,0x2a,true); a.value(4,0x43300000); a.store(1,0xec,0); a.exclusive_flags(5,5,0x80000000);
             a.floating_load(4,31,28,true); a.exclusive_flags(0,3,0x80000000); a.floating_load(3,15,156,true);
             a.store(1,0xf0,0); a.floating_load(2,31,332,true); a.floating_load(1,26,128); a.floating_load(0,1,236);
-            a.floating_product_sum(2,4,3,2,true); a.store(1,0xe8,5); a.floating_subtract(0,0,1,true);
+            a.floating_product_sum(2,4,3,2); a.store(1,0xe8,5); a.floating_subtract(0,0,1,true);
             a.floating_load(3,26,128); a.store(1,0xe4,4); a.floating_load(4,26,400); a.floating_load(1,1,228);
             a.floating_subtract(0,2,0,true); a.floating_subtract(1,1,3); a.floating_product_sum(0,4,1,0);
             a.floating_integer(0,0); a.floating_store(0,1,244); a.load(21,1,0xf8); a.jump(0x1027a158);
@@ -8103,7 +8103,7 @@ void primary_phase_38(Call& a,[[maybe_unused]] State& state) {
 }
 void primary_phase_37(Call& a,[[maybe_unused]] State& state) {
     a.at(0x10278f80); a.floating_load(1,31,232,true); a.floating_load(0,31,324,true);
-    a.floating_product_sum(0,1,29,0,true); a.floating_integer(0,0); a.floating_store(0,1,228); a.load(0,1,0xe8);
+    a.floating_product_sum(0,1,29,0); a.floating_integer(0,0); a.floating_store(0,1,228); a.load(0,1,0xe8);
     a.store<2>(15,0x2a,0); a.jump(0x102792a0);
     primary_phase_45(a,state);
 }

@@ -1334,7 +1334,7 @@ void balance_phase_4(Call& a,[[maybe_unused]] State& state) {
             a.at(0x10237d50); a.load<2>(3,31,0x36,true); a.value(0,0x43300000); a.store(1,0x40,0);
             a.exclusive_flags(0,3,0x80000000); a.floating_load(3,28,128); a.store(1,0x44,0);
             a.floating_load(1,25,176,true); a.floating_load(2,1,64); a.floating_load(0,25,172,true);
-            a.floating_subtract(2,2,3,true); a.floating_product_sum(0,1,4,0,true); a.floating_compare(2,0);
+            a.floating_subtract(2,2,3,true); a.floating_product_sum(0,1,4,0); a.floating_compare(2,0);
             if (a.at_least()) {
             } else {
                 a.at(0x10237d84); a.load<2>(3,31,0x36,true); a.offset(0,3,0x5); a.store<2>(31,0x36,0);

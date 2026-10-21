@@ -198,7 +198,7 @@ void finish_interest_score(Call& a) {
                 a.at(0x1036c8e8);a.jump(0x1036c8f0);
             }
             a.at(0x1036c8f0);a.floating_load(1,16,0x30,false);a.compare(21,0x0,false);a.floating_subtract(0,1,2,false);
-            a.floating_product_sum(0,0,27,2,false);a.floating_difference(1,0,1,true,false);a.floating_product(31,31,1);
+            a.floating_product_sum(0,0,27,2);a.floating_difference(1,0,1,true,false);a.floating_product(31,31,1);
             if(!a.equal()) {
                 a.at(0x1036c90c);a.floating_load(0,16,0x180,false);a.floating_compare(1,0);
                 if(!a.at_least()) {
@@ -732,7 +732,7 @@ void finish_interest_score(Call& a) {
             a.at(0x1036d114);a.floating_move(0,26);
         }
         a.at(0x1036d118);a.floating_load(2,16,0x238,false);a.floating_product(0,28,0);a.floating_subtract(1,2,28,false);
-        a.floating_product_sum(0,1,27,0,false);a.floating_difference(27,0,2,true,false);a.floating_round_single(27,27);
+        a.floating_product_sum(0,1,27,0);a.floating_difference(27,0,2,true,false);a.floating_round_single(27,27);
     }
     a.at(0x1036d130);a.floating_load(0,16,0x3a8,false);a.floating_compare(31,0);
     if(!a.at_least()) {
@@ -777,7 +777,7 @@ void finish_interest_score(Call& a) {
         }
         a.at(0x1036d1e8);a.floating_load(0,16,0x80,false);a.floating_compare(2,0);a.compare_greater_or_equal_bit();
         if(!a.equal()) {
-            a.at(0x1036d200);a.floating_load(1,16,0x238,false);a.floating_subtract(0,1,28,false);a.floating_product_sum(0,2,0,28,false);
+            a.at(0x1036d200);a.floating_load(1,16,0x238,false);a.floating_subtract(0,1,28,false);a.floating_product_sum(0,2,0,28);
             a.floating_difference(0,0,1,true,false);a.floating_difference(0,0,29,true,false);a.floating_product(31,31,0);
         } else {
             a.at(0x1036d1f8);a.floating_product(31,31,2);a.jump(0x1036d218);

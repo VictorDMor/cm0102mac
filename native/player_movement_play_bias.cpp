@@ -20,11 +20,11 @@ void adjust_play_bias(Call& a) {
     a.at(0x10231e9c);a.sign16(4,0);a.sign16(3,21);a.value(0,0x43300000);a.floating_load(1,26,0x80);a.subtract(3,4,3);
     a.store(1,0xbc,0);a.exclusive_flags(0,3,0x80000000);a.floating_load(3,15,0xe8,true);a.store(1,0xc0,0);
     a.floating_load(2,15,0x98,true);a.floating_load(0,1,0xbc);a.floating_subtract(0,0,1,true);a.floating_load(1,31,0,true);
-    a.floating_product_sum(0,3,2,0,true);a.floating_compare(1,0);
+    a.floating_product_sum(0,3,2,0);a.floating_compare(1,0);
     if(!a.at_least()){a.floating_load(0,31,0,true);a.jump(0x10231f18);}
     else {a.at(0x10231ee4);a.sign16(3,4);a.sign16(0,21);a.subtract(3,3,0);a.value(0,0x43300000);a.exclusive_flags(3,3,0x80000000);
         a.store(1,0xc4,0);a.floating_load(1,26,0x80);a.store(1,0xc8,3);a.floating_load(3,15,0xe8,true);
-        a.floating_load(0,1,0xc4);a.floating_load(2,15,0x98,true);a.floating_subtract(0,0,1,true);a.floating_product_sum(0,3,2,0,true);}
+        a.floating_load(0,1,0xc4);a.floating_load(2,15,0x98,true);a.floating_subtract(0,0,1,true);a.floating_product_sum(0,3,2,0);}
     a.at(0x10231f18);a.floating_integer(0,0);a.load<2>(0,15,0x1a0,true);a.floating_store(0,1,0xcc);a.load(4,1,0xd0);
     a.add(0,0,4);a.store<2>(15,0x1a0,0);clamp_play_bias(a,0x10231f30,0x10231f5c);
 }

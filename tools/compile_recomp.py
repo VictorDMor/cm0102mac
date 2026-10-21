@@ -398,6 +398,60 @@ def transfer(address, page, selected):
     return f"s.pc = 0x{address:x}; return true;"
 
 
+FUSED_MNEMONICS = {"fmadd": "FLOAT_FUSED_ADD", "fmsub": "FLOAT_FUSED_SUB",
+                   "fnmadd": "FLOAT_FUSED_ADD", "fnmsub": "FLOAT_FUSED_SUB"}
+FUSED_OPERATIONS = {f"{name}{suffix}" for name in set(FUSED_MNEMONICS.values()) for suffix in ("", "_SINGLE")}
+
+
+def fused_mnemonic(item):
+    """(base mnemonic, single precision) for a multiply-add, else None."""
+    mnemonic = item["assembly"].split()[0].rstrip(".")
+    single = mnemonic.endswith("s") and mnemonic[:-1] in FUSED_MNEMONICS
+    base = mnemonic[:-1] if single else mnemonic
+    return (base, single) if base in FUSED_MNEMONICS else None
+
+
+def fused_site_kind(item):
+    """FusedKind bits (native/fused_multiply_add.hpp) for a multiply-add, else None."""
+    fused = fused_mnemonic(item)
+    if fused is None: return None
+    base, single = fused
+    return ("sub" in base) | (base.startswith("fn") << 1) | (single << 2)
+
+
+def render_fused_sites(sites):
+    sites = sorted(set(sites))
+    rows = ",".join(f"{{0x{address:x},{kind}}}" for address, kind in sites) or "{0,0}"
+    return ('#include "fused_multiply_add.hpp"\nnamespace cm::aot {\n'
+            f"const FusedSite fused_sites[] = {{{rows}}};\n"
+            f"const std::size_t fused_site_count = {len(sites)};\n}}\n")
+
+
+def fused_multiply_add_ops(item):
+    """Replace Ghidra's rounded product + add/sub with one fused operation.
+
+    PowerPC multiply-add rounds once; Ghidra exports a FLOAT_MULT into a
+    unique temporary followed by FLOAT_ADD/FLOAT_SUB. The product stays for
+    any flag computation that reads it; only the sum changes.
+    """
+    fused = fused_mnemonic(item)
+    if fused is None:
+        return item["ops"]
+    base, single = fused
+    mnemonic = item["assembly"].split()[0]
+    ops = [list(op) for op in item["ops"]]
+    products = [i for i, op in enumerate(ops) if op[0] == "FLOAT_MULT"]
+    sums = [i for i, op in enumerate(ops) if op[0] in ("FLOAT_ADD", "FLOAT_SUB")]
+    expected = "FLOAT_SUB" if FUSED_MNEMONICS[base].endswith("SUB") else "FLOAT_ADD"
+    if len(products) != 1 or len(sums) != 1 or sums[0] != products[0] + 1 or \
+       ops[products[0]][1][0] != "unique" or ops[sums[0]][0] != expected or \
+       ops[sums[0]][2] != ops[products[0]][1]:
+        raise ValueError(f"Unrecognized {mnemonic} export at {item['address']:x}")
+    product, total = ops[products[0]], ops[sums[0]]
+    ops[sums[0]] = [FUSED_MNEMONICS[base] + ("_SINGLE" if single else ""), total[1], product[2], product[3], total[3]]
+    return ops
+
+
 def operation(op, address, index, page, selected, op_count, read_node=read, write_node=write, userops=None):
     name, output, *inputs = op
     if name == "CALLOTHER":
@@ -489,6 +543,11 @@ def operation(op, address, index, page, selected, op_count, read_node=read, writ
             value = f"float_bits<{output[2]}>(-{fa})"
         elif name == "TRUNC":
             value = f"float_truncate<{output[2]}>({fa})"
+        elif name in FUSED_OPERATIONS:
+            if output[2] != 8 or any(node[2] != 8 for node in inputs):
+                raise ValueError(f"Unexpected fused multiply-add width at {address:x}")
+            helper = "fused_multiply_add_single" if name.endswith("_SINGLE") else "fused_multiply_add"
+            value = f"{helper}({a}, {b}, {args[2]}, {'true' if '_SUB' in name else 'false'})"
         else:
             raise ValueError(f"Unsupported floating operation: {name}")
     else:
@@ -1008,6 +1067,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     code.append("switch (s.pc) {")
     if any(item["assembly"].startswith("fctiwz ") for item in instructions):
         code.insert(1, '#include "floating_point.hpp"')
+    if any(fused_mnemonic(item) for item in instructions):
+        code.insert(1, '#include "fused_multiply_add.hpp"')
     if match_hot_page:
         code.insert(1, '#include "match_turbo.hpp"')
         code.insert(1, '#include "match_replay.hpp"')
@@ -1340,19 +1401,20 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"original_fctiwz(s, {destination}, {source});")
             code.append(transfer(a + item["size"], transfer_page, selected))
             continue
+        ops = fused_multiply_add_ops(item)
         labels = set()
-        for i, op in enumerate(item["ops"]):
+        for i, op in enumerate(ops):
             if op[0] in ("BRANCH", "CBRANCH", "CALL") and op[2][0] == "const":
                 offset, width = int(op[2][1]), op[2][2] * 8
                 offset &= (1 << width) - 1
                 if offset >= 1 << (width - 1): offset -= 1 << width
                 labels.add(i + offset)
-        local = LocalTemporaries.for_instruction(item["ops"], read, write) if local_temporaries else None
+        local = LocalTemporaries.for_instruction(ops, read, write) if local_temporaries else None
         if local is not None:
             code.append("{")
-        for i, op in enumerate(item["ops"]):
+        for i, op in enumerate(ops):
             if i in labels: code.append(f"op_{a:x}_{i}:")
-            lowered = operation(op, a, i, transfer_page, selected, len(item["ops"]),
+            lowered = operation(op, a, i, transfer_page, selected, len(ops),
                                 read_node=local.read if local else read,
                                 write_node=local.write if local else write,
                                 userops=userops)
@@ -1361,7 +1423,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                     raise ValueError('Missing original context-return boundary')
                 lowered = lowered.replace('return true;', 'complete_context_transfer(s); return true;')
             code.append(lowered)
-        if len(item["ops"]) in labels: code.append(f"op_{a:x}_{len(item['ops'])}:")
+        if len(ops) in labels: code.append(f"op_{a:x}_{len(ops)}:")
         if transfer_hooks and a in (0x107727d4, 0x10772a94):
             code.append('record_context_function(s, std::uint32_t(s.r<4>(20)));')
         if transfer_hooks and a == 0x10772768:
@@ -1787,6 +1849,7 @@ def main():
     for address, item in sorted(selected.items()): pages[address >> 12].append(item)
     outputs = {}
     generated_count = len(selected)
+    fused_sites = [(address, fused_site_kind(item)) for address, item in selected.items() if fused_mnemonic(item)]
     if args.all_analyzed:
         # Keep memory bounded to one code page. Game-derived instruction JSON
         # does not need to be held in a multi-gigabyte Python object graph.
@@ -1797,6 +1860,7 @@ def main():
                 records = [json.loads(row[0]) for row in db.execute(
                     "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
                     (page << 12, (page + 1) << 12))]
+                fused_sites.extend((r["address"], fused_site_kind(r)) for r in records if fused_mnemonic(r))
                 path = args.output / f"page_{page:x}.cpp"
                 content = generate_page(page, records, {r["address"] for r in records},
                                         local_temporaries=not args.legacy_unique_storage,
@@ -1852,6 +1916,7 @@ def main():
     code += ["s.memory.map(0x70000000, 0x100000);", "s.wr<4>(4, 0x700fff00);",
              "s.wr<4>(8, 0x108bba90);", f"s.wr<4>(4128, return_sentinel);", "}", "}"]
     outputs["program.cpp"] = "\n".join(code) + "\n"
+    outputs["fused_sites.cpp"] = render_fused_sites(fused_sites)
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
             native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops']))

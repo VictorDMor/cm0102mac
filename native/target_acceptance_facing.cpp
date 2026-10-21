@@ -114,7 +114,7 @@ void facing_phase_1(Call& a,[[maybe_unused]] State& state) {
     a.sign8(3,3); a.sign8(0,19); a.multiply(3,3,0x24); a.load(4,2,-0x6424); a.mask(0,0,0xfffffffc,false,2);
     a.floating_load(1,25,240,true); a.floating_load(0,25,236,true); a.add(0,3,0); a.floating_indexed_single(2,4,0);
     a.floating_subtract(2,2,31,true);
-    a.floating_product_difference(0,1,2,0); { const auto rounded=-double(float(float_value<8>(state.r<8>(16384)))); state.wr<8>(16384,float_bits<8>(rounded)); a.floating_result_status(rounded,false,true); }
+    a.floating_negative_product_difference(0,1,2,0);
     a.floating_integer(0,0); a.floating_store(0,1,64); a.load(0,1,0x44); a.add(20,20,0); a.sign16(0,20);
     a.compare(0,30);
     if (a.at_least()) {
@@ -151,7 +151,7 @@ void can_face_target(State& state,SemanticDependencyDispatch* dependencies,Seman
             if (a.equal()) {
                 a.at(0x10244d64); a.load<1>(3,26,0x10e); a.value(0,0x43300000); a.store(1,0x40,0); a.sign8(0,3);
                 a.floating_load(2,25,92,true); a.multiply(0,0,0x5); a.floating_load(0,25,128,true);
-                a.floating_load(1,30,128); a.floating_product_sum(2,2,30,0,true);
+                a.floating_load(1,30,128); a.floating_product_sum(2,2,30,0);
                 a.exclusive_flags(0,0,0x80000000); a.store(1,0x44,0); a.floating_load(0,1,64);
                 a.floating_subtract(0,0,1,true); a.floating_sum_single(0,2,0); a.floating_integer(0,0);
                 a.floating_store(0,1,72); a.load(20,1,0x4c);
@@ -159,7 +159,7 @@ void can_face_target(State& state,SemanticDependencyDispatch* dependencies,Seman
                 a.at(0x10244d1c); a.load<1>(3,26,0x10e); a.value(0,0x43300000); a.store(1,0x48,0); a.sign8(0,3);
                 a.floating_load(2,25,92,true); a.mask(0,0,0xfffffffc,false,2); a.floating_load(0,25,232,true);
                 a.exclusive_flags(0,0,0x80000000); a.floating_load(1,30,128); a.store(1,0x4c,0);
-                a.floating_product_sum(2,2,30,0,true); a.floating_load(0,1,72); a.floating_subtract(0,0,1,true);
+                a.floating_product_sum(2,2,30,0); a.floating_load(0,1,72); a.floating_subtract(0,0,1,true);
                 a.floating_sum_single(0,2,0); a.floating_integer(0,0); a.floating_store(0,1,64); a.load(20,1,0x44);
                 a.jump(0x10244da8);
             }

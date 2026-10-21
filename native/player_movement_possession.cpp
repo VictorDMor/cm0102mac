@@ -24,7 +24,7 @@ void sample_control_failure_wide(Call& a) {
 }
 void sample_control_failure(Call& a) {
     a.floating_load(2,31,0x3c,true);a.floating_load(1,15,0xe8,true);a.floating_load(0,31,0x90,true);
-    a.floating_product_sum(0,2,1,0,true);a.floating_integer(0,0);a.floating_store(0,1,0xbc);a.load(24,1,0xc0);a.compare(24,0);
+    a.floating_product_sum(0,2,1,0);a.floating_integer(0,0);a.floating_store(0,1,0xbc);a.load(24,1,0xc0);a.compare(24,0);
     if(a.equal()){a.value(23,0);a.jump(0x10231914);return;}
     advance_possession_random(a,0x102317b8);a.value(3,0x10000);a.offset(3,3,-1);a.compare_registers(24,3);bool wide=a.positive();
     if(!wide){a.value(3,0xffff0000);a.offset(3,3,1);a.compare_registers(24,3);wide=!a.at_least();}

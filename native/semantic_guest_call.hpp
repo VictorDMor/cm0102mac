@@ -3,6 +3,7 @@
 #include "semantic_dependency_dispatch.hpp"
 #include "guest_context_transfer.hpp"
 #include "floating_point.hpp"
+#include "fused_multiply_add.hpp"
 #include <bit>
 namespace cm::aot {
 class SemanticGuestCall {
@@ -233,34 +234,28 @@ public:
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
         floating_result_status(result, std::isnan(x) || std::isnan(y), true);
     }
-    void floating_product_sum(unsigned destination, unsigned first, unsigned second, unsigned addend, bool single = false) {
-        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
-        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
-        const auto z = float_value<8>(state.r<8>(0x4000 + addend * 16));
-        // Original indexed semantics round multiply then add separately.
-        // Production is compiled with contraction disabled, preserving both.
-        const auto product = x * y; const auto sum = product + z;
-        const auto result = single ? double(float_value<4>(float_bits<4>(sum))) : sum;
+    // PowerPC multiply-add (fmadd[s], fmsub[s], fnmsub[s]): one rounding.
+    // The original instruction at this address decides single or double
+    // precision; a call at any other kind of instruction is a wiring error.
+    void floating_multiply_add(unsigned destination, unsigned first, unsigned second, unsigned third, std::uint8_t family) {
+        const auto kind = fused_site_kind(next);
+        if ((kind & (fused_subtract | fused_negate)) != family)
+            throw std::logic_error("Rewritten multiply-add does not match its original instruction");
+        step(); const auto a = state.r<8>(0x4000 + first * 16), c = state.r<8>(0x4000 + second * 16);
+        const auto b = state.r<8>(0x4000 + third * 16);
+        const auto result = original_multiply_add(kind, a, c, b);
         state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
-        floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
+        floating_result_status(result, std::isnan(float_value<8>(a)) || std::isnan(float_value<8>(c)) ||
+                               std::isnan(float_value<8>(b)), true);
+    }
+    void floating_product_sum(unsigned destination, unsigned first, unsigned second, unsigned addend) {
+        floating_multiply_add(destination, first, second, addend, 0);
     }
     void floating_negative_product_difference(unsigned destination, unsigned first, unsigned second, unsigned subtrahend) {
-        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
-        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
-        const auto z = float_value<8>(state.r<8>(0x4000 + subtrahend * 16));
-        // The indexed operation rounds multiply, subtract and negate separately.
-        const auto product = x * y; const auto difference = product - z;
-        const auto result = -difference;
-        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
-        floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
+        floating_multiply_add(destination, first, second, subtrahend, fused_subtract | fused_negate);
     }
     void floating_product_difference(unsigned destination, unsigned first, unsigned second, unsigned subtrahend) {
-        step(); const auto x = float_value<8>(state.r<8>(0x4000 + first * 16));
-        const auto y = float_value<8>(state.r<8>(0x4000 + second * 16));
-        const auto z = float_value<8>(state.r<8>(0x4000 + subtrahend * 16));
-        const auto product = x * y; const auto result = product - z;
-        state.wr<8>(0x4000 + destination * 16, float_bits<8>(result));
-        floating_result_status(result, std::isnan(x) || std::isnan(y) || std::isnan(z), true);
+        floating_multiply_add(destination, first, second, subtrahend, fused_subtract);
     }
     void floating_round_single(unsigned destination, unsigned source) {
         step(); const auto input = float_value<8>(state.r<8>(0x4000 + source * 16));

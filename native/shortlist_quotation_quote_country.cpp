@@ -87,7 +87,7 @@ void apply_quote_country_rules(Call& a) {
                                                                                                     a.at(0x1037e0c0);a.floating_load(0,29,0x1e8,false);a.floating_load(2,29,0x230,false);a.floating_product(31,31,0);
                                                                                                     a.floating_round_single(31,31);a.floating_compare(31,2);
                                                                                                     if(!a.nonpositive()) {
-                                                                                                        a.at(0x1037e0d8);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+                                                                                                        a.at(0x1037e0d8);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
                                                                                                         a.floating_round_single(31,31);
                                                                                                     }
                                                                                                 } else {
@@ -122,13 +122,13 @@ void apply_quote_country_rules(Call& a) {
                                                                                 if(a.equal()) {
                                                                                     a.at(0x1037ded4);a.floating_load(2,29,0x40,false);a.floating_compare(31,2);
                                                                                     if(!a.nonpositive()) {
-                                                                                        a.at(0x1037dee0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+                                                                                        a.at(0x1037dee0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
                                                                                         a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                                                                     }
                                                                                 } else {
                                                                                     a.at(0x1037deb4);a.floating_load(2,29,0x68,false);a.floating_compare(31,2);
                                                                                     if(!a.nonpositive()) {
-                                                                                        a.at(0x1037dec0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+                                                                                        a.at(0x1037dec0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
                                                                                         a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                                                                     }
                                                                                 }
@@ -156,13 +156,13 @@ void apply_quote_country_rules(Call& a) {
                                                                             if(a.equal()) {
                                                                                 a.at(0x1037ddf8);a.floating_load(2,29,0x40,false);a.floating_compare(31,2);
                                                                                 if(!a.nonpositive()) {
-                                                                                    a.at(0x1037de04);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+                                                                                    a.at(0x1037de04);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
                                                                                     a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                                                                 }
                                                                             } else {
                                                                                 a.at(0x1037ddd8);a.floating_load(2,29,0x68,false);a.floating_compare(31,2);
                                                                                 if(!a.nonpositive()) {
-                                                                                    a.at(0x1037dde4);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+                                                                                    a.at(0x1037dde4);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
                                                                                     a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                                                                 }
                                                                             }
@@ -202,12 +202,12 @@ void apply_quote_country_rules(Call& a) {
                                                 a.at(0x1037db80);a.floating_load(2,29,0x40,false);a.floating_compare(31,2);
                                                 if(!a.nonpositive()) {
                                                     a.at(0x1037db8c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_round_single(0,0);
-                                                    a.floating_product_sum(31,1,0,2,false);a.floating_round_single(31,31);a.jump(0x1037e0e8);
+                                                    a.floating_product_sum(31,1,0,2);a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                                 }
                                             } else {
                                                 a.at(0x1037db60);a.floating_load(2,29,0x220,false);a.floating_compare(31,2);
                                                 if(!a.nonpositive()) {
-                                                    a.at(0x1037db6c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+                                                    a.at(0x1037db6c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
                                                     a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                                 }
                                             }
@@ -241,7 +241,7 @@ void apply_quote_country_rules(Call& a) {
                                 if(a.equal()) {
                                     a.at(0x1037d9c4);a.floating_load(2,29,0x240,false);a.floating_compare(31,2);
                                     if(!a.nonpositive()) {
-                                        a.at(0x1037d9d0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+                                        a.at(0x1037d9d0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
                                         a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                     }
                                 } else {
@@ -261,7 +261,7 @@ void apply_quote_country_rules(Call& a) {
                                     } else {
                                         a.at(0x1037d944);a.floating_load(2,29,0x98,false);a.floating_compare(31,2);
                                         if(!a.nonpositive()) {
-                                            a.at(0x1037d950);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+                                            a.at(0x1037d950);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
                                             a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                         }
                                     }
@@ -269,7 +269,7 @@ void apply_quote_country_rules(Call& a) {
                             } else {
                                 a.at(0x1037d910);a.floating_load(2,29,0x58,false);a.floating_compare(31,2);
                                 if(!a.nonpositive()) {
-                                    a.at(0x1037d91c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+                                    a.at(0x1037d91c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
                                     a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                 }
                             }
@@ -287,7 +287,7 @@ void apply_quote_country_rules(Call& a) {
                             } else {
                                 a.at(0x1037d794);a.floating_load(2,29,0x68,false);a.floating_compare(31,2);
                                 if(!a.nonpositive()) {
-                                    a.at(0x1037d7a0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x78,false);a.floating_product_sum(31,1,0,2,false);
+                                    a.at(0x1037d7a0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x78,false);a.floating_product_sum(31,1,0,2);
                                     a.floating_round_single(31,31);a.jump(0x1037e0e8);
                                 }
                             }
@@ -306,7 +306,7 @@ void apply_quote_country_rules(Call& a) {
         }
         a.at(0x1037d714);a.floating_load(2,29,0x210,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037d720);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037d720);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     }
@@ -318,7 +318,7 @@ void check_quote_local_connection(Call& a) {
     if(!a.equal()) {
         a.at(0x1037d850);a.floating_load(2,29,0xb0,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037d85c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037d85c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     } else {
@@ -338,7 +338,7 @@ void check_quote_local_connection(Call& a) {
                     } else {
                         a.at(0x1037d810);a.floating_load(2,29,0x98,false);a.floating_compare(31,2);
                         if(!a.nonpositive()) {
-                            a.at(0x1037d81c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+                            a.at(0x1037d81c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
                             a.floating_round_single(31,31);a.jump(0x1037e0e8);
                         }
                     }
@@ -347,7 +347,7 @@ void check_quote_local_connection(Call& a) {
         } else {
             a.at(0x1037d7d0);a.floating_load(2,29,0x98,false);a.floating_compare(31,2);
             if(!a.nonpositive()) {
-                a.at(0x1037d7dc);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+                a.at(0x1037d7dc);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
                 a.floating_round_single(31,31);a.jump(0x1037e0e8);
             }
         }
@@ -358,7 +358,7 @@ void check_quote_local_connection(Call& a) {
 void compress_local_connection_quote(Call& a) {
     a.at(0x1037d830);a.floating_load(2,29,0xa8,false);a.floating_compare(31,2);
     if(!a.nonpositive()) {
-        a.at(0x1037d83c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+        a.at(0x1037d83c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
         a.floating_round_single(31,31);a.jump(0x1037e0e8);
     }
     return finish_quote_contract_limits(a);
@@ -371,7 +371,7 @@ void check_quote_country_band(Call& a) {
     } else {
         a.at(0x1037d984);a.floating_load(2,29,0xb0,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037d990);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037d990);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     }
@@ -381,7 +381,7 @@ void check_quote_country_band(Call& a) {
 void compress_high_country_quote(Call& a) {
     a.at(0x1037d9a4);a.floating_load(2,29,0x240,false);a.floating_compare(31,2);
     if(!a.nonpositive()) {
-        a.at(0x1037d9b0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+        a.at(0x1037d9b0);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
         a.floating_round_single(31,31);a.jump(0x1037e0e8);
     }
     return finish_quote_contract_limits(a);
@@ -412,7 +412,7 @@ void apply_first_country_scale(Call& a) {
     a.at(0x1037da94);a.floating_product(31,31,5);a.floating_load(2,29,0x60,false);a.floating_round_single(31,31);
     a.floating_compare(31,2);
     if(!a.nonpositive()) {
-        a.at(0x1037daa8);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+        a.at(0x1037daa8);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
         a.floating_round_single(31,31);a.jump(0x1037e0e8);
     }
     return finish_quote_contract_limits(a);
@@ -423,13 +423,13 @@ void choose_first_country_cap(Call& a) {
     if(a.equal()) {
         a.at(0x1037dc20);a.floating_load(2,29,0x80,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037dc2c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x78,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037dc2c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x78,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     } else {
         a.at(0x1037dc00);a.floating_load(2,29,0x228,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037dc0c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x78,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037dc0c);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x78,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     }
@@ -463,13 +463,13 @@ void apply_second_country_scale(Call& a) {
     if(a.equal()) {
         a.at(0x1037dd14);a.floating_load(2,29,0x90,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037dd20);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x88,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037dd20);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x88,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     } else {
         a.at(0x1037dcf4);a.floating_load(2,29,0x68,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037dd00);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x88,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037dd00);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x88,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     }
@@ -503,13 +503,13 @@ void apply_third_country_scale(Call& a) {
     if(a.equal()) {
         a.at(0x1037dfd8);a.floating_load(2,29,0x40,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037dfe4);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037dfe4);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     } else {
         a.at(0x1037dfb8);a.floating_load(2,29,0x68,false);a.floating_compare(31,2);
         if(!a.nonpositive()) {
-            a.at(0x1037dfc4);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2,false);
+            a.at(0x1037dfc4);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,2);
             a.floating_round_single(31,31);a.jump(0x1037e0e8);
         }
     }
@@ -541,7 +541,7 @@ void apply_final_country_scale(Call& a) {
     a.at(0x1037e098);a.floating_product(31,31,5);a.floating_load(2,29,0xb8,false);a.floating_round_single(31,31);
     a.floating_compare(31,2);
     if(!a.nonpositive()) {
-        a.at(0x1037e0ac);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2,false);
+        a.at(0x1037e0ac);a.floating_subtract(0,31,2,false);a.floating_load(1,29,0x48,false);a.floating_product_sum(31,1,0,2);
         a.floating_round_single(31,31);a.jump(0x1037e0e8);
     }
     return finish_quote_contract_limits(a);

@@ -214,7 +214,7 @@ void prepare_reference_quote(Call& a) {
                 a.at(0x1037b9fc);a.load<4>(3,15,0x1c,false);a.compare(3,0x0,false);
                 if(a.equal()) {
                     a.at(0x1037ba68);a.floating_load(1,30,0x40,true);a.floating_load(0,30,0x58,true);a.floating_load(2,30,0xd0,true);
-                    a.floating_product_sum(1,1,30,0,true);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(3,1,0,true,false);
+                    a.floating_product_sum(1,1,30,0);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(3,1,0,true,false);
                     a.floating_round_single(3,3);
                 } else {
                     a.at(0x1037ba08);a.load<2>(3,3,0x2a,true);a.value(0,0x43300000);a.store<4>(1,0x50,0);
@@ -285,7 +285,7 @@ void prepare_reference_quote(Call& a) {
                 a.at(0x1037bb64);a.load<4>(3,15,0x1c,false);a.compare(3,0x0,false);
                 if(a.equal()) {
                     a.at(0x1037bbd0);a.floating_load(1,30,0x40,true);a.floating_load(0,30,0x58,true);a.floating_load(2,30,0x14,true);
-                    a.floating_product_sum(1,1,30,0,true);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(3,1,0,true,false);
+                    a.floating_product_sum(1,1,30,0);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(3,1,0,true,false);
                     a.floating_round_single(3,3);
                 } else {
                     a.at(0x1037bb70);a.load<2>(3,3,0x2a,true);a.value(0,0x43300000);a.store<4>(1,0x40,0);
@@ -413,7 +413,7 @@ void prepare_reference_quote(Call& a) {
                 a.at(0x1037bd50);a.load<4>(3,15,0x1c,false);a.compare(3,0x0,false);
                 if(a.equal()) {
                     a.at(0x1037bdbc);a.floating_load(1,30,0x40,true);a.floating_load(0,30,0x58,true);a.floating_load(2,30,0x14,true);
-                    a.floating_product_sum(1,1,30,0,true);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(3,1,0,true,false);
+                    a.floating_product_sum(1,1,30,0);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(3,1,0,true,false);
                     a.floating_round_single(3,3);
                 } else {
                     a.at(0x1037bd5c);a.load<2>(3,3,0x2a,true);a.value(0,0x43300000);a.store<4>(1,0x40,0);
@@ -525,7 +525,7 @@ void prepare_reference_quote(Call& a) {
                 a.at(0x1037bf34);a.load<4>(3,15,0x1c,false);a.compare(3,0x0,false);
                 if(a.equal()) {
                     a.at(0x1037bfa0);a.floating_load(1,30,0x40,true);a.floating_load(0,30,0x58,true);a.floating_load(2,30,0x2c,true);
-                    a.floating_product_sum(1,1,30,0,true);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(4,1,0,true,false);
+                    a.floating_product_sum(1,1,30,0);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(4,1,0,true,false);
                     a.floating_round_single(4,4);
                 } else {
                     a.at(0x1037bf40);a.load<2>(3,3,0x2a,true);a.value(0,0x43300000);a.store<4>(1,0x40,0);
@@ -616,7 +616,7 @@ void prepare_reference_quote(Call& a) {
                 a.at(0x1037c0f0);a.load<4>(3,15,0x1c,false);a.compare(3,0x0,false);
                 if(a.equal()) {
                     a.at(0x1037c15c);a.floating_load(1,30,0x40,true);a.floating_load(0,30,0x58,true);a.floating_load(2,30,0xa8,true);
-                    a.floating_product_sum(1,1,30,0,true);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(4,1,0,true,false);
+                    a.floating_product_sum(1,1,30,0);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(4,1,0,true,false);
                     a.floating_round_single(4,4);
                 } else {
                     a.at(0x1037c0fc);a.load<2>(3,3,0x2a,true);a.value(0,0x43300000);a.store<4>(1,0x40,0);
@@ -689,7 +689,7 @@ void prepare_reference_quote(Call& a) {
                 a.at(0x1037c25c);a.load<4>(3,15,0x1c,false);a.compare(3,0x0,false);
                 if(a.equal()) {
                     a.at(0x1037c2c8);a.floating_load(1,30,0x40,true);a.floating_load(0,30,0x58,true);a.floating_load(2,30,0xa8,true);
-                    a.floating_product_sum(1,1,30,0,true);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(4,1,0,true,false);
+                    a.floating_product_sum(1,1,30,0);a.floating_load(0,29,0x58,false);a.floating_product_single(1,2,1);a.floating_difference(4,1,0,true,false);
                     a.floating_round_single(4,4);
                 } else {
                     a.at(0x1037c268);a.load<2>(3,3,0x2a,true);a.value(0,0x43300000);a.store<4>(1,0x40,0);
@@ -1890,7 +1890,7 @@ void adjust_quote_club_context(Call& a) {
                 if(!a.nonpositive()) {
                     a.at(0x1037cca4);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                     a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                    a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                    a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                     a.floating_round_single(31,31);a.jump(0x1037cdb0);
                 }
             } else {
@@ -1907,7 +1907,7 @@ void adjust_quote_club_context(Call& a) {
                             if(!a.nonpositive()) {
                                 a.at(0x1037cd80);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                                 a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                                a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                                a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                                 a.floating_round_single(31,31);
                             }
                         }
@@ -1918,7 +1918,7 @@ void adjust_quote_club_context(Call& a) {
                         if(!a.nonpositive()) {
                             a.at(0x1037cd0c);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                             a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                            a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                            a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                             a.floating_round_single(31,31);a.jump(0x1037cdb0);
                         }
                     }
@@ -1936,7 +1936,7 @@ void adjust_quote_club_context(Call& a) {
                                 if(!a.nonpositive()) {
                                     a.at(0x1037cd80);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                                     a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                                    a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                                    a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                                     a.floating_round_single(31,31);
                                 }
                             }
@@ -1947,7 +1947,7 @@ void adjust_quote_club_context(Call& a) {
                             if(!a.nonpositive()) {
                                 a.at(0x1037cd0c);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                                 a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                                a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                                a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                                 a.floating_round_single(31,31);a.jump(0x1037cdb0);
                             }
                         }
@@ -1965,7 +1965,7 @@ void adjust_quote_club_context(Call& a) {
                                     if(!a.nonpositive()) {
                                         a.at(0x1037cd80);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                                         a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                                        a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                                        a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                                         a.floating_round_single(31,31);
                                     }
                                 }
@@ -1976,7 +1976,7 @@ void adjust_quote_club_context(Call& a) {
                                 if(!a.nonpositive()) {
                                     a.at(0x1037cd0c);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                                     a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                                    a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                                    a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                                     a.floating_round_single(31,31);a.jump(0x1037cdb0);
                                 }
                             }
@@ -1987,7 +1987,7 @@ void adjust_quote_club_context(Call& a) {
                             if(!a.nonpositive()) {
                                 a.at(0x1037cca4);a.store<4>(1,0x3c,3);a.floating_load(2,29,0x88,false);a.store<4>(1,0x38,0);
                                 a.floating_load(0,1,0x38,false);a.store<4>(1,0x44,3);a.floating_subtract(1,0,3,true);a.store<4>(1,0x40,0);
-                                a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0,false);
+                                a.floating_load(0,1,0x40,false);a.floating_subtract(1,31,1,true);a.floating_subtract(0,0,3,false);a.floating_product_sum(31,2,1,0);
                                 a.floating_round_single(31,31);a.jump(0x1037cdb0);
                             }
                         }
@@ -2053,7 +2053,7 @@ void adjust_quote_club_context(Call& a) {
     }
     a.at(0x1037ce4c);a.floating_compare(31,30);
     if(!a.nonpositive()) {
-        a.at(0x1037ce54);a.floating_subtract(0,31,30,true);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,30,false);
+        a.at(0x1037ce54);a.floating_subtract(0,31,30,true);a.floating_load(1,29,0xa0,false);a.floating_product_sum(31,1,0,30);
         a.floating_round_single(31,31);
     }
     a.at(0x1037ce64);a.load<4>(0,15,0x24,false);a.compare(0,0x0,false);
@@ -2075,7 +2075,7 @@ void adjust_quote_club_context(Call& a) {
             a.at(0x1037cf30);a.floating_load(0,30,0x164,true);a.floating_compare(30,0);
             if(!a.nonpositive()) {
                 a.at(0x1037cf3c);a.floating_subtract(1,30,0,true);a.floating_load(2,29,0xa0,false);a.floating_load(0,29,0x238,false);
-                a.floating_product_sum(30,2,1,0,false);a.floating_round_single(30,30);
+                a.floating_product_sum(30,2,1,0);a.floating_round_single(30,30);
             }
             a.at(0x1037cf50);a.floating_load(1,30,0x128,true);a.floating_load(0,30,0x124,true);a.floating_load(2,30,0x120,true);
             a.negative_product_difference_single_at(0x1037cf5c,0,1,30,0);a.floating_compare(2,0);
@@ -2103,7 +2103,7 @@ void adjust_quote_club_context(Call& a) {
                 a.at(0x1037cf30);a.floating_load(0,30,0x164,true);a.floating_compare(30,0);
                 if(!a.nonpositive()) {
                     a.at(0x1037cf3c);a.floating_subtract(1,30,0,true);a.floating_load(2,29,0xa0,false);a.floating_load(0,29,0x238,false);
-                    a.floating_product_sum(30,2,1,0,false);a.floating_round_single(30,30);
+                    a.floating_product_sum(30,2,1,0);a.floating_round_single(30,30);
                 }
                 a.at(0x1037cf50);a.floating_load(1,30,0x128,true);a.floating_load(0,30,0x124,true);a.floating_load(2,30,0x120,true);
                 a.negative_product_difference_single_at(0x1037cf5c,0,1,30,0);a.floating_compare(2,0);
@@ -2132,7 +2132,7 @@ void adjust_quote_club_context(Call& a) {
                     a.at(0x1037cf30);a.floating_load(0,30,0x164,true);a.floating_compare(30,0);
                     if(!a.nonpositive()) {
                         a.at(0x1037cf3c);a.floating_subtract(1,30,0,true);a.floating_load(2,29,0xa0,false);a.floating_load(0,29,0x238,false);
-                        a.floating_product_sum(30,2,1,0,false);a.floating_round_single(30,30);
+                        a.floating_product_sum(30,2,1,0);a.floating_round_single(30,30);
                     }
                     a.at(0x1037cf50);a.floating_load(1,30,0x128,true);a.floating_load(0,30,0x124,true);a.floating_load(2,30,0x120,true);
                     a.negative_product_difference_single_at(0x1037cf5c,0,1,30,0);a.floating_compare(2,0);
@@ -2162,7 +2162,7 @@ void adjust_quote_club_context(Call& a) {
                         a.at(0x1037cf30);a.floating_load(0,30,0x164,true);a.floating_compare(30,0);
                         if(!a.nonpositive()) {
                             a.at(0x1037cf3c);a.floating_subtract(1,30,0,true);a.floating_load(2,29,0xa0,false);a.floating_load(0,29,0x238,false);
-                            a.floating_product_sum(30,2,1,0,false);a.floating_round_single(30,30);
+                            a.floating_product_sum(30,2,1,0);a.floating_round_single(30,30);
                         }
                         a.at(0x1037cf50);a.floating_load(1,30,0x128,true);a.floating_load(0,30,0x124,true);a.floating_load(2,30,0x120,true);
                         a.negative_product_difference_single_at(0x1037cf5c,0,1,30,0);a.floating_compare(2,0);
@@ -2190,7 +2190,7 @@ void adjust_quote_club_context(Call& a) {
                             a.at(0x1037cf30);a.floating_load(0,30,0x164,true);a.floating_compare(30,0);
                             if(!a.nonpositive()) {
                                 a.at(0x1037cf3c);a.floating_subtract(1,30,0,true);a.floating_load(2,29,0xa0,false);a.floating_load(0,29,0x238,false);
-                                a.floating_product_sum(30,2,1,0,false);a.floating_round_single(30,30);
+                                a.floating_product_sum(30,2,1,0);a.floating_round_single(30,30);
                             }
                             a.at(0x1037cf50);a.floating_load(1,30,0x128,true);a.floating_load(0,30,0x124,true);a.floating_load(2,30,0x120,true);
                             a.negative_product_difference_single_at(0x1037cf5c,0,1,30,0);a.floating_compare(2,0);
