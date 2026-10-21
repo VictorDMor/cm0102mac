@@ -100,6 +100,34 @@ int main(int argc, char** argv) {
         try { (void)season_replay_import(*changed, "synthetic-native-service"); }
         catch (const std::runtime_error& error) { rejected = std::string(error.what()).find("native input register") != std::string::npos; }
         close_season_replay(); require(rejected, "Changed native service input was accepted");
+        // An operation replay checks an import on what it can observe: its own
+        // arguments and the registers its caller keeps. Scratch it never reads
+        // may differ. A season replay still compares every register.
+        const auto replays = [&](bool operation, const char* import, unsigned offset, unsigned size) {
+            auto input = initial(directory.path);
+            if (operation) open_operation_replay(directory.path); else open_season_replay(directory.path);
+            season_day_boundary(*input, boundary); synthetic_input(*input);
+            if (size == 8) input->wr<8>(offset, input->r<8>(offset) ^ 1);
+            else input->wr<4>(offset, input->r<4>(offset) ^ 1);
+            bool accepted = true;
+            try { (void)season_replay_import(*input, import); }
+            catch (const std::runtime_error& error) {
+                accepted = std::string(error.what()).find("native input register") == std::string::npos;
+            }
+            close_season_replay();
+            return accepted;
+        };
+        require(replays(true, "CarbonLib::FSOpenFork", 16384, 8), "Scratch f0 was compared");
+        require(replays(true, "CarbonLib::FSOpenFork", 16400, 8), "f1 was compared for an integer-only import");
+        require(replays(true, "CarbonLib::FSOpenFork", 32, 4), "FSOpenFork's unused r8 was compared");
+        require(!replays(true, "CarbonLib::FSOpenFork", 28, 4), "FSOpenFork's fifth argument r7 was not compared");
+        require(!replays(true, "CarbonLib::X2Fix", 16400, 8), "X2Fix's argument f1 was not compared");
+        require(replays(true, "CarbonLib::X2Fix", 16416, 8), "X2Fix's unused f2 was compared");
+        require(!replays(true, "CarbonLib::FSOpenFork", 124, 4), "Preserved r31 was not compared");
+        require(!replays(true, "CarbonLib::FSOpenFork", 16640, 8), "Preserved f16 was not compared");
+        require(!replays(true, "CarbonLib::FSOpenFork", 4128, 4), "The return address was not compared");
+        require(!replays(true, "synthetic-native-service", 40, 4), "An unlisted import's r10 was not compared");
+        require(!replays(false, "CarbonLib::FSOpenFork", 16384, 8), "A season replay ignored scratch f0");
         const auto transcript = directory.path / "imports.gz";
         std::filesystem::resize_file(transcript, std::filesystem::file_size(transcript) / 2);
         rejected = false;

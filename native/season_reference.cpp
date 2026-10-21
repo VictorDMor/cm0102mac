@@ -9,10 +9,14 @@
 #include <vector>
 #include <tuple>
 #include <optional>
+#include <map>
+#include <set>
+#include <string_view>
 
 namespace cm::aot {
 namespace {
 bool semantic_calendar_replay = false;
+bool live_pure_imports = false;
 constexpr std::uint32_t day_pc = 0x101195e8;
 constexpr std::uint32_t date_global = 0x108b3f10, phase_global = 0x108b40a4;
 constexpr std::array<char, 8> magic{'C','M','D','A','Y','0','0','1'};
@@ -39,6 +43,12 @@ struct Stream {
     void finish() {
         const auto result = gzclose(file); file = nullptr;
         if (result != Z_OK) throw std::runtime_error("Cannot finalize private season transcript");
+    }
+    bool at_end() {
+        const int next = gzgetc(file);
+        if (next == -1) return gzeof(file);
+        gzungetc(next, file);
+        return false;
     }
     void require_eof() {
         std::uint8_t byte{};
@@ -70,29 +80,159 @@ void put_chunk(Stream& stream, const State& s) {
     stream.put(s.heap_end); stream.put(s.memory_error);
     put_table(stream, s.allocated); put_table(stream, s.available);
 }
+// The heap state an import leaves behind: the second part of every chunk.
+struct Allocator {
+    std::map<std::uint32_t, std::uint32_t> allocated, available;
+    std::uint32_t heap_end = 0;
+    std::int16_t memory_error = 0;
+    explicit Allocator(const State& s)
+        : allocated(s.allocated), available(s.available), heap_end(s.heap_end), memory_error(s.memory_error) {}
+    explicit Allocator(Stream& stream) {
+        heap_end = stream.take<std::uint32_t>(); memory_error = stream.take<std::int16_t>();
+        take_table(stream, allocated); take_table(stream, available);
+    }
+    void restore(State& s) && {
+        s.allocated = std::move(allocated); s.available = std::move(available);
+        s.heap_end = heap_end; s.memory_error = memory_error;
+    }
+    bool operator==(const Allocator&) const = default;
+};
+// The first part of every chunk: the PC, registers and generated temporaries.
+constexpr std::size_t chunk_registers_size = sizeof(State::pc) + sizeof(State::registers) + sizeof(State::unique);
 void take_chunk(Stream& stream, State& s) {
     s.pc = stream.take<std::uint32_t>();
     s.registers = stream.take<decltype(s.registers)>();
     s.unique = stream.take<decltype(s.unique)>();
-    s.heap_end = stream.take<std::uint32_t>(); s.memory_error = stream.take<std::int16_t>();
-    take_table(stream, s.allocated); take_table(stream, s.available);
+    Allocator(stream).restore(s);
+}
+void skip(Stream& stream, std::uint64_t size) {
+    std::array<std::uint8_t, 65536> scratch;
+    while (size) {
+        const auto count = std::size_t(std::min<std::uint64_t>(size, scratch.size()));
+        stream.bytes(scratch.data(), count); size -= count;
+    }
+}
+// Heap state after the last recorded import. A live replay computes pure
+// imports itself; the heap it reaches must match before each OS import.
+std::optional<Allocator> recorded_allocator;
+// Reads a chunk's allocator state and skips its registers.
+Allocator skip_chunk(Stream& stream) {
+    skip(stream, chunk_registers_size);
+    return Allocator(stream);
+}
+std::string heap_difference(const Allocator& expected, const Allocator& actual) {
+    if (expected.heap_end != actual.heap_end)
+        return "heap end " + hex_address(expected.heap_end) + " expected, " + hex_address(actual.heap_end) + " found";
+    if (expected.memory_error != actual.memory_error)
+        return "MemError " + std::to_string(expected.memory_error) + " expected, " + std::to_string(actual.memory_error) + " found";
+    for (const auto& [name, a, b] : {std::tuple{"allocation", &expected.allocated, &actual.allocated},
+                                     std::tuple{"free block", &expected.available, &actual.available}}) {
+        const auto [x, y] = std::mismatch(a->begin(), a->end(), b->begin(), b->end());
+        if (x == a->end() && y == b->end()) continue;
+        const auto describe = [](auto it, auto end) {
+            return it == end ? std::string("none") : hex_address(it->first) + " size " + std::to_string(it->second);
+        };
+        return std::string("first differing ") + name + ": " + describe(x, a->end()) + " expected, " + describe(y, b->end()) + " found";
+    }
+    return "identical";
 }
 void put_input(Stream& stream, const State& s) {
     stream.put(s.pc); stream.put(s.executed); stream.put(s.native_calls); stream.put(s.registers);
 }
-void check_input(Stream& stream, const State& s) {
-    const auto pc = stream.take<std::uint32_t>();
-    const auto executed = stream.take<std::uint64_t>(), calls = stream.take<std::uint64_t>();
-    const auto registers = stream.take<decltype(s.registers)>();
-    if (pc != s.pc) throw std::runtime_error("First divergence: native import PC at " + hex_address(s.pc));
-    if ((!semantic_calendar_replay && executed != s.executed) || calls != s.native_calls)
+// What the bridges know of an import: the argument registers it reads (r3
+// upward, f1 upward; a double also takes two integer slots, so num2dec reads
+// r3, f1 and r6), and whether it is pure, computed from guest state alone, so
+// an operation replay can run it live. Unlisted imports are replayed and
+// checked on all eight integer and thirteen floating arguments.
+struct ImportContract { unsigned integer, floating; bool pure; };
+ImportContract import_contract(std::string_view name) {
+    static const std::map<std::string_view, ImportContract> known{
+        {"CarbonLib::pow", {0, 2, true}}, {"CarbonLib::atan2", {0, 2, true}}, {"CarbonLib::sin", {0, 1, true}},
+        {"CarbonLib::cos", {0, 1, true}}, {"CarbonLib::atan", {0, 1, true}}, {"CarbonLib::sqrt", {0, 1, true}},
+        {"CarbonLib::num2dec", {4, 1, true}}, {"CarbonLib::dec2num", {1, 0, true}}, {"CarbonLib::nan", {1, 0, true}},
+        {"CarbonLib::NewPtr", {1, 0, true}}, {"CarbonLib::NewPtrClear", {1, 0, true}},
+        {"CarbonLib::DisposePtr", {1, 0, true}}, {"CarbonLib::BlockMoveData", {3, 0, true}},
+        {"CarbonLib::MemError", {0, 0, true}},
+        {"CarbonLib::X2Fix", {0, 1, false}}, {"CarbonLib::x80tod", {1, 0, false}},
+        {"CarbonLib::PBGetForkSizeSync", {1, 0, false}}, {"CarbonLib::PBSetForkPositionSync", {1, 0, false}},
+        {"CarbonLib::PBWriteForkSync", {1, 0, false}}, {"CarbonLib::PBReadForkSync", {1, 0, false}},
+        {"CarbonLib::FSCloseFork", {1, 0, false}}, {"CarbonLib::FSOpenFork", {5, 0, false}},
+        {"CarbonLib::FSMakeFSSpec", {4, 0, false}}, {"CarbonLib::FSpMakeFSRef", {2, 0, false}},
+        {"CarbonLib::FSMakeFSRefUnicode", {5, 0, false}}, {"CarbonLib::FSGetCatalogInfo", {6, 0, false}},
+        {"CarbonLib::HGetVol", {3, 0, false}}, {"CarbonLib::ResolveAliasFile", {4, 0, false}},
+        {"CarbonLib::UpgradeScriptInfoToTextEncoding", {5, 0, false}},
+        {"CarbonLib::CreateTextToUnicodeInfoByEncoding", {2, 0, false}},
+        {"CarbonLib::DisposeTextToUnicodeInfo", {1, 0, false}},
+        {"CarbonLib::ConvertFromTextToUnicode", {8, 0, false}}};
+    const auto found = known.find(name);
+    return found == known.end() ? ImportContract{8, 13, false} : found->second;
+}
+bool pure_import(std::string_view name) { return import_contract(name).pure; }
+// What a callee can observe at entry: its arguments, the stack, TOC and
+// return address, FPSCR control bits, and the registers its caller keeps
+// across the call (r13-r31, f14-f31, cr2-cr4). The replay restores every
+// register from the transcript when an import returns, so a preserved
+// register must be compared here or a difference in it would be erased.
+// The remaining volatile registers are scratch the callee never reads; the
+// single-rounding multiply-add and rewritten routines can leave them
+// different (game-observable equivalence, decided 2026-10-20).
+bool observed_by_import(std::size_t byte, ImportContract arguments) {
+    if (byte < 128) {
+        const auto r = byte / 4;
+        if (r == 0 || r == 11 || r == 12) return false;
+        return r < 3 || r > 10 || r - 3 < arguments.integer;
+    }
+    if (byte >= 16384 && byte < 16384 + 32 * 16) {
+        const auto f = (byte - 16384) / 16;
+        if ((byte - 16384) % 16 >= 8) return false; // VSX half; the PowerPC has none.
+        if (f == 0) return false;
+        return f > 13 || f - 1 < arguments.floating;
+    }
+    if (byte >= 1024 && byte < 1030) return false;  // XER bits
+    if (byte >= 1280 && byte < 1304) return false;  // FPSCR status bits
+    if (byte >= 2304 && byte < 2312) { const auto field = byte - 2304; return field >= 2 && field <= 4; }
+    if (byte >= 4100 && byte < 4104) return false;  // XER
+    if (byte >= 4132 && byte < 4136) return false;  // CTR
+    return true;
+}
+std::string register_name(std::size_t byte) {
+    if (byte < 128) return "r" + std::to_string(byte / 4);
+    if (byte >= 16384 && byte < 16384 + 32 * 16) return "f" + std::to_string((byte - 16384) / 16);
+    if (byte >= 2304 && byte < 2312) return "cr" + std::to_string(byte - 2304);
+    if (byte >= 1280 && byte < 1312) return "FPSCR bit " + std::to_string(byte - 1280);
+    if (byte >= 4128 && byte < 4132) return "LR";
+    return "register byte " + std::to_string(byte);
+}
+struct Input {
+    std::uint32_t pc;
+    std::uint64_t executed, calls;
+    decltype(State::registers) registers;
+};
+Input take_input(Stream& stream) {
+    Input input;
+    input.pc = stream.take<std::uint32_t>();
+    input.executed = stream.take<std::uint64_t>(); input.calls = stream.take<std::uint64_t>();
+    input.registers = stream.take<decltype(State::registers)>();
+    return input;
+}
+// Season replays compare every register. An operation replay compares what
+// the import observes; a null import is a day boundary inside a routine,
+// where every register can be live.
+void check_input(const Input& input, const State& s, const char* import = nullptr) {
+    if (input.pc != s.pc) throw std::runtime_error("First divergence: native import PC at " + hex_address(s.pc));
+    // An operation replay runs pure imports itself, so its call count differs.
+    if (!live_pure_imports && ((!semantic_calendar_replay && input.executed != s.executed) || input.calls != s.native_calls))
         throw std::runtime_error("First divergence: execution or native-call order at " + hex_address(s.pc));
-    if (registers != s.registers) {
-        const auto pair = std::mismatch(registers.begin(), registers.end(), s.registers.begin());
-        throw std::runtime_error("First divergence: native input register byte " +
-            std::to_string(pair.first - registers.begin()) + " at " + hex_address(s.pc));
+    if (input.registers == s.registers) return;
+    const bool masked = live_pure_imports && import;
+    const auto contract = masked ? import_contract(import) : ImportContract{};
+    for (std::size_t byte = 0; byte < input.registers.size(); ++byte) {
+        if (input.registers[byte] == s.registers[byte] || (masked && !observed_by_import(byte, contract))) continue;
+        throw std::runtime_error("First divergence: native input register byte " + std::to_string(byte) +
+            " (" + register_name(byte) + ") at " + hex_address(s.pc) + (import ? std::string(" calling ") + import : ""));
     }
 }
+void check_input(Stream& stream, const State& s) { check_input(take_input(stream), s); }
 struct Recorder final : MemoryObserver {
     State* owner;
     std::filesystem::path directory;
@@ -248,26 +388,69 @@ void season_record_callback_end(State& s, std::uint32_t result) {
 void open_season_replay(const std::filesystem::path& directory, bool semantic_calendar) {
     if (replay) throw std::runtime_error("A private season replay is already active");
     semantic_calendar_replay = semantic_calendar;
+    live_pure_imports = false;
     replay = std::make_unique<Stream>(directory / "imports.gz", false);
     if (replay->take<std::array<char, 8>>() != magic) { replay.reset(); throw std::runtime_error("Unrecognized private season transcript"); }
     replay_depth = 0;
     replay_previous_date.reset();
 }
-void close_season_replay() { semantic_calendar_replay = false; replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset(); }
+void open_operation_replay(const std::filesystem::path& directory) {
+    open_season_replay(directory);
+    live_pure_imports = true;
+}
+void close_season_replay() {
+    semantic_calendar_replay = live_pure_imports = false; recorded_allocator.reset();
+    replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset();
+}
+namespace {
+void skip_recorded_import() {
+    for (;;) {
+        const auto event = replay->take<Event>();
+        if (event == Event::import_end) return;
+        if (event == Event::chunk) recorded_allocator = skip_chunk(*replay);
+        else if (event == Event::map || event == Event::write || event == Event::clear) {
+            replay->take<std::uint32_t>();
+            const auto size = replay->take<std::uint64_t>();
+            if (event == Event::write) skip(*replay, size);
+        } else throw std::runtime_error("Invalid private season transcript event in a pure import");
+    }
+}
+// The next recorded import this replay does not compute itself; none at the
+// end of a live replay's transcript.
+std::optional<Input> next_recorded_import() {
+    for (;;) {
+        if (live_pure_imports && replay->at_end()) return std::nullopt;
+        if (replay->take<Event>() != Event::import) throw std::runtime_error("First divergence: native import order");
+        auto input = take_input(*replay);
+        const char* name = import_name(input.pc);
+        if (!live_pure_imports || !name || !pure_import(name)) return input;
+        skip_recorded_import();
+    }
+}
+}
 void require_season_replay_eof() {
     if (!replay) throw std::runtime_error("No private season replay is open");
+    if (live_pure_imports)
+        if (const auto input = next_recorded_import())
+            throw std::runtime_error("First divergence: recorded native import at " + hex_address(input->pc) + " was not called");
     replay->require_eof();
 }
 bool season_replay_import(State& s, const char* name) {
     if (!replay) return false;
+    if (live_pure_imports && pure_import(name)) return false;
     s.memory.observer = nullptr;
-    (void)name; // Exact import PC is checked; names are fixed by the original program.
-    if (replay->take<Event>() != Event::import) throw std::runtime_error("First divergence: native import order");
-    check_input(*replay, s);
+    const auto input = next_recorded_import();
+    if (!input) throw std::runtime_error(std::string("First divergence: ") + name + " called after the transcript ends");
+    check_input(*input, s, name);
+    if (live_pure_imports && recorded_allocator && Allocator(s) != *recorded_allocator)
+        throw std::runtime_error(std::string("First divergence: heap state calling ") + name + ": " +
+                                 heap_difference(*recorded_allocator, Allocator(s)));
     for (;;) {
         const auto event = replay->take<Event>();
-        if (event == Event::chunk) take_chunk(*replay, s);
-        else if (event == Event::map || event == Event::write || event == Event::clear) {
+        if (event == Event::chunk) {
+            take_chunk(*replay, s);
+            recorded_allocator = Allocator(s);
+        } else if (event == Event::map || event == Event::write || event == Event::clear) {
             const auto address = replay->take<std::uint32_t>();
             const auto size = replay->take<std::uint64_t>();
             if (!size || size > (UINT64_C(1) << 32) - address)
@@ -306,7 +489,20 @@ std::string season_state_summary(const State& s) {
     out << " instructions=" << s.executed << " native-calls=" << s.native_calls;
     return out.str();
 }
-std::string compare_season_states(const State& expected, const State& actual, bool semantic_calendar) {
+namespace {
+enum class Comparison { strict, semantic_calendar, operation };
+// load_program maps the guest stack here (tools/compile_recomp.py).
+constexpr std::uint32_t stack_base = 0x70000000;
+// A return address follows bl, bctrl or blrl with the link bit set, or is the
+// sentinel a whole-routine run returns to.
+bool ends_after_call(const State& s) {
+    if (s.pc == return_sentinel) return true;
+    try {
+        const auto instruction = std::uint32_t(s.memory.read<4>(s.pc - 4));
+        return (instruction & 0xfc000003) == 0x48000001 || instruction == 0x4e800421 || instruction == 0x4e800021;
+    } catch (const std::exception&) { return false; }
+}
+std::string compare_states(const State& expected, const State& actual, Comparison mode) {
     try {
         for (const auto& [name, global, offset, size] : std::vector<std::tuple<const char*, std::uint32_t, unsigned, unsigned>>{
             {"game.date.day-of-year", date_global, 0, 2}, {"game.date.year", date_global, 2, 2},
@@ -319,16 +515,29 @@ std::string compare_season_states(const State& expected, const State& actual, bo
         }
     } catch (const std::exception& error) { return "First divergence: named game field unavailable: " + std::string(error.what()); }
     if (expected.pc != actual.pc) return "First divergence: boundary PC";
-    if ((!semantic_calendar && expected.executed != actual.executed) || expected.native_calls != actual.native_calls)
+    if ((mode == Comparison::strict && expected.executed != actual.executed) ||
+        (mode != Comparison::operation && expected.native_calls != actual.native_calls))
         return "First divergence: instruction or native-call consumption";
     if (expected.allocated != actual.allocated || expected.available != actual.available ||
         expected.heap_end != actual.heap_end || expected.memory_error != actual.memory_error)
         return "First divergence: allocator state";
-    for (const auto& [name, a, b] : std::vector<std::tuple<const char*, std::span<const std::uint8_t>, std::span<const std::uint8_t>>>{
-        {"architectural register byte", expected.registers, actual.registers}, {"generated temporary byte", expected.unique, actual.unique}}) {
-        const auto pair = std::mismatch(a.begin(), a.end(), b.begin());
-        if (pair.first != a.end()) { const auto index = pair.first - a.begin(); return byte_difference(name, index, a[index], b[index]); }
+    // An operation that ends at a return address leaves its caller only r3,
+    // r4, f1 and the preserved registers; its scratch registers, generated
+    // temporaries and the stack below SP are dead. A mid-routine end is
+    // compared whole.
+    const bool returned = mode == Comparison::operation && ends_after_call(expected);
+    for (std::size_t byte = 0; byte < expected.registers.size(); ++byte)
+        if (expected.registers[byte] != actual.registers[byte] && (!returned || observed_by_import(byte, {2, 1, false})))
+            return byte_difference("architectural register byte (" + register_name(byte) + ")", byte,
+                                   expected.registers[byte], actual.registers[byte]);
+    if (const auto pair = std::mismatch(expected.unique.begin(), expected.unique.end(), actual.unique.begin());
+        !returned && pair.first != expected.unique.end()) {
+        const auto index = pair.first - expected.unique.begin();
+        return byte_difference("generated temporary byte", index, expected.unique[index], actual.unique[index]);
     }
+    const auto live = [&](std::uint32_t address) {
+        return !returned || address < stack_base || address >= std::uint32_t(expected.r<4>(4));
+    };
     const auto ranges = expected.memory.mapped_ranges();
     if (ranges != actual.memory.mapped_ranges()) return "First divergence: mapped memory ranges";
     for (const auto& [start, size] : ranges) {
@@ -336,9 +545,10 @@ std::string compare_season_states(const State& expected, const State& actual, bo
             const auto length = std::size_t(std::min<std::uint64_t>(size - offset, 65536));
             const auto address = start + std::uint32_t(offset);
             const auto a = expected.memory.copy_out(address, length), b = actual.memory.copy_out(address, length);
-            const auto pair = std::mismatch(a.begin(), a.end(), b.begin());
-            if (pair.first != a.end()) {
+            for (auto pair = std::mismatch(a.begin(), a.end(), b.begin()); pair.first != a.end();
+                 pair = std::mismatch(pair.first + 1, a.end(), pair.second + 1)) {
                 const auto index = pair.first - a.begin(); const auto at = address + std::uint32_t(index);
+                if (!live(at)) continue;
                 auto allocation = expected.allocated.upper_bound(at);
                 std::string field = "mapped game/runtime memory";
                 if (allocation != expected.allocated.begin()) {
@@ -351,5 +561,12 @@ std::string compare_season_states(const State& expected, const State& actual, bo
         }
     }
     return {};
+}
+}
+std::string compare_season_states(const State& expected, const State& actual, bool semantic_calendar) {
+    return compare_states(expected, actual, semantic_calendar ? Comparison::semantic_calendar : Comparison::strict);
+}
+std::string compare_operation_states(const State& expected, const State& actual) {
+    return compare_states(expected, actual, Comparison::operation);
 }
 }

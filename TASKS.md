@@ -13,7 +13,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Track 1, first measurements (2026-10-20, 600-advance pairs): big-endian accessors as one load/store + byte swap: **5.3% / 8.3% faster** (Arsenal / Cruzeiro), identical final state; kept. Partial-page bounds entries for globals: 1.6% / 0.3% *slower* in match play; reverted.
 - [x] Plumbing (2026-10-21): scope chains per State (3.6%), inline PC-profile flag (1.5%). With byte-swap: **13.9% / 13.5% faster** match intervals than before today's speed work.
 - [ ] Next plumbing: per-call diagnostics accessors (`spatial_role_diagnostics` ~2%), what dominates `spatial_role::invoke` (~12%), owner→generated calls re-entering `run_until` (track 2 removes these).
-- [ ] **Re-capture the world replays.** Since single-rounding multiply-add, the interest-pass and daily captures no longer replay: the strict check compares every register at each native call, and scratch FPRs (f0, f5) differ at `CarbonLib::pow`. Either re-capture (needs one UI session with the capture app) or check only the registers each import reads. Needed before any world-processing speed work can be measured.
+- [x] World replays work again (2026-10-21): `cm-world-replay` runs pure imports (pow, BlockMoveData, NewPtr…) live and replays OS imports from the transcript; the import check compares only registers the import reads or its caller keeps. Interest pass ×4, daily transition, attribute world, database and daily sort reach their recorded end states and are ctest checks (`world_replay_*`). `background-fixture` is invalid since single rounding: its match now calls an OS import the capture never recorded (match play is covered by the 677/2262 intervals).
+- [ ] Profile world processing and pick the first rewrite block (in progress).
 
 ## Next: rewrite track
 
@@ -57,9 +58,9 @@ From the 2026-10-20 review. Estimates are unmeasured.
 ## Profile notes
 
 - Match play (600 advances, Arsenal, 2026-10-20): ~12% generated pages; ~28% routine-to-routine plumbing (`run_until`, `dispatch_page`, dispatch/native scopes, thread-local lookups, hook entry, diagnostics checks); ~15% `SemanticGuestCall` instruction methods; `spatial_role::invoke` 12.6%; rewritten bodies ~11%; guest memory ~8%.
-- World processing: no clean profile yet. The old interest-pass binary carries timing instrumentation (std::map per call) and unsymbolized frames; profile a fresh build on re-captured fixtures, counting only samples under `run_until`.
+- World processing, interest pass (`cm-world-replay --profile`, 9,208 guest samples over the four captures, 2026-10-21): register club interest `0x10363f60` (builder-based owner) 91.5% inclusive / 39.1% self; generated callees `0x1014c2e0` 10.8%, `0x100f5770` 10.7%, `0x100c7d00` 8.4%, `0x100d9580` 4.4%; contract query `0x10082f90` 6.4%; assessment `0x10361490` 21.3% inclusive.
 
 ## Known test state
 
-- `tools/dev.sh test`: 40 runnable tests, all passing (2026-10-20). `match_engine_live_equivalence` and most others lack a built binary or inputs.
+- `tools/dev.sh test`: 62 runnable tests, all passing (2026-10-21). `match_engine_live_equivalence` and most others lack a built binary or inputs.
 - Python audits: every `tools/test_*.py` passes against `.local/current/export`; `test_generated_temporaries.py` (needs a build dir) not run.

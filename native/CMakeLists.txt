@@ -258,6 +258,26 @@ target_compile_options(cm-season-reference-checks PRIVATE -Wall -Wextra -Werror 
 add_executable(cm-season-reference season_reference_main.cpp)
 target_link_libraries(cm-season-reference PRIVATE cm_aot)
 target_compile_options(cm-season-reference PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_executable(cm-world-replay world_replay_main.cpp)
+target_link_libraries(cm-world-replay PRIVATE cm_aot)
+target_compile_options(cm-world-replay PRIVATE -Wall -Wextra -Werror -Wpedantic)
+get_filename_component(CM_DEFAULT_BENCHMARK_DIR "${CMAKE_SOURCE_DIR}/../.local/benchmarks" ABSOLUTE)
+set(CM_BENCHMARK_DIR "${CM_DEFAULT_BENCHMARK_DIR}" CACHE PATH "Captured world operations and match intervals")
+# Each captured world operation must reach its recorded end state. These are
+# the reference checks for world-processing rewrites and speed work.
+foreach(capture interest-pass/0 interest-pass/1 interest-pass/2 interest-pass/3 daily-transition
+        attribute-world database daily-sort)
+    string(REPLACE "/" "_" name "${capture}")
+    string(REPLACE "-" "_" name "${name}")
+    add_test(NAME world_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/${capture}")
+endforeach()
+# Changing one random number the transition draws must change a game record
+# (the flipped RNG-table byte itself is put back before the comparison). Of
+# the 66 table bytes this transition consumes, only this one alters a result.
+add_test(NAME world_replay_detects_divergence
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/daily-transition" --flip 0x108e3be7)
+set_tests_properties(world_replay_detects_divergence PROPERTIES
+                     PASS_REGULAR_EXPRESSION "First divergence: allocation 0x25aab540")
 foreach(check_name IN ITEMS construction presentation subsystem_audit)
     add_executable(cm-date-${check_name}-checks date_${check_name}_checks.cpp)
     target_link_libraries(cm-date-${check_name}-checks PRIVATE cm_aot)

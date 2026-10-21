@@ -32,6 +32,14 @@ default_targets() {
     done
 }
 
+# New targets and tests in CMakeLists.txt are unknown until CMake reconfigures.
+# CMake leaves the Makefile untouched when its content is unchanged.
+reconfigure() {
+    if [[ "$root/native/CMakeLists.txt" -nt "$build/Makefile" ]]; then
+        cmake "$build" >/dev/null && touch "$build/Makefile"
+    fi
+}
+
 # Tests whose binary and absolute-path inputs exist, and whose fixture setup
 # tests are runnable too (ctest adds those to any selection), as a regex.
 runnable_tests() {
@@ -94,9 +102,11 @@ build)
         while read -r target; do targets+=("$target"); done < <(default_targets)
         set -- "${targets[@]}"
     fi
+    reconfigure
     cmake --build "$build" -j "$jobs" --target "$@"
     ;;
 test)
+    reconfigure
     if [[ $# -eq 0 ]]; then set -- -R "$(runnable_tests)"; fi
     ctest --test-dir "$build" -j "$jobs" --output-on-failure "$@"
     ;;

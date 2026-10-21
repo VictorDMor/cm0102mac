@@ -38,6 +38,7 @@ Stop and ask only when you can't continue without me, or before anything destruc
 
 Everything uses `.local/current/{export,generated,build}`; machine settings (Ghidra, JDK) are in `.local/current/env`.
 Benchmark inputs live in `.local/benchmarks`: `match/` (600-advance snapshots), `world/` (captured world operations), `saves/` (the 26-country career and a pre-match save) and `harness/` (benchmark sources).
+`cm-world-replay <capture> [runs]` times a world capture and checks its end state; `--profile <file>` plus `tools/guest_profile.py <file>` shows which original routines the time goes to.
 
 | Command | When |
 | --- | --- |
