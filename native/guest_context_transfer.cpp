@@ -3,42 +3,33 @@
 #include <algorithm>
 
 namespace cm::aot {
-namespace {
-thread_local GuestDispatchScope* dispatch_scope = nullptr;
-thread_local GuestNativeScope* native_scope = nullptr;
-thread_local GuestScalarContextCapture* scalar_capture = nullptr;
-}
-GuestDispatchScope* guest_dispatch_scope(State& state) noexcept {
-    for (auto* scope = dispatch_scope; scope; scope = scope->previous_)
-        if (scope->state_ == &state) return scope;
-    return nullptr;
-}
+// Each State keeps its own scope chains, innermost first; scopes are stack
+// objects, so construction and destruction stay last-in, first-out.
+GuestDispatchScope* guest_dispatch_scope(State& state) noexcept { return state.dispatch_scope; }
 GuestDispatchScope::GuestDispatchScope(State& state) noexcept : GuestDispatchScope(state, return_sentinel) {}
 GuestDispatchScope::GuestDispatchScope(State& state, std::uint32_t return_pc) noexcept : state_(&state),
-    entry_stack_(std::uint32_t(state.r<4>(4))), return_pc_(return_pc), previous_(dispatch_scope),
-    previous_state_(guest_dispatch_scope(state)), caller_(native_scope) {
-    while (caller_ && caller_->state_ != &state) caller_ = caller_->previous_;
-    dispatch_scope = this;
+    entry_stack_(std::uint32_t(state.r<4>(4))), return_pc_(return_pc), previous_(state.dispatch_scope),
+    previous_state_(state.dispatch_scope), caller_(state.native_scope) {
+    state.dispatch_scope = this;
 }
-GuestDispatchScope::~GuestDispatchScope() { dispatch_scope = previous_; }
+GuestDispatchScope::~GuestDispatchScope() { state_->dispatch_scope = previous_; }
 bool GuestDispatchScope::resumes(const GuestContextTransfer& transfer) const noexcept {
     return transfer.state == state_ && transfer.destination == this;
 }
 GuestNativeScope::GuestNativeScope(State& state) noexcept : GuestNativeScope(state, state.pc) {}
 GuestNativeScope::GuestNativeScope(State& state, std::uint32_t function) noexcept : state_(&state),
-    function_(function), frame_(std::uint32_t(state.r<4>(4))), previous_(native_scope),
-    dispatcher_(guest_dispatch_scope(state)) { native_scope = this; }
-GuestNativeScope::~GuestNativeScope() { native_scope = previous_; }
+    function_(function), frame_(std::uint32_t(state.r<4>(4))), previous_(state.native_scope),
+    dispatcher_(state.dispatch_scope) { state.native_scope = this; }
+GuestNativeScope::~GuestNativeScope() { state_->native_scope = previous_; }
+// A capture without a State is inert: it is never linked or found.
 GuestScalarContextCapture::GuestScalarContextCapture(State* state) noexcept
-    : state_(state), previous_(scalar_capture) { scalar_capture = this; }
-GuestScalarContextCapture::~GuestScalarContextCapture() { scalar_capture = previous_; }
+    : state_(state), previous_(state ? state->scalar_capture : nullptr) { if (state) state->scalar_capture = this; }
+GuestScalarContextCapture::~GuestScalarContextCapture() { if (state_) state_->scalar_capture = previous_; }
 void scalar_context_capture_link(State& state, std::uint32_t value) noexcept {
-    for (auto* capture = scalar_capture; capture; capture = capture->previous_)
-        if (capture->state_ == &state) { capture->link_ = value; capture->has_link_ = true; return; }
+    if (auto* capture = state.scalar_capture) { capture->link_ = value; capture->has_link_ = true; }
 }
 void scalar_context_capture_stack(State& state, std::uint32_t value) noexcept {
-    for (auto* capture = scalar_capture; capture; capture = capture->previous_)
-        if (capture->state_ == &state) { capture->stack_ = value; capture->has_stack_ = true; return; }
+    if (auto* capture = state.scalar_capture) { capture->stack_ = value; capture->has_stack_ = true; }
 }
 void GuestScalarContextCapture::commit() {
     if (!state_ || !has_link_ || !has_stack_) return;
@@ -82,8 +73,8 @@ void complete_context_transfer(State& state) {
     current->function_ = current->frame_ = 0;
     // A handler in an active semantic function abandons that C++ invocation.
     // Frame identity distinguishes recursive invocations of the same function.
-    if (function) for (auto* scope = native_scope; scope; scope = scope->previous_)
-        if (scope->state_ == &state && scope->function_ == function && scope->frame_ == frame)
+    if (function) for (auto* scope = state.native_scope; scope; scope = scope->previous_)
+        if (scope->function_ == function && scope->frame_ == frame)
             throw GuestContextTransfer{&state, scope->dispatcher_};
     // Generated callees can share their semantic caller's frame. A known,
     // different function in that frame is still inside this callback dispatch;

@@ -19,6 +19,9 @@
 
 namespace cm::aot {
 class NativePlatform;
+class GuestDispatchScope;
+class GuestNativeScope;
+class GuestScalarContextCapture;
 struct RngBoundaryObserver;
 struct BackgroundBoundaryObserver;
 struct CollectionBoundaryObserver;
@@ -228,6 +231,11 @@ struct State {
     // Additional semantic-module diagnostics are owned, private and unsaved.
     // Their definition can grow without changing the generated runtime ABI.
     std::unique_ptr<RuntimeDiagnostics> runtime_diagnostics;
+    // Innermost guest-context scopes of this State (guest_context_transfer.cpp).
+    // A State runs on one thread at a time, so no thread-local lookup is needed.
+    GuestDispatchScope* dispatch_scope = nullptr;
+    GuestNativeScope* native_scope = nullptr;
+    GuestScalarContextCapture* scalar_capture = nullptr;
     // Generated register offsets are constants. Inlining lets the compiler
     // fold the bounds check and access them directly, retaining checks for
     // dynamic callers without an out-of-line call per register access.
