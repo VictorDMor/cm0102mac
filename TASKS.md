@@ -11,7 +11,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 ## Now
 
 - [x] **Fused multiply-add (decided 2026-10-20).** One rounding at all 1,049 sites, in generated code and in the 41+ builder call sites of rewritten routines. Two 600-advance matches: state differs transiently after 4 and 1 advances, final state identical.
-- [ ] Track 1 prototype: measure what better generated code and cheaper routine-to-routine calls gain (see profile notes below).
+- [x] Track 1, first measurements (2026-10-20, 600-advance pairs): big-endian accessors as one load/store + byte swap: **5.3% / 8.3% faster** (Arsenal / Cruzeiro), identical final state; kept. Partial-page bounds entries for globals: 1.6% / 0.3% *slower* in match play; reverted.
+- [ ] **Re-capture the world replays.** Since single-rounding multiply-add, the interest-pass and daily captures no longer replay: the strict check compares every register at each native call, and scratch FPRs (f0, f5) differ at `CarbonLib::pow`. Either re-capture (needs one UI session with the capture app) or check only the registers each import reads. Needed before any world-processing speed work can be measured.
 
 ## Next: rewrite track
 
@@ -25,8 +26,7 @@ The end goal is every routine in C++ (see CLAUDE.md). Start where speed and rewr
 
 From the 2026-10-20 review. Estimates are unmeasured.
 
-- [ ] Global-variable (TOC) reads miss the inline bounds check: `page_ends_` can't certify segment 1's partial first page (`native/aot_runtime.cpp:54-63`). 0.96 vs 0.36 ns per read, ~42k sites.
-- [ ] `read_be`/`write_be` byte loops → `memcpy` + `std::byteswap` (−6% code on page `0x1071a`).
+- [ ] Global-variable (TOC) reads miss the inline bounds check (`native/aot_runtime.cpp:54-63`). A begin-offset entry was slower in match play (extra compare on every access); re-test on world processing, where generated code dominates.
 - [ ] Native sort: accept comparator `0x10309a00` (`tools/native_sort8.py`), ~6 s per weekly Continue.
 - [ ] FPSCR bookkeeping is about half the statements on FP-heavy pages; emit one helper, or compute it lazily for its three readers.
 - [ ] Scope chains from `thread_local` into `State` (`native/guest_context_transfer.cpp:7-31`), est. 10–15 s.
@@ -57,7 +57,7 @@ From the 2026-10-20 review. Estimates are unmeasured.
 ## Profile notes
 
 - Match play (600 advances, Arsenal, 2026-10-20): ~12% generated pages; ~28% routine-to-routine plumbing (`run_until`, `dispatch_page`, dispatch/native scopes, thread-local lookups, hook entry, diagnostics checks); ~15% `SemanticGuestCall` instruction methods; `spatial_role::invoke` 12.6%; rewritten bodies ~11%; guest memory ~8%.
-- World processing: no clean profile yet. The interest-pass replay harness spends most time cloning and comparing the 127 MB state; time only the pass.
+- World processing: no clean profile yet. The old interest-pass binary carries timing instrumentation (std::map per call) and unsymbolized frames; profile a fresh build on re-captured fixtures, counting only samples under `run_until`.
 
 ## Known test state
 

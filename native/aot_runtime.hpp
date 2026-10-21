@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <map>
@@ -52,15 +53,28 @@ template <unsigned N> constexpr std::uint64_t mask() {
     if constexpr (N == 8) return UINT64_MAX;
     else return (UINT64_C(1) << (N * 8)) - 1;
 }
+// Guest memory and registers are big-endian; the host is little-endian ARM64.
+// One load or store plus a byte swap; byte loops did not always combine.
+static_assert(std::endian::native == std::endian::little);
 template <unsigned N> std::uint64_t read_be(const std::uint8_t* p) {
     static_assert(N > 0 && N <= 8);
-    std::uint64_t value = 0;
-    for (unsigned i = 0; i < N; ++i) value = (value << 8) | p[i];
-    return value;
+    if constexpr (N == 1) return *p;
+    else if constexpr (N == 2) { std::uint16_t v; std::memcpy(&v, p, 2); return std::byteswap(v); }
+    else if constexpr (N == 4) { std::uint32_t v; std::memcpy(&v, p, 4); return std::byteswap(v); }
+    else if constexpr (N == 8) { std::uint64_t v; std::memcpy(&v, p, 8); return std::byteswap(v); }
+    else {
+        std::uint64_t value = 0;
+        for (unsigned i = 0; i < N; ++i) value = (value << 8) | p[i];
+        return value;
+    }
 }
 template <unsigned N> void write_be(std::uint8_t* p, std::uint64_t value) {
     static_assert(N > 0 && N <= 8);
-    for (unsigned i = N; i > 0; --i) { p[i - 1] = value & 255; value >>= 8; }
+    if constexpr (N == 1) *p = std::uint8_t(value);
+    else if constexpr (N == 2) { const auto v = std::byteswap(std::uint16_t(value)); std::memcpy(p, &v, 2); }
+    else if constexpr (N == 4) { const auto v = std::byteswap(std::uint32_t(value)); std::memcpy(p, &v, 4); }
+    else if constexpr (N == 8) { const auto v = std::byteswap(value); std::memcpy(p, &v, 8); }
+    else for (unsigned i = N; i > 0; --i) { p[i - 1] = value & 255; value >>= 8; }
 }
 template <unsigned N> std::int64_t signed_value(std::uint64_t value) {
     value &= mask<N>();
