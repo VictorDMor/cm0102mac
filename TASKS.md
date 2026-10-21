@@ -5,7 +5,6 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] **Prune `.local`.** It holds 160 GB, mostly per-task folders from the old process; the disk is 94% full. Proposal: keep `.local/current`, `.local/exports`, `.local/ghidra`, the captured benchmark inputs and the reference save backups; delete the rest.
 - [ ] **In-game check of the file fixes.** Save a career under a name containing "/" (e.g. "Cruzeiro 01/02"), quit, reopen, load it.
 
 ## Now

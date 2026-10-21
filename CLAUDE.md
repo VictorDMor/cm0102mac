@@ -37,6 +37,7 @@ Stop and ask only when you can't continue without me, or before anything destruc
 ## Build, test, install
 
 Everything uses `.local/current/{export,generated,build}`; machine settings (Ghidra, JDK) are in `.local/current/env`.
+Benchmark inputs live in `.local/benchmarks`: `match/` (600-advance snapshots), `world/` (captured world operations), `saves/` (the 26-country career and a pre-match save) and `harness/` (benchmark sources).
 
 | Command | When |
 | --- | --- |

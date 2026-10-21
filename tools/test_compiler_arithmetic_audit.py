@@ -15,7 +15,7 @@ from compiler_arithmetic_audit import (CONTRACTS, COMPILER_ARITHMETIC_ENTRIES,
 from make_compiler_arithmetic_reference import render_reference
 
 ROOT = Path(__file__).resolve().parent.parent
-INPUT = Path(os.environ.get('CM_COMPILER_ARITHMETIC_INPUT', ROOT / '.local/exception-runtime-reconstruction/input'))
+INPUT = Path(os.environ.get('CM_COMPILER_ARITHMETIC_INPUT', ROOT / '.local/current/export'))
 INDEX = INPUT / 'instructions.sqlite'
 
 
