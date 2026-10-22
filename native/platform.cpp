@@ -463,6 +463,14 @@ struct NativePlatform::Impl {
     // a command still checks it against a fresh one.
     std::optional<std::pair<CommandScreen, CommandContext>> command_cache;
     std::chrono::steady_clock::time_point command_cache_at{};
+    // The original main loop calls WaitNextEvent with no sleep about 10,000
+    // times a second, even on an idle screen: one core at 100%. Once an
+    // interactive screen has done little work between polls for 250 ms, a
+    // zero-sleep poll waits up to 8 ms for input instead (input returns at
+    // once). Polls while the game works (not interactive, or heavy work
+    // between polls) are never delayed, so processing speed is unaffected.
+    std::uint64_t polled_at = 0;
+    std::chrono::steady_clock::time_point quiet_since{};
     std::string command_status = "Ready";
     bool next_event(State& s, std::uint16_t mask, std::uint32_t address, std::uint32_t sleep, std::uint32_t mouse_region) {
         // An isolated engine has no original game window or input source.
@@ -490,10 +498,15 @@ struct NativePlatform::Impl {
             command_cache_at = std::chrono::steady_clock::now();
         }
         struct AutomationWait {
-            Automation* automation; const State& s;
-            AutomationWait(Automation* a, const State& state) : automation(a), s(state) { if (automation) automation->enter(s.executed); }
-            ~AutomationWait() { if (automation) automation->leave(s.executed); }
-        } automation_wait(automation.get(), s);
+            Automation* automation; const State& s; std::uint64_t& polled_at;
+            AutomationWait(Automation* a, const State& state, std::uint64_t& polled) : automation(a), s(state), polled_at(polled) {
+                if (automation) automation->enter(s.executed);
+            }
+            ~AutomationWait() { if (automation) automation->leave(s.executed); polled_at = s.executed; }
+        } automation_wait(automation.get(), s, polled_at);
+        const auto poll_start = std::chrono::steady_clock::now();
+        if (!commands.ready || s.executed - polled_at > 200000) quiet_since = poll_start;
+        const bool quiet = commands.ready && poll_start - quiet_since > std::chrono::milliseconds(250);
         if (commands.ready) {
             if (commands.handler == 0x100ee9d0) command_status = "Original file dialog: awaiting interaction";
             else if (commands.handler == 0x1033f840) command_status = "Original options: awaiting interaction";
@@ -505,7 +518,7 @@ struct NativePlatform::Impl {
         user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing");
         if (automation) automation->boundary(s, commands, commands.ready ? command_status : "Unavailable while processing");
         auto matches = [&](const UIEvent& event) { return (legacy_event_mask(event) & mask) != 0; };
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(sleep / 60.0);
+        const auto deadline = poll_start + std::chrono::duration<double>(sleep ? sleep / 60.0 : quiet ? 0.008 : 0.0);
         auto pointer = user_interface().pointer_state();
         auto mouse_outside = [&] {
             if (!mouse_region || !(mask & 0x8000)) return false;
@@ -516,7 +529,10 @@ struct NativePlatform::Impl {
         while (found == pending_events.end()) {
             sound.poll(s);
             auto timeout = std::max(0.0, std::chrono::duration<double>(deadline - std::chrono::steady_clock::now()).count());
-            if (mouse_region) timeout = mouse_outside() ? 0 : std::min(timeout, 1.0 / 60);
+            // The original passes a region it never moves, so a pointer outside
+            // it reports movement on every poll; on a quiet screen those reports
+            // wait for the poll's few milliseconds like any other.
+            if (mouse_region) timeout = mouse_outside() && !quiet ? 0 : std::min(timeout, 1.0 / 60);
             // Native audio completion must reach the original game while its
             // event loop is sleeping, without calling game code on audio threads.
             if (sound.has_pending_commands()) timeout = std::min(timeout, 1.0 / 60);
@@ -633,7 +649,7 @@ struct NativePlatform::Impl {
             }
             pointer = user_interface().pointer_state();
             found = std::find_if(pending_events.begin(), pending_events.end(), matches);
-            if (!available && (mouse_outside() || std::chrono::steady_clock::now() >= deadline)) break;
+            if (!available && ((mouse_outside() && !quiet) || std::chrono::steady_clock::now() >= deadline)) break;
         }
         const auto tick = native_tick_count();
         s.memory.clear(address, 16);
