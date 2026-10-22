@@ -38,6 +38,18 @@ int main() {
                     throw std::runtime_error("Validation pointer selection requires a Boolean.");
                 setenv("CM_AOT_VALIDATION_EVENT_POINTER", !event_pointer || [event_pointer boolValue] ? "1" : "0", 1);
                 setenv("CM_AOT_PERFORMANCE_TRACE", "1", 1);
+                id automation = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CMAutomationDirectory"];
+                if (automation) {
+                    if (![automation isKindOfClass:NSString.class])
+                        throw std::runtime_error("Automation requires a private directory string.");
+                    const std::filesystem::path channel([(NSString*)automation fileSystemRepresentation]);
+                    if (!channel.is_absolute() || !std::filesystem::is_directory(channel))
+                        throw std::runtime_error("Automation requires an existing absolute directory.");
+                    const auto relative_channel = std::filesystem::canonical(channel).lexically_relative(original);
+                    if (relative_channel.empty() || *relative_channel.begin() != "..")
+                        throw std::runtime_error("Automation must stay outside the installed game directory.");
+                    setenv("CM_AOT_AUTOMATION", channel.c_str(), 1);
+                }
                 id reference = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CMSeasonReferenceDirectory"];
                 if (reference) {
                     if (![reference isKindOfClass:NSString.class])

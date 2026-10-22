@@ -18,6 +18,8 @@
 #include "hfs_names.hpp"
 #include "sound_bridge.hpp"
 #include "performance_trace.hpp"
+#include "automation.hpp"
+#include <fstream>
 #include <bit>
 #include <deque>
 #include <chrono>
@@ -114,6 +116,7 @@ struct NativePlatform::Impl {
     NativeUnicode unicode;
     NativeAppleEvents apple_events;
     std::deque<UIEvent> pending_events;
+    std::unique_ptr<Automation> automation = Automation::from_environment();
     std::map<std::array<std::uint8_t, 16>, UIEvent> delivered_events;
     std::uint32_t last_event_tick = 0;
     std::optional<std::uint32_t> menu_selection;
@@ -472,6 +475,11 @@ struct NativePlatform::Impl {
             delivered_command_action.reset();
         }
         commands = original_command_context(s, mask);
+        struct AutomationWait {
+            Automation* automation; const State& s;
+            AutomationWait(Automation* a, const State& state) : automation(a), s(state) { if (automation) automation->enter(s.executed); }
+            ~AutomationWait() { if (automation) automation->leave(s.executed); }
+        } automation_wait(automation.get(), s);
         if (commands.ready) {
             if (commands.handler == 0x100ee9d0) command_status = "Original file dialog: awaiting interaction";
             else if (commands.handler == 0x1033f840) command_status = "Original options: awaiting interaction";
@@ -481,6 +489,7 @@ struct NativePlatform::Impl {
 
         }
         user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing");
+        if (automation) automation->boundary(s, commands, commands.ready ? command_status : "Unavailable while processing");
         auto matches = [&](const UIEvent& event) { return (legacy_event_mask(event) & mask) != 0; };
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(sleep / 60.0);
         auto pointer = user_interface().pointer_state();
@@ -497,16 +506,79 @@ struct NativePlatform::Impl {
             // Native audio completion must reach the original game while its
             // event loop is sleeping, without calling game code on audio threads.
             if (sound.has_pending_commands()) timeout = std::min(timeout, 1.0 / 60);
+            if (automation && commands.ready) timeout = std::min(timeout, 0.02);
             UIEvent event{UIEvent::Kind::update};
-            const auto available = user_interface().poll(event, timeout);
+            auto available = user_interface().poll(event, timeout);
+            std::optional<AutomationRequest> request;
+            if (!available && automation) {
+                request = automation->take(commands);
+                // Idleness and refused requests change within one event wait.
+                if (!request && (commands.ready || automation->dirty())) automation->boundary(s, commands, command_status);
+            }
+            if (request) {
+                using Kind = AutomationRequest::Kind;
+                if (request->kind == Kind::command) {
+                    event = UIEvent{UIEvent::Kind::command};
+                    event.message = std::uint32_t(request->command);
+                    event.command_context = commands.identity;
+                    available = true;
+                } else if (request->kind == Kind::control) {
+                    const bool delivered = deliver_original_control(s, commands, request->control);
+                    automation->finish(*request, delivered, delivered ? "" : "control unavailable");
+                    if (delivered) {
+                        command_status = "Dispatched to the original game";
+                        user_interface().update_commands({}, command_status);
+                        automation->boundary(s, {}, command_status);
+                        s.memory.clear(address, 16);
+                        return false;
+                    }
+                    automation->boundary(s, commands, command_status);
+                    continue;
+                } else if (request->kind == Kind::key || request->kind == Kind::text) {
+                    // Classic key events, as AppKit would queue them for the
+                    // active game window: button up (0x80) and active (1).
+                    for (const auto& [message, modifiers] : request->keys)
+                        for (const auto kind : {UIEvent::Kind::key_down, UIEvent::Kind::key_up}) {
+                            UIEvent key{kind};
+                            key.message = message;
+                            key.modifiers = std::uint16_t(modifiers | 0x81);
+                            pending_events.push_back(std::move(key));
+                        }
+                    automation->finish(*request, true, std::to_string(request->keys.size()) + " keys queued");
+                    automation->boundary(s, commands, command_status);
+                } else {
+                    std::string result;
+                    try {
+                        if (request->kind == Kind::snapshot) {
+                            for (const auto& path : user_interface().save_window_images(automation->output("snapshots", request->name)))
+                                result += (result.empty() ? "" : " ") + path.string();
+                        } else {
+                            const auto bytes = s.memory.copy_out(request->address, request->size);
+                            const auto path = automation->output("memory", request->name + ".bin");
+                            std::filesystem::create_directories(path.parent_path());
+                            std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+                            result = path.string();
+                        }
+                        automation->finish(*request, true, result);
+                    } catch (const std::exception& failure) { automation->finish(*request, false, failure.what()); }
+                    automation->boundary(s, commands, command_status);
+                    continue;
+                }
+            }
+            const auto report = [&](bool accepted, std::string_view result) {
+                if (!request) return;
+                automation->finish(*request, accepted, result);
+                automation->boundary(s, accepted ? CommandContext{} : commands, command_status);
+            };
             if (available && (event.kind == UIEvent::Kind::command || event.kind == UIEvent::Kind::menu)) {
                 if (!commands.ready || (event.kind == UIEvent::Kind::command && event.command_context != commands.identity)) {
                     command_status = "Refused: the game context changed";
                     user_interface().update_commands({}, command_status);
+                    report(false, command_status);
                     continue;
                 }
                 if (event.kind == UIEvent::Kind::command) {
-                    if (event.message >= direct_command_count) continue;
+                    if (event.message >= direct_command_count) { report(false, "unknown command"); continue; }
                     const auto command = DirectCommand(event.message);
                     std::fprintf(stderr, "Native command: %s action=%d control=%d context=%016llx\n",
                         std::string(direct_command_names[std::size_t(command)]).c_str(), commands.actions[std::size_t(command)],
@@ -515,12 +587,14 @@ struct NativePlatform::Impl {
                         event.kind = UIEvent::Kind::menu;
                         event.message = 0x00020001;
                         command_status = "Save dispatched to original File menu";
+                        report(true, command_status);
                         // Disable duplicates, retaining the original File item's
                         // own preparation/validation until MenuSelect returns.
                     } else {
                         const bool delivered = deliver_original_command(s, commands, command);
                         command_status = delivered ? "Dispatched to the original game" : "Refused: action unavailable";
                         user_interface().update_commands({}, command_status);
+                        report(delivered, command_status);
                         s.memory.clear(address, 16);
                         return false;
                     }

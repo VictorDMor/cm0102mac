@@ -77,12 +77,23 @@ void clear_previous_command_key(State& s) {
     s.memory.write<1>(character, 0);
     s.memory.write<4>(key, 0);
 }
-bool deliver_original_command(State& s, const CommandContext& expected, DirectCommand command) {
-    if (std::size_t(command) >= direct_command_count) return false;
-    const auto current = original_command_context(s, 0xffff);
-    if (!current.ready || current != expected) return false;
-    const auto action = current.actions[std::size_t(command)];
-    if (!action) return false;
+std::vector<OriginalControl> original_controls(const State& s, const CommandContext& c) {
+    // Copies, not scalar loads: a host listing must not reach read observers.
+    std::vector<OriginalControl> result;
+    if (!c.ready) return result;
+    const auto counted = s.memory.copy_out(c.screen + 0x129da6, 2);
+    const auto count = std::int16_t(counted[0] << 8 | counted[1]);
+    if (count < 1 || count > 1200) return result;
+    const auto table = s.memory.copy_out(c.screen + 0xba864, std::size_t(count) * 0x17c);
+    const auto word = [&](std::size_t at) {
+        return std::uint32_t(table[at]) << 24 | std::uint32_t(table[at + 1]) << 16 | std::uint32_t(table[at + 2]) << 8 | table[at + 3];
+    };
+    for (std::int16_t i = 0; i < count; ++i)
+        result.push_back({i, std::int16_t(word(i * 0x17c + 8)), word(i * 0x17c + 12)});
+    return result;
+}
+namespace {
+bool activate(State& s, const CommandContext& current, std::int16_t index) {
     const auto selected = current.screen + 0x12a904;
     const auto pressed = std::uint32_t(s.memory.read<4>(0x108b4644));
     if (!pressed || s.memory.read<1>(pressed) || std::int16_t(s.memory.read<2>(selected)) != -1) return false;
@@ -91,8 +102,22 @@ bool deliver_original_command(State& s, const CommandContext& expected, DirectCo
     // 107193cc consumes both exactly once and returns the index to the normal
     // screen handler. Unlike a global menu action, this cannot leak into a
     // nested dialog with the same action number.
-    s.memory.write<2>(selected, std::uint16_t(current.controls[std::size_t(command)]));
+    s.memory.write<2>(selected, std::uint16_t(index));
     s.memory.write<1>(pressed, 1);
     return true;
+}
+}
+bool deliver_original_command(State& s, const CommandContext& expected, DirectCommand command) {
+    if (std::size_t(command) >= direct_command_count) return false;
+    const auto current = original_command_context(s, 0xffff);
+    if (!current.ready || current != expected || !current.actions[std::size_t(command)]) return false;
+    return activate(s, current, current.controls[std::size_t(command)]);
+}
+bool deliver_original_control(State& s, const CommandContext& expected, std::int16_t index) {
+    const auto current = original_command_context(s, 0xffff);
+    if (!current.ready || current != expected) return false;
+    const auto controls = original_controls(s, current);
+    if (index < 0 || std::size_t(index) >= controls.size() || !(controls[std::size_t(index)].flags & 2)) return false;
+    return activate(s, current, index);
 }
 }

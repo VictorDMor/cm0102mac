@@ -28,4 +28,10 @@ void clear_previous_command_key(State& state);
 // cleared by the original picker before its screen handler receives the index.
 // Only currently enabled named controls are accepted; no pointer position.
 bool deliver_original_command(State& state, const CommandContext& expected, DirectCommand command);
+struct OriginalControl { std::int16_t index, action; std::uint32_t flags; };
+// The live control table of the screen in `context`, in table order.
+std::vector<OriginalControl> original_controls(const State& state, const CommandContext& context);
+// Activate any enabled control of the current screen by table index, through
+// the same original preselected input as a direct command.
+bool deliver_original_control(State& state, const CommandContext& expected, std::int16_t index);
 }

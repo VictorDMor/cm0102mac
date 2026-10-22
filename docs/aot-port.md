@@ -224,6 +224,31 @@ Subsequent team-selection and managed-game evidence is recorded below.
 it is now opt-in because this initialization path generated hundreds of thousands
 of diagnostic lines when it was enabled. Subsequent runs use the default-off setting.
 
+## Driving the game (2026-10-21)
+
+`tools/game_driver.py` runs an isolated validation copy (from
+`prepare_validation.py --automation`) through `native/automation.cpp`. A
+numbered request file in `<run>/Automation/inbox` names an original command,
+a control-table index, keys or text, a window snapshot or a memory range. The
+game takes it at an original event boundary and reports in `status.json`:
+readiness, handler, screen, enabled controls (index, action, flags), date
+and the last busy period. Requests never carry screen positions, and with
+`CM_AOT_AUTOMATION` unset nothing changes.
+
+The original main loop calls `WaitNextEvent` with a sleep of 0, about 10,000
+times a second, even on an idle screen (100% of one core). A load also runs
+from that loop under the start screen's handler. So "ready" means an
+interactive context whose loop runs fewer than 2 million instructions
+between event calls for a 250 ms window: about 6,000 when idle, hundreds of
+millions while loading or processing.
+
+Two runs of the same Continue sequence from the same save produced saves
+that differ in 145 blocks (fixtures, results, histories). The runs used two
+builds whose differences cannot alter a normal run, so the game probably
+draws from the clock after a load (unconfirmed). Use captures
+(`--season-reference-days`) and `cm-world-replay` for deterministic
+comparisons, not real-game saves.
+
 ## Original background fallback correction
 
 After league initialization, run `app.8Wltp6` reached the Brazilian club list and

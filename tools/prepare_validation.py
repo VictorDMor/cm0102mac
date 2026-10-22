@@ -25,12 +25,19 @@ def main():
     parser.add_argument("--runtime", type=Path, default=Path.home() / "Library/Application Support/CM 01-02 Native/Runtime")
     parser.add_argument("--season-reference-days", type=int, choices=range(1, 8),
                         help="Capture 1 through 7 complete original days with private native-service inputs")
+    parser.add_argument("--automation", action="store_true",
+                        help="Accept requests from tools/game_driver.py through <run>/Automation")
+    parser.add_argument("--save", type=Path, action="append", default=[],
+                        help="Also copy this career save into the private games folder (repeatable)")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,47}", args.name):
         parser.error("Use a short lowercase name with optional digits and hyphens")
     reference = ROOT / "saves/Mac-Teste-Validado-Pos-Jogo.sav"
     if hashlib.sha256(reference.read_bytes()).hexdigest() != REFERENCE_SHA:
         parser.error("The full immutable LFS reference save is required")
+    names = [save.name for save in args.save]
+    if len(set(names)) != len(names) or "Perf-Reference.sav" in names:
+        parser.error("Each --save needs a distinct file name other than Perf-Reference.sav")
     source = args.app.resolve(strict=True)
     source_runtime = args.runtime.resolve(strict=True)
     destination = ROOT / ".local/performance" / args.name
@@ -46,6 +53,8 @@ def main():
     working_save = runtime / "Files/games/Perf-Reference.sav"
     working_save.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(reference, working_save)
+    for extra in args.save:
+        shutil.copy2(extra.resolve(strict=True), working_save.parent / extra.name)
     plist = app / "Contents/Info.plist"
     info = plistlib.loads(plist.read_bytes())
     source_executable = source / "Contents/MacOS" / info["CFBundleExecutable"]
@@ -63,6 +72,10 @@ def main():
         fixture.mkdir(mode=0o700)
         info.update(CMSeasonReferenceDirectory=str(fixture),
                     CMSeasonReferenceDays=args.season_reference_days)
+    if args.automation:
+        channel = destination / "Automation"
+        channel.mkdir(mode=0o700)
+        info.update(CMAutomationDirectory=str(channel))
     plist.write_bytes(plistlib.dumps(info))
     subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=True)
     executable = app / "Contents/MacOS" / info["CFBundleExecutable"]
@@ -74,6 +87,8 @@ def main():
                 "sourceBinarySHA256": source_hash,
                 "referenceSHA256": REFERENCE_SHA, "sourceRuntime": str(source_runtime),
                 "note": "Original simulation; isolated files; event-coordinate pointer; sparse performance trace"}
+    if args.automation:
+        manifest.update(automation=str(destination / "Automation"))
     if fixture:
         manifest.update(seasonFixture=str(fixture), fullDays=args.season_reference_days,
                         boundary="0x101195e8 morning to morning",
