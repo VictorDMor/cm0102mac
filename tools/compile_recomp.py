@@ -644,6 +644,32 @@ def program_quotient_free_divisions():
         return quotient_free_divisions(db)
 
 
+# 0x101b1620 searches a list for an element whose word at +8 equals *key,
+# calling the list iterator 0x10738e00 for each element; native/list_search.cpp
+# runs both as C++. Pin every audited instruction (assembly, flow and P-code).
+LIST_SEARCH_ENTRY = 0x101b1620
+LIST_SEARCH_DIGEST = "0b4607be6c5ce2595a0dc7f02c72ef5507c67f74ad743cbc8c2516777e00ee6b"
+
+
+def list_search_digest(lookup):
+    records = []
+    for low, high in ((0x101b1620, 0x101b1718), (0x10738e00, 0x10738e24)):
+        for address in range(low, high + 4, 4):
+            item = lookup(address)
+            if item is not None:
+                records.append([address, item["assembly"], item["flow"], item.get("flows", []),
+                                item.get("fallthrough"), item["ops"]])
+    return hashlib.sha256(json.dumps(records, sort_keys=True).encode()).hexdigest()
+
+
+def require_list_search(db):
+    def lookup(address):
+        row = db.execute("SELECT body FROM instructions WHERE address = ?", (address,)).fetchone()
+        return json.loads(row[0]) if row else None
+    if list_search_digest(lookup) != LIST_SEARCH_DIGEST:
+        raise ValueError("List search 0x101b1620 / iterator 0x10738e00 no longer match native/list_search.cpp")
+
+
 # Zero-divisor sites found in play (day advance, two in match play). The
 # proof must keep covering them; generation fails otherwise.
 REQUIRED_QUOTIENT_FREE_DIVISIONS = frozenset({0x101355d4, 0x1024773c, 0x10289b28})
@@ -960,7 +986,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -1359,6 +1385,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "background_selection_adapter.hpp"')
     if page in (0x1074d, 0x1074e):
         code.insert(1, '#include "collection_lookup_adapter.hpp"')
+    if list_search_hooks and LIST_SEARCH_ENTRY in page_addresses:
+        code.insert(1, '#include "list_search.hpp"')
     if any(a in selected for a in STRING_CORE_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "string_core_adapter.hpp"')
     if any(a in selected for a in MEMORY_PRIMITIVES_ENTRIES if a >> 12 == page):
@@ -1628,6 +1656,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(native_service_hook(a))
         if a == 0x10779ed8:
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
+        if list_search_hooks and a == LIST_SEARCH_ENTRY:
+            code.append("if (try_native_list_search(s)) return true;")
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -2177,6 +2207,7 @@ def main():
         native_leaves = load_leaves(db, None if args.all_analyzed else selected)
         native_sort = load_sort8(db, None if args.all_analyzed else selected)
         divisions = quotient_free_divisions(db)
+        require_list_search(db)
         inlining = Inlining({target: body for target, body in inline_leaves(db, divisions).items()
                              if args.all_analyzed or all(address in selected for address in range(target, target + 4 * len(body) + 4, 4))})
     if args.reuse_generated:
