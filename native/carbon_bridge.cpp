@@ -4,9 +4,17 @@
 #include "decimal_input_bridge.hpp"
 #include "application_exit.hpp"
 #include "import_bridge.hpp"
+#include "heap_changes.hpp"
 #include <algorithm>
 
 namespace cm::aot {
+std::vector<HeapChange>* heap_changes = nullptr;
+const State* heap_changes_owner = nullptr;
+namespace {
+void changed(const State& s, std::uint8_t table, std::uint32_t address, std::uint32_t size, bool erase = false) {
+    if (heap_changes && &s == heap_changes_owner) heap_changes->push_back({table, std::uint8_t(erase), address, size});
+}
+}
 std::uint32_t allocate(State& s, std::uint32_t size, bool zero) {
     constexpr std::uint32_t maximum = 0x10000000;
     if (size > maximum) { s.memory_error = -108; return 0; }
@@ -16,8 +24,8 @@ std::uint32_t allocate(State& s, std::uint32_t size, bool zero) {
         if (it->second < reserved) continue;
         address = it->first;
         const auto remainder = it->second - reserved;
-        s.available.erase(it);
-        if (remainder) s.available.emplace(address + reserved, remainder);
+        s.available.erase(it); changed(s, 1, address, 0, true);
+        if (remainder) { s.available.emplace(address + reserved, remainder); changed(s, 1, address + reserved, remainder); }
         break;
     }
     if (!address) {
@@ -26,7 +34,7 @@ std::uint32_t allocate(State& s, std::uint32_t size, bool zero) {
         s.memory.map(address, reserved);
         s.heap_end += reserved;
     }
-    s.allocated.emplace(address, size);
+    s.allocated.emplace(address, size); changed(s, 0, address, size);
     if (zero) s.memory.clear(address, reserved);
     s.memory_error = 0;
     return address;
@@ -36,21 +44,23 @@ void deallocate(State& s, std::uint32_t address) {
     auto allocated = s.allocated.find(address);
     if (allocated == s.allocated.end()) throw std::runtime_error("Invalid or double DisposePtr");
     auto size = (std::max(allocated->second, 1u) + 15u) & ~15u;
-    s.allocated.erase(allocated);
+    s.allocated.erase(allocated); changed(s, 0, address, 0, true);
     auto [it, inserted] = s.available.emplace(address, size);
     if (!inserted) throw std::runtime_error("Duplicate free interval");
+    changed(s, 1, address, size);
     if (it != s.available.begin()) {
         auto previous = std::prev(it);
         if (previous->first + previous->second == it->first) {
-            previous->second += it->second;
-            s.available.erase(it);
+            previous->second += it->second; changed(s, 1, previous->first, previous->second);
+            s.available.erase(it); changed(s, 1, address, 0, true);
             it = previous;
         }
     }
     auto next = std::next(it);
     if (next != s.available.end() && it->first + it->second == next->first) {
-        it->second += next->second;
-        s.available.erase(next);
+        it->second += next->second; changed(s, 1, it->first, it->second);
+        const auto merged = next->first;
+        s.available.erase(next); changed(s, 1, merged, 0, true);
     }
     s.memory_error = 0;
 }

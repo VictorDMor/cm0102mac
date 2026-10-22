@@ -18,6 +18,10 @@ void open_season_replay(const std::filesystem::path& directory, bool semantic_ca
 // OS imports replay from the transcript. Instruction and native-call counts
 // are diagnostics here. The end state is checked by the caller.
 void open_operation_replay(const std::filesystem::path& directory);
+// Version 2 operation replays check the heap against a model built from the
+// recorded heap changes; seed it with the replay's initial state, before
+// anything runs.
+void seed_season_replay(const State& initial);
 // For timing: skip the recorded RNG state writes instead of checking each
 // one through a memory observer (an observer also switches C++ owners to
 // their observed paths), and skip the heap check before each OS import.

@@ -85,7 +85,10 @@ int main(int argc, char** argv) {
                 for (unsigned run = 0; run < runs; ++run) {
             auto state = cm::semantic_io_checks::clone(*initial);
             state->budget = UINT64_MAX;
-            if (transcript) { if (timing) open_timing_replay(capture); else open_operation_replay(capture); }
+            if (transcript) {
+                if (timing) open_timing_replay(capture); else open_operation_replay(capture);
+                seed_season_replay(*state);
+            }
             const auto executed = state->executed, calls = state->native_calls;
             if (profile) guest_profiler::start(*state);
             const auto begin = std::chrono::steady_clock::now();

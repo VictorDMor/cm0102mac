@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
         // may differ. A season replay still compares every register.
         const auto replays = [&](bool operation, const char* import, unsigned offset, unsigned size) {
             auto input = initial(directory.path);
-            if (operation) open_operation_replay(directory.path); else open_season_replay(directory.path);
+            if (operation) { open_operation_replay(directory.path); seed_season_replay(*input); } else open_season_replay(directory.path);
             season_day_boundary(*input, boundary); synthetic_input(*input);
             if (size == 8) input->wr<8>(offset, input->r<8>(offset) ^ 1);
             else input->wr<4>(offset, input->r<4>(offset) ^ 1);

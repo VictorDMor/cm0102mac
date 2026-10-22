@@ -190,10 +190,17 @@ void Automation::evaluate(std::chrono::steady_clock::time_point now) {
     idle_ = idle; waited_ = {}; window_ = now; most_work_ = 0; calls_ = 0;
 }
 void Automation::boundary(const State& s, const CommandContext& context, std::string_view status) {
-    const auto date = game_date(s);
+    // The game polls thousands of times a second while it works; the date
+    // changes at most once per game day. Read it every 50 ms, or on a change.
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= next_date_ || (context.ready && idle_) != ready_ || context.identity != identity_ || status != status_ ||
+        changes_ != written_) {
+        next_date_ = now + std::chrono::milliseconds(50);
+        date_value_ = game_date(s);
+    }
+    const auto& date = date_value_;
     const auto packed = date ? (std::uint64_t((*date)[1]) << 32 | std::uint64_t((*date)[0]) << 16 | (*date)[2]) : 0;
     if (const bool ready = context.ready && idle_; ready != ready_) {
-        const auto now = std::chrono::steady_clock::now();
         if (ready) last_busy_ = std::max(0.0, std::chrono::duration<double>(idle_since_ - since_).count());
         since_ = ready ? idle_since_ : now; ready_ = ready; ++changes_;
     }

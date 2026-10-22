@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <array>
 #include <string>
 #include <string_view>
 
@@ -54,6 +55,8 @@ private:
     bool ready_ = false;
     std::uint64_t identity_ = 0;
     std::uint64_t date_ = 0;
+    std::optional<std::array<std::uint32_t, 3>> date_value_;
+    std::chrono::steady_clock::time_point next_date_{};
     std::string status_;
     std::chrono::steady_clock::time_point since_ = std::chrono::steady_clock::now();
     double last_busy_ = 0;
