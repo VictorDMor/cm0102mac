@@ -1,5 +1,6 @@
 #include "preferences_actions.hpp"
 #include "semantic_guest_call.hpp"
+#include "match_debugging.hpp"
 
 namespace cm::aot::preferences_actions {
 namespace {
@@ -95,6 +96,7 @@ void select_action(Call& a) {
 }
 
 void dispatch_action(State& s, SemanticDependencyDispatch* d, SemanticGuestObserver* o) {
+    if (dispatch_debugging_option(s)) return;
     Call a(s,dispatch_action_entry,d,o);
     a.link();a.multiple(26);a.load(30,2,-0x7bb0);a.move(26,3);a.value(4,0);a.move(3,30);
     a.store(1,8,0);a.frame(0x50);a.call(0x1073ef70);a.move(0,3);a.move(3,30);a.move(27,0);

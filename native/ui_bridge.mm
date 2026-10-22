@@ -2,6 +2,7 @@
 #include "native_drawing.hpp"
 #include "match_turbo.hpp"
 #include "match_speed.hpp"
+#include "match_debugging.hpp"
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 #include <deque>
@@ -21,6 +22,8 @@ bool match_turbo = false;
 bool native_speed_enabled = false;
 std::uint16_t selected_match_speed = cm::aot::turbo_match_speed;
 std::filesystem::path match_speed_preference;
+bool debugging_available = false, debugging_enabled = false;
+std::filesystem::path debugging_preference;
 bool repeated_key_event(NSEvent* event) {
     // isARepeat is undefined for mouse/accessibility menu events and AppKit
     // raises NSInternalInconsistencyException if queried for a non-key event.
@@ -335,6 +338,23 @@ namespace cm::aot {
 bool match_turbo_enabled() { return match_turbo; }
 void set_match_turbo_enabled(bool enabled) { match_turbo = enabled; }
 bool native_match_speed_enabled() { return native_speed_enabled; }
+bool native_debugging_available() { return debugging_available; }
+bool native_debugging_enabled() { return debugging_available && debugging_enabled; }
+void initialize_native_debugging(bool enabled) { debugging_available = true; debugging_enabled = enabled; }
+void select_native_debugging(bool enabled) {
+    if (!debugging_available || enabled == debugging_enabled) return;
+    if (!debugging_preference.empty()) {
+        @autoreleasepool {
+            NSData* data = [NSPropertyListSerialization dataWithPropertyList:@{@"Version": @1, @"Debugging": @(enabled)}
+                format:NSPropertyListXMLFormat_v1_0 options:0 error:nil];
+            std::error_code error;
+            std::filesystem::create_directories(debugging_preference.parent_path(), error);
+            if (error || !data || ![data writeToFile:[NSString stringWithUTF8String:debugging_preference.c_str()]
+                options:NSDataWritingAtomic error:nil]) throw std::runtime_error("Cannot save Debugging preference");
+        }
+    }
+    debugging_enabled = enabled;
+}
 std::uint16_t native_match_speed() { return selected_match_speed; }
 void initialize_native_match_speed(std::uint16_t value) {
     native_speed_enabled = true;
@@ -576,6 +596,20 @@ struct NativeUI::Impl {
         // Presentation preferences are separate from original resources/saves.
         // Existing installations without this preference start in Turbo.
         initialize_native_match_speed();
+        initialize_native_debugging();
+        debugging_preference = preference.empty() ? std::filesystem::path{} : preference.parent_path() / "Debugging.plist";
+        if (!debugging_preference.empty()) {
+            std::error_code error;
+            const auto size = std::filesystem::file_size(debugging_preference, error);
+            if (!error && size <= 4096) {
+                NSData* data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:debugging_preference.c_str()]];
+                id value = data ? [NSPropertyListSerialization propertyListWithData:data
+                    options:NSPropertyListImmutable format:nullptr error:nil] : nil;
+                if ([value isKindOfClass:NSDictionary.class] && [value[@"Version"] isEqual:@1] &&
+                    [value[@"Debugging"] isKindOfClass:NSNumber.class] && [value[@"Debugging"] isEqual:@YES])
+                    debugging_enabled = true;
+            }
+        }
         match_speed_preference = preference.empty() ? std::filesystem::path{} :
             preference.parent_path() / "MatchSpeed.plist";
         if (!match_speed_preference.empty()) {

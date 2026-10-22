@@ -1,5 +1,6 @@
 #include "preferences_screen.hpp"
 #include "preferences_screen_detail.hpp"
+#include "match_debugging.hpp"
 
 namespace cm::aot::preferences_screen::detail {
 namespace {
@@ -19,7 +20,7 @@ void create_options_grid(Call& a){
     a.at(0x1033dcec);
     a.value(7,0x0);a.value(3,0x1);a.store(1,0x38,7);a.sign8(4,20);a.combine(0,4,3,false,true);a.value(6,0xffffffff);
     a.store(1,0x3c,3);a.shift_right(3,0,1);a.intersect(0,0,4);a.offset(5,19,0x64);a.store(1,0x40,7);a.subtract(0,0,3);
-    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,0xe);a.offset(9,1,0x7c);
+    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,native_debugging_available() ? 0xf : 0xe);a.offset(9,1,0x7c);
     a.value(4,0xaa);a.load<2>(3,23,0x0,true);a.mask(10,0,0xff,false,0);a.value(6,0x2cf);a.value(8,0x5);
     a.multiply(0,3,0x2c0);a.indexed_load(3,22,0);a.call(0x107198c0);a.move(13,3);
 }
@@ -315,7 +316,7 @@ void build_match_storage_choices(Call& a){
     a.at(0x1033e88c);
     a.value(7,0x0);a.value(3,0x1);a.store(1,0x38,7);a.sign8(4,20);a.combine(0,4,3,false,true);a.value(6,0xffffffff);
     a.store(1,0x3c,3);a.shift_right(3,0,1);a.intersect(0,0,4);a.offset(5,19,0x64);a.store(1,0x40,7);a.subtract(0,0,3);
-    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,0xe);a.offset(9,1,0x84);
+    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,native_debugging_available() ? 0xf : 0xe);a.offset(9,1,0x84);
     a.value(4,0xaa);a.load<2>(3,23,0x0,true);a.mask(10,0,0xff,false,0);a.value(6,0x2cf);a.value(8,0x5);
     a.multiply(0,3,0x2c0);a.indexed_load(3,22,0);a.call(0x107198c0);a.move(13,3);
 }
@@ -509,7 +510,7 @@ void build_autosave_choices(Call& a){
     a.value(9,0x1);a.value(10,0x2);a.call(0x107445a0);a.value(7,0x0);a.value(3,0x1);a.store(1,0x38,7);a.sign8(4,20);
     a.combine(0,4,3,false,true);a.value(6,0xffffffff);a.store(1,0x3c,3);a.shift_right(3,0,1);a.intersect(0,0,4);
     a.offset(5,19,0x64);a.store(1,0x40,7);a.subtract(0,0,3);a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);
-    a.store(1,0x44,6);a.offset(0,3,0xe);a.offset(9,1,0x7c);a.value(4,0xaa);a.load<2>(3,23,0x0,true);
+    a.store(1,0x44,6);a.offset(0,3,native_debugging_available() ? 0xf : 0xe);a.offset(9,1,0x7c);a.value(4,0xaa);a.load<2>(3,23,0x0,true);
     a.mask(10,0,0xff,false,0);a.value(6,0x2cf);a.value(8,0x5);a.multiply(0,3,0x2c0);a.indexed_load(3,22,0);
     a.call(0x107198c0);a.move(13,3);
 }
@@ -545,7 +546,7 @@ void build_compression_choices(Call& a){
     a.at(0x1033f0c8);
     a.value(7,0x0);a.value(3,0x1);a.store(1,0x38,7);a.sign8(4,20);a.combine(0,4,3,false,true);a.value(6,0xffffffff);
     a.store(1,0x3c,3);a.shift_right(3,0,1);a.intersect(0,0,4);a.offset(5,19,0x64);a.store(1,0x40,7);a.subtract(0,0,3);
-    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,0xe);a.offset(9,1,0x7c);
+    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,native_debugging_available() ? 0xf : 0xe);a.offset(9,1,0x7c);
     a.value(4,0xaa);a.load<2>(3,23,0x0,true);a.mask(10,0,0xff,false,0);a.value(6,0x2cf);a.value(8,0x5);
     a.multiply(0,3,0x2c0);a.indexed_load(3,22,0);a.call(0x107198c0);a.move(13,3);
 }
@@ -585,7 +586,7 @@ void build_safe_save_choices(Call& a){
     a.at(0x1033f290);
     a.value(7,0x0);a.value(3,0x1);a.store(1,0x38,7);a.sign8(4,20);a.combine(0,4,3,false,true);a.value(6,0xffffffff);
     a.store(1,0x3c,3);a.shift_right(3,0,1);a.intersect(0,0,4);a.offset(5,19,0x64);a.store(1,0x40,7);a.subtract(0,0,3);
-    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,0xe);a.offset(9,1,0x7c);
+    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,native_debugging_available() ? 0xf : 0xe);a.offset(9,1,0x7c);
     a.value(4,0xaa);a.load<2>(3,23,0x0,true);a.mask(10,0,0xff,false,0);a.value(6,0x2cf);a.value(8,0x5);
     a.multiply(0,3,0x2c0);a.indexed_load(3,22,0);a.call(0x107198c0);a.move(13,3);
 }

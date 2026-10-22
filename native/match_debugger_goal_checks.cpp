@@ -1,6 +1,7 @@
 #include "match_debugger_factory.hpp"
 #include "match_engine_adapter.hpp"
 #include "match_actor_adapter.hpp"
+#include "match_debugging.hpp"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -102,7 +103,10 @@ std::uint64_t direct_shot(State& state, std::uint32_t match, std::uint32_t actor
     cuts.stage = 1; state.pc = 0x102626bc;
     try { run_until(state, return_sentinel); require(false, "Original statistics boundary missing"); }
     catch (const OriginalRegionBoundary& boundary) { require(boundary.pc == 0x10263614, "Original statistics boundary wrong"); }
-    cuts.stage = 2; state.pc = 0x10267154;
+    cuts.stage = 2;
+    state.pc = 0x102636d8;
+    run_until(state, 0x10263700);
+    state.pc = 0x10267154;
     run_until(state, return_sentinel);
     state.memory.observer = previous; state.budget = previous_budget;
     require(state.r<4>(4) == caller, "Original goal failed to unwind its own frame");
@@ -218,6 +222,83 @@ int main(int argc, char** argv) {
         }
         require(other.inspect().home_score == 1 && other.inspect().away_score == 1 && other.goals().size() == 2 &&
             other.execution_state() == ExecutionState::paused, "Alternate actual clubs/seed rejected original goals or failed to resume");
-        std::cout << "PASS: eight original goal interventions, home/away/outfield/keeper/repeated scorers, six complete ABI/match/accounting/effect comparisons, 30 original-agreeing following steps, score-only negatives, limits/rejected commands, partial budget fault, reset and independent clubs/seed\n";
+        stage = "in-game goal command";
+        auto live = create_match({argv[1], argv[2], root / "live-ui"}, setup);
+        auto reference = create_match({argv[1], argv[2], root / "live-reference"}, setup);
+        initialize_native_debugging();
+        require(!native_debugging_enabled() && !eligible_debug_goal(*live.state, live.match, 8),
+            "Debugging must default off and reject pre-kickoff goals");
+        invoke(*live.state, 0x101d3f60, {live.match, 1});
+        invoke(*reference.state, 0x101d3f60, {reference.match, 1});
+        // Nonzero timestamps expose a missing minute rather than accepting a
+        // zero-filled report field. Both original worlds retain the same clock.
+        live.state->memory.write<2>(live.match + 0x7948, 137);
+        reference.state->memory.write<2>(reference.match + 0x7948, 137);
+        const auto unchanged = live.state->memory.copy_out(live.match, 0xe0bc);
+        bool disabled = false;
+        try { award_debug_goal(*live.state, live.match, 8); } catch (const std::invalid_argument&) { disabled = true; }
+        require(disabled && live.state->memory.copy_out(live.match, 0xe0bc) == unchanged, "Disabled goal changed the match");
+        invoke(*live.state, 0x10773520, {0xdfc});
+        const auto report = std::uint32_t(live.state->r<4>(12));
+        require(report != 0, "Cannot allocate original live match report");
+        live.state->memory.copy_in(report, std::vector<std::uint8_t>(0xdfc));
+        struct ExpectedScorer { unsigned side, slot, minute; std::uint32_t staff; };
+        std::vector<ExpectedScorer> scorers;
+        select_native_debugging(true);
+        for (unsigned player : {8u, 8u, 28u, 0u}) {
+            auto& actual = *live.state;
+            const auto registers = actual.registers;
+            const auto scratch = actual.unique;
+            const auto pc = actual.pc;
+            award_debug_goal(actual, live.match, player);
+            require(actual.registers == registers && actual.unique == scratch && actual.pc == pc,
+                "In-game goal corrupted its interrupted UI caller");
+            auto& expected = *reference.state;
+            const auto expected_registers = expected.registers;
+            const auto expected_scratch = expected.unique;
+            const auto expected_pc = expected.pc;
+            expected.wr<4>(4, expected.r<4>(4) - 0x400);
+            direct_shot(expected, reference.match, reference.match + 0x311c + player * 0x1c4, player / 20);
+            expected.registers = expected_registers; expected.unique = expected_scratch; expected.pc = expected_pc;
+            require(actual.memory.copy_out(live.match, 0xe0bc) == expected.memory.copy_out(reference.match, 0xe0bc),
+                "In-game goal differs from original goal bookkeeping");
+            const auto actor = live.match + 0x311c + player * 0x1c4;
+            scorers.push_back({player / 20, unsigned(actual.memory.read<1>(actor + 0x2f)),
+                unsigned(actual.memory.read<2>(live.match + 0x7948) / 11), std::uint32_t(actual.memory.read<4>(actor + 0x6c))});
+            invoke(actual, 0x1029f920, {0, live.match, report, 1});
+            unsigned rows = 0;
+            for (unsigned row = 0; row < 50; ++row) {
+                const auto event = report + 0x55 + row * 4;
+                if (actual.memory.read<1>(event) == 255) break;
+                if (actual.memory.read<1>(event + 2) != 1) continue;
+                require(rows < scorers.size(), "Duplicate goal in the original scorer list");
+                const auto& scorer = scorers[rows++];
+                require(actual.memory.read<1>(event) == scorer.side && actual.memory.read<1>(event + 1) == scorer.slot &&
+                    actual.memory.read<1>(event + 3) == scorer.minute, "Original scorer list lost the side, player or minute");
+                const auto listed = report + 0x194 + scorer.side * 0x664 + scorer.slot * 0x4c;
+                require(actual.memory.read<4>(listed) == actual.memory.read<4>(scorer.staff),
+                    "Original scorer list does not identify the selected player");
+            }
+            require(rows == scorers.size(), "Awarded goal is missing from the original scorer list");
+            // The first two selections model consecutive repeat-button clicks
+            // without a clock advance between them.
+            const unsigned following_steps = scorers.size() == 1 ? 0 : scorers.size() == 2 ? 10 : 5;
+            for (unsigned tick = 0; tick < following_steps; ++tick) {
+                invoke(actual, 0x101d3f60, {live.match, 1});
+                invoke(expected, 0x101d3f60, {reference.match, 1});
+                require(actual.memory.copy_out(live.match, 0xe0bc) == expected.memory.copy_out(reference.match, 0xe0bc),
+                    "In-game goal failed to resume the original match");
+            }
+        }
+        require(!eligible_debug_goal(*live.state, live.match, 40) && !eligible_debug_goal(*live.state, live.match, 19),
+            "In-game goals accept an invalid or off-pitch player");
+        live.state->memory.write<1>(live.match, 1);
+        require(!eligible_debug_goal(*live.state, live.match, 8), "Completed match accepts goals");
+        live.state->memory.write<1>(live.match, 0);
+        live.state->memory.write<1>(live.match + 0xe03d, 127);
+        require(!eligible_debug_goal(*live.state, live.match, 8), "Saturated score accepts goals");
+        select_native_debugging(false);
+        reset_match_debugging();
+        std::cout << "PASS: eight debugger and four in-game original goal interventions; complete bookkeeping, UI caller preservation, repeated/home/away/keeper scorers, 50 following steps, rejection, counter limits and reset\n";
     } catch (const std::exception& error) { std::cerr << stage << ": " << error.what() << '\n'; return 1; }
 }

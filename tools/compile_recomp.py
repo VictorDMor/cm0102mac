@@ -1474,6 +1474,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_presentation.hpp"')
     if page in MATCH_SPEED_PAGES:
         code.insert(1, '#include "match_speed.hpp"')
+    if page in (0x1028c, 0x1028d, 0x101cc):
+        code.insert(1, '#include "match_debugging.hpp"')
     if page in (0x10331, 0x10715, 0x10717, 0x10718):
         code.insert(1, '#include "calendar_adapter.hpp"')
     if page in (0x10715, 0x10716, 0x10717, 0x10718):
@@ -1551,6 +1553,12 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"if (try_native_record_fields(s, 0x{a:x})) return true;")
         if a == 0x1028d558:
             code.append("if (append_turbo_match_speed(s)) return true;")
+        if a == 0x1028ce80:
+            code.append("append_match_debugging_controls(s);")
+        if a == 0x1028dc80:
+            code.append("if (dispatch_match_debugging_control(s)) return true;")
+        if a == 0x101cca40:
+            code.append("reset_match_debugging();")
         if a in CALENDAR_ADAPTER_ENTRIES:
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a in DATE_SUBSYSTEM_ENTRIES:

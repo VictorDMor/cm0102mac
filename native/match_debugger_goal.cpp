@@ -67,6 +67,11 @@ void apply_original_awarded_goal(State& state, std::uint32_t match, std::uint32_
         throw std::runtime_error("Original awarded-goal statistics did not reach their boundary");
 
     boundaries.stage = Boundaries::Stage::confirmation;
+    // The shot/statistics event alone is not a scorer-list entry. Execute the
+    // original ordinary-goal announcement as well: the report builder consumes
+    // its player, side and minute from the original commentary history.
+    state.pc = 0x102636d8;
+    run_until(state, 0x10263700);
     state.pc = 0x10267154;
     run_until(state, return_sentinel);
     if (state.pc != return_sentinel || state.r<4>(4) != caller)

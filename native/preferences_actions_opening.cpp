@@ -1,9 +1,11 @@
 #include "preferences_actions.hpp"
 #include "semantic_guest_call.hpp"
+#include "match_debugging.hpp"
 
 namespace cm::aot::preferences_actions {
 
 void open_with_mode(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
+    if (native_debugging_available()) begin_debugging_options();
     SemanticGuestCall a(s,open_with_mode_entry,d,o);
     a.at(0x1033ce70);
     a.link();a.store(1,-0x4,31);a.load(31,2,-0x7bb0);a.value(6,0x1);a.store(1,-0x8,30);a.move(30,3);
@@ -28,6 +30,7 @@ void open_with_mode(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver
 }
 
 void open_from_game_state(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
+    if (native_debugging_available()) begin_debugging_options();
     SemanticGuestCall a(s,open_from_game_state_entry,d,o);
     a.at(0x1033cf20);
     a.link();a.store(1,-0x4,31);a.load(5,2,-0x4eb8);a.store(1,-0x8,30);a.load(4,2,-0x4eb4);a.store(1,-0xc,29);
