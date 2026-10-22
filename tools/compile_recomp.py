@@ -6,6 +6,7 @@ never fall back to interpreting instructions. Expand roots and rebuild offline.
 """
 import argparse
 from collections import defaultdict, deque
+import functools
 import json
 import hashlib
 import inspect
@@ -556,45 +557,123 @@ def operation(op, address, index, page, selected, op_count, read_node=read, writ
     return write_node(output, value)
 
 
-def require_dead_register(instructions, start, offset, size):
-    """Fail closed unless every original branch overwrites a register before use.
+def zero_divisor_quotient_unused(lookup, address, blocked=frozenset()):
+    """True when a divw's quotient cannot matter if its divisor is zero.
 
-    Used only after the audited match multiply has annihilated the undefined
-    quotient. Calls, indirect flow, cycles, partial writes, and unknown targets
-    are not proofs. P-code inputs include overlapping subregister reads.
+    PowerPC divw does not trap on a zero divisor; the quotient is undefined.
+    The game's modulo idiom multiplies that quotient by the same divisor
+    (mullw, giving 0 whatever the quotient) and overwrites it before any other
+    read. Prove that on every path: the only reads of the quotient register
+    are such multiplies while the divisor is unchanged, until a full
+    overwrite. Calls, returns, indirect flow, userops, cycles, record forms,
+    partial accesses and `blocked` addresses (watched by host code, owner
+    entries, special lowerings) are not proofs. `lookup` maps an address to
+    its export record, or None outside the known code.
     """
+    item = lookup(address)
+    if item is None or address in blocked or len(item["ops"]) != 1 or item["ops"][0][0] != "INT_SDIV":
+        return False
+    _, quotient, _, divisor = item["ops"][0]
+    if any(node[0] != "register" or node[2] != 4 for node in (quotient, divisor)) or quotient == divisor:
+        return False
+
+    def overlaps(node, register):
+        return node is not None and node[0] == "register" and \
+            int(node[1]) < int(register[1]) + register[2] and int(register[1]) < int(node[1]) + node[2]
+
     proven = set()
 
-    def overlaps(node):
-        return node is not None and node[0] == "register" and \
-            int(node[1]) < offset + size and offset < int(node[1]) + node[2]
-
-    def visit(address, path):
-        if address in proven:
-            return
-        item = instructions.get(address)
-        if item is None or address in path or len(path) >= 128:
-            raise ValueError("Cannot prove match quotient dead on every continuation")
+    def visit(at, path, divisor_intact):
+        # Memoize by the divisor state on entry: the same address can be
+        # reached with the divisor intact on one path and changed on another.
+        entry = divisor_intact
+        if (at, entry) in proven:
+            return True
+        item = lookup(at)
+        if item is None or at in blocked or at in path or len(path) >= 128:
+            return False
         for name, output, *inputs in item["ops"]:
-            if any(overlaps(node) for node in inputs):
-                raise ValueError(f"Match quotient read before overwrite at {address:x}")
-            if overlaps(output):
-                if output != ["register", str(offset), size]:
-                    raise ValueError(f"Partial match quotient overwrite at {address:x}")
-                proven.add(address)
-                return
+            if name == "CALLOTHER":
+                return False
+            if any(overlaps(node, quotient) for node in inputs):
+                if not (divisor_intact and name == "INT_MULT" and sorted(map(tuple, inputs)) ==
+                        sorted([tuple(quotient), tuple(divisor)])):
+                    return False
+            if overlaps(output, divisor):
+                divisor_intact = False
+            if overlaps(output, quotient):
+                if output != quotient:
+                    return False
+                proven.add((at, entry))
+                return True
         if item["flow"] not in ("FALL_THROUGH", "CONDITIONAL_JUMP", "UNCONDITIONAL_JUMP"):
-            raise ValueError(f"Unproven match quotient control flow at {address:x}")
+            return False
         targets = list(item.get("flows", []))
         if item["flow"] != "UNCONDITIONAL_JUMP":
             targets.append(item.get("fallthrough"))
-        if not targets or None in targets:
-            raise ValueError(f"Missing match quotient continuation at {address:x}")
-        for target in targets:
-            visit(target, path | {address})
-        proven.add(address)
+        if not targets or None in targets or \
+                not all(visit(target, path | {at}, divisor_intact) for target in targets):
+            return False
+        proven.add((at, entry))
+        return True
 
-    visit(start, set())
+    return visit(item["fallthrough"], {address}, True) if item.get("fallthrough") else False
+
+
+def render_divisions(divisions):
+    """quotient_free_division: lets rewritten owners continue past a zero
+    divisor at exactly the divw sites generated pages do."""
+    values = sorted(divisions)
+    rows = [", ".join(f"0x{a:x}" for a in values[i:i + 8]) for i in range(0, len(values), 8)]
+    return "\n".join([
+        '#include "aot_runtime.hpp"', "#include <algorithm>", "#include <array>", "namespace cm::aot {",
+        "namespace {", f"constexpr std::array<std::uint32_t, {len(values)}> quotient_free{{",
+        ",\n".join(rows), "};", "}",
+        "bool quotient_free_division(std::uint32_t address) {",
+        "return std::binary_search(quotient_free.begin(), quotient_free.end(), address);", "}", "}", ""])
+
+
+@functools.cache
+def program_quotient_free_divisions():
+    """The whole-program proof from the current export, for callers that
+    compile only part of a page (equivalence references); None without it."""
+    path = Path(__file__).resolve().parent.parent / ".local/current/export/instructions.sqlite"
+    if not path.is_file():
+        return None
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+        return quotient_free_divisions(db)
+
+
+# Zero-divisor sites found in play (day advance, two in match play). The
+# proof must keep covering them; generation fails otherwise.
+REQUIRED_QUOTIENT_FREE_DIVISIONS = frozenset({0x101355d4, 0x1024773c, 0x10289b28})
+
+
+@functools.cache
+def division_blocked_addresses():
+    """Instructions whose state the game's host code may read, or that lower
+    specially. Checks may stop at any of them: they compare against the same
+    generated code."""
+    return frozenset(observed_instructions(checks=False) | set(dict(SEMANTIC_REPLACEMENTS)) |
+                     set(CAPTURE_OBSERVATIONS) | set(NATIVE_DRAWING_BOUNDARIES) | SPECIAL_LOWERINGS)
+
+
+def quotient_free_divisions(db):
+    """Every divw whose zero-divisor quotient provably cannot matter."""
+    blocked = division_blocked_addresses()
+    cache = {}
+
+    def lookup(address):
+        if address not in cache:
+            row = db.execute("SELECT body FROM instructions WHERE address = ?", (address,)).fetchone()
+            cache[address] = json.loads(row[0]) if row else None
+        return cache[address]
+
+    proven = frozenset(address for (address,) in db.execute(
+        "SELECT address FROM instructions WHERE body LIKE '%INT_SDIV%'") if zero_divisor_quotient_unused(lookup, address, blocked))
+    if missing := REQUIRED_QUOTIENT_FREE_DIVISIONS - proven:
+        raise ValueError("Zero-divisor proof no longer covers " + ", ".join(f"{a:x}" for a in sorted(missing)))
+    return proven
 
 
 def require_control_cursor_block(instructions, selected):
@@ -654,8 +733,10 @@ def ends_run(item):
 # executes. Comparisons of the PC with a literal address anywhere in native/
 # are found by scanning; these come from address tables instead (the reads
 # where native/match_engine_transfer_checks.cpp and
-# spatial_role_transfer_checks.cpp inject a longjmp).
-OBSERVED_INSTRUCTION_TABLES = {0x101ccdf0, 0x101cd5ec, 0x101d3f78,
+# spatial_role_transfer_checks.cpp inject a longjmp, and the stops that
+# day_advance_checks.cpp and match_arithmetic_checks.cpp step to).
+OBSERVED_INSTRUCTION_TABLES = {0x101355d4, 0x10135614, 0x1024773c, 0x10247768, 0x10247948,
+    0x101ccdf0, 0x101cd5ec, 0x101d3f78,
     0x101d3b50, 0x101d5680, 0x101d5690, 0x101d56c0, 0x101d5730, 0x101d5744, 0x101d7db0,
     0x101e3dc4, 0x101e3e54, 0x101e3ee4, 0x101e3f00, 0x101f189c, 0x101f1930, 0x101f1940,
     0x101f196c, 0x101f1dcc, 0x101f1df4, 0x101f1e2c, 0x101f21c0, 0x10289550, 0x10289570, 0x102895b0, 0x102895f0}
@@ -695,20 +776,20 @@ INLINE_LEAF_LIMIT = 6
 LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CALLIND", "RETURN")
 
 
-# Instructions generate_page lowers specially (beyond owner hooks); a leaf
-# containing one is never inlined.
+# Instructions generate_page lowers specially (beyond owner hooks and
+# quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
-    0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x101355d4, 0x1024773c,
+    0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
     0x10713aec, 0x10713b3c, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
     0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
-def inline_leaves(db):
+def inline_leaves(db, divisions=frozenset()):
     """Call target -> instruction records of an inlinable leaf, before its blr."""
     owners = dict(SEMANTIC_REPLACEMENTS)
     host_observed = observed_instructions(checks=False)
-    special = (SPECIAL_LOWERINGS | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
+    special = (SPECIAL_LOWERINGS | divisions | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
                set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) | set(CAPTURE_OBSERVATIONS))
     targets = set()
     for (body,) in db.execute("SELECT body FROM instructions WHERE body LIKE '%UNCONDITIONAL_CALL%'"):
@@ -879,7 +960,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None):
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -1067,6 +1148,16 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     # Audit only when its commentary call/load is included; once included,
     # require the same complete context and fingerprint as the full export.
     page_addresses = {item["address"] for item in instructions}
+    if nontrapping_divisions is None:
+        # Equivalence references compile parts of pages: use the whole-program
+        # proof, so they continue exactly where production does; without an
+        # export, prove within the records generated.
+        nontrapping_divisions = program_quotient_free_divisions()
+    if nontrapping_divisions is None:
+        records = {item["address"]: item for item in instructions}
+        nontrapping_divisions = frozenset(
+            address for address, item in records.items() if item["ops"] and item["ops"][0][0] == "INT_SDIV" and
+            zero_divisor_quotient_unused(records.get, address, division_blocked_addresses()))
     transfer_hooks = guest_context_transfers and bool(page_addresses & {0x10772768, 0x10772774, 0x107727d4, 0x10772a94})
     if transfer_hooks:
         require_exception_runtime_contract(page, instructions)
@@ -1591,38 +1682,14 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.extend(["s.wr<4>(100, next_pool_attempt(s.r<4>(100), divide_unsigned(s.r<4>(16), s.r<4>(0))));",
                          transfer(a + 4, transfer_page, selected)])
             continue
-        if a == 0x101355d4:
-            # PowerPC divw without OE/Rc does not trap on a zero divisor; its
-            # quotient is undefined. Here that quotient's only use is a multiply
-            # by the same zero divisor, followed by an unconditional overwrite.
-            # Any quotient therefore gives the same observable continuation.
-            # Audit the complete use/kill sequence before choosing zero locally;
-            # keep unrelated divisions strict and all nonzero cases unchanged.
-            sequence = [
-                "divw r3,r5,r4", "lwz r0,0xbc(r1)", "cmpwi r0,0x0",
-                "mullw r0,r3,r4", "subf r13,r0,r5", "neg r0,r13",
-                "ble 0x101355f4", "or r0,r13,r13", "or r13,r0,r0",
-                "xoris r3,r13,0x8000"]
-            by_address = {record["address"]: record for record in instructions}
-            if any(by_address.get(a + i * 4, {}).get("assembly") != assembly
-                   for i, assembly in enumerate(sequence)) or item["ops"] != [
-                    ["INT_SDIV", ["register", "12", 4], ["register", "20", 4], ["register", "16", 4]]]:
-                raise ValueError("Day-advance division no longer matches the audited quotient-independent sequence")
-            code.extend(["if (s.r<4>(16) == 0) {", "s.wr<4>(12, 0);",
-                         transfer(a + 4, transfer_page, selected), "}"])
-        if a == 0x1024773c:
-            # Same exceptional divw semantics in the match routine. Unlike the
-            # day-advance site, r3 is killed along several later branches.
-            sequence = [
-                "divw r3,r5,r4", "fctiwz f0,f0", "stfd f0,0x9c(r1)",
-                "lwz r0,0xa0(r1)", "cmpwi r0,0x0", "mullw r0,r3,r4"]
-            by_address = {record["address"]: record for record in instructions}
-            if any(by_address.get(a + i * 4, {}).get("assembly") != assembly
-                   for i, assembly in enumerate(sequence)) or item["ops"] != [
-                    ["INT_SDIV", ["register", "12", 4], ["register", "20", 4], ["register", "16", 4]]]:
-                raise ValueError("Match division no longer matches the audited annihilating multiply")
-            require_dead_register(by_address, 0x10247754, 12, 4)
-            code.extend(["if (s.r<4>(16) == 0) {", "s.wr<4>(12, 0);",
+        if a in nontrapping_divisions:
+            # PowerPC divw does not trap on a zero divisor; its quotient is
+            # undefined. zero_divisor_quotient_unused proved this quotient is
+            # only multiplied by the same zero divisor and then overwritten,
+            # so any quotient gives the same continuation. Nonzero divisors
+            # and every unproven division keep the strict lowering.
+            _, quotient, _, divisor = item["ops"][0]
+            code.extend([f"if (s.r<4>({divisor[1]}) == 0) {{", f"s.wr<4>({quotient[1]}, 0);",
                          transfer(a + 4, transfer_page, selected), "}"])
         if a in (0x10713aec, 0x10713b3c):
             # Club and competition fallback callers (10713214 / 107133b8)
@@ -1709,7 +1776,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if local is not None:
             code.append("}")
     if inlining is not None:
-        inlining.special.update(special | (isolated - HOST_OBSERVED_INSTRUCTIONS) | (SPECIAL_LOWERINGS & page_addresses))
+        inlining.special.update(special | (isolated - HOST_OBSERVED_INSTRUCTIONS) | (SPECIAL_LOWERINGS & page_addresses) | (nontrapping_divisions & page_addresses))
     if block_accounting:
         code = account_blocks(code, instructions, match_hot_page, hooked, isolated)
     code.append("}")
@@ -2109,7 +2176,8 @@ def main():
     with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
         native_leaves = load_leaves(db, None if args.all_analyzed else selected)
         native_sort = load_sort8(db, None if args.all_analyzed else selected)
-        inlining = Inlining({target: body for target, body in inline_leaves(db).items()
+        divisions = quotient_free_divisions(db)
+        inlining = Inlining({target: body for target, body in inline_leaves(db, divisions).items()
                              if args.all_analyzed or all(address in selected for address in range(target, target + 4 * len(body) + 4, 4))})
     if args.reuse_generated:
         reused = seed_generated(args.reuse_generated, args.output)
@@ -2137,7 +2205,8 @@ def main():
                 path = args.output / f"page_{page:x}.cpp"
                 content = generate_page(page, records, {r["address"] for r in records},
                                         local_temporaries=not args.legacy_unique_storage,
-                                        userops=metadata['userops'], block_accounting=True, inlining=inlining)
+                                        userops=metadata['userops'], block_accounting=True, inlining=inlining,
+                                        nontrapping_divisions=divisions)
                 if not path.exists() or path.read_text() != content: path.write_text(content)
                 pages[page] = []
                 outputs[path.name] = None
@@ -2148,7 +2217,8 @@ def main():
         if not args.all_analyzed:
             outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected,
                                                        local_temporaries=not args.legacy_unique_storage,
-                                                       userops=metadata['userops'], block_accounting=True, inlining=inlining)
+                                                       userops=metadata['userops'], block_accounting=True, inlining=inlining,
+                                        nontrapping_divisions=divisions)
     inlining.require_plain()
     print(f"Inlined leaves: {len(inlining.inlined)} routines", flush=True)
     code = ['#include "aot_runtime.hpp"', '#include "aot_integrity.hpp"', "namespace cm::aot {"]
@@ -2193,14 +2263,16 @@ def main():
     outputs["program.cpp"] = "\n".join(code) + "\n"
     outputs["fused_sites.cpp"] = render_fused_sites(fused_sites)
     outputs["leaves.cpp"] = render_leaves(inlining.leaves, metadata['userops'])
+    outputs["divisions.cpp"] = render_divisions(divisions)
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
             native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops'],
-            block_accounting=True))
+            block_accounting=True, nontrapping_divisions=divisions))
     sort_hooks = {name: False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks')}
     outputs["native_sort8.cpp"] = generate_sort8(native_sort,
         lambda page, records, chosen: generate_page(page, records, chosen,
-            **sort_hooks, native_leaf_lowering=True, userops=metadata['userops'], block_accounting=True))
+            **sort_hooks, native_leaf_lowering=True, userops=metadata['userops'], block_accounting=True,
+            nontrapping_divisions=divisions))
     # Remove only stale generated pages, after all code generation has succeeded.
     for stale in args.output.glob("page_*.cpp"):
         if stale.name not in outputs: stale.unlink()
@@ -2219,12 +2291,11 @@ def main():
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}
                     for address, purpose in (
-                        (0x101355d4, "Preserve nontrapping division where zero-divisor quotient is provably unused"),
-                        (0x1024773c, "Preserve match division after proving the exceptional quotient unused on every branch"),
                         (0x10713aec, "Skip unused null-club descriptor lookup for default background"),
                         (0x10713b3c, "Skip unused null-competition descriptor lookup for default background"),
                         (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"))
                     if (args.all_analyzed and address >> 12 in pages) or address in selected],
+                "quotientFreeDivisions": len(divisions),
                 "missingStaticTargets": sorted(missing),
                 "pendingTargets": sorted(set(queue) - seen), "files": sorted(outputs)}
     (args.output / "compilation.json").write_text(json.dumps(manifest, indent=2) + "\n")

@@ -435,6 +435,21 @@ backup was made before restarting. Its SHA-256 is
 this is a later save than the already verified ordinary save/reload cycle.
 Evidence: `.local/logs/pre-match-save-validation.json`. No save repair was made.
 
+### Zero divisors in general (2026-10-21)
+
+The two sites above were one idiom: a random draw modulo `(int)(bound * n)`,
+where the bound can truncate to zero. Driving the 26-country career hit a
+third one (`0x10289b28`, match play on 23 December). The generator now proves
+the idiom for every `divw` (`zero_divisor_quotient_unused`). On every path,
+the quotient may only feed a multiply by the same, unchanged divisor before a
+full overwrite; calls, returns, indirect flow, cycles, record forms and
+partial accesses fail the proof. 1,385 of the 1,831 `divw` sites qualify and
+continue past a zero divisor, as the PowerPC does. The other 446 use their
+quotient and still stop on zero (`tools/test_quotient_audit.py`). Rewritten
+owners see the same set: `SemanticGuestCall::divide` asks the generated
+`quotient_free_division`, and equivalence references use the whole-program
+proof, so a rewrite and its reference continue at the same sites.
+
 ### Original application shutdown
 
 Both `app.VDk5TM` and `app.pigLIp` reached `DisposeCCursor` while quitting.

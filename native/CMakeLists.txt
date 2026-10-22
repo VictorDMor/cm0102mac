@@ -279,6 +279,9 @@ endforeach()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME generated_block_accounting
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_block_accounting.py")
+# The zero-divisor proof accepts only quotients that cannot reach the game.
+add_test(NAME generated_quotient_proof
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_quotient_audit.py")
 # Changing one random number the transition draws must change a game record
 # (the flipped RNG-table byte itself is put back before the comparison). Of
 # the 66 table bytes this transition consumes, only this one alters a result.

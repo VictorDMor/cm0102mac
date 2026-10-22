@@ -47,7 +47,7 @@ From the 2026-10-20 review. Estimates are unmeasured.
 
 ## Later: fixes from the review
 
-- [ ] `divw` INT_MIN / -1 guard never fires (returns `0x80000000`); divide by zero throws where the original continues.
+- [ ] `divw` INT_MIN / -1 guard never fires (returns `0x80000000`). Divide by zero now continues at the 1,385 quotient-free sites; the other 446 still stop (what the hardware returns there is undecided).
 - [ ] `lfs` quietens signalling NaNs.
 - [ ] Unknown intrinsics compile and throw at runtime; fail generation instead.
 - [ ] `native_record_fields` promotion accepts calls that read `State` (latent).

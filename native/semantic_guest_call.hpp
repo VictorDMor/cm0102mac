@@ -6,6 +6,9 @@
 #include "fused_multiply_add.hpp"
 #include <bit>
 namespace cm::aot {
+// Generated: a divw whose quotient cannot matter when its divisor is zero
+// (tools/compile_recomp.py zero_divisor_quotient_unused).
+bool quotient_free_division(std::uint32_t address);
 class SemanticGuestCall {
     State& state;
     std::uint32_t next;
@@ -281,7 +284,11 @@ public:
         state.wr<1>(2304, (condition & ~2u) | ((condition & 6u) ? 2u : 0u));
     }
     void divide(unsigned destination, unsigned first, unsigned second) {
-        step(); state.wr<4>(destination * 4, divide_signed<4>(r(first), r(second)));
+        const auto at = next; step();
+        // As in generated code: the PowerPC does not trap, and at these sites
+        // any quotient gives the same continuation.
+        if (!r(second) && quotient_free_division(at)) { state.wr<4>(destination * 4, 0); return; }
+        state.wr<4>(destination * 4, divide_signed<4>(r(first), r(second)));
     }
     void divide_record(unsigned destination, unsigned first, unsigned second) {
         step(); const auto numerator = r(first), denominator = r(second);
