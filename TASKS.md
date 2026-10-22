@@ -25,15 +25,27 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [ ] Production/transfer checks of other owner families with leaf entries (marking_pressure, actor_order, contract_terms/review, stdlib_core, utility_object, actor_effects, …; not built here) expect their hook to run when `run_until` enters a leaf, like the spatial-role checks did; use `is_leaf_entry` as those were updated.
 - [ ] Direct cross-page calls from generated code (skip two dispatcher round trips per call); page frames are 48–96 bytes, so nesting is cheap.
 - [ ] FPSCR: the only reader is `setjmp` (0x10773ecc), which stores it into the jmp_buf; status bits are never used for a decision. Find a way to stop computing them that keeps jmp_buf memory identical.
-- [x] **All-leagues week benchmark (2026-10-21).** 7-day capture of the 26-country career's 21->28 Dec Continue in `.local/performance/week-capture/SeasonFixture` (34 GB). `cm-world-replay <it> 1 --timing` replays it deterministically to its recorded end state (~560 s/run now). Real-game Continue times vary run to run (299-372 s for one build), so use this replay for paired timing and `profile start/stop` through the driver for where the time goes.
+- [x] **All-leagues benchmarks (2026-10-22).** Captures of the 26-country career in format 2: the 21->28 Dec week in `.local/performance/week-capture/SeasonFixture` (937 MB, ~300 s per replay) and 21->22 Dec in `.local/performance/day-capture/SeasonFixture` (91 MB, ~23 s). `cm-world-replay <capture> 1 --timing` replays to the recorded end state; use the day for quick pairs and the week for headline numbers. Real-game Continue times vary run to run (the game's results differ), so time with replays and find costs with `profile start/stop` through the driver.
 - [x] Host overhead while the game works (732b5c0): cached snapshot env check (was 29% of samples), event polls (~20% -> 0.2%), import names as views.
 - [x] List search `0x101b1620` in C++ (bc4abba): week replay -9.9% / -9.4%.
 - [x] Fast paths ran only in benchmarks: the app's drawing observer made them step aside (b6c121e). Real-game week now ~290 s (two runs), against 350-372 s for the previous build's recent runs; not a paired measurement.
 - [ ] Real-game profile now (current build, 2026-10-22): match simulation 32% inclusive; candidate scan `0x1035e9f0` 30% inclusive / 6.3% self; system calls 11%, of which file-system path work ~7.4% (`FSMakeFSSpec` 2.2%, `FSGetCatalogInfo` 1.4%, `FSOpenFork` 1.2%, `ResolveAliasFile` 1.1%); actor role wrapper `0x10289560` 4.5% self; list search 3.8% self (linear scans).
 - [ ] File opens during processing: `0x10308350` -> `0x10748ce0` -> `0x10739de0` -> stdio open (`0x107768f0`/`0x10776940`/`0x10776da0`) resolves the same host path again on each open. Cache path resolution in the bridge (`allowed()` canonicalizes per component; `directory_id()` stats every known directory), invalidated on create/delete/rename/copy-on-write. Needs a save and reload on a career copy.
 - [ ] Import dispatch: resolve each import stub to a handler once and switch on it (names are views now).
-- [ ] Week replays decompress a ~17 KB register snapshot per recorded import (17M imports). Record only the registers each import reads; replay time would approach the app's.
+- [x] Capture format 2 (6458137): week 34 GB -> 937 MB, replay 563 s -> ~300 s.
+- [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
+
+## Next: native lowering (decided 2026-10-22)
+
+Victor's target: identical in-game results (same RNG seeds and draws) and the highest speed possible, well beyond 10x; the code may differ completely. The generated pages emulate the PowerPC: registers live in `State::registers`, a byte array the compiler must reload after every guest-memory store (both are `uint8_t`, so they may alias); every access is bounds-checked; every run is counted; every call goes through `run_until`/`dispatch_page`. Lowering each routine to a C++ function removes that:
+
+- [ ] Registers as C++ locals inside a routine; write back to `State` only at calls, imports, hooks and exits. Start with the hottest leaf-like routines and measure on the day capture.
+- [ ] Condition and XER/FPSCR bits computed only where something reads them (liveness in the generator).
+- [ ] Direct C++ calls between lowered routines (no dispatcher); indirect calls through one table.
+- [ ] No instruction accounting in production builds (counts are diagnostics); keep it for checks.
+- [ ] Guest memory: hardware guard pages instead of software bounds checks where a fault is a bug anyway.
+- [ ] Then the hand-written C++ subsystems call each other directly (named types), replacing lowered routines by measured cost.
 
 ## Next: rewrite track
 
