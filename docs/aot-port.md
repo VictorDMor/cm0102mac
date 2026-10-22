@@ -244,6 +244,13 @@ interactive context whose loop runs fewer than 2 million instructions
 between event calls for a 250 ms window: about 6,000 when idle, hundreds of
 millions while loading or processing.
 
+The app always has a memory observer attached: `NativeDrawingObserver`
+watches writes to the drawing surfaces' address range. C++ fast paths that
+step aside "when anything observes" therefore never ran in the app, only in
+benchmarks. Fast paths must instead step aside only for read or boundary
+observers, or for a write observer covering a write they skip
+(`observes_write`).
+
 Two runs of the same Continue sequence from the same save produced saves
 that differ in 145 blocks (fixtures, results, histories). The runs used two
 builds whose differences cannot alter a normal run, so the game probably

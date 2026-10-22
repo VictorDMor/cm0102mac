@@ -286,14 +286,17 @@ void resolve_goalkeeper(Call& a){
 namespace {
 // Production fast path for the role tables and their per-actor wrappers,
 // ~1.6 million calls per 600 match advances. When nothing observes their
-// steps (no memory or boundary observer, no original selection, no profile,
+// steps (no read or boundary observer, no original selection, no profile,
 // and a budget that covers the longest path), they run as plain C++ that
 // leaves the machine exactly as the original does on the same path: the
 // same reads in order, the same result and volatile registers, the same
 // stack writes and the same instruction charge. Otherwise role_table and
 // owner_role below run instruction by instruction.
+// A write observer (the app's drawing observer is always attached) sees
+// the same writes in the same order either way; read observers and boundary
+// observers would not, so they keep the instruction-level path.
 bool unobserved(const State& state, const SpatialRoleDiagnostics& d, std::uint64_t longest) {
-    return !state.memory.observer && !state.memory.date_observer && !state.memory.read_trace && !d.observer &&
+    return !state.memory.date_observer && !state.memory.read_trace && !d.observer &&
            !d.original && !d.original_body && std::none_of(d.entry_original.begin(), d.entry_original.end(), [](bool b) { return b; }) &&
            !match_pc_profile_enabled() && state.executed <= state.budget && state.budget - state.executed >= longest;
 }
