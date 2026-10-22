@@ -279,6 +279,9 @@ endforeach()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME generated_block_accounting
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_block_accounting.py")
+# Production pages call C++ owners in place; references keep the dispatcher.
+add_test(NAME generated_direct_owner_calls
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_direct_owner_calls.py")
 # The zero-divisor proof accepts only quotients that cannot reach the game.
 add_test(NAME generated_quotient_proof
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_quotient_audit.py")

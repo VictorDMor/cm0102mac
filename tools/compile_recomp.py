@@ -670,6 +670,73 @@ def require_list_search(db):
         raise ValueError("List search 0x101b1620 / iterator 0x10738e00 no longer match native/list_search.cpp")
 
 
+# Production pages call these C++ owners in place (DirectOwnerCalls): `bl X`
+# runs the owner's hook at once and continues at the return address, instead
+# of returning to the dispatcher twice. Only entries whose single hook is the
+# standard `try_modern_<family>(s, X)` qualify, which DirectOwnerCalls checks
+# once every page exists; when the owner declines, the dispatcher runs X as
+# before and the hook is asked again there. Families whose hook counts a call
+# before it may decline are left out, so that no call is counted twice.
+NONSTANDARD_OWNER_MODULES = frozenset({"register_context_adapter", "cpp_object_storage_adapter",
+                                       "compiler_arithmetic_adapter", "aggregate_object_adapter",
+                                       "runtime_lifecycle_adapter"})
+
+
+@functools.cache
+def owners_counting_declines(native=Path(__file__).resolve().parent.parent / "native"):
+    """Families whose try_modern hook increments something before its last `return false`."""
+    found = set()
+    hook = re.compile(r"bool try_modern_(\w+)\(State& \w+, std::uint32_t \w+\)\s*\{")
+    for path in sorted(native.glob("*.cpp")):
+        text = path.read_text(errors="replace")
+        for match in hook.finditer(text):
+            body = text[match.end():]
+            body = body[:body.find("\n}")]
+            last = body.rfind("return false")
+            if last >= 0 and re.search(r"\+\+|\+=", body[:last]):
+                found.add(match.group(1))
+    return frozenset(found)
+
+
+@functools.cache
+def direct_owner_entries():
+    """Owner entry -> family, for owners generated code may call in place."""
+    counts = defaultdict(int)
+    for entry, _ in SEMANTIC_REPLACEMENTS:
+        counts[entry] += 1
+    other = (set(SPECIAL_LOWERINGS) | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
+             set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) |
+             set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} |
+             set(observed_instructions(checks=True)))
+    return {entry: module.removesuffix("_adapter") for entry, module in SEMANTIC_REPLACEMENTS
+            if module.endswith("_adapter") and module not in NONSTANDARD_OWNER_MODULES and counts[entry] == 1
+            and entry not in other and module.removesuffix("_adapter") not in owners_counting_declines()}
+
+
+def plain_direct_call(item):
+    """The callee of a plain `bl`: save the TOC, link to the next instruction, call."""
+    if item.get("flow") != "UNCONDITIONAL_CALL" or not item.get("flows"):
+        return None
+    callee = item["flows"][0]
+    plain = [["COPY", ["register", "2440", 4], ["register", "8", 4]],
+             ["COPY", ["register", "4128", 4], ["const", str(item["address"] + item["size"]), 4]],
+             ["CALL", None, ["ram", str(callee), 4]]]
+    return callee if item["ops"] == plain else None
+
+
+class DirectOwnerCalls:
+    """Owners that production pages call in place, and the hooks generation
+    put at each owner entry."""
+    def __init__(self):
+        self.called, self.entry_hooks = {}, {}
+
+    def require_standard(self):
+        """Fails if a callee's entry lost its single standard hook."""
+        for callee, family in sorted(self.called.items()):
+            if self.entry_hooks.get(callee) != [f"if (try_modern_{family}(s, 0x{callee:x})) return true;"]:
+                raise ValueError(f"In-place owner call to {callee:x} needs exactly the standard {family} hook there")
+
+
 # Zero-divisor sites found in play (day advance, two in match play). The
 # proof must keep covering them; generation fails otherwise.
 REQUIRED_QUOTIENT_FREE_DIVISIONS = frozenset({0x101355d4, 0x1024773c, 0x10289b28})
@@ -986,7 +1053,9 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True):
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True,
+                  direct_owner_calls=None):
+    called_families = set()
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -1681,9 +1750,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code[hooks_start:] = [bound_turbo_hook(a, line) for line in code[hooks_start:]]
             if any(line.startswith("if (try_") for line in code[hooks_start:]):
                 raise ValueError(f"Semantic hook at {a:x} bypasses the Turbo instruction counter")
-            code.append(f"counter.step(0x{a:x});")
-        else:
-            code.append(f"s.step(0x{a:x});")
+        if direct_owner_calls is not None and a in direct_owner_entries():
+            direct_owner_calls.entry_hooks[a] = code[hooks_start:]
+        code.append(f"{'counter' if match_hot_page else 's'}.step(0x{a:x});")
         if register_context_hooks and a in CAPTURE_OBSERVATIONS:
             code.append(CAPTURE_OBSERVATIONS[a])
         if a == 0x101fefc8:
@@ -1728,10 +1797,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             # eager getter calls; nonnull lookup and other accesses are intact.
             getter = 0x100d5310 if a == 0x10713aec else 0x100d4fd0
             continuation = a + 4
-            if item["assembly"] != f"bl 0x{getter:x}" or item["ops"] != [
-                    ["COPY", ["register", "2440", 4], ["register", "8", 4]],
-                    ["COPY", ["register", "4128", 4], ["const", str(continuation), 4]],
-                    ["CALL", None, ["ram", str(getter), 4]]]:
+            if item["assembly"] != f"bl 0x{getter:x}" or plain_direct_call(item) != getter:
                 raise ValueError("Background call site no longer matches the audited release")
             code.extend(["if (s.r<4>(12) == 0) {", "s.wr<4>(2440, s.r<4>(8));",
                          f"s.wr<4>(4128, 0x{continuation:x});",
@@ -1739,7 +1805,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         leaves = inlining.leaves if inlining else {}
         target = item["flows"][0] if leaves and item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows") else None
         if target in leaves:
-            if [op[0] for op in item["ops"]] != ["COPY", "COPY", "CALL"] or item["ops"][2][2] != ["ram", str(target), 4]:
+            if plain_direct_call(item) != target:
                 raise ValueError(f"Unexpected direct call shape at {a:x}")
             # The bl's own effects (TOC save, link), then the leaf's body.
             for op in item["ops"][:2]:
@@ -1748,6 +1814,22 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"{'counter' if match_hot_page else 's'}.charge({len(leaves[target]) + 1}); // inlined leaf 0x{target:x}")
             code.append(transfer(a + item["size"], transfer_page, selected))
             inlining.inlined[target] = [r["address"] for r in leaves[target]] + [target + 4 * len(leaves[target])]
+            continue
+        callee = plain_direct_call(item) if direct_owner_calls is not None and not match_hot_page else None
+        family = direct_owner_entries().get(callee)
+        if family and a not in SPECIAL_LOWERINGS:
+            returned = a + item["size"]
+            for op in item["ops"][:2]:
+                code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
+            code.append(f"s.pc = 0x{callee:x};")
+            if returned >> 12 == page and returned in selected:
+                code.append(f"if (try_modern_{family}(s, 0x{callee:x}) && continues_after_owner(s, 0x{returned:x})) "
+                             f"goto i_{returned:x};")
+            else:
+                code.append(f"try_modern_{family}(s, 0x{callee:x});")
+            code.append("return true;")
+            called_families.add(family)
+            direct_owner_calls.called[callee] = family
             continue
         if item["assembly"].startswith("fctiwz "):
             # Ghidra's generic TRUNC does not express PowerPC invalid-result
@@ -1820,6 +1902,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                      "}",
                      f"return page_{page:x}_impl<false, false>(s);", "}"])
     code.append("}")
+    for family in sorted(called_families):
+        code.insert(1, f'#include "{family}_adapter.hpp"')
+    if called_families:
+        code.insert(1, '#include "direct_owner_call.hpp"')
     result = "\n".join(code) + "\n"
     require_integer_parsing_hooks(page, instructions, result)
     require_formatted_input_hooks(page, instructions, result)
@@ -2220,6 +2306,7 @@ def main():
     pages = defaultdict(list)
     for address, item in sorted(selected.items()): pages[address >> 12].append(item)
     outputs = {}
+    direct_calls = DirectOwnerCalls()
     generated_count = len(selected)
     fused_sites = [(address, fused_site_kind(item)) for address, item in selected.items() if fused_mnemonic(item)]
     if args.all_analyzed:
@@ -2237,7 +2324,7 @@ def main():
                 content = generate_page(page, records, {r["address"] for r in records},
                                         local_temporaries=not args.legacy_unique_storage,
                                         userops=metadata['userops'], block_accounting=True, inlining=inlining,
-                                        nontrapping_divisions=divisions)
+                                        nontrapping_divisions=divisions, direct_owner_calls=direct_calls)
                 if not path.exists() or path.read_text() != content: path.write_text(content)
                 pages[page] = []
                 outputs[path.name] = None
@@ -2249,9 +2336,11 @@ def main():
             outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected,
                                                        local_temporaries=not args.legacy_unique_storage,
                                                        userops=metadata['userops'], block_accounting=True, inlining=inlining,
-                                        nontrapping_divisions=divisions)
+                                        nontrapping_divisions=divisions, direct_owner_calls=direct_calls)
     inlining.require_plain()
+    direct_calls.require_standard()
     print(f"Inlined leaves: {len(inlining.inlined)} routines", flush=True)
+    print(f"Owners called in place: {len(direct_calls.called)}", flush=True)
     code = ['#include "aot_runtime.hpp"', '#include "aot_integrity.hpp"', "namespace cm::aot {"]
     for page in pages: code.append(f"bool page_{page:x}(State&);")
     code += ["bool dispatch_page(State& s) {", "switch (s.pc >> 12) {"]

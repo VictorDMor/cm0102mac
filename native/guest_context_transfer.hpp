@@ -21,6 +21,7 @@ public:
     GuestDispatchScope(const GuestDispatchScope&) = delete;
     GuestDispatchScope& operator=(const GuestDispatchScope&) = delete;
     bool resumes(const GuestContextTransfer& transfer) const noexcept;
+    std::uint32_t return_pc() const noexcept { return return_pc_; }
 private:
     State* state_;
     std::uint32_t entry_stack_, return_pc_, function_ = 0, frame_ = 0;
