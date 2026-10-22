@@ -181,10 +181,23 @@ void club_cases() {
     for(auto secondary:{0u,records+100}){auto s=seed(1);s->memory.write<4>(club,33);Options o;o.nested=false;o.secondary=secondary;o.returned_club=resolved;boundaries(*s,o);}
     for(auto c:{Control{0x10082fc8,4,0,-1},Control{0x10082ff8,32,0,2},Control{0x10083008,32,0,4}}){Options o;o.controls={c};boundaries(*seed(1),o);}
 }
+// Without an observer or a budget the builder counts in batches; it must end
+// in the same state, with the same count, as when it steps one by one.
+void batched_cases() {
+    for(unsigned index=0;index<3;++index)for(auto requested:{11u,22u,33u})for(auto flag:{0u,1u}) {
+        auto input=seed(index);input->memory.write<4>(club,requested);
+        Options o;o.returned_club=resolved;o.output_flag=flag;
+        auto stepped=clone(*input),batched=clone(*input);batched->budget=UINT64_MAX;
+        for(auto* s:{stepped.get(),batched.get()}){Trace trace(o);Model model(false,o,trace);modern_root(*s,&model,nullptr);}
+        require(stepped->pc==return_sentinel,"Batched builder fixture completes");
+        Image(*stepped).compare(*batched,"Batched builder counting");
+        require(stepped->executed==batched->executed && batched->executed>input->executed,"Batched builder count");
+    }
+}
 }
 namespace cm::aot {void contract_query_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
 int main(){try {
-    leaf_cases();club_cases();
+    leaf_cases();club_cases();batched_cases();
     for(unsigned index=0;index<3;++index) {
         auto s=seed(index);Options o;o.own_negative=true;compare(*s,o);
         constexpr auto moved=toc+0x10000;s->memory.map(moved-0x8000,0x9000);s->memory.copy_in(moved-0x8000,s->memory.copy_out(toc-0x8000,0x9000));s->wr<4>(8,moved);boundaries(*s);

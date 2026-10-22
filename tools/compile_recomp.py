@@ -5,6 +5,7 @@ Unresolved indirect destinations stop the native program with an address. They
 never fall back to interpreting instructions. Expand roots and rebuild offline.
 """
 import argparse
+import bisect
 from collections import defaultdict, deque
 import functools
 import json
@@ -631,6 +632,35 @@ def render_divisions(divisions):
         ",\n".join(rows), "};", "}",
         "bool quotient_free_division(std::uint32_t address) {",
         "return std::binary_search(quotient_free.begin(), quotient_free.end(), address);", "}", "}", ""])
+
+
+def render_watched_routines(call_targets, watched=None):
+    """routine_watches_pc: owner entries whose routine may hold an instruction
+    that the game's host code (not the checks, which run with an instruction
+    budget) watches by exact PC. Builder owners of these routines keep the PC
+    exact at every instruction (SemanticGuestCall); others count in batches.
+    The export has no routine bounds, so for each watched instruction this
+    marks the nearest `bl` target and the nearest owner entry before it, and
+    every owner entry between the two."""
+    watched = observed_instructions(checks=False) if watched is None else watched
+    starts = sorted(call_targets)
+    owners = sorted({entry for entry, _ in SEMANTIC_REPLACEMENTS})
+    marked = set()
+    for address in watched:
+        start = bisect.bisect_right(starts, address)
+        low = starts[start - 1] if start else 0
+        if start:
+            marked.add(low)
+        if (owner := bisect.bisect_right(owners, address)):
+            marked.update(owners[min(bisect.bisect_left(owners, low), owner - 1):owner])
+    entries = sorted(marked)
+    rows = [", ".join(f"0x{a:x}" for a in entries[i:i + 8]) for i in range(0, len(entries), 8)]
+    return "\n".join([
+        '#include "aot_runtime.hpp"', "#include <algorithm>", "#include <array>", "namespace cm::aot {",
+        "namespace {", f"constexpr std::array<std::uint32_t, {len(entries)}> watched{{",
+        ",\n".join(rows), "};", "}",
+        "bool routine_watches_pc(std::uint32_t entry) {",
+        "return std::binary_search(watched.begin(), watched.end(), entry);", "}", "}", ""])
 
 
 @functools.cache
@@ -2307,6 +2337,8 @@ def main():
     for address, item in sorted(selected.items()): pages[address >> 12].append(item)
     outputs = {}
     direct_calls = DirectOwnerCalls()
+    call_targets = {item["flows"][0] for item in selected.values()
+                    if item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows")}
     generated_count = len(selected)
     fused_sites = [(address, fused_site_kind(item)) for address, item in selected.items() if fused_mnemonic(item)]
     if args.all_analyzed:
@@ -2320,6 +2352,8 @@ def main():
                     "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
                     (page << 12, (page + 1) << 12))]
                 fused_sites.extend((r["address"], fused_site_kind(r)) for r in records if fused_mnemonic(r))
+                call_targets.update(r["flows"][0] for r in records
+                                    if r.get("flow") == "UNCONDITIONAL_CALL" and r.get("flows"))
                 path = args.output / f"page_{page:x}.cpp"
                 content = generate_page(page, records, {r["address"] for r in records},
                                         local_temporaries=not args.legacy_unique_storage,
@@ -2384,6 +2418,7 @@ def main():
     outputs["fused_sites.cpp"] = render_fused_sites(fused_sites)
     outputs["leaves.cpp"] = render_leaves(inlining.leaves, metadata['userops'])
     outputs["divisions.cpp"] = render_divisions(divisions)
+    outputs["watched_routines.cpp"] = render_watched_routines(call_targets)
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
             native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops'],

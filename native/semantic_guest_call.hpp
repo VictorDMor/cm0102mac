@@ -4,18 +4,35 @@
 #include "guest_context_transfer.hpp"
 #include "floating_point.hpp"
 #include "fused_multiply_add.hpp"
+#include "match_turbo.hpp"
 #include <bit>
 namespace cm::aot {
 // Generated: a divw whose quotient cannot matter when its divisor is zero
 // (tools/compile_recomp.py zero_divisor_quotient_unused).
 bool quotient_free_division(std::uint32_t address);
+// Generated: whether host code watches an instruction of the routine at
+// `entry` by exact PC (tools/compile_recomp.py render_watched_routines).
+bool routine_watches_pc(std::uint32_t entry);
 class SemanticGuestCall {
     State& state;
     std::uint32_t next;
     GuestNativeScope scope;
     SemanticDependencyDispatch* dependencies;
     SemanticGuestObserver* observer;
-    void step() { if (observer) observer->before_step(state, next); state.step(next); next += 4; }
+    // Without observers or an instruction budget (the app and the replays)
+    // instructions are counted here and reach State when control leaves the
+    // routine: at calls, returns and unwinding; the PC then moves only at
+    // calls and returns. Routines with an instruction that host code watches
+    // by exact PC step one by one. Counts are diagnostics (decided
+    // 2026-10-20); a State update per instruction cost ~2% of world time.
+    const bool batched;
+    std::uint64_t stepped = 0;
+    void step() {
+        if (batched) { ++stepped; next += 4; return; }
+        if (observer) observer->before_step(state, next);
+        state.step(next); next += 4;
+    }
+    void publish() { state.charge(stepped); stepped = 0; }
     void condition(std::int64_t a, std::int64_t b, bool record = false) { compare_cr0(state, a, b, record); }
 public:
     // CR0 after a signed or unsigned compare: LT/GT/EQ plus XER[SO]; a
@@ -25,7 +42,10 @@ public:
             (a < b ? 8 : a > b ? 4 : 2) | (state.r<1>(1024) & 1));
     }
     SemanticGuestCall(State& s, std::uint32_t root, SemanticDependencyDispatch* d, SemanticGuestObserver* o = nullptr)
-        : state(s), next(root), scope(s, root), dependencies(d), observer(o) {}
+        : state(s), next(root), scope(s, root), dependencies(d), observer(o),
+          batched(!o && s.budget == UINT64_MAX && !s.memory.date_observer && !s.memory.read_trace &&
+                  !match_pc_profile_enabled() && !routine_watches_pc(root)) {}
+    ~SemanticGuestCall() { publish(); }
     std::uint32_t r(unsigned n) const { return std::uint32_t(state.r<4>(n * 4)); }
     void at(std::uint32_t address) { next = address; }
     void link() { step(); state.wr<4>(0, state.r<4>(4128)); }
@@ -175,7 +195,7 @@ public:
     void jump(std::uint32_t address) { step(); at(address); }
     void call(std::uint32_t target) {
         if (observer) observer->before_dependency(state, next, target);
-        step(); state.wr<4>(2440, r(2)); state.wr<4>(4128, next); state.pc = target;
+        step(); publish(); state.wr<4>(2440, r(2)); state.wr<4>(4128, next); state.pc = target;
         if (dependencies) dependencies->call(state, target, next); else run_until(state, next);
     }
     // A call whose effect the caller computed itself with an exact native
@@ -184,29 +204,29 @@ public:
     void computed_call() { step(); state.wr<4>(2440, r(2)); state.wr<4>(4128, next); }
     void transfer(std::uint32_t target) {
         const auto continuation = std::uint32_t(state.r<4>(4128));
-        state.pc = target;
+        publish(); state.pc = target;
         if (dependencies) dependencies->call(state, target, continuation);
         else run_until(state, continuation);
     }
     void resume(std::uint32_t target, std::uint32_t stop) {
-        state.pc = target;
+        publish(); state.pc = target;
         if (dependencies) dependencies->resume(state, target, stop);
         else run_until(state, stop);
     }
     void pop(unsigned bytes) {
         load(0, 1, bytes + 8); offset(1, 1, bytes); step(); state.wr<4>(4128, r(0));
     }
-    void finish() { step(); state.pc = std::uint32_t(state.r<4>(4128)); }
+    void finish() { step(); publish(); state.pc = std::uint32_t(state.r<4>(4128)); }
     bool finish_if_equal() {
         step();
         const bool returned = (state.r<1>(2304) & 2) != 0;
-        if (returned) state.pc = std::uint32_t(state.r<4>(4128));
+        if (returned) { publish(); state.pc = std::uint32_t(state.r<4>(4128)); }
         return returned;
     }
     bool finish_if_at_least() {
         step();
         const bool returned = (state.r<1>(2304) & 8) == 0;
-        if (returned) state.pc = std::uint32_t(state.r<4>(4128));
+        if (returned) { publish(); state.pc = std::uint32_t(state.r<4>(4128)); }
         return returned;
     }
     void floating_store_single(unsigned source, unsigned base, std::int32_t displacement) {
@@ -338,7 +358,7 @@ public:
         step(); const auto count = std::uint32_t(state.r<4>(4132)) - 1;
         state.wr<4>(4132, count); return count != 0;
     }
-    std::uint32_t count_branch() { step(); state.pc = std::uint32_t(state.r<4>(4132)); return state.pc; }
+    std::uint32_t count_branch() { step(); publish(); state.pc = std::uint32_t(state.r<4>(4132)); return state.pc; }
 
     void floating_indexed_single(unsigned destination, unsigned base, unsigned index) {
         step(); state.wr<8>(0x4000 + destination * 16, float_bits<8>(float_value<4>(state.memory.read<4>(r(base) + r(index)))));
