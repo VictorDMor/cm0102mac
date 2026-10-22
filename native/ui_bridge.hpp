@@ -54,7 +54,9 @@ public:
     void dispose_cursor(std::uint32_t token);
     std::array<std::uint8_t, 16> key_map() const;
     NativePointerState pointer_state() const;
-    bool poll(UIEvent& event, double timeout_seconds);
+    // `throttled`: the caller polls with no wait in a busy loop; pump AppKit
+    // at most every 2 ms (queued input is still returned at once).
+    bool poll(UIEvent& event, double timeout_seconds, bool throttled = false);
     bool take_window_paint(UIEvent& event);
     void flush_events(std::uint16_t which, std::uint16_t stop);
     void begin_event(std::uint32_t token, std::uint32_t event_class, std::uint32_t kind, const UIEvent& event);

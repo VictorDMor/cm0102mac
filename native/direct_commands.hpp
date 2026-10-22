@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -21,6 +22,15 @@ struct CommandContext {
 // Read only the original active UI descriptor and control table, at its normal
 // event boundary. No titles, coordinates, career data, or simulation fields.
 CommandContext original_command_context(const State& state, std::uint16_t event_mask);
+// The cheap part: readiness and which screen is active. The context for a
+// screen hashes its whole control table (hundreds of controls).
+struct CommandScreen {
+    std::uint32_t root = 0, screen = 0, handler = 0;
+    std::int16_t count = 0;
+    bool operator==(const CommandScreen&) const = default;
+};
+std::optional<CommandScreen> original_command_screen(const State& state, std::uint16_t event_mask);
+CommandContext original_command_context(const State& state, const CommandScreen& screen);
 // A newly accepted host command replaces the previously delivered key input.
 // Call only after context/menu validation, before dispatching its original action.
 void clear_previous_command_key(State& state);

@@ -119,6 +119,12 @@ AutomationRequest parse(std::uint64_t sequence, const std::string& line) {
         request.kind = AutomationRequest::Kind::snapshot;
         input >> request.name;
         if (!valid_name(request.name)) throw std::runtime_error("snapshot needs a short lowercase name");
+    } else if (verb == "profile") {
+        request.kind = AutomationRequest::Kind::profile;
+        std::string action;
+        input >> action >> request.name;
+        if (action == "start" && request.name.empty()) {}
+        else if (action != "stop" || !valid_name(request.name)) throw std::runtime_error("profile needs start, or stop and a short lowercase name");
     } else if (verb == "memory") {
         request.kind = AutomationRequest::Kind::memory;
         std::string address, size;
@@ -262,8 +268,7 @@ std::optional<AutomationRequest> Automation::take(const CommandContext& context)
     }
     // Snapshots and memory reads work at any event boundary; everything
     // else waits until the game idles at an interactive screen.
-    using Kind = AutomationRequest::Kind;
-    if (pending_->first.kind != Kind::snapshot && pending_->first.kind != Kind::memory && !(context.ready && idle_)) return std::nullopt;
+    if (pending_->first.input() && !(context.ready && idle_)) return std::nullopt;
     auto [request, line] = std::move(*pending_);
     pending_.reset();
     std::fprintf(stderr, "Automation request %llu: %s\n", static_cast<unsigned long long>(request.sequence), line.c_str());
@@ -273,7 +278,7 @@ void Automation::finish(const AutomationRequest& request, bool accepted, std::st
     done_ = std::max(done_, request.sequence);
     // An accepted input starts work: the screen is not ready again until
     // the game has idled through a fresh window.
-    if (accepted && request.kind != AutomationRequest::Kind::snapshot && request.kind != AutomationRequest::Kind::memory) {
+    if (accepted && request.input()) {
         idle_ = false; waited_ = {}; window_ = std::chrono::steady_clock::now(); most_work_ = 0; calls_ = 0;
     }
     last_result_ = std::string(accepted ? "ok" : "refused") + (result.empty() ? "" : ": ") + std::string(result);

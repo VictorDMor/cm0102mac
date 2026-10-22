@@ -72,12 +72,19 @@ void save(const State& s, const std::filesystem::path& path) {
     if (!out) throw std::runtime_error("Incomplete private match snapshot");
 }
 }
-bool match_snapshot_requested() {
-    return !captured && std::getenv("CM_AOT_MATCH_SNAPSHOT") != nullptr;
+// Generated hot pages ask on every pass through 0x1071a828 (the match
+// engine's control-cursor loop): read the environment once, at the first
+// question, and use that answer for the capture too.
+namespace {
+const char* snapshot_path() {
+    static const char* const path = std::getenv("CM_AOT_MATCH_SNAPSHOT");
+    return path;
 }
+}
+bool match_snapshot_requested() { return !captured && snapshot_path(); }
 void save_runtime_snapshot(const State& state, const std::filesystem::path& path) { save(state, path); }
 void capture_match_snapshot(const State& state) {
-    const char* path = std::getenv("CM_AOT_MATCH_SNAPSHOT");
+    const char* path = snapshot_path();
     if (!path || captured) return;
     if (!std::filesystem::path(path).is_absolute())
         throw std::runtime_error("Match snapshot requires an absolute private path");

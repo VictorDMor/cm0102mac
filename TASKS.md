@@ -25,6 +25,14 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [ ] Production/transfer checks of other owner families with leaf entries (marking_pressure, actor_order, contract_terms/review, stdlib_core, utility_object, actor_effects, …; not built here) expect their hook to run when `run_until` enters a leaf, like the spatial-role checks did; use `is_leaf_entry` as those were updated.
 - [ ] Direct cross-page calls from generated code (skip two dispatcher round trips per call); page frames are 48–96 bytes, so nesting is cheap.
 - [ ] FPSCR: the only reader is `setjmp` (0x10773ecc), which stores it into the jmp_buf; status bits are never used for a decision. Find a way to stop computing them that keeps jmp_buf memory identical.
+- [ ] **All-leagues week (2026-10-21).** In the real game, one Continue from 21 to 28 Dec 2001 in the 26-country career takes 354 s (about 50 s per game day), mostly match simulation. A 7-day capture of it is in `.local/performance/week-capture/SeasonFixture` (~30 GB transcript). Profile it with `cm-world-replay --profile` and rank rewrites by their share of that week.
+- [ ] `match_snapshot_requested()` read the environment on every pass through the match engine's control-cursor loop (`0x1071a828`): 29% of a sampled all-leagues Continue. Cached. Neither the match harness (finite budget, turbo off) nor the world captures reach that path; only the app and the week capture do.
+- [ ] Import dispatch builds a `std::string` per call and compares it against up to ~200 names (`pow`: ~19k calls/s in processing). Names are now `std::string_view`; next, resolve each import stub to a handler once and switch on it.
+- [ ] Event polls while the game works cost ~20% of an all-leagues Continue (sampled): pointer reads 6.8%, AppKit pumps 6.8%, command context 4%, menu refresh 1.4%. Now: pointer reused 4 ms, zero-sleep pumps throttled to 2 ms, refresh only on change, context cached 50 ms per screen. Measure in the real game.
+- [ ] Real-game guest profile of the all-leagues week (`profile start/stop` through the driver): match simulation 34% inclusive; recruitment candidate scan `0x1035e9f0` 33% inclusive, mostly its list search `0x101b1620` (7.1% self) and list iterator `0x10738e00` (5.1% self); system calls 10%, mostly file-system path work (`FSMakeFSSpec` 2.1%, `FSGetCatalogInfo` 1.4%, `ResolveAliasFile` 1.1%, `FSOpenFork` 1.0%).
+- [ ] Rewrite the list search `0x101b1620` as C++: same reads and compares, final cursor restored, no dispatcher round trip per element.
+- [ ] File bridge: `allowed()` canonicalizes per path component; `directory_id()` stats every known directory per call. Cache by path, invalidated on any create/delete/rename/copy-on-write.
+- [ ] Week replays decompress a ~17 KB register snapshot per recorded import (17M imports, 36 GB transcript): `cm-world-replay --timing` takes ~640 s for a week the app runs in ~300 s. Record only the registers each import reads.
 
 ## Next: rewrite track
 
@@ -59,7 +67,7 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] No App Nap / idle-sleep assertion during long processing.
 - [ ] Run logs accumulate in `Runtime/Runs`; input tracing is on by default.
 - [ ] Mouse-moved events pile up while the game is busy; every small `CopyBits` redraws a full frame.
-- [ ] Idle at the start menu the app uses 100% of a core: the event loop polls `NativeUI::poll` continuously (sampled 2026-10-20; not checked against older builds).
+- [ ] Idle at the start menu the app uses 100% of a core: the original main loop calls `WaitNextEvent` with sleep 0 (~10,000 calls/s; confirmed 2026-10-21 with an import trace). Blocking a millisecond when such a poll finds no event would idle the core; it changes only wall-clock readings.
 - [ ] Three jump tables don't match `check_jump_tables.py`'s pattern; inspect them by hand.
 - [ ] Single-precision multiply-add with non-single operands rounds to double, then single (`native/fused_multiply_add.hpp`); exact would need round-to-odd. Rare.
 - [ ] Builder multiply-adds look up their kind per call (binary search over 1,049 sites); resolve per call site if it ever shows in a profile.
@@ -72,5 +80,5 @@ From the 2026-10-20 review. Estimates are unmeasured.
 
 ## Known test state
 
-- `tools/dev.sh test`: 62 runnable tests, all passing (2026-10-21). `match_engine_live_equivalence` and most others lack a built binary or inputs.
+- `tools/dev.sh test`: 74 runnable tests, all passing (2026-10-21). `match_engine_live_equivalence` and most others lack a built binary or inputs.
 - Python audits: every `tools/test_*.py` passes against `.local/current/export`; `test_generated_temporaries.py` (needs a build dir) not run.

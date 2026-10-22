@@ -10,25 +10,37 @@ constexpr std::uint32_t startup_handler = 0x10334940;
 constexpr std::uint32_t file_handler = 0x100ee9d0;
 constexpr std::uint32_t options_handler = 0x1033f840;
 }
-CommandContext original_command_context(const State& s, std::uint16_t mask) {
-    CommandContext c;
+std::optional<CommandScreen> original_command_screen(const State& s, std::uint16_t mask) {
     // Processing uses a different poll with mask 0400. Never retain commands
     // until it becomes interactive again.
-    if (mask != 0xffff || s.r<4>(4128) != 0x1076ff7c) return c;
+    if (mask != 0xffff || s.r<4>(4128) != 0x1076ff7c) return std::nullopt;
     try {
+        CommandScreen c;
         c.root = s.memory.read<4>(root_slot);
         if (!c.root || s.memory.read<2>(c.root + 0x2c38) == 0 ||
-            s.memory.read<1>(c.root + 0x19) || s.memory.read<2>(c.root + action_mailbox)) return {};
+            s.memory.read<1>(c.root + 0x19) || s.memory.read<2>(c.root + action_mailbox)) return std::nullopt;
         for (unsigned frame = 1; frame < 16; ++frame)
-            if (s.memory.read<2>(c.root + 0x2c38 + frame * 2)) return {};
+            if (s.memory.read<2>(c.root + 0x2c38 + frame * 2)) return std::nullopt;
         c.screen = s.memory.read<4>(c.root + 0x24);
         const auto descriptor = std::uint32_t(s.memory.read<4>(c.root + 0x10));
         const auto vector = descriptor ? std::uint32_t(s.memory.read<4>(descriptor + 8)) : 0;
         c.handler = vector ? s.memory.read<4>(vector) : 0;
-        if (!c.screen || !c.handler) return {};
+        if (!c.screen || !c.handler) return std::nullopt;
         // 107195fc / 107196bc: signed control count, capacity 1200.
-        const auto count = std::int16_t(s.memory.read<2>(c.screen + 0x129da6));
-        if (count < 1 || count > 1200) return {};
+        c.count = std::int16_t(s.memory.read<2>(c.screen + 0x129da6));
+        if (c.count < 1 || c.count > 1200) return std::nullopt;
+        return c;
+    } catch (const std::runtime_error&) { return std::nullopt; }
+}
+CommandContext original_command_context(const State& s, std::uint16_t mask) {
+    const auto screen = original_command_screen(s, mask);
+    return screen ? original_command_context(s, *screen) : CommandContext{};
+}
+CommandContext original_command_context(const State& s, const CommandScreen& screen) {
+    CommandContext c;
+    c.root = screen.root; c.screen = screen.screen; c.handler = screen.handler;
+    const auto count = screen.count;
+    try {
         std::vector<std::pair<std::int16_t, std::int16_t>> enabled;
         c.identity = (std::uint64_t(c.handler) << 32) | c.screen;
         for (int i = 0; i < count; ++i) {

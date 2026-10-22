@@ -16,12 +16,16 @@ struct State;
 // status.json. Requests name original commands, controls and keys; none
 // carries a screen position, and none changes what the game simulates.
 struct AutomationRequest {
-    enum class Kind { command, control, key, text, snapshot, memory } kind{};
+    enum class Kind { command, control, key, text, snapshot, memory, profile } kind{};
+    // Inputs reach the game and wait for an idle screen; the other requests
+    // only observe, at any event boundary.
+    bool input() const { return kind == Kind::command || kind == Kind::control || kind == Kind::key || kind == Kind::text; }
     std::uint64_t sequence = 0;
     DirectCommand command{};
     std::int16_t control = -1;
     // Key and text requests: classic event messages (key code << 8 | character)
     // with their modifiers. Snapshot/memory requests: output name and range.
+    // Profile requests: empty name to start sampling, an output name to stop.
     std::vector<std::pair<std::uint32_t, std::uint16_t>> keys;
     std::string name;
     std::uint32_t address = 0, size = 0;

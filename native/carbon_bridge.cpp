@@ -3,6 +3,7 @@
 #include "decimal_bridge.hpp"
 #include "decimal_input_bridge.hpp"
 #include "application_exit.hpp"
+#include "import_bridge.hpp"
 #include <algorithm>
 
 namespace cm::aot {
@@ -53,7 +54,8 @@ void deallocate(State& s, std::uint32_t address) {
     }
     s.memory_error = 0;
 }
-bool bridge_import(State& s, const std::string& name) {
+bool bridge_import(State& s, const std::string& name) { return bridge_import_name(s, name); }
+bool bridge_import_name(State& s, std::string_view name) {
     auto arg = [&](unsigned index) { return std::uint32_t(s.r<4>((index + 3) * 4)); };
     auto result = [&](std::uint32_t value) { s.wr<4>(12, value); };
     if (name == "CarbonLib::ExitToShell") {

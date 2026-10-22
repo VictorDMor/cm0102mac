@@ -424,6 +424,14 @@ struct NativeUI::Impl {
     }();
     std::optional<NativePointerState> delivered_pointer;
     std::chrono::steady_clock::time_point validation_release_after{};
+    // A working game polls events and the pointer thousands of times a
+    // second. Each AppKit pump and pointer read is a window-server round trip,
+    // costlier than the game's own work between polls; see poll/pointer_state.
+    std::optional<NativePointerState> pointer_reading;
+    std::chrono::steady_clock::time_point pointer_read_at{}, pumped_at{};
+    // The game edited its own menus: refresh the command items even when the
+    // command context is unchanged (refresh_commands re-asserts File > Save).
+    bool menus_edited = true;
     struct Menu { NSMenu* native; std::int16_t id; bool enabled; };
     std::map<std::uint32_t, Menu> menus;
     std::map<std::uint32_t, CMNativeWindow*> windows;
@@ -834,6 +842,9 @@ void NativeUI::dispose_cursor(std::uint32_t token) {
 }
 NativePointerState NativeUI::pointer_state() const {
     if (impl_->event_pointer && impl_->delivered_pointer) return *impl_->delivered_pointer;
+    // Reuse a reading for 4 ms: a hand cannot move or click meaningfully faster.
+    const auto now = std::chrono::steady_clock::now();
+    if (impl_->pointer_reading && now - impl_->pointer_read_at < std::chrono::milliseconds(4)) return *impl_->pointer_reading;
     const auto point = NSEvent.mouseLocation;
     const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
     const auto logical = impl_->logical_point({point.x, height - point.y});
@@ -845,7 +856,9 @@ NativePointerState NativeUI::pointer_state() const {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     const bool down = ::Button();
 #pragma clang diagnostic pop
-    return {std::int16_t(x), std::int16_t(y), std::uint16_t(::GetCurrentKeyModifiers() | (down ? 0 : 0x80)), down};
+    impl_->pointer_reading = NativePointerState{std::int16_t(x), std::int16_t(y), std::uint16_t(::GetCurrentKeyModifiers() | (down ? 0 : 0x80)), down};
+    impl_->pointer_read_at = now;
+    return *impl_->pointer_reading;
 }
 std::array<std::uint8_t, 16> NativeUI::key_map() const {
     std::array<std::uint8_t, 16> result{};
@@ -856,12 +869,15 @@ std::array<std::uint8_t, 16> NativeUI::key_map() const {
     }
     return result;
 }
-bool NativeUI::poll(UIEvent& event, double timeout_seconds) {
+bool NativeUI::poll(UIEvent& event, double timeout_seconds, bool throttled) {
     @autoreleasepool {
         if (!impl_->finished_launch) {
             impl_->finished_launch = true;
             [NSApp finishLaunching];
         }
+        const auto now = std::chrono::steady_clock::now();
+        if (throttled && timeout_seconds <= 0 && impl_->pending.empty() && now - impl_->pumped_at < std::chrono::milliseconds(2)) return false;
+        impl_->pumped_at = now;
         NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:timeout_seconds];
         while (impl_->pending.empty()) {
             NSEvent* native = [NSApp nextEventMatchingMask:NSEventMaskAny
@@ -887,6 +903,9 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds) {
             if (!native) break;
         }
         if (impl_->pending.empty()) return false;
+        // New input: the next pointer query reads the window server again, so
+        // Button/GetMouse agree with the event the game is about to receive.
+        impl_->pointer_reading.reset();
         if (impl_->event_pointer && impl_->pending.front().kind == UIEvent::Kind::mouse_down) {
             const auto& click = impl_->pending.front();
             if (!impl_->delivered_pointer || impl_->delivered_pointer->x != click.x || impl_->delivered_pointer->y != click.y) {
@@ -999,6 +1018,7 @@ void NativeUI::flush_events(std::uint16_t which, std::uint16_t stop) {
     }
 }
 void NativeUI::create_menu(std::uint32_t token, const MenuDefinition& menu) {
+    impl_->menus_edited = true;
     @autoreleasepool {
         if (impl_->menus.contains(token)) throw std::runtime_error("Duplicate native menu token");
         const bool application = menu.title == std::string(1, char(0x14));
@@ -1018,6 +1038,7 @@ void NativeUI::create_menu(std::uint32_t token, const MenuDefinition& menu) {
     }
 }
 void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
+    impl_->menus_edited = true;
     @autoreleasepool {
         // AppKit permits only one parent for a submenu. Original SetMenuBar
         // can reinstall the same handles, so detach them before rebuilding.
@@ -1101,6 +1122,8 @@ std::uint32_t NativeUI::menu_key(std::uint8_t key) const {
     }
 }
 void NativeUI::update_commands(const CommandContext& context, std::string_view status) {
+    if (!impl_->menus_edited && impl_->command_context == context && impl_->command_status == status) return;
+    impl_->menus_edited = false;
     impl_->command_context = context;
     impl_->command_status = status;
     impl_->refresh_commands();
@@ -1118,6 +1141,7 @@ bool NativeUI::menu_selection_enabled(std::uint32_t selection) const {
     return false;
 }
 void NativeUI::set_menu_item_enabled(std::uint32_t token, std::uint16_t item, bool enabled) {
+    impl_->menus_edited = true;
     auto& menu = impl_->menus.at(token);
     if (!item) {
         menu.enabled = enabled;
@@ -1142,6 +1166,7 @@ std::optional<std::pair<std::uint32_t, std::uint16_t>> NativeUI::find_menu_comma
     return {};
 }
 void NativeUI::delete_menu_item(std::uint32_t menu, std::uint16_t item) {
+    impl_->menus_edited = true;
     @autoreleasepool {
         auto& entry = impl_->menus.at(menu);
         if (!item || item > entry.native.numberOfItems) return;
@@ -1160,6 +1185,7 @@ void NativeUI::delete_menu_item(std::uint32_t menu, std::uint16_t item) {
     }
 }
 void NativeUI::append_menu_item(std::uint32_t menu, const MenuItem& item) {
+    impl_->menus_edited = true;
     @autoreleasepool { impl_->append(menu, item); }
 }
 std::uint16_t NativeUI::count_menu_items(std::uint32_t menu) const {
@@ -1181,6 +1207,7 @@ InterfaceScale NativeUI::interface_scale() const { return impl_->layout ? impl_-
 double NativeUI::presentation_scale() const { return impl_->layout ? impl_->layout->scale : 1; }
 void NativeUI::redraw_menu_bar() { @autoreleasepool { [NSApp.mainMenu update]; } }
 void NativeUI::set_menu_item_text(std::uint32_t menu, std::uint16_t item, const std::string& text) {
+    impl_->menus_edited = true;
     @autoreleasepool {
         NSMenu* native = impl_->menus.at(menu).native;
         if (!item || item > native.numberOfItems) return; // Original preparation may refer to a removed Quit item.

@@ -1,5 +1,6 @@
 #include "aot_runtime.hpp"
 #include "allocator_adapter.hpp"
+#include "import_bridge.hpp"
 #include "stream_buffer_adapter.hpp"
 #include "stream_io_adapter.hpp"
 #include "file_controller_adapter.hpp"
@@ -190,7 +191,7 @@ void run_until(State& s, std::uint32_t return_pc) {
                 (s.runtime_lifecycle_observer && s.runtime_lifecycle_observer->import_fixture(s, name)) ||
                 (s.code_fragment_observer && s.code_fragment_observer->import_fixture(s, name)) ||
                 (s.cpp_object_storage_observer && s.cpp_object_storage_observer->import_fixture(s, name)) ||
-                (s.exception_runtime_observer && s.exception_runtime_observer->import_fixture(s, name)) || bridge_import(s, name)) {
+                (s.exception_runtime_observer && s.exception_runtime_observer->import_fixture(s, name)) || bridge_import_name(s, name)) {
                 season_record_import_end(s);
                 if (trace) std::fprintf(stderr, "%s returned r3=%08x\n", name, unsigned(s.r<4>(12)));
                 ++s.native_calls;

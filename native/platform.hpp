@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cm::aot {
@@ -16,7 +17,7 @@ public:
     ~NativePlatform();
     NativePlatform(const NativePlatform&) = delete;
     NativePlatform& operator=(const NativePlatform&) = delete;
-    bool dispatch(State& state, const std::string& import);
+    bool dispatch(State& state, std::string_view import);
     const std::filesystem::path& game_directory() const;
     const std::filesystem::path& writable_directory() const;
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;

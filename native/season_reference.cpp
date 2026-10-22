@@ -17,6 +17,7 @@ namespace cm::aot {
 namespace {
 bool semantic_calendar_replay = false;
 bool live_pure_imports = false;
+bool rng_checks = true;
 constexpr std::uint32_t day_pc = 0x101195e8;
 constexpr std::uint32_t date_global = 0x108b3f10, phase_global = 0x108b40a4;
 constexpr std::array<char, 8> magic{'C','M','D','A','Y','0','0','1'};
@@ -96,6 +97,11 @@ struct Allocator {
         s.heap_end = heap_end; s.memory_error = memory_error;
     }
     bool operator==(const Allocator&) const = default;
+    // In place: copying the heap tables for every replayed import dominated
+    // week-long replays.
+    bool matches(const State& s) const {
+        return s.heap_end == heap_end && s.memory_error == memory_error && s.allocated == allocated && s.available == available;
+    }
 };
 // The first part of every chunk: the PC, registers and generated temporaries.
 constexpr std::size_t chunk_registers_size = sizeof(State::pc) + sizeof(State::registers) + sizeof(State::unique);
@@ -119,6 +125,22 @@ std::optional<Allocator> recorded_allocator;
 Allocator skip_chunk(Stream& stream) {
     skip(stream, chunk_registers_size);
     return Allocator(stream);
+}
+void skip_rng_write(Stream& stream) {
+    stream.take<std::uint32_t>();
+    const auto size = stream.take<std::uint64_t>();
+    if (size > 8) throw std::runtime_error("Invalid original RNG state width");
+    std::array<std::uint8_t, 8> skipped{}; stream.bytes(skipped.data(), size);
+}
+// Timing replays never compare the heap: skip the tables unread. Each chunk
+// holds the whole heap table, and rebuilding it as maps dominated replays.
+void skip_unchecked_chunk(Stream& stream) {
+    skip(stream, chunk_registers_size + sizeof(std::uint32_t) + sizeof(std::int16_t));
+    for (unsigned table = 0; table < 2; ++table) {
+        const auto count = stream.take<std::uint32_t>();
+        if (count > 1000000) throw std::runtime_error("Invalid private season allocation count");
+        skip(stream, std::uint64_t(count) * 8);
+    }
 }
 std::string heap_difference(const Allocator& expected, const Allocator& actual) {
     if (expected.heap_end != actual.heap_end)
@@ -313,7 +335,7 @@ void season_day_boundary(State& s, std::uint32_t pc) {
     s.pc = pc;
     if (replay) {
         if (replay_depth) return;
-        if (!replay_observer) replay_observer = std::make_unique<ReplayObserver>(s);
+        if (!replay_observer && rng_checks) replay_observer = std::make_unique<ReplayObserver>(s);
         s.memory.observer = replay_observer.get();
         const auto now = date(s);
         if (replay_previous_date && now == *replay_previous_date) return;
@@ -405,8 +427,12 @@ void open_operation_replay(const std::filesystem::path& directory) {
     open_season_replay(directory);
     live_pure_imports = true;
 }
+void open_timing_replay(const std::filesystem::path& directory) {
+    open_operation_replay(directory);
+    rng_checks = false;
+}
 void close_season_replay() {
-    semantic_calendar_replay = live_pure_imports = false; recorded_allocator.reset();
+    semantic_calendar_replay = live_pure_imports = false; rng_checks = true; recorded_allocator.reset();
     replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset();
 }
 namespace {
@@ -414,7 +440,10 @@ void skip_recorded_import() {
     for (;;) {
         const auto event = replay->take<Event>();
         if (event == Event::import_end) return;
-        if (event == Event::chunk) recorded_allocator = skip_chunk(*replay);
+        if (event == Event::chunk) {
+            if (rng_checks) recorded_allocator = skip_chunk(*replay);
+            else skip_unchecked_chunk(*replay);
+        }
         else if (event == Event::map || event == Event::write || event == Event::clear) {
             replay->take<std::uint32_t>();
             const auto size = replay->take<std::uint64_t>();
@@ -429,6 +458,7 @@ std::optional<Event> next_event(std::optional<Input>& input) {
     for (;;) {
         if (live_pure_imports && replay->at_end()) return std::nullopt;
         const auto event = replay->take<Event>();
+        if (!rng_checks && event == Event::rng) { skip_rng_write(*replay); continue; }
         if (!live_pure_imports || event != Event::import) return event;
         input = take_input(*replay);
         const char* name = import_name(input->pc);
@@ -459,14 +489,14 @@ bool season_replay_import(State& s, const char* name) {
     const auto input = next_recorded_import();
     if (!input) throw std::runtime_error(std::string("First divergence: ") + name + " called after the transcript ends");
     check_input(*input, s, name);
-    if (live_pure_imports && recorded_allocator && Allocator(s) != *recorded_allocator)
+    if (live_pure_imports && rng_checks && recorded_allocator && !recorded_allocator->matches(s))
         throw std::runtime_error(std::string("First divergence: heap state calling ") + name + ": " +
                                  heap_difference(*recorded_allocator, Allocator(s)));
     for (;;) {
         const auto event = replay->take<Event>();
         if (event == Event::chunk) {
             take_chunk(*replay, s);
-            recorded_allocator = Allocator(s);
+            if (rng_checks) recorded_allocator = Allocator(s);
         } else if (event == Event::map || event == Event::write || event == Event::clear) {
             const auto address = replay->take<std::uint32_t>();
             const auto size = replay->take<std::uint64_t>();
@@ -490,7 +520,10 @@ bool season_replay_import(State& s, const char* name) {
             const auto result = call_original(s, vector, arguments);
             --replay_depth;
             s.memory.observer = nullptr;
-            if (replay->take<Event>() != Event::callback_end || replay->take<std::uint32_t>() != result)
+            // A timing replay has no observer: skip RNG writes the callback made.
+            auto event = replay->take<Event>();
+            while (!rng_checks && event == Event::rng) { skip_rng_write(*replay); event = replay->take<Event>(); }
+            if (event != Event::callback_end || replay->take<std::uint32_t>() != result)
                 throw std::runtime_error("First divergence: original native callback result");
         } else if (event == Event::import_end) { s.memory.observer = replay_observer.get(); return true; }
         else throw std::runtime_error("Invalid private season transcript event");

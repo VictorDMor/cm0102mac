@@ -118,7 +118,7 @@ bool NativeSound::has_pending_commands() const {
     return false;
 }
 std::vector<float> NativeSound::render_offline(std::uint32_t frames) { return impl_->output().render_offline(frames); }
-bool NativeSound::dispatch(State& s, const std::string& name) {
+bool NativeSound::dispatch(State& s, std::string_view name) {
     auto arg = [&](unsigned i) { return std::uint32_t(s.r<4>((i + 3) * 4)); };
     std::uint32_t result = 0;
     if (name == "CarbonLib::x80tod") {

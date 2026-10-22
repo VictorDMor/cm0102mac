@@ -19,6 +19,7 @@
 #include "sound_bridge.hpp"
 #include "performance_trace.hpp"
 #include "automation.hpp"
+#include "guest_profiler.hpp"
 #include <fstream>
 #include <bit>
 #include <deque>
@@ -456,6 +457,12 @@ struct NativePlatform::Impl {
     }
     std::optional<std::pair<std::uint32_t, std::uint16_t>> delivered_command_action;
     CommandContext commands;
+    // The context hashes the screen's whole control table, and a working game
+    // polls thousands of times a second. Reuse it for 50 ms while the same
+    // screen stays active and no input has reached the game since; delivering
+    // a command still checks it against a fresh one.
+    std::optional<std::pair<CommandScreen, CommandContext>> command_cache;
+    std::chrono::steady_clock::time_point command_cache_at{};
     std::string command_status = "Ready";
     bool next_event(State& s, std::uint16_t mask, std::uint32_t address, std::uint32_t sleep, std::uint32_t mouse_region) {
         // An isolated engine has no original game window or input source.
@@ -474,7 +481,14 @@ struct NativePlatform::Impl {
             if (s.memory.read<2>(root + 0x25819e) == action) s.memory.write<2>(root + 0x25819e, 0);
             delivered_command_action.reset();
         }
-        commands = original_command_context(s, mask);
+        if (const auto screen = original_command_screen(s, mask); !screen) commands = {};
+        else if (command_cache && command_cache->first == *screen &&
+                 std::chrono::steady_clock::now() - command_cache_at < std::chrono::milliseconds(50)) commands = command_cache->second;
+        else {
+            commands = original_command_context(s, *screen);
+            command_cache.emplace(*screen, commands);
+            command_cache_at = std::chrono::steady_clock::now();
+        }
         struct AutomationWait {
             Automation* automation; const State& s;
             AutomationWait(Automation* a, const State& state) : automation(a), s(state) { if (automation) automation->enter(s.executed); }
@@ -508,7 +522,9 @@ struct NativePlatform::Impl {
             if (sound.has_pending_commands()) timeout = std::min(timeout, 1.0 / 60);
             if (automation && commands.ready) timeout = std::min(timeout, 0.02);
             UIEvent event{UIEvent::Kind::update};
-            auto available = user_interface().poll(event, timeout);
+            // The original busy loops call WaitNextEvent with no sleep, thousands
+            // of times a second while they work: throttle those AppKit pumps.
+            auto available = user_interface().poll(event, timeout, sleep == 0);
             std::optional<AutomationRequest> request;
             if (!available && automation) {
                 request = automation->take(commands);
@@ -517,6 +533,7 @@ struct NativePlatform::Impl {
             }
             if (request) {
                 using Kind = AutomationRequest::Kind;
+                if (request->input()) commands = original_command_context(s, mask);
                 if (request->kind == Kind::command) {
                     event = UIEvent{UIEvent::Kind::command};
                     event.message = std::uint32_t(request->command);
@@ -552,6 +569,16 @@ struct NativePlatform::Impl {
                         if (request->kind == Kind::snapshot) {
                             for (const auto& path : user_interface().save_window_images(automation->output("snapshots", request->name)))
                                 result += (result.empty() ? "" : " ") + path.string();
+                        } else if (request->kind == Kind::profile) {
+                            if (request->name.empty()) { guest_profiler::reset(1000000); guest_profiler::start(s); result = "sampling"; }
+                            else if (!guest_profiler::running()) throw std::runtime_error("not sampling");
+                            else {
+                                guest_profiler::stop();
+                                const auto path = automation->output("profiles", request->name + ".samples");
+                                std::filesystem::create_directories(path.parent_path());
+                                result = std::to_string(guest_profiler::write(path)) + " samples in " + path.string();
+                                guest_profiler::release();
+                            }
                         } else {
                             const auto bytes = s.memory.copy_out(request->address, request->size);
                             const auto path = automation->output("memory", request->name + ".bin");
@@ -665,6 +692,7 @@ struct NativePlatform::Impl {
             if (what >= 1 && what <= 5) performance.mark("input", s, what);
         }
         pending_events.erase(found);
+        command_cache.reset(); // input may change the screen's controls
         return true;
     }
     std::uint32_t process_event(State& s, std::uint32_t address) {
@@ -1030,7 +1058,7 @@ const fs::path& NativePlatform::writable_directory() const { return impl_->writa
 std::vector<fs::path> NativePlatform::save_window_images(const fs::path& directory) const {
     return impl_->ui ? impl_->ui->save_window_images(directory) : std::vector<fs::path>{};
 }
-bool NativePlatform::dispatch(State& s, const std::string& name) {
+bool NativePlatform::dispatch(State& s, std::string_view name) {
     if (const auto result = impl_->unicode.dispatch(s, name)) {
         s.wr<4>(12, std::uint32_t(*result));
         s.pc = std::uint32_t(s.r<4>(4128));

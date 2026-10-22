@@ -233,7 +233,9 @@ a control-table index, keys or text, a window snapshot or a memory range. The
 game takes it at an original event boundary and reports in `status.json`:
 readiness, handler, screen, enabled controls (index, action, flags), date
 and the last busy period. Requests never carry screen positions, and with
-`CM_AOT_AUTOMATION` unset nothing changes.
+`CM_AOT_AUTOMATION` unset nothing changes. `profile start` and
+`profile stop NAME` sample the guest PC in the running game (the SIGPROF
+sampler `cm-world-replay --profile` uses) for `tools/guest_profile.py`.
 
 The original main loop calls `WaitNextEvent` with a sleep of 0, about 10,000
 times a second, even on an idle screen (100% of one core). A load also runs
