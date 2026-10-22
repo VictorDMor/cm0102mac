@@ -85,7 +85,8 @@ std::unique_ptr<State> seed(unsigned index) {
     for(unsigned n=0;n<3;++n)s->memory.write<4>(records+n*100+4,(n+1)*11);
     s->memory.write<4>(club,11);s->memory.write<4>(resolved,22);return s;
 }
-unsigned cases=0,completed=0,interrupted=0,negatives=0,structural=0;
+unsigned cases=0,completed=0,interrupted=0,negatives=0,structural=0,native_declines=0;
+std::array<unsigned,3> native_runs{};
 std::set<std::uint32_t> sites;
 struct Result {std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
 Result compare(const State& input,Options options={}) {
@@ -113,6 +114,23 @@ Result compare(const State& input,Options options={}) {
     if(!rejected) {
         require(x.bytes==y.bytes,label+" ordered effects");require(old.calls==modern.calls,label+" dependency ABI");
         require(a->executed==b->executed,label+" accounting");require(old_trace.sites==new_trace.sites,label+" source order");
+    }
+    // The plain C++ lookup either ends exactly as the original or declines
+    // with no effect. Fixtures that steer the original (controls, mutating
+    // reads, mocked or interrupted dependencies) are outside its contract.
+    if(options.controls.empty() && !options.read_mutation && options.nested && !options.interrupt &&
+       !options.resolver_mutation && !options.own_negative && !options.child_negative) {
+        auto c=clone(input);const auto index=unsigned(std::find(queries::entries.begin(),queries::entries.end(),input.pc)-queries::entries.begin());
+        require(index<queries::entries.size(),label+" native entry");
+        if(queries::run_native(*c,input.pc).ran) {
+            require(expected.empty(),label+" native ran where the original stopped: "+expected);
+            Image(*a).compare(*c,label+" native");require(a->executed==c->executed,label+" native accounting");++native_runs[index];
+            if(native_runs[index]==1) {   // the comparison sees a wrong scratch register
+                c->wr<4>(20,c->r<4>(20)^1);bool caught=false;
+                try{Image(*a).compare(*c,label+" native negative");}catch(const std::runtime_error&){caught=true;}
+                require(caught,label+" native negative");
+            }
+        } else {Image(input).compare(*c,label+" native decline");require(c->executed==input.executed,label+" native decline count");++native_declines;}
     }
     if(expected.empty())for(const auto& c:options.controls)require(std::find(old_trace.sites.begin(),old_trace.sites.end(),c.pc)!=old_trace.sites.end(),label+" structural control reached");
     ++cases;completed+=expected.empty()&&!rejected;interrupted+=!expected.empty();negatives+=rejected;structural+=!options.controls.empty();
@@ -178,6 +196,8 @@ void club_cases() {
     {auto s=seed(1);s->memory.write<4>(club,33);Options o;o.resolver_mutation=true;boundaries(*s,o);}
     for(unsigned mutation:{1u,2u}){auto s=seed(1);s->memory.write<4>(club,33);Options o;o.read_mutation=mutation;boundaries(*s,o);}
     for(auto alias:{records+4,stack-24}){auto s=seed(1);s->wr<4>(20,alias);s->memory.write<4>(alias,33);Options o;o.output_flag=128;boundaries(*s,o);}
+    // A club record inside the frame reads the saved r30 or the back chain.
+    for(auto alias:{stack-8,stack-0x50,stack+8}){auto s=seed(1);s->wr<4>(20,alias);s->memory.write<4>(alias,11);boundaries(*s);}
     for(auto secondary:{0u,records+100}){auto s=seed(1);s->memory.write<4>(club,33);Options o;o.nested=false;o.secondary=secondary;o.returned_club=resolved;boundaries(*s,o);}
     for(auto c:{Control{0x10082fc8,4,0,-1},Control{0x10082ff8,32,0,2},Control{0x10083008,32,0,4}}){Options o;o.controls={c};boundaries(*seed(1),o);}
 }
@@ -205,5 +225,7 @@ int main(){try {
     {auto s=seed(1);s->memory.write<4>(club,33);Options o;o.child_negative=true;compare(*s,o);}
     for(auto [start,end]:ranges)for(auto pc=start;pc<end;pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered contract query "<<hex_address(pc)<<std::endl;
     require(sites.size()==145,"Complete original contract query source coverage");
-    std::cout<<"Contract query comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<std::endl;
+    require(native_runs[0]>100 && native_runs[1]>100 && native_runs[2]>100 && native_declines>100,"Plain C++ lookups ran and declined");
+    std::cout<<"Contract query comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()
+             <<" native="<<native_runs[0]<<'/'<<native_runs[1]<<'/'<<native_runs[2]<<" declined="<<native_declines<<std::endl;
 }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}

@@ -40,7 +40,16 @@ bool try_modern_contract_query(State& s, std::uint32_t entry) {
     bool original = d.original || d.entry_original[index];
     if (original) ++d.original_calls[index];
     else if (match_pc_profile_enabled()) { original = true; ++d.profile_original_calls[index]; }
-    else ++d.calls[index];
+    else {
+        ++d.calls[index];
+        if (!d.observer) {
+            if (const auto run = contract_queries::run_native(s, entry); run.ran) {
+                ++d.returns[index];
+                if (run.nested_secondary) { ++d.calls[2]; ++d.returns[2]; }   // as through its hook
+                return true;
+            }
+        }
+    }
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
