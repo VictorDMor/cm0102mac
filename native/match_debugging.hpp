@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <optional>
 
 namespace cm::aot {
 struct State;
@@ -19,4 +20,8 @@ void reset_match_debugging();
 // Shared validation for the live UI and focused original-engine checks.
 bool eligible_debug_goal(const State&, std::uint32_t match, unsigned player);
 void award_debug_goal(State&, std::uint32_t match, unsigned player);
+enum class DebugMatchEvent { goal, red_card };
+unsigned debug_player_weight(const State&, std::uint32_t match, unsigned player, DebugMatchEvent);
+std::optional<unsigned> random_debug_player(const State&, std::uint32_t match, unsigned side, DebugMatchEvent);
+void award_debug_red_card(State&, std::uint32_t match, unsigned player);
 }

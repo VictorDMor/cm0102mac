@@ -9,7 +9,7 @@ C++23; its semantic-owner count remains 963.
 ## Native speed selection
 
 The original commentary-speed menu gains a sixth item, **Turbo**, using its
-existing control constructor and event handler. A new installation or an
+existing control constructor, event handler and exact text inset. A new installation or an
 installation without a native speed preference defaults to Turbo. All five
 localized original choices remain available. The separate macOS Match/Turbo menu
 is removed.

@@ -2,6 +2,7 @@
 #include "match_engine_adapter.hpp"
 #include "match_actor_adapter.hpp"
 #include "match_debugging.hpp"
+#include "semantic_io_checks.hpp"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -235,6 +236,35 @@ int main(int argc, char** argv) {
         live.state->memory.write<2>(live.match + 0x7948, 137);
         reference.state->memory.write<2>(reference.match + 0x7948, 137);
         const auto unchanged = live.state->memory.copy_out(live.match, 0xe0bc);
+        for (unsigned side = 0; side < 2; ++side) {
+            auto& state = *live.state;
+            const auto roles = state.memory.read<4>(live.match + 0x7934 + side * 4);
+            const auto role_slot = roles + state.memory.read<1>(live.match + 0x311c + (side * 20 + 8) * 0x1c4 + 0x19) * 2;
+            const auto saved_role = state.memory.read<2>(role_slot);
+            for (auto role : {0x140u, 0x240u, 0x440u, 0xc0u, 0x840u, 0x220u, 0x210u, 0x204u, 1u}) {
+                state.memory.write<2>(role_slot, role);
+                const unsigned weight = role == 1 ? 0 : role == 0x140 || role == 0x240 || role == 0x440 ? 13 : 10;
+                require(debug_player_weight(state, live.match, side * 20 + 8, DebugMatchEvent::goal) == weight,
+                    "Random goal does not give exactly 30% extra weight only to central forwards");
+                require(debug_player_weight(state, live.match, side * 20 + 8, DebugMatchEvent::red_card) == 1,
+                    "Random dismissal weights depend on tactical role");
+            }
+            state.memory.write<2>(role_slot, saved_role);
+            for (unsigned i = 0; i < 20; ++i) {
+                require(debug_player_weight(state, live.match, side * 20 + i, DebugMatchEvent::red_card) == (i < 11 ? 1u : 0u),
+                    "Dismissal pool excludes a keeper or includes a bench player");
+                if (i == 0 || i >= 11) require(!debug_player_weight(state, live.match, side * 20 + i, DebugMatchEvent::goal),
+                    "Random goal includes a goalkeeper or bench player");
+            }
+            const cm::semantic_io_checks::Image before_selection(state);
+            for (auto event : {DebugMatchEvent::goal, DebugMatchEvent::red_card}) for (unsigned draw = 0; draw < 200; ++draw) {
+                const auto chosen = random_debug_player(state, live.match, side, event);
+                require(chosen && *chosen / 20 == side && debug_player_weight(state, live.match, *chosen, event),
+                    "Random button chose an ineligible player or the wrong side");
+            }
+            before_selection.compare(state, "Host selection changed original state/RNG");
+        }
+        require(!random_debug_player(*live.state, live.match, 2, DebugMatchEvent::goal), "Invalid random side accepted");
         bool disabled = false;
         try { award_debug_goal(*live.state, live.match, 8); } catch (const std::invalid_argument&) { disabled = true; }
         require(disabled && live.state->memory.copy_out(live.match, 0xe0bc) == unchanged, "Disabled goal changed the match");
@@ -294,6 +324,8 @@ int main(int argc, char** argv) {
             "In-game goals accept an invalid or off-pitch player");
         live.state->memory.write<1>(live.match, 1);
         require(!eligible_debug_goal(*live.state, live.match, 8), "Completed match accepts goals");
+        for (auto event : {DebugMatchEvent::goal, DebugMatchEvent::red_card})
+            require(!random_debug_player(*live.state, live.match, 0, event), "Completed match permits random intervention");
         live.state->memory.write<1>(live.match, 0);
         live.state->memory.write<1>(live.match + 0xe03d, 127);
         require(!eligible_debug_goal(*live.state, live.match, 8), "Saturated score accepts goals");

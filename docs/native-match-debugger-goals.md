@@ -11,6 +11,17 @@ to that player's side. The button beneath starts disabled, then reads **Gol**
 plus the most recently chosen player's common name or surname. Choosing another
 player changes that shortcut; each click awards one more goal.
 
+**Gol H / Gol A** immediately choose an eligible on-pitch scorer for the home or
+away side, excluding the goalkeeper. Current central-forward formation roles
+(including the two central lanes in a 4-4-2) have weight 13; other outfield roles
+have weight 10. **Expulsão H / Expulsão A** choose an on-pitch player uniformly,
+including the goalkeeper, and run the original direct-red-card, commentary and
+pitch-removal routines. Bench, substituted and already dismissed players are
+excluded. Pools are rebuilt on each click, and host-side selection does not draw
+from the original simulation RNG. The original report is refreshed for either
+event, without advancing the clock. These four controls require Debugging to be
+enabled. Its selected option uses the same theme border color as the other rows.
+
 The shortcut resets when the original game initializes another match. Player
 identity and eligibility are checked again when clicked, including substitutions,
 withdrawals, stopped/completed matches and saturated counters. The operation runs

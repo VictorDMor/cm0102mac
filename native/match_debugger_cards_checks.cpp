@@ -1,6 +1,7 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugger_checkpoint.hpp"
 #include "semantic_io_checks.hpp"
+#include "match_debugging.hpp"
 #include <chrono>
 
 namespace {
@@ -31,18 +32,19 @@ void pitch(const Session& s, unsigned team, unsigned count) {
             s.state().memory.read<4>(cell + team * 0x2c + slot * 4) == a, "Player is missing from its actual pitch cell");
     }
 }
-void original_yellow(State& state, std::uint32_t match, std::uint32_t selected, std::uint32_t opponent) {
+void original_card(State& state, std::uint32_t match, std::uint32_t selected, std::uint32_t opponent, bool yellow = true) {
     const auto parent = std::uint32_t(state.r<4>(4)), caller = parent - 0x80;
     state.wr<4>(4, caller); state.memory.write<1>(caller + 0x50, 1); state.memory.write<1>(caller + 0x3b, 0);
     const auto call = [&](std::uint32_t entry, std::initializer_list<std::uint32_t> args) {
         unsigned reg = 3; for (auto arg : args) state.wr<4>(reg++ * 4, arg);
         state.wr<4>(4128, return_sentinel); state.pc = entry; run_until(state, return_sentinel);
     };
-    call(0x10221e00, {match + 0xe030, selected, opponent, caller + 0x50, 1, 6, 0, caller + 0x54});
-    require(state.memory.read<1>(caller + 0x50) == 2, "Independent original yellow did not return its outcome");
-    call(0x10201180, {std::uint32_t(state.memory.read<4>(match + 0x79f4)), 8185, match,
+    call(0x10221e00, {match + 0xe030, selected, opponent, caller + 0x50, 1, yellow ? 6u : 127u, 0, caller + 0x54});
+    require(state.memory.read<1>(caller + 0x50) == (yellow ? 2 : 4), "Independent original card did not return its outcome");
+    call(0x10201180, {std::uint32_t(state.memory.read<4>(match + 0x79f4)), yellow ? 8185u : 8184u, match,
         std::uint32_t(state.memory.read<1>(selected + 0x2f)), std::uint32_t(state.memory.read<1>(selected + 0x27)),
         0xffffffff, 0xffffffff, 0});
+    if (!yellow) call(0x101f1530, {match, selected, 0});
     state.wr<4>(4, parent);
 }
 struct Cleanup {
@@ -70,7 +72,7 @@ int main(int argc, char** argv) {
         const Image kickoff(s.state()); const auto events = s.events().size(); const auto budget = s.state().budget;
         auto original = Checkpoint(s.state()).restore();
         const auto old_budget = original->budget; original->budget = original->executed + fresh_match_step_limit;
-        original_yellow(*original, s.match_address(), actor(s, 0, 8), actor(s, 1, 8)); original->budget = old_budget;
+        original_card(*original, s.match_address(), actor(s, 0, 8), actor(s, 1, 8)); original->budget = old_budget;
         const auto first = s.change_card(0, 8, CardKind::yellow, true);
         Image(*original).compare(s.state(), "Whole original yellow ABI/effects");
         require(original->executed == s.state().executed && original->native_calls == s.state().native_calls,
@@ -121,6 +123,45 @@ int main(int argc, char** argv) {
         require(s.cards(1, 8) == Cards{1, 0}, "Removing second-yellow red left an invalid two-yellow state");
         s.seek_seconds(0); require(s.card_edits().empty() && s.cards(0, 8) == Cards{} && s.on_pitch(0) == 11,
             "Seeking kickoff retained card edits");
+        // The live UI wraps the same original operation in an independent frame.
+        s.step();
+        auto& live = const_cast<State&>(s.state());
+        initialize_native_debugging(false);
+        bool disabled = false;
+        const Image before_disabled(live);
+        try { award_debug_red_card(live, s.match_address(), 8); } catch (const std::invalid_argument&) { disabled = true; }
+        require(disabled, "Disabled UI allowed a dismissal");
+        before_disabled.compare(live, "Disabled dismissal");
+        select_native_debugging(true);
+        for (unsigned selected : {8u, 28u, 0u, 20u}) {
+            auto reference = Checkpoint(live).restore();
+            const auto registers = live.registers;
+            const auto scratch = live.unique;
+            const auto pc = live.pc;
+            unsigned opponent = selected < 20 ? 20 : 0;
+            while (signed_value<1>(live.memory.read<1>(s.match_address() + 0x311c + opponent * 0x1c4 + 0x19)) < 0) ++opponent;
+            reference->wr<4>(4, reference->r<4>(4) - 0x400);
+            original_card(*reference, s.match_address(), s.match_address() + 0x311c + selected * 0x1c4,
+                s.match_address() + 0x311c + opponent * 0x1c4, false);
+            reference->registers = registers; reference->unique = scratch; reference->pc = pc;
+            award_debug_red_card(live, s.match_address(), selected);
+            require(live.registers == registers && live.unique == scratch && live.pc == pc,
+                "In-game dismissal corrupted its interrupted UI caller");
+            require(live.memory.copy_out(s.match_address(), 0xe0bc) == reference->memory.copy_out(s.match_address(), 0xe0bc),
+                "In-game dismissal differs from original bookkeeping");
+            require(!debug_player_weight(live, s.match_address(), selected, DebugMatchEvent::red_card) &&
+                !debug_player_weight(live, s.match_address(), selected, DebugMatchEvent::goal), "Sent-off player remains in a random pool");
+            for (unsigned tick = 0; tick < 5; ++tick) {
+                const auto step = [&](State& state) {
+                    state.wr<4>(12, s.match_address()); state.wr<4>(16, 1);
+                    state.wr<4>(4128, return_sentinel); state.pc = 0x101d3f60; run_until(state, return_sentinel);
+                };
+                step(live); step(*reference);
+                require(live.memory.copy_out(s.match_address(), 0xe0bc) == reference->memory.copy_out(s.match_address(), 0xe0bc),
+                    "In-game dismissal failed to resume the original engine");
+            }
+        }
+        select_native_debugging(false);
         std::cout << "PASS: real yellow/direct-red/second-yellow additions, guest yellow removal, dismissal cancellation, outfield/keeper pitch membership, following engine calls, score/time preservation, complete undo/redo/branch/seek and rejected edits\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

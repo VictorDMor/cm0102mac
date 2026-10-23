@@ -73,7 +73,7 @@ been accepted as inputs to this pipeline.
 | Persistence | Normal save, exit, reopen and reload have passed in local use; individual later subsystem reports state when persistence was not retested |
 | macOS presentation | Native text/control drawing, 100–200% interface scaling and Fit to Screen, keyboard commands and audio |
 | Match speed | A native **Turbo** choice in the original match-speed selector, selected by default and remembered across launches; match calculations are unchanged |
-| In-game debugging | Opt-in **Debugging** in Game Options adds **Adicionar Gol**, a player dropdown for both teams, and a repeat-goal shortcut for the last selected scorer; goals use the original match bookkeeping |
+| In-game debugging | Opt-in **Debugging** adds a scorer dropdown, repeat-goal shortcut, **Gol H / Gol A** (random outfield scorer, central forwards weighted 30% higher) and **Expulsão H / Expulsão A** (uniform random dismissal, including keepers); events use original match bookkeeping |
 | Match Debugger | Separate native application with seeded matches, player/event inspection, substitutions and rewind/redo; its full product contract remains incomplete |
 | Reconstruction | 963 accepted C++23 entry points coexist with statically generated original routines; this count is not a completion percentage |
 | Performance | Large multi-league careers are slow: one weekly Continue with 26 playable countries took about eight minutes in local diagnosis, and creating an all-league career stayed CPU-bound for over 40 minutes in an uncontrolled diagnostic run. Optimization is ongoing |

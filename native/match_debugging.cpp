@@ -1,12 +1,16 @@
 #include "match_debugging.hpp"
 #include "aot_runtime.hpp"
 #include "match_debugger_goal.hpp"
+#include "match_debugger_cards.hpp"
+#include <array>
+#include <cstdlib>
 #include <optional>
 #include <string>
 
 namespace cm::aot {
 namespace {
 constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 30003;
+constexpr unsigned random_goal_action = 30004, red_card_action = 30005;
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -76,6 +80,24 @@ std::string player_name(const State& s, std::uint32_t staff, bool short_name) {
     return first.empty() ? last : last.empty() ? first : first + " " + last;
 }
 std::uint32_t actor_address(std::uint32_t match, unsigned player) { return match + 0x311c + player * 0x1c4; }
+bool on_pitch(const State& s, std::uint32_t match, unsigned player) {
+    if (!match || player >= 40) return false;
+    const auto actor = actor_address(match, player);
+    const auto position = signed_value<1>(s.memory.read<1>(actor + 0x19));
+    return s.memory.read<4>(actor + 0x6c) && position >= 0 && position < 11 &&
+        s.memory.read<1>(actor + 0x27) == player / 20 && s.memory.read<4>(actor + 0x1a4) == match &&
+        !s.memory.read<1>(actor + 0x23);
+}
+bool active_player(const State& s, std::uint32_t match, unsigned player) {
+    return on_pitch(s, match, player) && s.memory.read<1>(match) == 0 &&
+        signed_value<2>(s.memory.read<2>(match + 0x7948)) > 0 && !s.memory.read<1>(match + 0x7929);
+}
+std::uint32_t opposing_player(const State& s, std::uint32_t match, unsigned player) {
+    const unsigned begin = player < 20 ? 20 : 0;
+    for (unsigned other = begin; other < begin + 20; ++other)
+        if (on_pitch(s, match, other)) return actor_address(match, other);
+    return 0;
+}
 bool recent_valid(const State& s, std::uint32_t match) {
     return recent && recent->state == &s && recent->match == match &&
         eligible_debug_goal(s, match, recent->player) &&
@@ -84,18 +106,61 @@ bool recent_valid(const State& s, std::uint32_t match) {
 }
 
 bool eligible_debug_goal(const State& s, std::uint32_t match, unsigned player) {
-    if (!match || player >= 40) return false;
     try {
-        if (s.memory.read<1>(match) != 0 || signed_value<2>(s.memory.read<2>(match + 0x7948)) <= 0 ||
-            s.memory.read<1>(match + 0x7929) != 0)
-            return false;
+        if (!active_player(s, match, player)) return false;
         const auto actor = actor_address(match, player);
-        const auto position = signed_value<1>(s.memory.read<1>(actor + 0x19));
         const auto score = signed_value<1>(s.memory.read<1>(match + (player < 20 ? 0xe03d : 0xe073)));
-        return s.memory.read<4>(actor + 0x6c) && position >= 0 && position < 11 &&
-            s.memory.read<1>(actor + 0x27) == player / 20 && s.memory.read<4>(actor + 0x1a4) == match &&
-            score >= 0 && score < 127 && s.memory.read<1>(actor + 0xc) < 255;
+        return score >= 0 && score < 127 && s.memory.read<1>(actor + 0xc) < 255;
     } catch (const std::runtime_error&) { return false; }
+}
+
+unsigned debug_player_weight(const State& s, std::uint32_t match, unsigned player, DebugMatchEvent event) {
+    try {
+        if (event == DebugMatchEvent::red_card)
+            return active_player(s, match, player) && opposing_player(s, match, player) ? 1 : 0;
+        if (!eligible_debug_goal(s, match, player)) return 0;
+        const auto position = s.memory.read<1>(actor_address(match, player) + 0x19);
+        const auto roles = s.memory.read<4>(match + 0x7934 + (player / 20) * 4);
+        const auto role = s.memory.read<2>(roles + position * 2);
+        if (position == 0 || (role & 1)) return 0;
+        // Original formation bits: forward line 0x40, central lanes
+        // 0x100/0x200/0x400 (including the two strikers in a 4-4-2).
+        return (role & 0x40) && (role & 0x700) ? 13 : 10;
+    } catch (const std::runtime_error&) { return 0; }
+}
+
+std::optional<unsigned> random_debug_player(const State& s, std::uint32_t match, unsigned side, DebugMatchEvent event) {
+    if (side > 1) return {};
+    std::array<unsigned, 20> weights{};
+    unsigned total = 0;
+    for (unsigned i = 0; i < weights.size(); ++i) {
+        weights[i] = debug_player_weight(s, match, side * 20 + i, event);
+        total += weights[i];
+    }
+    if (!total) return {};
+    // Host randomness leaves the original simulation RNG untouched by selection.
+    auto ticket = arc4random_uniform(total);
+    for (unsigned i = 0; i < weights.size(); ++i) {
+        if (ticket < weights[i]) return side * 20 + i;
+        ticket -= weights[i];
+    }
+    return {};
+}
+
+void award_debug_red_card(State& s, std::uint32_t match, unsigned player) {
+    if (!native_debugging_enabled() || !debug_player_weight(s, match, player, DebugMatchEvent::red_card))
+        throw std::invalid_argument("Debug red card requires an enabled, active match and an on-pitch player");
+    const auto actor = actor_address(match, player), opponent = opposing_player(s, match, player);
+    const auto home = s.memory.read<1>(match + 0xe03d), away = s.memory.read<1>(match + 0xe073);
+    const auto clock = s.memory.read<2>(match + 0x7948);
+    {
+        GuestCall caller(s);
+        match_debugger::apply_original_card(s, match, actor, opponent, false);
+    }
+    if (s.memory.read<1>(actor + 0x23) != 1 || signed_value<1>(s.memory.read<1>(actor + 0x19)) != -3 ||
+        s.memory.read<1>(match + 0xe03d) != home || s.memory.read<1>(match + 0xe073) != away ||
+        s.memory.read<2>(match + 0x7948) != clock)
+        throw std::runtime_error("Debug red card failed original dismissal, score or clock bookkeeping");
 }
 
 void award_debug_goal(State& s, std::uint32_t match, unsigned player) {
@@ -134,7 +199,8 @@ void append_debugging_option(State& s) {
     for (unsigned value = 0; value != 2; ++value) {
         const bool active = *pending_option == bool(value);
         call.args({std::uint32_t(active ? selected : normal), call.text(value ? "Ligado" : "Desligado"), option_action, value});
-        call.call(active ? 0x107445a0 : 0x107444e0, {ui, grid, value + 1, row, active ? 0x221u : 1u, 0, 12, 2});
+        call.call(active ? 0x107445a0 : 0x107444e0,
+            {ui, grid, value + 1, row, active ? 0x221u : 1u, active ? std::uint32_t(selected) : 0u, 12, 2});
     }
 }
 
@@ -183,6 +249,16 @@ void append_match_debugging_controls(State& s) {
         "Gol " + player_name(s, recent->staff, true) : "Gol";
     call.args({0x1021, 0, 0, 12, 1, color, call.text(label), 0, repeat_action, 0, sidebar});
     call.call(0x10719740, {page, repeat ? 2u : 0u, 0, 0, 0, 0, 0, 7});
+    for (unsigned kind = 0; kind < 2; ++kind) for (unsigned side = 0; side < 2; ++side) {
+        const auto event = kind ? DebugMatchEvent::red_card : DebugMatchEvent::goal;
+        bool enabled = false;
+        for (unsigned i = 0; i < 20; ++i) enabled |= debug_player_weight(s, match, side * 20 + i, event) != 0;
+        // In-game font glyphs use Windows Latin-1, including the requested ã.
+        const auto title = std::string(kind ? "Expuls\xe3" "o " : "Gol ") + (side ? "A" : "H");
+        call.args({0x1021, 0, 0, 12, 1, color, call.text(title), 0,
+            kind ? red_card_action : random_goal_action, side, sidebar});
+        call.call(0x10719740, {page, enabled ? 2u : 0u, 0, 0, 0, 0, 0, 8 + kind * 2 + side});
+    }
 }
 
 bool dispatch_match_debugging_control(State& s) {
@@ -190,7 +266,8 @@ bool dispatch_match_debugging_control(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != goal_action && action != repeat_action) return false;
+    if (action != goal_action && action != repeat_action && action != random_goal_action && action != red_card_action)
+        return false;
     unsigned player = s.memory.read<4>(control + 0x48);
     bool accepted = false;
     {
@@ -200,15 +277,21 @@ bool dispatch_match_debugging_control(State& s) {
         const auto status = std::uint32_t(s.memory.read<4>(fixture + 0x5c));
         if (action == repeat_action && recent_valid(s, match)) player = recent->player;
         else if (action == repeat_action) player = 40;
-        if ((s.memory.read<4>(control + 12) & 2) && status && !s.memory.read<1>(status + 0x56) &&
-            eligible_debug_goal(s, match, player)) {
-            award_debug_goal(s, match, player);
-            // Publish the original match report before rebuilding the screen,
-            // including its scorer/minute rows, without advancing the clock.
-            const auto report = std::uint32_t(s.memory.read<4>(fixture + 0x60));
-            const auto reports = s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7b4c));
-            call.call(0x1029f920, {std::uint32_t(reports), match, report, 1});
-            accepted = true;
+        if ((s.memory.read<4>(control + 12) & 2) && status && !s.memory.read<1>(status + 0x56)) {
+            const auto event = action == red_card_action ? DebugMatchEvent::red_card : DebugMatchEvent::goal;
+            if (action == random_goal_action || action == red_card_action)
+                player = random_debug_player(s, match, player, event).value_or(40);
+            const bool eligible = action == red_card_action ? debug_player_weight(s, match, player, event) != 0 :
+                eligible_debug_goal(s, match, player);
+            if (eligible) {
+                if (action == red_card_action) award_debug_red_card(s, match, player);
+                else award_debug_goal(s, match, player);
+                // Publish original scorer/card/minute rows before the screen rebuild.
+                const auto report = std::uint32_t(s.memory.read<4>(fixture + 0x60));
+                const auto reports = s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7b4c));
+                call.call(0x1029f920, {std::uint32_t(reports), match, report, 1});
+                accepted = true;
+            }
         }
     }
     // The original handler's -11 result rebuilds the screen, as speed changes do.
