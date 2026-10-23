@@ -36,7 +36,7 @@ public:
 };
 
 // 0x10111240: a player's position code, with or without the ball.
-std::int32_t position(guest::Cpu& c, std::uint32_t formation, std::int8_t player, bool with_ball);
+std::int32_t position(guest::Cpu& c, std::uint32_t formation, std::int8_t player, std::int8_t with_ball);
 // 0x10111840: the first player whose position (without the ball) is `position`, or -1.
 std::int32_t player_at(guest::Cpu& c, std::uint32_t formation, std::int16_t position);
 // 0x10113e10: a player's instruction fields (r3 high word, r4 low word).
@@ -52,7 +52,7 @@ std::uint32_t clear_staff(guest::Cpu& c, std::uint32_t formation);
 // 0x10114c00: recomputes the shape code from the positions.
 void update_shape(guest::Cpu& c, std::uint32_t formation);
 // 0x10114d40: the shape bit of a position code (0 for none).
-std::uint32_t shape_bit(std::int16_t position);
+std::uint32_t shape_bit(guest::Cpu& c, std::int16_t position);
 // 0x10116780: splits a position code into its line bit and side bit (a
 // goalkeeper is central); asserts and returns 0 when either is missing.
 std::uint32_t split_position(guest::Cpu& c, std::int16_t position, std::uint32_t line, std::uint32_t side);

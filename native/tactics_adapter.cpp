@@ -91,4 +91,6 @@ bool try_modern_tactics(State& s, std::uint32_t entry) {
     if (!routine) throw std::runtime_error("Unknown tactics routine " + hex_address(entry));
     return run(s, *routine);
 }
+void tactics_run_original(State& s, std::uint32_t entry) { run_original(s, entry); }
+void tactics_run_rewrite(State& s, std::uint32_t entry) { run_rewrite(s, entry); }
 }

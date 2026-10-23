@@ -51,6 +51,13 @@
 //   --check-routines-corrupted <first> [<every>]
 //                     as above, but spoils one byte of the first checked
 //                     call's rewrite result, which must fail
+//   --strict-volatile with --check-routines: also compare r0, r3, r11, r12,
+//                     XER and CTR at return (r4-r10 and CR always are), to
+//                     locate a leftover that later reaches memory
+//   --synthetic <file>
+//                     with --check-routines: synthetic calls of tactics
+//                     routines no capture reaches, compared like checked calls
+//                     (routine_check.hpp SyntheticCall gives the file's format)
 //   --census <file>   count the calls of each entry listed in <file> (one
 //                     hex address per line) that pass through the dispatcher
 //                     (tools/tactics_audit.py --entries lists the tactics system)
@@ -200,6 +207,9 @@ int main(int argc, char** argv) {
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
         std::optional<std::set<std::uint32_t>> only;
+        bool strict_volatile = false;
+        static std::vector<SyntheticCall> synthetic;
+        static unsigned synthetic_differences = 0;
         static std::map<std::uint32_t, std::uint64_t> census;
         for (int i = 2; i < argc; ++i) {
             const std::string_view option(argv[i]);
@@ -226,6 +236,8 @@ int main(int argc, char** argv) {
                 std::istringstream list(argv[++i]);
                 for (std::string item; std::getline(list, item, ',');) only->insert(std::uint32_t(std::stoul(item, nullptr, 16)));
             }
+            else if (option == "--strict-volatile") strict_volatile = true;
+            else if (option == "--synthetic" && i + 1 < argc) synthetic = read_synthetic_calls(argv[++i]);
             else if (option == "--census" && i + 1 < argc) {
                 std::ifstream list(argv[++i]);
                 for (std::string line; std::getline(list, line);)
@@ -238,8 +250,15 @@ int main(int argc, char** argv) {
         if (!runs) throw std::runtime_error("At least one run is needed");
         if (checker) {
             checker->corrupt_first = checker_corrupted;
+            checker->strict_volatile = strict_volatile;
             routine_checker = &*checker;
             dispatch_probe = &tactics_dispatch_probe;
+            if (!synthetic.empty())
+                dispatch_probe = [](State& s) {
+                    synthetic_differences += run_synthetic_calls(s, synthetic, tactics_run_original, tactics_run_rewrite,
+                                                                 routine_checker && routine_checker->strict_volatile);
+                    return tactics_dispatch_probe(s);
+                };
         }
         if (!census.empty()) {
             if (checker) throw std::runtime_error("--census and --check-routines are separate runs");
@@ -345,7 +364,8 @@ int main(int argc, char** argv) {
                       << checked << " checked, " << checker->differences() << " differ" << std::endl;
             routine_checker = nullptr;
             dispatch_probe = nullptr;
-            if (checker->differences()) return 1;
+            if (!synthetic.empty()) std::cout << "synthetic calls: " << synthetic.size() << " listed, " << synthetic_differences << " differ" << std::endl;
+            if (checker->differences() || synthetic_differences) return 1;
         }
         return 0;
     } catch (const std::exception& error) {

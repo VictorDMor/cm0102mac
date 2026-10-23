@@ -444,6 +444,7 @@ bool observed_by_import(std::size_t byte, ImportContract arguments) {
     if (byte >= 1024 && byte < 1030) return false;  // XER bits
     if (byte >= 1280 && byte < 1304) return false;  // FPSCR status bits
     if (byte >= 2304 && byte < 2312) { const auto field = byte - 2304; return field >= 2 && field <= 4; }
+    if (byte >= 2432 && byte < 2444) return false;  // Ghidra's tea and r2Save: P-code scratch, not the processor's
     if (byte >= 4100 && byte < 4104) return false;  // XER
     if (byte >= 4132 && byte < 4136) return false;  // CTR
     return true;

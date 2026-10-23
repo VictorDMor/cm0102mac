@@ -41,6 +41,8 @@ bool deliver_original_command(State& state, const CommandContext& expected, Dire
 struct OriginalControl { std::int16_t index, action; std::uint32_t flags; };
 // The live control table of the screen in `context`, in table order.
 std::vector<OriginalControl> original_controls(const State& state, const CommandContext& context);
+// A control's rectangle in its window (left, top, right, bottom), or none.
+std::optional<std::array<std::int32_t, 4>> original_control_rect(const State& state, const CommandContext& context, std::int16_t index);
 // Activate any enabled control of the current screen by table index, through
 // the same original preselected input as a direct command.
 bool deliver_original_control(State& state, const CommandContext& expected, std::int16_t index);

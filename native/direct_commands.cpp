@@ -104,6 +104,18 @@ std::vector<OriginalControl> original_controls(const State& s, const CommandCont
         result.push_back({i, std::int16_t(word(i * 0x17c + 8)), word(i * 0x17c + 12)});
     return result;
 }
+std::optional<std::array<std::int32_t, 4>> original_control_rect(const State& s, const CommandContext& c, std::int16_t index) {
+    if (!c.ready) return std::nullopt;
+    const auto counted = s.memory.copy_out(c.screen + 0x129da6, 2);
+    if (index < 0 || index >= std::int16_t(counted[0] << 8 | counted[1])) return std::nullopt;
+    // +0x10: left, top, right, bottom as 32-bit words, in window coordinates.
+    const auto record = s.memory.copy_out(c.screen + 0xba864 + std::uint32_t(index) * 0x17c + 0x10, 16);
+    std::array<std::int32_t, 4> rect{};
+    for (unsigned i = 0; i < 4; ++i)
+        rect[i] = std::int32_t(std::uint32_t(record[i * 4]) << 24 | std::uint32_t(record[i * 4 + 1]) << 16 |
+                               std::uint32_t(record[i * 4 + 2]) << 8 | record[i * 4 + 3]);
+    return rect;
+}
 namespace {
 bool activate(State& s, const CommandContext& current, std::int16_t index) {
     const auto selected = current.screen + 0x12a904;

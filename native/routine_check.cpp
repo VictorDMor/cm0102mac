@@ -9,6 +9,8 @@
 #include <iomanip>
 #include <cstring>
 #include <iostream>
+#include <map>
+#include <fstream>
 #include <set>
 #include <sstream>
 #include <vector>
@@ -237,29 +239,13 @@ std::string hex(std::uint64_t value, int width = 8) {
 }
 }
 
-bool routine_check_child() { return in_child; }
-
-RoutineChecker::RoutineChecker(std::function<bool(std::uint32_t)> wanted, std::uint64_t all, std::uint64_t every)
-    : wanted_(std::move(wanted)), all_(all), every_(every) {}
-
-std::uint64_t RoutineChecker::differences() const {
-    std::uint64_t total = 0;
-    for (const auto& [_, t] : totals_) total += t.differences;
-    return total;
-}
-
-bool RoutineChecker::check(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite, unsigned results) {
-    if (in_child || !wanted_(entry)) return false;
-    auto& totals = totals_[entry];
-    const auto call = ++totals.calls;
-    if (call > all_ && (!every_ || call % every_)) return false;
-    const auto stack = std::uint32_t(s.r<4>(4)), caller = std::uint32_t(s.r<4>(4128));
-    const bool corrupt = corrupt_first && !totals.checked && !differences();
-    const auto expected = fork_run(s, entry, original, false);
-    const auto actual = fork_run(s, entry, rewrite, corrupt);
-    ++totals.checked;
-    corrupt_first = corrupt_first && !corrupt;
-
+namespace {
+// What differs between the original's and the rewrite's run of one call,
+// from the parent's state before it (stack addresses shown relative to sp).
+std::vector<std::string> compare_reports(const State& s, const Report& expected, const Report& actual, unsigned results,
+                                         std::uint32_t stack, bool strict_volatile) {
+    using R = RoutineChecker;
+    [[maybe_unused]] constexpr unsigned result_r3 = R::result_r3, result_r4 = R::result_r4, result_f1 = R::result_f1;
     std::vector<std::string> found;
     // A replay never faults, so a stopped child is a failure of the rewrite or
     // of the harness, even when both stopped the same way.
@@ -270,9 +256,10 @@ bool RoutineChecker::check(State& s, std::uint32_t entry, RoutineRunner original
     if (expected.outcome == Outcome::returned && actual.outcome == Outcome::returned) {
         if (expected.pc != actual.pc) found.push_back("pc " + hex(expected.pc) + " vs " + hex(actual.pc));
         const auto word = [](const Report& r, std::size_t offset) { return read_be<4>(r.registers.data() + offset); };
-        std::vector<unsigned> gprs{1, 2};
+        // r4-r10 too: a caller's next varargs call (sprintf) stores r3-r10
+        // into the stack image, so leftovers there reach memory.
+        std::vector<unsigned> gprs{1, 2, 4, 5, 6, 7, 8, 9, 10};
         if (results & result_r3) gprs.push_back(3);
-        if (results & result_r4) gprs.push_back(4);
         for (unsigned n = 13; n < 32; ++n) gprs.push_back(n);
         for (const auto n : gprs)
             if (word(expected, n * 4) != word(actual, n * 4))
@@ -282,9 +269,22 @@ bool RoutineChecker::check(State& s, std::uint32_t entry, RoutineRunner original
             if (read_be<8>(expected.registers.data() + offset) != read_be<8>(actual.registers.data() + offset))
                 found.push_back("f" + std::to_string(n));
         }
-        for (unsigned field = 2; field <= 4; ++field)
+        // Every CR field: a later callee that saves cr2-cr4 stores the
+        // whole CR (mfcr), volatile fields included.
+        for (unsigned field = 0; field < 8; ++field)
             if (expected.registers[2304 + field] != actual.registers[2304 + field])
-                found.push_back("cr" + std::to_string(field));
+                found.push_back("cr" + std::to_string(field) + " " + std::to_string(expected.registers[2304 + field]) +
+                                " vs " + std::to_string(actual.registers[2304 + field]));
+        // The rest of the volatile state rarely reaches memory; compared
+        // only with strict_volatile, to find such a leak.
+        if (strict_volatile) {
+            for (unsigned n : {0u, 3u, 11u, 12u})
+                if ((n != 3 || !(results & result_r3)) && word(expected, n * 4) != word(actual, n * 4))
+                    found.push_back("volatile r" + std::to_string(n) + " " + hex(word(expected, n * 4)) + " vs " + hex(word(actual, n * 4)));
+            for (std::size_t byte : {1024u, 1025u, 1026u, 1027u, 1028u, 1029u, 4100u, 4101u, 4102u, 4103u})
+                if (expected.registers[byte] != actual.registers[byte]) found.push_back("volatile XER byte " + std::to_string(byte));
+            if (read_be<4>(expected.registers.data() + 4132) != read_be<4>(actual.registers.data() + 4132)) found.push_back("volatile CTR");
+        }
         // FPSCR (one byte per field, 1280-1311): setjmp stores it into memory.
         for (unsigned byte = 1280; byte < 1312; ++byte)
             if (expected.registers[byte] != actual.registers[byte])
@@ -320,6 +320,34 @@ bool RoutineChecker::check(State& s, std::uint32_t entry, RoutineRunner original
         }
     }
     if (differing > listed) found.push_back(std::to_string(differing) + " differing bytes in all");
+    return found;
+}
+}
+
+bool routine_check_child() { return in_child; }
+
+RoutineChecker::RoutineChecker(std::function<bool(std::uint32_t)> wanted, std::uint64_t all, std::uint64_t every)
+    : wanted_(std::move(wanted)), all_(all), every_(every) {}
+
+std::uint64_t RoutineChecker::differences() const {
+    std::uint64_t total = 0;
+    for (const auto& [_, t] : totals_) total += t.differences;
+    return total;
+}
+
+bool RoutineChecker::check(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite, unsigned results) {
+    if (in_child || !wanted_(entry)) return false;
+    auto& totals = totals_[entry];
+    const auto call = ++totals.calls;
+    if (call > all_ && (!every_ || call % every_)) return false;
+    const auto stack = std::uint32_t(s.r<4>(4)), caller = std::uint32_t(s.r<4>(4128));
+    const bool corrupt = corrupt_first && !totals.checked && !differences();
+    const auto expected = fork_run(s, entry, original, false);
+    const auto actual = fork_run(s, entry, rewrite, corrupt);
+    ++totals.checked;
+    corrupt_first = corrupt_first && !corrupt;
+
+    auto found = compare_reports(s, expected, actual, results, stack, strict_volatile);
     if (found.empty()) return true;
     ++totals.differences;
     std::cerr << "Routine " << hex(entry) << " call " << call << " (sp " << hex(stack) << ", return " << hex(caller)
@@ -340,5 +368,82 @@ void run_original_body(State& s, std::uint32_t entry, bool& declining) {
         // A nested activation of the same code returned here; keep going.
         if (!dispatch_page(s)) throw std::runtime_error("Missing original code at " + hex_address(s.pc));
     }
+}
+}
+
+namespace cm::aot {
+std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& file) {
+    // One call per line: trigger=0xENTRY[#n] call=0xENTRY [results=r3|r3r4|f1|none] r3=VALUE ...
+    std::ifstream input(file);
+    if (!input) throw std::runtime_error("Cannot read synthetic calls " + file.string());
+    std::vector<SyntheticCall> calls;
+    for (std::string line; std::getline(input, line);) {
+        if (line.empty() || line[0] == '#') continue;
+        SyntheticCall call;
+        call.line = line;
+        std::istringstream words(line);
+        for (std::string word; words >> word;) {
+            const auto equal = word.find('=');
+            if (equal == std::string::npos) throw std::runtime_error("Bad synthetic call: " + line);
+            const auto key = word.substr(0, equal), value = word.substr(equal + 1);
+            if (key == "trigger") {
+                const auto hash = value.find('#');
+                call.trigger = std::uint32_t(std::stoul(value.substr(0, hash), nullptr, 16));
+                if (hash != std::string::npos) call.nth = std::uint32_t(std::stoul(value.substr(hash + 1)));
+            } else if (key == "call") call.target = std::uint32_t(std::stoul(value, nullptr, 16));
+            else if (key == "results") {
+                call.results = value == "none" ? 0u : value == "r3r4" ? RoutineChecker::result_r3 | RoutineChecker::result_r4
+                             : value == "f1" ? RoutineChecker::result_f1 : RoutineChecker::result_r3;
+            } else if (key.size() >= 2 && key[0] == 'r') call.registers.emplace_back(unsigned(std::stoul(key.substr(1))), value);
+            else throw std::runtime_error("Bad synthetic call: " + line);
+        }
+        if (!call.trigger || !call.target) throw std::runtime_error("A synthetic call needs trigger= and call=: " + line);
+        calls.push_back(std::move(call));
+    }
+    return calls;
+}
+
+unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, RoutineRunner original, RoutineRunner rewrite,
+                             bool strict_volatile) {
+    if (in_child) return 0;
+    unsigned differing = 0;
+    static std::map<std::uint32_t, std::uint32_t> seen;
+    bool counted = false;
+    for (auto& call : calls) {
+        if (call.trigger != s.pc) continue;
+        if (!counted) { ++seen[s.pc]; counted = true; }
+        if (seen[s.pc] != call.nth) continue;
+        const auto saved = s.registers;
+        const auto saved_pc = s.pc;
+        const auto value = [&](const std::string& text) {
+            if (text.empty() || text[0] != '@') return std::uint32_t(std::stoul(text, nullptr, 0));
+            const auto sign = text.find_first_of("+-", 2);
+            const auto n = unsigned(std::stoul(text.substr(2, sign == std::string::npos ? std::string::npos : sign - 2)));
+            auto base = std::uint32_t(read_be<4>(saved.data() + n * 4));
+            if (sign != std::string::npos) {
+                const auto offset = std::uint32_t(std::stoul(text.substr(sign + 1), nullptr, 0));
+                base = text[sign] == '+' ? base + offset : base - offset;
+            }
+            return base;
+        };
+        // A fresh frame below the trigger's, returning to the sentinel.
+        const auto sp = (std::uint32_t(s.r<4>(4)) - 0x400) & ~0xfu;
+        s.wr<4>(4, sp);
+        for (const auto& [n, text] : call.registers) s.wr<4>(n * 4, value(text));
+        s.wr<4>(4128, return_sentinel);
+        s.pc = call.target;
+        std::vector<std::string> found;
+        try {
+            const auto expected = fork_run(s, call.target, original, false);
+            const auto actual = fork_run(s, call.target, rewrite, false);
+            found = compare_reports(s, expected, actual, call.results, sp, strict_volatile);
+        } catch (const std::exception& error) { found.push_back(error.what()); }
+        s.registers = saved;
+        s.pc = saved_pc;
+        std::cerr << (found.empty() ? "synthetic ok: " : "synthetic DIFFERS: ") << call.line << '\n';
+        for (const auto& line : found) std::cerr << "  " << line << '\n';
+        if (!found.empty()) ++differing;
+    }
+    return differing;
 }
 }

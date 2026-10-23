@@ -48,6 +48,15 @@ public:
     void set_lr(std::uint32_t value) { s.wr<4>(reg::lr, value); }
     std::uint8_t cr(unsigned field) const { return std::uint8_t(s.r<1>(reg::cr(field))); }
     void set_cr(unsigned field, std::uint8_t value) { s.wr<1>(reg::cr(field), value); }
+    // A compare into a CR field, as cmpw/cmpwi (signed) or cmplw/cmplwi
+    // (logical) leave it: LT 8, GT 4, EQ 2, plus XER[SO]. Record forms
+    // (`extsb.`, `rlwinm.`, ...) compare their result with 0 into cr0.
+    void compare(unsigned field, std::int32_t a, std::int32_t b) {
+        set_cr(field, std::uint8_t((a < b ? 8 : a > b ? 4 : 2) | (s.r<1>(reg::xer_so) & 1)));
+    }
+    void compare_logical(unsigned field, std::uint32_t a, std::uint32_t b) {
+        set_cr(field, std::uint8_t((a < b ? 8 : a > b ? 4 : 2) | (s.r<1>(reg::xer_so) & 1)));
+    }
     // A word of the table of contents: `lwz rX,offset(r2)`.
     std::uint32_t toc(std::int32_t offset) const { return u32(r(2) + std::uint32_t(offset)); }
 
@@ -142,7 +151,8 @@ public:
             const auto word = c.u32(caller_sp + 4);
             for (unsigned field = 2; field <= 4; ++field) c.set_cr(field, (word >> (28 - 4 * field)) & 0xf);
         }
-        if (saves_.lr) c.set_lr(c.u32(caller_sp + 8));
+        // `lwz r0,size+8(r1); mtlr r0`: r0 is left holding the return address.
+        if (saves_.lr) { c.set(0, c.u32(caller_sp + 8)); c.set_lr(c.r(0)); }
         c.set(1, caller_sp);
     }
 

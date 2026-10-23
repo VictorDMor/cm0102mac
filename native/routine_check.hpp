@@ -11,6 +11,8 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <vector>
+#include <filesystem>
 
 namespace cm::aot {
 // Runs one call of `entry` from its entry state to its return.
@@ -35,6 +37,10 @@ public:
     // Shows that the comparison fails when it should: flips one byte of the
     // rewrite's result before comparing, for the first checked call.
     bool corrupt_first = false;
+    // Also compare r0, r3 (when not a result), r11, r12, XER and CTR at
+    // return, to find a leftover that later reaches memory. r4-r10 and every
+    // CR field are always compared.
+    bool strict_volatile = false;
 
 private:
     std::function<bool(std::uint32_t)> wanted_;
@@ -43,6 +49,23 @@ private:
 };
 // Installed by the replay tool; null in the app.
 extern RoutineChecker* routine_checker;
+
+// Synthetic calls, for routines no capture reaches: when the replay
+// dispatches `trigger` for the `nth` time (from 1), `target` is called with
+// the given registers from that state in two forked children (original and
+// rewrite) and compared; the replay itself goes on untouched. A value is a
+// number, or `@rN` / `@rN+off` / `@rN-off`: a register at the trigger.
+struct SyntheticCall {
+    std::uint32_t trigger = 0, nth = 1, target = 0;
+    unsigned results = RoutineChecker::result_r3;
+    std::vector<std::pair<unsigned, std::string>> registers;
+    std::string line;
+};
+std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& file);
+// Runs the synthetic calls due at s.pc; never changes `s`. Returns the
+// number of calls that differed (each printed).
+unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, RoutineRunner original, RoutineRunner rewrite,
+                             bool strict_volatile);
 // True in a checker child; families then run nested calls of their own
 // routines without checking them again.
 bool routine_check_child();

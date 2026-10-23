@@ -4,7 +4,7 @@
 // calls tactics_leaf_<entry> instead of the original instructions; calls
 // through the dispatcher reach the same function through the routine's hook.
 // Each takes its arguments from the registers and sets its results. They
-// write no stack and leave the other volatile registers to the caller. Each
+// write no stack and leave r4-r10 as the original does. Each
 // returns false, doing nothing, while the tactics routines decline, and the
 // call site then runs the original instructions.
 #include "guest_abi.hpp"
@@ -75,7 +75,8 @@ inline bool tactics_leaf_103bad00(State& s) {
 inline bool tactics_leaf_103badd0(State& s) {
     if (tactics_declining) return false;
     guest::Cpu c(s);
-    c.set(3, c.u8(c.r(3) + 0xc6b1));
+    c.set(4, c.r(3) + 0x10000);  // addis r4,r3,1
+    c.set(3, c.u8(c.r(4) - 0x394f));
     return true;
 }
 // 0x103bae40: formation byte +0x1886.
@@ -166,14 +167,16 @@ inline bool tactics_leaf_103be9f0(State& s) {
 inline bool tactics_leaf_103c1f20(State& s) {
     if (tactics_declining) return false;
     guest::Cpu c(s);
-    c.put8(c.r(3) + 0xc6b1, 0);
+    c.set(4, c.r(3) + 0x10000);  // addis r4,r3,1
+    c.put8(c.r(4) - 0x394f, 0);
     return true;
 }
 // 0x103c5940: formation record `index` of the screen's array at +0x7c6c (0x18e0 bytes each).
 inline bool tactics_leaf_103c5940(State& s) {
     if (tactics_declining) return false;
     guest::Cpu c(s);
-    c.set(3, c.r(3) + std::uint32_t(std::int32_t(std::int8_t(c.r(4)))) * 0x18e0 + 0x7c6c);
+    c.set(5, std::uint32_t(std::int32_t(std::int8_t(c.r(4)))) * 0x18e0);  // mulli r5
+    c.set(3, c.r(3) + c.r(5) + 0x7c6c);
     return true;
 }
 // 0x103c9960: screen byte +0x7929.
@@ -187,7 +190,8 @@ inline bool tactics_leaf_103c9960(State& s) {
 inline bool tactics_leaf_103cba60(State& s) {
     if (tactics_declining) return false;
     guest::Cpu c(s);
-    c.put8(c.r(3) + 0x19, c.u8(c.r(3) + 0x19) - 1);
+    c.set(4, c.u8(c.r(3) + 0x19));  // lbz r4
+    c.put8(c.r(3) + 0x19, c.r(4) - 1);
     return true;
 }
 }

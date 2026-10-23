@@ -122,6 +122,45 @@ struct NativePlatform::Impl {
     std::map<std::array<std::uint8_t, 16>, UIEvent> delivered_events;
     std::uint32_t last_event_tick = 0;
     std::optional<std::uint32_t> menu_selection;
+    // An automation drag, timed like a person's from when the game takes the
+    // mouse-down: the button is held at the press for 400 ms (list drags
+    // start only after a hold), the pointer GetMouse and Button report moves
+    // to the target over 400 ms and holds there for 200 ms, then the button
+    // is released and a mouse-up is queued (global coordinates). The request
+    // finishes when the game takes the mouse-up, or 2 s after the release if
+    // it never does (FlushEvents).
+    struct SyntheticDrag {
+        std::int16_t from_x, from_y, to_x, to_y;
+        std::optional<AutomationRequest> request;
+        std::optional<std::chrono::steady_clock::time_point> start;  // when the game took the mouse-down
+        bool released = false;
+        double elapsed() const {
+            return start ? std::chrono::duration<double>(std::chrono::steady_clock::now() - *start).count() : 0.0;
+        }
+        NativePointerState state() const {
+            const auto f = std::clamp((elapsed() - 0.4) / 0.4, 0.0, 1.0);
+            const auto x = std::int16_t(from_x + std::lround((to_x - from_x) * f));
+            const auto y = std::int16_t(from_y + std::lround((to_y - from_y) * f));
+            return {x, y, std::uint16_t(released ? 0x81 : 0x01), !released};
+        }
+    };
+    std::optional<SyntheticDrag> drag;
+    NativePointerState pointer_now() { advance_drag(); return drag ? drag->state() : user_interface().pointer_state(); }
+    void end_drag(bool delivered) {
+        if (drag && drag->request && automation)
+            automation->finish(*drag->request, delivered, delivered ? "dragged" : "the game never took the mouse-up");
+        drag.reset();
+    }
+    // At the end of the drag the button goes up and a mouse-up is queued.
+    void advance_drag() {
+        if (!drag || !drag->start) return;
+        if (drag->released) { if (drag->elapsed() > 3.0) end_drag(false); return; }
+        if (drag->elapsed() < 1.0) return;
+        drag->released = true;
+        UIEvent up{UIEvent::Kind::mouse_up};
+        up.x = drag->to_x; up.y = drag->to_y; up.modifiers = 0x81;
+        pending_events.push_back(std::move(up));
+    }
     // No drawing port is selected before the first window/offscreen port exists.
     std::uint32_t current_port = 0;
     std::uint32_t desktop_region = 0;
@@ -520,7 +559,7 @@ struct NativePlatform::Impl {
         if (automation) automation->boundary(s, commands, commands.ready ? command_status : "Unavailable while processing");
         auto matches = [&](const UIEvent& event) { return (legacy_event_mask(event) & mask) != 0; };
         const auto deadline = poll_start + std::chrono::duration<double>(sleep ? sleep / 60.0 : quiet ? 0.008 : 0.0);
-        auto pointer = user_interface().pointer_state();
+        auto pointer = pointer_now();
         auto mouse_outside = [&] {
             if (!mouse_region || !(mask & 0x8000)) return false;
             const auto& region = handles.at(mouse_region);
@@ -568,6 +607,27 @@ struct NativePlatform::Impl {
                     }
                     automation->boundary(s, commands, command_status);
                     continue;
+                } else if (request->kind == Kind::drag) {
+                    const auto from = original_control_rect(s, commands, request->control);
+                    const auto to = original_control_rect(s, commands, request->target);
+                    std::optional<LegacyRect> content;
+                    // The game window: the one whose content is the 800 x 600 screen.
+                    for (const auto window : windows) {
+                        const auto bounds = user_interface().window_bounds(window, true);
+                        if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) content = bounds;
+                    }
+                    if (!from || !to || !content || drag) {
+                        automation->finish(*request, false, drag ? "a drag is in progress" : "control or window unavailable");
+                        automation->boundary(s, commands, command_status);
+                        continue;
+                    }
+                    const auto centre = [&](const std::array<std::int32_t, 4>& r, int axis) {
+                        return std::int16_t((*content)[axis == 0 ? 1 : 0] + (r[axis] + r[axis + 2]) / 2);
+                    };
+                    drag = SyntheticDrag{centre(*from, 0), centre(*from, 1), centre(*to, 0), centre(*to, 1), *request, std::nullopt, false};
+                    UIEvent down{UIEvent::Kind::mouse_down};
+                    down.x = drag->from_x; down.y = drag->from_y; down.modifiers = 0x01;
+                    pending_events.push_back(std::move(down));
                 } else if (request->kind == Kind::key || request->kind == Kind::text) {
                     // Classic key events, as AppKit would queue them for the
                     // active game window: button up (0x80) and active (1).
@@ -652,7 +712,7 @@ struct NativePlatform::Impl {
                 const auto handled = window_event(s, event);
                 if (!handled && event.kind != UIEvent::Kind::wheel) pending_events.push_back(std::move(event));
             }
-            pointer = user_interface().pointer_state();
+            pointer = pointer_now();
             found = std::find_if(pending_events.begin(), pending_events.end(), matches);
             if (!available && ((mouse_outside() && !quiet) || std::chrono::steady_clock::now() >= deadline)) break;
         }
@@ -711,6 +771,8 @@ struct NativePlatform::Impl {
                 std::fprintf(stderr, "Original mouse event: what=%u window=%08x global=%d,%d live=%d,%d button=%u modifiers=%04x\n",
                     what, found->window, found->x, found->y, pointer.x, pointer.y, found->button, found->modifiers);
             if (what >= 1 && what <= 5) performance.mark("input", s, what);
+            if (what == 1 && drag && !drag->start) drag->start = std::chrono::steady_clock::now();
+            if (what == 2 && drag && drag->released) end_drag(true);
         }
         pending_events.erase(found);
         command_cache.reset(); // input may change the screen's controls
@@ -1593,7 +1655,7 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             impl_->user_interface().initialize_cursor();
             return_value = arg(0);
         } else if (name == "CarbonLib::GetMouse" || name == "CarbonLib::GetGlobalMouse") {
-            const auto point = impl_->user_interface().pointer_state();
+            const auto point = impl_->pointer_now();
             std::int32_t x = point.x, y = point.y;
             if (name == "CarbonLib::GetMouse") {
                 const auto& port = impl_->ports.at(impl_->current_port);
@@ -1606,7 +1668,7 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             s.memory.write<2>(arg(0) + 2, std::uint16_t(x));
             return_value = arg(0);
         } else if (name == "CarbonLib::Button") {
-            return_value = impl_->user_interface().pointer_state().down;
+            return_value = impl_->pointer_now().down;
         } else if (name == "CarbonLib::FindWindow") {
             const auto hit = impl_->menu_selection && arg(0) == 0x80008000
                 ? NativeWindowHit{1, 0}

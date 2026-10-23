@@ -17,9 +17,12 @@ can observe exactly as the original does (CLAUDE.md):
   leaves below the stack pointer must be left too: its prologue's saved
   registers, LR and back chain (`guest::Frame`), its stack locals, and
   everything its callees leave.
-- **Registers callers read**: r1, r2, r13-r31, f14-f31, cr2-cr4, and the
-  result registers (r3, r4 for 64-bit results, f1). Other volatile registers
-  are scratch, with one exception below.
+- **Registers that reach memory later**: r1, r2, r13-r31, f14-f31 and the
+  results (r3, f1), and also r4-r10 and every CR field as the original leaves
+  them at return: a caller's next varargs call (`sprintf`) stores r3-r10 into
+  its frame, and a callee that saves cr2-cr4 stores the whole CR (`mfcr`).
+  The checker compares all of these; r0, r11, r12, XER and CTR only with
+  `--strict-volatile`.
 - **Calls and their order**, so RNG draws, allocations and imports happen in
   the same sequence with the same arguments.
 
@@ -101,6 +104,12 @@ sets on some paths, take its entry value.
 4. The replay must still reach the capture's recorded end state.
 
 Routines the captures never call (screens, file dialogs, error paths) need a
-capture of their own; see TASKS.md for the UI capture mode. A routine is done
+session capture of their own (automation `capture start NAME` / `capture
+stop`, with `drag FROM TO` for mouse drags between two controls), or
+synthetic calls: `--synthetic FILE` lists lines such as
+`trigger=0x10111310#3 call=0x10114ba0 r3=@r3 r4=0x5`, and when the replay
+dispatches the trigger for that time, the target runs with those registers
+(`@rN`, `@rN+off`: the trigger's registers) in two forked children, original
+and C++, compared like a checked call; the replay itself is untouched. A routine is done
 when its checks pass on every capture that reaches it, including the error
 paths someone can reach in play.

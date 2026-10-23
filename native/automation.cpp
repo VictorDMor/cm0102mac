@@ -97,6 +97,12 @@ AutomationRequest parse(std::uint64_t sequence, const std::string& line) {
         if (!input || index < 0 || index >= 1200) throw std::runtime_error("control needs a table index");
         request.kind = AutomationRequest::Kind::control;
         request.control = std::int16_t(index);
+    } else if (verb == "drag") {
+        int from = -1, to = -1; input >> from >> to;
+        if (!input || from < 0 || from >= 1200 || to < 0 || to >= 1200) throw std::runtime_error("drag needs two control table indexes");
+        request.kind = AutomationRequest::Kind::drag;
+        request.control = std::int16_t(from);
+        request.target = std::int16_t(to);
     } else if (verb == "key") {
         request.kind = AutomationRequest::Kind::key;
         for (std::string spec; input >> spec;) {
