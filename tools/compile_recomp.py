@@ -767,6 +767,15 @@ class DirectOwnerCalls:
                 raise ValueError(f"In-place owner call to {callee:x} needs exactly the standard {family} hook there")
 
 
+# Owner families that are instruction-level builder transcriptions and run
+# slower than the generated code they replace. Production pages run the
+# generated code for them (identical results: it is the reference); the
+# owners stay, with their equivalence checks, as specifications for real C++
+# rewrites. Measured on the 26-country day capture, 2026-10-23.
+GENERATED_FASTER_FAMILIES = ("actor_attributes", "contract_terms", "shortlist_assessment", "shortlist_policy",
+                             "transfer_offer")
+
+
 # Zero-divisor sites found in play (day advance, two in match play). The
 # proof must keep covering them; generation fails otherwise.
 REQUIRED_QUOTIENT_FREE_DIVISIONS = frozenset({0x101355d4, 0x1024773c, 0x10289b28})
@@ -1085,6 +1094,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
 
 def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True,
                   direct_owner_calls=None):
+    enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
@@ -1855,7 +1865,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             continue
         callee = plain_direct_call(item) if direct_owner_calls is not None and not match_hot_page else None
         family = direct_owner_entries().get(callee)
-        if family and a not in SPECIAL_LOWERINGS:
+        if family and enabled_hooks.get(f"{family}_hooks", True) and a not in SPECIAL_LOWERINGS:
             returned = a + item["size"]
             for op in item["ops"][:2]:
                 code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
@@ -2345,6 +2355,7 @@ def main():
     for address, item in sorted(selected.items()): pages[address >> 12].append(item)
     outputs = {}
     direct_calls = DirectOwnerCalls()
+    production_hooks = {f"{family}_hooks": False for family in GENERATED_FASTER_FAMILIES}
     call_targets = {item["flows"][0] for item in selected.values()
                     if item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows")}
     generated_count = len(selected)
@@ -2366,7 +2377,8 @@ def main():
                 content = generate_page(page, records, {r["address"] for r in records},
                                         local_temporaries=not args.legacy_unique_storage,
                                         userops=metadata['userops'], block_accounting=True, inlining=inlining,
-                                        nontrapping_divisions=divisions, direct_owner_calls=direct_calls)
+                                        nontrapping_divisions=divisions, direct_owner_calls=direct_calls,
+                                        **production_hooks)
                 if not path.exists() or path.read_text() != content: path.write_text(content)
                 pages[page] = []
                 outputs[path.name] = None
@@ -2378,7 +2390,8 @@ def main():
             outputs[f"page_{page:x}.cpp"] = generate_page(page, instructions, selected,
                                                        local_temporaries=not args.legacy_unique_storage,
                                                        userops=metadata['userops'], block_accounting=True, inlining=inlining,
-                                        nontrapping_divisions=divisions, direct_owner_calls=direct_calls)
+                                        nontrapping_divisions=divisions, direct_owner_calls=direct_calls,
+                                        **production_hooks)
     inlining.require_plain()
     direct_calls.require_standard()
     print(f"Inlined leaves: {len(inlining.inlined)} routines", flush=True)
