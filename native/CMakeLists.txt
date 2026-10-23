@@ -25,6 +25,7 @@ add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arra
 target_sources(cm_aot PRIVATE vector_context.cpp)
 target_sources(cm_aot PRIVATE match_speed.cpp)
 target_sources(cm_aot PRIVATE match_debugging.cpp)
+target_sources(cm_aot PRIVATE debug_localization.cpp)
 target_sources(cm_aot PRIVATE guest_context_transfer.cpp)
 target_sources(cm_aot PRIVATE exception_runtime_adapter.cpp exception_runtime_context.cpp exception_runtime_frames.cpp exception_runtime_cleanup.cpp exception_runtime_matching.cpp exception_runtime_search.cpp exception_runtime_capture.cpp exception_runtime_handlers.cpp exception_runtime_unexpected.cpp)
 target_sources(cm_aot PRIVATE compiler_arithmetic_adapter.cpp compiler_arithmetic_integer.cpp compiler_arithmetic_conversion.cpp)
@@ -1769,6 +1770,9 @@ add_executable(cm-match-debugger-cards-checks match_debugger_cards_checks.cpp)
 target_link_libraries(cm-match-debugger-cards-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-cards-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-debugging-injury-checks match_debugging_injury_checks.cpp)
+add_executable(cm-best-xi-checks best_xi_checks.cpp)
+target_link_libraries(cm-best-xi-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-best-xi-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 target_link_libraries(cm-match-debugging-injury-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugging-injury-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-debugger-completion-checks match_debugger_completion_checks.cpp)
@@ -1959,6 +1963,9 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     add_test(NAME match_debugging_injury_shortcuts COMMAND cm-match-debugging-injury-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugging-injury-checks")
     set_tests_properties(match_debugging_injury_shortcuts PROPERTIES TIMEOUT 360)
+    add_test(NAME debugging_best_xi COMMAND cm-best-xi-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/best-xi-checks")
+    set_tests_properties(debugging_best_xi PROPERTIES TIMEOUT 360)
     add_test(NAME match_debugger_actual_lineup COMMAND cm-match-debugger-lineup-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)

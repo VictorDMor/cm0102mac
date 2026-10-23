@@ -3,13 +3,15 @@
 ## In-game Debugging option
 
 Game Options also exposes **Debugging**, off by default and stored separately
-in `Debugging.plist`, with **Desligado / Ligado** choices. Changes take effect on
-OK; Cancel discards them. Enabling it adds **Adicionar Gol** to the original match
+in `Debugging.plist`, with localized **Off / On** choices. Changes take effect on
+OK; Cancel discards them. Enabling it adds **Add Goal** to the original match
 sidebar. Its original-style dropdown lists
 on-pitch players with their club and name. Choosing one immediately awards a goal
-to that player's side. The button beneath starts disabled, then reads **Gol**
+to that player's side. The button beneath starts disabled, then reads **Goal**
 plus the most recently chosen player's common name or surname. Choosing another
 player changes that shortcut; each click awards one more goal.
+These labels follow the game's selected language: in Portuguese, **Adicionar Gol**
+and **Gol**. Debugging also enables [Best XI](native-best-xi.md) on the squad screen.
 
 The top number row and numeric keypad provide these shortcuts while the match
 screen is active and Debugging is enabled:

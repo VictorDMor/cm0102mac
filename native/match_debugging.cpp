@@ -4,7 +4,9 @@
 #include "match_debugger_cards.hpp"
 #include "direct_commands.hpp"
 #include "ui_bridge.hpp"
+#include "debug_localization.hpp"
 #include <array>
+#include <algorithm>
 #include <cstdlib>
 #include <optional>
 #include <string>
@@ -13,6 +15,7 @@ namespace cm::aot {
 namespace {
 constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 30003;
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
+constexpr unsigned best_xi_action = 30004;
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -45,7 +48,7 @@ public:
         unsigned offset = 0x38;
         for (auto value : values) { s.memory.write<4>(stack + offset, value); offset += 4; }
     }
-    std::uint32_t text(const std::string& value) {
+    std::uint32_t text(std::string_view value) {
         if (value.size() > 200) throw std::runtime_error("Debug control label is too long");
         std::vector<std::uint8_t> bytes(value.begin(), value.end()); bytes.push_back(0);
         s.memory.copy_in(stack + 0x100, bytes);
@@ -264,7 +267,7 @@ void append_debugging_option(State& s) {
     call.call(0x107445a0, {ui, grid, 0, row, 1, 0, 1, 3});
     for (unsigned value = 0; value != 2; ++value) {
         const bool active = *pending_option == bool(value);
-        call.args({std::uint32_t(active ? selected : normal), call.text(value ? "Ligado" : "Desligado"), option_action, value});
+        call.args({std::uint32_t(active ? selected : normal), call.text(debug_text(s, value ? DebugText::on : DebugText::off)), option_action, value});
         call.call(active ? 0x107445a0 : 0x107444e0,
             {ui, grid, value + 1, row, active ? 0x221u : 1u, active ? std::uint32_t(selected) : 0u, 12, 2});
     }
@@ -298,7 +301,7 @@ void append_match_debugging_controls(State& s) {
     bool active = false;
     for (unsigned player = 0; player < 40; ++player) active |= eligible_debug_goal(s, match, player);
     GuestCall call(s);
-    call.args({0x1021, 0, 0, 12, 1, color, call.text("Adicionar Gol"), 0, 0, 0, sidebar});
+    call.args({0x1021, 0, 0, 12, 1, color, call.text(debug_text(s, DebugText::add_goal)), 0, 0, 0, sidebar});
     const auto menu = call.call(0x10719740, {page, active ? 0x82u : 0x80u, 0, 0, 0, 0, 0, 6});
     call.args({0, 0x30, background, menu});
     const auto group = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
@@ -311,8 +314,9 @@ void append_match_debugging_controls(State& s) {
         call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, 0});
     }
     const bool repeat = recent_valid(s, match);
+    const auto goal = std::string(debug_text(s, DebugText::goal));
     const auto label = recent && recent->state == &s && recent->match == match ?
-        "Gol " + player_name(s, recent->staff, true) : "Gol";
+        goal + " " + player_name(s, recent->staff, true) : goal;
     call.args({0x1021, 0, 0, 12, 1, color, call.text(label), 0, repeat_action, 0, sidebar});
     call.call(0x10719740, {page, repeat ? 2u : 0u, 0, 0, 0, 0, 0, 7});
 }
@@ -362,6 +366,95 @@ bool dispatch_match_debugging_control(State& s) {
         }
     }
     // The original handler's -11 result rebuilds the screen, as speed changes do.
+    s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
+    return true;
+}
+
+bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
+                         std::uint32_t formation, std::uint32_t fixture) {
+    if (!native_debugging_enabled() || !club || !formation || managed > 1) return false;
+    GuestCall call(s);
+    const auto candidates = call.stack + 0x100, roles = call.stack + 0x200, output = call.stack + 0x240;
+    const auto bench = fixture ? std::min<unsigned>(s.memory.read<1>(fixture + 0x4e) >> 4, 9) : 9;
+    std::vector<std::uint32_t> available;
+    for (unsigned i = 0; i < 50; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
+        if (!staff || !s.memory.read<4>(staff + 0x14) ||
+            std::find(available.begin(), available.end(), staff) != available.end()) continue;
+        // The same eligibility/status operation used by the squad screen:
+        // ineligible, unregistered, international duty, suspended, injured,
+        // recovering and absent players cannot be picked.
+        std::uint32_t status;
+        try { status = call.call(0x10060c00, {staff, club, fixture}); }
+        catch (const std::exception& error) {
+            throw std::runtime_error("Best XI availability at " + hex_address(s.pc) + ": " + error.what());
+        }
+        if ((status >= 1 && status <= 6) || status == 8 || status == 21) continue;
+        available.push_back(staff);
+    }
+    for (unsigned i = 0; i < available.size(); ++i) s.memory.write<4>(candidates + i * 4, available[i]);
+    for (unsigned i = 0; i < 11; ++i)
+        s.memory.write<2>(roles + i * 2, s.memory.read<2>(formation + 0x12e + i * 2));
+    // The original selector chooses unused reserves with positional coverage.
+    constexpr std::array<unsigned, 9> reserve_roles{1, 4, 16, 64, 16, 4, 64, 16, 4};
+    for (unsigned i = 0; i < bench; ++i) s.memory.write<2>(roles + (11 + i) * 2, reserve_roles[i]);
+    // All optional inputs are explicitly absent; never inherit caller stack data.
+    call.args({0, 0, 0, 0, 0, 0, 0});
+    call.call(0x10210c50, {candidates, unsigned(available.size()), roles, 11, bench, output, 0x2014, club});
+    std::array<std::uint32_t, 20> selected{};
+    for (unsigned i = 0; i < 11 + bench; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(output + i * 4));
+        if (!staff) continue;
+        if (std::find(available.begin(), available.end(), staff) == available.end() ||
+            std::find(selected.begin(), selected.begin() + i, staff) != selected.begin() + i)
+            throw std::runtime_error("Best XI returned an unavailable or duplicate player");
+        selected[i] = staff;
+    }
+    const auto tactics = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a6c)));
+    for (unsigned i = 0; i < selected.size(); ++i) {
+        if (selected[i]) call.call(0x103af9d0, {tactics, club, i, selected[i], managed});
+        else call.call(0x103afe90, {tactics, club, i, managed});
+    }
+    for (unsigned i = 0; i < 11; ++i)
+        call.call(0x103b17b0, {tactics, club, i, selected[i] ? i : 0xffffffffu, managed});
+    return true;
+}
+
+void append_best_xi_control(State& s) {
+    if (!native_debugging_enabled()) return;
+    // Squad builder 1001f6a0, immediately after Clear/Restore Team. The gap
+    // between Sort and Clear Team is free in all its squad views.
+    const auto club = std::uint32_t(s.r<4>(25 * 4));
+    const auto ui = std::uint32_t(s.r<4>(31 * 4));
+    const auto top = std::uint32_t(s.r<4>(14 * 4));
+    GuestCall call(s);
+    if (!call.call(0x1014c490, {club, 0, 1}) || (call.call(0x1073ef70, {ui, 7}) & 0x800)) return;
+    const auto ink = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc4)));
+    const auto paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc8)));
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto grid = call.call(0x107198c0, {screen(s, ui), 365, top, 525, top + 20, 1, 0, 1});
+    call.args({paper, call.text(debug_text(s, DebugText::best_xi)), best_xi_action, 0});
+    call.call(0x107444e0, {ui, grid, 0, 0, 0x30, ink, 12, 1});
+}
+
+bool dispatch_best_xi_control(State& s) {
+    if (!native_debugging_enabled()) return false;
+    const auto control = selected_control(s);
+    if (!control || s.memory.read<4>(control + 8) != best_xi_action) return false;
+    bool accepted = false;
+    if (native_debugging_enabled() && (s.memory.read<4>(control + 12) & 2)) {
+        GuestCall call(s);
+        const auto ui = root(s), club = call.call(0x1073ef70, {ui, 0});
+        const auto managed = call.call(0x1073ef70, {ui, 1});
+        const auto view = call.call(0x1073ef70, {ui, 4});
+        const auto columns = call.call(0x1073ef70, {ui, 7});
+        if (view == 1 && !(columns & 0x800) && call.call(0x1014c490, {club, 0, 1})) {
+            const auto humans = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a54)));
+            const auto formation = call.call(0x101466c0, {humans, 0});
+            const auto fixture = call.call(0x1073ef70, {ui, 3});
+            accepted = select_debug_best_xi(s, club, managed, formation, fixture);
+        }
+    }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
     return true;
 }

@@ -19,6 +19,12 @@ void append_match_debugging_controls(State&);
 bool dispatch_match_debugging_control(State&);
 bool deliver_match_shortcut(State&, const CommandContext&, const UIEvent&);
 void reset_match_debugging();
+void append_best_xi_control(State&);
+bool dispatch_best_xi_control(State&);
+// Select the match squad using the original positional evaluator. Fixture may be
+// zero between fixtures; then the original UI's full nine-place bench is used.
+bool select_debug_best_xi(State&, std::uint32_t club, unsigned managed,
+                         std::uint32_t formation, std::uint32_t fixture);
 
 // Shared validation for the live UI and focused original-engine checks.
 bool eligible_debug_goal(const State&, std::uint32_t match, unsigned player);
