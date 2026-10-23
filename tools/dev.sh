@@ -89,6 +89,10 @@ export)
     echo "Current export: $out"
     ;;
 generate)
+    # Pages must not change under a build (the same lock as build).
+    mkdir -p "$build"
+    exec 9>"$build/.dev-build.lock"
+    perl -e 'use Fcntl ":flock"; open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
     python3 "$root/tools/check_jump_tables.py" "$export_dir"
     stamp="$(mktemp)"
     python3 "$root/tools/compile_recomp.py" "$export_dir" "$generated" --root 0x10773710 --all-analyzed
@@ -97,8 +101,8 @@ generate)
     rm -f "$stamp"
     ;;
 build)
-    # One build at a time in the shared build directory (parallel authors):
-    # an exclusive lock on fd 9, held until this script exits.
+    # One build or generation at a time in the shared directories (parallel
+    # authors): an exclusive lock on fd 9, held until this script exits.
     exec 9>"$build/.dev-build.lock"
     perl -e 'use Fcntl ":flock"; open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
     if [[ $# -eq 0 ]]; then

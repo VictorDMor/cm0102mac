@@ -1,13 +1,43 @@
 #include "tactics_adapter.hpp"
 #include "formation.hpp"
+#include "tactics_leaves.hpp"
+// Each author group's header, once it exists (tactics_routines.inc).
+#if __has_include("formation_zones.hpp")
+#include "formation_zones.hpp"
+#endif
+#if __has_include("formation_record.hpp")
+#include "formation_record.hpp"
+#endif
+#if __has_include("tactics.hpp")
+#include "tactics.hpp"
+#endif
+#if __has_include("tactics_setup.hpp")
+#include "tactics_setup.hpp"
+#endif
+#if __has_include("tactics_screens_build.hpp")
+#include "tactics_screens_build.hpp"
+#endif
+#if __has_include("tactics_screens_main.hpp")
+#include "tactics_screens_main.hpp"
+#endif
+#if __has_include("tactics_screens_instructions.hpp")
+#include "tactics_screens_instructions.hpp"
+#endif
+#if __has_include("tactics_screens_misc.hpp")
+#include "tactics_screens_misc.hpp"
+#endif
 #include "routine_check.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
 
 namespace cm::aot {
+// Set while a checker child runs original bodies, and for the whole run with
+// CM_TACTICS_ORIGINAL=1 (to compare a build's behaviour without the rewrites).
+bool tactics_declining = std::getenv("CM_TACTICS_ORIGINAL") != nullptr;
 namespace {
 using guest::Cpu;
+bool& declining = tactics_declining;
 [[maybe_unused]] constexpr unsigned NONE = 0, R3 = RoutineChecker::result_r3,
                                     R3_R4 = R3 | RoutineChecker::result_r4, F1 = RoutineChecker::result_f1;
 struct Routine {
@@ -29,9 +59,6 @@ constexpr auto sorted_routines() {
 constexpr auto routines = sorted_routines();
 static_assert(std::ranges::adjacent_find(routines, {}, &Routine::entry) == routines.end(), "a routine is listed twice");
 
-// Set while a checker child runs original bodies, and for the whole run with
-// CM_TACTICS_ORIGINAL=1 (to compare a build's behaviour without the rewrites).
-bool declining = std::getenv("CM_TACTICS_ORIGINAL") != nullptr;
 
 const Routine* listed(std::uint32_t entry) {
     const auto found = std::ranges::lower_bound(routines, entry, {}, &Routine::entry);

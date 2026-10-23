@@ -2,6 +2,7 @@
 #include "match_replay.hpp"
 #include "callbacks.hpp"
 #include "heap_changes.hpp"
+#include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
@@ -307,7 +308,115 @@ ImportContract import_contract(std::string_view name) {
         {"CarbonLib::UpgradeScriptInfoToTextEncoding", {5, 0, false}},
         {"CarbonLib::CreateTextToUnicodeInfoByEncoding", {2, 0, false}},
         {"CarbonLib::DisposeTextToUnicodeInfo", {1, 0, false}},
-        {"CarbonLib::ConvertFromTextToUnicode", {8, 0, false}}};
+        {"CarbonLib::ConvertFromTextToUnicode", {8, 0, false}},
+        // Carbon signatures (integer argument registers), so a rewrite's
+        // leftover volatile registers are not mistaken for arguments.
+        {"CarbonLib::SetCursor", {1, 0, false}},
+        {"CarbonLib::SetCCursor", {1, 0, false}},
+        {"CarbonLib::GetCursor", {1, 0, false}},
+        {"CarbonLib::GetCCursor", {1, 0, false}},
+        {"CarbonLib::DisposeCCursor", {1, 0, false}},
+        {"CarbonLib::InitCursor", {0, 0, false}},
+        {"CarbonLib::SetPort", {1, 0, false}},
+        {"CarbonLib::GetPort", {1, 0, false}},
+        {"CarbonLib::MoveTo", {2, 0, false}},
+        {"CarbonLib::DrawText", {3, 0, false}},
+        {"CarbonLib::TextFont", {1, 0, false}},
+        {"CarbonLib::TextSize", {1, 0, false}},
+        {"CarbonLib::TextWidth", {3, 0, false}},
+        {"CarbonLib::ForeColor", {1, 0, false}},
+        {"CarbonLib::PaintRect", {1, 0, false}},
+        {"CarbonLib::InsetRect", {3, 0, false}},
+        {"CarbonLib::SetRect", {5, 0, false}},
+        {"CarbonLib::PtInRect", {2, 0, false}},
+        {"CarbonLib::PtInRgn", {2, 0, false}},
+        {"CarbonLib::PinRect", {2, 0, false}},
+        {"CarbonLib::SetPt", {3, 0, false}},
+        {"CarbonLib::LocalToGlobal", {1, 0, false}},
+        {"CarbonLib::GetFontInfo", {1, 0, false}},
+        {"CarbonLib::CopyBits", {6, 0, false}},
+        {"CarbonLib::GetPortBitMapForCopyBits", {1, 0, false}},
+        {"CarbonLib::GetPortPixMap", {1, 0, false}},
+        {"CarbonLib::GetPixBaseAddr", {1, 0, false}},
+        {"CarbonLib::LockPixels", {1, 0, false}},
+        {"CarbonLib::NewGWorld", {6, 0, false}},
+        {"CarbonLib::DisposeGWorld", {1, 0, false}},
+        {"CarbonLib::QDFlushPortBuffer", {2, 0, false}},
+        {"CarbonLib::GetWindowPort", {1, 0, false}},
+        {"CarbonLib::GetWindowBounds", {3, 0, false}},
+        {"CarbonLib::GetRegionBounds", {2, 0, false}},
+        {"CarbonLib::NewRgn", {0, 0, false}},
+        {"CarbonLib::DisposeRgn", {1, 0, false}},
+        {"CarbonLib::GetGrayRgn", {0, 0, false}},
+        {"CarbonLib::GetMainDevice", {0, 0, false}},
+        {"CarbonLib::GetMaxDevice", {1, 0, false}},
+        {"CarbonLib::SetFractEnable", {1, 0, false}},
+        {"CarbonLib::FMGetFontFamilyFromName", {1, 0, false}},
+        {"CarbonLib::SelectWindow", {1, 0, false}},
+        {"CarbonLib::BringToFront", {1, 0, false}},
+        {"CarbonLib::ShowWindow", {1, 0, false}},
+        {"CarbonLib::DisposeWindow", {1, 0, false}},
+        {"CarbonLib::DragWindow", {3, 0, false}},
+        {"CarbonLib::TrackGoAway", {2, 0, false}},
+        {"CarbonLib::FindWindow", {2, 0, false}},
+        {"CarbonLib::Button", {0, 0, false}},
+        {"CarbonLib::GetMouse", {1, 0, false}},
+        {"CarbonLib::GetKeys", {1, 0, false}},
+        {"CarbonLib::WaitNextEvent", {4, 0, false}},
+        {"CarbonLib::FlushEvents", {2, 0, false}},
+        {"CarbonLib::Microseconds", {1, 0, false}},
+        {"CarbonLib::GetDateTime", {1, 0, false}},
+        {"CarbonLib::MenuSelect", {1, 0, false}},
+        {"CarbonLib::MenuKey", {1, 0, false}},
+        {"CarbonLib::HiliteMenu", {1, 0, false}},
+        {"CarbonLib::GetMenuHandle", {1, 0, false}},
+        {"CarbonLib::GetMenu", {1, 0, false}},
+        {"CarbonLib::InvalMenuBar", {0, 0, false}},
+        {"CarbonLib::EnableMenuItem", {2, 0, false}},
+        {"CarbonLib::DisableMenuItem", {2, 0, false}},
+        {"CarbonLib::GetMenuItemText", {3, 0, false}},
+        {"CarbonLib::SetMenuItemText", {3, 0, false}},
+        {"CarbonLib::CountMenuItems", {1, 0, false}},
+        {"CarbonLib::DeleteMenuItem", {2, 0, false}},
+        {"CarbonLib::ModalDialog", {2, 0, false}},
+        {"CarbonLib::GetNewDialog", {3, 0, false}},
+        {"CarbonLib::DisposeDialog", {1, 0, false}},
+        {"CarbonLib::GetDialogWindow", {1, 0, false}},
+        {"CarbonLib::NewHandle", {1, 0, false}},
+        {"CarbonLib::DisposeHandle", {1, 0, false}},
+        {"CarbonLib::GetHandleSize", {1, 0, false}},
+        {"CarbonLib::HLock", {1, 0, false}},
+        {"CarbonLib::FreeMem", {0, 0, false}},
+        {"CarbonLib::UppercaseText", {3, 0, false}},
+        {"CarbonLib::EqualString", {4, 0, false}},
+        {"CarbonLib::GetResource", {2, 0, false}},
+        {"CarbonLib::Get1Resource", {2, 0, false}},
+        {"CarbonLib::Get1IndResource", {2, 0, false}},
+        {"CarbonLib::ReleaseResource", {1, 0, false}},
+        {"CarbonLib::DetachResource", {1, 0, false}},
+        {"CarbonLib::GetIndString", {3, 0, false}},
+        {"CarbonLib::Count1Resources", {1, 0, false}},
+        {"CarbonLib::UseResFile", {1, 0, false}},
+        {"CarbonLib::CurResFile", {0, 0, false}},
+        {"CarbonLib::SetResLoad", {1, 0, false}},
+        {"CarbonLib::SndDoCommand", {3, 0, false}},
+        {"CarbonLib::SndDoImmediate", {2, 0, false}},
+        {"CarbonLib::PBCloseSync", {1, 0, false}},
+        {"CarbonLib::PBGetCatInfoSync", {1, 0, false}},
+        {"CarbonLib::PBGetEOFSync", {1, 0, false}},
+        {"CarbonLib::PBHCreateSync", {1, 0, false}},
+        {"CarbonLib::PBHDeleteSync", {1, 0, false}},
+        {"CarbonLib::PBHGetFInfoSync", {1, 0, false}},
+        {"CarbonLib::PBHGetVInfoSync", {1, 0, false}},
+        {"CarbonLib::PBHGetVolParmsSync", {1, 0, false}},
+        {"CarbonLib::PBHOpenDFSync", {1, 0, false}},
+        {"CarbonLib::PBHRenameSync", {1, 0, false}},
+        {"CarbonLib::PBReadSync", {1, 0, false}},
+        {"CarbonLib::PBSetCatInfoSync", {1, 0, false}},
+        {"CarbonLib::PBSetEOFSync", {1, 0, false}},
+        {"CarbonLib::PBSetFPosSync", {1, 0, false}},
+        {"CarbonLib::PBWriteSync", {1, 0, false}},
+        {"CarbonLib::PBSetForkSizeSync", {1, 0, false}}};
     const auto found = known.find(name);
     return found == known.end() ? ImportContract{8, 13, false} : found->second;
 }
@@ -392,13 +501,18 @@ struct Recorder final : MemoryObserver {
     bool finished = false;
     Registers base{};
     std::vector<HeapChange> heap_log;
-    Recorder(State& s, const std::filesystem::path& path, unsigned count)
+    // A session capture (between two automation requests) watches memory
+    // from the date_observer slot, so the app's drawing observer keeps
+    // memory.observer, which the drawing code requires.
+    bool session = false;
+    Recorder(State& s, const std::filesystem::path& path, unsigned count, bool session_capture = false)
         : owner(&s), directory(path), stream(path / "imports.gz", true), initial_date(date(s)), days(count),
-          rng_fields{pointer(s, 0x108b3f00), pointer(s, 0x108b3f0c)} {
+          rng_fields{pointer(s, 0x108b3f00), pointer(s, 0x108b3f0c)}, session(session_capture) {
         stream.put(magic_v2);
         save_runtime_snapshot(s, path / "initial.snapshot");
         std::ofstream report(path / "capture.txt");
-        report << "format=CM DAY 002\nstatus=recording\ndays=" << days << '\n' << season_state_summary(s) << '\n';
+        report << "format=CM DAY 002\nstatus=recording\ndays=" << days << '\n' << (session ? "session=1\n" : "")
+               << season_state_summary(s) << '\n';
         if (!report) throw std::runtime_error("Cannot write private season capture metadata");
     }
     void mapped(std::uint32_t start, std::uint64_t size) override {
@@ -426,6 +540,12 @@ struct Recorder final : MemoryObserver {
     }
 };
 std::unique_ptr<Recorder> recorder;
+// Session captures: requested by the automation channel, started at the end
+// of the next import and finished at the beginning of the next OS import
+// after the stop request, so a replay ends where its transcript does.
+std::optional<std::filesystem::path> session_start;
+bool session_stop = false;
+bool session_replay = false;
 std::unique_ptr<Stream> replay;
 unsigned replay_depth = 0;
 std::optional<Event> next_event(std::optional<Input>& input);
@@ -469,6 +589,7 @@ std::string byte_difference(const std::string& field, std::uint64_t address, uns
 }
 }
 void season_day_boundary(State& s, std::uint32_t pc) {
+    if (session_replay || (recorder && recorder->session)) return;
     if (!replay && !enabled()) return;
     if (pc != day_pc) throw std::runtime_error("Invalid season reference boundary");
     if (date(s)[2] != 0) return; // Three original phases; capture morning to morning.
@@ -525,17 +646,57 @@ void season_day_boundary(State& s, std::uint32_t pc) {
         }
     }
 }
+namespace {
+// A session capture that cannot go on (a full disk, a request inside a modal
+// callback) is dropped with a message; the game itself continues.
+void abandon_session(State& s, const char* why) {
+    std::fprintf(stderr, "Session capture abandoned: %s\n", why);
+    if (s.memory.date_observer == recorder.get()) s.memory.date_observer = nullptr;
+    recorder.reset();
+    session_stop = false;
+    heap_changes = nullptr;
+}
+}
 void season_record_import_begin(State& s) {
     if (!recorder || recorder->finished || recorder->owner != &s) return;
+    if (recorder->session && session_stop && !recorder->native_depth && recorder->callback_depths.empty()) {
+        if (const char* name = import_name(s.pc); name && !pure_import(name)) {
+            // The replay stops when it reaches this call with its transcript at an end.
+            try {
+                recorder->stream.finish(); recorder->finished = true;
+                s.memory.date_observer = nullptr;
+                save_runtime_snapshot(s, recorder->directory / "expected.snapshot");
+                std::ofstream report(recorder->directory / "capture.txt", std::ios::app);
+                report << "status=complete\nscope=session ending before " << name << '\n' << season_state_summary(s) << '\n';
+                if (!report) throw std::runtime_error("Cannot finalize private session capture metadata");
+                recorder.reset();
+                session_stop = false;
+            } catch (const std::exception& error) { abandon_session(s, error.what()); }
+            return;
+        }
+    }
     recorder->stream.put(Event::import); put_input(recorder->stream, recorder->base, s);
-    ++recorder->native_depth; s.memory.observer = recorder.get();
+    ++recorder->native_depth;
+    if (!recorder->session) s.memory.observer = recorder.get();
     if (recorder->native_depth == 1 && !recorder->heap_log.empty())
         throw std::runtime_error("Season recorder lost the end of an earlier import");
     heap_changes = &recorder->heap_log; heap_changes_owner = &s;
 }
-void season_record_import_end(State& s) {
+void season_record_import_end(State& s, const char* name) {
+    // A session starts where the automation request arrived: at the end of
+    // the main loop's WaitNextEvent, outside any import or callback.
+    if (session_start && (!recorder || recorder->finished) && !replay && name && std::string_view(name) == "CarbonLib::WaitNextEvent") {
+        const auto directory = *session_start;
+        session_start.reset();
+        if (s.memory.date_observer) { std::fprintf(stderr, "Session capture refused: date diagnostics are attached\n"); return; }
+        try { recorder = std::make_unique<Recorder>(s, directory, 0, true); }
+        catch (const std::exception& error) { abandon_session(s, error.what()); return; }
+        s.memory.date_observer = recorder.get();
+        return;
+    }
     if (!recorder || recorder->finished || recorder->owner != &s) return;
     put_chunk(recorder->stream, recorder->base, s, recorder->heap_log); recorder->stream.put(Event::import_end);
+    if (!recorder->native_depth && recorder->session) { abandon_session(s, "it started inside an import"); return; }
     if (!recorder->native_depth) throw std::runtime_error("Invalid season import nesting");
     --recorder->native_depth;
     heap_changes = nullptr;
@@ -553,11 +714,13 @@ void season_record_callback_begin(State& s, std::uint32_t vector, std::span<cons
 }
 void season_record_callback_end(State& s, std::uint32_t result) {
     if (!recorder || recorder->finished || recorder->owner != &s) return;
+    if (recorder->callback_depths.empty() && recorder->session) { abandon_session(s, "it started inside a callback"); return; }
     if (recorder->callback_depths.empty()) throw std::runtime_error("Invalid season callback nesting");
     const auto depth = recorder->callback_depths.back(); recorder->callback_depths.pop_back();
     if (!depth) return;
     recorder->stream.put(Event::callback_end); recorder->stream.put(result);
-    recorder->native_depth = depth; s.memory.observer = recorder.get();
+    recorder->native_depth = depth;
+    if (!recorder->session) s.memory.observer = recorder.get();
     heap_changes = &recorder->heap_log; heap_changes_owner = &s;
 }
 void open_season_replay(const std::filesystem::path& directory, bool semantic_calendar) {
@@ -583,10 +746,35 @@ void open_timing_replay(const std::filesystem::path& directory) {
     open_operation_replay(directory);
     rng_checks = false;
 }
+std::string season_session_request(const std::optional<std::filesystem::path>& directory) {
+    if (directory) {
+        if ((recorder && !recorder->finished) || session_start) throw std::runtime_error("a capture is already recording");
+        if (!directory->is_absolute()) throw std::runtime_error("a session capture needs an absolute directory");
+        std::filesystem::create_directories(*directory);
+        if (!std::filesystem::is_empty(*directory)) throw std::runtime_error("the session capture directory is not empty");
+        session_start = *directory;
+        return "recording from the end of this event call into " + directory->string();
+    }
+    if (!recorder || !recorder->session) throw std::runtime_error("no session capture is recording");
+    session_stop = true;
+    return "stopping at the next OS import";
+}
+void open_session_replay(const std::filesystem::path& directory, bool timing) {
+    if (timing) open_timing_replay(directory); else open_operation_replay(directory);
+    session_replay = true;
+}
+void begin_session_replay(State& s) {
+    // Sessions have no day boundary, where season replays attach the RNG
+    // check: attach it before the first instruction.
+    if (!session_replay || !rng_checks) return;
+    replay_observer = std::make_unique<ReplayObserver>(s);
+    s.memory.observer = replay_observer.get();
+}
 void season_replay_after_fork() {
     if (replay) replay->detach_after_fork();
 }
 void close_season_replay() {
+    session_replay = false;
     semantic_calendar_replay = live_pure_imports = false; rng_checks = true; recorded_allocator.reset();
     replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset();
 }
@@ -642,6 +830,7 @@ bool season_replay_import(State& s, const char* name) {
     if (live_pure_imports && pure_import(name)) return false;
     s.memory.observer = nullptr;
     const auto input = next_recorded_import();
+    if (!input && session_replay) { s.memory.observer = nullptr; throw SeasonReplayComplete{}; }
     if (!input) throw std::runtime_error(std::string("First divergence: ") + name + " called after the transcript ends");
     check_input(*input, s, name);
     if (live_pure_imports && rng_checks && recorded_allocator && !recorded_allocator->matches(s))

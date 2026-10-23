@@ -303,6 +303,15 @@ add_test(NAME tactics_routines_day
 add_test(NAME tactics_routines_detect_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/season-day" 1 --timing --check-routines-corrupted 100 1000)
 set_tests_properties(tactics_routines_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
+# Session captures of the tactics screens and of a career load and save
+# (automation "capture start/stop"): each must reach its recorded end state,
+# and the C++ tactics routines must match their originals at their calls.
+foreach(session tactics-views tactics-players tactics-presets tactics-instructions tactics-files game-load game-save)
+    string(REPLACE "-" "_" name "${session}")
+    add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
+endforeach()
+add_test(NAME tactics_routines_ui
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-players" 1 --check-routines 200 50)
 # Generated pages must isolate every instruction that host code or checks
 # watch by exact PC (tools/compile_recomp.py scans native/ for them).
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

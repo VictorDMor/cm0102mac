@@ -97,7 +97,7 @@ def rewritten(path=ROOT / "native" / "tactics_routines.inc", drafts=False):
     """(entry, end, digest) of each routine whose C++ is verified and hooked
     (TACTICS_ROUTINE), with drafts also the TACTICS_DRAFT ones check tools run."""
     text = path.read_text()
-    text += "".join((path.parent / name).read_text() for name in INCLUDE.findall(text))
+    text += "".join((path.parent / name).read_text() for name in INCLUDE.findall(text) if (path.parent / name).exists())
     found = sorted((int(entry, 16), int(end, 16), digest) for stage, entry, end, _, digest in ROUTINE.findall(text)
                    if drafts or stage == "ROUTINE")
     bounds = dict(ROUTINES)
@@ -110,6 +110,8 @@ def rewritten(path=ROOT / "native" / "tactics_routines.inc", drafts=False):
 
 
 TACTICS_ENTRIES = tuple(entry for entry, _, _ in rewritten())
+# Leaves the generator calls in line as C++ (tools/compile_recomp.py CPP_LEAVES).
+TACTICS_LEAVES = tuple(entry for entry, _, _ in rewritten(ROOT / "native" / "tactics_routines_leaves.inc"))
 
 
 def digest(records):
@@ -143,9 +145,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("entries", nargs="*", help="routines to print (default: all)")
     parser.add_argument("--export", type=Path, default=ROOT / ".local/current/export")
-    parser.add_argument("--entries", action="store_true", help="print every entry alone (for cm-world-replay --census)")
+    parser.add_argument("--entries", dest="list_entries", action="store_true",
+                        help="print every entry alone (for cm-world-replay --census)")
     args = parser.parse_args()
-    if args.entries:
+    if args.list_entries:
         for entry, _ in ROUTINES:
             print(f"0x{entry:x}")
         return

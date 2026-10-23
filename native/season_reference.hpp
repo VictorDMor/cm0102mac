@@ -1,13 +1,15 @@
 #pragma once
 #include "aot_runtime.hpp"
+#include <optional>
 #include <span>
+#include <string>
 
 namespace cm::aot {
 // Private, versioned diagnostic fixtures; never part of the game's save format.
 struct SeasonReplayComplete {};
 void season_day_boundary(State& state, std::uint32_t pc);
 void season_record_import_begin(State& state);
-void season_record_import_end(State& state);
+void season_record_import_end(State& state, const char* name = nullptr);
 void season_record_callback_begin(State& state, std::uint32_t vector,
                                   std::span<const std::uint32_t> arguments);
 void season_record_callback_end(State& state, std::uint32_t result);
@@ -28,6 +30,15 @@ void seed_season_replay(const State& initial);
 // The caller's end-state check still applies.
 void open_timing_replay(const std::filesystem::path& directory);
 void close_season_replay();
+// Session captures for the automation channel: a directory starts recording
+// at the end of the next import; nullopt stops at the next OS import. Returns
+// a status line; throws when the request cannot be taken.
+std::string season_session_request(const std::optional<std::filesystem::path>& directory);
+// Replays a session capture: ends with SeasonReplayComplete at the OS import
+// the capture stopped before.
+void open_session_replay(const std::filesystem::path& directory, bool timing);
+// After seed_season_replay, on the State that runs the session.
+void begin_session_replay(State& state);
 // In a forked child (native/routine_check.cpp): read the transcript through a
 // file offset of its own.
 void season_replay_after_fork();

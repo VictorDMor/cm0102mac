@@ -125,6 +125,12 @@ AutomationRequest parse(std::uint64_t sequence, const std::string& line) {
         input >> action >> request.name;
         if (action == "start" && request.name.empty()) {}
         else if (action != "stop" || !valid_name(request.name)) throw std::runtime_error("profile needs start, or stop and a short lowercase name");
+    } else if (verb == "capture") {
+        request.kind = AutomationRequest::Kind::capture;
+        std::string action;
+        input >> action >> request.name;
+        if (action == "stop" && request.name.empty()) {}
+        else if (action != "start" || !valid_name(request.name)) throw std::runtime_error("capture needs start and a short lowercase name, or stop");
     } else if (verb == "memory") {
         request.kind = AutomationRequest::Kind::memory;
         std::string address, size;

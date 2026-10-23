@@ -262,6 +262,14 @@ and the last busy period. Requests never carry screen positions, and with
 `profile stop NAME` sample the guest PC in the running game (the SIGPROF
 sampler `cm-world-replay --profile` uses) for `tools/guest_profile.py`.
 
+`capture start NAME` and `capture stop` record a session for `cm-world-replay`
+(`<run>/Automation/captures/NAME`): the initial state at the end of the
+`WaitNextEvent` call that took the request, every import's inputs and effects,
+and the end state at the first OS import after the stop request. A replay ends
+there when its transcript runs out, and checks the end state. The recorder
+watches memory from the `date_observer` slot, since the drawing observer needs
+`memory.observer`; a capture that cannot continue is dropped with a message.
+
 The original main loop calls `WaitNextEvent` with a sleep of 0, about 10,000
 times a second, even on an idle screen (100% of one core). A load also runs
 from that loop under the start screen's handler. So "ready" means an

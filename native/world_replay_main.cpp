@@ -258,7 +258,10 @@ int main(int argc, char** argv) {
         // A sort capture starts at its routine's entry rather than its saved PC.
         if (const auto entry = capture_field(capture, "entry")) initial->pc = std::uint32_t(std::stoul(*entry, nullptr, 16));
         const auto days = capture_field(capture, "days");
-        const bool season = days && std::stoul(*days) > 0;
+        // A session capture (automation "capture start/stop") ends where its
+        // transcript does; a season capture at its final day boundary.
+        const bool session = capture_field(capture, "session") == "1";
+        const bool season = (days && std::stoul(*days) > 0) || session;
         if (season && !std::filesystem::exists(capture / "imports.gz"))
             throw std::runtime_error("A season capture needs its imports.gz transcript");
         if (flip) initial->memory.write<1>(*flip, initial->memory.read<1>(*flip) ^ 0xff);
@@ -268,8 +271,10 @@ int main(int argc, char** argv) {
             auto state = cm::semantic_io_checks::clone(*initial);
             state->budget = UINT64_MAX;
             if (transcript) {
-                if (timing) open_timing_replay(capture); else open_operation_replay(capture);
+                if (session) open_session_replay(capture, timing);
+                else if (timing) open_timing_replay(capture); else open_operation_replay(capture);
                 seed_season_replay(*state);
+                if (session) begin_session_replay(*state);
             }
             std::optional<StackAudit> audit;
             if (stack_audit) {
@@ -283,7 +288,7 @@ int main(int argc, char** argv) {
             if (season) {
                 bool complete = false;
                 try { cm::aot::run(*state); } catch (const SeasonReplayComplete&) { complete = true; }
-                if (!complete) throw std::runtime_error("The season replay ended before its final day boundary");
+                if (!complete) throw std::runtime_error("The replay ended before the end of its capture");
             } else {
                 run_until(*state, expected->pc);
             }

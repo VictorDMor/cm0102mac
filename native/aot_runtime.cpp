@@ -197,7 +197,7 @@ template <bool Probe> void dispatch_until(State& s, std::uint32_t return_pc) {
                 (s.code_fragment_observer && s.code_fragment_observer->import_fixture(s, name)) ||
                 (s.cpp_object_storage_observer && s.cpp_object_storage_observer->import_fixture(s, name)) ||
                 (s.exception_runtime_observer && s.exception_runtime_observer->import_fixture(s, name)) || bridge_import_name(s, name)) {
-                season_record_import_end(s);
+                season_record_import_end(s, name);
                 if (trace) std::fprintf(stderr, "%s returned r3=%08x\n", name, unsigned(s.r<4>(12)));
                 ++s.native_calls;
                 if (s.allocator_observer) s.allocator_observer->import_leave(s, name);

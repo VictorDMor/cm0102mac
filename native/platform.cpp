@@ -19,6 +19,7 @@
 #include "sound_bridge.hpp"
 #include "performance_trace.hpp"
 #include "automation.hpp"
+#include "season_reference.hpp"
 #include "guest_profiler.hpp"
 #include <fstream>
 #include <bit>
@@ -595,6 +596,10 @@ struct NativePlatform::Impl {
                                 result = std::to_string(guest_profiler::write(path)) + " samples in " + path.string();
                                 guest_profiler::release();
                             }
+                        } else if (request->kind == Kind::capture) {
+                            // Recorded from the end of this event call; replay with cm-world-replay.
+                            result = request->name.empty() ? season_session_request(std::nullopt)
+                                : season_session_request(std::filesystem::absolute(automation->output("captures", request->name)));
                         } else {
                             const auto bytes = s.memory.copy_out(request->address, request->size);
                             const auto path = automation->output("memory", request->name + ".bin");

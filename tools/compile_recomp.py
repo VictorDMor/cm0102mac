@@ -193,7 +193,7 @@ from shortlist_policy_audit import (require_shortlist_policy_contract, require_s
     require_shortlist_policy_hooks, shortlist_policy_hook, SHORTLIST_POLICY_ENTRIES)
 from profile_qualification_audit import (require_profile_qualification_contract, require_profile_qualification_index,
     require_profile_qualification_hooks, profile_qualification_hook, PROFILE_QUALIFICATION_ENTRIES)
-from tactics_audit import TACTICS_ENTRIES, require_tactics_index, tactics_hook
+from tactics_audit import TACTICS_ENTRIES, TACTICS_LEAVES, require_tactics_index, tactics_hook
 from contract_draft_audit import (require_contract_draft_contract, require_contract_draft_index,
     require_contract_draft_hooks, contract_draft_hook, CONTRACT_DRAFT_ENTRIES)
 from contract_display_audit import (require_contract_display_contract, require_contract_display_index,
@@ -339,8 +339,7 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "actor_effects_adapter") for entry in ACTOR_EFFECTS_ENTRIES) +
     tuple((entry, "target_acceptance_adapter") for entry in TARGET_ACCEPTANCE_ENTRIES) +
     tuple((entry, "actor_action_adapter") for entry in ACTOR_ACTION_ENTRIES) +
-    tuple((entry, "actor_policy_adapter") for entry in ACTOR_POLICY_ENTRIES) +
-    tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES))
+    tuple((entry, "actor_policy_adapter") for entry in ACTOR_POLICY_ENTRIES))
 
 
 def require_unique_semantic_replacements(replacements):
@@ -352,6 +351,15 @@ def require_unique_semantic_replacements(replacements):
 
 
 require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+# The tactics family (native/tactics_routines*.inc) takes its routines over
+# from the builder owners that had them (0x10113e10 from match_target).
+# Generation uses OWNER_REPLACEMENTS; SEMANTIC_REPLACEMENTS stays the older
+# families' list that their audits pin.
+OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLACEMENTS if entry not in TACTICS_ENTRIES) +
+                      tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES))
+require_unique_semantic_replacements(OWNER_REPLACEMENTS)
+SEMANTIC_OWNERS = dict(OWNER_REPLACEMENTS)
+CPP_LEAVES = frozenset(TACTICS_LEAVES)
 
 
 def integer(value):
@@ -646,7 +654,7 @@ def render_watched_routines(call_targets, watched=None):
     every owner entry between the two."""
     watched = observed_instructions(checks=False) if watched is None else watched
     starts = sorted(call_targets)
-    owners = sorted({entry for entry, _ in SEMANTIC_REPLACEMENTS})
+    owners = sorted({entry for entry, _ in OWNER_REPLACEMENTS})
     marked = set()
     for address in watched:
         start = bisect.bisect_right(starts, address)
@@ -734,13 +742,13 @@ def owners_counting_declines(native=Path(__file__).resolve().parent.parent / "na
 def direct_owner_entries():
     """Owner entry -> family, for owners generated code may call in place."""
     counts = defaultdict(int)
-    for entry, _ in SEMANTIC_REPLACEMENTS:
+    for entry, _ in OWNER_REPLACEMENTS:
         counts[entry] += 1
     other = (set(SPECIAL_LOWERINGS) | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
              set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) |
              set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} |
              set(observed_instructions(checks=True)))
-    return {entry: module.removesuffix("_adapter") for entry, module in SEMANTIC_REPLACEMENTS
+    return {entry: module.removesuffix("_adapter") for entry, module in OWNER_REPLACEMENTS
             if module.endswith("_adapter") and module not in NONSTANDARD_OWNER_MODULES and counts[entry] == 1
             and entry not in other and module.removesuffix("_adapter") not in owners_counting_declines()}
 
@@ -794,7 +802,7 @@ def division_blocked_addresses():
     """Instructions whose state the game's host code may read, or that lower
     specially. Checks may stop at any of them: they compare against the same
     generated code."""
-    return frozenset(observed_instructions(checks=False) | set(dict(SEMANTIC_REPLACEMENTS)) |
+    return frozenset(observed_instructions(checks=False) | set(SEMANTIC_OWNERS) |
                      set(CAPTURE_OBSERVATIONS) | set(NATIVE_DRAWING_BOUNDARIES) | SPECIAL_LOWERINGS)
 
 
@@ -912,6 +920,11 @@ INLINE_OWNER_MODULES = frozenset({
 # run_until still enters these owners' hooks for their leaves: host code (the
 # Match Debugger's lineup edits) relies on them seeing direct calls.
 RUN_LEAF_EXCLUDED_OWNERS = frozenset({"match_actor_adapter"})
+# Leaves rewritten in C++ (CPP_LEAVES, native/tactics_routines_leaves.inc): a
+# direct call site calls the inline tactics_leaf_<entry> (native/
+# tactics_leaves.hpp) and runs the original instructions only when it
+# declines (CM_TACTICS_ORIGINAL, checker references); run_until leaves those
+# entries to the dispatcher, whose page hook runs the same C++.
 INLINE_LEAF_LIMIT = 6
 LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CALLIND", "RETURN")
 
@@ -927,7 +940,7 @@ OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;
 
 def inline_leaves(db, divisions=frozenset()):
     """Call target -> instruction records of an inlinable leaf, before its blr."""
-    owners = dict(SEMANTIC_REPLACEMENTS)
+    owners = SEMANTIC_OWNERS
     host_observed = observed_instructions(checks=False)
     special = (SPECIAL_LOWERINGS | divisions | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
                set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) | set(CAPTURE_OBSERVATIONS))
@@ -945,7 +958,7 @@ def inline_leaves(db, divisions=frozenset()):
         for expected, record in zip(range(target, target + 4 * INLINE_LEAF_LIMIT, 4), records):
             address = record["address"]
             if address != expected or address in host_observed or address in special or \
-                    (address in owners and owners[address] not in INLINE_OWNER_MODULES):
+                    (address in owners and owners[address] not in INLINE_OWNER_MODULES and address not in CPP_LEAVES):
                 break
             if record["assembly"] == "blr":
                 leaves[target] = body
@@ -975,9 +988,10 @@ def leaf_body(records, userops, local_temporaries=True):
 
 
 def render_leaves(leaves, userops):
-    owners = dict(SEMANTIC_REPLACEMENTS)
+    owners = SEMANTIC_OWNERS
     leaves = {target: body for target, body in leaves.items()
-              if not any(owners.get(target + 4 * n) in RUN_LEAF_EXCLUDED_OWNERS for n in range(len(body) + 1))}
+              if target not in CPP_LEAVES and
+              not any(owners.get(target + 4 * n) in RUN_LEAF_EXCLUDED_OWNERS for n in range(len(body) + 1))}
     """run_leaf: runs the leaf at the PC exactly as its page would (its run's
     step and charge, then blr), without a dispatcher scope; run_until uses it
     for calls from C++ owners. Faults and budget stops are the page's."""
@@ -1104,6 +1118,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   direct_owner_calls=None):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
+    cpp_leaves = False
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -1803,7 +1818,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             # Only an allowed owner's own hook may sit on an inlined leaf.
             owner_hooks = [OWNER_HOOK.fullmatch(line) for line in code[hooks_start:]]
             if a in CAPTURE_OBSERVATIONS or not all(
-                    match and f"{match.group(1)}_adapter" in INLINE_OWNER_MODULES for match in owner_hooks):
+                    match and (f"{match.group(1)}_adapter" in INLINE_OWNER_MODULES or a in CPP_LEAVES) for match in owner_hooks):
                 special.add(a)
         if match_hot_page:
             # The Turbo counter holds the count locally; see turbo_pages.py.
@@ -1870,8 +1885,13 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             # The bl's own effects (TOC save, link), then the leaf's body.
             for op in item["ops"][:2]:
                 code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
+            if tactics_hooks and target in CPP_LEAVES:
+                code.append(f"if (!tactics_leaf_{target:x}(s)) {{ // C++ leaf; the original when it declines")
+                cpp_leaves = True
             code.extend(leaf_body(leaves[target], userops, local_temporaries))
             code.append(f"{'counter' if match_hot_page else 's'}.charge({len(leaves[target]) + 1}); // inlined leaf 0x{target:x}")
+            if tactics_hooks and target in CPP_LEAVES:
+                code.append("}")
             code.append(transfer(a + item["size"], transfer_page, selected))
             inlining.inlined[target] = [r["address"] for r in leaves[target]] + [target + 4 * len(leaves[target])]
             continue
@@ -1964,6 +1984,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     code.append("}")
     for family in sorted(called_families):
         code.insert(1, f'#include "{family}_adapter.hpp"')
+    if cpp_leaves:
+        code.insert(1, '#include "tactics_leaves.hpp"')
     if called_families:
         code.insert(1, '#include "direct_owner_call.hpp"')
     result = "\n".join(code) + "\n"
@@ -2479,7 +2501,7 @@ def main():
                 "allAnalyzedInstructions": args.all_analyzed,
                 "instructionLocalTemporaries": not args.legacy_unique_storage,
                 "semanticReplacements": [{"entry": f"0x{entry:x}", "module": module}
-                                         for entry, module in SEMANTIC_REPLACEMENTS
+                                         for entry, module in OWNER_REPLACEMENTS
                                          if (args.all_analyzed and entry >> 12 in pages) or entry in selected],
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}
