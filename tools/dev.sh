@@ -97,6 +97,10 @@ generate)
     rm -f "$stamp"
     ;;
 build)
+    # One build at a time in the shared build directory (parallel authors):
+    # an exclusive lock on fd 9, held until this script exits.
+    exec 9>"$build/.dev-build.lock"
+    perl -e 'use Fcntl ":flock"; open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
     if [[ $# -eq 0 ]]; then
         targets=()
         while read -r target; do targets+=("$target"); done < <(default_targets)

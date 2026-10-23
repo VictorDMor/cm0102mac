@@ -28,6 +28,9 @@ void seed_season_replay(const State& initial);
 // The caller's end-state check still applies.
 void open_timing_replay(const std::filesystem::path& directory);
 void close_season_replay();
+// In a forked child (native/routine_check.cpp): read the transcript through a
+// file offset of its own.
+void season_replay_after_fork();
 // Direct dependency fixtures can end after the last import, without a day
 // boundary. Require physical EOF/checksum before closing those short fixtures.
 void require_season_replay_eof();

@@ -49,6 +49,43 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
 
+## Now: the tactics system in C++23 (goal set 2026-10-23)
+
+Finish line: every routine of the original's `FORMATION.CPP`, `TACTICS.CPP` and
+`TACTICS_SCREENS.CPP` (234 routines, 43,152 instructions; `tools/tactics_audit.py`)
+runs as hand-written C++ in production, each checked against the generated
+reference on captured calls and by end-to-end replays, suite passing, one
+reviewed commit per block. Method: docs/cpp-rewrites.md.
+
+- `FORMATION.CPP` 0x10110c80-0x10118ec0 (47): formation record (0x18e0 bytes),
+  positions, zones, shape code, staff slots, instruction bits (+0x1888), `.tct`
+  files. Called by the match engine, recruitment (0x10117490, 29 callers), screens.
+- `TACTICS.CPP` 0x103acf80-0x103b3830 (30): CTACTICS, per-team records (0x94
+  bytes at +0x5c4), set pieces, captain, presets, `tactics.dat`, AI choices.
+- `TACTICS_SCREENS.CPP` 0x103b3830-0x103cf5f0 (157): the tactics, team
+  instructions and penalty-taker screens.
+- The 26-country day reaches 33 routines (`.local/tactics/census-day.txt`); the
+  rest need session captures of the screens and file dialogs.
+
+- [x] Inventory and pins: `tools/tactics_audit.py`, `native/tactics_routines*.inc`
+      (TACTICS_ROUTINE hooked, TACTICS_DRAFT check tools only).
+- [x] Guest ABI layer (`native/guest_abi.hpp`), `tools/call_registers.py`.
+- [x] Fork-based routine checker (`cm-world-replay --check-routines`, `--only`,
+      `--census`), with a negative control test.
+- [ ] Session captures: automation `capture start NAME` / `capture stop`, replayed
+      by `cm-world-replay`.
+- [x] FORMATION.CPP, first 9: 6 verified on the day capture; 0x10111840,
+      0x10114ba0, 0x101171b0 are drafts until a capture reaches them.
+- [ ] C++ leaves in the generator (0x10113e10, 0x101149f0 and the screens' 1-4
+      instruction routines are inlined at call sites as original code today).
+- [ ] FORMATION.CPP: positions/zones, record/instructions, files.
+- [ ] TACTICS.CPP: accessors and AI (day capture), presets and init.
+- [ ] A tactics-screen session capture (load a career, open tactics, change
+      formation, instructions, set pieces, save/load/preset formations).
+- [ ] TACTICS_SCREENS.CPP blocks.
+- [ ] Take over 0x10113e10 (match_target) and 0x10117360/0x10117490
+      (profile_qualification) from their builder owners.
+
 ## Next: native lowering (decided 2026-10-22)
 
 Victor's target: identical in-game results (same RNG seeds and draws) and the highest speed possible, well beyond 10x; the code may differ completely. The generated pages emulate the PowerPC: registers live in `State::registers`, a byte array the compiler must reload after every guest-memory store (both are `uint8_t`, so they may alias); every access is bounds-checked; every run is counted; every call goes through `run_until`/`dispatch_page`. Lowering each routine to a C++ function removes that:
@@ -107,5 +144,5 @@ From the 2026-10-20 review. Estimates are unmeasured.
 
 ## Known test state
 
-- `tools/dev.sh test`: 76 runnable tests, all passing (2026-10-22). `match_engine_live_equivalence` and most others lack a built binary or inputs.
+- `tools/dev.sh test`: 87 runnable tests (2026-10-23). Known failure: `match_debugger_actual_lineup` since ed7749e (it requires the `match_actor` owner's call count, and production pages now run that family's generated code); fails with and without the tactics rewrites. `match_engine_live_equivalence` and most others lack a built binary or inputs.
 - Python audits: every `tools/test_*.py` passes against `.local/current/export`; `test_generated_temporaries.py` (needs a build dir) not run.

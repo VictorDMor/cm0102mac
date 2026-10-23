@@ -12,6 +12,7 @@
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
 #include "season_reference.hpp"
+#include "routine_check.hpp"
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -160,10 +161,11 @@ std::vector<std::pair<std::uint32_t, std::uint64_t>> Memory::mapped_ranges() con
 }
 // Generated with import_name: the range of the import stubs.
 extern const std::uint32_t import_stubs_begin, import_stubs_end;
-void run_until(State& s, std::uint32_t return_pc) {
-    // A call into a leaf routine (getters and other short straight-line
-    // bodies) needs no dispatcher scope: it cannot call or transfer.
-    if (s.pc != return_pc && run_leaf(s) && s.pc == return_pc) return;
+namespace {
+// The dispatcher loop. Check tools (dispatch_probe) get a copy that asks the
+// probe before each page; testing the probe on every iteration cost the
+// day replay 2-4%.
+template <bool Probe> void dispatch_until(State& s, std::uint32_t return_pc) {
     GuestDispatchScope dispatch(s, return_pc);
     // Launch-time diagnostic policy, shared by nested dispatch and every State.
     // Semantic dependency calls can enter here millions of times per match;
@@ -212,6 +214,7 @@ void run_until(State& s, std::uint32_t return_pc) {
             throw std::runtime_error(std::string("Unimplemented native OS bridge: ") + name +
                 " (r3=" + hex_address(s.r<4>(12)) + ", r4=" + hex_address(s.r<4>(16)) + ")");
         }
+        if constexpr (Probe) { if (dispatch_probe && dispatch_probe(s)) continue; }
         if (!dispatch_page(s))
             throw std::runtime_error("Uncompiled original address: " + hex_address(s.pc));
     }
@@ -220,6 +223,14 @@ void run_until(State& s, std::uint32_t return_pc) {
         if (!dispatch.resumes(transfer)) throw;
     }
     }
+}
+}
+void run_until(State& s, std::uint32_t return_pc) {
+    // A call into a leaf routine (getters and other short straight-line
+    // bodies) needs no dispatcher scope: it cannot call or transfer.
+    if (s.pc != return_pc && run_leaf(s) && s.pc == return_pc) return;
+    if (dispatch_probe) [[unlikely]] dispatch_until<true>(s, return_pc);
+    else dispatch_until<false>(s, return_pc);
 }
 void run(State& s) {run_until(s,return_sentinel);}
 }

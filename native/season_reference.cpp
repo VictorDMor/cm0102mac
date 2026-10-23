@@ -3,6 +3,8 @@
 #include "callbacks.hpp"
 #include "heap_changes.hpp"
 #include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
 #include <zlib.h>
 #include <algorithm>
 #include <cstdlib>
@@ -33,9 +35,24 @@ enum class Event : std::uint8_t { import, write, clear, map, chunk, callback, ca
 struct Stream {
     gzFile file = nullptr;
     bool writing;
-    explicit Stream(const std::filesystem::path& path, bool output) : writing(output) {
-        file = gzopen(path.c_str(), output ? "wb1" : "rb");
-        if (!file) throw std::runtime_error("Cannot open private season transcript");
+    std::filesystem::path path;
+    int descriptor = -1;
+    explicit Stream(const std::filesystem::path& name, bool output) : writing(output), path(name) {
+        descriptor = output ? ::open(name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644) : ::open(name.c_str(), O_RDONLY);
+        if (descriptor >= 0) file = gzdopen(descriptor, output ? "wb1" : "rb");
+        if (!file) {
+            if (descriptor >= 0) ::close(descriptor);
+            throw std::runtime_error("Cannot open private season transcript");
+        }
+    }
+    // A forked process shares the descriptor's file offset with its parent;
+    // give the child its own, at the same position, so its reads leave the
+    // parent's transcript where it was.
+    void detach_after_fork() {
+        const int own = ::open(path.c_str(), O_RDONLY);
+        if (own < 0 || ::lseek(own, ::lseek(descriptor, 0, SEEK_CUR), SEEK_SET) < 0 || ::dup2(own, descriptor) < 0)
+            throw std::runtime_error("Cannot detach the private season transcript");
+        ::close(own);
     }
     ~Stream() { if (file) gzclose(file); }
     void bytes(void* data, std::size_t size) {
@@ -565,6 +582,9 @@ void seed_season_replay(const State& initial) {
 void open_timing_replay(const std::filesystem::path& directory) {
     open_operation_replay(directory);
     rng_checks = false;
+}
+void season_replay_after_fork() {
+    if (replay) replay->detach_after_fork();
 }
 void close_season_replay() {
     semantic_calendar_replay = live_pure_imports = false; rng_checks = true; recorded_allocator.reset();

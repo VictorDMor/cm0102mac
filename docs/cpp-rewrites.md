@@ -1,0 +1,106 @@
+# Rewriting original routines as plain C++
+
+How a routine of the original becomes hand-written C++ that the game runs in
+place of its generated body, and how it is checked. The tactics system
+(`FORMATION.CPP`, `TACTICS.CPP`, `TACTICS_SCREENS.CPP`) is the first
+subsystem done this way; `tools/tactics_audit.py` lists its 234 routines.
+
+## What must stay identical
+
+The rewrite may compute however it likes, but must leave everything the game
+can observe exactly as the original does (CLAUDE.md):
+
+- **Guest memory**, written through `guest::Cpu` (big-endian, checked; memory
+  observers see each write). Order of writes does not matter, final values do.
+- **The stack image.** The original reads stack bytes it never wrote
+  (docs/aot-port.md, "Uninitialised stack reads"), so every byte the original
+  leaves below the stack pointer must be left too: its prologue's saved
+  registers, LR and back chain (`guest::Frame`), its stack locals, and
+  everything its callees leave.
+- **Registers callers read**: r1, r2, r13-r31, f14-f31, cr2-cr4, and the
+  result registers (r3, r4 for 64-bit results, f1). Other volatile registers
+  are scratch, with one exception below.
+- **Calls and their order**, so RNG draws, allocations and imports happen in
+  the same sequence with the same arguments.
+
+## Writing one
+
+`native/guest_abi.hpp` has the pieces:
+
+- `Frame frame(c, entry, size, {.first_gpr = 29})` writes the prologue's image
+  (saved GPRs/FPRs at their slots relative to the caller's stack pointer, LR
+  at +8, CR at +4 when saved, back chain) and runs the epilogue on return
+  (registers reloaded from their slots). Read the original's prologue for the
+  size and the saved registers; `stw r31,-4(r1); stw r30,-8(r1)` is the same
+  layout as `stmw r30,-8(r1)`. Frameless routines that store below r1 (red
+  zone: `stmw r27,-0x14(r1)` without `stwu`) must write those bytes too.
+- `c.call(target, return_address)` calls a routine that still runs generated
+  code (or any routine through the dispatcher). `return_address` is the
+  address after the original `bl`: the callee saves it as its LR.
+- `c.link(return_address)` before a direct C++ call to another rewritten
+  routine, for the same reason.
+- `guest::report_assertion` replays the game's assert macro (split file name,
+  version text, `sprintf`, error dialog, clear the success flag), used by
+  almost every routine for out-of-range arguments.
+
+**Registers at calls.** A callee's prologue saves the non-volatile registers
+it uses, so the stack image holds whatever the caller had in r13-r31 (and
+f14-f31) at the call. Before each call, set every non-volatile register the
+original routine has changed by then to the value the original holds there.
+Callers of varargs routines (`sprintf` 0x1077b720) and routines that spill
+their arguments also leave r3-r10 in the stack image, including registers the
+call does not use: leave those as the previous callee left them, or set them
+as the original does. `tools/call_registers.py ENTRY` prints, for every call
+of a routine, which instructions define each argument and non-volatile
+register there ("entry" means the caller's value); per-path differences
+(a register set only on one branch) need reading the listing.
+
+**Arithmetic.** Use 32-bit wrapping arithmetic as the PowerPC does
+(`std::uint32_t(index) * 8` for a signed byte index), sign extension where the
+original uses `extsb`/`extsh`/`lha`, and the original's exact comparisons.
+Reproduce the original's quirks (a shared bit, an off-by-one) and say so in
+a comment. Floating point must round as the PowerPC does (single-precision
+results rounded to single, multiply-add with one rounding) and leave FPSCR
+as the original does; prefer a helper in `floating_point.hpp`.
+
+**Shape of the code.** Named record views (`formation::Record`), plain
+control flow, one C++ function per original routine with a typed signature,
+and a hook lambda in the routine's `tactics_routines_<group>.inc` line that
+reads the arguments from the registers and sets the results. Uninitialised
+inputs are part of the contract: if the original returns a register it only
+sets on some paths, take its entry value.
+
+## Checking one
+
+1. Add the routine's line to its group's `.inc` with the digest
+   `python3 tools/tactics_audit.py ENTRY` prints.
+2. Compile-check the file alone, then build (builds are serialized by a lock;
+   a file that does not compile breaks everyone's build):
+
+   ```sh
+   DEVELOPER_DIR=/Library/Developer/CommandLineTools xcrun clang++ -std=c++23 -arch arm64 \
+       -Wall -Wextra -Werror -Wpedantic -ffp-contract=off -fsyntax-only -I native native/FILE.cpp
+   tools/dev.sh build cm-world-replay
+   ```
+3. Run it on a capture that calls it, comparing each call with the original:
+
+   ```sh
+   .local/current/build/cm-world-replay .local/benchmarks/world/season-day 1 \
+       --timing --check-routines 200 500 --only 0xENTRY,0xENTRY
+   ```
+
+   At each checked call two forked children run the original and the C++
+   from the same live state; the parent compares every page either wrote,
+   the heap tables and the registers above, prints the differing bytes
+   (stack addresses relative to the entry sp) and stops. The routine runs as
+   C++ even before the generator hooks it: the check tool asks the adapter at
+   every dispatch. `--only` limits that to the listed routines (others not yet
+   hooked keep their generated originals); without it every listed C++
+   routine runs and is checked. `--census FILE` counts which routines a
+   capture calls.
+4. The replay must still reach the capture's recorded end state.
+
+Routines the captures never call (screens, file dialogs, error paths) need a
+capture of their own; see TASKS.md for the UI capture mode. A routine is done
+when its checks pass on every capture that reaches it, including the error
+paths someone can reach in play.

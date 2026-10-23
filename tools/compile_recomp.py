@@ -193,6 +193,7 @@ from shortlist_policy_audit import (require_shortlist_policy_contract, require_s
     require_shortlist_policy_hooks, shortlist_policy_hook, SHORTLIST_POLICY_ENTRIES)
 from profile_qualification_audit import (require_profile_qualification_contract, require_profile_qualification_index,
     require_profile_qualification_hooks, profile_qualification_hook, PROFILE_QUALIFICATION_ENTRIES)
+from tactics_audit import TACTICS_ENTRIES, require_tactics_index, tactics_hook
 from contract_draft_audit import (require_contract_draft_contract, require_contract_draft_index,
     require_contract_draft_hooks, contract_draft_hook, CONTRACT_DRAFT_ENTRIES)
 from contract_display_audit import (require_contract_display_contract, require_contract_display_index,
@@ -338,7 +339,8 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "actor_effects_adapter") for entry in ACTOR_EFFECTS_ENTRIES) +
     tuple((entry, "target_acceptance_adapter") for entry in TARGET_ACCEPTANCE_ENTRIES) +
     tuple((entry, "actor_action_adapter") for entry in ACTOR_ACTION_ENTRIES) +
-    tuple((entry, "actor_policy_adapter") for entry in ACTOR_POLICY_ENTRIES))
+    tuple((entry, "actor_policy_adapter") for entry in ACTOR_POLICY_ENTRIES) +
+    tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES))
 
 
 def require_unique_semantic_replacements(replacements):
@@ -1098,7 +1100,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True,
                   direct_owner_calls=None):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
@@ -1504,6 +1506,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "collection_lookup_adapter.hpp"')
     if list_search_hooks and LIST_SEARCH_ENTRY in page_addresses:
         code.insert(1, '#include "list_search.hpp"')
+    if tactics_hooks and page_addresses & set(TACTICS_ENTRIES):
+        code.insert(1, '#include "tactics_adapter.hpp"')
     if any(a in selected for a in STRING_CORE_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "string_core_adapter.hpp"')
     if any(a in selected for a in MEMORY_PRIMITIVES_ENTRIES if a >> 12 == page):
@@ -1781,6 +1785,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("if (try_modern_formatted_output_shared_tail(s)) return true;")
         if list_search_hooks and a == LIST_SEARCH_ENTRY:
             code.append("if (try_native_list_search(s)) return true;")
+        if tactics_hooks and a in TACTICS_ENTRIES:
+            code.append(tactics_hook(a))
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -2348,6 +2354,7 @@ def main():
         native_sort = load_sort8(db, None if args.all_analyzed else selected)
         divisions = quotient_free_divisions(db)
         require_list_search(db)
+        require_tactics_index(db)
         inlining = Inlining({target: body for target, body in inline_leaves(db, divisions).items()
                              if args.all_analyzed or all(address in selected for address in range(target, target + 4 * len(body) + 4, 4))})
     if args.reuse_generated:

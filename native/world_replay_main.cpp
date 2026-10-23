@@ -38,6 +38,22 @@
 //                     with --stack-audit: overwrite every freed frame with
 //                     pseudo-random bytes, and list every end-state byte that
 //                     differs instead of stopping at the first
+//   --check-routines <first> [<every>]
+//                     run the C++ tactics routines (tactics_routines.inc),
+//                     also those the generator has not hooked yet, and compare
+//                     each with its generated original at its first <first>
+//                     calls and then one in <every> (routine_check.hpp); stops
+//                     at the first difference; 0 runs them unchecked
+//   --only <entry>[,<entry>...]
+//                     with --check-routines: run and check only these C++
+//                     routines (others the generator has not hooked keep
+//                     their generated originals)
+//   --check-routines-corrupted <first> [<every>]
+//                     as above, but spoils one byte of the first checked
+//                     call's rewrite result, which must fail
+//   --census <file>   count the calls of each entry listed in <file> (one
+//                     hex address per line) that pass through the dispatcher
+//                     (tools/tactics_audit.py --entries lists the tactics system)
 //   --stack-audit     list the original's reads of stack it left uninitialised
 //                     (values earlier calls left behind; see stack_audit.hpp);
 //                     owners take their observed paths, so the run is slower
@@ -48,6 +64,8 @@
 #include "season_reference.hpp"
 #include "semantic_io_checks.hpp"
 #include "stack_audit.hpp"
+#include "routine_check.hpp"
+#include "tactics_adapter.hpp"
 #include "club_control.hpp"
 #include "shortlist_recruitment.hpp"
 #include <chrono>
@@ -56,6 +74,8 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <set>
+#include <sstream>
 #include <optional>
 #include <sys/time.h>
 #include <csignal>
@@ -177,6 +197,10 @@ int main(int argc, char** argv) {
         bool timing = false, stack_audit = false, club_control_check = false, club_control_shifted = false;
         bool registration_check = false, registration_corrupted = false;
         std::optional<std::uint64_t> scramble;
+        std::optional<RoutineChecker> checker;
+        bool checker_corrupted = false;
+        std::optional<std::set<std::uint32_t>> only;
+        static std::map<std::uint32_t, std::uint64_t> census;
         for (int i = 2; i < argc; ++i) {
             const std::string_view option(argv[i]);
             if (option == "--write-expected" && i + 1 < argc) write_expected = argv[++i];
@@ -189,10 +213,41 @@ int main(int argc, char** argv) {
             else if (option == "--check-club-control-shifted") club_control_check = club_control_shifted = true;
             else if (option == "--check-registration-shortcut") registration_check = true;
             else if (option == "--check-registration-shortcut-corrupted") registration_check = registration_corrupted = true;
+            else if ((option == "--check-routines" || option == "--check-routines-corrupted") && i + 1 < argc) {
+                const auto first = std::stoull(argv[++i]);
+                std::uint64_t every = 0;
+                if (i + 1 < argc && std::string_view(argv[i + 1]).find_first_not_of("0123456789") == std::string_view::npos)
+                    every = std::stoull(argv[++i]);
+                checker.emplace([&only](std::uint32_t entry) { return !only || only->contains(entry); }, first, every);
+                checker_corrupted = option == "--check-routines-corrupted";
+            }
+            else if (option == "--only" && i + 1 < argc) {
+                only.emplace();
+                std::istringstream list(argv[++i]);
+                for (std::string item; std::getline(list, item, ',');) only->insert(std::uint32_t(std::stoul(item, nullptr, 16)));
+            }
+            else if (option == "--census" && i + 1 < argc) {
+                std::ifstream list(argv[++i]);
+                for (std::string line; std::getline(list, line);)
+                    if (!line.empty()) census[std::uint32_t(std::stoul(line, nullptr, 16))] = 0;
+                if (census.empty()) throw std::runtime_error("The census list is empty");
+            }
             else if (!option.starts_with("--")) runs = unsigned(std::stoul(argv[i]));
             else throw std::runtime_error("Unknown option " + std::string(option));
         }
         if (!runs) throw std::runtime_error("At least one run is needed");
+        if (checker) {
+            checker->corrupt_first = checker_corrupted;
+            routine_checker = &*checker;
+            dispatch_probe = &tactics_dispatch_probe;
+        }
+        if (!census.empty()) {
+            if (checker) throw std::runtime_error("--census and --check-routines are separate runs");
+            dispatch_probe = [](State& s) {
+                if (const auto found = census.find(s.pc); found != census.end()) ++found->second;
+                return false;
+            };
+        }
         initialize_native_match_speed();
         set_match_turbo_enabled(true);
         auto initial = std::make_unique<State>(), expected = std::make_unique<State>();
@@ -273,6 +328,20 @@ int main(int argc, char** argv) {
             if (write_expected) break;
         }
         if (profile) guest_profiler::write(*profile);
+        for (const auto& [entry, calls] : census) std::cout << "census " << hex_address(entry) << ' ' << calls << '\n';
+        if (checker) {
+            std::uint64_t checked = 0, calls = 0;
+            for (const auto& [entry, totals] : checker->totals()) {
+                checked += totals.checked; calls += totals.calls;
+                std::cerr << "routine " << hex_address(entry) << ": " << totals.calls << " calls, " << totals.checked
+                          << " checked, " << totals.differences << " differ\n";
+            }
+            std::cout << "routine check: " << checker->totals().size() << " routines, " << calls << " calls, "
+                      << checked << " checked, " << checker->differences() << " differ" << std::endl;
+            routine_checker = nullptr;
+            dispatch_probe = nullptr;
+            if (checker->differences()) return 1;
+        }
         return 0;
     } catch (const std::exception& error) {
         close_season_replay();

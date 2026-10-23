@@ -61,6 +61,10 @@ target_sources(cm_aot PRIVATE club_shortlist_storage_lifecycle.cpp club_shortlis
 target_sources(cm_aot PRIVATE shortlist_category_membership.cpp shortlist_category_queries.cpp shortlist_category_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_links_queries.cpp shortlist_links_storage.cpp
     shortlist_links_transition.cpp shortlist_links_markers.cpp shortlist_links_adapter.cpp)
+# The tactics system in C++ (tactics_routines.inc): every formation*.cpp and tactics_*.cpp.
+file(GLOB CM_TACTICS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/formation*.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/tactics_*.cpp")
+target_sources(cm_aot PRIVATE routine_check.cpp ${CM_TACTICS_SOURCES})
 target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
@@ -291,6 +295,14 @@ add_test(NAME registration_shortcut_detects_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-registration-shortcut-corrupted)
 set_tests_properties(registration_shortcut_detects_difference PROPERTIES
                      PASS_REGULAR_EXPRESSION "registration shortcut: [0-9]+ clubs compared, [0-9]+ took the shortcut, 1 mismatches")
+# The C++ tactics routines (tactics_routines.inc) against their generated
+# originals at their calls in the 26-country career's 21-22 Dec day (forked
+# differential runs, routine_check.hpp); one spoiled result must be found.
+add_test(NAME tactics_routines_day
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/season-day" 1 --timing --check-routines 100 1000)
+add_test(NAME tactics_routines_detect_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/season-day" 1 --timing --check-routines-corrupted 100 1000)
+set_tests_properties(tactics_routines_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
 # Generated pages must isolate every instruction that host code or checks
 # watch by exact PC (tools/compile_recomp.py scans native/ for them).
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
