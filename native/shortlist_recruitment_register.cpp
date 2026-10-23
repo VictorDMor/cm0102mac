@@ -188,6 +188,27 @@ bool plain_run(const State& s,SemanticGuestObserver* o) {
     return !o&&s.budget==UINT64_MAX&&!s.memory.date_observer&&!s.memory.read_trace&&!match_pc_profile_enabled()&&
            !routine_watches_pc(register_club_interest_entry);
 }
+// The shortlist has 40 rows of 44 bytes (r15, index r17). row_is_available
+// rejects most of them (16.4M of 16.9M a day) with five reads and no call or
+// store: the flags byte +0x28 has bit 7 set, the kind byte +0 is not 11, the
+// word +0x18 is not -1, or the role mask +2 is empty or not within the mask
+// the caller passed in r6 (saved at sp+0x176). This moves r15 and r17 to the
+// next row that passes those checks, as the loop would; false when it reaches
+// the end. The rejected rows' scratch registers (r0, r3, r28, CR0) are not
+// reproduced: the next row or the routine's exit sets them again.
+bool next_candidate_row(State& s,Call& a) {
+    auto row=a.r(15);auto index=std::int32_t(a.r(17));
+    const auto wanted=std::int32_t(std::int16_t(s.memory.read<2>(a.r(1)+0x176)));
+    for(;;) {
+        if(!(s.memory.read<1>(row+0x28)&0x80)&&s.memory.read<1>(row)==11&&s.memory.read<4>(row+0x18)==0xffffffffu) {
+            const auto roles=std::int32_t(std::int16_t(s.memory.read<2>(row+2)));
+            if(roles&&(roles&wanted)==roles)break;
+        }
+        ++index;row+=44;
+        if(!(index<40)){a.value(15,row);a.value(17,std::uint32_t(index));return false;}
+    }
+    a.value(15,row);a.value(17,std::uint32_t(index));return true;
+}
 // Most calls end before the routine's first effect on game state: the
 // club's recruitment entry (12 bytes per club id from base+0xdc) is inactive,
 // 74% of 1.76M calls on a 26-country day. Until that check the original
@@ -242,8 +263,10 @@ void register_club_interest(State& s,SemanticDependencyDispatch* d,SemanticGuest
     if(settles_without_effect(s,o))return;
     Call a(s,register_club_interest_entry,d,o);a.link();a.floating_store(31,1,-8);a.multiple(13,false,-16);a.move(25,3);a.load(15,2,-0x7b1c);a.move(26,4);a.load(14,2,-0x7a54);a.move(27,5);a.load(20,2,-0x7b7c);a.load(21,2,-0x4ddc);a.load(22,2,-0x7b84);a.save_link();a.frame(0x150);a.store<2>(1,0x176,6);a.offset(3,1,0x5c);a.call(0x103721f0);
     if(club_policy_allows_interest(a)&&prepare_registration(a)){
+        const bool plain=plain_run(s,o);
         for(;;){
             bool returned=false;
+            if(plain&&!next_candidate_row(s,a)){a.value(3,0);break;}
             if(row_is_available(a)&&category_policy_allows_row(a)){
                 adjust_row_threshold(a);
                 if(previous_staff_contribution(a)){candidate_staff_contribution(a);if(candidate_contract_allows_row(a))returned=complete_registration(a);}
