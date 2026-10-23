@@ -34,6 +34,10 @@
 //                     the original's for every club it takes (capture at
 //                     0x10363ca0), then exit; ...-corrupted spoils one byte of
 //                     the first image, which must fail
+//   --scramble-stack <seed>
+//                     with --stack-audit: overwrite every freed frame with
+//                     pseudo-random bytes, and list every end-state byte that
+//                     differs instead of stopping at the first
 //   --stack-audit     list the original's reads of stack it left uninitialised
 //                     (values earlier calls left behind; see stack_audit.hpp);
 //                     owners take their observed paths, so the run is slower
@@ -51,6 +55,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sys/time.h>
 #include <csignal>
@@ -171,6 +176,7 @@ int main(int argc, char** argv) {
         std::optional<std::filesystem::path> profile;
         bool timing = false, stack_audit = false, club_control_check = false, club_control_shifted = false;
         bool registration_check = false, registration_corrupted = false;
+        std::optional<std::uint64_t> scramble;
         for (int i = 2; i < argc; ++i) {
             const std::string_view option(argv[i]);
             if (option == "--write-expected" && i + 1 < argc) write_expected = argv[++i];
@@ -178,6 +184,7 @@ int main(int argc, char** argv) {
             else if (option == "--profile" && i + 1 < argc) profile = argv[++i];
             else if (option == "--timing") timing = true;
             else if (option == "--stack-audit") stack_audit = true;
+            else if (option == "--scramble-stack" && i + 1 < argc) { scramble = std::stoull(argv[++i], nullptr, 0); stack_audit = true; }
             else if (option == "--check-club-control") club_control_check = true;
             else if (option == "--check-club-control-shifted") club_control_check = club_control_shifted = true;
             else if (option == "--check-registration-shortcut") registration_check = true;
@@ -210,7 +217,10 @@ int main(int argc, char** argv) {
                 seed_season_replay(*state);
             }
             std::optional<StackAudit> audit;
-            if (stack_audit) { audit.emplace(*state); state->memory.date_observer = audit->observer(); }
+            if (stack_audit) {
+                if (scramble) audit.emplace(*state, *scramble); else audit.emplace(*state);
+                state->memory.date_observer = audit->observer();
+            }
             const auto executed = state->executed, calls = state->native_calls;
             if (profile) guest_profiler::start(*state);
             const auto begin = std::chrono::steady_clock::now();
@@ -230,7 +240,28 @@ int main(int argc, char** argv) {
             if (audit) { state->memory.date_observer = nullptr; audit->report(std::cerr); }
             // The flipped byte itself is excluded; only its effects on the run count.
             if (flip) state->memory.write<1>(*flip, expected->memory.read<1>(*flip));
-            if (write_expected) {
+            if (scramble) {
+                // Every live byte that differs (the stack below the final SP is dead).
+                const auto sp = std::uint32_t(expected->r<4>(4));
+                std::uint64_t differing = 0;
+                std::map<std::uint32_t, std::uint64_t> by_allocation;
+                for (const auto& [start, size] : expected->memory.mapped_ranges()) {
+                    const auto a = expected->memory.copy_out(start, size), b = state->memory.copy_out(start, size);
+                    for (std::size_t i = 0; i < a.size(); ++i) {
+                        const auto at = start + std::uint32_t(i);
+                        if (a[i] == b[i] || (at >= 0x70000000 && at < sp)) continue;
+                        ++differing;
+                        auto allocation = expected->allocated.upper_bound(at);
+                        std::uint32_t owner = at;
+                        if (allocation != expected->allocated.begin() && at - std::prev(allocation)->first < std::prev(allocation)->second)
+                            owner = std::prev(allocation)->first;
+                        if (++by_allocation[owner] == 1 && by_allocation.size() <= 40)
+                            std::cerr << "differs at " << hex_address(at) << " (allocation " << hex_address(owner) << ") expected="
+                                      << unsigned(a[i]) << " actual=" << unsigned(b[i]) << '\n';
+                    }
+                }
+                std::cerr << differing << " live bytes differ, in " << by_allocation.size() << " allocations or places\n";
+            } else if (write_expected) {
                 save_runtime_snapshot(*state, *write_expected);
                 std::cerr << "Wrote " << write_expected->string() << '\n';
             } else if (const auto difference = compare_operation_states(*expected, *state); !difference.empty()) {

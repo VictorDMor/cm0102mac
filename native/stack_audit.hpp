@@ -21,9 +21,13 @@ extern void (*block_move_reads)(State&, std::uint32_t address, std::uint32_t len
 class StackAudit {
 public:
     explicit StackAudit(State&);
+    // Also overwrites every freed frame with pseudo-random bytes, so a run
+    // shows whether the game's results depend on what it leaves on the stack.
+    StackAudit(State&, std::uint64_t scramble_seed);
     ~StackAudit();
     MemoryObserver* observer();
-    // Sites by original PC (run start in generated code), most reads first.
+    // Sites by original PC (run start in generated code), most reads first,
+    // with the PCs that left the bytes they read (0: before the run).
     void report(std::ostream&, unsigned limit = 60) const;
 private:
     struct Impl;

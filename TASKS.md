@@ -5,6 +5,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
+- [ ] **Uninitialised stack decides results (found 2026-10-23).** The original reads stack bytes it never wrote: 136 sites in one 26-country day. Some of these bytes reach records and the RNG stream: scrambling them diverges the day's random draws. For example, a bitfield byte of an uninitialised local struct keeps garbage bits and is copied into heap records. Identical results therefore require every rewrite to leave the original's stack image, which bounds how freely subsystems can be rewritten (cached or skipped calls must reproduce their frames). The other option is to treat leftovers as undefined: results then match except where the original depended on what happened to be on the stack, and the RNG stream can diverge from there. Recommendation: keep exact results (your stated rule) and make rewrites reproduce stack images, checked by `--check-registration-shortcut`-style comparisons; the 10x path gets slower but stays exact. Until you decide, all work keeps exact results.
+
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
 ## Now

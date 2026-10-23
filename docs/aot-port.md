@@ -235,8 +235,19 @@ register that `register_club_interest`'s prologue saved there earlier. So
 leftover stack is a diagnostic only where nothing reads it later. A rewrite
 that skips original calls must write the stack image those calls would have
 left, or the end state differs. The registration shortcut in
-`native/shortlist_recruitment_register.cpp` does this. The day and week
-captures check it.
+`native/shortlist_recruitment_register.cpp` does this, and
+`--check-registration-shortcut` compares its stack image with the
+original's for every club it takes.
+
+The leftovers also change results. `--scramble-stack <seed>` replaces each
+stale byte with noise as the game reads it. On the day capture that changes
+the RNG stream (write 4,845,515). With only some readers scrambled
+(`CM_STACK_SCRAMBLE_PCS=lo-hi`), records come out different: for example,
+`0x103750e4` read-modify-writes a bitfield byte of an uninitialised local
+struct, keeps the garbage bits, and copies the byte into heap records
+(8 vs 10). So the original's results depend on its call history through
+the stack. Results stay identical only if every rewrite leaves the
+original's stack image wherever later code reads leftovers.
 
 ## Driving the game (2026-10-21)
 
