@@ -158,6 +158,8 @@ std::vector<std::pair<std::uint32_t, std::uint64_t>> Memory::mapped_ranges() con
         result.emplace_back(std::uint32_t(range.start), range.end - range.start);
     return result;
 }
+// Generated with import_name: the range of the import stubs.
+extern const std::uint32_t import_stubs_begin, import_stubs_end;
 void run_until(State& s, std::uint32_t return_pc) {
     // A call into a leaf routine (getters and other short straight-line
     // bodies) needs no dispatcher scope: it cannot call or transfer.
@@ -170,7 +172,7 @@ void run_until(State& s, std::uint32_t return_pc) {
     for (;;) {
     try {
     while (s.pc != return_pc) {
-        if (const char* name = import_name(s.pc)) {
+        if (const char* name = s.pc - import_stubs_begin < import_stubs_end - import_stubs_begin ? import_name(s.pc) : nullptr) {
             if (season_replay_import(s, name)) { ++s.native_calls; continue; }
             season_record_import_begin(s);
             if (s.allocator_observer) s.allocator_observer->import_enter(s, name);

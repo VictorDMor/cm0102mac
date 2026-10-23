@@ -2402,10 +2402,14 @@ def main():
     for page in pages: code.append(f"case 0x{page:x}: return page_{page:x}(s);")
     code += ["default: return false;", "}", "}",
              "const char* import_name(std::uint32_t address) {", "switch (address) {"]
-    for symbol in metadata["symbols"]:
-        if symbol["space"] == "ram" and symbol["name"].startswith(".import::"):
-            code.append(f"case {symbol['address']}: return {json.dumps(symbol['name'][9:])};")
+    imports = [symbol for symbol in metadata["symbols"]
+               if symbol["space"] == "ram" and symbol["name"].startswith(".import::")]
+    for symbol in imports:
+        code.append(f"case {symbol['address']}: return {json.dumps(symbol['name'][9:])};")
+    # The dispatcher skips import_name for PCs outside the import stubs.
+    stubs = sorted(int(symbol["address"]) for symbol in imports) or [0, -4]
     code += ["default: return nullptr;", "}", "}",
+             f"extern const std::uint32_t import_stubs_begin = 0x{stubs[0]:x}, import_stubs_end = 0x{stubs[-1] + 4:x};",
              "void load_program(State& s, const std::filesystem::path& directory) {"]
     for segment in metadata["segments"]:
         if segment["initialized"]:
