@@ -60,6 +60,7 @@ void Memory::map(std::uint32_t start, std::uint64_t size) {
         const auto last = (range.end - 1) >> 16;
         for (auto page_index = first; page_index <= last; ++page_index)
             (*page_ends_)[page_index] = range.end;
+        if (range.start & 0xffff) (*partial_starts_)[range.start >> 16] = range;
         break;
     }
     if (observer) observer->mapped(start, size);

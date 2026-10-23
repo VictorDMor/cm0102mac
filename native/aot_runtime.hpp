@@ -193,9 +193,15 @@ private:
     template <unsigned N> void check_scalar(std::uint64_t address) const {
         static_assert(N > 0 && N <= 8);
         // An entry certifies the continuous interval from its 64 KiB boundary
-        // to the exact mapped end. Partial starts and holes use the range oracle.
-        if (address < (UINT64_C(1) << 32) &&
-            address + N <= (*page_ends_)[address >> 16]) return;
+        // to the exact mapped end. A mapping that starts part-way through a
+        // block has a second entry: the game's data segment starts in the
+        // block where its code ends, and the TOC and the hottest globals live
+        // there. Other partial starts and holes use the range oracle.
+        if (address < (UINT64_C(1) << 32)) {
+            if (address + N <= (*page_ends_)[address >> 16]) return;
+            const auto& partial = (*partial_starts_)[address >> 16];
+            if (address >= partial.start && address + N <= partial.end) return;
+        }
         check(address, N);
     }
     void check(std::uint64_t address, std::uint64_t size) const;
@@ -204,6 +210,9 @@ private:
     std::vector<Range> ranges_;
     std::unique_ptr<std::array<std::uint64_t, 65536>> page_ends_ =
         std::make_unique<std::array<std::uint64_t, 65536>>();
+    // Per block, the latest mapping that starts inside it (one per block; an
+    // earlier one there keeps the slow path). Valid because mappings only grow.
+    std::unique_ptr<std::array<Range, 65536>> partial_starts_ = std::make_unique<std::array<Range, 65536>>();
 };
 
 [[noreturn, gnu::cold, gnu::noinline]] void instruction_budget_exhausted();

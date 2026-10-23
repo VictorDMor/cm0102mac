@@ -249,6 +249,21 @@ void checks() {
             }
         }
     }
+    // The game's layout: code ends and data starts 12 bytes later in one
+    // 64 KiB block; both sides and the gap keep exact bounds.
+    {
+        Memory layout;
+        layout.map(0x10000000, 0x8b3a84);
+        layout.map(0x108b3a90, 0x34be84);
+        for (std::uint32_t address = 0x108b3a78; address <= 0x108b3a98; ++address) {
+            const bool code = address + 4 <= 0x108b3a84, data = address >= 0x108b3a90;
+            require(accepts_scalar<4>(layout, address) == (code || data), "Code/data block bounds");
+            require(accepts_scalar<1>(layout, address) == (address < 0x108b3a84 || address >= 0x108b3a90), "Gap byte bounds");
+            ++cases;
+        }
+        require(accepts_scalar<4>(layout, 0x108bfffc) && accepts_scalar<8>(layout, 0x108bfff8), "Data to the block end");
+        require(!accepts_scalar<4>(layout, 0x10bff912) && accepts_scalar<4>(layout, 0x10bff910), "Data end");
+    }
     high.map(0xffff0000, 65536);
     require(accepts_scalar<8>(high, 0xfffffff8), "Indexed top boundary inaccessible");
     require(!accepts_scalar<8>(high, 0xfffffff9), "Indexed top boundary overflow accepted");
