@@ -5,11 +5,13 @@
 #include "application_exit.hpp"
 #include "import_bridge.hpp"
 #include "heap_changes.hpp"
+#include "stack_audit.hpp"
 #include <algorithm>
 
 namespace cm::aot {
 std::vector<HeapChange>* heap_changes = nullptr;
 const State* heap_changes_owner = nullptr;
+void (*block_move_reads)(State&, std::uint32_t, std::uint32_t) = nullptr;
 namespace {
 void changed(const State& s, std::uint8_t table, std::uint32_t address, std::uint32_t size, bool erase = false) {
     if (heap_changes && &s == heap_changes_owner) heap_changes->push_back({table, std::uint8_t(erase), address, size});
@@ -90,7 +92,10 @@ bool bridge_import_name(State& s, std::string_view name) {
     } else if (name == "CarbonLib::DisposePtr") {
         deallocate(s, arg(0));
     } else if (name == "CarbonLib::BlockMoveData") {
-        if (arg(2)) s.memory.copy_in(arg(1), s.memory.copy_out(arg(0), arg(2)));
+        if (arg(2)) {
+            if (block_move_reads) block_move_reads(s, arg(0), arg(2));
+            s.memory.copy_in(arg(1), s.memory.copy_out(arg(0), arg(2)));
+        }
     } else if (name == "CarbonLib::MemError") {
         result(std::uint32_t(std::int32_t(s.memory_error)));
     } else if (name == "CarbonLib::num2dec") {

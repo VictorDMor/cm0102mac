@@ -224,6 +224,20 @@ Subsequent team-selection and managed-game evidence is recorded below.
 it is now opt-in because this initialization path generated hundreds of thousands
 of diagnostic lines when it was enabled. Subsequent runs use the default-off setting.
 
+### Uninitialised stack reads (2026-10-23)
+
+The original reads stack it never wrote: `cm-world-replay <capture> --timing
+--stack-audit` lists 136 such read sites in one 26-country day. Most copy
+struct padding into locals, but some leftovers reach game memory. One
+example is the struct a caller passes to `0x1007f200` as r4. It is copied
+with `BlockMoveData` into a heap record, and a word of it still holds a
+register that `register_club_interest`'s prologue saved there earlier. So
+leftover stack is a diagnostic only where nothing reads it later. A rewrite
+that skips original calls must write the stack image those calls would have
+left, or the end state differs. The registration shortcut in
+`native/shortlist_recruitment_register.cpp` does this. The day and week
+captures check it.
+
 ## Driving the game (2026-10-21)
 
 `tools/game_driver.py` runs an isolated validation copy (from

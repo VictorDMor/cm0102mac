@@ -61,7 +61,7 @@ target_sources(cm_aot PRIVATE club_shortlist_storage_lifecycle.cpp club_shortlis
 target_sources(cm_aot PRIVATE shortlist_category_membership.cpp shortlist_category_queries.cpp shortlist_category_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_links_queries.cpp shortlist_links_storage.cpp
     shortlist_links_transition.cpp shortlist_links_markers.cpp shortlist_links_adapter.cpp)
-target_sources(cm_aot PRIVATE shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
+target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
     shortlist_assessment_interest_context.cpp shortlist_assessment_interest_preferences.cpp
@@ -275,6 +275,22 @@ foreach(capture interest-pass/0 interest-pass/1 interest-pass/2 interest-pass/3 
     string(REPLACE "-" "_" name "${name}")
     add_test(NAME world_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/${capture}")
 endforeach()
+# The C++ club control (0x1014c2e0) answers as the original for every club of
+# the 26-country career; asked about the neighbouring club it must disagree.
+add_test(NAME club_control_equivalence
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-club-control)
+add_test(NAME club_control_detects_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-club-control-shifted)
+set_tests_properties(club_control_detects_difference PROPERTIES
+                     PASS_REGULAR_EXPRESSION "club control: [0-9]+ compared, [1-9][0-9]* controlled, [0-9]+ left to the original, [1-9][0-9]* mismatches")
+# The registration shortcut leaves the original's stack image for every club
+# it takes; one spoiled byte must be found.
+add_test(NAME registration_shortcut_stack_image
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-registration-shortcut)
+add_test(NAME registration_shortcut_detects_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-registration-shortcut-corrupted)
+set_tests_properties(registration_shortcut_detects_difference PROPERTIES
+                     PASS_REGULAR_EXPRESSION "registration shortcut: [0-9]+ clubs compared, [0-9]+ took the shortcut, 1 mismatches")
 # Generated pages must isolate every instruction that host code or checks
 # watch by exact PC (tools/compile_recomp.py scans native/ for them).
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

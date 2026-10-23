@@ -1,5 +1,7 @@
 #include "shortlist_recruitment.hpp"
 #include "shortlist_recruitment_detail.hpp"
+#include "match_turbo.hpp"
+#include "club_control.hpp"
 
 namespace cm::aot::shortlist_recruitment {
 using detail::Call;
@@ -179,7 +181,65 @@ bool complete_registration(Call& a) {
     a.at(0x10364cac);a.move(3,25);a.move(4,26);a.move(5,27);a.call(0x103632f0);a.value(3,1);a.jump(0x10364ce8);return true;
 }
 }
+// The app and the replays: no observer, no instruction budget, no read
+// observers, no PC profile, and no host code watching a PC of the routine
+// (the conditions under which SemanticGuestCall counts in batches).
+bool plain_run(const State& s,SemanticGuestObserver* o) {
+    return !o&&s.budget==UINT64_MAX&&!s.memory.date_observer&&!s.memory.read_trace&&!match_pc_profile_enabled()&&
+           !routine_watches_pc(register_club_interest_entry);
+}
+// Most calls end before the routine's first effect on game state: the
+// club's recruitment entry (12 bytes per club id from base+0xdc) is inactive,
+// 74% of 1.76M calls on a 26-country day. Until that check the original
+// writes only stack: its frame, a local contract draft (0x103721f0) and the
+// frames of two control queries (0x1014c2e0, with 0x100ce250). The game reads
+// stack it never initialised and copies some of it into heap records, so for
+// clubs where both queries take their plain path (club_control::
+// plainly_uncontrolled: no human manager, not among the last nation-count
+// clubs), plain runs (the app and the replays) write that same stack image
+// here and return 0 as the original does. The scratch registers and the
+// instruction count are not reproduced. Every other club runs the original.
+bool settles_without_effect(State& s,SemanticGuestObserver* o) {
+    if(!plain_run(s,o))return false;
+    const auto r=[&](unsigned n){return std::uint32_t(s.r<4>(n*4));};
+    const auto word=[&](std::uint32_t address){return std::uint32_t(s.memory.read<4>(address));};
+    const auto base=r(3),club=r(5),sp=r(1),link=std::uint32_t(s.r<4>(4128));
+    std::uint32_t control_r31=0;
+    try {
+        if(!club_control::plainly_uncontrolled(s,club))return false;
+        control_r31=club_control::human_table_slot(s);
+        const auto entry=word(base+0xdc)+word(club)*12;
+        if(s.memory.read<1>(entry+4)==1&&s.memory.read<1>(entry+9)<100)return false;
+        s.memory.read<1>(sp-0x150-0x80-0x70);s.memory.read<1>(sp+0x27);   // the stack the image covers
+    } catch(const std::runtime_error&) { return false; }
+    const auto frame=sp-0x150,draft=frame+0x5c,inner=frame-0x80;
+    // 0x10363f60 prologue.
+    s.memory.write<8>(sp-8,s.r<8>(0x4000+31*16));
+    for(unsigned n=13;n<32;++n)s.memory.write<4>(sp-0x5c+(n-13)*4,r(n));
+    s.memory.write<4>(sp+8,link);
+    s.memory.write<4>(frame,sp);
+    s.memory.write<2>(sp+0x26,r(6));
+    // 0x103721f0 on the draft at frame+0x5c, with its two dates (0x10715880).
+    s.memory.write<4>(frame-4,r(31));s.memory.write<4>(frame+8,0x10363fa0);s.memory.write<4>(frame-0x40,frame);
+    for(const auto date:{draft+0x28,draft+0x30}){s.memory.write<2>(date,0x28);s.memory.write<2>(date+2,0x7b4);s.memory.write<1>(date+4,1);}
+    s.memory.write<4>(draft+4,0xffffffffu);s.memory.write<1>(draft+0x54,0);s.memory.write<4>(draft+0x58,0xffffffffu);
+    s.memory.write<2>(draft+0x42,0);s.memory.write<1>(draft+0x5c,0);s.memory.write<4>(draft+0x48,0);
+    s.memory.write<4>(draft+0x50,0);s.memory.write<4>(draft+8,0);
+    // Two 0x1014c2e0 calls (r24-r31 as the routine holds them then), each
+    // calling 0x100ce250 from its frame.
+    const std::array<std::uint32_t,8> saved{r(24),base,r(4),club,r(28),r(29),r(30),r(31)};
+    for(const auto returned:{0x10363fbcu,0x10363fe4u}) {
+        for(unsigned n=0;n<8;++n)s.memory.write<4>(frame-0x20+n*4,saved[n]);
+        s.memory.write<4>(frame+8,returned);s.memory.write<4>(inner,frame);
+        s.memory.write<4>(inner-4,control_r31);s.memory.write<4>(inner-8,0);
+        s.memory.write<4>(inner+8,0x1014c44c);s.memory.write<4>(inner-0x70,inner);
+    }
+    s.wr<4>(0,link);s.wr<4>(12,0);s.pc=link;              // li r3,0 ... lwz r0,0x158(r1); blr
+    return true;
+}
+
 void register_club_interest(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o) {
+    if(settles_without_effect(s,o))return;
     Call a(s,register_club_interest_entry,d,o);a.link();a.floating_store(31,1,-8);a.multiple(13,false,-16);a.move(25,3);a.load(15,2,-0x7b1c);a.move(26,4);a.load(14,2,-0x7a54);a.move(27,5);a.load(20,2,-0x7b7c);a.load(21,2,-0x4ddc);a.load(22,2,-0x7b84);a.save_link();a.frame(0x150);a.store<2>(1,0x176,6);a.offset(3,1,0x5c);a.call(0x103721f0);
     if(club_policy_allows_interest(a)&&prepare_registration(a)){
         for(;;){
