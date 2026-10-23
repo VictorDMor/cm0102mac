@@ -5,6 +5,7 @@
 #include "ui_bridge.hpp"
 #include "native_drawing.hpp"
 #include "direct_commands.hpp"
+#include "match_debugging.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
 #include "directory_catalog.hpp"
@@ -727,6 +728,13 @@ struct NativePlatform::Impl {
             s.memory.write<2>(address, 15); // osEvt / mouseMovedMessage
             s.memory.write<4>(address + 2, 0xfa000000);
             return true;
+        }
+        if (deliver_match_shortcut(s, commands, *found)) {
+            const auto action = std::uint16_t(s.memory.read<2>(commands.root + 0x25819e));
+            if (action) delivered_command_action = {commands.root, action};
+            pending_events.erase(found);
+            command_cache.reset();
+            return false;
         }
         if (found->kind == UIEvent::Kind::open_files)
             throw std::runtime_error("Open-document events require file descriptor marshalling");

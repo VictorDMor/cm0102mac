@@ -1768,6 +1768,9 @@ target_compile_options(cm-match-debugger-lab-checks PRIVATE -Wall -Wextra -Werro
 add_executable(cm-match-debugger-cards-checks match_debugger_cards_checks.cpp)
 target_link_libraries(cm-match-debugger-cards-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-cards-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-debugging-injury-checks match_debugging_injury_checks.cpp)
+target_link_libraries(cm-match-debugging-injury-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-match-debugging-injury-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-debugger-completion-checks match_debugger_completion_checks.cpp)
 target_link_libraries(cm-match-debugger-completion-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-debugger-completion-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -1953,6 +1956,9 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     add_test(NAME match_debugger_actual_goal COMMAND cm-match-debugger-goal-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-goal-checks")
     set_tests_properties(match_debugger_actual_goal PROPERTIES TIMEOUT 360)
+    add_test(NAME match_debugging_injury_shortcuts COMMAND cm-match-debugging-injury-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugging-injury-checks")
+    set_tests_properties(match_debugging_injury_shortcuts PROPERTIES TIMEOUT 360)
     add_test(NAME match_debugger_actual_lineup COMMAND cm-match-debugger-lineup-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)

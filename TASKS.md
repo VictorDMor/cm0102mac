@@ -11,9 +11,6 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [x] In-game debugging shortcuts (2026-10-23): exact Turbo text inset, matching Debugging selection border, weighted home/away goals and uniform home/away dismissals including keepers. Focused goal/card/speed checks passed; installed from an isolated candidate using committed tactics sources because the unrelated working tactics screen does not compile. Options border verified visually; clicking the four new live-match buttons remains unverified (test careers stop at lineup eligibility). Career save/reload after interventions not retested.
-- [ ] Debugging-shortcut push: the existing headless suite passes 91/93; `tactics_routines_ui` diverges at `0x700fe530`, and `match_debugger_actual_lineup` reports "Lineup edits bypassed the C++23/original position setter". These existing executables were not rebuilt by this task. Leave unrelated tactics work intact; resolve its suite separately before pushing.
-
 - [x] **Fused multiply-add (decided 2026-10-20).** One rounding at all 1,049 sites, in generated code and in the 41+ builder call sites of rewritten routines. Two 600-advance matches: state differs transiently after 4 and 1 advances, final state identical.
 - [x] Track 1, first measurements (2026-10-20, 600-advance pairs): big-endian accessors as one load/store + byte swap: **5.3% / 8.3% faster** (Arsenal / Cruzeiro), identical final state; kept. Partial-page bounds entries for globals: 1.6% / 0.3% *slower* in match play; reverted.
 - [x] Plumbing (2026-10-21): scope chains per State (3.6%), inline PC-profile flag (1.5%). With byte-swap: **13.9% / 13.5% faster** match intervals than before today's speed work.
@@ -147,5 +144,5 @@ From the 2026-10-20 review. Estimates are unmeasured.
 
 ## Known test state
 
-- `tools/dev.sh test`: 87 runnable tests (2026-10-23). Known failure: `match_debugger_actual_lineup` since ed7749e (it requires the `match_actor` owner's call count, and production pages now run that family's generated code); fails with and without the tactics rewrites. `match_engine_live_equivalence` and most others lack a built binary or inputs.
+- `tools/dev.sh test`: 93/94 runnable tests pass (2026-10-23, injury/keyboard build); `tactics_routines_ui` passes. Known failure: `match_debugger_actual_lineup` since ed7749e (it requires the `match_actor` owner's call count, and production pages now run that family's generated code); fails with and without the tactics rewrites. `match_engine_live_equivalence` and most others lack a built binary or inputs.
 - Python audits: every `tools/test_*.py` passes against `.local/current/export`; `test_generated_temporaries.py` (needs a build dir) not run.

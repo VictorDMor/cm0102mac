@@ -2,6 +2,8 @@
 #include "aot_runtime.hpp"
 #include "match_debugger_goal.hpp"
 #include "match_debugger_cards.hpp"
+#include "direct_commands.hpp"
+#include "ui_bridge.hpp"
 #include <array>
 #include <cstdlib>
 #include <optional>
@@ -10,7 +12,7 @@
 namespace cm::aot {
 namespace {
 constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 30003;
-constexpr unsigned random_goal_action = 30004, red_card_action = 30005;
+constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -118,6 +120,8 @@ unsigned debug_player_weight(const State& s, std::uint32_t match, unsigned playe
     try {
         if (event == DebugMatchEvent::red_card)
             return active_player(s, match, player) && opposing_player(s, match, player) ? 1 : 0;
+        if (event == DebugMatchEvent::injury)
+            return active_player(s, match, player) ? 1 : 0;
         if (!eligible_debug_goal(s, match, player)) return 0;
         const auto position = s.memory.read<1>(actor_address(match, player) + 0x19);
         const auto roles = s.memory.read<4>(match + 0x7934 + (player / 20) * 4);
@@ -163,6 +167,47 @@ void award_debug_red_card(State& s, std::uint32_t match, unsigned player) {
         throw std::runtime_error("Debug red card failed original dismissal, score or clock bookkeeping");
 }
 
+unsigned random_debug_injury() {
+    // Original injury types 0..76; 77..81 are recovery/fitness statuses.
+    return arc4random_uniform(77);
+}
+
+void award_debug_injury(State& s, std::uint32_t match, unsigned player, unsigned injury) {
+    if (!native_debugging_enabled() || injury >= 77 ||
+        !debug_player_weight(s, match, player, DebugMatchEvent::injury))
+        throw std::invalid_argument("Debug injury requires an enabled, active match, an on-pitch player and an injury type");
+    const auto actor = actor_address(match, player);
+    const auto staff = std::uint32_t(s.memory.read<4>(actor + 0x6c));
+    const auto controller = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
+    const auto home = s.memory.read<1>(match + 0xe03d), away = s.memory.read<1>(match + 0xe073);
+    const auto clock = s.memory.read<2>(match + 0x7948), red = s.memory.read<1>(actor + 0x23);
+    {
+        GuestCall call(s);
+        // The original medical record treats an unfinished fixture's -1 score
+        // as a training injury. Supply a private fixture view with the current
+        // score, without marking the live fixture complete or changing it.
+        const auto context = call.stack + 0x200;
+        s.memory.copy_in(context, s.memory.copy_out(s.memory.read<4>(match + 0x3118), 0x58));
+        for (const auto offset : {0x43u, 0x47u}) {
+            s.memory.write<1>(context + offset, home);
+            s.memory.write<1>(context + offset + 1, away);
+        }
+        // Use the same retirement/registration sequence as original post-match
+        // injury handling. The original owns duration, medical traits and notices.
+        call.call(0x1018b9f0, {controller, staff, 0});
+        call.args({0});
+        const auto record = call.call(0x10188cc0, {controller, injury, 0, staff, context, 1, 0xffffffff, 0});
+        if (record == 0xffffffff || s.memory.read<1>(s.memory.read<4>(controller + 4) + record * 0x38) != injury)
+            throw std::runtime_error("Original injury registration did not assign the selected injury");
+        match_debugger::apply_original_injury(s, match, actor);
+    }
+    if (!s.memory.read<1>(actor + 0x1c) || s.memory.read<1>(actor + 0x1d) ||
+        signed_value<1>(s.memory.read<1>(actor + 0x19)) >= 0 || s.memory.read<1>(actor + 0x23) != red ||
+        s.memory.read<1>(match + 0xe03d) != home || s.memory.read<1>(match + 0xe073) != away ||
+        s.memory.read<2>(match + 0x7948) != clock)
+        throw std::runtime_error("Debug injury failed original withdrawal, discipline, score or clock bookkeeping");
+}
+
 void award_debug_goal(State& s, std::uint32_t match, unsigned player) {
     if (!native_debugging_enabled() || !eligible_debug_goal(s, match, player))
         throw std::invalid_argument("Debug goal requires an enabled, active match and an on-pitch player");
@@ -177,7 +222,28 @@ void award_debug_goal(State& s, std::uint32_t match, unsigned player) {
         s.memory.read<1>(match + 0xe073) != away + (player >= 20) ||
         s.memory.read<1>(actor + 0xc) != scorer + 1 || s.memory.read<2>(match + 0x7948) != clock)
         throw std::runtime_error("Debug goal failed original score, scorer or clock bookkeeping");
-    recent = RecentScorer{&s, match, std::uint32_t(s.memory.read<4>(actor + 0x6c)), player};
+}
+
+bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEvent& event) {
+    if (event.kind != UIEvent::Kind::key_down && event.kind != UIEvent::Kind::auto_key) return false;
+    if (event.modifiers & 0x1900) return false; // Command, Option, Control.
+    const auto character = event.message & 0xff;
+    const bool toggle = character == 'z' || character == 'Z';
+    if (!toggle && (character < '1' || character > '6' || !native_debugging_enabled())) return false;
+    const auto current = original_command_context(s, 0xffff);
+    if (!current.ready || current.handler != 0x1028dc80 || current != expected) return false;
+    // Both number rows arrive with the same character and different hardware
+    // codes. A held key must never inject multiple events or toggle repeatedly.
+    if (event.kind == UIEvent::Kind::auto_key) return true;
+    if (toggle) {
+        for (const auto& control : original_controls(s, current))
+            if (control.action == 2 && (control.flags & 2))
+                return deliver_original_control(s, current, control.index);
+        return false;
+    }
+    clear_previous_command_key(s);
+    s.memory.write<2>(current.root + 0x25819e, shortcut_first + character - '1');
+    return true;
 }
 
 void reset_match_debugging() { recent.reset(); }
@@ -249,26 +315,23 @@ void append_match_debugging_controls(State& s) {
         "Gol " + player_name(s, recent->staff, true) : "Gol";
     call.args({0x1021, 0, 0, 12, 1, color, call.text(label), 0, repeat_action, 0, sidebar});
     call.call(0x10719740, {page, repeat ? 2u : 0u, 0, 0, 0, 0, 0, 7});
-    for (unsigned kind = 0; kind < 2; ++kind) for (unsigned side = 0; side < 2; ++side) {
-        const auto event = kind ? DebugMatchEvent::red_card : DebugMatchEvent::goal;
-        bool enabled = false;
-        for (unsigned i = 0; i < 20; ++i) enabled |= debug_player_weight(s, match, side * 20 + i, event) != 0;
-        // In-game font glyphs use Windows Latin-1, including the requested ã.
-        const auto title = std::string(kind ? "Expuls\xe3" "o " : "Gol ") + (side ? "A" : "H");
-        call.args({0x1021, 0, 0, 12, 1, color, call.text(title), 0,
-            kind ? red_card_action : random_goal_action, side, sidebar});
-        call.call(0x10719740, {page, enabled ? 2u : 0u, 0, 0, 0, 0, 0, 8 + kind * 2 + side});
-    }
 }
 
 bool dispatch_match_debugging_control(State& s) {
-    if (!native_debugging_enabled()) return false;
     const auto control = selected_control(s);
-    if (!control) return false;
-    const auto action = s.memory.read<4>(control + 8);
-    if (action != goal_action && action != repeat_action && action != random_goal_action && action != red_card_action)
-        return false;
-    unsigned player = s.memory.read<4>(control + 0x48);
+    const auto mailbox = s.memory.read<2>(root(s) + 0x25819e);
+    const bool shortcut = mailbox >= shortcut_first && mailbox <= shortcut_last;
+    const auto action = shortcut ? mailbox : control ? s.memory.read<4>(control + 8) : 0;
+    if (!shortcut && action != goal_action && action != repeat_action) return false;
+    if (shortcut) s.memory.write<2>(root(s) + 0x25819e, 0);
+    if (!native_debugging_enabled()) {
+        s.wr<4>(12, 0); s.pc = s.r<4>(4128);
+        return true;
+    }
+    const unsigned number = shortcut ? unsigned(action - shortcut_first) : 0;
+    const auto event = number < 2 ? DebugMatchEvent::goal : number < 4 ? DebugMatchEvent::red_card : DebugMatchEvent::injury;
+    // Odd keys favor home: 1 scores for home, 3/5 penalize away.
+    unsigned player = shortcut ? (number < 2 ? number : 1 - number % 2) : s.memory.read<4>(control + 0x48);
     bool accepted = false;
     {
         GuestCall call(s);
@@ -277,16 +340,20 @@ bool dispatch_match_debugging_control(State& s) {
         const auto status = std::uint32_t(s.memory.read<4>(fixture + 0x5c));
         if (action == repeat_action && recent_valid(s, match)) player = recent->player;
         else if (action == repeat_action) player = 40;
-        if ((s.memory.read<4>(control + 12) & 2) && status && !s.memory.read<1>(status + 0x56)) {
-            const auto event = action == red_card_action ? DebugMatchEvent::red_card : DebugMatchEvent::goal;
-            if (action == random_goal_action || action == red_card_action)
+        if ((shortcut || (s.memory.read<4>(control + 12) & 2)) && status && !s.memory.read<1>(status + 0x56)) {
+            if (shortcut)
                 player = random_debug_player(s, match, player, event).value_or(40);
-            const bool eligible = action == red_card_action ? debug_player_weight(s, match, player, event) != 0 :
+            const bool eligible = shortcut ? debug_player_weight(s, match, player, event) != 0 :
                 eligible_debug_goal(s, match, player);
             if (eligible) {
-                if (action == red_card_action) award_debug_red_card(s, match, player);
-                else award_debug_goal(s, match, player);
-                // Publish original scorer/card/minute rows before the screen rebuild.
+                if (event == DebugMatchEvent::injury) award_debug_injury(s, match, player, random_debug_injury());
+                else if (event == DebugMatchEvent::red_card) award_debug_red_card(s, match, player);
+                else {
+                    award_debug_goal(s, match, player);
+                    if (!shortcut) recent = RecentScorer{&s, match,
+                        std::uint32_t(s.memory.read<4>(actor_address(match, player) + 0x6c)), player};
+                }
+                // Publish original event/minute rows before the screen rebuild.
                 const auto report = std::uint32_t(s.memory.read<4>(fixture + 0x60));
                 const auto reports = s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7b4c));
                 call.call(0x1029f920, {std::uint32_t(reports), match, report, 1});

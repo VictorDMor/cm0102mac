@@ -11,16 +11,41 @@ to that player's side. The button beneath starts disabled, then reads **Gol**
 plus the most recently chosen player's common name or surname. Choosing another
 player changes that shortcut; each click awards one more goal.
 
-**Gol H / Gol A** immediately choose an eligible on-pitch scorer for the home or
-away side, excluding the goalkeeper. Current central-forward formation roles
+The top number row and numeric keypad provide these shortcuts while the match
+screen is active and Debugging is enabled:
+
+| Key | Action |
+| --- | --- |
+| 1 | Random home goal |
+| 2 | Random away goal |
+| 3 | Random away dismissal |
+| 4 | Random home dismissal |
+| 5 | Random away injury |
+| 6 | Random home injury |
+
+**Z** activates the original play/pause control, including with Debugging off.
+Holding a key does not repeat these actions; Command/Option/Control combinations
+and modal dialogs retain their normal keyboard behavior. Only the manual goal
+dropdown and repeat button remain in the sidebar. Random goals do not replace
+the repeat button's most recently manually chosen player.
+
+Random goals exclude the goalkeeper. Current central-forward formation roles
 (including the two central lanes in a 4-4-2) have weight 13; other outfield roles
-have weight 10. **Expulsão H / Expulsão A** choose an on-pitch player uniformly,
+have weight 10. Dismissals choose an on-pitch player uniformly,
 including the goalkeeper, and run the original direct-red-card, commentary and
 pitch-removal routines. Bench, substituted and already dismissed players are
-excluded. Pools are rebuilt on each click, and host-side selection does not draw
-from the original simulation RNG. The original report is refreshed for either
-event, without advancing the clock. These four controls require Debugging to be
-enabled. Its selected option uses the same theme border color as the other rows.
+excluded. Injuries also select uniformly, including the goalkeeper, then choose
+uniformly among original medical types 0–76 (excluding recovery/fitness statuses
+77–81). Original retirement/registration routines replace any previous injury
+and calculate duration, traits, medical adjustments and notices. The original
+pending-injury processor removes the player from the pitch without a red card.
+A private fixture view supplies the current score to medical registration, so
+the unfinished fixture is not mistaken for a training injury; the live fixture
+is unchanged.
+Pools are rebuilt on each press, and host selection does not draw from the
+original simulation RNG. The original report is refreshed for each event,
+without advancing the clock. Debugging's selected option uses the same theme
+border color as the other rows.
 
 The shortcut resets when the original game initializes another match. Player
 identity and eligibility are checked again when clicked, including substitutions,
@@ -37,8 +62,26 @@ career save retains the resulting game state. Original save layouts are unchange
 The in-game regression check compares four interventions against original goal
 execution, including consecutive clicks without advancing time. It reads the
 original published report and verifies each scorer's staff identity, side and
-nonzero minute, then compares 20 subsequent engine steps. Career save/reload after
-an in-game intervention has not been retested.
+nonzero minute, then compares 20 subsequent engine steps. This earlier goal-only
+check did not retest career save/reload.
+
+The injury/keyboard check exercises all 77 actual medical records against direct
+original registration and withdrawal, both keepers and both outfield sides,
+40 subsequent original-agreeing engine steps, match context without fixture
+mutation, input rejection and selection without state/RNG changes. It drives all
+six shortcuts through the match handler
+with top-row and keypad key codes, checks the exact side and one affected player,
+and verifies Z selects the original control plus modifier/repeat/modal guards.
+An isolated copy of the user's career also confirms all six keys in a live
+Dover–Yeovil match: goals for both sides, Tonkin/Bennett dismissed and Giles/Elliot
+injured in the normal report, Z start/pause/resume, and only the two manual-goal
+controls in the sidebar. A follow-up career copy confirms Johnson/Culverhouse
+injuries, then normal save, application exit, reopen and reload; Johnson's
+three-week thigh strain notice survives and correctly identifies the Dover
+match, rather than training. The signed ARM64 application is installed. The full
+suite passes 93/94 runnable checks; only the already known lineup diagnostic
+failure remains (the test requires a C++23 owner count while production uses
+the generated original position setter).
 
 The sections below record the earlier standalone-debugger characterization.
 
