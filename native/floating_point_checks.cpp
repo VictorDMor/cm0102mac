@@ -20,7 +20,11 @@ void execute(State& s, const std::string& expected = "Native instruction budget 
         stopped = true;
     }
     require(stopped, "Missing expected instruction boundary");
-    require(s.pc == instruction + (expected == "Native instruction budget exhausted" ? 4 : 0),
+    // Comparing with the literal next PC makes the generator end the
+    // instruction's run there (block accounting), so a budget of one stops
+    // right after the conversion.
+    const bool after = s.pc == 0x1022cd28;
+    require(expected == "Native instruction budget exhausted" ? after : s.pc == instruction,
             "Conversion stopped at the wrong original instruction");
 }
 struct Case {

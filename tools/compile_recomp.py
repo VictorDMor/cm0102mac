@@ -772,8 +772,14 @@ class DirectOwnerCalls:
 # generated code for them (identical results: it is the reference); the
 # owners stay, with their equivalence checks, as specifications for real C++
 # rewrites. Measured on the 26-country day capture, 2026-10-23.
-GENERATED_FASTER_FAMILIES = ("actor_attributes", "contract_terms", "shortlist_assessment", "shortlist_policy",
-                             "transfer_offer")
+GENERATED_FASTER_FAMILIES = (
+    "actor_attributes", "contract_terms", "shortlist_assessment", "shortlist_policy", "transfer_offer",
+    # Match play, measured on the 26-country week (2026-10-23): the actor
+    # families 255 -> 247 s, the others 255 -> 238 s in original mode.
+    "actor_action", "actor_construction", "actor_effects", "actor_encounter", "actor_flags", "actor_motion",
+    "actor_order", "actor_policy", "ball_action", "ball_contact", "marking_pressure", "match_actor",
+    "match_discipline", "match_event", "match_random", "match_selection", "match_selection_support",
+    "match_target", "movement_choice", "pitch_distance", "target_acceptance", "team_line", "team_spatial")
 
 
 # Zero-divisor sites found in play (day advance, two in match play). The
