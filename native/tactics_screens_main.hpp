@@ -29,6 +29,7 @@ constexpr std::uint32_t view = 0x27a4;          // int8: 1 positions, 2 with the
 constexpr std::uint32_t previous_view = 0x27a5; // int8
 constexpr std::uint32_t cell = 0x27a6;          // uint16 row, column: the pitch cell shown
 constexpr std::uint32_t previous_cell = 0x27aa;
+constexpr std::uint32_t free_kick_side = 0x27ae; // int8, toggled by action 0x14
 constexpr std::uint32_t players = 0x27b0;       // 20 match player entries of 0x1c4 bytes
 constexpr std::uint32_t brought_on = 0x4b00;    // int8[9]: entries brought on as substitutes
 constexpr std::uint32_t taken_off = 0x4b09;     // int8[9]: the entries they replaced

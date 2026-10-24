@@ -1,4 +1,5 @@
 #include "tactics_screens_main.hpp"
+#include "tactics_leaves.hpp"
 
 namespace cm::aot::tactics_screens::main {
 using guest::Cpu;
@@ -47,10 +48,11 @@ bool view_is(Cpu& c, std::uint32_t screen, std::int32_t view) {
 }
 // 1 in the with-the-ball view: the ball-state argument of the formation's spot routines.
 std::uint32_t with_ball(Cpu& c, std::uint32_t screen) { return view_is(c, screen, 2) ? 1 : 0; }
-// 0x103baae0 (a leaf): copies a cell, as two halfwords.
+// 0x103baae0 (a leaf): copies a cell, as two halfwords; r3 and r4 are left
+// as its arguments.
 void copy_cell_value(Cpu& c, std::uint32_t to, std::uint32_t from) {
-    c.put16(to, c.u16(from));
-    c.put16(to + 2, c.u16(from + 2));
+    c.set({{3, to}, {4, from}});
+    tactics_leaf_103baae0(c.s);
 }
 // Before an edit: the formation into the undo copy (0x103c1340 copies a
 // formation record), and undo becomes possible.
@@ -554,7 +556,6 @@ std::uint32_t set_view(Cpu& c, std::uint32_t screen, std::uint32_t view) {
     c.put8(screen + field::previous_view, c.u8(screen + field::view));
     c.put8(screen + field::view, view);
     copy_cell_value(c, screen + field::previous_cell, screen + field::cell);
-    c.set(4, screen + field::cell);  // as the leaf's arguments leave it
     return 1;
 }
 
@@ -617,7 +618,6 @@ std::uint32_t set_cell(Cpu& c, std::uint32_t screen, std::uint32_t cell) {
     }
     copy_cell_value(c, screen + field::previous_cell, screen + field::cell);
     copy_cell_value(c, screen + field::cell, frame.at(0x8c));
-    c.set(4, frame.at(0x8c));  // as the leaf's arguments leave it
     c.put8(screen + field::previous_view, c.u8(screen + field::view));
     return 1;
 }

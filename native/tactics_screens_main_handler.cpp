@@ -10,14 +10,11 @@
 // its code in a stack slot of its own and destroys the stack object at
 // sp+0x240 (0x1074b7c0).
 #include "tactics_screens_main.hpp"
+#include "tactics_leaves.hpp"
 #include <array>
 #include <bit>
 #include <cmath>
 #include <optional>
-#include <set>
-#include <cstdlib>
-#include <cstdio>
-#include "routine_check.hpp"
 
 namespace cm::aot {
 void original_fctiwz(State& state, unsigned destination, unsigned source);
@@ -33,28 +30,6 @@ std::int32_t byte(std::uint32_t value) { return std::int8_t(value); }
 std::int32_t half(std::uint32_t value) { return std::int16_t(value); }
 // mulhw: the high word of a signed 64-bit product.
 std::int32_t mulhw(std::int32_t a, std::int32_t b) { return std::int32_t((std::int64_t(a) * b) >> 32); }
-// CodeWarrior's signed division by a constant: (mulhw(magic, x) >> shift) + sign.
-std::int32_t divide(std::int32_t magic, int shift, std::int32_t x) {
-    const auto q = mulhw(magic, x) >> shift;
-    return q + std::int32_t(std::uint32_t(q) >> 31);
-}
-
-// DEBUG-COVER
-std::set<std::uint32_t>& covered() {
-    static std::set<std::uint32_t> sites;
-    static bool registered = [] {
-        std::atexit([] {
-            if (!std::getenv("SM_COVER")) return;
-            FILE* f = std::fopen(std::getenv("SM_COVER"), "a");
-            for (auto a : covered()) std::fprintf(f, "%08x\n", a);
-            std::fclose(f);
-        });
-        return true;
-    }();
-    (void)registered;
-    return sites;
-}
-void cover(std::uint32_t back) { if (std::getenv("SM_COVER")) covered().insert(back); }
 
 class Handler {
 public:
@@ -70,13 +45,24 @@ private:
     std::uint32_t screen = 0;
 
     std::uint32_t at(std::int32_t offset) const { return f.at(offset); }
+    // srawi: the arithmetic shift, with XER CA as the original leaves it
+    // (set when a negative value loses one bits).
+    std::uint32_t sra(std::uint32_t value, unsigned shift) {
+        const auto lost = value & ((1u << shift) - 1);
+        c.s.wr<1>(guest::reg::xer_ca, std::int32_t(value) < 0 && lost != 0);
+        return std::uint32_t(std::int32_t(value) >> shift);
+    }
+    // CodeWarrior's signed division by a constant, its srawi setting CA.
+    std::int32_t divide_ca(std::int32_t magic, unsigned shift, std::int32_t x) {
+        const auto q = std::int32_t(sra(std::uint32_t(mulhw(magic, x)), shift));
+        return q + std::int32_t(std::uint32_t(q) >> 31);
+    }
     void put(std::int32_t offset, std::uint32_t value) { c.put32(at(offset), value); }
     std::uint32_t word(std::int32_t offset) const { return c.u32(at(offset)); }
     // The position the club's handler left at sp+0x64 / sp+0x62 for dialogs.
     std::uint32_t x() const { return sext16(c.u16(at(0x64))); }
     std::uint32_t y() const { return sext16(c.u16(at(0x62))); }
     std::uint32_t call(std::uint32_t target, std::uint32_t back) {
-        cover(back);
         c.call(target, back);
         return c.r(3);
     }
@@ -180,7 +166,6 @@ private:
     // A direct call of a routine of this group (its result in r3, as the original's).
     template <class Result>
     Result direct(std::uint32_t back, auto&& routine) {
-        cover(back);
         c.link(back);
         const Result result = routine();
         c.set(0, c.lr());  // the callee's epilogue reloads LR through r0
@@ -989,11 +974,14 @@ std::optional<std::uint32_t> Handler::edit_actions() {
         c.set(9, direct<std::uint32_t>(0x103bd328, [&] { return mirror_cell(c, screen); }));
         return leave(-11, 0xcc, 14, 0x103bd340);
     }
-    // 0x14: toggles the screen's byte +0x27ae (leaves 0x103bad00 / 0x103be990).
+    // 0x14: toggles the free-kick side byte (+0x27ae, leaves 0x103bad00 / 0x103be990).
     if (action(0x103bd358) == 0x14) {
-        const bool set = c.i8(screen + 0x27ae) != 0;
+        c.set(3, screen);
+        tactics_leaf_103bad00(c.s);  // reads the byte
+        const bool set = byte(c.r(3)) != 0;
+        c.compare(0, byte(c.r(3)), 0);
         c.set({{3, screen}, {4, set ? 0u : 1u}});
-        c.put8(screen + 0x27ae, set ? 0 : 1);
+        tactics_leaf_103be990(c.s);  // stores it
         return leave(-11, 0xc8, 0, 0x103bd3ac);
     }
     // 0x15: the view (1..3) from the control's value.
@@ -1127,7 +1115,7 @@ std::optional<std::uint32_t> Handler::drags() {
     // 6..10, bit index in bits 0..5), toggled (0x103c82a0) or set (0x103c8c70).
     c.set(13, action(0x103bd82c));
     if (c.r(3) == 0x1a) {
-        c.put8(at(0x53), sext8(std::uint32_t((sext16(value(0x103bd844)) & 0x7c1) >> 6)));
+        c.put8(at(0x53), sext8(sra(sext16(value(0x103bd844)) & 0x7c1, 6)));
         const auto index = sext8(sext16(value(0x103bd864)) & 0x3f);
         c.set(3, index);
         instruction_bit_registers(c);  // 0x103cf110, frameless
@@ -1140,7 +1128,7 @@ std::optional<std::uint32_t> Handler::drags() {
         return leave(-11, 0xa8, 0, 0x103bd8b4);
     }
     if (action(0x103bd8cc) == 0x1b) {
-        const auto player = std::uint32_t((sext16(value(0x103bd8e0)) & 0x7c1) >> 6);
+        const auto player = sra(sext16(value(0x103bd8e0)) & 0x7c1, 6);
         c.set({{13, player}, {14, sext8(player)}});
         c.put8(at(0x52), sext8(player));
         const auto index = sext8(sext16(value(0x103bd900)) & 0x3f);
@@ -1237,18 +1225,24 @@ std::optional<std::uint32_t> Handler::drag_on_pitch() {
     c.put8(at(0x51), sext8(value(0x103bd9ac)));
     pitch(0x228, 0x103bd9c4, {0x1f0, 0x1ec, 0x1e8, 0x1e4}, {0x103bd9d0, 0x103bd9e0, 0x103bd9f0, 0x103bda00}, {0, 0, 0, 5});
     const auto player = [&] { return c.u8(at(0x51)); };
-    const auto view = c.u8(screen + field::view);  // leaf 0x103bacf0
-    c.set({{3, view}, {13, view}});
+    c.set(3, screen);
+    tactics_leaf_103bacf0(c.s);  // the view
+    const auto view = c.r(3);
+    c.set(13, view);
     put(0x6f4, sext8(view));
     if (word(0x6f4) == 1) {
         put(0x1e0, 800);
         c.set(3, 800);
         put(0x6f8, 0);
         put(0x1dc, 0);
+        c.set(0, 0);
+        // Scratch registers are set as the original's instructions leave
+        // them: they reach the callees and the exit.
         for (;;) {
             const auto offset = word(0x1dc) << 1;
             const auto code = sext16(c.u16(positions + offset));
-            c.set({{20, offset}, {13, code}});
+            c.set({{0, word(0x1dc)}, {20, offset}, {13, code}});
+            c.compare(0, half(code), -1);
             if (half(code) == -1) break;
             const auto index = word(0x1dc);
             c.set({{3, screen}, {13, index}, {14, index << 1}, {4, sext16(c.u16(positions + (index << 1)))}});
@@ -1256,6 +1250,7 @@ std::optional<std::uint32_t> Handler::drag_on_pitch() {
             c.set(15, central);
             put(0x6fc, word(0x1dc));
             put(0x728, word(0x6fc) << 1);
+            c.set(0, word(0x728));
             // The position's marker (0x103ce330) at sp+0x1d4 (x), sp+0x1d8 (y).
             c.set({{3, sext16(c.u16(positions + word(0x728)))}, {4, word(0x1f0)}, {5, word(0x1ec)}, {6, word(0x1e8)},
                    {7, word(0x1e4)}, {8, at(0x1d8)}, {9, at(0x1d4)}, {10, central}});
@@ -1271,14 +1266,15 @@ std::optional<std::uint32_t> Handler::drag_on_pitch() {
             put(0x704, top);
             put(0x708, sext16(c.u16(at(0x22e))));
             const auto height = word(0x708) - word(0x704);
-            const auto dy = top + std::uint32_t(std::int32_t((height >> 31) + height) >> 1) - word(0x1d8);
+            const auto dy = top + sra((height >> 31) + height, 1) - word(0x1d8);
             put(0x1cc, dy);
             const auto squared = word(0x1cc) * word(0x1cc) + word(0x1d0) * word(0x1d0);
-            c.set({{25, squared}, {5, c.toc(-0x4cb0)}, {3, squared ^ 0x80000000u}});
+            c.set({{25, squared}, {4, word(0x1d0)}, {8, top}, {5, c.toc(-0x4cb0)}, {3, squared ^ 0x80000000u}});
             const auto length = std::uint32_t(distance(squared, 0x6ec, 0x6e4, 0x103bdb44));
             c.set(13, length);
             put(0x1c8, length);
             c.set(14, word(0x1e0));
+            c.compare(0, std::int32_t(length), std::int32_t(word(0x1e0)));
             if (std::int32_t(length) < std::int32_t(word(0x1e0))) {
                 const auto nearest = word(0x1dc);
                 c.set({{15, nearest}, {13, nearest << 1}, {14, sext16(c.u16(positions + (nearest << 1)))}});
@@ -1286,10 +1282,11 @@ std::optional<std::uint32_t> Handler::drag_on_pitch() {
                 c.set(15, word(0x1c8));
                 put(0x1e0, word(0x1c8));
             }
-            c.set(13, word(0x1dc));
+            c.set({{13, word(0x1dc)}, {0, word(0x1dc) + 1}});
             put(0x1dc, word(0x1dc) + 1);
         }
         c.set(20, word(0x1e0));
+        c.compare(0, std::int32_t(word(0x1e0)), 800);
         if (std::int32_t(word(0x1e0)) >= 800) return std::nullopt;
         c.set({{3, screen}, {4, sext16(c.u16(at(0x60)))}});
         const auto holder = call(0x103bab00, 0x103bdbb4);  // the player at that position
@@ -1359,6 +1356,9 @@ std::optional<std::uint32_t> Handler::drag_on_pitch() {
             r[4] = r[10] - r[8];
             const auto positive = [](std::uint32_t v) { return std::int32_t(v) > 0 ? v : 0u; };
             const auto area = positive(r[5]) * positive(r[4]);
+            // Its last srawi (by 31, of -w & ~w) leaves CA.
+            const auto mask = (0u - r[5]) & ~r[5];
+            c.s.wr<1>(guest::reg::xer_ca, std::int32_t(mask) < 0 && (mask & 0x7fffffff) != 0);
             r[6] = marker_right;
             put(0x1b8, area);
             if (std::int32_t(area) > std::int32_t(word(0x1c4))) {
@@ -1412,17 +1412,22 @@ std::optional<std::uint32_t> Handler::drag_with_ball() {
     c.set(3, 800);
     c.set(13, 0);
     put(0x19c, 0);
-    while (c.i16(positions + (word(0x19c) << 1)) != -1) {
+    // Scratch registers are set as the original's instructions leave them.
+    for (;;) {
+        const auto code = sext16(c.u16(positions + (word(0x19c) << 1)));
+        c.set({{0, word(0x19c) << 1}, {3, code}});
+        c.compare(0, half(code), -1);
+        if (half(code) == -1) break;
         const auto index = word(0x19c);
-        c.set({{3, screen}, {23, index}, {4, sext16(c.u16(positions + (index << 1)))}});
+        c.set({{3, screen}, {23, index}, {0, index << 1}, {4, sext16(c.u16(positions + (index << 1)))}});
         const auto central = call(0x103bab40, 0x103bdf6c);
-        c.set({{10, central}, {3, sext16(c.u16(positions + (word(0x19c) << 1)))}, {4, word(0x1b0)}, {5, word(0x1ac)},
-               {6, word(0x1a8)}, {7, word(0x1a4)}, {8, at(0x198)}, {9, at(0x194)}});
+        c.set({{10, central}, {0, word(0x19c)}, {3, sext16(c.u16(positions + (word(0x19c) << 1)))}, {4, word(0x1b0)},
+               {5, word(0x1ac)}, {6, word(0x1a8)}, {7, word(0x1a4)}, {8, at(0x198)}, {9, at(0x194)}});
         call(0x103ce330, 0x103bdf98);
         const auto left = sext16(c.u16(at(0x220)));
         const auto width = sext16(c.u16(at(0x224))) - left;
         const auto rounded = (width >> 31) + width;
-        const auto half_width = std::uint32_t(std::int32_t(rounded) >> 1);
+        const auto half_width = sra(rounded, 1);
         const auto dx = left + half_width - word(0x194);
         c.set({{13, rounded}, {14, half_width}, {23, dx}});
         put(0x190, dx);
@@ -1430,8 +1435,9 @@ std::optional<std::uint32_t> Handler::drag_with_ball() {
         put(0x71c, top);
         put(0x720, sext16(c.u16(at(0x226))));
         const auto height = word(0x720) - word(0x71c);
-        const auto dy = top + std::uint32_t(std::int32_t((height >> 31) + height) >> 1) - word(0x198);
-        c.set({{13, height}, {14, dy}});
+        const auto rounded_height = (height >> 31) + height;
+        const auto dy = top + sra(rounded_height, 1) - word(0x198);
+        c.set({{13, height}, {14, dy}, {5, rounded_height}, {8, word(0x198)}});
         put(0x18c, dy);
         c.set(15, word(0x18c));
         put(0x724, word(0x18c));
@@ -1440,16 +1446,19 @@ std::optional<std::uint32_t> Handler::drag_with_ball() {
         const auto squared = word(0x18c) * word(0x724) + dx_squared;
         c.set({{3, squared}, {4, squared ^ 0x80000000u}});
         const auto length = std::uint32_t(distance(squared, 0x6e4, 0x6ec, 0x103be048));
-        c.set(4, length);
+        c.set({{4, length}, {0, word(0x1a0)}});
         put(0x188, length);
+        c.compare(0, std::int32_t(length), std::int32_t(word(0x1a0)));
         if (std::int32_t(length) < std::int32_t(word(0x1a0))) {
             c.put16(at(0x5e), c.u16(positions + (word(0x19c) << 1)));
-            c.set(13, word(0x188));
+            c.set({{0, sext16(c.u16(positions + (word(0x19c) << 1)))}, {13, word(0x188)}});
             put(0x1a0, word(0x188));
         }
-        c.set(14, word(0x19c));
+        c.set({{14, word(0x19c)}, {3, word(0x19c) + 1}});
         put(0x19c, word(0x19c) + 1);
     }
+    c.set(3, word(0x1a0));
+    c.compare(0, std::int32_t(word(0x1a0)), 800);
     if (std::int32_t(word(0x1a0)) >= 800) return std::nullopt;
     const auto player = c.u8(at(0x50));
     const auto position = sext16(c.u16(at(0x5e)));
@@ -1467,11 +1476,11 @@ std::uint32_t Handler::remaining() {
         c.put16(at(0x186), c.u16(c.r(2) - 0x3824));
         const auto chosen = value(0x103be114);
         c.set(14, chosen);
-        const auto row = std::uint32_t(divide(0x51eb851f, 5, std::int32_t(chosen)));  // / 100
+        const auto row = std::uint32_t(divide_ca(0x51eb851f, 5, std::int32_t(chosen)));  // / 100
         c.set(13, row);
         c.put16(at(0x184), row);
         const auto again = value(0x103be148);
-        const auto column = again - std::uint32_t(divide(0x51eb851f, 5, std::int32_t(again))) * 100;
+        const auto column = again - std::uint32_t(divide_ca(0x51eb851f, 5, std::int32_t(again))) * 100;
         c.put16(at(0x186), column);
         c.put16(at(0x5c), column);
         const auto cell = word(0x184);
@@ -1482,7 +1491,9 @@ std::uint32_t Handler::remaining() {
         return code;
     }
     if (action(0x103be1b8) == 0x20) {
-        put(0x6f8, c.u8(screen + field::changed));  // leaf 0x103be410
+        c.set(3, screen);
+        tactics_leaf_103be410(c.s);  // the changed byte
+        put(0x6f8, c.r(3));
         c.set(13, sext8(word(0x6f8)));
         if (!byte(word(0x6f8))) {
             c.set({{3, screen}, {4, 1}});
@@ -1593,25 +1604,8 @@ std::uint32_t Handler::run() {
 }
 
 std::uint32_t handle(Cpu& c, std::uint32_t event) {
-    // DEBUG-BISECT
-    static long calls = 0;
-    static const long limit = std::getenv("SM_LIMIT") ? std::atol(std::getenv("SM_LIMIT")) : -1;
-    ++calls;
-    if (limit >= 0 && calls > limit) {
-        bool declining = false;
-        c.s.pc = 0x103baee0;
-        run_original_body(c.s, 0x103baee0, declining);
-        return c.r(3);
-    }
-    const auto sp = c.sp(), lr = c.lr();
-    std::uint32_t code;
-    {
-        Frame frame(c, 0x103baee0, 0x780, {.first_gpr = 13});
-        Handler handler(c, frame, event);
-        code = handler.run();
-    }
-    if (std::getenv("SM_TRACE") && calls >= std::atol(std::getenv("SM_TRACE")))
-        std::fprintf(stderr, "call %ld event %x sp %x lr %x code %x r4 %x r5 %x r0 %x\n", calls, event, sp, lr, code, c.r(4), c.r(5), c.r(0));
-    return code;
+    Frame frame(c, 0x103baee0, 0x780, {.first_gpr = 13});
+    Handler handler(c, frame, event);
+    return handler.run();
 }
 }

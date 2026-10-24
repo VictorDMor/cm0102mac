@@ -559,7 +559,7 @@ void Builder::save_for(std::uint32_t menu) {
     localise(0xf3, 0x103b44d8);
     item(menu, 0, 0, 0x103b44f4);
     keep(8);
-    c.put16(at(0x98), submenu(c.r(3), 0x103b4500));
+    c.put16(at(0x98), submenu(c.r(3), 0x103b4504));
     keep(8);
     for (c.set(25, 0); std::int8_t(c.r(25)) < 16; c.set(25, c.r(25) + 1)) {
         // The human managers hold the last staff ids.
@@ -669,7 +669,7 @@ void Builder::view_menu() {
     if (flag(4, 5) != 0) {
         separator(menu, 0x103b4f90);
         keep(6);
-        column({0x22c, 0x15, 8, 0x103b4fa0, 0x103b4fc4, 0x103b4fd4, 0x103b4ff4, 7, 0, 0, 0});  // " Marker"
+        column({0x22c, 0x15, 8, 0x103b4fa0, 0x103b4fc8, 0x103b4fd4, 0x103b4ff4, 7, 0, 0, 0});  // " Marker"
     }
 }
 

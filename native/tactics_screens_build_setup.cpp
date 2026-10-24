@@ -340,6 +340,10 @@ std::uint32_t construct(Cpu& c, std::uint32_t screen, std::uint32_t club, std::u
                 const auto taker = ask_tactics(0x103b0e70, human ? 0x103c55f4 : 0x103c57f0,
                                                {{5, kind}, {6, order}, {7, managed()}});
                 c.put32(screen + at::takers + indexed(kind, 8) + indexed(order, 4), taker);
+                // The AI path's store leaves its operands for the next call.
+                if (!human)
+                    c.set({{0, sext8(kind)}, {3, indexed(kind, 8) + indexed(order, 4) + at::takers}, {4, taker},
+                           {5, screen}, {8, indexed(order, 4)}});
             }
             c.set(29, 2);
         }
@@ -354,12 +358,18 @@ std::uint32_t construct(Cpu& c, std::uint32_t screen, std::uint32_t club, std::u
             const auto slot = ask_tactics(0x103b1670, human ? 0x103c5664 : 0x103c5858, {{5, place}, {6, managed()}});
             if (!human) c.set({{14, slot}, {13, screen}});
             c.put8(screen + at::lineup + indexed(place, 1), slot);
+            if (!human) c.set({{3, sext8(place)}, {4, sext8(place) + at::lineup}});
         }
         c.set(30, 11);
         for (std::uint32_t which = 0; which < 2; ++which) {
             const auto back = human ? (which ? 0x103c56c8u : 0x103c56a4u) : (which ? 0x103c58c0u : 0x103c5898u);
-            c.put32(screen + at::captains + which * 4, ask_tactics(0x103b1370, back, {{5, which}, {6, managed()}}));
+            const auto captain = ask_tactics(0x103b1370, back, {{5, which}, {6, managed()}});
+            c.put32(screen + at::captains + which * 4, captain);
+            if (human) continue;
+            if (which) c.set(4, screen);
+            else c.set({{8, screen}, {9, captain}});
         }
+        if (!human) c.set({{0, 1}, {5, screen}});
         close(human ? 0 : 1, human ? 0x103c5720 : 0x103c5918);
     }
     c.set({{3, fixtures}, {4, 0xffffffffu}});
