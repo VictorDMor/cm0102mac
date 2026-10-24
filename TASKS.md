@@ -88,8 +88,15 @@ validated on held-out matchups against the best community tactics.
 - [x] Validation on 8 unseen matchups, 2,048 matches each, paired with Marc:
       exploit +0.167 +- 0.035 ppg, honest +0.077 +- 0.035. Files in
       .local/tactics-optimal (Lab Exploit.tct, Lab Honest.tct).
-- [ ] In the real game: load Lab Exploit.tct and confirm the load-time
-      assertion reports (one per player) and that the codes survive (user).
+- [x] Certificates on fresh seeds for the final files: the honest file over
+      team, instructions and spots (nothing passed); the exploit's spots
+      accepted the left back's column 1 three rows up (+0.112 +- 0.039), then
+      spots, codes, instructions and team passed nothing. Validation again:
+      exploit +0.219 +- 0.035, honest +0.052 +- 0.035 vs Marc.
+- [x] The game's own loader (`load:FILE`): the exploit raises 10 assertion
+      reports and keeps its codes; same matches as the lab build.
+- [ ] In the app itself: load Lab Exploit.tct from the tactics screen (user;
+      the loader routine is verified, the dialog clicks are not).
 - [x] Commit the lab (review pass done earlier), tools/tactic_lab.py, a short doc.
 
 ## Done: the tactics system in C++23 (goal set 2026-10-23, all 234 hooked)

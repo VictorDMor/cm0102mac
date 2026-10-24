@@ -81,10 +81,18 @@ hill climb accept noise.
   holding midfielder) give the honest tactic.
 - The file-only exploit: decoupled position codes (the loader bypass above).
   Wide central midfielders coded M-C and both strikers coded F-RC while they
-  keep their spots; a search over all 251 single code changes then found
-  nothing better.
+  keep their spots, and the left back's no-ball column 1 three rows up
+  (+0.112 +- 0.039; worth nothing without the central codes: -0.002 +-
+  0.041 on the honest tactic).
+- Both final files are certified on fresh seeds: no single change of a team
+  option (11), instruction (230), spot shift (240) or, for the exploit,
+  position code (251) gains 2 SE over 1,024 paired matches.
 - Validation (8 unseen matchups x 256 seeds = 2,048 matches each, paired with
-  4132 Marc): exploit 2.092 ppg (+0.167 +- 0.035), honest 2.002 (+0.077 +-
-  0.035), scemoka 1.954, Marc 1.925, the AI's own choice 0.562. Neither file
-  raised an assertion during matches; the exploit should raise one per
-  outfield player at load (from the loader's code, not yet seen in the game).
+  4132 Marc), two seed sets: exploit 2.153 ppg (+0.219 +- 0.035), its earlier
+  version without the left-back move 2.092 / 2.114, honest 2.002 / 1.987
+  (+0.077 / +0.052 +- 0.035), scemoka 1.954, Marc 1.925 / 1.935, the AI's own
+  choice 0.562.
+- `load:FILE` reads a file with the game's own loader: the exploit raises 10
+  assertion reports (one per outfield player) and keeps its codes, the honest
+  file none; both play the same matches as the lab's own build. Neither raises
+  an assertion during matches.

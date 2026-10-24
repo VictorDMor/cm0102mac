@@ -7,8 +7,10 @@
 //   cm-tactic-lab GAME --list-clubs
 //
 // TACTIC is a .tct file, `respot:FILE` to place the file's players at its
-// position codes as the tactics screen does (its own spots are dropped), or
-// `ai` for the side's own AI choice. Each tactic
+// position codes as the tactics screen does (its own spots are dropped),
+// `load:FILE` to read the file with the game's own loader as the tactics
+// screen does (it reports the codes the loader kept and the assertion reports
+// it raised in a "loaded" line), or `ai` for the side's own AI choice. Each tactic
 // plays N matches, seeds S..S+N-1; the same seeds for every tactic (common
 // random numbers). Output: one line per match ("match TACTIC SEED FOR AGAINST
 // ASSERTIONS SHOTS ON-TARGET SHOTS-AGAINST ON-TARGET-AGAINST"; assertion
@@ -69,6 +71,7 @@ struct Tactic {
     std::string name;
     bool ai = false, respot = false;  // respot: spots from the position codes, as the UI sets them
     std::vector<std::uint8_t> file;
+    std::string guest_path;  // load: the file's copy in the user data folder, for the original loader
 };
 
 std::uint32_t read_word(const std::uint8_t* p, bool little) {
@@ -105,6 +108,18 @@ std::uint32_t build_formation(State& state, const Tactic& tactic) {
 }
 
 std::uint32_t build_formation_record(State& state, const Tactic& tactic) {
+    if (!tactic.guest_path.empty()) {
+        // As the tactics screen loads a file (0x103c7ad0): quiet, not a preset.
+        const auto formation = invoke(state, 0x10773520, {formation_size});
+        const auto path = invoke(state, 0x10773520, {std::uint32_t(tactic.guest_path.size() + 1)});
+        if (!formation || !path) throw std::runtime_error("Could not allocate a formation record");
+        (void)invoke(state, 0x10110c80, {formation});
+        for (std::uint32_t i = 0; i <= tactic.guest_path.size(); ++i)
+            state.memory.write<1>(path + i, i < tactic.guest_path.size() ? std::uint8_t(tactic.guest_path[i]) : 0);
+        if (!(invoke(state, 0x10115000, {formation, path, 1, 0}) & 0xff))
+            throw std::runtime_error(tactic.name + ": the game's loader refused the file");
+        return formation;
+    }
     const auto& f = tactic.file;
     if (f.size() < 1472) throw std::runtime_error(tactic.name + ": not a formation file");
     const bool little = read_word(f.data(), false) < 0x98ec54 || read_word(f.data(), false) > 0x98ec5e;
@@ -242,13 +257,9 @@ Result play(const Checkpoint& prepared, const MatchPreparation& shape, const Opt
     auto state = prepared.restore();
     state->budget = state->executed + 4000000000ULL;
     const auto& tactic = options.tactics[tactic_index];
-    injection = {shape.match, options.side, tactic.ai ? 0u : build_formation(*state, tactic), 0};
-    (void)invoke(*state, 0x107474a0, {seed});
-    // Assertion reports go to the log instead of a dialog nobody can close;
-    // their count is part of the result (the game would show each one).
-    state->memory.write<1>(0x108b8540, 1);
     assertions = 0;
     assertion_sites.clear();
+    injection = {shape.match, options.side, 0, 0};
     struct Hooks {  // the probe and the observer end with this match, however it ends
         State* state = nullptr;
         ~Hooks() {
@@ -256,7 +267,21 @@ Result play(const Checkpoint& prepared, const MatchPreparation& shape, const Opt
             if (state) state->memory.observer = nullptr;
         }
     } hooks;
-    dispatch_probe = &probe;
+    dispatch_probe = &probe;  // counts the reports of the load too
+    injection.source = tactic.ai ? 0u : build_formation(*state, tactic);
+    const auto at_load = assertions;
+    if (!tactic.guest_path.empty() && seed == options.first_seed) {
+        std::ostringstream line;
+        line << "loaded " << tactic_index << ' ' << at_load << std::hex;
+        for (std::uint32_t at : {0x12eu, 0x150u})
+            for (std::uint32_t player = 0; player < 11; ++player)
+                line << ' ' << state->memory.read<2>(injection.source + at + player * 2);
+        std::cout << line.str() << std::endl;
+    }
+    (void)invoke(*state, 0x107474a0, {seed});
+    // Assertion reports go to the log instead of a dialog nobody can close;
+    // their count is part of the result (the game would show each one).
+    state->memory.write<1>(0x108b8540, 1);
     auto engine = start_match(std::move(state), shape.match, shape.fixture, shape.rosters);
     if (injection.source && injection.applied != 2)
         throw std::runtime_error(tactic.name + ": the tactic was applied " + std::to_string(injection.applied) + " times");
@@ -284,7 +309,7 @@ Result play(const Checkpoint& prepared, const MatchPreparation& shape, const Opt
         return int(std::int8_t(s.memory.read<1>(shape.match + (side ? away_score : home_score) + at)));
     };
     const auto own = options.side, other = 1 - options.side;
-    return {stat(own, 0), stat(other, 0), assertions, stat(own, 1), stat(own, 2), stat(other, 1), stat(other, 2)};
+    return {stat(own, 0), stat(other, 0), assertions - at_load, stat(own, 1), stat(own, 2), stat(other, 1), stat(other, 2)};
 }
 
 std::uint32_t number(const char* text) {
@@ -307,13 +332,14 @@ Options parse(int argc, char** argv) {
         else if (arg == "--seeds") o.seeds = value();
         else if (arg == "--first-seed") o.first_seed = value();
         else if (arg == "--watch") o.watch = true;
-        else if (arg == "ai") o.tactics.push_back({"ai", true, false, {}});
+        else if (arg == "ai") o.tactics.push_back({"ai", true, false, {}, {}});
         else {
-            const bool respot = arg.starts_with("respot:");
-            const auto path = respot ? arg.substr(7) : arg;
+            const bool respot = arg.starts_with("respot:"), load = arg.starts_with("load:");
+            const auto path = respot ? arg.substr(7) : load ? arg.substr(5) : arg;
             std::ifstream in(path, std::ios::binary);
             if (!in) throw std::invalid_argument("Cannot read " + path);
-            o.tactics.push_back({arg, false, respot, {std::istreambuf_iterator<char>(in), {}}});
+            o.tactics.push_back({arg, false, respot, {std::istreambuf_iterator<char>(in), {}}, {}});
+            if (load) o.tactics.back().guest_path = "load";  // named once the folder exists
         }
     }
     if (o.tactics.empty() || o.side > 1 || !o.first_seed || o.seeds > 0xffffffffu - o.first_seed)
@@ -329,9 +355,19 @@ int main(int argc, char** argv) {
                 if (club.kind == cm::aot::match_debugger::ClubKind::club) std::cout << club.id << '\t' << club.name << '\n';
             return 0;
         }
-        const auto options = parse(argc, argv);
+        auto options = parse(argc, argv);
         const auto root = options.scratch / std::to_string(::getpid());
         auto prepared = prepare_match({options.program, options.game, root}, {options.home, options.away, 12345, 2001, 194});
+        // Files for the original loader go into the user data folder (root).
+        for (std::size_t t = 0; t < options.tactics.size(); ++t) {
+            auto& tactic = options.tactics[t];
+            if (tactic.guest_path.empty()) continue;
+            const auto name = "load" + std::to_string(t) + ".tct";
+            std::ofstream out(root / name, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(tactic.file.data()), std::streamsize(tactic.file.size()));
+            if (!out) throw std::runtime_error("Cannot write " + (root / name).string());
+            tactic.guest_path = "CM User Data:" + name;
+        }
         const Checkpoint checkpoint(*prepared.state);
         struct Totals { int played = 0, won = 0, drawn = 0, lost = 0, scored = 0, conceded = 0, errors = 0; };
         std::vector<Totals> totals(options.tactics.size());

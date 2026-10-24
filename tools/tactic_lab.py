@@ -277,7 +277,7 @@ def neighbours(t, kind, mode):
     return out
 
 
-def improve(mode, start, outdir, kinds, lab, screen_seeds=8, confirm_seeds=64, top=6, log=None):
+def improve(mode, start, outdir, kinds, lab, screen_seeds=8, confirm_seeds=64, top=6, log=None, first=300000):
     """Coordinate rounds: every single change of a kind is screened on
     screen_seeds per matchup of both panels; the best `top` are played again
     with the incumbent on confirm_seeds fresh seeds per matchup, and the best
@@ -290,7 +290,7 @@ def improve(mode, start, outdir, kinds, lab, screen_seeds=8, confirm_seeds=64, t
     incumbent = Tactic(start)
     if mode == 'exploit':
         protect(incumbent)
-    seed, round_number, quiet = 300000, 0, 0
+    seed, round_number, quiet = first, 0, 0
     while quiet < len(kinds):
         kind = kinds[round_number % len(kinds)]
         folder = os.path.join(outdir, f'r{round_number:02d}-{kind}')
@@ -481,6 +481,8 @@ def main():
     i.add_argument('start')
     i.add_argument('outdir')
     i.add_argument('--kinds', default='team,instructions,spots')
+    i.add_argument('--first-seed', type=int, default=300000)  # fresh seeds for a second search
+    i.add_argument('--processes', type=int, default=10)
     r = sub.add_parser('race')
     r.add_argument('--keep', type=int, default=4)
     r.add_argument('--first-seed', type=int, default=200000)
@@ -502,7 +504,7 @@ def main():
                 line += f'  vs first {m:+.3f}+-{se:.3f}'
             print(line)
     elif args.command == 'improve':
-        improve(args.mode, args.start, args.outdir, args.kinds.split(','), Lab())
+        improve(args.mode, args.start, args.outdir, args.kinds.split(','), Lab(args.processes), first=args.first_seed)
     elif args.command == 'race':
         race(args.tactics, Lab(), args.keep, args.first_seed)
     else:
