@@ -95,8 +95,19 @@ validated on held-out matchups against the best community tactics.
       exploit +0.219 +- 0.035, honest +0.052 +- 0.035 vs Marc.
 - [x] The game's own loader (`load:FILE`): the exploit raises 10 assertion
       reports and keeps its codes; same matches as the lab build.
-- [ ] In the app itself: load Lab Exploit.tct from the tactics screen (user;
-      the loader routine is verified, the dialog clicks are not).
+- [x] In the app (isolated validation copy `tactics-exploit`, driven through
+      its automation channel): Tácticas -> Carregar -> Lab Exploit -> Ok shows
+      "Error v3.9.62 FORMATION..CPP 712" ten times; after the tenth the
+      screen's record and, after Ok, the club's record hold the file's codes
+      (M-C, DM-C, M-C, F-RC, F-RC, M-C), instructions, team options and all
+      528 spots (read from guest memory). Saving the career and loading it
+      again in a fresh launch: no dialogs, the club's record still identical.
+- [x] Multi-start: the honest search from 4-1-2-1-2 scemoka and 262 MMJ
+      accepted nothing in a full cycle (both are single-change optima of their
+      own). Validation, third seed set, paired with Lab Honest: scemoka
+      -0.046 +- 0.035, Marc -0.057, MMJ -0.112, exploit +0.152. Both final
+      files stand. How to run another loop: docs/tactic-lab.md, "Running
+      another search".
 - [x] Commit the lab (review pass done earlier), tools/tactic_lab.py, a short doc.
 
 ## Done: the tactics system in C++23 (goal set 2026-10-23, all 234 hooked)

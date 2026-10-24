@@ -95,4 +95,61 @@ hill climb accept noise.
 - `load:FILE` reads a file with the game's own loader: the exploit raises 10
   assertion reports (one per outfield player) and keeps its codes, the honest
   file none; both play the same matches as the lab's own build. Neither raises
-  an assertion during matches.
+  an assertion during matches. In the app the tactics screen's Load shows the
+  ten reports as "Error v3.9.62 FORMATION..CPP 712" (Ok or Return each); the
+  record then holds the file unchanged, and Ok makes it the club's. A save and
+  reload keeps it, with no further dialogs.
+- Multi-start (honest): improve from 4-1-2-1-2 scemoka and 262 MMJ accepted
+  nothing in a full cycle (team, instructions, spots); both starts are already
+  single-change optima, in other basins than Lab Honest. Validation on a
+  third seed set (2,048 matches each, paired with Lab Honest): exploit 2.124
+  (+0.152 +- 0.035), honest 1.972, scemoka 1.925 (-0.046), Marc 1.915
+  (-0.057), MMJ 1.859 (-0.112). Lab Honest's basin stays the best found.
+
+## Running another search
+
+The final files are in `.local/tactics-optimal/` (`Lab Honest.tct`,
+`Lab Exploit.tct`, certificates and validation logs). Starting points: the
+3,526 community tactics in `.local/community-tactics-full/tested/<name>/`,
+ranked in `ranking.json`. Build the lab with `tools/dev.sh build cm-tactic-lab`.
+
+```
+python3 tools/tactic_lab.py decode FILE.tct              # readable dump
+python3 tools/tactic_lab.py evaluate --panel validation --seeds 256 \
+    --first-seed N A.tct B.tct ...                       # paired with the first file
+python3 tools/tactic_lab.py improve honest|exploit START.tct OUTDIR \
+    --kinds team,instructions,spots[,codes] --first-seed N --processes 10
+python3 tools/tactic_lab.py race --first-seed N *.tct    # successive halving
+```
+
+A tactic argument can also be `ai` (the AI's own choice) or `load:FILE` (read
+through the game's loader). `improve` writes `OUTDIR/log.txt` (every
+confirmation, `ACCEPT` lines, `done:`) and the current `OUTDIR/incumbent.tct`.
+The improve run is the certificate: it ends when a whole cycle of the kinds
+accepts nothing. Costs at 10 processes: a team round takes ~8 min, an
+instructions or spots round ~30 min, and a codes round about the same.
+
+Rules that kept results honest:
+- Seeds 1..1,199,999 are spent (search, certificates, validation). Start new
+  work at 2,000,000 or above, and give every run its own range. Never search on
+  the `validation` panel; use it only for the final verdict.
+- Accept only on paired comparisons of about 1,000 matches (gain > 2 SE). The
+  8-seed screen ranks candidates but its top gains are mostly noise: +0.37 on
+  the screen, -0.01 on confirmation.
+- Exploit tactics must keep the bypass (`protect()`, cell-0 x + 48) or the
+  loader re-fits the codes. Spots with y >= 36 crash matches.
+
+What a coordinate search cannot see, and what a next loop could try:
+- Two-step moves. The left-back move is worth +0.11 only together with the
+  central codes. A pair search over the near-misses (screen gain high,
+  confirmation +1 to +2 SE) is the obvious next step.
+- Other basins. Every strong start (Marc, scemoka, MMJ) is its own local
+  optimum within ~0.1 ppg. More starts from `ranking.json`, or a search on
+  formation shape (positions plus spots together), could find a higher one.
+- The panel. All matchups are clubs from the original database with AI
+  opponents, and the tactic is fitted to the 16 search matchups. Per-matchup
+  spread is large (CHA-ARS ~0.4 ppg, SOU-ast ~3.0), so a tactic fitted to
+  weak or strong squads may differ.
+- Not measured: the exploit after editing it in the tactics screen (the screen
+  may re-fit codes), human-controlled sides other than the lab's injection,
+  and set-piece instruction bits beyond single changes.
