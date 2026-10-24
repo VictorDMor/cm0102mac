@@ -51,6 +51,47 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
 
+## Now: optimal tactics (goal set 2026-10-24)
+
+Finish line: two .tct tactics, (1) an exploit that uses what only a
+hand-edited file or an engine flaw allows, (2) an honest one (every value
+settable in the tactics screens), each the best found by measured search,
+validated on held-out matchups against the best community tactics.
+
+- [x] `cm-tactic-lab`: full detailed matches between two original clubs with a
+      .tct injected into one side's AI team setup (after the formation choice
+      and the manager's adjustments), in-match AI tactic changes undone; ~0.45 s
+      per match. Factory split into prepare_match/start_match for it.
+- [x] Engine reading of tactics (static, two agents): spots -> 9x12 zone grid ->
+      targets; positional penalty from position codes; which option/instruction
+      bits the engine reads (see docs once written).
+- [x] Baselines: AI choice 1.09 ppg on the panel; top community tactics
+      1.6-2.0 (community benchmark: 3,526 tactics, .local/community-tactics-full).
+      Hand-placed spots are worth ~0.4 ppg (respot drops 1.80 -> 1.36).
+- [x] Measured exploit probes (all <= base): code 0 (no positional penalty;
+      ~500 assertion dialogs per match in the real game), Att+Def mentality,
+      multi-bit fields, free-role bit, roles; spots y >= 36 crash the engine.
+      Promising: decoupled central codes for wide midfielders (+0.16 +- 0.12).
+- [x] Race of the 150 best community tactics plus the best probe on 16
+      matchups (successive halving, 2,016 matches each at the end): the top
+      five are within 0.06 ppg (4132 Marc 2.085, scemoka 2.089, ...).
+- [x] Honest search: coordinate rounds from 4132 Marc over every team option
+      (11), instruction (230) and spot shift (240), each screened on 128
+      matches and the best six confirmed on 1,024 paired matches; no single
+      change beat 2 SE (local-optimality certificate). The three best
+      near-misses combined (+0.04 +- 0.04 on train and on holdout) give the
+      honest candidate.
+- [x] Exploit search: coordinate rounds over codes (251), instructions and
+      team options from the honest candidate with central codes for the wide
+      midfielders; accepted both strikers coded F-RC (+0.114 +- 0.039), then
+      a full cycle with nothing better.
+- [x] Validation on 8 unseen matchups, 2,048 matches each, paired with Marc:
+      exploit +0.167 +- 0.035 ppg, honest +0.077 +- 0.035. Files in
+      .local/tactics-optimal (Lab Exploit.tct, Lab Honest.tct).
+- [ ] In the real game: load Lab Exploit.tct and confirm the load-time
+      assertion reports (one per player) and that the codes survive (user).
+- [x] Commit the lab (review pass done earlier), tools/tactic_lab.py, a short doc.
+
 ## Done: the tactics system in C++23 (goal set 2026-10-23, all 234 hooked)
 
 Finish line: every routine of the original's `FORMATION.CPP`, `TACTICS.CPP` and

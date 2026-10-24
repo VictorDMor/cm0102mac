@@ -154,7 +154,7 @@ void bind_detailed_friendly(State& state, std::uint32_t match, std::uint32_t fix
 }
 }
 
-EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
+MatchPreparation prepare_match(const MatchInputs& inputs, const MatchSetup& setup,
     const CreationProgress& progress) {
     if (setup.home_club == setup.away_club || !setup.random_seed ||
         setup.year < 1972 || setup.year > 2100 || setup.ordinal_day >= cm::calendar::year_length(setup.year))
@@ -191,6 +191,14 @@ EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
     state.memory.write<4>(fixture + 0x24, state.memory.read<4>(world.club_pointer(setup.home_club) + 0x40));
     state.memory.write<2>(fixture + 0x28, setup.ordinal_day);
     state.memory.write<2>(fixture + 0x2a, setup.year);
+    std::array<std::vector<RosterMember>, 2> rosters{world.roster(setup.home_club), world.roster(setup.away_club)};
+    return {std::move(world).release_state(), match, fixture, std::move(rosters)};
+}
+
+EngineInstance start_match(std::unique_ptr<State> owned, std::uint32_t match, std::uint32_t fixture,
+    std::array<std::vector<RosterMember>, 2> rosters, const CreationProgress& progress) {
+    const auto report = [&](std::string_view stage) { if (progress) progress(stage); };
+    auto& state = *owned;
     LineupBoundary lineup(state);
     {
         ObserverScope observe(state, lineup);
@@ -199,7 +207,6 @@ EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
     }
     if (state.memory.read<1>(match) || state.memory.read<2>(match + 0x7948))
         throw std::runtime_error("New match is not at its detailed pre-kickoff boundary");
-    std::array<std::vector<RosterMember>, 2> rosters{world.roster(setup.home_club), world.roster(setup.away_club)};
     report("Preparing substitutes");
     for (unsigned team = 0; team < 2; ++team) {
         unsigned actor = 11;
@@ -219,6 +226,13 @@ EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
     }
     bind_detailed_friendly(state, match, fixture);
     report("Match ready and paused");
-    return {std::move(world).release_state(), match, std::move(rosters)};
+    return {std::move(owned), match, std::move(rosters)};
+}
+
+EngineInstance create_match(const MatchInputs& inputs, const MatchSetup& setup,
+    const CreationProgress& progress) {
+    auto prepared = prepare_match(inputs, setup, progress);
+    return start_match(std::move(prepared.state), prepared.match, prepared.fixture,
+        std::move(prepared.rosters), progress);
 }
 }
