@@ -99,6 +99,21 @@ class OriginalContractTests(unittest.TestCase):
                 for changed in (source.replace(hook,'',1),source.replace(hook,'',1).replace(step,step+'\n'+hook,1),source.replace(hook,hook+'\n'+hook,1)):
                     with self.assertRaises(ValueError):require_profile_qualification_hooks(page,rows,changed)
 
+    def test_tactics_takeover_replaces_the_hook(self):
+        from compile_recomp import TACTICS_TAKEOVERS
+        from tactics_audit import tactics_hook
+        disabled={name:False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks') or name=='guest_context_transfers'}
+        disabled.update(profile_qualification_hooks=True,tactics_hooks=True)
+        taken=sorted(e for e in PROFILE_QUALIFICATION_ENTRIES if e in TACTICS_TAKEOVERS)
+        self.assertEqual(taken,[0x10117360,0x10117490])
+        page=taken[0]>>12;rows=[r for r in self.records if r['address']>>12==page]
+        source=generate_page(page,rows,{r['address'] for r in self.records},userops=self.userops,**disabled)
+        for entry in taken:
+            self.assertNotIn(profile_qualification_hook(entry),source);self.assertEqual(source.count(tactics_hook(entry)),1)
+        self.assertNotIn('profile_qualification_adapter.hpp',source)
+        require_profile_qualification_hooks(page,rows,source,TACTICS_TAKEOVERS)
+        with self.assertRaises(ValueError):require_profile_qualification_hooks(page,rows,source)
+
     def test_reference_keeps_every_original_instruction_and_disables_all_hooks(self):
         source=render_reference(self.records,self.userops);self.assertNotIn('try_modern_',source);self.assertNotIn('_impl<true,',source)
         for e in PROFILE_QUALIFICATION_ENTRIES:self.assertIn(f'case 0x{e:x}:',source)

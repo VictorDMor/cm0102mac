@@ -52,7 +52,10 @@ void wait_for_cd(Cpu& c, const Frame& frame) {
             c.put8(to + 1, y);
         }
         c.put8(volume, c.u8(a) + c.u8(b));
-        c.set({{3, 0}, {4, 0}, {5, volume}, {6, frame.at(0x804)}});
+        // r7-r12 and r0 keep what the copies above loaded.
+        c.set({{0, std::uint32_t(c.u8(a)) + c.u8(b)}, {3, 0}, {4, 0}, {5, volume}, {6, frame.at(0x804)},
+               {7, c.u8(a)}, {8, c.u32(second)}, {9, c.u8(first + 0x10)}, {10, c.u32(first + 0xc)},
+               {11, c.u32(first + 8)}, {12, c.u32(first + 4)}});
         c.call(make_file_spec, 0x103ad05c);  // FSMakeFSSpec through the glue, which saves r2 at sp+0x14
         c.set(2, c.u32(frame.at(0x14)));
         if (!std::int16_t(c.r(3))) {
@@ -447,12 +450,19 @@ std::uint32_t load(Cpu& c, std::uint32_t tactics, std::uint32_t archive) {
         c.call(allocate, 0x103b263c);
         c.put32(tactics + field::teams, c.r(3));
         if (!teams()) return entry.abort({0x103b2660, 0x1c4, 0x74, 0x870, 0x103b26a4}, 0, 0);
-        for (std::int32_t index = 0; index < std::int32_t(count()); ++index) {
+        std::int32_t index = 0;
+        for (; index < std::int32_t(count()); ++index) {
             const auto from = old + std::uint32_t(index) * old_team_size;
             convert_team(c, from, teams() + std::uint32_t(index) * team_size);
-            // The original copies the line-up through r17 and r19.
-            c.set({{17, 7}, {19, c.u8(from + 0x87)}});
+            // The original copies the line-up through r17 and r19, and leaves
+            // the record and the line-up's last bytes in r6-r12 (the copy is
+            // unrolled by five, then one); release gets them.
+            c.set({{17, 7}, {19, c.u8(from + 0x87)}, {6, from}, {7, c.u8(from + 0x8a)}, {9, 11},
+                   {10, c.u8(from + 0x89)}, {11, c.u8(from + 0x88)}, {12, teams() + 7}});
         }
+        const auto done = std::uint32_t(index);
+        c.set({{0, count()}, {4, done * old_team_size}, {5, done * team_size}, {8, done}});
+        compare(c, index, std::int32_t(count()));
         c.set(3, old);
         c.call(release, 0x103b28d8);
     } else {

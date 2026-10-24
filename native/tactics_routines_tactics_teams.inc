@@ -1,6 +1,6 @@
 // tactics_teams: routines written by an author, drafts until verified (see tactics_routines.inc).
 // TACTICS.CPP: team records, squads, captains, set pieces, backups (tactics.hpp).
-TACTICS_DRAFT(0x103af060, 0x103af130, R3, "fa792cad658f3da0",
+TACTICS_ROUTINE(0x103af060, 0x103af130, R3, "fa792cad658f3da0",
     [](Cpu& c) { c.set(3, tactics::destroy(c, c.r(3), c.r(4))); })
 TACTICS_ROUTINE(0x103af130, 0x103af480, R3, "0d89f59b2f5268c4",
     [](Cpu& c) { c.set(3, tactics::record_result(c, c.r(3), c.r(4))); })
@@ -16,7 +16,7 @@ TACTICS_ROUTINE(0x103af9d0, 0x103afb90, R3, "a1af563dd3b32066",
     [](Cpu& c) { c.set(3, tactics::set_squad_player(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })
 TACTICS_ROUTINE(0x103afb90, 0x103afe90, R3, "93123ea867a5f61c",
     [](Cpu& c) { c.set(3, tactics::remove_player(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })
-TACTICS_DRAFT(0x103afe90, 0x103afff0, R3, "0b747cf855769f30",
+TACTICS_ROUTINE(0x103afe90, 0x103afff0, R3, "0b747cf855769f30",
     [](Cpu& c) { c.set(3, tactics::clear_squad_player(c, c.r(3), c.r(4), c.r(5), c.r(6))); })
 TACTICS_ROUTINE(0x103afff0, 0x103b04a0, R3, "8c8f7f8fd58047be",
     [](Cpu& c) { c.set(3, tactics::backup_squad(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })
@@ -26,7 +26,7 @@ TACTICS_ROUTINE(0x103b0540, 0x103b05c0, NONE, "07f7e538aede6066",
     [](Cpu& c) { tactics::forget_backup(c, c.r(3), c.r(4), c.r(5)); })
 TACTICS_ROUTINE(0x103b05c0, 0x103b07c0, R3, "cc32bea885bb4d22",
     [](Cpu& c) { c.set(3, std::uint32_t(tactics::squad_slot_of(c, c.r(3), c.r(4), c.r(5), c.r(6)))); })
-TACTICS_DRAFT(0x103b07c0, 0x103b0a00, R3, "f6ea6396176c871b",
+TACTICS_ROUTINE(0x103b07c0, 0x103b0a00, R3, "f6ea6396176c871b",
     [](Cpu& c) { c.set(3, tactics::swap_squad_players(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })
 TACTICS_ROUTINE(0x103b0a00, 0x103b0b20, R3, "c65eab95caf05532",
     [](Cpu& c) { c.set(3, std::uint32_t(tactics::pick_slot(c, c.r(3), c.r(4), c.r(5), c.r(6)))); })

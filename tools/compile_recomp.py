@@ -359,6 +359,8 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES))
 require_unique_semantic_replacements(OWNER_REPLACEMENTS)
 SEMANTIC_OWNERS = dict(OWNER_REPLACEMENTS)
+# Entries whose older owner's hook the tactics hook replaces.
+TACTICS_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in TACTICS_ENTRIES)
 CPP_LEAVES = frozenset(TACTICS_LEAVES)
 
 
@@ -1306,6 +1308,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     # Audit only when its commentary call/load is included; once included,
     # require the same complete context and fingerprint as the full export.
     page_addresses = {item["address"] for item in instructions}
+    taken_over = TACTICS_TAKEOVERS if tactics_hooks else frozenset()
     if nontrapping_divisions is None:
         # Equivalence references compile parts of pages: use the whole-program
         # proof, so they continue exactly where production does; without an
@@ -1414,7 +1417,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "shortlist_quotation_adapter.hpp"')
     if shortlist_policy_hooks and page_addresses & set(SHORTLIST_POLICY_ENTRIES):
         code.insert(1, '#include "shortlist_policy_adapter.hpp"')
-    if profile_qualification_hooks and page_addresses & set(PROFILE_QUALIFICATION_ENTRIES):
+    if profile_qualification_hooks and page_addresses & (set(PROFILE_QUALIFICATION_ENTRIES) - taken_over):
         code.insert(1, '#include "profile_qualification_adapter.hpp"')
     if contract_draft_hooks and page_addresses & set(CONTRACT_DRAFT_ENTRIES):
         code.insert(1, '#include "contract_draft_adapter.hpp"')
@@ -1440,7 +1443,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "localization_catalog_adapter.hpp"')
     if range_sampling_hooks and page_addresses & set(RANGE_SAMPLING_ENTRIES):
         code.insert(1, '#include "range_sampling_adapter.hpp"')
-    if match_target_hooks and page_addresses & set(MATCH_TARGET_ENTRIES):
+    if match_target_hooks and page_addresses & (set(MATCH_TARGET_ENTRIES) - taken_over):
         code.insert(1, '#include "match_target_adapter.hpp"')
     if match_selection_hooks and page_addresses & set(MATCH_SELECTION_ENTRIES):
         code.insert(1, '#include "match_selection_adapter.hpp"')
@@ -1805,6 +1808,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if list_search_hooks and a == LIST_SEARCH_ENTRY:
             code.append("if (try_native_list_search(s)) return true;")
         if tactics_hooks and a in TACTICS_ENTRIES:
+            if a in TACTICS_TAKEOVERS:  # the tactics routine replaces an older owner's hook
+                code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(tactics_hook(a))
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
@@ -2085,7 +2090,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if shortlist_policy_hooks:
         require_shortlist_policy_hooks(page, instructions, result)
     if profile_qualification_hooks:
-        require_profile_qualification_hooks(page, instructions, result)
+        require_profile_qualification_hooks(page, instructions, result, taken_over)
     if contract_draft_hooks:
         require_contract_draft_hooks(page, instructions, result)
     if contract_display_hooks:
@@ -2111,7 +2116,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if range_sampling_hooks:
         require_range_sampling_hooks(page, instructions, result)
     if match_target_hooks:
-        require_match_target_hooks(page, instructions, result)
+        require_match_target_hooks(page, instructions, result, taken_over)
     if match_selection_hooks:
         require_match_selection_hooks(page, instructions, result)
     if match_selection_support_hooks:

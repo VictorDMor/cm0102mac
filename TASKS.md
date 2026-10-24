@@ -73,20 +73,23 @@ reviewed commit per block. Method: docs/cpp-rewrites.md.
       (TACTICS_ROUTINE hooked, TACTICS_DRAFT check tools only).
 - [x] Guest ABI layer (`native/guest_abi.hpp`), `tools/call_registers.py`.
 - [x] Fork-based routine checker (`cm-world-replay --check-routines`, `--only`,
-      `--census`), with a negative control test.
-- [ ] Session captures: automation `capture start NAME` / `capture stop`, replayed
-      by `cm-world-replay`.
-- [x] FORMATION.CPP, first 9: 6 verified on the day capture; 0x10111840,
-      0x10114ba0, 0x101171b0 are drafts until a capture reaches them.
-- [ ] C++ leaves in the generator (0x10113e10, 0x101149f0 and the screens' 1-4
-      instruction routines are inlined at call sites as original code today).
-- [ ] FORMATION.CPP: positions/zones, record/instructions, files.
-- [ ] TACTICS.CPP: accessors and AI (day capture), presets and init.
-- [ ] A tactics-screen session capture (load a career, open tactics, change
-      formation, instructions, set pieces, save/load/preset formations).
-- [ ] TACTICS_SCREENS.CPP blocks.
-- [ ] Take over 0x10113e10 (match_target) and 0x10117360/0x10117490
-      (profile_qualification) from their builder owners.
+      `--census`, `--strict-volatile`, `--synthetic`), with a negative control test.
+      Exit rule: r4-r10 and every CR field as the original (they leak through
+      later varargs spills and `mfcr`).
+- [x] Session captures (automation `capture start/stop`, `drag FROM TO`): 12 UI
+      sessions in `.local/benchmarks/ui`, all replaying to their end state.
+- [x] Hooked (138): formation (9), leaves (25), teams (27), zones (21), record
+      (10), misc callbacks (17), instructions (23), setup/files (6). The tactics
+      hook replaces the builder hooks at 0x10113e10, 0x10117360, 0x10117490.
+- [ ] Screen build (46): reviewed, fixes in; recheck and promote.
+- [ ] Main handler group (48): reviewed, marker-loop fix in; recheck and promote.
+- [ ] Unreached paths: assertion paths (the error dialog's imports aren't in
+      transcripts), national-team paths, `setup::save` 0x103b3290 (career save,
+      called at 0x1034ce90; its census in game-save is empty: recheck), the preset
+      file-dialog callback 0x10118210 (actions 4/7), new-game preset loading,
+      old-save conversion.
+- [ ] Cleanups: one shared tactics helper header (fail/in_range/compare repeated
+      in 5 files), shared FPSCR helper; direct calls once callees are promoted.
 
 ## Next: native lowering (decided 2026-10-22)
 

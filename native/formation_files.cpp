@@ -204,6 +204,10 @@ std::uint32_t load_from_disk(Cpu& c, std::uint32_t formation, std::uint32_t path
             c.put32(instructions + player * 8, 0xa);
             c.put32(instructions + player * 8 + 4, c.u32(old + player * 4));
         }
+        // The original's loop (unrolled by five, then one) leaves these; a
+        // failed role read below spills r7/r8 through sprintf.
+        c.set({{0, 0x18d8}, {3, old + 0x2c}, {4, formation + 0x18d8}, {5, c.u32(old + 0x28)}, {6, 0xa}, {7, 0x58}, {8, 10}});
+        c.s.wr<4>(guest::reg::ctr, 0);
     } else {
         if (!read(instructions, 0x58, 0x10115adc)) report({0x10115b10, 0x380, 0xec, 0x4c, 0x981});
         else if (!native) swap(swap64, instructions, 11, 0x10115b64);

@@ -57,6 +57,10 @@ as the original does. `tools/call_registers.py ENTRY` prints, for every call
 of a routine, which instructions define each argument and non-volatile
 register there ("entry" means the caller's value); per-path differences
 (a register set only on one branch) need reading the listing.
+CR at a call does not reach memory for the tactics modules: none of their
+380 callees reaches an `mfcr` (prologue CR saves, `setjmp`) before writing
+cr0 itself (checked 2026-10-23, following calls and jumps six deep), so only
+the CR left at return has to match.
 
 **Arithmetic.** Use 32-bit wrapping arithmetic as the PowerPC does
 (`std::uint32_t(index) * 8` for a signed byte index), sign extension where the
