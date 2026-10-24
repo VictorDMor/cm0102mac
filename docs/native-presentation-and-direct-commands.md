@@ -166,6 +166,12 @@ not a claim that a vector version of the original bitmap artwork was recovered.
 The underlying original text, hit targets and line layout remain unchanged.
 The original-font branch retains its own curves rather than using this fallback.
 
+Euro money prefixes now display as `€` when the selected original currency symbol
+is `E`. Both font paths use a Core Text euro outline fitted to the original E ink
+box; guest strings, advances, currency conversion and saved data stay unchanged.
+The substitution recognizes an E prefix followed by an amount (including spaces,
+`|` and negative signs), and leaves ordinary words and other currencies alone.
+
 Lines, filled rectangles and circular controls use Quartz paths. CopyBits carries
 the host display list alongside the unchanged original pixels, respecting clips,
 nonzero port origins and overlapping copies. Original saved-under dialogs,

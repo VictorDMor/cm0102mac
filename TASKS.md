@@ -151,3 +151,8 @@ From the 2026-10-20 review. Estimates are unmeasured.
 
 - `tools/dev.sh test`: 94/95 runnable tests pass (2026-10-23, Best XI/localization build); `debugging_best_xi`, actual goals and injury shortcuts pass. Known failure: `match_debugger_actual_lineup` since ed7749e (it requires the `match_actor` owner's call count, and production pages now run that family's generated code); fails with and without the tactics rewrites, and again in an isolated rerun. `match_engine_live_equivalence` and most others lack a built binary or inputs.
 - Python audits: every `tools/test_*.py` passes against `.local/current/export`; `test_generated_temporaries.py` (needs a build dir) not run.
+
+## Euro symbol (2026-10-23)
+
+- [x] Locate the original E currency prefix and both native font paths.
+- [x] Render the euro prefix as € with unchanged guest text and layout; both font paths, other currencies and 1x/2x/4x raster checks pass. Built and installed.

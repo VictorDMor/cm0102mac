@@ -44,11 +44,67 @@ void setup(State& s, const std::filesystem::path& program) {
     s.wr<4>(12, 3); s.wr<4>(16, 4); s.wr<4>(20, 1); s.wr<4>(24, 0x7fff); s.wr<4>(28, text); s.wr<4>(32, UINT32_MAX);
     s.pc = 0x1076ca50; s.budget = 1000000;
 }
+void euro_checks(const std::filesystem::path& program) {
+    auto state = std::make_unique<State>();
+    setup(*state, program);
+    auto& s = *state;
+    const auto symbol = mode + 0x800;
+    s.memory.write<4>(s.r<4>(8) - 0x59d0, symbol);
+    s.memory.copy_in(symbol, {'E', 0});
+    for (unsigned c = 33; c < 127; ++c) {
+        s.memory.write<4>(fonts + c * 20 + 4, 4);
+        s.memory.write<4>(fonts + c * 20 + 20, glyph);
+    }
+    NativeDrawingObserver observer;
+    const auto check = [&](const char* value, unsigned euro_count) {
+        std::string input(value);
+        s.memory.copy_in(text, std::vector<std::uint8_t>(input.begin(), input.end()));
+        s.memory.write<1>(text + input.size(), 0);
+        observer.register_surface(s, pixels, 32, 32, 64, 16);
+        const auto registers = s.registers;
+        const auto bytes = s.memory.copy_out(mode, 4096);
+        observer.boundary(s, 0x1076ca50); observer.boundary(s, 0x1076d194);
+        const auto scene = observer.snapshot(s, pixels);
+        require(std::count_if(scene->shapes.begin(), scene->shapes.end(), [](const auto& shape) {
+            return shape.character == 0x20ac;
+        }) == euro_count, "Euro prefix recognition changed ordinary text or missed a money value");
+        require(s.registers == registers && s.memory.copy_out(mode, 4096) == bytes,
+                "Euro display changed guest text or registers");
+        return scene;
+    };
+    for (const auto* value : {"E0", "E1M", "E1.2M", "E1,2M", "E|100", "E 100", "E-100", "(E10)", "-E10"}) check(value, 1);
+    for (const auto* value : {"E", "Euro", "Eagles", "E  team", "AE1", "1E10", "_E10", "E-", "$100"}) check(value, 0);
+    const auto euro = check("E100", 1);
+    s.memory.copy_in(symbol, {'$', 0});
+    const auto letter = check("E100", 0);
+    require(euro->shapes[0].bounds.width == letter->shapes[0].bounds.width &&
+            euro->shapes[1].bounds.x == letter->shapes[1].bounds.x, "Euro changed money alignment");
+    for (unsigned scale : {1u, 2u, 4u}) {
+        const auto render = [&](const NativeDrawing& scene) {
+            const unsigned width = 32 * scale;
+            std::vector<std::uint8_t> out(width * width * 4);
+            auto color = CGColorSpaceCreateDeviceRGB();
+            auto ctx = CGBitmapContextCreate(out.data(), width, width, 8, width * 4, color, kCGImageAlphaPremultipliedLast);
+            require(ctx, "Cannot create euro verification backing");
+            CGContextTranslateCTM(ctx, 0, width); CGContextScaleCTM(ctx, scale, -double(scale));
+            draw_native_shapes(ctx, scene);
+            CGContextRelease(ctx); CGColorSpaceRelease(color);
+            return out;
+        };
+        auto only_euro = *euro, only_letter = *letter;
+        only_euro.shapes.resize(1); only_letter.shapes.resize(1);
+        const auto rendered = render(only_euro);
+        require(std::any_of(rendered.begin(), rendered.end(), [](auto c) { return c != 0; }) &&
+                rendered != render(only_letter), "Euro glyph is missing or still renders as E");
+    }
+    s.memory.observer = nullptr;
+}
 }
 int main(int argc, char** argv) {
     try {
         require(argc == 2, "Usage: cm-native-drawing-checks ORIGINAL_PROGRAM");
         write_range_checks();
+        euro_checks(argv[1]);
         auto original = std::make_unique<State>(); auto observed = std::make_unique<State>();
         setup(*original, argv[1]); setup(*observed, argv[1]);
         NativeDrawingObserver observer;
@@ -164,8 +220,23 @@ int main(int argc, char** argv) {
         require(curves->shapes.back().outline && curves->shapes.back().outline->contours[0][1].x == 4 &&
                 !curves->shapes.back().outline->contours[0][1].on_curve && curves->shapes.back().baseline == 12,
                 "Original quadratic outline or glyph baseline was lost");
+        // A cached original E outline must not override the euro substitution.
+        state.memory.copy_in(text, {'E', '1', 0});
+        state.memory.write<4>(state.r<4>(8) - 0x59d0, mode + 0x800);
+        state.memory.copy_in(mode + 0x800, {'E', 0});
+        state.wr<4>(28, 0x200); state.wr<4>(32, 10); state.wr<4>(36, 0x7fff);
+        observer.boundary(state, 0x1074f800);
+        state.wr<4>(0, 3); state.wr<4>(16, 4); state.wr<4>(32, 3); state.wr<4>(20, 4);
+        state.wr<4>(28, 10); state.wr<4>(40, 11); state.wr<4>(120, record); state.wr<4>(124, 0);
+        observer.boundary(state, 0x1074fb58); observer.boundary(state, 0x107500b4); observer.boundary(state, 0x107500e8);
+        const auto euro_scene = observer.snapshot(state, pixels);
+        require(euro_scene->shapes.back().character == 0x20ac && !euro_scene->shapes.back().outline,
+                "Original font retained the E outline for euro money");
+        require(euro_scene->shapes.back().bounds.x == curves->shapes.back().bounds.x &&
+                euro_scene->shapes.back().bounds.width == curves->shapes.back().bounds.width,
+                "Original-font euro changed the ink box");
         observed->memory.observer = nullptr;
-        std::cout << "Native drawing: original pixels/ABI, clean text background, same-value occlusion, CopyBits, saved dialogs, fades, original outlines, and 1x/2x/4x vector edges passed\n";
+        std::cout << "Native drawing: original pixels/ABI, clean text background, same-value occlusion, CopyBits, saved dialogs, fades, original outlines, euro currency prefixes, and 1x/2x/4x vector edges passed\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

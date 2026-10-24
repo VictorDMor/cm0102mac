@@ -15,7 +15,9 @@ struct FontPaths {
         const auto name = font <= 2 ? CFSTR("ArialNarrow") : font >= 6 ? CFSTR("ArialNarrow-Bold") : CFSTR("ArialMT");
         const auto face = CTFontCreateWithName(name, 100, nullptr);
         const std::uint8_t byte = character;
-        const auto text = CFStringCreateWithBytes(nullptr, &byte, 1, kCFStringEncodingWindowsLatin1, false);
+        const UniChar unicode = character;
+        const auto text = character > 255 ? CFStringCreateWithCharacters(nullptr, &unicode, 1) :
+            CFStringCreateWithBytes(nullptr, &byte, 1, kCFStringEncodingWindowsLatin1, false);
         CGGlyph glyph = 0;
         if (text && CFStringGetLength(text) == 1) {
             const UniChar c = CFStringGetCharacterAtIndex(text, 0);

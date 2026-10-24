@@ -8,6 +8,26 @@
 
 namespace cm::aot {
 namespace {
+// The Mac currency formatter uses ASCII E for euros. Replace only a money
+// prefix in the host display list; retain the guest bytes and glyph metrics.
+unsigned display_character(State& s, std::uint32_t text, unsigned index, unsigned character) {
+    if (character != 'E') return character;
+    const auto symbol = s.memory.read<4>(s.r<4>(8) - 0x59d0);
+    if (!symbol || s.memory.read<1>(symbol) != 'E' || s.memory.read<1>(symbol + 1)) return character;
+    if (text == symbol && index == 0) return 0x20ac;
+    if (index) {
+        const auto previous = s.memory.read<1>(text + index - 1);
+        if ((previous >= '0' && previous <= '9') || (previous >= 'A' && previous <= 'Z') ||
+            (previous >= 'a' && previous <= 'z') || previous >= 128 || previous == '_') return character;
+    }
+    auto next = s.memory.read<1>(text + index + 1);
+    unsigned offset = index + 1;
+    // The formatter uses | as a nonbreaking space; prose can contain spaces.
+    while ((next == '|' || next == ' ') && offset - index < 8)
+        next = s.memory.read<1>(text + ++offset);
+    if (next == '-') next = s.memory.read<1>(text + ++offset);
+    return next >= '0' && next <= '9' ? 0x20ac : character;
+}
 DrawingRect intersection(DrawingRect a, DrawingRect b) {
     const int x = std::max(a.x, b.x), y = std::max(a.y, b.y);
     return {x, y, std::min(a.x + a.width, b.x + b.width) - x,
@@ -361,8 +381,9 @@ void NativeDrawingObserver::boundary(State& s, std::uint32_t pc) {
         bounds.x += reg(0); bounds.y += reg(4);
         NativeShape shape; shape.bounds = bounds;
         shape.font = impl_->outline_contexts.back().font; shape.color = impl_->outline_contexts.back().color;
-        shape.character = character;
-        if (auto outline = impl_->glyph_outlines.find(record); outline != impl_->glyph_outlines.end()) {
+        shape.character = display_character(s, text, std::uint16_t(reg(31)), character);
+        if (auto outline = impl_->glyph_outlines.find(record);
+            outline != impl_->glyph_outlines.end() && shape.character == character) {
             shape.outline = outline->second;
             shape.origin_x = reg(0) - std::int32_t(s.memory.read<4>(record)) / 64.0;
             shape.baseline = reg(4) + std::int32_t(s.memory.read<4>(record + 4)) / 64.0;
@@ -406,7 +427,8 @@ void NativeDrawingObserver::boundary(State& s, std::uint32_t pc) {
             auto bounds = impl_->glyph_bounds(s, pixels, width, height);
             if (c != ' ' && !bounds.empty()) {
                 bounds.x += x; bounds.y += reg(4);
-                NativeShape shape; shape.bounds = bounds; shape.color = reg(6); shape.font = font; shape.character = c;
+                NativeShape shape; shape.bounds = bounds; shape.color = reg(6); shape.font = font;
+                shape.character = display_character(s, reg(7), i, c);
                 surface->append(std::move(shape));
             }
             auto next = unsigned(s.memory.read<1>(std::uint32_t(reg(7)) + i + 1));

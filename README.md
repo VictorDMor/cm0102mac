@@ -71,7 +71,7 @@ been accepted as inputs to this pipeline.
 | --- | --- |
 | Career play | Create/load a career, manage a club, inspect players and competitions, advance dates, play complete matches and return to management |
 | Persistence | Normal save, exit, reopen and reload have passed in local use; individual later subsystem reports state when persistence was not retested |
-| macOS presentation | Native text/control drawing, 100–200% interface scaling and Fit to Screen, keyboard commands and audio |
+| macOS presentation | Native text/control drawing, 100–200% interface scaling and Fit to Screen, keyboard commands and audio; euro amounts display **€** |
 | Match speed | A native **Turbo** choice in the original match-speed selector, selected by default and remembered across launches; match calculations are unchanged |
 | In-game debugging | Opt-in **Debugging** adds **Best XI** to the squad screen, a scorer dropdown and a repeat-goal button; these controls follow the game's language. Best XI uses the current formation and available players for starters and the fixture's bench. Top-row/keypad **1/2** give random goals H/A (central forwards +30%, no keepers), **3/4** dismiss A/H, **5/6** injure A/H (uniform players including keepers, random medical injury); **Z** plays/pauses through the original control |
 | Match Debugger | Separate native application with seeded matches, player/event inspection, substitutions and rewind/redo; its full product contract remains incomplete |
