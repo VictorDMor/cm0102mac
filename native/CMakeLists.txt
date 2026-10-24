@@ -307,7 +307,7 @@ set_tests_properties(tactics_routines_detect_difference PROPERTIES PASS_REGULAR_
 # Session captures of the tactics screens and of a career load and save
 # (automation "capture start/stop"): each must reach its recorded end state,
 # and the C++ tactics routines must match their originals at their calls.
-foreach(session tactics-views tactics-players tactics-presets tactics-instructions tactics-files game-load game-save)
+foreach(session tactics-views tactics-players tactics-presets tactics-instructions tactics-files game-load game-save game-save2)
     string(REPLACE "-" "_" name "${session}")
     add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
 endforeach()

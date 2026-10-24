@@ -33,7 +33,7 @@ performance is the current priority, ahead of further reconstruction. See the
 | Area | Contents |
 | --- | --- |
 | Native game | ARM64 runtime, macOS bridges and application shell |
-| C++23 reconstruction | Runtime, calendar, storage and simulation subsystems with focused equivalence checks |
+| C++23 reconstruction | Runtime, calendar, storage and simulation subsystems, and the whole tactics system (formations, team tactics, tactics screens), with focused equivalence checks |
 | Match Debugger | Native match inspection, deterministic scenarios and history controls |
 | Recompilation tools | Ghidra exporters, indexed code generation and reference harness generators |
 | Asset inspector | Optional Swift tools for examining locally supplied game assets |

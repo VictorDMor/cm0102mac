@@ -70,6 +70,7 @@ struct Report {
     std::map<std::uint32_t, std::uint32_t> allocated, available;
     std::vector<std::pair<std::uint32_t, std::uint64_t>> maps;
     std::map<std::uint32_t, std::vector<std::uint8_t>> pages;  // page number -> contents
+    std::uint64_t imports = 0;  // what the imports observed (synthetic calls)
 };
 
 class Writer {
@@ -141,7 +142,7 @@ std::vector<std::uint8_t> page_bytes(const Memory& memory, std::uint32_t page) {
 // Child: run, then report through `fd`, and leave without running any of the
 // parent's exit handlers or flushing its buffers. Writes are tracked in the
 // date_observer slot: the replay swaps memory.observer at every import.
-[[noreturn]] void run_child(State& s, std::uint32_t entry, RoutineRunner runner, int fd, bool corrupt) {
+[[noreturn]] void run_child(State& s, std::uint32_t entry, RoutineRunner runner, int fd, bool corrupt, bool synthetic) {
     in_child = true;
     Outcome outcome = Outcome::fault;
     std::string message;
@@ -149,6 +150,7 @@ std::vector<std::uint8_t> page_bytes(const Memory& memory, std::uint32_t page) {
     std::vector<std::uint32_t> pages;
     try {
         season_replay_after_fork();
+        if (synthetic) season_replay_relax_import_inputs();
         s.memory.date_observer = &dirty;
         runner(s, entry);
         outcome = Outcome::returned;
@@ -186,6 +188,7 @@ std::vector<std::uint8_t> page_bytes(const Memory& memory, std::uint32_t page) {
             const auto bytes = page_bytes(s.memory, page);
             w.bytes(bytes.data(), bytes.size());
         }
+        w.put(season_replay_import_digest());
     } catch (...) { _exit(4); }
     ::close(fd);
     _exit(0);
@@ -213,16 +216,17 @@ Report read_report(int fd) {
         r.bytes(bytes.data(), bytes.size());
         report.pages.emplace(page, std::move(bytes));
     }
+    report.imports = r.take<std::uint64_t>();
     return report;
 }
 
-Report fork_run(State& s, std::uint32_t entry, RoutineRunner runner, bool corrupt) {
+Report fork_run(State& s, std::uint32_t entry, RoutineRunner runner, bool corrupt, bool synthetic = false) {
     int fds[2];
     if (::pipe(fds) != 0) throw std::runtime_error("Routine check cannot create a pipe");
     std::cout.flush(); std::cerr.flush(); std::fflush(nullptr);
     const auto pid = ::fork();
     if (pid < 0) throw std::runtime_error("Routine check cannot fork");
-    if (pid == 0) { ::close(fds[0]); run_child(s, entry, runner, fds[1], corrupt); }
+    if (pid == 0) { ::close(fds[0]); run_child(s, entry, runner, fds[1], corrupt, synthetic); }
     ::close(fds[1]);
     Report report;
     std::string failure;
@@ -253,6 +257,7 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
     if (actual.outcome == Outcome::fault) found.push_back("the rewrite stopped: " + actual.message);
     if (expected.outcome != actual.outcome)
         found.push_back("outcome " + std::to_string(int(expected.outcome)) + " vs " + std::to_string(int(actual.outcome)));
+    if (expected.imports != actual.imports) found.push_back("the imports observed different inputs");
     if (expected.outcome == Outcome::returned && actual.outcome == Outcome::returned) {
         if (expected.pc != actual.pc) found.push_back("pc " + hex(expected.pc) + " vs " + hex(actual.pc));
         const auto word = [](const Report& r, std::size_t offset) { return read_be<4>(r.registers.data() + offset); };
@@ -434,8 +439,8 @@ unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, Routin
         s.pc = call.target;
         std::vector<std::string> found;
         try {
-            const auto expected = fork_run(s, call.target, original, false);
-            const auto actual = fork_run(s, call.target, rewrite, false);
+            const auto expected = fork_run(s, call.target, original, false, true);
+            const auto actual = fork_run(s, call.target, rewrite, false, true);
             found = compare_reports(s, expected, actual, call.results, sp, strict_volatile);
         } catch (const std::exception& error) { found.push_back(error.what()); }
         s.registers = saved;

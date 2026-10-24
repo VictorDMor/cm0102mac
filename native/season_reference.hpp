@@ -42,6 +42,13 @@ void begin_session_replay(State& state);
 // In a forked child (native/routine_check.cpp): read the transcript through a
 // file offset of its own.
 void season_replay_after_fork();
+// A synthetic call (routine_check.hpp) runs on its own stack with its own
+// arguments: its imports must still come in the recorded order, but their
+// input registers and the instruction counts are not compared. The original
+// and the rewrite get the same recorded outputs, and the inputs each import
+// observes go into a digest the two runs must share.
+void season_replay_relax_import_inputs();
+std::uint64_t season_replay_import_digest();
 // Direct dependency fixtures can end after the last import, without a day
 // boundary. Require physical EOF/checksum before closing those short fixtures.
 void require_season_replay_eof();

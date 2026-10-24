@@ -51,7 +51,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
 
-## Now: the tactics system in C++23 (goal set 2026-10-23)
+## Done: the tactics system in C++23 (goal set 2026-10-23, all 234 hooked)
 
 Finish line: every routine of the original's `FORMATION.CPP`, `TACTICS.CPP` and
 `TACTICS_SCREENS.CPP` (234 routines, 43,152 instructions; `tools/tactics_audit.py`)
@@ -76,20 +76,21 @@ reviewed commit per block. Method: docs/cpp-rewrites.md.
       `--census`, `--strict-volatile`, `--synthetic`), with a negative control test.
       Exit rule: r4-r10 and every CR field as the original (they leak through
       later varargs spills and `mfcr`).
-- [x] Session captures (automation `capture start/stop`, `drag FROM TO`): 12 UI
-      sessions in `.local/benchmarks/ui`, all replaying to their end state.
-- [x] Hooked (138): formation (9), leaves (25), teams (27), zones (21), record
-      (10), misc callbacks (17), instructions (23), setup/files (6). The tactics
-      hook replaces the builder hooks at 0x10113e10, 0x10117360, 0x10117490.
-- [ ] Screen build (46): reviewed, fixes in; recheck and promote.
-- [ ] Main handler group (48): reviewed, marker-loop fix in; recheck and promote.
-- [ ] Unreached paths: assertion paths (the error dialog's imports aren't in
-      transcripts), national-team paths, `setup::save` 0x103b3290 (career save,
-      called at 0x1034ce90; its census in game-save is empty: recheck), the preset
-      file-dialog callback 0x10118210 (actions 4/7), new-game preset loading,
-      old-save conversion.
-- [ ] Cleanups: one shared tactics helper header (fail/in_range/compare repeated
-      in 5 files), shared FPSCR helper; direct calls once callees are promoted.
+- [x] Session captures (automation `capture start/stop`, `drag FROM TO`): 13 UI
+      sessions in `.local/benchmarks/ui` (game-save2 reaches the career save's
+      tactics write; game-save stops before it), all replaying to their end state.
+- [x] All 234 routines hooked (TACTICS_ROUTINE), every captured call equal to
+      the original on 14 captures plus 845 synthetic calls; reviewed per group.
+      The tactics hook replaces the builder hooks at 0x10113e10, 0x10117360,
+      0x10117490. Save and reload on a career copy with the C++ save: OK.
+- [ ] Not replayed (reviewed against the listings only): assertion paths (the
+      error dialog's imports aren't in transcripts), national-team paths, the
+      handler branches listed in 2a9e3a7, construct's AI-club path, old-save
+      conversion, the preset dialog callback 0x10118210 (only with the presets
+      flag at TOC -0x6330 set; same code as 0x10118180 apart from r6).
+- [ ] Cleanups: one shared tactics helper header (fail/in_range/compare and the
+      FPSCR model repeated in 4-5 files); direct C++ calls between the rewritten
+      routines instead of `c.call` through the dispatcher (the performance step).
 
 ## Next: native lowering (decided 2026-10-22)
 

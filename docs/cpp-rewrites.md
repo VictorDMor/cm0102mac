@@ -114,6 +114,9 @@ synthetic calls: `--synthetic FILE` lists lines such as
 `trigger=0x10111310#3 call=0x10114ba0 r3=@r3 r4=0x5`, and when the replay
 dispatches the trigger for that time, the target runs with those registers
 (`@rN`, `@rN+off`: the trigger's registers) in two forked children, original
-and C++, compared like a checked call; the replay itself is untouched. A routine is done
+and C++, compared like a checked call; the replay itself is untouched. A
+synthetic call's frame lies below the trigger's, so its imports see other
+inputs than the recording: its children only require the recorded import
+order, and both sides get the recorded outputs. A routine is done
 when its checks pass on every capture that reaches it, including the error
 paths someone can reach in play.

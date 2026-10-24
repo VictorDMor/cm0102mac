@@ -22,6 +22,8 @@ namespace cm::aot {
 namespace {
 bool semantic_calendar_replay = false;
 bool live_pure_imports = false;
+bool relaxed_import_inputs = false;
+std::uint64_t relaxed_input_digest = 0xcbf29ce484222325;  // FNV-1a over what the imports observed
 bool rng_checks = true;
 constexpr std::uint32_t day_pc = 0x101195e8;
 constexpr std::uint32_t date_global = 0x108b3f10, phase_global = 0x108b40a4;
@@ -476,13 +478,20 @@ Input take_input(Stream& stream) {
 // where every register can be live.
 void check_input(const Input& input, const State& s, const char* import = nullptr) {
     if (input.pc != s.pc) throw std::runtime_error("First divergence: native import PC at " + hex_address(s.pc));
+    const bool masked = live_pure_imports && import;
+    const auto contract = masked ? import_contract(import) : ImportContract{};
+    if (relaxed_import_inputs) {
+        const auto mix = [](std::uint8_t byte) { relaxed_input_digest = (relaxed_input_digest ^ byte) * 0x100000001b3; };
+        for (unsigned shift = 0; shift < 32; shift += 8) mix(std::uint8_t(s.pc >> shift));
+        for (std::size_t byte = 0; byte < s.registers.size(); ++byte)
+            if (!masked || observed_by_import(byte, contract)) mix(s.registers[byte]);
+        return;
+    }
     // An operation replay runs pure imports itself, so its call count differs.
     if (!live_pure_imports && ((!semantic_calendar_replay && input.executed != s.executed) || input.calls != s.native_calls))
         throw std::runtime_error("First divergence: execution or native-call order at " + hex_address(s.pc));
     const auto& registers = record_registers;
     if (registers == s.registers) return;
-    const bool masked = live_pure_imports && import;
-    const auto contract = masked ? import_contract(import) : ImportContract{};
     for (std::size_t byte = 0; byte < s.registers.size(); ++byte) {
         if (registers[byte] == s.registers[byte] || (masked && !observed_by_import(byte, contract))) continue;
         throw std::runtime_error("First divergence: native input register byte " + std::to_string(byte) +
@@ -774,9 +783,11 @@ void begin_session_replay(State& s) {
 void season_replay_after_fork() {
     if (replay) replay->detach_after_fork();
 }
+void season_replay_relax_import_inputs() { relaxed_import_inputs = true; }
+std::uint64_t season_replay_import_digest() { return relaxed_input_digest; }
 void close_season_replay() {
     session_replay = false;
-    semantic_calendar_replay = live_pure_imports = false; rng_checks = true; recorded_allocator.reset();
+    semantic_calendar_replay = live_pure_imports = relaxed_import_inputs = false; rng_checks = true; recorded_allocator.reset();
     replay.reset(); replay_observer.reset(); replay_depth = 0; replay_previous_date.reset();
 }
 namespace {
