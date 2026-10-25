@@ -1,6 +1,7 @@
 #include "platform.hpp"
 #include "apple_events.hpp"
 #include "dialog_resource.hpp"
+#include "speech_bridge.hpp"
 #include "aot_runtime.hpp"
 #include "filesystem_bridge.hpp"
 #include <fstream>
@@ -117,6 +118,20 @@ int main() {
             require(events.nth(list, 3, 0x2a2a2a2au, keyword, item) != 0 && events.count({0x6c697374u, 1}, items) != 0,
                     "Open-documents list bounds and unknown descriptors");
             for (const auto descriptor : {spec, list, event}) require(!events.dispose(descriptor), "Descriptor disposal");
+        }
+        // Speech: off unless CM_AOT_SPEECH asks for it; "silent" speaks at
+        // volume 0 with the Speech Manager's channel and busy semantics.
+        {
+            unsetenv("CM_AOT_SPEECH");
+            NativeSpeech off;
+            std::uint32_t token = 0;
+            require(!off.available() && off.new_channel(token) != 0, "Speech is off by default");
+            setenv("CM_AOT_SPEECH", "silent", 1);
+            NativeSpeech silent;
+            unsetenv("CM_AOT_SPEECH");
+            require(silent.available() && !silent.new_channel(token) && token, "A silent speech channel");
+            require(!silent.speak(token, "Speech check.") && silent.speak(token + 1, "x") != 0, "Speaking, and an unknown channel");
+            require(silent.busy() >= 0 && !silent.dispose(token) && silent.dispose(token) != 0, "Busy count and disposal");
         }
         // DLOG and DITL as the original's Preferences dialog stores them.
         {

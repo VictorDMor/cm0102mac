@@ -119,11 +119,14 @@ end states, suite passing, reviewed commit.
 - [x] Automation `activate` and `print PATH` (as AppKit queues them); 'pdoc'
       delivered with its document list. Capture launch-events reaches
       activate_event and print_documents.
-- [ ] Still fixture-only: speech (the host answers Gestalt('ttsc') with no
-      Speech Manager; enabling it is a product decision), fatal_exit's
-      exit() before the game started, and two routines the game cannot
-      reach: debug_menu (menu 4 is only in the unused MBAR 2) and nothing()
-      (an empty hook on two error returns of 0x102a54b0).
+- [x] Speech, opt-in (CM_AOT_SPEECH=on|silent; off by default, so play is
+      unchanged): the Speech Manager bridged; capture launch-speech speaks
+      news headlines and disposes the channel at quit.
+- [ ] Decision for Victor: turn speech on for players (CM_AOT_SPEECH=on as
+      the default, or a preference)?
+- [ ] Fixture-only by necessity: fatal_exit's exit() before the game started
+      (no path reaches it), debug_menu (menu 4 is only in the unused MBAR 2)
+      and nothing() (an empty hook on two error returns of 0x102a54b0).
 - [ ] Automation `control N` on an item of a closed sidebar pop-up crashed
       the game (null read at 0x68, PC 0x100d4ea0, after `control 33` on the
       club screen); a user cannot click there. Refuse hidden controls.

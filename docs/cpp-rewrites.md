@@ -169,8 +169,14 @@ Three things it needed:
   error returns of game routine 0x102a54b0. Automation `activate` and
   `print PATH` queue what AppKit's windowDidBecomeKey and print-files queue,
   so activate_event and print_documents are capture-checked.
-- **Fixture checks** (`cm-main-program-checks`): for what the host never
-  delivers (speech: the host reports no Speech Manager) and for every
+- **Speech.** `CM_AOT_SPEECH=on` (or `silent`, volume 0, for validation)
+  makes Gestalt('ttsc') report the Speech Manager and bridges its channel
+  calls to macOS's; unset, the game sees none, as before. The original
+  speaks each news headline it shows, and Cmd-S or Option-S toggles speech
+  before the menus see the key, so Cmd-S never reaches File > Save from the
+  keyboard (Option-S types 'ß' on a Mac, so only Cmd-S toggles in practice).
+- **Fixture checks** (`cm-main-program-checks`): for the paths the game
+  itself cannot reach and for every
   branch of the pump and the menus, each case runs the original and the C++
   from a real snapshot with the Toolbox imports replaced by scripted
   stand-ins, compared as the routine checker compares (the volatile scratch

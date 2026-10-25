@@ -12,6 +12,7 @@
 #include "printing_bridge.hpp"
 #include "callbacks.hpp"
 #include "apple_events.hpp"
+#include "speech_bridge.hpp"
 #include "data_forks.hpp"
 #include "fork_io_bridge.hpp"
 #include "unicode_bridge.hpp"
@@ -137,6 +138,7 @@ struct NativePlatform::Impl {
     NativeDataForks data_forks;
     NativeUnicode unicode;
     NativeAppleEvents apple_events;
+    NativeSpeech speech;
     std::deque<UIEvent> pending_events;
     std::unique_ptr<Automation> automation = Automation::from_environment();
     // A request that only observes (snapshot, memory, profile, capture),
@@ -1362,6 +1364,21 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             // Native menu bar, Aqua application-menu layout, duplicate command lookup.
             impl_->user_interface();
             s.memory.write<4>(arg(1), 7);
+        } else if (name == "CarbonLib::Gestalt" && arg(0) == 0x74747363) {
+            // gestaltSpeechMgrPresent (bit 0) only when CM_AOT_SPEECH asks for speech.
+            s.memory.write<4>(arg(1), impl_->speech.available() ? 1 : 0);
+        } else if (name == "CarbonLib::NewSpeechChannel") {
+            if (arg(0)) throw std::runtime_error("A speech voice chosen by the original is unsupported");
+            std::uint32_t token = 0;
+            status = impl_->speech.new_channel(token);
+            s.memory.write<4>(arg(1), status ? 0 : token);
+        } else if (name == "CarbonLib::SpeakText") {
+            const auto bytes = s.memory.copy_out(arg(1), arg(2));
+            status = impl_->speech.speak(arg(0), {bytes.begin(), bytes.end()});
+        } else if (name == "CarbonLib::SpeechBusy") {
+            return_value = std::uint32_t(std::int32_t(impl_->speech.busy()));
+        } else if (name == "CarbonLib::DisposeSpeechChannel") {
+            status = impl_->speech.dispose(arg(0));
         } else if (name == "CarbonLib::Gestalt" && arg(0) == 0x66732020) {
             // FSSpec, HFS+ volumes, and the accepted FSRef/Unicode/fork family.
             // The original stream controllers now choose their 64-bit path.

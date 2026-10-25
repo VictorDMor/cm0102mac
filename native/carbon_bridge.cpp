@@ -80,11 +80,11 @@ bool bridge_import_name(State& s, std::string_view name) {
             s.pc = std::uint32_t(s.r<4>(4128));
             return true;
         }
-        if (arg(0) != 0x70706366 && arg(0) != 0x74747363)
-            return s.platform && s.platform->dispatch(s, name); // Platform-specific selectors.
+        if (arg(0) != 0x70706366 && (arg(0) != 0x74747363 || s.platform))
+            return s.platform && s.platform->dispatch(s, name); // Platform-specific selectors, 'ttsc' included.
         // No optional PowerPC/AltiVec intrinsics are provided by the compiler.
         // This selects the original scalar path; it is not a host CPU claim.
-        // The bridge also does not provide the optional Speech Manager ('ttsc').
+        // Without a platform there is no Speech Manager ('ttsc') either.
         s.memory.write<4>(arg(1), 0);
         result(0);
     } else if (name == "CarbonLib::NewPtr" || name == "CarbonLib::NewPtrClear") {
