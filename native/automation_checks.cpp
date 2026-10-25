@@ -116,10 +116,16 @@ int main() {
         taken = take(automation, ready);
         require(taken && taken->kind == AutomationRequest::Kind::print && taken->name == "/Games/An Opened.sav", "Print request");
         automation.finish(*taken, true, "queued");
-        request(directory, 11, "print games/Opened.sav");
+        request(directory, 12, "popup 229");
+        loop(automation, executed);
+        taken = take(automation, ready);
+        require(taken && taken->kind == AutomationRequest::Kind::control && taken->control == 229 && taken->popup,
+                "Pop-up item request");
+        automation.finish(*taken, true, "");
+        request(directory, 13, "print games/Opened.sav");
         loop(automation, executed);
         require(!take(automation, ready), "A relative print path was accepted");
-        require(read(directory / "log.txt").find("11 refused: print needs an absolute document path") != std::string::npos,
+        require(read(directory / "log.txt").find("13 refused: print needs an absolute document path") != std::string::npos,
                 "Relative print path refusal");
         std::filesystem::remove_all(directory);
         std::cout << "Automation requests, key mapping, idle gating, refusals and status checks passed\n";

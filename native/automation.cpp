@@ -92,11 +92,12 @@ AutomationRequest parse(std::uint64_t sequence, const std::string& line) {
         if (found == direct_command_names.end()) throw std::runtime_error("unknown command " + name);
         request.kind = AutomationRequest::Kind::command;
         request.command = DirectCommand(found - direct_command_names.begin());
-    } else if (verb == "control") {
+    } else if (verb == "control" || verb == "popup") {
         int index = -1; input >> index;
         if (!input || index < 0 || index >= 1200) throw std::runtime_error("control needs a table index");
         request.kind = AutomationRequest::Kind::control;
         request.control = std::int16_t(index);
+        request.popup = verb == "popup";
     } else if (verb == "menu") {
         int menu = 0, item = 0; input >> menu >> item;
         if (!input || menu < 1 || menu > 255 || item < 1 || item > 255) throw std::runtime_error("menu needs a menu id and an item");

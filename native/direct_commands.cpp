@@ -139,20 +139,22 @@ bool deliver_original_command(State& s, const CommandContext& expected, DirectCo
 }
 // An item of a closed pop-up menu: kind 0x10 (+0x38) and no rectangle (+0x10)
 // until its pop-up opens. A user reaches it only through the pop-up, while
-// holding the mouse on its button; activated directly it once left the game
-// reading menu state that was never set up (a null read at 0x100d4ea0).
+// holding the mouse on its button, so `control N` refuses it and `popup N`
+// asks for it explicitly: an item whose pop-up is not on the screen once
+// left the game reading menu state that was never set up (a null read at
+// 0x100d4ea0).
 static bool closed_popup_item(const State& s, const CommandContext& c, std::int16_t index) {
     const auto record = s.memory.copy_out(c.screen + 0xba864 + std::uint32_t(index) * 0x17c, 0x3c);
     const bool menu_item = record[0x3b] & 0x10;
     const bool no_rectangle = std::all_of(record.begin() + 0x10, record.begin() + 0x20, [](auto byte) { return byte == 0; });
     return menu_item && no_rectangle;
 }
-bool deliver_original_control(State& s, const CommandContext& expected, std::int16_t index) {
+bool deliver_original_control(State& s, const CommandContext& expected, std::int16_t index, bool popup_item) {
     const auto current = original_command_context(s, 0xffff);
     if (!current.ready || current != expected) return false;
     const auto controls = original_controls(s, current);
     if (index < 0 || std::size_t(index) >= controls.size() || !(controls[std::size_t(index)].flags & 2)) return false;
-    if (closed_popup_item(s, current, index)) return false;
+    if (closed_popup_item(s, current, index) != popup_item) return false;
     return activate(s, current, index);
 }
 }

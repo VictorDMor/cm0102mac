@@ -28,6 +28,9 @@ struct AutomationRequest {
     std::uint64_t sequence = 0;
     DirectCommand command{};
     std::int16_t control = -1;
+    // Control requests from `popup N`: control N is an item of a pop-up that
+    // is not open, chosen as a user chooses it from its pop-up.
+    bool popup = false;
     // Drag requests: press on `control`, move to `target`, release (centres
     // of the two controls' rectangles; no screen positions).
     std::int16_t target = -1;

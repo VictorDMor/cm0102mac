@@ -45,5 +45,7 @@ std::vector<OriginalControl> original_controls(const State& state, const Command
 std::optional<std::array<std::int32_t, 4>> original_control_rect(const State& state, const CommandContext& context, std::int16_t index);
 // Activate any enabled control of the current screen by table index, through
 // the same original preselected input as a direct command.
-bool deliver_original_control(State& state, const CommandContext& expected, std::int16_t index);
+// `popup_item`: the control must be an item of a closed pop-up (chosen as
+// from its pop-up); otherwise such items are refused.
+bool deliver_original_control(State& state, const CommandContext& expected, std::int16_t index, bool popup_item = false);
 }

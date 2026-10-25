@@ -327,6 +327,9 @@ target_compile_options(cm-main-program-checks PRIVATE -Wall -Wextra -Werror -Wpe
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME main_program_volatile_audit
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_main_program_audit.py")
+# With the installed original (read only): MBAR 1, the only menu bar, holds
+# menus 1-3, so debug_menu (menu 4) is unreachable.
+set_tests_properties(main_program_volatile_audit PROPERTIES ENVIRONMENT "CM_MAIN_PROGRAM_GAME=${CM_MATCH_DEBUGGER_GAME_DIR}")
 add_test(NAME main_program_fixtures
          COMMAND cm-main-program-checks "${CM_BENCHMARK_DIR}/ui/game-load/initial.snapshot")
 # launch-quit: start-up, the start screen, Sair Jogo, Sim (which leaves through
@@ -342,8 +345,9 @@ add_test(NAME main_program_fixtures
 # click handler, then the event queue). launch-events: the game window made
 # key (an activate event) and the Finder's Print of a save ('pdoc').
 # launch-speech: with CM_AOT_SPEECH=silent, a career loaded, Cmd-S (speech
-# on), news items spoken, quit (the channel disposed).
-foreach(session launch-quit launch-menus launch-dialog launch-sav launch-cfg launch-rgn launch-click launch-events launch-speech)
+# on), news items spoken, quit (the channel disposed). launch-restart: Game
+# Options > Restart, Yes (the empty Restart hook, 0x1076f880), then quit.
+foreach(session launch-quit launch-menus launch-dialog launch-sav launch-cfg launch-rgn launch-click launch-events launch-speech launch-restart)
     string(REPLACE "-" "_" name "${session}")
     add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
     add_test(NAME main_program_${name}

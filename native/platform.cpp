@@ -717,8 +717,8 @@ struct NativePlatform::Impl {
                     event.command_context = commands.identity;
                     available = true;
                 } else if (request->kind == Kind::control) {
-                    const bool delivered = deliver_original_control(s, commands, request->control);
-                    automation->finish(*request, delivered, delivered ? "" : "control unavailable");
+                    const bool delivered = deliver_original_control(s, commands, request->control, request->popup);
+                    automation->finish(*request, delivered, delivered ? "" : request->popup ? "not an item of a closed pop-up" : "control unavailable");
                     if (delivered) {
                         command_status = "Dispatched to the original game";
                         user_interface().update_commands({}, command_status);

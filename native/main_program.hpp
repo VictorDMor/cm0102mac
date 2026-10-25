@@ -42,7 +42,8 @@ void stop_speech(guest::Cpu& c);
 // 0x1076f7d0: ends the program with `code`: back to run() (longjmp) while the
 // game runs, else through exit().
 void fatal_exit(guest::Cpu& c, std::uint32_t code);
-// 0x1076f880: does nothing.
+// 0x1076f880: the Restart hook (Game Options > Restart, Yes): empty in this
+// build, so the game carries on.
 void nothing(guest::Cpu& c);
 // 0x1076f890: the menu bar (Quit removed under Aqua, desk accessories).
 void set_up_menus(guest::Cpu& c);

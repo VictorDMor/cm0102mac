@@ -164,11 +164,16 @@ Three things it needed:
   no FSSpec (over 63 MacRoman bytes), is left out with a line in the log; the
   game still starts. `game_driver.py launch NAME --open DOC` launches that way.
 - **What no capture can reach.** `debug_menu` handles menu 4, which is only
-  in MBAR 2 (the game installs MBAR 1, menus 1-3), so neither MenuSelect nor
-  MenuKey can return it; `nothing()` is an empty hook called only on two
-  error returns of game routine 0x102a54b0. Automation `activate` and
-  `print PATH` queue what AppKit's windowDidBecomeKey and print-files queue,
-  so activate_event and print_documents are capture-checked.
+  in MBAR 2: the program installs one menu bar, MBAR 1 (menus 1-3), and adds
+  no menu, so neither MenuSelect nor MenuKey can return it (a ctest checks
+  the calls in the export and MBAR 1 in the installed original). fatal_exit's
+  exit() runs only for a fatal error before the game has started.
+- **Capture paths added for the rest.** `nothing()` is the original's Restart
+  hook, empty in this build: Game Options > Restart, Yes, reaches it, and
+  the game carries on. Automation `popup N`
+  chooses item N of a closed pop-up (`control N` refuses those), `activate`
+  and `print PATH` queue what AppKit's windowDidBecomeKey and print-files
+  queue, so nothing, activate_event and print_documents are capture-checked.
 - **Speech.** `CM_AOT_SPEECH=on` (or `silent`, volume 0, for validation)
   makes Gestalt('ttsc') report the Speech Manager and bridges its channel
   calls to macOS's; unset, the game sees none, as before. The original

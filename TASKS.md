@@ -131,9 +131,14 @@ end states, suite passing, reviewed commit.
 - [ ] Speed lead: 10.9% of a season day is under pump_events, almost all of
       it in the host's WaitNextEvent/GetMouse bridges during Continue
       (track_mouse alone 3.0% inclusive). Measure the host side first.
-- [ ] Fixture-only by necessity: fatal_exit's exit() before the game started
-      (no path reaches it), debug_menu (menu 4 is only in the unused MBAR 2)
-      and nothing() (an empty hook on two error returns of 0x102a54b0).
+- [x] nothing() is the Restart hook (not error returns, as noted before):
+      capture launch-restart (Game Options > Restart, Yes; the game goes on)
+      checks it. Automation `popup N` chooses a closed pop-up's item.
+- [x] debug_menu unreachable, now a ctest (main_program_volatile_audit): one
+      GetNewMBar(1) and one SetMenuBar in the program, no menu added, MBAR 1
+      = menus 1-3 in the installed original.
+- [ ] Fixture-only: fatal_exit's exit() for a fatal error before the game
+      started (needs a broken installation to record).
 - [x] Automation `control N` refuses an item of a closed pop-up (kind 0x10,
       no rectangle): activating one directly crashed the game once (null
       read at PC 0x100d4ea0); a user reaches those only through the open
