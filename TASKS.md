@@ -51,7 +51,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
 
-## Now: MAIN.CPP in C++23 (goal set 2026-10-24)
+## Done: MAIN.CPP in C++23 (goal set 2026-10-24, accepted by Victor 2026-10-25)
 
 Finish line: every routine of the original's `MAIN.CPP` (0x1076f2b0-0x10771110,
 44 routines, 1,869 instructions; `tools/main_program_audit.py`) runs as
@@ -137,8 +137,9 @@ end states, suite passing, reviewed commit.
 - [x] debug_menu unreachable, now a ctest (main_program_volatile_audit): one
       GetNewMBar(1) and one SetMenuBar in the program, no menu added, MBAR 1
       = menus 1-3 in the installed original.
-- [ ] Fixture-only: fatal_exit's exit() for a fatal error before the game
-      started (needs a broken installation to record).
+- [x] Fixture-only, accepted: fatal_exit's exit() for a fatal error before
+      the game started (an empty eng.lng in a copy's overlay did not reach it;
+      the language file is read after start).
 - [x] Automation `control N` refuses an item of a closed pop-up (kind 0x10,
       no rectangle): activating one directly crashed the game once (null
       read at PC 0x100d4ea0); a user reaches those only through the open
