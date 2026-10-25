@@ -127,10 +127,15 @@ paths someone can reach in play.
 is the second subsystem done this way. Its routines read as plain C++ over
 typed views (`main_program_detail.hpp`): `Field<T>` for a value in guest
 memory, `EventRecord`, `FSSpec`, MAIN.CPP's `Globals`, the game objects it
-reaches through the TOC (`Shared`), and one `Toolbox` call per Carbon
-routine, which sets exactly that call's arguments. What stays explicit is
-what the game can observe: the values the original keeps in r13-r31 across
-calls into code that saves them, results and r4-r10 at returns, and cr0.
+reaches through the TOC (`Shared`), one `Toolbox` call per Carbon routine
+and one `Program` call per routine of the rest of the game or the C
+library, each setting exactly that call's arguments. What the game can
+observe stays in step, under names: `Kept<R>` is a local the original keeps
+in non-volatile register R (the routines it calls save R in their frames,
+so the value reaches the stack image), `keep()` the same for values the C++
+needs no name for, `enter()` the original's `bl` into another MAIN.CPP
+routine, `leave()` what it leaves in r3-r10 at return (a caller's varargs
+call stores them), and cr0 through `compare()`.
 r0, r11, r12, CTR and XER are not reproduced (nothing reads them before
 writing them). A Toolbox import is checked on the argument registers it
 reads (`import_contract` in season_reference.cpp lists each one's arity).
@@ -158,6 +163,12 @@ Three things it needed:
   system did. A document outside the game's folders, or one whose name has
   no FSSpec (over 63 MacRoman bytes), is left out with a line in the log; the
   game still starts. `game_driver.py launch NAME --open DOC` launches that way.
+- **What no capture can reach.** `debug_menu` handles menu 4, which is only
+  in MBAR 2 (the game installs MBAR 1, menus 1-3), so neither MenuSelect nor
+  MenuKey can return it; `nothing()` is an empty hook called only on two
+  error returns of game routine 0x102a54b0. Automation `activate` and
+  `print PATH` queue what AppKit's windowDidBecomeKey and print-files queue,
+  so activate_event and print_documents are capture-checked.
 - **Fixture checks** (`cm-main-program-checks`): for what the host never
   delivers (speech: the host reports no Speech Manager) and for every
   branch of the pump and the menus, each case runs the original and the C++

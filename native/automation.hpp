@@ -17,12 +17,13 @@ struct State;
 // status.json. Requests name original commands, controls and keys; none
 // carries a screen position, and none changes what the game simulates.
 struct AutomationRequest {
-    enum class Kind { command, control, key, text, snapshot, memory, profile, capture, drag, menu, wheel, quit, dialog } kind{};
+    enum class Kind { command, control, key, text, snapshot, memory, profile, capture, drag, menu, wheel, quit, dialog, activate, print } kind{};
     // Inputs reach the game and wait for an idle screen; the other requests
     // only observe, at any event boundary.
     bool input() const {
         return kind == Kind::command || kind == Kind::control || kind == Kind::key || kind == Kind::text ||
-               kind == Kind::drag || kind == Kind::menu || kind == Kind::wheel || kind == Kind::quit || kind == Kind::dialog;
+               kind == Kind::drag || kind == Kind::menu || kind == Kind::wheel || kind == Kind::quit || kind == Kind::dialog ||
+               kind == Kind::activate || kind == Kind::print;
     }
     std::uint64_t sequence = 0;
     DirectCommand command{};
@@ -39,6 +40,9 @@ struct AutomationRequest {
     // selects it from the menu bar. Wheel requests: the wheel delta in lines.
     // Quit requests: the application menu's Quit (a quit Apple event).
     // Dialog requests: click item `control` of the open modal dialog.
+    // Activate requests: the game window becomes the key window, as when the
+    // user brings the application to the front. Print requests: the Finder's
+    // Print of the document `name` (a print-documents Apple event).
     std::uint32_t menu = 0;
     std::int32_t wheel = 0;
     std::string name;

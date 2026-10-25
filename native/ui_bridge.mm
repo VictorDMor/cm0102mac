@@ -346,6 +346,21 @@ std::uint8_t original_character(NSEvent* event) {
     // Let the original game perform its save/quit checks before it exits.
     return NSTerminateCancel;
 }
+// The Finder's Print: a print-documents event the original answers itself.
+- (NSApplicationPrintReply)application:(NSApplication*)application printFiles:(NSArray<NSString*>*)files
+                          withSettings:(NSDictionary<NSPrintInfoAttributeKey, id>*)settings
+                       showPrintPanels:(BOOL)showPrintPanels {
+    (void)application; (void)settings; (void)showPrintPanels;
+    cm::aot::UIEvent event{cm::aot::UIEvent::Kind::print_files};
+    for (NSString* path in files) {
+        const auto file = std::filesystem::absolute(path.fileSystemRepresentation).lexically_normal();
+        if (!launching || !hostArguments->contains(file)) event.files.push_back(file);  // as openFiles
+    }
+    if (!event.files.empty()) pending->push_back(std::move(event));
+    // The original's handler declines the event (errAEEventNotHandled):
+    // nothing is printed.
+    return NSPrintingFailure;
+}
 - (void)application:(NSApplication*)application openFiles:(NSArray<NSString*>*)files {
     cm::aot::UIEvent event{cm::aot::UIEvent::Kind::open_files};
     for (NSString* path in files) {
@@ -407,7 +422,7 @@ void select_native_match_speed(std::uint16_t value) {
 }
 std::uint16_t legacy_event_mask(const UIEvent& event) {
     switch (event.kind) {
-        case UIEvent::Kind::launch: case UIEvent::Kind::quit: case UIEvent::Kind::open_files: return 0x0400;
+        case UIEvent::Kind::launch: case UIEvent::Kind::quit: case UIEvent::Kind::open_files: case UIEvent::Kind::print_files: return 0x0400;
         case UIEvent::Kind::mouse_down: case UIEvent::Kind::menu: case UIEvent::Kind::command: return 2;
         case UIEvent::Kind::mouse_up: return 4;
         case UIEvent::Kind::key_down: return 8;

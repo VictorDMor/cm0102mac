@@ -100,7 +100,12 @@ int main() {
             std::vector<std::vector<std::uint8_t>> specs(2, std::vector<std::uint8_t>(70));
             for (unsigned n = 0; n < 70; ++n) { specs[0][n] = std::uint8_t(n); specs[1][n] = std::uint8_t(0xff - n); }
             NativeAEDescriptor event, list, item, spec;
-            require(!events.open_documents_event(specs, event) && event.type == 0x61657674u, "Open-documents event creation");
+            require(!events.documents_event(0x6f646f63u, specs, event) && event.type == 0x61657674u &&
+                    events.event_id(event) == 0x6f646f63u, "Open-documents event creation");
+            NativeAEDescriptor print, printed;
+            require(!events.documents_event(0x70646f63u, specs, print) && events.event_id(print) == 0x70646f63u &&
+                    !events.parameter(print, 0x2d2d2d2du, 0x6c697374u, printed) && !events.dispose(printed) &&
+                    !events.dispose(print) && events.event_id(print) == 0, "Print-documents event and its list");
             require(!events.parameter(event, 0x2d2d2d2du, 0x6c697374u, list) && list.type == 0x6c697374u, "Open-documents direct object list");
             std::int32_t items = 0;
             std::uint32_t keyword = 0;

@@ -104,6 +104,23 @@ int main() {
         status = read(directory / "status.json");
         require(status.find("\"ready\": false") != std::string::npos && status.find("\"controls\"") == std::string::npos,
             "Busy status:\n" + status);
+        // The application brought forward and the Finder's Print, as AppKit
+        // queues them; a print path must be absolute.
+        request(directory, 9, "activate");
+        loop(automation, executed);
+        taken = take(automation, ready);
+        require(taken && taken->kind == AutomationRequest::Kind::activate && taken->input(), "Activate request");
+        automation.finish(*taken, true, "queued");
+        request(directory, 10, "print /Games/An Opened.sav");
+        loop(automation, executed);
+        taken = take(automation, ready);
+        require(taken && taken->kind == AutomationRequest::Kind::print && taken->name == "/Games/An Opened.sav", "Print request");
+        automation.finish(*taken, true, "queued");
+        request(directory, 11, "print games/Opened.sav");
+        loop(automation, executed);
+        require(!take(automation, ready), "A relative print path was accepted");
+        require(read(directory / "log.txt").find("11 refused: print needs an absolute document path") != std::string::npos,
+                "Relative print path refusal");
         std::filesystem::remove_all(directory);
         std::cout << "Automation requests, key mapping, idle gating, refusals and status checks passed\n";
         return 0;

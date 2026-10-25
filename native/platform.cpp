@@ -172,6 +172,24 @@ struct NativePlatform::Impl {
             automation->finish(request, true, result);
         } catch (const std::exception& failure) { automation->finish(request, false, failure.what()); }
     }
+    // The game window (the one whose content is the 800 x 600 screen) and its
+    // content bounds; 0 when there is none.
+    std::pair<std::uint32_t, LegacyRect> game_screen() {
+        std::pair<std::uint32_t, LegacyRect> found{0, {}};
+        for (const auto window : windows) {
+            const auto bounds = user_interface().window_bounds(window, true);
+            if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) found = {window, bounds};
+        }
+        return found;
+    }
+    // A document an open- or print-documents event may name: a file under
+    // the game's or the writable folders.
+    bool reachable_document(const fs::path& file) const {
+        std::error_code error;
+        try {
+            return fs::is_regular_file(allowed(file), error);
+        } catch (const FileError&) { return false; }
+    }
     std::uint32_t front_dialog = 0;  // the modal dialog ModalDialog runs
     std::uint32_t new_dialog(State& s, std::int16_t id) {
         const auto dialog = resource_manager().get(0x444c4f47, id, false);  // DLOG
@@ -711,20 +729,14 @@ struct NativePlatform::Impl {
                 } else if (request->kind == Kind::drag) {
                     const auto from = original_control_rect(s, commands, request->control);
                     const auto to = original_control_rect(s, commands, request->target);
-                    std::optional<LegacyRect> content;
-                    std::uint32_t game_window = 0;
-                    // The game window: the one whose content is the 800 x 600 screen.
-                    for (const auto window : windows) {
-                        const auto bounds = user_interface().window_bounds(window, true);
-                        if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) { content = bounds; game_window = window; }
-                    }
-                    if (!from || !to || !content || drag) {
+                    const auto [game_window, content] = game_screen();
+                    if (!from || !to || !game_window || drag) {
                         automation->finish(*request, false, drag ? "a drag is in progress" : "control or window unavailable");
                         automation->boundary(s, commands, command_status);
                         continue;
                     }
                     const auto centre = [&](const std::array<std::int32_t, 4>& r, int axis) {
-                        return std::int16_t((*content)[axis == 0 ? 1 : 0] + (r[axis] + r[axis + 2]) / 2);
+                        return std::int16_t(content[axis == 0 ? 1 : 0] + (r[axis] + r[axis + 2]) / 2);
                     };
                     drag = SyntheticDrag{centre(*from, 0), centre(*from, 1), centre(*to, 0), centre(*to, 1), *request, std::nullopt, false};
                     // As a left click in the game window arrives: its Carbon
@@ -734,6 +746,22 @@ struct NativePlatform::Impl {
                     if (!window_event(s, down)) pending_events.push_back(std::move(down));
                 } else if (request->kind == Kind::dialog) {
                     automation->finish(*request, false, "no dialog is open");
+                    automation->boundary(s, commands, command_status);
+                } else if (request->kind == Kind::activate || request->kind == Kind::print) {
+                    // As AppKit queues them: windowDidBecomeKey's activate
+                    // event for the game window, or the delegate's print-files.
+                    UIEvent queued{request->kind == Kind::activate ? UIEvent::Kind::activate : UIEvent::Kind::print_files};
+                    std::string refused;
+                    if (request->kind == Kind::activate) {
+                        queued.window = game_screen().first;
+                        queued.modifiers = 1;  // activeFlag
+                        if (!queued.window) refused = "no game window";
+                    } else {
+                        queued.files.push_back(fs::path(request->name).lexically_normal());
+                        if (!reachable_document(queued.files.front())) refused = "not a file in the game's folders";
+                    }
+                    if (refused.empty()) pending_events.push_back(std::move(queued));
+                    automation->finish(*request, refused.empty(), refused.empty() ? "queued" : refused);
                     automation->boundary(s, commands, command_status);
                 } else if (request->kind == Kind::menu || request->kind == Kind::quit) {
                     // As AppKit queues them: a menu choice runs the original's
@@ -746,10 +774,7 @@ struct NativePlatform::Impl {
                 } else if (request->kind == Kind::wheel) {
                     // Through the game window's Carbon handler, as a scroll wheel.
                     UIEvent wheel{UIEvent::Kind::wheel};
-                    for (const auto window : windows) {
-                        const auto bounds = user_interface().window_bounds(window, true);
-                        if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) wheel.window = window;
-                    }
+                    wheel.window = game_screen().first;
                     wheel.wheel_delta = request->wheel;
                     // The original installs its wheel handler only with the Aqua
                     // menu layout; it notes the delta and returns eventNotHandledErr,
@@ -844,19 +869,16 @@ struct NativePlatform::Impl {
             command_cache.reset();
             return false;
         }
-        if (found->kind == UIEvent::Kind::open_files) {
+        if (found->kind == UIEvent::Kind::open_files || found->kind == UIEvent::Kind::print_files) {
             // Only documents the game may reach become an open-documents
             // event; with none left, a launch still opens the application.
             std::erase_if(found->files, [&](const fs::path& file) {
-                std::error_code error;
-                try {
-                    if (fs::is_regular_file(allowed(file), error)) return false;
-                } catch (const FileError&) {}
+                if (reachable_document(file)) return false;
                 std::fprintf(stderr, "Document not opened (not a file in the game's folders): %s\n", file.c_str());
                 return true;
             });
             if (found->files.empty()) {
-                if (application_opened) { pending_events.erase(found); return false; }
+                if (application_opened || found->kind == UIEvent::Kind::print_files) { pending_events.erase(found); return false; }
                 found->kind = UIEvent::Kind::launch;
             }
         }
@@ -868,12 +890,13 @@ struct NativePlatform::Impl {
             s.memory.write<2>(address, 1);
             s.memory.write<4>(address + 10, 0x80008000);
         } else if (found->kind == UIEvent::Kind::launch || found->kind == UIEvent::Kind::quit ||
-                   found->kind == UIEvent::Kind::open_files) {
+                   found->kind == UIEvent::Kind::open_files || found->kind == UIEvent::Kind::print_files) {
             if (found->kind == UIEvent::Kind::quit && commands.root)
                 delivered_command_action = {commands.root, 1026};
-            if (found->kind != UIEvent::Kind::quit) application_opened = true;
+            if (found->kind == UIEvent::Kind::launch || found->kind == UIEvent::Kind::open_files) application_opened = true;
             const auto id = found->kind == UIEvent::Kind::launch ? 0x6f617070u   // 'oapp'
                 : found->kind == UIEvent::Kind::open_files ? 0x6f646f63u          // 'odoc'
+                : found->kind == UIEvent::Kind::print_files ? 0x70646f63u         // 'pdoc'
                 : 0x71756974u;                                                   // 'quit'
             s.memory.write<2>(address, 23);
             s.memory.write<4>(address + 2, 0x61657674);
@@ -920,7 +943,7 @@ struct NativePlatform::Impl {
         if (handler == apple_handlers.end()) { delivered_events.erase(found); return std::uint32_t(-1708); }
         NativeAEDescriptor descriptor;
         std::int32_t error = 0;
-        if (found->second.kind == UIEvent::Kind::open_files) {
+        if (found->second.kind == UIEvent::Kind::open_files || found->second.kind == UIEvent::Kind::print_files) {
             // Each document as the FSSpec the guest's file calls resolve.
             std::vector<std::vector<std::uint8_t>> specs;
             const auto spec = allocate(s, 70, true);
@@ -936,7 +959,7 @@ struct NativePlatform::Impl {
                 }
             }
             deallocate(s, spec);
-            error = apple_events.open_documents_event(specs, descriptor);
+            error = apple_events.documents_event(id, specs, descriptor);
         } else {
             error = apple_events.application_event(id, descriptor);
         }

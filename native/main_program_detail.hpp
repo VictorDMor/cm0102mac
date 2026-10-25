@@ -179,6 +179,64 @@ inline std::int32_t compare_logical(Cpu& c, std::uint32_t a, std::uint32_t b = 0
 }
 // A 16-bit value as the original holds it in a register (sign-extended).
 inline std::uint32_t extended(std::int16_t value) { return std::uint32_t(std::int32_t(value)); }
+// A local the original keeps in non-volatile register R (r13-r31) while it
+// calls other code. The routines it calls save R in their stack frames, so
+// the value is part of the stack image the game may read later (exact stack
+// images, CLAUDE.md). It lives in R: assigning writes R and reading reads R,
+// as the original does after each call (whose epilogue reloads R from its
+// save slot). Otherwise a plain value.
+template <unsigned R>
+class Kept {
+    static_assert(R >= 13 && R <= 31, "Kept: not a non-volatile register");
+
+public:
+    explicit Kept(Cpu& c, std::uint32_t value = 0) : c(c) { c.set(R, value); }
+    Kept(const Kept&) = delete;
+    Kept& operator=(std::uint32_t value) {
+        c.set(R, value);
+        return *this;
+    }
+    Kept& operator=(const Kept& other) { return *this = std::uint32_t(other); }
+    operator std::uint32_t() const { return c.r(R); }
+
+private:
+    Cpu& c;
+};
+// A register number checked when the program is compiled: r13-r31 for
+// keep(), r3-r10 for leave().
+template <unsigned Low, unsigned High>
+struct RegisterIn {
+    unsigned n;
+    consteval RegisterIn(unsigned n) : n(n) {
+        if (n < Low || n > High) throw "register out of range";
+    }
+};
+struct RegisterValue {
+    RegisterIn<13, 31> n;
+    std::uint32_t value;
+};
+struct LeftValue {
+    RegisterIn<3, 10> n;
+    std::uint32_t value;
+};
+// Values the original keeps in non-volatile registers (as Kept) that the
+// C++ needs no name for: typically addresses of fields it also names.
+inline void keep(Cpu& c, std::initializer_list<RegisterValue> values) {
+    for (const auto& [n, value] : values) c.set(n.n, value);
+}
+// The original's `bl` into another MAIN.CPP routine: its argument registers
+// (r3 on) and the return address. The C++ call follows; the registers are
+// what the generated body reads when the hook declines (the routine checker).
+inline void enter(Cpu& c, std::uint32_t back, std::initializer_list<std::uint32_t> arguments = {}) {
+    unsigned n = 3;
+    for (const auto value : arguments) c.set(n++, value);
+    c.link(back);
+}
+// What the original leaves in volatile registers when it returns: a
+// caller's next varargs call stores r3-r10 into its stack image.
+inline void leave(Cpu& c, std::initializer_list<LeftValue> values) {
+    for (const auto& [n, value] : values) c.set(n.n, value);
+}
 // A value a C++ routine returns, left in r3 as the original's callee leaves it.
 inline std::uint32_t result(Cpu& c, std::uint32_t value) {
     c.set(3, value);

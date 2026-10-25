@@ -35,8 +35,8 @@ NativeAEDescriptor keep(std::map<std::uint32_t, AEDesc>& descriptors, std::uint3
     return descriptor;
 }
 }
-std::int32_t NativeAppleEvents::open_documents_event(const std::vector<std::vector<std::uint8_t>>& specs,
-                                                     NativeAEDescriptor& descriptor) {
+std::int32_t NativeAppleEvents::documents_event(std::uint32_t id, const std::vector<std::vector<std::uint8_t>>& specs,
+                                                NativeAEDescriptor& descriptor) {
     descriptor = {};
     AEDescList list{typeNull, nullptr};
     auto error = ::AECreateList(nullptr, 0, false, &list);
@@ -46,7 +46,7 @@ std::int32_t NativeAppleEvents::open_documents_event(const std::vector<std::vect
     const ProcessSerialNumber current{0, kCurrentProcess};
     if (!error) error = ::AECreateDesc(typeProcessSerialNumber, &current, sizeof(current), &target);
     AppleEvent event{typeNull, nullptr};
-    if (!error) error = ::AECreateAppleEvent(kCoreEventClass, kAEOpenDocuments, &target, kAutoGenerateReturnID,
+    if (!error) error = ::AECreateAppleEvent(kCoreEventClass, id, &target, kAutoGenerateReturnID,
                                              kAnyTransactionID, &event);
     if (!error) error = ::AEPutParamDesc(&event, keyDirectObject, &list);
     ::AEDisposeDesc(&target);
@@ -99,6 +99,15 @@ std::int32_t NativeAppleEvents::data(NativeAEDescriptor descriptor, std::uint32_
     if (found == impl_->descriptors.end()) return errAENotAEDesc;
     bytes.assign(std::min<std::size_t>(size, std::size_t(::AEGetDescDataSize(&found->second))), 0);
     return ::AEGetDescData(&found->second, bytes.data(), Size(bytes.size()));
+}
+std::uint32_t NativeAppleEvents::event_id(NativeAEDescriptor event) const {
+    const auto found = impl_->descriptors.find(event.token);
+    if (found == impl_->descriptors.end()) return 0;
+    AEEventID id = 0;
+    DescType type = 0;
+    Size size = 0;
+    if (::AEGetAttributePtr(&found->second, keyEventIDAttr, typeType, &type, &id, sizeof(id), &size)) return 0;
+    return id;
 }
 std::int32_t NativeAppleEvents::dispose(NativeAEDescriptor descriptor) {
     if (!descriptor.token && descriptor.type == typeNull) return 0;

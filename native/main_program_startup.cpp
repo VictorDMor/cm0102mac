@@ -7,26 +7,25 @@ using namespace detail;
 namespace {
 
 // The main loop, from setjmp's return (0x1076f374): a fatal exit returns
-// here too, with the code it was given.
-void main_loop(Cpu& c, const Frame& frame) {
+// here too, with the code it was given, which becomes run()'s result.
+void main_loop(Cpu& c, const Frame& frame, Kept<31>& code) {
     Globals g{c};
     Toolbox os{c, frame};
     Program program{c};
-    c.set(31, c.r(3));  // the result run() returns
+    code = c.r(3);
     if (const std::uint32_t text = g.setup_text(); nonzero_logical(c, text)) {
         // Documents dropped on the application before it started: run their
         // setup lines as a script, then stop.
-        c.set(3, text);
-        c.link(0x1076f38c);
+        enter(c, 0x1076f38c, {text});
         run_script(c, text);
         os.DisposePtr(g.setup_text(), 0x1076f394);
-        c.set(3, 0);
+        c.set(3, 0);  // the original clears it through r3
         g.setup_text() = 0;
         g.running() = 0;
     }
     while (nonzero(c, g.running())) {
         g.running() = program.step(0x1076f3b0);
-        c.link(0x1076f3b8);
+        enter(c, 0x1076f3b8);
         pump_events(c);
     }
 }
@@ -34,9 +33,9 @@ void main_loop(Cpu& c, const Frame& frame) {
 
 void main(Cpu& c) {
     Frame frame(c, 0x1076f2b0, 0x40, {});
-    c.link(0x1076f2c0);
+    enter(c, 0x1076f2c0);
     run(c);
-    c.set(3, 0);
+    leave(c, {{3, 0}});
 }
 
 std::uint32_t run(Cpu& c) {
@@ -44,24 +43,23 @@ std::uint32_t run(Cpu& c) {
     Globals g{c};
     Toolbox os{c, frame};
     Program program{c};
-    const auto pool = c.toc(slot::pool);
-    // The original keeps the message buffer, the pool and its result in
-    // r29-r31 through the whole run.
-    c.set({{31, 0}, {30, pool}, {29, c.toc(slot::message)}});
-    c.link(0x1076f308);
+    Kept<31> code{c, 0};  // the result
+    const Kept<30> pool{c, c.toc(slot::pool)};
+    const Kept<29> message{c, c.toc(slot::message)};
+    enter(c, 0x1076f308);
     if (!nonzero(c, std::int8_t(result(c, process_information(c))))) return 0;
-    c.link(0x1076f314);
+    enter(c, 0x1076f314);
     install_handlers(c);
-    c.link(0x1076f318);
+    enter(c, 0x1076f318);
     initialize(c);
-    c.link(0x1076f31c);
+    enter(c, 0x1076f31c);
     set_up_menus(c);
-    c.link(0x1076f320);
+    enter(c, 0x1076f320);
     find_folders(c);
     program.load_settings(c.toc(slot::settings), 0x1076f328);
     // The game starts once the open-application (or open-documents) event came.
     while (!nonzero(c, g.opened())) {
-        c.link(0x1076f330);
+        enter(c, 0x1076f330);
         poll_high_level_events(c);
     }
     if (nonzero(c, program.start_game(g.command_line(), 0x1076f344))) {
@@ -76,7 +74,7 @@ std::uint32_t run(Cpu& c) {
         // C++ takes it instead and goes on as the original does.
         for (;;) {
             try {
-                main_loop(c, frame);
+                main_loop(c, frame, code);
                 break;
             } catch (const GuestContextTransfer& transfer) {
                 if (transfer.state != &c.s || c.s.pc != 0x1076f374 || c.sp() != frame.base()) throw;
@@ -86,17 +84,16 @@ std::uint32_t run(Cpu& c) {
         guest::report_assertion(c, {0x1076f3dc, pool + text::file_name, pool + text::assert_format,
                                     pool + text::error_title, frame.at(0x40), frame.at(0x38), 0x1b0});
     }
-    c.link(0x1076f420);
+    enter(c, 0x1076f420);
     shut_down(c);
-    return c.r(31);
+    return code;
 }
 
 std::uint32_t process_information(Cpu& c) {
     Frame frame(c, 0x1076f440, 0x50, {.first_gpr = 31});
     Toolbox os{c, frame};
     // ProcessInfoRec: processInfoLength, and the application's FSSpec at +0x38.
-    const auto info = c.toc(slot::process);
-    c.set(31, info);  // kept in r31 across the calls
+    const Kept<31> info{c, c.toc(slot::process)};
     c.put32(info, 0x3c);
     c.put32(info + 0x38, c.toc(slot::application));
     c.set(4, 0x3c);  // the original builds the length in r4
@@ -126,12 +123,11 @@ void install_handlers(Cpu& c) {
         const auto upp = os.NewAEEventHandlerUPP(c.toc(handler.routine), handler.upp_back);
         os.AEInstallEventHandler(four_char('a', 'e', 'v', 't'), handler.id, upp, 0, false, handler.install_back);
     }
-    for (std::uint32_t n = 0; n < 10;) {  // the count in r31
-        c.set(31, n);
+    Kept<31> count{c, 0};
+    do {
         os.MoreMasters(0x1076f5d4);
-        c.set(31, ++n);
-        compare(c, std::int32_t(n), 10);
-    }
+        count = count + 1;
+    } while (compare(c, std::int32_t(count), 10) < 0);
 }
 
 void initialize(Cpu& c) {
@@ -141,7 +137,8 @@ void initialize(Cpu& c) {
     Globals g{c};
     Shared shared{c};
     const FSSpec application{c, c.toc(slot::application)};
-    c.set({{30, application.address}, {29, 0}});  // kept across the calls (r29 the volume index)
+    const Kept<30> kept_application{c, application.address};
+    Kept<29> next_volume{c, 0};
     g.running() = 1;
     g.opened() = 0;
     g.sleep_ticks() = 0;
@@ -164,11 +161,11 @@ void initialize(Cpu& c) {
     // (ioVolIndex +0x1c, ioNamePtr +0x12, ioVRefNum +0x16) until it matches.
     const auto block = frame.at(0x38), name = frame.at(0xb4);
     program.memset(block, 0, 0x7a, 0x1076f6b8);
-    c.set(31, name);
+    const Kept<31> kept_name{c, name};
     for (std::int16_t index = 0;; ++index) {
         c.put16(block + 0x1c, std::uint32_t(index));
         c.put32(block + 0x12, name);
-        c.set(29, std::uint32_t(index + 1));
+        next_volume = std::uint32_t(index + 1);
         if (nonzero(c, os.PBHGetVInfoSync(block, 0x1076f6d4))) break;
         if (compare(c, c.i16(block + 0x16), application.volume()) == 0) {
             program.copy_to_c(c.toc(slot::volume_name), name, 0x1076f6fc);
@@ -184,9 +181,9 @@ void shut_down(Cpu& c) {
     Program program{c};
     Globals g{c};
     const auto started = Shared{c}.game_started();
-    c.set(3, started.address());  // left in r3 either way
+    c.set(3, started.address());  // in r3 either way
     if (nonzero(c, started)) program.end_game(started.address(), 0x1076f750);
-    c.link(0x1076f754);
+    enter(c, 0x1076f754);
     stop_speech(c);
     program.save_settings(c.toc(slot::settings), 0x1076f75c);
     if (const std::uint32_t region = g.mouse_region(); nonzero_logical(c, region)) os.DisposeRgn(region, 0x1076f76c);
@@ -203,7 +200,8 @@ void fatal_exit(Cpu& c, std::uint32_t code) {
     Program program{c};
     Globals g{c};
     const auto started = Shared{c}.game_started();
-    c.set({{4, started.address()}, {31, code}, {3, std::uint8_t(started)}});
+    const Kept<31> kept_code{c, code};
+    c.set({{4, started.address()}, {3, std::uint8_t(started)}});  // the flag's address and value
     if (nonzero(c, started)) {
         // Back to run(), which shuts down; longjmp does not return.
         g.running() = 0;
@@ -225,7 +223,7 @@ void set_up_menus(Cpu& c) {
     Toolbox os{c, frame};
     if (const auto bar = os.GetNewMBar(1, 0x1076f8a4); nonzero_logical(c, bar)) {
         os.SetMenuBar(bar, 0x1076f8b4);
-        c.link(0x1076f8bc);
+        enter(c, 0x1076f8bc);
         if (nonzero(c, std::int8_t(result(c, aqua_menus(c))))) {
             // Under Aqua the application menu has Quit: remove the File
             // menu's Quit and the separator above it.
@@ -240,7 +238,7 @@ void set_up_menus(Cpu& c) {
         if (const auto apple = os.GetMenuHandle(1, 0x1076f920); nonzero_logical(c, apple))
             os.AppendResMenu(apple, four_char('D', 'R', 'V', 'R'), 0x1076f938);
     }
-    c.link(0x1076f940);
+    enter(c, 0x1076f940);
     remember_menu_texts(c);
     os.InvalMenuBar(0x1076f944);
 }
@@ -249,27 +247,23 @@ void remember_menu_texts(Cpu& c) {
     Frame frame(c, 0x1076f960, 0x260, {.first_gpr = 25});
     Toolbox os{c, frame};
     Program program{c};
-    const auto texts = c.toc(slot::menu_texts), pascal = frame.at(0x138), copy = frame.at(0x38);
-    // The original keeps the count in r25, the menu in r26, its items in
-    // r27, the item in r28, the menu id in r29, the array in r30 and the
-    // offset in r31; the two copies it calls save them.
-    std::uint32_t kept = 0, offset = 0;
-    c.set({{30, texts}, {25, kept}, {31, offset}});
+    const auto pascal = frame.at(0x138), copy = frame.at(0x38);
+    const Kept<30> texts{c, c.toc(slot::menu_texts)};
+    Kept<25> count{c, 0};
+    Kept<31> offset{c, 0};
     for (std::int16_t id = 2;; ++id) {
-        c.set(29, extended(id));
-        const auto menu = os.GetMenuHandle(id, 0x1076f9f4);
-        c.set(26, menu);
+        const Kept<29> menu_id{c, extended(id)};
+        const Kept<26> menu{c, os.GetMenuHandle(id, 0x1076f9f4)};
         if (!nonzero(c, std::int32_t(menu))) return;
-        const auto items = os.CountMenuItems(menu, 0x1076f98c);
-        c.set(27, extended(items));
-        for (std::int16_t item = 1; c.set(28, extended(item)), compare(c, item, items) <= 0; ++item) {
-            os.GetMenuItemText(menu, item, pascal, 0x1076f9b0);
+        const Kept<27> items{c, extended(os.CountMenuItems(menu, 0x1076f98c))};
+        for (Kept<28> item{c, 1}; compare(c, std::int32_t(item), std::int32_t(items)) <= 0; item = item + 1) {
+            os.GetMenuItemText(menu, std::int16_t(item), pascal, 0x1076f9b0);
             program.copy_to_c(copy, pascal, 0x1076f9c0);
-            const auto kept_text = program.duplicate(copy, 0x1076f9c8);
-            c.set(25, ++kept);
-            c.put32(texts + offset, kept_text);
-            const bool full = compare(c, std::int32_t(kept), 50) == 0;
-            c.set(31, offset += 4);
+            const auto text = program.duplicate(copy, 0x1076f9c8);
+            count = count + 1;
+            c.put32(texts + offset, text);
+            const bool full = compare(c, std::int32_t(count), 50) == 0;  // at most 50
+            offset = offset + 4;
             if (full) return;
         }
     }
@@ -279,29 +273,32 @@ void localize_menus(Cpu& c) {
     Frame frame(c, 0x1076fa20, 0x260, {.first_gpr = 23});
     Toolbox os{c, frame};
     Program program{c};
-    const auto texts = c.toc(slot::menu_texts), localized = frame.at(0x38), pascal = frame.at(0x138);
+    const auto localized = frame.at(0x38), pascal = frame.at(0x138);
     // The next remembered text, by offset; it advances only past items that
     // have one. An item without one stops the walk: the later items all read
     // that same empty entry (a quirk of the original). The original keeps the
-    // offset in r27 and r30 (and per menu in r28, r31), the menu in r23, its
-    // items in r24, the item in r25, the menu id in r26 and the array in r29.
-    std::uint32_t offset = 0;
-    c.set({{30, 0}, {29, texts}, {27, 0}});
+    // offset twice, and per menu the offset and the text's address again.
+    Kept<30> offset_copy{c, 0};
+    const Kept<29> texts{c, c.toc(slot::menu_texts)};
+    Kept<27> offset{c, 0};
     for (std::int16_t id = 2;; ++id) {
-        c.set(26, extended(id));
-        const auto menu = os.GetMenuHandle(id, 0x1076fac8);
-        c.set(23, menu);
+        const Kept<26> menu_id{c, extended(id)};
+        const Kept<23> menu{c, os.GetMenuHandle(id, 0x1076fac8)};
         if (!nonzero(c, std::int32_t(menu))) return;
         const auto items = os.CountMenuItems(menu, 0x1076fa4c);
-        c.set({{28, offset}, {24, extended(items)}, {31, texts + offset}, {25, 1}});
-        for (std::int16_t item = 1; compare(c, item, items) <= 0; c.set(25, extended(++item))) {
+        Kept<28> menu_offset{c, offset};
+        const Kept<24> menu_items{c, extended(items)};
+        Kept<31> menu_text{c, texts + offset};
+        for (Kept<25> item{c, 1}; compare(c, std::int32_t(item), items) <= 0; item = item + 1) {
             const auto text = c.u32(texts + offset);
             if (!nonzero_logical(c, text)) continue;
-            offset += 4;
-            c.set({{27, offset}, {28, c.r(28) + 4}, {31, c.r(31) + 4}, {30, offset}});
+            offset = offset + 4;
+            menu_offset = menu_offset + 4;
+            menu_text = menu_text + 4;
+            offset_copy = offset;
             program.localize(localized, text, 0x1076fa90);
             program.copy_to_pascal(pascal, localized, 0x1076fa9c);
-            os.SetMenuItemText(menu, item, pascal, 0x1076faac);
+            os.SetMenuItemText(menu, std::int16_t(item), pascal, 0x1076faac);
         }
     }
 }
@@ -313,11 +310,10 @@ void find_folders(Cpu& c) {
     Shared shared{c};
     const FSSpec application{c, c.toc(slot::application)}, spec{c, frame.at(0x88)};
     const auto pool = c.toc(slot::pool), name = frame.at(0x2d0);
-    // The original keeps the pool in r20, the data folder's volume and
-    // directory id fields in r29 and r30 and the application's FSSpec in r31;
-    // the routines it calls save them.
-    c.set({{29, shared.data_volume().address()}, {30, shared.data_directory().address()}, {31, application.address},
-           {20, pool}});
+    const Kept<29> data_volume{c, shared.data_volume().address()};
+    const Kept<30> data_directory{c, shared.data_directory().address()};
+    const Kept<31> kept_application{c, application.address};
+    const Kept<20> kept_pool{c, pool};
 
     // The preferences file in the system's Preferences folder, created when missing.
     const Field<std::int16_t> volume{c, frame.at(0x3a)};
@@ -337,7 +333,7 @@ void find_folders(Cpu& c) {
     // do), else ":<name 3>:<folder>:" from the root, else created; failing
     // all, the application's own folder.
     os.GetIndString(name, 1000, 4, 0x1076fbd0);
-    c.set(28, application.address + 2);
+    const Kept<28> application_directory{c, application.address + 2};
     auto error = os.FSMakeFSSpec(application.volume(), application.directory(), name, spec, 0x1076fbec);
     if (compare(c, error, -43) == 0) {
         const auto path = frame.at(0x1d0);
@@ -382,19 +378,17 @@ void install_window_handlers(Cpu& c) {
     const auto bounds = c.toc(slot::bounds_type), clicks = c.toc(slot::click_types);
     for (std::uint32_t at = 0; at < 8; at += 4) c.put32(frame.at(0x38 + std::int32_t(at)), c.u32(bounds + at));
     for (std::uint32_t at = 0; at < 16; at += 4) c.put32(frame.at(0x40 + std::int32_t(at)), c.u32(clicks + at));
-    const auto handler = c.toc(slot::window_handler);
+    const Kept<29> handler{c, c.toc(slot::window_handler)};
     const auto window = Shared{c}.game_window();
-    // The original keeps the handler, the window's address and the UPP in r29-r31.
-    c.set({{29, handler}, {30, window.address()}});
+    const Kept<30> window_field{c, window.address()};
     const auto install = [&](std::uint32_t count, std::int32_t types, std::uint32_t upp_back, std::uint32_t target_back,
                              std::uint32_t install_back) {
-        const auto upp = os.NewEventHandlerUPP(handler, upp_back);
-        c.set(31, upp);
+        const Kept<31> upp{c, os.NewEventHandlerUPP(handler, upp_back)};
         const auto target = os.GetWindowEventTarget(window, target_back);
         os.InstallEventHandler(target, upp, count, frame.at(types), 0, 0, install_back);
     };
     install(1, 0x38, 0x1076fdf0, 0x1076fe00, 0x1076fe1c);  // window bounds
-    c.link(0x1076fe24);
+    enter(c, 0x1076fe24);
     if (nonzero(c, std::int8_t(result(c, aqua_menus(c))))) install(2, 0x40, 0x1076fe34, 0x1076fe44, 0x1076fe60);  // wheel, clicks
 }
 

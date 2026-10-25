@@ -339,8 +339,9 @@ add_test(NAME main_program_fixtures
 # that becomes quick_start.cfg's AUTO_SETUP line, a .rgn whose path runs as
 # the setup script before the program stops. launch-click: an automation drag
 # on the start screen, which arrives as a click does (the window's Carbon
-# click handler, then the event queue).
-foreach(session launch-quit launch-menus launch-dialog launch-sav launch-cfg launch-rgn launch-click)
+# click handler, then the event queue). launch-events: the game window made
+# key (an activate event) and the Finder's Print of a save ('pdoc').
+foreach(session launch-quit launch-menus launch-dialog launch-sav launch-cfg launch-rgn launch-click launch-events)
     string(REPLACE "-" "_" name "${session}")
     add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
     add_test(NAME main_program_${name}

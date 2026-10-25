@@ -114,6 +114,13 @@ AutomationRequest parse(std::uint64_t sequence, const std::string& line) {
         request.control = std::int16_t(item);
     } else if (verb == "quit") {
         request.kind = AutomationRequest::Kind::quit;
+    } else if (verb == "activate") {
+        request.kind = AutomationRequest::Kind::activate;
+    } else if (verb == "print") {
+        request.kind = AutomationRequest::Kind::print;
+        std::getline(input, request.name);
+        if (!request.name.empty() && request.name[0] == ' ') request.name.erase(0, 1);
+        if (request.name.empty() || request.name[0] != '/') throw std::runtime_error("print needs an absolute document path");
     } else if (verb == "drag") {
         int from = -1, to = -1; input >> from >> to;
         if (!input || from < 0 || from >= 1200 || to < 0 || to >= 1200) throw std::runtime_error("drag needs two control table indexes");

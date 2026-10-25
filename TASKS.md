@@ -113,13 +113,20 @@ end states, suite passing, reviewed commit.
       fixtures 609/609; suite: known match_debugger_actual_lineup only (114).
 - [ ] Not verified live: an automation drag in the tactics screen after the
       drag change (no driver path to that screen; the start-screen drag is).
+- [x] Readable register state (2026-10-25): `Kept<R>` locals, `keep()`,
+      `enter()`, `leave()` name what the original keeps in r13-r31 and leaves
+      in r3-r10; the raw writes left are the original's own loads and stores.
+- [x] Automation `activate` and `print PATH` (as AppKit queues them); 'pdoc'
+      delivered with its document list. Capture launch-events reaches
+      activate_event and print_documents.
 - [ ] Still fixture-only: speech (the host answers Gestalt('ttsc') with no
-      Speech Manager; enabling it is a product decision), print_documents
-      ('pdoc' is never sent), fatal_exit's exit() before the game started,
-      and three no capture reaches: nothing() (called from a game routine at
-      0x102a67b0/0x102a6a74, not traced), debug_menu (menu 4) and
-      activate_event (an empty routine). print_documents (0x10770c90) is
-      the fourth routine never reached.
+      Speech Manager; enabling it is a product decision), fatal_exit's
+      exit() before the game started, and two routines the game cannot
+      reach: debug_menu (menu 4 is only in the unused MBAR 2) and nothing()
+      (an empty hook on two error returns of 0x102a54b0).
+- [ ] Automation `control N` on an item of a closed sidebar pop-up crashed
+      the game (null read at 0x68, PC 0x100d4ea0, after `control 33` on the
+      club screen); a user cannot click there. Refuse hidden controls.
 - [x] Real game: load a copy of the reference career, Continue (a week),
       save over it, quit through the game, relaunch, load: day 17 of 2002.
 - [x] Suite: known match_debugger_actual_lineup only (106 tests).
