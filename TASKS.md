@@ -134,9 +134,11 @@ end states, suite passing, reviewed commit.
 - [ ] Fixture-only by necessity: fatal_exit's exit() before the game started
       (no path reaches it), debug_menu (menu 4 is only in the unused MBAR 2)
       and nothing() (an empty hook on two error returns of 0x102a54b0).
-- [ ] Automation `control N` on an item of a closed sidebar pop-up crashed
-      the game (null read at 0x68, PC 0x100d4ea0, after `control 33` on the
-      club screen); a user cannot click there. Refuse hidden controls.
+- [x] Automation `control N` refuses an item of a closed pop-up (kind 0x10,
+      no rectangle): activating one directly crashed the game once (null
+      read at PC 0x100d4ea0); a user reaches those only through the open
+      pop-up. Live: two such items refused; a tab, a list row and Continue
+      still work.
 - [x] Real game: load a copy of the reference career, Continue (a week),
       save over it, quit through the game, relaunch, load: day 17 of 2002.
 - [x] Suite: known match_debugger_actual_lineup only (106 tests).
