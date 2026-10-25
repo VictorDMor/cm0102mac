@@ -17,7 +17,7 @@ def render_reference(records, userops):
                              guest_context_transfers=False, exception_runtime_hooks=False,
                              compiler_arithmetic_hooks=False, register_context_hooks=False,
                              stdlib_core_hooks=False, time_runtime_hooks=False, import_descriptor_hooks=False,
-                             native_service_hooks=False)
+                             native_service_hooks=False, main_program_hooks=False)
         code = code.replace(f'bool page_{page:x}(State& s)', f'bool native_service_reference_{page:x}(State& s)')
         if f'bool native_service_reference_{page:x}(State& s)' not in code or 'try_modern_' in code:
             raise ValueError('Missing isolated original native-service reference')

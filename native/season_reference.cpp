@@ -669,8 +669,9 @@ void abandon_session(State& s, const char* why) {
 }
 void season_record_import_begin(State& s) {
     if (!recorder || recorder->finished || recorder->owner != &s) return;
-    if (recorder->session && session_stop && !recorder->native_depth && recorder->callback_depths.empty()) {
-        if (const char* name = import_name(s.pc); name && !pure_import(name)) {
+    if (recorder->session && !recorder->native_depth && recorder->callback_depths.empty()) {
+        if (const char* name = import_name(s.pc);
+            name && !pure_import(name) && (session_stop || std::string_view(name) == "CarbonLib::ExitToShell")) {
             // The replay stops when it reaches this call with its transcript at an end.
             try {
                 recorder->stream.finish(); recorder->finished = true;
@@ -768,6 +769,23 @@ std::string season_session_request(const std::optional<std::filesystem::path>& d
     if (!recorder || !recorder->session) throw std::runtime_error("no session capture is recording");
     session_stop = true;
     return "stopping at the next OS import";
+}
+void season_launch_capture(State& s, const std::filesystem::path& directory) {
+    // Like a session start, a capture that cannot be taken is refused with a
+    // message; the game itself starts.
+    try {
+        if (recorder || session_start) throw std::runtime_error("a capture is already recording");
+        if (s.memory.date_observer) throw std::runtime_error("date diagnostics are attached");
+        if (!directory.is_absolute()) throw std::runtime_error("a launch capture needs an absolute directory");
+        std::filesystem::create_directories(directory);
+        if (!std::filesystem::is_empty(directory)) throw std::runtime_error("the launch capture directory is not empty");
+        recorder = std::make_unique<Recorder>(s, directory, 0, true);
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "Launch capture refused: %s\n", error.what());
+        recorder.reset();
+        return;
+    }
+    s.memory.date_observer = recorder.get();
 }
 void open_session_replay(const std::filesystem::path& directory, bool timing) {
     if (timing) open_timing_replay(directory); else open_operation_replay(directory);

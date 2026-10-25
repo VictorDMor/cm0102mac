@@ -39,7 +39,8 @@
 //                     pseudo-random bytes, and list every end-state byte that
 //                     differs instead of stopping at the first
 //   --check-routines <first> [<every>]
-//                     run the C++ tactics routines (tactics_routines.inc),
+//                     run the C++ tactics and MAIN.CPP routines
+//                     (tactics_routines.inc, main_program_routines.inc),
 //                     also those the generator has not hooked yet, and compare
 //                     each with its generated original at its first <first>
 //                     calls and then one in <every> (routine_check.hpp); stops
@@ -73,6 +74,7 @@
 #include "stack_audit.hpp"
 #include "routine_check.hpp"
 #include "tactics_adapter.hpp"
+#include "main_program_adapter.hpp"
 #include "club_control.hpp"
 #include "shortlist_recruitment.hpp"
 #include <chrono>
@@ -252,12 +254,19 @@ int main(int argc, char** argv) {
             checker->corrupt_first = checker_corrupted;
             checker->strict_volatile = strict_volatile;
             routine_checker = &*checker;
-            dispatch_probe = &tactics_dispatch_probe;
+            dispatch_probe = [](State& s) { return tactics_dispatch_probe(s) || main_program_dispatch_probe(s); };
             if (!synthetic.empty())
                 dispatch_probe = [](State& s) {
-                    synthetic_differences += run_synthetic_calls(s, synthetic, tactics_run_original, tactics_run_rewrite,
-                                                                 routine_checker && routine_checker->strict_volatile);
-                    return tactics_dispatch_probe(s);
+                    // Each synthetic call runs in the family that lists its target.
+                    synthetic_differences += run_synthetic_calls(s, synthetic,
+                        [](State& t, std::uint32_t entry) {
+                            (main_program_lists(entry) ? main_program_run_original : tactics_run_original)(t, entry);
+                        },
+                        [](State& t, std::uint32_t entry) {
+                            (main_program_lists(entry) ? main_program_run_rewrite : tactics_run_rewrite)(t, entry);
+                        },
+                        routine_checker && routine_checker->strict_volatile);
+                    return tactics_dispatch_probe(s) || main_program_dispatch_probe(s);
                 };
         }
         if (!census.empty()) {

@@ -629,6 +629,35 @@ struct NativePlatform::Impl {
                     UIEvent down{UIEvent::Kind::mouse_down};
                     down.x = drag->from_x; down.y = drag->from_y; down.modifiers = 0x01;
                     pending_events.push_back(std::move(down));
+                } else if (request->kind == Kind::menu || request->kind == Kind::quit) {
+                    // As AppKit queues them: a menu choice runs the original's
+                    // menu-bar path (FindWindow, menu preparation, MenuSelect).
+                    UIEvent queued{request->kind == Kind::menu ? UIEvent::Kind::menu : UIEvent::Kind::quit};
+                    queued.message = request->menu;
+                    pending_events.push_back(std::move(queued));
+                    automation->finish(*request, true, request->kind == Kind::menu ? "menu choice queued" : "quit queued");
+                    automation->boundary(s, commands, command_status);
+                } else if (request->kind == Kind::wheel) {
+                    // Through the game window's Carbon handler, as a scroll wheel.
+                    UIEvent wheel{UIEvent::Kind::wheel};
+                    for (const auto window : windows) {
+                        const auto bounds = user_interface().window_bounds(window, true);
+                        if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) wheel.window = window;
+                    }
+                    wheel.wheel_delta = request->wheel;
+                    // The original installs its wheel handler only with the Aqua
+                    // menu layout; it notes the delta and returns eventNotHandledErr,
+                    // so whether a handler exists decides delivery.
+                    const bool delivered = wheel.window && std::any_of(window_handlers.begin(), window_handlers.end(),
+                        [&](const auto& entry) {
+                            const auto& handler = entry.second;
+                            return handler.target == wheel.window &&
+                                   std::find(handler.types.begin(), handler.types.end(),
+                                             std::pair<std::uint32_t, std::uint32_t>{0x6d6f7573, 10}) != handler.types.end();
+                        });
+                    if (delivered) window_event(s, wheel);
+                    automation->finish(*request, delivered, delivered ? "wheel delivered" : "the game has no wheel handler");
+                    automation->boundary(s, commands, command_status);
                 } else if (request->kind == Kind::key || request->kind == Kind::text) {
                     // Classic key events, as AppKit would queue them for the
                     // active game window: button up (0x80) and active (1).

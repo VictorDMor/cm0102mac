@@ -66,6 +66,10 @@ target_sources(cm_aot PRIVATE shortlist_links_queries.cpp shortlist_links_storag
 file(GLOB CM_TACTICS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/formation*.cpp"
      "${CMAKE_CURRENT_SOURCE_DIR}/tactics_*.cpp")
 target_sources(cm_aot PRIVATE routine_check.cpp ${CM_TACTICS_SOURCES})
+# The original's MAIN.CPP in C++ (main_program_routines.inc): every main_program*.cpp.
+file(GLOB CM_MAIN_PROGRAM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/main_program*.cpp")
+list(FILTER CM_MAIN_PROGRAM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
 target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
@@ -311,6 +315,28 @@ foreach(session tactics-views tactics-players tactics-presets tactics-instructio
     string(REPLACE "-" "_" name "${session}")
     add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
 endforeach()
+# The C++ MAIN.CPP routines (main_program_routines.inc) against their
+# generated originals: every branch from fixture states (the Toolbox calls
+# stand-ins; paths no session reaches included), and a launch capture from
+# the program's first instruction to its exit, main() checked whole.
+add_executable(cm-main-program-checks main_program_checks.cpp)
+target_link_libraries(cm-main-program-checks PRIVATE cm_aot)
+target_compile_options(cm-main-program-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME main_program_fixtures
+         COMMAND cm-main-program-checks "${CM_BENCHMARK_DIR}/ui/game-load/initial.snapshot")
+# launch-quit: start-up, the start screen, Sair Jogo, Sim (which leaves through
+# fatal_exit's longjmp into run()), ExitToShell. launch-menus: navigation and
+# menu keys, command-S, the wheel, the Apple menu (credits), File > Save (the
+# file dialog), then the application menu's Quit (a quit Apple event).
+foreach(session launch-quit launch-menus)
+    string(REPLACE "-" "_" name "${session}")
+    add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
+    add_test(NAME main_program_${name}
+             COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}" 1 --check-routines 400 200)
+endforeach()
+add_test(NAME main_program_detect_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/launch-quit" 1 --check-routines-corrupted 400 200 --only 0x1076fe80)
+set_tests_properties(main_program_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
 add_test(NAME tactics_routines_ui
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-players" 1 --check-routines 200 50)
 # Generated pages must isolate every instruction that host code or checks
@@ -2215,11 +2241,6 @@ add_executable(cm-native-service-transfer-checks native_service_transfer_checks.
 target_link_libraries(cm-native-service-transfer-checks PRIVATE cm_aot)
 target_compile_options(cm-native-service-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME modern_native_service_transfer COMMAND cm-native-service-transfer-checks)
-add_executable(cm-native-service-event-checks native_service_event_checks.cpp)
-target_link_libraries(cm-native-service-event-checks PRIVATE cm_aot)
-target_compile_options(cm-native-service-event-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
-add_test(NAME modern_native_service_event COMMAND cm-native-service-event-checks "${CM_ORACLE_DIR}")
-add_test(NAME original_native_service_event COMMAND cm-native-service-event-checks "${CM_ORACLE_DIR}" --original)
 set(CM_IMPORT_DESCRIPTOR_REFERENCE "${CMAKE_BINARY_DIR}/import_descriptor_reference.cpp")
 add_custom_command(OUTPUT "${CM_IMPORT_DESCRIPTOR_REFERENCE}"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_import_descriptor_reference.py"

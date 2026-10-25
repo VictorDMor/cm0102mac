@@ -128,7 +128,9 @@ void compare(unsigned index, Scenario kind, bool turbo, unsigned mode) {
 int main() {
     try {
         require(!match_pc_profile_enabled(), "Facade transfer acceptance requires profiling disabled");
-        for (unsigned index = 0; index < 3; ++index)
+        // Index 0, the Apple-event facade, is MAIN.CPP's routine now (dispatch
+        // reaches main_program's hook there).
+        for (unsigned index = 1; index < 3; ++index)
             for (auto kind : {Scenario::jump, Scenario::recursive, Scenario::restore_fault, Scenario::handler_fault})
                 for (bool turbo : {false, true}) for (unsigned mode = 0; mode < 4; ++mode) compare(index, kind, turbo, mode);
         std::cout << cases << " exact nonlocal facade comparisons; " << fault_cases << " restore/handler faults; interrupted callbacks and service frames abandoned\n";

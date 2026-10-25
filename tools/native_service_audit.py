@@ -56,10 +56,11 @@ def native_service_hook(entry):
     return f'if (try_modern_native_service(s, 0x{entry:x})) return true;'
 
 
-def require_native_service_hooks(page, instructions, code):
+def require_native_service_hooks(page, instructions, code, taken_over=frozenset()):
+    """taken_over: entries another family's hook replaces (compile_recomp MAIN_PROGRAM_TAKEOVERS)."""
     addresses = {r['address'] for r in instructions}
     for entry in NATIVE_SERVICE_ENTRIES:
-        if entry >> 12 != page or entry not in addresses: continue
+        if entry >> 12 != page or entry not in addresses or entry in taken_over: continue
         label, hook, step = f'i_{entry:x}:', native_service_hook(entry), f's.step(0x{entry:x});'
         fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
         if code.count(hook) != 1 or hook not in fragment or step not in fragment or fragment.index(hook) > fragment.index(step):

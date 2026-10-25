@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <bit>
+#include <optional>
 #include <cstdio>
 #include <iomanip>
 #include <cstring>
@@ -59,7 +60,9 @@ struct DirtyPages final : MemoryObserver {
     }
 };
 
-enum class Outcome : std::uint8_t { returned, transfer, exit, fault };
+// ended: the session capture ends inside the call (SeasonReplayComplete);
+// both runs then stop at the same import, and their states there compare.
+enum class Outcome : std::uint8_t { returned, transfer, exit, fault, ended };
 struct Report {
     Outcome outcome = Outcome::fault;
     std::string message;
@@ -155,6 +158,7 @@ std::vector<std::uint8_t> page_bytes(const Memory& memory, std::uint32_t page) {
         runner(s, entry);
         outcome = Outcome::returned;
     } catch (const GuestContextTransfer&) { outcome = Outcome::transfer; }
+    catch (const SeasonReplayComplete&) { outcome = Outcome::ended; }
     catch (const ApplicationExit&) { outcome = Outcome::exit; }
     catch (const std::exception& e) { message = e.what(); }
     catch (...) { message = "unknown exception"; }
@@ -164,12 +168,21 @@ std::vector<std::uint8_t> page_bytes(const Memory& memory, std::uint32_t page) {
         if (corrupt) {
             // Spoil the result without telling any observer: a byte the run
             // wrote, or r31 (always compared) when it wrote nothing.
-            if (pages.empty()) s.wr<4>(31 * 4, s.r<4>(31 * 4) ^ 0x5a5a5a5a);
+            // A written page may be mapped only in part: flip its first mapped byte
+            // from the middle on.
+            std::optional<std::uint32_t> spoiled;
+            for (const auto page : pages) {
+                const auto start = std::uint64_t(page) << page_shift, middle = start + page_size / 2;
+                for (const auto& [low, size] : s.memory.mapped_ranges()) {
+                    const auto at = std::max<std::uint64_t>(low, middle);
+                    if (at < std::min<std::uint64_t>(std::uint64_t(low) + size, start + page_size)) { spoiled = std::uint32_t(at); break; }
+                }
+                if (spoiled) break;
+            }
+            if (!spoiled) s.wr<4>(31 * 4, s.r<4>(31 * 4) ^ 0x5a5a5a5a);
             else {
-                auto bytes = page_bytes(s.memory, pages.front());
-                bytes[page_size / 2] ^= 0x5a;
                 const auto saved = s.memory.observer; s.memory.observer = nullptr;
-                s.memory.copy_in(pages.front() << page_shift, bytes);
+                s.memory.write<1>(*spoiled, s.memory.read<1>(*spoiled) ^ 0x5a);
                 s.memory.observer = saved;
             }
         }
@@ -258,7 +271,7 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
     if (expected.outcome != actual.outcome)
         found.push_back("outcome " + std::to_string(int(expected.outcome)) + " vs " + std::to_string(int(actual.outcome)));
     if (expected.imports != actual.imports) found.push_back("the imports observed different inputs");
-    if (expected.outcome == Outcome::returned && actual.outcome == Outcome::returned) {
+    if (expected.outcome == actual.outcome && (expected.outcome == Outcome::returned || expected.outcome == Outcome::ended)) {
         if (expected.pc != actual.pc) found.push_back("pc " + hex(expected.pc) + " vs " + hex(actual.pc));
         const auto word = [](const Report& r, std::size_t offset) { return read_be<4>(r.registers.data() + offset); };
         // r4-r10 too: a caller's next varargs call (sprintf) stores r3-r10
@@ -406,6 +419,14 @@ std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& fil
         calls.push_back(std::move(call));
     }
     return calls;
+}
+
+std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite,
+                                              unsigned results, bool corrupt) {
+    const auto stack = std::uint32_t(s.r<4>(4));
+    const auto expected = fork_run(s, entry, original, false);
+    const auto actual = fork_run(s, entry, rewrite, corrupt);
+    return compare_reports(s, expected, actual, results, stack, true);
 }
 
 unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, RoutineRunner original, RoutineRunner rewrite,

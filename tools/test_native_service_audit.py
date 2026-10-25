@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import sqlite3
 import unittest
-from compile_recomp import SEMANTIC_REPLACEMENTS, generate_page
+from compile_recomp import MAIN_PROGRAM_TAKEOVERS, SEMANTIC_REPLACEMENTS, generate_page
 from native_service_audit import (CONTRACTS, NATIVE_SERVICE_ENTRIES, require_native_service_bodies,
                                  require_native_service_edges, require_native_service_index,
                                  require_native_service_contract, require_native_service_hooks, native_service_hook)
@@ -78,15 +78,18 @@ class ContractTests(unittest.TestCase):
             self.assertNotIn(token, code)
 
     def test_generated_hooks_precede_original_operations_at_every_root(self):
+        # MAIN.CPP's hook replaces the Apple-event facade's (0x10770a80).
+        self.assertEqual(MAIN_PROGRAM_TAKEOVERS, frozenset({0x10770a80}))
         for page in (0x10770, 0x10778):
             records = [r for r in self.records if r['address'] >> 12 == page]
             code = generate_page(page, records, {r['address'] for r in self.records}, userops=self.userops)
-            require_native_service_hooks(page, records, code)
-            for entry in (a for a in NATIVE_SERVICE_ENTRIES if a >> 12 == page):
+            self.assertNotIn(native_service_hook(0x10770a80), code)
+            require_native_service_hooks(page, records, code, MAIN_PROGRAM_TAKEOVERS)
+            for entry in (a for a in NATIVE_SERVICE_ENTRIES if a >> 12 == page and a not in MAIN_PROGRAM_TAKEOVERS):
                 hook, step = native_service_hook(entry), f's.step(0x{entry:x});'
                 for broken in (code.replace(hook, ''), code.replace(hook, hook + '\n' + hook),
                                code.replace(hook + '\n' + step, step + '\n' + hook)):
-                    with self.assertRaises(ValueError): require_native_service_hooks(page, records, broken)
+                    with self.assertRaises(ValueError): require_native_service_hooks(page, records, broken, MAIN_PROGRAM_TAKEOVERS)
 
 
 if __name__ == '__main__': unittest.main()

@@ -37,6 +37,7 @@
 #include "platform.hpp"
 #include "probe_host.hpp"
 #include "application_exit.hpp"
+#include "season_reference.hpp"
 #include <iostream>
 #include <memory>
 #include <cstdlib>
@@ -100,6 +101,9 @@ int cm::aot::run_probe(int argc, char** argv) {
         }
         if (argc == 5) state->platform = std::make_shared<cm::aot::NativePlatform>(argv[3], argv[4]);
         state->pc = std::stoul(argv[2], nullptr, 0);
+        // A session capture of the whole run, replayable with cm-world-replay.
+        if (const char* directory = std::getenv("CM_AOT_LAUNCH_CAPTURE"); directory && *directory)
+            cm::aot::season_launch_capture(*state, directory);
         cm::aot::run(*state);
         std::cout << "Original routine returned after " << state->executed
                   << " statically recompiled instructions; r3="

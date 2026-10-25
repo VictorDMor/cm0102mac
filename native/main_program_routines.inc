@@ -1,0 +1,53 @@
+// The original's MAIN.CPP routines that run as C++ (main_program.hpp). One
+// line per routine:
+//   MAIN_ROUTINE(entry, end, results, digest, hook)  verified; the game runs it
+//   MAIN_DRAFT(entry, end, results, digest, hook)    only check tools run it
+// `end` bounds the original body (tools/main_program_audit.py ROUTINES), whose
+// instructions the generator pins by `digest` (generation fails if the export
+// differs). `results` lists the registers callers read back (R3 or NONE).
+// `hook` reads the arguments from the registers, runs the C++ routine and
+// sets the result registers. Any order; the adapter sorts them.
+MAIN_ROUTINE(0x1076f2b0, 0x1076f2e0, R3, "063367ce6fc37a10", [](Cpu& c) { main_program::main(c); })
+MAIN_ROUTINE(0x1076f2e0, 0x1076f440, R3, "8c3cc2a49235ac17", [](Cpu& c) { c.set(3, main_program::run(c)); })
+MAIN_ROUTINE(0x1076f440, 0x1076f4f0, R3, "23e741385553fba1", [](Cpu& c) { c.set(3, main_program::process_information(c)); })
+MAIN_ROUTINE(0x1076f4f0, 0x1076f600, NONE, "c6d7e2e0b6fd3e99", [](Cpu& c) { main_program::install_handlers(c); })
+MAIN_ROUTINE(0x1076f600, 0x1076f730, NONE, "3d22d73469a59087", [](Cpu& c) { main_program::initialize(c); })
+MAIN_ROUTINE(0x1076f730, 0x1076f780, NONE, "72d3aba4c13876b2", [](Cpu& c) { main_program::shut_down(c); })
+MAIN_ROUTINE(0x1076f780, 0x1076f7d0, NONE, "951390c7399fe1de", [](Cpu& c) { main_program::stop_speech(c); })
+MAIN_ROUTINE(0x1076f7d0, 0x1076f880, NONE, "e4189bd4c3ba4bdd", [](Cpu& c) { main_program::fatal_exit(c, c.r(3)); })
+MAIN_ROUTINE(0x1076f880, 0x1076f890, NONE, "bece192bc9aa315b", [](Cpu& c) { main_program::nothing(c); })
+MAIN_ROUTINE(0x1076f890, 0x1076f960, NONE, "0d9e4ab871dbf8bc", [](Cpu& c) { main_program::set_up_menus(c); })
+MAIN_ROUTINE(0x1076f960, 0x1076fa20, NONE, "1093154114258234", [](Cpu& c) { main_program::remember_menu_texts(c); })
+MAIN_ROUTINE(0x1076fa20, 0x1076faf0, NONE, "6960746ca58a4f10", [](Cpu& c) { main_program::localize_menus(c); })
+MAIN_ROUTINE(0x1076faf0, 0x1076fd90, NONE, "48561aa1d9272eb7", [](Cpu& c) { main_program::find_folders(c); })
+MAIN_ROUTINE(0x1076fd90, 0x1076fe80, NONE, "454290720ec0d43f", [](Cpu& c) { main_program::install_window_handlers(c); })
+MAIN_ROUTINE(0x1076fe80, 0x10770170, NONE, "a0ee6d62b01c57fe", [](Cpu& c) { main_program::pump_events(c); })
+MAIN_ROUTINE(0x10770170, 0x107701d0, NONE, "fa41dfa86bdcdb0e", [](Cpu& c) { main_program::poll_high_level_events(c); })
+MAIN_ROUTINE(0x107701d0, 0x10770240, NONE, "20bda0e234e3d000", [](Cpu& c) { main_program::track_mouse(c); })
+MAIN_ROUTINE(0x10770240, 0x10770380, NONE, "b7f141d3c92df170", [](Cpu& c) { main_program::adjust_menus(c, c.r(3)); })
+MAIN_ROUTINE(0x10770380, 0x107704e0, NONE, "ae9b8f9251e5014d", [](Cpu& c) { main_program::key_down(c, c.r(3)); })
+MAIN_ROUTINE(0x107704e0, 0x10770570, R3, "fe8d34d0412ff100", [](Cpu& c) { c.set(3, main_program::speech_key(c, c.r(3))); })
+MAIN_ROUTINE(0x10770570, 0x10770650, NONE, "fafdf5a47a99e9ec", [](Cpu& c) { main_program::content_click(c, c.r(3)); })
+MAIN_ROUTINE(0x10770650, 0x10770670, NONE, "dd88fb61f9271aa6", [](Cpu& c) { main_program::mouse_up(c); })
+MAIN_ROUTINE(0x10770670, 0x10770760, R3, "d2467a2deb753642", [](Cpu& c) { c.set(3, main_program::window_event(c, c.r(3), c.r(4), c.r(5))); })
+MAIN_ROUTINE(0x10770760, 0x107707c0, R3, "c8fc548818283ec9", [](Cpu& c) { c.set(3, main_program::wheel_event(c, c.r(3), c.r(4), c.r(5))); })
+MAIN_ROUTINE(0x107707c0, 0x10770880, R3, "f7b33a7cda8d114d", [](Cpu& c) { c.set(3, main_program::click_event(c, c.r(3), c.r(4), c.r(5))); })
+MAIN_ROUTINE(0x10770880, 0x107708c0, R3, "090851f6af303354", [](Cpu& c) { c.set(3, main_program::bounds_event(c, c.r(3), c.r(4), c.r(5))); })
+MAIN_ROUTINE(0x107708c0, 0x10770950, NONE, "17acebd120d3c365", [](Cpu& c) { main_program::menu_command(c, c.r(3), c.r(4)); })
+MAIN_ROUTINE(0x10770950, 0x10770970, NONE, "ba4c5e9f58efd5b7", [](Cpu& c) { main_program::apple_menu(c, c.r(4)); })
+MAIN_ROUTINE(0x10770970, 0x107709e0, NONE, "85a87ad5c0ea0e6b", [](Cpu& c) { main_program::file_menu(c, c.r(4)); })
+MAIN_ROUTINE(0x107709e0, 0x10770a10, NONE, "1fe5ac8d9821ffaf", [](Cpu& c) { main_program::edit_menu(c, c.r(4)); })
+MAIN_ROUTINE(0x10770a10, 0x10770a20, NONE, "dfc2cd17c9119078", [](Cpu& c) { main_program::debug_menu(c); })
+MAIN_ROUTINE(0x10770a20, 0x10770a30, NONE, "1843f011102edfe1", [](Cpu& c) { main_program::activate_event(c); })
+MAIN_ROUTINE(0x10770a30, 0x10770a80, NONE, "69f51aeab909aa33", [](Cpu& c) { main_program::os_event(c, c.r(3)); })
+MAIN_ROUTINE(0x10770a80, 0x10770ab0, NONE, "9d43ba91e1f580a6", [](Cpu& c) { main_program::high_level_event(c, c.r(3)); })
+MAIN_ROUTINE(0x10770ab0, 0x10770ac0, R3, "766dafa1a605ac43", [](Cpu& c) { c.set(3, main_program::open_application(c)); })
+MAIN_ROUTINE(0x10770ac0, 0x10770c90, R3, "00443f3747784c58", [](Cpu& c) { c.set(3, main_program::open_documents(c, c.r(3))); })
+MAIN_ROUTINE(0x10770c90, 0x10770ca0, R3, "3c9ad1e6a78fd1d5", [](Cpu& c) { c.set(3, main_program::print_documents(c)); })
+MAIN_ROUTINE(0x10770ca0, 0x10770cc0, R3, "559fbd1548dfcfbf", [](Cpu& c) { c.set(3, main_program::quit_application(c)); })
+MAIN_ROUTINE(0x10770cc0, 0x10770d20, NONE, "47787eb3da4551d4", [](Cpu& c) { main_program::run_script(c, c.r(3)); })
+MAIN_ROUTINE(0x10770d20, 0x10770e40, NONE, "c00da4eac03389c0", [](Cpu& c) { main_program::speak(c, c.r(3)); })
+MAIN_ROUTINE(0x10770e40, 0x10770ee0, NONE, "dea6622d77b26247", [](Cpu& c) { main_program::about_box(c); })
+MAIN_ROUTINE(0x10770ee0, 0x10770f60, R3, "825a9e3f9ff4c7d5", [](Cpu& c) { c.set(3, main_program::aqua_menus(c)); })
+MAIN_ROUTINE(0x10770f60, 0x10771010, R3, "767d78612173e366", [](Cpu& c) { c.set(3, main_program::write_quick_start(c, c.r(3), c.r(4))); })
+MAIN_ROUTINE(0x10771010, 0x10771110, R3, "e0d2a9ac77dc8ecc", [](Cpu& c) { c.set(3, main_program::add_setup_line(c, c.r(3))); })

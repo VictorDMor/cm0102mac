@@ -97,6 +97,18 @@ AutomationRequest parse(std::uint64_t sequence, const std::string& line) {
         if (!input || index < 0 || index >= 1200) throw std::runtime_error("control needs a table index");
         request.kind = AutomationRequest::Kind::control;
         request.control = std::int16_t(index);
+    } else if (verb == "menu") {
+        int menu = 0, item = 0; input >> menu >> item;
+        if (!input || menu < 1 || menu > 255 || item < 1 || item > 255) throw std::runtime_error("menu needs a menu id and an item");
+        request.kind = AutomationRequest::Kind::menu;
+        request.menu = std::uint32_t(menu) << 16 | std::uint32_t(item);
+    } else if (verb == "wheel") {
+        int delta = 0; input >> delta;
+        if (!input || !delta || delta < -100 || delta > 100) throw std::runtime_error("wheel needs a non-zero delta");
+        request.kind = AutomationRequest::Kind::wheel;
+        request.wheel = delta;
+    } else if (verb == "quit") {
+        request.kind = AutomationRequest::Kind::quit;
     } else if (verb == "drag") {
         int from = -1, to = -1; input >> from >> to;
         if (!input || from < 0 || from >= 1200 || to < 0 || to >= 1200) throw std::runtime_error("drag needs two control table indexes");

@@ -16,6 +16,10 @@ constexpr std::uint32_t caller = 0x7fff1000, relocated_toc = 0x31008000,
 constexpr std::array<std::uint32_t, 3> imports{280984676, 280984408, 280984700};
 constexpr std::array<const char*, 3> names{"CarbonLib::AEProcessAppleEvent", "CarbonLib::NewPtr", "CarbonLib::DisposePtr"};
 enum class Path { component, adapter, generated, cfm };
+// Dispatch reaches MAIN.CPP's hook at the Apple-event facade (index 0; it took
+// the routine over, main_program_routines.inc): only its component and direct
+// adapter paths remain native_service's.
+bool taken_over(unsigned index) { return service::entries[index] == 0x10770a80; }
 enum class Mode { modern, entry, global, unrelated, profile };
 std::array<unsigned, 3> comparisons{}, normal{}, faults{}, negatives{}, direct{}, generated{}, cfm{}, selected{};
 unsigned exact = 0, budget_stops = 0;
@@ -258,7 +262,7 @@ void matrix(unsigned index, bool production) {
             }, invalid ? "Invalid or double DisposePtr" : "", Mode::modern, false, true);
         }
     }
-    if (!production) return;
+    if (!production || taken_over(index)) return;
     for (auto kind : {Path::generated, Path::cfm}) {
         auto incoming = clone(*seed);
         if (kind == Path::cfm) { incoming->pc = 0x10781320; incoming->wr<4>(48, facade_descriptor); }
@@ -291,10 +295,11 @@ int main(int argc, char** argv) {
         require(match_pc_profile_enabled() == profile, "Separate profile acceptance process");
         reset_check();
         for (unsigned index = 0; index < 3; ++index) {
+            if (profile && taken_over(index)) continue;
             if (profile) { auto seed = initial(index); compare(index, *seed, "profile-original", Path::generated, {}, {}, {}, Mode::profile); }
             else matrix(index, production);
             require(profile || (normal[index] && negatives[index] == 1), "Per-entry positive and own negative");
-            if (production) require(direct[index] && generated[index] && cfm[index], "Per-entry production dispatch coverage");
+            if (production) require(direct[index] && (taken_over(index) || (generated[index] && cfm[index])), "Per-entry production dispatch coverage");
             std::cout << hex_address(service::entries[index]) << " comparisons=" << comparisons[index] << " normal=" << normal[index]
                 << " faults=" << faults[index] << " negatives=" << negatives[index] << " direct=" << direct[index]
                 << " generated=" << generated[index] << " cfm=" << cfm[index] << " selected=" << selected[index] << '\n';

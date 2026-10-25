@@ -15,6 +15,10 @@ then launch it, send requests, and time Continue:
     tools/game_driver.py send NAME "snapshot start"
     tools/game_driver.py advance NAME --days 7
     tools/game_driver.py stop NAME
+
+`launch NAME --capture-launch CAPTURE` records the whole run, from the
+program's first instruction to its exit, into <run>/Automation/captures/CAPTURE
+(replay it with cm-world-replay; quit through the game, e.g. "key cmd+q").
 """
 import argparse
 import datetime
@@ -70,13 +74,16 @@ def wait(directory, condition, timeout, what):
     sys.exit(f"Timed out after {timeout:.0f} s waiting for {what}")
 
 
-def settled(directory, settle, timeout, what):
-    """Wait until the game waits for input and its status stays unchanged."""
+def settled(directory, settle, timeout, what, exit_ok=False):
+    """Wait until the game waits for input and its status stays unchanged.
+    With exit_ok, a game that quits meanwhile returns None."""
     deadline = time.monotonic() + timeout
     stable_since, previous = None, None
     while time.monotonic() < deadline:
         current = status(directory)
         if current and not alive(current["pid"]):
+            if exit_ok:
+                return None
             sys.exit(f"The game exited while waiting for {what}")
         if current != previous:
             previous, stable_since = current, time.monotonic()
@@ -105,7 +112,10 @@ def send(directory, request, timeout=600, settle=0.5):
     verb = request.split()[0]
     if verb in ("snapshot", "memory"):
         return done["result"], done, time.time() - started
-    final = settled(directory, settle, timeout, f"the game after request {sequence}")
+    # A request may quit the game (the quit confirmation's yes).
+    final = settled(directory, settle, timeout, f"the game after request {sequence}", exit_ok=True)
+    if final is None:
+        return "ok: the game quit", done, time.time() - started
     return done["result"], final, final["time"] / 1000 - started
 
 
@@ -129,7 +139,10 @@ def main():
     prepare.add_argument("name")
     prepare.add_argument("--save", type=Path, action="append", default=[])
     prepare.add_argument("--season-reference-days", type=int)
-    for action in ("launch", "status", "stop"):
+    launch = commands.add_parser("launch")
+    launch.add_argument("name")
+    launch.add_argument("--capture-launch", metavar="CAPTURE", help="record the whole run as a session capture")
+    for action in ("status", "stop"):
         commands.add_parser(action).add_argument("name")
     request = commands.add_parser("send", help="Send requests in order and wait for each")
     request.add_argument("name")
@@ -164,8 +177,14 @@ def main():
         app = Path(manifest["app"])
         executable = app / "Contents/MacOS" / json.loads(subprocess.check_output(
             ["plutil", "-convert", "json", "-o", "-", str(app / "Contents/Info.plist")]))["CFBundleExecutable"]
+        environment = dict(os.environ)
+        if args.capture_launch:
+            capture = directory / "captures" / args.capture_launch
+            if capture.exists():
+                sys.exit(f"{capture} already exists")
+            environment["CM_AOT_LAUNCH_CAPTURE"] = str(capture.resolve())
         subprocess.Popen([str(executable)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+                         stderr=subprocess.DEVNULL, start_new_session=True, env=environment)
         print(describe(settled(directory, 1.0, 300, "the start screen")))
     elif args.action == "status":
         current = status(directory)
@@ -194,7 +213,7 @@ def main():
             if "continue_game" not in current.get("commands", {}):
                 sys.exit(f"Continue is unavailable after {steps} steps: {describe(current)}")
             result, current, seconds = send(directory, "command continue_game", args.timeout, args.settle)
-            if not result.startswith("ok"):
+            if not result.startswith("ok") or result == "ok: the game quit":
                 sys.exit(f"Continue refused: {result}")
             steps += 1
             busy = current["last_busy_seconds"]

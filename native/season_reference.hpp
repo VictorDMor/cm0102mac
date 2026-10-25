@@ -34,6 +34,13 @@ void close_season_replay();
 // at the end of the next import; nullopt stops at the next OS import. Returns
 // a status line; throws when the request cannot be taken.
 std::string season_session_request(const std::optional<std::filesystem::path>& directory);
+// A launch capture (CM_AOT_LAUNCH_CAPTURE): a session capture that starts
+// before the program's first instruction, so its replay runs main() from its
+// entry. Any session capture also ends before ExitToShell, so a launch capture
+// that runs until the game quits holds main()'s return. A capture that cannot
+// be taken (date diagnostics attached, a used directory) is refused with a
+// message on stderr; the game starts anyway.
+void season_launch_capture(State& state, const std::filesystem::path& directory);
 // Replays a session capture: ends with SeasonReplayComplete at the OS import
 // the capture stopped before.
 void open_session_replay(const std::filesystem::path& directory, bool timing);

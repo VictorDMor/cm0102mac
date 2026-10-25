@@ -120,3 +120,27 @@ inputs than the recording: its children only require the recorded import
 order, and both sides get the recorded outputs. A routine is done
 when its checks pass on every capture that reaches it, including the error
 paths someone can reach in play.
+
+## MAIN.CPP: start-up, the event loop and paths no capture reaches
+
+`MAIN.CPP` (44 routines, `tools/main_program_audit.py`, `native/main_program_*`)
+is the second subsystem done this way. Three things it needed:
+
+- **Launch captures.** `CM_AOT_LAUNCH_CAPTURE=DIR` (or `game_driver.py launch
+  NAME --capture-launch CAPTURE`) records a session from the program's first
+  instruction; any session capture ends before ExitToShell, so quitting
+  through the game gives a capture that holds main()'s return. Checking
+  0x1076f2b0 there compares the whole run, original against C++. A checked
+  call that the capture ends inside is compared where both runs stop.
+- **setjmp in a C++ routine.** run() calls setjmp, and fatal_exit()'s
+  longjmp (quitting from the start screen takes it) lands back in run()'s
+  frame. The transfer runtime would resume the generated body at the setjmp
+  return; run() catches that one transfer (pc at the return, sp at its own
+  frame) and goes on in C++.
+- **Fixture checks** (`cm-main-program-checks`): for what the host never
+  delivers (open-documents events, speech, the About dialog) and for every
+  branch of the pump and the menus, each case runs the original and the C++
+  from a real snapshot with the Toolbox glues replaced by scripted
+  stand-ins, compared strictly. Under `--check-routines --only`, MAIN.CPP
+  routines left out run their originals, so a nested routine is checked at
+  every call from the original's callers.

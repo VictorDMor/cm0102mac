@@ -66,6 +66,13 @@ std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& fil
 // number of calls that differed (each printed).
 unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, RoutineRunner original, RoutineRunner rewrite,
                              bool strict_volatile);
+// Fixture checks (no capture): runs `entry` from the state as it is, with
+// r1, LR and the arguments already set, once as the original body and once
+// as the rewrite, each in a forked child, and returns what differs (empty
+// when the runs leave the same state). `corrupt` spoils the rewrite's result,
+// which must then differ.
+std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite,
+                                              unsigned results, bool corrupt = false);
 // True in a checker child; families then run nested calls of their own
 // routines without checking them again.
 bool routine_check_child();

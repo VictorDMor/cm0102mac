@@ -51,6 +51,52 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
 
+## Now: MAIN.CPP in C++23 (goal set 2026-10-24)
+
+Finish line: every routine of the original's `MAIN.CPP` (0x1076f2b0-0x10771110,
+44 routines, 1,869 instructions; `tools/main_program_audit.py`) runs as
+hand-written C++ in production, each checked against the generated reference
+on captured calls (fixtures where no capture can reach), replays reaching their
+end states, suite passing, reviewed commit.
+
+- [x] Module bounds: main() (called by the runtime start) to the runtime's byte
+      copy; MAIN's TOC pool and globals; the MoreFiles helpers before main()
+      are a separate unit.
+- [x] Launch captures (`CM_AOT_LAUNCH_CAPTURE`, `game_driver.py launch
+      --capture-launch`): from the first instruction to ExitToShell, so main()
+      and run() are checked whole.
+- [x] C++ for all 44 (`native/main_program_*.cpp`), hooked; native_service's
+      0x10770a80 taken over. The quit runs fatal_exit -> longjmp into run(),
+      which the C++ catches (traced once).
+- [x] Checker: a call the session capture ends inside compares at the end of
+      the transcript (both runs stop at the same import).
+- [x] Per-routine checks (--only each, every call up to 2000 then 1 in 100)
+      on 2 launch captures and the 13 UI sessions: 0 differ. Launch captures
+      in .local/benchmarks/ui: launch-quit (start screen quit) and
+      launch-menus (keys, command-S, wheel, Apple menu, File > Save dialog,
+      AppKit quit).
+- [x] Automation verbs `menu M I`, `wheel N`, `quit`.
+- [x] Fixture checks (`cm-main-program-checks`, 605 cases + a spoiled one):
+      every routine, the paths the port never reaches included (open
+      documents, its callbacks, the script, speech, the About box, the exit
+      path), strict registers and the arguments of every Toolbox call. 15
+      planted faults each caught (one equivalent mutant set aside).
+- [x] Real game: load a copy of the reference career, Continue (a week),
+      save over it, quit through the game, relaunch, load: day 17 of 2002.
+- [x] Suite: known match_debugger_actual_lineup only (106 tests).
+      main_program_detect_difference needed a checker fix (the spoil wrote a
+      partly mapped page).
+- [x] Review: native_service keeps 0x10770a80 in SEMANTIC_REPLACEMENTS (the
+      audits pin that list) and MAIN.CPP takes it over in OWNER_REPLACEMENTS,
+      as tactics did; native_service's runtime tests skip it on the paths that
+      now reach MAIN.CPP's hook; its event checks were removed (that facade is
+      checked by main_program_*).
+- [ ] native_service_component_equivalence and modern_native_service_production
+      fail before any MAIN.CPP change (the NewPtr entry, which nothing here
+      touched, fails the same "ordered effects/PC/register prefixes" check):
+      the old instruction-exact rule. Binary removed again; rework with the
+      reference test set below.
+
 ## Now: optimal tactics (goal set 2026-10-24)
 
 Finish line: two .tct tactics, (1) an exploit that uses what only a
