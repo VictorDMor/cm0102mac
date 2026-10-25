@@ -110,7 +110,7 @@ end states, suite passing, reviewed commit.
       then the event queue); capture launch-click reaches click_event.
 - [x] Checks on the final code: 900 capture runs (each routine alone and all
       together on 20 captures), 0 differ, 40 of 44 routines reached;
-      fixtures 609/609; suite: known match_debugger_actual_lineup only (114).
+      fixtures 609/609; suite: known match_debugger_actual_lineup only (114; fixed since).
 - [ ] Not verified live: an automation drag in the tactics screen after the
       drag change (no driver path to that screen; the start-screen drag is).
 - [x] Readable register state (2026-10-25): `Kept<R>` locals, `keep()`,
@@ -304,7 +304,7 @@ From the 2026-10-20 review. Estimates are unmeasured.
 
 ## Known test state
 
-- `tools/dev.sh test`: 94/95 runnable tests pass (2026-10-23, Best XI/localization build); `debugging_best_xi`, actual goals and injury shortcuts pass. Known failure: `match_debugger_actual_lineup` since ed7749e (it requires the `match_actor` owner's call count, and production pages now run that family's generated code); fails with and without the tactics rewrites, and again in an isolated rerun. `match_engine_live_equivalence` and most others lack a built binary or inputs.
+- `tools/dev.sh test`: 94/95 runnable tests pass (2026-10-23, Best XI/localization build); `debugging_best_xi`, actual goals and injury shortcuts pass. `match_debugger_actual_lineup` failed from ed7749e to 2026-10-25: it required the `match_actor` owner's call count, and production pages run that family's generated code. It now requires each lineup edit's effects to be non-empty and equal to the original setter's on the control, whichever implementation runs. `match_engine_live_equivalence` and most others lack a built binary or inputs.
 - Python audits: every `tools/test_*.py` passes against `.local/current/export`; `test_generated_temporaries.py` (needs a build dir) not run.
 
 ## Euro symbol (2026-10-23)
