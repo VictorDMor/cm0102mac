@@ -19,6 +19,8 @@ then launch it, send requests, and time Continue:
 `launch NAME --capture-launch CAPTURE` records the whole run, from the
 program's first instruction to its exit, into <run>/Automation/captures/CAPTURE
 (replay it with cm-world-replay; quit through the game, e.g. "key cmd+q").
+`launch NAME --open DOCUMENT` starts the game the way the Finder does when a
+document is opened with it: one open-documents Apple event, no open-application.
 """
 import argparse
 import datetime
@@ -142,6 +144,7 @@ def main():
     launch = commands.add_parser("launch")
     launch.add_argument("name")
     launch.add_argument("--capture-launch", metavar="CAPTURE", help="record the whole run as a session capture")
+    launch.add_argument("--open", metavar="DOCUMENT", type=Path, help="launch by opening this document with the game")
     for action in ("status", "stop"):
         commands.add_parser(action).add_argument("name")
     request = commands.add_parser("send", help="Send requests in order and wait for each")
@@ -183,8 +186,17 @@ def main():
             if capture.exists():
                 sys.exit(f"{capture} already exists")
             environment["CM_AOT_LAUNCH_CAPTURE"] = str(capture.resolve())
-        subprocess.Popen([str(executable)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True, env=environment)
+        if args.open:
+            # Through Launch Services, which hands the document to the app as
+            # an open-documents event (a command-line path is a host argument).
+            command = ["open", "-n", "-a", str(app)]
+            for key, value in environment.items():
+                if key.startswith("CM_"):
+                    command += ["--env", f"{key}={value}"]
+            subprocess.run(command + [str(args.open.resolve())], check=True)
+        else:
+            subprocess.Popen([str(executable)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True, env=environment)
         print(describe(settled(directory, 1.0, 300, "the start screen")))
     elif args.action == "status":
         current = status(directory)

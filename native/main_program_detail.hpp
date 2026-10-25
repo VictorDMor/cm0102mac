@@ -342,6 +342,98 @@ private:
     const Frame& frame;
 };
 
+// The rest of the original program that MAIN.CPP calls: the game, its
+// settings and helpers, and the C library. They are in the same code
+// fragment, so no glue and no TOC to restore. Each call sets the argument
+// registers the original's call site sets and returns r3.
+class Program {
+public:
+    explicit Program(Cpu& c) : c(c) {}
+    std::uint32_t call(std::uint32_t entry, std::uint32_t back, std::initializer_list<std::uint32_t> arguments = {}) {
+        unsigned n = 3;
+        for (const auto value : arguments) c.set(n++, value);
+        c.call(entry, back);
+        return c.r(3);
+    }
+    // The game.
+    std::int8_t start_game(std::uint32_t arguments, std::uint32_t back) { return std::int8_t(call(0x10118ef0, back, {arguments})); }
+    std::int8_t step(std::uint32_t back) { return std::int8_t(call(0x10118ec0, back)); }  // false when the game ends
+    void end_game(std::uint32_t started, std::uint32_t back) { call(0x10118fe0, back, {started}); }
+    // The current screen's list moves by `action` (0 down, 1 up, 2 page
+    // down, 3 page up, 4 end, 5 home), `amount` times.
+    void scroll(std::uint32_t game, std::uint32_t action, std::uint32_t amount, std::uint32_t back) {
+        call(0x10743590, back, {game, action, amount});
+    }
+    void redraw(std::uint32_t left, std::uint32_t top, std::uint32_t right, std::uint32_t bottom, std::uint32_t back) {
+        call(0x107692f0, back, {left, top, right, bottom});
+    }
+    std::uint32_t milliseconds(std::uint32_t back) { return call(0x10746a30, back); }  // Microseconds / 1000
+    // Whether the game covers the desktop with its backdrop (other_window, a
+    // plain window 100 pixels past the gray region on every side).
+    std::uint8_t backdrop_shown(std::uint32_t back) { return std::uint8_t(call(0x10769b50, back)); }
+    void flush_input(std::uint32_t back) { call(0x10747080, back); }  // FlushEvents of the mouse and key events
+    std::int8_t option_key_down(std::uint32_t back) { return std::int8_t(call(0x1074dbf0, back)); }  // GetKeys
+    // The game's settings object (TOC slot::settings).
+    void load_settings(std::uint32_t settings, std::uint32_t back) { call(0x1074c9a0, back, {settings}); }
+    void save_settings(std::uint32_t settings, std::uint32_t back) { call(0x1074ca50, back, {settings}); }
+    void settings_command(std::uint32_t settings, std::uint32_t back) { call(0x1074cc30, back, {settings}); }  // File, item 3
+    // The 'vers' resource `id` read into `record` (the id at +0, the flag at
+    // +2, the Pascal short version at +9): GetResource when `any_file`, else
+    // Get1Resource.
+    void read_version(std::uint32_t record, std::int16_t id, bool any_file, std::uint32_t back) {
+        call(0x1074d770, back, {record, extended(id), any_file});
+    }
+    // Text: Pascal and C strings, the game's languages, the script.
+    void copy_to_c(std::uint32_t to, std::uint32_t pascal, std::uint32_t back) { call(0x1074c610, back, {to, pascal}); }
+    void copy_to_pascal(std::uint32_t to, std::uint32_t text, std::uint32_t back) { call(0x1074c5d0, back, {to, text}); }
+    void append_pascal(std::uint32_t to, std::uint32_t part, std::uint32_t back) { call(0x1074c690, back, {to, part}); }
+    std::uint32_t duplicate(std::uint32_t text, std::uint32_t back) { return call(0x107395f0, back, {text}); }
+    void localize(std::uint32_t to, std::uint32_t text, std::uint32_t back) { call(0x10727890, back, {to, text}); }
+    // The next line of the text at `cursor` (advanced) into `line`; false at the end.
+    std::uint8_t next_line(std::uint32_t cursor, std::uint32_t line, std::uint32_t size, std::uint32_t back) {
+        return std::uint8_t(call(0x1074c6e0, back, {cursor, line, size}));
+    }
+    std::uint32_t parse_command(std::uint32_t line, std::uint32_t flags, std::uint32_t back) { return call(0x1076b2f0, back, {line, flags}); }
+    void run_command(std::uint32_t command, std::uint32_t back) { call(0x1076b7e0, back, {command}); }
+    // Files (MoreFiles and the game's helpers).
+    std::int16_t directory_id(FSSpec spec, std::uint32_t id_out, std::uint32_t back) {
+        return std::int16_t(call(0x1074d4c0, back, {spec.address, id_out}));
+    }
+    std::int16_t finder_comment(FSSpec spec, std::uint32_t comment, std::uint32_t back) {
+        return std::int16_t(call(0x1076f080, back, {spec.address, comment}));
+    }
+    std::int16_t full_path(FSSpec spec, std::uint32_t length_out, std::uint32_t handle_out, std::uint32_t back) {
+        return std::int16_t(call(0x1076eaf0, back, {spec.address, length_out, handle_out}));
+    }
+    std::int16_t first_document(std::uint32_t list, FSSpec spec, std::uint32_t back) {
+        return std::int16_t(call(0x107681d0, back, {list, spec.address}));
+    }
+    // Calls `callback` (a TVector) with each document's FSSpec and `data`.
+    void each_document(std::uint32_t list, std::uint32_t callback, std::uint32_t data, std::uint32_t back) {
+        call(0x10768080, back, {list, callback, data});
+    }
+    // The C library.
+    std::uint32_t setjmp(std::uint32_t buffer, std::uint32_t back) { return call(0x10773eb0, back, {buffer}); }
+    void longjmp(std::uint32_t buffer, std::uint32_t value, std::uint32_t back) { call(0x10773f30, back, {buffer, value}); }
+    void exit(std::uint32_t code, std::uint32_t back) { call(0x10773ff0, back, {code}); }
+    void memset(std::uint32_t to, std::uint32_t value, std::uint32_t size, std::uint32_t back) { call(0x10778300, back, {to, value, size}); }
+    std::uint32_t strlen(std::uint32_t text, std::uint32_t back) { return call(0x1077dbd0, back, {text}); }
+    void strcat(std::uint32_t to, std::uint32_t part, std::uint32_t back) { call(0x1077dc60, back, {to, part}); }
+    std::uint32_t malloc(std::uint32_t size, std::uint32_t back) { return call(0x10775130, back, {size}); }
+    void free(std::uint32_t pointer, std::uint32_t back) { call(0x10775170, back, {pointer}); }
+    std::uint32_t fopen(std::uint32_t name, std::uint32_t mode, std::uint32_t back) { return call(0x107768f0, back, {name, mode}); }
+    void fclose(std::uint32_t file, std::uint32_t back) { call(0x107766f0, back, {file}); }
+    void fprintf(std::uint32_t file, std::uint32_t format, std::uint32_t value, std::uint32_t back) {
+        call(0x1077b610, back, {file, format, value});
+    }
+    void sprintf(std::uint32_t to, std::uint32_t format, std::uint32_t a, std::uint32_t b, std::uint32_t d, std::uint32_t back) {
+        call(0x1077b720, back, {to, format, a, b, d});
+    }
+
+private:
+    Cpu& c;
+};
+
 // Stops the speech channel and frees the text it was given (stop_speech();
 // fatal_exit() and speech_key() repeat it in line). `dispose_back` and
 // `free_back` are the return addresses of its two calls.
@@ -352,7 +444,7 @@ inline void release_speech(Cpu& c, const Frame& frame, std::uint32_t dispose_bac
     if (!nonzero_logical(c, c.r(3))) return;
     os.DisposeSpeechChannel(c.r(3), dispose_back);
     c.set(3, g.spoken_text());
-    if (nonzero_logical(c, c.r(3))) c.call(0x10775170, free_back);  // free
+    if (nonzero_logical(c, c.r(3))) Program{c}.free(c.r(3), free_back);
     g.speech_channel() = 0;
     g.spoken_text() = 0;
 }

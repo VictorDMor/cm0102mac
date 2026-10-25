@@ -47,6 +47,7 @@ void press(Cpu& c, const Frame& frame, EventRecord event) {
 void pump_events(Cpu& c) {
     Frame frame(c, 0x1076fe80, 0x80, {.first_gpr = 24});
     Toolbox os{c, frame};
+    Program program{c};
     Globals g{c};
     Shared shared{c};
     // Resolved once: the loop runs this every turn. The original keeps their
@@ -61,13 +62,13 @@ void pump_events(Cpu& c) {
     const Field<std::uint32_t> saved_port{c, frame.at(0x38)};
     os.GetPort(saved_port.address(), 0x1076feb8);
     os.SetPort(os.GetWindowPort(game_window, 0x1076fec4), 0x1076fecc);
-    c.call(0x10769b50, 0x1076fed4);
-    c.call(0x10746a30, 0x1076fed8);  // the game's tick count
+    program.backdrop_shown(0x1076fed4);  // asked, and the answer dropped
+    const auto now = program.milliseconds(0x1076fed8);
     const auto timer = shared.timer();
     const std::int32_t wait = idle_wait;
     c.set({{4, std::uint32_t(wait)}, {5, timer.address()}});
     const bool waiting = nonzero(c, wait);
-    timer = c.r(3);
+    timer = now;
     if (waiting) {
         // Turns to wait before events are read again; the port stays the
         // game window's (the original returns without restoring it).
@@ -81,10 +82,8 @@ void pump_events(Cpu& c) {
     if (const auto direction = compare(c, scroll); direction != 0) {
         // A wheel turn the Carbon handler noted: lines, or pages with control.
         const bool pages = nonzero(c, control_down);
-        c.set(3, game);
-        if (direction > 0) c.set(4, pages ? 3 : 1);
-        else c.set({{4, pages ? 2u : 0u}, {5, 0u - std::uint32_t(scroll)}});
-        c.call(0x10743590, direction > 0 ? 0x1076ff30 : 0x1076ff54);
+        if (direction > 0) program.scroll(game, pages ? 3 : 1, std::uint32_t(scroll), 0x1076ff30);  // up
+        else program.scroll(game, pages ? 2 : 0, 0u - std::uint32_t(scroll), 0x1076ff54);         // down
         pending_scroll = 0;
         return;
     }
@@ -190,8 +189,9 @@ void key_down(Cpu& c, std::uint32_t address) {
     // The original keeps the event, the character, the game and the key code
     // in r28-r31; the routines it calls save them.
     c.set({{28, address}, {29, character}, {30, c.toc(slot::game)}, {31, code}});
-    c.set({{3, frame.at(0x38)}, {4, c.toc(slot::pool) + text::key_format}, {5, character}, {6, character}, {7, code}});
-    c.call(0x1077b720, 0x107703cc);  // sprintf("key ascii: %c (%d), raw: %x"): a debugging line nothing shows
+    // "key ascii: %c (%d), raw: %x": a debugging line nothing shows.
+    Program program{c};
+    program.sprintf(frame.at(0x38), c.toc(slot::pool) + text::key_format, character, character, code, 0x107703cc);
     if (nonzero(c, event.modifiers() & (modifier::command | modifier::option))) {
         c.set(3, character);
         c.link(0x107703e0);
@@ -217,8 +217,7 @@ void key_down(Cpu& c, std::uint32_t address) {
     if (compare_logical(c, code - 0x73, 0xb) <= 0)
         for (const auto& key : keys)
             if (key.code == code) {
-                c.set({{3, c.toc(slot::game)}, {4, key.action}, {5, 1}});
-                c.call(0x10743590, key.back);
+                program.scroll(c.toc(slot::game), key.action, 1, key.back);
                 return;
             }
     // Any other key is left for the game's screens.
@@ -328,8 +327,7 @@ std::uint32_t click_event(Cpu& c, std::uint32_t, std::uint32_t event, std::uint3
 
 std::uint32_t bounds_event(Cpu& c, std::uint32_t, std::uint32_t, std::uint32_t) {
     Frame frame(c, 0x10770880, 0x40, {});
-    c.set({{3, 0}, {4, 0}, {5, 799}, {6, 599}});
-    c.call(0x107692f0, 0x107708a0);  // redraws the 800 x 600 screen
+    Program{c}.redraw(0, 0, 799, 599, 0x107708a0);  // the whole 800 x 600 screen
     return 0;
 }
 
@@ -367,8 +365,7 @@ void file_menu(Cpu& c, std::uint32_t item) {
     Shared shared{c};
     const auto number = std::int16_t(item);
     if (const auto against_three = compare(c, number, 3); against_three == 0) {
-        c.set(3, c.toc(slot::settings));
-        c.call(0x1074cc30, 0x107709d0);  // the settings' item
+        Program{c}.settings_command(c.toc(slot::settings), 0x107709d0);
     } else if (against_three > 0) {
         if (compare(c, number, 5) == 0) shared.screen_request() = request_quit;  // Quit
     } else if (compare(c, number, 1) == 0) shared.screen_request() = request_save;  // Save
@@ -408,14 +405,13 @@ std::uint32_t open_application(Cpu& c) {
 std::uint32_t open_documents(Cpu& c, std::uint32_t event) {
     Frame frame(c, 0x10770ac0, 0x1a0, {.first_gpr = 31});
     Toolbox os{c, frame};
+    Program program{c};
     Globals g{c};
     const auto pool = c.toc(slot::pool), list = frame.at(0x44), suffix = frame.at(0x3c), path = frame.at(0x94);
     const FSSpec spec{c, frame.at(0x4c)};
     c.set(31, pool);  // kept across the calls (then the file)
     if (!nonzero(c, os.AEGetParamDesc(event, four_char('-', '-', '-', '-'), four_char('l', 'i', 's', 't'), list, 0x10770aec))) {
-        c.set({{3, list}, {4, spec.address}});
-        c.call(0x107681d0, 0x10770b04);  // the list's first FSSpec
-        if (!nonzero(c, std::int16_t(c.r(3)))) {
+        if (!nonzero(c, program.first_document(list, spec, 0x10770b04))) {
             // The document name's last three characters, as a Pascal string.
             const std::uint8_t length = spec.name_length();
             c.set(3, length);
@@ -426,39 +422,30 @@ std::uint32_t open_documents(Cpu& c, std::uint32_t event) {
             const auto is = [&](std::uint32_t name, std::uint32_t back) { return nonzero(c, os.EqualString(suffix, pool + name, false, false, back)); };
             if (is(text::cfg, 0x10770b5c)) {
                 // A .cfg: each document becomes an AUTO_SETUP line of quick_start.cfg.
-                c.set({{3, pool + text::quick_start_file}, {4, pool + text::write_mode}});
-                c.call(0x107768f0, 0x10770b74);  // fopen
-                const auto file = c.r(3);
+                const auto file = program.fopen(pool + text::quick_start_file, pool + text::write_mode, 0x10770b74);
                 c.set(31, file);
                 if (nonzero(c, std::int32_t(file))) {
-                    c.set({{3, list}, {4, c.toc(slot::quick_start_callback)}, {5, file}});
-                    c.call(0x10768080, 0x10770b8c);  // for each document
-                    c.set(3, file);
-                    c.call(0x107766f0, 0x10770b94);  // fclose
+                    program.each_document(list, c.toc(slot::quick_start_callback), file, 0x10770b8c);  // write_quick_start
+                    program.fclose(file, 0x10770b94);
                     Shared{c}.quick_start() = 1;
                     c.set(3, Shared{c}.quick_start().address());
                 }
             } else if (is(text::rgn, 0x10770bb8)) {
                 // A .rgn: each document's path goes into the setup text.
-                c.set({{3, list}, {4, c.toc(slot::setup_callback)}, {5, 0}});
-                c.call(0x10768080, 0x10770bd4);  // for each document
+                program.each_document(list, c.toc(slot::setup_callback), 0, 0x10770bd4);  // add_setup_line
             } else if (is(text::sav, 0x10770bec)) {
                 // A .sav: the game starts with -load "<path>".
                 const Field<std::int16_t> size{c, frame.at(0x38)};
                 const Field<std::uint32_t> handle{c, frame.at(0x40)};
-                c.set({{3, spec.address}, {4, size.address()}, {5, handle.address()}});
-                c.call(0x1076eaf0, 0x10770c08);  // its full path, in a handle
-                if (!nonzero(c, std::int16_t(c.r(3)))) {
+                if (!nonzero(c, program.full_path(spec, size.address(), handle.address(), 0x10770c08))) {
                     os.BlockMoveData(c.u32(handle), path, extended(size), 0x10770c24);
                     c.put8(path + extended(size), 0);
                     c.set({{4, path}, {5, 0}});
                     os.DisposeHandle(handle, 0x10770c40);
                     if (nonzero_logical(c, result(c, g.command_line())))
                         for (const auto& [part, back] : std::array<std::pair<std::uint32_t, std::uint32_t>, 3>{
-                                 {{pool + text::load_option, 0x10770c58}, {path, 0x10770c64}, {pool + text::quote, 0x10770c70}}}) {
-                            c.set({{3, g.command_line()}, {4, part}});
-                            c.call(0x1077dc60, back);  // strcat
-                        }
+                                 {{pool + text::load_option, 0x10770c58}, {path, 0x10770c64}, {pool + text::quote, 0x10770c70}}})
+                            program.strcat(g.command_line(), part, back);
                 }
             }
         }
@@ -480,19 +467,16 @@ void run_script(Cpu& c, std::uint32_t text) {
     // The cursor lives in the caller's parameter area (sp+0x158 is its sp+0x18).
     Field<std::uint32_t>{c, frame.at(0x158)} = text;
     const auto line = frame.at(0x38);
-    for (;;) {
-        c.set({{3, frame.at(0x158)}, {4, line}, {5, 0x100}});
-        c.call(0x1074c6e0, 0x10770d00);  // the next line, advancing the cursor
-        if (!nonzero(c, std::int32_t(c.r(3) & 0xff))) return;
-        c.set({{3, line}, {4, 0}});
-        c.call(0x1076b2f0, 0x10770ce4);  // parse the command
-        if (nonzero_logical(c, c.r(3))) c.call(0x1076b7e0, 0x10770cf0);  // and run it
-    }
+    Program program{c};
+    while (nonzero(c, program.next_line(frame.at(0x158), line, 0x100, 0x10770d00)))
+        if (const auto command = program.parse_command(line, 0, 0x10770ce4); nonzero_logical(c, command))
+            program.run_command(command, 0x10770cf0);
 }
 
 void speak(Cpu& c, std::uint32_t text) {
     Frame frame(c, 0x10770d20, 0x50, {.first_gpr = 28});
     Toolbox os{c, frame};
+    Program program{c};
     Globals g{c};
     Shared shared{c};
     // The original keeps the text (then the saved clock), its copy, its
@@ -504,12 +488,9 @@ void speak(Cpu& c, std::uint32_t text) {
     if (!nonzero_logical(c, g.speech_channel()) && nonzero(c, os.NewSpeechChannel(0, g.speech_channel().address(), 0x10770d78)))
         g.speech_channel() = 0;
     if (!nonzero_logical(c, g.speech_channel())) return;
-    c.set(3, text);
-    c.call(0x1077dbd0, 0x10770da0);  // strlen
-    const auto length = c.r(3);
-    c.set({{30, length}, {3, length + 1}});
-    c.call(0x10775130, 0x10770dac);  // malloc
-    const auto copy = c.r(3);
+    const auto length = program.strlen(text, 0x10770da0);
+    c.set(30, length);
+    const auto copy = program.malloc(length + 1, 0x10770dac);
     c.set(29, copy);
     os.BlockMoveData(text, copy, length, 0x10770dc4);
     c.put8(copy + length, '.');
@@ -522,7 +503,7 @@ void speak(Cpu& c, std::uint32_t text) {
         pump_events(c);
     }
     shared.timer() = clock;
-    if (nonzero_logical(c, result(c, g.spoken_text()))) c.call(0x10775170, 0x10770e00);  // free
+    if (const std::uint32_t old = g.spoken_text(); nonzero_logical(c, result(c, old))) program.free(old, 0x10770e00);
     g.spoken_text() = copy;
     os.SpeakText(g.speech_channel(), copy, length, 0x10770e14);
 }
@@ -547,14 +528,13 @@ void preferences_dialog(Cpu& c) {
 std::uint32_t write_quick_start(Cpu& c, std::uint32_t spec, std::uint32_t file) {
     Frame frame(c, 0x10770f60, 0x150, {.first_gpr = 31});
     Toolbox os{c, frame};
+    Program program{c};
     c.set(31, file);  // kept across the full-path call
     if (!nonzero(c, std::int32_t(file)) || !nonzero_logical(c, spec)) return 0;
     const Field<std::int16_t> length{c, frame.at(0x38)};
     const Field<std::uint32_t> handle{c, frame.at(0x3c)};
     const auto path = frame.at(0x40);
-    c.set({{3, spec}, {4, length.address()}, {5, handle.address()}});
-    c.call(0x1076eaf0, 0x10770f8c);  // the document's full path, in a handle
-    if (nonzero(c, std::int16_t(c.r(3)))) return 0;
+    if (nonzero(c, program.full_path(FSSpec{c, spec}, length.address(), handle.address(), 0x10770f8c))) return 0;
     // At most 256 bytes are copied; the terminator goes at the full length,
     // past them for a longer path (as the original).
     const std::int16_t copied = compare(c, length, 0x100) < 0 ? std::int16_t(length) : std::int16_t(0x100);
@@ -562,27 +542,22 @@ std::uint32_t write_quick_start(Cpu& c, std::uint32_t spec, std::uint32_t file) 
     c.put8(path + extended(length), 0);
     c.set({{4, path}, {5, 0}});
     os.DisposeHandle(handle, 0x10770fd8);
-    c.set({{3, file}, {4, c.toc(slot::pool) + text::auto_setup}, {5, path}});
-    c.call(0x1077b610, 0x10770ff0);  // fprintf("AUTO_SETUP=%s\n\r")
+    program.fprintf(file, c.toc(slot::pool) + text::auto_setup, path, 0x10770ff0);  // "AUTO_SETUP=%s\n\r"
     return 0;
 }
 
 std::uint32_t add_setup_line(Cpu& c, std::uint32_t spec) {
     Frame frame(c, 0x10771010, 0x50, {.first_gpr = 29});
     Toolbox os{c, frame};
+    Program program{c};
     Globals g{c};
     if (!nonzero_logical(c, spec)) return 0;
     const Field<std::int16_t> length{c, frame.at(0x38)};
     const Field<std::uint32_t> handle{c, frame.at(0x3c)};
-    c.set({{3, spec}, {4, length.address()}, {5, handle.address()}});
-    c.call(0x1076eaf0, 0x1077103c);  // the document's full path, in a handle
-    if (nonzero(c, std::int16_t(c.r(3)))) return 0;
+    if (nonzero(c, program.full_path(FSSpec{c, spec}, length.address(), handle.address(), 0x1077103c))) return 0;
     // The setup text grows by the path and a carriage return.
     std::uint32_t old_length = 0;
-    if (const std::uint32_t old = g.setup_text(); nonzero_logical(c, result(c, old))) {
-        c.call(0x1077dbd0, 0x10771054);  // strlen
-        old_length = c.r(3);
-    }
+    if (const std::uint32_t old = g.setup_text(); nonzero_logical(c, result(c, old))) old_length = program.strlen(old, 0x10771054);
     // The original keeps the old length, the new size and the new text in r31, r30, r29.
     const auto size = old_length + extended(length) + 2;
     c.set({{31, old_length}, {30, size}});

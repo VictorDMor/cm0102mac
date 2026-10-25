@@ -62,6 +62,30 @@ std::uint8_t original_character(NSEvent* event) {
 }
 }
 
+// A dialog's content view: Dialog Manager coordinates grow downward.
+@interface CMDialogView : NSView
+@end
+@implementation CMDialogView
+- (BOOL)isFlipped { return YES; }
+@end
+// Records the clicked item. The Dialog Manager never changes a control's
+// value itself, so every check box and radio button gets back the value it
+// had (AppKit toggles the one clicked and clears its radio siblings).
+@interface CMDialogTarget : NSObject {
+@public
+    std::int16_t clicked;
+    NSMutableArray<NSButton*>* toggles;
+    NSMutableArray<NSNumber*>* values;
+}
+- (void)itemAction:(NSButton*)sender;
+@end
+@implementation CMDialogTarget
+- (void)itemAction:(NSButton*)sender {
+    for (NSUInteger n = 0; n < toggles.count; ++n) toggles[n].state = values[n].integerValue;
+    clicked = std::int16_t(sender.tag);
+}
+@end
+
 @interface CMNativeWindow : NSPanel
 @property(nonatomic) BOOL acceptsActivation;
 @end
@@ -181,6 +205,7 @@ std::uint8_t original_character(NSEvent* event) {
     std::set<std::filesystem::path>* hostArguments;
     std::map<std::uint32_t, CMNativeWindow*>* gameWindows;
     bool launching;
+    bool launchedWithDocuments; // the open-documents event stands for the launch's
     std::function<void()> refreshPresentation;
     std::function<void(NSInteger)> selectScale;
     std::function<void(cm::aot::DirectCommand)> selectCommand;
@@ -288,7 +313,8 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
     launching = false;
-    pending->push_back({cm::aot::UIEvent::Kind::launch});
+    // As on the original system, a launch with documents sends 'odoc' alone.
+    if (!launchedWithDocuments) pending->push_back({cm::aot::UIEvent::Kind::launch});
 }
 - (void)applicationDidBecomeActive:(NSNotification*)notification {
     (void)notification;
@@ -329,7 +355,10 @@ std::uint8_t original_character(NSEvent* event) {
         // Preserve genuine Finder requests and all later open-file events.
         if (!launching || !hostArguments->contains(file)) event.files.push_back(file);
     }
-    if (!event.files.empty()) pending->push_back(std::move(event));
+    if (!event.files.empty()) {
+        if (launching) launchedWithDocuments = true;
+        pending->push_back(std::move(event));
+    }
     [application replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
 }
 @end
@@ -455,6 +484,13 @@ struct NativeUI::Impl {
     struct Menu { NSMenu* native; std::int16_t id; bool enabled; };
     std::map<std::uint32_t, Menu> menus;
     std::map<std::uint32_t, CMNativeWindow*> windows;
+    struct Dialog {
+        NSPanel* panel;
+        CMDialogTarget* target;
+        std::vector<DialogItem> items;
+        NSModalSession session = nil;
+    };
+    std::map<std::uint32_t, Dialog> dialogs;
     std::map<std::uint32_t, LegacyRect> logical_bounds;
     std::uint32_t primary_window = 0;
     InterfaceScale requested_scale = InterfaceScale::original;
@@ -635,6 +671,7 @@ struct NativeUI::Impl {
             host_arguments.insert(std::filesystem::absolute(arguments[i].fileSystemRepresentation).lexically_normal());
         delegate->hostArguments = &host_arguments;
         delegate->launching = true;
+        delegate->launchedWithDocuments = false;
         delegate->refreshPresentation = [this] { refresh_presentation(); };
         delegate->selectScale = [this](NSInteger index) {
             if (index < 0 || index >= 5 || !choose_scale(interface_scales[index])) NSBeep();
@@ -675,6 +712,99 @@ struct NativeUI::Impl {
 };
 NativeUI::NativeUI(std::filesystem::path preference) : impl_(std::make_unique<Impl>(std::move(preference))) {}
 NativeUI::~NativeUI() = default;
+void NativeUI::create_dialog(std::uint32_t token, const DialogDefinition& dialog, const std::vector<DialogItem>& items) {
+    @autoreleasepool {
+        if (impl_->dialogs.contains(token)) throw std::runtime_error("Duplicate native dialog token");
+        const auto& bounds = dialog.bounds;
+        const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
+        const NSRect rect = NSMakeRect(bounds[1], height - bounds[2], bounds[3] - bounds[1], bounds[2] - bounds[0]);
+        NSPanel* panel = [[NSPanel alloc] initWithContentRect:rect styleMask:NSWindowStyleMaskTitled
+            backing:NSBackingStoreBuffered defer:NO];
+        panel.title = menu_text(dialog.title);
+        panel.releasedWhenClosed = NO;
+        CMDialogView* view = [[CMDialogView alloc] initWithFrame:NSMakeRect(0, 0, rect.size.width, rect.size.height)];
+        panel.contentView = view;
+        CMDialogTarget* target = [CMDialogTarget new];
+        target->clicked = 0;
+        target->toggles = [NSMutableArray array];
+        target->values = [NSMutableArray array];
+        for (std::size_t n = 0; n < items.size(); ++n) {
+            const auto& item = items[n];
+            const auto frame = NSMakeRect(item.bounds[1], item.bounds[0], item.bounds[3] - item.bounds[1],
+                                          item.bounds[2] - item.bounds[0]);
+            NSView* control = nil;
+            if (item.kind() == DialogItem::button || item.kind() == DialogItem::check_box ||
+                item.kind() == DialogItem::radio_button) {
+                NSButton* button = [[NSButton alloc] initWithFrame:frame];
+                button.title = menu_text(item.text);
+                if (item.kind() == DialogItem::button) button.bezelStyle = NSBezelStyleRounded;
+                else [button setButtonType:item.kind() == DialogItem::check_box ? NSButtonTypeSwitch : NSButtonTypeRadio];
+                button.tag = NSInteger(n + 1);
+                button.enabled = item.enabled();
+                button.target = target;
+                button.action = @selector(itemAction:);
+                if (n == 0) button.keyEquivalent = @"\r";  // item 1 is the default button
+                if (item.kind() != DialogItem::button) {
+                    [target->toggles addObject:button];
+                    [target->values addObject:@(button.state)];
+                }
+                control = button;
+            } else if (item.kind() == DialogItem::static_text) {
+                NSTextField* text = [NSTextField labelWithString:menu_text(item.text)];
+                text.frame = frame;
+                control = text;
+            }
+            if (control) [view addSubview:control];
+        }
+        // On the game window's screen: centred over the game window (the
+        // DLOG's own place is on the original's 800 x 600 screen).
+        for (const auto& [window_token, window] : impl_->windows) {
+            (void)window_token;
+            if (!window.visible || window.frame.size.width < 800) continue;
+            const auto area = window.frame;
+            [panel setFrameOrigin:NSMakePoint(NSMidX(area) - panel.frame.size.width / 2,
+                                              NSMidY(area) - panel.frame.size.height / 2)];
+            break;
+        }
+        impl_->dialogs.emplace(token, Impl::Dialog{panel, target, items});
+    }
+}
+bool NativeUI::is_dialog(std::uint32_t token) const { return impl_->dialogs.contains(token); }
+void NativeUI::show_dialog(std::uint32_t token) {
+    auto& dialog = impl_->dialogs.at(token);
+    [dialog.panel makeKeyAndOrderFront:nil];
+    if (!dialog.session) dialog.session = [NSApp beginModalSessionForWindow:dialog.panel];
+}
+std::int16_t NativeUI::dialog_click(std::uint32_t token, double timeout_seconds) {
+    @autoreleasepool {
+        auto& dialog = impl_->dialogs.at(token);
+        if (!dialog.session) show_dialog(token);
+        const auto until = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_seconds);
+        for (;;) {
+            [NSApp runModalSession:dialog.session];
+            if (const auto clicked = dialog.target->clicked) {
+                dialog.target->clicked = 0;
+                return clicked;
+            }
+            const auto left = std::chrono::duration<double>(until - std::chrono::steady_clock::now()).count();
+            if (left <= 0) return 0;
+            // Sleeps until an event comes for the session (or the time is up).
+            [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:left]
+                                  inMode:NSModalPanelRunLoopMode dequeue:NO];
+        }
+    }
+}
+bool NativeUI::dialog_item_enabled(std::uint32_t token, std::int16_t item) const {
+    const auto& items = impl_->dialogs.at(token).items;
+    return item >= 1 && std::size_t(item) <= items.size() && items[std::size_t(item) - 1].enabled();
+}
+void NativeUI::dispose_dialog(std::uint32_t token) {
+    auto& dialog = impl_->dialogs.at(token);
+    if (dialog.session) [NSApp endModalSession:dialog.session];
+    [dialog.panel orderOut:nil];
+    [dialog.panel close];
+    impl_->dialogs.erase(token);
+}
 void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint32_t attributes, const LegacyRect& bounds) {
     @autoreleasepool {
         if (impl_->windows.contains(token)) throw std::runtime_error("Duplicate native window token");

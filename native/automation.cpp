@@ -107,6 +107,11 @@ AutomationRequest parse(std::uint64_t sequence, const std::string& line) {
         if (!input || !delta || delta < -100 || delta > 100) throw std::runtime_error("wheel needs a non-zero delta");
         request.kind = AutomationRequest::Kind::wheel;
         request.wheel = delta;
+    } else if (verb == "dialog") {
+        int item = 0; input >> item;
+        if (!input || item < 1 || item > 255) throw std::runtime_error("dialog needs an item number");
+        request.kind = AutomationRequest::Kind::dialog;
+        request.control = std::int16_t(item);
     } else if (verb == "quit") {
         request.kind = AutomationRequest::Kind::quit;
     } else if (verb == "drag") {

@@ -1,4 +1,6 @@
 #include "platform.hpp"
+#include "apple_events.hpp"
+#include "dialog_resource.hpp"
 #include "aot_runtime.hpp"
 #include "filesystem_bridge.hpp"
 #include <fstream>
@@ -78,6 +80,55 @@ int main() {
         s.memory.copy_in(name + 4, {'a', 'z'});
         call(s, "CarbonLib::UppercaseText", {name + 4, 1, std::uint32_t(-1)});
         require(s.memory.read<2>(name + 4) == 0x417a, "System-script uppercase length and -1 script ABI");
+        // EqualString: same length, then character by character, case and
+        // diacritics ignored unless asked (MAIN.CPP matches "cfg"/"rgn"/"sav").
+        const auto equal = [&](const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b, bool exact_case, bool exact_marks) {
+            s.memory.write<1>(name, a.size()); s.memory.copy_in(name + 1, a);
+            s.memory.write<1>(name + 0x100, b.size()); s.memory.copy_in(name + 0x101, b);
+            return call(s, "CarbonLib::EqualString", {name, name + 0x100, exact_case, exact_marks});
+        };
+        require(equal({'s', 'a', 'v'}, {'S', 'A', 'V'}, false, false) == 1 && equal({'s', 'a', 'v'}, {'S', 'A', 'V'}, true, false) == 0 &&
+                equal({'c', 'f', 'g'}, {'c', 'f', 'g'}, true, true) == 1 && equal({'c', 'f'}, {'c', 'f', 'g'}, false, false) == 0 &&
+                equal({'c', 'a', 'f', 0x8e}, {'C', 'A', 'F', 'E'}, false, false) == 1 &&
+                equal({'c', 'a', 'f', 0x8e}, {'c', 'a', 'f', 'e'}, false, true) == 0 &&
+                equal({'r', 'g', 'n'}, {'s', 'a', 'v'}, false, false) == 0,
+                "EqualString's length, case or diacritic rules");
+        // An open-documents event as the original walks it: the direct
+        // object as a list, its count, each item coerced to an FSSpec.
+        {
+            NativeAppleEvents events;
+            std::vector<std::vector<std::uint8_t>> specs(2, std::vector<std::uint8_t>(70));
+            for (unsigned n = 0; n < 70; ++n) { specs[0][n] = std::uint8_t(n); specs[1][n] = std::uint8_t(0xff - n); }
+            NativeAEDescriptor event, list, item, spec;
+            require(!events.open_documents_event(specs, event) && event.type == 0x61657674u, "Open-documents event creation");
+            require(!events.parameter(event, 0x2d2d2d2du, 0x6c697374u, list) && list.type == 0x6c697374u, "Open-documents direct object list");
+            std::int32_t items = 0;
+            std::uint32_t keyword = 0;
+            std::vector<std::uint8_t> bytes;
+            require(!events.count(list, items) && items == 2, "Open-documents item count");
+            require(!events.nth(list, 2, 0x2a2a2a2au, keyword, item) && item.type == 0x66737320u &&
+                    !events.coerce(item, 0x66737320u, spec) && !events.data(spec, 0x46, bytes) && bytes == specs[1],
+                    "Open-documents item is the FSSpec put in, unchanged");
+            require(events.nth(list, 3, 0x2a2a2a2au, keyword, item) != 0 && events.count({0x6c697374u, 1}, items) != 0,
+                    "Open-documents list bounds and unknown descriptors");
+            for (const auto descriptor : {spec, list, event}) require(!events.dispose(descriptor), "Descriptor disposal");
+        }
+        // DLOG and DITL as the original's Preferences dialog stores them.
+        {
+            const std::vector<std::uint8_t> dlog{0, 40, 0, 40, 0, 140, 1, 44, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 128, 5, 'P', 'r', 'e', 'f', 's'};
+            const auto dialog = parse_dialog(dlog);
+            require(dialog.bounds == LegacyRect{40, 40, 140, 300} && dialog.items == 128 && dialog.title == "Prefs", "DLOG layout");
+            const std::vector<std::uint8_t> ditl{0, 1,
+                0, 0, 0, 0, 0, 70, 0, 200, 0, 90, 1, 4, 4, 2, 'O', 'K',
+                0, 0, 0, 0, 0, 10, 0, 10, 0, 26, 0, 120, 136, 3, 'S', 'o', 'u'};  // the last pad byte left out
+            const auto items = parse_dialog_items(ditl);
+            require(items.size() == 2 && items[0].kind() == DialogItem::button && items[0].enabled() && items[0].text == "OK" &&
+                    items[0].bounds == LegacyRect{70, 200, 90, 260} && items[1].kind() == DialogItem::static_text &&
+                    !items[1].enabled() && items[1].text == "Sou", "DITL layout, disabled items and odd lengths");
+            bool truncated = false;
+            try { parse_dialog_items(std::vector<std::uint8_t>{0, 0, 0, 0}); } catch (const std::runtime_error&) { truncated = true; }
+            require(truncated, "A truncated DITL is refused");
+        }
         // Compare the translated clock ABI against independent POSIX local time
         // and the host's real legacy APIs. Guard bytes catch native-width writes.
         const auto before = std::time(nullptr);

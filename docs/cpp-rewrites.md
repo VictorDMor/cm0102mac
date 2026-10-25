@@ -147,8 +147,19 @@ Three things it needed:
   frame. The transfer runtime would resume the generated body at the setjmp
   return; run() catches that one transfer (pc at the return, sp at its own
   frame) and goes on in C++.
+- **Host paths for the rest.** The host now has a small Dialog Manager
+  (GetNewDialog/ModalDialog/DisposeDialog over DLOG and DITL, shown as an
+  AppKit panel centred on the game window; automation `dialog N` picks an
+  item, observation requests still run, and a `quit` waits for the dialog to
+  close) and delivers Finder
+  document opens as one 'odoc' event, with real Apple Event Manager lists of
+  FSSpecs behind AEGetParamDesc/AECountItems/AEGetNthDesc/AECoerceDesc/
+  AEGetDescData. A launch with documents sends no 'oapp', as the original
+  system did. A document outside the game's folders, or one whose name has
+  no FSSpec (over 63 MacRoman bytes), is left out with a line in the log; the
+  game still starts. `game_driver.py launch NAME --open DOC` launches that way.
 - **Fixture checks** (`cm-main-program-checks`): for what the host never
-  delivers (open-documents events, speech, the Preferences dialog) and for every
+  delivers (speech: the host reports no Speech Manager) and for every
   branch of the pump and the menus, each case runs the original and the C++
   from a real snapshot with the Toolbox imports replaced by scripted
   stand-ins, compared as the routine checker compares (the volatile scratch

@@ -18,7 +18,7 @@ add_library(cm_audio STATIC audio_bridge.mm audio_samples.cpp)
 target_include_directories(cm_audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(cm_audio PRIVATE -Wall -Wextra -Werror -Wpedantic "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 target_link_libraries(cm_audio PUBLIC "-framework AVFAudio" "-framework Foundation")
-add_library(cm_ui STATIC ui_bridge.mm native_drawing_view.mm presentation.cpp menu_resource.cpp regions.cpp cursor_resource.cpp)
+add_library(cm_ui STATIC ui_bridge.mm native_drawing_view.mm presentation.cpp menu_resource.cpp dialog_resource.cpp regions.cpp cursor_resource.cpp)
 target_compile_options(cm_ui PRIVATE -Wall -Wextra -Werror -Wpedantic -fobjc-arc)
 target_link_libraries(cm_ui PUBLIC "-framework AppKit" "-framework Carbon" "-framework CoreText")
 add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arrays.cpp cpp_object_storage_allocation.cpp code_fragment_adapter.cpp code_fragment_registration.cpp code_fragment_lookup.cpp code_fragment_metadata.cpp runtime_lifecycle_adapter.cpp runtime_lifecycle_objects.cpp runtime_lifecycle_exit.cpp runtime_lifecycle_signal.cpp file_path_adapter.cpp file_path_names.cpp file_path_specs.cpp file_path_resolution.cpp file_controller_adapter.cpp file_controller_state.cpp file_controller_streams.cpp file_controller_paths.cpp file_controller_forks.cpp file_reference_bridge.cpp unicode_bridge.cpp fork_io_bridge.cpp stream_io_adapter.cpp stream_io_characters.cpp stream_io_read.cpp stream_io_write.cpp stream_buffer_adapter.cpp stream_buffer_storage.cpp stream_buffer_transfer.cpp stream_buffer_lifecycle.cpp allocator_adapter.cpp allocator_arenas.cpp allocator_pools.cpp allocator_facades.cpp formatted_output_adapter.cpp formatted_output_format.cpp formatted_output_numbers.cpp formatted_output_float.cpp formatted_output_descriptor.cpp formatted_output_facades.cpp floating_input_adapter.cpp decimal_input_bridge.cpp character_conversion_adapter.cpp formatted_input_adapter.cpp integer_parsing_adapter.cpp memory_primitives_adapter.cpp string_core_adapter.cpp collection_lookup_adapter.cpp background_selection_adapter.cpp rng_core_adapter.cpp date_subsystem_adapter.cpp date_subsystem_audit.cpp calendar_adapter.cpp aot_runtime.cpp aot_integrity.cpp performance_trace.cpp directory_catalog.cpp floating_point.cpp decimal_bridge.cpp carbon_bridge.cpp platform.cpp native_drawing.cpp direct_commands.cpp automation.cpp guest_profiler.cpp list_search.cpp sound_bridge.cpp text_bridge.cpp process_bridge.cpp resource_bridge.cpp filesystem_bridge.cpp printing_bridge.cpp callbacks.cpp apple_events.cpp data_forks.cpp match_replay.cpp season_reference.cpp ${CM_GENERATED_SOURCES})
@@ -324,6 +324,7 @@ target_link_libraries(cm-main-program-checks PRIVATE cm_aot)
 target_compile_options(cm-main-program-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 # The registers the C++ leaves different (r0, r11, r12, CTR, the carry, and
 # r3 after a routine that returns nothing) are never read around MAIN.CPP.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME main_program_volatile_audit
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_main_program_audit.py")
 add_test(NAME main_program_fixtures
@@ -332,7 +333,14 @@ add_test(NAME main_program_fixtures
 # fatal_exit's longjmp into run()), ExitToShell. launch-menus: navigation and
 # menu keys, command-S, the wheel, the Apple menu (credits), File > Save (the
 # file dialog), then the application menu's Quit (a quit Apple event).
-foreach(session launch-quit launch-menus)
+# launch-dialog: Edit > Preferences twice (DLOG 128 through the host's Dialog
+# Manager; OK and Cancel). launch-sav, launch-cfg, launch-rgn: the game
+# launched by opening a document (an 'odoc' event): a save it loads, a .cfg
+# that becomes quick_start.cfg's AUTO_SETUP line, a .rgn whose path runs as
+# the setup script before the program stops. launch-click: an automation drag
+# on the start screen, which arrives as a click does (the window's Carbon
+# click handler, then the event queue).
+foreach(session launch-quit launch-menus launch-dialog launch-sav launch-cfg launch-rgn launch-click)
     string(REPLACE "-" "_" name "${session}")
     add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
     add_test(NAME main_program_${name}

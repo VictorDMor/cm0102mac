@@ -421,7 +421,9 @@ ImportContract import_contract(std::string_view name) {
         {"CarbonLib::PBSetForkSizeSync", {1, 0, false}},
         // The Toolbox calls MAIN.CPP makes, by their Carbon signatures (a
         // Point passed by value takes one register).
-        {"CarbonLib::AEGetParamDesc", {4, 0, false}}, {"CarbonLib::AEInstallEventHandler", {5, 0, false}},
+        {"CarbonLib::AEGetParamDesc", {4, 0, false}}, {"CarbonLib::AECountItems", {2, 0, false}},
+        {"CarbonLib::AEGetNthDesc", {5, 0, false}}, {"CarbonLib::AECoerceDesc", {3, 0, false}},
+        {"CarbonLib::AEGetDescData", {3, 0, false}}, {"CarbonLib::AEDisposeDesc", {1, 0, false}}, {"CarbonLib::AEInstallEventHandler", {5, 0, false}},
         {"CarbonLib::AEProcessAppleEvent", {1, 0, false}}, {"CarbonLib::AppendResMenu", {2, 0, false}},
         {"CarbonLib::BlockMove", {3, 0, false}}, {"CarbonLib::DisposeSpeechChannel", {1, 0, false}},
         {"CarbonLib::FSpCreateResFile", {4, 0, false}}, {"CarbonLib::FSpDirCreate", {3, 0, false}}, {"CarbonLib::FSpOpenResFile", {2, 0, false}},

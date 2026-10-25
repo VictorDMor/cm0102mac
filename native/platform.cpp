@@ -78,6 +78,25 @@ std::string read_mac_string(State& s, std::uint32_t address) {
     const auto bytes = s.memory.copy_out(address + 1, s.memory.read<1>(address));
     return convert({bytes.begin(), bytes.end()}, kCFStringEncodingMacRoman, kCFStringEncodingUTF8);
 }
+// EqualString: two Pascal strings of the same length whose MacRoman
+// characters match one by one, ignoring case and diacritics unless asked.
+bool equal_mac_strings(State& s, std::uint32_t first, std::uint32_t second, bool case_sensitive, bool diacritic_sensitive) {
+    const auto length = s.memory.read<1>(first);
+    if (length != s.memory.read<1>(second)) return false;
+    const auto options = (case_sensitive ? 0 : kCFCompareCaseInsensitive) | (diacritic_sensitive ? 0 : kCFCompareDiacriticInsensitive);
+    for (unsigned n = 1; n <= length; ++n) {
+        const UInt8 a = s.memory.read<1>(first + n), b = s.memory.read<1>(second + n);
+        if (a == b) continue;
+        if (!options) return false;
+        auto x = CFStringCreateWithBytes(nullptr, &a, 1, kCFStringEncodingMacRoman, false);
+        auto y = CFStringCreateWithBytes(nullptr, &b, 1, kCFStringEncodingMacRoman, false);
+        const bool same = x && y && CFStringCompare(x, y, options) == kCFCompareEqualTo;
+        if (x) CFRelease(x);
+        if (y) CFRelease(y);
+        if (!same) return false;
+    }
+    return true;
+}
 bool under(const fs::path& path, const fs::path& root) {
     auto a = path.begin(), b = root.begin();
     for (; b != root.end(); ++a, ++b) if (a == path.end() || *a != *b) return false;
@@ -120,7 +139,88 @@ struct NativePlatform::Impl {
     NativeAppleEvents apple_events;
     std::deque<UIEvent> pending_events;
     std::unique_ptr<Automation> automation = Automation::from_environment();
+    // A request that only observes (snapshot, memory, profile, capture),
+    // answered at any event boundary.
+    void observe(State& s, const AutomationRequest& request) {
+        using Kind = AutomationRequest::Kind;
+        std::string result;
+        try {
+            if (request.kind == Kind::snapshot) {
+                for (const auto& path : user_interface().save_window_images(automation->output("snapshots", request.name)))
+                    result += (result.empty() ? "" : " ") + path.string();
+            } else if (request.kind == Kind::profile) {
+                if (request.name.empty()) { guest_profiler::reset(1000000); guest_profiler::start(s); result = "sampling"; }
+                else if (!guest_profiler::running()) throw std::runtime_error("not sampling");
+                else {
+                    guest_profiler::stop();
+                    const auto path = automation->output("profiles", request.name + ".samples");
+                    std::filesystem::create_directories(path.parent_path());
+                    result = std::to_string(guest_profiler::write(path)) + " samples in " + path.string();
+                    guest_profiler::release();
+                }
+            } else if (request.kind == Kind::capture) {
+                // Recorded from the end of this event call; replay with cm-world-replay.
+                result = request.name.empty() ? season_session_request(std::nullopt)
+                    : season_session_request(std::filesystem::absolute(automation->output("captures", request.name)));
+            } else {
+                const auto bytes = s.memory.copy_out(request.address, request.size);
+                const auto path = automation->output("memory", request.name + ".bin");
+                std::filesystem::create_directories(path.parent_path());
+                std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+                result = path.string();
+            }
+            automation->finish(request, true, result);
+        } catch (const std::exception& failure) { automation->finish(request, false, failure.what()); }
+    }
+    std::uint32_t front_dialog = 0;  // the modal dialog ModalDialog runs
+    std::uint32_t new_dialog(State& s, std::int16_t id) {
+        const auto dialog = resource_manager().get(0x444c4f47, id, false);  // DLOG
+        if (!dialog.loaded) return 0;
+        const auto definition = parse_dialog(dialog.bytes);
+        const auto items = resource_manager().get(0x4449544c, definition.items, false);  // DITL
+        if (!items.loaded) throw std::runtime_error("Dialog references a missing DITL resource");
+        // The DialogRef: guest storage standing for the dialog record.
+        const auto token = allocate(s, 0xaa, true);
+        if (!token) return 0;
+        user_interface().create_dialog(token, definition, parse_dialog_items(items.bytes));
+        front_dialog = token;
+        return token;
+    }
+    // ModalDialog: waits for a click on an enabled item of the front dialog,
+    // or an automation `dialog N` request, which the channel offers while the
+    // dialog waits.
+    std::int16_t modal_dialog(State& s) {
+        if (!front_dialog) throw std::runtime_error("ModalDialog without a dialog");
+        CommandContext waiting;
+        waiting.ready = true;
+        waiting.identity = 0xd1a1000000000000ull | front_dialog;
+        for (;;) {
+            // Automation is offered at most every 50 ms; without it the wait is longer.
+            if (const auto item = user_interface().dialog_click(front_dialog, automation ? 0.05 : 0.5)) return item;
+            if (!automation) continue;
+            automation->enter(s.executed);
+            automation->boundary(s, waiting, "Native dialog: awaiting interaction");
+            auto request = automation->take(waiting);
+            automation->leave(s.executed);
+            if (!request) continue;
+            using Kind = AutomationRequest::Kind;
+            if (!request->input()) { observe(s, *request); continue; }
+            if (request->kind == Kind::quit) {
+                // As AppKit's would, it waits until the dialog closes.
+                pending_events.push_back({UIEvent::Kind::quit});
+                automation->finish(*request, true, "quit queued");
+                continue;
+            }
+            const bool click = request->kind == Kind::dialog;
+            if (click && user_interface().dialog_item_enabled(front_dialog, request->control)) {
+                automation->finish(*request, true, "item " + std::to_string(request->control));
+                return request->control;
+            }
+            automation->finish(*request, false, click ? "the item is not enabled" : "a dialog is open");
+        }
+    }
     std::map<std::array<std::uint8_t, 16>, UIEvent> delivered_events;
+    bool application_opened = false; // an 'oapp' or 'odoc' event was delivered
     std::uint32_t last_event_tick = 0;
     std::optional<std::uint32_t> menu_selection;
     // An automation drag, timed like a person's from when the game takes the
@@ -612,10 +712,11 @@ struct NativePlatform::Impl {
                     const auto from = original_control_rect(s, commands, request->control);
                     const auto to = original_control_rect(s, commands, request->target);
                     std::optional<LegacyRect> content;
+                    std::uint32_t game_window = 0;
                     // The game window: the one whose content is the 800 x 600 screen.
                     for (const auto window : windows) {
                         const auto bounds = user_interface().window_bounds(window, true);
-                        if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) content = bounds;
+                        if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) { content = bounds; game_window = window; }
                     }
                     if (!from || !to || !content || drag) {
                         automation->finish(*request, false, drag ? "a drag is in progress" : "control or window unavailable");
@@ -626,9 +727,14 @@ struct NativePlatform::Impl {
                         return std::int16_t((*content)[axis == 0 ? 1 : 0] + (r[axis] + r[axis + 2]) / 2);
                     };
                     drag = SyntheticDrag{centre(*from, 0), centre(*from, 1), centre(*to, 0), centre(*to, 1), *request, std::nullopt, false};
-                    UIEvent down{UIEvent::Kind::mouse_down};
-                    down.x = drag->from_x; down.y = drag->from_y; down.modifiers = 0x01;
-                    pending_events.push_back(std::move(down));
+                    // As a left click in the game window arrives: its Carbon
+                    // handlers first, then the event queue.
+                    UIEvent down{UIEvent::Kind::mouse_down, game_window};
+                    down.x = drag->from_x; down.y = drag->from_y; down.modifiers = 0x01; down.button = 1;
+                    if (!window_event(s, down)) pending_events.push_back(std::move(down));
+                } else if (request->kind == Kind::dialog) {
+                    automation->finish(*request, false, "no dialog is open");
+                    automation->boundary(s, commands, command_status);
                 } else if (request->kind == Kind::menu || request->kind == Kind::quit) {
                     // As AppKit queues them: a menu choice runs the original's
                     // menu-bar path (FindWindow, menu preparation, MenuSelect).
@@ -671,34 +777,7 @@ struct NativePlatform::Impl {
                     automation->finish(*request, true, std::to_string(request->keys.size()) + " keys queued");
                     automation->boundary(s, commands, command_status);
                 } else {
-                    std::string result;
-                    try {
-                        if (request->kind == Kind::snapshot) {
-                            for (const auto& path : user_interface().save_window_images(automation->output("snapshots", request->name)))
-                                result += (result.empty() ? "" : " ") + path.string();
-                        } else if (request->kind == Kind::profile) {
-                            if (request->name.empty()) { guest_profiler::reset(1000000); guest_profiler::start(s); result = "sampling"; }
-                            else if (!guest_profiler::running()) throw std::runtime_error("not sampling");
-                            else {
-                                guest_profiler::stop();
-                                const auto path = automation->output("profiles", request->name + ".samples");
-                                std::filesystem::create_directories(path.parent_path());
-                                result = std::to_string(guest_profiler::write(path)) + " samples in " + path.string();
-                                guest_profiler::release();
-                            }
-                        } else if (request->kind == Kind::capture) {
-                            // Recorded from the end of this event call; replay with cm-world-replay.
-                            result = request->name.empty() ? season_session_request(std::nullopt)
-                                : season_session_request(std::filesystem::absolute(automation->output("captures", request->name)));
-                        } else {
-                            const auto bytes = s.memory.copy_out(request->address, request->size);
-                            const auto path = automation->output("memory", request->name + ".bin");
-                            std::filesystem::create_directories(path.parent_path());
-                            std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
-                            result = path.string();
-                        }
-                        automation->finish(*request, true, result);
-                    } catch (const std::exception& failure) { automation->finish(*request, false, failure.what()); }
+                    observe(s, *request);
                     automation->boundary(s, commands, command_status);
                     continue;
                 }
@@ -765,8 +844,22 @@ struct NativePlatform::Impl {
             command_cache.reset();
             return false;
         }
-        if (found->kind == UIEvent::Kind::open_files)
-            throw std::runtime_error("Open-document events require file descriptor marshalling");
+        if (found->kind == UIEvent::Kind::open_files) {
+            // Only documents the game may reach become an open-documents
+            // event; with none left, a launch still opens the application.
+            std::erase_if(found->files, [&](const fs::path& file) {
+                std::error_code error;
+                try {
+                    if (fs::is_regular_file(allowed(file), error)) return false;
+                } catch (const FileError&) {}
+                std::fprintf(stderr, "Document not opened (not a file in the game's folders): %s\n", file.c_str());
+                return true;
+            });
+            if (found->files.empty()) {
+                if (application_opened) { pending_events.erase(found); return false; }
+                found->kind = UIEvent::Kind::launch;
+            }
+        }
         if (found->kind == UIEvent::Kind::menu) {
             // AppKit has already selected by identity. Let the original event
             // loop run FindWindow -> menu preparation -> MenuSelect -> handler.
@@ -774,10 +867,14 @@ struct NativePlatform::Impl {
             menu_selection = found->message;
             s.memory.write<2>(address, 1);
             s.memory.write<4>(address + 10, 0x80008000);
-        } else if (found->kind == UIEvent::Kind::launch || found->kind == UIEvent::Kind::quit) {
+        } else if (found->kind == UIEvent::Kind::launch || found->kind == UIEvent::Kind::quit ||
+                   found->kind == UIEvent::Kind::open_files) {
             if (found->kind == UIEvent::Kind::quit && commands.root)
                 delivered_command_action = {commands.root, 1026};
-            const auto id = found->kind == UIEvent::Kind::launch ? 0x6f617070u : 0x71756974u;
+            if (found->kind != UIEvent::Kind::quit) application_opened = true;
+            const auto id = found->kind == UIEvent::Kind::launch ? 0x6f617070u   // 'oapp'
+                : found->kind == UIEvent::Kind::open_files ? 0x6f646f63u          // 'odoc'
+                : 0x71756974u;                                                   // 'quit'
             s.memory.write<2>(address, 23);
             s.memory.write<4>(address + 2, 0x61657674);
             last_event_tick = std::max(tick, last_event_tick + 1);
@@ -822,14 +919,34 @@ struct NativePlatform::Impl {
         const auto handler = apple_handlers.find({0x61657674, id});
         if (handler == apple_handlers.end()) { delivered_events.erase(found); return std::uint32_t(-1708); }
         NativeAEDescriptor descriptor;
-        const auto error = apple_events.application_event(id, descriptor);
+        std::int32_t error = 0;
+        if (found->second.kind == UIEvent::Kind::open_files) {
+            // Each document as the FSSpec the guest's file calls resolve.
+            std::vector<std::vector<std::uint8_t>> specs;
+            const auto spec = allocate(s, 70, true);
+            if (!spec) return std::uint32_t(-108);
+            // A name the original cannot hold (over 63 MacRoman bytes) is
+            // left out; the handler still runs, so the game still starts.
+            for (const auto& file : found->second.files) {
+                try {
+                    write_spec(s, spec, file);
+                    specs.push_back(s.memory.copy_out(spec, 70));
+                } catch (const FileError&) {
+                    std::fprintf(stderr, "Document not opened (its name has no FSSpec): %s\n", file.c_str());
+                }
+            }
+            deallocate(s, spec);
+            error = apple_events.open_documents_event(specs, descriptor);
+        } else {
+            error = apple_events.application_event(id, descriptor);
+        }
+        delivered_events.erase(found);  // delivered once, whatever happens next
         if (error) return std::uint32_t(error);
         const auto arguments = allocate(s, 16, true);
         if (!arguments) { apple_events.dispose(descriptor); return std::uint32_t(-108); }
         s.memory.write<4>(arguments, descriptor.type);
         s.memory.write<4>(arguments + 4, descriptor.token);
         s.memory.write<4>(arguments + 8, 0x6e756c6c); // A null reply descriptor.
-        delivered_events.erase(found);
         try {
             const std::array<std::uint32_t, 3> callback_arguments{arguments, arguments + 8, handler->second.reference};
             const auto result = call_original(s, handler->second.routine, callback_arguments);
@@ -1568,6 +1685,21 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             const auto token = impl_->next_window_handler++;
             impl_->window_handlers.emplace(token, std::move(handler));
             if (arg(5)) s.memory.write<4>(arg(5), token);
+        } else if (name == "CarbonLib::GetNewDialog") {
+            if (arg(1)) throw std::runtime_error("Dialog storage supplied by the original is unsupported");
+            return_value = impl_->new_dialog(s, std::int16_t(arg(0)));
+        } else if (name == "CarbonLib::GetDialogWindow") {
+            return_value = arg(0);  // the dialog is its own window
+        } else if (name == "CarbonLib::ModalDialog") {
+            if (arg(0)) throw std::runtime_error("ModalDialog filter procedures are unsupported");
+            s.memory.write<2>(arg(1), std::uint16_t(impl_->modal_dialog(s)));
+        } else if (name == "CarbonLib::DisposeDialog") {
+            if (!impl_->user_interface().is_dialog(arg(0))) throw std::runtime_error("DisposeDialog of something not a dialog");
+            impl_->user_interface().dispose_dialog(arg(0));
+            if (impl_->front_dialog == arg(0)) impl_->front_dialog = 0;
+            deallocate(s, arg(0));
+        } else if (name == "CarbonLib::ShowWindow" && impl_->user_interface().is_dialog(arg(0))) {
+            impl_->user_interface().show_dialog(arg(0));
         } else if (name == "CarbonLib::ShowWindow" || name == "CarbonLib::BringToFront" || name == "CarbonLib::SelectWindow") {
             impl_->user_interface().show_window(arg(0), name == "CarbonLib::SelectWindow");
             impl_->paint_events(s);
@@ -1722,6 +1854,42 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
                 name == "CarbonLib::WaitNextEvent" ? arg(3) : 0);
         } else if (name == "CarbonLib::AEProcessAppleEvent") {
             return_value = impl_->process_event(s, arg(0));
+        } else if (name == "CarbonLib::AEGetParamDesc" || name == "CarbonLib::AECountItems" ||
+                   name == "CarbonLib::AEGetNthDesc" || name == "CarbonLib::AECoerceDesc" ||
+                   name == "CarbonLib::AEGetDescData") {
+            // Guest descriptors are {type, token} pairs naming native ones.
+            const auto descriptor = [&](std::uint32_t address) {
+                return NativeAEDescriptor{std::uint32_t(s.memory.read<4>(address)), std::uint32_t(s.memory.read<4>(address + 4))};
+            };
+            const auto put = [&](std::uint32_t address, NativeAEDescriptor result) {
+                s.memory.write<4>(address, result.token ? result.type : 0x6e756c6c);
+                s.memory.write<4>(address + 4, result.token);
+            };
+            NativeAEDescriptor result;
+            std::int32_t error = 0;
+            if (name == "CarbonLib::AEGetParamDesc") {
+                error = impl_->apple_events.parameter(descriptor(arg(0)), arg(1), arg(2), result);
+                put(arg(3), result);
+            } else if (name == "CarbonLib::AECountItems") {
+                std::int32_t items = 0;
+                error = impl_->apple_events.count(descriptor(arg(0)), items);
+                s.memory.write<4>(arg(1), std::uint32_t(items));
+            } else if (name == "CarbonLib::AEGetNthDesc") {
+                std::uint32_t keyword = 0;
+                error = impl_->apple_events.nth(descriptor(arg(0)), std::int32_t(arg(1)), arg(2), keyword, result);
+                if (arg(3)) s.memory.write<4>(arg(3), keyword);
+                put(arg(4), result);
+            } else if (name == "CarbonLib::AECoerceDesc") {
+                error = impl_->apple_events.coerce(descriptor(arg(0)), arg(1), result);
+                put(arg(2), result);
+            } else {
+                std::vector<std::uint8_t> bytes;
+                error = impl_->apple_events.data(descriptor(arg(0)), arg(2), bytes);
+                if (!error && !bytes.empty()) s.memory.copy_in(arg(1), bytes);
+            }
+            return_value = std::uint32_t(error);
+        } else if (name == "CarbonLib::EqualString") {
+            return_value = equal_mac_strings(s, arg(0), arg(1), arg(2) & 0xff, arg(3) & 0xff) ? 1u : 0u;
         } else if (name == "CarbonLib::AEDisposeDesc") {
             const NativeAEDescriptor descriptor{std::uint32_t(s.memory.read<4>(arg(0))), std::uint32_t(s.memory.read<4>(arg(0) + 4))};
             return_value = std::uint32_t(impl_->apple_events.dispose(descriptor));

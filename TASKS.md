@@ -94,7 +94,32 @@ end states, suite passing, reviewed commit.
       together on 15 captures), 0 differ.
 - [x] DLOG 128 is the Preferences dialog (sound, speech), not an About box:
       routine renamed preferences_dialog; the original reads none of its
-      controls. Checked by fixtures only: the host has no Dialog Manager.
+      controls.
+- [x] Host Dialog Manager (2026-10-25): GetNewDialog/ModalDialog/DisposeDialog
+      over DLOG/DITL as an AppKit panel; automation `dialog N`. Capture
+      launch-dialog (Edit > Preferences twice, OK and Cancel).
+- [x] Finder document opens (2026-10-25): one 'odoc' event with a real AE list
+      of FSSpecs (AEGetParamDesc, AECountItems, AEGetNthDesc, AECoerceDesc,
+      AEGetDescData), no 'oapp' after a launch with documents; EqualString
+      bridged. `game_driver.py launch --open DOC`. Captures launch-sav (loads
+      the save at start), launch-cfg (quick start, then exits), launch-rgn
+      (setup script, then exits). Host checks in cm-platform-checks.
+- [x] Calls into the rest of the program typed too (`Program`: the game, its
+      settings, the C library); no raw guest calls left in the routines.
+- [x] Automation drags arrive as clicks do (the window's Carbon click handler,
+      then the event queue); capture launch-click reaches click_event.
+- [x] Checks on the final code: 900 capture runs (each routine alone and all
+      together on 20 captures), 0 differ, 40 of 44 routines reached;
+      fixtures 609/609; suite: known match_debugger_actual_lineup only (114).
+- [ ] Not verified live: an automation drag in the tactics screen after the
+      drag change (no driver path to that screen; the start-screen drag is).
+- [ ] Still fixture-only: speech (the host answers Gestalt('ttsc') with no
+      Speech Manager; enabling it is a product decision), print_documents
+      ('pdoc' is never sent), fatal_exit's exit() before the game started,
+      and three no capture reaches: nothing() (called from a game routine at
+      0x102a67b0/0x102a6a74, not traced), debug_menu (menu 4) and
+      activate_event (an empty routine). print_documents (0x10770c90) is
+      the fourth routine never reached.
 - [x] Real game: load a copy of the reference career, Continue (a week),
       save over it, quit through the game, relaunch, load: day 17 of 2002.
 - [x] Suite: known match_debugger_actual_lineup only (106 tests).

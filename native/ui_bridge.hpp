@@ -6,6 +6,7 @@
 #include <vector>
 #include <optional>
 #include "menu_resource.hpp"
+#include "dialog_resource.hpp"
 #include "regions.hpp"
 #include "cursor_resource.hpp"
 #include "presentation.hpp"
@@ -82,6 +83,16 @@ public:
     double presentation_scale() const;
     std::vector<NativeDisplay> displays() const;
     std::vector<LegacyRect> desktop_rectangles() const;
+    // A modal dialog (Dialog Manager): its items as AppKit controls. As in
+    // the Dialog Manager, a click reports the item and changes no control's
+    // value (the application does that).
+    void create_dialog(std::uint32_t token, const DialogDefinition& dialog, const std::vector<DialogItem>& items);
+    bool is_dialog(std::uint32_t token) const;
+    void show_dialog(std::uint32_t token);
+    // Waits up to `timeout_seconds` for a click on an enabled item: its number, or 0.
+    std::int16_t dialog_click(std::uint32_t token, double timeout_seconds);
+    bool dialog_item_enabled(std::uint32_t token, std::int16_t item) const;
+    void dispose_dialog(std::uint32_t token);
     void create_window(std::uint32_t token, std::uint32_t kind, std::uint32_t attributes, const LegacyRect& bounds);
     void dispose_window(std::uint32_t token);
     void show_window(std::uint32_t token, bool activate);

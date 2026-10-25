@@ -11,6 +11,7 @@ namespace {
 void main_loop(Cpu& c, const Frame& frame) {
     Globals g{c};
     Toolbox os{c, frame};
+    Program program{c};
     c.set(31, c.r(3));  // the result run() returns
     if (const std::uint32_t text = g.setup_text(); nonzero_logical(c, text)) {
         // Documents dropped on the application before it started: run their
@@ -24,8 +25,7 @@ void main_loop(Cpu& c, const Frame& frame) {
         g.running() = 0;
     }
     while (nonzero(c, g.running())) {
-        c.call(0x10118ec0, 0x1076f3b0);  // the game's step: false when the game ends
-        g.running() = std::int8_t(c.r(3));
+        g.running() = program.step(0x1076f3b0);
         c.link(0x1076f3b8);
         pump_events(c);
     }
@@ -43,6 +43,7 @@ std::uint32_t run(Cpu& c) {
     Frame frame(c, 0x1076f2e0, 0x70, {.first_gpr = 29});
     Globals g{c};
     Toolbox os{c, frame};
+    Program program{c};
     const auto pool = c.toc(slot::pool);
     // The original keeps the message buffer, the pool and its result in
     // r29-r31 through the whole run.
@@ -57,23 +58,19 @@ std::uint32_t run(Cpu& c) {
     set_up_menus(c);
     c.link(0x1076f320);
     find_folders(c);
-    c.set(3, c.toc(slot::settings));
-    c.call(0x1074c9a0, 0x1076f328);  // loads the settings
+    program.load_settings(c.toc(slot::settings), 0x1076f328);
     // The game starts once the open-application (or open-documents) event came.
     while (!nonzero(c, g.opened())) {
         c.link(0x1076f330);
         poll_high_level_events(c);
     }
-    c.set(3, g.command_line());
-    c.call(0x10118ef0, 0x1076f344);  // starts the game with the arguments
-    if (nonzero(c, std::int8_t(c.r(3)))) {
+    if (nonzero(c, program.start_game(g.command_line(), 0x1076f344))) {
         if (const std::uint32_t line = g.command_line(); nonzero_logical(c, line)) {
             os.DisposePtr(line, 0x1076f35c);
             g.command_line() = 0;
         }
-        c.call(0x10747080, 0x1076f36c);
-        c.set(3, c.toc(slot::jump_buffer));
-        c.call(0x10773eb0, 0x1076f374);  // setjmp
+        program.flush_input(0x1076f36c);
+        program.setjmp(c.toc(slot::jump_buffer), 0x1076f374);
         // fatal_exit()'s longjmp lands at 0x1076f374 in this frame; the
         // transfer runtime would resume the generated body there, so the
         // C++ takes it instead and goes on as the original does.
@@ -140,6 +137,7 @@ void install_handlers(Cpu& c) {
 void initialize(Cpu& c) {
     Frame frame(c, 0x1076f600, 0x3d0, {.first_gpr = 29});
     Toolbox os{c, frame};
+    Program program{c};
     Globals g{c};
     Shared shared{c};
     const FSSpec application{c, c.toc(slot::application)};
@@ -150,14 +148,14 @@ void initialize(Cpu& c) {
     shared.foreground() = 1;
     g.mouse_region() = os.NewRgn(0x1076f640);
     shared.right_button_modifiers() = modifier::command | 0x200 | modifier::option;  // shift too
-    c.call(0x1074dbf0, 0x1076f658);  // the speech preference
-    shared.speech_wanted() = std::int8_t(c.r(3));
+    shared.speech_wanted() = program.option_key_down(0x1076f658);  // speech is on when option is held at launch
     g.speech_channel() = 0;
     g.setup_text() = 0;
-    c.set({{3, frame.at(0x1b4)}, {4, 1}, {5, 1}, {6, shared.speech_wanted().address()}});
-    c.call(0x1074d770, 0x1076f67c);
-    c.set({{3, c.toc(slot::settings_name)}, {4, frame.at(0x1bd)}});
-    c.call(0x1074c610, 0x1076f688);
+    // The application's version ('vers' 1): its short version string names
+    // the settings.
+    c.set(6, shared.speech_wanted().address());  // left in r6 from the store above
+    program.read_version(frame.at(0x1b4), 1, true, 0x1076f67c);
+    program.copy_to_c(c.toc(slot::settings_name), frame.at(0x1bd), 0x1076f688);
     const auto line = os.NewPtr(0x400, 0x1076f690);
     const bool allocated = nonzero_logical(c, line);
     g.command_line() = line;
@@ -165,8 +163,7 @@ void initialize(Cpu& c) {
     // The name of the volume the application is on: an indexed PBHGetVInfo
     // (ioVolIndex +0x1c, ioNamePtr +0x12, ioVRefNum +0x16) until it matches.
     const auto block = frame.at(0x38), name = frame.at(0xb4);
-    c.set({{3, block}, {4, 0}, {5, 0x7a}});
-    c.call(0x10778300, 0x1076f6b8);  // memset
+    program.memset(block, 0, 0x7a, 0x1076f6b8);
     c.set(31, name);
     for (std::int16_t index = 0;; ++index) {
         c.put16(block + 0x1c, std::uint32_t(index));
@@ -174,8 +171,7 @@ void initialize(Cpu& c) {
         c.set(29, std::uint32_t(index + 1));
         if (nonzero(c, os.PBHGetVInfoSync(block, 0x1076f6d4))) break;
         if (compare(c, c.i16(block + 0x16), application.volume()) == 0) {
-            c.set({{3, c.toc(slot::volume_name)}, {4, name}});
-            c.call(0x1074c610, 0x1076f6fc);
+            program.copy_to_c(c.toc(slot::volume_name), name, 0x1076f6fc);
             break;
         }
     }
@@ -185,14 +181,14 @@ void initialize(Cpu& c) {
 void shut_down(Cpu& c) {
     Frame frame(c, 0x1076f730, 0x40, {});
     Toolbox os{c, frame};
+    Program program{c};
     Globals g{c};
     const auto started = Shared{c}.game_started();
-    c.set(3, started.address());
-    if (nonzero(c, started)) c.call(0x10118fe0, 0x1076f750);  // ends the game
+    c.set(3, started.address());  // left in r3 either way
+    if (nonzero(c, started)) program.end_game(started.address(), 0x1076f750);
     c.link(0x1076f754);
     stop_speech(c);
-    c.set(3, c.toc(slot::settings));
-    c.call(0x1074ca50, 0x1076f75c);  // saves the settings
+    program.save_settings(c.toc(slot::settings), 0x1076f75c);
     if (const std::uint32_t region = g.mouse_region(); nonzero_logical(c, region)) os.DisposeRgn(region, 0x1076f76c);
 }
 
@@ -204,24 +200,22 @@ void stop_speech(Cpu& c) {
 void fatal_exit(Cpu& c, std::uint32_t code) {
     Frame frame(c, 0x1076f7d0, 0x40, {.first_gpr = 31});
     Toolbox os{c, frame};
+    Program program{c};
     Globals g{c};
     const auto started = Shared{c}.game_started();
     c.set({{4, started.address()}, {31, code}, {3, std::uint8_t(started)}});
     if (nonzero(c, started)) {
         // Back to run(), which shuts down; longjmp does not return.
         g.running() = 0;
-        c.set({{3, c.toc(slot::jump_buffer)}, {4, code}});
-        c.call(0x10773f30, 0x1076f808);
+        program.longjmp(c.toc(slot::jump_buffer), code, 0x1076f808);
         return;
     }
     // The original tests the clear flag once more before ending the game.
-    if (nonzero(c, started)) c.call(0x10118fe0, 0x1076f818);
+    if (nonzero(c, started)) program.end_game(c.r(3), 0x1076f818);
     release_speech(c, frame, 0x1076f828, 0x1076f83c);
-    c.set(3, c.toc(slot::settings));
-    c.call(0x1074ca50, 0x1076f850);  // saves the settings
+    program.save_settings(c.toc(slot::settings), 0x1076f850);
     if (const std::uint32_t region = g.mouse_region(); nonzero_logical(c, region)) os.DisposeRgn(region, 0x1076f860);
-    c.set(3, code);
-    c.call(0x10773ff0, 0x1076f86c);  // exit: does not return
+    program.exit(code, 0x1076f86c);  // does not return
 }
 
 void nothing(Cpu&) {}
@@ -254,6 +248,7 @@ void set_up_menus(Cpu& c) {
 void remember_menu_texts(Cpu& c) {
     Frame frame(c, 0x1076f960, 0x260, {.first_gpr = 25});
     Toolbox os{c, frame};
+    Program program{c};
     const auto texts = c.toc(slot::menu_texts), pascal = frame.at(0x138), copy = frame.at(0x38);
     // The original keeps the count in r25, the menu in r26, its items in
     // r27, the item in r28, the menu id in r29, the array in r30 and the
@@ -269,12 +264,10 @@ void remember_menu_texts(Cpu& c) {
         c.set(27, extended(items));
         for (std::int16_t item = 1; c.set(28, extended(item)), compare(c, item, items) <= 0; ++item) {
             os.GetMenuItemText(menu, item, pascal, 0x1076f9b0);
-            c.set({{3, copy}, {4, pascal}});
-            c.call(0x1074c610, 0x1076f9c0);  // to a C string
-            c.set(3, copy);
-            c.call(0x107395f0, 0x1076f9c8);  // a copy of it
+            program.copy_to_c(copy, pascal, 0x1076f9c0);
+            const auto kept_text = program.duplicate(copy, 0x1076f9c8);
             c.set(25, ++kept);
-            c.put32(texts + offset, c.r(3));
+            c.put32(texts + offset, kept_text);
             const bool full = compare(c, std::int32_t(kept), 50) == 0;
             c.set(31, offset += 4);
             if (full) return;
@@ -285,6 +278,7 @@ void remember_menu_texts(Cpu& c) {
 void localize_menus(Cpu& c) {
     Frame frame(c, 0x1076fa20, 0x260, {.first_gpr = 23});
     Toolbox os{c, frame};
+    Program program{c};
     const auto texts = c.toc(slot::menu_texts), localized = frame.at(0x38), pascal = frame.at(0x138);
     // The next remembered text, by offset; it advances only past items that
     // have one. An item without one stops the walk: the later items all read
@@ -305,10 +299,8 @@ void localize_menus(Cpu& c) {
             if (!nonzero_logical(c, text)) continue;
             offset += 4;
             c.set({{27, offset}, {28, c.r(28) + 4}, {31, c.r(31) + 4}, {30, offset}});
-            c.set({{3, localized}, {4, text}});
-            c.call(0x10727890, 0x1076fa90);  // the text in the game's language
-            c.set({{3, pascal}, {4, localized}});
-            c.call(0x1074c5d0, 0x1076fa9c);  // to a Pascal string
+            program.localize(localized, text, 0x1076fa90);
+            program.copy_to_pascal(pascal, localized, 0x1076fa9c);
             os.SetMenuItemText(menu, item, pascal, 0x1076faac);
         }
     }
@@ -317,6 +309,7 @@ void localize_menus(Cpu& c) {
 void find_folders(Cpu& c) {
     Frame frame(c, 0x1076faf0, 0x400, {.first_gpr = 20});
     Toolbox os{c, frame};
+    Program program{c};
     Shared shared{c};
     const FSSpec application{c, c.toc(slot::application)}, spec{c, frame.at(0x88)};
     const auto pool = c.toc(slot::pool), name = frame.at(0x2d0);
@@ -351,8 +344,7 @@ void find_folders(Cpu& c) {
         os.GetIndString(path, 1000, 3, 0x1076fc0c);
         for (const auto& [part, back] : std::array<std::pair<std::uint32_t, std::uint32_t>, 3>{
                  {{pool + text::colon, 0x1076fc1c}, {name, 0x1076fc28}, {pool + text::colon, 0x1076fc34}}}) {
-            c.set({{3, path}, {4, part}});
-            c.call(0x1074c690, back);  // appends a Pascal string
+            program.append_pascal(path, part, back);
         }
         const FSSpec root{c, frame.at(0x40)};
         error = os.FSMakeFSSpec(0, 0, path, root, 0x1076fc48);
@@ -368,9 +360,7 @@ void find_folders(Cpu& c) {
     if (!nonzero(c, error)) {
         error = os.ResolveAliasFile(spec, true, frame.at(0x39), frame.at(0x38), 0x1076fd18);
         if (!nonzero(c, error)) {
-            c.set({{4, shared.data_directory().address()}, {3, spec.address}});
-            c.call(0x1074d4c0, 0x1076fd30);  // the folder's directory id
-            error = std::int16_t(c.r(3));
+            error = program.directory_id(spec, shared.data_directory().address(), 0x1076fd30);
             shared.data_volume() = spec.volume().get();
         }
     }
@@ -381,12 +371,8 @@ void find_folders(Cpu& c) {
 
     // The application's Finder comment holds the game's start-up arguments.
     const auto comment = frame.at(0xd0);
-    c.set({{3, application.address}, {4, comment}});
-    c.call(0x1076f080, 0x1076fd5c);
-    if (!nonzero(c, std::int16_t(c.r(3)))) {
-        c.set({{3, Globals{c}.command_line()}, {4, comment}});
-        c.call(0x1074c610, 0x1076fd70);
-    }
+    if (!nonzero(c, program.finder_comment(application, comment, 0x1076fd5c)))
+        program.copy_to_c(Globals{c}.command_line(), comment, 0x1076fd70);
 }
 
 void install_window_handlers(Cpu& c) {
