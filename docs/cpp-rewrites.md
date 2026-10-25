@@ -191,3 +191,40 @@ Three things it needed:
   Under `--check-routines --only`, MAIN.CPP
   routines left out run their originals, so a nested routine is checked at
   every call from the original's callers.
+
+## PLAYER_STATS.CPP: season records, histories, the stats screens
+
+`PLAYER_STATS.CPP` (36 routines, 8,759 instructions, 0x10301540-0x10309ee0;
+`tools/player_stats_audit.py`, `native/player_stats_*`) is the third
+subsystem, written in six groups (relations, queries, text, records, daily,
+files) with one routine list per group (`player_stats_routines_<group>.inc`)
+and the shared views in `player_stats_detail.hpp`. What it added:
+
+- **Finding a module's bounds.** The assert's file name lives in the
+  module's string pool; the TOC slot pointing at the pool is loaded only by
+  the module's code, so the first and last routines loading it (and the next
+  module's first routine loading its own pool) bound it. Entries are every
+  `bl` target and transition-vector target inside; TOC words pointing into
+  the code are often jump-table case labels, not routines.
+- **guest_values.hpp** holds MAIN.CPP's typed values (Field, Kept, enter,
+  leave, compare...), shared now; **guest_fpu.hpp** computes each PowerPC FP
+  operation and its FPSCR bits exactly as the export's p-code does (fsub and
+  fsubs do not fold FI into XX; divisions set ZX and VXZDZ; multiply-adds
+  round once).
+- **A census misses same-page calls.** `--census` counts dispatches, and a
+  generated page reaches a routine on the same page without the dispatcher
+  (0x10305700 -> 0x10305c60), so a routine can be reached where the census
+  shows none. A direct C++ call from a hooked caller makes the checker see it.
+- **Callbacks.** The sort comparators return through the pointer glue
+  (0x10781320) into qsort and bsearch; the volatile audit also scans after
+  those glue calls (CALLBACK_SITES).
+- **CR at calls.** Following each external callee six calls deep, the only
+  instruction that reads condition-register fields before writing them is
+  the exception runtime's context save (mfcr at 0x10772d28), reached only
+  when something throws; so CR is reproduced at returns only.
+- **Captures** in `.local/benchmarks/ui`: ps-profile and ps-profile2 (a
+  player's profile and Historial screens, column arrows), ps-newgame (a new
+  game, Scotland: the real-world history import, ~40 s creation, 367 MB).
+  Match-actor construction's branch into 0x103058f0/0x10305ae0 was not
+  reached by a real match start, and 0x10309cc0 (the transfer-rule
+  predicates) by none; those three are checked by synthetic calls.

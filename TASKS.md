@@ -51,6 +51,47 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
 
+## Done: PLAYER_STATS.CPP in C++23 (goal set 2026-10-25)
+
+Finish line: every routine of the original's `PLAYER_STATS.CPP` (0x10301540-
+0x10309ee0, 36 routines, 8,759 instructions; `tools/player_stats_audit.py`)
+runs as hand-written C++ in production, each checked against the generated
+reference on captured calls (synthetic calls where no capture reaches),
+replays reaching their end states, suite passing, reviewed commit, and one
+save/reload on a career copy.
+
+- [x] All 36 hooked (PLAYER_STATS_ROUTINE), six groups (relations, queries,
+      text, records, daily, files); cross-group calls are direct C++.
+- [x] Checks, all 36 together on 12 captures (season-day, daily-transition,
+      ps-profile, ps-profile2, ps-newgame, drag-pitch, tactics-views,
+      tactics-continue, game-load, game-save2, launch-sav, launch-restart):
+      0 differ; corrupted runs caught. ps-newgame: the constructor's whole
+      new-game import matches.
+- [x] Captures ps-profile, ps-profile2, ps-newgame (.local/benchmarks/ui);
+      ctests player_stats_*, ui_replay_ps_*.
+- [ ] Only synthetic calls reach 0x103058f0 and 0x10305ae0 (match-actor
+      construction's "ordinary eligibility" branch: a real Cruzeiro match
+      start ran 0x10223ac0 1,440 times, never that branch) and 0x10309cc0
+      (transfer-rule predicates 0x106ff490/0x106ff4f0; neither a new game nor
+      a week reaches them). Error paths (assertion alerts, allocation
+      failures, old-save conversion in load_stats) are compared only up to
+      the alert, or not at all.
+- [x] Volatile audit (ctest player_stats_volatile_audit): no reads of r0,
+      r11, r12, CTR, the carry, f0, f2-f13, or r3 after the NONE/F1
+      routines, around the module or after the comparators' callbacks.
+- [x] CR at calls: only the exception throw's context save reads it.
+- [x] Timing, neutral (the module is <1% of a day): season day 5 pairs,
+      original 18.998 s mean vs C++ 19.140 s (2/5 faster); new game 3 pairs,
+      54.4 vs 53.5 s (mixed).
+- [x] Save/reload: Reading career copy, Continue 3 days, save over it,
+      quit, relaunch, load: 25 Aug 2001 intact.
+- [ ] Speed lead: the comparator runs 26M times a day (906M in a new game)
+      through bsearch/qsort's pointer glue and the dispatcher; a C++ bsearch
+      calling it directly is the next step if the module ever shows in a
+      profile. The adapter's per-call table lookup was not measured apart.
+- [ ] Unconfirmed names (marked in the code): Person::joined, adaptability,
+      CareerRow status/other_club, Match::rated, the history import flags.
+
 ## Done: MAIN.CPP in C++23 (goal set 2026-10-24, accepted by Victor 2026-10-25)
 
 Finish line: every routine of the original's `MAIN.CPP` (0x1076f2b0-0x10771110,

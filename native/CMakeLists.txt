@@ -70,6 +70,10 @@ target_sources(cm_aot PRIVATE routine_check.cpp ${CM_TACTICS_SOURCES})
 file(GLOB CM_MAIN_PROGRAM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/main_program*.cpp")
 list(FILTER CM_MAIN_PROGRAM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
+# The original's PLAYER_STATS.CPP in C++ (player_stats_routines.inc): every player_stats*.cpp.
+file(GLOB CM_PLAYER_STATS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/player_stats*.cpp")
+list(FILTER CM_PLAYER_STATS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_PLAYER_STATS_SOURCES})
 target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
@@ -330,6 +334,10 @@ add_test(NAME main_program_volatile_audit
 # With the installed original (read only): MBAR 1, the only menu bar, holds
 # menus 1-3, so debug_menu (menu 4) is unreachable.
 set_tests_properties(main_program_volatile_audit PROPERTIES ENVIRONMENT "CM_MAIN_PROGRAM_GAME=${CM_MATCH_DEBUGGER_GAME_DIR}")
+# Likewise around PLAYER_STATS.CPP (player_stats_routines.inc), its
+# comparators' returns into qsort and bsearch included.
+add_test(NAME player_stats_volatile_audit
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_player_stats_audit.py")
 add_test(NAME main_program_fixtures
          COMMAND cm-main-program-checks "${CM_BENCHMARK_DIR}/ui/game-load/initial.snapshot")
 # launch-quit: start-up, the start screen, Sair Jogo, Sim (which leaves through
@@ -356,6 +364,28 @@ endforeach()
 add_test(NAME main_program_detect_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/launch-quit" 1 --check-routines-corrupted 400 200 --only 0x1076fe80)
 set_tests_properties(main_program_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
+# The C++ PLAYER_STATS.CPP routines (player_stats_routines.inc) against their
+# generated originals. ps-profile, ps-profile2: a player's profile and
+# Historial screens (the value texts, the career table); ps-newgame: a new
+# game (Scotland), the constructor's real-world history import and the
+# relations it seeds. The 26-country day covers the match-day updates and the
+# engine's queries (tactics_routines_day checks every family).
+# ps-newgame runs ~1G comparator calls: its check takes the first 20 calls of
+# each routine (the constructor's one call included, so the whole import).
+foreach(session ps-profile ps-profile2 ps-newgame)
+    string(REPLACE "-" "_" name "${session}")
+    add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
+    if(session STREQUAL "ps-newgame")
+        set(sampling 20 1000000)
+    else()
+        set(sampling 400 2000)
+    endif()
+    add_test(NAME player_stats_${name}
+             COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}" 1 --check-routines ${sampling})
+endforeach()
+add_test(NAME player_stats_detect_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/ps-profile" 1 --check-routines-corrupted 400 200 --only 0x10304190)
+set_tests_properties(player_stats_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
 add_test(NAME tactics_routines_ui
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-players" 1 --check-routines 200 50)
 # Generated pages must isolate every instruction that host code or checks

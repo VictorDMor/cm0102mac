@@ -1,0 +1,10 @@
+// PLAYER_STATS.CPP: the players' relations to affinity groups, the history rows' merge, and the sort comparators (player_stats_relations.hpp).
+PLAYER_STATS_ROUTINE(0x103092f0, 0x103094b0, R3, "56e8c12b9294152e", [](Cpu& c) { c.set(3, player_stats::affinity(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })
+PLAYER_STATS_ROUTINE(0x103094b0, 0x10309680, R3, "a59d4e643d8ca07c", [](Cpu& c) { c.set(3, player_stats::group_score(c, c.r(4), c.r(5))); })
+PLAYER_STATS_ROUTINE(0x10309680, 0x10309850, NONE, "9dba7cd82be4910a", [](Cpu& c) { player_stats::add_relation(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
+PLAYER_STATS_ROUTINE(0x10309850, 0x10309940, NONE, "68beb8efaf9ba378", [](Cpu& c) { player_stats::remove_relation(c, c.r(3), c.r(4), c.r(5)); })
+PLAYER_STATS_ROUTINE(0x10309940, 0x10309a00, NONE, "f066aa2e28170c2f", [](Cpu& c) { player_stats::add_to_relation(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
+PLAYER_STATS_ROUTINE(0x10309a00, 0x10309a70, R3, "8b4e2cc29431988e", [](Cpu& c) { c.set(3, player_stats::compare_relations(c, c.r(3), c.r(4))); })
+PLAYER_STATS_ROUTINE(0x10309a70, 0x10309ae0, R3, "871d63782563937b", [](Cpu& c) { c.set(3, player_stats::compare_history_by_club(c, c.r(3), c.r(4))); })
+PLAYER_STATS_ROUTINE(0x10309ae0, 0x10309b60, R3, "470a9fe779dbbcb8", [](Cpu& c) { c.set(3, player_stats::compare_history_by_player(c, c.r(3), c.r(4))); })
+PLAYER_STATS_ROUTINE(0x10309b60, 0x10309cc0, NONE, "8cc8ab07a5a6e3e4", [](Cpu& c) { player_stats::merge_history_rows(c); })

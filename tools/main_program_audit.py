@@ -135,38 +135,44 @@ def read_before_write(records, start, register, calls=2):
     return None
 
 
-def volatile_reads(db, routines_inc=INCLUDES):
-    """Where the code around MAIN.CPP reads a register its C++ leaves
-    different: after each call of a MAIN.CPP routine (r0, r11, r12, CTR and
-    the carry; r3 too for those that return nothing) and at the entry of
-    each routine MAIN.CPP calls (the scratch registers). Empty when the C++
-    may leave them as it likes."""
+def module_volatile_reads(db, routines, module, results, scratch=SCRATCH):
+    """Where the code around a rewritten module reads a register its C++
+    leaves different: after each call of one of its routines (r0, r11, r12,
+    CTR and the carry; r3 too for those that return nothing, `results` maps
+    entry -> "NONE" or "R3") and at the entry of each routine the module
+    calls (the scratch registers). Empty when the C++ may leave them as it
+    likes. `scratch` names the registers (default SCRATCH)."""
     records = {}
     for address, body in db.execute("SELECT address, body FROM instructions"):
         records[address] = json.loads(body)
-    results = dict((int(entry, 16), kind) for entry, kind in
-                   re.findall(r'MAIN_ROUTINE\((0x[0-9a-f]+), 0x[0-9a-f]+, (NONE|R3)', routines_inc.read_text()))
-    entries = {entry for entry, _ in ROUTINES}
-    low, high = MODULE
+    entries = {entry for entry, _ in routines}
+    low, high = module
     found = []
     for address, record in records.items():
         if record.get("flow") != "UNCONDITIONAL_CALL" or not record.get("flows"):
             continue
         target = record["flows"][0]
         if target in entries and not low <= address < high:
-            # A caller outside MAIN.CPP, after the call returns.
-            checked = dict(SCRATCH)
+            # A caller outside the module, after the call returns.
+            checked = dict(scratch)
             if results.get(target) == "NONE":
                 checked[RESULT[0]] = RESULT[1]
             for name, register in checked.items():
                 if (at := read_before_write(records, record["fallthrough"], register)) is not None:
                     found.append(f"{name} read at {at:x} after the call of {target:x} at {address:x}")
         elif low <= address < high and target not in entries:
-            # A routine MAIN.CPP calls, from its entry.
-            for name, register in SCRATCH.items():
+            # A routine the module calls, from its entry.
+            for name, register in scratch.items():
                 if (at := read_before_write(records, target, register)) is not None:
-                    found.append(f"{name} read at {at:x} in {target:x}, called by MAIN.CPP at {address:x}")
+                    found.append(f"{name} read at {at:x} in {target:x}, called by the module at {address:x}")
     return sorted(set(found))
+
+
+def volatile_reads(db, routines_inc=INCLUDES):
+    """module_volatile_reads for MAIN.CPP."""
+    results = dict((int(entry, 16), kind) for entry, kind in
+                   re.findall(r'MAIN_ROUTINE\((0x[0-9a-f]+), 0x[0-9a-f]+, (NONE|R3)', routines_inc.read_text()))
+    return module_volatile_reads(db, ROUTINES, MODULE, results)
 
 
 def main_program_hook(address):
