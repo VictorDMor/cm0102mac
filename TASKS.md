@@ -111,8 +111,8 @@ end states, suite passing, reviewed commit.
 - [x] Checks on the final code: 900 capture runs (each routine alone and all
       together on 20 captures), 0 differ, 40 of 44 routines reached;
       fixtures 609/609; suite: known match_debugger_actual_lineup only (114; fixed since).
-- [ ] Not verified live: an automation drag in the tactics screen after the
-      drag change (no driver path to that screen; the start-screen drag is).
+- [x] Live tactics drag: skipped (Victor, 2026-10-25); drags take the real
+      click path, and the start-screen drag is verified.
 - [x] Readable register state (2026-10-25): `Kept<R>` locals, `keep()`,
       `enter()`, `leave()` name what the original keeps in r13-r31 and leaves
       in r3-r10; the raw writes left are the original's own loads and stores.
@@ -122,8 +122,15 @@ end states, suite passing, reviewed commit.
 - [x] Speech, opt-in (CM_AOT_SPEECH=on|silent; off by default, so play is
       unchanged): the Speech Manager bridged; capture launch-speech speaks
       news headlines and disposes the channel at quit.
-- [ ] Decision for Victor: turn speech on for players (CM_AOT_SPEECH=on as
-      the default, or a preference)?
+- [x] Speech stays off for players (Victor, 2026-10-25); CM_AOT_SPEECH=on
+      or silent for those who want it.
+- [x] Stack rule kept for MAIN.CPP (Victor left it to whichever is better,
+      faster and more robust, 2026-10-25): its own code is ~0.3% of a
+      season day (pump_events 0.2%, track_mouse 0.1% self), so giving up
+      exact stack images would buy nothing measurable.
+- [ ] Speed lead: 10.9% of a season day is under pump_events, almost all of
+      it in the host's WaitNextEvent/GetMouse bridges during Continue
+      (track_mouse alone 3.0% inclusive). Measure the host side first.
 - [ ] Fixture-only by necessity: fatal_exit's exit() before the game started
       (no path reaches it), debug_menu (menu 4 is only in the unused MBAR 2)
       and nothing() (an empty hook on two error returns of 0x102a54b0).
