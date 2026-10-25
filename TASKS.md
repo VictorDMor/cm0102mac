@@ -76,11 +76,25 @@ end states, suite passing, reviewed commit.
       launch-menus (keys, command-S, wheel, Apple menu, File > Save dialog,
       AppKit quit).
 - [x] Automation verbs `menu M I`, `wheel N`, `quit`.
-- [x] Fixture checks (`cm-main-program-checks`, 605 cases + a spoiled one):
+- [x] Fixture checks (`cm-main-program-checks`, 608 cases + a spoiled one):
       every routine, the paths the port never reaches included (open
-      documents, its callbacks, the script, speech, the About box, the exit
-      path), strict registers and the arguments of every Toolbox call. 15
-      planted faults each caught (one equivalent mutant set aside).
+      documents, its callbacks, the script, speech, the Preferences dialog,
+      the exit path); each Toolbox call's arguments and r13-r31 compared.
+- [x] Static audit (`main_program_audit.py --volatiles`, ctest
+      main_program_volatile_audit): no code around MAIN.CPP reads r0, r11,
+      r12, CTR, the carry, or r3 after a routine that returns nothing,
+      before writing it.
+- [x] Plain C++ (2026-10-25): typed views (Field, EventRecord, FSSpec,
+      Globals, Shared) and one Toolbox call per Carbon routine; jump tables as
+      switches; registers mirrored only where the game or the replay contract
+      observes them (r13-r31 at calls, results, r4-r10 at returns, cr0).
+      Import contract: the arity of 26 more Toolbox calls. Fixtures: 608
+      cases, digest of each Toolbox call's arguments and r13-r31; 23 planted
+      faults all caught. Captures: 675 runs (each routine alone and all
+      together on 15 captures), 0 differ.
+- [x] DLOG 128 is the Preferences dialog (sound, speech), not an About box:
+      routine renamed preferences_dialog; the original reads none of its
+      controls. Checked by fixtures only: the host has no Dialog Manager.
 - [x] Real game: load a copy of the reference career, Continue (a week),
       save over it, quit through the game, relaunch, load: day 17 of 2002.
 - [x] Suite: known match_debugger_actual_lineup only (106 tests).

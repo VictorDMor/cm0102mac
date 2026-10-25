@@ -47,7 +47,7 @@ MAIN_ROUTINE(0x10770c90, 0x10770ca0, R3, "3c9ad1e6a78fd1d5", [](Cpu& c) { c.set(
 MAIN_ROUTINE(0x10770ca0, 0x10770cc0, R3, "559fbd1548dfcfbf", [](Cpu& c) { c.set(3, main_program::quit_application(c)); })
 MAIN_ROUTINE(0x10770cc0, 0x10770d20, NONE, "47787eb3da4551d4", [](Cpu& c) { main_program::run_script(c, c.r(3)); })
 MAIN_ROUTINE(0x10770d20, 0x10770e40, NONE, "c00da4eac03389c0", [](Cpu& c) { main_program::speak(c, c.r(3)); })
-MAIN_ROUTINE(0x10770e40, 0x10770ee0, NONE, "dea6622d77b26247", [](Cpu& c) { main_program::about_box(c); })
+MAIN_ROUTINE(0x10770e40, 0x10770ee0, NONE, "dea6622d77b26247", [](Cpu& c) { main_program::preferences_dialog(c); })
 MAIN_ROUTINE(0x10770ee0, 0x10770f60, R3, "825a9e3f9ff4c7d5", [](Cpu& c) { c.set(3, main_program::aqua_menus(c)); })
 MAIN_ROUTINE(0x10770f60, 0x10771010, R3, "767d78612173e366", [](Cpu& c) { c.set(3, main_program::write_quick_start(c, c.r(3), c.r(4))); })
 MAIN_ROUTINE(0x10771010, 0x10771110, R3, "e0d2a9ac77dc8ecc", [](Cpu& c) { c.set(3, main_program::add_setup_line(c, c.r(3))); })

@@ -41,6 +41,9 @@ std::string season_session_request(const std::optional<std::filesystem::path>& d
 // be taken (date diagnostics attached, a used directory) is refused with a
 // message on stderr; the game starts anyway.
 void season_launch_capture(State& state, const std::filesystem::path& directory);
+// The integer argument registers (from r3) an import reads, as the replays
+// check them: 8 for an import the bridges do not list.
+unsigned import_integer_arguments(std::string_view name);
 // Replays a session capture: ends with SeasonReplayComplete at the OS import
 // the capture stopped before.
 void open_session_replay(const std::filesystem::path& directory, bool timing);

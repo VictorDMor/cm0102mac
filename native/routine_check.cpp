@@ -422,11 +422,11 @@ std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& fil
 }
 
 std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite,
-                                              unsigned results, bool corrupt) {
+                                              unsigned results, bool corrupt, bool strict_volatile) {
     const auto stack = std::uint32_t(s.r<4>(4));
     const auto expected = fork_run(s, entry, original, false);
     const auto actual = fork_run(s, entry, rewrite, corrupt);
-    return compare_reports(s, expected, actual, results, stack, true);
+    return compare_reports(s, expected, actual, results, stack, strict_volatile);
 }
 
 unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, RoutineRunner original, RoutineRunner rewrite,

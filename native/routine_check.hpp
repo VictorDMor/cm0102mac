@@ -69,10 +69,11 @@ unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, Routin
 // Fixture checks (no capture): runs `entry` from the state as it is, with
 // r1, LR and the arguments already set, once as the original body and once
 // as the rewrite, each in a forked child, and returns what differs (empty
-// when the runs leave the same state). `corrupt` spoils the rewrite's result,
-// which must then differ.
+// when the runs leave the same state; r0, r11, r12, XER and CTR too with
+// `strict_volatile`). `corrupt` spoils the rewrite's result, which must then
+// differ.
 std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, RoutineRunner original, RoutineRunner rewrite,
-                                              unsigned results, bool corrupt = false);
+                                              unsigned results, bool corrupt = false, bool strict_volatile = false);
 // True in a checker child; families then run nested calls of their own
 // routines without checking them again.
 bool routine_check_child();

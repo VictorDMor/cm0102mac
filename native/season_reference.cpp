@@ -418,7 +418,21 @@ ImportContract import_contract(std::string_view name) {
         {"CarbonLib::PBSetEOFSync", {1, 0, false}},
         {"CarbonLib::PBSetFPosSync", {1, 0, false}},
         {"CarbonLib::PBWriteSync", {1, 0, false}},
-        {"CarbonLib::PBSetForkSizeSync", {1, 0, false}}};
+        {"CarbonLib::PBSetForkSizeSync", {1, 0, false}},
+        // The Toolbox calls MAIN.CPP makes, by their Carbon signatures (a
+        // Point passed by value takes one register).
+        {"CarbonLib::AEGetParamDesc", {4, 0, false}}, {"CarbonLib::AEInstallEventHandler", {5, 0, false}},
+        {"CarbonLib::AEProcessAppleEvent", {1, 0, false}}, {"CarbonLib::AppendResMenu", {2, 0, false}},
+        {"CarbonLib::BlockMove", {3, 0, false}}, {"CarbonLib::DisposeSpeechChannel", {1, 0, false}},
+        {"CarbonLib::FSpCreateResFile", {4, 0, false}}, {"CarbonLib::FSpDirCreate", {3, 0, false}}, {"CarbonLib::FSpOpenResFile", {2, 0, false}},
+        {"CarbonLib::FindFolder", {5, 0, false}}, {"CarbonLib::Gestalt", {2, 0, false}}, {"CarbonLib::GetCurrentProcess", {1, 0, false}},
+        {"CarbonLib::GetEventClass", {1, 0, false}}, {"CarbonLib::GetEventKind", {1, 0, false}}, {"CarbonLib::GetEventParameter", {7, 0, false}},
+        {"CarbonLib::GetIndMenuItemWithCommandID", {5, 0, false}}, {"CarbonLib::GetNewMBar", {1, 0, false}},
+        {"CarbonLib::GetProcessInformation", {2, 0, false}}, {"CarbonLib::GetWindowEventTarget", {1, 0, false}},
+        {"CarbonLib::InstallEventHandler", {6, 0, false}}, {"CarbonLib::MoreMasters", {0, 0, false}},
+        {"CarbonLib::NewAEEventHandlerUPP", {1, 0, false}}, {"CarbonLib::NewEventHandlerUPP", {1, 0, false}},
+        {"CarbonLib::NewSpeechChannel", {2, 0, false}}, {"CarbonLib::SetMenuBar", {1, 0, false}}, {"CarbonLib::SpeakText", {3, 0, false}},
+        {"CarbonLib::SpeechBusy", {0, 0, false}}};
     const auto found = known.find(name);
     return found == known.end() ? ImportContract{8, 13, false} : found->second;
 }
@@ -770,6 +784,7 @@ std::string season_session_request(const std::optional<std::filesystem::path>& d
     session_stop = true;
     return "stopping at the next OS import";
 }
+unsigned import_integer_arguments(std::string_view name) { return import_contract(name).integer; }
 void season_launch_capture(State& s, const std::filesystem::path& directory) {
     // Like a session start, a capture that cannot be taken is refused with a
     // message; the game itself starts.

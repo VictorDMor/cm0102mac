@@ -322,6 +322,10 @@ endforeach()
 add_executable(cm-main-program-checks main_program_checks.cpp)
 target_link_libraries(cm-main-program-checks PRIVATE cm_aot)
 target_compile_options(cm-main-program-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+# The registers the C++ leaves different (r0, r11, r12, CTR, the carry, and
+# r3 after a routine that returns nothing) are never read around MAIN.CPP.
+add_test(NAME main_program_volatile_audit
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_main_program_audit.py")
 add_test(NAME main_program_fixtures
          COMMAND cm-main-program-checks "${CM_BENCHMARK_DIR}/ui/game-load/initial.snapshot")
 # launch-quit: start-up, the start screen, Sair Jogo, Sim (which leaves through

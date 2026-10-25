@@ -124,7 +124,17 @@ paths someone can reach in play.
 ## MAIN.CPP: start-up, the event loop and paths no capture reaches
 
 `MAIN.CPP` (44 routines, `tools/main_program_audit.py`, `native/main_program_*`)
-is the second subsystem done this way. Three things it needed:
+is the second subsystem done this way. Its routines read as plain C++ over
+typed views (`main_program_detail.hpp`): `Field<T>` for a value in guest
+memory, `EventRecord`, `FSSpec`, MAIN.CPP's `Globals`, the game objects it
+reaches through the TOC (`Shared`), and one `Toolbox` call per Carbon
+routine, which sets exactly that call's arguments. What stays explicit is
+what the game can observe: the values the original keeps in r13-r31 across
+calls into code that saves them, results and r4-r10 at returns, and cr0.
+r0, r11, r12, CTR and XER are not reproduced (nothing reads them before
+writing them). A Toolbox import is checked on the argument registers it
+reads (`import_contract` in season_reference.cpp lists each one's arity).
+Three things it needed:
 
 - **Launch captures.** `CM_AOT_LAUNCH_CAPTURE=DIR` (or `game_driver.py launch
   NAME --capture-launch CAPTURE`) records a session from the program's first
@@ -138,9 +148,13 @@ is the second subsystem done this way. Three things it needed:
   return; run() catches that one transfer (pc at the return, sp at its own
   frame) and goes on in C++.
 - **Fixture checks** (`cm-main-program-checks`): for what the host never
-  delivers (open-documents events, speech, the About dialog) and for every
+  delivers (open-documents events, speech, the Preferences dialog) and for every
   branch of the pump and the menus, each case runs the original and the C++
-  from a real snapshot with the Toolbox glues replaced by scripted
-  stand-ins, compared strictly. Under `--check-routines --only`, MAIN.CPP
+  from a real snapshot with the Toolbox imports replaced by scripted
+  stand-ins, compared as the routine checker compares (the volatile scratch
+  registers aside), plus each Toolbox call's arguments and r13-r31. That the
+  scratch registers and a void routine's r3 are never read is a static audit
+  over the original (`tools/main_program_audit.py --volatiles`, a ctest).
+  Under `--check-routines --only`, MAIN.CPP
   routines left out run their originals, so a nested routine is checked at
   every call from the original's callers.

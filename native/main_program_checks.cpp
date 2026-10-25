@@ -1,15 +1,16 @@
 // Fixture checks of the C++ MAIN.CPP routines (main_program_routines.inc)
 // against their generated originals, for the paths session captures cannot
 // reach: the open-documents handler and its callbacks (the host never sends
-// that event), the debugging script, speech (the host has none), the About
-// box, the exit path of a fatal error, and every branch of the event pump,
+// that event), the debugging script, speech (the host has none), the
+// Preferences dialog (the host has no Dialog Manager), the exit path of a
+// fatal error, and every branch of the event pump,
 // the menus and the Carbon handlers.
 //
 // Each case starts from a real game state (a session capture's initial
 // snapshot), sets the arguments and the memory the branch needs, and runs the
 // routine twice in forked children: the original body and the C++
-// (routine_check.hpp compare_routine_call, strict: r0, r11, r12, XER and CTR
-// too). The Toolbox imports are stand-ins (the memory ones run live), and so
+// (routine_check.hpp compare_routine_call; r0, r11, r12, XER and CTR are not
+// compared: main_program_detail.hpp says why). The Toolbox imports are stand-ins (the memory ones run live), and so
 // are a few guest library routines whose own effects are not under test.
 // Both runs see the same stand-ins, scripted per case. A last case spoils the
 // rewrite's result and must differ.
@@ -20,6 +21,7 @@
 #include "match_replay.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
+#include "season_reference.hpp"
 #include <cctype>
 #include <deque>
 #include <functional>
@@ -32,7 +34,7 @@ using namespace cm::aot;
 using guest::Cpu;
 namespace slot = main_program::detail::slot;
 namespace global = main_program::global;
-namespace event_record = main_program::detail::event_record;
+using main_program::detail::EventRecord;
 
 namespace {
 // The stand-ins, each with the values a case scripts for its successive calls
@@ -69,8 +71,9 @@ bool fixture_probe(State& s) {
     return true;
 }
 // Every other import answers 0, except the memory ones, which run live.
-// Each call folds its name and r3-r10 into a word of guest memory, so the
-// runs must also make the same calls with the same arguments.
+// Each call folds its name, the argument registers it reads and r13-r31 (as
+// the replays check them, season_reference.hpp) into a word of guest memory,
+// so the runs must also make the same calls with the same registers.
 std::uint32_t import_digest = 0;  // its address
 // A run that keeps calling the Toolbox (a loop waiting for a dialog item the
 // script never gives) stops here instead of hanging.
@@ -84,7 +87,8 @@ struct ImportFixture final : RuntimeLifecycleBoundaryObserver {
         auto digest = std::uint32_t(s.memory.read<4>(import_digest));
         const auto mix = [&](std::uint32_t word) { digest = (digest ^ word) * 0x01000193u; };
         for (const char ch : import) mix(std::uint8_t(ch));
-        for (unsigned n = 3; n <= 10; ++n) mix(std::uint32_t(s.r<4>(n * 4)));
+        for (unsigned n = 3; n < 3 + import_integer_arguments(import); ++n) mix(std::uint32_t(s.r<4>(n * 4)));
+        for (unsigned n = 13; n < 32; ++n) mix(std::uint32_t(s.r<4>(n * 4)));  // kept across the call
         s.memory.write<4>(import_digest, digest);
         if (import == "CarbonLib::ExitToShell") throw ApplicationExit{};
         const auto glue = glues.find(import);
@@ -165,11 +169,12 @@ void install_fakes() {
     fakes[0x10780510] = Fake{true, [](Cpu& c, std::uint32_t v) {  // WaitNextEvent: the event kind in the high half, 0xffffffff for none
         if (v == 0xffffffff) { c.set(3, 0); return; }
         const auto event = c.r(4);
-        c.put16(event + event_record::what, v >> 16);
-        c.put32(event + event_record::message, next(0xe0000000));
-        c.put32(event + event_record::when, 1234);
-        c.put32(event + event_record::where, 0x00400080);
-        c.put16(event + event_record::modifiers, next(0xe0000001));
+        const EventRecord record{c, event};
+        record.what() = std::uint16_t(v >> 16);
+        record.message() = next(0xe0000000);
+        record.when() = 1234;
+        record.where() = 0x00400080;
+        record.modifiers() = std::uint16_t(next(0xe0000001));
         c.set(3, 1);
     }};
     fakes[0x107800f0] = Fake{true, [](Cpu& c, std::uint32_t) {  // BlockMove
@@ -420,10 +425,10 @@ std::vector<Case> all_cases() {
             });
     }
 
-    // The About box and the menus.
-    add("about_box", 0x10770e40, NONE, args({}), {{0x10780678, {0x6000}}, {0x107806c0, {5, 0, 3, 7, 2}}});
-    add("about_box first item", 0x10770e40, NONE, args({}), {{0x10780678, {0x6000}}, {0x107806c0, {1}}});
-    add("about_box no dialog", 0x10770e40, NONE, args({}), {{0x10780678, {0}}, {0x107806c0, {1}}});
+    // The Preferences dialog and the menus.
+    add("preferences_dialog", 0x10770e40, NONE, args({}), {{0x10780678, {0x6000}}, {0x107806c0, {5, 0, 3, 7, 2}}});
+    add("preferences_dialog first item", 0x10770e40, NONE, args({}), {{0x10780678, {0x6000}}, {0x107806c0, {1}}});
+    add("preferences_dialog no dialog", 0x10770e40, NONE, args({}), {{0x10780678, {0}}, {0x107806c0, {1}}});
     for (std::uint32_t item : {1u, 2u, 3u, 4u, 5u, 8u, 0xffffu}) {
         add("file_menu " + std::to_string(item), 0x10770970, NONE, args({{3, 0x6000}, {4, item}}));
         add("apple_menu " + std::to_string(item), 0x10770950, NONE, args({{3, 0x6000}, {4, item}}));
@@ -441,7 +446,7 @@ std::vector<Case> all_cases() {
             add("adjust_menus request " + std::to_string(request) + " file " + std::to_string(file) + " debug " +
                     std::to_string(debug),
                 0x10770240, NONE,
-                [=](Cpu& c) { c.put16(c.toc(slot::game) + main_program::detail::screen_request, request); c.set(3, scratch); },
+                [=](Cpu& c) { main_program::detail::Shared{c}.screen_request() = std::int16_t(request); c.set(3, scratch); },
                 {{0x107807b0, {file, debug}}});
 
     // Keys.
@@ -449,9 +454,10 @@ std::vector<Case> all_cases() {
         for (std::uint32_t modifiers : {0u, 0x100u, 0x800u, 0x1000u})
             add("key_down code " + std::to_string(code) + " modifiers " + std::to_string(modifiers), 0x10770380, NONE,
                 [=](Cpu& c) {
-                    c.put16(scratch + event_record::what, 3);
-                    c.put32(scratch + event_record::message, code << 8 | (code == 0x71 ? 0x73 : 0x61));
-                    c.put16(scratch + event_record::modifiers, modifiers);
+                    const EventRecord event{c, scratch};
+                    event.what() = 3;
+                    event.message() = code << 8 | (code == 0x71 ? 0x73 : 0x61);
+                    event.modifiers() = std::uint16_t(modifiers);
                     c.set(3, scratch);
                 },
                 {{0x10780660, {code & 1 ? 0x00020005u : 0u}}});
@@ -466,7 +472,7 @@ std::vector<Case> all_cases() {
                     set_global8(c, global::menu_checked, 1);
                     set_global32(c, global::menu_features, aqua);
                     c.put16(c.toc(slot::button_state), state);
-                    c.put16(scratch + event_record::modifiers, modifiers);
+                    EventRecord{c, scratch}.modifiers() = std::uint16_t(modifiers);
                     c.set(3, scratch);
                 });
     add("mouse_up", 0x10770650, NONE, args({}));
@@ -474,7 +480,7 @@ std::vector<Case> all_cases() {
         add("track_mouse " + std::to_string(point), 0x107701d0, NONE, args({}), {{0x10780630, {point}}});
     for (std::uint32_t message : {0x01000000u, 0x01000001u, 0xfa000000u, 0x00000001u, 0x81000001u})
         add("os_event " + std::to_string(message), 0x10770a30, NONE, [=](Cpu& c) {
-            c.put32(scratch + event_record::message, message);
+            EventRecord{c, scratch}.message() = message;
             c.set(3, scratch);
         });
     add("activate_event", 0x10770a20, NONE, args({{3, 0}}));
@@ -497,8 +503,11 @@ std::vector<Case> all_cases() {
 
     // The event pump: the countdown, the wheel, and each event kind.
     for (std::uint32_t wait : {1u, 2u})
-        add("pump_events waiting " + std::to_string(wait), 0x1076fe80, NONE,
-            [=](Cpu& c) { c.put32(c.toc(slot::idle_wait), wait); });
+        add("pump_events waiting " + std::to_string(wait), 0x1076fe80, NONE, [=](Cpu& c) {
+            c.put32(c.toc(slot::idle_wait), wait);
+            c.put8(c.toc(slot::left_held), 1);
+            c.put8(c.toc(slot::right_held), 1);
+        });
     for (std::uint32_t scroll : {2u, 0xfffffffeu}) for (std::uint32_t control : {0u, 1u})
         add("pump_events scroll " + std::to_string(scroll) + " control " + std::to_string(control), 0x1076fe80, NONE,
             [=](Cpu& c) {
@@ -522,12 +531,12 @@ std::vector<Case> all_cases() {
                  {0x10780810, {0x00030008u}}, {0x10780678, {0x6000}}, {0x107806c0, {1}}, {0x107807b0, {0x7002, 0x7004}}});
     for (std::uint32_t left : {0u, 1u}) for (std::uint32_t held : {0u, 1u})
         for (std::uint16_t state : {std::uint16_t(1), std::uint16_t(2)}) for (std::uint32_t button : {0u, 1u})
-            add("pump_events idle left " + std::to_string(left) + " held " + std::to_string(held) + " state " +
+            add("pump_events idle left " + std::to_string(left) + " right " + std::to_string(held) + " state " +
                     std::to_string(state) + " button " + std::to_string(button),
                 0x1076fe80, NONE, [=](Cpu& c) {
                     pump(c);
                     c.put8(c.toc(slot::left_held), left);
-                    c.put8(c.toc(slot::button_down), held);
+                    c.put8(c.toc(slot::right_held), held);
                     c.put16(c.toc(slot::button_state), state);
                 },
                 {{0x10780510, {0xffffffffu}}, {0x10780828, {button}}});
@@ -540,6 +549,8 @@ std::vector<Case> all_cases() {
         add("process_information failing " + std::to_string(failing), 0x1076f440, R3, args({}),
             {{0x1077fb08, {failing == 1 ? 0xffffffffu : 0u}}, {0x1077fb20, {failing == 2 ? 0xffffffffu : 0u}},
              {0x1077fad8, {failing == 3 ? 0xffffffffu : 0u}}, {0x1077fad9, {3}}});
+    for (std::uint32_t response : {0u, 1u, 2u})
+        add("process_information speech " + std::to_string(response), 0x1076f440, R3, args({}), {{0x1077fad9, {response}}});
     add("install_handlers", 0x1076f4f0, NONE, args({}));
     for (std::uint32_t pointer : {0u, 1u})
         add("initialize pointer " + std::to_string(pointer), 0x1076f600, NONE,

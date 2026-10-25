@@ -102,8 +102,9 @@ std::uint32_t quit_application(guest::Cpu& c);
 void run_script(guest::Cpu& c, std::uint32_t text);
 // 0x10770d20: speaks `text` (with a full stop), waiting for earlier speech.
 void speak(guest::Cpu& c, std::uint32_t text);
-// 0x10770e40: the About box.
-void about_box(guest::Cpu& c);
+// 0x10770e40: the Preferences dialog (DLOG 128: sound and speech options);
+// only OK and Cancel do anything: the original reads none of its controls.
+void preferences_dialog(guest::Cpu& c);
 // 0x10770ee0: whether the menus follow the Aqua layout (Gestalt('menu') bit 1).
 std::uint32_t aqua_menus(guest::Cpu& c);
 // 0x10770f60, 0x10771010: per document of an open-documents event: writes
