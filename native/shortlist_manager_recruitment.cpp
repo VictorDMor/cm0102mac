@@ -53,46 +53,53 @@ std::uint32_t club_of(Cpu& c, std::int32_t id) { return c.u32(c.toc(slot::clubs)
 // it: the registers and cr0 it leaves, and the stack image of its frames
 // (saved registers, LR, back chains), so the hot path makes no dispatch for
 // them. The routine checker compares the result with the original calls.
+// Each goes through Program::inlined, with `back` the address after the
+// original's call (fixture checks take the call itself).
 
 // 0x10082f20 (a leaf, no frame): the contract of `person` from the contracts
 // object at `contracts` (its +0 array, 100-byte records), through the
 // person's extra record's first word; 0 for no person, a non-player id or a
 // negative index. Leaves r4-r6 and cr0 as it does.
-std::uint32_t contract_of(Cpu& c, std::uint32_t contracts, std::uint32_t person) {
-    c.set(4, person);
-    if (compare_logical(c, person, 0) == 0) return result(c, 0);
-    const std::uint32_t count = c.toc(slot::person_count);
-    const std::int32_t id = c.i32(person);
-    leave(c, {{5, count}, {6, std::uint32_t(id)}});
-    if (compare(c, id, c.i32(count)) >= 0) return result(c, 0);
-    const std::uint32_t extras = c.u32(c.toc(slot_recruitment::staff_extras));
-    c.set(4, extras);
-    const std::int32_t index = c.i32(extras + std::uint32_t(id) * 100);
-    if (compare(c, index, 0) < 0) return result(c, 0);
-    return result(c, c.u32(contracts) + std::uint32_t(index) * 100);
+std::uint32_t contract_of(Cpu& c, std::uint32_t contracts, std::uint32_t person, std::uint32_t back) {
+    return Program(c).inlined(0x10082f20, back, {contracts, person}, [&] {
+        c.set(4, person);
+        if (compare_logical(c, person, 0) == 0) return result(c, 0);
+        const std::uint32_t count = c.toc(slot::person_count);
+        const std::int32_t id = c.i32(person);
+        leave(c, {{5, count}, {6, std::uint32_t(id)}});
+        if (compare(c, id, c.i32(count)) >= 0) return result(c, 0);
+        const std::uint32_t extras = c.u32(c.toc(slot_recruitment::staff_extras));
+        c.set(4, extras);
+        const std::int32_t index = c.i32(extras + std::uint32_t(id) * 100);
+        if (compare(c, index, 0) < 0) return result(c, 0);
+        return result(c, c.u32(contracts) + std::uint32_t(index) * 100);
+    });
 }
 // 0x103721f0: constructs the contract draft at `draft` (two dates set to
 // day 0x28 of 1972 by the leaf 0x10715880, the rest cleared or -1). Its
 // frame: r31 saved below sp, LR at sp+8, a 0x40-byte frame.
 void construct_draft(Cpu& c, std::uint32_t draft, std::uint32_t back) {
-    const std::uint32_t sp = c.sp();
-    c.put32(sp - 4, c.r(31));
-    c.put32(sp + 8, back);
-    c.put32(sp - 0x40, sp);
-    for (const std::uint32_t date : {draft + 0x28, draft + 0x30}) {
-        c.put16(date, 0x28);
-        c.put16(date + 2, 0x7b4);
-        c.put8(date + 4, 1);
-    }
-    c.put32(draft + 4, std::uint32_t(-1));
-    c.put8(draft + 0x54, 0);
-    c.put32(draft + 0x58, std::uint32_t(-1));
-    c.put16(draft + 0x42, 0);
-    c.put8(draft + 0x5c, 0);
-    c.put32(draft + 0x48, 0);
-    c.put32(draft + 0x50, 0);
-    c.put32(draft + 8, 0);
-    leave(c, {{3, draft}, {4, std::uint32_t(-1)}});
+    Program(c).inlined(0x103721f0, back, {draft}, [&] {
+        const std::uint32_t sp = c.sp();
+        c.put32(sp - 4, c.r(31));
+        c.put32(sp + 8, back);
+        c.put32(sp - 0x40, sp);
+        for (const std::uint32_t date : {draft + 0x28, draft + 0x30}) {
+            c.put16(date, 0x28);
+            c.put16(date + 2, 0x7b4);
+            c.put8(date + 4, 1);
+        }
+        c.put32(draft + 4, std::uint32_t(-1));
+        c.put8(draft + 0x54, 0);
+        c.put32(draft + 0x58, std::uint32_t(-1));
+        c.put16(draft + 0x42, 0);
+        c.put8(draft + 0x5c, 0);
+        c.put32(draft + 0x48, 0);
+        c.put32(draft + 0x50, 0);
+        c.put32(draft + 8, 0);
+        leave(c, {{3, draft}, {4, std::uint32_t(-1)}});
+        return draft;
+    });
 }
 // 0x1014c2e0(club, r4, r5, 0, r7): whether a human manager controls the
 // club. Its plain path is reproduced: a club without a manager (+0x90) or
@@ -102,32 +109,34 @@ void construct_draft(Cpu& c, std::uint32_t draft, std::uint32_t back) {
 // the real call.
 std::uint32_t human_controlled(Cpu& c, Program& program, std::uint32_t club, std::uint32_t r4, std::uint32_t r5,
                                std::uint32_t r7, std::uint32_t back) {
-    bool plain = club != 0;
-    std::int32_t id = 0;
-    if (plain) {
-        const std::uint32_t manager = c.u32(club + 0x90);
-        plain = manager == 0 || c.i32(manager) < c.i32(c.toc(slot::person_count)) - 16;
-    }
-    if (plain) {
-        id = c.i32(club);
-        const std::int32_t limit = c.i32(c.toc(slot::club_count)) - c.i32(c.toc(-0x7b04));
-        const std::uint32_t carry = std::uint32_t(id) >= std::uint32_t(limit);
-        plain = std::int8_t(std::uint32_t(id >> 31) + (std::uint32_t(limit) >> 31) + carry) == 0;
-    }
-    if (!plain) return program.call(0x1014c2e0, back, {club, r4, r5, 0, r7});
-    // 0x1014c2e0's frame (r24-r31 saved, 0x80 bytes), then 0x100ce250's
-    // (r31 and r30 saved, 0x70 bytes) below it.
-    const std::uint32_t sp = c.sp(), inner = sp - 0x80;
-    for (unsigned n = 24; n < 32; ++n) c.put32(sp - 0x20 + (n - 24) * 4, c.r(n));
-    c.put32(sp + 8, back);
-    c.put32(inner, sp);
-    c.put32(inner - 4, c.toc(-0x7a54));
-    c.put32(inner - 8, r7);
-    c.put32(inner + 8, 0x1014c44c);
-    c.put32(inner - 0x70, inner);
-    leave(c, {{4, std::uint32_t(id >> 31)}, {5, c.toc(-0x7b04)}, {6, std::uint32_t(id)}, {7, r7}});
-    compare(c, 0);
-    return result(c, 0);
+    return program.inlined(0x1014c2e0, back, {club, r4, r5, 0, r7}, [&] {
+        bool plain = club != 0;
+        std::int32_t id = 0;
+        if (plain) {
+            const std::uint32_t manager = c.u32(club + 0x90);
+            plain = manager == 0 || c.i32(manager) < c.i32(c.toc(slot::person_count)) - 16;
+        }
+        if (plain) {
+            id = c.i32(club);
+            const std::int32_t limit = c.i32(c.toc(slot::club_count)) - c.i32(c.toc(-0x7b04));
+            const std::uint32_t carry = std::uint32_t(id) >= std::uint32_t(limit);
+            plain = std::int8_t(std::uint32_t(id >> 31) + (std::uint32_t(limit) >> 31) + carry) == 0;
+        }
+        if (!plain) return program.call(0x1014c2e0, back, {club, r4, r5, 0, r7});
+        // 0x1014c2e0's frame (r24-r31 saved, 0x80 bytes), then 0x100ce250's
+        // (r31 and r30 saved, 0x70 bytes) below it.
+        const std::uint32_t sp = c.sp(), inner = sp - 0x80;
+        for (unsigned n = 24; n < 32; ++n) c.put32(sp - 0x20 + (n - 24) * 4, c.r(n));
+        c.put32(sp + 8, back);
+        c.put32(inner, sp);
+        c.put32(inner - 4, c.toc(-0x7a54));
+        c.put32(inner - 8, r7);
+        c.put32(inner + 8, 0x1014c44c);
+        c.put32(inner - 0x70, inner);
+        leave(c, {{4, std::uint32_t(id >> 31)}, {5, c.toc(-0x7b04)}, {6, std::uint32_t(id)}, {7, r7}});
+        compare(c, 0);
+        return result(c, 0);
+    });
 }
 
 // The roles a person's profile gives (0x10117490) and the roles they imply,
@@ -224,8 +233,8 @@ std::uint32_t contract_club(Cpu& c, std::uint32_t contract) {
     return nonzero_logical(c, contract) ? club_of(c, c.i32(contract + 4)) : 0;
 }
 // The contract of `person` (0x10082f20), published in the shared scratch slot.
-std::uint32_t published_contract(Cpu& c, std::uint32_t person) {
-    const std::uint32_t contract = contract_of(c, c.u32(c.toc(slot::contracts)), person);
+std::uint32_t published_contract(Cpu& c, std::uint32_t person, std::uint32_t back) {
+    const std::uint32_t contract = contract_of(c, c.u32(c.toc(slot::contracts)), person, back);
     c.put32(c.toc(slot_recruitment::last_contract), contract);
     return contract;
 }
@@ -397,14 +406,14 @@ std::uint32_t register_club_interest(Cpu& c, std::uint32_t manager_address, std:
     const ClubEntry entry{c, manager.clubs() + std::uint32_t(club.id()) * 12};
     Kept<15> at{c, entry.address};
     c.set(5, manager.clubs());
-    Kept<16> contract{c, contract_of(c, c.u32(c.toc(slot::contracts)), staff_address)};
+    Kept<16> contract{c, contract_of(c, c.u32(c.toc(slot::contracts)), staff_address, 0x103640ac)};
     Kept<30> own_club{c, compare(c, signed_value(contract)) != 0 ? club_of(c, c.i32(contract + 4)) : 0};
     switch (entry_and_link(c, program, manager, entry, staff_address, club_address, frame.at(0x54), 0x10364140)) {
     case Before::refuse: return 0;
     case Before::linked: return 1;
     case Before::go: break;
     }
-    const std::uint32_t found_club = contract_club(c, published_contract(c, staff_address));
+    const std::uint32_t found_club = contract_club(c, published_contract(c, staff_address, 0x10364170));
     if (!nonzero(c, std::int8_t(program.call(0x1036f590, 0x103641ac, {manager_address, staff_address, found_club, club_address}))))
         return 0;
     if (!nonzero(c, std::int8_t(program.call(0x103f83c0, 0x103641d8, {c.u32(c.toc(slot_recruitment::transfers)),
@@ -507,7 +516,7 @@ std::uint32_t register_club_interest(Cpu& c, std::uint32_t manager_address, std:
         if (holds) {
             rating = std::uint32_t(row.level().get());
             assessed = program.call(0x10361490, 0x1036467c, {manager_address, club_address, previous, at, frame.at(0x48), rating, 1});
-            offer = contract_club(c, published_contract(c, previous));
+            offer = contract_club(c, published_contract(c, previous, 0x1036468c));
             std::uint32_t value = 0;
             if (nonzero_logical(c, offer)) value = move_value(c, program, offer, club_address, previous, {0x103646e0, 0x103646fc, 0x10364720});
             c.set(4, 0x43300000);
@@ -582,6 +591,7 @@ std::uint32_t register_club_interest(Cpu& c, std::uint32_t manager_address, std:
             double risk = fpu.frsp(fpu.fdiv(constant::risk_numerator, fpu.frsp(chosen)));
             fpu.fcmp(0, risk, constant::risk_floor);
             if (risk < constant::risk_floor) risk = constant::risk_floor_single;
+            c.set_f(1, risk);  // the original's f1 at the next two calls
             c.set_f(31, fpu.fmuls(risk, c.f(31)));
             const std::uint32_t club_finances =
                 program.call(0x10103510, 0x10364c3c, {c.u32(c.toc(slot_recruitment::finances)), club_address});
@@ -615,7 +625,7 @@ std::uint32_t consider_requested_club_interest(Cpu& c, std::uint32_t manager_add
     const Manager manager{c, manager_address};
     const Person staff{c, staff_address};
     const Club club{c, club_address};
-    Kept<25> own_club{c, contract_club(c, published_contract(c, staff_address))};
+    Kept<25> own_club{c, contract_club(c, published_contract(c, staff_address, 0x10364d48))};
     const ClubEntry entry{c, manager.clubs() + std::uint32_t(club.id()) * 12};
     Kept<20> held_rating{c, entry.address};  // the entry, then the foreign draw, then the row's rating
     const std::uint32_t given_roles = program.call(0x10117490, 0x10364d8c, {staff.player(), manager.clubs()});
@@ -625,7 +635,7 @@ std::uint32_t consider_requested_club_interest(Cpu& c, std::uint32_t manager_add
     case Before::linked: return 1;
     case Before::go: break;
     }
-    const std::uint32_t found_club = contract_club(c, published_contract(c, staff_address));
+    const std::uint32_t found_club = contract_club(c, published_contract(c, staff_address, 0x10364e80));
     if (!nonzero(c, std::int8_t(program.call(0x1036f590, 0x10364ebc, {manager_address, staff_address, found_club, club_address}))))
         return 0;
     if (!nonzero(c, std::int8_t(program.call(0x103f83c0, 0x10364ee8, {c.u32(c.toc(slot_recruitment::transfers)),
@@ -652,7 +662,7 @@ std::uint32_t consider_requested_club_interest(Cpu& c, std::uint32_t manager_add
             previous = c.u32(c.toc(slot::persons)) + std::uint32_t(held) * 0x70;
             previous_assessed = program.call(0x10361490, 0x1036510c, {manager_address, club_address, previous, at,
                                                                      frame.at(0x3c), held_rating, 1});
-            previous_club = contract_club(c, published_contract(c, previous));
+            previous_club = contract_club(c, published_contract(c, previous, 0x1036511c));
             std::uint32_t value = 0;
             if (nonzero_logical(c, previous_club))
                 value = move_value(c, program, previous_club, club_address, previous, {0x10365170, 0x1036518c, 0x103651b0});
@@ -736,13 +746,13 @@ void distribute_staff_interest(Cpu& c, std::uint32_t manager_address, std::uint3
         c.put32(frame.at(0x38), c.u32(frame.at(0x40)));
         c.put32(frame.at(0x3c), c.u32(frame.at(0x44)));
         if (earlier(c, frame.at(0x38), staff.joined().address)) {
-            const std::uint32_t contract = contract_of(c, c.u32(c.toc(slot::contracts)), staff_address);
+            const std::uint32_t contract = contract_of(c, c.u32(c.toc(slot::contracts)), staff_address, 0x10363df4);
             if (nonzero_logical(c, contract) && compare(c, c.u8(contract + 0x60) & 0xf, 7) != 0 &&
                 compare(c, c.i32(contract + 0x50), 0) == 0)
                 return;
         }
     }
-    const std::uint32_t contract = contract_of(c, c.u32(c.toc(slot::contracts)), staff_address);
+    const std::uint32_t contract = contract_of(c, c.u32(c.toc(slot::contracts)), staff_address, 0x10363e24);
     c.put32(c.toc(slot_recruitment::last_contract), contract);
     Kept<28> own_club{c, contract_club(c, contract)};
     const std::uint32_t id_offset = std::uint32_t(staff.id()) * 100;
@@ -762,7 +772,7 @@ void distribute_staff_interest(Cpu& c, std::uint32_t manager_address, std::uint3
         if (compare(c, std::int8_t(count), 5) >= 0) return;
         if (!nonzero(c, std::int8_t(program.call(0x100c7d00, 0x10363ef8, {club}))) &&
             compare_logical(c, own_club, club) != 0 && compare_logical(c, staff.club(), club) != 0) {
-            enter(c, 0x10363f28, {manager_address, staff_address, club, roles});
+            enter_direct(c, 0x10363f28, {manager_address, staff_address, club, roles});
             if (nonzero(c, std::int8_t(result(c, register_club_interest(c, manager_address, staff_address, club, roles)))))
                 count = count + 1;
         }

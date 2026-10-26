@@ -190,7 +190,7 @@ void lay_out_places(Assessment& a) {
         if (!nonzero_logical(c, preferred)) return set(3);
         set(std::int8_t(c.u8(preferred + 0x43)));
     }();
-    enter(c, 0x1035b1e4, {a.manager, plan.address});
+    enter_direct(c, 0x1035b1e4, {a.manager, plan.address});
     lay_out_formation(c, a.manager, plan.address);
 
     // Each place's index and date; the roles: place 0 and key places 1-23

@@ -156,7 +156,7 @@ bool Scan::negotiate() {
             r14 = std::uint32_t(truncated(0xf4, raise));
         }
     }
-    const auto seller = contract_club(person, 0x1035ffb4);
+    const auto seller = contract_club(person, 0x1035ffb8);
     const std::uint32_t offered = r20 + r14;
     c.put32(at(local::ninth_argument), 0);
     // Quirk: the offer's high word passed is the sign of its low word, not

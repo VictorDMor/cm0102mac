@@ -79,16 +79,26 @@ save/reload on a career copy, paired timing on the 26-country day.
       generated reference (old ones kept as expected.snapshot.builder-owners).
 - [x] Real game: All-Leagues copy, Continue 21->24 Dec, saved over it, quit,
       relaunched, loaded (24 Dec). Save size matches the generated code's.
-- [x] Timing, season day, 10 alternating pairs: C++ faster in 8, mean paired
-      difference -0.52 s (-2.4%); machine drift 19.7-24.2 s.
-- [ ] Synthetic only (no capture reaches them): 0x1036ec30, 0x10364d00,
-      0x1036f670, 0x1036f7e0, 0x1036f920 (transfer/staff/club screens), the
-      legacy-save conversion and allocation/IO error paths. A UI capture of
-      the shortlist screens and of requested approaches would cover the
-      screen routines.
-- [ ] Unreached branches per group are listed in the commit message.
-- [ ] Remove the shortlist builder families' sources and tests (nothing runs
-      them in production now), or keep them as specifications.
+- [x] Timing, season day, 6 alternating pairs on the final build: generated
+      19.52 s vs C++ 18.95 s mean (-2.9%, 6/6).
+- [x] Captured calls for the screen paths (2026-10-26): ui/contract-offer (a
+      new contract and transfer status for a Cruzeiro player:
+      0x1036f670/0x1036f7e0/0x1036f920) and ui/swap-offer (a bid with a part
+      exchange: 0x10364d00, 34 calls), every call checked, f1 too. A week of
+      the 26-country career (its expected state rewritten from the reference
+      as above): 645M calls, 69,939 checked, 0 differ.
+- [x] 0x1036ec30 runs only when the human takes a new job (router
+      0x102a54b0) or staff join one of the last 16 clubs (0x1019dd00); no
+      capture has either. 639 synthetic calls from real states, 0 differ
+      (120 compared where both stop at the same import).
+- [x] Error and legacy paths: the eight builder families' fixture programs
+      now also run the SHORTLIST_MANAGER C++ on every case (~32,000: legacy
+      save versions 0x3e015/0x3e016, short and partial IO, allocation
+      failures, fatal exits, assertion reports), 0 differ; they found 11
+      bugs (nine wrong return addresses, the rand order at a table wrap in
+      mark_primary_contract, f1 across a call in registration), fixed.
+- [x] Builder families: kept as specifications (as the GENERATED_FASTER
+      families); out of production, their fixtures now check the C++.
 - [ ] Speed lead: the module's own time is small; its day share is in the
       callees (contract and club lookups, the generated routines it calls).
 

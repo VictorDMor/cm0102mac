@@ -880,7 +880,9 @@ bool season_replay_import(State& s, const char* name) {
     if (!input && session_replay) { s.memory.observer = nullptr; throw SeasonReplayComplete{}; }
     if (!input) throw std::runtime_error(std::string("First divergence: ") + name + " called after the transcript ends");
     check_input(*input, s, name);
-    if (live_pure_imports && rng_checks && recorded_allocator && !recorded_allocator->matches(s))
+    // A synthetic call (relaxed inputs) allocates where the recording did
+    // not; both of its runs get the same recorded outputs regardless.
+    if (live_pure_imports && rng_checks && recorded_allocator && !relaxed_import_inputs && !recorded_allocator->matches(s))
         throw std::runtime_error(std::string("First divergence: heap state calling ") + name + ": " +
                                  heap_difference(*recorded_allocator, Allocator(s)));
     for (;;) {

@@ -95,7 +95,7 @@ void reset_linked_club_rows(Cpu& c, std::uint32_t links, std::uint32_t staff, st
     // A temporary list of the staff's links (16 bytes: count at +0, head at +4, cursor at +0xc).
     Kept<27> list(c, program.operator_new(16, 0x10363ba4));
     if (nonzero(c, std::int32_t(std::uint32_t(list)))) program.call(0x10738c00, 0x10363bb0, {list});
-    enter(c, 0x10363bcc, {links, staff, list, 1, 3, 0});
+    enter_direct(c, 0x10363bcc, {links, staff, list, 1, 3, 0});
     collect_staff_links(c, links, staff, list, 1, 3, 0);
     const auto count = [&] { return std::int32_t(Field<std::int16_t>{c, list}.get()); };
     if (compare(c, count()) != 0) {

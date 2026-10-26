@@ -337,7 +337,7 @@ void Contribution::estimate_valuation(std::uint32_t qualifications) {
             leave(c, {{4, std::uint32_t(estimate + 15000)}});
             return;
         }
-        const auto by = call(game::club_judge, 0x103618c4, {club_at});
+        const auto by = call(game::club_judge, 0x103618c8, {club_at});
         const auto offer = budget_offer();
         valuation() =
             std::int32_t(call(game::estimate, 0x10361940, {candidate_at, position, qualifications, club_at, offer, by}));
@@ -414,7 +414,7 @@ void Contribution::apply_premium() {
 // of a mix of the valuation and the entry's asking value.
 std::uint32_t Contribution::base_worth(std::uint32_t& age_limit, std::int32_t& fee_now) {
     const auto position = entry().positions().get();
-    enter(c, 0x10361e00, {shortlists_at, extended(position)});
+    enter_direct(c, 0x10361e00, {shortlists_at, extended(position)});
     const auto group = result(c, std::uint32_t(position_group(c, position)));
     Kept<23> limit{c, 0x1c};
     // The jump table at slot::cases_10361490_b, by group.

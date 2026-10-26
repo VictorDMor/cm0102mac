@@ -190,7 +190,7 @@ void create_shortlists(Cpu& c, std::uint32_t manager) {
         const Kept<17> id{c, c.u32(c.u32(order) + at)};
         step(index, 0x10357c58);
         const std::uint32_t club = c.u32(clubs) + id * Club::size;
-        enter(c, 0x10357c6c, {manager, club});
+        enter_direct(c, 0x10357c6c, {manager, club});
         share_out_budget(c, manager, club);
     }
     program.call(0x10743120, 0x10357c94, {game, progress, std::uint32_t(count()), std::uint32_t(count()), std::uint32_t(-1)});
@@ -273,7 +273,7 @@ void rebuild_club_shortlist(Cpu& c, std::uint32_t manager, std::uint32_t club_ad
                  {manager, Manager{c, manager}.clubs().get() + std::uint32_t(id) * ClubEntry::size,
                   c.u32(clubs) + std::uint32_t(id) * Club::size, 0, 1});
     if (!nonzero(c, std::int8_t(program.call(club_flag, 0x1036ef78, {club_address, 0, 1, 0, 0})))) {
-        enter(c, 0x1036ef8c, {manager, club_address});
+        enter_direct(c, 0x1036ef8c, {manager, club_address});
         share_out_budget(c, manager, club_address);
     }
     // The values of the club's squad (its fifty person pointers at +0x98).
@@ -297,7 +297,7 @@ void rebuild_club_shortlist(Cpu& c, std::uint32_t manager, std::uint32_t club_ad
             // (0x10147e70, 0x10149df0) and the contract's bit 2 at +0x5c is
             // clear (inferred: a contract the human fixed).
             bool skip = false;
-            const std::uint32_t first = program.call(0x100c96e0, 0x1036eff4, {club_address});
+            const std::uint32_t first = program.call(0x100c96e0, 0x1036eff8, {club_address});
             if (nonzero(c, std::int8_t(program.call(0x10147e70, 0x1036f004, {c.u32(humans), first})))) {
                 const std::uint32_t second = program.call(0x100c96e0, 0x1036f014, {club_address});
                 skip = nonzero(c, std::int8_t(program.call(0x10149df0, 0x1036f024, {c.u32(humans), 0, second}))) &&

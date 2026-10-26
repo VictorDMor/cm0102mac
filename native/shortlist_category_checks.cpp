@@ -1,9 +1,11 @@
 #include "shortlist_category.hpp"
 #include "semantic_io_checks.hpp"
+#include "shortlist_rewrite_fixture.hpp"
 #include <set>
 namespace cm::aot {std::vector<std::uint32_t> shortlist_category_expected_sites();bool shortlist_category_reference(State&);void shortlist_category_fixture_tables(State&,std::uint32_t,std::uint32_t);}
 namespace {
 using namespace cm::semantic_io_checks;
+namespace rf=cm::shortlist_rewrite_fixture;
 namespace category=cm::aot::shortlist_category;
 constexpr std::uint32_t object=fixture+0x1000,club_table=fixture+0x2000,club=fixture+0x4000,rows=fixture+0x8000,other_rows=fixture+0x9000,staff=fixture+0x10000,profile=fixture+0x20000,nonplayer=fixture+0x24000,contract=fixture+0x25000,stamp=fixture+0x26000,other_stamp=fixture+0x26100,date=fixture+0x26200,globals=fixture+0x30000,tables=fixture+0x34000,output=fixture+0x3c000,pair=fixture+0x3e000,other_pair=fixture+0x3e100;
 constexpr std::array<std::uint32_t,5> ends{0x103660a4,0x10366250,0x103663b0,0x10366410,0x10366470};
@@ -17,14 +19,20 @@ unsigned index(std::uint32_t root){const auto i=std::find(category::entries.begi
 void modern_root(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){methods[index(s.pc)](s,d,o);}
 struct Event{std::uint32_t target,stop;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
 struct Model:SemanticDependencyDispatch{
-    bool original;Options options;Trace& trace;std::vector<Event> calls;
+    bool original;Options options;Trace& trace;std::vector<Event> calls;rf::Side side;
     Model(bool old,Options o,Trace& t):original(old),options(std::move(o)),trace(t){}
     void reference(State& s,std::uint32_t stop=return_sentinel){const auto root=s.pc,n=index(root);bool first=true;while(s.pc!=stop){if(s.pc>=root&&s.pc<ends[n]&&(first||s.pc!=root))require(shortlist_category_reference(s),"Complete shortlist category reference");else call(s,s.pc,std::uint32_t(s.r<4>(4128)));first=false;}}
     static std::vector<std::uint8_t> text(State& s,std::uint32_t at){std::vector<std::uint8_t>b;for(unsigned n=0;n<8192;++n){auto c=std::uint8_t(s.memory.read<1>(at+n));if(!c)return b;b.push_back(c);}throw std::runtime_error("Unterminated category fixture text");}
     void call(State& s,std::uint32_t target,std::uint32_t stop)override{
-        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});
+        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});const bool counts=side.enter(target,stop);
         try{
             const auto arg=[&](unsigned n){return std::uint32_t(s.r<4>(n*4));};const auto first=arg(3),second=arg(4);std::uint32_t result=0;
+            if(side.composes(target,stop)){
+                if(std::find(category::entries.begin(),category::entries.end(),target)!=category::entries.end())reference(s,stop);else rf::compose(s,target,rf::answer_of(*this));
+                require(s.pc==stop,"Composed category child return");calls[serial].after=s.registers;
+                if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Fixture shortlist-category dependency interruption");
+                return;
+            }
             s.memory.write<4>(globals+0x600,target);s.memory.write<4>(globals+0x604,s.memory.read<4>(globals+0x604)+1);
             if(target==0x1014c2e0)result=options.club_result;
             else if(target==0x10717b20){require(arg(5)==20,"Original twenty-day subtraction argument");(void)s.memory.read<4>(second);s.memory.write<2>(first,options.day);s.memory.write<2>(first+2,options.year);s.memory.write<1>(first+4,3);result=first;if(options.replace_stamp)s.memory.write<4>(club+0x248+0x90,other_stamp);}
@@ -37,8 +45,8 @@ struct Model:SemanticDependencyDispatch{
             else if(target==0x10769b60){(void)text(s,first);(void)text(s,second);}
             else if(target==0x12345678)result=42;
             else throw std::runtime_error("Unknown category dependency "+hex_address(target));
-            for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xdd000000+n*0x101);s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=stop;
-            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(options.interrupt&&calls.size()>=options.interrupt)throw std::runtime_error("Fixture shortlist-category dependency interruption");
+            for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2&&side.clobbers(target,n))s.wr<4>(n*4,0xdd000000+n*0x101);s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=stop;
+            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Fixture shortlist-category dependency interruption");
         }catch(...){calls[serial].after=s.registers;throw;}
     }
 };
@@ -54,6 +62,13 @@ std::unique_ptr<State> seed(unsigned n){
 }
 unsigned cases=0,completed=0,interrupted=0,negatives=0,structural=0;std::set<std::uint32_t> sites,completed_sites;
 struct Result{std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
+// The same case for the C++ SHORTLIST_MANAGER.CPP (shortlist_rewrite_fixture.hpp).
+void rewrite_side(const State& input,const Options& options,const std::string& expected,const std::string& label){
+    const char* not_run=!options.controls.empty()||options.structural?"register written at an instruction address, or a jump table changed":nullptr;
+    static Trace unused{Options{}};
+    rf::rewrite_side(input,expected,not_run,{label,nullptr,rf::negative(options.own_negative,options.child_negative),{{tables,output}},{}},
+        [&](bool reference){return std::make_unique<Model>(reference,options,unused);},[](Model& m,State& s){m.reference(s);});
+}
 Result compare(const State& input,Options options={}){
     auto a=clone(input),b=clone(input);Effects x,y;x.state=a.get();y.state=b.get();a->memory.date_observer=&x;b->memory.date_observer=&y;Trace ot(options),nt(options);Model old(true,options,ot),modern(false,options,nt);
     const auto run=[&](State& s,Model& m,bool reference){try{if(reference){original_trace=&ot;m.reference(s);}else modern_root(s,&m,&nt);original_trace=nullptr;return std::string{};}catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}};
@@ -62,6 +77,7 @@ Result compare(const State& input,Options options={}){
     if(ot.sites!=nt.sites){for(unsigned k=0;k<std::min(ot.sites.size(),nt.sites.size());++k)if(ot.sites[k]!=nt.sites[k]){std::cerr<<"First shortlist-category site "<<k<<" "<<hex_address(ot.sites[k])<<"/"<<hex_address(nt.sites[k])<<std::endl;break;}}
     require(expected==actual,label+" original="+expected+" modern="+actual);if(options.own_negative)b->wr<4>(12,b->r<4>(12)^1);bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!options.own_negative&&!options.child_negative)throw;rejected=true;}require(rejected==(options.own_negative||options.child_negative),label+" discriminating negative");
     if(!rejected){require(x.bytes==y.bytes,label+" effects");if(old.calls!=modern.calls){for(unsigned n=0;n<std::min(old.calls.size(),modern.calls.size());++n)if(!(old.calls[n]==modern.calls[n])){const auto& xcall=old.calls[n];const auto& ycall=modern.calls[n];std::cerr<<"Call mismatch "<<n<<" target="<<hex_address(xcall.target)<<"/"<<hex_address(ycall.target)<<" stop="<<hex_address(xcall.stop)<<"/"<<hex_address(ycall.stop)<<std::endl;for(unsigned b=0;b<xcall.before.size();++b)if(xcall.before[b]!=ycall.before[b]){std::cerr<<"before byte="<<b<<" "<<unsigned(xcall.before[b])<<"/"<<unsigned(ycall.before[b])<<std::endl;break;}for(unsigned b=0;b<xcall.after.size();++b)if(xcall.after[b]!=ycall.after[b]){std::cerr<<"after byte="<<b<<" "<<unsigned(xcall.after[b])<<"/"<<unsigned(ycall.after[b])<<std::endl;break;}break;}}require(old.calls==modern.calls,label+" dependency ABI");require(ot.sites==nt.sites,label+" source order");require(a->executed==b->executed,label+" accounting");}
+    rewrite_side(input,options,expected,label);
     ++cases;completed+=expected.empty()&&!rejected;interrupted+=!expected.empty();negatives+=rejected;structural+=options.structural||!options.controls.empty();if(!rejected&&expected!="Native instruction budget exhausted")sites.insert(ot.sites.begin(),ot.sites.end());if(!rejected&&expected.empty())completed_sites.insert(ot.sites.begin(),ot.sites.end());return{std::move(a),x.log,old.calls};
 }
 void boundaries(const State& input,Options options={}){
@@ -109,4 +125,4 @@ void comparison_cases(){
 }
 }
 namespace cm::aot {void shortlist_category_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
-int main(){try{baseline_cases();eligibility_cases();pruning_cases();refresh_cases();relocation_cases();comparison_cases();const auto expected=shortlist_category_expected_sites();for(auto pc:expected)if(!sites.contains(pc))std::cerr<<"Uncovered category site "<<hex_address(pc)<<std::endl;require(sites.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[](auto pc){return sites.contains(pc);}),"Every original shortlist category site required");std::cout<<"Shortlist category comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/467 completed_sites="<<completed_sites.size()<<std::endl;}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
+int main(){try{rf::tally.name="Shortlist category";baseline_cases();eligibility_cases();pruning_cases();refresh_cases();relocation_cases();comparison_cases();const auto expected=shortlist_category_expected_sites();for(auto pc:expected)if(!sites.contains(pc))std::cerr<<"Uncovered category site "<<hex_address(pc)<<std::endl;require(sites.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[](auto pc){return sites.contains(pc);}),"Every original shortlist category site required");std::cout<<"Shortlist category comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/467 completed_sites="<<completed_sites.size()<<std::endl;rf::finish();}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}

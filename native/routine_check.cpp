@@ -259,19 +259,38 @@ std::string hex(std::uint64_t value, int width = 8) {
 namespace {
 // What differs between the original's and the rewrite's run of one call,
 // from the parent's state before it (stack addresses shown relative to sp).
+// Whether both runs stopped at the same point with the same message: a
+// synthetic call into a path the recording never took stops at the first
+// import the recording has no output for (an error alert, an exit), or at
+// the same fault. Synthetic calls compare the two states there.
+bool same_stop(const Report& expected, const Report& actual) {
+    return expected.outcome == Outcome::fault && actual.outcome == Outcome::fault &&
+           expected.message == actual.message && expected.pc == actual.pc;
+}
+
 std::vector<std::string> compare_reports(const State& s, const Report& expected, const Report& actual, unsigned results,
-                                         std::uint32_t stack, bool strict_volatile) {
+                                         std::uint32_t stack, bool strict_volatile, bool stop_compared = false) {
     using R = RoutineChecker;
     [[maybe_unused]] constexpr unsigned result_r3 = R::result_r3, result_r4 = R::result_r4, result_f1 = R::result_f1;
     std::vector<std::string> found;
     // A replay never faults, so a stopped child is a failure of the rewrite or
-    // of the harness, even when both stopped the same way.
-    if (expected.outcome == Outcome::fault) found.push_back("the original stopped: " + expected.message);
-    if (actual.outcome == Outcome::fault) found.push_back("the rewrite stopped: " + actual.message);
+    // of the harness, even when both stopped the same way; except for
+    // synthetic calls stopping at the same point (stop_compared), whose
+    // states there are compared like returns, without the condition register
+    // (the rewrites reproduce it at returns only).
+    const bool stopped = stop_compared && same_stop(expected, actual);
+    // At a fault inside the routine the rewrite holds the original's state
+    // only where the two meet (calls and returns): only the message and pc
+    // compare. At an import, r3 (its first argument) and f1 count too.
+    if (stopped && !import_name(expected.pc)) return {};
+    if (stopped) results |= R::result_r3 | R::result_f1;
+    if (expected.outcome == Outcome::fault && !stopped) found.push_back("the original stopped: " + expected.message);
+    if (actual.outcome == Outcome::fault && !stopped) found.push_back("the rewrite stopped: " + actual.message);
     if (expected.outcome != actual.outcome)
         found.push_back("outcome " + std::to_string(int(expected.outcome)) + " vs " + std::to_string(int(actual.outcome)));
     if (expected.imports != actual.imports) found.push_back("the imports observed different inputs");
-    if (expected.outcome == actual.outcome && (expected.outcome == Outcome::returned || expected.outcome == Outcome::ended)) {
+    if (expected.outcome == actual.outcome &&
+        (expected.outcome == Outcome::returned || expected.outcome == Outcome::ended || stopped)) {
         if (expected.pc != actual.pc) found.push_back("pc " + hex(expected.pc) + " vs " + hex(actual.pc));
         const auto word = [](const Report& r, std::size_t offset) { return read_be<4>(r.registers.data() + offset); };
         // r4-r10 too: a caller's next varargs call (sprintf) stores r3-r10
@@ -289,7 +308,7 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
         }
         // Every CR field: a later callee that saves cr2-cr4 stores the
         // whole CR (mfcr), volatile fields included.
-        for (unsigned field = 0; field < 8; ++field)
+        for (unsigned field = 0; field < 8 && !stopped; ++field)
             if (expected.registers[2304 + field] != actual.registers[2304 + field])
                 found.push_back("cr" + std::to_string(field) + " " + std::to_string(expected.registers[2304 + field]) +
                                 " vs " + std::to_string(actual.registers[2304 + field]));
@@ -409,9 +428,14 @@ std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& fil
                 call.trigger = std::uint32_t(std::stoul(value.substr(0, hash), nullptr, 16));
                 if (hash != std::string::npos) call.nth = std::uint32_t(std::stoul(value.substr(hash + 1)));
             } else if (key == "call") call.target = std::uint32_t(std::stoul(value, nullptr, 16));
+            else if (key == "from") call.from = std::uint32_t(std::stoul(value, nullptr, 16));
             else if (key == "results") {
                 call.results = value == "none" ? 0u : value == "r3r4" ? RoutineChecker::result_r3 | RoutineChecker::result_r4
                              : value == "f1" ? RoutineChecker::result_f1 : RoutineChecker::result_r3;
+            } else if (key == "m8" || key == "m16" || key == "m32") {
+                const auto colon = value.rfind(':');
+                if (colon == std::string::npos) throw std::runtime_error("Bad synthetic memory write: " + line);
+                call.writes.push_back({unsigned(std::stoul(key.substr(1))) / 8, value.substr(0, colon), value.substr(colon + 1)});
             } else if (key.size() >= 2 && key[0] == 'r') call.registers.emplace_back(unsigned(std::stoul(key.substr(1))), value);
             else throw std::runtime_error("Bad synthetic call: " + line);
         }
@@ -429,44 +453,117 @@ std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, Rou
     return compare_reports(s, expected, actual, results, stack, strict_volatile);
 }
 
+namespace {
+std::uint64_t synthetic_made = 0;
+
+// A synthetic call's value: a number, @rN (register N at the trigger) or
+// [EXPR] (the word at EXPR), followed by any number of +off / -off.
+class SyntheticValue {
+public:
+    SyntheticValue(const Memory& memory, const decltype(State::registers)& registers)
+        : memory_(memory), registers_(registers) {}
+    std::uint32_t operator()(const std::string& text) const {
+        std::size_t at = 0;
+        const auto result = expression(text, at);
+        if (at != text.size()) throw std::runtime_error("Bad synthetic value: " + text);
+        return result;
+    }
+
+private:
+    std::uint32_t number(const std::string& text, std::size_t& at) const {
+        std::size_t used = 0;
+        const auto value = std::uint32_t(std::stoul(text.substr(at), &used, 0));
+        at += used;
+        return value;
+    }
+    std::uint32_t expression(const std::string& text, std::size_t& at) const {
+        auto result = term(text, at);
+        while (at < text.size() && (text[at] == '+' || text[at] == '-')) {
+            const char sign = text[at++];
+            const auto offset = number(text, at);
+            result = sign == '+' ? result + offset : result - offset;
+        }
+        return result;
+    }
+    std::uint32_t term(const std::string& text, std::size_t& at) const {
+        if (at >= text.size()) throw std::runtime_error("Bad synthetic value: " + text);
+        if (text[at] == '[') {
+            ++at;
+            const auto address = expression(text, at);
+            if (at >= text.size() || text[at] != ']') throw std::runtime_error("Bad synthetic value: " + text);
+            ++at;
+            return std::uint32_t(memory_.read<4>(address));
+        }
+        if (text[at] == '@') {
+            if (at + 1 >= text.size() || text[at + 1] != 'r') throw std::runtime_error("Bad synthetic register: " + text);
+            at += 2;
+            const auto n = number(text, at);
+            if (n > 31) throw std::runtime_error("Bad synthetic register: " + text);
+            return std::uint32_t(read_be<4>(registers_.data() + n * 4));
+        }
+        return number(text, at);
+    }
+    const Memory& memory_;
+    const decltype(State::registers)& registers_;
+};
+}
+std::uint64_t synthetic_calls_made() { return synthetic_made; }
+
 unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, RoutineRunner original, RoutineRunner rewrite,
                              bool strict_volatile) {
     if (in_child) return 0;
     unsigned differing = 0;
-    static std::map<std::uint32_t, std::uint32_t> seen;
-    bool counted = false;
+    // Dispatches of each trigger, and of each (trigger, return address) for
+    // triggers given with from=.
+    static std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> seen;
+    const auto link = std::uint32_t(s.r<4>(4128));
+    std::set<std::pair<std::uint32_t, std::uint32_t>> counted;
     for (auto& call : calls) {
-        if (call.trigger != s.pc) continue;
-        if (!counted) { ++seen[s.pc]; counted = true; }
-        if (seen[s.pc] != call.nth) continue;
+        if (call.trigger != s.pc || (call.from && call.from != link)) continue;
+        const std::pair key{s.pc, call.from};
+        if (counted.insert(key).second) ++seen[key];
+        if (seen[key] != call.nth) continue;
+        ++synthetic_made;
+        call.made = true;
         const auto saved = s.registers;
         const auto saved_pc = s.pc;
-        const auto value = [&](const std::string& text) {
-            if (text.empty() || text[0] != '@') return std::uint32_t(std::stoul(text, nullptr, 0));
-            const auto sign = text.find_first_of("+-", 2);
-            const auto n = unsigned(std::stoul(text.substr(2, sign == std::string::npos ? std::string::npos : sign - 2)));
-            auto base = std::uint32_t(read_be<4>(saved.data() + n * 4));
-            if (sign != std::string::npos) {
-                const auto offset = std::uint32_t(std::stoul(text.substr(sign + 1), nullptr, 0));
-                base = text[sign] == '+' ? base + offset : base - offset;
-            }
-            return base;
-        };
-        // A fresh frame below the trigger's, returning to the sentinel.
-        const auto sp = (std::uint32_t(s.r<4>(4)) - 0x400) & ~0xfu;
-        s.wr<4>(4, sp);
-        for (const auto& [n, text] : call.registers) s.wr<4>(n * 4, value(text));
-        s.wr<4>(4128, return_sentinel);
-        s.pc = call.target;
+        const SyntheticValue value(s.memory, saved);
+        // Memory writes for the call only (state the recording never had),
+        // made without observers and undone however the call ends; a bad
+        // line is reported, never left behind in the replay's state.
+        std::vector<std::pair<std::uint32_t, std::vector<std::uint8_t>>> undo;
+        const auto observer = s.memory.observer, date_observer = s.memory.date_observer;
         std::vector<std::string> found;
+        std::string stop;
         try {
+            s.memory.observer = nullptr; s.memory.date_observer = nullptr;
+            for (const auto& write : call.writes) {
+                const auto address = value(write.address), v = value(write.value);
+                undo.emplace_back(address, s.memory.copy_out(address, write.size));
+                if (write.size == 1) s.memory.write<1>(address, v & 0xff);
+                else if (write.size == 2) s.memory.write<2>(address, v & 0xffff);
+                else s.memory.write<4>(address, v);
+            }
+            s.memory.observer = observer; s.memory.date_observer = date_observer;
+            // A fresh frame below the trigger's, returning to the sentinel.
+            const auto sp = (std::uint32_t(s.r<4>(4)) - 0x400) & ~0xfu;
+            std::vector<std::pair<unsigned, std::uint32_t>> registers;
+            for (const auto& [n, text] : call.registers) registers.emplace_back(n, value(text));
+            s.wr<4>(4, sp);
+            for (const auto& [n, v] : registers) s.wr<4>(n * 4, v);
+            s.wr<4>(4128, return_sentinel);
+            s.pc = call.target;
             const auto expected = fork_run(s, call.target, original, false, true);
             const auto actual = fork_run(s, call.target, rewrite, false, true);
-            found = compare_reports(s, expected, actual, call.results, sp, strict_volatile);
+            found = compare_reports(s, expected, actual, call.results, sp, strict_volatile, true);
+            if (same_stop(expected, actual)) stop = " (both stopped at " + hex(expected.pc) + ": " + expected.message + ")";
         } catch (const std::exception& error) { found.push_back(error.what()); }
+        s.memory.observer = nullptr; s.memory.date_observer = nullptr;
+        for (auto it = undo.rbegin(); it != undo.rend(); ++it) s.memory.copy_in(it->first, it->second);
+        s.memory.observer = observer; s.memory.date_observer = date_observer;
         s.registers = saved;
         s.pc = saved_pc;
-        std::cerr << (found.empty() ? "synthetic ok: " : "synthetic DIFFERS: ") << call.line << '\n';
+        std::cerr << (found.empty() ? "synthetic ok" + stop + ": " : "synthetic DIFFERS" + stop + ": ") << call.line << '\n';
         for (const auto& line : found) std::cerr << "  " << line << '\n';
         if (!found.empty()) ++differing;
     }

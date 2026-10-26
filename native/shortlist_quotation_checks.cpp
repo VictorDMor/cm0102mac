@@ -1,5 +1,6 @@
 #include "shortlist_quotation.hpp"
 #include "semantic_io_checks.hpp"
+#include "shortlist_rewrite_fixture.hpp"
 #include "register_context.hpp"
 #include "compiler_arithmetic.hpp"
 #include "stdlib_core.hpp"
@@ -10,6 +11,7 @@
 namespace cm::aot {std::vector<std::uint32_t> shortlist_quotation_expected_sites();bool shortlist_quotation_reference(State&);void shortlist_quotation_fixture_tables(State&,std::uint32_t,std::uint32_t);}
 namespace {
 using namespace cm::semantic_io_checks;
+namespace rf=cm::shortlist_rewrite_fixture;
 namespace quotation=cm::aot::shortlist_quotation;
 constexpr std::uint32_t object=fixture+0x1000,clubs=fixture+0x10000,staff=fixture+0x20000,profiles=fixture+0x30000,countries=fixture+0x40000,related=fixture+0x50000,contracts=fixture+0x60000,globals=fixture+0x70000,metadata=fixture+0x74000,random=fixture+0x78000,tables=fixture+0x80000,limits=fixture+0x90000,row=fixture+0x1000+0x200,output=fixture+0x2000,flags=fixture+0x2100;
 constexpr std::array<std::uint32_t,2> ends{0x10369074,0x1037e3d8};
@@ -42,18 +44,24 @@ unsigned index(std::uint32_t root){const auto i=std::find(quotation::entries.beg
 void modern_root(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){methods[index(s.pc)](s,d,o);}
 struct Event{std::uint32_t target,stop;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
 struct Model:SemanticDependencyDispatch {
-    bool original;Options options;Trace& trace;std::vector<Event> calls;unsigned completed_selected_children=0;
+    bool original;Options options;Trace& trace;std::vector<Event> calls;rf::Side side;unsigned completed_selected_children=0;
     Model(bool old,Options o,Trace& t):original(old),options(std::move(o)),trace(t){}
     void reference(State& s,std::uint32_t stop=return_sentinel){const auto root=s.pc,n=index(root);bool first=true;while(s.pc!=stop){if(s.pc>=root&&s.pc<ends[n]&&(first||s.pc!=root))require(shortlist_quotation_reference(s),"Complete quotation reference");else call(s,s.pc,std::uint32_t(s.r<4>(4128)));first=false;}}
     void call(State& s,std::uint32_t target,std::uint32_t stop)override {
-        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});
+        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});const bool counts=side.enter(target,stop);
         try {
             const auto arg=[&](unsigned n){return std::uint32_t(s.r<4>(n*4));};const auto first=arg(3),second=arg(4);std::uint32_t result=0;double real=0.5;bool special=false;
-            s.memory.write<4>(globals+0x500,target);s.memory.write<4>(globals+0x508,s.memory.read<4>(globals+0x508)+1);
+            if(side.composes(target,stop)){
+                if(std::find(quotation::entries.begin(),quotation::entries.end(),target)!=quotation::entries.end())reference(s,stop);else rf::compose(s,target,rf::answer_of(*this));
+                require(s.pc==stop,"Composed quotation child return");calls[serial].after=s.registers;
+                if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Fixture quotation dependency interruption");
+                return;
+            }
+            if(side.records(target,stop)){s.memory.write<4>(globals+0x500,target);s.memory.write<4>(globals+0x508,s.memory.read<4>(globals+0x508)+1);}
             if(target==0x107737f8){register_context::save_floating_suffix(s,24);special=true;}
             else if(target==0x10773848){register_context::restore_floating_suffix(s,24);special=true;}
             else if(target==0x10775540){stdlib_core::absolute_word(s);special=true;}
-            else if(target==0x1037b6f0){if(original)reference(s,stop);else quotation::calculate_reference_quote(s,this,&trace);
+            else if(target==0x1037b6f0){if(original||side.rewrite)reference(s,stop);else quotation::calculate_reference_quote(s,this,&trace);
                 require(s.pc==stop,"Quotation child continuation");++completed_selected_children;
                 if(!original&&options.quote_result_negative)s.wr<8>(0x4010,s.r<8>(0x4010)^1);
                 if(!original&&options.quote_effect_negative){const auto before=s.memory.read<1>(globals+0x704);s.memory.write<1>(globals+0x704,before^1);s.memory.write<1>(globals+0x704,before);}
@@ -77,13 +85,13 @@ struct Model:SemanticDependencyDispatch {
                 if(options.words.contains(target))result=options.words.at(target);
                 if(options.first_words.contains({target,first}))result=options.first_words.at({target,first});
                 if(options.second_words.contains({target,second}))result=options.second_words.at({target,second});if(options.reals.contains(target))real=options.reals.at(target);
-                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xdd000000+n*0x101);
-                for(unsigned n=0;n<14;++n)s.wr<8>(0x4000+n*16,float_bits<8>(1000.25+n));
-                s.wr<8>(0x4010,float_bits<8>(real));s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);
+                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2&&side.clobbers(target,n))s.wr<4>(n*4,0xdd000000+n*0x101);
+                if(side.clobbers_fprs(target))for(unsigned n=0;n<14;++n)s.wr<8>(0x4000+n*16,float_bits<8>(1000.25+n));
+                if(side.writes_f1(target))s.wr<8>(0x4010,float_bits<8>(real));s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);
             }
             if(options.writes.contains(target))for(auto [address,value]:options.writes.at(target))s.memory.write<4>(address,value);
             s.pc=stop;if(options.child_negative&&!original){const auto before=s.memory.read<1>(globals+0x700);s.memory.write<1>(globals+0x700,before^1);s.memory.write<1>(globals+0x700,before);}calls[serial].after=s.registers;
-            if(options.interrupt&&calls.size()>=options.interrupt)throw std::runtime_error("Fixture quotation dependency interruption");
+            if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Fixture quotation dependency interruption");
         }catch(...){calls[serial].after=s.registers;throw;}
     }
 };
@@ -114,6 +122,18 @@ std::array<unsigned,2> root_cases{},root_returns{},root_stops{},root_negatives{}
 struct CorpusCase{std::unique_ptr<State> state;Options options;};
 std::unique_ptr<CorpusCase> selected_child_input;
 struct Result{std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;std::string outcome;};
+// The same case for the C++ SHORTLIST_MANAGER.CPP (shortlist_rewrite_fixture.hpp). The
+// compiler's register save/restore and conversion helpers and abs are inlined there.
+const std::set<std::uint32_t> transparent{0x107737f8,0x10773848,0x10775540,0x10773780};
+void rewrite_side(const State& input,const Options& options,const std::string& expected,const std::string& label){
+    // These negatives write a byte and restore it: only an ordered-effect
+    // comparison sees them, and the C++ is compared on its state.
+    const char* not_run=options.child_negative||options.quote_effect_negative?"a negative control the final state cannot show":nullptr;
+    static Trace unused;
+    rf::rewrite_side(input,expected,not_run,{label,&transparent,rf::negative(options.own_negative,options.quote_result_negative),{{tables,limits}},
+        [](State& s){s.wr<8>(0x4010,s.r<8>(0x4010)^1);}},
+        [&](bool reference){return std::make_unique<Model>(reference,options,unused);},[](Model& m,State& s){m.reference(s);});
+}
 Result compare(const State& input,Options options={}){
     auto a=clone(input),b=clone(input);TimedEffects x(*a),y(*b);a->memory.date_observer=&x;b->memory.date_observer=&y;Trace ot,nt;Model old(true,options,ot),modern(false,options,nt);
     const auto run=[&](State& state,Model& model,bool reference){try{if(reference){original_trace=&ot;model.reference(state);}else modern_root(state,&model,&nt);original_trace=nullptr;return std::string{};}catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}};
@@ -141,6 +161,7 @@ Result compare(const State& input,Options options={}){
     require(rejected==negative,label+" discriminating negative");
     if(expected.empty()&&!rejected&&input.pc==quotation::entries[0]&&old.completed_selected_children&&!selected_child_input)
         selected_child_input=std::make_unique<CorpusCase>(CorpusCase{clone(input),options});
+    rewrite_side(input,options,expected,label);
     const auto root=index(input.pc);++root_cases[root];root_returns[root]+=expected.empty()&&!rejected;root_stops[root]+=!expected.empty();root_negatives[root]+=rejected;
     if(input.pc==quotation::entries[0]&&expected.empty()&&!rejected)completed_quote_children+=std::count_if(old.calls.begin(),old.calls.end(),[](const auto& call){return call.target==quotation::entries[1];});
     ++cases;completed+=expected.empty()&&!rejected;interrupted+=!expected.empty();negatives+=rejected;if(!rejected&&expected!="Native instruction budget exhausted")sites.insert(ot.sites.begin(),ot.sites.end());if(!rejected&&expected.empty())completed_sites.insert(ot.sites.begin(),ot.sites.end());return{std::move(a),x.effects.log,old.calls,expected};
@@ -177,7 +198,7 @@ void boundary_and_negative_cases(){
 namespace cm::aot {void shortlist_quotation_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
 int main(int argc,char** argv){
     try{
-        require(argc==1||argc==2,"Optional private coverage output path");retained_cases();boundary_and_negative_cases();
+        rf::tally.name="Shortlist quotation";require(argc==1||argc==2,"Optional private coverage output path");retained_cases();boundary_and_negative_cases();
         const auto expected=shortlist_quotation_expected_sites();
         const std::set<std::uint32_t> structural(quotation::structurally_unreachable.begin(),quotation::structurally_unreachable.end());
         if(argc==2){std::ofstream out(argv[1]);for(auto pc:expected)out<<hex_address(pc)<<" "<<sites.contains(pc)<<" "<<completed_sites.contains(pc)<<"\n";}
@@ -186,6 +207,7 @@ int main(int argc,char** argv){
         for(unsigned n=0;n<2;++n)std::cout<<"Root "<<hex_address(quotation::entries[n])<<" comparisons="<<root_cases[n]<<" completions="<<root_returns[n]<<" matched_stops="<<root_stops[n]<<" negatives="<<root_negatives[n]<<std::endl;
         require(structural.size()==75&&completed_sites.size()+structural.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[&](auto pc){return completed_sites.contains(pc)!=structural.contains(pc);}),"Every original quotation site requires a complete return or a checked structural proof");
         require(completed_quote_children>0&&root_negatives[0]==4&&root_negatives[1]==2,"Individual and selected-child negative controls");
+        rf::finish();
         return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}
 }

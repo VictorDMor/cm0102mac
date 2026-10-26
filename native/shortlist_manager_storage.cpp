@@ -80,7 +80,7 @@ std::uint32_t construct_storage(Cpu& c, std::uint32_t address, std::uint32_t arc
         for (std::uint32_t category = 0; category < Manager::categories; ++category) manager.list(bank, category) = 0;
     }
     if (nonzero_logical(c, archive)) {
-        enter(c, 0x10356564, {address, archive});
+        enter_direct(c, 0x10356564, {address, archive});
         load_storage(c, address, archive);
         return result(c, address);
     }
@@ -121,7 +121,7 @@ std::uint32_t construct_storage(Cpu& c, std::uint32_t address, std::uint32_t arc
     manager.count_by_club() = 0;
     manager.links_by_staff() = 0;
     manager.links_by_club() = 0;
-    enter(c, 0x10356790, {address, 1});
+    enter_direct(c, 0x10356790, {address, 1});
     reset_storage(c, address);
     return result(c, address);
 }
@@ -226,7 +226,7 @@ void load_storage(Cpu& c, std::uint32_t address, std::uint32_t archive) {
                 const Field<std::uint32_t> slot{c, address + slot_offset};
                 slot = list;
                 if (!nonzero_logical(c, slot)) fatal(c, frame, pool, 0x10358504, 0x154, 0x6c, 0x322);
-                if (compare(c, saved_version(0x1035854c, false), std::int32_t(std::uint32_t(limit))) < 0 &&
+                if (compare(c, saved_version(0x10358550, false), std::int32_t(std::uint32_t(limit))) < 0 &&
                     compare(c, category, 15) == 0) {
                     const auto bank_0_last = manager.list(0, 15).get();
                     c.set(3, bank_0_last);
@@ -262,11 +262,11 @@ void load_storage(Cpu& c, std::uint32_t address, std::uint32_t archive) {
         // The club's score is raised to the club's current one.
         const auto score = c.i16(c.u32(clubs) + club_offset + 0x1ec);
         if (compare(c, entry.reputation(), score) < 0) entry.reputation() = score;
-        const auto records = program.malloc(Row::size * Row::per_club, 0x103586c4);
+        const auto records = program.malloc(Row::size * Row::per_club, 0x103586c8);
         ClubEntry{c, manager.clubs() + entry_offset}.rows() = records;
         if (!nonzero_logical(c, ClubEntry{c, manager.clubs() + entry_offset}.rows()))
             return fail(0x103586f4, 0xf4, 0x54, 0x34d);
-        if (compare(c, saved_version(0x10358738, true), version_without_legacy) > 0) {
+        if (compare(c, saved_version(0x1035873c, true), version_without_legacy) > 0) {
             const auto stored = ClubEntry{c, manager.clubs() + entry_offset}.rows().get();
             if (compare(c, read(stored, Row::size, Row::per_club, 0x10358764),
                         Row::per_club) != 0)
@@ -305,7 +305,7 @@ void load_storage(Cpu& c, std::uint32_t address, std::uint32_t archive) {
         } while (compare(c, index, Row::per_club) < 0);
     }
     if (compare(c, saved_version(0x10358ac0, true), version_complete) < 0) {
-        enter(c, 0x10358adc, {address, 0});
+        enter_direct(c, 0x10358adc, {address, 0});
         reset_storage(c, address);
     }
 }

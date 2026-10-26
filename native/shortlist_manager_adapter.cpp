@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <stdexcept>
 
 namespace cm::aot {
 namespace {
@@ -59,11 +60,25 @@ bool runs(const Routine* routine) {
 }
 
 bool shortlist_manager_lists(std::uint32_t entry) { return listed(entry) != nullptr; }
+unsigned shortlist_manager_results(std::uint32_t entry) {
+    const auto* routine = listed(entry);
+    return routine ? routine->results : 0;
+}
+ShortlistManagerCallHook* shortlist_manager_call_hook = nullptr;
 
 // Program::call into another routine of the module (shortlist_manager_detail.hpp):
 // a verified routine (or, in check tools, a draft) runs its C++ in place, so
 // a checked routine's callees run as C++ inside its check.
 bool shortlist_manager::detail::call_rewritten(Cpu& c, std::uint32_t entry, std::uint32_t back) {
+    if (auto* hook = shortlist_manager_call_hook) [[unlikely]] {
+        const auto stack = c.sp();
+        c.link(back);
+        c.s.pc = entry;
+        if (!hook->call(c.s)) return false;  // the caller makes the guest call
+        if (c.s.pc != back || c.sp() != stack)
+            throw std::logic_error("Hooked call returned elsewhere: " + hex_address(entry));
+        return true;
+    }
     const auto* routine = listed(entry);
     if (declining || !routine || !(routine->verified || routine_checker)) return false;
     c.link(back);

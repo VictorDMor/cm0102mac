@@ -12,6 +12,7 @@
 // ctest). The condition register is reproduced at returns.
 #include "guest_fpu.hpp"
 #include "guest_values.hpp"
+#include "shortlist_manager_adapter.hpp"
 #include "shortlist_manager.hpp"
 #include "shortlist_manager_records.hpp"
 #include <initializer_list>
@@ -30,7 +31,6 @@ using guest::Field;
 using guest::Kept;
 using guest::compare;
 using guest::compare_logical;
-using guest::enter;
 using guest::extended;
 using guest::keep;
 using guest::leave;
@@ -162,6 +162,12 @@ inline std::int32_t modulo(std::uint32_t site, std::int32_t a, std::int32_t b) {
 // routine's hook, as the dispatcher would run it, without the round trip.
 // False (the caller makes the guest call) when its C++ does not run here.
 bool call_rewritten(Cpu& c, std::uint32_t entry, std::uint32_t back);
+// Before a direct C++ call of a routine of the same group: the arguments and
+// the `bl`'s link register (guest::enter); check tools see the call.
+inline void enter_direct(Cpu& c, std::uint32_t back, std::initializer_list<std::uint32_t> arguments = {}) {
+    guest::enter(c, back, arguments);
+    if (auto* hook = shortlist_manager_call_hook) [[unlikely]] hook->direct(back);
+}
 
 class Program {
 public:
@@ -171,6 +177,15 @@ public:
         for (const auto value : arguments) c.set(n++, value);
         if (!call_rewritten(c, entry, back)) c.call(entry, back);
         return c.r(3);
+    }
+    // A call the C++ reproduces in place (`reproduce()`, which returns r3):
+    // with a check tool's hook installed it is a guest call, so a fixture's
+    // model answers it as it answers the original's.
+    template <class Reproduce>
+    std::uint32_t inlined(std::uint32_t entry, std::uint32_t back, std::initializer_list<std::uint32_t> arguments,
+                          Reproduce&& reproduce) {
+        if (shortlist_manager_call_hook) [[unlikely]] return call(entry, back, arguments);
+        return reproduce();
     }
     std::uint32_t toolbox(std::uint32_t glue, std::uint32_t back, std::initializer_list<std::uint32_t> arguments = {}) {
         const auto result = call(glue, back, arguments);
@@ -211,10 +226,13 @@ private:
 // Most sites clear the success flag through r4 (`lwz r4,-0x7bac(r2); li
 // r0,0; stb r0,0(r4)`), which then holds the flag's address; sites that keep
 // that address in a non-volatile register pass flag_in_r4 = false.
+// Its calls go through Program::call, as the module's other calls do.
 inline void report(Cpu& c, std::uint32_t pool, std::uint32_t at, std::uint32_t name, std::uint32_t extension,
                    std::uint32_t line, bool flag_in_r4 = true) {
+    Program program(c);
     guest::report_assertion(c, {at, pool + text::file_name, pool + text::assert_format, pool + text::error_title,
-                                name, extension, line});
+                                name, extension, line},
+                            [&](std::uint32_t entry, std::uint32_t back) { program.call(entry, back); });
     if (flag_in_r4) c.set(4, c.toc(slot::success));
 }
 }

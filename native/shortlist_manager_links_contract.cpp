@@ -33,9 +33,11 @@ void mark_primary_contract(Cpu& c, std::uint32_t recruitment, std::uint32_t staf
         // Two draws from the game's random table (shortlist_manager_random.hpp),
         // each modulo 100 as the compiler divides (mulhw by 0x51eb851f, shift
         // 5, plus the sign bit, left in r3). The original steps the cursor for
-        // the second draw before it finishes the first. The first draw's
-        // residue stays in r29; the contract's byte at +0x4c (signed, kept in
-        // r31) must not exceed the difference of the draws.
+        // the second draw before it finishes the first: it forms the first
+        // draw's residue (r29) between the second step's cursor store and its
+        // wrap test, so a wrap's rand call sees r3-r7 and r29 as left below.
+        // The contract's byte at +0x4c (signed, kept in r31) must not exceed
+        // the difference of the draws.
         const RandomTable random{c, c.r(30), c.r(29), c.r(28), c.r(27)};
         const auto by_100 = [&](std::uint32_t value) {
             std::int32_t quotient = multiply_high(0x51eb851f, std::int32_t(value)) >> 5;
@@ -48,8 +50,15 @@ void mark_primary_contract(Cpu& c, std::uint32_t recruitment, std::uint32_t staf
         random.advance(0x103631f8);
         const std::uint32_t first_at = random.position(), first_entry = c.u16(first_at);
         const std::uint32_t first_value = first_entry + random.salt_value();
-        random.advance(0x1036324c);
+        const std::uint32_t next = first_at + 2;
+        c.put32(random.cursor, next);
         const Kept<29> first(c, by_100(first_value));
+        leave(c, {{4, std::uint32_t(multiply_high(0x51eb851f, std::int32_t(first_value)))},
+                  {5, first_value}, {6, first_entry}, {7, first_at}});
+        if (compare_logical(c, next, c.u32(random.end)) > 0) {
+            c.put32(random.cursor, random.table);
+            c.put32(random.salt, program.call(routine_address::rand, 0x1036324c) & 0xffff);
+        }
         const std::uint32_t second_value = random.value();
         const std::uint32_t second = by_100(second_value);
         const std::int32_t limit = std::int8_t(std::uint32_t(held));
@@ -97,7 +106,7 @@ std::uint32_t schedule_staff_transition(Cpu& c, std::uint32_t links, std::uint32
     Program program(c);
     Fpu fpu{c};
     // The staff's link row at the club (ordinary kind).
-    enter(c, 0x103636f8, {links, club, staff, 0, 0});
+    enter_direct(c, 0x103636f8, {links, club, staff, 0, 0});
     Kept<22> row(c, find_link_row(c, links, club, staff, 0, 0));
     // The club of the staff's contract, if any.
     const auto contract_club_of = [&](std::uint32_t back) {
@@ -111,7 +120,7 @@ std::uint32_t schedule_staff_transition(Cpu& c, std::uint32_t links, std::uint32
     Kept<24> contract_club(c, contract_club_of(0x10363708));
     if (!nonzero_logical(c, contract_club)) {
         if (nonzero_logical(c, row)) {
-            enter(c, 0x10363754, {links, staff, club, 1, 0});
+            enter_direct(c, 0x10363754, {links, staff, club, 1, 0});
             transition_staff_links(c, links, staff, club, 1, 0);
         }
         return result(c, std::uint32_t(-1));

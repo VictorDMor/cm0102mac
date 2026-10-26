@@ -117,7 +117,15 @@ dispatches the trigger for that time, the target runs with those registers
 and C++, compared like a checked call; the replay itself is untouched. A
 synthetic call's frame lies below the trigger's, so its imports see other
 inputs than the recording: its children only require the recorded import
-order, and both sides get the recorded outputs. A routine is done
+order (not the recorded heap state), and both sides get the recorded
+outputs. `from=0xRETURN` counts only the trigger's dispatches from one call
+site; `m8=`/`m16=`/`m32=ADDRESS:VALUE` sets memory the call sees (undone
+after it), with `[EXPR]` for the word at EXPR, e.g.
+`m32=[@r2-0x7b74]:0x3e015` for an older save version. When both children
+stop at the same point with the same message (the first import the
+recording has no output for, such as an error alert, or the same fault),
+their states there are compared, the condition register aside, and the line
+reports `ok (both stopped ...)`. A routine is done
 when its checks pass on every capture that reaches it, including the error
 paths someone can reach in play.
 
@@ -278,3 +286,13 @@ groups written in parallel. What it added:
   (world/interest-pass ends at 0x10363ca0's). Every routine therefore leaves
   f1 as the original does; `--compare-f1` makes the checker compare it for
   every routine.
+- **The builder families' fixtures check the C++.** The seven fixture
+  programs of the older shortlist families (cm-club-shortlist-storage-checks
+  and the like) script every call a routine makes, including legacy save
+  versions, short reads, allocation failures and fatal exits; each now also
+  runs the SHORTLIST_MANAGER C++ on every case
+  (native/shortlist_rewrite_fixture.hpp). A call hook in the adapter
+  (ShortlistManagerCallHook) routes the C++'s calls, in-place reproductions
+  included (Program::inlined), to the fixture's model; direct calls inside a
+  group are recorded (enter_direct) so the reference runs those callees too.
+  They found nine wrong return addresses on paths no capture took.

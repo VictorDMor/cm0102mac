@@ -1,10 +1,12 @@
 #include "shortlist_links.hpp"
 #include "semantic_io_checks.hpp"
+#include "shortlist_rewrite_fixture.hpp"
 #include <bit>
 #include <set>
 namespace cm::aot {std::vector<std::uint32_t> shortlist_links_expected_sites();bool shortlist_links_reference(State&);void shortlist_links_fixture_tables(State&,std::uint32_t,std::uint32_t);}
 namespace {
 using namespace cm::semantic_io_checks;
+namespace rf=cm::shortlist_rewrite_fixture;
 namespace links=cm::aot::shortlist_links;
 constexpr std::uint32_t object=fixture+0x1000,pairs=fixture+0x4000,reverse_pairs=fixture+0x8000,club_table=fixture+0xc000,clubs=fixture+0x10000,rows=fixture+0x14000,staff=fixture+0x18000,contract=fixture+0x1c000,metadata=fixture+0x20000,list=fixture+0x24000,list_data=fixture+0x25000,globals=fixture+0x27000,random=fixture+0x28000,tables=fixture+0x2a000,output=fixture+0x2d000,pool=fixture+0x30000;
 constexpr std::array<std::uint32_t,10> ends{0x10362df4,0x10362eec,0x10363128,0x103632e4,0x103636ac,0x10363c98,0x10365c28,0x10365c78,0x10365cbc,0x10365d08};
@@ -18,7 +20,7 @@ unsigned index(std::uint32_t root){const auto i=std::find(links::entries.begin()
 void modern_root(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){methods[index(s.pc)](s,d,o);}
 struct Event{std::uint32_t target,stop;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
 struct Model:SemanticDependencyDispatch{
-    bool original;Options options;Trace& trace;std::vector<Event> calls;unsigned allocations=0;std::uint32_t used=0;
+    bool original;Options options;Trace& trace;std::vector<Event> calls;rf::Side side;unsigned allocations=0;std::uint32_t used=0;
     Model(bool old,Options o,Trace& t):original(old),options(std::move(o)),trace(t){}
     void reference(State& s,std::uint32_t stop=return_sentinel){const auto root=s.pc,n=index(root);bool first=true;while(s.pc!=stop){if(s.pc>=root&&s.pc<ends[n]&&(first||s.pc!=root))require(shortlist_links_reference(s),"Complete shortlist-links reference");else call(s,s.pc,std::uint32_t(s.r<4>(4128)));first=false;}}
     std::uint32_t reserve(unsigned n){const auto result=pool+used;used+=(n+15)&~15u;require(used<0x1f000,"Bounded fixture allocation");return result;}
@@ -29,12 +31,16 @@ struct Model:SemanticDependencyDispatch{
     static std::vector<std::uint8_t> text(State& s,std::uint32_t at){std::vector<std::uint8_t>b;for(unsigned n=0;n<8192;++n){auto c=std::uint8_t(s.memory.read<1>(at+n));if(!c)return b;b.push_back(c);}throw std::runtime_error("Unterminated shortlist-links fixture text");}
     void append(State& s,std::uint32_t destination,std::array<std::uint32_t,2> value){const auto count=unsigned(s.memory.read<2>(destination));require(count<128,"Bounded fixture list");auto data=std::uint32_t(s.memory.read<4>(destination+4));if(!data){data=reserve(1024);s.memory.write<4>(destination+4,data);s.memory.write<4>(destination+12,data);}put_pair(s,data+count*8,value);s.memory.write<2>(destination,count+1);}
     void call(State& s,std::uint32_t target,std::uint32_t stop)override{
-        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});
+        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});const bool counts=side.enter(target,stop);
         try{
             const auto arg=[&](unsigned n){return std::uint32_t(s.r<4>(n*4));};const auto first=arg(3),second=arg(4);std::uint32_t result=0;
-            s.memory.write<4>(globals+0x600,target);s.memory.write<4>(globals+0x604,s.memory.read<4>(globals+0x604)+1);
-            if(options.compose&&std::find(links::entries.begin(),links::entries.end(),target)!=links::entries.end()){
-                if(original)reference(s,stop);else modern_root(s,this,&trace);
+            if(!side.composes(target,stop)){s.memory.write<4>(globals+0x600,target);s.memory.write<4>(globals+0x604,s.memory.read<4>(globals+0x604)+1);}
+            const bool own=std::find(links::entries.begin(),links::entries.end(),target)!=links::entries.end();
+            if(options.compose&&own){
+                if(original)reference(s,stop);else if(side.rewrite)rf::compose(s,target,rf::answer_of(*this));else modern_root(s,this,&trace);
+                require(s.pc==stop,"Composed shortlist-links child return");
+            }else if(side.composes(target,stop)){
+                if(own)reference(s,stop);else rf::compose(s,target,rf::answer_of(*this));
                 require(s.pc==stop,"Composed shortlist-links child return");
             }else{
                 if(target==0x10775600){
@@ -72,9 +78,9 @@ struct Model:SemanticDependencyDispatch{
                 else if(target==0x10769b60){(void)text(s,first);(void)text(s,second);}
                 else if(target==0x1076f7d0)throw std::runtime_error("Fixture shortlist-links requested exit");
                 else throw std::runtime_error("Unknown shortlist-links dependency "+hex_address(target));
-                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xdd000000+n*0x101);s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=stop;
+                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2&&side.clobbers(target,n))s.wr<4>(n*4,0xdd000000+n*0x101);s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=stop;
             }
-            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(options.interrupt&&calls.size()>=options.interrupt)throw std::runtime_error("Fixture shortlist-links dependency interruption");
+            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Fixture shortlist-links dependency interruption");
         }catch(...){calls[serial].after=s.registers;throw;}
     }
 };
@@ -89,16 +95,52 @@ std::unique_ptr<State> seed(unsigned n){
     s->memory.write<1>(contract+0x5c,0xac);s->memory.write<1>(contract+0x60,0xe3);s->memory.write<1>(contract+0x4c,10);s->memory.write<2>(list,0);s->memory.write<4>(list+4,list_data);s->memory.write<4>(list+12,list_data);shortlist_links_fixture_tables(*s,toc,tables);s->memory.copy_in(output+0x800,{102,105,120,116,117,114,101,0});
     if(n==1){s->wr<4>(16,clubs+0x248);s->wr<4>(20,list);}if(n==2){s->wr<4>(20,list);s->wr<4>(24,1);s->wr<4>(28,3);}if(n==3||n==5)s->wr<4>(20,1);return s;
 }
-unsigned cases=0,completed=0,interrupted=0,negatives=0,structural=0;std::set<std::uint32_t> sites,completed_sites;
+unsigned cases=0,completed=0,interrupted=0,negatives=0,structural=0,builder_differences=0;std::set<std::uint32_t> sites,completed_sites;
 struct Result{std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
+// The one known difference of the builder owner (no longer in production):
+// since add-link inserts a new pair in place instead of re-sorting
+// (shortlist_links_storage.cpp, TASKS.md), it skips some of the reference's
+// qsort calls (0x10768300). In add-link's cases other than the negative
+// controls, a builder whose calls are the reference's without some qsort
+// calls may differ in what follows from that: the model's call counter
+// (globals+0x600), the access order, the link register the skipped call
+// leaves, and an interruption or a fault the reference meets inside a sort.
+bool skipped_sort(const State& input,const Options& options,const std::vector<Event>& reference,const std::vector<Event>& builder,const std::string& message){
+    if(input.pc!=links::add_staff_club_link_entry||options.own_negative||options.child_negative)return false;
+    std::size_t matched=0;
+    for(const auto& call:reference){if(matched<builder.size()&&builder[matched].target==call.target&&builder[matched].stop==call.stop){++matched;continue;}if(call.target!=0x10768300)return false;}
+    const auto has=[&](const char* text){return message.find(text)!=std::string::npos;};
+    // The reference stopped at its last call, a sort (an interruption after
+    // it, or a fault in the sorted index); the builder, not sorting, went on.
+    const bool stopped_in_sort=!reference.empty()&&reference.back().target==0x10768300&&
+        (options.interrupt||has(" original=Unmapped data access at "));
+    if(matched!=builder.size()&&!stopped_in_sort)return false;
+    // Or an interruption after the n-th call never came for a builder that
+    // made fewer calls.
+    const bool never_interrupted=options.interrupt&&builder.size()<options.interrupt&&
+        has(" original=Fixture shortlist-links dependency interruption modern=")&&message.ends_with(" modern=");
+    return (stopped_in_sort&&message.ends_with(" modern="))||never_interrupted||has("memory mismatch at 0x300276")||message.ends_with(" effects")||message.ends_with(" dependency ABI")||
+        message.ends_with(" source order")||message.ends_with(" accounting")||
+        has("register byte=4128 ")||has("register byte=4129 ")||has("register byte=4130 ")||has("register byte=4131 ");
+}
+// The same case for the C++ SHORTLIST_MANAGER.CPP (shortlist_rewrite_fixture.hpp).
+void rewrite_side(const State& input,const Options& options,const std::string& expected,const std::string& label){
+    const char* not_run=!options.controls.empty()||options.structural?"register written at an instruction address":nullptr;
+    static Trace unused{Options{}};
+    rf::rewrite_side(input,expected,not_run,{label,nullptr,rf::negative(options.own_negative,options.child_negative),{{tables,output}},{}},
+        [&](bool reference){return std::make_unique<Model>(reference,options,unused);},[](Model& m,State& s){m.reference(s);});
+}
 Result compare(const State& input,Options options={}){
     auto a=clone(input),b=clone(input);Effects x,y;x.state=a.get();y.state=b.get();a->memory.date_observer=&x;b->memory.date_observer=&y;Trace ot(options),nt(options);Model old(true,options,ot),modern(false,options,nt);
     const auto run=[&](State& s,Model& m,bool reference){try{if(reference){original_trace=&ot;m.reference(s);}else modern_root(s,&m,&nt);original_trace=nullptr;return std::string{};}catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}};
     const auto expected=run(*a,old,true),actual=run(*b,modern,false);a->memory.date_observer=b->memory.date_observer=nullptr;const auto label="Shortlist links root="+hex_address(input.pc)+" case="+std::to_string(cases);
     require(expected.empty()||expected=="Native instruction budget exhausted"||expected=="Fixture shortlist-links dependency interruption"||expected=="Fixture shortlist-links requested exit"||expected.starts_with("Unmapped data access at "),label+" fixture assertion: "+expected);
     if(ot.sites!=nt.sites){for(unsigned k=0;k<std::min(ot.sites.size(),nt.sites.size());++k)if(ot.sites[k]!=nt.sites[k]){std::cerr<<"First shortlist-links site "<<k<<" "<<hex_address(ot.sites[k])<<"/"<<hex_address(nt.sites[k])<<std::endl;break;}}
-    require(expected==actual,label+" original="+expected+" modern="+actual);if(options.own_negative)b->wr<4>(12,b->r<4>(12)^1);bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!options.own_negative&&!options.child_negative)throw;rejected=true;}require(rejected==(options.own_negative||options.child_negative),label+" discriminating negative");
+    bool rejected=false;try{
+    require(expected==actual,label+" original="+expected+" modern="+actual);if(options.own_negative)b->wr<4>(12,b->r<4>(12)^1);try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!options.own_negative&&!options.child_negative)throw;rejected=true;}require(rejected==(options.own_negative||options.child_negative),label+" discriminating negative");
     if(!rejected){require(x.bytes==y.bytes,label+" effects");if(old.calls!=modern.calls){for(unsigned n=0;n<std::min(old.calls.size(),modern.calls.size());++n)if(!(old.calls[n]==modern.calls[n])){const auto& xcall=old.calls[n];const auto& ycall=modern.calls[n];std::cerr<<"Call mismatch "<<n<<" target="<<hex_address(xcall.target)<<"/"<<hex_address(ycall.target)<<" stop="<<hex_address(xcall.stop)<<"/"<<hex_address(ycall.stop)<<std::endl;for(unsigned b=0;b<xcall.before.size();++b)if(xcall.before[b]!=ycall.before[b]){std::cerr<<"before byte="<<b<<" "<<unsigned(xcall.before[b])<<"/"<<unsigned(ycall.before[b])<<std::endl;break;}for(unsigned b=0;b<xcall.after.size();++b)if(xcall.after[b]!=ycall.after[b]){std::cerr<<"after byte="<<b<<" "<<unsigned(xcall.after[b])<<"/"<<unsigned(ycall.after[b])<<std::endl;break;}break;}}require(old.calls==modern.calls,label+" dependency ABI");require(ot.sites==nt.sites,label+" source order");require(a->executed==b->executed,label+" accounting");}
+    }catch(const std::runtime_error& e){if(!skipped_sort(input,options,old.calls,modern.calls,e.what()))throw;++builder_differences;}
+    rewrite_side(input,options,expected,label);
     ++cases;completed+=expected.empty()&&!rejected;interrupted+=!expected.empty();negatives+=rejected;structural+=options.structural||!options.controls.empty();if(!rejected&&expected!="Native instruction budget exhausted")sites.insert(ot.sites.begin(),ot.sites.end());if(!rejected&&expected.empty())completed_sites.insert(ot.sites.begin(),ot.sites.end());return{std::move(a),x.log,old.calls};
 }
 void boundaries(const State& input,Options options={}){
@@ -167,4 +209,4 @@ void transition_cases(){
 void relocation_cases(){for(unsigned n:{0u,1u,2u,3u,4u,5u,6u,7u,8u,9u}){auto a=seed(n);constexpr std::uint32_t moved=0x18008000;a->memory.map(moved-0x8000,0x9000);a->memory.copy_in(moved-0x8000,a->memory.copy_out(toc-0x8000,0x9000));a->wr<4>(8,moved);shortlist_links_fixture_tables(*a,moved,fixture+0x45000);compare(*a);}}
 }
 namespace cm::aot {void shortlist_links_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
-int main(){try{baseline_cases();initial_cases();query_cases();storage_cases();marker_cases();transition_cases();relocation_cases();const auto expected=shortlist_links_expected_sites();for(auto pc:expected)if(!sites.contains(pc))std::cerr<<"Uncovered shortlist-links site "<<hex_address(pc)<<std::endl;std::cout<<"Shortlist links comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/1122 completed_sites="<<completed_sites.size()<<std::endl;require(sites.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[](auto pc){return sites.contains(pc);}),"Every original shortlist-links site required");}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
+int main(){try{rf::tally.name="Shortlist links";baseline_cases();initial_cases();query_cases();storage_cases();marker_cases();transition_cases();relocation_cases();const auto expected=shortlist_links_expected_sites();for(auto pc:expected)if(!sites.contains(pc))std::cerr<<"Uncovered shortlist-links site "<<hex_address(pc)<<std::endl;std::cout<<"Shortlist links comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/1122 completed_sites="<<completed_sites.size()<<" builder_differences="<<builder_differences<<std::endl;require(sites.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[](auto pc){return sites.contains(pc);}),"Every original shortlist-links site required");rf::finish();}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}

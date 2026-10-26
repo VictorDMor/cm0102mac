@@ -185,7 +185,7 @@ void place_choices(Assessment& a) {
     // frail one (record scale below -1000, +0xa below 4500) of an unhappy
     // contract is transfer-listed (inferred: +0x5c bit 1).
     const Kept<22> count_b{c, std::uint32_t(std::int32_t(a.local8(local::count_b)))};
-    place_list<18, 16, 15, 17, 14>(a, {local::picked_b, 0x1035d088, 0x1035d148, 0x68, 0x88, false}, std::int32_t(std::uint32_t(count_b)),
+    place_list<18, 16, 15, 17, 14>(a, {local::picked_b, 0x1035d08c, 0x1035d148, 0x68, 0x88, false}, std::int32_t(std::uint32_t(count_b)),
                                    [&](std::uint32_t picked_at, std::uint32_t contract) {
         if ((nonzero(c, a.local8(local::staff_flag)) || a.human(0, 0x1035d194)) && compare(c, byte_of(c.r(13)), 25) == 0 &&
             compare_logical(c, c.u32(picked_at), a.club_manager()) != 0 && !nonzero(c, a.local8(local::over_budget)))
@@ -205,7 +205,7 @@ void place_choices(Assessment& a) {
     // -500 less a random number below 300) of an unhappy contract is
     // transfer-listed.
     const Kept<14> count_c{c, std::uint32_t(std::int32_t(a.local8(local::count_c)))};
-    place_list<22, 17, 16, 18, 15>(a, {local::picked_c, 0x1035d2e4, 0x1035d3a4, 0x60, 0x80, false}, std::int32_t(std::uint32_t(count_c)),
+    place_list<22, 17, 16, 18, 15>(a, {local::picked_c, 0x1035d2e8, 0x1035d3a4, 0x60, 0x80, false}, std::int32_t(std::uint32_t(count_c)),
                                    [&](std::uint32_t picked_at, std::uint32_t contract) {
         if (!nonzero(c, a.local8(local::staff_flag)) && compare_logical(c, c.u32(picked_at), a.club_manager()) != 0)
             a.program.call(call::release_contract, 0x1035d3f4, {a.contracts(), c.u32(picked_at), club});

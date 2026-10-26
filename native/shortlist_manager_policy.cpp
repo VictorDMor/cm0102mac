@@ -291,7 +291,7 @@ std::uint32_t candidate_category_reference(Cpu& c, std::uint32_t unused, std::ui
     c.set(3, profile);
     if (!nonzero_logical(c, profile)) return result(c, std::uint32_t(-1));
     const std::uint32_t qualification = Program{c}.call(0x10117490, 0x1036f6b4, {profile});
-    enter(c, 0x1036f6cc, {unused, club, qualification, category});
+    enter_direct(c, 0x1036f6cc, {unused, club, qualification, category});
     return club_category_reference(c, club, category);
 }
 

@@ -3,7 +3,7 @@
 //
 // The manager (224 bytes) and the records it owns are records::Manager,
 // ClubEntry, Row and CategoryEntry. Other groups call these routines
-// directly: `enter(c, back, {arguments})` with the original `bl`'s return
+// directly: `enter_direct(c, back, {arguments})` with the original `bl`'s return
 // address, then the C++ call (guest_values.hpp).
 #include "guest_values.hpp"
 #include "shortlist_manager_records.hpp"
@@ -29,7 +29,7 @@ void reset_storage(Cpu& c, std::uint32_t manager);
 // positive range, (range, 0] for a negative one within 16 bits, 0 for 0.
 // Ranges beyond 16 bits scale a draw by range / 65535 and add a finer draw
 // at a tenth of the step (quirk: a negative wide range always gives
-// range - 1). Callers: `enter(c, back, {range})`, then this.
+// range - 1). Callers: `enter_direct(c, back, {range})`, then this.
 std::int32_t sample_range(Cpu& c, std::int32_t range);
 // 0x10357d30: rates every entry of both banks (CategoryEntry::rating) and
 // sorts each list by rating, then person.

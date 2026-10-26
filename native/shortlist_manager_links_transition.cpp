@@ -58,14 +58,14 @@ std::uint32_t transition_staff_links(Cpu& c, std::uint32_t links, std::uint32_t 
     const bool at_stored_club = !nonzero_logical(c, club) || compare_logical(c, club, c.u32(staff + 0x24)) == 0;
     if (at_stored_club && compare(c, mode, change::drop) == 0) {
         // Dropping the staff's stored club (or all clubs): every other link goes through the release mode.
-        enter(c, 0x10365604, {links, staff, list, 0, 3, 0});
+        enter_direct(c, 0x10365604, {links, staff, list, 0, 3, 0});
         collect_staff_links(c, links, staff, list, 0, 3, 0);
         c.put32(frame.at(0x6c), c.u32(frame.at(0x64)));
         for (;;) {
             const auto link = program.call(0x10738e00, 0x1036563c, {list});
             if (!nonzero_logical(c, link)) break;
             const std::uint32_t other = c.u32(clubs) + c.u32(link + 4) * 0x248;
-            enter(c, 0x10365634, {links, staff, other, 1, 2});
+            enter_direct(c, 0x10365634, {links, staff, other, 1, 2});
             transition_staff_links(c, links, staff, other, 1, 2);
         }
     }

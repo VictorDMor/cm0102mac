@@ -96,10 +96,10 @@ std::uint32_t link_status(Cpu& c, std::uint32_t links, std::uint32_t staff, std:
     // The row of the club for the staff: as his primary staff id (if he has a
     // nonzero one), or else with the intervening id.
     const std::int8_t ordinary = Field<std::uint32_t>{c, staff + 0x14}.get() == 0;
-    enter(c, 0x1036d564, {links, club, staff, std::uint32_t(ordinary), 0});
+    enter_direct(c, 0x1036d564, {links, club, staff, std::uint32_t(ordinary), 0});
     std::uint32_t row = find_link_row(c, links, club, staff, ordinary, 0);
     if (!nonzero_logical(c, row) && nonzero_logical(c, Field<std::uint32_t>{c, staff + 0x1c})) {
-        enter(c, 0x1036d590, {links, club, staff, 1, 0});
+        enter_direct(c, 0x1036d590, {links, club, staff, 1, 0});
         row = find_link_row(c, links, club, staff, 1, 0);
     }
     if (nonzero_logical(c, row)) {
@@ -126,7 +126,7 @@ std::uint32_t link_status(Cpu& c, std::uint32_t links, std::uint32_t staff, std:
         c.set(3, nation);
         const auto valid = program.call(0x100c7a20, 0x1036d638, {nation});
         if (nonzero(c, byte_of(valid))) {
-            enter(c, 0x1036d650, {links, staff, club});
+            enter_direct(c, 0x1036d650, {links, staff, club});
             return derive_link_status(c, links, staff, club);
         }
     }
@@ -145,7 +145,7 @@ void mark_linked_rows(Cpu& c, std::uint32_t links, std::uint32_t staff, std::uin
     Program program(c);
     const auto own = frame.at(0x38);  // a list of pairs, 16 bytes
     program.call(0x10738c00, 0x1036fa30, {own});
-    enter(c, 0x1036fa4c, {links, staff, own, 0, 1, 0});
+    enter_direct(c, 0x1036fa4c, {links, staff, own, 0, 1, 0});
     collect_staff_links(c, links, staff, own, 0, 1, 0);
     c.put32(frame.at(0xc + 0x38), c.u32(frame.at(0x3c)));  // the cursor starts at the head
     Kept<23> pair(c, c.r(23));
@@ -183,7 +183,7 @@ void mark_linked_rows(Cpu& c, std::uint32_t links, std::uint32_t staff, std::uin
             const std::int32_t kind = byte_of(c.u8(record + 0x11));
             // 1 when the record's kind is not 11 (the sign bit of (11 - kind) | (kind - 11)).
             const std::uint32_t other = ((11u - std::uint32_t(kind)) | (std::uint32_t(kind) - 11u)) >> 31;
-            enter(c, 0x1036fb20, {links, club, staff, other, 0});
+            enter_direct(c, 0x1036fb20, {links, club, staff, other, 0});
             const auto row = find_link_row(c, links, club, staff, std::int8_t(other), 0);
             if (!nonzero_logical(c, row)) {
                 finish(0x1036fb34);
@@ -193,10 +193,10 @@ void mark_linked_rows(Cpu& c, std::uint32_t links, std::uint32_t staff, std::uin
             continue;
         }
         if (compare_logical(c, club, skip_club) == 0) continue;
-        enter(c, 0x1036fb6c, {links, club, staff, 0, 0});
+        enter_direct(c, 0x1036fb6c, {links, club, staff, 0, 0});
         auto row = find_link_row(c, links, club, staff, 0, 0);
         if (!nonzero_logical(c, row)) {
-            enter(c, 0x1036fb8c, {links, club, staff, 1, 0});
+            enter_direct(c, 0x1036fb8c, {links, club, staff, 1, 0});
             row = find_link_row(c, links, club, staff, 1, 0);
         }
         if (!nonzero_logical(c, row)) {

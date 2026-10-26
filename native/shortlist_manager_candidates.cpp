@@ -421,7 +421,7 @@ void Scan::conclude_empty() {
     const auto marked = std::uint8_t(row.flags() | 0x80);
     const auto excluded = c.u32(at(local::excluded));
     c.put8(row_address + 0x28, marked);
-    enter(c, 0x10361460, {manager, row_address, club_address, excluded});
+    enter_direct(c, 0x10361460, {manager, row_address, club_address, excluded});
     scan_candidates(c, manager, row_address, club_address, excluded);
 }
 

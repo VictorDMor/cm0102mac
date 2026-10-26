@@ -63,7 +63,7 @@ std::int32_t draw_level(Cpu& c, const Frame& frame, const RandomTable& random, u
         else c.set(next.part, 0);
     } else {
         d.leave_b(c);
-        enter(c, 0x10357220, {std::uint32_t(d.coarse.value)});
+        enter_direct(c, 0x10357220, {std::uint32_t(d.coarse.value)});
         refined = sample_range(c, d.coarse.value);
     }
     const auto part = wide_total(c, d.part, refined, range, depth != 0);

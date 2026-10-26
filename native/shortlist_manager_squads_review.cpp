@@ -78,7 +78,7 @@ void below_worth(Assessment& a, std::uint32_t person, std::uint32_t contract) {
         a.program.call(call::append_staff_entry, 0x1035c670, {offers(), person, 0, 0xffffffff});
         return;
     }
-    if (compare(c, mood(a, 0x1035c680), reputation / 500 + 20) <= 0) return;
+    if (compare(c, mood(a, 0x1035c684), reputation / 500 + 20) <= 0) return;
     if (nonzero(c, std::int8_t(c.r(21)))) upset(a, person, contract, -100, 0x1035c6e0);
     if (a.human(1, 0x1035c6f8)) return;
     const std::int32_t score = half_of(a.program.call(call::player_score, 0x1035c718, {a.club_manager(), person, club, 2, c.r(27)}));

@@ -1,11 +1,13 @@
 #include "profile_qualification.hpp"
 #include "semantic_io_checks.hpp"
+#include "shortlist_rewrite_fixture.hpp"
 #include <map>
 #include <set>
 #include <fstream>
 namespace cm::aot {bool profile_qualification_reference(State&);std::vector<std::uint32_t> profile_qualification_expected_sites();void profile_qualification_fixture_tables(State&,std::uint32_t,std::uint32_t);}
 namespace {
 using namespace cm::semantic_io_checks;
+namespace rf=cm::shortlist_rewrite_fixture;
 namespace qualification=cm::aot::profile_qualification;
 constexpr std::uint32_t object=fixture+0x1000,staff=fixture+0x2000,profile=fixture+0x4000,club=fixture+0x6000,country=fixture+0x8000,tables=fixture+0x10000,globals=fixture+0x20000;
 constexpr std::array<std::uint32_t,4> ends{0x10117488,0x10117688,0x1036f6e8,0x1036f7d8};
@@ -31,19 +33,20 @@ struct TimedEffects:MemoryObserver {
 };
 struct Event{std::uint32_t target,stop;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
 struct Model:SemanticDependencyDispatch {
-    bool original;Options options;Trace* trace=nullptr;
+    bool original;Options options;Trace* trace=nullptr;rf::Side side;
     std::array<unsigned,4> completed_children{};
     struct Event{std::uint32_t target,stop;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};std::vector<Event> calls;
     Model(bool old,Options o):original(old),options(o){}
     void reference(State& s,std::uint32_t root,std::uint32_t stop){const auto n=index(root);while(s.pc!=stop){if(root<=s.pc&&s.pc<ends[n])require(profile_qualification_reference(s),"Complete original qualification reference");else call(s,s.pc,std::uint32_t(s.r<4>(4128)));}}
     void call(State& s,std::uint32_t target,std::uint32_t stop)override {
-        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});
+        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});const bool counts=side.enter(target,stop);
         try {
             const auto selected=std::find(qualification::entries.begin(),qualification::entries.end(),target);
-            if(selected!=qualification::entries.end()&&options.children){if(original)reference(s,target,stop);else {methods[index(target)](s,this,trace);++completed_children[index(target)];}}
+            if(side.composes(target,stop)){if(selected!=qualification::entries.end())reference(s,target,stop);else rf::compose(s,target,rf::answer_of(*this));}
+            else if(selected!=qualification::entries.end()&&options.children){if(original)reference(s,target,stop);else if(side.rewrite){if(rf::module_routine(target))rf::compose(s,target,rf::answer_of(*this));else reference(s,target,stop);}else {methods[index(target)](s,this,trace);++completed_children[index(target)];}}
             else {
                 std::uint32_t result=0;
-                s.memory.write<4>(globals+0x500,target);s.memory.write<4>(globals+0x504,s.memory.read<4>(globals+0x504)+1);
+                if(side.records(target,stop)){s.memory.write<4>(globals+0x500,target);s.memory.write<4>(globals+0x504,s.memory.read<4>(globals+0x504)+1);}
                 if(target==qualification::classify_profile_qualifications_entry)result=options.mask;
                 else if(target==qualification::club_category_reference_entry)result=options.reference;
                 else if(target==0x10739890){(void)s.memory.read<1>(std::uint32_t(s.r<4>(12)));s.memory.write<4>(s.r<4>(24),0x12345678);s.memory.write<4>(s.r<4>(28),0x87654321);result=globals+0x800;}
@@ -51,10 +54,10 @@ struct Model:SemanticDependencyDispatch {
                 else if(target==0x1077b720)(void)s.memory.read<1>(std::uint32_t(s.r<4>(16)));
                 else if(target==0x10769b60)(void)s.memory.read<1>(std::uint32_t(s.r<4>(12)));
                 else throw std::runtime_error("Unknown qualification dependency "+hex_address(target));
-                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xdd000000+n*0x101);
+                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2&&side.clobbers(target,n))s.wr<4>(n*4,0xdd000000+n*0x101);
                 s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=stop;
             }
-            calls[serial].after=s.registers;if(options.interrupt&&calls.size()>=options.interrupt)throw std::runtime_error("Qualification fixture interruption");
+            calls[serial].after=s.registers;if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Qualification fixture interruption");
         }catch(...){calls[serial].after=s.registers;throw;}
     }
 };
@@ -71,6 +74,14 @@ std::unique_ptr<State> seed(unsigned n){
 unsigned cases=0,returns=0,stops=0,negatives=0;std::array<unsigned,4> root_cases{},root_returns{},root_stops{},root_negatives{};std::set<std::uint32_t> complete_sites,all_sites;
 std::array<unsigned,4> accepted_children{};
 struct Result{std::unique_ptr<State> state;std::vector<Effects::Access> accesses;unsigned calls;std::string outcome;};
+// The same case for the C++ SHORTLIST_MANAGER.CPP (shortlist_rewrite_fixture.hpp).
+void rewrite_side(const State& input,const Options& options,const std::string& expected,const std::string& label){
+    // This negative writes a byte and restores it: only an ordered-effect
+    // comparison sees it, and the C++ is compared on its state.
+    const char* not_run=options.effect_negative?"a negative control the final state cannot show":nullptr;
+    rf::rewrite_side(input,expected,not_run,{label,nullptr,rf::negative(options.own_negative,false),{{tables,globals}},{}},
+        [&](bool reference){return std::make_unique<Model>(reference,options);},[](Model& m,State& s){m.reference(s,s.pc,return_sentinel);});
+}
 Result compare(const State& input,Options options={}){
     auto a=clone(input),b=clone(input);TimedEffects x(*a),y(*b);Trace ot,nt;nt.effect_negative=options.effect_negative;Model old(true,options),modern(false,options);old.trace=&ot;modern.trace=&nt;a->memory.date_observer=&x;b->memory.date_observer=&y;
     const auto run=[&](State& s,Model& d,bool reference){try{if(reference){original_trace=&ot;d.reference(s,input.pc,return_sentinel);}else methods[index(s.pc)](s,&d,&nt);original_trace=nullptr;return std::string{};}catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}};
@@ -79,6 +90,7 @@ Result compare(const State& input,Options options={}){
     const auto negative=options.own_negative||options.effect_negative;if(negative)require(expected.empty(),label+" negative needs a complete return");if(options.own_negative)b->wr<4>(12,b->r<4>(12)^1);if(options.effect_negative){require(nt.damaged,label+" effect negative must execute");Image(*a).compare(*b,label+" restored effect image");}
     bool rejected=false;try{require(old.calls==modern.calls,label+" dependency ABI/order");require(x.effects.bytes==y.effects.bytes&&x.pcs==y.pcs,label+" ordered timed effects");require(ot.sites==nt.sites,label+" source order");require(a->executed==b->executed,label+" instruction count");Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!negative)throw;rejected=true;}require(rejected==negative,label+" discriminating negative");
     if(expected.empty()&&!negative&&options.children)for(unsigned n=0;n<qualification::entries.size();++n){const auto calls=std::count_if(old.calls.begin(),old.calls.end(),[&](const auto& call){return call.target==qualification::entries[n];});require(modern.completed_children[n]==calls,label+" complete selected child evidence");accepted_children[n]+=modern.completed_children[n];}
+    rewrite_side(input,options,expected,label);
     const auto root=index(input.pc);++cases;++root_cases[root];returns+=expected.empty()&&!negative;root_returns[root]+=expected.empty()&&!negative;stops+=!expected.empty();root_stops[root]+=!expected.empty();negatives+=negative;root_negatives[root]+=negative;if(!negative){all_sites.insert(ot.sites.begin(),ot.sites.end());if(expected.empty())complete_sites.insert(ot.sites.begin(),ot.sites.end());}
     return{std::move(a),x.effects.log,unsigned(old.calls.size()),expected};
 }
@@ -110,4 +122,4 @@ void corpus(){
 }
 }
 namespace cm::aot {void profile_qualification_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
-int main(int argc,char** argv){try{require(argc==1||argc==2,"Optional coverage output");corpus();const auto expected=profile_qualification_expected_sites();if(argc==2){std::ofstream out(argv[1]);for(auto pc:expected)out<<hex_address(pc)<<" "<<all_sites.contains(pc)<<" "<<complete_sites.contains(pc)<<'\n';}for(auto pc:expected)if(!complete_sites.contains(pc))std::cerr<<"Uncovered qualification site "<<hex_address(pc)<<std::endl;std::cout<<"Qualification comparisons="<<cases<<" returns="<<returns<<" stops="<<stops<<" negatives="<<negatives<<" completed_sites="<<complete_sites.size()<<"/"<<expected.size()<<std::endl;for(unsigned n=0;n<4;++n)std::cout<<"Root "<<hex_address(qualification::entries[n])<<" comparisons="<<root_cases[n]<<" returns="<<root_returns[n]<<" stops="<<root_stops[n]<<" negatives="<<root_negatives[n]<<std::endl;require(accepted_children[1]&&accepted_children[3],"Candidate reference must complete both selected native children");std::cout<<"Completed selected native children classification="<<accepted_children[1]<<" reference="<<accepted_children[3]<<std::endl;require(complete_sites.size()==expected.size(),"Every qualification instruction needs complete-return evidence");require(std::all_of(root_negatives.begin(),root_negatives.end(),[](auto n){return n==2;}),"Every qualification root needs result and restored-effect negatives");}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
+int main(int argc,char** argv){try{rf::tally.name="Profile qualification";require(argc==1||argc==2,"Optional coverage output");corpus();const auto expected=profile_qualification_expected_sites();if(argc==2){std::ofstream out(argv[1]);for(auto pc:expected)out<<hex_address(pc)<<" "<<all_sites.contains(pc)<<" "<<complete_sites.contains(pc)<<'\n';}for(auto pc:expected)if(!complete_sites.contains(pc))std::cerr<<"Uncovered qualification site "<<hex_address(pc)<<std::endl;std::cout<<"Qualification comparisons="<<cases<<" returns="<<returns<<" stops="<<stops<<" negatives="<<negatives<<" completed_sites="<<complete_sites.size()<<"/"<<expected.size()<<std::endl;for(unsigned n=0;n<4;++n)std::cout<<"Root "<<hex_address(qualification::entries[n])<<" comparisons="<<root_cases[n]<<" returns="<<root_returns[n]<<" stops="<<root_stops[n]<<" negatives="<<root_negatives[n]<<std::endl;require(accepted_children[1]&&accepted_children[3],"Candidate reference must complete both selected native children");std::cout<<"Completed selected native children classification="<<accepted_children[1]<<" reference="<<accepted_children[3]<<std::endl;require(complete_sites.size()==expected.size(),"Every qualification instruction needs complete-return evidence");require(std::all_of(root_negatives.begin(),root_negatives.end(),[](auto n){return n==2;}),"Every qualification root needs result and restored-effect negatives");rf::finish();}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}

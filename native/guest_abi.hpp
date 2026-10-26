@@ -182,22 +182,27 @@ private:
 // "v%s %s.%s %d" into the shared message buffer (0x1077b720), show it
 // (0x10769b60), and clear the shared success flag. `at` is the address of
 // the first call; the others follow at fixed distances. The caller sets the
-// non-volatile registers the original holds there first.
+// non-volatile registers the original holds there first. `call(entry,
+// back)` makes each call once its registers are set (default: Cpu::call).
 struct Assertion {
     std::uint32_t at;
     std::uint32_t file, format, title;  // strings in the module's pool
     std::uint32_t name, extension;      // the stack buffers
     std::uint32_t line;
 };
-inline void report_assertion(Cpu& c, const Assertion& a) {
+template <class Call>
+void report_assertion(Cpu& c, const Assertion& a, Call&& call) {
     const auto buffer = c.toc(-0x7ba8);
     c.set({{3, a.file}, {4, 0}, {5, 0}, {6, a.name}, {7, a.extension}});
-    c.call(0x10739890, a.at + 4);
-    c.call(0x10768810, a.at + 8);
+    call(0x10739890, a.at + 4);
+    call(0x10768810, a.at + 8);
     c.set({{5, c.r(3)}, {3, buffer}, {4, a.format}, {6, a.name}, {7, a.extension}, {8, a.line}});
-    c.call(0x1077b720, a.at + 0x24);
+    call(0x1077b720, a.at + 0x24);
     c.set({{4, buffer}, {3, a.title}, {5, 0}});
-    c.call(0x10769b60, a.at + 0x34);
+    call(0x10769b60, a.at + 0x34);
     c.put8(c.toc(-0x7bac), 0);
+}
+inline void report_assertion(Cpu& c, const Assertion& a) {
+    report_assertion(c, a, [&](std::uint32_t entry, std::uint32_t back) { c.call(entry, back); });
 }
 }

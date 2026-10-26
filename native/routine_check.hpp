@@ -55,14 +55,24 @@ private:
 extern RoutineChecker* routine_checker;
 
 // Synthetic calls, for routines no capture reaches: when the replay
-// dispatches `trigger` for the `nth` time (from 1), `target` is called with
+// dispatches `trigger` for the `nth` time (from 1; with from=, counting only
+// dispatches whose return address is `from`), `target` is called with
 // the given registers from that state in two forked children (original and
 // rewrite) and compared; the replay itself goes on untouched. A value is a
-// number, or `@rN` / `@rN+off` / `@rN-off`: a register at the trigger.
+// number, `@rN` (a register at the trigger) or `[EXPR]` (the word at EXPR),
+// followed by any +off / -off. Runs that stop at the same point with the
+// same message (an import the recording has no output for, such as an
+// error alert, or the same fault) are compared there.
 struct SyntheticCall {
     std::uint32_t trigger = 0, nth = 1, target = 0;
+    std::uint32_t from = 0;  // from=: count only dispatches returning here (0: all)
+    bool made = false;       // set once the call has run
     unsigned results = RoutineChecker::result_r3;
     std::vector<std::pair<unsigned, std::string>> registers;
+    // Memory the call sees (m8=/m16=/m32=ADDRESS:VALUE): made before both
+    // runs and undone after, for states the recording never had.
+    struct Write { unsigned size; std::string address, value; };
+    std::vector<Write> writes;
     std::string line;
 };
 std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& file);
@@ -70,6 +80,10 @@ std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& fil
 // number of calls that differed (each printed).
 unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, RoutineRunner original, RoutineRunner rewrite,
                              bool strict_volatile);
+// How many synthetic calls have run so far (a line whose trigger never
+// dispatches runs none: hooked routines do not dispatch; the replay tool
+// fails a run in which a listed call was never made).
+std::uint64_t synthetic_calls_made();
 // Fixture checks (no capture): runs `entry` from the state as it is, with
 // r1, LR and the arguments already set, once as the original body and once
 // as the rewrite, each in a forked child, and returns what differs (empty

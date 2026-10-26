@@ -326,8 +326,14 @@ int main(int argc, char** argv) {
                       << checked << " checked, " << checker->differences() << " differ" << std::endl;
             routine_checker = nullptr;
             dispatch_probe = nullptr;
-            if (!synthetic.empty()) std::cout << "synthetic calls: " << synthetic.size() << " listed, " << synthetic_differences << " differ" << std::endl;
-            if (checker->differences() || synthetic_differences) return 1;
+            if (!synthetic.empty()) std::cout << "synthetic calls: " << synthetic.size() << " listed, " << synthetic_calls_made() << " made, "
+                                               << synthetic_differences << " differ" << std::endl;
+            // A line whose trigger never dispatched checked nothing: a hooked
+            // trigger, a wrong from= or an nth past the recording.
+            unsigned unmade = 0;
+            for (const auto& call : synthetic)
+                if (!call.made && ++unmade) std::cerr << "synthetic call never made: " << call.line << '\n';
+            if (checker->differences() || synthetic_differences || unmade) return 1;
         }
         return 0;
     } catch (const std::exception& error) {

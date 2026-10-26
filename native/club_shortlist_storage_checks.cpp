@@ -1,23 +1,25 @@
 #include "club_shortlist_storage.hpp"
 #include "semantic_io_checks.hpp"
+#include "shortlist_rewrite_fixture.hpp"
 #include <set>
 namespace cm::aot {std::vector<std::uint32_t> club_shortlist_storage_expected_sites();bool club_shortlist_storage_reference(State&);void club_shortlist_storage_fixture_tables(State&,std::uint32_t,std::uint32_t);}
 namespace {
 using namespace cm::semantic_io_checks;
+namespace rf=cm::shortlist_rewrite_fixture;
 namespace shortlists=cm::aot::club_shortlist_storage;
 constexpr std::uint32_t object=fixture+0x1000,club_table=fixture+0x2000,clubs=fixture+0x4000,staff=fixture+0x8000,careers=fixture+0xa000,contract=fixture+0xe000,globals=fixture+0x10000,tables=fixture+0x14000,output=fixture+0x1a000,pool=fixture+0x1c000,arena=fixture+0x20000;
 constexpr std::array<std::uint32_t,7> ends{0x103567a8,0x103568d4,0x10356e3c,0x103573b8,0x10358af0,0x10358b24,0x10358f14};
 using Function=void(*)(State&,SemanticDependencyDispatch*,SemanticGuestObserver*);
 constexpr Function methods[]{shortlists::construct_shortlist_storage,shortlists::destroy_shortlist_storage,shortlists::reset_shortlist_storage,shortlists::sample_shortlist_range,shortlists::load_shortlist_storage,shortlists::initialize_auxiliary_record,shortlists::save_shortlist_storage};
 struct Control {std::uint32_t pc;unsigned offset;std::uint64_t bits;unsigned width=4;};
-struct Options {std::vector<Control> controls;unsigned interrupt=0,short_io=0,fail_allocation=0;std::uint32_t version=0x3e017,seed_return=12345,eligible=1,primary=contract,secondary=contract,clubs=2,header_count=2,legacy_count=2;bool partial=false,own_negative=false,child_negative=false,terminate=false,flip_eligibility=false,empty_club=false,mutate_after_date=false;};
+struct Options {std::vector<Control> controls;unsigned interrupt=0,short_io=0,fail_allocation=0;std::uint32_t version=0x3e017,seed_return=12345,eligible=1,primary=contract,secondary=contract,clubs=2,header_count=2,legacy_count=2;bool constant_changed=false,partial=false,own_negative=false,child_negative=false,terminate=false,flip_eligibility=false,empty_club=false,mutate_after_date=false;};
 struct Trace:SemanticGuestObserver {Options options;std::vector<std::uint32_t> sites;explicit Trace(Options o):options(std::move(o)){}void before_step(State& s,std::uint32_t pc)override{sites.push_back(pc);for(auto c:options.controls)if(c.pc==pc){if(c.width==1)s.wr<1>(c.offset,c.bits);else if(c.width==8)s.wr<8>(c.offset,c.bits);else s.wr<4>(c.offset,c.bits);}}};
 thread_local Trace* original_trace=nullptr;
 unsigned index(std::uint32_t root){const auto i=std::find(shortlists::entries.begin(),shortlists::entries.end(),root);require(i!=shortlists::entries.end(),"Known shortlist root "+hex_address(root));return unsigned(i-shortlists::entries.begin());}
 void modern_root(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){methods[index(s.pc)](s,d,o);}
 struct Event {std::uint32_t target,stop;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
 struct Model:SemanticDependencyDispatch {
-    bool original;Options options;Trace& trace;std::vector<Event> calls;unsigned allocations=0,io_calls=0,eligibility_calls=0,date_calls=0;std::size_t position=0;std::vector<std::uint8_t> input,written;
+    bool original;Options options;Trace& trace;std::vector<Event> calls;rf::Side side;unsigned allocations=0,io_calls=0,eligibility_calls=0,date_calls=0;std::size_t position=0;std::vector<std::uint8_t> input,written;
     Model(bool old,Options o,Trace& t):original(old),options(std::move(o)),trace(t){
         const auto append=[&](unsigned size,std::uint32_t value){for(unsigned n=size;n;--n)input.push_back(std::uint8_t(value>>((n-1)*8)));};
         append(4,options.header_count);for(unsigned n=0;n<options.header_count;++n){append(4,n+10);append(4,n+20);}
@@ -33,9 +35,10 @@ struct Model:SemanticDependencyDispatch {
     void call(State& s,std::uint32_t target,std::uint32_t stop)override {
         const bool own=std::find(shortlists::entries.begin(),shortlists::entries.end(),target)!=shortlists::entries.end();
         constexpr std::array allowed{0x10775130u,0x10775170u,0x107735a0u,0x107156b0u,0x10715880u,0x10747a80u,0x10747cc0u,0x1077fc28u,0x10768300u,0x10775550u,0x10773320u,0x10778300u,0x10365d10u,0x10082f20u,0x10082f90u,0x1077b770u,0x10739890u,0x10768810u,0x1077b720u,0x10769b60u,0x1076f7d0u};
-        require(own||std::find(allowed.begin(),allowed.end(),target)!=allowed.end(),"Known shortlist dependency "+hex_address(target));const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});
+        require(own||std::find(allowed.begin(),allowed.end(),target)!=allowed.end(),"Known shortlist dependency "+hex_address(target));const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});const bool counts=side.enter(target,stop);
         try{
-            if(own){if(original)reference(s,stop);else modern_root(s,this,&trace);}
+            if(own){if(original)reference(s,stop);else if(side.rewrite)rf::compose(s,target,rf::answer_of(*this));else modern_root(s,this,&trace);}
+            else if(side.composes(target,stop))rf::compose(s,target,rf::answer_of(*this));
             else{
                 const auto arg=[&](unsigned n){return std::uint32_t(s.r<4>(n*4));};const auto first=arg(3),second=arg(4);std::uint32_t result=0;
                 s.memory.write<4>(globals+0x600,target);s.memory.write<4>(globals+0x604,s.memory.read<4>(globals+0x604)+1);
@@ -50,7 +53,7 @@ struct Model:SemanticDependencyDispatch {
                 if(target==0x10778300)s.memory.clear(first,arg(5));
                 if(target==0x1077fc28){s.memory.copy_in(second,s.memory.copy_out(first,arg(5)));s.memory.write<4>(arg(1)+0x14,arg(2));}
                 if(target==0x10768300){require(arg(5)==8,"Shortlist sort item width");if(second==2){const auto a=s.memory.copy_out(first,8),b=s.memory.copy_out(first+8,8);s.memory.copy_in(first,b);s.memory.copy_in(first+8,a);}}
-                if(target==0x10773320){require(arg(6)==44&&arg(7)==25,"Legacy shortlist record-array shape");const auto callback=std::uint32_t(s.memory.read<4>(second));require(callback==shortlists::initialize_auxiliary_record_entry,"Pinned original shortlist constructor vector");for(unsigned n=0;n<25;++n){s.wr<4>(12,first+n*44);s.wr<4>(4128,stop);s.pc=callback;if(original)reference(s,stop);else modern_root(s,this,&trace);}}
+                if(target==0x10773320){require(arg(6)==44&&arg(7)==25,"Legacy shortlist record-array shape");const auto callback=std::uint32_t(s.memory.read<4>(second));require(callback==shortlists::initialize_auxiliary_record_entry,"Pinned original shortlist constructor vector");for(unsigned n=0;n<25;++n){s.wr<4>(12,first+n*44);s.wr<4>(4128,stop);s.pc=callback;if(original)reference(s,stop);else if(side.rewrite)rf::compose(s,callback,rf::answer_of(*this));else modern_root(s,this,&trace);}}
                 if(target==0x10747a80||target==0x10747cc0){const auto count=arg(5),width=second*count;require(width<0x10000,"Bounded shortlist IO");++io_calls;const bool shorted=options.short_io==io_calls;const auto bytes=shorted?(options.partial?width/2:0):width;
                     if(target==0x10747a80){require(position+bytes<=input.size(),"Available shortlist stream bytes");s.memory.copy_in(first,std::vector<std::uint8_t>(input.begin()+std::ptrdiff_t(position),input.begin()+std::ptrdiff_t(position+bytes)));position+=bytes;}
                     else {auto b=s.memory.copy_out(first,bytes);written.insert(written.end(),b.begin(),b.end());}result=shorted?(count?count-1:1):count;
@@ -60,10 +63,10 @@ struct Model:SemanticDependencyDispatch {
                 if(target==0x1077b720){const auto b=text(s,second);s.memory.copy_in(first,b);s.memory.write<1>(first+std::uint32_t(b.size()),0);result=first;}
                 if(target==0x10769b60){(void)text(s,first);(void)text(s,second);}
                 if(target==0x1076f7d0&&options.terminate)throw std::runtime_error("Fixture shortlist termination");
-                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xdd000000+n*0x101);
-                for(unsigned n=0;n<14;++n)s.wr<8>(0x4000+n*16,float_bits<8>(-70.0-n));s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=stop;
+                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2&&side.clobbers(target,n))s.wr<4>(n*4,0xdd000000+n*0x101);
+                if(side.clobbers_fprs(target))for(unsigned n=0;n<14;++n)s.wr<8>(0x4000+n*16,float_bits<8>(-70.0-n));s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);s.pc=stop;
             }
-            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(options.interrupt&&calls.size()>=options.interrupt)throw std::runtime_error("Fixture club-shortlist-storage dependency interruption");
+            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Fixture club-shortlist-storage dependency interruption");
         }catch(...){calls[serial].after=s.registers;throw;}
     }
 };
@@ -81,6 +84,13 @@ std::unique_ptr<State> seed(unsigned n){
 }
 unsigned cases=0,completed=0,interrupted=0,negatives=0,structural=0;std::set<std::uint32_t> sites,completed_sites;
 struct Result{std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;std::vector<std::uint8_t> written;std::size_t position;};
+// The same case for the C++ SHORTLIST_MANAGER.CPP (shortlist_rewrite_fixture.hpp).
+void rewrite_side(const State& input,const Options& options,const std::string& expected,const std::string& label){
+    const char* not_run=!options.controls.empty()?"register written at an instruction address":options.constant_changed?"a constant of the original's pool changed":nullptr;
+    static Trace unused{Options{}};
+    rf::rewrite_side(input,expected,not_run,{label,nullptr,rf::negative(options.own_negative,options.child_negative),{{tables,output}},{}},
+        [&](bool reference){return std::make_unique<Model>(reference,options,unused);},[](Model& m,State& s){m.reference(s);});
+}
 Result compare(const State& input,Options options={}){
     auto a=clone(input),b=clone(input);Effects x,y;x.state=a.get();y.state=b.get();a->memory.date_observer=&x;b->memory.date_observer=&y;Trace ot(options),nt(options);Model old(true,options,ot),modern(false,options,nt);
     const auto run=[&](State& s,Model& m,bool reference){try{if(reference){original_trace=&ot;m.reference(s);}else modern_root(s,&m,&nt);original_trace=nullptr;return std::string{};}catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}};
@@ -89,6 +99,7 @@ Result compare(const State& input,Options options={}){
     if(ot.sites!=nt.sites){for(unsigned k=0;k<std::min(ot.sites.size(),nt.sites.size());++k)if(ot.sites[k]!=nt.sites[k]){std::cerr<<"First club-shortlist-storage site "<<k<<" "<<hex_address(ot.sites[k])<<"/"<<hex_address(nt.sites[k])<<std::endl;break;}}
     require(expected==actual,label+" original="+expected+" modern="+actual);if(options.own_negative)b->wr<4>(12,b->r<4>(12)^1);bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!options.own_negative&&!options.child_negative)throw;rejected=true;}require(rejected==(options.own_negative||options.child_negative),label+" discriminating negative");
     if(!rejected){require(x.bytes==y.bytes,label+" effects");require(old.written==modern.written&&old.position==modern.position,label+" stream effects");if(old.calls!=modern.calls){for(unsigned n=0;n<std::min(old.calls.size(),modern.calls.size());++n)if(!(old.calls[n]==modern.calls[n])){const auto& xcall=old.calls[n];const auto& ycall=modern.calls[n];std::cerr<<"Call mismatch "<<n<<" target="<<hex_address(xcall.target)<<"/"<<hex_address(ycall.target)<<" stop="<<hex_address(xcall.stop)<<"/"<<hex_address(ycall.stop)<<std::endl;for(unsigned b=0;b<xcall.before.size();++b)if(xcall.before[b]!=ycall.before[b]){std::cerr<<"before byte="<<b<<" "<<unsigned(xcall.before[b])<<"/"<<unsigned(ycall.before[b])<<std::endl;break;}for(unsigned b=0;b<xcall.after.size();++b)if(xcall.after[b]!=ycall.after[b]){std::cerr<<"after byte="<<b<<" "<<unsigned(xcall.after[b])<<"/"<<unsigned(ycall.after[b])<<std::endl;break;}break;}}require(old.calls==modern.calls,label+" dependency ABI");require(ot.sites==nt.sites,label+" source order");require(a->executed==b->executed,label+" accounting");}
+    rewrite_side(input,options,expected,label);
     ++cases;completed+=expected.empty()&&!rejected;interrupted+=!expected.empty();negatives+=rejected;structural+=!options.controls.empty();if(!rejected&&expected!="Native instruction budget exhausted")sites.insert(ot.sites.begin(),ot.sites.end());if(expected.empty()&&!rejected)completed_sites.insert(ot.sites.begin(),ot.sites.end());return{std::move(a),x.log,old.calls,old.written,old.position};
 }
 void boundaries(const State& input,Options options={}){
@@ -109,7 +120,7 @@ void sampler_cases(){
     for(auto bound:{10u,65536u,0xffff0000u})for(auto reset:{0u,65535u,65536u,0xffffffffu}){auto a=seed(3);a->wr<4>(12,bound);a->memory.write<4>(globals+20,pool+0x100);Options o;o.seed_return=reset;boundaries(*a,o);}
     for(auto cursor:{pool-2,pool,pool+0xfe,pool+0x100,pool+0x102}){auto a=seed(3);a->memory.write<4>(globals+20,cursor);boundaries(*a);}
     for(auto bound:{1u,7u,65535u,0xffff0001u,0xfffffff9u})for(auto sample:{0u,1u,65535u})for(auto added:{0u,1u,65535u,0x7fffffffu,0x80000001u,0xffffffffu}){auto a=seed(3);a->wr<4>(12,bound);a->memory.write<2>(pool+2,sample);a->memory.write<4>(globals+16,added);const auto result=compare(*a);const auto sum=std::bit_cast<std::int32_t>(sample+added);const auto limit=std::bit_cast<std::int32_t>(bound);const auto remainder=std::int64_t(sum)%limit;const auto expected=std::uint32_t(limit>0?remainder:-remainder);require(result.state->r<4>(12)==expected,"Independent narrow signed range remainder");}
-    for(auto bits:{UINT64_C(0),UINT64_C(0x8000000000000000),UINT64_C(0x3ff0000000000000),UINT64_C(0x7fefffffffffffff),UINT64_C(0x7ff0000000000000),UINT64_C(0xfff0000000000000),UINT64_C(0x7ff8000000001234)}){auto a=seed(3);a->wr<4>(12,65536);a->memory.write<8>(tables+0x1000,bits);boundaries(*a);}
+    for(auto bits:{UINT64_C(0),UINT64_C(0x8000000000000000),UINT64_C(0x3ff0000000000000),UINT64_C(0x7fefffffffffffff),UINT64_C(0x7ff0000000000000),UINT64_C(0xfff0000000000000),UINT64_C(0x7ff8000000001234)}){auto a=seed(3);a->wr<4>(12,65536);a->memory.write<8>(tables+0x1000,bits);Options o;o.constant_changed=true;boundaries(*a,o);}
 }
 void lifecycle_cases(){
     for(auto count:{0u,1u,2u}){auto a=seed(0);a->memory.write<4>(globals,count);boundaries(*a);}
@@ -156,9 +167,10 @@ void relocation_cases(){
 }
 }
 namespace cm::aot {void club_shortlist_storage_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
-int main(){try{
+int main(){try{rf::tally.name="Club shortlist storage";
     for(unsigned n=0;n<7;++n){auto s=seed(n);boundaries(*s);Options o;o.own_negative=true;compare(*s,o);o.own_negative=false;o.child_negative=true;if(n==3)s->memory.write<4>(globals+20,pool+0x100);compare(*s,o);}
     sampler_cases();lifecycle_cases();persistence_cases();reset_cases();independent_cases();relocation_cases();
     const auto expected=club_shortlist_storage_expected_sites();for(auto pc:expected)if(!sites.contains(pc))std::cerr<<"Uncovered shortlist site "<<hex_address(pc)<<std::endl;require(sites.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[](auto pc){return sites.contains(pc);}),"Every original shortlist site required");
     std::cout<<"Club shortlist storage comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/1945 completed_sites="<<completed_sites.size()<<std::endl;
+    rf::finish();
 }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}

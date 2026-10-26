@@ -118,7 +118,7 @@ void approach_targets(Cpu& c, std::uint32_t manager, std::uint32_t club) {
     const auto offer = [&] {
         if (row().positions() <= -1 && player) return;
         {
-            const bool open = nonzero(c, std::int8_t(program.call(0x103f83c0, 0x1036dabc, {c.u32(transfers), person, club, frame.at(0x38), 0})));
+            const bool open = nonzero(c, std::int8_t(program.call(0x103f83c0, 0x1036dac0, {c.u32(transfers), person, club, frame.at(0x38), 0})));
             if (!open && c.i16(frame.at(0x38)) != 9) return;
         }
         if (nonzero(c, std::int8_t(program.call(0x103f5c00, 0x1036dae4, {c.u32(transfers), person, club})))) return;

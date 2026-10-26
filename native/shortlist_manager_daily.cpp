@@ -322,7 +322,7 @@ void refresh_club_shortlist(Cpu& c, std::uint32_t manager, std::uint32_t club) {
     const auto entry = [&] { return Manager{c, manager}.clubs().get() + std::uint32_t(Club{c, club}.id()) * ClubEntry::size; };
     program.call(0x10366250, 0x10357ce0, {manager, club, entry()});
     program.call(0x1035a9f0, 0x10357d04, {manager, entry(), club, 1, 0});
-    enter(c, 0x10357d10, {manager, club});
+    enter_direct(c, 0x10357d10, {manager, club});
     share_out_budget(c, manager, club);
 }
 

@@ -398,6 +398,17 @@ foreach(session tactics-continue game-load game-save2)
     add_test(NAME shortlist_manager_${name}
              COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}" 1 --check-routines 400 2000)
 endforeach()
+# Two sessions in the 26-country career (Cruzeiro): a new contract offered to
+# a player of the club and his transfer status set (contract-offer: the role
+# names and category checks, 0x1036f670/0x1036f7e0/0x1036f920), and a bid
+# with a part exchange (swap-offer: the selling club's interest in each
+# player offered, 0x10364d00). Every call checked, f1 too.
+foreach(session contract-offer swap-offer)
+    string(REPLACE "-" "_" name "${session}")
+    add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
+    add_test(NAME shortlist_manager_${name}
+             COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}" 1 --check-routines 100000 1 --compare-f1)
+endforeach()
 add_test(NAME shortlist_manager_daily_transition
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/daily-transition" 1 --check-routines 400 2000)
 add_test(NAME shortlist_manager_detect_difference

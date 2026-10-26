@@ -1,11 +1,13 @@
 #include "shortlist_recruitment.hpp"
 #include "semantic_io_checks.hpp"
+#include "shortlist_rewrite_fixture.hpp"
 #include <bit>
 #include <set>
 #include <map>
 namespace cm::aot {std::vector<std::uint32_t> shortlist_recruitment_expected_sites();bool shortlist_recruitment_reference(State&);void shortlist_recruitment_fixture_tables(State&,std::uint32_t,std::uint32_t);}
 namespace {
 using namespace cm::semantic_io_checks;
+namespace rf=cm::shortlist_rewrite_fixture;
 namespace recruitment=cm::aot::shortlist_recruitment;
 constexpr std::uint32_t object=fixture+0x1000,pairs=fixture+0x4000,club_table=fixture+0x8000,clubs=fixture+0xc000,staff=fixture+0x10000,profiles=fixture+0x12000,contracts=fixture+0x14000,rows=fixture+0x16000,metadata=fixture+0x1a000,globals=fixture+0x1c000,random=fixture+0x1d000,tables=fixture+0x20000,countries=fixture+0x24000,club_service=fixture+0x25000,attributes=fixture+0x27000;
 constexpr std::array<std::uint32_t,3> ends{0x10363f5c,0x10364d00,0x10365588};
@@ -26,16 +28,19 @@ unsigned index(std::uint32_t root){const auto i=std::find(recruitment::entries.b
 void modern_root(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){methods[index(s.pc)](s,d,o);}
 struct Event{std::uint32_t target,stop;decltype(State::registers) before,after;bool operator==(const Event&)const=default;};
 struct Model:SemanticDependencyDispatch {
-    bool original;Options options;Trace& trace;std::vector<Event> calls;unsigned score_calls=0;
+    bool original;Options options;Trace& trace;std::vector<Event> calls;rf::Side side;unsigned score_calls=0;
     Model(bool old,Options o,Trace& t):original(old),options(std::move(o)),trace(t){}
     void reference(State& s,std::uint32_t stop=return_sentinel){const auto root=s.pc,n=index(root);bool first=true;while(s.pc!=stop){if(s.pc>=root&&s.pc<ends[n]&&(first||s.pc!=root))require(shortlist_recruitment_reference(s),"Complete recruitment reference");else call(s,s.pc,std::uint32_t(s.r<4>(4128)));first=false;}}
     void call(State& s,std::uint32_t target,std::uint32_t stop)override {
-        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});
+        const auto serial=calls.size();calls.push_back({target,stop,s.registers,{}});const bool counts=side.enter(target,stop);
         try{
             const auto arg=[&](unsigned n){return std::uint32_t(s.r<4>(n*4));};const auto first=arg(3),second=arg(4);std::uint32_t result=0;double real=700.25;bool bank=false;
-            s.memory.write<4>(globals+0x500,target);s.memory.write<4>(globals+0x508,s.memory.read<4>(globals+0x508)+1);
-            if(options.compose&&std::find(recruitment::entries.begin(),recruitment::entries.end(),target)!=recruitment::entries.end()){
-                if(original)reference(s,stop);else modern_root(s,this,&trace);require(s.pc==stop,"Composed recruitment child return");
+            const bool own=std::find(recruitment::entries.begin(),recruitment::entries.end(),target)!=recruitment::entries.end();
+            if(!side.composes(target,stop)){s.memory.write<4>(globals+0x500,target);s.memory.write<4>(globals+0x508,s.memory.read<4>(globals+0x508)+1);}
+            if(options.compose&&own){
+                if(original)reference(s,stop);else if(side.rewrite)rf::compose(s,target,rf::answer_of(*this));else modern_root(s,this,&trace);require(s.pc==stop,"Composed recruitment child return");
+            }else if(side.composes(target,stop)){
+                if(own)reference(s,stop);else rf::compose(s,target,rf::answer_of(*this));require(s.pc==stop,"Composed recruitment child return");
             }else{
                 if(target==0x10082f20){const auto id=std::uint32_t(s.memory.read<4>(second));require(id<32,"Bounded contract fixture staff");result=(id==1?options.primary:options.old_contract)?contracts+id*0x80:0;}
                 else if(target==0x103f43b0)result=options.pending;
@@ -70,11 +75,11 @@ struct Model:SemanticDependencyDispatch {
                 else if(target==0x10365590){s.memory.write<4>(globals+0x520,second);s.memory.write<4>(globals+0x524,arg(5));result=1;}
                 else if(target==0x103632f0){const auto count=std::uint32_t(s.memory.read<4>(first+16));auto data=std::uint32_t(s.memory.read<4>(first));if(!data){data=pairs+0x1000;s.memory.write<4>(first,data);s.memory.write<4>(first+8,100);}require(count<64,"Fixture link insertion capacity");s.memory.write<4>(data+count*8,s.memory.read<4>(second));s.memory.write<4>(data+count*8+4,s.memory.read<4>(arg(5)));s.memory.write<4>(first+16,count+1);result=1;}
                 else throw std::runtime_error("Unknown recruitment dependency "+hex_address(target));
-                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2)s.wr<4>(n*4,0xdd000000+n*0x101);
-                for(unsigned n=0;n<14;++n)s.wr<8>(0x4000+n*16,float_bits<8>(1000.25+n));
-                s.wr<8>(0x4010,float_bits<8>(real));s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);if(bank)s.wr<4>(16,std::uint32_t(options.finance));s.pc=stop;
+                for(unsigned n=0;n<=12;++n)if(n!=1&&n!=2&&side.clobbers(target,n))s.wr<4>(n*4,0xdd000000+n*0x101);
+                if(side.clobbers_fprs(target))for(unsigned n=0;n<14;++n)s.wr<8>(0x4000+n*16,float_bits<8>(1000.25+n));
+                if(side.writes_f1(target))s.wr<8>(0x4010,float_bits<8>(real));s.wr<1>(2304,5);s.wr<1>(1027,1);s.wr<4>(12,result);if(bank)s.wr<4>(16,std::uint32_t(options.finance));s.pc=stop;
             }
-            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(options.interrupt&&calls.size()>=options.interrupt)throw std::runtime_error("Fixture recruitment dependency interruption");
+            if(options.child_negative&&!original)s.memory.write<1>(globals+0x700,1);calls[serial].after=s.registers;if(side.interrupts(counts,options.interrupt,calls.size()))throw std::runtime_error("Fixture recruitment dependency interruption");
         }catch(...){calls[serial].after=s.registers;throw;}
     }
 };
@@ -91,6 +96,13 @@ std::unique_ptr<State> seed(unsigned n){
 }
 unsigned cases=0,completed=0,interrupted=0,negatives=0,structural=0;std::set<std::uint32_t> sites,completed_sites;
 struct Result{std::unique_ptr<State> state;std::vector<Effects::Access> accesses;std::vector<Event> calls;};
+// The same case for the C++ SHORTLIST_MANAGER.CPP (shortlist_rewrite_fixture.hpp).
+void rewrite_side(const State& input,const Options& options,const std::string& expected,const std::string& label){
+    const char* not_run=!options.controls.empty()||options.structural?"register written at an instruction address":nullptr;
+    static Trace unused{Options{}};
+    rf::rewrite_side(input,expected,not_run,{label,nullptr,rf::negative(options.own_negative,options.child_negative),{{tables,countries}},{}},
+        [&](bool reference){return std::make_unique<Model>(reference,options,unused);},[](Model& m,State& s){m.reference(s);});
+}
 Result compare(const State& input,Options options={}){
     auto a=clone(input),b=clone(input);Effects x,y;x.state=a.get();y.state=b.get();a->memory.date_observer=&x;b->memory.date_observer=&y;Trace ot(options),nt(options);Model old(true,options,ot),modern(false,options,nt);
     const auto run=[&](State& s,Model& m,bool reference){try{if(reference){original_trace=&ot;m.reference(s);}else modern_root(s,&m,&nt);original_trace=nullptr;return std::string{};}catch(const std::exception& e){original_trace=nullptr;return std::string(e.what());}};
@@ -99,6 +111,7 @@ Result compare(const State& input,Options options={}){
     if(ot.sites!=nt.sites){for(unsigned k=0;k<std::min(ot.sites.size(),nt.sites.size());++k)if(ot.sites[k]!=nt.sites[k]){std::cerr<<"First recruitment site "<<k<<" "<<hex_address(ot.sites[k])<<"/"<<hex_address(nt.sites[k])<<std::endl;break;}}
     require(expected==actual,label+" original="+expected+" modern="+actual);if(options.own_negative)b->wr<4>(12,b->r<4>(12)^1);bool rejected=false;try{Image(*a).compare(*b,label);}catch(const std::runtime_error&){if(!options.own_negative&&!options.child_negative)throw;rejected=true;}require(rejected==(options.own_negative||options.child_negative),label+" discriminating negative");
     if(!rejected){require(x.bytes==y.bytes,label+" effects");if(old.calls!=modern.calls){for(unsigned n=0;n<std::min(old.calls.size(),modern.calls.size());++n)if(!(old.calls[n]==modern.calls[n])){const auto& xcall=old.calls[n];const auto& ycall=modern.calls[n];std::cerr<<"Call mismatch "<<n<<" target="<<hex_address(xcall.target)<<"/"<<hex_address(ycall.target)<<" stop="<<hex_address(xcall.stop)<<"/"<<hex_address(ycall.stop)<<std::endl;for(unsigned b=0;b<xcall.before.size();++b)if(xcall.before[b]!=ycall.before[b]){std::cerr<<"before byte="<<b<<" "<<unsigned(xcall.before[b])<<"/"<<unsigned(ycall.before[b])<<std::endl;break;}for(unsigned b=0;b<xcall.after.size();++b)if(xcall.after[b]!=ycall.after[b]){std::cerr<<"after byte="<<b<<" "<<unsigned(xcall.after[b])<<"/"<<unsigned(ycall.after[b])<<std::endl;break;}break;}}require(old.calls==modern.calls,label+" dependency ABI");require(ot.sites==nt.sites,label+" source order");require(a->executed==b->executed,label+" accounting");}
+    rewrite_side(input,options,expected,label);
     ++cases;completed+=expected.empty()&&!rejected;interrupted+=!expected.empty();negatives+=rejected;structural+=options.structural||!options.controls.empty();if(!rejected&&expected!="Native instruction budget exhausted")sites.insert(ot.sites.begin(),ot.sites.end());if(!rejected&&expected.empty())completed_sites.insert(ot.sites.begin(),ot.sites.end());return{std::move(a),x.log,old.calls};
 }
 void boundaries(const State& input,Options options={}){
@@ -197,4 +210,4 @@ void floating_cases(){
 
 }
 namespace cm::aot {void shortlist_recruitment_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
-int main(){try{baseline_cases();initial_cases();distribution_cases();preparation_cases();row_filter_cases();pricing_cases();completion_cases();remaining_paths();floating_cases();const auto expected=shortlist_recruitment_expected_sites();for(auto pc:expected)if(!sites.contains(pc))std::cerr<<"Uncovered recruitment site "<<hex_address(pc)<<std::endl;std::cout<<"Shortlist recruitment comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/1591 completed_sites="<<completed_sites.size()<<std::endl;require(sites.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[](auto pc){return sites.contains(pc);}),"Every original recruitment site required");}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
+int main(){try{rf::tally.name="Shortlist recruitment";baseline_cases();initial_cases();distribution_cases();preparation_cases();row_filter_cases();pricing_cases();completion_cases();remaining_paths();floating_cases();const auto expected=shortlist_recruitment_expected_sites();for(auto pc:expected)if(!sites.contains(pc))std::cerr<<"Uncovered recruitment site "<<hex_address(pc)<<std::endl;std::cout<<"Shortlist recruitment comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/1591 completed_sites="<<completed_sites.size()<<std::endl;require(sites.size()==expected.size()&&std::all_of(expected.begin(),expected.end(),[](auto pc){return sites.contains(pc);}),"Every original recruitment site required");rf::finish();}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
