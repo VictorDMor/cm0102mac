@@ -365,7 +365,7 @@ bool RoutineChecker::check(State& s, std::uint32_t entry, RoutineRunner original
     ++totals.checked;
     corrupt_first = corrupt_first && !corrupt;
 
-    auto found = compare_reports(s, expected, actual, results, stack, strict_volatile);
+    auto found = compare_reports(s, expected, actual, compare_f1 ? results | result_f1 : results, stack, strict_volatile);
     if (found.empty()) return true;
     ++totals.differences;
     std::cerr << "Routine " << hex(entry) << " call " << call << " (sp " << hex(stack) << ", return " << hex(caller)

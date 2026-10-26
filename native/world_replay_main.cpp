@@ -29,19 +29,15 @@
 //                     several arguments, then exit; --check-club-control-shifted
 //                     asks the C++ version about the next club instead, which
 //                     must fail (shows the comparison can fail)
-//   --check-registration-shortcut
-//                     compare the registration shortcut's stack image with
-//                     the original's for every club it takes (capture at
-//                     0x10363ca0), then exit; ...-corrupted spoils one byte of
-//                     the first image, which must fail
 //   --scramble-stack <seed>
 //                     with --stack-audit: overwrite every freed frame with
 //                     pseudo-random bytes, and list every end-state byte that
 //                     differs instead of stopping at the first
 //   --check-routines <first> [<every>]
-//                     run the C++ tactics, MAIN.CPP and PLAYER_STATS.CPP routines
-//                     (tactics_routines.inc, main_program_routines.inc,
-//                     player_stats_routines.inc),
+//                     run the C++ tactics, MAIN.CPP, PLAYER_STATS.CPP and
+//                     SHORTLIST_MANAGER.CPP routines (tactics_routines.inc,
+//                     main_program_routines.inc, player_stats_routines.inc,
+//                     shortlist_manager_routines.inc),
 //                     also those the generator has not hooked yet, and compare
 //                     each with its generated original at its first <first>
 //                     calls and then one in <every> (routine_check.hpp); stops
@@ -56,6 +52,9 @@
 //   --strict-volatile with --check-routines: also compare r0, r3, r11, r12,
 //                     XER and CTR at return (r4-r10 and CR always are), to
 //                     locate a leftover that later reaches memory
+//   --compare-f1      with --check-routines: also compare f1 for routines
+//                     that do not return it (an operation capture ending at
+//                     their return compares it)
 //   --synthetic <file>
 //                     with --check-routines: synthetic calls of tactics
 //                     routines no capture reaches, compared like checked calls
@@ -77,8 +76,8 @@
 #include "tactics_adapter.hpp"
 #include "main_program_adapter.hpp"
 #include "player_stats_adapter.hpp"
+#include "shortlist_manager_adapter.hpp"
 #include "club_control.hpp"
-#include "shortlist_recruitment.hpp"
 #include <chrono>
 #include <ctime>
 #include <fstream>
@@ -133,62 +132,6 @@ int check_club_control(const State& initial, bool shifted) {
               << " left to the original, " << mismatches << " mismatches\n";
     return mismatches || !compared || !controlled ? 1 : 0;
 }
-// The registration shortcut (native/shortlist_recruitment_register.cpp)
-// leaves the stack image, r3 and the preserved registers the original
-// leaves, for every club it takes, with the capture's base and player (a
-// capture that starts at 0x10363ca0). The original runs with a read observer
-// attached, which keeps C++ owners on their original paths.
-int check_registration_shortcut(const State& initial, bool corrupt) {
-    struct Quiet final : MemoryObserver {
-        void mapped(std::uint32_t, std::uint64_t) override {}
-        void written(std::uint32_t, const std::uint8_t*, std::size_t) override {}
-        void cleared(std::uint32_t, std::uint64_t) override {}
-    } quiet;
-    if (initial.pc != shortlist_recruitment::distribute_staff_interest_entry)
-        throw std::runtime_error("The capture must start at 0x10363ca0");
-    const auto word = [&](std::uint32_t address) { return std::uint32_t(initial.memory.read<4>(address)); };
-    const auto r2 = std::uint32_t(initial.r<4>(8)), base = std::uint32_t(initial.r<4>(12)), player = std::uint32_t(initial.r<4>(16));
-    const auto clubs = word(word(r2 - 0x7be8)), count = word(word(r2 - 0x7b50));
-    auto original = cm::semantic_io_checks::clone(initial), shortcut = cm::semantic_io_checks::clone(initial);
-    original->budget = shortcut->budget = UINT64_MAX;
-    original->memory.date_observer = &quiet;
-    const auto sp = std::uint32_t(initial.r<4>(4)) - 0x200, low = sp - 0x1000, high = sp + 0x100;
-    const auto pristine = initial.memory.copy_out(low, high - low);
-    unsigned compared = 0, mismatches = 0, taken = 0;
-    for (std::uint32_t index = 0; index < count; ++index) {
-        const auto club = clubs + index * 0x248;
-        if (!club_control::plainly_uncontrolled(initial, club)) continue;
-        const auto steps = original->executed;
-        const auto entry = word(base + 0xdc) + word(club) * 12;
-        if (initial.memory.read<1>(entry + 4) == 1 && initial.memory.read<1>(entry + 9) < 100) continue;
-        for (auto* s : {original.get(), shortcut.get()}) {
-            s->memory.copy_in(low, pristine);
-            s->registers = initial.registers;
-            s->wr<4>(12, base); s->wr<4>(16, player); s->wr<4>(20, club); s->wr<4>(24, 0x1234 + index);
-            s->wr<4>(4, sp); s->wr<4>(4128, return_sentinel); s->pc = shortlist_recruitment::register_club_interest_entry;
-            const auto before = s->executed;
-            run_until(*s, return_sentinel);
-            if (s == shortcut.get()) taken += s->executed == before;   // the shortcut charges nothing
-        }
-        if (original->executed == steps) throw std::runtime_error("The original did not run");
-        if (corrupt && !compared) shortcut->memory.write<1>(sp - 0x150 + 0x5c + 0x2c, 0x5a);
-        ++compared;
-        const auto a = original->memory.copy_out(low, high - low), b = shortcut->memory.copy_out(low, high - low);
-        bool same = a == b && original->r<4>(12) == shortcut->r<4>(12) && original->r<4>(4) == shortcut->r<4>(4) &&
-                    original->r<4>(4128) == shortcut->r<4>(4128) && original->pc == shortcut->pc;
-        for (unsigned n = 13; n < 32; ++n) same = same && original->r<4>(n * 4) == shortcut->r<4>(n * 4);
-        for (unsigned n = 14; n < 32; ++n) same = same && original->r<8>(0x4000 + n * 16) == shortcut->r<8>(0x4000 + n * 16);
-        if (!same && ++mismatches <= 5) {
-            std::cerr << "club " << hex_address(club) << " differs";
-            for (std::size_t i = 0; i < a.size(); ++i)
-                if (a[i] != b[i]) { std::cerr << " first at sp" << std::int64_t(low + i) - std::int64_t(sp); break; }
-            std::cerr << '\n';
-        }
-    }
-    std::cout << "registration shortcut: " << compared << " clubs compared, " << taken << " took the shortcut, "
-              << mismatches << " mismatches\n";
-    return mismatches || !compared || taken != compared ? 1 : 0;
-}
 std::optional<std::string> capture_field(const std::filesystem::path& capture, std::string_view name) {
     std::ifstream report(capture / "capture.txt");
     for (std::string line; std::getline(report, line);)
@@ -206,12 +149,11 @@ int main(int argc, char** argv) {
         std::optional<std::uint32_t> flip;
         std::optional<std::filesystem::path> profile;
         bool timing = false, stack_audit = false, club_control_check = false, club_control_shifted = false;
-        bool registration_check = false, registration_corrupted = false;
         std::optional<std::uint64_t> scramble;
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
         std::optional<std::set<std::uint32_t>> only;
-        bool strict_volatile = false;
+        bool strict_volatile = false, compare_f1 = false;
         static std::vector<SyntheticCall> synthetic;
         static unsigned synthetic_differences = 0;
         static std::map<std::uint32_t, std::uint64_t> census;
@@ -225,8 +167,6 @@ int main(int argc, char** argv) {
             else if (option == "--scramble-stack" && i + 1 < argc) { scramble = std::stoull(argv[++i], nullptr, 0); stack_audit = true; }
             else if (option == "--check-club-control") club_control_check = true;
             else if (option == "--check-club-control-shifted") club_control_check = club_control_shifted = true;
-            else if (option == "--check-registration-shortcut") registration_check = true;
-            else if (option == "--check-registration-shortcut-corrupted") registration_check = registration_corrupted = true;
             else if ((option == "--check-routines" || option == "--check-routines-corrupted") && i + 1 < argc) {
                 const auto first = std::stoull(argv[++i]);
                 std::uint64_t every = 0;
@@ -241,6 +181,7 @@ int main(int argc, char** argv) {
                 for (std::string item; std::getline(list, item, ',');) only->insert(std::uint32_t(std::stoul(item, nullptr, 16)));
             }
             else if (option == "--strict-volatile") strict_volatile = true;
+            else if (option == "--compare-f1") compare_f1 = true;
             else if (option == "--synthetic" && i + 1 < argc) synthetic = read_synthetic_calls(argv[++i]);
             else if (option == "--census" && i + 1 < argc) {
                 std::ifstream list(argv[++i]);
@@ -255,26 +196,31 @@ int main(int argc, char** argv) {
         if (checker) {
             checker->corrupt_first = checker_corrupted;
             checker->strict_volatile = strict_volatile;
+            checker->compare_f1 = compare_f1;
             routine_checker = &*checker;
             dispatch_probe = [](State& s) {
-                return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s);
+                return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) ||
+                       shortlist_manager_dispatch_probe(s);
             };
             if (!synthetic.empty())
                 dispatch_probe = [](State& s) {
                     // Each synthetic call runs in the family that lists its target.
                     synthetic_differences += run_synthetic_calls(s, synthetic,
                         [](State& t, std::uint32_t entry) {
-                            (main_program_lists(entry)   ? main_program_run_original
-                             : player_stats_lists(entry) ? player_stats_run_original
-                                                         : tactics_run_original)(t, entry);
+                            (main_program_lists(entry)        ? main_program_run_original
+                             : player_stats_lists(entry)      ? player_stats_run_original
+                             : shortlist_manager_lists(entry) ? shortlist_manager_run_original
+                                                              : tactics_run_original)(t, entry);
                         },
                         [](State& t, std::uint32_t entry) {
-                            (main_program_lists(entry)   ? main_program_run_rewrite
-                             : player_stats_lists(entry) ? player_stats_run_rewrite
-                                                         : tactics_run_rewrite)(t, entry);
+                            (main_program_lists(entry)        ? main_program_run_rewrite
+                             : player_stats_lists(entry)      ? player_stats_run_rewrite
+                             : shortlist_manager_lists(entry) ? shortlist_manager_run_rewrite
+                                                              : tactics_run_rewrite)(t, entry);
                         },
                         routine_checker && routine_checker->strict_volatile);
-                    return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s);
+                    return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) ||
+                       shortlist_manager_dispatch_probe(s);
                 };
         }
         if (!census.empty()) {
@@ -290,7 +236,6 @@ int main(int argc, char** argv) {
         load_match_snapshot(*initial, capture / "initial.snapshot");
         load_match_snapshot(*expected, capture / "expected.snapshot");
         if (club_control_check) return check_club_control(*initial, club_control_shifted);
-        if (registration_check) return check_registration_shortcut(*initial, registration_corrupted);
         // A sort capture starts at its routine's entry rather than its saved PC.
         if (const auto entry = capture_field(capture, "entry")) initial->pc = std::uint32_t(std::stoul(*entry, nullptr, 16));
         const auto days = capture_field(capture, "days");

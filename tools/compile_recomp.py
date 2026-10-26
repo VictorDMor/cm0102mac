@@ -196,6 +196,7 @@ from profile_qualification_audit import (require_profile_qualification_contract,
 from tactics_audit import TACTICS_ENTRIES, TACTICS_LEAVES, require_tactics_index, tactics_hook
 from main_program_audit import MAIN_PROGRAM_ENTRIES, require_main_program_index, main_program_hook
 from player_stats_audit import PLAYER_STATS_ENTRIES, require_player_stats_index, player_stats_hook
+from shortlist_manager_audit import SHORTLIST_MANAGER_ENTRIES, require_shortlist_manager_index, shortlist_manager_hook
 from contract_draft_audit import (require_contract_draft_contract, require_contract_draft_index,
     require_contract_draft_hooks, contract_draft_hook, CONTRACT_DRAFT_ENTRIES)
 from contract_display_audit import (require_contract_display_contract, require_contract_display_index,
@@ -359,19 +360,23 @@ require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
 # families' list that their audits pin.
 # MAIN.CPP (native/main_program_routines.inc) likewise takes native_service's
 # Apple-event facade 0x10770a80 over. PLAYER_STATS.CPP
-# (native/player_stats_routines.inc) had no older owner.
+# (native/player_stats_routines.inc) had no older owner. SHORTLIST_MANAGER.CPP
+# (native/shortlist_manager_routines.inc) takes every routine of its module
+# over from the shortlist families' builder owners, which leave production.
 OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLACEMENTS
                             if entry not in TACTICS_ENTRIES and entry not in MAIN_PROGRAM_ENTRIES
-                            and entry not in PLAYER_STATS_ENTRIES) +
+                            and entry not in PLAYER_STATS_ENTRIES and entry not in SHORTLIST_MANAGER_ENTRIES) +
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES) +
                       tuple((entry, "main_program_adapter") for entry in MAIN_PROGRAM_ENTRIES) +
-                      tuple((entry, "player_stats_adapter") for entry in PLAYER_STATS_ENTRIES))
+                      tuple((entry, "player_stats_adapter") for entry in PLAYER_STATS_ENTRIES) +
+                      tuple((entry, "shortlist_manager_adapter") for entry in SHORTLIST_MANAGER_ENTRIES))
 require_unique_semantic_replacements(OWNER_REPLACEMENTS)
 SEMANTIC_OWNERS = dict(OWNER_REPLACEMENTS)
 # Entries whose older owner's hook the tactics hook replaces.
 TACTICS_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in TACTICS_ENTRIES)
 MAIN_PROGRAM_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in MAIN_PROGRAM_ENTRIES)
 PLAYER_STATS_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in PLAYER_STATS_ENTRIES)
+SHORTLIST_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SHORTLIST_MANAGER_ENTRIES)
 CPP_LEAVES = frozenset(TACTICS_LEAVES)
 
 
@@ -795,6 +800,9 @@ class DirectOwnerCalls:
 # generated code for them (identical results: it is the reference); the
 # owners stay, with their equivalence checks, as specifications for real C++
 # rewrites. Measured on the 26-country day capture, 2026-10-23.
+# The builder families wholly inside SHORTLIST_MANAGER.CPP, whose routines
+# shortlist_manager_adapter now runs (their audits and checks stay).
+SHORTLIST_MANAGER_FAMILIES = ("club_shortlist_storage", "shortlist_category", "shortlist_links", "shortlist_recruitment")
 GENERATED_FASTER_FAMILIES = (
     "actor_attributes", "contract_terms", "shortlist_assessment", "shortlist_policy", "transfer_offer",
     # Match play, measured on the 26-country week (2026-10-23): the actor
@@ -1127,7 +1135,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True,
                   direct_owner_calls=None):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
@@ -1321,7 +1329,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     page_addresses = {item["address"] for item in instructions}
     taken_over = ((TACTICS_TAKEOVERS if tactics_hooks else frozenset()) |
                   (MAIN_PROGRAM_TAKEOVERS if main_program_hooks else frozenset()) |
-                  (PLAYER_STATS_TAKEOVERS if player_stats_hooks else frozenset()))
+                  (PLAYER_STATS_TAKEOVERS if player_stats_hooks else frozenset()) |
+                  (SHORTLIST_MANAGER_TAKEOVERS if shortlist_manager_hooks else frozenset()))
     if nontrapping_divisions is None:
         # Equivalence references compile parts of pages: use the whole-program
         # proof, so they continue exactly where production does; without an
@@ -1416,19 +1425,19 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "transfer_valuation_adapter.hpp"')
     if transfer_synthesis_hooks and page_addresses & set(TRANSFER_SYNTHESIS_ENTRIES):
         code.insert(1, '#include "transfer_synthesis_adapter.hpp"')
-    if club_shortlist_storage_hooks and page_addresses & set(CLUB_SHORTLIST_STORAGE_ENTRIES):
+    if club_shortlist_storage_hooks and page_addresses & (set(CLUB_SHORTLIST_STORAGE_ENTRIES) - taken_over):
         code.insert(1, '#include "club_shortlist_storage_adapter.hpp"')
-    if shortlist_category_hooks and page_addresses & set(SHORTLIST_CATEGORY_ENTRIES):
+    if shortlist_category_hooks and page_addresses & (set(SHORTLIST_CATEGORY_ENTRIES) - taken_over):
         code.insert(1, '#include "shortlist_category_adapter.hpp"')
-    if shortlist_links_hooks and page_addresses & set(SHORTLIST_LINKS_ENTRIES):
+    if shortlist_links_hooks and page_addresses & (set(SHORTLIST_LINKS_ENTRIES) - taken_over):
         code.insert(1, '#include "shortlist_links_adapter.hpp"')
-    if shortlist_recruitment_hooks and page_addresses & set(SHORTLIST_RECRUITMENT_ENTRIES):
+    if shortlist_recruitment_hooks and page_addresses & (set(SHORTLIST_RECRUITMENT_ENTRIES) - taken_over):
         code.insert(1, '#include "shortlist_recruitment_adapter.hpp"')
-    if shortlist_assessment_hooks and page_addresses & set(SHORTLIST_ASSESSMENT_ENTRIES):
+    if shortlist_assessment_hooks and page_addresses & (set(SHORTLIST_ASSESSMENT_ENTRIES) - taken_over):
         code.insert(1, '#include "shortlist_assessment_adapter.hpp"')
-    if shortlist_quotation_hooks and page_addresses & set(SHORTLIST_QUOTATION_ENTRIES):
+    if shortlist_quotation_hooks and page_addresses & (set(SHORTLIST_QUOTATION_ENTRIES) - taken_over):
         code.insert(1, '#include "shortlist_quotation_adapter.hpp"')
-    if shortlist_policy_hooks and page_addresses & set(SHORTLIST_POLICY_ENTRIES):
+    if shortlist_policy_hooks and page_addresses & (set(SHORTLIST_POLICY_ENTRIES) - taken_over):
         code.insert(1, '#include "shortlist_policy_adapter.hpp"')
     if profile_qualification_hooks and page_addresses & (set(PROFILE_QUALIFICATION_ENTRIES) - taken_over):
         code.insert(1, '#include "profile_qualification_adapter.hpp"')
@@ -1543,6 +1552,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "main_program_adapter.hpp"')
     if player_stats_hooks and page_addresses & set(PLAYER_STATS_ENTRIES):
         code.insert(1, '#include "player_stats_adapter.hpp"')
+    if shortlist_manager_hooks and page_addresses & set(SHORTLIST_MANAGER_ENTRIES):
+        code.insert(1, '#include "shortlist_manager_adapter.hpp"')
     if any(a in selected for a in STRING_CORE_ENTRIES if a >> 12 == page):
         code.insert(1, '#include "string_core_adapter.hpp"')
     if any(a in selected for a in MEMORY_PRIMITIVES_ENTRIES if a >> 12 == page):
@@ -1836,6 +1847,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             if a in PLAYER_STATS_TAKEOVERS:  # the PLAYER_STATS.CPP routine replaces an older owner's hook
                 code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(player_stats_hook(a))
+        if shortlist_manager_hooks and a in SHORTLIST_MANAGER_ENTRIES:
+            if a in SHORTLIST_MANAGER_TAKEOVERS:  # the SHORTLIST_MANAGER.CPP routine replaces an older owner's hook
+                code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
+            code.append(shortlist_manager_hook(a))
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
         if a == 0x1071a828:
@@ -2101,19 +2116,19 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if transfer_synthesis_hooks:
         require_transfer_synthesis_hooks(page, instructions, result)
     if club_shortlist_storage_hooks:
-        require_club_shortlist_storage_hooks(page, instructions, result)
+        require_club_shortlist_storage_hooks(page, instructions, result, taken_over)
     if shortlist_category_hooks:
-        require_shortlist_category_hooks(page, instructions, result)
+        require_shortlist_category_hooks(page, instructions, result, taken_over)
     if shortlist_links_hooks:
-        require_shortlist_links_hooks(page, instructions, result)
+        require_shortlist_links_hooks(page, instructions, result, taken_over)
     if shortlist_recruitment_hooks:
-        require_shortlist_recruitment_hooks(page, instructions, result)
+        require_shortlist_recruitment_hooks(page, instructions, result, taken_over)
     if shortlist_assessment_hooks:
-        require_shortlist_assessment_hooks(page, instructions, result)
+        require_shortlist_assessment_hooks(page, instructions, result, taken_over)
     if shortlist_quotation_hooks:
-        require_shortlist_quotation_hooks(page, instructions, result)
+        require_shortlist_quotation_hooks(page, instructions, result, taken_over)
     if shortlist_policy_hooks:
-        require_shortlist_policy_hooks(page, instructions, result)
+        require_shortlist_policy_hooks(page, instructions, result, taken_over)
     if profile_qualification_hooks:
         require_profile_qualification_hooks(page, instructions, result, taken_over)
     if contract_draft_hooks:
@@ -2413,6 +2428,7 @@ def main():
         require_tactics_index(db)
         require_main_program_index(db)
         require_player_stats_index(db)
+        require_shortlist_manager_index(db)
         inlining = Inlining({target: body for target, body in inline_leaves(db, divisions).items()
                              if args.all_analyzed or all(address in selected for address in range(target, target + 4 * len(body) + 4, 4))})
     if args.reuse_generated:
@@ -2426,7 +2442,7 @@ def main():
     for address, item in sorted(selected.items()): pages[address >> 12].append(item)
     outputs = {}
     direct_calls = DirectOwnerCalls()
-    production_hooks = {f"{family}_hooks": False for family in GENERATED_FASTER_FAMILIES}
+    production_hooks = {f"{family}_hooks": False for family in GENERATED_FASTER_FAMILIES + SHORTLIST_MANAGER_FAMILIES}
     call_targets = {item["flows"][0] for item in selected.values()
                     if item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows")}
     generated_count = len(selected)

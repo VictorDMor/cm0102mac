@@ -74,6 +74,10 @@ target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
 file(GLOB CM_PLAYER_STATS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/player_stats*.cpp")
 list(FILTER CM_PLAYER_STATS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_PLAYER_STATS_SOURCES})
+# The original's SHORTLIST_MANAGER.CPP in C++ (shortlist_manager_routines.inc): every shortlist_manager*.cpp.
+file(GLOB CM_SHORTLIST_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shortlist_manager*.cpp")
+list(FILTER CM_SHORTLIST_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_SHORTLIST_MANAGER_SOURCES})
 target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
@@ -296,14 +300,6 @@ add_test(NAME club_control_detects_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-club-control-shifted)
 set_tests_properties(club_control_detects_difference PROPERTIES
                      PASS_REGULAR_EXPRESSION "club control: [0-9]+ compared, [1-9][0-9]* controlled, [0-9]+ left to the original, [1-9][0-9]* mismatches")
-# The registration shortcut leaves the original's stack image for every club
-# it takes; one spoiled byte must be found.
-add_test(NAME registration_shortcut_stack_image
-         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-registration-shortcut)
-add_test(NAME registration_shortcut_detects_difference
-         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/interest-pass/0" --check-registration-shortcut-corrupted)
-set_tests_properties(registration_shortcut_detects_difference PROPERTIES
-                     PASS_REGULAR_EXPRESSION "registration shortcut: [0-9]+ clubs compared, [0-9]+ took the shortcut, 1 mismatches")
 # The C++ tactics routines (tactics_routines.inc) against their generated
 # originals at their calls in the 26-country career's 21-22 Dec day (forked
 # differential runs, routine_check.hpp); one spoiled result must be found.
@@ -338,6 +334,10 @@ set_tests_properties(main_program_volatile_audit PROPERTIES ENVIRONMENT "CM_MAIN
 # comparators' returns into qsort and bsearch included.
 add_test(NAME player_stats_volatile_audit
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_player_stats_audit.py")
+# Likewise around SHORTLIST_MANAGER.CPP (shortlist_manager_routines.inc), its
+# callbacks' returns into qsort, bsearch and the array constructor included.
+add_test(NAME shortlist_manager_volatile_audit
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_shortlist_manager_audit.py")
 add_test(NAME main_program_fixtures
          COMMAND cm-main-program-checks "${CM_BENCHMARK_DIR}/ui/game-load/initial.snapshot")
 # launch-quit: start-up, the start screen, Sair Jogo, Sim (which leaves through
@@ -386,6 +386,23 @@ endforeach()
 add_test(NAME player_stats_detect_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/ps-profile" 1 --check-routines-corrupted 400 200 --only 0x10304190)
 set_tests_properties(player_stats_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
+# The C++ SHORTLIST_MANAGER.CPP routines (shortlist_manager_routines.inc)
+# against their generated originals, where only this module needs the
+# capture: tactics-continue (a week of recruitment with the human club),
+# game-load and game-save2 (the shortlist manager's load and save) and the
+# daily transition. The season day (tactics_routines_day), ps-newgame (the
+# new game's shortlist creation) and launch-restart check every family too.
+add_test(NAME ui_replay_tactics_continue COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue")
+foreach(session tactics-continue game-load game-save2)
+    string(REPLACE "-" "_" name "${session}")
+    add_test(NAME shortlist_manager_${name}
+             COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}" 1 --check-routines 400 2000)
+endforeach()
+add_test(NAME shortlist_manager_daily_transition
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/daily-transition" 1 --check-routines 400 2000)
+add_test(NAME shortlist_manager_detect_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/game-load" 1 --check-routines-corrupted 400 200 --only 0x103663b0)
+set_tests_properties(shortlist_manager_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
 add_test(NAME tactics_routines_ui
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-players" 1 --check-routines 200 50)
 # Generated pages must isolate every instruction that host code or checks
@@ -2681,6 +2698,9 @@ add_executable(cm-native-sort8-checks native_sort8_checks.cpp)
 target_link_libraries(cm-native-sort8-checks PRIVATE cm_aot)
 target_compile_options(cm-native-sort8-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME native_sort8_equivalence COMMAND cm-native-sort8-checks)
+# The reference side runs the comparators (0x103663b0, 0x10366410) as generated
+# code, as the fused path's accounting assumes; SHORTLIST_MANAGER.CPP runs them as C++.
+set_tests_properties(native_sort8_equivalence PROPERTIES ENVIRONMENT "CM_SHORTLIST_MANAGER_ORIGINAL=1")
 add_test(NAME original_sort8_profile COMMAND "${CMAKE_COMMAND}" -E env
     CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-native-sort8-checks> --profile)
 add_executable(cm-shutdown-checks shutdown_checks.cpp)

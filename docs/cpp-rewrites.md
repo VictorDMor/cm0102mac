@@ -228,3 +228,53 @@ and the shared views in `player_stats_detail.hpp`. What it added:
   Match-actor construction's branch into 0x103058f0/0x10305ae0 was not
   reached by a real match start, and 0x10309cc0 (the transfer-rule
   predicates) by none; those three are checked by synthetic calls.
+
+## SHORTLIST_MANAGER.CPP: the recruitment module
+
+`SHORTLIST_MANAGER.CPP` (57 routines, 26,197 instructions, 0x10356410-0x1036ff60;
+`tools/shortlist_manager_audit.py`, `native/shortlist_manager_*`) is the fourth
+subsystem: the shortlist manager object and the daily recruitment over it
+(candidate scans, assessments, interest evaluations, registrations), in eleven
+groups written in parallel. What it added:
+
+- **Bounds by pool slot.** Its string pool slot is TOC -0x4dd8; SETUP.CPP's
+  (-0x4e18) is last loaded at 0x10356250 and SIMULATED_STATS.CPP's slots
+  (-0x4dd0..-0x4dc4) first at 0x1036ff60. The module's strings sit in the code
+  segment's constant area (the data segment starts at 0x108b3a90).
+- **Taking a module over from builder owners.** Seven older builder families
+  owned 33 of its routines, and production pages called them in place, so a
+  draft's entry never reached the dispatcher's check probe. The generator
+  therefore hooks every routine of the module from the start
+  (SHORTLIST_MANAGER_ENTRIES is all of ROUTINES): the adapter runs the
+  SHORTLIST_MANAGER_ROUTINE lines, drafts only under a checker, and declines
+  the rest to their generated bodies. The four families wholly inside
+  (SHORTLIST_MANAGER_FAMILIES) left production; quotation and
+  profile_qualification are taken over at their module entries only.
+- **A builder owner was not the reference.** With the builder owners out of
+  production, ui/tactics-continue and ui/ps-newgame (recorded with them in)
+  stopped reaching their end states with the generated code alone. Turning
+  the families off one at a time showed it was shortlist_links (a heap byte
+  its owner left 255 where the reference leaves 0). Both captures' expected
+  states were rewritten from the generated reference.
+- **Calls inside the module.** `Program::call` into another routine of the
+  module runs that routine's hook in place (`call_rewritten`: the link
+  register, then the hook), the same state change as the dispatcher path
+  without the round trip; a check of the caller covers its callees.
+- **Synthetic triggers.** A trigger fires only on a dispatch, and hooked or
+  in-place-called routines never dispatch: trigger on an unhooked routine the
+  same caller reaches (0x1036ff00 for the interest and context evaluations,
+  0x10082f90, 0x1014c2e0 for the squad assessment).
+- **Register-only loops.** Loops that only shuffle registers leave values in
+  r4-r10 that pass untouched through later callees to the return; the checker
+  compares r4-r10, so every such write that can reach a return is reproduced
+  (`leave()`).
+- **Calls reproduced natively.** register_club_interest runs the contract
+  lookup leaf 0x10082f20, the draft constructor 0x103721f0 and club
+  control's plain path (0x1014c2e0 with 0x100ce250) in C++, leaving their
+  registers and stack frames; anything off the plain path takes the real call.
+- **f1 at return.** The checker compares f1 only for routines that return
+  it, and no caller reads f1 after the others (checked statically), but an
+  operation capture ending at a routine's return compares r3, r4 and f1
+  (world/interest-pass ends at 0x10363ca0's). Every routine therefore leaves
+  f1 as the original does; `--compare-f1` makes the checker compare it for
+  every routine.

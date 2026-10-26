@@ -51,6 +51,47 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Idle screens no longer spin a core (d4b29a1): start screen 99% -> ~5% CPU.
 - [ ] Real-game runs differ (the game seeds randomness from the clock at startup). A fixed-clock validation mode would make real-game timing and save comparisons deterministic.
 
+## Done: SHORTLIST_MANAGER.CPP in C++23 (goal set 2026-10-25)
+
+Finish line: every routine of the original's `SHORTLIST_MANAGER.CPP`
+(0x10356410-0x1036ff60, 57 routines, 26,197 instructions;
+`tools/shortlist_manager_audit.py`) runs as hand-written C++ in production,
+checked against the generated reference (synthetic calls where no capture
+reaches), replays at their end states, suite passing, reviewed commit, one
+save/reload on a career copy, paired timing on the 26-country day.
+
+- [x] Bounds (pool slot -0x4dd8; SETUP.CPP before, SIMULATED_STATS.CPP from
+      0x1036ff60), audit tool, adapter, generator hook on every entry, the
+      shortlist builder families out of production.
+- [x] 11 groups (compare, storage, links, policy, recruitment, assessment,
+      interest, context, candidates, squads, daily), all 57 ROUTINE; calls
+      inside the module run the callee's C++ in place.
+- [x] Final checks, all families together: season-day, launch-restart,
+      game-load, game-save, game-save2, launch-sav, daily-transition,
+      tactics-continue, ps-newgame: 0 differ, end states reached; also with
+      --compare-f1 (every routine leaves f1 as the original). Synthetic sets
+      per group pass.
+- [x] Review (high): legacy-save copy fixed (+0, not +2); divisions follow the
+      reference (divide/modulo with the divw site); one random draw, shared
+      record views and sign helpers.
+- [x] A shortlist_links builder owner differed from the reference (heap byte);
+      tactics-continue and ps-newgame expected states rewritten from the
+      generated reference (old ones kept as expected.snapshot.builder-owners).
+- [x] Real game: All-Leagues copy, Continue 21->24 Dec, saved over it, quit,
+      relaunched, loaded (24 Dec). Save size matches the generated code's.
+- [x] Timing, season day, 10 alternating pairs: C++ faster in 8, mean paired
+      difference -0.52 s (-2.4%); machine drift 19.7-24.2 s.
+- [ ] Synthetic only (no capture reaches them): 0x1036ec30, 0x10364d00,
+      0x1036f670, 0x1036f7e0, 0x1036f920 (transfer/staff/club screens), the
+      legacy-save conversion and allocation/IO error paths. A UI capture of
+      the shortlist screens and of requested approaches would cover the
+      screen routines.
+- [ ] Unreached branches per group are listed in the commit message.
+- [ ] Remove the shortlist builder families' sources and tests (nothing runs
+      them in production now), or keep them as specifications.
+- [ ] Speed lead: the module's own time is small; its day share is in the
+      callees (contract and club lookups, the generated routines it calls).
+
 ## Done: PLAYER_STATS.CPP in C++23 (goal set 2026-10-25)
 
 Finish line: every routine of the original's `PLAYER_STATS.CPP` (0x10301540-

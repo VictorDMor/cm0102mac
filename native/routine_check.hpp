@@ -41,6 +41,10 @@ public:
     // return, to find a leftover that later reaches memory. r4-r10 and every
     // CR field are always compared.
     bool strict_volatile = false;
+    // Also compare f1 for routines whose result is not f1: an operation
+    // capture that ends at such a routine's return compares f1 (r3, r4, f1
+    // and the preserved registers).
+    bool compare_f1 = false;
 
 private:
     std::function<bool(std::uint32_t)> wanted_;

@@ -1,0 +1,12 @@
+// SHORTLIST_MANAGER.CPP: category eligibility, the club rows' counts and refresh, and the contract/country/row policies (shortlist_manager_policy.hpp).
+SHORTLIST_MANAGER_ROUTINE(0x10365d10, 0x103660b0, R3, "355a1e5b2af5edd2", [](Cpu& c) { shortlist_manager::eligible_for_category(c, c.r(4), c.r(5)); })
+SHORTLIST_MANAGER_ROUTINE(0x103660b0, 0x10366250, R3, "3083d1e8a31f0f59", [](Cpu& c) { shortlist_manager::count_and_prune_club_rows(c, c.r(3), c.r(4), c.r(5)); })
+SHORTLIST_MANAGER_ROUTINE(0x10366250, 0x103663b0, NONE, "53cd9ddb0d049632", [](Cpu& c) { shortlist_manager::refresh_unassigned_rows(c, c.r(3), c.r(4), c.r(5)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036f170, 0x1036f590, R3, "388a74619933ec77", [](Cpu& c) { shortlist_manager::classify_contract_offer(c, c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036f590, 0x1036f670, R3, "11e6a43f75fe73a8", [](Cpu& c) { shortlist_manager::check_candidate_country_policy(c, c.r(4), c.r(6)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036f670, 0x1036f6f0, R3, "9d886d1396cc9d8d", [](Cpu& c) { shortlist_manager::candidate_category_reference(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036f6f0, 0x1036f7e0, R3, "d5f8c7cb7700a0d0", [](Cpu& c) { shortlist_manager::club_category_reference(c, c.r(4), c.r(6)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036f7e0, 0x1036f920, R3, "50f53f9bbdc35fca", [](Cpu& c) { shortlist_manager::write_role_name(c, c.r(4), c.r(5), c.r(6)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036f920, 0x1036fa00, R3, "8544761c92beb1d4", [](Cpu& c) { shortlist_manager::fits_category(c, c.r(4), c.r(5)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036fbf0, 0x1036ff00, R3, "8016f9f0b8108736", [](Cpu& c) { shortlist_manager::evaluate_row_contract_gate(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
+SHORTLIST_MANAGER_ROUTINE(0x1036ff00, 0x1036ff60, R3, "a2feb904af12ee7c", [](Cpu& c) { shortlist_manager::record_name_equals(c, c.r(3), c.r(4)); })
