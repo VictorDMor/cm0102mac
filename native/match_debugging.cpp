@@ -15,7 +15,7 @@ namespace cm::aot {
 namespace {
 constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 30003;
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
-constexpr unsigned best_xi_action = 30004;
+constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -41,7 +41,10 @@ public:
         unsigned reg = 3;
         for (auto value : values) s.wr<4>(reg++ * 4, value);
         s.wr<4>(4128, return_sentinel); s.pc = entry;
-        run_until(s, return_sentinel);
+        try { run_until(s, return_sentinel); }
+        catch (const std::exception& error) {
+            throw std::runtime_error("Debugging call " + hex_address(entry) + " at " + hex_address(s.pc) + ": " + error.what());
+        }
         return std::uint32_t(s.r<4>(12));
     }
     void args(std::initializer_list<std::uint32_t> values) {
@@ -420,27 +423,99 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
     return true;
 }
 
+bool recover_debug_squad(State& s, std::uint32_t club) {
+    if (!native_debugging_enabled() || !club) return false;
+    const auto medical = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
+    const auto discipline = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7aa4)));
+    if (!medical || !discipline) return false;
+    const auto staff_count = signed_value<4>(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7be4)));
+    std::vector<std::uint32_t> players;
+    for (unsigned i = 0; i < 50; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
+        if (!staff || !s.memory.read<4>(staff + 0x14)) continue;
+        const auto id = signed_value<4>(s.memory.read<4>(staff));
+        if (id >= 0 && id < staff_count && std::find(players.begin(), players.end(), staff) == players.end())
+            players.push_back(staff);
+    }
+    GuestCall call(s);
+    for (const auto staff : players) {
+        const auto id = std::uint32_t(s.memory.read<4>(staff));
+        // Retire through the original medical operation so the live slot and
+        // completed history stay consistent. A full record reset erases history.
+        call.call(0x1018b9f0, {medical, staff, 0});
+        const auto queue = std::uint32_t(s.memory.read<4>(medical + 0x28));
+        if (queue)
+            while (const auto update = call.call(0x10186e10, {medical, staff}))
+                call.call(0x10738e60, {queue, update});
+        const auto condition = std::uint32_t(s.memory.read<4>(medical)) + id * 0x24;
+        s.memory.copy_in(condition, s.memory.copy_out(s.memory.read<4>(s.r<4>(8) - 0x7b80), 5));
+        s.memory.write<2>(condition + 8, 10000);
+        s.memory.write<2>(condition + 10, 10000);
+        s.memory.write<2>(condition + 12, 0);
+        s.memory.write<1>(condition + 0x14, 0xff); // No deferred medical risk.
+        s.memory.write<1>(condition + 0x15, 0);
+        s.memory.write<1>(condition + 0x20, 0);
+        s.memory.write<1>(condition + 0x21, 0xff);
+        // Each player has four competition categories. Removing an active ban
+        // through the original operation also detaches every linked category.
+        for (unsigned category = 0; category < 4; ++category) {
+            const auto index = std::uint32_t(s.memory.read<4>(discipline + 0x14)) + id * 0x2c + category * 8;
+            const auto group = signed_value<1>(s.memory.read<1>(index));
+            if (group < 0) continue;
+            const auto rules = std::uint32_t(s.memory.read<4>(s.memory.read<4>(discipline) + unsigned(group) * 4));
+            const auto record = call.call(0x105bc2b0, {rules, id, 0});
+            if (record) {
+                const auto ban = signed_value<2>(s.memory.read<2>(record + 6));
+                if (ban >= 0) call.call(0x100e0090, {discipline, id, unsigned(ban)});
+            }
+        }
+        // Cancel deferred bans too, retaining disciplinary history and cards.
+        call.call(0x100df950, {discipline, staff});
+    }
+    return true;
+}
+
 void append_best_xi_control(State& s) {
     if (!native_debugging_enabled()) return;
-    // Squad builder 1001f6a0, immediately after Clear/Restore Team. The gap
-    // between Sort and Clear Team is free in all its squad views.
+    // Squad builder 1001f6a0, after its column heading advanced r14 by 25.
+    // Six equal 110-pixel controls with two-pixel gaps on the original row.
     const auto club = std::uint32_t(s.r<4>(25 * 4));
     const auto ui = std::uint32_t(s.r<4>(31 * 4));
-    const auto top = std::uint32_t(s.r<4>(14 * 4));
+    const auto top = std::uint32_t(s.r<4>(14 * 4)) - 25;
     GuestCall call(s);
     if (!call.call(0x1014c490, {club, 0, 1}) || (call.call(0x1073ef70, {ui, 7}) & 0x800)) return;
+    const auto page = screen(s, ui);
+    const auto count = s.memory.read<2>(page + 0x129da4);
+    // Original two-cell View/Sort and Clear Team/Filter grids. The ordinary
+    // layout publishes their drawing and hit rectangles from these bounds.
+    for (unsigned i = 0; i < count && i < 250; ++i) {
+        const auto grid = page + 4 + i * 0xbf0;
+        if (s.memory.read<4>(grid + 4) != top || s.memory.read<4>(grid + 12) != top + 20 ||
+            s.memory.read<1>(grid + 0xbb0) != 2 || s.memory.read<1>(grid + 0xbb1) != 1) continue;
+        const auto left = s.memory.read<4>(grid), right = s.memory.read<4>(grid + 8);
+        if (left == 110 && right == 360) s.memory.write<4>(grid + 8, 332);
+        else if (left == 530 && right == 780) s.memory.write<4>(grid, 558);
+    }
     const auto ink = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc4)));
     const auto paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc8)));
     call.args({0, 1, 0, 0xffffffffu});
-    const auto grid = call.call(0x107198c0, {screen(s, ui), 365, top, 525, top + 20, 1, 0, 1});
-    call.args({paper, call.text(debug_text(s, DebugText::best_xi)), best_xi_action, 0});
+    const auto grid = call.call(0x107198c0, {page, 334, top, 444, top + 20, 1, 0, 1});
+    const auto best_label = debug_text(s, DebugText::best_xi);
+    call.args({paper, call.text(best_label), best_xi_action, 0});
     call.call(0x107444e0, {ui, grid, 0, 0, 0x30, ink, 12, 1});
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto recovery_grid = call.call(0x107198c0, {page, 446, top, 556, top + 20, 1, 0, 1});
+    const auto recovery_label = debug_text(s, DebugText::recover_squad);
+    call.args({paper, call.text(recovery_label), recover_squad_action, 0});
+    call.call(0x107444e0, {ui, recovery_grid, 0, 0, 0x30, ink, 12, 1});
 }
 
 bool dispatch_best_xi_control(State& s) {
     if (!native_debugging_enabled()) return false;
     const auto control = selected_control(s);
-    if (!control || s.memory.read<4>(control + 8) != best_xi_action) return false;
+    if (!control) return false;
+    const auto action = s.memory.read<4>(control + 8);
+    if (action != best_xi_action && action != recover_squad_action) return false;
     bool accepted = false;
     if (native_debugging_enabled() && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
@@ -449,10 +524,13 @@ bool dispatch_best_xi_control(State& s) {
         const auto view = call.call(0x1073ef70, {ui, 4});
         const auto columns = call.call(0x1073ef70, {ui, 7});
         if (view == 1 && !(columns & 0x800) && call.call(0x1014c490, {club, 0, 1})) {
-            const auto humans = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a54)));
-            const auto formation = call.call(0x101466c0, {humans, 0});
-            const auto fixture = call.call(0x1073ef70, {ui, 3});
-            accepted = select_debug_best_xi(s, club, managed, formation, fixture);
+            if (action == recover_squad_action) accepted = recover_debug_squad(s, club);
+            else {
+                const auto humans = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a54)));
+                const auto formation = call.call(0x101466c0, {humans, 0});
+                const auto fixture = call.call(0x1073ef70, {ui, 3});
+                accepted = select_debug_best_xi(s, club, managed, formation, fixture);
+            }
         }
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);

@@ -26,6 +26,141 @@ std::array<std::uint32_t, 20> squad(State& s, std::uint32_t tactics, std::uint32
     for (unsigned i = 0; i < result.size(); ++i) result[i] = invoke(s, 0x103af800, {tactics, club, i, 0});
     return result;
 }
+void check_recovery(State& s, std::uint32_t club, std::uint32_t opponent,
+                    std::uint32_t tactics, std::uint32_t formation) {
+    const auto medical = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
+    const auto discipline = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7aa4)));
+    const auto records = std::uint32_t(s.memory.read<4>(medical));
+    const auto indexes = std::uint32_t(s.memory.read<4>(discipline + 0x14));
+    const auto scratch = invoke(s, 0x10773520, {128});
+    std::vector<std::uint32_t> players;
+    for (unsigned i = 0; i < 50; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
+        if (staff && s.memory.read<4>(staff + 0x14)) players.push_back(staff);
+    }
+    require(players.size() > 20, "Need both selected and unselected squad players");
+    const auto outsider = std::uint32_t(s.memory.read<4>(opponent + 0x98));
+    require(select_debug_best_xi(s, club, 0, formation, 0), "Need a selected XI and substitutes for recovery");
+    const auto selected = squad(s, tactics, club);
+    const auto unselected = std::find_if(players.begin(), players.end(), [&](auto staff) {
+        return std::find(selected.begin(), selected.end(), staff) == selected.end();
+    });
+    require(selected[0] && selected[11] && unselected != players.end(), "Missing recovery selection groups");
+    auto condition = [&](std::uint32_t staff) { return records + s.memory.read<4>(staff) * 0x24; };
+    auto injury = [&](std::uint32_t staff, unsigned type) {
+        s.memory.write<4>(s.r<4>(4) + 0x38, 0);
+        require(invoke(s, 0x10188cc0, {medical, type, 0, staff, 0, 1, 0xffffffff, 0}) != 0xffffffff,
+                "Original medical setup failed");
+    };
+    for (const auto staff : players) {
+        const auto record = condition(staff);
+        s.memory.write<2>(record + 8, 6200);
+        s.memory.write<2>(record + 10, 7500);
+        s.memory.write<2>(record + 12, 1200);
+        s.memory.write<1>(record + 0x14, 11);
+        s.memory.write<1>(record + 0x15, 3);
+    }
+    injury(selected[0], 5);
+    injury(selected[11], 11);
+    injury(*unselected, 77); // Recovering rather than actively injured.
+    injury(outsider, 5);
+    const auto outside_condition = s.memory.copy_out(condition(outsider), 0x24);
+    const auto outside_injury = std::uint32_t(s.memory.read<4>(medical + 4)) +
+        s.memory.read<4>(condition(outsider) + 0x10) * 0x38;
+    const auto outside_medical = s.memory.copy_out(outside_injury, 0x38);
+    // Queue real medical updates for an in-squad player and an opponent.
+    s.memory.write<1>(scratch, 5); s.memory.write<1>(scratch + 1, 20);
+    invoke(s, 0x10186cd0, {medical, players.back(), scratch, scratch + 1});
+    invoke(s, 0x10186cd0, {medical, outsider, scratch, scratch + 1});
+    // Register match-count and time-based bans using the real discipline store.
+    std::vector<std::uint32_t> suspended;
+    for (unsigned category = 0; category < 4; ++category) {
+        unsigned group = 42;
+        for (unsigned i = 0; i < 42; ++i) {
+            const auto rules = s.memory.read<4>(s.memory.read<4>(discipline) + i * 4);
+            if (rules && s.memory.read<1>(rules + 4) == category) { group = i; break; }
+        }
+        // This English world instantiates only two categories. Construct real
+        // empty rule stores for the others so every category is exercised.
+        if (group == 42) {
+            for (unsigned i = 0; i < 42; ++i)
+                if (!s.memory.read<4>(s.memory.read<4>(discipline) + i * 4)) { group = i; break; }
+            require(group < 42, "No empty disciplinary rule slot");
+            const auto rules = invoke(s, 0x10773520, {0x24});
+            invoke(s, 0x105b7030, {rules, 0});
+            s.memory.write<1>(rules + 4, category);
+            s.memory.write<1>(rules + 5, group);
+            s.memory.write<4>(s.memory.read<4>(discipline) + group * 4, rules);
+        }
+        const auto staff = players[category == 0 ? 0 : category == 1 ? 11 : players.size() - category];
+        suspended.push_back(staff);
+        const auto id = std::uint32_t(s.memory.read<4>(staff));
+        s.memory.copy_in(scratch, std::vector<std::uint8_t>(24, 0xff));
+        s.memory.write<1>(scratch, category % 2 ? 0xff : 3);
+        s.memory.write<1>(scratch + 1, 0);
+        s.memory.write<2>(scratch + 2, category % 2 ? 30 : 0xffff);
+        s.memory.copy_in(scratch + 4, s.memory.copy_out(s.memory.read<4>(s.r<4>(8) - 0x7b80), 5));
+        s.memory.write<1>(scratch + 0xc + category, group);
+        s.memory.write<4>(scratch + 0x14, 0x40000000);
+        invoke(s, 0x100dfb30, {discipline, id, scratch});
+        const auto rules = std::uint32_t(s.memory.read<4>(s.memory.read<4>(discipline) + group * 4));
+        const auto record = invoke(s, 0x105bc2b0, {rules, id, 0});
+        require(record && signed_value<2>(s.memory.read<2>(record + 6)) >= 0, "Original ban setup failed");
+        require(invoke(s, 0x105bc600, {rules, staff, 0, 0, 0}) != 0, "Original ban query missed setup");
+    }
+    require(suspended.size() == 4, "Need all four disciplinary categories");
+    // Deferred bans use the original queue format and append operation.
+    for (const auto staff : {players.back(), outsider}) {
+        s.memory.copy_in(scratch, std::vector<std::uint8_t>(16, 0));
+        s.memory.write<4>(scratch, s.memory.read<4>(staff));
+        invoke(s, 0x10738d10, {discipline + 0x1c, scratch, 16});
+        const auto index = indexes + s.memory.read<4>(staff) * 0x2c;
+        s.memory.write<1>(index + 0x28, s.memory.read<1>(index + 0x28) + 1);
+    }
+    const auto outside_discipline = s.memory.copy_out(indexes + s.memory.read<4>(outsider) * 0x2c, 0x2c);
+    const auto lineup = squad(s, tactics, club);
+    const auto original_tactics = s.memory.copy_out(formation, 0x18e0);
+    const auto roster = s.memory.copy_out(club + 0x98, 200);
+    select_native_debugging(false);
+    const auto before = s.memory.copy_out(condition(players.front()), 0x24);
+    const auto executed = s.executed;
+    require(!recover_debug_squad(s, club) && s.executed == executed &&
+            before == s.memory.copy_out(condition(players.front()), 0x24), "Disabled recovery changed state");
+    select_native_debugging(true);
+    const auto registers = s.registers;
+    const auto unique = s.unique;
+    const auto pc = s.pc;
+    require(recover_debug_squad(s, club), "Squad recovery rejected the actual club");
+    require(s.registers == registers && s.unique == unique && s.pc == pc, "Recovery clobbered caller");
+    for (const auto staff : players) {
+        const auto record = condition(staff);
+        require(s.memory.read<4>(record + 0x10) == 0xffffffff &&
+                s.memory.read<1>(record + 0x14) == 0xff && !s.memory.read<1>(record + 0x15), "Medical risk/injury survived");
+        require(invoke(s, 0x10187680, {medical, staff}) == 0 &&
+                invoke(s, 0x101878d0, {medical, staff, 1}) == 100 &&
+                invoke(s, 0x101877e0, {medical, staff, 1}) == 100, "Original readouts are not healthy and 100%");
+        require(!invoke(s, 0x10186e10, {medical, staff}), "Pending medical update survived");
+        for (unsigned category = 0; category < 4; ++category) {
+            const auto index = indexes + s.memory.read<4>(staff) * 0x2c + category * 8;
+            const auto group = signed_value<1>(s.memory.read<1>(index));
+            if (group < 0) continue;
+            const auto rules = std::uint32_t(s.memory.read<4>(s.memory.read<4>(discipline) + unsigned(group) * 4));
+            require(!invoke(s, 0x105bc600, {rules, staff, 0, 0, 0}), "Active suspension survived");
+        }
+        require(!s.memory.read<1>(indexes + s.memory.read<4>(staff) * 0x2c + 0x28), "Deferred suspension survived");
+    }
+    require(invoke(s, 0x1018c1a0, {medical, selected[0]}), "Recovery lost completed injury history");
+    require(invoke(s, 0x10186e10, {medical, outsider}), "Recovery removed opponent medical update");
+    require(s.memory.copy_out(condition(outsider), 0x24) == outside_condition &&
+            s.memory.copy_out(outside_injury, 0x38) == outside_medical &&
+            s.memory.copy_out(indexes + s.memory.read<4>(outsider) * 0x2c, 0x2c) == outside_discipline,
+            "Recovery changed the opponent");
+    require(squad(s, tactics, club) == lineup && s.memory.copy_out(formation, 0x18e0) == original_tactics &&
+            s.memory.copy_out(club + 0x98, 200) == roster, "Recovery changed squad selection or tactics");
+    require(recover_debug_squad(s, club) && !recover_debug_squad(s, 0), "Repeat recovery/invalid club guard failed");
+    std::cout << "Recovery: " << players.size() << " actual roster players, " << suspended.size()
+              << " suspension categories, medical history, queues, 100% readouts, opponent isolation and gating passed\n";
+}
 }
 int main(int argc, char** argv) {
     try {
@@ -35,9 +170,12 @@ int main(int argc, char** argv) {
         require(debug_text(9, DebugText::add_goal) == "Adicionar Gol" && debug_text(0, DebugText::add_goal) == "Add Goal" &&
                 debug_text(9, DebugText::goal) == "Gol" && debug_text(0, DebugText::goal) == "Goal", "Goal labels");
         for (unsigned language = 0; language < 11; ++language)
-            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off})
+            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad})
                 require(!debug_text(language, key).empty(), "Missing supported-language label");
         require(debug_text(255, DebugText::best_xi) == "Best XI", "Unknown language fallback");
+        require(debug_text(9, DebugText::recover_squad) == "Recuperar" &&
+                debug_text(0, DebugText::recover_squad) == "Recover" &&
+                debug_text(255, DebugText::recover_squad) == "Recover", "Recovery localization/fallback");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         auto live = create_match({argv[1], argv[2], root}, {677, 5677, 12345, 2001, 194});
         auto& s = *live.state;
@@ -103,6 +241,8 @@ int main(int argc, char** argv) {
         require(select_debug_best_xi(s, club, 0, formation, 0), "Empty pool selection failed");
         require(squad(s, tactics, club) == std::array<std::uint32_t, 20>{}, "Empty pool retained unavailable players");
         s.memory.copy_in(club + 0x98, roster);
+        const auto opponent = std::uint32_t(s.memory.read<4>(live.match + 0x7aac + 0xd8 + 0x34));
+        check_recovery(s, club, opponent, tactics, formation);
         select_native_debugging(false);
         std::cout << "Best XI: live selection, availability, unique players, formation, bench limits, depleted pool, gating and 11 languages passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

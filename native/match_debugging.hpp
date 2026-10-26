@@ -25,6 +25,8 @@ bool dispatch_best_xi_control(State&);
 // zero between fixtures; then the original UI's full nine-place bench is used.
 bool select_debug_best_xi(State&, std::uint32_t club, unsigned managed,
                          std::uint32_t formation, std::uint32_t fixture);
+// Recover every player in the club roster, including unselected reserves.
+bool recover_debug_squad(State&, std::uint32_t club);
 
 // Shared validation for the live UI and focused original-engine checks.
 bool eligible_debug_goal(const State&, std::uint32_t match, unsigned player);

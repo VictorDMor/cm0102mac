@@ -1532,7 +1532,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_presentation.hpp"')
     if page in MATCH_SPEED_PAGES:
         code.insert(1, '#include "match_speed.hpp"')
-    if page in (0x1028c, 0x1028d, 0x101cc, 0x10022, 0x10036):
+    if page in (0x1028c, 0x1028d, 0x101cc, 0x10023, 0x10036):
         code.insert(1, '#include "match_debugging.hpp"')
     if page in (0x10331, 0x10715, 0x10717, 0x10718):
         code.insert(1, '#include "calendar_adapter.hpp"')
@@ -1623,7 +1623,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("append_match_debugging_controls(s);")
         if a == 0x1028dc80:
             code.append("if (dispatch_match_debugging_control(s)) return true;")
-        if a == 0x1002251c:
+        if a == 0x100237c4:
             code.append("append_best_xi_control(s);")
         if a == 0x10036f10:
             code.append("if (dispatch_best_xi_control(s)) return true;")
