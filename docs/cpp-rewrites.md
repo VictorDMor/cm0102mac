@@ -296,3 +296,13 @@ groups written in parallel. What it added:
   included (Program::inlined), to the fixture's model; direct calls inside a
   group are recorded (enter_direct) so the reference runs those callees too.
   They found nine wrong return addresses on paths no capture took.
+- **Driving the game to a path.** The automation's `snapshot` writes the
+  game's own 800x600 surface (the second image), which shows the screen even
+  where a host screenshot cannot; the status names each screen's handler and
+  each control's action code, and decompiling the handler maps an action to
+  what it calls. Left-bar menus are `popup` items; rows of lists inside a
+  pop-up group are refused by `control`. Routes found: Offer Contract and
+  transfer status on a player (ui/contract-offer), a bid with a part
+  exchange (ui/swap-offer), Options > add a manager, choose a club, take
+  control (ui/take-control, the only route to 0x1036ec30 without waiting
+  for a board to hire the human).

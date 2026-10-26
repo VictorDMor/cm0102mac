@@ -87,10 +87,11 @@ save/reload on a career copy, paired timing on the 26-country day.
       exchange: 0x10364d00, 34 calls), every call checked, f1 too. A week of
       the 26-country career (its expected state rewritten from the reference
       as above): 645M calls, 69,939 checked, 0 differ.
-- [x] 0x1036ec30 runs only when the human takes a new job (router
-      0x102a54b0) or staff join one of the last 16 clubs (0x1019dd00); no
-      capture has either. 639 synthetic calls from real states, 0 differ
-      (120 compared where both stop at the same import).
+- [x] 0x1036ec30 (a club's shortlist rebuilt for a human manager: the router
+      0x102a54b0 when he accepts a job, 0x1019dd00 when a board appoints a
+      human, i.e. one of the last 16 persons): ui/take-control (Options >
+      add a manager mid-game, choose KAA Gent, take control), its one call
+      checked, 0 differ; plus 639 synthetic calls.
 - [x] Error and legacy paths: the eight builder families' fixture programs
       now also run the SHORTLIST_MANAGER C++ on every case (~32,000: legacy
       save versions 0x3e015/0x3e016, short and partial IO, allocation

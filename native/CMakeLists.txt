@@ -402,8 +402,10 @@ endforeach()
 # a player of the club and his transfer status set (contract-offer: the role
 # names and category checks, 0x1036f670/0x1036f7e0/0x1036f920), and a bid
 # with a part exchange (swap-offer: the selling club's interest in each
-# player offered, 0x10364d00). Every call checked, f1 too.
-foreach(session contract-offer swap-offer)
+# player offered, 0x10364d00), and a manager added mid-game who takes control
+# of a club (take-control: the club's shortlist rebuilt for the human,
+# 0x1036ec30). Every call checked, f1 too.
+foreach(session contract-offer swap-offer take-control)
     string(REPLACE "-" "_" name "${session}")
     add_test(NAME ui_replay_${name} COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}")
     add_test(NAME shortlist_manager_${name}
