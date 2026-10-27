@@ -1,6 +1,7 @@
 #include "match_debugger_bootstrap.hpp"
 #include "engine_initialization_adapter.hpp"
 #include "contract_manager_adapter.hpp"
+#include "screen_manager_adapter.hpp"
 #include "platform.hpp"
 #include <algorithm>
 #include <limits>
@@ -72,6 +73,14 @@ DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
             if (contracts.date_initialization_calls != 1 || contracts.date_initialization_returns != 1 ||
                 initialization.calls[entry] != 0 || initialization.returns[entry] != 0)
                 throw std::runtime_error("Independent bootstrap did not complete the contract date initializer");
+            continue;
+        }
+        if (engine_initialization::entries[entry] == 0x10744640) {
+            const auto& screens = screen_manager_diagnostics(state);
+            if (screens.initialization_calls != 1 || screens.initialization_returns != 1 ||
+                initialization.calls[entry] != 0 || initialization.returns[entry] != 0 ||
+                initialization.original_calls[entry] != 0 || initialization.profile_original_calls[entry] != 0)
+                throw std::runtime_error("Independent bootstrap did not complete the screen manager initializer");
             continue;
         }
         if (initialization.calls[entry] != 1 || initialization.returns[entry] != 1)

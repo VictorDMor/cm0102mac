@@ -118,14 +118,14 @@ void engine_initialization_transfer_checks(const std::filesystem::path& input) {
     auto seed = std::make_unique<State>(); load_program(*seed, input); seed->budget = 100000000;
     seed->memory.map(fixture, 0x1000); seed->memory.copy_in(fixture, std::vector<std::uint8_t>(0x1000, 0xa7));
     for (unsigned root = 0; root < init::entries.size(); ++root) {
-        // This entry's generated owner is now CONTRACT_MANAGER; its frame
-        // no longer uses this adapter's per-instruction checkpoints.
-        if (init::entries[root] == 0x100939b0) continue;
+        // The date and screen initializers have direct C++ owners; their
+        // frames no longer use this adapter's per-instruction checkpoints.
+        if (init::entries[root] == 0x100939b0 || init::entries[root] == 0x10744640) continue;
         for (auto kind : {Scenario::jump, Scenario::restore_fault, Scenario::handler_fault})
             for (unsigned mode = 0; mode < 2; ++mode) compare(*seed, root, kind, mode, false);
         compare(*seed, root, Scenario::jump, 1, true);
     }
     for (unsigned mode : {2u, 3u}) compare(*seed, 0, Scenario::jump, mode, false);
     std::cout << cases << " nonlocal initializer comparisons; " << fault_cases
-        << " restore/handler faults; nineteen owned initializer frames and interrupted continuations abandoned\n";
+        << " restore/handler faults; eighteen legacy initializer frames and interrupted continuations abandoned\n";
 }

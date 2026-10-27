@@ -195,6 +195,7 @@ from profile_qualification_audit import (require_profile_qualification_contract,
     require_profile_qualification_hooks, profile_qualification_hook, PROFILE_QUALIFICATION_ENTRIES)
 from tactics_audit import TACTICS_ENTRIES, TACTICS_LEAVES, require_tactics_index, tactics_hook
 from main_program_audit import MAIN_PROGRAM_ENTRIES, require_main_program_index, main_program_hook
+from screen_manager_audit import SCREEN_MANAGER_ENTRIES, require_screen_manager_index, screen_manager_hook
 from eng_prm_audit import ENG_PRM_ENTRIES, require_eng_prm_index, eng_prm_hook
 from contract_manager_audit import (CONTRACT_MANAGER_ENTRIES, require_contract_manager_index,
                                     contract_manager_hook, require_contract_manager_hooks)
@@ -369,12 +370,13 @@ require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
 OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLACEMENTS
                             if entry not in TACTICS_ENTRIES and entry not in MAIN_PROGRAM_ENTRIES
                             and entry not in PLAYER_STATS_ENTRIES and entry not in SHORTLIST_MANAGER_ENTRIES
-                            and entry not in CONTRACT_MANAGER_ENTRIES) +
+                            and entry not in CONTRACT_MANAGER_ENTRIES and entry not in SCREEN_MANAGER_ENTRIES) +
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES) +
                       tuple((entry, "main_program_adapter") for entry in MAIN_PROGRAM_ENTRIES) +
                       tuple((entry, "player_stats_adapter") for entry in PLAYER_STATS_ENTRIES) +
                       tuple((entry, "shortlist_manager_adapter") for entry in SHORTLIST_MANAGER_ENTRIES) +
                       tuple((entry, "eng_prm_adapter") for entry in ENG_PRM_ENTRIES) +
+                      tuple((entry, "screen_manager_adapter") for entry in SCREEN_MANAGER_ENTRIES) +
                       tuple((entry, "contract_manager_adapter") for entry in CONTRACT_MANAGER_ENTRIES))
 require_unique_semantic_replacements(OWNER_REPLACEMENTS)
 SEMANTIC_OWNERS = dict(OWNER_REPLACEMENTS)
@@ -383,6 +385,7 @@ TACTICS_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if ent
 MAIN_PROGRAM_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in MAIN_PROGRAM_ENTRIES)
 PLAYER_STATS_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in PLAYER_STATS_ENTRIES)
 SHORTLIST_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SHORTLIST_MANAGER_ENTRIES)
+SCREEN_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SCREEN_MANAGER_ENTRIES)
 CONTRACT_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in CONTRACT_MANAGER_ENTRIES)
 CPP_LEAVES = frozenset(TACTICS_LEAVES)
 
@@ -775,7 +778,8 @@ def direct_owner_entries():
              set(observed_instructions(checks=True)))
     return {entry: module.removesuffix("_adapter") for entry, module in OWNER_REPLACEMENTS
             if module.endswith("_adapter") and module not in NONSTANDARD_OWNER_MODULES and counts[entry] == 1
-            and entry not in other and module.removesuffix("_adapter") not in owners_counting_declines()}
+            and entry not in other and entry >> 12 not in TURBO_PAGES
+            and module.removesuffix("_adapter") not in owners_counting_declines()}
 
 
 def plain_direct_call(item):
@@ -1142,7 +1146,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, eng_prm_hooks=True, contract_manager_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, eng_prm_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
                   direct_owner_calls=None):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
@@ -1338,7 +1342,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   (MAIN_PROGRAM_TAKEOVERS if main_program_hooks else frozenset()) |
                   (PLAYER_STATS_TAKEOVERS if player_stats_hooks else frozenset()) |
                   (SHORTLIST_MANAGER_TAKEOVERS if shortlist_manager_hooks else frozenset()) |
-                  (CONTRACT_MANAGER_TAKEOVERS if contract_manager_hooks else frozenset()))
+                  (CONTRACT_MANAGER_TAKEOVERS if contract_manager_hooks else frozenset()) |
+                  (SCREEN_MANAGER_TAKEOVERS if screen_manager_hooks else frozenset()))
     if nontrapping_divisions is None:
         # Equivalence references compile parts of pages: use the whole-program
         # proof, so they continue exactly where production does; without an
@@ -1558,6 +1563,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "tactics_adapter.hpp"')
     if main_program_hooks and page_addresses & set(MAIN_PROGRAM_ENTRIES):
         code.insert(1, '#include "main_program_adapter.hpp"')
+    if screen_manager_hooks and page_addresses & set(SCREEN_MANAGER_ENTRIES):
+        code.insert(1, '#include "screen_manager_adapter.hpp"')
     if eng_prm_hooks and page_addresses & set(ENG_PRM_ENTRIES):
         code.insert(1, '#include "eng_prm_adapter.hpp"')
     if contract_manager_hooks and page_addresses & set(CONTRACT_MANAGER_ENTRIES):
@@ -1855,6 +1862,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             if a in MAIN_PROGRAM_TAKEOVERS:  # the MAIN.CPP routine replaces an older owner's hook
                 code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(main_program_hook(a))
+        if screen_manager_hooks and a in SCREEN_MANAGER_ENTRIES:
+            if a in SCREEN_MANAGER_TAKEOVERS:
+                code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
+            code.append(screen_manager_hook(a))
         if eng_prm_hooks and a in ENG_PRM_ENTRIES:
             code.append(eng_prm_hook(a))
         if contract_manager_hooks and a in CONTRACT_MANAGER_ENTRIES:
@@ -2084,7 +2095,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if engine_initialization_hooks:
         require_engine_initialization_hooks(page, instructions, result, taken_over)
     if record_history_hooks:
-        require_record_history_hooks(page, instructions, result)
+        require_record_history_hooks(page, instructions, result, taken_over)
     if match_engine_hooks:
         require_match_engine_hooks(page, instructions, result)
     if match_actor_hooks:
@@ -2216,11 +2227,11 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if player_decision_hooks:
         require_player_decision_hooks(page, instructions, result)
     if record_query_hooks:
-        require_record_query_hooks(page, instructions, result)
+        require_record_query_hooks(page, instructions, result, taken_over)
     if record_group_hooks:
-        require_record_group_hooks(page, instructions, result)
+        require_record_group_hooks(page, instructions, result, taken_over)
     if aggregate_object_hooks:
-        require_aggregate_object_hooks(page, instructions, result)
+        require_aggregate_object_hooks(page, instructions, result, taken_over)
     if tree_mutation_hooks:
         require_tree_mutation_hooks(page, instructions, result)
     if utility_object_hooks:
@@ -2448,6 +2459,7 @@ def main():
         require_tactics_index(db)
         require_main_program_index(db)
         require_eng_prm_index(db)
+        require_screen_manager_index(db)
         require_contract_manager_index(db)
         require_player_stats_index(db)
         require_shortlist_manager_index(db)

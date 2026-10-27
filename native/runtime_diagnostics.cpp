@@ -1,5 +1,6 @@
 #include "engine_initialization_adapter.hpp"
 #include "contract_manager_adapter.hpp"
+#include "screen_manager_adapter.hpp"
 #include "utility_object_adapter.hpp"
 #include "tree_mutation_adapter.hpp"
 #include "aggregate_object_adapter.hpp"
@@ -78,6 +79,7 @@ namespace cm::aot {
 struct RuntimeDiagnostics {
     EngineInitializationDiagnostics engine_initialization;
     ContractManagerDiagnostics contract_manager;
+    ScreenManagerDiagnostics screen_manager;
     UtilityObjectDiagnostics utility_object;
     TreeMutationDiagnostics tree_mutation;
     AggregateObjectDiagnostics aggregate_object;
@@ -355,6 +357,14 @@ const ActorConstructionDiagnostics& actor_construction_diagnostics(const State& 
 EngineInitializationDiagnostics& engine_initialization_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->engine_initialization;
+}
+ScreenManagerDiagnostics& screen_manager_diagnostics(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->screen_manager;
+}
+const ScreenManagerDiagnostics& screen_manager_diagnostics(const State& state) {
+    static const ScreenManagerDiagnostics empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->screen_manager : empty;
 }
 ContractManagerDiagnostics& contract_manager_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();

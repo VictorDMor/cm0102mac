@@ -214,6 +214,8 @@ void install_fakes() {
         c.set(3, 0);
     }};
     // Guest library routines.
+    // SCRMAN 0x10743590 runs its real owner in both paths: generated callers
+    // may enter that owner directly, before the dispatcher sees a fake.
     fakes[0x107681d0] = Fake{false, [](Cpu& c, std::uint32_t v) {  // the list's first FSSpec
         if (v >> 16) { c.set(3, v >> 16); return; }
         const char* names[]{"ab", "abc", "game.sav", "quick.cfg", "world.rgn", "notes.txt", "x.SAV"};
@@ -237,7 +239,7 @@ void install_fakes() {
     // fopen, fclose, fprintf (owners), exit (an owner) and the Finder
     // comment's reader (on find_folders's page) run for real against the
     // import stand-ins.
-    for (const std::uint32_t routine : {0x10768080u, 0x1076b2f0u, 0x1076b7e0u, 0x1074cc30u, 0x10743590u, 0x10769b50u,
+    for (const std::uint32_t routine : {0x10768080u, 0x1076b2f0u, 0x1076b7e0u, 0x1074cc30u, 0x10769b50u,
                                         0x107692f0u, 0x10118fe0u, 0x1074ca50u, 0x1074dbf0u, 0x1074d770u, 0x1074d4c0u})
         fakes[routine] = Fake{false, value_r3};
 }

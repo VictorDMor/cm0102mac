@@ -60,10 +60,10 @@ def record_history_hook(entry):
     return f'if (try_modern_record_history(s, 0x{entry:x})) return true;'
 
 
-def require_record_history_hooks(page, instructions, code):
+def require_record_history_hooks(page, instructions, code, taken_over=()):
     addresses = {r['address'] for r in instructions}
     for entry in RECORD_HISTORY_ENTRIES:
-        if entry >> 12 != page or entry not in addresses: continue
+        if entry >> 12 != page or entry not in addresses or entry in taken_over: continue
         label, hook = f'i_{entry:x}:', record_history_hook(entry)
         fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
         steps = [token for token in (f's.step(0x{entry:x});', f'counter.step(0x{entry:x});') if token in fragment]

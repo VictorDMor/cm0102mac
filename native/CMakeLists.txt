@@ -70,6 +70,9 @@ target_sources(cm_aot PRIVATE routine_check.cpp ${CM_TACTICS_SOURCES})
 file(GLOB CM_MAIN_PROGRAM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/main_program*.cpp")
 list(FILTER CM_MAIN_PROGRAM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
+file(GLOB CM_SCREEN_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/screen_manager*.cpp")
+list(FILTER CM_SCREEN_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_SCREEN_MANAGER_SOURCES})
 file(GLOB CM_ENG_PRM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/eng_prm*.cpp")
 list(FILTER CM_ENG_PRM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_ENG_PRM_SOURCES})
@@ -3254,4 +3257,25 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME eng_prm_equivalence COMMAND cm-eng-prm-checks "${CM_ORACLE_DIR}")
     add_test(NAME eng_prm_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_prm_audit.py")
+endif()
+
+# SCRMAN comparisons use private hook-free reference pages.
+if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
+    set(CM_SCREEN_MANAGER_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/screen_manager_reference.cpp")
+    add_custom_command(OUTPUT "${CM_SCREEN_MANAGER_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_screen_manager_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_SCREEN_MANAGER_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_screen_manager_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/screen_manager_audit.py"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CMAKE_CURRENT_SOURCE_DIR}/screen_manager_routines.inc"
+        VERBATIM)
+    add_executable(cm-screen-manager-checks screen_manager_checks.cpp "${CM_SCREEN_MANAGER_REFERENCE}")
+    target_link_libraries(cm-screen-manager-checks PRIVATE cm_aot)
+    target_compile_options(cm-screen-manager-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME screen_manager_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_screen_manager_audit.py")
+    add_test(NAME screen_manager_component_equivalence COMMAND cm-screen-manager-checks "${CM_ORACLE_DIR}")
+    set_tests_properties(screen_manager_component_equivalence PROPERTIES TIMEOUT 300)
 endif()

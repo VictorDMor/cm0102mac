@@ -28,6 +28,10 @@ class InPlaceOwnerCalls(unittest.TestCase):
         return generate_page(PAGE, instructions, {i['address'] for i in instructions}, block_accounting=True,
                              direct_owner_calls=calls)
 
+    def test_turbo_page_owners_keep_their_counter_boundary(self):
+        from turbo_pages import TURBO_PAGES
+        self.assertTrue(all(entry >> 12 not in TURBO_PAGES for entry in direct_owner_entries()))
+
     def test_production_continues_at_the_return_address_unless_the_dispatcher_stops_there(self):
         calls = DirectOwnerCalls()
         code = self.generate([call(0x10001000, self.callee), ret(0x10001004)], calls)

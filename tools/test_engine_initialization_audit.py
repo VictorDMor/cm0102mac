@@ -80,7 +80,7 @@ class ContractTests(unittest.TestCase):
     def test_generated_hooks_precede_original_operations_at_every_root(self):
         for page in (65536, 65636, 65683, 65758, 65855, 65859, 65939, 66218, 66317, 66325, 66390, 66433, 66702, 67254, 67259, 67365, 67385, 67396, 67405, 67438):
             records = [r for r in self.records if r['address'] >> 12 == page]
-            code = generate_page(page, records, {r['address'] for r in self.records}, userops=self.userops)
+            code = generate_page(page, records, {r['address'] for r in self.records}, userops=self.userops, screen_manager_hooks=False, contract_manager_hooks=False)
             require_engine_initialization_hooks(page, records, code)
             for entry in (a for a in ENGINE_INITIALIZATION_ENTRIES if a >> 12 == page):
                 hook, step = engine_initialization_hook(entry), f's.step(0x{entry:x});'

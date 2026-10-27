@@ -16,7 +16,7 @@ def render_reference(records, userops):
     for start, end, _, _ in CONTRACTS:
         body = [r for r in records if start <= r['address'] < end]
         page = start >> 12
-        code = generate_page(page, body, {r['address'] for r in body}, userops=userops,
+        code = generate_page(page, body, {r['address'] for r in body}, userops=userops, screen_manager_hooks=False,
             guest_context_transfers=False, exception_runtime_hooks=False,
             compiler_arithmetic_hooks=False, register_context_hooks=False,
             stdlib_core_hooks=False, time_runtime_hooks=False, import_descriptor_hooks=False,

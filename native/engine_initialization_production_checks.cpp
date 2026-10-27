@@ -1,5 +1,6 @@
 #include "engine_initialization_adapter.hpp"
 #include "contract_manager_adapter.hpp"
+#include "screen_manager_adapter.hpp"
 #include "code_fragment_adapter.hpp"
 #include "semantic_io_checks.hpp"
 #include "engine_initialization_fixtures.hpp"
@@ -112,6 +113,13 @@ void composed(const State& seed) {
                 !d.calls[n] && !d.returns[n], "Contract manager owns the completed date initializer");
             continue;
         }
+        if (init::entries[n] == 0x10744640) {
+            const auto& screens = screen_manager_diagnostics(*state);
+            require(screens.initialization_calls == 1 && screens.initialization_returns == 1 &&
+                !d.calls[n] && !d.returns[n] && !d.original_calls[n] && !d.profile_original_calls[n],
+                "Screen manager owns its completed initializer");
+            continue;
+        }
         require(d.calls[n] == 1 && d.returns[n] == 1 && !d.original_calls[n] && !d.faults[n],
             "Real dependency composition executes each initializer exactly once");
     }
@@ -128,6 +136,10 @@ int main(int argc, char** argv) {
         seed->budget = 100000000; seed->memory.map(fixture, 16);
         for (unsigned i = 0; i < init::entries.size(); ++i) {
             seed->memory.write<4>(fixture, init::entries[i]); seed->memory.write<4>(fixture + 4, seed->r<4>(8));
+            if (init::entries[i] == 0x10744640) {
+                std::cout << hex_address(init::entries[i]) << " transferred to SCRMAN fixtures\n";
+                continue;
+            }
             if (init::entries[i] == 0x100939b0) {
                 // Dispatch now belongs to CONTRACT_MANAGER, including the
                 // legacy adapter's dispatch-based "original" path. Its

@@ -471,3 +471,59 @@ club-collection dependencies. Existing ordinary captures have zero module
 dispatches and establish integration compatibility only. The original still
 promotes a lower-league club when all three remembered league slots are full,
 without changing that list; the rewrite preserves this behavior.
+
+
+## SCRMAN.CPP: screen manager, history and command transport
+
+`native/screen_manager_*` owns all 85 entries in 0x1073c1b0–0x10744fc0,
+with 8,946 indexed instructions pinned by `tools/screen_manager_audit.py`.
+The first 74 entries are the screen-manager constructor, event loops,
+history records, queries, command encoding, controls and global initializer.
+The last 11 implement the adjacent sound support called by those routines;
+source assertions do not establish its original file name, so the audited
+scope includes it conservatively up to TCPIP.CPP. The old heuristic inventory
+missed the constructor, destructor and reset. The monitor's eight switch
+labels are internal branches, not extra routines.
+
+All entries run direct C++23 in production and supersede 24 builder owners.
+Internal calls are direct; `Frame` and named retained values preserve the
+original stack image and the registers its callees save. Turbo-page entries
+keep their counter boundary and are excluded from the generator's plain
+in-place owner calls. The checker and `CM_SCREEN_MANAGER_ORIGINAL=1` retain
+access to the original bodies for comparisons.
+
+Command integers are little-endian inside big-endian guest memory. A bounds
+assertion skips only its own field: later fields and transport still run.
+Queries preserve leftover argument registers because callers' subsequent
+variadic routines store them into the guest stack. Sound volume retains the
+original signed multiply-high, arithmetic shift and negative increment,
+including negative multiples where C++ division would round differently.
+
+`cm-screen-manager-checks` compares every entry with isolated original pages
+emitted with all replacement hooks disabled. Its deterministic dependencies
+record call order, return addresses, consumed arguments, retained registers
+and outgoing control arguments in compared guest memory. 617 valid cases
+return and agree, including a separate corrupted-result negative control.
+Five real UI captures supply another 3,773 full comparisons and accept their
+recorded end states. A paired season-day replay also accepts its recorded
+state. Fixtures do not prove every possible interactive or audio-device
+path; performance is not established by that single replay pair.
+
+The independent database bootstrap requires one completed SCRMAN global
+initializer and zero calls through the older initializer adapter, including
+its original/profile paths. The legacy initializer transfer matrix now has
+128 cases for its remaining 18 frames; those cases do not claim nonlocal
+transfer coverage of the SCRMAN implementation.
+
+The real app also saved a private career through its File menu, restarted
+and reloaded that saved file on 10 February 2002 with its afternoon phase
+and career commands intact. The signed ARM64 application was installed;
+the existing progress spreadsheet records 85/85 production entries with
+verified summary formulas. Original saves and installed game data were
+preserved.
+
+MAIN's 609 fixture cases run the transferred 0x10743590 dependency live on
+both sides. A dispatcher-only fake for a new direct owner is asymmetric:
+the generated caller can enter its C++ owner before the dispatcher, while
+the rewritten caller's guest call still reaches that fake. The independent
+SCRMAN fixtures retain the original-only comparison of that dependency.
