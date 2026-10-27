@@ -116,9 +116,11 @@ target_sources(cm_aot PRIVATE ${CM_SHORTLIST_MANAGER_SOURCES})
 # checker children flush theirs, routine_check.cpp). Off in normal builds.
 option(CM_SHORTLIST_COVERAGE "Instrument shortlist_manager*.cpp for coverage" OFF)
 if(CM_SHORTLIST_COVERAGE)
-    set_source_files_properties(${CM_SHORTLIST_MANAGER_SOURCES} PROPERTIES COMPILE_OPTIONS "-fprofile-instr-generate;-fcoverage-mapping")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shortlist-coverage")
+    set(CM_SHORTLIST_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/shortlist-coverage/check-%p.profraw")
+    set_source_files_properties(${CM_SHORTLIST_MANAGER_SOURCES} PROPERTIES COMPILE_OPTIONS "-fprofile-instr-generate=${CM_SHORTLIST_PROFILE};-fcoverage-mapping")
     set_source_files_properties(routine_check.cpp PROPERTIES COMPILE_DEFINITIONS CM_SHORTLIST_COVERAGE=1)
-    target_link_options(cm_aot INTERFACE -fprofile-instr-generate)
+    target_link_options(cm_aot INTERFACE "-fprofile-instr-generate=${CM_SHORTLIST_PROFILE}")
 endif()
 target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
