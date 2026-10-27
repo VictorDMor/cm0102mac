@@ -458,3 +458,16 @@ failures and post-load secondary-contract repair. Their adapter call hook
 intercepts before `run_until`'s native-leaf shortcut; `dispatch_probe` alone
 cannot supply a scripted answer for such leaves. Modeled dependency stops
 are partial checks, separate from completed returns.
+
+## ENG_PRM.CPP: English Premier Division
+
+All nine routines (0x10529840–0x1052c9d0, 3,155 indexed instructions) use
+plain C++23 in `native/eng_prm_*`; `tools/eng_prm_audit.py` pins their source
+and production ownership. `cm-eng-prm-checks` compares complete returns with
+private hook-free reference pages, including seven December calendar variants
+and the assertion fallback. External scripted calls record arguments, preserved
+registers, CR fields and continuations; separate cases use real calendar and
+club-collection dependencies. Existing ordinary captures have zero module
+dispatches and establish integration compatibility only. The original still
+promotes a lower-league club when all three remembered league slots are full,
+without changing that list; the rewrite preserves this behavior.

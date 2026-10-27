@@ -70,6 +70,12 @@ target_sources(cm_aot PRIVATE routine_check.cpp ${CM_TACTICS_SOURCES})
 file(GLOB CM_MAIN_PROGRAM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/main_program*.cpp")
 list(FILTER CM_MAIN_PROGRAM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
+file(GLOB CM_ENG_PRM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/eng_prm*.cpp")
+list(FILTER CM_ENG_PRM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_ENG_PRM_SOURCES})
+add_executable(cm-eng-prm-checks eng_prm_checks.cpp)
+target_link_libraries(cm-eng-prm-checks PRIVATE cm_aot)
+target_compile_options(cm-eng-prm-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 file(GLOB CM_CONTRACT_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager*.cpp")
 list(FILTER CM_CONTRACT_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_CONTRACT_MANAGER_SOURCES})
@@ -3232,3 +3238,20 @@ target_compile_options(cm-actor-action-production-checks PRIVATE -Wall -Wextra -
 add_executable(cm-actor-policy-production-checks actor_policy_production_checks.cpp)
 target_link_libraries(cm-actor-policy-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-policy-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_ENG_PRM_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/eng_prm_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ENG_PRM_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_eng_prm_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ENG_PRM_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_eng_prm_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/eng_prm_audit.py"
+            "${CMAKE_SOURCE_DIR}/eng_prm_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-eng-prm-checks PRIVATE "${CM_ENG_PRM_REFERENCE}")
+    add_test(NAME eng_prm_equivalence COMMAND cm-eng-prm-checks "${CM_ORACLE_DIR}")
+    add_test(NAME eng_prm_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_prm_audit.py")
+endif()
