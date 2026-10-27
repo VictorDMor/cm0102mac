@@ -18,19 +18,21 @@ std::uint32_t set_default_history(Cpu& c, std::uint32_t address, std::uint32_t k
 
 std::uint32_t pending_screens(Cpu& c, std::uint32_t address) {
     Manager manager{c, address};
+    const auto group = extended(manager.current());
+    const auto count = manager.count(std::int32_t(group)).get();
+    const auto base = manager.group(std::int32_t(group));
     std::uint32_t pending = 0, index = 0, offset = 0;
-    for (;;) {
-        const auto group = extended(manager.current());
-        c.set({{7, group}, {5, extended(std::int16_t(index))}, {4, group * 2}});
-        const auto count = manager.count(std::int32_t(group)).get();
-        if (compare(c, c.r(5), count) >= 0) break;
-        const auto row = manager.group(std::int32_t(group)) + offset;
-        c.set(4, row);
-        if (!byte_nonzero(c, c.u8(row + 0x19)) && !byte_nonzero(c, c.u8(row + 0x1a))) ++pending;
+    while (std::int16_t(index) < count) {
+        const auto row = base + offset;
+        if (!c.u8(row + 0x19) && !c.u8(row + 0x1a)) ++pending;
         offset += 0x2c;
         ++index;
     }
-    c.set({{9, pending}, {8, index}, {6, offset}});
+    // No calls or guest writes occur in the scan. Publish exactly the
+    // registers and final comparison the original leaves to its caller.
+    c.set({{7, group}, {5, extended(std::int16_t(index))}, {4, group * 2},
+           {9, pending}, {8, index}, {6, offset}});
+    compare(c, std::int16_t(index), count);
     return pending;
 }
 
@@ -83,40 +85,43 @@ namespace cm::aot::screen_manager {
 namespace {
 // Screen IDs may occur in more than one group. Queries return the first;
 // swapping current-group IDs deliberately uses the last occurrence of each.
-std::uint32_t locate_screen(Cpu& c, std::uint32_t address, std::uint32_t key,
-                            bool writing, unsigned flag) {
+template<bool writing>
+std::uint32_t locate_screen(Cpu& c, std::uint32_t address, std::uint32_t key) {
     Manager manager{c,address};
-    for (std::uint32_t group=0;compare(c,std::int16_t(group),16)<0;++group) {
-        c.set(writing?6:5,group*2+0x2c38);
-        c.set(writing?12:11,0);c.set(writing?8:7,0);
-        for (std::uint32_t row=0;;++row) {
-            c.set(writing?7:6,extended(std::int16_t(row)));
-            if(compare(c,std::int16_t(row),manager.count(group))>=0)break;
+    std::uint32_t rows = 0;
+    for (std::uint32_t group = 0; group < 16; ++group) {
+        const auto count = manager.count(group).get();
+        rows = 0;
+        for (; std::int16_t(rows) < count; ++rows) {
+            const auto row = rows;
             const auto screen=manager.group(group)+row*0x2c;
-            c.set(writing?7:6,screen-address);
-            if(compare_logical(c,c.u32(screen+4),key)==0) {
-                c.set(4,group*0x2c0);c.set(3,screen);
+            if (c.u32(screen + 4) == key) {
+                c.set({{writing ? 6u : 5u, group * 2 + 0x2c38},
+                       {writing ? 7u : 6u, screen - address},
+                       {writing ? 8u : 7u, row * 0x2c},
+                       {writing ? 12u : 11u, row},
+                       {writing ? 9u : 8u, group * 0x2c0},
+                       {writing ? 10u : 9u, group * 2},
+                       {writing ? 11u : 10u, group}, {4, group * 0x2c0}, {3, screen}});
+                compare_logical(c, key, key);
                 return screen;
             }
-            c.set(writing?8:7,(row+1)*0x2c);
-            c.set(writing?12:11,row+1);
         }
-        c.set(writing?9:8,(group+1)*0x2c0);
-        c.set(writing?10:9,(group+1)*2);
-        c.set(writing?11:10,group+1);
     }
-    (void)flag;
+    c.set({{writing ? 6u : 5u, 0x2c56}, {writing ? 7u : 6u, rows},
+           {writing ? 8u : 7u, rows * 0x2c}, {writing ? 12u : 11u, rows},
+           {writing ? 9u : 8u, 16 * 0x2c0}, {writing ? 10u : 9u, 32},
+           {writing ? 11u : 10u, 16}});
+    compare(c, 16, 16);
     return 0;
 }
 }
 std::uint32_t screen_flag(Cpu& c,std::uint32_t address,std::uint32_t key,unsigned flag) {
-    c.set({{8,0},{10,0},{9,0}});
-    const auto screen=locate_screen(c,address,key,false,flag);
+    const auto screen=locate_screen<false>(c,address,key);
     return screen?c.u8(screen+flag):1;
 }
 std::uint32_t set_screen_disabled(Cpu& c,std::uint32_t address,std::uint32_t key,std::uint32_t disabled) {
-    c.set({{9,0},{11,0},{10,0}});
-    const auto screen=locate_screen(c,address,key,true,0x1a);
+    const auto screen=locate_screen<true>(c,address,key);
     if(screen)c.put8(screen+0x1a,disabled);
     return c.r(3);
 }
@@ -140,19 +145,25 @@ std::uint32_t inactive_groups(Cpu& c,std::uint32_t address) {
     return inactive;
 }
 std::uint32_t screen_group(Cpu& c,std::uint32_t address,std::uint32_t key) {
-    if(compare_logical(c,key)==0)return missing;
-    Manager manager{c,address};c.set({{8,0},{11,0},{9,0}});
-    for(std::uint32_t group=0;compare(c,std::int16_t(group),16)<0;++group) {
-        c.set({{5,group*2+0x2c38},{10,0},{7,0}});
-        for(std::uint32_t row=0;;++row) {
-            c.set(6,extended(std::int16_t(row)));
-            if(compare(c,c.r(6),manager.count(group))>=0)break;
-            c.set(6,group*0x2c0+row*0x2c);
-            if(compare_logical(c,key,c.u32(address+c.r(6)+4))==0)return group;
-            c.set({{7,(row+1)*0x2c},{10,row+1}});
+    if (key == 0) { compare_logical(c, key); return missing; }
+    Manager manager{c,address};
+    std::uint32_t rows = 0;
+    for (std::uint32_t group = 0; group < 16; ++group) {
+        const auto count = manager.count(group).get();
+        rows = 0;
+        for (; std::int16_t(rows) < count; ++rows) {
+            const auto offset = group * 0x2c0 + rows * 0x2c;
+            if (key == c.u32(address + offset + 4)) {
+                c.set({{5, group * 2 + 0x2c38}, {6, offset}, {7, rows * 0x2c},
+                       {10, rows}, {8, group * 0x2c0}, {9, group * 2}, {11, group}});
+                compare_logical(c, key, key);
+                return group;
+            }
         }
-        c.set({{8,(group+1)*0x2c0},{9,(group+1)*2},{11,group+1}});
     }
+    c.set({{5, 0x2c56}, {6, rows}, {7, rows * 0x2c}, {10, rows},
+           {8, 16 * 0x2c0}, {9, 32}, {11, 16}});
+    compare(c, 16, 16);
     return missing;
 }
 std::uint32_t copy_group_keys(Cpu& c,std::uint32_t address,std::uint32_t output,std::uint32_t count_out,std::uint32_t group) {

@@ -23,6 +23,7 @@ struct Scenario {
     unsigned groups=2,rows=2,nodes=3,capacity=128,fail_allocation=0;
     bool active=false,defaults=false,network=true,callback=true,owned=false,sound_enabled=true,wide_sound=true,copy_string=false;
     bool client_receive=true,client_filter=false;
+    bool duplicate_keys=false,signed_counts=false;
 };
 Scenario active{};
 bool reference_mode=false;
@@ -144,6 +145,17 @@ void initialize(Cpu& c) {
         const auto node=nodes+(group*16+row)*0x1000+i*0x300;
         c.put32(node,data+0xc00);c.put32(node+4,active.callback?data+0xc08:0);c.put32(node+8,data+0xc10);c.put32(node+12,0);
     }
+    if(active.duplicate_keys) {
+        for(unsigned index:{0u,1u,255u}) {
+            const auto screen=object+(index/16)*0x2c0+(index%16)*0x2c;
+            c.put32(screen+4,0x100);
+            c.put8(screen+0x19,index?0x21:0x11);c.put8(screen+0x1a,index?0x22:0x12);
+        }
+    }
+    if(active.signed_counts) {
+        c.put16(object+0x2c38,0xffff);c.put16(object+0x2c3a,0x8000);
+        c.put16(object+0x2c3c,0);c.put16(object+0x2c46,0);
+    }
     c.put32(object+0x2c00,active.defaults?0x100:0);c.put32(object+0x2c04,0x200);c.put8(object+0x2c08,active.active);
     c.put32(object+0x2c14,data+0x3000);c.put16(object+0x2c18,2);
     c.put8(sound+0x28,active.sound_enabled);c.put32(sound,data+0x4000);c.put32(data+0x400c,data+0x5000);
@@ -160,6 +172,7 @@ void initialize(Cpu& c) {
     if(entry==0x1073f1e0)c.set(6,active.copy_string);
     if(entry==0x1073f900 || entry==0x1073f7a0)c.set({{4,0x100},{5,entry==0x1073f900?0xffffffffu:0x101u}});
     if(entry==0x1073fc20 || entry==0x1073fd60 || entry==0x1073fdf0 || entry==0x1073fe80 || entry==0x1073ffe0)c.set(4,active.lookup);
+    if(entry==0x1073fe80)c.set(5,0x7f);
     if(entry==0x1073f860)c.set({{4,active.callback?data+0xc08:0},{5,0},{6,0}});
     if(entry==0x1073fd00)c.set({{4,data+0x3100},{5,data+0x3200},{6,0}});
     if(entry==0x1073f530 || entry==0x1073f700)c.set(3,active.index);
@@ -184,11 +197,37 @@ void returned(State& s) {
 }
 void original(State& s,std::uint32_t entry){reference_mode=true;s.pc=entry;run_until(s,sentinel);returned(s);}
 void rewrite(State& s,std::uint32_t entry){reference_mode=false;screen_manager_run_rewrite(s,entry);returned(s);}
+
+void check_routing(State& state) {
+    const auto require=[](bool condition){if(!condition)throw std::runtime_error("SCRMAN routing regression");};
+    constexpr auto entries=std::to_array<std::uint32_t>({
+#define SCREEN_MANAGER_ROUTINE(entry,end,results,digest,...) entry,
+#include "screen_manager_routines.inc"
+#undef SCREEN_MANAGER_ROUTINE
+    });
+    for(auto entry:entries) {
+        require(screen_manager_lists(entry));
+        for(auto offset:{1u,4u,15u})require(!screen_manager_lists(entry+offset));
+    }
+    for(auto entry:{0u,0x1073c1a0u,0x1073c1c0u,0x10744ef0u,0xffffffffu}) {
+        require(!screen_manager_lists(entry));state.pc=entry;
+        require(!screen_manager_dispatch_probe(state));
+        bool rejected=false;
+        try {try_modern_screen_manager(state,entry);}catch(const std::runtime_error&){rejected=true;}
+        require(rejected);
+        RoutineChecker omitted([](std::uint32_t){return false;},0,0);
+        routine_checker=&omitted;
+        const bool declined=!try_modern_screen_manager(state,entry);
+        routine_checker=nullptr;require(declined);
+    }
+    std::cout<<"ok routing: all 85 entries, unaligned addresses, holes, bounds and omitted checks\n";
+}
 }
 int main(int argc,char** argv) {
     if(argc<2){std::cerr<<"Usage: cm-screen-manager-checks <export> [entry]\n";return 2;}
     try {
         auto base=std::make_unique<State>();load_program(*base,argv[1]);dispatch_probe=probe;
+        check_routing(*base);
         std::vector<Scenario> cases;
 #define SCREEN_MANAGER_ROUTINE(entry,end,results,digest,...) cases.push_back(Scenario{entry});
 #include "screen_manager_routines.inc"
@@ -252,6 +291,20 @@ int main(int argc,char** argv) {
                 test.current=1;test.name="remote current group";cases.push_back(test);
                 test.callback=false;test.name="remote without callback";cases.push_back(test);
             }
+        }
+        for(auto entry:{0x1073fd60u,0x1073fdf0u,0x1073fe80u,0x1073ffe0u}) {
+            Scenario test{entry};test.groups=16;test.rows=16;
+            for(auto key:{0x1ffu,0x12345678u,0u}) {
+                test.lookup=key;test.name="full scan key "+std::to_string(key);cases.push_back(test);
+                test.signed_counts=true;test.name="signed count scan key "+std::to_string(key);cases.push_back(test);
+                test.signed_counts=false;
+            }
+            test.lookup=0x100;test.duplicate_keys=true;test.name="first duplicate across rows and groups";cases.push_back(test);
+        }
+        for(unsigned rows:{0u,1u,16u})for(int group:{0,15})for(bool signed_counts:{false,true}) {
+            Scenario test{0x1073e9b0};test.groups=16;test.rows=rows;test.current=group;test.signed_counts=signed_counts;
+            test.name="pending screens rows "+std::to_string(rows)+" group "+std::to_string(group)+(signed_counts?" signed":"");
+            cases.push_back(test);
         }
         unsigned failures=0,checked=0;
         for(const auto& test:cases) {

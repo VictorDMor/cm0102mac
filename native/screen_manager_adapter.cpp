@@ -5,6 +5,7 @@
 #include "routine_check.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdlib>
 
 namespace cm::aot {
@@ -33,9 +34,43 @@ constexpr auto sorted_routines() {
 constexpr auto routines = sorted_routines();
 static_assert(std::ranges::adjacent_find(routines, {}, &Routine::entry) == routines.end(), "a routine is listed twice");
 
+// Every audited entry is 16-byte aligned. A bitmap and its prefix counts
+// select the sorted routine directly, without searching or a sparse byte table.
+constexpr std::uint32_t entry_alignment = 16;
+constexpr auto first_entry = routines.front().entry;
+constexpr auto last_entry = routines.back().entry;
+consteval auto entry_index() {
+    static_assert(routines.size() <= 255);
+    struct Index {
+        std::array<std::uint64_t, (last_entry - first_entry) / entry_alignment / 64 + 1> bits{};
+        std::array<std::uint8_t, (last_entry - first_entry) / entry_alignment / 64 + 1> first{};
+    } index;
+    for (std::size_t n = 0; n < routines.size(); ++n) {
+        const auto offset = routines[n].entry - first_entry;
+        const auto slot = offset / entry_alignment;
+        const auto bit = std::uint64_t(1) << (slot % 64);
+        if (routines[n].entry % entry_alignment || (index.bits[slot / 64] & bit))
+            throw "SCRMAN entry is unaligned or duplicated";
+        index.bits[slot / 64] |= bit;
+    }
+    unsigned first = 0;
+    for (std::size_t n = 0; n < index.bits.size(); ++n) {
+        index.first[n] = std::uint8_t(first);
+        first += std::popcount(index.bits[n]);
+    }
+    return index;
+}
+constexpr auto routine_index = entry_index();
+
 const Routine* listed(std::uint32_t entry) {
-    const auto found = std::ranges::lower_bound(routines, entry, {}, &Routine::entry);
-    return found != routines.end() && found->entry == entry ? &*found : nullptr;
+    const auto offset = entry - first_entry;
+    if (offset > last_entry - first_entry || offset % entry_alignment) return nullptr;
+    const auto slot = offset / entry_alignment;
+    const auto bit = std::uint64_t(1) << (slot % 64);
+    const auto bits = routine_index.bits[slot / 64];
+    if (!(bits & bit)) return nullptr;
+    const auto index = routine_index.first[slot / 64] + std::popcount(bits & (bit - 1));
+    return &routines[index];
 }
 void run_rewrite(State& s, std::uint32_t entry) {
     Cpu c(s);

@@ -502,8 +502,9 @@ including negative multiples where C++ division would round differently.
 `cm-screen-manager-checks` compares every entry with isolated original pages
 emitted with all replacement hooks disabled. Its deterministic dependencies
 record call order, return addresses, consumed arguments, retained registers
-and outgoing control arguments in compared guest memory. 617 valid cases
-return and agree, including a separate corrupted-result negative control.
+and outgoing control arguments in compared guest memory. 657 valid cases
+return and agree, including full-group scans, duplicate IDs and signed
+counts, with a separate corrupted-result negative control.
 Five real UI captures supply another 3,773 full comparisons and accept their
 recorded end states. A paired season-day replay also accepts its recorded
 state. Fixtures do not prove every possible interactive or audio-device
@@ -527,3 +528,12 @@ both sides. A dispatcher-only fake for a new direct owner is asymmetric:
 the generated caller can enter its C++ owner before the dispatcher, while
 the rewritten caller's guest call still reaches that fake. The independent
 SCRMAN fixtures retain the original-only comparison of that dependency.
+
+SCRMAN's callback-free screen scans now compute their indices and stable
+counts locally, then publish the original final argument/scratch registers
+and CR0. Counts are not retained across calls; `copy_group_keys` still
+rereads its potentially aliased count/output. Screen IDs still select the
+first matching group/row, and negative counts skip their rows. Entry routing
+uses aligned bitmap membership and prefix/popcount rank instead of binary
+search; unlisted, out-of-range and unaligned addresses retain their prior
+reject/decline behavior. Original and checker paths use the same public API.
