@@ -1,0 +1,23 @@
+# Pending news using real owned pending terms; null assertion prefixes are partial comparisons.
+trigger=0x1007f720#2 call=0x1008c8d0 results=none r4=[[[@r3+0x34]+4]] r5=0
+trigger=0x1007f720#2 call=0x1008c8d0 results=none r4=[[[@r3+0x34]+4]] r5=[[@r2-0x7be8]]
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=0 m8=[[[@r3+0x34]+4]]+0x46:128
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=7 m8=[[[@r3+0x34]+4]]+0x46:128
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=-1 m8=[[[@r3+0x34]+4]]+0x46:128
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=0 m8=[[[@r3+0x34]+4]]+0x46:255
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=7 m8=[[[@r3+0x34]+4]]+0x46:255
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=-1 m8=[[[@r3+0x34]+4]]+0x46:255
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=0 m8=[[[@r3+0x34]+4]]+0x46:0
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=7 m8=[[[@r3+0x34]+4]]+0x46:0
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=-1 m8=[[[@r3+0x34]+4]]+0x46:0
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=0 m8=[[[@r3+0x34]+4]]+0x46:1
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=7 m8=[[[@r3+0x34]+4]]+0x46:1
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=-1 m8=[[[@r3+0x34]+4]]+0x46:1
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=0 m8=[[[@r3+0x34]+4]]+0x46:2
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=7 m8=[[[@r3+0x34]+4]]+0x46:2
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=-1 m8=[[[@r3+0x34]+4]]+0x46:2
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=0 m8=[[[@r3+0x34]+4]]+0x46:127
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=7 m8=[[[@r3+0x34]+4]]+0x46:127
+trigger=0x1007f720#2 call=0x1008f620 results=none r4=[[[@r3+0x34]+4]] r5=-1 m8=[[[@r3+0x34]+4]]+0x46:127
+trigger=0x1007f720#1 call=0x1008c8d0 results=none r4=0 r5=0
+trigger=0x1007f720#1 call=0x1008f620 results=none r4=0 r5=0

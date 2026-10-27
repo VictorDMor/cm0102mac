@@ -11,6 +11,17 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [x] **CONTRACT_MANAGER.CPP complete C++23 rewrite (goal set 2026-10-26):** preserve guest memory/stack/register effects, simulation, RNG ordering and file formats. Private evidence and per-entry limits: `.local/contract-manager/progress.json`.
+  - [x] Audit exact module bounds and census: 95 entries, 0x10077ee0–0x10093a50, 28,209 indexed instructions; comparators, initializer and unindexed interior branch accounted for.
+  - [x] Implement and enable all 95 complete semantic C++23 bodies; direct internal calls, zero drafts and no original-body fallback. Source census/digest/ownership audit passes.
+  - [x] Generate production95 (exactly two final pages changed), build the ARM64 app and all 79 existing test executables.
+  - [x] Complete focused equivalence/edge checks and whole-goal source/proof review. Final 20-news fixture: 38,718 comparisons, 28,954 returns (54 explicitly injected-bound cases), 9,734 dependency interruptions, nine separate FP guards, 21 negative controls and 767 continuations (three injected-only). Last renderer: 4,563 normal returns, 64 continuations, 128 returned real-callee cases, zero partial/differences; ordinary capture reaches zero calls, not coverage. Other per-entry evidence retains its own limits.
+  - [x] Prove pending news cleanup effects: eight completed original/rewrite pairs with final queue count/payload postconditions; wrong-count and unmapped-memory negative controls rejected with exact diagnostics. Discarded stale-binary runs are excluded.
+  - [x] Final full available suite: 212/212 tests passed (676.86s). Ownership-aware bootstrap and 135 legacy nonlocal initializer comparisons pass; instruction accounting remains diagnostic.
+  - [x] Save and reload a copy of a career through the real app: original File menu save, process restart and document-open reload; 11 January 2002 retained, normal career commands available. Protected reference and installed runtime preserved.
+  - [x] Five alternating timing pairs, 30 runs accepting the recorded end state: reference median 21.4348s, C++23 median 21.2528s, median paired wall reduction 0.80%, faster in 5/5 pairs. Scope: one captured day on this machine.
+  - [x] Final source/proof reviews and scoped delivery; ARM64 app installed and strict signature verification passed. Commit/push evidence is the repository history. Unrelated dirty changes and private game-derived evidence preserved.
+
 - [x] Debugging Best XI: select available starters for the current formation and reserves within the competition's bench limit. Localize Best XI, Add Goal, repeat-goal and Debugging On/Off controls in the 11 original languages. Actual-database checks cover gating, availability, formation changes, bench limits and depleted/empty squads; isolated Reading UI verified with Debugging off and in Portuguese/English. Career save/reload and performance not retested.
 
 - [x] **Fused multiply-add (decided 2026-10-20).** One rounding at all 1,049 sites, in generated code and in the 41+ builder call sites of rewritten routines. Two 600-advance matches: state differs transiently after 4 and 1 advances, final state identical.

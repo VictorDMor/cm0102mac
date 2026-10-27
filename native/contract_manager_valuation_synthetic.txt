@@ -1,0 +1,25 @@
+# Release quotes for actual staff and clubs, including the original assertion boundary.
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=0 r6=[[@r2-0x7be0]]+0
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+0
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=0 r6=[[@r2-0x7be0]]+0
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+0
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=0 r6=[[@r2-0x7be0]]+112
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+112
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=0 r6=[[@r2-0x7be0]]+112
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+112
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=0 r6=[[@r2-0x7be0]]+224
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+224
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=0 r6=[[@r2-0x7be0]]+224
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+224
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=0 r6=[[@r2-0x7be0]]+336
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+336
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=0 r6=[[@r2-0x7be0]]+336
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+336
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=0 r6=[[@r2-0x7be0]]+448
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+448
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=0 r6=[[@r2-0x7be0]]+448
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+448
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=0 r6=[[@r2-0x7be0]]+560
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=0 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+560
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=0 r6=[[@r2-0x7be0]]+560
+trigger=0x1007f720#1 call=0x10089a40 results=r3,f1 r3=@r3 r4=1 r5=[[@r2-0x7be8]] r6=[[@r2-0x7be0]]+560

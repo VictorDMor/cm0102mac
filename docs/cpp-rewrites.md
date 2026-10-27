@@ -122,10 +122,17 @@ outputs. `from=0xRETURN` counts only the trigger's dispatches from one call
 site; `m8=`/`m16=`/`m32=ADDRESS:VALUE` sets memory the call sees (undone
 after it), with `[EXPR]` for the word at EXPR, e.g.
 `m32=[@r2-0x7b74]:0x3e015` for an older save version. When both children
-stop at the same point with the same message (the first import the
-recording has no output for, such as an error alert, or the same fault),
-their states there are compared, the condition register aside, and the line
-reports `ok (both stopped ...)`. A routine is done
+stop at the same import with the same message (the first import the
+recording has no output for, such as an error alert),
+their states are compared, the condition register aside, and
+the line reports `ok (both stopped ...)`. Matching internal faults fail the
+check: an equal exception message does not establish equivalent memory,
+imports or results, and the C++ need not mirror intermediate registers.
+`expect8=`/`expect16=`/`expect32=ADDRESS:VALUE` additionally require the
+specified final memory in both completed children. Expressions use the
+trigger registers and initialized input memory; partial stops and unmapped
+expectations fail, even if both runs would otherwise compare equally.
+A routine is done
 when its checks pass on every capture that reaches it, including the error
 paths someone can reach in play.
 
@@ -306,3 +313,148 @@ groups written in parallel. What it added:
   exchange (ui/swap-offer), Options > add a manager, choose a club, take
   control (ui/take-control, the only route to 0x1036ec30 without waiting
   for a board to hire the human).
+## CONTRACT_MANAGER.CPP: ABI and persistence quirks
+
+Global date initialization (`0x100939b0`) now belongs to this module. The
+independent database bootstrap checks its actual dispatch/return counters
+here and the other nineteen initializers in their existing owner; the
+retired engine-initialization counter must stay zero for this entry.
+
+Proposal preparation (`0x10080d30`) saves GPR19..31 at caller SP minus `0x54`,
+with FPR29..31 at minus `0x18` through minus `8`. Keep the eight-byte gap
+between them; the usual packed-frame default would move the GPR save image.
+
+Pending-contract review (`0x10081bd0`) uses the original FPR28..31 leaf
+save/restore helpers without another stack frame. Some scoring paths retain
+the incoming `r18` and `f29`; do not initialize them for convenience. Its
+relation sampler uses `max(5, 40 - best_score)`, after `best_score > 10`.
+The wide integer sampler is unreachable with those constants. Three isolated
+fixtures explicitly alter the minimum bound to test that defensive branch;
+they are not observations of normal game execution.
+
+Daily processing (`0x10079050`) refreshes date horizons in phase zero and
+prunes/scans contracts in phase two; scanning additionally requires the
+signed input byte to equal one. Sorting/consuming scheduled work still runs
+in every phase. Keep repeated status queries and their ordering. Date
+predicates compare unsigned years and signed days, ignoring the leap byte,
+while their stack snapshots retain all eight bytes, including padding.
+
+Contract changes copy fields rather than whole records. Primary renewals
+retain the old metadata; a new-club replacement or append clears `+0x42`,
+while a reused free row retains it. A non-increasing term becomes four
+weeks, and the nationality cutoff is 100 weeks before today. A secondary
+assignment that reuses a free row returns before the final club refreshes.
+Both application paths grow capacity by 100 rows. Allocation failure reports an assertion
+and continues into a null-derived append; checks distinguish its matched
+fault state from completed returns, retaining the pre-store arguments too.
+
+Offer eligibility (`0x10089ea0`) narrows the stored age to a signed byte and
+tests contract flags in the original order. Its owner-date cutoff is 150
+days before today. Offer rebalancing (`0x1008a160`) updates only the first
+pending row matching both person and club, and only when its kind is three.
+It copies proposal terms into that row, copies the row's date back into the
+proposal and adjusts the proposal's wage through single-precision steps.
+The upper ratio branch tests GT being clear, so a zero/zero assessment
+ratio stops without a wage adjustment. Preserve this unordered FP behavior.
+
+Base player value (`0x10084be0`) uses a signed byte for age, signed 16-bit
+reputation inputs, but an unsigned comparison for the 5,000 reputation cap.
+Its score square wraps to 32 bits before conversion. Club-less valuation
+advances the shared random cursor once, including its normal wrap/reseed.
+Keep all seven fused sites and the mixed single/double rounding sequence.
+After the club-contract query, load the player's attributes before assigning
+the returned contract to retained state; a null-person fault distinguishes
+those operations. Checks include the complete original unsigned conversion
+helper and its stack/FPSCR effects, with injected helper-input boundaries
+and enabled-FP stops explicitly separate from ordinary returned cases.
+
+Negotiated player value (`0x10085860`) reuses its age multiplier while
+scoring the young-player floor; the division adjustment at `0x100894b8`
+rounds to single precision. Its final age table covers 29..45 only, after
+subtracting three for goalkeepers: the age-31 and age-33 additions are
+3,250,000 and 1,750,000. Ages outside the table bypass that cap. Preserve
+the later country adjustment and final contract-clause cap in that order.
+
+Expiry news (`0x1008c4c0`) selects its detailed text by an unsigned period
+code. Zero and codes above seven emit the existing shared text without
+formatting it again. Display modes use only the signed low byte. The Bosman
+departure renderer (`0x1008ca50`) passes its second club-name argument at
+the new frame's `+0x38`, beyond the register arguments. The expiry publisher
+(`0x1008c270`) reloads both the shortlist row's club ID and the club table
+after the division eligibility callback; an injected callback mutation
+checks that ordering separately from ordinary game calls.
+
+Loan-return publication (`0x10091630`) refreshes the primary-contract cache
+three times on the recalled-player path. If the supplied club equals the
+player's current club, delivery uses the final lookup's club; otherwise it
+uses the current club retained in `r5`. Assurance-request details
+(`0x1008fcf0`) append the previous buffer for role zero or unsigned roles
+above seven, even after already emitting the introductory text. Preserve
+those appends and distinguish whole-word status flags from byte display modes.
+
+New-contract requests (`0x10090310`/`0x10090560`) pass the low nibble of
+contract `+0x60` as the squad role. Their renderer checks raw wage and date,
+copies all eight constructor bytes, resets the pending iterator from `+4`
+to `+0xc`, and marks message parameter seven through `0x102cd0c0`.
+Departure publication (`0x10090a00`) refreshes the global primary cache but
+uses the supplied manager, without updating that cache, for its type-six
+lookup. Delivery thresholds are signed and strictly greater than 7,000.
+Its renderer (`0x10090f20`) tests importance as a whole word equal to one,
+uses person-link type `0x7da`, and guards club links by the exact `-1` sentinel.
+
+Offer-result details (`0x1008ab40`) store display mode/output in the caller's
+argument area (`new SP +0xe73/+0xe74`). The currency conversion returns a
+pair in `r3/r4`; both words feed the formatter. Term years truncate
+`days / 365 + 0.5`, including negative spans. Keep the separate long/short
+club-name gender fields (`+0x23b/+0x242`) and names (`+0x221/+0x1ee`), plus
+the renewal templates' three or four variadic stack arguments.
+
+Transfer-unrest publication (`0x1008cd20`) fetches the next shortlist row
+before testing its 30-club cap. Preserve its pairwise reputation swaps:
+a stable sort can order tied clubs differently. The reported candidate
+count is capped at three; a duplicate in the second/third slot truncates
+the count and places the trailing flag immediately after the retained IDs.
+Both random advances retain their signed remainders and wrap/reseed order.
+
+Transfer-unrest details (`0x1008d450`) append at most five reasons in the
+original priority order. Its extended lead-club template spills six variadic
+words through `SP+0x4c`; keep the currency return pair and distinct nation/
+nationality grammar fields. The publisher supplies at most three candidate
+IDs. Those pointers remain cached across output callbacks, while final
+primary-club and person links reread their global record pools.
+
+Transfer-request review (`0x1008e350`) retains an eight-byte gap between
+its GPR save area (`caller SP-0x3c`) and `f31` (`caller SP-8`). Automatic
+acceptance compares the negotiated amount with 1.5 times base value; the
+later reaction change narrows the increment to a signed byte before the
+`[-100,100]` clamp. Ordinary sampler bounds are `[-2588,2767]`, or signed
+bytes. Three wide recursive arms are preserved and checked only with
+explicit retained-bound injections, separately from normal-input coverage.
+The news fixture isolates its selected body so internal news calls receive
+the same scripted dependency model on both sides.
+
+Transfer-request details (`0x1008ec00`) test reason flag `0x800` twice
+for distinct texts. Each test independently respects the five-reason cap:
+`0x807` includes both, while `0x907` fills the fifth slot with the first.
+The own-club reputation is still loaded when the reason cap is already met.
+
+Pending removals (`0x1007f840`/`0x1007f930`) treat only news ID `-1` as
+absent. All other words are queued through `0x102dea50` with the record's
+`+0x80/+0x84` payload. Synthetic final-memory expectations require a full
+return from both sides and verify the queue count and all three words;
+matching interrupted calls cannot satisfy these expectations.
+
+The loader's keyed-record section exists only above save version `0x3e000`.
+Its contract rows become 100 bytes above `0x3e032`; older rows are 92 bytes.
+Preserve the reference's unusual legacy path: it reads into the main array,
+then converts a separate temporary allocation. The conversion leaves padding
+untouched and its final bit extraction clears XER/CA. Pending/deferred counts
+are signed 16-bit values; only the deferred-list allocation has a null check.
+Read/write error returns leave the stream open, as the original does.
+
+The isolated persistence fixtures compare original instructions with C++ for
+empty and populated sections, legacy conversion, partial I/O, allocation
+failures and post-load secondary-contract repair. Their adapter call hook
+intercepts before `run_until`'s native-leaf shortcut; `dispatch_probe` alone
+cannot supply a scripted answer for such leaves. Modeled dependency stops
+are partial checks, separate from completed returns.

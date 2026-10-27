@@ -61,8 +61,10 @@ extern RoutineChecker* routine_checker;
 // rewrite) and compared; the replay itself goes on untouched. A value is a
 // number, `@rN` (a register at the trigger) or `[EXPR]` (the word at EXPR),
 // followed by any +off / -off. Runs that stop at the same point with the
-// same message (an import the recording has no output for, such as an
-// error alert, or the same fault) are compared there.
+// same message at an import the recording has no output for (such as an
+// error alert) are compared there. Matching internal faults are reported
+// as failed checks, not as equivalence: their intermediate state is not a
+// comparison boundary.
 struct SyntheticCall {
     std::uint32_t trigger = 0, nth = 1, target = 0;
     std::uint32_t from = 0;  // from=: count only dispatches returning here (0: all)
@@ -73,6 +75,10 @@ struct SyntheticCall {
     // runs and undone after, for states the recording never had.
     struct Write { unsigned size; std::string address, value; };
     std::vector<Write> writes;
+    // expect8=/expect16=/expect32=ADDRESS:VALUE require final memory in
+    // both completed children. Expressions use the trigger registers and
+    // the initialized input memory, just like register assignments.
+    std::vector<Write> expected_memory;
     std::string line;
 };
 std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& file);

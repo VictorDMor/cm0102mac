@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Emit the 327 original initializer instructions privately, without semantic hooks."""
 import argparse
+import inspect
 import json
 import sqlite3
 from pathlib import Path
@@ -12,12 +13,11 @@ def render_reference(records, userops):
     require_engine_initialization_bodies(records, complete=True)
     selected = {r['address'] for r in records}
     units = []
+    disabled = {name: False for name in inspect.signature(generate_page).parameters
+                if name.endswith("_hooks") or name == "guest_context_transfers"}
     for page in (65536, 65636, 65683, 65758, 65855, 65859, 65939, 66218, 66317, 66325, 66390, 66433, 66702, 67254, 67259, 67365, 67385, 67396, 67405, 67438):
-        code = generate_page(page, [r for r in records if r['address'] >> 12 == page], selected, userops=userops,
-                             guest_context_transfers=False, exception_runtime_hooks=False,
-                             compiler_arithmetic_hooks=False, register_context_hooks=False,
-                             stdlib_core_hooks=False, time_runtime_hooks=False, import_descriptor_hooks=False,
-                             native_service_hooks=False, engine_initialization_hooks=False)
+        code = generate_page(page, [r for r in records if r['address'] >> 12 == page], selected,
+                             userops=userops, **disabled)
         code = code.replace(f'bool page_{page:x}(State& s)', f'bool engine_initialization_reference_{page:x}(State& s)')
         if f'bool engine_initialization_reference_{page:x}(State& s)' not in code or 'try_modern_' in code:
             raise ValueError('Missing isolated original engine-initialization reference')

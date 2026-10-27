@@ -4,6 +4,7 @@
 #include "season_reference.hpp"
 #include <sys/wait.h>
 #include <unistd.h>
+#include <algorithm>
 #include <bit>
 #include <optional>
 #include <cstdio>
@@ -15,6 +16,7 @@
 #include <set>
 #include <sstream>
 #include <vector>
+
 
 namespace cm::aot {
 RoutineChecker* routine_checker = nullptr;
@@ -262,10 +264,16 @@ namespace {
 // Whether both runs stopped at the same point with the same message: a
 // synthetic call into a path the recording never took stops at the first
 // import the recording has no output for (an error alert, an exit), or at
-// the same fault. Synthetic calls compare the two states there.
+// the same fault. Import stops can compare state; internal faults are
+// matched only for diagnostics and remain failed equivalence checks.
+// At an import both must stop at the same stub; a fault inside the routine
+// is matched by its message (the access and address), since the rewrite's pc
+// is where it last met the original (its entry or last call), not the
+// faulting instruction.
 bool same_stop(const Report& expected, const Report& actual) {
-    return expected.outcome == Outcome::fault && actual.outcome == Outcome::fault &&
-           expected.message == actual.message && expected.pc == actual.pc;
+    if (expected.outcome != Outcome::fault || actual.outcome != Outcome::fault || expected.message != actual.message)
+        return false;
+    return expected.pc == actual.pc || (!import_name(expected.pc) && !import_name(actual.pc));
 }
 
 std::vector<std::string> compare_reports(const State& s, const Report& expected, const Report& actual, unsigned results,
@@ -275,14 +283,16 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
     std::vector<std::string> found;
     // A replay never faults, so a stopped child is a failure of the rewrite or
     // of the harness, even when both stopped the same way; except for
-    // synthetic calls stopping at the same point (stop_compared), whose
+    // synthetic calls stopping at the same import (stop_compared), whose
     // states there are compared like returns, without the condition register
     // (the rewrites reproduce it at returns only).
     const bool stopped = stop_compared && same_stop(expected, actual);
-    // At a fault inside the routine the rewrite holds the original's state
-    // only where the two meet (calls and returns): only the message and pc
-    // compare. At an import, r3 (its first argument) and f1 count too.
-    if (stopped && !import_name(expected.pc)) return {};
+    // Internal faults are not comparison boundaries: matching messages do
+    // not prove that the writes, imports or results agree. In particular,
+    // do not turn an invalid synthetic input into an equivalence pass.
+    if (stopped && !import_name(expected.pc))
+        return {"both runs faulted internally; equivalence was not checked: " + expected.message};
+    // At an import, r3 (its first argument) and f1 count too.
     if (stopped) results |= R::result_r3 | R::result_f1;
     if (expected.outcome == Outcome::fault && !stopped) found.push_back("the original stopped: " + expected.message);
     if (actual.outcome == Outcome::fault && !stopped) found.push_back("the rewrite stopped: " + actual.message);
@@ -432,10 +442,14 @@ std::vector<SyntheticCall> read_synthetic_calls(const std::filesystem::path& fil
             else if (key == "results") {
                 call.results = value == "none" ? 0u : value == "r3r4" ? RoutineChecker::result_r3 | RoutineChecker::result_r4
                              : value == "f1" ? RoutineChecker::result_f1 : RoutineChecker::result_r3;
-            } else if (key == "m8" || key == "m16" || key == "m32") {
+            } else if (key == "m8" || key == "m16" || key == "m32" ||
+                       key == "expect8" || key == "expect16" || key == "expect32") {
                 const auto colon = value.rfind(':');
-                if (colon == std::string::npos) throw std::runtime_error("Bad synthetic memory write: " + line);
-                call.writes.push_back({unsigned(std::stoul(key.substr(1))) / 8, value.substr(0, colon), value.substr(colon + 1)});
+                if (colon == std::string::npos) throw std::runtime_error("Bad synthetic memory value: " + line);
+                const bool expectation = key.starts_with("expect");
+                auto& values = expectation ? call.expected_memory : call.writes;
+                values.push_back({unsigned(std::stoul(key.substr(expectation ? 6 : 1))) / 8,
+                                  value.substr(0, colon), value.substr(colon + 1)});
             } else if (key.size() >= 2 && key[0] == 'r') call.registers.emplace_back(unsigned(std::stoul(key.substr(1))), value);
             else throw std::runtime_error("Bad synthetic call: " + line);
         }
@@ -556,6 +570,45 @@ unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, Routin
             const auto expected = fork_run(s, call.target, original, false, true);
             const auto actual = fork_run(s, call.target, rewrite, false, true);
             found = compare_reports(s, expected, actual, call.results, sp, strict_volatile, true);
+            if (!call.expected_memory.empty()) {
+                const auto check_memory = [&](const Report& report, const std::string& side) {
+                    if (report.outcome != Outcome::returned || report.pc != return_sentinel) {
+                        found.push_back(side + " final memory expectations require a completed return");
+                        return;
+                    }
+                    for (const auto& check : call.expected_memory) {
+                        const auto address = value(check.address);
+                        const auto mask = check.size == 4 ? 0xffffffffu : (1u << (check.size * 8)) - 1;
+                        const auto wanted = value(check.value) & mask;
+                        const auto input_maps = s.memory.mapped_ranges();
+                        const auto mapped = [&](std::uint32_t at) {
+                            const auto contains = [at](const auto& range) {
+                                return at >= range.first && std::uint64_t(at) - range.first < range.second;
+                            };
+                            return std::any_of(input_maps.begin(), input_maps.end(), contains) ||
+                                   std::any_of(report.maps.begin(), report.maps.end(), contains);
+                        };
+                        if (std::uint64_t(address) + check.size > (std::uint64_t(1) << 32)) {
+                            found.push_back(side + " memory expectation wraps the guest address space");
+                            continue;
+                        }
+                        bool valid = true;
+                        std::uint32_t got = 0;
+                        for (unsigned byte = 0; byte < check.size; ++byte) {
+                            const auto at = address + byte, page = at >> page_shift;
+                            if (!mapped(at)) { valid = false; break; }
+                            const auto changed = report.pages.find(page);
+                            const auto contents = changed == report.pages.end() ? page_bytes(s.memory, page) : changed->second;
+                            got = (got << 8) | contents[at & (page_size - 1)];
+                        }
+                        if (!valid) found.push_back(side + " memory expectation is unmapped at " + hex(address));
+                        else if (got != wanted)
+                            found.push_back(side + " memory expectation " + hex(address) + ": " + hex(got) + " != " + hex(wanted));
+                    }
+                };
+                check_memory(expected, "original");
+                check_memory(actual, "rewrite");
+            }
             if (same_stop(expected, actual)) stop = " (both stopped at " + hex(expected.pc) + ": " + expected.message + ")";
         } catch (const std::exception& error) { found.push_back(error.what()); }
         s.memory.observer = nullptr; s.memory.date_observer = nullptr;
@@ -565,6 +618,8 @@ unsigned run_synthetic_calls(State& s, std::vector<SyntheticCall>& calls, Routin
         s.pc = saved_pc;
         std::cerr << (found.empty() ? "synthetic ok" + stop + ": " : "synthetic DIFFERS" + stop + ": ") << call.line << '\n';
         for (const auto& line : found) std::cerr << "  " << line << '\n';
+        if (found.empty() && !call.expected_memory.empty())
+            std::cerr << "  verified " << call.expected_memory.size() << " final memory expectations in both completed runs\n";
         if (!found.empty()) ++differing;
     }
     return differing;

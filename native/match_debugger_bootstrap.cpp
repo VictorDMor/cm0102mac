@@ -1,5 +1,6 @@
 #include "match_debugger_bootstrap.hpp"
 #include "engine_initialization_adapter.hpp"
+#include "contract_manager_adapter.hpp"
 #include "platform.hpp"
 #include <algorithm>
 #include <limits>
@@ -65,9 +66,17 @@ DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
     // loop. Keep its reserved startup frame while calling original helpers.
     run_until(state, 0x10773754);
     const auto& initialization = engine_initialization_diagnostics(state);
-    for (unsigned entry = 0; entry < 20; ++entry)
+    for (unsigned entry = 0; entry < engine_initialization::entries.size(); ++entry) {
+        if (engine_initialization::entries[entry] == 0x100939b0) {
+            const auto& contracts = contract_manager_diagnostics(state);
+            if (contracts.date_initialization_calls != 1 || contracts.date_initialization_returns != 1 ||
+                initialization.calls[entry] != 0 || initialization.returns[entry] != 0)
+                throw std::runtime_error("Independent bootstrap did not complete the contract date initializer");
+            continue;
+        }
         if (initialization.calls[entry] != 1 || initialization.returns[entry] != 1)
             throw std::runtime_error("Independent bootstrap did not compose all original global initializers");
+    }
     if (call(state, 0x10118ef0, {0}) != 1)
         throw std::runtime_error("Original application objects did not initialize");
     if (random_seed) (void)call(state, 0x107474a0, {*random_seed});

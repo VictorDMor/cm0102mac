@@ -1,4 +1,5 @@
 #include "engine_initialization_adapter.hpp"
+#include "contract_manager_adapter.hpp"
 #include "code_fragment_adapter.hpp"
 #include "semantic_io_checks.hpp"
 #include "engine_initialization_fixtures.hpp"
@@ -104,9 +105,16 @@ void composed(const State& seed) {
     cm::engine_initialization_checks::NativeEnvironment environment(*peer, *state);
     require(try_modern_engine_initialization(*state, init::entries[0]), "Complete initialization composition");
     const auto& d = engine_initialization_diagnostics(*state);
-    for (unsigned n = 0; n < init::entries.size(); ++n)
+    for (unsigned n = 0; n < init::entries.size(); ++n) {
+        if (init::entries[n] == 0x100939b0) {
+            const auto& contracts = contract_manager_diagnostics(*state);
+            require(contracts.date_initialization_calls == 1 && contracts.date_initialization_returns == 1 &&
+                !d.calls[n] && !d.returns[n], "Contract manager owns the completed date initializer");
+            continue;
+        }
         require(d.calls[n] == 1 && d.returns[n] == 1 && !d.original_calls[n] && !d.faults[n],
             "Real dependency composition executes each initializer exactly once");
+    }
     require(state->pc == return_sentinel && state->r<4>(4) == seed.r<4>(4), "Complete root returns to its original caller");
     std::cout << "Complete engine initialization: all 20 entries once, original dependencies retained, four mixed modes\n";
 }
@@ -120,6 +128,14 @@ int main(int argc, char** argv) {
         seed->budget = 100000000; seed->memory.map(fixture, 16);
         for (unsigned i = 0; i < init::entries.size(); ++i) {
             seed->memory.write<4>(fixture, init::entries[i]); seed->memory.write<4>(fixture + 4, seed->r<4>(8));
+            if (init::entries[i] == 0x100939b0) {
+                // Dispatch now belongs to CONTRACT_MANAGER, including the
+                // legacy adapter's dispatch-based "original" path. Its
+                // independent reference belongs in that module's fixtures;
+                // the complete-root case below checks real composition.
+                std::cout << hex_address(init::entries[i]) << " transferred to CONTRACT_MANAGER fixtures\n";
+                continue;
+            }
             if (profile) compare(i, *seed, Path::generated, Mode::profile);
             else {
                 for (auto path : {Path::direct, Path::generated, Path::cfm}) compare(i, *seed, path, Mode::modern);

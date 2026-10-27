@@ -21,10 +21,12 @@ unfinished. There is no public binary release yet.
   legacy Mac OS virtual machine. It retains a checked, big-endian 32-bit data
   address space for the original game's pointers and structures.
 
-The latest accepted production manifest contains **963 reconstructed entry points**
-(unique semantic owners). This is an integration count, not a percentage of the
-game recovered. Much of the simulation still uses generated code. Native
-performance is the current priority, ahead of further reconstruction. See the
+Reconstructed subsystems coexist with statically generated original routines.
+`CONTRACT_MANAGER.CPP` now has all **95 audited routines** implemented as
+semantic C++23. Routine-owner counts in older integration reports are not
+whole-game completion percentages. Much of the simulation still uses generated
+code. Native performance is the current priority, ahead of further reconstruction.
+See the
 [C++23 progress report](docs/native-cpp23-port-progress.md) and
 [current status and limitations](docs/native-port-status.md).
 
@@ -33,7 +35,7 @@ performance is the current priority, ahead of further reconstruction. See the
 | Area | Contents |
 | --- | --- |
 | Native game | ARM64 runtime, macOS bridges and application shell |
-| C++23 reconstruction | Runtime, calendar, storage and simulation subsystems, the whole tactics system (formations, team tactics, tactics screens), the main program (MAIN.CPP), player statistics (PLAYER_STATS.CPP: season records, career histories, the stats screens) and recruitment (SHORTLIST_MANAGER.CPP: shortlists, candidate scans, interest evaluations and registrations), with focused equivalence checks |
+| C++23 reconstruction | Runtime, calendar, storage and simulation subsystems, the whole tactics system (formations, team tactics, tactics screens), the main program (MAIN.CPP), player statistics (PLAYER_STATS.CPP: season records, career histories, the stats screens), recruitment (SHORTLIST_MANAGER.CPP: shortlists, candidate scans, interest evaluations and registrations) and contract management (CONTRACT_MANAGER.CPP: all 95 routines, including negotiation, daily reviews, news and persistence), with focused equivalence checks |
 | Match Debugger | Native match inspection, deterministic scenarios and history controls |
 | Recompilation tools | Ghidra exporters, indexed code generation and reference harness generators |
 | Asset inspector | Optional Swift tools for examining locally supplied game assets |
@@ -75,7 +77,7 @@ been accepted as inputs to this pipeline.
 | Match speed | A native **Turbo** choice in the original match-speed selector, selected by default and remembered across launches; match calculations are unchanged |
 | In-game debugging | Opt-in **Debugging** adds **Best XI** and **Recover** to the squad screen, a scorer dropdown and a repeat-goal button; these controls follow the game's language. Best XI uses the current formation and available players for starters and the fixture's bench. Recover removes injuries and suspensions and restores every roster player's condition to 100%, including unselected reserves. Top-row/keypad **1/2** give random goals H/A (central forwards +30%, no keepers), **3/4** dismiss A/H, **5/6** injure A/H (uniform players including keepers, random medical injury); **Z** plays/pauses through the original control |
 | Match Debugger | Separate native application with seeded matches, player/event inspection, substitutions and rewind/redo; its full product contract remains incomplete |
-| Reconstruction | 963 accepted C++23 entry points coexist with statically generated original routines; this count is not a completion percentage |
+| Reconstruction | Semantic C++23 subsystems coexist with generated original routines; all 95 audited CONTRACT_MANAGER.CPP entries are implemented. The whole game is still unfinished |
 | Performance | Large multi-league careers are slow: one weekly Continue with 26 playable countries took about eight minutes in local diagnosis, and creating an all-league career stayed CPU-bound for over 40 minutes in an uncontrolled diagnostic run. Optimization is ongoing |
 | Availability | Developer source workflow for Apple Silicon / macOS 13+; your original Mac files and local compilation are required |
 | Remaining work | Multiplayer and some services remain unsupported; the whole game port is unfinished and no public binary release is available |

@@ -73,10 +73,10 @@ def engine_initialization_hook(entry):
     return f'if (try_modern_engine_initialization(s, 0x{entry:x})) return true;'
 
 
-def require_engine_initialization_hooks(page, instructions, code):
+def require_engine_initialization_hooks(page, instructions, code, taken_over=()):
     addresses = {r['address'] for r in instructions}
     for entry in ENGINE_INITIALIZATION_ENTRIES:
-        if entry >> 12 != page or entry not in addresses: continue
+        if entry >> 12 != page or entry not in addresses or entry in taken_over: continue
         label, hook, step = f'i_{entry:x}:', engine_initialization_hook(entry), f's.step(0x{entry:x});'
         fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
         if code.count(hook) != 1 or hook not in fragment or step not in fragment or fragment.index(hook) > fragment.index(step):

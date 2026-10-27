@@ -70,6 +70,9 @@ target_sources(cm_aot PRIVATE routine_check.cpp ${CM_TACTICS_SOURCES})
 file(GLOB CM_MAIN_PROGRAM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/main_program*.cpp")
 list(FILTER CM_MAIN_PROGRAM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
+file(GLOB CM_CONTRACT_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager*.cpp")
+list(FILTER CM_CONTRACT_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_CONTRACT_MANAGER_SOURCES})
 # The original's PLAYER_STATS.CPP in C++ (player_stats_routines.inc): every player_stats*.cpp.
 file(GLOB CM_PLAYER_STATS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/player_stats*.cpp")
 list(FILTER CM_PLAYER_STATS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
@@ -386,6 +389,176 @@ endforeach()
 add_test(NAME player_stats_detect_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/ps-profile" 1 --check-routines-corrupted 400 200 --only 0x10304190)
 set_tests_properties(player_stats_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
+# CONTRACT_MANAGER: staged semantic rewrites, compared with generated bodies.
+add_test(NAME contract_manager_audit
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_contract_manager_audit.py")
+foreach(group records storage keyed pending)
+    if(group STREQUAL "records")
+        set(cases "${CMAKE_SOURCE_DIR}/contract_manager_synthetic.txt")
+    else()
+        set(cases "${CMAKE_SOURCE_DIR}/contract_manager_${group}_synthetic.txt")
+    endif()
+    add_test(NAME contract_manager_${group}_synthetic
+             COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/season-day" 1 --check-routines 10 1000000 --only 0x10082f90 --synthetic "${cases}" --compare-f1)
+    set_tests_properties(contract_manager_${group}_synthetic PROPERTIES ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1")
+endforeach()
+add_test(NAME contract_manager_detect_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/season-day" 1 --check-routines-corrupted 1 1000000 --only 0x10082f90)
+set_tests_properties(contract_manager_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
+add_test(NAME contract_manager_pending_owned
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/contract-offer" 1 --check-routines 10 1000000 --only 0x1007f720 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_pending_owned_synthetic.txt" --compare-f1)
+set_tests_properties(contract_manager_pending_owned PROPERTIES ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1")
+# Force the trigger through its original dispatch path: production owners
+# are called in place and otherwise bypass synthetic dispatch triggers.
+# Each synthetic target still runs its C++ body explicitly in the checker.
+foreach(group sampling roles relations schedule deferred offers roster review_schedule notifications valuation review_policy interest pending_news discontent match_review)
+    add_test(NAME contract_manager_${group}_synthetic
+             COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/contract-offer" 1 --check-routines 1 1000000 --only 0x1007f720 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_${group}_synthetic.txt" --compare-f1)
+    set_tests_properties(contract_manager_${group}_synthetic PROPERTIES ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1")
+endforeach()
+# The serializer uses the full recorded save flow, including its stream.
+add_test(NAME contract_manager_load_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/game-load" 1 --check-routines 2 1000000 --only 0x10091bf0 --compare-f1)
+add_test(NAME contract_manager_save_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/game-save2" 1 --check-routines 2 1000000 --only 0x10093030 --compare-f1)
+# Additional private full-body fixtures remain local; the public cases also
+# cover these entries when the private characterization inputs are absent.
+foreach(fixture IN ITEMS match-review-owned match-review-edge discontent-owned discontent-decisions)
+    set(cases "${CMAKE_SOURCE_DIR}/../.local/contract-manager/${fixture}-synthetic.txt")
+    if(EXISTS "${cases}")
+        string(REPLACE "-" "_" test_group "${fixture}")
+        add_test(NAME contract_manager_${test_group}_real_cases
+                 COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/contract-offer" 1
+                         --check-routines 1 1000000 --only 0x1007f720 --synthetic "${cases}"
+                         --strict-volatile --compare-f1)
+        set_tests_properties(contract_manager_${test_group}_real_cases PROPERTIES
+            ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+            FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+            TIMEOUT 180)
+    endif()
+endforeach()
+add_test(NAME contract_manager_save_synthetic
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/game-save2" 1 --check-routines 1 1000000 --only 0x10093030 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_save_synthetic.txt" --compare-f1)
+set_tests_properties(contract_manager_save_synthetic PROPERTIES ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1")
+add_test(NAME contract_manager_preparation_day_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/season-day" 1 --check-routines 2 1000000 --only 0x10080d30 --compare-f1)
+set_tests_properties(contract_manager_preparation_day_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x10080d30: [0-9]+ calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_pending_review_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100000 1 --only 0x10081bd0 --compare-f1)
+set_tests_properties(contract_manager_pending_review_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x10081bd0: [0-9]+ calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_daily_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100000 1 --only 0x10079050 --compare-f1)
+set_tests_properties(contract_manager_daily_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x10079050: [0-9]+ calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_changes_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100000 1 --only 0x10083180,0x10083e50,0x100845b0 --compare-f1)
+set_tests_properties(contract_manager_changes_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine check: 3 routines, [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_offer_policy_contract_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/contract-offer" 1 --check-routines 100000 1 --only 0x10089ea0,0x1008a160 --compare-f1)
+set_tests_properties(contract_manager_offer_policy_contract_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine check: 2 routines, [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_news_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_synthetic.txt" --compare-f1)
+set_tests_properties(contract_manager_news_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 59 listed, 59 made, 0 differ")
+add_test(NAME contract_manager_news_followup_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_followup_synthetic.txt" --compare-f1)
+set_tests_properties(contract_manager_news_followup_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 274 listed, 274 made, 0 differ"
+    TIMEOUT 180)
+add_test(NAME contract_manager_news_status_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_status_synthetic.txt" --compare-f1)
+set_tests_properties(contract_manager_news_status_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 92 listed, 92 made, 0 differ"
+    TIMEOUT 180)
+add_test(NAME contract_manager_news_offer_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --timing --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_offer_synthetic.txt" --compare-f1)
+set_tests_properties(contract_manager_news_offer_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 18 listed, 18 made, 0 differ"
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+    TIMEOUT 180)
+add_test(NAME contract_manager_news_offer_render_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_offer_render_synthetic.txt" --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_offer_render_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 216 listed, 216 made, 0 differ"
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+    TIMEOUT 180)
+add_test(NAME contract_manager_news_unrest_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --timing --check-routines 1 1000000 --only 0x100cbde0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_unrest_synthetic.txt" --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_unrest_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 12 listed, 12 made, 0 differ"
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+    TIMEOUT 180)
+add_test(NAME contract_manager_news_unrest_render_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_unrest_render_synthetic.txt" --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_unrest_render_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 128 listed, 128 made, 0 differ"
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+    TIMEOUT 180)
+add_test(NAME contract_manager_news_request_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --timing --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_request_synthetic.txt" --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_request_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 18 listed, 18 made, 0 differ"
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+    TIMEOUT 180)
+add_test(NAME contract_manager_news_request_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100 1000 --only 0x1008e350 --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_request_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x1008e350: [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_news_request_render_real_callees
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 1 1000000 --only 0x1008c4c0 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_news_request_render_synthetic.txt" --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_request_render_real_callees PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 128 listed, 128 made, 0 differ"
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+    TIMEOUT 180)
+add_test(NAME contract_manager_pending_news_effects
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/contract-offer" 1 --check-routines 1 1000000 --only 0x1007f720 --synthetic "${CMAKE_SOURCE_DIR}/contract_manager_pending_news_effects_synthetic.txt" --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_pending_news_effects PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    PASS_REGULAR_EXPRESSION "synthetic calls: 8 listed, 8 made, 0 differ"
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]"
+    TIMEOUT 180)
+add_test(NAME contract_manager_pending_news_expectation_detects_missing_effect
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/check_synthetic_memory_controls.py"
+                 "$<TARGET_FILE:cm-world-replay>" "${CM_BENCHMARK_DIR}/ui/contract-offer"
+                 "${CMAKE_SOURCE_DIR}/contract_manager_pending_news_bad_expectation_synthetic.txt")
+set_tests_properties(contract_manager_pending_news_expectation_detects_missing_effect PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1"
+    TIMEOUT 180)
+set_tests_properties(contract_manager_news_real_callees contract_manager_news_followup_real_callees contract_manager_news_status_real_callees PROPERTIES
+    FAIL_REGULAR_EXPRESSION "synthetic ok [(]")
+add_test(NAME contract_manager_news_status_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100 1000 --only 0x10090310,0x10090560,0x10090a00,0x10090f20 --compare-f1)
+set_tests_properties(contract_manager_news_status_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x10090f20: [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_news_offer_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100 1000 --only 0x1008a350 --compare-f1)
+set_tests_properties(contract_manager_news_offer_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x1008a350: [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_news_offer_render_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100 1000 --only 0x1008ab40 --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_offer_render_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x1008ab40: [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_news_unrest_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 100 1000 --only 0x1008cd20 --strict-volatile --compare-f1)
+set_tests_properties(contract_manager_news_unrest_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x1008cd20: [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
+add_test(NAME contract_manager_base_value_tactics_capture
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/tactics-continue" 1 --check-routines 20 1000 --only 0x10084be0 --compare-f1)
+set_tests_properties(contract_manager_base_value_tactics_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "routine 0x10084be0: [1-9][0-9]* calls, [1-9][0-9]* checked, 0 differ")
 # The C++ SHORTLIST_MANAGER.CPP routines (shortlist_manager_routines.inc)
 # against their generated originals, where only this module needs the
 # capture: tactics-continue (a week of recruitment with the human club),
@@ -507,6 +680,139 @@ foreach(trace_value IN ITEMS empty zero one)
 endforeach()
 set(CM_ORACLE_DIR "" CACHE PATH "Original relocated segments and oracle.tsv")
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
+    file(GLOB CM_CONTRACT_MANAGER_NEWS_SEGMENTS CONFIGURE_DEPENDS "${CM_ORACLE_DIR}/segment-*.bin")
+    set(CM_CONTRACT_MANAGER_NEWS_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_news_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_NEWS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_news_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_NEWS_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_news_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json" ${CM_CONTRACT_MANAGER_NEWS_SEGMENTS}
+        VERBATIM)
+    add_executable(cm-contract-manager-news-checks contract_manager_news_checks.cpp "${CM_CONTRACT_MANAGER_NEWS_REFERENCE}")
+    target_link_libraries(cm-contract-manager-news-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-news-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_news_equivalence COMMAND cm-contract-manager-news-checks)
+    set_tests_properties(contract_manager_news_equivalence PROPERTIES TIMEOUT 180)
+    file(GLOB CM_CONTRACT_MANAGER_NEGOTIATION_SEGMENTS CONFIGURE_DEPENDS "${CM_ORACLE_DIR}/segment-*.bin")
+    set(CM_CONTRACT_MANAGER_NEGOTIATION_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_negotiation_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_NEGOTIATION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_negotiation_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_NEGOTIATION_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_negotiation_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json" ${CM_CONTRACT_MANAGER_NEGOTIATION_SEGMENTS}
+        VERBATIM)
+    add_executable(cm-contract-manager-negotiation-checks contract_manager_negotiation_checks.cpp "${CM_CONTRACT_MANAGER_NEGOTIATION_REFERENCE}")
+    target_link_libraries(cm-contract-manager-negotiation-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-negotiation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_negotiation_equivalence COMMAND cm-contract-manager-negotiation-checks)
+    set_tests_properties(contract_manager_negotiation_equivalence PROPERTIES TIMEOUT 180)
+    file(GLOB CM_CONTRACT_MANAGER_BASE_VALUE_SEGMENTS CONFIGURE_DEPENDS "${CM_ORACLE_DIR}/segment-*.bin")
+    set(CM_CONTRACT_MANAGER_BASE_VALUE_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_base_value_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_BASE_VALUE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_base_value_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_BASE_VALUE_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_base_value_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json" ${CM_CONTRACT_MANAGER_BASE_VALUE_SEGMENTS}
+        VERBATIM)
+    add_executable(cm-contract-manager-base-value-checks contract_manager_base_value_checks.cpp "${CM_CONTRACT_MANAGER_BASE_VALUE_REFERENCE}")
+    target_link_libraries(cm-contract-manager-base-value-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-base-value-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_base_value_equivalence COMMAND cm-contract-manager-base-value-checks)
+    set_tests_properties(contract_manager_base_value_equivalence PROPERTIES TIMEOUT 180)
+    file(GLOB CM_CONTRACT_MANAGER_OFFER_POLICY_SEGMENTS CONFIGURE_DEPENDS "${CM_ORACLE_DIR}/segment-*.bin")
+    set(CM_CONTRACT_MANAGER_OFFER_POLICY_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_offer_policy_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_OFFER_POLICY_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_offer_policy_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_OFFER_POLICY_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_offer_policy_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json" ${CM_CONTRACT_MANAGER_OFFER_POLICY_SEGMENTS}
+        VERBATIM)
+    add_executable(cm-contract-manager-offer-policy-checks contract_manager_offer_policy_checks.cpp "${CM_CONTRACT_MANAGER_OFFER_POLICY_REFERENCE}")
+    target_link_libraries(cm-contract-manager-offer-policy-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-offer-policy-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_offer_policy_equivalence COMMAND cm-contract-manager-offer-policy-checks)
+    set_tests_properties(contract_manager_offer_policy_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_CONTRACT_MANAGER_CHANGES_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_changes_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_CHANGES_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_changes_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_CHANGES_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_changes_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-contract-manager-changes-checks contract_manager_changes_checks.cpp "${CM_CONTRACT_MANAGER_CHANGES_REFERENCE}")
+    target_link_libraries(cm-contract-manager-changes-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-changes-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_changes_equivalence COMMAND cm-contract-manager-changes-checks)
+    set_tests_properties(contract_manager_changes_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_CONTRACT_MANAGER_DAILY_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_daily_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_DAILY_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_daily_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_DAILY_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_daily_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
+        VERBATIM)
+    add_executable(cm-contract-manager-daily-checks contract_manager_daily_checks.cpp "${CM_CONTRACT_MANAGER_DAILY_REFERENCE}")
+    target_link_libraries(cm-contract-manager-daily-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-daily-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_daily_equivalence COMMAND cm-contract-manager-daily-checks)
+    set_tests_properties(contract_manager_daily_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_CONTRACT_MANAGER_PENDING_REVIEW_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_pending_review_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_PENDING_REVIEW_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_pending_review_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_PENDING_REVIEW_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_pending_review_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
+        VERBATIM)
+    add_executable(cm-contract-manager-pending-review-checks contract_manager_pending_review_checks.cpp "${CM_CONTRACT_MANAGER_PENDING_REVIEW_REFERENCE}")
+    target_link_libraries(cm-contract-manager-pending-review-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-pending-review-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_pending_review_equivalence COMMAND cm-contract-manager-pending-review-checks)
+    set_tests_properties(contract_manager_pending_review_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_CONTRACT_MANAGER_PREPARATION_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_preparation_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_PREPARATION_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_preparation_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_PREPARATION_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_preparation_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+            "${CM_ORACLE_DIR}/segment-1.bin" "${CM_ORACLE_DIR}/segment-3.bin"
+        VERBATIM)
+    add_executable(cm-contract-manager-preparation-checks contract_manager_preparation_checks.cpp "${CM_CONTRACT_MANAGER_PREPARATION_REFERENCE}")
+    target_link_libraries(cm-contract-manager-preparation-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-preparation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_preparation_equivalence COMMAND cm-contract-manager-preparation-checks)
+    set_tests_properties(contract_manager_preparation_equivalence PROPERTIES TIMEOUT 180)
+    set(CM_CONTRACT_MANAGER_PERSISTENCE_REFERENCE "${CMAKE_BINARY_DIR}/contract_manager_persistence_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_MANAGER_PERSISTENCE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_persistence_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_MANAGER_PERSISTENCE_REFERENCE}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_contract_manager_persistence_reference.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/contract_manager_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager_routines.inc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-contract-manager-persistence-checks contract_manager_persistence_checks.cpp "${CM_CONTRACT_MANAGER_PERSISTENCE_REFERENCE}")
+    target_link_libraries(cm-contract-manager-persistence-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-manager-persistence-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_manager_persistence_equivalence COMMAND cm-contract-manager-persistence-checks)
+    set_tests_properties(contract_manager_persistence_equivalence PROPERTIES TIMEOUT 180)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     # Independent original components retain every site without productive hooks.
     set(CM_BALL_CONTACT_DESCRIPTION_PREPARATION_REFERENCE "${CMAKE_BINARY_DIR}/ball_contact_description_preparation_reference.cpp")

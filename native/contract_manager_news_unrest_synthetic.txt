@@ -1,0 +1,13 @@
+# Complete original publisher versus C++ with observed records and existing production dependencies.
+trigger=0x100cbde0#1 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:499999
+trigger=0x100cbde0#1 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:500000
+trigger=0x100cbde0#1 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:900000
+trigger=0x100cbde0#1 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:10000000
+trigger=0x100cbde0#2 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:499999
+trigger=0x100cbde0#2 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:500000
+trigger=0x100cbde0#2 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:900000
+trigger=0x100cbde0#2 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:10000000
+trigger=0x100cbde0#3 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:499999
+trigger=0x100cbde0#3 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:500000
+trigger=0x100cbde0#3 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:900000
+trigger=0x100cbde0#3 call=0x1008cd20 results=none r3=[[@r2-0x7b7c]] r4=@r3 r5=[@r3+0x24] m32=@r3+8:10000000
