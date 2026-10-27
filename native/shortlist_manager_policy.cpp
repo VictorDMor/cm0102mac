@@ -37,6 +37,7 @@ constexpr RatingPair needed_ratings(std::uint32_t label) {
     case 0x10365f44: return {0x14, 0x19};
     case 0x10365f6c: return {0x14, 0x17};
     case 0x10365f94: return {0x15, 0};
+    // Unreachable: the caller filters out 0x10365fac, and the game's table (0x108ceecc) holds only the labels above.
     default: return {0, 0};  // 0x10365fac: category 15, no ratings
     }
 }

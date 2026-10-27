@@ -141,6 +141,8 @@ inline std::int32_t multiply_high(std::int32_t a, std::int32_t b) {
 // (divw, mullw, subf) leaves the dividend. Division by a constant needs
 // none of this (the compiler multiplies by a magic number).
 inline std::int32_t divide(std::uint32_t site, std::int32_t a, std::int32_t b) {
+    // Unreachable: b == 0 at a site that is not quotient-free (the module's other divisors are clamped to >= 1 at
+    // 0x10367f84 and 0x1036b6b4, and are 2..1000 times a nonzero open-row count at 0x103591e0-0x10359334).
     if (b == 0 && quotient_free_division(site)) return 0;
     return std::int32_t(std::uint32_t(divide_signed<4>(std::uint32_t(a), std::uint32_t(b))));
 }

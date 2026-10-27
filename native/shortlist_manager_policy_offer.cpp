@@ -200,6 +200,8 @@ std::uint32_t classify_contract_offer(Cpu& c, std::uint32_t club, std::uint32_t 
                 const std::uint32_t again = Program{c}.call(0x100c96e0, 0x1036f404, {club});
                 const std::int32_t answer = std::int8_t(Program{c}.call(0x10149df0, 0x1036f414, {c.u32(buyers_variable), 0, again}));
                 if (compare(c, answer, 2) == 0) contracts_or_value = std::uint32_t(person.value().get());
+                // An answer above 2 (0x1036f420) needs a save edited outside the game: the game's only store
+                // to the option (0x1014a08c) writes 0-2 for option 0 (callers 0x101ca8cc-0x101ca930).
                 else if (answer < 2 && compare(c, answer, 1) >= 0) return result(c, 2);
             }
         }

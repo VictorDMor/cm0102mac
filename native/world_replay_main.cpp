@@ -76,6 +76,7 @@
 #include "tactics_adapter.hpp"
 #include "main_program_adapter.hpp"
 #include "player_stats_adapter.hpp"
+#include "club_history_adapter.hpp"
 #include "eng_prm_adapter.hpp"
 #include "pol_cup_adapter.hpp"
 #include "screen_manager_adapter.hpp"
@@ -203,7 +204,7 @@ int main(int argc, char** argv) {
             checker->compare_f1 = compare_f1;
             routine_checker = &*checker;
             dispatch_probe = [](State& s) {
-                return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || eng_prm_dispatch_probe(s) || pol_cup_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || eng_prm_dispatch_probe(s) || pol_cup_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
             };
             if (!synthetic.empty())
@@ -215,6 +216,7 @@ int main(int argc, char** argv) {
                              : screen_manager_lists(entry)    ? screen_manager_run_original
                              : pol_cup_lists(entry)           ? pol_cup_run_original
                              : eng_prm_lists(entry)           ? eng_prm_run_original
+                             : club_history_lists(entry)      ? club_history_run_original
                              : contract_manager_lists(entry)  ? contract_manager_run_original
                              : player_stats_lists(entry)      ? player_stats_run_original
                              : shortlist_manager_lists(entry) ? shortlist_manager_run_original
@@ -225,13 +227,14 @@ int main(int argc, char** argv) {
                              : screen_manager_lists(entry)    ? screen_manager_run_rewrite
                              : pol_cup_lists(entry)           ? pol_cup_run_rewrite
                              : eng_prm_lists(entry)           ? eng_prm_run_rewrite
+                             : club_history_lists(entry)      ? club_history_run_rewrite
                              : contract_manager_lists(entry)  ? contract_manager_run_rewrite
                              : player_stats_lists(entry)      ? player_stats_run_rewrite
                              : shortlist_manager_lists(entry) ? shortlist_manager_run_rewrite
                                                               : tactics_run_rewrite)(t, entry);
                         },
                         routine_checker && routine_checker->strict_volatile);
-                    return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || eng_prm_dispatch_probe(s) || pol_cup_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                    return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || eng_prm_dispatch_probe(s) || pol_cup_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
                 };
         }

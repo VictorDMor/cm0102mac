@@ -313,6 +313,41 @@ groups written in parallel. What it added:
   exchange (ui/swap-offer), Options > add a manager, choose a club, take
   control (ui/take-control, the only route to 0x1036ec30 without waiting
   for a board to hire the human).
+- **Coverage is separate from equivalence.** `CM_SHORTLIST_COVERAGE` adds
+  source coverage only to this module; forked checker children flush their
+  profiles before `_exit`. A hit from a failed or faulting synthetic call
+  does not prove that branch equivalent. Keep such runs separate from
+  successful comparisons, and distinguish a checked call from a parent
+  replay that was stopped before its end-state comparison.
+- **Diagnostic reads can create false failures.** The interrupted interest
+  probe read `contract_at + 4` in a logging argument after 0x1036a8e4,
+  without checking for a contract. Its fault at 0x4 is absent from the
+  production C++; the original later reads a null contract at 0x1036b668
+  (offset 0x50) for that artificial input. Do not use the probe's profiles
+  or its differing fault addresses as evidence of a production rewrite bug.
+
+## CLUB_HISTORY.CPP: club league and cup archives
+
+`CLUB_HISTORY.CPP` has 11 routines and 1,702 indexed instructions in
+0x1000cbc0-0x1000e6b0 (`tools/club_history_audit.py`). Its constructor follows
+CASH; CLUB_RECORDS starts at the upper bound with a different string pool.
+TOC -0x59c8 points at the history pool; -0x59cc is the transition vector for
+the final id comparator (0x1000e680), which belongs to this module too.
+Every entry is hooked in production through `club_history_adapter`; internal
+load/current-league calls are direct C++. The original comparator returns
+0 for equal ids and 1 for unequal ids, including when the left id is smaller:
+keep this quirk rather than substitute a conventional three-way comparator.
+League rows are 24 bytes and cup rows 12; field copies leave the original
+padding untouched. The fallback current-league query leaves its provisional
+output byte untouched. Archive load/save retain the original short-I/O,
+allocation-failure, fatal-exit and close ordering.
+
+Focused comparisons use the existing game-load, game-save2 and ps-newgame
+captures, plus `native/club_history_synthetic.txt`. Synthetic cases that stop
+at an uncaptured import compare state only to that boundary; they do not
+establish completed archival I/O or full branch coverage. Career save/reload
+through the live app and performance are not retested by this delivery.
+
 ## CONTRACT_MANAGER.CPP: ABI and persistence quirks
 
 Global date initialization (`0x100939b0`) now belongs to this module. The

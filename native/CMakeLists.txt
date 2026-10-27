@@ -70,6 +70,9 @@ target_sources(cm_aot PRIVATE routine_check.cpp ${CM_TACTICS_SOURCES})
 file(GLOB CM_MAIN_PROGRAM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/main_program*.cpp")
 list(FILTER CM_MAIN_PROGRAM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
+file(GLOB CM_CLUB_HISTORY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/club_history*.cpp")
+list(FILTER CM_CLUB_HISTORY_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_CLUB_HISTORY_SOURCES})
 file(GLOB CM_SCREEN_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/screen_manager*.cpp")
 list(FILTER CM_SCREEN_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_SCREEN_MANAGER_SOURCES})
@@ -108,6 +111,15 @@ target_sources(cm_aot PRIVATE ${CM_PLAYER_STATS_SOURCES})
 file(GLOB CM_SHORTLIST_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shortlist_manager*.cpp")
 list(FILTER CM_SHORTLIST_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_SHORTLIST_MANAGER_SOURCES})
+# Source-based coverage of the SHORTLIST_MANAGER.CPP C++ alone, to find the
+# original's paths no check reaches (LLVM_PROFILE_FILE names the output;
+# checker children flush theirs, routine_check.cpp). Off in normal builds.
+option(CM_SHORTLIST_COVERAGE "Instrument shortlist_manager*.cpp for coverage" OFF)
+if(CM_SHORTLIST_COVERAGE)
+    set_source_files_properties(${CM_SHORTLIST_MANAGER_SOURCES} PROPERTIES COMPILE_OPTIONS "-fprofile-instr-generate;-fcoverage-mapping")
+    set_source_files_properties(routine_check.cpp PROPERTIES COMPILE_DEFINITIONS CM_SHORTLIST_COVERAGE=1)
+    target_link_options(cm_aot INTERFACE -fprofile-instr-generate)
+endif()
 target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruitment_notify.cpp shortlist_recruitment_register.cpp
     shortlist_recruitment_requested.cpp shortlist_recruitment_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
@@ -360,6 +372,8 @@ add_test(NAME main_program_volatile_audit
 # With the installed original (read only): MBAR 1, the only menu bar, holds
 # menus 1-3, so debug_menu (menu 4) is unreachable.
 set_tests_properties(main_program_volatile_audit PROPERTIES ENVIRONMENT "CM_MAIN_PROGRAM_GAME=${CM_MATCH_DEBUGGER_GAME_DIR}")
+add_test(NAME club_history_audit
+         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_club_history_audit.py")
 # Likewise around PLAYER_STATS.CPP (player_stats_routines.inc), its
 # comparators' returns into qsort and bsearch included.
 add_test(NAME player_stats_volatile_audit
@@ -416,6 +430,18 @@ endforeach()
 add_test(NAME player_stats_detect_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/ps-profile" 1 --check-routines-corrupted 400 200 --only 0x10304190)
 set_tests_properties(player_stats_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
+# CLUB_HISTORY: focused full-state comparisons on existing captures.
+set(CM_CLUB_HISTORY_ONLY "0x1000cbc0,0x1000cf20,0x1000cfc0,0x1000d4f0,0x1000d680,0x1000d8a0,0x1000db20,0x1000dda0,0x1000e060,0x1000e2b0,0x1000e680")
+foreach(session game-load game-save2)
+    string(REPLACE "-" "_" name "${session}")
+    add_test(NAME club_history_${name}
+             COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/${session}" 1 --check-routines 50 1000 --only "${CM_CLUB_HISTORY_ONLY}" --compare-f1)
+endforeach()
+add_test(NAME club_history_synthetic
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/world/season-day" 1 --check-routines 10 10000 --only 0x1000cfc0 --synthetic "${CMAKE_SOURCE_DIR}/club_history_synthetic.txt" --compare-f1)
+add_test(NAME club_history_detect_difference
+         COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/game-save2" 1 --check-routines-corrupted 1 1000 --only 0x1000e060)
+set_tests_properties(club_history_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
 # CONTRACT_MANAGER: staged semantic rewrites, compared with generated bodies.
 add_test(NAME contract_manager_audit
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_contract_manager_audit.py")

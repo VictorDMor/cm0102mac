@@ -287,6 +287,9 @@ void Contribution::choose_judge(std::uint32_t qualifications) {
                 judge = club().staff(n);
             }
         }
+    // Unreachable false: masks 0x5882/0x5982/0x5902 at 0x103616a4,
+    // 0x10361758 and 0x103617b8 always carry 0x80 or 0x100 and are only
+    // ORed afterwards, so the branch at 0x10361a54 is never taken.
     } else if (qualifications & 0x80) {
         Kept<15> best{c, 0};
         if (judge != 0) {

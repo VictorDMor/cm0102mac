@@ -17,6 +17,11 @@
 #include <sstream>
 #include <vector>
 
+// Defined only in coverage builds (CMake CM_SHORTLIST_COVERAGE): a checker
+// child leaves through _exit, past the runtime's own flush at exit.
+#if defined(CM_SHORTLIST_COVERAGE)
+extern "C" int __llvm_profile_write_file(void);
+#endif
 
 namespace cm::aot {
 RoutineChecker* routine_checker = nullptr;
@@ -206,6 +211,9 @@ std::vector<std::uint8_t> page_bytes(const Memory& memory, std::uint32_t page) {
         w.put(season_replay_import_digest());
     } catch (...) { _exit(4); }
     ::close(fd);
+#if defined(CM_SHORTLIST_COVERAGE)
+    __llvm_profile_write_file();
+#endif
     _exit(0);
 }
 

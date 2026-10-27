@@ -286,6 +286,8 @@ Before entry_and_link(Cpu& c, Program& program, const Manager& manager, const Cl
     bool linked = false;
     if (nonzero_logical(c, manager.links_by_staff())) {
         c.put32(key, std::uint32_t(Person{c, staff}.id().get()));
+        // The -1 arm is unreachable: both callers dereference the club before this test (0x10363f60 at
+        // 0x10364090 after 0x1014c2e0's null-club assertion; 0x10364d00 at 0x10364d74).
         c.put32(key + 4, nonzero_logical(c, club) ? std::uint32_t(Club{c, club}.id().get()) : std::uint32_t(-1));
         linked = nonzero_logical(c, program.bsearch(key, manager.links_by_staff(), manager.count_by_staff(), 8,
                                                     c.toc(slot::compare_10366410_tv), back));
@@ -330,7 +332,7 @@ bool prospect_allowed(Cpu& c, Program& program, const Row& row, const Person& st
     const std::uint32_t category = row.category();
     if (compare_logical(c, category, 5) == 0 && compare(c, staff.age(), 24) > 0) return false;
     if (compare_logical(c, category, 5) != 0) return true;
-    if (waived && nonzero(c, std::int8_t(*waived))) return true;
+    if (waived && nonzero(c, std::int8_t(*waived))) return true;  // waived is null for 0x10364d00 (no such test there)
     const std::uint32_t nation = club.nation();
     if (compare_logical(c, nation, staff.nation()) == 0) return true;
     const std::uint32_t own = staff.club();
@@ -463,6 +465,8 @@ std::uint32_t register_club_interest(Cpu& c, std::uint32_t manager_address, std:
             const double value = as_double(c, fpu, frame.at(0xd8), staff.value());
             fpu.fcmp(0, limit, value);
             if (limit < value) {
+                // Unreachable with a sound database: with a contract, r30 = clubs + index * 0x248
+                // (0x103640b4-0x103640c4) is 0 only for a corrupt club index (test at 0x10364334).
                 if (!nonzero_logical(c, own_club)) continue;
                 if (!nonzero(c, std::int8_t(human_controlled(c, program, own_club, 0, 1, 0, 0x10364354)))) continue;
                 if (compare(c, signed_value(std::uint32_t(staff.value()) - 1500000), row.budget()) >= 0) continue;

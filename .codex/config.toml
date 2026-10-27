@@ -1,0 +1,7 @@
+# Project default. The active chat retains its selected model; reasoning effort
+# continues to come from the user's session or existing personal configuration.
+model = "gpt-6.1-sol"
+
+[agents]
+enabled = true
+default_subagent_model = "gpt-6.1-sol"
