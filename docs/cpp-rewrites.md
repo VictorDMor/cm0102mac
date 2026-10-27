@@ -537,3 +537,27 @@ first matching group/row, and negative counts skip their rows. Entry routing
 uses aligned bitmap membership and prefix/popcount rank instead of binary
 search; unlisted, out-of-range and unaligned addresses retain their prior
 reject/decline behavior. Original and checker paths use the same public API.
+
+## POL_CUP.CPP: the Polish Cup
+
+Six entries (0x106cd810–0x106ce820, 1,018 indexed instructions) own the
+constructor/destructor, seven-round calendar, entrant selection, season reset
+and configuration. `pol_cup_*` uses typed guest records and a round table;
+`tools/pol_cup_audit.py` pins the entry contracts. The neighboring source pools
+and all direct/transition-vector targets close the inventory.
+
+Selection preserves database order: lower-division non-reserves before
+reserves (one shared 70-candidate cap), second-division places 13–20 before
+places <=12, lower-division additions up to 36, then first-division clubs.
+The original sampler remains an external call, preserving its RNG order.
+Allocation failure returns -1: the constructor tests exactly zero and therefore
+continues on -1, while reset tests for a negative result. The configuration
+wrapper stores the calendar result and returns 1 even when that result is null.
+The constructor's selection==0 error block is unreachable because selection
+can return only 1 or -1; it remains in the rewrite.
+
+The differential fixture compares stack bytes too. Native FSRefs contain the
+issuing PID, so a separate preparatory child supplies common native identities;
+each runner first validates the actual bridge result with FSRefMakePath and
+FSCompareFSRefs. Stable guest fork numbers still perform real private IO.
+This gives equal external inputs without excluding any comparison bytes.

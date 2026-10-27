@@ -1,0 +1,6 @@
+POL_CUP_ROUTINE(0x106cd810, 0x106cdaf0, R3, "c7533f8461ea0c64", [](Cpu& c) { c.set(3, pol_cup::construct(c, c.r(3), c.r(4), c.r(5))); })
+POL_CUP_ROUTINE(0x106cdaf0, 0x106cdbe0, R3, "d370e3a552e43bf8", [](Cpu& c) { c.set(3, pol_cup::destroy(c, c.r(3), c.r(4))); })
+POL_CUP_ROUTINE(0x106cdbe0, 0x106ce180, R3, "d896ca9e5786f462", [](Cpu& c) { c.set(3, pol_cup::calendar(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })
+POL_CUP_ROUTINE(0x106ce180, 0x106ce570, R3, "4ba00dad0a18ea14", [](Cpu& c) { c.set(3, pol_cup::select_clubs(c, c.r(3))); })
+POL_CUP_ROUTINE(0x106ce570, 0x106ce7c0, NONE, "a6f9d8dc5b28db3d", [](Cpu& c) { pol_cup::next_season(c, c.r(3)); })
+POL_CUP_ROUTINE(0x106ce7c0, 0x106ce820, R3, "debc21bb4a470fe9", [](Cpu& c) { c.set(3, pol_cup::configure(c, c.r(3))); })

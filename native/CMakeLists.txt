@@ -73,6 +73,18 @@ target_sources(cm_aot PRIVATE ${CM_MAIN_PROGRAM_SOURCES})
 file(GLOB CM_SCREEN_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/screen_manager*.cpp")
 list(FILTER CM_SCREEN_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_SCREEN_MANAGER_SOURCES})
+file(GLOB CM_POL_CUP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/pol_cup*.cpp")
+list(FILTER CM_POL_CUP_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_POL_CUP_SOURCES})
+add_executable(cm-pol-cup-checks pol_cup_checks.cpp)
+target_link_libraries(cm-pol-cup-checks PRIVATE cm_aot)
+target_compile_options(cm-pol-cup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+option(CM_POL_CUP_COVERAGE "Instrument POL_CUP.CPP rewrite for coverage" OFF)
+if(CM_POL_CUP_COVERAGE)
+    set_source_files_properties(${CM_POL_CUP_SOURCES} PROPERTIES COMPILE_OPTIONS "-fprofile-instr-generate;-fcoverage-mapping")
+    target_compile_definitions(cm-pol-cup-checks PRIVATE CM_POL_CUP_COVERAGE=1)
+    target_link_options(cm_aot INTERFACE -fprofile-instr-generate)
+endif()
 file(GLOB CM_ENG_PRM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/eng_prm*.cpp")
 list(FILTER CM_ENG_PRM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_ENG_PRM_SOURCES})
@@ -3257,6 +3269,31 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME eng_prm_equivalence COMMAND cm-eng-prm-checks "${CM_ORACLE_DIR}")
     add_test(NAME eng_prm_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_prm_audit.py")
+endif()
+
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_POL_CUP_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/pol_cup_reference.cpp")
+    add_custom_command(OUTPUT "${CM_POL_CUP_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_pol_cup_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_POL_CUP_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_pol_cup_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/pol_cup_audit.py"
+            "${CMAKE_SOURCE_DIR}/pol_cup_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-pol-cup-checks PRIVATE "${CM_POL_CUP_REFERENCE}")
+    add_test(NAME pol_cup_equivalence COMMAND cm-pol-cup-checks "${CM_ORACLE_DIR}")
+    add_test(NAME pol_cup_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_pol_cup_audit.py")
+    if(IS_DIRECTORY "${CM_MATCH_DEBUGGER_GAME_DIR}" AND
+       EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        # dev.sh checks absolute inputs before selecting runnable tests.
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pol-cup-native")
+        add_test(NAME pol_cup_career_state COMMAND cm-pol-cup-checks "${CM_ORACLE_DIR}"
+            "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot"
+            "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/pol-cup-native")
+    endif()
 endif()
 
 # SCRMAN comparisons use private hook-free reference pages.
