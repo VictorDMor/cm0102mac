@@ -64,6 +64,13 @@ Editing `native/aot_runtime.hpp` or another header the generated pages include r
 
 Before pushing, run `tools/dev.sh test`. A new failure blocks the push; known failures are listed in `TASKS.md`. Check the real game only for paths tests can't reach, and use a copy of a career.
 
+Victor owns long-running gameplay and full-season QA (confirmed 2026-10-27).
+Do not run a full-season campaign or require an end-to-end annual recording
+for routine module delivery unless he explicitly requests it. This owner-run
+QA is outside the agent's completion gates; do not present it as a blocker or
+missing verification for a completed module. Keep focused original/rewrite
+checks, applicable integration and targeted save/reload checks above.
+
 ## Rewriting the game
 
 - Rewrite one coherent subsystem per block: routines that call each other and share data. Choose by measured cost first, then by how many callers a block unblocks.
