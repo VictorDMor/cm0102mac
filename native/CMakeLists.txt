@@ -81,9 +81,15 @@ target_link_libraries(cm-pol-cup-checks PRIVATE cm_aot)
 target_compile_options(cm-pol-cup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 option(CM_POL_CUP_COVERAGE "Instrument POL_CUP.CPP rewrite for coverage" OFF)
 if(CM_POL_CUP_COVERAGE)
-    set_source_files_properties(${CM_POL_CUP_SOURCES} PROPERTIES COMPILE_OPTIONS "-fprofile-instr-generate;-fcoverage-mapping")
+    # Compile the same owned sources into the checker; the static library's
+    # definitions are not extracted when these symbols are already supplied.
+    # Coverage never adds a runtime dependency to the app or world replay.
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pol-cup-coverage")
+    set(CM_POL_CUP_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/pol-cup-coverage/check-%p.profraw")
+    target_sources(cm-pol-cup-checks PRIVATE ${CM_POL_CUP_SOURCES})
+    target_compile_options(cm-pol-cup-checks PRIVATE "-fprofile-instr-generate=${CM_POL_CUP_PROFILE}" -fcoverage-mapping)
     target_compile_definitions(cm-pol-cup-checks PRIVATE CM_POL_CUP_COVERAGE=1)
-    target_link_options(cm_aot INTERFACE -fprofile-instr-generate)
+    target_link_options(cm-pol-cup-checks PRIVATE "-fprofile-instr-generate=${CM_POL_CUP_PROFILE}")
 endif()
 file(GLOB CM_ENG_PRM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/eng_prm*.cpp")
 list(FILTER CM_ENG_PRM_SOURCES EXCLUDE REGEX "_checks\\.cpp$")

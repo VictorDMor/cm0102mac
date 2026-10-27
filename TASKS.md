@@ -11,17 +11,17 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **POL_CUP.CPP complete C++23 reconstruction (2026-10-27):** private per-entry evidence in `.local/rewrites/pol_cup/ledger.json`; pre-existing code changes preserved.
+- [x] **POL_CUP.CPP complete C++23 reconstruction (2026-10-27):** private per-entry evidence in `.local/rewrites/pol_cup/ledger.json`; pre-existing code changes preserved.
   - [x] Close original inventory: six entries, 0x106cd810–0x106ce820, 1,018 indexed instructions; neighboring pools, every direct/TV target and absence of interior resumes audited. Eight structural tests pass, including negative controls.
   - [x] Implement calendar, entrant selection and lifecycle as ordinary C++23; all 6/6 entries hook production, no owned generated/builder fallback. Generation changes exactly three pages.
   - [x] Complete 263 returned controlled fixtures plus six returned calls over registered real-career competition state, zero partial/fault/different comparisons; corrupted output detected. Native imports and private files match, including 708 history bytes written by reset.
   - [x] Close behavioral coverage: 125/126 instrumented branch outcomes exercised; the one missing constructor selection==0 outcome is impossible because the owned selector returns only 1/-1. Preserve that original branch. Injected virtual failures remain distinguished from ordinary concrete-vtable behavior.
   - [x] Review source and host-input oracle. Bounded Astra diagnosis proves native FSRef bytes contain the issuer PID; a preparatory child supplies common natively-equivalent references after per-run validation. No comparison bytes ignored and no production/runtime behavior changed. The unavailable code-review skill was replaced by explicit diff reviews.
   - [x] Original/C++ day replay pair and combined checked replay reach the recorded final state. The day reaches zero owned entries; it is integration evidence, not per-entry coverage or a performance claim.
-  - [ ] Normal ARM64 build, available full suite, installation/signature, progress spreadsheet and scoped commit/push.
+  - [x] Normal ARM64 build and strict signed installation; 218/218 available full-suite tests (2352.03s), then 3/3 focused tests after final identifier/coverage-output refinements. Progress spreadsheet reads 6/6 complete and summary 11 modules/577 routines; native visual verification passed. Scoped commit/push evidence is repository history.
   - [x] Save, quit/restart and reload an isolated all-leagues career through original menus/document-open. Date, cup year, all 52 entrant IDs/classes, seven round headers and budget retained exactly; normal career commands return.
-  - [ ] Complete recorded annual transition: not retested. Standalone real-state calls do not certify that end-to-end path; performance not measured.
-  - Baseline artifact incident: the pre-existing root `default.profraw` was overwritten by this run's implicit LLVM profile output. Exact previous bytes were not recovered (no local snapshots); other `.local/` shortlist profiles remain intact. Do not treat the root profile as prior-run evidence.
+  - Verification scope: all six owned entries and reachable behaviors are exercised or specifically proved unreachable. Reset returns with matching native IO over real career state; no complete recorded annual transition was replayed. Performance not measured.
+  - Baseline artifact incident: the pre-existing root `default.profraw` was overwritten by this run's implicit LLVM profile output. Exact previous bytes were not recovered (no local snapshots); other `.local/` shortlist profiles remain intact. Do not treat the root profile as prior-run evidence. Coverage now instruments the checker only, with a private default output path; the no-environment-variable regression preserves the root profile.
 
 - [x] **CONTRACT_MANAGER.CPP complete C++23 rewrite (goal set 2026-10-26):** preserve guest memory/stack/register effects, simulation, RNG ordering and file formats. Private evidence and per-entry limits: `.local/contract-manager/progress.json`.
   - [x] Audit exact module bounds and census: 95 entries, 0x10077ee0–0x10093a50, 28,209 indexed instructions; comparators, initializer and unindexed interior branch accounted for.

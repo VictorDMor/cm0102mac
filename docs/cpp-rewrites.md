@@ -546,9 +546,12 @@ and configuration. `pol_cup_*` uses typed guest records and a round table;
 `tools/pol_cup_audit.py` pins the entry contracts. The neighboring source pools
 and all direct/transition-vector targets close the inventory.
 
-Selection preserves database order: lower-division non-reserves before
-reserves (one shared 70-candidate cap), second-division places 13–20 before
-places <=12, lower-division additions up to 36, then first-division clubs.
+Selection uses the division/position recorded by league finalization
+(0x104aa340, club +0x34/+0x23c), distinct from current division (+0x30).
+Recorded lower-division clubs that changed division precede unchanged clubs
+(one shared 70-candidate cap). Recorded second-division places 13–20 precede
+places <=12, followed by lower-division additions up to 36 and recorded
+first-division clubs. Each group retains database order before sampling.
 The original sampler remains an external call, preserving its RNG order.
 Allocation failure returns -1: the constructor tests exactly zero and therefore
 continues on -1, while reset tests for a negative result. The configuration
@@ -561,3 +564,8 @@ issuing PID, so a separate preparatory child supplies common native identities;
 each runner first validates the actual bridge result with FSRefMakePath and
 FSCompareFSRefs. Stable guest fork numbers still perform real private IO.
 This gives equal external inputs without excluding any comparison bytes.
+
+`CM_POL_CUP_COVERAGE` instruments a separate copy of the owned sources inside
+`cm-pol-cup-checks`, with default profile output below the private build tree.
+The normal app/world replay retain their uninstrumented library definitions.
+Explicit `LLVM_PROFILE_FILE` paths still identify individual verification runs.

@@ -20,12 +20,14 @@ struct Cup {
     Field<std::int16_t> club_count() const { return {c, address + 0x3e}; }
     Field<std::int16_t> year() const { return {c, address + 0x40}; }
 };
+// League finalization (0x104aa340) records the division and finishing
+// position in +0x34/+0x23c; +0x30 remains the club's current division.
 struct Club {
     Cpu& c;
     std::uint32_t address;
-    std::uint32_t division() const { return c.u32(address + 0x34); }
-    std::uint32_t parent_division() const { return c.u32(address + 0x30); }
-    std::int8_t position() const { return c.i8(address + 0x23c); }
+    std::uint32_t recorded_division() const { return c.u32(address + 0x34); }
+    std::uint32_t current_division() const { return c.u32(address + 0x30); }
+    std::int8_t recorded_position() const { return c.i8(address + 0x23c); }
     static constexpr unsigned size = 0x248;
 };
 struct Program {
