@@ -604,3 +604,22 @@ This gives equal external inputs without excluding any comparison bytes.
 `cm-pol-cup-checks`, with default profile output below the private build tree.
 The normal app/world replay retain their uninstrumented library definitions.
 Explicit `LLVM_PROFILE_FILE` paths still identify individual verification runs.
+
+## NEWS.CPP: item payloads and queue queries
+
+The closed original inventory has 33 entries (16,819 indexed instructions),
+from `0x102bdf90` through `0x102ce710`; `tools/news_audit.py` pins the source
+pool, neighboring modules, all incoming targets and the one local switch table.
+The module reconstruction remains in progress. The first 11 entries implemented
+cover item construction/category/payloads and queue destruction, lookup, payload
+updates, unread counts and club eligibility. Text rendering, publication,
+recipient distribution, news range sampling and persistence still use their
+original generated code.
+
+Items occupy 0xe4 bytes. Their 200-byte payload starts at +8, and payload indices
+are signed bytes even when passed in full-width argument registers. Text insertion
+always terminates at +0xcf; its optional next index uses the source length rounded
+up including the terminator, then narrows to a signed byte before clamping to 50.
+The original item-copy operation preserves padding rather than copying all 0xe4
+bytes, and uses forward paired-word copies on overlapping records. Queue lookup
+retains zero as its loop counter when a negative global item count skips the loop.

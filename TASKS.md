@@ -11,6 +11,13 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [ ] **NEWS.CPP complete C++23 reconstruction (2026-10-27):** preserve guest-visible news text, queues, ABI, RNG and persistence. Private per-entry ledger: `.local/rewrites/news/ledger.json`.
+  - [x] Close inventory: 33 entries, 16,819 indexed instructions, source pools/neighbors and all direct/indirect targets audited; nine structural checks pass.
+  - [ ] Reconstruct item text/category and payload access as ordinary C++23. First block implements and enables 11/33 entries: item constructor, category, four payload accessors and five queue queries/lifecycle entries. 298 returned controlled comparisons and 1,221 sampled comparisons over seven real-capture entries pass; corruption is detected. Normal ARM64 app built; original/C++ day pair and combined sampled replay reach the recorded end state. Explicit reviews completed (code-review skill unavailable). Full suite currently 219/221 passed, two shortlist cases running; push pending. The other 22 entries, branch-coverage closure, real-career checks and full-module delivery remain open. Performance not measured.
+  - [ ] Reconstruct queue delivery, filtering, lifecycle and persistence; integrate every owned entry.
+  - [ ] Close per-entry differential/path evidence and negative controls; combined replay and applicable real-game/save/reload.
+  - [ ] Review, full suite, normal build/install, progress spreadsheet, scoped commit and push.
+
 - [x] **POL_CUP.CPP complete C++23 reconstruction (2026-10-27):** private per-entry evidence in `.local/rewrites/pol_cup/ledger.json`; pre-existing code changes preserved.
   - [x] Close original inventory: six entries, 0x106cd810–0x106ce820, 1,018 indexed instructions; neighboring pools, every direct/TV target and absence of interior resumes audited. Eight structural tests pass, including negative controls.
   - [x] Implement calendar, entrant selection and lifecycle as ordinary C++23; all 6/6 entries hook production, no owned generated/builder fallback. Generation changes exactly three pages.

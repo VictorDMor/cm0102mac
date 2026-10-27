@@ -3350,3 +3350,26 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME screen_manager_component_equivalence COMMAND cm-screen-manager-checks "${CM_ORACLE_DIR}")
     set_tests_properties(screen_manager_component_equivalence PROPERTIES TIMEOUT 300)
 endif()
+
+# NEWS.CPP reconstruction and independent hook-free reference.
+file(GLOB CM_NEWS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/news*.cpp")
+list(FILTER CM_NEWS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_NEWS_SOURCES})
+add_executable(cm-news-checks news_checks.cpp)
+target_link_libraries(cm-news-checks PRIVATE cm_aot)
+target_compile_options(cm-news-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_NEWS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/news_reference.cpp")
+    add_custom_command(OUTPUT "${CM_NEWS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_news_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_NEWS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_news_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/news_audit.py"
+            "${CMAKE_SOURCE_DIR}/news_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-news-checks PRIVATE "${CM_NEWS_REFERENCE}")
+    add_test(NAME news_equivalence COMMAND cm-news-checks "${CM_ORACLE_DIR}")
+    add_test(NAME news_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_news_audit.py")
+endif()
