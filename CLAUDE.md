@@ -74,6 +74,10 @@ Before pushing, run `tools/dev.sh test`. A new failure blocks the push; known fa
 
 ## Recording work
 
+- Whenever a module's C++23 reconstruction is completed, update the existing
+  [recompilation progress spreadsheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit)
+  as part of the same delivery. Record verified routine counts, production
+  status, checks and remaining limits, and verify the affected summary totals.
 - The commit message is the record: what changed, why, how it was verified, and what wasn't verified. Don't write separate delivery reports.
 - Commit each verified change to `main`. Push normally once the suite passes. Never force-push or rewrite history.
 - Update a doc only when the behaviour it describes changes, or when you learn something non-obvious (a quirk of the original, a contract). A few lines in that subsystem's doc. Update README.md when user-visible status changes.
