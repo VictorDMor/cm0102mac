@@ -3386,3 +3386,37 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME news_equivalence COMMAND cm-news-checks "${CM_ORACLE_DIR}")
     add_test(NAME news_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_news_audit.py")
 endif()
+
+file(GLOB CM_OCEANIA_NATIONS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/oceania_nations*.cpp")
+list(FILTER CM_OCEANIA_NATIONS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_OCEANIA_NATIONS_SOURCES})
+add_executable(cm-oceania-nations-checks oceania_nations_checks.cpp)
+target_link_libraries(cm-oceania-nations-checks PRIVATE cm_aot)
+target_compile_options(cm-oceania-nations-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_OCEANIA_NATIONS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/oceania_nations_reference.cpp")
+    add_custom_command(OUTPUT "${CM_OCEANIA_NATIONS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_oceania_nations_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_OCEANIA_NATIONS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_oceania_nations_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/oceania_nations_audit.py"
+            "${CMAKE_SOURCE_DIR}/oceania_nations_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-oceania-nations-checks PRIVATE "${CM_OCEANIA_NATIONS_REFERENCE}")
+    add_test(NAME oceania_nations_equivalence COMMAND cm-oceania-nations-checks "${CM_ORACLE_DIR}")
+    add_test(NAME oceania_nations_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_oceania_nations_audit.py")
+endif()
+option(CM_OCEANIA_NATIONS_COVERAGE "Instrument OCEANIA_NATIONS.CPP checker only" OFF)
+if(CM_OCEANIA_NATIONS_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/oceania-nations-coverage")
+    set(CM_OCEANIA_NATIONS_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/oceania-nations-coverage/check-%p.profraw")
+    add_library(cm_oceania_nations_coverage OBJECT ${CM_OCEANIA_NATIONS_SOURCES})
+    target_link_libraries(cm_oceania_nations_coverage PRIVATE cm_aot)
+    target_compile_options(cm_oceania_nations_coverage PRIVATE "-fprofile-instr-generate=${CM_OCEANIA_NATIONS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_oceania_nations_coverage PRIVATE CM_OCEANIA_NATIONS_COVERAGE=1)
+    target_sources(cm-oceania-nations-checks PRIVATE $<TARGET_OBJECTS:cm_oceania_nations_coverage>)
+    target_compile_definitions(cm-oceania-nations-checks PRIVATE CM_OCEANIA_NATIONS_COVERAGE=1)
+    target_link_options(cm-oceania-nations-checks PRIVATE "-fprofile-instr-generate=${CM_OCEANIA_NATIONS_PROFILE}")
+endif()

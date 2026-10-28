@@ -11,6 +11,14 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [x] **OCEANIA_NATIONS.CPP complete C++23 reconstruction (2026-10-28):** 15/15 handwritten entries active in production; private per-entry ledger `.local/rewrites/oceania_nations/ledger.json`.
+  - [x] Close inventory: 15 entries / 2,315 instructions, 0x106e9940–0x106ebdd0; source/TOC neighbors, flows, 11 TVs and two unreachable NOPs audited. Eleven structural tests pass; four generated pages changed and all 15 production guards verified.
+  - [x] Implement lifecycle/calendar, national selection/RNG, stages, events and record updates; no owned generated/builder fallback. Independent source/oracle reviews found two ABI defects, fixed before final comparisons. Code-review skill unavailable; explicit final diff review used.
+  - [x] Complete 1,038 returned comparisons across all 15 entries, zero partial/fault/different comparisons; four wrong-result/RNG-cursor/RNG-seed/group-payload controls detected. All 304/304 instrumented domain branch outcomes exercised. Original duplicate formatter branch is proved unreachable; coverage evidence matches final sources/configuration.
+  - [x] Original/C++ normal day replay pair reaches the recorded state; separate combined checked day returns four real update comparisons, zero differences. Final selected CTest run passes 4/4 (module equivalence/audit and generator direct-call/block-accounting checks). Normal ARM64 app build, installer and strict signature verification pass.
+  - [x] Existing progress spreadsheet reads 15/15 complete, 100% production; formulas preserved, neighboring rows unchanged, summary 13 modules/625 routines verified by readback and native visual inspection. Scoped delivery is recorded in Git history.
+  - Limits: scripted external services prove caller boundaries, not those services' internals; injected allocation/virtual failures are distinguished from ordinary play. Underfilled national pools characterize the original's untouched spare stack slots, not ordinary-career reachability. No owned serialization changed; live career persistence not retested. Performance not measured. Victor owns gameplay QA, outside delivery gates.
+
 - [x] **NEWS.CPP complete C++23 reconstruction (2026-10-28):** all 33 inventoried entries implemented and active in production; private per-entry ledger `.local/rewrites/news/ledger.json`. Verification follows Victor's reduced scope of 2026-10-28; gameplay QA belongs to him.
   - [x] Close original inventory: 33 entries, 16,819 indexed instructions; source pools, neighbors, direct/indirect targets and alignment audited. Ten structural tests pass, including exact production closure.
   - [x] Implement and route all 33/33 entries as handwritten C++23; 144 external message delegates and 27 local type heads, direct owned calls, no owned builder/generated fallback. All 33 entry guards and 5,273 direct-call hooks verified.

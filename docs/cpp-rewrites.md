@@ -638,3 +638,13 @@ NEWS checker. The app and world replay use the uninstrumented library. Private
 profile defaults prevent root-level artifacts; checker children flush before
 `_exit`. Forked LLVM writers can append cumulative records to one cached filename,
 so merged branch outcomes are meaningful while raw execution frequencies are not.
+
+## OCEANIA_NATIONS.CPP
+
+The 15 entries at `0x106e9940–0x106ebdd0` implement the Oceania Nations Cup.
+The entrant selector deliberately keeps the original ten-slot pool caps and
+untouched spare stack slots, then consumes three RNG-table draws around its
+two external shuffle calls. Calendar stages are signed bytes; years are signed
+halfwords. The event formatter's repeated equality branches at `0x106eaa10`
+make the following duplicate text block unreachable; preserve its effective
+message selection rather than treating it as a missing event case.
