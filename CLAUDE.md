@@ -60,16 +60,25 @@ Editing `native/aot_runtime.hpp` or another header the generated pages include r
 | macOS bridges, installer, UI host code | Build; the area's tests; add a regression test when the bug can be reproduced without the game |
 | Generator, runtime, semantic replacements | Regenerate if the generator changed; build; the area's equivalence/profile tests; `-R match_engine` when the engine or a runtime hot path changed |
 | Performance | All of the above, plus alternating paired timing on the same captured input (at least 5 pairs). Keep only measured wins; put the numbers in the commit message |
-| File or save handling | All of the above, plus one save and reload on a copy of a career. If you can't drive the UI, put it under Blocked on me |
+| File or save handling | Focused original/rewrite checks of serialized bytes, counts and failure paths; native persistence checks when needed to establish compatibility |
 
-Before pushing, run `tools/dev.sh test`. A new failure blocks the push; known failures are listed in `TASKS.md`. Check the real game only for paths tests can't reach, and use a copy of a career.
+Victor owns gameplay QA while playing (confirmed 2026-10-28). Limit automated
+verification to properties ordinary play cannot reliably establish: original/
+rewrite equivalence, guest memory/ABI, RNG ordering, binary save compatibility,
+and relevant error or rare paths. Run the focused checks for changed code and
+only the integration checks needed to prove those properties. Do not require
+the full available suite, repeat unrelated module checks, or make routine UI
+and gameplay checks a delivery gate. Use career copies for any necessary
+native checks. Report the selected scope and any interrupted checks accurately.
+A new failure in required checks blocks the push; known failures are listed
+in `TASKS.md`.
 
 Victor owns long-running gameplay and full-season QA (confirmed 2026-10-27).
 Do not run a full-season campaign or require an end-to-end annual recording
 for routine module delivery unless he explicitly requests it. This owner-run
 QA is outside the agent's completion gates; do not present it as a blocker or
 missing verification for a completed module. Keep focused original/rewrite
-checks, applicable integration and targeted save/reload checks above.
+checks and the necessary integration/persistence checks above.
 
 ## Rewriting the game
 
@@ -86,7 +95,7 @@ checks, applicable integration and targeted save/reload checks above.
   as part of the same delivery. Record verified routine counts, production
   status, checks and remaining limits, and verify the affected summary totals.
 - The commit message is the record: what changed, why, how it was verified, and what wasn't verified. Don't write separate delivery reports.
-- Commit each verified change to `main`. Push normally once the suite passes. Never force-push or rewrite history.
+- Commit each verified change to `main`. Push normally once the required focused checks pass. Never force-push or rewrite history.
 - Update a doc only when the behaviour it describes changes, or when you learn something non-obvious (a quirk of the original, a contract). A few lines in that subsystem's doc. Update README.md when user-visible status changes.
 - Skip the old rituals: hash inventories of protected files, per-delivery install scripts, Mach-O section comparisons, handoff prompt files, and repeating the same status paragraph across several docs.
 
