@@ -325,18 +325,21 @@ int main(int argc, char** argv) {
         require(debug_text(9, DebugText::add_goal) == "Adicionar Gol" && debug_text(0, DebugText::add_goal) == "Add Goal" &&
                 debug_text(9, DebugText::goal) == "Gol" && debug_text(0, DebugText::goal) == "Goal", "Goal labels");
         for (unsigned language = 0; language < 11; ++language)
-            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale})
+            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale, DebugText::remove_sale_clause})
                 require(!debug_text(language, key).empty(), "Missing supported-language label");
         require(debug_text(255, DebugText::best_xi) == "Best XI", "Unknown language fallback");
         require(debug_text(9, DebugText::recover_squad) == "Recuperar" &&
                 debug_text(0, DebugText::recover_squad) == "Recover" &&
                 debug_text(255, DebugText::recover_squad) == "Recover", "Recovery localization/fallback");
-        require(debug_text(9, DebugText::extend_contract) == "Renovar contrato por 1 ano" &&
-                debug_text(0, DebugText::extend_contract) == "Extend contract by 1 year" &&
-                debug_text(255, DebugText::extend_contract) == "Extend contract by 1 year", "Contract extension localization/fallback");
-        require(debug_text(9, DebugText::cancel_sale) == "Cancelar venda" &&
-                debug_text(0, DebugText::cancel_sale) == "Cancel sale" &&
-                debug_text(255, DebugText::cancel_sale) == "Cancel sale", "Sale cancellation localization/fallback");
+        require(debug_text(9, DebugText::extend_contract) == "Renovar Contrato por 1 Ano" &&
+                debug_text(0, DebugText::extend_contract) == "Extend Contract by 1 Year" &&
+                debug_text(255, DebugText::extend_contract) == "Extend Contract by 1 Year", "Contract extension localization/fallback");
+        require(debug_text(9, DebugText::cancel_sale) == "Cancelar Venda" &&
+                debug_text(0, DebugText::cancel_sale) == "Cancel Sale" &&
+                debug_text(255, DebugText::cancel_sale) == "Cancel Sale", "Sale cancellation localization/fallback");
+        require(debug_text(9, DebugText::remove_sale_clause) == "Remover Cl\xe1usula de Venda" &&
+                debug_text(0, DebugText::remove_sale_clause) == "Remove Release Clause" &&
+                debug_text(255, DebugText::remove_sale_clause) == "Remove Release Clause", "Sale clause localization/fallback");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         auto live = create_match({argv[1], argv[2], root}, {677, 5677, 12345, 2001, 194});
         auto& s = *live.state;

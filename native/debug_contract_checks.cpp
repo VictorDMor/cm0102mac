@@ -139,10 +139,31 @@ int main(int argc, char** argv) {
         s.memory.copy_in(scratch, s.memory.copy_out(contract, 100));
         invoke(s, 0x1007f200, {manager, scratch, 0xffffffff, 0xffffffff, 11, 0, 0, 0});
         require(invoke(s, 0x1007f720, {manager, person_id, std::uint32_t(s.memory.read<4>(club))}), "Missing internal renewal fixture");
+        invoke(s, 0x10374af0, {contract, 1});
+        invoke(s, 0x10380700, {contract, 1234567});
+        s.memory.write<1>(contract + 0x1c, 1); s.memory.write<1>(contract + 0x1f, 1);
+        require(invoke(s, 0x10380520, {contract}), "Minimum-fee release clause not active");
         const auto before = s.memory.copy_out(contract, 100);
         initialize_native_debugging(false);
+        const auto disabled_registers = s.registers; const auto disabled_unique = s.unique; const auto disabled_pc = s.pc;
+        append_debug_contract_action(s);
+        require(!dispatch_debug_contract_action(s) && s.registers == disabled_registers &&
+                s.unique == disabled_unique && s.pc == disabled_pc, "Disabled debugging exposed player actions");
         require(!extend_debug_contract(s, staff) && s.memory.copy_out(contract, 100) == before, "Disabled debugging changed contract");
+        require(!remove_debug_sale_clause(s, staff) && s.memory.copy_out(contract, 100) == before,
+                "Disabled debugging removed the sale clause");
+        require(!cancel_scheduled_sale(s, staff) && s.memory.read<4>(transfer + 0xa58) == 3,
+                "Disabled debugging cancelled a scheduled sale");
         select_native_debugging(true);
+        const auto clause_registers = s.registers; const auto clause_unique = s.unique; const auto clause_pc = s.pc;
+        require(remove_debug_sale_clause(s, staff), "Removing the sale clause failed");
+        require(s.registers == clause_registers && s.unique == clause_unique && s.pc == clause_pc,
+                "Sale clause action clobbered its caller");
+        const auto cleared = s.memory.copy_out(contract, 100);
+        for (unsigned n = 0; n < 100; ++n) if (n != 0x1d)
+            require(cleared[n] == before[n], "Removing the sale clause changed another contract term");
+        require(cleared[0x1d] == 0 && !invoke(s, 0x10380520, {contract}), "Sale release clause remains active");
+        require(!remove_debug_sale_clause(s, staff) && !remove_debug_sale_clause(s, 0), "Missing clause or player accepted");
         require(!extend_debug_contract(s, 0), "Missing player accepted");
         s.memory.write<2>(contract + 0x32, 0);
         require(!extend_debug_contract(s, staff) && s.memory.read<4>(s.memory.read<4>(transfer) + direct.index * 4) == direct.address,
@@ -164,7 +185,7 @@ int main(int argc, char** argv) {
                 "Unrelated offer removed");
         const auto after = s.memory.copy_out(contract, 100);
         for (unsigned n = 0; n < 100; ++n) if (n < 0x30 || n > 0x34)
-            require(before[n] == after[n], "Contract terms changed");
+            require(cleared[n] == after[n], "Contract terms changed");
         require(s.memory.read<2>(contract + 0x30) == 149 && s.memory.read<2>(contract + 0x32) == 2005 &&
                 s.memory.read<1>(contract + 0x34) == 0 &&
                 s.memory.copy_out(staff + 0x54, 5) == s.memory.copy_out(contract + 0x30, 5), "Incorrect expiry or staff copy");

@@ -25,6 +25,7 @@ void append_debug_contract_action(State&);
 bool dispatch_debug_contract_action(State&);
 bool extend_debug_contract(State&, std::uint32_t staff);
 bool cancel_scheduled_sale(State&, std::uint32_t staff);
+bool remove_debug_sale_clause(State&, std::uint32_t staff);
 // Select the match squad by decoded attributes, positions, condition and current
 // tactical instructions, optimizing the eleven roles together. Fixture may be
 // zero between fixtures; then the original UI's full nine-place bench is used.

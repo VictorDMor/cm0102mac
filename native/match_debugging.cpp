@@ -18,7 +18,7 @@ namespace {
 constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 30003;
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
-constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007;
+constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -733,7 +733,18 @@ bool current_managed_employer(State& s, GuestCall& call, std::uint32_t staff) {
 }
 }
 
-bool cancel_scheduled_sale(State& s, std::uint32_t staff) { return scheduled_sale(s, staff, true); }
+bool cancel_scheduled_sale(State& s, std::uint32_t staff) {
+    return native_debugging_enabled() && scheduled_sale(s, staff, true);
+}
+
+bool remove_debug_sale_clause(State& s, std::uint32_t staff) {
+    if (!native_debugging_enabled()) return false;
+    GuestCall call(s);
+    const auto contract = debug_primary_contract(s, call, staff);
+    if (!contract || !s.memory.read<1>(contract + 0x1d)) return false;
+    call.call(0x10374b60, {contract, 1});
+    return true;
+}
 
 bool extend_debug_contract(State& s, std::uint32_t staff) {
     if (!native_debugging_enabled()) return false;
@@ -867,6 +878,7 @@ bool extend_debug_contract(State& s, std::uint32_t staff) {
 }
 
 void append_debug_contract_action(State& s) {
+    if (!native_debugging_enabled()) return;
     const auto staff = std::uint32_t(s.r<4>(23 * 4));
     const auto original_stack = std::uint32_t(s.r<4>(4));
     GuestCall call(s);
@@ -876,25 +888,29 @@ void append_debug_contract_action(State& s) {
             std::uint32_t(s.memory.read<2>(original_stack + 0x6e)),
             call.text(debug_text(s, text)), action, 0});
     };
-    if (native_debugging_enabled() && debug_primary_contract(s, call, staff))
+    const auto contract = debug_primary_contract(s, call, staff);
+    if (contract) {
         append(DebugText::extend_contract, extend_contract_action);
+        if (s.memory.read<1>(contract + 0x1d)) append(DebugText::remove_sale_clause, remove_sale_clause_action);
+    }
     if (current_managed_employer(s, call, staff) && scheduled_sale(s, staff, false))
         append(DebugText::cancel_sale, cancel_sale_action);
 }
 
 bool dispatch_debug_contract_action(State& s) {
+    if (!native_debugging_enabled()) return false;
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != extend_contract_action && action != cancel_sale_action) return false;
+    if (action != extend_contract_action && action != cancel_sale_action && action != remove_sale_clause_action) return false;
     bool accepted = false;
     if (s.memory.read<4>(control + 12) & 2) {
         GuestCall call(s);
         const auto staff = call.call(0x1073ef70, {root(s), 0});
         if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
+        else if (action == remove_sale_clause_action) accepted = remove_debug_sale_clause(s, staff);
         else if (current_managed_employer(s, call, staff)) accepted = cancel_scheduled_sale(s, staff);
-        // The player page caches offer indices across redraws. Invalidate its
-        // original caches before the deleted offer slots can be read again.
+        // Refresh the player page after changing a contract or transfer.
         if (accepted) call.call(0x103ab9e0, {});
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0));
