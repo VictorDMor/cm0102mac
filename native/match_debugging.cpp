@@ -541,7 +541,7 @@ bool dispatch_best_xi_control(State& s) {
 
 namespace {
 struct ContractProposal {
-    std::uint32_t origin, revision, club, offer;
+    std::uint32_t origin, revision, club, offer, scheduled;
 };
 
 // The original collection has an intrusive cursor. Leave it as it was when
@@ -602,27 +602,62 @@ bool extend_debug_contract(State& s, std::uint32_t staff) {
     const auto deferred_rows = contract_rows(s, call, deferred);
     const auto slots = std::uint32_t(s.memory.read<4>(transfers));
     const auto capacity = std::uint32_t(s.memory.read<4>(transfers + 4));
+    const auto schedule = std::uint32_t(s.memory.read<4>(transfers + 0xa50));
+    const auto schedule_capacity = std::uint32_t(s.memory.read<4>(transfers + 0xa54));
+    const auto schedule_count = std::uint32_t(s.memory.read<4>(transfers + 0xa58));
+    if (schedule_count > schedule_capacity || (schedule_count && !schedule)) return false;
     std::vector<ContractProposal> selected;
-    const auto consider = [&](std::uint32_t row) {
-        if (s.memory.read<4>(row) != id || s.memory.read<1>(row + 0x64) != 0) return;
-        const auto club = std::uint32_t(s.memory.read<4>(row + 4));
-        const auto index = std::uint32_t(s.memory.read<4>(row + 0x70));
-        const auto revision = std::uint32_t(s.memory.read<4>(row + 0x74));
-        if (club == employer || club >= club_count || index >= capacity) return;
+    const auto consider = [&](std::uint32_t index, std::uint32_t revision, std::uint32_t club) {
+        if (club == employer || club >= club_count || index >= capacity || !slots) return;
         const auto offer = std::uint32_t(s.memory.read<4>(slots + index * 4));
         if (!offer || s.memory.read<4>(offer + 0x28) != index ||
             s.memory.read<4>(offer + 0x2c) != revision || s.memory.read<4>(offer + 12) != id ||
             s.memory.read<4>(offer + 8) != club || s.memory.read<1>(offer + 0x24) != 0 ||
-            !s.memory.read<1>(offer + 0x37) || s.memory.read<1>(offer + 0x10) == 2) return;
+            !s.memory.read<1>(offer + 0x37)) return;
         const auto timing = s.memory.read<1>(offer + 0x38) >> 4;
         const auto status = s.memory.read<1>(offer + 0x34);
-        if ((timing != 3 && timing != 4) || (status >= 11 && status <= 14) || status >= 19) return;
+        if ((timing != 3 && timing != 4) || (status >= 11 && status <= 14) || status > 19) return;
         if (std::none_of(selected.begin(), selected.end(), [index](const auto& item) { return item.origin == index; }))
-            selected.push_back({index, revision, club, offer});
+            selected.push_back({index, revision, club, offer, 0});
     };
-    for (auto row : pending_rows) consider(row);
-    for (auto row : deferred_rows) consider(row);
-
+    const auto consider_row = [&](std::uint32_t row) {
+        const auto state = s.memory.read<1>(row + 0x64);
+        if (s.memory.read<4>(row) == id && (state == 0 || state == 2))
+            consider(std::uint32_t(s.memory.read<4>(row + 0x70)),
+                     std::uint32_t(s.memory.read<4>(row + 0x74)),
+                     std::uint32_t(s.memory.read<4>(row + 4)));
+    };
+    for (auto row : pending_rows) consider_row(row);
+    for (auto row : deferred_rows) consider_row(row);
+    // An accepted agreement may no longer have a negotiation row, including
+    // the interval before the future-transfer queue is populated.
+    for (std::uint32_t index = 0; slots && index < capacity; ++index) {
+        const auto offer = std::uint32_t(s.memory.read<4>(slots + index * 4));
+        if (offer && s.memory.read<4>(offer + 12) == id && s.memory.read<1>(offer + 0x10) == 2)
+            consider(index, std::uint32_t(s.memory.read<4>(offer + 0x2c)),
+                     std::uint32_t(s.memory.read<4>(offer + 8)));
+    }
+    // Scheduled agreements can also be found directly in the original queue.
+    for (std::uint32_t n = 0; n < schedule_count; ++n) {
+        const auto index = std::uint32_t(s.memory.read<4>(schedule + n * 12 + 8));
+        if (index >= capacity || !slots) return false;
+        const auto offer = std::uint32_t(s.memory.read<4>(slots + index * 4));
+        if (!offer) return false;
+        if (s.memory.read<4>(offer + 12) == id && s.memory.read<1>(offer + 0x34) == 19)
+            consider(index, std::uint32_t(s.memory.read<4>(offer + 0x2c)),
+                     std::uint32_t(s.memory.read<4>(offer + 8)));
+        for (auto& item : selected) if (item.origin == index) ++item.scheduled;
+    }
+    bool another_scheduled = false;
+    for (std::uint32_t n = 0; n < schedule_count; ++n) {
+        const auto index = std::uint32_t(s.memory.read<4>(schedule + n * 12 + 8));
+        if (std::any_of(selected.begin(), selected.end(), [index](const auto& item) { return item.origin == index; }))
+            continue;
+        const auto offer = std::uint32_t(s.memory.read<4>(slots + index * 4));
+        if (s.memory.read<4>(offer + 12) == id) another_scheduled = true;
+        for (const auto exchange : contract_rows(s, call, std::uint32_t(s.memory.read<4>(offer + 4))))
+            if (s.memory.read<4>(exchange) == id) another_scheduled = true;
+    }
     // The original deletion looks up a pending row by person and club. Reject
     // an ambiguous pair before any writes, and do not remove exchange players.
     for (const auto& item : selected) {
@@ -630,7 +665,7 @@ bool extend_debug_contract(State& s, std::uint32_t staff) {
         for (auto row : pending_rows)
             if (s.memory.read<4>(row) == id && s.memory.read<4>(row + 4) == item.club) {
                 if (s.memory.read<4>(row + 0x70) != item.origin || s.memory.read<4>(row + 0x74) != item.revision ||
-                    s.memory.read<1>(row + 0x64) != 0 || ++matching_pending > 1) return false;
+                    (s.memory.read<1>(row + 0x64) != 0 && s.memory.read<1>(row + 0x64) != 2) || ++matching_pending > 1) return false;
             }
         const auto exchange = std::uint32_t(s.memory.read<4>(item.offer + 4));
         if (exchange && s.memory.read<2>(exchange)) return false;
@@ -648,7 +683,22 @@ bool extend_debug_contract(State& s, std::uint32_t staff) {
             if (found == rows.end()) break;
             call.call(0x10738e60, {deferred, *found});
         }
+        for (std::uint32_t n = 0; n < item.scheduled; ++n)
+            call.call(0x103f3540, {transfers, item.offer});
         call.call(0x103fb630, {transfers, item.offer});
+    }
+    // The original unlink operations clear person-wide flags. Another scheduled
+    // purchase or selected contract can still belong to this same player.
+    if (!selected.empty()) {
+        if (another_scheduled) {
+            const auto flags = std::uint32_t(s.memory.read<4>(transfers + 0x9a0)) + id * 10;
+            s.memory.write<1>(flags, s.memory.read<1>(flags) | 0x10);
+        }
+        for (const auto row : contract_rows(s, call, pending))
+            if (s.memory.read<4>(row) == id && s.memory.read<1>(row + 0x64) == 2) {
+                call.call(0x103ea250, {transfers, staff});
+                break;
+            }
     }
     for (const auto target : {contract + 0x30, staff + 0x54}) {
         s.memory.write<2>(target, std::uint16_t(next->day));
