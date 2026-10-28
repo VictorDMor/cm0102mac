@@ -697,3 +697,20 @@ captured shared assertion flag is already zero, so the test starts a fresh
 canary and requires it to remain set. As in the Polish Cup checker, real FSRef
 outputs are validated against common native identities before supplying equal
 host inputs to both children; every guest comparison byte remains checked.
+
+The default game deliberately retires this competition after its final 1998
+edition (Victor's gameplay change, 2026-10-28). This policy lives separately in
+`inter_amer_cup_retirement.cpp`; the six reconstructed entries retain their
+original semantics. Only the new-career initialization call scopes the factory's
+existing absent-competition branches. Loads still restore legacy objects and
+statistics. Daily and annual processing skip the retired object, and FIX_MAN's
+validated row reader omits only post-1998 fixtures whose home score is -1.
+The object at cup+8 owns club/player statistics; it is not the pending-game
+manager and must not be destroyed to cancel games.
+The separate host-announcement iterator also skips future rows for this cup;
+its mixed lists continue publishing news for other competitions.
+Played results and historical editions retain the original reader/writer and
+0x50-byte record format, including years loaded lazily. A save without a cup
+archive may recreate a dormant object on load through the original constructor;
+the daily and annual guards still prevent future editions. Creating a career
+without this competition intentionally changes the original RNG trajectory.

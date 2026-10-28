@@ -10,6 +10,10 @@ career, managing a club, advancing dates, completing matches, returning to
 management, saving and reloading. Multiplayer and some less-used services remain
 unfinished. There is no public binary release yet.
 
+The Inter-American Cup is retired after its final 1998 edition: new careers
+omit it, and existing careers retain their history while future unplayed games
+are removed on load. Other competitions keep their original 2001/02 rules.
+
 ## How it works
 
 - A custom Ghidra-based pipeline translates the original 32-bit PowerPC program

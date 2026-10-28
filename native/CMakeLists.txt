@@ -3467,7 +3467,7 @@ endif()
 file(GLOB CM_INTER_AMER_CUP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/inter_amer_cup*.cpp")
 list(FILTER CM_INTER_AMER_CUP_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_INTER_AMER_CUP_SOURCES})
-add_executable(cm-inter-amer-cup-checks inter_amer_cup_checks.cpp inter_amer_cup_native_checks.cpp)
+add_executable(cm-inter-amer-cup-checks inter_amer_cup_checks.cpp inter_amer_cup_native_checks.cpp inter_amer_cup_retirement_checks.cpp)
 target_link_libraries(cm-inter-amer-cup-checks PRIVATE cm_aot)
 target_compile_options(cm-inter-amer-cup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
@@ -3482,13 +3482,27 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
     target_sources(cm-inter-amer-cup-checks PRIVATE "${CM_INTER_AMER_CUP_REFERENCE}")
+    set(CM_COMPETITION_RETIREMENT_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/competition_retirement_reference.cpp")
+    add_custom_command(OUTPUT "${CM_COMPETITION_RETIREMENT_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_competition_retirement_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_COMPETITION_RETIREMENT_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_competition_retirement_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-inter-amer-cup-checks PRIVATE "${CM_COMPETITION_RETIREMENT_REFERENCE}")
+
     add_test(NAME inter_amer_cup_equivalence COMMAND cm-inter-amer-cup-checks "${CM_ORACLE_DIR}")
     add_test(NAME inter_amer_cup_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_inter_amer_cup_audit.py")
+    add_test(NAME competition_retirement_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_competition_retirement.py")
     if(IS_DIRECTORY "${CM_MATCH_DEBUGGER_GAME_DIR}" AND
        EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
         add_test(NAME inter_amer_cup_native_constructor COMMAND cm-inter-amer-cup-checks "${CM_ORACLE_DIR}"
             "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot"
             "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/inter-amer-cup-native")
+        add_test(NAME inter_amer_cup_retirement COMMAND cm-inter-amer-cup-checks "${CM_ORACLE_DIR}"
+            --retirement "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot"
+            "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/inter-amer-cup-retirement")
     endif()
 endif()
 option(CM_INTER_AMER_CUP_COVERAGE "Instrument INTER_AMER_CUP.CPP checker only" OFF)

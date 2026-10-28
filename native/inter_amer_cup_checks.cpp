@@ -261,8 +261,11 @@ std::vector<Case> cases() {
 }
 }
 int inter_amer_cup_native_checks(const char* snapshot, const char* game_directory, const char* backing);
+int inter_amer_cup_retirement_checks(const char*, const char*, const char*);
 int main(int argc, char** argv) {
     if (argc == 5) return inter_amer_cup_native_checks(argv[2], argv[3], argv[4]);
+    if (argc == 6 && std::string_view(argv[2]) == "--retirement")
+        return inter_amer_cup_retirement_checks(argv[3], argv[4], argv[5]);
     if (argc != 2) { std::cerr << "Usage: cm-inter-amer-cup-checks <original-segments> [career.snapshot game-directory private-backing]\n"; return 2; }
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;

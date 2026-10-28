@@ -977,7 +977,7 @@ LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CAL
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
-    0x10713aec, 0x10713b3c, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
+    0x10713aec, 0x10713b3c, 0x1034f1f8, 0x1034f318, 0x1034a8e4, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
     0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
@@ -1158,7 +1158,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, eng_prm_hooks=True, inter_amer_cup_hooks=True, pol_cup_hooks=True, oceania_nations_hooks=True, news_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, eng_prm_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, pol_cup_hooks=True, oceania_nations_hooks=True, news_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
                   direct_owner_calls=None):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
@@ -1585,6 +1585,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "news_adapter.hpp"')
     if oceania_nations_hooks and page_addresses & set(OCEANIA_NATIONS_ENTRIES):
         code.insert(1, '#include "oceania_nations_adapter.hpp"')
+    if competition_retirement_hooks and page in (0x1034f, 0x1034a, 0x10482, 0x10131, 0x1048a, 0x1049d):
+        code.insert(1, '#include "inter_amer_cup_retirement.hpp"')
     if inter_amer_cup_hooks and page_addresses & set(INTER_AMER_CUP_ENTRIES):
         code.insert(1, '#include "inter_amer_cup_adapter.hpp"')
     if pol_cup_hooks and page_addresses & set(POL_CUP_ENTRIES):
@@ -1656,6 +1658,11 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
         hooks_start = len(code)
+        if competition_retirement_hooks and a == 0x10482ca0:
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError("Retired cup daily entry no longer matches the audited release")
+            code.append("if (inter_amer_cup_skip_daily(s)) return true;")
+            isolated.add(a)
         if native_sort8_hooks and a == NATIVE_SORT8_ENTRY:
             code.append("if (try_native_sort8(s)) return true;")
         if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
@@ -1951,6 +1958,65 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if a == 0x101fefc8:
             code.append("s.memory.write<1>(std::uint32_t(s.r<4>(12) + 0x4070), native_match_speed_enabled() ? native_match_speed() : s.r<4>(20));")
             code.append(transfer(a + 4, transfer_page, selected))
+            isolated.add(a)
+            continue
+        if competition_retirement_hooks and a == 0x1034a8e4:
+            if item["assembly"] != "bl 0x10191cd0" or plain_direct_call(item) != 0x10191cd0:
+                raise ValueError("New-career initialization call no longer matches the audited release")
+            code.extend(["inter_amer_cup_initialize_new_career(s);",
+                         transfer(a + 4, transfer_page, selected)])
+            isolated.add(a)
+            continue
+        if competition_retirement_hooks and a == 0x101312b8:
+            by_address = {record["address"]: record for record in instructions}
+            sequence = {0x101312b4: "lwzx r16,r3,r0", 0x101312b8: "cmplwi r16,0x0",
+                        0x101312bc: "beq 0x101313a4", 0x101313a4: "addi r17,r17,0x1"}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in sequence.items()):
+                raise ValueError("Annual competition loop no longer matches the audited release")
+            code.extend(["if (inter_amer_cup_retired_object(s, std::uint32_t(s.r<4>(64)))) {",
+                         transfer(0x101313a4, transfer_page, selected), "}"])
+            isolated.add(a)
+        if competition_retirement_hooks and a == 0x1049dfa8:
+            by_address = {record["address"]: record for record in instructions}
+            sequence = {0x1049df9c: "lwz r0,0x4(r4)", 0x1049dfa0: "stw r0,0xc(r4)",
+                        0x1049dfa4: "b 0x1049e1cc", 0x1049dfa8: "lwz r5,0x0(r24)",
+                        0x1049dfac: "lbz r4,0x20(r5)"}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in sequence.items()):
+                raise ValueError("Host-announcement loop no longer matches the audited release")
+            code.extend(["if (inter_amer_cup_skip_host_announcement(s, std::uint32_t(s.memory.read<4>(s.r<4>(96))))) {",
+                         transfer(0x1049e1cc, transfer_page, selected), "}"])
+            isolated.add(a)
+        if competition_retirement_hooks and a == 0x1048aa94:
+            by_address = {record["address"]: record for record in instructions}
+            sequence = {0x1048aa94: "lwz r0,0x138(r1)",
+                        0x1048acd8: "addi r24,r24,0x1", 0x1048acdc: "lwz r0,0x38(r1)",
+                        0x1048ace0: "cmpw r24,r0", 0x1048ace4: "blt 0x1048aa1c"}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in sequence.items()):
+                raise ValueError("Fixture reader no longer matches the audited release")
+            code.extend(["if (inter_amer_cup_cancel_pending(s, std::uint32_t(s.r<4>(4)) + 0x12c)) {",
+                         transfer(0x1048acd8, transfer_page, selected), "}"])
+            isolated.add(a)
+        if competition_retirement_hooks and a in (0x1034f1f8, 0x1034f318):
+            # Use the original optional-competition branches for post-1998
+            # careers, without changing the persistent competition definition.
+            sequence = ({0x1034f1f8: "lwz r0,0x0(r26)",
+                         0x1034f1fc: "cmpwi r0,-0x1", 0x1034f200: "bne 0x1034f210",
+                         0x1034f204: "li r0,0x2", 0x1034f208: "stw r0,0xc(r24)",
+                         0x1034f210: "li r0,0x3", 0x1034f214: "stw r0,0xc(r24)"}
+                        if a == 0x1034f1f8 else
+                        {0x1034f318: "lwz r0,0x0(r26)",
+                         0x1034f31c: "cmpwi r0,-0x1", 0x1034f320: "beq 0x1034f358",
+                         0x1034f324: "li r3,0xb4", 0x1034f328: "bl 0x10773520",
+                         0x1034f34c: "bl 0x106ebdd0", 0x1034f354: "stw r28,0x8(r3)"})
+            by_address = {record["address"]: record for record in instructions}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in sequence.items()):
+                raise ValueError("Inter-American Cup factory no longer matches the audited release")
+            code.extend(["s.wr<4>(0, inter_amer_cup_creation_id(s, std::uint32_t(s.memory.read<4>(s.r<4>(104)))));",
+                         transfer(a + 4, transfer_page, selected)])
             isolated.add(a)
             continue
         if a == 0x10774c24:
@@ -2640,7 +2706,14 @@ def main():
                     for address, purpose in (
                         (0x10713aec, "Skip unused null-club descriptor lookup for default background"),
                         (0x10713b3c, "Skip unused null-competition descriptor lookup for default background"),
-                        (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"))
+                        (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"),
+                        (0x1034f1f8, "Exclude the retired Inter-American Cup from ruling-body counts after 1998"),
+                        (0x1034f318, "Skip creating the retired Inter-American Cup after 1998"),
+                        (0x1034a8e4, "Scope retirement creation policy to new careers, preserving loaded history"),
+                        (0x10482ca0, "Suspend daily processing of the retired Inter-American Cup"),
+                        (0x101312b8, "Exclude the retired Inter-American Cup from annual processing"),
+                        (0x1048aa94, "Cancel only unplayed post-1998 Inter-American fixtures while reading"),
+                        (0x1049dfa8, "Suppress future host announcements for the retired Inter-American Cup"))
                     if (args.all_analyzed and address >> 12 in pages) or address in selected],
                 "quotientFreeDivisions": len(divisions),
                 "missingStaticTargets": sorted(missing),
