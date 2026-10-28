@@ -5,6 +5,7 @@
 #include "direct_commands.hpp"
 #include "ui_bridge.hpp"
 #include "debug_localization.hpp"
+#include "debug_contract_date.hpp"
 #include <array>
 #include <algorithm>
 #include <cstdlib>
@@ -16,6 +17,7 @@ namespace {
 constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 30003;
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
+constexpr unsigned extend_contract_action = 30006;
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -534,6 +536,153 @@ bool dispatch_best_xi_control(State& s) {
         }
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
+    return true;
+}
+
+namespace {
+struct ContractProposal {
+    std::uint32_t origin, revision, club, offer;
+};
+
+// The original collection has an intrusive cursor. Leave it as it was when
+// inspecting the list; unlinking is done with the original collection service.
+std::vector<std::uint32_t> contract_rows(State& s, GuestCall& call, std::uint32_t list) {
+    std::vector<std::uint32_t> rows;
+    if (!list) return rows;
+    const auto count = signed_value<2>(s.memory.read<2>(list));
+    if (count < 0) throw std::runtime_error("Invalid contract proposal list");
+    const auto previous = std::uint32_t(s.memory.read<4>(list + 12));
+    struct Restore {
+        State& state; std::uint32_t list, cursor;
+        ~Restore() { state.memory.write<4>(list + 12, cursor); }
+    } restore{s, list, previous};
+    s.memory.write<4>(list + 12, s.memory.read<4>(list + 4));
+    for (std::int64_t i = 0; i < count; ++i) {
+        const auto row = call.call(0x10738e00, {list});
+        if (!row) throw std::runtime_error("Truncated contract proposal list");
+        rows.push_back(row);
+    }
+    if (call.call(0x10738e00, {list})) throw std::runtime_error("Invalid contract proposal count");
+    return rows;
+}
+
+std::uint32_t debug_primary_contract(State& s, GuestCall& call, std::uint32_t staff) {
+    const auto toc = std::uint32_t(s.r<4>(8));
+    if (!staff || !s.memory.read<4>(staff + 0x14)) return 0;
+    const auto id = std::uint32_t(s.memory.read<4>(staff));
+    const auto count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7be4)));
+    if (id >= count) return 0;
+    const auto manager = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b7c)));
+    return manager ? call.call(0x10082f20, {manager, staff}) : 0;
+}
+}
+
+bool extend_debug_contract(State& s, std::uint32_t staff) {
+    if (!native_debugging_enabled()) return false;
+    GuestCall call(s);
+    const auto contract = debug_primary_contract(s, call, staff);
+    if (!contract) return false;
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto manager = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b7c)));
+    const auto transfers = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b40)));
+    if (!transfers) return false;
+    const auto id = std::uint32_t(s.memory.read<4>(staff));
+    const auto employer = std::uint32_t(s.memory.read<4>(contract + 4));
+    const auto club_count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b50)));
+    if (employer >= club_count) return false;
+    const cm::calendar::Date expiry{std::int16_t(s.memory.read<2>(contract + 0x30)),
+                                    std::uint16_t(s.memory.read<2>(contract + 0x32))};
+    const auto next = extend_contract_date(expiry);
+    if (!next || s.memory.copy_out(contract + 0x30, 5) != s.memory.copy_out(staff + 0x54, 5) ||
+        s.memory.read<1>(contract + 0x34) != cm::calendar::is_leap(expiry.year)) return false;
+
+    const auto pending = std::uint32_t(s.memory.read<4>(manager + 0x34));
+    const auto deferred = std::uint32_t(s.memory.read<4>(manager + 0x38));
+    const auto pending_rows = contract_rows(s, call, pending);
+    const auto deferred_rows = contract_rows(s, call, deferred);
+    const auto slots = std::uint32_t(s.memory.read<4>(transfers));
+    const auto capacity = std::uint32_t(s.memory.read<4>(transfers + 4));
+    std::vector<ContractProposal> selected;
+    const auto consider = [&](std::uint32_t row) {
+        if (s.memory.read<4>(row) != id || s.memory.read<1>(row + 0x64) != 0) return;
+        const auto club = std::uint32_t(s.memory.read<4>(row + 4));
+        const auto index = std::uint32_t(s.memory.read<4>(row + 0x70));
+        const auto revision = std::uint32_t(s.memory.read<4>(row + 0x74));
+        if (club == employer || club >= club_count || index >= capacity) return;
+        const auto offer = std::uint32_t(s.memory.read<4>(slots + index * 4));
+        if (!offer || s.memory.read<4>(offer + 0x28) != index ||
+            s.memory.read<4>(offer + 0x2c) != revision || s.memory.read<4>(offer + 12) != id ||
+            s.memory.read<4>(offer + 8) != club || s.memory.read<1>(offer + 0x24) != 0 ||
+            !s.memory.read<1>(offer + 0x37) || s.memory.read<1>(offer + 0x10) == 2) return;
+        const auto timing = s.memory.read<1>(offer + 0x38) >> 4;
+        const auto status = s.memory.read<1>(offer + 0x34);
+        if ((timing != 3 && timing != 4) || (status >= 11 && status <= 14) || status >= 19) return;
+        if (std::none_of(selected.begin(), selected.end(), [index](const auto& item) { return item.origin == index; }))
+            selected.push_back({index, revision, club, offer});
+    };
+    for (auto row : pending_rows) consider(row);
+    for (auto row : deferred_rows) consider(row);
+
+    // The original deletion looks up a pending row by person and club. Reject
+    // an ambiguous pair before any writes, and do not remove exchange players.
+    for (const auto& item : selected) {
+        unsigned matching_pending = 0;
+        for (auto row : pending_rows)
+            if (s.memory.read<4>(row) == id && s.memory.read<4>(row + 4) == item.club) {
+                if (s.memory.read<4>(row + 0x70) != item.origin || s.memory.read<4>(row + 0x74) != item.revision ||
+                    s.memory.read<1>(row + 0x64) != 0 || ++matching_pending > 1) return false;
+            }
+        const auto exchange = std::uint32_t(s.memory.read<4>(item.offer + 4));
+        if (exchange && s.memory.read<2>(exchange)) return false;
+        const auto secondary = std::uint32_t(s.memory.read<4>(item.offer + 0x30));
+        if (secondary != 0xffffffffu && (secondary >= s.memory.read<4>(transfers + 0x10) ||
+            !s.memory.read<4>(s.memory.read<4>(transfers + 0xc) + secondary * 4))) return false;
+    }
+    for (const auto& item : selected) {
+        for (;;) {
+            const auto rows = contract_rows(s, call, deferred);
+            const auto found = std::find_if(rows.begin(), rows.end(), [&](auto row) {
+                return s.memory.read<4>(row) == id && s.memory.read<4>(row + 4) == item.club &&
+                    s.memory.read<4>(row + 0x70) == item.origin && s.memory.read<4>(row + 0x74) == item.revision;
+            });
+            if (found == rows.end()) break;
+            call.call(0x10738e60, {deferred, *found});
+        }
+        call.call(0x103fb630, {transfers, item.offer});
+    }
+    for (const auto target : {contract + 0x30, staff + 0x54}) {
+        s.memory.write<2>(target, std::uint16_t(next->day));
+        s.memory.write<2>(target + 2, next->year);
+        s.memory.write<1>(target + 4, cm::calendar::is_leap(next->year));
+    }
+    return true;
+}
+
+void append_debug_contract_action(State& s) {
+    if (!native_debugging_enabled()) return;
+    const auto staff = std::uint32_t(s.r<4>(23 * 4));
+    const auto original_stack = std::uint32_t(s.r<4>(4));
+    GuestCall call(s);
+    if (!debug_primary_contract(s, call, staff)) return;
+    const auto label = debug_text(s, DebugText::extend_contract);
+    call.call(0x103abf20, {original_stack + 0x6c,
+        std::uint32_t(s.memory.read<2>(original_stack + 0x70)),
+        std::uint32_t(s.memory.read<2>(original_stack + 0x6e)),
+        call.text(label), extend_contract_action, 0});
+}
+
+bool dispatch_debug_contract_action(State& s) {
+    if (!native_debugging_enabled()) return false;
+    const auto control = selected_control(s);
+    if (!control || s.memory.read<4>(control + 8) != extend_contract_action) return false;
+    bool accepted = false;
+    if (s.memory.read<4>(control + 12) & 2) {
+        GuestCall call(s);
+        const auto staff = call.call(0x1073ef70, {root(s), 0});
+        accepted = extend_debug_contract(s, staff);
+    }
+    s.wr<4>(12, std::uint32_t(accepted ? -11 : 0));
+    s.pc = s.r<4>(4128);
     return true;
 }
 }

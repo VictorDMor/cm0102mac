@@ -21,6 +21,9 @@ bool deliver_match_shortcut(State&, const CommandContext&, const UIEvent&);
 void reset_match_debugging();
 void append_best_xi_control(State&);
 bool dispatch_best_xi_control(State&);
+void append_debug_contract_action(State&);
+bool dispatch_debug_contract_action(State&);
+bool extend_debug_contract(State&, std::uint32_t staff);
 // Select the match squad using the original positional evaluator. Fixture may be
 // zero between fixtures; then the original UI's full nine-place bench is used.
 bool select_debug_best_xi(State&, std::uint32_t club, unsigned managed,

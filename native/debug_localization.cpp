@@ -6,18 +6,18 @@ namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
     // English, US English, French, German, Italian, Spanish, Danish,
     // Dutch, Norwegian, Portuguese and Swedish, as in the original language menu.
-    static constexpr std::array<std::array<std::string_view, 6>, 11> labels{{
-        {"Best XI", "Add Goal", "Goal", "On", "Off", "Recover"},
-        {"Best XI", "Add Goal", "Goal", "On", "Off", "Recover"},
-        {"Meilleur onze", "Ajouter un but", "But", "Activ\xe9", "D\xe9sactiv\xe9", "Soigner"},
-        {"Beste Elf", "Tor hinzuf\xfcgen", "Tor", "Ein", "Aus", "Heilen"},
-        {"Migliori 11", "Aggiungi gol", "Gol", "Attivo", "Disattivo", "Recupera"},
-        {"Mejor once", "A\xf1" "adir gol", "Gol", "Activado", "Desactivado", "Recuperar"},
-        {"Bedste 11", "Tilf\xf8j m\xe5l", "M\xe5l", "Til", "Fra", "Restituer"},
-        {"Beste elf", "Doelpunt toevoegen", "Doelpunt", "Aan", "Uit", "Herstellen"},
-        {"Beste 11", "Legg til m\xe5l", "M\xe5l", "P\xe5", "Av", "Restituer"},
-        {"Melhor 11", "Adicionar Gol", "Gol", "Ligado", "Desligado", "Recuperar"},
-        {"B\xe4sta elvan", "L\xe4gg till m\xe5l", "M\xe5l", "P\xe5", "Av", "\xc5terst\xe4ll"},
+    static constexpr std::array<std::array<std::string_view, 7>, 11> labels{{
+        {"Best XI", "Add Goal", "Goal", "On", "Off", "Recover", "Extend contract by 1 year"},
+        {"Best XI", "Add Goal", "Goal", "On", "Off", "Recover", "Extend contract by 1 year"},
+        {"Meilleur onze", "Ajouter un but", "But", "Activ\xe9", "D\xe9sactiv\xe9", "Soigner", "Prolonger le contrat d'un an"},
+        {"Beste Elf", "Tor hinzuf\xfcgen", "Tor", "Ein", "Aus", "Heilen", "Vertrag um 1 Jahr verl\xe4ngern"},
+        {"Migliori 11", "Aggiungi gol", "Gol", "Attivo", "Disattivo", "Recupera", "Rinnova contratto di 1 anno"},
+        {"Mejor once", "A\xf1" "adir gol", "Gol", "Activado", "Desactivado", "Recuperar", "Renovar contrato por 1 a\xf1o"},
+        {"Bedste 11", "Tilf\xf8j m\xe5l", "M\xe5l", "Til", "Fra", "Restituer", "Forl\xe6ng kontrakt med 1 \xe5r"},
+        {"Beste elf", "Doelpunt toevoegen", "Doelpunt", "Aan", "Uit", "Herstellen", "Contract met 1 jaar verlengen"},
+        {"Beste 11", "Legg til m\xe5l", "M\xe5l", "P\xe5", "Av", "Restituer", "Forny kontrakten med 1 \xe5r"},
+        {"Melhor 11", "Adicionar Gol", "Gol", "Ligado", "Desligado", "Recuperar", "Renovar contrato por 1 ano"},
+        {"B\xe4sta elvan", "L\xe4gg till m\xe5l", "M\xe5l", "P\xe5", "Av", "\xc5terst\xe4ll", "F\xf6rl\xe4ng kontraktet med 1 \xe5r"},
     }};
     return labels[language < labels.size() ? language : 0][static_cast<unsigned>(text)];
 }

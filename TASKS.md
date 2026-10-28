@@ -11,6 +11,11 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [x] **Debugging contract extension:** add the localized Action-menu option for an existing player contract. Extend the current expiry by one calendar year and cancel linked pending/deferred direct offers due after expiry; preserve purchases, loans, immediate hires, internal renewals and chosen agreements.
+  - Original-service fixture passes with actual offer constructors and registration, concurrent direct/purchase/loan/immediate/chosen offers, selective deferred cleanup, internal renewal, retained contract bytes, repeated use and Debugging gating. Calendar anniversaries match `std::chrono` for 1601–2399; generated block accounting and existing Best XI/localization checks pass.
+  - A copied career's André contract advanced from 28 December 2004 to 28 December 2005 with the same displayed terms; ordinary save, quit and reload retained the change. Debugging off removes the option. Pending-offer cancellation was tested with original services, not through save/reload of a career containing actual pending pre-contracts.
+  - The signed installed candidate isolates concurrent unfinished CLUB_RECORDS work by declining that family's hooks and using its original routines. The original fallback and the contract fixture passed on this candidate; its player menu separately advanced André's copied contract from 2 December 2007 to 2 December 2008.
+
 - [x] **OCEANIA_NATIONS.CPP complete C++23 reconstruction (2026-10-28):** 15/15 handwritten entries active in production; private per-entry ledger `.local/rewrites/oceania_nations/ledger.json`.
   - [x] Close inventory: 15 entries / 2,315 instructions, 0x106e9940–0x106ebdd0; source/TOC neighbors, flows, 11 TVs and two unreachable NOPs audited. Eleven structural tests pass; four generated pages changed and all 15 production guards verified.
   - [x] Implement lifecycle/calendar, national selection/RNG, stages, events and record updates; no owned generated/builder fallback. Independent source/oracle reviews found two ABI defects, fixed before final comparisons. Code-review skill unavailable; explicit final diff review used.

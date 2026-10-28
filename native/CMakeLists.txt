@@ -2237,6 +2237,12 @@ target_link_libraries(cm-match-debugger-cards-checks PRIVATE cm_match_debugger_f
 target_compile_options(cm-match-debugger-cards-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-debugging-injury-checks match_debugging_injury_checks.cpp)
 add_executable(cm-best-xi-checks best_xi_checks.cpp)
+add_executable(cm-debug-contract-checks debug_contract_checks.cpp)
+add_executable(cm-debug-contract-date-checks debug_contract_date_checks.cpp)
+target_compile_options(cm-debug-contract-date-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME debugging_contract_anniversary COMMAND cm-debug-contract-date-checks)
+target_link_libraries(cm-debug-contract-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-debug-contract-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 target_link_libraries(cm-best-xi-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-best-xi-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 target_link_libraries(cm-match-debugging-injury-checks PRIVATE cm_match_debugger_factory)
@@ -2435,6 +2441,9 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     add_test(NAME debugging_best_xi COMMAND cm-best-xi-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/best-xi-checks")
     set_tests_properties(debugging_best_xi PROPERTIES TIMEOUT 360)
+    add_test(NAME debugging_contract_extension COMMAND cm-debug-contract-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debug-contract-checks")
+    set_tests_properties(debugging_contract_extension PROPERTIES TIMEOUT 360)
     add_test(NAME match_debugger_actual_lineup COMMAND cm-match-debugger-lineup-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-lineup-checks")
     set_tests_properties(match_debugger_actual_lineup PROPERTIES TIMEOUT 360)
