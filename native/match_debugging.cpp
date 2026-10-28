@@ -730,6 +730,9 @@ bool dispatch_debug_contract_action(State& s) {
         GuestCall call(s);
         const auto staff = call.call(0x1073ef70, {root(s), 0});
         accepted = extend_debug_contract(s, staff);
+        // The player page caches offer indices across redraws. Invalidate its
+        // original caches before the deleted offer slots can be read again.
+        if (accepted) call.call(0x103ab9e0, {});
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0));
     s.pc = s.r<4>(4128);

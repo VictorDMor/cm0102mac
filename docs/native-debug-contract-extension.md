@@ -22,5 +22,7 @@ linked records. Scheduled agreements are also found directly in the original
 future-transfer queue, even if the pending negotiation has already gone. The
 original unschedule operation runs before deletion; person-wide transfer flags
 are retained when another scheduled or selected agreement still requires them.
+After a successful action, the original player-screen cache cleanup forces the
+next redraw to rebuild its offer indices instead of reading deleted slots.
 Before any removal, ambiguous pending rows or an exchange list on a selected
 offer make the action decline rather than delete a different negotiation.
