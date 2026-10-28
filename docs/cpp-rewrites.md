@@ -326,6 +326,34 @@ groups written in parallel. What it added:
   (offset 0x50) for that artificial input. Do not use the probe's profiles
   or its differing fault addresses as evidence of a production rewrite bug.
 
+## CLUB_RECORDS.CPP: club records, notices and persistence
+
+The 92 original entries occupy 0x1000e6b0–0x1001dae0, between CLUB_HISTORY
+and CLUB_SCREENS. TOC -0x599c identifies the source pool; two transition
+vectors select record destructors, and six 33-word tables select record kinds.
+The apparent code pointer at 0x108eccf4 is two RNG samples, not another entry.
+`club_records_adapter` owns every entry in normal generation, including direct
+calls; the separate checker emits hook-free original pages.
+
+Club records occupy 0x3fc bytes, per-club indexes 0x6c, and pending rows eight.
+Assignments preserve field widths, padding, order and overlapping source reads.
+Date constructors initialize only dates; clear_record resets only the original
+sentinel fields. Single-precision assignment quiets signaling NaNs without
+changing their sign or payload. Floating-point guards retain the actual CR-bit
+tests: PowerPC `ble` also branches when a comparison is unordered.
+
+The file format writes capacity/count/used rows for modern and season records,
+then club indexes and pending rows. Preserve raw padding, signed empty checks,
+mandatory index allocation/read even for zero indexes, and one warning before
+clearing invalid index rows. Archive's late null-modern creation guards follow
+earlier dereferences; they do not make a missing modern record safe.
+
+Post-match recognition increments the RNG cursor before reading, wraps and
+reseeds before the draw, and preserves eligible-person order. Its reputation
+reduction deliberately uses integer division before clamping. News type32
+loads the player id into r9 before checking the sentinel; the name formatter
+consumes this seventh argument even though decompilation omits it.
+
 ## CLUB_HISTORY.CPP: club league and cup archives
 
 `CLUB_HISTORY.CPP` has 11 routines and 1,702 indexed instructions in

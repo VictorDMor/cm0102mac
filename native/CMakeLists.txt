@@ -3429,3 +3429,37 @@ if(CM_OCEANIA_NATIONS_COVERAGE)
     target_compile_definitions(cm-oceania-nations-checks PRIVATE CM_OCEANIA_NATIONS_COVERAGE=1)
     target_link_options(cm-oceania-nations-checks PRIVATE "-fprofile-instr-generate=${CM_OCEANIA_NATIONS_PROFILE}")
 endif()
+
+file(GLOB CM_CLUB_RECORDS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/club_records*.cpp")
+list(FILTER CM_CLUB_RECORDS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_CLUB_RECORDS_SOURCES})
+add_executable(cm-club-records-checks club_records_checks.cpp)
+target_link_libraries(cm-club-records-checks PRIVATE cm_aot)
+target_compile_options(cm-club-records-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_CLUB_RECORDS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/club_records_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CLUB_RECORDS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_club_records_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CLUB_RECORDS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_club_records_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/club_records_audit.py"
+            "${CMAKE_SOURCE_DIR}/club_records_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-club-records-checks PRIVATE "${CM_CLUB_RECORDS_REFERENCE}")
+    add_test(NAME club_records_equivalence COMMAND cm-club-records-checks "${CM_ORACLE_DIR}")
+    add_test(NAME club_records_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_club_records_audit.py")
+endif()
+option(CM_CLUB_RECORDS_COVERAGE "Instrument CLUB_RECORDS.CPP checker only" OFF)
+if(CM_CLUB_RECORDS_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/club-records-coverage")
+    set(CM_CLUB_RECORDS_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/club-records-coverage/check-%p.profraw")
+    add_library(cm_club_records_coverage OBJECT ${CM_CLUB_RECORDS_SOURCES})
+    target_link_libraries(cm_club_records_coverage PRIVATE cm_aot)
+    target_compile_options(cm_club_records_coverage PRIVATE "-fprofile-instr-generate=${CM_CLUB_RECORDS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_club_records_coverage PRIVATE CM_CLUB_RECORDS_COVERAGE=1)
+    target_sources(cm-club-records-checks PRIVATE $<TARGET_OBJECTS:cm_club_records_coverage>)
+    target_compile_definitions(cm-club-records-checks PRIVATE CM_CLUB_RECORDS_COVERAGE=1)
+    target_link_options(cm-club-records-checks PRIVATE "-fprofile-instr-generate=${CM_CLUB_RECORDS_PROFILE}")
+endif()

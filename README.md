@@ -22,10 +22,12 @@ unfinished. There is no public binary release yet.
   address space for the original game's pointers and structures.
 
 Reconstructed subsystems coexist with statically generated original routines.
-`CONTRACT_MANAGER.CPP` now has all **95 audited routines** implemented as
-semantic C++23. Routine-owner counts in older integration reports are not
-whole-game completion percentages. Much of the simulation still uses generated
-code. Native performance is the current priority, ahead of further reconstruction.
+`CONTRACT_MANAGER.CPP` has all **95 audited routines** implemented as semantic
+C++23; `CLUB_RECORDS.CPP` adds **92 audited routines** for club records, record
+news, season archives and binary persistence. Routine-owner counts in older
+integration reports are not whole-game completion percentages. Much of the
+simulation still uses generated code. Native performance is the current priority,
+ahead of further reconstruction.
 See the
 [C++23 progress report](docs/native-cpp23-port-progress.md) and
 [current status and limitations](docs/native-port-status.md).
