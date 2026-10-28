@@ -3552,3 +3552,45 @@ if(CM_EURO_CHAMP_QUAL_COVERAGE)
     target_compile_definitions(cm-euro-champ-qual-checks PRIVATE CM_EURO_CHAMP_QUAL_COVERAGE=1)
     target_link_options(cm-euro-champ-qual-checks PRIVATE "-fprofile-instr-generate=${CM_EURO_CHAMP_QUAL_PROFILE}")
 endif()
+
+file(GLOB CM_MATCH_PL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/match_pl*.cpp")
+list(FILTER CM_MATCH_PL_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_MATCH_PL_SOURCES})
+add_executable(cm-match-pl-checks match_pl_checks.cpp)
+target_link_libraries(cm-match-pl-checks PRIVATE cm_aot)
+target_compile_options(cm-match-pl-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-match-pl-replay-checks match_pl_replay_checks.cpp)
+target_link_libraries(cm-match-pl-replay-checks PRIVATE cm_aot)
+target_compile_options(cm-match-pl-replay-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_MATCH_PL_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/match_pl_reference.cpp")
+    add_custom_command(OUTPUT "${CM_MATCH_PL_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_match_pl_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_PL_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_match_pl_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/match_pl_audit.py"
+            "${CMAKE_SOURCE_DIR}/match_pl_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-match-pl-checks PRIVATE "${CM_MATCH_PL_REFERENCE}")
+    add_test(NAME match_pl_equivalence COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}")
+    add_test(NAME match_pl_production COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --production)
+    add_test(NAME match_pl_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_match_pl_audit.py")
+endif()
+if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262/initial.snapshot")
+    add_test(NAME match_pl_match_replay COMMAND cm-match-pl-replay-checks
+        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262")
+endif()
+option(CM_MATCH_PL_COVERAGE "Instrument MATCH_PL.CPP checker only" OFF)
+if(CM_MATCH_PL_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/match-pl-coverage")
+    set(CM_MATCH_PL_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/match-pl-coverage/check-%p.profraw")
+    add_library(cm_match_pl_coverage OBJECT ${CM_MATCH_PL_SOURCES})
+    target_link_libraries(cm_match_pl_coverage PRIVATE cm_aot)
+    target_compile_options(cm_match_pl_coverage PRIVATE "-fprofile-instr-generate=${CM_MATCH_PL_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_match_pl_coverage PRIVATE CM_MATCH_PL_COVERAGE=1)
+    target_sources(cm-match-pl-checks PRIVATE $<TARGET_OBJECTS:cm_match_pl_coverage>)
+    target_compile_definitions(cm-match-pl-checks PRIVATE CM_MATCH_PL_COVERAGE=1)
+    target_link_options(cm-match-pl-checks PRIVATE "-fprofile-instr-generate=${CM_MATCH_PL_PROFILE}")
+endif()

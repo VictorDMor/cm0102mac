@@ -728,3 +728,14 @@ original's deeper inlined wide-range branches cannot run. The ordinary draw uses
 nine groups and a permutation of the immutable indices 0..8. Detailed proofs and
 per-entry evidence remain private; the structural inventory is
 `tools/euro_champ_qual_audit.py`.
+
+## MATCH_PL.CPP: player state and spatial queries
+
+The audited module starts at `0x102238a0`, before the parameterized constructor
+used by the older inferred inventory. Its default constructor preserves untouched
+record bytes, saves registers below the unchanged stack pointer, and reloads
+those slots on return. It reads the same floating constant twice; retaining both
+loads also preserves the result when the supplied record aliases that storage.
+Acquiring possession can first clear the acquiring player itself. Receiver
+rewards and subsequent possession writes reload the match after external calls,
+so a call that changes the match pointer must affect the later accesses.
