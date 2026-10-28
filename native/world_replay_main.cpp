@@ -79,6 +79,7 @@
 #include "club_history_adapter.hpp"
 #include "club_records_adapter.hpp"
 #include "eng_prm_adapter.hpp"
+#include "inter_amer_cup_adapter.hpp"
 #include "pol_cup_adapter.hpp"
 #include "oceania_nations_adapter.hpp"
 #include "news_adapter.hpp"
@@ -207,7 +208,7 @@ int main(int argc, char** argv) {
             checker->compare_f1 = compare_f1;
             routine_checker = &*checker;
             dispatch_probe = [](State& s) {
-                return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || news_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || news_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
             };
             if (!synthetic.empty())
@@ -219,6 +220,7 @@ int main(int argc, char** argv) {
                              : screen_manager_lists(entry)    ? screen_manager_run_original
                              : news_lists(entry)              ? news_run_original
                              : oceania_nations_lists(entry)   ? oceania_nations_run_original
+                             : inter_amer_cup_lists(entry)    ? inter_amer_cup_run_original
                              : pol_cup_lists(entry)           ? pol_cup_run_original
                              : eng_prm_lists(entry)           ? eng_prm_run_original
                              : club_records_lists(entry)      ? club_records_run_original
@@ -233,6 +235,7 @@ int main(int argc, char** argv) {
                              : screen_manager_lists(entry)    ? screen_manager_run_rewrite
                              : news_lists(entry)              ? news_run_rewrite
                              : oceania_nations_lists(entry)   ? oceania_nations_run_rewrite
+                             : inter_amer_cup_lists(entry)    ? inter_amer_cup_run_rewrite
                              : pol_cup_lists(entry)           ? pol_cup_run_rewrite
                              : eng_prm_lists(entry)           ? eng_prm_run_rewrite
                              : club_records_lists(entry)      ? club_records_run_rewrite
@@ -243,7 +246,7 @@ int main(int argc, char** argv) {
                                                               : tactics_run_rewrite)(t, entry);
                         },
                         routine_checker && routine_checker->strict_volatile);
-                    return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || news_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                    return tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || news_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
                 };
         }

@@ -3463,3 +3463,37 @@ if(CM_CLUB_RECORDS_COVERAGE)
     target_compile_definitions(cm-club-records-checks PRIVATE CM_CLUB_RECORDS_COVERAGE=1)
     target_link_options(cm-club-records-checks PRIVATE "-fprofile-instr-generate=${CM_CLUB_RECORDS_PROFILE}")
 endif()
+
+file(GLOB CM_INTER_AMER_CUP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/inter_amer_cup*.cpp")
+list(FILTER CM_INTER_AMER_CUP_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_INTER_AMER_CUP_SOURCES})
+add_executable(cm-inter-amer-cup-checks inter_amer_cup_checks.cpp)
+target_link_libraries(cm-inter-amer-cup-checks PRIVATE cm_aot)
+target_compile_options(cm-inter-amer-cup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_INTER_AMER_CUP_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/inter_amer_cup_reference.cpp")
+    add_custom_command(OUTPUT "${CM_INTER_AMER_CUP_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_inter_amer_cup_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_INTER_AMER_CUP_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_inter_amer_cup_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/inter_amer_cup_audit.py"
+            "${CMAKE_SOURCE_DIR}/inter_amer_cup_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-inter-amer-cup-checks PRIVATE "${CM_INTER_AMER_CUP_REFERENCE}")
+    add_test(NAME inter_amer_cup_equivalence COMMAND cm-inter-amer-cup-checks "${CM_ORACLE_DIR}")
+    add_test(NAME inter_amer_cup_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_inter_amer_cup_audit.py")
+endif()
+option(CM_INTER_AMER_CUP_COVERAGE "Instrument INTER_AMER_CUP.CPP checker only" OFF)
+if(CM_INTER_AMER_CUP_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/inter-amer-cup-coverage")
+    set(CM_INTER_AMER_CUP_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/inter-amer-cup-coverage/check-%p.profraw")
+    add_library(cm_inter_amer_cup_coverage OBJECT ${CM_INTER_AMER_CUP_SOURCES})
+    target_link_libraries(cm_inter_amer_cup_coverage PRIVATE cm_aot)
+    target_compile_options(cm_inter_amer_cup_coverage PRIVATE "-fprofile-instr-generate=${CM_INTER_AMER_CUP_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_inter_amer_cup_coverage PRIVATE CM_INTER_AMER_CUP_COVERAGE=1)
+    target_sources(cm-inter-amer-cup-checks PRIVATE $<TARGET_OBJECTS:cm_inter_amer_cup_coverage>)
+    target_compile_definitions(cm-inter-amer-cup-checks PRIVATE CM_INTER_AMER_CUP_COVERAGE=1)
+    target_link_options(cm-inter-amer-cup-checks PRIVATE "-fprofile-instr-generate=${CM_INTER_AMER_CUP_PROFILE}")
+endif()

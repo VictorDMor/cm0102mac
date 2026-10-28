@@ -676,3 +676,17 @@ two external shuffle calls. Calendar stages are signed bytes; years are signed
 halfwords. The event formatter's repeated equality branches at `0x106eaa10`
 make the following duplicate text block unreachable; preserve its effective
 message selection rather than treating it as a missing event case.
+
+## INTER_AMER_CUP.CPP
+
+The six entries at `0x106ebdd0–0x106eca50` implement the Inter-American Cup.
+The selector uses continental champions when that continent has an active
+nation or the cup year is 2001. Otherwise it scans clubs in database order,
+stopping at the first club sentinel, with signed reputation thresholds above
+1000 for North America and 5000 for South America, and samples one candidate.
+The original first-continent empty-pool fallback writes the second entrant
+slot, leaving the first untouched; the second selection can overwrite that
+fallback. Missing direct champions return zero after reporting the error,
+and both constructor and reset continue because they reject only negatives.
+Calendar allocation failure likewise remains a null calendar with a successful
+configuration result. No serialization is owned by this module.
