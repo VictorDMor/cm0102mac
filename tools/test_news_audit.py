@@ -1,4 +1,4 @@
-"""Pin NEWS's original scope and validate the implemented subset honestly."""
+"""Pin NEWS's original scope and its complete production ownership."""
 from contextlib import closing
 import json
 from pathlib import Path
@@ -168,9 +168,12 @@ class NewsOriginalTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed in the export"):
                 require_news_index(db)
 
-    def test_registered_production_subset_has_exactly_one_generator_owner(self):
-        # Check only completed registrations. Drafts/unimplemented entries are
-        # intentionally outside this assertion; this is not a closure claim.
+    def test_every_original_entry_is_a_production_registration(self):
+        completed = rewritten()
+        self.assertEqual([(entry, end) for entry, end, _ in completed], list(ROUTINES))
+        self.assertEqual(rewritten(drafts=True), completed)
+
+    def test_registered_production_entries_have_exactly_one_generator_owner(self):
         from compile_recomp import OWNER_REPLACEMENTS
         for entry, _, _ in rewritten():
             self.assertEqual([owner for at, owner in OWNER_REPLACEMENTS if at == entry], ["news_adapter"])

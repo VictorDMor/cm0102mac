@@ -605,16 +605,17 @@ This gives equal external inputs without excluding any comparison bytes.
 The normal app/world replay retain their uninstrumented library definitions.
 Explicit `LLVM_PROFILE_FILE` paths still identify individual verification runs.
 
-## NEWS.CPP: item payloads and queue queries
+## NEWS.CPP: messages, actions and queues
 
 The closed original inventory has 33 entries (16,819 indexed instructions),
 from `0x102bdf90` through `0x102ce710`; `tools/news_audit.py` pins the source
 pool, neighboring modules, all incoming targets and the one local switch table.
-The module reconstruction remains in progress. The first 11 entries implemented
-cover item construction/category/payloads and queue destruction, lookup, payload
-updates, unread counts and club eligibility. Text rendering, publication,
-recipient distribution, news range sampling and persistence still use their
-original generated code.
+All 33 entries route to handwritten C++23. Message rendering composes 27 local
+type heads and forwards 144 external service messages; owned calls use typed
+C++ directly. The action-label result gates effects, retaining legacy bodies
+whose labels make them unreachable. Queue IO preserves raw item padding, partial
+writes and original fatal/close ordering. Module delivery verification is tracked
+in `TASKS.md` and the private per-entry ledger.
 
 Items occupy 0xe4 bytes. Their 200-byte payload starts at +8, and payload indices
 are signed bytes even when passed in full-width argument registers. Text insertion
@@ -623,3 +624,17 @@ up including the terminator, then narrows to a signed byte before clamping to 50
 The original item-copy operation preserves padding rather than copying all 0xe4
 bytes, and uses forward paired-word copies on overlapping records. Queue lookup
 retains zero as its loop counter when a negative global item count skips the loop.
+
+The range sampler preserves signed wrapping arithmetic, individual floating-point
+operations, draw order and inclusive pool-end handling. Its wide reduction is
+bounded to [-32768,32768] by the original signed32 multiply/divide sequence, so
+its deeper clone/self-call branches are unreachable. Injury text classification
+uses the original 82-record table; class12 contains only codes77..81. Assertion
+and missing-record paths retain the original accesses rather than introducing
+new recovery behavior.
+
+`CM_NEWS_COVERAGE` instruments only a separate object target linked into the
+NEWS checker. The app and world replay use the uninstrumented library. Private
+profile defaults prevent root-level artifacts; checker children flush before
+`_exit`. Forked LLVM writers can append cumulative records to one cached filename,
+so merged branch outcomes are meaningful while raw execution frequencies are not.

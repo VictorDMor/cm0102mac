@@ -34,6 +34,7 @@ struct Queue {
     Field<std::int32_t> item_count() const { return {c, address + 4}; }
     Field<std::uint32_t> managers() const { return {c, address + 8}; }
     Field<std::int32_t> manager_count() const { return {c, address + 12}; }
+    Field<std::uint32_t> last_id() const { return {c, address + 16}; }
     std::uint32_t item(std::uint32_t index) const { return items().get() + index * Item::size; }
 };
 struct Inbox {

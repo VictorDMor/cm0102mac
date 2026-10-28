@@ -10,7 +10,8 @@
 
 using namespace cm::aot;
 using namespace cm::aot::guest;
-namespace cm::aot { bool news_reference(State&); }
+namespace cm::aot { bool news_reference(State&); unsigned check_news_storage(const State&); unsigned check_news_sampling(const State&); unsigned check_news_queue(const State&); unsigned check_news_actions(const State&); }
+namespace cm::aot { unsigned check_news_messages(const State&); }
 namespace {
 constexpr std::uint32_t data = 0x60000000, item = data + 0x1000,
     input = data + 0x2000, output = data + 0x3000, next_slot = data + 0x4000,
@@ -28,6 +29,8 @@ struct Case {
     int alias = 0, year = 2001;
     unsigned priority = 255, month = 10, weekday = 2, language = 4;
     bool read = false;
+    unsigned first_manager = 32, subject = 16;
+    bool first_club_match = false, second_club_match = false;
 };
 Case active{0, ""};
 bool probe(State& s) {
@@ -78,6 +81,15 @@ void initialize(Cpu& c, const Case& test) {
     if (test.entry == 0x102bdf90) c.set({{4, test.type}, {5, test.priority}});
     if (test.entry == 0x102cb630) c.set({{5, test.null_source ? 0 : input}, {6, test.no_next ? 0 : next_slot}});
     if (test.entry == 0x102cb7f0) c.set({{5, test.null_output ? 0 : output}, {6, test.capacity}});
+    if (test.entry == 0x102ca450) {
+        constexpr auto manager = data + 0x7000, clubs = data + 0x10000;
+        c.put32(c.r(2) - 0x7be4, data + 0x6030); c.put32(data + 0x6030, test.first_manager);
+        c.put32(c.r(2) - 0x7be8, data + 0x6050); c.put32(data + 0x6050, clubs);
+        c.put32(item + 8, test.subject); c.put32(item + 0x18, 0); c.put32(item + 0x1c, 1);
+        c.put32(clubs + 0x90, test.first_club_match ? manager : manager + 0x80);
+        c.put32(clubs + 0x248 + 0x90, test.second_club_match ? manager : manager + 0x80);
+        c.set(4, test.null_manager ? 0 : manager);
+    }
     if (test.entry >= 0x102cbb70) {
         constexpr auto records = data + 0x10000, managers = data + 0x5000, manager = data + 0x7000;
         c.put32(c.r(2) - 0x7be4, data + 0x6030); c.put32(data + 0x6030, 32);
@@ -120,6 +132,11 @@ int main(int argc, char** argv) {
     if (argc != 2) { std::cerr << "Usage: cm-news-checks <original-segments>\n"; return 2; }
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
+        if (std::getenv("CM_NEWS_SAMPLING_ONLY")) return check_news_sampling(*base) ? 1 : 0;
+        if (std::getenv("CM_NEWS_STORAGE_ONLY")) return check_news_storage(*base) ? 1 : 0;
+        if (std::getenv("CM_NEWS_QUEUE_ONLY")) return check_news_queue(*base) ? 1 : 0;
+        if (std::getenv("CM_NEWS_ACTIONS_ONLY")) return check_news_actions(*base) ? 1 : 0;
+        if (std::getenv("CM_NEWS_MESSAGES_ONLY")) return check_news_messages(*base) ? 1 : 0;
         std::vector<Case> cases{{0x102bdf90, "construct item"}};
         for (int year : {-32768,-1,0,32767}) for (unsigned priority : {0u,1u,255u,256u}) {
             Case test{0x102bdf90, "constructor year " + std::to_string(year) + " priority " + std::to_string(priority)};
@@ -183,21 +200,50 @@ int main(int argc, char** argv) {
             test.controlled = controlled; test.enabled = enabled; cases.push_back(test);
         }
         Case no_club{0x102cdbf0, "null club"}; no_club.null_manager = true; cases.push_back(no_club);
+        Case filtered_unassigned{0x102cd440,"filtered unassigned inbox"};filtered_unassigned.inbox_first=-1;filtered_unassigned.filter=1;cases.push_back(filtered_unassigned);
+        for (unsigned type = 1; type <= 6032; ++type) {
+            Case test{0x102ca450, "priority type " + std::to_string(type)};
+            test.type = type; cases.push_back(test);
+        }
+        for (unsigned type : {0u,6033u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+            Case test{0x102ca450, "invalid priority type " + std::to_string(type)};
+            test.type = type; cases.push_back(test);
+        }
+        Case no_recipient{0x102ca450, "priority null manager"}; no_recipient.null_manager = true; cases.push_back(no_recipient);
+        for (unsigned first : {0u,16u,32u,0x7fffffffu,0x80000000u,0xffffffffu})
+            for (unsigned subject : {0u,15u,16u,17u,0x7fffffffu,0x80000000u,0xffffffffu}) {
+                Case test{0x102ca450, "priority subject " + std::to_string(subject) + " first " + std::to_string(first)};
+                test.type = 6000; test.first_manager = first; test.subject = subject; cases.push_back(test);
+            }
+        for (unsigned type : {4001u,4022u}) for (bool first : {false,true}) for (bool second : {false,true}) {
+            Case test{0x102ca450, "priority club links " + std::to_string(type) + " first " + std::to_string(first) + " second " + std::to_string(second)};
+            test.type = type; test.first_club_match = first; test.second_club_match = second; cases.push_back(test);
+        }
         unsigned failures = 0;
         std::map<std::uint32_t, unsigned> returns;
         for (const auto& test : cases) {
             active = test;
             auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize(c, test);
-            const auto difference = compare_routine_call(*state, test.entry, original, rewrite, RoutineChecker::result_r3);
+            const bool check_carry = test.entry == 0x102ca450 && test.type == 6000;
+            const auto difference = compare_routine_call(*state, test.entry, original, rewrite,
+                                                        RoutineChecker::result_r3, false, check_carry);
             if (!difference.empty()) { ++failures; std::cout << "FAIL " << hex_address(test.entry) << ' ' << test.name << '\n'; for (const auto& line : difference) std::cout << line << '\n'; }
             else ++returns[test.entry];
         }
-        auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize(c, cases.front());
-        const auto negative = compare_routine_call(*state, cases.front().entry, original, rewrite, RoutineChecker::result_r3, true);
-        if (negative.empty()) { ++failures; std::cout << "FAIL corrupted result escaped\n"; }
-        else std::cout << "ok corrupted result detected\n";
+        for (const auto& test : {cases.front(), cases.back()}) {
+            active = test;
+            auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize(c, test);
+            const auto negative = compare_routine_call(*state, test.entry, original, rewrite, RoutineChecker::result_r3, true);
+            if (negative.empty()) { ++failures; std::cout << "FAIL corrupted result escaped\n"; }
+            else std::cout << "ok corrupted result detected at " << hex_address(test.entry) << '\n';
+        }
         for (const auto& [entry, count] : returns) std::cout << hex_address(entry) << ": " << count << " returned comparisons\n";
         std::cout << cases.size() << " returned fixture comparisons, " << failures << " failed\n";
+        failures += check_news_storage(*base);
+        failures += check_news_sampling(*base);
+        failures += check_news_queue(*base);
+        failures += check_news_actions(*base);
+        failures += check_news_messages(*base);
         return failures ? 1 : 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 2; }
 }

@@ -5,6 +5,10 @@
 #include <array>
 #include <cstdlib>
 
+#if defined(CM_NEWS_COVERAGE)
+extern "C" int __llvm_profile_write_file(void);
+#endif
+
 namespace cm::aot {
 namespace {
 using guest::Cpu;
@@ -67,5 +71,12 @@ bool try_modern_news(State& s, std::uint32_t entry) {
     return run(s, *routine);
 }
 void news_run_original(State& s, std::uint32_t entry) { run_original(s, entry); }
-void news_run_rewrite(State& s, std::uint32_t entry) { run_rewrite(s, entry); }
+void news_run_rewrite(State& s, std::uint32_t entry) {
+#if defined(CM_NEWS_COVERAGE)
+    // Routine-check children use _exit; flush counters to the private profile.
+    // Forked writes may share a cached filename; LLVM merges appended records.
+    struct Flush { ~Flush() { __llvm_profile_write_file(); } } flush;
+#endif
+    run_rewrite(s, entry);
+}
 }
