@@ -78,7 +78,7 @@ void acquire_ball(Cpu& c, std::uint32_t player) {
     c.put32(actor.match() + 0x310c, 0);
     leave(c, {{4, 0}, {5, 0}});
     if (compare_logical(c, c.u32(actor.match() + 0xdff4)) != 0) {
-        c.set(3, c.u32(actor.match() + 0xdff4)); c.call(0x10283690, 0x1022e420);
+        enter(c, 0x1022e420, {c.u32(actor.match() + 0xdff4)}); side(c, c.r(3));
         c.set(3, std::uint32_t(std::int32_t(std::int8_t(c.r(3)))));
         if (compare(c, std::int8_t(actor.side()), std::int32_t(c.r(3))) == 0) {
             const auto receiver = c.u32(actor.match() + 0xdff4);
@@ -170,7 +170,8 @@ void advance_row(Cpu& c, std::uint32_t player, std::int8_t immediate) {
     if (direct) {
         const auto destination = c.u8(actor.match() + (reversed ? 0x7926 : 0x7925));
         c.set(5, std::uint32_t(std::int32_t(std::int8_t(destination + (reversed ? 1u : UINT32_MAX)))));
-        c.call(0x102374f0, reversed ? 0x10239ea0 : 0x10239ee8);
+        enter(c, reversed ? 0x10239ea0 : 0x10239ee8, {player, c.r(4), c.r(5)});
+        set_coordinates(c, player, c.r(4), c.r(5));
     } else {
         leave(c, {{6, UINT32_MAX}, {7, 0}, {8, 0}});
         c.call(0x1022e7e0, reversed ? 0x10239eb8 : 0x10239f00);

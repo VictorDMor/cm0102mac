@@ -9,11 +9,15 @@
 #include <iostream>
 #include <memory>
 #include <string_view>
+#include <chrono>
+#include <iomanip>
 
 using namespace cm::aot;
 namespace {
 std::uint32_t match_address = 0;
 constexpr unsigned advances = 600;
+bool timed = false;
+unsigned pair_index = 0;
 struct Inputs final : CodeFragmentBoundaryObserver {
     unsigned clocks = 0;
     void enter(const State&, std::uint32_t, bool) override {}
@@ -42,12 +46,29 @@ void interval(State& s, bool original) {
     // Require equal host input consumption through ordinary compared memory.
     c.put32(0x61000000, input.clocks);
 }
-void original(State& s, std::uint32_t) { interval(s, true); }
-void rewrite(State& s, std::uint32_t) { interval(s, false); }
+void measured_interval(State& s, bool original) {
+    const auto started = std::chrono::steady_clock::now();
+    try { interval(s, original); }
+    catch (const std::exception&) { throw; }
+    catch (...) { throw std::runtime_error("Detailed match interval did not return normally"); }
+    const auto milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+    if (timed) std::cerr << "pair=" << pair_index << " route=" << (original ? "original" : "cpp")
+                         << " milliseconds=" << std::fixed << std::setprecision(6) << milliseconds << '\n';
+}
+void original(State& s, std::uint32_t) { measured_interval(s, true); }
+void rewrite(State& s, std::uint32_t) { measured_interval(s, false); }
 }
 int main(int argc, char** argv) {
-    if (argc != 2) return 2;
+    if (argc < 2 || argc > 3) return 2;
     try {
+        unsigned pairs = 1;
+        if (argc == 3) {
+            const std::string_view option(argv[2]);
+            if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");
+            pairs = unsigned(std::stoul(std::string(option.substr(15))));
+            if (!pairs || pairs > 100) throw std::runtime_error("MATCH_PL timing pairs must be in 1..100");
+            timed = true;
+        }
         const std::filesystem::path input(argv[1]);
         std::ifstream(input / "match.txt") >> match_address;
         if (!match_address) throw std::runtime_error("Missing original match identity");
@@ -59,10 +80,14 @@ int main(int argc, char** argv) {
         set_match_turbo_enabled(false);
         if (match_pc_profile_enabled()) throw std::runtime_error("Disable match PC profiling for the paired check");
         dispatch_probe = nullptr;
-        const auto differences = compare_routine_call(*state, 0x101d3f60, original, rewrite,
-            RoutineChecker::result_r3 | RoutineChecker::result_f1);
-        for (const auto& line : differences) std::cerr << line << '\n';
-        if (!differences.empty()) return 1;
+        for (pair_index = 1; pair_index <= pairs; ++pair_index) {
+            const bool cpp_first = pair_index % 2 == 0;
+            const auto differences = compare_routine_call(*state, 0x101d3f60,
+                cpp_first ? rewrite : original, cpp_first ? original : rewrite,
+                RoutineChecker::result_r3 | RoutineChecker::result_f1);
+            for (const auto& line : differences) std::cerr << line << '\n';
+            if (!differences.empty()) return 1;
+        }
         std::cout << advances << " actual-match advances returned on both routes; memory, ABI, RNG and clock consumption match\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 2; }

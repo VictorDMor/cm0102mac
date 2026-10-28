@@ -4,6 +4,8 @@ The private export is required: absence is a failing evidence gate, never a skip
 """
 from contextlib import closing
 import hashlib
+import importlib
+import inspect
 import json
 from pathlib import Path
 import re
@@ -200,9 +202,80 @@ class MatchPlAuditTests(unittest.TestCase):
                 self.assertNotEqual(self.word(at + 4), 0x108bba90)
 
     def test_promoted_entries_have_unique_normal_production_ownership(self):
-        from compile_recomp import OWNER_REPLACEMENTS
+        from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, MATCH_PL_TAKEOVERS
         audit.require_match_pl_owners(audit.rewritten(), OWNER_REPLACEMENTS)
         self.assertEqual(tuple(a for a, _, _ in audit.rewritten()), audit.MATCH_PL_ENTRIES)
+        self.assertEqual(MATCH_PL_TAKEOVERS, frozenset(
+            a for a, _ in SEMANTIC_REPLACEMENTS if a in audit.MATCH_PL_ENTRIES))
+
+    def test_manifest_candidates_replace_only_explicit_legacy_hooks(self):
+        import compile_recomp as compiler
+
+        # Drafts are temporarily selected here to exercise the structural
+        # takeover machinery before promotion. This is not production evidence
+        # for those entries; the separate owner test checks the real manifest.
+        candidates = frozenset(a for a, _, _ in audit.rewritten(drafts=True))
+        old_owners = dict(compiler.SEMANTIC_REPLACEMENTS)
+        taken = candidates.intersection(old_owners)
+        families = {}
+        for entry in sorted(taken):
+            family = old_owners[entry].removesuffix("_adapter")
+            families.setdefault(family, []).append(entry)
+        self.assertTrue(families, "No legacy-owner candidate exercises takeover")
+        disabled = {name: False for name in inspect.signature(compiler.generate_page).parameters
+                    if name.endswith("_hooks") or name == "guest_context_transfers"}
+        with closing(sqlite3.connect(INPUT / "instructions.sqlite")) as db:
+            pages = {entry >> 12 for entry in taken}
+            records = {page: [json.loads(body) for body, in db.execute(
+                "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
+                (page << 12, (page + 1) << 12))] for page in pages}
+        with patch.object(compiler, "MATCH_PL_ENTRIES", tuple(sorted(candidates))), \
+                patch.object(compiler, "MATCH_PL_TAKEOVERS", frozenset(taken)):
+            for family, entries in sorted(families.items()):
+                legacy = importlib.import_module(family + "_audit")
+                require_hooks = getattr(legacy, f"require_{family}_hooks")
+                old_hook = getattr(legacy, family + "_hook")
+                for page in sorted({entry >> 12 for entry in entries}):
+                    with self.subTest(family=family, page=hex(page)):
+                        rows = records[page]
+                        selected = {r["address"] for r in rows}
+                        options = dict(disabled, **{family + "_hooks": True, "match_pl_hooks": True})
+                        source = compiler.generate_page(page, rows, selected,
+                            userops=self.program["userops"], **options)
+                        require_hooks(page, rows, source, taken)
+                        # Omitting the explicit exemption must still reject
+                        # a missing legacy hook; do not loosen its oracle.
+                        with self.assertRaises(ValueError):
+                            require_hooks(page, rows, source)
+                        for entry in entries:
+                            if entry >> 12 != page:
+                                continue
+                            self.assertNotIn(old_hook(entry), source)
+                            self.assertEqual(source.count(audit.match_pl_hook(entry)), 1)
+                            fragment = source.split(f"i_{entry:x}:", 1)[1].split(f"i_{entry+4:x}:", 1)[0]
+                            self.assertEqual(re.findall(r"try_modern_(\w+)\(s,", fragment), ["match_pl"])
+
+                        # Normal generation disables several legacy match
+                        # families. The new route must stand independently.
+                        promoted_only = compiler.generate_page(page, rows, selected,
+                            userops=self.program["userops"], **dict(disabled, match_pl_hooks=True))
+                        for entry in entries:
+                            if entry >> 12 == page:
+                                self.assertNotIn(old_hook(entry), promoted_only)
+                                self.assertEqual(promoted_only.count(audit.match_pl_hook(entry)), 1)
+
+                        options["match_pl_hooks"] = False
+                        isolated = compiler.generate_page(page, rows, selected,
+                            userops=self.program["userops"], **options)
+                        require_hooks(page, rows, isolated)
+                        self.assertNotIn("try_modern_match_pl(", isolated)
+                        for entry in entries:
+                            if entry >> 12 == page:
+                                self.assertEqual(isolated.count(old_hook(entry)), 1)
+
+                        reference = compiler.generate_page(page, rows, selected,
+                            userops=self.program["userops"], **disabled)
+                        self.assertNotIn("try_modern_", reference)
 
     def test_missing_duplicate_and_wrong_production_owner_are_rejected(self):
         entry, end, _, pinned = audit.CONTRACTS[0]

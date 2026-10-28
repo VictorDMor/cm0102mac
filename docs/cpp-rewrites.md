@@ -739,3 +739,13 @@ loads also preserves the result when the supplied record aliases that storage.
 Acquiring possession can first clear the acquiring player itself. Receiver
 rewards and subsequent possession writes reload the match after external calls,
 so a call that changes the match pointer must affect the later accesses.
+
+The match range sampler's nested wide arms are unreachable: after wrapping
+the signed bound times ten to 32 bits, division by 65535 produces a correction
+bound in [-32768,32768]. Attribute refresh likewise has only narrow draws after
+its signed16 condition conversion. Preserve draw order, inclusive pool-end
+checks and reseeding while replacing those unrolled arms with direct arithmetic.
+PowerPC floating branches use `ble = !GT` and `bge = !LT`, including unordered
+comparisons; an explicit `cror EQ,LT,EQ` has different NaN behavior.
+Legacy original/profile switches must also decline the new module's hooks;
+otherwise a takeover silently turns a reference run into another C++ run.

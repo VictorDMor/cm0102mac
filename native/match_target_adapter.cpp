@@ -1,4 +1,5 @@
 #include "match_target_adapter.hpp"
+#include "match_pl_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
@@ -39,9 +40,8 @@ bool try_modern_match_target(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original match-target body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_pl_run_original(s, entry);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
             constexpr Function methods[]{match_target::target_advance_enabled,match_target::resolve_target_cell,match_target::side_target_control,match_target::normalized_actor_side,match_target::is_nearest_candidate,match_target::controlled_target_override,match_target::uncontrolled_target_override,match_target::strategy_flags};

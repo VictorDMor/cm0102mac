@@ -1,4 +1,5 @@
 #include "actor_encounter_adapter.hpp"
+#include "match_pl_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
@@ -39,9 +40,8 @@ bool try_modern_actor_encounter(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original actor-encounter body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_pl_run_original(s, entry);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
             constexpr Function methods[]{actor_encounter::scale_team_scores,actor_encounter::scale_actor_score,actor_encounter::accept_response,actor_encounter::resolve_peer};

@@ -16,7 +16,8 @@ std::uint32_t at_attacking_goal(Cpu& c, std::uint32_t player) {
     c.set_f(1, c.f32(constants));
     c.set_f(2, c.f32(constants));
     leave(c, {{4, 4}, {5, std::uint32_t(goal_row)}, {6, 0}, {9, 0}});
-    c.call(0x10244c60, first ? 0x1023748c : 0x102374e0);
+    enter(c, first ? 0x1023748c : 0x102374e0, {player, 4, std::uint32_t(goal_row), 0});
+    accepts_target(c, player, 4, std::uint32_t(goal_row), 0, 0, c.f(1), c.f(2));
     return c.r(3);
 }
 

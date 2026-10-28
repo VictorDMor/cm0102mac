@@ -378,7 +378,8 @@ require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
 OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLACEMENTS
                             if entry not in TACTICS_ENTRIES and entry not in MAIN_PROGRAM_ENTRIES
                             and entry not in PLAYER_STATS_ENTRIES and entry not in SHORTLIST_MANAGER_ENTRIES
-                            and entry not in CONTRACT_MANAGER_ENTRIES and entry not in SCREEN_MANAGER_ENTRIES) +
+                            and entry not in CONTRACT_MANAGER_ENTRIES and entry not in SCREEN_MANAGER_ENTRIES
+                            and entry not in MATCH_PL_ENTRIES) +
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES) +
                       tuple((entry, "main_program_adapter") for entry in MAIN_PROGRAM_ENTRIES) +
                       tuple((entry, "player_stats_adapter") for entry in PLAYER_STATS_ENTRIES) +
@@ -403,6 +404,7 @@ PLAYER_STATS_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS i
 SHORTLIST_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SHORTLIST_MANAGER_ENTRIES)
 SCREEN_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SCREEN_MANAGER_ENTRIES)
 CONTRACT_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in CONTRACT_MANAGER_ENTRIES)
+MATCH_PL_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in MATCH_PL_ENTRIES)
 CPP_LEAVES = frozenset(TACTICS_LEAVES)
 
 
@@ -1359,7 +1361,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   (PLAYER_STATS_TAKEOVERS if player_stats_hooks else frozenset()) |
                   (SHORTLIST_MANAGER_TAKEOVERS if shortlist_manager_hooks else frozenset()) |
                   (CONTRACT_MANAGER_TAKEOVERS if contract_manager_hooks else frozenset()) |
-                  (SCREEN_MANAGER_TAKEOVERS if screen_manager_hooks else frozenset()))
+                  (SCREEN_MANAGER_TAKEOVERS if screen_manager_hooks else frozenset()) |
+                  (MATCH_PL_TAKEOVERS if match_pl_hooks else frozenset()))
     if nontrapping_divisions is None:
         # Equivalence references compile parts of pages: use the whole-program
         # proof, so they continue exactly where production does; without an
@@ -1906,6 +1909,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(main_program_hook(a))
         if match_pl_hooks and a in MATCH_PL_ENTRIES:
+            if a in MATCH_PL_TAKEOVERS:
+                code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(match_pl_hook(a))
         if club_records_hooks and a in CLUB_RECORDS_ENTRIES:
             code.append(club_records_hook(a))
@@ -2221,13 +2226,13 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if actor_construction_hooks:
         require_actor_construction_hooks(page, instructions, result)
     if spatial_role_hooks:
-        require_spatial_role_hooks(page, instructions, result)
+        require_spatial_role_hooks(page, instructions, result, taken_over)
     if marking_pressure_hooks:
-        require_marking_pressure_hooks(page, instructions, result)
+        require_marking_pressure_hooks(page, instructions, result, taken_over)
     if match_random_hooks:
         require_match_random_hooks(page, instructions, result)
     if actor_attributes_hooks:
-        require_actor_attributes_hooks(page, instructions, result)
+        require_actor_attributes_hooks(page, instructions, result, taken_over)
     if injury_record_hooks:
         require_injury_record_hooks(page, instructions, result)
     if injury_progression_hooks:
@@ -2301,31 +2306,31 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if localization_catalog_hooks:
         require_localization_catalog_hooks(page, instructions, result)
     if range_sampling_hooks:
-        require_range_sampling_hooks(page, instructions, result)
+        require_range_sampling_hooks(page, instructions, result, taken_over=taken_over)
     if match_target_hooks:
         require_match_target_hooks(page, instructions, result, taken_over)
     if match_selection_hooks:
         require_match_selection_hooks(page, instructions, result)
     if match_selection_support_hooks:
-        require_match_selection_support_hooks(page, instructions, result)
+        require_match_selection_support_hooks(page, instructions, result, taken_over)
     if actor_encounter_hooks:
-        require_actor_encounter_hooks(page, instructions, result)
+        require_actor_encounter_hooks(page, instructions, result, taken_over)
     if match_event_hooks:
         require_match_event_hooks(page, instructions, result)
     if actor_flags_hooks:
-        require_actor_flags_hooks(page, instructions, result)
+        require_actor_flags_hooks(page, instructions, result, taken_over)
     if actor_effects_hooks:
-        require_actor_effects_hooks(page, instructions, result)
+        require_actor_effects_hooks(page, instructions, result, taken_over)
     if actor_action_hooks:
-        require_actor_action_hooks(page, instructions, result)
+        require_actor_action_hooks(page, instructions, result, taken_over=taken_over)
     if actor_policy_hooks:
-        require_actor_policy_hooks(page, instructions, result)
+        require_actor_policy_hooks(page, instructions, result, taken_over)
     if target_acceptance_hooks:
-        require_target_acceptance_hooks(page, instructions, result)
+        require_target_acceptance_hooks(page, instructions, result, taken_over=taken_over)
     if team_spatial_hooks:
         require_team_spatial_hooks(page, instructions, result)
     if pitch_distance_hooks:
-        require_pitch_distance_hooks(page, instructions, result)
+        require_pitch_distance_hooks(page, instructions, result, taken_over)
     if actor_order_hooks:
         require_actor_order_hooks(page, instructions, result)
     if movement_choice_hooks:
@@ -2341,7 +2346,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if player_movement_hooks:
         require_player_movement_hooks(page, instructions, result)
     if actor_motion_hooks:
-        require_actor_motion_hooks(page, instructions, result)
+        require_actor_motion_hooks(page, instructions, result, taken_over)
     if player_decision_hooks:
         require_player_decision_hooks(page, instructions, result)
     if record_query_hooks:

@@ -1,4 +1,5 @@
 #include "actor_motion_adapter.hpp"
+#include "match_pl_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
@@ -39,9 +40,8 @@ bool try_modern_actor_motion(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original actor-motion body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_pl_run_original(s, entry);
         } else actor_motion::invoke(s, actor_motion::Entry(index), nullptr, d.observer);
     } catch (const ApplicationExit&) { leave(s, index, original, ActorMotionOutcome::terminated); throw; }
     catch (const GuestContextTransfer&) { leave(s, index, original, ActorMotionOutcome::context_transfer); throw; }

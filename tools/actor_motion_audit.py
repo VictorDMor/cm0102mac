@@ -62,9 +62,9 @@ def actor_motion_hook(entry):
     return f'if (try_modern_actor_motion(s, 0x{entry:x})) return true;'
 
 
-def require_actor_motion_hooks(page, records, code):
+def require_actor_motion_hooks(page, records, code, taken_over=()):
     for entry in ACTOR_MOTION_ENTRIES:
-        if entry >> 12 != page or entry not in {row['address'] for row in records}:
+        if entry >> 12 != page or entry not in {row['address'] for row in records} or entry in taken_over:
             continue
         hook = actor_motion_hook(entry)
         fragment = code.split(f'i_{entry:x}:', 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
