@@ -714,3 +714,17 @@ Played results and historical editions retain the original reader/writer and
 archive may recreate a dormant object on load through the original constructor;
 the daily and annual guards still prevent future editions. Creating a career
 without this competition intentionally changes the original RNG trajectory.
+
+## EURO_CHAMP_QUAL.CPP: European qualification
+
+The historical initializer inserts its 220 fixtures in original order. Its two
+assert expansions reload TOC strings and consequently have different return PCs
+from the common assertion helper. The custom record stream keeps 80-byte records
+and two scalar bytes; load reconstructs guest pointers from the stored IDs.
+
+The private RNG helper retains wrapping 32-bit multiplication and signed
+sampling. Its first wide-range reduction always lies in [-32768, 32768], so the
+original's deeper inlined wide-range branches cannot run. The ordinary draw uses
+nine groups and a permutation of the immutable indices 0..8. Detailed proofs and
+per-entry evidence remain private; the structural inventory is
+`tools/euro_champ_qual_audit.py`.

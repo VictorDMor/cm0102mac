@@ -28,7 +28,9 @@ are removed on load. Other competitions keep their original 2001/02 rules.
 Reconstructed subsystems coexist with statically generated original routines.
 `CONTRACT_MANAGER.CPP` has all **95 audited routines** implemented as semantic
 C++23; `CLUB_RECORDS.CPP` adds **92 audited routines** for club records, record
-news, season archives and binary persistence. Routine-owner counts in older
+news, season archives and binary persistence. `EURO_CHAMP_QUAL.CPP` adds
+**31 audited routines** for European qualifying calendars, draws, progression
+and binary records. Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,
 ahead of further reconstruction.

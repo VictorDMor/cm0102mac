@@ -3517,3 +3517,38 @@ if(CM_INTER_AMER_CUP_COVERAGE)
     target_compile_definitions(cm-inter-amer-cup-checks PRIVATE CM_INTER_AMER_CUP_COVERAGE=1)
     target_link_options(cm-inter-amer-cup-checks PRIVATE "-fprofile-instr-generate=${CM_INTER_AMER_CUP_PROFILE}")
 endif()
+
+file(GLOB CM_EURO_CHAMP_QUAL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/euro_champ_qual*.cpp")
+list(FILTER CM_EURO_CHAMP_QUAL_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_EURO_CHAMP_QUAL_SOURCES})
+add_executable(cm-euro-champ-qual-checks euro_champ_qual_checks.cpp)
+target_link_libraries(cm-euro-champ-qual-checks PRIVATE cm_aot)
+target_compile_options(cm-euro-champ-qual-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_EURO_CHAMP_QUAL_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/euro_champ_qual_reference.cpp")
+    add_custom_command(OUTPUT "${CM_EURO_CHAMP_QUAL_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_euro_champ_qual_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_EURO_CHAMP_QUAL_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_euro_champ_qual_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/euro_champ_qual_audit.py"
+            "${CMAKE_SOURCE_DIR}/euro_champ_qual_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-euro-champ-qual-checks PRIVATE "${CM_EURO_CHAMP_QUAL_REFERENCE}")
+    add_test(NAME euro_champ_qual_equivalence COMMAND cm-euro-champ-qual-checks "${CM_ORACLE_DIR}")
+    add_test(NAME euro_champ_qual_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_euro_champ_qual_audit.py")
+
+endif()
+option(CM_EURO_CHAMP_QUAL_COVERAGE "Instrument EURO_CHAMP_QUAL.CPP checker only" OFF)
+if(CM_EURO_CHAMP_QUAL_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/euro-champ-qual-coverage")
+    set(CM_EURO_CHAMP_QUAL_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/euro-champ-qual-coverage/check-%p.profraw")
+    add_library(cm_euro_champ_qual_coverage OBJECT ${CM_EURO_CHAMP_QUAL_SOURCES})
+    target_link_libraries(cm_euro_champ_qual_coverage PRIVATE cm_aot)
+    target_compile_options(cm_euro_champ_qual_coverage PRIVATE "-fprofile-instr-generate=${CM_EURO_CHAMP_QUAL_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_euro_champ_qual_coverage PRIVATE CM_EURO_CHAMP_QUAL_COVERAGE=1)
+    target_sources(cm-euro-champ-qual-checks PRIVATE $<TARGET_OBJECTS:cm_euro_champ_qual_coverage>)
+    target_compile_definitions(cm-euro-champ-qual-checks PRIVATE CM_EURO_CHAMP_QUAL_COVERAGE=1)
+    target_link_options(cm-euro-champ-qual-checks PRIVATE "-fprofile-instr-generate=${CM_EURO_CHAMP_QUAL_PROFILE}")
+endif()
