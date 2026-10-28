@@ -260,8 +260,10 @@ std::vector<Case> cases() {
     return result;
 }
 }
+int inter_amer_cup_native_checks(const char* snapshot, const char* game_directory, const char* backing);
 int main(int argc, char** argv) {
-    if (argc != 2) { std::cerr << "Usage: cm-inter-amer-cup-checks <original-segments>\n"; return 2; }
+    if (argc == 5) return inter_amer_cup_native_checks(argv[2], argv[3], argv[4]);
+    if (argc != 2) { std::cerr << "Usage: cm-inter-amer-cup-checks <original-segments> [career.snapshot game-directory private-backing]\n"; return 2; }
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         unsigned failures = 0; const auto tests = cases();

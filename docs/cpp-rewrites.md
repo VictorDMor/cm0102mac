@@ -690,3 +690,10 @@ fallback. Missing direct champions return zero after reporting the error,
 and both constructor and reset continue because they reject only negatives.
 Calendar allocation failure likewise remains a null calendar with a successful
 configuration result. No serialization is owned by this module.
+
+`inter_amer_cup_native_constructor` checks full construction from the recorded
+career against actual native services without a day import transcript. The
+captured shared assertion flag is already zero, so the test starts a fresh
+canary and requires it to remain set. As in the Polish Cup checker, real FSRef
+outputs are validated against common native identities before supplying equal
+host inputs to both children; every guest comparison byte remains checked.
