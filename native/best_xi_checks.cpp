@@ -1,6 +1,7 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugging.hpp"
 #include "debug_localization.hpp"
+#include "best_xi_selection.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -11,6 +12,89 @@ namespace {
 using namespace cm::aot;
 using namespace cm::aot::match_debugger;
 void require(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
+void check_assignment_policy() {
+    using namespace best_xi;
+    auto player = [](unsigned id) {
+        Player p; p.id = int(id); p.staff = 100 + id;
+        p.attributes.fill(1000); p.positions.fill(20); return p;
+    };
+    const Role fullback{0x804, 0x804, 0, 0};
+    std::array<Player, 3> pool{player(1), player(2), player(3)};
+    pool[1].attributes[tackling] = 1800;
+    pool[2].attributes[finishing] = 2000;
+    require(select(pool, std::array{fullback})[0] == pool[1].staff,
+            "Best XI ignored the stronger fullback's relevant attributes");
+    pool[0].attributes[handling] = pool[0].attributes[reflexes] = 2000;
+    require(select(pool, std::array{Role{1,1,0,0}})[0] == pool[0].staff,
+            "Keeper attributes did not decide the keeper contest");
+    // Equal fullback profiles except defence versus attacking delivery. The
+    // exact same candidates must trade places when crossing is requested.
+    pool = {player(1), player(2), player(3)};
+    pool[0].attributes[tackling] = pool[0].attributes[positioning] = 1500;
+    pool[1].attributes[crossing] = 1800;
+    require(select(pool, std::array{fullback})[0] == pool[0].staff,
+            "Defensive fullback profile not preferred");
+    auto crossing_role = fullback; crossing_role.instructions = 0x400000000ULL;
+    require(select(pool, std::array{crossing_role})[0] == pool[1].staff,
+            "Cross-ball instruction did not change the fullback comparison");
+    auto no_pressing = fullback; no_pressing.instructions = 0x4000; no_pressing.team = 0x100;
+    require(score(pool[0], no_pressing) == score(pool[0], fullback), "Pressing No inherited team pressing");
+    // Greedy picking would spend the versatile player at left-back. Globally
+    // the other player fills that role, saving the specialist's only rival.
+    pool = {player(1), player(2), player(3)};
+    pool[0].attributes.fill(1400);
+    pool[1].attributes.fill(1300); pool[1].positions[8] = 1;
+    pool[2].attributes.fill(100);
+    const std::array roles{Role{0x804,0x804,0,0}, Role{0x84,0x84,0,0}};
+    const auto selected = select(pool, roles);
+    require(selected[0] == pool[1].staff && selected[1] == pool[0].staff,
+            "Global assignment wasted a versatile player");
+    int exhaustive = std::numeric_limits<int>::min();
+    for (unsigned a = 0; a < pool.size(); ++a) for (unsigned b = 0; b < pool.size(); ++b)
+        if (a != b) exhaustive = std::max(exhaustive, score(pool[a], roles[0]) + score(pool[b], roles[1]));
+    require(exhaustive == score(pool[1], roles[0]) + score(pool[0], roles[1]),
+            "Assignment disagreed with exhaustive alternatives");
+    std::reverse(pool.begin(), pool.end());
+    require(select(pool, roles) == selected, "Roster order changed the best assignment");
+    pool = {player(1), player(2), player(3)};
+    require(select(pool, std::array{fullback})[0] == pool[0].staff, "Equal scores did not prefer stable identity");
+    std::reverse(pool.begin(), pool.end());
+    require(select(pool, std::array{fullback})[0] == 101, "Tie depended on roster order");
+    pool[0].attributes.fill(2000); pool[0].positions[3] = 0;
+    require(select(pool, std::array{Role{0x208,0x208,0,0}})[0] != pool[0].staff,
+            "Attributes overrode an entirely unfamiliar position");
+    pool = {player(1), player(2), player(3)};
+    pool[0].attributes.fill(1500); pool[0].condition = 4000;
+    require(select(pool, std::array{fullback})[0] == pool[1].staff, "Current condition was ignored");
+    require(select(std::span<const Player>{}, roles) == std::array<std::uint32_t,11>{}, "Empty pool invented players");
+    const auto depleted = select(std::span(pool).first(1), roles);
+    require(std::count(depleted.begin(), depleted.end(), pool[0].staff) == 1, "Depleted pool reused a player");
+    // Enumerate every legal assignment independently of the DP on varied
+    // overlapping roles, attributes and conditions, including negative scores.
+    for (unsigned sample = 0; sample < 16; ++sample) {
+        std::array<Player,5> varied{player(1),player(2),player(3),player(4),player(5)};
+        for (unsigned i = 0; i < varied.size(); ++i) {
+            for (unsigned j = 0; j < attribute_count; ++j)
+                varied[i].attributes[j] = int((sample * 13 + i * 7 + j * (i + 1)) % 20 + 1) * 100;
+            for (unsigned j = 0; j < 10; ++j) varied[i].positions[j] = int((sample + i * 3 + j * 7) % 21);
+            varied[i].condition = 6000 + (i * 1000);
+        }
+        const std::array jobs{Role{1,1,0,0}, Role{0x804,0x810,0x400000000ULL,0}, Role{0x240,0x240,0,0}};
+        int optimum = std::numeric_limits<int>::min();
+        for (unsigned a = 0; a < varied.size(); ++a) for (unsigned b = 0; b < varied.size(); ++b)
+            for (unsigned c = 0; c < varied.size(); ++c) if (a != b && a != c && b != c)
+                optimum = std::max(optimum, score(varied[a],jobs[0]) + score(varied[b],jobs[1]) + score(varied[c],jobs[2]));
+        const auto choice = select(varied, jobs);
+        int actual = 0;
+        for (unsigned job = 0; job < jobs.size(); ++job) {
+            const auto chosen = std::find_if(varied.begin(), varied.end(), [&](const auto& p) { return p.staff == choice[job]; });
+            require(chosen != varied.end(), "Assignment invented a player");
+            actual += score(*chosen, jobs[job]);
+        }
+        require(actual == optimum, "Global selection is worse than an enumerated alternative");
+    }
+    std::cout << "Best XI policy: role attributes, instructions, global optimum, identity ties, positions and condition passed\n";
+}
 std::uint32_t invoke(State& s, std::uint32_t entry, std::initializer_list<std::uint32_t> args) {
     unsigned reg = 3;
     for (auto value : args) s.wr<4>(reg++ * 4, value);
@@ -25,6 +109,76 @@ std::array<std::uint32_t, 20> squad(State& s, std::uint32_t tactics, std::uint32
     std::array<std::uint32_t, 20> result{};
     for (unsigned i = 0; i < result.size(); ++i) result[i] = invoke(s, 0x103af800, {tactics, club, i, 0});
     return result;
+}
+std::vector<std::uint8_t> rng_state(const State& s) {
+    auto result = s.memory.copy_out(0x108b3f00, 16);
+    for (auto global : {0x108b3f00u, 0x108b3f08u, 0x108b3f0cu}) {
+        const auto bytes = s.memory.copy_out(s.memory.read<4>(global), 4);
+        result.insert(result.end(), bytes.begin(), bytes.end());
+    }
+    const auto samples = s.memory.copy_out(s.memory.read<4>(0x108b3f04), 51000 * 2);
+    result.insert(result.end(), samples.begin(), samples.end());
+    return result;
+}
+void check_original_attribute_selection(State& s, std::uint32_t club, std::uint32_t tactics,
+                                        std::uint32_t formation, std::uint32_t a, std::uint32_t b) {
+    const auto roster = s.memory.copy_out(club + 0x98, 200);
+    const auto pa = std::uint32_t(s.memory.read<4>(a + 0x14));
+    const auto pb = std::uint32_t(s.memory.read<4>(b + 0x14));
+    require(pa && pb && pa != pb, "Need two different actual player records");
+    const auto original_a = s.memory.copy_out(pa, 0x48), original_b = s.memory.copy_out(pb, 0x48);
+    const auto medical = s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0));
+    const auto conditions = s.memory.read<4>(medical);
+    const auto ca = std::uint32_t(conditions + s.memory.read<4>(a) * 0x24);
+    const auto cb = std::uint32_t(conditions + s.memory.read<4>(b) * 0x24);
+    const auto original_ca = s.memory.copy_out(ca, 0x24), original_cb = s.memory.copy_out(cb, 0x24);
+    const auto probe = invoke(s, 0x10773520, {0x18e0});
+    s.memory.copy_in(probe, s.memory.copy_out(formation, 0x18e0));
+    for (unsigned i = 0; i < 11; ++i) {
+        s.memory.write<2>(probe + 0x12e + i * 2, i ? 1 : 0x804);
+        s.memory.write<2>(probe + 0x150 + i * 2, i ? 1 : 0x804);
+        s.memory.write<8>(probe + 0x1888 + i * 8, 0);
+    }
+    s.memory.write<4>(probe + 0x588, 0);
+    for (unsigned i = 0; i < 50; ++i) s.memory.write<4>(club + 0x98 + i * 4, i == 0 ? a : i == 1 ? b : 0);
+    for (const auto record : {pa, pb}) {
+        s.memory.write<2>(record + 4, 100);
+        for (unsigned offset = 0xf; offset <= 0x1a; ++offset) s.memory.write<1>(record + offset, 1);
+        s.memory.write<1>(record + 0x11, 20); s.memory.write<1>(record + 0x17, 20);
+        for (unsigned offset = 0x1b; offset <= 0x44; ++offset) s.memory.write<1>(record + offset, 10);
+    }
+    for (const auto condition : {ca, cb}) {
+        s.memory.write<2>(condition + 8, 10000); s.memory.write<2>(condition + 10, 10000);
+    }
+    // The original getter must decode negative technical bytes and current
+    // ability before comparing them with the physical attributes.
+    s.memory.write<1>(pa + 0x3e, -50); s.memory.write<1>(pb + 0x3e, 50);
+    require(invoke(s, 0x100d2330, {a, pa, 28}) < invoke(s, 0x100d2330, {b, pb, 28}),
+            "Original technical decode did not distinguish the fixtures");
+    auto random = rng_state(s);
+    require(select_debug_best_xi(s, club, 0, probe, 0) && squad(s, tactics, club)[0] == b,
+            "Actual selector ignored the better decoded tackling attribute");
+    require(random == rng_state(s), "Attribute selection consumed game RNG");
+    s.memory.write<1>(pa + 0x3e, 50); s.memory.write<1>(pb + 0x3e, -50);
+    require(select_debug_best_xi(s, club, 0, probe, 0) && squad(s, tactics, club)[0] == a,
+            "Swapping attributes did not swap the preferred actual player");
+    s.memory.write<1>(pa + 0x3e, 10); s.memory.write<1>(pb + 0x3e, 10);
+    s.memory.write<1>(pa + 0x3e, 80);
+    s.memory.write<1>(pa + 0x23, 10); s.memory.write<1>(pb + 0x23, 45);
+    require(select_debug_best_xi(s, club, 0, probe, 0) && squad(s, tactics, club)[0] == a,
+            "Actual defensive fullback contest failed");
+    s.memory.write<8>(probe + 0x1888, 0x400000000ULL);
+    const auto attributes_a = s.memory.copy_out(pa, 0x48), attributes_b = s.memory.copy_out(pb, 0x48);
+    require(select_debug_best_xi(s, club, 0, probe, 0) && squad(s, tactics, club)[0] == b,
+            "Actual high-word crossing instruction did not change the selection");
+    require(s.memory.copy_out(pa, 0x48) == attributes_a && s.memory.copy_out(pb, 0x48) == attributes_b,
+            "Best XI changed a player's attributes");
+    require(random == rng_state(s), "Repeated attribute selection changed the RNG pool/seed/cursor");
+    s.memory.copy_in(pa, original_a); s.memory.copy_in(pb, original_b);
+    s.memory.copy_in(ca, original_ca); s.memory.copy_in(cb, original_cb);
+    s.memory.copy_in(club + 0x98, roster);
+    require(select_debug_best_xi(s, club, 0, formation, 0), "Could not restore actual selection context");
+    std::cout << "Original Mac attribute decode: competing fullbacks, swapped attributes, live crossing instruction and unchanged RNG passed\n";
 }
 void check_recovery(State& s, std::uint32_t club, std::uint32_t opponent,
                     std::uint32_t tactics, std::uint32_t formation) {
@@ -164,6 +318,7 @@ void check_recovery(State& s, std::uint32_t club, std::uint32_t opponent,
 }
 int main(int argc, char** argv) {
     try {
+        check_assignment_policy();
         if (argc != 4) throw std::runtime_error("Expected original program, read-only game and private root");
         require(debug_text(9, DebugText::best_xi) == "Melhor 11" && debug_text(0, DebugText::best_xi) == "Best XI",
                 "Portuguese/English Best XI labels");
@@ -220,6 +375,7 @@ int main(int argc, char** argv) {
             require(!((status >= 1 && status <= 6) || status == 8 || status == 21), "Unavailable player selected");
         }
         require(invoke(s, 0x10117490, {std::uint32_t(s.memory.read<4>(first[0] + 0x14))}) & 1, "Starting goalkeeper is not a keeper");
+        check_original_attribute_selection(s, club, tactics, formation, first[1], first[2]);
         // A real fixture with five bench places, and no extra stale reserves.
         const auto fixture = invoke(s, 0x10773520, {0x54});
         s.memory.copy_in(fixture, s.memory.copy_out(s.memory.read<4>(live.match + 0x3118), 0x54));

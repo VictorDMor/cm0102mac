@@ -6,6 +6,7 @@
 #include "ui_bridge.hpp"
 #include "debug_localization.hpp"
 #include "debug_contract_date.hpp"
+#include "best_xi_selection.hpp"
 #include <array>
 #include <algorithm>
 #include <cstdlib>
@@ -379,7 +380,6 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
                          std::uint32_t formation, std::uint32_t fixture) {
     if (!native_debugging_enabled() || !club || !formation || managed > 1) return false;
     GuestCall call(s);
-    const auto candidates = call.stack + 0x100, roles = call.stack + 0x200, output = call.stack + 0x240;
     const auto bench = fixture ? std::min<unsigned>(s.memory.read<1>(fixture + 0x4e) >> 4, 9) : 9;
     std::vector<std::uint32_t> available;
     for (unsigned i = 0; i < 50; ++i) {
@@ -397,23 +397,60 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
         if ((status >= 1 && status <= 6) || status == 8 || status == 21) continue;
         available.push_back(staff);
     }
-    for (unsigned i = 0; i < available.size(); ++i) s.memory.write<4>(candidates + i * 4, available[i]);
-    for (unsigned i = 0; i < 11; ++i)
-        s.memory.write<2>(roles + i * 2, s.memory.read<2>(formation + 0x12e + i * 2));
-    // The original selector chooses unused reserves with positional coverage.
-    constexpr std::array<unsigned, 9> reserve_roles{1, 4, 16, 64, 16, 4, 64, 16, 4};
-    for (unsigned i = 0; i < bench; ++i) s.memory.write<2>(roles + (11 + i) * 2, reserve_roles[i]);
-    // All optional inputs are explicitly absent; never inherit caller stack data.
-    call.args({0, 0, 0, 0, 0, 0, 0});
-    call.call(0x10210c50, {candidates, unsigned(available.size()), roles, 11, bench, output, 0x2014, club});
+    // The original profile getter decodes signed technical bytes using current
+    // ability, including its goalkeeper-specific cases. Never mix those raw
+    // bytes with the physical attributes' 1..20 scale. IDs are the Mac profile
+    // switch at 0x100d2330, not a Windows record layout or estimated ability.
+    constexpr std::array<best_xi::Attribute, 31> display_attributes{
+        best_xi::acceleration, best_xi::aggression, best_xi::agility, best_xi::anticipation,
+        best_xi::balance, best_xi::bravery, best_xi::creativity, best_xi::crossing,
+        best_xi::decisions, best_xi::attribute_count, best_xi::dribbling, best_xi::finishing,
+        best_xi::flair, best_xi::handling, best_xi::heading, best_xi::leadership,
+        best_xi::jumping, best_xi::long_shots, best_xi::marking, best_xi::off_the_ball,
+        best_xi::pace, best_xi::passing, best_xi::positioning, best_xi::reflexes,
+        best_xi::free_kicks, best_xi::stamina, best_xi::strength, best_xi::tackling,
+        best_xi::teamwork, best_xi::technique, best_xi::work_rate};
+    constexpr std::array<unsigned, 10> position_offsets{0xf,0x10,0x11,0x12,0x13,0x14,0x15,0x17,0x18,0x19};
+    const auto medical = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
+    std::vector<best_xi::Player> players;
+    for (const auto staff : available) {
+        const auto record = std::uint32_t(s.memory.read<4>(staff + 0x14));
+        best_xi::Player player;
+        player.staff = staff; player.id = signed_value<4>(s.memory.read<4>(staff));
+        for (unsigned i = 0; i < display_attributes.size(); ++i)
+            if (display_attributes[i] != best_xi::attribute_count)
+                player.attributes[display_attributes[i]] =
+                    std::clamp(int(signed_value<4>(call.call(0x100d2330, {staff, record, i + 1}))), 0, 20) * 100;
+        for (unsigned i = 0; i < position_offsets.size(); ++i)
+            player.positions[i] = std::clamp(int(signed_value<1>(s.memory.read<1>(record + position_offsets[i]))), 0, 20);
+        player.condition = unsigned(std::clamp(int(signed_value<2>(call.call(0x101878d0, {medical, staff, 0}))), 0, 10000));
+        players.push_back(player);
+    }
+    std::array<best_xi::Role, 11> roles{};
+    for (unsigned i = 0; i < roles.size(); ++i)
+        roles[i] = {unsigned(s.memory.read<2>(formation + 0x12e + i * 2)),
+                    unsigned(s.memory.read<2>(formation + 0x150 + i * 2)),
+                    s.memory.read<8>(formation + 0x1888 + i * 8),
+                    unsigned(s.memory.read<4>(formation + 0x588))};
+    const auto starters = best_xi::select(players, roles);
     std::array<std::uint32_t, 20> selected{};
+    std::copy(starters.begin(), starters.end(), selected.begin());
+    std::erase_if(players, [&](const auto& player) {
+        return std::find(starters.begin(), starters.end(), player.staff) != starters.end();
+    });
+    // Fill the fixture's bench from the remaining pool, retaining goalkeeper,
+    // defensive, midfield and attacking coverage without spending a starter.
+    constexpr std::array<unsigned, 9> reserve_roles{1, 4, 16, 64, 16, 4, 64, 16, 4};
+    std::array<best_xi::Role, 9> reserves{};
+    for (unsigned i = 0; i < bench; ++i) reserves[i] = {reserve_roles[i], reserve_roles[i], 0, 0};
+    const auto substitutes = best_xi::select(players, std::span(reserves).first(bench));
+    std::copy_n(substitutes.begin(), bench, selected.begin() + 11);
     for (unsigned i = 0; i < 11 + bench; ++i) {
-        const auto staff = std::uint32_t(s.memory.read<4>(output + i * 4));
+        const auto staff = selected[i];
         if (!staff) continue;
         if (std::find(available.begin(), available.end(), staff) == available.end() ||
             std::find(selected.begin(), selected.begin() + i, staff) != selected.begin() + i)
             throw std::runtime_error("Best XI returned an unavailable or duplicate player");
-        selected[i] = staff;
     }
     const auto tactics = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a6c)));
     for (unsigned i = 0; i < selected.size(); ++i) {
