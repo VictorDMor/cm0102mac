@@ -20,6 +20,16 @@ std::uint32_t invoke(State& s, std::uint32_t entry, std::initializer_list<std::u
     return std::uint32_t(s.r<4>(12));
 }
 struct Offer { std::uint32_t index, revision, club, address; };
+std::vector<std::uint8_t> random_state(const State& s) {
+    auto result = s.memory.copy_out(0x108b3f00, 16);
+    for (auto global : {0x108b3f00u, 0x108b3f08u, 0x108b3f0cu}) {
+        const auto bytes = s.memory.copy_out(s.memory.read<4>(global), 4);
+        result.insert(result.end(), bytes.begin(), bytes.end());
+    }
+    const auto samples = s.memory.copy_out(s.memory.read<4>(0x108b3f04), 51000 * 2);
+    result.insert(result.end(), samples.begin(), samples.end());
+    return result;
+}
 }
 
 int main(int argc, char** argv) {
@@ -164,8 +174,19 @@ int main(int argc, char** argv) {
         s.memory.write<4>(deferred_list + 12, s.memory.read<4>(deferred_list + 4));
         const auto remaining = invoke(s, 0x10738e00, {deferred_list});
         require(remaining && s.memory.read<4>(remaining + 0x70) == paid.index, "Unrelated deferred contract removed");
-        invoke(s, 0x103f3540, {transfer, paid.address});
-        invoke(s, 0x103fb630, {transfer, paid.address});
+        const auto contract_before_sale = s.memory.copy_out(contract, 100);
+        const auto staff_before_sale = s.memory.copy_out(staff, 0x70);
+        s.memory.write<1>(immediate.address + 0x10, 2); // Accepted terms alone do not establish a scheduled sale.
+        require(cancel_scheduled_sale(s, staff), "Scheduled purchase sale cancellation failed");
+        require(slot(paid) == paid.address && s.memory.read<1>(paid.address + 0x34) == 16 &&
+                !s.memory.read<4>(transfer + 0xa58) && !invoke(s, 0x103f43b0, {transfer, staff, 0}),
+                "Cancelled sale remains scheduled or its history was lost");
+        require(!invoke(s, 0x1007f720, {manager, person_id, paid.club}) && !s.memory.read<2>(deferred_list),
+                "Cancelled sale left a pending or deferred contract");
+        require(s.memory.copy_out(contract, 100) == contract_before_sale && s.memory.copy_out(staff, 0x70) == staff_before_sale &&
+                slot(loan) == loan.address && slot(immediate) == immediate.address && s.memory.read<1>(immediate.address + 0x10) == 2,
+                "Cancellation changed the current contract, player or unrelated offers");
+        require(!cancel_scheduled_sale(s, staff), "A second cancellation accepted an unscheduled offer");
         const auto final_agreement = make_offer(buyers[7], 1, 3, 0);
         const auto final_row = invoke(s, 0x1007f720, {manager, person_id, final_agreement.club});
         require(final_row, "Missing final agreement");
@@ -177,6 +198,45 @@ int main(int argc, char** argv) {
         require(!slot(final_agreement) && !s.memory.read<4>(transfer + 0xa58) &&
                 !(s.memory.read<1>(flags) & 0x50), "Last accepted agreement left transfer flags behind");
         require(!invoke(s, 0x103f43b0, {transfer, staff, 0}), "Cancelled transfer remains visible to the original query");
-        std::cout << "Contract extension: original services, pending and accepted pre-contracts, scheduled purchase, loan, gating and terms passed\n";
+        std::uint32_t exchanged = 0;
+        for (std::uint32_t n = 0; n < staff_count; ++n) {
+            const auto candidate = staff_base + n * 0x70;
+            if (s.memory.read<4>(candidate + 0x24) == buyers[1] && s.memory.read<4>(candidate + 0x14)) { exchanged = candidate; break; }
+        }
+        require(exchanged, "Missing exchange player");
+        const auto other_value = invoke(s, 0x10084be0, {manager, exchanged, buyers[1], 1, 0xffffffff, 0});
+        if (!invoke(s, 0x10082f20, {manager, exchanged})) invoke(s, 0x10078e70, {manager, exchanged, other_value});
+        const auto other_contract = invoke(s, 0x10082f20, {manager, exchanged});
+        require(other_contract && s.memory.read<4>(other_contract + 4) == s.memory.read<4>(buyers[1]), "Exchange contract setup");
+        const auto exchange = make_offer(buyers[1], 0, 4, 0);
+        const auto exchange_list = invoke(s, 0x10773520, {16});
+        invoke(s, 0x10738c00, {exchange_list});
+        s.memory.write<4>(scratch + 0x100, s.memory.read<4>(exchanged)); s.memory.write<4>(scratch + 0x104, 2);
+        invoke(s, 0x10738d10, {exchange_list, scratch + 0x100, 8});
+        s.memory.write<4>(exchange.address + 4, exchange_list);
+        invoke(s, 0x103f2ec0, {transfer, exchange.address, scratch + 0x180});
+        invoke(s, 0x103f2ec0, {transfer, loan.address, scratch + 0x180});
+        require(s.memory.read<4>(transfer + 0xa58) == 2 && s.memory.read<1>(exchange.address + 0x34) == 19,
+                "Scheduled exchange setup");
+        const auto club_before = s.memory.copy_out(club, 0x248);
+        const auto buyer_before = s.memory.copy_out(buyers[1], 0x248);
+        const auto main_before = s.memory.copy_out(contract, 100);
+        const auto other_before = s.memory.copy_out(other_contract, 100);
+        const auto random_before = random_state(s);
+        require(cancel_scheduled_sale(s, exchanged), "Exchange player's sale cancellation failed");
+        require(s.memory.read<1>(exchange.address + 0x34) == 16 && s.memory.read<4>(transfer + 0xa58) == 1 &&
+                !(s.memory.read<1>(std::uint32_t(s.memory.read<4>(transfer + 0x9a0)) + s.memory.read<4>(exchanged) * 10) & 0x10) &&
+                invoke(s, 0x103f43b0, {transfer, staff, 0}),
+                "Exchange cancellation or unrelated scheduled loan flags incorrect");
+        require(s.memory.copy_out(contract, 100) == main_before && s.memory.copy_out(other_contract, 100) == other_before &&
+                s.memory.copy_out(club, 0x248) == club_before && s.memory.copy_out(buyers[1], 0x248) == buyer_before &&
+                random_state(s) == random_before && slot(immediate) == immediate.address,
+                "Exchange cancellation changed club records, contracts, RNG or an open offer");
+        s.memory.write<4>(scratch, exchange.address);
+        invoke(s, 0x103eb650, {transfer, scratch});
+        require(!slot(exchange) && s.memory.read<4>(transfer + 0xa58) == 1 &&
+                s.memory.copy_out(contract, 100) == main_before && s.memory.copy_out(other_contract, 100) == other_before,
+                "Terminal sale collection changed the scheduled loan or current contracts");
+        std::cout << "Contract extension and sale cancellation: scheduled paid sale, exchange, deferred contracts, loan, unrelated offers and current terms passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
