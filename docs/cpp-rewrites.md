@@ -729,7 +729,7 @@ nine groups and a permutation of the immutable indices 0..8. Detailed proofs and
 per-entry evidence remain private; the structural inventory is
 `tools/euro_champ_qual_audit.py`.
 
-## MATCH_PL.CPP: player state and spatial queries
+## MATCH_PL.CPP: player state and decisions
 
 The audited module starts at `0x102238a0`, before the parameterized constructor
 used by the older inferred inventory. Its default constructor preserves untouched
@@ -749,3 +749,9 @@ PowerPC floating branches use `ble = !GT` and `bge = !LT`, including unordered
 comparisons; an explicit `cror EQ,LT,EQ` has different NaN behavior.
 Legacy original/profile switches must also decline the new module's hooks;
 otherwise a takeover silently turns a reference run into another C++ run.
+
+Response and decision sampling can pass a nonzero floating bound that truncates
+to integer zero. Their audited quotient-free divisions leave the dividend as
+the residual, followed by the original sign correction; introducing a host
+division error changes that continuation. Nested wide corrections also retain
+the caller's incoming F1 until reseeding, where external code can observe it.

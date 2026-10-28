@@ -2340,7 +2340,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if ball_action_hooks:
         require_ball_action_hooks(page, instructions, result)
     if ball_contact_hooks:
-        require_ball_contact_hooks(page, instructions, result)
+        require_ball_contact_hooks(page, instructions, result, taken_over=taken_over)
     if match_discipline_hooks:
         require_match_discipline_hooks(page, instructions, result)
     if player_movement_hooks:

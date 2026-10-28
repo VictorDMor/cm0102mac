@@ -144,3 +144,13 @@ MATCH_PL_ROUTINE(0x10288f30, 0x10289550, R3|F1, "7caa4433c52787bc",
 
 MATCH_PL_ROUTINE(0x10244c60, 0x10245050, R3|F1, "c4a854add6bd1dcd",
     [](Cpu& c) { match_pl::accepts_target(c, c.r(3), c.r(4), c.r(5), std::int8_t(c.r(6)), c.r(9), c.f(1), c.f(2)); })
+
+// Contact, response and weighted decision sampling.
+MATCH_PL_ROUTINE(0x10270320, 0x10270ba0, R3|F1, "2d1e5af461570df5",
+    [](Cpu& c) { match_pl::react_to_contact_failure(c, c.r(3), std::int16_t(c.r(4))); })
+
+MATCH_PL_ROUTINE(0x10286650, 0x102875f0, R3|F1, "7816bfd72a14d5c1",
+    [](Cpu& c) { match_pl::accepts_response(c, c.r(3), c.r(4), c.r(5)); })
+
+MATCH_PL_ROUTINE(0x10289620, 0x10289d50, R3|F1, "63a3f67171b2e132",
+    [](Cpu& c) { match_pl::sample_decision(c, c.r(3), c.r(4)); })

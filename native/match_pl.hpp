@@ -72,4 +72,7 @@ std::uint32_t adjust_action_bias(Cpu&, std::uint32_t player, std::uint32_t bias)
 std::uint32_t adjust_morale(Cpu&, std::uint32_t player, std::uint32_t change);
 std::uint32_t accepts_target(Cpu&, std::uint32_t player, std::uint32_t column, std::uint32_t row,
                             std::int8_t adaptive, std::uint32_t feedback, double time, double reach);
+std::uint32_t react_to_contact_failure(Cpu&, std::uint32_t player, std::int16_t quality);
+std::uint32_t accepts_response(Cpu&, std::uint32_t player, std::uint32_t kind, std::uint32_t opponent);
+std::uint32_t sample_decision(Cpu&, std::uint32_t player, std::uint32_t trait);
 }
