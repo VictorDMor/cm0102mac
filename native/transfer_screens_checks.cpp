@@ -28,7 +28,7 @@ constexpr std::array entries{0x10417590u, 0x10417880u, 0x1041e760u, 0x1041ea60u,
     0x1041f830u, 0x10420aa0u, 0x10422ac0u, 0x10423160u, 0x104248a0u,
     0x10424930u, 0x10426550u, 0x1042a780u, 0x1042ae20u, 0x1042b500u,
     0x1042ed80u, 0x1042ee90u, 0x10428650u, 0x10420e40u, 0x10421960u, 0x10422a00u,
-    0x10426830u, 0x1042b3a0u, 0x10426970u, 0x10423040u, 0x1041e770u, 0x1041b600u, 0x10417b60u, 0x10420b50u, 0x10420f00u, 0x10421070u, 0x1041eb10u, 0x1041f3a0u, 0x10422600u, 0x10422b50u, 0x10422e40u, 0x10421fb0u, 0x10422310u, 0x1042c6d0u, 0x10421ee0u, 0x104265c0u, 0x104286c0u, 0x10428750u, 0x1042a810u, 0x1042abb0u, 0x1042f670u, 0x1042f7c0u, 0x1042fb30u, 0x104249e0u, 0x10424d40u, 0x10424f80u, 0x1042efa0u, 0x1042f380u};
+    0x10426830u, 0x1042b3a0u, 0x10426970u, 0x10423040u, 0x1041e770u, 0x1041b600u, 0x10417b60u, 0x10420b50u, 0x10420f00u, 0x10421070u, 0x1041eb10u, 0x1041f3a0u, 0x10422600u, 0x10422b50u, 0x10422e40u, 0x10421fb0u, 0x10422310u, 0x1042c6d0u, 0x10421ee0u, 0x104265c0u, 0x104286c0u, 0x10428750u, 0x1042a810u, 0x1042abb0u, 0x1042f670u, 0x1042f7c0u, 0x1042fb30u, 0x104249e0u, 0x10424d40u, 0x10424f80u, 0x1042efa0u, 0x1042f380u, 0x1042ae90u, 0x1042bf70u, 0x1042c2c0u, 0x1042b580u, 0x1042bae0u, 0x10425980u, 0x10425240u};
 struct Case {
     std::uint32_t entry;
     int create = 1, create_result = 1, contract_present = 1, contract_type = 0,
@@ -58,7 +58,8 @@ struct Case {
         loan_mode = 0, transfer_list_result = 0, loan_list_result = 0,
         status_mask = 0, squad_status = 7, registration = 1, club_kind = 0,
         happiness = 60, player_age = 14, listing_eligible = 1, status_listed_value = 0,
-        status_history_mutation = 0, actual_header = 0, same_owner = 1, popup_active = 0, popup_action = 0, recall_mutation = 0, alternate_club_present = 1, current_day = 29, second_day = 31, day_mutation = 0, actual_trial_constructor = 0, temporary_club_mutation = 0;
+        status_history_mutation = 0, actual_header = 0, same_owner = 1, popup_active = 0, popup_action = 0, recall_mutation = 0, alternate_club_present = 1, current_day = 29, second_day = 31, day_mutation = 0, actual_trial_constructor = 0, temporary_club_mutation = 0, release_days = 365, release_salary_mutation = 0, proposed_type = 24, news_proposed_present = 1, random_word = 0, random_salt = 0, random_wrap = 0, shortlist_rating = 11100, club_restricted = 0, free_move = 0, budget_high = 0, bank_high = 0, bank_low = 1000000, shortlist_mutation = 0;
+    double interest = 3.0;
     std::uint32_t mode = 1;
 };
 Case active{entries[0]};
@@ -85,7 +86,7 @@ const std::set<std::uint32_t> dependencies{
     0x103e2db0, 0x103e4c90, 0x103e4740, 0x10416710, 0x103f6240,
     0x103e95a0, 0x1014c2e0, 0x103e4d70, 0x102cd0c0, 0x103fa8e0,
     0x10082f90, 0x100d3040, 0x100d3230, 0x10084be0,
-    0x10365cc0, 0x10365c80, 0x10365c30, 0x10363130, 0x1037f110, 0x1037fa80, 0x103fa850, 0x100f05a0, 0x100f0720, 0x1007fb20, 0x1030ffa0, 0x103721f0, 0x10372260, 0x1007f200, 0x107182f0, 0x107156f0, 0x103e3240, 0x103e3170};
+    0x10365cc0, 0x10365c80, 0x10365c30, 0x10363130, 0x1037f110, 0x1037fa80, 0x103fa850, 0x100f05a0, 0x100f0720, 0x1007fb20, 0x1030ffa0, 0x103721f0, 0x10372260, 0x1007f200, 0x107182f0, 0x107156f0, 0x103e3240, 0x103e3170, 0x10374d10, 0x103fa290, 0x100f2680, 0x103ecb80, 0x1030fda0, 0x10310310, 0x100c7d00, 0x10369080, 0x1036fbf0, 0x10089a40, 0x10085860, 0x10698bb0};
 
 void trace(Cpu& c, std::uint32_t entry) {
     if (++call_count > 1000) throw std::runtime_error("fixture call limit");
@@ -103,7 +104,7 @@ void trace(Cpu& c, std::uint32_t entry) {
     case 0x107198c0: case 0x107444e0: stack_arguments = 4; break;
     case 0x10744430: stack_arguments = 5; break;
     case 0x10744390: stack_arguments = 3; break;
-    case 0x1074a350: stack_arguments = active.entry == 0x10422600 ? 12 : (active.entry == 0x10422b50 || active.entry == 0x1042f7c0) ? 9 : (active.entry == 0x104265c0 || active.entry == 0x1042a810 || active.entry == 0x104249e0 || active.entry == 0x10424f80 || active.entry == 0x1042efa0) ? 6 : 3; break;
+    case 0x1074a350: stack_arguments = active.entry == 0x10422600 ? 12 : (active.entry == 0x10422b50 || active.entry == 0x1042f7c0 || active.entry == 0x1042ae90) ? 9 : (active.entry == 0x104265c0 || active.entry == 0x1042a810 || active.entry == 0x104249e0 || active.entry == 0x10424f80 || active.entry == 0x1042efa0) ? 6 : 3; break;
     case 0x10727890:
         if (c.lr() == 0x1041efa8) stack_arguments = 3;
         if (c.lr() == 0x10422170) stack_arguments = 2;
@@ -230,8 +231,9 @@ bool probe(State& s) {
         if (active.destroy_revision_delta) c.put32(history + 12, c.u32(history + 12) + active.destroy_revision_delta);
         break;
     case 0x103f4d10: c.put16(c.r(6), 0xff85); c.set(3, active.eligible); break;
-    case 0x10103510: c.set(3, data + 0xa400); break;
+    case 0x10103510: c.set(3, active.entry==0x10425240 && !active.board_present ? 0 : data + 0xa400); break;
     case 0x100f5770:
+        if (active.entry==0x10425240) { c.set({{3,std::uint32_t(active.budget_high)},{4,std::uint32_t(active.board_limit)}}); break; }
         if (c.r(6)) c.put8(c.r(6), active.board_reason);
         c.set({{3, 0}, {4, std::uint32_t(active.board_limit)}}); break;
     case 0x1000a060: c.put32(c.r(3), c.u32(c.r(3)) + std::uint32_t(active.increment)); break;
@@ -284,7 +286,7 @@ bool probe(State& s) {
     case 0x1074bab0: case 0x1074c570: case 0x10744250: case 0x107442f0: case 0x1074a350: break;
     case 0x103ea290: c.put32(c.r(5),clubs + active.bidder_id * 0x248); break;
     case 0x1007f720:
-        if (active.entry==0x1042c6d0 || active.entry==0x10421ee0) c.set(3,active.proposed_present ? data+0x4500 : 0);
+        if (active.entry==0x1042c6d0 || active.entry==0x10421ee0 || active.entry==0x1042bf70 || active.entry==0x1042c2c0) c.set(3,active.proposed_present ? data+0x4500 : 0);
         else c.set(3,active.contract_present ? contract : 0);
         break;
     case 0x10168a00: c.put32(c.r(4),c.r(3)); break;
@@ -292,6 +294,21 @@ bool probe(State& s) {
     case 0x10716eb0: c.put32(c.r(4),c.u32(c.r(3))); break;
     case 0x10416710: c.set(3,123456); break;
     case 0x103f6240: c.put16(c.r(7),0x37); c.set(3,1); break;
+    case 0x1030fda0: case 0x10310310:
+        c.put32(data+0x23c,target);
+        if (active.shortlist_mutation) c.put32(data+0xb024,clubs+3*0x248);
+        break;
+    case 0x100c7d00: c.set(3,active.club_restricted); break;
+    case 0x10369080: c.set_f(1,active.interest); break;
+    case 0x1036fbf0: c.put32(c.r(4),23); c.put32(c.r(7),29); c.set(3,active.free_move); break;
+    case 0x10089a40: case 0x10085860: c.set(3,active.selected_value); break;
+    case 0x10698bb0: c.put32(data+0x240,c.r(6)); c.put32(data+0x244,c.r(5)); break;
+    case 0x103fa290: c.put32(c.r(6),0xdeadbeef); c.set(3,active.eligible); break;
+    case 0x100f2680: c.set(3,active.board_limit); break;
+    case 0x103ecb80: c.set(3,active.news_proposed_present ? data+0x4500 : 0); break;
+    case 0x10374d10:
+        if (active.release_salary_mutation) c.put32(c.r(3)+12,c.u32(c.r(3)+12)+17);
+        c.set(3,active.release_days); break;
     case 0x103721f0:
         // Field-specific constructor model; untouched contract gaps retain the
         // caller's stack bytes. Actual-constructor cases bypass this boundary.
@@ -709,6 +726,69 @@ void initialize(Cpu& c, const Case& test) {
         c.put32(history+28,test.offer_present ? offer : 0);
         if (test.entry==0x1042f380) c.set(3,test.control);
     }
+    if (test.entry==0x1042ae90) {
+        c.put_f64(c.r(2)-0x3aec,1.0); c.put_f64(c.r(2)-0x3afc,1.0);
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        unsigned n=0;
+        for (int slot:{-0x7bc4,-0x7bc8,-0x7b14}) {
+            const auto colour=data+0x400+4*n++;
+            c.put32(c.r(2)+std::uint32_t(slot),colour); c.put16(colour,0x3456+n);
+        }
+        c.put32(data+0x194,test.first_control);
+        for (unsigned i=0;i<12;++i) { c.put32(clubs+i*0x248,i); c.put8(clubs+i*0x248+0x23b,(i+1)%3); }
+        c.put32(history,people+3*0x70); c.put32(history+4,0x12345678);
+        c.put32(contract+12,test.current_salary);
+    }
+    if (test.entry==0x1042bf70 || test.entry==0x1042c2c0) {
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        c.put32(c.r(2)-0x7ba8,data+0x54000); c.put32(c.r(2)-0x7bac,data+0x198);
+        variable(-0x7ab8,0x148,data+0xa400);
+        for (unsigned i=0;i<8;++i) c.put32(clubs+i*0x248,i);
+        c.put32(data+0xb024,clubs+2*0x248);
+        c.put32(contract+12,test.current_salary); c.put32(data+0x450c,test.offered_salary);
+        c.put8(data+0x4538,test.proposed_type);
+        c.put16(data+0x4532,test.expiry_year); c.put8(data+0x451c,test.cup_option); c.put8(data+0x451d,test.parent_option);
+        for (unsigned i=0;i<32;++i) c.put32(history+4*i,0xabc00000+i);
+        if (test.entry==0x1042bf70) c.set({{3,data+0xb000},{4,23}});
+        else c.set(3,people+3*0x70);
+    }
+    if (test.entry==0x1042b580 || test.entry==0x1042bae0) {
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        unsigned n=0;
+        for (int slot:{-0x7bc4,-0x7bc8,-0x7bdc,-0x7bcc}) {
+            const auto colour=data+0x400+4*n++;
+            c.put32(c.r(2)+std::uint32_t(slot),colour); c.put16(colour,0x3456+n);
+        }
+        c.put32(c.r(2)-0x7ba8,data+0x54000); c.put32(c.r(2)-0x7bac,data+0x198);
+        c.put32(data+0x194,test.first_control);
+        c.put32(data+0xb024,test.manager_club_present ? clubs+2*0x248 : 0);
+        if (!test.manager_present) c.put32(screens+std::uint32_t(test.group)*0x2c0+4,0);
+        c.put32(history,test.person_present ? people+3*0x70 : 0);
+        c.put32(history+4,test.mode); c.put32(history+8,test.first_control);
+        if (test.entry==0x1042bae0) c.set(3,test.control);
+    }
+    if (test.entry==0x10425980 || test.entry==0x10425240) {
+        constexpr auto words=data+0x6e000;
+        variable(-0x7b90,0x230,std::uint32_t(test.random_salt));
+        variable(-0x7b84,0x234,words);
+        variable(-0x7b88,0x238,words+(test.random_wrap==1 ? 0 : test.random_wrap==2 ? 2 : 126));
+        c.put32(c.r(2)-0x7b8c,words); c.put32(c.r(2)-0x34c4,0x12345678);
+        for (unsigned i=0;i<128;i+=2) c.put16(words+i,test.random_word);
+        c.set(3,test.mode);
+    }
+    if (test.entry==0x10425240) {
+        variable(-0x7b1c,0x20c,data+0x6c000); variable(-0x7ab8,0x148,data+0xa400);
+        variable(-0x7b94,0x248,data+0x6c100);
+        c.put32(data+0x23c,0); c.put32(data+0x240,0xffffffff); c.put32(data+0x244,0);
+        c.put32(data+0xb024,test.manager_club_present ? clubs+2*0x248 : 0);
+        c.put32(data+0xb020,test.alternate_club_present ? clubs+3*0x248 : 0);
+        c.put32(data+0xa000+0x988,data+0x6c200);
+        c.put32(data+0xa400,test.bank_high); c.put32(data+0xa404,test.bank_low);
+        const auto person=people+3*0x70;
+        c.put32(person+0x14,data+0x6c300); c.put16(data+0x6c30a,test.shortlist_rating);
+        c.put32(person+0x24,test.same_owner ? clubs+0x248 : 0);
+        c.put32(history,3); c.put32(history+4,test.mode); c.set(3,test.control);
+    }
     if (test.actual_reset_services) actual_heap_offers(c, test);
     c.s.budget = 100000;
 }
@@ -718,6 +798,59 @@ void returned(State& s) {
         throw std::runtime_error("fixture did not return");
     if (active.actual_header && c.u8(data+0x100000+0x12a941)!=1)
         throw std::runtime_error("Actual full-capacity header guard was not executed");
+    if (active.entry==0x10425240) {
+        auto action=std::int16_t(active.control)==-1 ? 0 : std::int16_t(active.action);
+        if (!action) action=std::int16_t(active.default_action);
+        const auto expected=action==1 ? active.mode ? 0x1030fda0u : 0x10310310u : 0u;
+        if (c.u32(data+0x23c)!=expected) throw std::runtime_error("Shortlist add/remove selection mismatch");
+    }
+    if (active.entry==0x10425980) {
+        const auto bound=std::int32_t(active.mode);
+        const bool wide=bound>65535 || bound< -65535;
+        const auto correction=std::int32_t(active.mode*10u)/65535;
+        const unsigned draws=bound==0 ? 0 : wide && correction!=0 ? 2 : 1;
+        unsigned cursor_offset=0,lcg=0x12345678,salt=std::uint32_t(active.random_salt);
+        const unsigned end=active.random_wrap==1 ? 0 : active.random_wrap==2 ? 2 : 126;
+        for (unsigned i=0;i<draws;++i) {
+            cursor_offset+=2;
+            if (cursor_offset>end) { cursor_offset=0; lcg=lcg*0x41c64e6du+0x3039u; salt=(lcg>>16)&0x7fff; }
+        }
+        if (c.u32(data+0x234)!=data+0x6e000+cursor_offset || c.u32(data+0x230)!=salt || c.u32(c.r(2)-0x34c4)!=lcg)
+            throw std::runtime_error("Transfer range RNG consumption/state mismatch");
+    }
+    if (active.entry==0x1042bae0) {
+        auto action=std::int16_t(active.control)==-1 ? 0 : std::int16_t(active.action);
+        if (!action) action=std::int16_t(active.default_action);
+        if (action==1 || action==2) {
+            const auto expected=std::uint32_t(std::int32_t(std::int8_t(std::int8_t(active.mode)+(action==1 ? -1 : 1))));
+            if (c.u32(history+4)!=expected || c.r(3)!=0) throw std::runtime_error("Trial duration signed-byte update mismatch");
+        }
+    }
+    if (active.entry==0x1042c2c0) {
+        const bool opened=std::int8_t(active.eligible) && std::int8_t(active.create_result);
+        if (c.r(3)!=unsigned(opened)) throw std::runtime_error("Loan terms opening result mismatch");
+        if (opened) {
+            const auto wage=std::uint32_t(active.current_salary)+(active.history_terms_mutation ? 7u : 0u);
+            const bool proposed=active.proposed_present && (std::int8_t(active.proposed_type)>>2)==6;
+            const auto product=std::int32_t(std::uint32_t(active.offered_salary)*100u);
+            const auto quotient=proposed ? std::int8_t(std::int64_t(product)/std::int32_t(wage)) : 0;
+            const auto percentage=std::uint32_t(std::int32_t(std::int8_t((int(quotient)/10)*10)));
+            if (c.u32(history+44)!=percentage) throw std::runtime_error("Loan percentage byte-before-tens mismatch");
+        }
+    }
+    if (active.entry==0x1042ae90) {
+        std::int32_t expected=0;
+        const int kind=std::int8_t(active.contract_type_query==3 ? 20 : active.contract_type)>>2;
+        if (active.contract_present && active.contract_null_query!=3 && kind==2) {
+            const int days=std::int16_t(active.release_days);
+            if (days>0) {
+                const auto salary=std::uint32_t(active.current_salary)+(active.release_salary_mutation ? 17u : 0u);
+                expected=std::int32_t(std::uint32_t(days)*salary)/7;
+            }
+            if (std::int8_t(active.listing_eligible)) expected/=4;
+        }
+        if (c.u32(history+4)!=std::uint32_t(expected)) throw std::runtime_error("Release compensation mismatch");
+    }
     if (active.entry==0x1042f380) {
         auto action=std::int16_t(active.control)==-1 ? 0 : std::int16_t(active.action);
         if (!action) action=std::int16_t(active.default_action);
@@ -807,6 +940,8 @@ void rewrite(State& s, std::uint32_t entry) {
     else transfer_screens_run_rewrite(s, entry);
     returned(s);
 #if defined(CM_TRANSFER_SCREENS_COVERAGE)
+    // Each comparison exits its child through _exit, bypassing the runtime's
+    // exit flush. Use an LLVM_PROFILE_FILE %m merge pool to bound disk use.
     __llvm_profile_write_file();
 #endif
 }
@@ -1275,6 +1410,128 @@ int main(int argc, char** argv) {
         }
         for (int command:{0,1,-1}) for (int fallback:{0,1,-1,std::numeric_limits<int>::min()}) {
             Case t{0x1042f380}; t.command=command; t.fallback=fallback; cases.push_back(t);
+        }
+        for (int type:{0,4,7,8,9,10,11,12,127,128,255}) for (int eligible:{0,1,128,256}) {
+            Case t{0x1042ae90}; t.contract_type=type; t.listing_eligible=eligible; cases.push_back(t);
+        }
+        for (int days:{-32768,-1,0,1,6,7,8,28,365,32767,32768,65535}) {
+            Case t{0x1042ae90}; t.contract_type=8; t.release_days=days; cases.push_back(t);
+        }
+        for (int days:{1,7,32767}) for (int salary:{std::numeric_limits<int>::min(),-1000,-7,-5,-4,-3,-2,-1,0,1,6,7,8,1000,std::numeric_limits<int>::max()})
+            for (int eligible:{0,1}) for (int money:{0,1}) {
+                Case t{0x1042ae90}; t.contract_type=8; t.release_days=days; t.current_salary=salary;
+                t.listing_eligible=eligible; t.actual_total_services=money; cases.push_back(t);
+            }
+        for (int high:{0,1,-1,std::numeric_limits<int>::max(),std::numeric_limits<int>::min()}) {
+            Case t{0x1042ae90}; t.contract_type=8; t.monetary_high=high; cases.push_back(t);
+        }
+        for (int height:{1,21,1000}) for (int group:{0,1,3}) {
+            Case t{0x1042ae90}; t.row_height=height; t.group=group; cases.push_back(t);
+        }
+        // Explicit dependency mutations characterize live reads; no claim
+        // that the canonical remaining-days helper mutates the salary.
+        { Case t{0x1042ae90}; t.contract_type=8; t.release_salary_mutation=1; cases.push_back(t); }
+        for (int kind:{0,8}) { Case t{0x1042ae90}; t.contract_type=kind; t.varying_owner=1; cases.push_back(t); }
+        { Case t{0x1042ae90}; t.contract_type=8; t.contract_null_query=3; cases.push_back(t); }
+        { Case t{0x1042ae90}; t.contract_type=8; t.contract_type_query=3; cases.push_back(t); }
+        for (auto entry:{0x1042bf70u,0x1042c2c0u}) {
+            for (int eligible:{0,1,-1,128,256}) for (int created:{0,1,-1,128,256}) {
+                Case t{entry}; t.eligible=eligible; t.create_result=created; cases.push_back(t);
+            }
+            for (int current:{-1000,1,10,999,1000,10000,2147483647})
+                for (int proposed:{-2147483647,-1000,-99,-5,-1,0,1,5,9,10,99,100,105,1270,1280,2550,2560,21474836,21474837,2147483647}) {
+                    Case t{entry}; t.current_salary=current; t.offered_salary=proposed; cases.push_back(t);
+                }
+            for (int type:{0,20,23,24,25,26,27,28,127,128,255}) for (int present:{0,1}) {
+                Case t{entry}; t.proposed_type=type; t.proposed_present=present; cases.push_back(t);
+            }
+            for (int byte:{0,1,127,128,255,256}) for (int word:{0,2002,32768,65535}) {
+                Case t{entry}; t.term_byte_a=byte; t.term_byte_b=255-byte; t.mode=byte;
+                t.term_word_a=word; t.term_word_b=65535-word; t.expiry_year=word;
+                t.cup_option=byte; t.parent_option=255-byte; cases.push_back(t);
+            }
+            for (int group:{0,1,3}) { Case t{entry}; t.group=group; cases.push_back(t); }
+            // Deliberately noncanonical callbacks characterize later reads.
+            { Case t{entry}; t.history_terms_mutation=1; cases.push_back(t); }
+            { Case t{entry}; t.contract_null_query=2; cases.push_back(t); }
+        }
+        for (int revision:{16,17,18,-1}) for (int status:{0,1,2,3,4,5,127,128,255}) for (int created:{0,1}) {
+            Case t{0x1042bf70}; t.news_revision=revision; t.status=status; t.create_result=created; cases.push_back(t);
+        }
+        { Case t{0x1042bf70}; t.news_proposed_present=0; cases.push_back(t); }
+        for (int weeks:{-129,-128,-1,0,1,2,3,4,5,127,128,255,256,257}) {
+            Case t{0x1042b580}; t.mode=weeks; cases.push_back(t);
+        }
+        for (int person:{0,1}) for (int manager:{0,1}) for (int club:{0,1}) {
+            Case t{0x1042b580}; t.person_present=person; t.manager_present=manager; t.manager_club_present=club; cases.push_back(t);
+        }
+        for (int height:{1,21,1000}) for (int group:{0,1,3}) for (int id:{-1,10,32767,65535}) {
+            Case t{0x1042b580}; t.row_height=height; t.group=group; t.first_control=id; cases.push_back(t);
+        }
+        for (int control:{-1,0,3,65535}) for (int action:{0,1,2,3,4,65537,65538,32768}) for (int fallback_action:{0,1,2,3,4}) {
+            Case t{0x1042bae0}; t.control=control; t.action=action; t.default_action=fallback_action; cases.push_back(t);
+        }
+        for (int action:{1,2}) for (int weeks:{-129,-128,-1,0,1,2,3,4,5,127,128,255,256,257}) for (int id:{-1,10,32767,65535}) {
+            Case t{0x1042bae0}; t.action=action; t.mode=weeks; t.first_control=id; cases.push_back(t);
+        }
+        for (int created:{0,1,-1,128,256}) { Case t{0x1042bae0}; t.action=4; t.create_result=created; cases.push_back(t); }
+        for (int command:{0,1,-1}) for (int fallback:{0,1,-1,std::numeric_limits<int>::min()}) {
+            Case t{0x1042bae0}; t.command=command; t.fallback=fallback; cases.push_back(t);
+        }
+        for (auto bound:{0u,1u,2u,17u,65534u,65535u,65536u,65537u,1000000u,2147483647u,2147483648u,0xffff0000u,0xffff0001u,0xfffffffeu,0xffffffffu})
+            for (int word:{0,32767,65534,65535}) for (int salt:{0,65535,std::numeric_limits<int>::max(),std::numeric_limits<int>::min(),-1})
+                for (int wrap:{0,1,2}) {
+                    Case t{0x10425980}; t.mode=bound; t.random_word=word; t.random_salt=salt; t.random_wrap=wrap; cases.push_back(t);
+                }
+        for (int control:{-1,0,3,65535}) for (int action:{0,1,2,3,65537,32768}) for (int fallback_action:{0,1,2}) for (auto mode:{0u,1u,0xffffffffu}) {
+            Case t{0x10425240}; t.control=control; t.action=action; t.default_action=fallback_action; t.mode=mode; cases.push_back(t);
+        }
+        for (int club:{0,1}) for (int alternate:{0,1}) for (int board:{0,1}) for (int restricted:{0,1,128,256}) {
+            Case t{0x10425240}; t.action=1; t.manager_club_present=club; t.alternate_club_present=alternate;
+            t.board_present=board; t.club_restricted=restricted; cases.push_back(t);
+        }
+        for (int rating:{-32768,-300,-1,0,299,300,4999,5000,6999,7000,10800,11099,11100,11399,11400,32767})
+            for (int word:{0,1,17,32767,65535}) for (int wrap:{0,1,2}) {
+                Case t{0x10425240}; t.action=1; t.shortlist_rating=rating; t.random_word=word; t.random_wrap=wrap; cases.push_back(t);
+            }
+        // A negative multiply-high result divisible by 32 clears the shift carry.
+        { Case t{0x10425240}; t.action=1; t.shortlist_rating=-32699; cases.push_back(t); }
+        for (double interest:{-1.0,0.0,0.1,0.5,1.0,2.74,2.75,3.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}) {
+            Case t{0x10425240}; t.action=1; t.interest=interest; cases.push_back(t);
+        }
+        for (int present:{0,1}) for (int kind:{0,20,23,24,127,128,255}) for (int controlled:{0,1,128,256}) for (int free:{0,1,128,256}) {
+            Case t{0x10425240}; t.action=1; t.contract_present=present; t.contract_type=kind; t.controlled=controlled; t.free_move=free; cases.push_back(t);
+        }
+        for (int high:{-1,0,1,std::numeric_limits<int>::min()}) for (int low:{0,1,10000,-1})
+            for (int bank:{0,1}) for (int fee:{-1,0,25000,2147483647}) {
+                Case t{0x10425240}; t.action=1; t.budget_high=high; t.board_limit=low;
+                t.bank_high=bank ? high : 0; t.bank_low=bank ? low : 0; t.selected_value=fee; cases.push_back(t);
+            }
+        for (int word:{0,1,65535}) for (int salt:{-1,std::numeric_limits<int>::min(),std::numeric_limits<int>::max()}) for (int wrap:{0,1,2}) {
+            Case t{0x10425240}; t.action=1; t.random_word=word; t.random_salt=salt; t.random_wrap=wrap; cases.push_back(t);
+        }
+        for (int group:{0,1,3}) { Case t{0x10425240}; t.action=1; t.group=group; cases.push_back(t); }
+        for (int command:{0,1,-1}) for (int fallback:{0,1,-1,std::numeric_limits<int>::min()}) {
+            Case t{0x10425240}; t.command=command; t.fallback=fallback; cases.push_back(t);
+        }
+        { Case t{0x10425240}; t.action=1; t.shortlist_mutation=1; cases.push_back(t); }
+        { Case t{0x10425240}; t.action=1; t.varying_owner=1; cases.push_back(t); }
+        // The original interest threshold is 2.75. Exercise the remaining
+        // low-rating exits after a zero first draw, independently of it.
+        for (int club:{0,1}) for (int controlled:{0,1,128,256}) {
+            Case t{0x10425240}; t.action=1; t.shortlist_rating=0;
+            t.same_owner=club; t.controlled=controlled; cases.push_back(t);
+        }
+        // Exact negative arithmetic shifts, including zero and nonzero
+        // refinement bounds, distinguish the carry's discarded-bit test.
+        for (auto bound:{1717980365u,1717967258u}) {
+            Case t{0x10425980}; t.mode=bound; cases.push_back(t);
+        }
+        // An opaque null hyperlink target is valid when the separately
+        // queried caption remains nonnull; this is a query-mutation case.
+        for (int kind:{0,8}) {
+            Case t{0x1042ae90}; t.contract_type=kind;
+            t.contract_null_query=kind ? 7 : 4; cases.push_back(t);
         }
         unsigned completed = 0;
         const auto selected_entry = std::getenv("CM_TRANSFER_SCREENS_ENTRY");

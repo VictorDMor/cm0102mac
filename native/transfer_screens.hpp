@@ -63,4 +63,11 @@ std::uint32_t comparison_confirmation_command(Cpu&, std::uint32_t control);
 void render_shortlist_confirmation(Cpu&);
 void render_temporary_offer_confirmation(Cpu&);
 std::uint32_t temporary_offer_confirmation_command(Cpu&, std::uint32_t control);
+void render_release_confirmation(Cpu&);
+void open_loan_terms_from_news(Cpu&, std::uint32_t manager, std::uint32_t item);
+std::uint32_t open_loan_offer_terms(Cpu&, std::uint32_t person);
+void render_trial_duration(Cpu&);
+std::uint32_t trial_duration_command(Cpu&, std::uint32_t control);
+std::uint32_t sample_transfer_range(Cpu&, std::uint32_t bound);
+std::uint32_t shortlist_confirmation_command(Cpu&, std::uint32_t control);
 }
