@@ -30,7 +30,9 @@ Reconstructed subsystems coexist with statically generated original routines.
 C++23; `CLUB_RECORDS.CPP` adds **92 audited routines** for club records, record
 news, season archives and binary persistence. `EURO_CHAMP_QUAL.CPP` adds
 **31 audited routines** for European qualifying calendars, draws, progression
-and binary records. Routine-owner counts in older
+and binary records. `TRANSFER_SCREENS.CPP` adds **75 audited routines** for
+transfer offers, player status, transfer history, loans and related confirmations.
+Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,
 ahead of further reconstruction.

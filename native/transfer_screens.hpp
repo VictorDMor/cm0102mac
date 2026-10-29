@@ -43,13 +43,13 @@ void open_trial_period_selection(Cpu&, std::uint32_t);
 void open_temporary_offer_confirmation(Cpu&, std::uint32_t, std::uint32_t);
 void open_temporary_offer_terms_confirmation(Cpu&, std::uint32_t, std::uint32_t,
     std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t);
-void clear_exchange_candidates(Cpu&);
+void clear_transfers_browser_cache(Cpu&);
 std::uint32_t restriction_command(Cpu&, std::uint32_t);
 std::uint32_t offer_command(Cpu&, std::uint32_t);
 std::uint32_t previous_offer_command(Cpu&, std::uint32_t);
 std::uint32_t withdraw_bid_command(Cpu&, std::uint32_t);
 std::uint32_t release_player_command(Cpu&, std::uint32_t);
-void open_exchange_candidates(Cpu&);
+void open_transfers_browser(Cpu&);
 void open_completion_from_news(Cpu&, std::uint32_t, std::uint32_t);
 void open_player_transfer_status_from_news(Cpu&, std::uint32_t manager, std::uint32_t item);
 void open_player_transfer_status(Cpu&, std::uint32_t person, std::uint32_t manager, std::uint32_t item, std::uint32_t from_news);
@@ -74,4 +74,10 @@ void render_bid_rejection(Cpu&);
 std::uint32_t bid_rejection_command(Cpu&, std::uint32_t control);
 void render_transfer_completion(Cpu&);
 std::uint32_t transfer_completion_command(Cpu&, std::uint32_t control);
+void render_player_status(Cpu&);
+std::uint32_t player_transfer_status_command(Cpu&, std::uint32_t control);
+void render_transfers_browser(Cpu&);
+std::uint32_t transfers_browser_command(Cpu&, std::uint32_t control);
+void render_loan_terms(Cpu&);
+std::uint32_t loan_offer_terms_command(Cpu&, std::uint32_t control);
 }

@@ -28,7 +28,7 @@ constexpr std::array entries{0x10417590u, 0x10417880u, 0x1041e760u, 0x1041ea60u,
     0x1041f830u, 0x10420aa0u, 0x10422ac0u, 0x10423160u, 0x104248a0u,
     0x10424930u, 0x10426550u, 0x1042a780u, 0x1042ae20u, 0x1042b500u,
     0x1042ed80u, 0x1042ee90u, 0x10428650u, 0x10420e40u, 0x10421960u, 0x10422a00u,
-    0x10426830u, 0x1042b3a0u, 0x10426970u, 0x10423040u, 0x1041e770u, 0x1041b600u, 0x10417b60u, 0x10420b50u, 0x10420f00u, 0x10421070u, 0x1041eb10u, 0x1041f3a0u, 0x10422600u, 0x10422b50u, 0x10422e40u, 0x10421fb0u, 0x10422310u, 0x1042c6d0u, 0x10421ee0u, 0x104265c0u, 0x104286c0u, 0x10428750u, 0x1042a810u, 0x1042abb0u, 0x1042f670u, 0x1042f7c0u, 0x1042fb30u, 0x104249e0u, 0x10424d40u, 0x10424f80u, 0x1042efa0u, 0x1042f380u, 0x1042ae90u, 0x1042bf70u, 0x1042c2c0u, 0x1042b580u, 0x1042bae0u, 0x10425980u, 0x10425240u, 0x1041f8f0u, 0x104204f0u, 0x10423270u, 0x10424220u};
+    0x10426830u, 0x1042b3a0u, 0x10426970u, 0x10423040u, 0x1041e770u, 0x1041b600u, 0x10417b60u, 0x10420b50u, 0x10420f00u, 0x10421070u, 0x1041eb10u, 0x1041f3a0u, 0x10422600u, 0x10422b50u, 0x10422e40u, 0x10421fb0u, 0x10422310u, 0x1042c6d0u, 0x10421ee0u, 0x104265c0u, 0x104286c0u, 0x10428750u, 0x1042a810u, 0x1042abb0u, 0x1042f670u, 0x1042f7c0u, 0x1042fb30u, 0x104249e0u, 0x10424d40u, 0x10424f80u, 0x1042efa0u, 0x1042f380u, 0x1042ae90u, 0x1042bf70u, 0x1042c2c0u, 0x1042b580u, 0x1042bae0u, 0x10425980u, 0x10425240u, 0x1041f8f0u, 0x104204f0u, 0x10423270u, 0x10424220u, 0x10428ab0u, 0x10429a10u, 0x10427df0u, 0x1042ca40u, 0x1042e110u, 0x10426aa0u};
 struct Case {
     std::uint32_t entry;
     int create = 1, create_result = 1, contract_present = 1, contract_type = 0,
@@ -58,7 +58,7 @@ struct Case {
         loan_mode = 0, transfer_list_result = 0, loan_list_result = 0,
         status_mask = 0, squad_status = 7, registration = 1, club_kind = 0,
         happiness = 60, player_age = 14, listing_eligible = 1, status_listed_value = 0,
-        status_history_mutation = 0, actual_header = 0, same_owner = 1, popup_active = 0, popup_action = 0, recall_mutation = 0, alternate_club_present = 1, current_day = 29, second_day = 31, day_mutation = 0, actual_trial_constructor = 0, temporary_club_mutation = 0, release_days = 365, release_salary_mutation = 0, proposed_type = 24, news_proposed_present = 1, random_word = 0, random_salt = 0, random_wrap = 0, shortlist_rating = 11100, club_restricted = 0, free_move = 0, budget_high = 0, bank_high = 0, bank_low = 1000000, shortlist_mutation = 0, rejection_mask = 15, pending_failure = -1, pending_pattern = 0, rejection_mutation = 0, completion_status = 0, completion_mutation = 0, completion_constant = 0;
+        status_history_mutation = 0, actual_header = 0, same_owner = 1, popup_active = 0, popup_action = 0, recall_mutation = 0, alternate_club_present = 1, current_day = 29, second_day = 31, day_mutation = 0, actual_trial_constructor = 0, temporary_club_mutation = 0, release_days = 365, release_salary_mutation = 0, proposed_type = 24, news_proposed_present = 1, random_word = 0, random_salt = 0, random_wrap = 0, shortlist_rating = 11100, club_restricted = 0, free_move = 0, budget_high = 0, bank_high = 0, bank_low = 1000000, shortlist_mutation = 0, rejection_mask = 15, pending_failure = -1, pending_pattern = 0, rejection_mutation = 0, completion_status = 0, completion_mutation = 0, completion_constant = 0, status_flags = 0, status_eligibility_mask = 127, status_command_mutation = 0, browser_month = 5, browser_year = 2002, browser_min_month = 0, browser_min_year = 2001, browser_now_month = 8, browser_now_year = 2002, browser_page = 1, browser_pages = 3, browser_nation = -1, browser_month_mutation = 0, loan_percent = 50, loan_month = 5, loan_year = 2002, loan_min_month = 0, loan_min_year = 2002, loan_max_month = 11, loan_max_year = 2002, loan_reset_difference = 0, loan_negotiated_difference = 0, browser_group_count = 2, browser_nation_count = 4, browser_record_pattern = 0, browser_glyphs = -1, browser_last = 0, browser_next = 1;
     double interest = 3.0;
     std::uint32_t mode = 1;
 };
@@ -86,7 +86,7 @@ const std::set<std::uint32_t> dependencies{
     0x103e2db0, 0x103e4c90, 0x103e4740, 0x10416710, 0x103f6240,
     0x103e95a0, 0x1014c2e0, 0x103e4d70, 0x102cd0c0, 0x103fa8e0,
     0x10082f90, 0x100d3040, 0x100d3230, 0x10084be0,
-    0x10365cc0, 0x10365c80, 0x10365c30, 0x10363130, 0x1037f110, 0x1037fa80, 0x103fa850, 0x100f05a0, 0x100f0720, 0x1007fb20, 0x1030ffa0, 0x103721f0, 0x10372260, 0x1007f200, 0x107182f0, 0x107156f0, 0x103e3240, 0x103e3170, 0x10374d10, 0x103fa290, 0x100f2680, 0x103ecb80, 0x1030fda0, 0x10310310, 0x100c7d00, 0x10369080, 0x1036fbf0, 0x10089a40, 0x10085860, 0x10698bb0, 0x103ea440, 0x103ea600, 0x103ea760, 0x10148a90, 0x103f9d60, 0x103e9910, 0x103e80e0};
+    0x10365cc0, 0x10365c80, 0x10365c30, 0x10363130, 0x1037f110, 0x1037fa80, 0x103fa850, 0x100f05a0, 0x100f0720, 0x1007fb20, 0x1030ffa0, 0x103721f0, 0x10372260, 0x1007f200, 0x107182f0, 0x107156f0, 0x103e3240, 0x103e3170, 0x10374d10, 0x103fa290, 0x100f2680, 0x103ecb80, 0x1030fda0, 0x10310310, 0x100c7d00, 0x10369080, 0x1036fbf0, 0x10089a40, 0x10085860, 0x10698bb0, 0x103ea440, 0x103ea600, 0x103ea760, 0x10148a90, 0x103f9d60, 0x103e9910, 0x103e80e0, 0x1036f7e0, 0x1036f920, 0x10742420, 0x10740e10, 0x10743510, 0x10372590, 0x107168a0, 0x1074b960, 0x100cb590, 0x100cbde0, 0x10192f30, 0x101932f0, 0x101933f0, 0x10193420, 0x101934f0, 0x103f3670, 0x10712d00, 0x10712eb0, 0x107145f0, 0x10716b00, 0x107189d0, 0x1073ea20, 0x1073eb00, 0x1074b0a0, 0x1074b270, 0x10768300};
 
 void trace(Cpu& c, std::uint32_t entry) {
     if (++call_count > 1000) throw std::runtime_error("fixture call limit");
@@ -193,7 +193,15 @@ bool probe(State& s) {
     case 0x10775170: c.put32(data + 0x120, c.r(3)); break;
     case 0x102a54b0: c.set(3, active.command); break;
     case 0x102a83a0: c.set(3, active.fallback); break;
-    case 0x10718360: c.set(3, active.mode); break;
+    case 0x10718360:
+        if(active.entry==0x10427df0 || active.entry==0x10426aa0) {
+            const auto offset=c.r(3)==data+0x270 ? 0x260u : 0x264u;
+            const auto count=c.u32(data+offset)+1;c.put32(data+offset,count);
+            c.set(3,active.browser_month_mutation && count>1 ? active.second_day :
+                offset==0x260 ? active.browser_min_month : active.browser_now_month);
+        } else c.set(3, active.mode);
+        break;
+    case 0x10743510: c.set(3,active.selected_player_id); break;
     case 0x103e44b0: case 0x103e6290:
     case 0x103e8500: case 0x103e4130: case 0x103e25d0: case 0x103e4390:
     case 0x103e2db0: case 0x103e4c90: case 0x103e4740:
@@ -270,6 +278,17 @@ bool probe(State& s) {
         break;
     case 0x107198c0: case 0x10719740: case 0x10744430: case 0x10744390:
     case 0x107444e0: case 0x107445a0:
+        if(active.entry==0x10426aa0 && c.lr()==0x10427854 && active.first_control==-1) {
+            c.set(3,0xffffffffu);break;
+        }
+        if(active.entry==0x10428ab0) {
+            if(c.lr()==0x104298d8)c.put32(data+0x258,1);
+            if(c.lr()==0x1042990c)c.put32(data+0x258,2);
+            if(target==0x10719740 && c.u32(c.sp()+0x58)==11) {
+                const auto n=c.u32(data+0x25c);if(n>=10)throw std::runtime_error("Unexpected price menu size");
+                c.put32(data+0x6f000+n*4,c.u32(c.sp()+0x5c));c.put32(data+0x25c,n+1);
+            }
+        }
         c.set(3, c.u32(data + 0x194)); c.put32(data + 0x194, c.r(3) + 1); break;
     case 0x1074b6e0: c.put32(c.r(3), 0); c.put32(c.r(3) + 4, 0); break;
     case 0x1074bcd0:
@@ -304,13 +323,64 @@ bool probe(State& s) {
     case 0x103f89e0: c.put16(c.r(5),17); c.put16(c.r(5)+2,2002); c.put8(c.r(5)+4,3); break;
     case 0x10716eb0: c.put32(c.r(4),c.u32(c.r(3))); break;
     case 0x10416710: c.set(3,123456); break;
-    case 0x103f6240: c.put16(c.r(7),0x37); c.set(3,1); break;
+    case 0x103f6240:
+        // The actual service only stores a byte through this output pointer.
+        // 0x37 explicitly characterizes byte consumption at the caller boundary.
+        c.put8(c.r(7),0x37);
+        if(active.entry==0x10429a10 && active.status_command_mutation)c.put8(contract+0x5c,0xd6);
+        c.set(3,1); break;
     case 0x10148a90: c.set(3,data+0x6f00); break;
     case 0x103f9d60:
         c.put16(c.r(6),active.reason);
         if (active.completion_mutation==1) c.put32(c.r(4)+0x20,c.u32(c.r(4)+0x20)+17);
         c.set(3,active.completion_status); break;
     case 0x103e9910: case 0x103e80e0: c.put32(data+0x248,target); c.set(3,1); break;
+    case 0x1036f7e0: c.put32(c.r(5),c.r(4)); break;
+    case 0x1036f920:
+        c.put32(data+0x250,c.u32(data+0x250)+1);
+        c.put32(data+0x254,c.u32(data+0x254)|(1u<<c.r(5)));
+        c.set(3,(active.status_eligibility_mask&(1u<<(c.r(5)-1))) ? active.eligible : 0); break;
+    case 0x10742420: case 0x10740e10: break;
+    case 0x100cb590:c.put32(c.r(6),c.r(9));break;
+    case 0x100cbde0:c.set(3,active.eligible);break;
+    case 0x10192f30:c.set(3,data+0x93000);break;
+    case 0x101932f0:
+        // Opaque grouping object: only the grouping services inspect it.
+        c.put32(c.r(3),c.r(5));break;
+    case 0x101933f0:c.set(3,active.browser_group_count);break;
+    case 0x101934f0:c.set(3,c.u32(c.r(4)+0x68)/2);break;
+    case 0x10193420:c.put32(c.r(4),c.r(6));break;
+    case 0x103f3670:
+        c.put32(c.r(8),data+0x95000);c.put32(c.r(9),active.candidates);c.put32(data+0x290,c.u32(data+0x290)+1);break;
+    case 0x10768300: {
+        // Check filtering before the external sort. Sorting itself is a no-op
+        // boundary here; this does not certify the external comparator.
+        c.put32(data+0x294,c.u32(data+0x294)+1);
+        unsigned expected=0;std::set<unsigned> ids;
+        for(int i=0;i<active.candidates;++i) {
+            const auto original=data+0x96000+unsigned(i)*0x28;
+            const auto matches=[&](int club) {return club>=0 && (active.browser_record_pattern!=3) && club%4==active.browser_nation;};
+            if(active.browser_nation<=-1 || matches(c.i32(original+0x10)) || matches(c.i32(original+0x14))) {++expected;ids.insert(unsigned(i));}
+        }
+        if(c.r(4)!=expected || c.r(5)!=0x28)throw std::runtime_error("Transfers browser filtered count/stride mismatch");
+        for(unsigned i=0;i<expected;++i) {
+            const auto row=c.r(3)+i*0x28,id=c.u32(row+4),original=data+0x96000+id*0x28;
+            if(!ids.erase(id))throw std::runtime_error("Transfers browser filtering lost/duplicated record");
+            for(unsigned byte=0;byte<0x28;++byte) {
+                const bool field=byte<0x1d || (byte>=0x20 && byte<=0x24);
+                const auto wanted=field ? c.u8(original+byte) : c.u8(data+0x96000+i*0x28+byte);
+                if(c.u8(row+byte)!=wanted)throw std::runtime_error("Transfers browser compaction field/padding mismatch");
+            }
+        }
+        break;
+    }
+    case 0x10712d00:case 0x10712eb0:case 0x1074b270:break;
+    case 0x107145f0:c.put32(data+0x298,c.r(4));break;
+    case 0x10716b00:c.put32(c.r(4),c.u32(c.r(3)));break;
+    case 0x107189d0:c.set(3,data+0x97000+c.r(3)*16);break;
+    case 0x1073ea20:c.set(3,active.browser_last);break;
+    case 0x1073eb00:c.set(3,active.browser_next);break;
+    case 0x1074b0a0:c.put32(data+0x29c,c.r(3));c.put32(data+0x2a0,c.r(4));break;
     case 0x103ea440: {
         if (c.lr()==0x10420234) {
             const auto i=(c.r(5)-(data+0x64000))/0x100;
@@ -371,7 +441,19 @@ bool probe(State& s) {
         c.put32(data+0x224,target); c.set(3,29); break;
     }
     case 0x1030ffa0: c.put32(data+0x208,c.r(6)); break;
-    case 0x103fa850: c.put32(c.r(6),0xcafebabe); c.set(3,active.eligible); break;
+    case 0x103fa850:
+        if(active.entry==0x1042ca40) {
+            // This caller requests date eligibility and passes NULL output R6.
+            c.put16(data+0x284,c.u16(c.r(7)));c.put16(data+0x286,c.u16(c.r(7)+2));c.put8(data+0x288,c.u8(c.r(7)+4));
+        } else c.put32(c.r(6),0xcafebabe);
+        c.set(3,active.eligible); break;
+    case 0x10372590:
+        // Currency text is an opaque boundary payload, not actual formatting.
+        c.put32(c.r(4),c.u32(c.r(3)+12));c.put32(c.r(4)+4,c.r(5));c.put32(c.r(4)+8,c.r(6));
+        if(c.r(5)==0 && c.r(6)==1)c.put32(data+0x280,c.u32(c.r(3)+12));
+        break;
+    case 0x107168a0:c.put32(c.r(4),c.u32(c.r(3)));break;
+    case 0x1074b960:break;
     case 0x100f05a0: case 0x100f0720: c.set(3,17); break;
     case 0x1007fb20:
         c.put32(data+0x1fc,c.r(5));
@@ -388,7 +470,12 @@ bool probe(State& s) {
     case 0x103e95a0: c.put32(data+0x1e8,c.r(4)); break;
     case 0x1014c2e0: c.set(3,active.controlled); break;
     case 0x103e4d70: c.put32(data+0x1ec,c.r(4)); break;
-    case 0x102cd0c0: c.put32(data+0x68000+c.r(6)*4,c.r(7)); break;
+    case 0x102cd0c0:
+        c.put32(data+0x68000+c.r(6)*4,c.r(7));
+        if(active.entry==0x10429a10 && active.status_command_mutation && c.r(6)==9) {
+            c.put8(contract+0x60,0xe2);c.put8(contract+0x5c,0x42);
+        }
+        break;
     case 0x103fa8e0:
         c.put8(c.r(7),active.term_byte_a); c.put16(c.r(8),active.term_word_a);
         c.put8(c.r(9),active.term_byte_b); c.put16(c.r(10),active.term_word_b); break;
@@ -866,6 +953,100 @@ void initialize(Cpu& c, const Case& test) {
         c.put32(person+0x24,test.same_owner ? clubs+0x248 : 0);
         c.put32(history,3); c.put32(history+4,test.mode); c.set(3,test.control);
     }
+    if(test.entry==0x10428ab0 || test.entry==0x10429a10) {
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        unsigned n=0;
+        for(int slot:{-0x7bc4,-0x7bc8,-0x7bdc,-0x7bd4,-0x7bd0,-0x7bcc}) {
+            const auto colour=data+0x400+4*n++;c.put32(c.r(2)+std::uint32_t(slot),colour);c.put16(colour,0x3456+n);
+        }
+        c.put32(c.r(2)-0x7ba8,data+0x54000);c.put32(c.r(2)-0x7bac,data+0x198);
+        c.put32(data+0x194,test.first_control);c.put32(data+0xa988,data+0x69000);
+        for(unsigned at=0x250;at<=0x25c;at+=4)c.put32(data+at,0);
+        const auto person=people+3*0x70;
+        c.put32(person+8,test.valuation);c.put8(person+0x62,test.player_age);
+        c.put32(person+0x14,test.registration ? data+0x6b000 : 0);c.put16(person+0x5c,test.player_age);
+        c.put8(contract+0x5c,test.status_mask);c.put8(contract+0x60,test.registration);
+        c.put32(history,3);c.put32(history+4,test.fee);c.put32(history+8,0xabc00123);c.put32(history+12,test.squad_status);
+        c.put32(history+16,test.status_flags&1 ? test.cup_option : 0);
+        c.put32(history+20,test.status_flags&2 ? test.cup_option : 0);
+        c.put32(history+24,test.status_flags&4 ? test.cup_option : 0);
+        c.put32(history+28,test.manager_present ? data+0xb000 : 0);c.put32(history+32,test.news_revision);
+        c.put32(history+40,test.mode);c.put32(history+44,clubs+test.manager_club_id*0x248);
+        c.put32(history+48,test.board_enabled);c.put32(history+52,test.status_flags&8 ? test.cup_option : 0);
+        c.put32(history+56,test.status_flags&16 ? test.cup_option : 0);c.put32(history+60,test.board_limit);
+        c.put8(screens+0x2c5f,test.popup_active);c.put32(screens+0x2581a4,test.popup_action);
+        if(std::int16_t(test.control)>=0)c.put32(data+0x100000+0xba8ac+std::uint32_t(std::int16_t(test.control))*0x17c,test.selected_value);
+        if(test.entry==0x10429a10)c.set(3,test.control);
+    }
+    if(test.entry==0x10427df0 || test.entry==0x10426aa0) {
+        c.put32(c.r(2)-0x7a9c,data+0x270);c.put16(data+0x272,test.browser_min_year);
+        c.put16(data+0x132,test.browser_now_year);c.put32(data+0x260,0);c.put32(data+0x264,0);
+        c.put32(history,test.browser_nation);c.put32(history+4,test.browser_month);c.put32(history+8,test.browser_year);
+        c.put32(history+12,test.mode);c.put32(history+16,test.draft_present ? data+0x95000 : 0);
+        c.put32(history+20,test.candidates);c.put32(history+24,test.browser_page);c.put32(history+28,test.browser_pages);
+        c.put32(history+32,test.news_revision);c.put32(history+36,test.first_control);
+        if(std::int16_t(test.control)>=0)c.put32(data+0x100000+0xba8ac+std::uint32_t(std::int16_t(test.control))*0x17c,test.selected_value);
+        c.set(3,test.control);
+    }
+    if(test.entry==0x1042ca40 || test.entry==0x1042e110) {
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        unsigned n=0;
+        for(int slot:{-0x7bc4,-0x7bc8,-0x7bdc,-0x7bcc,-0x7bf4,-0x7a74}) {
+            const auto colour=data+0x400+4*n++;c.put32(c.r(2)+std::uint32_t(slot),colour);c.put16(colour,0x3456+n);
+        }
+        c.put32(c.r(2)-0x7ba8,data+0x54000);c.put32(c.r(2)-0x7bac,data+0x198);
+        c.put32(data+0x194,test.first_control);c.put32(data+0x218,0);
+        c.put32(data+0xb024,test.manager_club_present ? clubs+test.manager_club_id*0x248 : 0);
+        if(!test.manager_present)c.put32(screens+std::uint32_t(test.group)*0x2c0+4,0);
+        for(unsigned i=0;i<8;++i){c.put32(clubs+i*0x248,i);c.put8(clubs+i*0x248+0x23b,i%3);}
+        c.put32(contract+4,test.same_owner ? test.manager_club_id : 1);
+        c.put32(offer+8,test.bidder_id);c.put32(offer+0x2c,test.bid_revision);c.put32(offer+0x28,17);
+        c.put32(history,test.person_present ? people+3*0x70 : 0);c.put32(history+4,test.current_salary);c.put32(history+8,test.board_limit);
+        c.put32(history+12,test.loan_min_month);c.put32(history+16,test.loan_min_year);c.put32(history+20,test.loan_max_month);c.put32(history+24,test.loan_max_year);
+        c.put32(history+28,test.offer_present ? offer : 0);c.put32(history+36,test.news_revision);c.put32(history+40,test.proposed_present ? data+0x4500 : 0);
+        c.put32(history+44,test.loan_percent);c.put32(history+48,test.loan_month);c.put32(history+52,test.loan_year);
+        c.put32(history+56,test.cup_option);c.put32(history+60,test.parent_option);c.put32(history+120,0xabc001e);
+        const unsigned terms[]{std::uint32_t(test.loan_percent),std::uint32_t(test.loan_month),std::uint32_t(test.loan_year),std::uint32_t(test.cup_option),std::uint32_t(test.parent_option)};
+        for(unsigned i=0;i<5;++i) {
+            c.put32(history+(16+i)*4,terms[i]+(test.loan_reset_difference==int(i+1) ? 1u : 0u));
+            c.put32(history+(21+i)*4,terms[i]+(test.loan_negotiated_difference==int(i+1) ? 1u : 0u));
+        }
+        if(std::int16_t(test.control)>=0)c.put32(data+0x100000+0xba8ac+std::uint32_t(std::int16_t(test.control))*0x17c,test.selected_value);
+        if(test.entry==0x1042e110)c.set(3,test.control);
+    }
+    if(test.entry==0x10426aa0) {
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        unsigned n=0;
+        for(int slot:{-0x7bc4,-0x7bc8,-0x7bdc,-0x7bd4,-0x7bd0,-0x7bcc,-0x7bf4,-0x7bec}) {
+            const auto colour=data+0x400+4*n++;c.put32(c.r(2)+std::uint32_t(slot),colour);c.put16(colour,0x3456+n);
+        }
+        c.put32(data+0x194,test.first_control);
+        c.put32(c.r(2)-0x740c,data+0x28c);c.put32(data+0x28c,test.browser_glyphs);
+        c.put32(c.r(2)-0x7b98,data+0x268);c.put32(data+0x268,data+0x90000);
+        c.put32(c.r(2)-0x7b44,data+0x94000);
+        for(unsigned i=0;i<34;++i)c.put8(data+0x93000+i,i<6 ? i : 6);
+        for(unsigned i=0;i<7;++i) {
+            const auto country=data+0x90000+i*0x128;
+            c.put32(country+0x68,i);c.put8(country+0x120,test.registration);
+            c.put32(data+0x94000+i*0x4c,i<unsigned(test.browser_nation_count) ? country : 0);
+        }
+        for(unsigned i=0;i<8;++i) {
+            c.put32(clubs+i*0x248,i);c.put8(clubs+i*0x248+0x23b,i%3);
+            c.put32(clubs+i*0x248+0x2c,test.browser_record_pattern==3 ? 0 : data+0x90000+(i%4)*0x128);
+        }
+        for(int i=0;i<test.candidates;++i) {
+            const auto row=data+0x95000+unsigned(i)*0x28;
+            for(unsigned byte=0;byte<0x28;++byte)c.put8(row+byte,0x80+i);
+            c.put32(row,3);c.put32(row+4,i);c.put32(row+8,11+i);c.put32(row+12,23+i);
+            const int to=test.browser_record_pattern==1 ? -1 : test.browser_record_pattern==2 ? -2 : i%4;
+            const int from=test.browser_record_pattern==1 ? -1 : (i+1)%4;
+            c.put32(row+0x10,to);c.put32(row+0x14,from);c.put32(row+0x18,test.fee);
+            c.put8(row+0x1c,test.offer_kind);c.put16(row+0x20,17+i);c.put16(row+0x22,2002);c.put8(row+0x24,1);
+            c.s.memory.copy_in(data+0x96000+unsigned(i)*0x28,c.s.memory.copy_out(row,0x28));
+        }
+        for(unsigned at=0x290;at<=0x2a0;at+=4)c.put32(data+at,0);
+        c.put32(data+0x298,0xdeadbeef);
+    }
     if(test.entry==0x10423270 && test.completion_constant) {
         // Noncanonical constants characterize the unordered BLE behavior.
         c.put_f64(c.toc(-0x4ad4)+0x10,test.completion_constant==1 ?
@@ -876,6 +1057,85 @@ void initialize(Cpu& c, const Case& test) {
 }
 void returned(State& s) {
     Cpu c(s);
+    if(active.entry==0x10428ab0 && active.contract_present) {
+        const int kind=std::int8_t(active.contract_type)>>2;
+        const unsigned decrement=kind==6 ? 0xabc00123u : std::uint32_t(std::int32_t(std::int16_t(active.first_control+2)));
+        if(c.u32(history+8)!=decrement)throw std::runtime_error("Player status decrement ID width/publication mismatch");
+        if(c.u32(data+0x250)!=7 || c.u32(data+0x254)!=254)throw std::runtime_error("Player status eligibility census mismatch");
+        const auto apply=std::int8_t(active.squad_status)!=0 || active.news_revision==-1;
+        if(c.u32(data+0x258)!=(apply ? 1u : 2u))throw std::runtime_error("Player status Set gate mismatch");
+        const bool menu=kind!=6 && kind!=3 && kind!=1 && std::int8_t(active.board_enabled)==0 && std::int16_t(active.first_control+4)!=-1;
+        if(c.u32(data+0x25c)!=(menu ? 10u : 0u))throw std::runtime_error("Player status price menu presence mismatch");
+        constexpr unsigned prices[]{0,100000,250000,500000,1000000,2500000,5000000,10000000,15000000,20000000};
+        if(menu)for(unsigned i=0;i<10;++i)if(c.u32(data+0x6f000+i*4)!=prices[i])throw std::runtime_error("Player status price menu payload mismatch");
+    }
+    if(active.entry==0x10429a10) {
+        auto action=std::int16_t(active.control)==-1 ? 0 : std::int16_t(active.action);if(!action)action=std::int16_t(active.default_action);
+        const bool popup=std::int8_t(active.popup_active)!=0 && active.popup_action==3;
+        if(!popup && (action==7 || action==11)) {
+            const auto value=std::int16_t(active.control)==-1 ? 0u : std::uint32_t(active.selected_value);
+            if(c.u32(history+(action==7 ? 12 : 4))!=value)throw std::runtime_error("Player status payload width mismatch");
+        }
+        if(!popup && action==6 && (std::int8_t(active.contract_type)>>2)!=6) {
+            const bool requested=(active.status_flags&8) && std::int8_t(active.cup_option);
+            unsigned expected=active.status_command_mutation ? 0xd6 : std::uint8_t(active.status_mask);
+            expected=requested ? (expected&~2u)|8u : expected&~8u;
+            expected=std::int8_t(active.mode) ? expected|4u : expected&~4u;
+            if(c.u8(contract+0x5c)!=expected)throw std::runtime_error("Player status contract bits mismatch");
+        }
+    }
+    if(active.entry==0x10427df0) {
+        auto action=std::int16_t(active.control)==-1 ? 0 : std::int16_t(active.action);if(!action)action=std::int16_t(active.default_action);
+        const auto selection=active.candidates>0 && std::int16_t(active.control)!=-1 ? active.selected_player_id : active.news_revision;
+        if(c.u32(history+32)!=std::uint32_t(selection))throw std::runtime_error("Transfers browser selection preservation mismatch");
+        if(action>=5 && action<=8) {
+            const int page=std::int16_t(active.browser_page),last=std::int16_t(active.browser_pages);
+            const int expected=action==5 ? std::max(1,page-10) : action==6 ? std::max(1,page-1) : action==7 ? std::min(last,page+1) : std::min(last,page+10);
+            if(c.u32(history+24)!=std::uint32_t(expected))throw std::runtime_error("Transfers browser page clamp mismatch");
+        }
+    }
+    if(active.entry==0x1042ca40 && active.person_present && active.manager_present && active.manager_club_present) {
+        const int percent=std::max(0,int(std::int8_t(active.loan_percent)));
+        const auto product=std::int32_t(std::uint32_t(percent)*std::uint32_t(active.current_salary));
+        if(c.u32(data+0x280)!=std::uint32_t(product/100))throw std::runtime_error("Loan wage contribution wrap/division mismatch");
+        if(std::int8_t(active.loan_percent)<0 && c.u32(history+44)!=0)throw std::runtime_error("Loan negative percentage clamp missing");
+        const int first=std::int16_t(active.current_day),day=first>28 ? 28 : active.day_mutation ? std::int16_t(active.second_day) : first;
+        if(c.u32(data+0x218)!=(first>28 ? 1u : 2u) || c.u16(data+0x284)!=std::uint16_t(day) ||
+            c.u16(data+0x286)!=std::uint16_t(active.loan_year) || c.u8(data+0x288)!=std::uint8_t(active.loan_month))
+            throw std::runtime_error("Loan date query/width mismatch");
+        if(!active.offer_present && c.u32(history+120)!=0xffffffffu)throw std::runtime_error("Loan new-offer history30 publication mismatch");
+    }
+    if(active.entry==0x1042e110) {
+        auto action=std::int16_t(active.control)==-1 ? 0 : std::int16_t(active.action);if(!action)action=std::int16_t(active.default_action);
+        if(action==7) {
+            const auto selected=std::int16_t(active.control)==-1 ? 0 : active.selected_value;
+            const auto wage=std::min(selected,std::min(active.current_salary,active.board_limit));
+            const auto product=std::int32_t(std::uint32_t(wage)*100u);
+            const auto percent=std::int8_t(std::int64_t(product)/active.current_salary);
+            if(c.u32(history+44)!=std::uint32_t(std::int32_t(percent)))throw std::runtime_error("Loan payload percentage width mismatch");
+        }
+        if(action==13 || action==14) {
+            const unsigned snapshot=action==13 ? 21 : 16;
+            for(unsigned i=0;i<5;++i)if(c.u32(history+(11+i)*4)!=c.u32(history+(snapshot+i)*4))throw std::runtime_error("Loan snapshot raw-width copy mismatch");
+        }
+        if(action==3 || action==4) {
+            const auto expected=std::uint32_t(std::int32_t(std::int8_t(int(std::int8_t(active.loan_percent))+(action==3 ? -10 : 10))));
+            if(c.u32(history+44)!=expected)throw std::runtime_error("Loan percentage button wrap mismatch");
+        }
+    }
+    if(active.entry==0x10426aa0) {
+        if(c.u32(data+0x290)!=(active.draft_present ? 0u : 1u) || c.u32(data+0x294)!=(active.draft_present ? 0u : 1u))
+            throw std::runtime_error("Transfers browser cache/query/sort mismatch");
+        if(c.u32(data+0x29c)!=unsigned(std::int8_t(active.browser_next)==0) || c.u32(data+0x2a0)!=unsigned(std::int8_t(active.browser_last)==0))
+            throw std::runtime_error("Transfers browser visibility byte width mismatch");
+        const auto count=c.i32(history+20);
+        if(count>0) {
+            const auto capacity=std::uint8_t(349/active.row_height);
+            const auto pages=std::int16_t(count/int(capacity)+(count%int(capacity)!=0));
+            if(c.u32(history+28)!=std::uint32_t(std::int32_t(pages)))throw std::runtime_error("Transfers browser page-count width mismatch");
+            if(std::int16_t(c.u32(history+36))!=-1 && c.u32(data+0x298)!=std::uint32_t(active.news_revision))throw std::runtime_error("Transfers browser selection restore mismatch");
+        } else if(c.u32(history+36)!=std::uint32_t(active.first_control))throw std::runtime_error("Empty Transfers browser changed grid history");
+    }
     if (c.sp() != stack || c.lr() != sentinel || s.pc != sentinel)
         throw std::runtime_error("fixture did not return");
     if (active.actual_header && c.u8(data+0x100000+0x12a941)!=1)
@@ -1724,6 +1984,135 @@ int main(int argc, char** argv) {
         // Negative multiply-high result -32 has no discarded shift bits.
         {Case t{0x10423270};t.valuation=-99;t.sell_on=1;cases.push_back(t);}
         for(int constant:{1,2}) {Case t{0x10423270};t.completion_constant=constant;cases.push_back(t);}
+        for(int kind:{0,4,8,12,20,24,128,255})for(int fee:{-1,0,1,29999999,30000000})for(int limited:{0,1}) {
+            Case t{0x10428ab0};t.contract_type=kind;t.fee=fee;t.board_enabled=limited;cases.push_back(t);
+        }
+        for(int flags=0;flags<32;++flags)for(int value:{1,128,256})for(int age:{14,15,16}) {
+            Case t{0x10428ab0};t.status_flags=flags;t.cup_option=value;t.player_age=age;cases.push_back(t);
+        }
+        for(int mask:{0,1,2,4,8,16,32,64,127})for(int eligible:{0,1,128,256})for(int squad:{0,1,4,7,128,256}) {
+            Case t{0x10428ab0};t.status_eligibility_mask=mask;t.eligible=eligible;t.squad_status=squad;cases.push_back(t);
+        }
+        for(int squad:{0,1,128,256})for(int news:{-1,0,17})for(int mode:{0,1,128,256}) {
+            Case t{0x10428ab0};t.squad_status=squad;t.news_revision=news;t.mode=mode;cases.push_back(t);
+        }
+        for(int height:{1,3,21,405,406})for(int control:{10,32767,65531,65535}) {
+            Case t{0x10428ab0};t.row_height=height;t.first_control=control;cases.push_back(t);
+        }
+        for(int limit:{99,100,101})for(int enabled:{0,1,128,256}) {
+            Case t{0x10428ab0};t.fee=100;t.board_limit=limit;t.board_enabled=enabled;cases.push_back(t);
+        }
+        {Case t{0x10428ab0};t.contract_present=0;cases.push_back(t);}
+        for(int action:{0,1,2,3,4,5,6,7,8,9,10,11,12,65537,32768})for(int control:{-1,0,3,65535})for(int fallback:{0,1,6}) {
+            Case t{0x10429a10};t.action=action;t.control=control;t.default_action=fallback;cases.push_back(t);
+        }
+        for(int action:{2,3})for(int fee:{-1,0,1,999,1000,29999000,30000000,2147483647})for(int limited:{0,1,128,256}) {
+            Case t{0x10429a10};t.action=action;t.fee=fee;t.board_enabled=limited;t.board_limit=1000;cases.push_back(t);
+        }
+        for(int action:{5,7,8,9,10,11})for(int value:{-2147483647,-1,0,1,127,128,255,256,65537}) {
+            Case t{0x10429a10};t.action=action;t.mode=value;t.cup_option=value;t.status_flags=31;t.selected_value=value;cases.push_back(t);
+        }
+        for(int flags=0;flags<32;++flags)for(int kind:{0,24})for(int value:{0,1,128,256}) {
+            Case t{0x10429a10};t.action=6;t.status_flags=flags;t.contract_type=kind;t.cup_option=value;t.mode=value;t.status_mask=0xfb;cases.push_back(t);
+        }
+        for(int manager:{0,1})for(int item:{-1,0,17})for(int listed:{0,1,128,256})for(int loan:{0,1,128,256}) {
+            Case t{0x10429a10};t.action=6;t.manager_present=manager;t.news_revision=item;t.transfer_list_result=listed;t.loan_list_result=loan;t.status_command_mutation=1;cases.push_back(t);
+        }
+        for(int action:{2,6,12})for(int popup:{0,1,128,256})for(int pending:{0,2,3,4}) {
+            Case t{0x10429a10};t.action=action;t.popup_active=popup;t.popup_action=pending;cases.push_back(t);
+        }
+        for(int command:{0,1,-1})for(int fallback:{0,1,-1,std::numeric_limits<int>::min()}) {
+            Case t{0x10429a10};t.command=command;t.fallback=fallback;cases.push_back(t);
+        }
+        for(int kind:{128,130}) {
+            Case t{0x10429a10};t.action=6;t.contract_type=kind;t.status_flags=8;t.status_mask=0;cases.push_back(t);
+        }
+        for(int action:{7,11}) {
+            Case t{0x10429a10};t.control=-1;t.default_action=action;cases.push_back(t);
+        }
+        {Case t{0x10429a10};t.action=5;t.mode=0;t.contract_present=0;t.registration=0;t.eligible=0;cases.push_back(t);}
+        for(int action:{0,1,2,3,4,5,6,7,8,9,65537,32768})for(int control:{-1,0,3,65535})for(int fallback:{0,1,4}) {
+            Case t{0x10427df0};t.action=action;t.control=control;t.default_action=fallback;cases.push_back(t);
+        }
+        for(int action:{1,2,3})for(int view:{0,1,128,256})for(int year:{2000,2001,2002,2003})for(int month:{-1,0,5,8,11,12}) {
+            Case t{0x10427df0};t.action=action;t.mode=view;t.browser_year=year;t.browser_month=month;t.selected_value=view;cases.push_back(t);
+        }
+        for(int action:{5,6,7,8})for(int page:{-32768,-1,0,1,2,9,10,11,32767})for(int pages:{-1,0,1,3,32767}) {
+            Case t{0x10427df0};t.action=action;t.browser_page=page;t.browser_pages=pages;cases.push_back(t);
+        }
+        for(int action:{1,2,3,4})for(int cache:{0,1})for(int count:{-1,0,1,7})for(int value:{-1,0,1,65537}) {
+            Case t{0x10427df0};t.action=action;t.draft_present=cache;t.candidates=count;t.selected_value=value;t.browser_nation=value;cases.push_back(t);
+        }
+        for(int second:{-128,-1,0,11,127,256,65537})for(int year:{2001,2002}) {
+            Case t{0x10427df0};t.action=1;t.selected_value=1;t.browser_year=year;t.browser_month=year==2001 ? 0 : 8;t.browser_month_mutation=1;t.second_day=second;cases.push_back(t);
+        }
+        for(int command:{0,1,-1})for(int fallback:{0,1,-1,std::numeric_limits<int>::min()}) {
+            Case t{0x10427df0};t.command=command;t.fallback=fallback;cases.push_back(t);
+        }
+        for(int offer:{0,1})for(int proposed:{0,1})for(int reset:{0,1,2,3,4,5})for(int negotiated:{0,1,2,3,4,5}) {
+            Case t{0x1042ca40};t.offer_present=offer;t.proposed_present=proposed;t.loan_reset_difference=reset;t.loan_negotiated_difference=negotiated;cases.push_back(t);
+        }
+        for(int percent:{-128,-1,0,1,90,100,110,127,128,256})for(int salary:{-2147483647,-1,0,1,1000,2147483647})for(int limit:{-1,0,500,2147483647}) {
+            Case t{0x1042ca40};t.loan_percent=percent;t.current_salary=salary;t.board_limit=limit;cases.push_back(t);
+        }
+        for(int year:{2001,2002,2003,65535})for(int month:{-128,-1,0,5,11,12,127})for(int eligible:{0,1,128,256}) {
+            Case t{0x1042ca40};t.loan_year=year;t.loan_month=month;t.eligible=eligible;cases.push_back(t);
+        }
+        for(int offer:{0,1})for(int proposed:{0,1})for(int eligible:{0,1,128,256})for(int limit:{0,1000000}) {
+            Case t{0x1042ca40};t.offer_present=offer;t.proposed_present=proposed;t.eligible=eligible;t.board_limit=limit;t.loan_reset_difference=1;cases.push_back(t);
+        }
+        for(int cup:{0,1,128,256})for(int parent:{0,1,128,256})for(int owner:{0,1}) {
+            Case t{0x1042ca40};t.cup_option=cup;t.parent_option=parent;t.same_owner=owner;cases.push_back(t);
+        }
+        for(int query:{2,3}) {Case t{0x1042ca40};t.contract_null_query=query;cases.push_back(t);}
+        for(int first:{-1,0,28,29,65535})for(int second:{-1,31,65537}) {
+            Case t{0x1042ca40};t.current_day=first;t.second_day=second;t.day_mutation=1;cases.push_back(t);
+        }
+        for(int height:{1,3,21,405,406})for(int group:{0,1,3}) {Case t{0x1042ca40};t.row_height=height;t.group=group;cases.push_back(t);}
+        for(int which:{0,1,2}) {Case t{0x1042ca40};if(which==0)t.person_present=0;if(which==1)t.manager_present=0;if(which==2)t.manager_club_present=0;cases.push_back(t);}
+        for(int bidder:{1,2,3}){Case t{0x1042ca40};t.bidder_id=bidder;cases.push_back(t);}
+        {Case t{0x1042ca40};t.actual_trial_constructor=1;cases.push_back(t);}
+        for(int action:{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,65537,32768})for(int control:{-1,0,3,65535})for(int fallback:{0,1,10}) {
+            Case t{0x1042e110};t.action=action;t.control=control;t.default_action=fallback;cases.push_back(t);
+        }
+        for(int action:{1,2})for(int month:{-128,-1,0,11,12,127})for(int year:{0,1,65535}) {
+            Case t{0x1042e110};t.action=action;t.loan_month=month;t.loan_year=year;cases.push_back(t);
+        }
+        for(int action:{3,4,8,9,13,14})for(int value:{-128,-1,0,1,100,127,128,256,65537}) {
+            Case t{0x1042e110};t.action=action;t.loan_percent=value;t.cup_option=value;t.parent_option=value;t.loan_month=value;t.loan_year=value;cases.push_back(t);
+        }
+        for(int salary:{-2147483647,-1000,-1,1,1000,2147483647})for(int limit:{-1000,0,500,2147483647})for(int payload:{-2147483647,-1,0,1,499,500,1001,2147483647}) {
+            Case t{0x1042e110};t.action=7;t.current_salary=salary;t.board_limit=limit;t.selected_value=payload;cases.push_back(t);
+        }
+        for(int action:{10,11,12,15})for(int revision:{16,17,18})for(int status:{0,2,3,5,128,255})for(int create:{0,1,128,256}) {
+            Case t{0x1042e110};t.action=action;t.news_revision=revision;t.status=status;t.create_result=create;cases.push_back(t);
+        }
+        for(int command:{0,1,-1})for(int fallback:{0,1,-1,std::numeric_limits<int>::min()}) {
+            Case t{0x1042e110};t.command=command;t.fallback=fallback;cases.push_back(t);
+        }
+        for(int cache:{0,1})for(int count:{0,1,2,5,12})for(int nation:{-2,-1,0,1,3,5})for(int pattern:{0,1,2,3}) {
+            Case t{0x10426aa0};t.draft_present=cache;t.candidates=count;t.browser_nation=nation;t.browser_record_pattern=pattern;cases.push_back(t);
+        }
+        for(int groups:{1,2,3})for(int nations:{0,1,2,4,6})for(int enabled:{0,1,128,256})for(int view:{0,1}) {
+            Case t{0x10426aa0};t.browser_group_count=groups;t.browser_nation_count=nations;t.registration=enabled;t.mode=view;cases.push_back(t);
+        }
+        for(int fee:{-1,0,100,2147483647})for(int kind:{0,1,2,4,255})for(int eligible:{0,1,128,256})for(int controlled:{0,1}) {
+            Case t{0x10426aa0};t.fee=fee;t.offer_kind=kind;t.eligible=eligible;t.controlled=controlled;cases.push_back(t);
+        }
+        for(int height:{1,2,21,174,349})for(int count:{1,2,12})for(int page:{1,2,20,32767}) {
+            Case t{0x10426aa0};t.row_height=height;t.candidates=count;t.browser_page=page;cases.push_back(t);
+        }
+        for(int last:{0,1,128,256})for(int next:{0,1,128,256})for(int glyphs:{-1,0,1}) {
+            Case t{0x10426aa0};t.browser_last=last;t.browser_next=next;t.browser_glyphs=glyphs;cases.push_back(t);
+        }
+        for(int group:{0,1,3})for(int month:{0,11,128,256})for(int year:{0,2002,65535}) {
+            Case t{0x10426aa0};t.group=group;t.browser_month=month;t.browser_year=year;cases.push_back(t);
+        }
+        {Case t{0x10426aa0};t.mode=0;t.draft_present=0;cases.push_back(t);}
+        {Case t{0x10426aa0};t.first_control=-1;cases.push_back(t);}
+        {Case t{0x1042ca40};t.loan_percent=1;t.current_salary=-99;cases.push_back(t);}
+        {Case t{0x1042ca40};t.offer_present=1;t.proposed_present=0;t.eligible=0;cases.push_back(t);}
+        {Case t{0x1042e110};t.control=-1;t.default_action=7;cases.push_back(t);}
         unsigned completed = 0;
         const auto selected_entry = std::getenv("CM_TRANSFER_SCREENS_ENTRY");
         const auto entry_filter = selected_entry ? std::strtoul(selected_entry, nullptr, 0) : 0;

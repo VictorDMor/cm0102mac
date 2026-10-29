@@ -138,7 +138,7 @@ void open_temporary_offer_terms_confirmation(Cpu& c, std::uint32_t player, std::
     p.history(0x1042ef70, screens, 6, signed_byte(parent_option));
     p.history(0x1042ef84, screens, 7, selected);
 }
-void clear_exchange_candidates(Cpu& c) {
+void clear_transfers_browser_cache(Cpu& c) {
     Frame f(c, 0x10428650, 0x40, {.first_gpr = 31});
     Kept<31> screens(c, c.toc(slot::screens)); Program p{c};
     const auto candidates = p.call(0x1073ef70, 0x10428670, {screens, 4});
@@ -182,7 +182,7 @@ std::uint32_t release_player_command(Cpu& c, std::uint32_t control) {
     if (compare(c, command) != 0) return command;
     return p.call(0x102a83a0, 0x1042b4d0, {selected});
 }
-void open_exchange_candidates(Cpu& c) {
+void open_transfers_browser(Cpu& c) {
     Frame f(c, 0x10426970, 0x40, {.first_gpr = 30});
     Kept<31> screens(c, c.toc(slot::screens)); Kept<30> date(c, c.toc(slot::transfer_context));
     Program p{c};
