@@ -51,6 +51,7 @@ struct Case {
     bool force_exit = false;
     bool custom_pool = false;
     std::array<std::uint16_t, 8> pool_words{};
+    bool mutate_choice = false, mutate_after_step = false;
 };
 Case active;
 bool reference_mode = false, generated_mode = false;
@@ -74,7 +75,7 @@ bool scripted(State& s) {
                              0x101ee610u, 0x101ef8d0u, 0x10114b10u,
                              0x100ca010u, 0x10082f90u, 0x100c7d00u, 0x10718130u,
                              0x10201180u, 0x101f51e0u, 0x101f1530u, 0x101eeac0u, 0x101eeeb0u,
-                             0x101f1100u, 0x1022ba10u};
+                             0x101f1100u, 0x1022ba10u, 0x101d6860u, 0x101f5050u, 0x101d6780u, 0x101eea30u};
     if (std::ranges::find(services, target) == services.end()) return false;
     auto used = c.u32(trace_at);
     const auto append = [&](std::uint32_t word) { c.put32(trace_at + 4 + used, word); used += 4; };
@@ -124,9 +125,18 @@ bool scripted(State& s) {
     else if (target == 0x10082f90) c.set(3, active.null_player ? 0 : data + 0xe000);
     else if (target == 0x100c7d00) c.set(3, active.strategy_high);
     else if (target == 0x10718130) c.set(3, active.second_role);
-    else if (target == 0x101f51e0) c.put8(c.r(5), active.first_role);
+    else if (target == 0x101f51e0) {
+        c.put8(c.r(5), active.first_role);
+        if (active.entry == 0x102884d0 && active.mutate) {
+            c.put32(player + 0x1a4, other_match); c.put8(player + 0x27, 1 - active.side);
+        }
+    }
     else if (target == 0x10201180) {
         if (active.entry == 0x10288230 && active.mutate && c.r(4) != 0x20dd) c.put8(c.sp() + 0x38, active.argument);
+        if (active.entry == 0x102884d0 && active.mutate_after_step && c.r(4) == 0x21b9) {
+            c.put32(player + 0x1a4, other_match); c.put8(player + 0x27, 1 - active.side);
+            c.put8(other_match + 0x7928, 7); c.put8(other_match + 0x791e, 7);
+        }
     }
     else if (target == 0x101f1530) {}
     else if (target == 0x101eeac0) c.set(3, active.strategy_low);
@@ -138,6 +148,21 @@ bool scripted(State& s) {
         }
     }
     else if (target == 0x1022ba10) c.set(3, 0);
+    else if (target == 0x101d6860) {
+        if (active.entry == 0x102876c0 && active.mutate) {
+            c.put32(player + 0x1a4, other_match);
+            c.put32(data + 0x9000 + 0x6c, data + 0xe200); c.put8(data + 0xe269, 25);
+            c.put8(data + 0x9000 + 0x27, active.side);
+        }
+    }
+    else if (target == 0x101f5050) {
+        c.put8(c.r(8), 3); c.put8(c.r(9), 7); c.put8(c.r(10), 1);
+        c.set(3, active.strategy_high & 1);
+    }
+    else if (target == 0x101d6780) {
+        if (active.entry == 0x102884d0 && active.mutate_choice) c.put8(c.sp() + 0x38, active.row);
+    }
+    else if (target == 0x101eea30) c.set(3, active.second_role);
     else if (target == 0x10768810) c.set(3, 17);
     else if (target == 0x10739890 || target == 0x1077b720 || target == 0x10769b60 || target == 0x1076f7d0) {}
     else if (target == 0x107735a0) {
@@ -224,13 +249,13 @@ void initialize_case(Cpu& c) {
         c.put8(player + 0x1f, active.mutate ? -1 : 0); c.put8(player + 0x1c, active.argument >> 8);
         c.put_f32(player + 0x54, active.intensity); c.put_f32(player + 0x5c, float(active.factor));
     }
-    if (active.entry == 0x10235db0 || active.entry == 0x10226520 || active.entry == 0x10235ea0 || active.entry == 0x102393c0 || active.entry == 0x10237830 || active.entry == 0x10288230 || active.entry == 0x102857c0 || active.entry == 0x10288f30 || active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620) {
+    if (active.entry == 0x10235db0 || active.entry == 0x10226520 || active.entry == 0x10235ea0 || active.entry == 0x102393c0 || active.entry == 0x10237830 || active.entry == 0x10288230 || active.entry == 0x102857c0 || active.entry == 0x10288f30 || active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0) {
         c.put32(c.r(2) - 0x7b90, data + 0x100);
-        c.put32(data + 0x100, active.entry == 0x10237830 ? active.random_seed : active.entry == 0x10244c60 ? 0 : active.second_role);
+        c.put32(data + 0x100, active.entry == 0x10237830 || active.entry == 0x102876c0 || active.entry == 0x102884d0 ? active.random_seed : active.entry == 0x10244c60 ? 0 : active.second_role);
         c.put32(c.r(2) - 0x7b8c, data + 0x200);
         const auto span = active.entry == 0x102393c0 && active.mutate ? 0x3eu : 0x0eu;
         c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + 0x200 + span);
-        const auto position = active.entry == 0x10235db0 ? active.argument : active.entry == 0x10288230 ? active.strategy_high : active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 ? active.pool_position : unsigned(active.side);
+        const auto position = active.entry == 0x10235db0 ? active.argument : active.entry == 0x10288230 ? active.strategy_high : active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 ? active.pool_position : unsigned(active.side);
         const auto offset = position >= 3 ? (position - 2) * 2 : position & 1 ? span : position & 2 ? span - 2 : 0;
         c.put32(c.r(2) - 0x7b84, data + 0x108); c.put32(data + 0x108, data + 0x200 + offset);
         for (unsigned at = 0; at <= span; at += 2)
@@ -295,6 +320,70 @@ void initialize_case(Cpu& c) {
         c.put_f32(player + 0xa8, active.intensity); c.put8(player + 0x109, active.strategy_high);
         c.put8(player + 0x17, 10); c.put16(player + 0x36, 7600);
         c.put32(match + 0x3100, 0); c.put32(match + 0x79f4, data + 0x9000); c.put8(player + 0x2f, 7);
+    }
+    if (active.entry == 0x102876c0) {
+        constexpr auto peer = data + 0x9000, ineligible = data + 0xa000;
+        c.put8(player + 0x105, 4); c.put8(player + 0x106, 5);
+        c.put32(player + 0x6c, data + 0xc000); c.put32(data + 0xc00c, data + 0xc100);
+        c.put8(data + 0xc219, active.strategy_low); c.put32(player + 0x70, data + 0xd000);
+        c.put32(player + 0x1ac, active.strategy_high & 4 ? peer : 0);
+        c.put16(player + 0x19c, active.second_role); c.put_f32(player + 0x1a8, active.intensity);
+        c.put32(peer + 0x1a4, match); c.put8(peer + 0x27, 1 - active.side);
+        c.put8(peer + 0x105, 4); c.put8(peer + 0x106, 5); c.put8(peer + 0x2f, 8);
+        c.put32(peer + 0x6c, active.strategy_high & 8 ? 0 : data + 0xe000);
+        c.put32(peer + 0x70, active.strategy_high & 16 ? 0 : data + 0xe100);
+        c.put32(data + 0xe00c, data + 0xc100); c.put8(data + 0xe069, active.column);
+        c.put_f32(peer + 0x1a8, float(active.factor)); c.put32(peer + 0x1ac, 0);
+        c.put32(ineligible + 0x6c, 0);
+        const auto cell = match + 0xa08 + 4 * 0x450 + 5 * 0x5c;
+        const auto count = (active.strategy_high >> 8) & 3;
+        c.put8(cell + 0x58 + active.side, 1); c.put32(cell + active.side * 0x2c, player);
+        c.put8(cell + 0x58 + (active.side == 0), count);
+        for (unsigned i = 0; i < count; ++i)
+            c.put32(cell + (active.side == 0) * 0x2c + i * 4,
+                    (active.strategy_high & 32 ? i == 0 : i == count - 1) ? peer : i == 0 ? 0 : ineligible);
+        c.put8(match + 0x1bc, active.row); c.put32(match + 0x79f4, data + 0x8000);
+        for (int i = 0; i < active.row; ++i) {
+            c.put32(match + 0xb4 + i * 12, active.strategy_high & 2 ? player : peer);
+            c.put32(match + 0xb8 + i * 12, peer); c.put8(match + 0xbc + i * 12, 250);
+        }
+        for (unsigned team = 0; team < 2; ++team) for (unsigned slot = 0; slot < 20; ++slot) {
+            const auto record = match + 0x311c + team * 0x2350 + slot * 0x1c4;
+            c.put8(record + 0x19, 255); c.put8(record + 0x2c, 0); c.put8(record + 0x27, team);
+            c.put32(record + 0x1a4, match); c.put_f32(record + 0x1a8, 100);
+            c.put8(record + 0x105, 4); c.put8(record + 0x106, 5);
+            c.put32(record + 0x6c, 0); c.put32(record + 0x70, 0);
+            if (active.strategy_high & 64) {
+                if (slot == 1 || slot == 4) {
+                    c.put8(record + 0x19, 4); c.put_f32(record + 0x1a8, slot == 1 ? 110 : 100);
+                    c.put8(record + 0x28, 255); c.put8(record + 0x105, 3); c.put8(record + 0x106, 4);
+                }
+                if (slot == 2) c.put8(record + 0x19, 11);
+                if (slot == 3) { c.put8(record + 0x19, 4); c.put8(record + 0x2c, 2); }
+            }
+        }
+        if (active.strategy_high & 128) {
+            const auto root = match + 0x311c;
+            c.s.memory.copy_in(root, c.s.memory.copy_out(player, 0x1c4));
+            c.put8(root + 0x19, 4); c.put8(root + 0x2c, 0);
+            c.put32(cell + active.side * 0x2c, root);
+        }
+    }
+    if (active.entry == 0x102884d0) {
+        const auto scene = data + 0xe000, reference = data + 0xe100, node = data + 0xe200;
+        c.put_f32(player + 0x1a8, active.intensity); c.put_f32(player + 0x78, float(active.factor));
+        c.put32(player + 0x1ac, 0); c.put8(player + 0x2f, 7);
+        c.put32(match + 0x79f4, data + 0x8000); c.put32(match + 0x3118, scene);
+        c.put8(match + 0x7924, active.strategy_high & 1 ? unsigned(active.side == 0) : unsigned(active.side));
+        c.put8(match + 0x791d, 4); c.put8(match + 0x791e, active.row); c.put8(match + 0x7928, active.strategy_low);
+        c.put32(scene + 0x14, active.strategy_high & 2 ? 0 : reference);
+        c.put32(reference + 8, active.strategy_high & 4 ? 0 : node);
+        c.put32(node + 0x68, active.strategy_high & 8 ? 12346 : 12345);
+        c.put32(c.r(2) - 0x7a10, data + 0x700); c.put32(data + 0x700, 12345);
+        c.put32(scene + 0x1c, data + 0xe400); c.put32(scene + 0x20, data + 0xe500);
+        c.put32(data + 0xe42c, active.strategy_high & 16 ? 0 : data + 0xe600);
+        c.put32(data + 0xe52c, active.strategy_high & 16 ? 0 : data + 0xe700);
+        c.put8(data + 0xe719, active.column); c.put8(data + 0xe819, active.column);
     }
     if (active.entry == 0x10289620) {
         c.put16(player + 0x3c, active.row);
@@ -374,7 +463,8 @@ void initialize_case(Cpu& c) {
         c.set_f(2, active.intensity);
     }
     if (active.entry == 0x10286650) c.set(5, active.strategy_high == 0 ? 0 : active.strategy_high == 1 ? data + 0x9000 : data + 0x9004);
-    if (active.mutate && active.entry != 0x1022e3a0) c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
+    if (active.entry == 0x102876c0 && (active.strategy_high & 128)) c.set(3, match + 0x311c);
+    if ((active.mutate || active.mutate_after_step) && active.entry != 0x1022e3a0) c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
 }
 
 void require_return(const State& s) {
@@ -849,6 +939,102 @@ std::vector<Case> cases() {
         result.push_back(scaled);
         Case gate{0x10289620, 0, 4, 0, 20, 0, 0x80000063};
         gate.custom_pool = true; result.push_back(gate);
+    }
+    constexpr std::array<std::array<std::uint16_t, 8>, 8> peer_pools{{
+        {1, 0, 1, 1, 1, 1, 1, 1}, {1, 1, 0, 0, 1, 1, 1, 1},
+        {1, 1, 0, 20, 0, 1, 1, 1}, {1, 1, 0, 20, 5, 1, 1, 1},
+        {1, 1, 0, 20, 9, 1, 1, 1}, {1, 1, 1, 0, 0, 1, 1, 1},
+        {1, 1, 1, 0, 1, 1, 1, 1}, {1, 1, 1, 1, 1, 1, 1, 1}}};
+    for (int side : {0, 1}) for (int depth : {-41, -40, -1, 0, 1, 2, 9, 10, 127})
+        for (int count : {0, 1, 4, 5}) for (auto words : peer_pools) for (auto accepted : {0u, 1u}) {
+            Case test{0x102876c0, side, 10, count, std::uint32_t(depth), 0, 95};
+            test.intensity = 100; test.factor = 50; test.strategy_low = 8;
+            test.strategy_high = 0x100 | accepted; test.custom_pool = true; test.pool_words = words;
+            result.push_back(test);
+        }
+    for (auto flags : {0u, 0x100u, 0x108u, 0x110u, 0x300u, 0x303u}) {
+        Case test{0x102876c0, 0, 10, 2, 10, 0, 96}; test.strategy_high = flags;
+        test.intensity = 100; test.factor = 50; test.custom_pool = true;
+        result.push_back(test);
+    }
+    for (auto words : {peer_pools[0], peer_pools[1], peer_pools[2], peer_pools[5]})
+        for (int trait : {0, 10, 25, 127, 128, 255})
+            for (double intensity : {-1000.0, 0.0, 30.0, 1000.0, 1000000.0,
+                     std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+                Case test{0x102876c0, 0, trait, 0, 10, 0, 96}; test.strategy_high = 0x100;
+                test.intensity = 100; test.factor = intensity; test.custom_pool = true; test.pool_words = words;
+                result.push_back(test);
+            }
+    for (auto trait : {8u, 7u, 255u}) {
+        Case test{0x102876c0, 0, 10, 5, 10, 0, 95}; test.strategy_high = 0x100;
+        test.intensity = 100; test.factor = 50; test.strategy_low = trait; test.pool_position = 7;
+        test.custom_pool = true; test.pool_words = {1, 1, 1, 1, 1, 1, 1, 0}; result.push_back(test);
+    }
+    for (auto seed : {0xfffffff8u, 0xffffffffu}) {
+        Case test{0x102876c0, 0, 10, 5, 10, 0, 95}; test.strategy_high = 0x100;
+        test.intensity = 100; test.factor = 50; test.strategy_low = 7; test.random_seed = seed;
+        const auto bias = 0u - seed; test.custom_pool = true;
+        test.pool_words = {0, std::uint16_t(bias + 1), std::uint16_t(bias), std::uint16_t(bias + 20), 0, 0, 0, 0};
+        result.push_back(test);
+    }
+    for (auto flags : {0x320u, 0x103u, 0x140u, 0x180u, 0x1c0u})
+        for (auto words : peer_pools) for (auto position : {0u, 1u, 2u}) {
+            Case test{0x102876c0, 0, 10, 2, 10, 0, 96}; test.strategy_high = flags;
+            test.intensity = 100; test.factor = 50; test.custom_pool = true; test.pool_words = words;
+            test.pool_position = position; result.push_back(test);
+        }
+    for (bool mutate : {false, true}) {
+        Case test{0x102876c0, 0, 10, 2, 10, 0, 96}; test.strategy_high = 0x101;
+        test.intensity = 100; test.factor = 50; test.custom_pool = true; test.mutate = mutate;
+        result.push_back(test);
+    }
+    constexpr std::array<std::array<std::uint16_t, 8>, 6> incident_pools{{
+        {1, 0, 0, 1, 1, 1, 1, 1}, {1, 1, 0, 0, 1, 1, 1, 1},
+        {1, 1, 1, 0, 1, 1, 1, 1}, {1, 1, 1, 1, 0, 1, 1, 1},
+        {1, 1, 1, 1, 1, 0, 1, 1}, {1, 1, 1, 1, 1, 1, 1, 1}}};
+    for (int side : {0, 1}) for (auto action : {0u, 1u, 2u, 3u, 4u, 5u, 9u, 128u, 255u})
+        for (auto words : incident_pools) for (double resistance : {0.0, 4.0, 5.0, 20.0, 21.0, -1000000.0,
+                     1000000.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()})
+            for (auto position : {0u, 1u, 2u}) {
+                Case test{0x102884d0, side, 8, 5, 123, action, std::uint32_t(side == 0)};
+                test.strategy_high = 1; test.strategy_low = 6; test.intensity = 100; test.factor = resistance;
+                test.custom_pool = true; test.pool_words = words; test.pool_position = position;
+                result.push_back(test);
+            }
+    for (auto flags : {0u, 1u, 3u, 5u, 9u, 17u}) for (auto phase : {5u, 6u, 7u, 8u})
+        for (int row : {0, 1, 10, 11, 128}) for (auto action : {0u, 3u, 9u}) {
+            Case test{0x102884d0, 0, 7, row, 0, action, 1};
+            test.strategy_high = flags; test.strategy_low = phase; test.intensity = 100; test.factor = 5;
+            test.custom_pool = true; result.push_back(test);
+        }
+    for (double resistance : {-65516.0, -65515.0, 65555.0, 65556.0})
+        for (auto words : {incident_pools[0], incident_pools[1]}) for (auto position : {0u, 1u, 2u}) {
+            Case test{0x102884d0, 0, 8, 5, 1, 3, 1};
+            test.strategy_high = 1; test.strategy_low = 6; test.intensity = 100; test.factor = resistance;
+            test.custom_pool = true; test.pool_words = words; test.pool_position = position;
+            result.push_back(test);
+        }
+    for (bool request : {false, true}) for (bool choice : {false, true}) for (bool step : {false, true}) {
+        Case test{0x102884d0, 0, 8, 9, 255, 3, 1};
+        test.strategy_high = 1; test.strategy_low = 6; test.intensity = 100; test.factor = 5;
+        test.custom_pool = true; test.mutate = request; test.mutate_choice = choice; test.mutate_after_step = step;
+        result.push_back(test);
+    }
+    for (int side : {0, 1}) for (int trait : {7, 8, 255}) for (auto flags : {1u, 17u})
+        for (auto notice : {0u, 1u}) {
+            Case test{0x102884d0, side, trait, 5, 1, 3, 1};
+            test.strategy_high = flags; test.strategy_low = 6; test.intensity = 100; test.factor = 0;
+            test.custom_pool = true; test.pool_words = {0, 0, 1, 1, std::uint16_t(notice), 0, 0, 0};
+            result.push_back(test);
+        }
+    {
+        Case test{0x102884d0, 0, 8, 5, 1, 3, 1};
+        test.strategy_high = 1; test.strategy_low = 6; test.intensity = 100; test.factor = 0;
+        test.custom_pool = true; test.pool_position = 2; result.push_back(test);
+        test.pool_position = 7; test.factor = -1000000;
+        test.pool_words = {300, 0, 0, 0, 0, 0, 0, 65534}; result.push_back(test);
+        test.pool_position = 0; test.random_seed = 0xffffffe0;
+        test.pool_words = {0, 32, 65534, 19, 0, 0, 0, 0}; result.push_back(test);
     }
     return result;
 }

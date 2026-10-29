@@ -75,4 +75,6 @@ std::uint32_t accepts_target(Cpu&, std::uint32_t player, std::uint32_t column, s
 std::uint32_t react_to_contact_failure(Cpu&, std::uint32_t player, std::int16_t quality);
 std::uint32_t accepts_response(Cpu&, std::uint32_t player, std::uint32_t kind, std::uint32_t opponent);
 std::uint32_t sample_decision(Cpu&, std::uint32_t player, std::uint32_t trait);
+std::uint32_t resolve_peer_contact(Cpu&, std::uint32_t player, std::uint32_t depth);
+void resolve_incident_response(Cpu&, std::uint32_t player, std::uint32_t policy);
 }

@@ -154,3 +154,9 @@ MATCH_PL_ROUTINE(0x10286650, 0x102875f0, R3|F1, "7816bfd72a14d5c1",
 
 MATCH_PL_ROUTINE(0x10289620, 0x10289d50, R3|F1, "63a3f67171b2e132",
     [](Cpu& c) { match_pl::sample_decision(c, c.r(3), c.r(4)); })
+
+MATCH_PL_ROUTINE(0x102876c0, 0x10288230, R3|F1, "38409c0bfd2350d5",
+    [](Cpu& c) { match_pl::resolve_peer_contact(c, c.r(3), c.r(4)); })
+
+MATCH_PL_ROUTINE(0x102884d0, 0x10288f30, R3|F1, "dc6f7691e60f89a9",
+    [](Cpu& c) { match_pl::resolve_incident_response(c, c.r(3), c.r(4)); })

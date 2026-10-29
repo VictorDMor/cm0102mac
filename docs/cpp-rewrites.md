@@ -755,3 +755,9 @@ to integer zero. Their audited quotient-free divisions leave the dividend as
 the residual, followed by the original sign correction; introducing a host
 division error changes that continuation. Nested wide corrections also retain
 the caller's incoming F1 until reseeding, where external code can observe it.
+
+Peer contacts update every matching contact-list record before deciding whether
+to append; duplicate matches are observable. Incident responses also retain two
+consecutive kind2 attempts, each consuming its own RNG draw. Request, effect and
+announcement callbacks can change the match or choice byte, so later phases
+reload those fields before applying their consequences.
