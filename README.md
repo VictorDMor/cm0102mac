@@ -121,9 +121,10 @@ services stop with explicit diagnostics.
 After building, double-click `Install Native Prototype.command` in Finder with
 the original media still mounted for the first installation. The installer
 verifies the supported executable and resource fork, copies the required data,
-and installs `~/Applications/CM 01-02 Native Prototype.app`. Game data and saves
+and installs `~/Applications/reCM 01-02.app`. Game data and saves
 use `~/Library/Application Support/CM 01-02 Native/`. Later installations verify
-the existing data and preserve saves.
+the existing data and preserve saves. The installer creates the app icon from
+the original Mac game's local resources for each installation.
 
 The installer requires your local build; cloning this repository alone does not
 provide a prebuilt application. See the

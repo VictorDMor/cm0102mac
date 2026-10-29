@@ -704,7 +704,7 @@ add_executable(cm-native-prototype MACOSX_BUNDLE prototype_main.mm)
 target_link_libraries(cm-native-prototype PRIVATE cm_probe_host)
 target_compile_options(cm-native-prototype PRIVATE -Wall -Wextra -Werror -Wpedantic -fobjc-arc)
 set_target_properties(cm-native-prototype PROPERTIES
-    OUTPUT_NAME "CM 01-02 Native Prototype"
+    OUTPUT_NAME "reCM 01-02"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Prototype-Info.plist.in")
 add_executable(cm-match-debugger MACOSX_BUNDLE match_debugger_main.mm match_debugger_worker.mm)
 target_link_libraries(cm-match-debugger PRIVATE cm_match_debugger_factory)

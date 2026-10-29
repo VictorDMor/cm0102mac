@@ -3,8 +3,9 @@
 <plist version="1.0"><dict>
     <key>CFBundleExecutable</key><string>@MACOSX_BUNDLE_EXECUTABLE_NAME@</string>
     <key>CFBundleIdentifier</key><string>local.cm0102.native-prototype</string>
-    <key>CFBundleName</key><string>CM 01-02 Native Prototype</string>
-    <key>CFBundleDisplayName</key><string>CM 01-02 Native Prototype</string>
+    <key>CFBundleName</key><string>reCM 01-02</string>
+    <key>CFBundleDisplayName</key><string>reCM 01-02</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleVersion</key><string>0.1.0</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
