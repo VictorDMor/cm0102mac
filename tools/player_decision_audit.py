@@ -79,8 +79,8 @@ def player_decision_hook(entry):
     return f'if (try_modern_player_decision(s, 0x{entry:x})) return true;'
 
 
-def require_player_decision_hooks(page, instructions, code):
-    if page != ENTRY >> 12 or ENTRY not in {row['address'] for row in instructions}:
+def require_player_decision_hooks(page, instructions, code, taken_over=()):
+    if page != ENTRY >> 12 or ENTRY not in {row['address'] for row in instructions} or ENTRY in taken_over:
         return
     hook = player_decision_hook(ENTRY)
     fragment = code.split(f'i_{ENTRY:x}:', 1)[-1].split(f'i_{ENTRY + 4:x}:', 1)[0]

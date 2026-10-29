@@ -2348,7 +2348,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if actor_motion_hooks:
         require_actor_motion_hooks(page, instructions, result, taken_over)
     if player_decision_hooks:
-        require_player_decision_hooks(page, instructions, result)
+        require_player_decision_hooks(page, instructions, result, taken_over=taken_over)
     if record_query_hooks:
         require_record_query_hooks(page, instructions, result, taken_over)
     if record_group_hooks:

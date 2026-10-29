@@ -54,8 +54,8 @@ void dispatch_action(Cpu& c, std::uint32_t player) {
                 const auto traits = std::int8_t(c.r(25)) * std::int8_t(c.r(second_trait));
                 leave(c, {{3, std::uint32_t(traits)}, {4, residual}, {5, sign}, {6, value}});
                 if (compare(c, traits, std::int32_t(residual) + 50) <= 0) {
-                    c.set(3, c.u32(player + 0x1b4 + offset));
-                    c.call(0x102836a0, decision_back);
+                    const auto peer = c.u32(player + 0x1b4 + offset);
+                    enter(c, decision_back, {peer}); choose_context_action(c, peer);
                 }
             }
             index = std::uint32_t(index) + 1;
@@ -201,6 +201,6 @@ void dispatch_action(Cpu& c, std::uint32_t player) {
         return;
     }
     if (context_selects_secondary(0x102781c0)) { enter(c, 0x102781f8, {player, 1}); choose_secondary_action(c, player); }
-    else { c.set(3, player); c.call(0x102836a0, 0x10278204); }
+    else { enter(c, 0x10278204, {player}); choose_context_action(c, player); }
 }
 }
