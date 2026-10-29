@@ -70,4 +70,8 @@ void render_trial_duration(Cpu&);
 std::uint32_t trial_duration_command(Cpu&, std::uint32_t control);
 std::uint32_t sample_transfer_range(Cpu&, std::uint32_t bound);
 std::uint32_t shortlist_confirmation_command(Cpu&, std::uint32_t control);
+void render_bid_rejection(Cpu&);
+std::uint32_t bid_rejection_command(Cpu&, std::uint32_t control);
+void render_transfer_completion(Cpu&);
+std::uint32_t transfer_completion_command(Cpu&, std::uint32_t control);
 }

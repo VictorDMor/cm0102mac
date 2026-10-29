@@ -63,3 +63,7 @@ TRANSFER_SCREENS_ROUTINE(0x1042b580, 0x1042bae0, R3, "7fd0244b8aff1b8d", [](Cpu&
 TRANSFER_SCREENS_ROUTINE(0x1042bae0, 0x1042bf70, R3, "6369f4b6e5e08664", [](Cpu& c) { c.set(3, transfer_screens::trial_duration_command(c, c.r(3))); })
 TRANSFER_SCREENS_ROUTINE(0x1042bf70, 0x1042c2c0, R3, "8e3158075c16f8a1", [](Cpu& c) { transfer_screens::open_loan_terms_from_news(c, c.r(3), c.r(4)); })
 TRANSFER_SCREENS_ROUTINE(0x1042c2c0, 0x1042c6d0, R3, "55b9bfacc495ab1e", [](Cpu& c) { c.set(3, transfer_screens::open_loan_offer_terms(c, c.r(3))); })
+TRANSFER_SCREENS_ROUTINE(0x1041f8f0, 0x104204f0, R3, "041ea800687a693e", [](Cpu& c) { transfer_screens::render_bid_rejection(c); })
+TRANSFER_SCREENS_ROUTINE(0x104204f0, 0x10420aa0, R3, "4eec3bd27064feeb", [](Cpu& c) { c.set(3, transfer_screens::bid_rejection_command(c, c.r(3))); })
+TRANSFER_SCREENS_ROUTINE(0x10423270, 0x10424220, R3, "e13aca08cd56f79a", [](Cpu& c) { transfer_screens::render_transfer_completion(c); })
+TRANSFER_SCREENS_ROUTINE(0x10424220, 0x104248a0, R3, "5051ea878955d74b", [](Cpu& c) { c.set(3, transfer_screens::transfer_completion_command(c, c.r(3))); })
