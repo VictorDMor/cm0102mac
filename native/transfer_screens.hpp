@@ -7,6 +7,13 @@ void open_player_offer(Cpu&, std::uint32_t player, std::uint32_t offer_link);
 void open_existing_offer(Cpu&, std::uint32_t offer_link, std::uint32_t create_screen);
 void idle_callback(Cpu&);
 void render_proposal(Cpu&);
+void render_offer_restriction(Cpu&);
+void open_transfer_feedback(Cpu&, std::uint32_t player, std::uint32_t club,
+                            std::uint32_t reason, std::uint32_t kind);
+void render_transfer_feedback(Cpu&);
+void render_offer_context(Cpu&);
+std::uint32_t offer_context_command(Cpu&, std::uint32_t control);
+void render_previous_offer(Cpu&);
 void update_proposal_total(Cpu&, std::uint32_t draft_offer, std::uint32_t offer_link);
 std::uint32_t proposal_command(Cpu&, std::uint32_t selected_control);
 void open_offer_context(Cpu&, std::uint32_t, std::uint32_t, std::uint32_t);

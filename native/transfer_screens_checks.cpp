@@ -28,7 +28,7 @@ constexpr std::array entries{0x10417590u, 0x10417880u, 0x1041e760u, 0x1041ea60u,
     0x1041f830u, 0x10420aa0u, 0x10422ac0u, 0x10423160u, 0x104248a0u,
     0x10424930u, 0x10426550u, 0x1042a780u, 0x1042ae20u, 0x1042b500u,
     0x1042ed80u, 0x1042ee90u, 0x10428650u, 0x10420e40u, 0x10421960u, 0x10422a00u,
-    0x10426830u, 0x1042b3a0u, 0x10426970u, 0x10423040u, 0x1041e770u, 0x1041b600u, 0x10417b60u};
+    0x10426830u, 0x1042b3a0u, 0x10426970u, 0x10423040u, 0x1041e770u, 0x1041b600u, 0x10417b60u, 0x10420b50u, 0x10420f00u, 0x10421070u, 0x1041eb10u, 0x1041f3a0u, 0x10422600u};
 struct Case {
     std::uint32_t entry;
     int create = 1, create_result = 1, contract_present = 1, contract_type = 0,
@@ -48,7 +48,10 @@ struct Case {
         manager_present = 1, manager_club_present = 1, person_present = 1, manager_club_id = 2,
         pending_offers = 0, board_enabled = 0, board_present = 1, board_reason = 1, board_decision = 0,
         delay_count = 0, row_height = 21, first_control = 10, board_context = 1,
-        contract_null_query = 0, contract_type_query = 0;
+        contract_null_query = 0, contract_type_query = 0,
+        reason = 0, feedback_kind = 0, feedback_offer_id = 17, feedback_pattern = 0,
+        temporary_offer = 0, draft_link_mode = 1, original_link_present = 1,
+        mutate_fee = 0, mutate_payload = 0, varying_owner = 0;
     std::uint32_t mode = 1;
 };
 Case active{entries[0]};
@@ -69,7 +72,10 @@ const std::set<std::uint32_t> dependencies{
     0x103eaea0, 0x10411ea0, 0x106fdb00, 0x106fe280, 0x107136d0,
     0x10719740, 0x107198c0, 0x10739890, 0x10744390, 0x10744430,
     0x107444e0, 0x107445a0, 0x1074b6e0, 0x1074b7c0, 0x1074b830,
-    0x1074bab0, 0x1074bcd0, 0x1074c570, 0x10768810, 0x10769b60, 0x1076d470};
+    0x1074bab0, 0x1074bcd0, 0x1074c570, 0x10768810, 0x10769b60, 0x1076d470,
+    0x10744250, 0x107442f0, 0x1074a350, 0x103ea290, 0x1007f720, 0x10168a00,
+    0x103f89e0, 0x10716eb0, 0x103e8500, 0x103e4130, 0x103e25d0, 0x103e4390,
+    0x103e2db0, 0x103e4c90, 0x103e4740, 0x10416710, 0x103f6240};
 
 void trace(Cpu& c, std::uint32_t entry) {
     if (++call_count > 1000) throw std::runtime_error("fixture call limit");
@@ -87,6 +93,8 @@ void trace(Cpu& c, std::uint32_t entry) {
     case 0x107198c0: case 0x107444e0: stack_arguments = 4; break;
     case 0x10744430: stack_arguments = 5; break;
     case 0x10744390: stack_arguments = 3; break;
+    case 0x1074a350: stack_arguments = active.entry == 0x10422600 ? 12 : 3; break;
+    case 0x10727890: if (c.lr() == 0x1041efa8) stack_arguments = 3; break;
     case 0x107445a0: stack_arguments = 2; break;
     case 0x1074bcd0: stack_arguments = 1; break;
     }
@@ -127,6 +135,7 @@ bool probe(State& s) {
     case 0x10082f20: {
         const auto query = c.u32(data + 0x1b0) + 1; c.put32(data + 0x1b0, query);
         c.put8(contract + 0x38, active.contract_type_query == int(query) ? 20 : active.contract_type);
+        if (active.varying_owner) c.put32(contract+4,query);
         c.set(3, active.contract_present && active.contract_null_query != int(query) ? contract : 0);
         break;
     }
@@ -146,7 +155,10 @@ bool probe(State& s) {
         c.set(3, 1); break;
     case 0x102cb570: c.set(3, c.u32(c.r(3) + 8 + c.r(4) * 4)); break;
     case 0x103eb440:
-        c.set(3, active.entry == 0x10417b60 && c.r(4) >= 20 ? data + 0x65000 + (c.r(4) - 20) * 4 : link); break;
+        if (active.entry == 0x10421070) c.set(3,active.link_present ? link : 0);
+        else c.set(3, (active.entry == 0x10417b60 || active.entry == 0x10420f00) && c.r(4) >= 20 ?
+            data + 0x65000 + (c.r(4) - 20) * 4 : link);
+        break;
     case 0x10094ae0: c.set(3, 1); break;
     case 0x103ea350: c.set(3, active.mode); break;
     case 0x1073ef70: c.set(3, c.u32(history + c.r(4) * 4)); break;
@@ -154,7 +166,15 @@ bool probe(State& s) {
     case 0x102a54b0: c.set(3, active.command); break;
     case 0x102a83a0: c.set(3, active.fallback); break;
     case 0x10718360: c.set(3, active.mode); break;
-    case 0x103e44b0: case 0x103e6290: c.set(3, 1); break;
+    case 0x103e44b0: case 0x103e6290:
+    case 0x103e8500: case 0x103e4130: case 0x103e25d0: case 0x103e4390:
+    case 0x103e2db0: case 0x103e4c90: case 0x103e4740:
+        if (active.entry == 0x1041f3a0) {
+            if (active.mutate_payload) c.put32(data+0x6f00,data+0x7100);
+            if (active.mutate_fee) c.put32(c.u32(data+0x6f00)+0x20,
+                c.u32(offer+0x20)+(active.mutate_fee==2 ? 17 : 0));
+        }
+        c.set(3,1); break;
     case 0x10009f20: {
         const auto amount = c.i32(c.r(3));
         c.set(4, std::uint32_t(amount));
@@ -228,7 +248,14 @@ bool probe(State& s) {
         c.put32(c.r(5) + 8, active.pending_offers ? data + 0x66000 + (active.pending_offers - 1) * 16 : 0);
         c.put32(c.r(5) + 12, 0); break;
     case 0x107136d0: case 0x102a1070: case 0x1074b7c0: case 0x1074b830:
-    case 0x1074bab0: case 0x1074c570: break;
+    case 0x1074bab0: case 0x1074c570: case 0x10744250: case 0x107442f0: case 0x1074a350: break;
+    case 0x103ea290: c.put32(c.r(5),clubs + active.bidder_id * 0x248); break;
+    case 0x1007f720: c.set(3,active.contract_present ? contract : 0); break;
+    case 0x10168a00: c.put32(c.r(4),c.r(3)); break;
+    case 0x103f89e0: c.put16(c.r(5),17); c.put16(c.r(5)+2,2002); c.put8(c.r(5)+4,3); break;
+    case 0x10716eb0: c.put32(c.r(4),c.u32(c.r(3))); break;
+    case 0x10416710: c.set(3,123456); break;
+    case 0x103f6240: c.put16(c.r(7),0x37); c.set(3,1); break;
     }
     s.pc = c.lr(); return true;
 }
@@ -427,6 +454,59 @@ void initialize(Cpu& c, const Case& test) {
             }
         }
     }
+    if (test.entry == 0x10420b50 || test.entry == 0x10420f00 || test.entry == 0x10421070) {
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        unsigned n=0;
+        for (int slot:{-0x7bc4,-0x7bc8,-0x7b14}) {
+            const auto colour=data+0x400+4*n++;
+            c.put32(c.r(2)+std::uint32_t(slot),colour); c.put16(colour,0x3456+n);
+        }
+        c.put32(data+0x194,test.first_control);
+        variable(-0x7a18,0x1c0,1); variable(-0x6678,0x1c4,2); variable(-0x7b98,0x1c8,data+0x68000);
+        for (unsigned i=0;i<8;++i) {
+            c.put32(clubs+i*0x248,i); c.put8(clubs+i*0x248+0x23b,(i+1)%3);
+            c.put8(clubs+i*0x248+0x242,i%3); c.put32(clubs+i*0x248+0x2c,data+0x68000+3*0x128);
+        }
+        c.put32(contract+0x70,test.feedback_offer_id);
+        c.put32(data+0xb024,clubs+test.manager_club_id*0x248);
+        c.put32(history, test.entry == 0x10420b50 ? link : player);
+        c.put32(history+4,test.entry == 0x10420b50 ? std::uint32_t(test.action) : clubs+2*0x248);
+        c.put32(history+8,test.reason); c.put32(history+12,7); c.put32(history+16,test.feedback_kind);
+        c.set({{3,player},{4,clubs+2*0x248},{5,std::uint32_t(test.reason)},{6,std::uint32_t(test.feedback_kind)}});
+        for (int i=0;i<test.pending_offers;++i) {
+            const auto bid=data+0x64000+i*0x100,node=data+0x66000+i*16;
+            c.put32(data+0x65000+i*4,bid); c.put32(bid+8,i+1);
+            static constexpr int statuses[]{10,11,12,13,14,19,20};
+            c.put8(bid+0x34,test.feedback_pattern ? statuses[i%7] : test.status);
+            c.put32(node,data+0x67000+i*4); c.put16(node+4,4);
+            c.put32(node+8,i+1<test.pending_offers ? node+16 : 0);
+            c.put32(node+12,i ? node-16 : 0); c.put32(data+0x67000+i*4,20+i);
+        }
+    }
+    if (test.entry == 0x1041eb10 || test.entry == 0x1041f3a0 || test.entry == 0x10422600) {
+        c.put32(c.r(2)-0x7bb8,data+0x50000);
+        unsigned n=0;
+        for (int slot:{-0x7bc4,-0x7bc8,-0x7b14,-0x7bd0}) {
+            const auto colour=data+0x400+4*n++;
+            c.put32(c.r(2)+std::uint32_t(slot),colour); c.put16(colour,0x3456+n);
+        }
+        c.put32(c.r(2)-0x7ba8,data+0x54000); c.put32(c.r(2)-0x7bac,data+0x198);
+        c.put32(data+0x194,test.first_control);
+        for (unsigned i=0;i<8;++i) { c.put32(clubs+i*0x248,i); c.put8(clubs+i*0x248+0x23b,(i+1)%3); }
+        c.put32(data+0xb024,test.manager_club_present ? clubs+test.manager_club_id*0x248 : 0);
+        if (!test.manager_present) c.put32(screens+std::uint32_t(test.group)*0x2c0+4,0);
+        c.put32(offer+8,test.bidder_id); c.put8(offer+0x24,test.temporary_offer);
+        c.put8(offer+0x38,test.offer_kind); c.put32(offer+0x20,test.fee);
+        c.s.memory.copy_in(data+0x7000,c.s.memory.copy_out(offer,0x54));
+        c.put32(data+0x7020,std::uint32_t(test.fee)+test.reference_adjustment);
+        c.s.memory.copy_in(data+0x7100,c.s.memory.copy_out(data+0x7000,0x54));
+        c.put32(data+0x7120,std::uint32_t(test.fee)+200);
+        c.put32(data+0x6f00,data+0x7000);
+        c.put32(history,test.draft_link_mode==0 ? 0 : test.draft_link_mode==2 ? link : data+0x6f00);
+        c.put32(history+4,test.reason); c.put32(history+8,test.original_link_present ? link : 0);
+        if (test.entry == 0x10422600) { c.put32(history,offer); c.put32(history+4,test.news_revision); }
+        if (test.entry == 0x1041f3a0) c.set(3,test.control);
+    }
     if (test.actual_reset_services) actual_heap_offers(c, test);
     c.s.budget = 100000;
 }
@@ -434,6 +514,17 @@ void returned(State& s) {
     Cpu c(s);
     if (c.sp() != stack || c.lr() != sentinel || s.pc != sentinel)
         throw std::runtime_error("fixture did not return");
+    if (active.entry == 0x10420f00) {
+        unsigned expected=7;
+        if (std::int8_t(active.create_result) && (std::int16_t(active.reason)==18 || std::int16_t(active.reason)==32)) {
+            static constexpr int statuses[]{10,11,12,13,14,19,20};
+            for (int i=0;i<active.pending_offers;++i) {
+                const auto status=active.feedback_pattern ? statuses[i%7] : std::uint8_t(active.status);
+                if ((status>=11 && status<=14) || status==19) expected=i+1;
+            }
+        }
+        if (c.u32(history+12)!=expected) throw std::runtime_error("Feedback did not preserve the last matching bidder");
+    }
     if (active.actual_reset_services && (active.action == 26 || active.action == 32 ||
         (active.entry == 0x10417b60 && !active.draft_present && active.link_present))) {
         const auto restored = c.u32(data + 0x6f00), source = c.u32(data + 0x190);
@@ -710,6 +801,80 @@ int main(int argc, char** argv) {
         { Case t{0x10417b60}; t.status = 0; t.manager_club_id = 1; t.contract_null_query = 2; cases.push_back(t); }
         { Case t{0x10417b60}; t.status = 0; t.manager_club_id = 1; t.contract_type_query = 2; cases.push_back(t); }
         { Case t{0x10417b60}; t.contract_null_query = 5; cases.push_back(t); }
+        for (int action:{0,27,28,35,65563,-1}) for (int reason:{-1,0,27,65563,32768}) {
+            Case t{0x10420b50}; t.action=action; t.reason=reason; cases.push_back(t);
+        }
+        for (int created:{0,1,-1,128,256,0x12340001}) for (int reason:{0,18,32,65554})
+            for (int kind:{-1,0,2,128,255,256}) {
+                Case t{0x10420f00}; t.create_result=created; t.reason=reason; t.feedback_kind=kind;
+                t.pending_offers=7; t.feedback_pattern=1; cases.push_back(t);
+            }
+        for (int status:{0,10,11,12,13,14,15,18,19,20,127,128,255})
+            for (int count:{0,1,3}) for (int iterator:{0,2}) {
+                Case t{0x10420f00}; t.reason=18; t.status=status; t.pending_offers=count;
+                t.actual_total_services=iterator; cases.push_back(t);
+            }
+        for (int reason:{0,1,7,18,25,26,32,33,39,40,41,-1,65543})
+            for (int kind:{0,1,2,3,255,256}) {
+                Case t{0x10421070}; t.reason=reason; t.feedback_kind=kind; cases.push_back(t);
+            }
+        for (int present:{0,1}) for (int type:{0,16,20,21,23,24,127,128,255}) {
+            Case t{0x10421070}; t.reason=1; t.contract_present=present; t.contract_type=type; cases.push_back(t);
+        }
+        for (int present:{0,1}) for (int id:{-1,0,17}) for (int handle:{0,1}) for (int payload:{0,1}) {
+            Case t{0x10421070}; t.reason=33; t.contract_present=present; t.feedback_offer_id=id;
+            t.link_present=handle; t.offer_present=payload; cases.push_back(t);
+        }
+        for (auto entry:{0x10420b50u,0x10421070u}) for (int height:{1,21,1000}) for (int group:{0,1,3}) {
+            Case t{entry}; t.row_height=height; t.group=group; cases.push_back(t);
+        }
+        for (int reason:{0,1,2,27,28,29,35,-1}) for (int temporary:{0,1,2,128,255})
+            for (int kind:{0,16,32,48,128,255}) {
+                Case t{0x1041eb10}; t.reason=reason; t.temporary_offer=temporary; t.offer_kind=kind; cases.push_back(t);
+            }
+        // Explicit noncanonical query results characterize the caller's order;
+        // the actual lookup is pure and normally returns a stable owner.
+        for (int reason:{1,35}) for (int kind:{0,16,32}) {
+            Case t{0x1041eb10}; t.reason=reason; t.offer_kind=kind; t.varying_owner=1; cases.push_back(t);
+        }
+        { Case t{0x1041eb10}; t.draft_link_mode=0; cases.push_back(t); }
+        { Case t{0x1041eb10}; t.manager_present=0; cases.push_back(t); }
+        for (int reason:{0,1,2,27,28,29,35,-1}) for (int response:{0,1,2,128,255})
+            for (int temporary:{0,1,2}) for (int links:{1,2}) {
+                Case t{0x1041f3a0}; t.action=3; t.reason=reason; t.response=response;
+                t.temporary_offer=temporary; t.draft_link_mode=links; cases.push_back(t);
+            }
+        for (int reason:{27,29,35}) {
+            Case t{0x1041f3a0}; t.action=3; t.reason=reason; t.draft_link_mode=0; cases.push_back(t);
+        }
+        for (int club:{0,1}) for (int bidder:{1,2}) for (int original:{0,1}) {
+            Case t{0x1041f3a0}; t.action=3; t.reason=2; t.manager_club_present=club;
+            t.bidder_id=bidder; t.original_link_present=original; cases.push_back(t);
+        }
+        // Boundary mutations test live post-service rereads without asserting
+        // that the canonical services make these particular mutations.
+        for (int adjustment:{0,17}) for (int contract_present:{0,1}) for (int fee_mutation:{0,1,2}) {
+            Case t{0x1041f3a0}; t.action=3; t.reason=28; t.reference_adjustment=adjustment;
+            t.contract_present=contract_present; t.mutate_fee=fee_mutation; cases.push_back(t);
+        }
+        for (int reason:{1,2,27,28,29,35}) {
+            Case t{0x1041f3a0}; t.action=3; t.reason=reason; t.mutate_payload=1;
+            t.destroy_revision_delta=3; cases.push_back(t);
+        }
+        for (int control:{-1,0,3,65535}) for (int action:{0,2,3,65539,32768})
+            for (int fallback_action:{0,2}) {
+                Case t{0x1041f3a0}; t.control=control; t.action=action; t.default_action=fallback_action;
+                t.reason=1; cases.push_back(t);
+            }
+        for (int command:{0,1,-1}) for (int fallback:{0,1,-1,std::numeric_limits<int>::min()}) {
+            Case t{0x1041f3a0}; t.command=command; t.fallback=fallback; cases.push_back(t);
+        }
+        for (int revision:{16,17,18,-1}) for (int status:{0,1,2,3,4,5,6,127,128,255}) {
+            Case t{0x10422600}; t.news_revision=revision; t.status=status; cases.push_back(t);
+        }
+        for (auto entry:{0x1041eb10u,0x10422600u}) for (int height:{1,21,1000}) for (int group:{0,1,3}) {
+            Case t{entry}; t.row_height=height; t.group=group; cases.push_back(t);
+        }
         unsigned completed = 0;
         const auto selected_entry = std::getenv("CM_TRANSFER_SCREENS_ENTRY");
         const auto entry_filter = selected_entry ? std::strtoul(selected_entry, nullptr, 0) : 0;
