@@ -77,7 +77,8 @@ bool scripted(State& s) {
                              0x100ca010u, 0x10082f90u, 0x100c7d00u, 0x10718130u,
                              0x10201180u, 0x101f51e0u, 0x101f1530u, 0x101eeac0u, 0x101eeeb0u,
                              0x101f1100u, 0x1022ba10u, 0x101d6860u, 0x101f5050u, 0x101d6780u, 0x101eea30u,
-                             0x10717b20u, 0x1069e700u, 0x10658370u};
+                             0x10717b20u, 0x1069e700u, 0x10658370u,
+                             0x101d8120u, 0x10278220u, 0x10281af0u, 0x102836a0u};
     if (std::ranges::find(services, target) == services.end()) return false;
     auto used = c.u32(trace_at);
     const auto append = [&](std::uint32_t word) { c.put32(trace_at + 4 + used, word); used += 4; };
@@ -104,6 +105,10 @@ bool scripted(State& s) {
     else if (target == 0x101149f0 || target == 0x101e4e10) c.set(3, active.argument);
     else if (target == 0x101f0dd0 || target == 0x1077b770) {
         c.set(3, active.first_role);
+        if (target == 0x1077b770 && active.entry == 0x102775e0) {
+            if (active.context_flags & 64) { c.put8(player + 0x107, 127); c.put8(player + 0x10a, 127); }
+            if (active.context_flags & 128) c.put32(player + 0x1a4, other_match);
+        }
         if (target == 0x1077b770 && active.entry == 0x10289d50) {
             const auto back = c.lr();
             if ((active.context_flags & 128) && back == 0x1028a9c0) c.put32(player + 0x1a4, 0);
@@ -176,7 +181,30 @@ bool scripted(State& s) {
     else if (target == 0x101d6780) {
         if (active.entry == 0x102884d0 && active.mutate_choice) c.put8(c.sp() + 0x38, active.row);
     }
-    else if (target == 0x101eea30) c.set(3, active.second_role);
+    else if (target == 0x101eea30) {
+        c.set(3, active.second_role);
+        if (active.entry == 0x102775e0 && (active.context_flags & 256)) c.put32(player + 0x1a4, other_match);
+    }
+    else if (target == 0x101d8120) {
+        c.set(3, active.context_flags & 1 ? 0 : active.context_flags & 2 ? 255 : 1);
+        if (active.context_flags & 4) c.put8(player + 0x104, 0);
+        if (active.context_flags & 65536) c.put8(player + 0x104, 3);
+        if (active.context_flags & 131072) c.put32(player + 0x1b8, data + 0xa100);
+        if (active.context_flags & 8) c.put32(player + 0x1b4, data + 0xa000);
+        if (active.context_flags & 16) { c.put8(player + 0x105, 3); c.put8(player + 0x106, 7); }
+        if (active.context_flags & 32) c.put32(player + 0x1a4, other_match);
+    }
+    else if (target == 0x10278220) {
+        const auto live_match = c.u32(player + 0x1a4);
+        if (active.context_flags & 1024) c.put32(live_match + 0xe000, 0);
+        if (active.context_flags & 2048) c.put16(player + 0x19c, 109);
+        if (active.context_flags & 4096) c.put8(player + 0x2c, 1);
+        if (active.context_flags & 8192) c.put8(live_match + 0x7928, 1);
+        if (active.context_flags & 16384) c.put8(player + 0x10a, 0);
+        if (active.context_flags & 32768) c.put32(player + 0x1a4, other_match);
+        c.set(3, 7);
+    }
+    else if (target == 0x10281af0 || target == 0x102836a0) c.set(3, 9);
     else if (target == 0x10717b20) {
         const auto out = c.r(3), days = c.r(5);
         c.put16(out, std::uint32_t(-30000) + days); c.put16(out + 2, 60000 + days); c.put8(out + 4, 0x80 + days);
@@ -233,7 +261,7 @@ void initialize_case(Cpu& c) {
     c.put16(player + 0x19e, active.row); c.put16(player + 0x1c2, active.row);
     c.put8(player + 0x10b, 31); c.put8(player + 0x10d, 47);
     const bool geometry = active.entry == 0x1022e760 || active.entry == 0x10245160 ||
-        active.entry == 0x10270ba0 || active.entry == 0x10245050 || active.entry == 0x10237830 || active.entry == 0x10281780 || active.entry == 0x10244c60 || active.entry == 0x10237420;
+        active.entry == 0x10270ba0 || active.entry == 0x10245050 || active.entry == 0x10237830 || active.entry == 0x10281780 || active.entry == 0x10244c60 || active.entry == 0x10237420 || active.entry == 0x102775e0;
     if (geometry) {
         const auto distances = data + 0x4000, directions = data + 0x8000;
         c.put32(c.r(2) - 0x6424, distances); c.put32(c.r(2) - 0x641c, directions);
@@ -273,13 +301,13 @@ void initialize_case(Cpu& c) {
         c.put8(player + 0x1f, active.mutate ? -1 : 0); c.put8(player + 0x1c, active.argument >> 8);
         c.put_f32(player + 0x54, active.intensity); c.put_f32(player + 0x5c, float(active.factor));
     }
-    if (active.entry == 0x10235db0 || active.entry == 0x10226520 || active.entry == 0x10235ea0 || active.entry == 0x102393c0 || active.entry == 0x10237830 || active.entry == 0x10288230 || active.entry == 0x102857c0 || active.entry == 0x10288f30 || active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50) {
+    if (active.entry == 0x10235db0 || active.entry == 0x10226520 || active.entry == 0x10235ea0 || active.entry == 0x102393c0 || active.entry == 0x10237830 || active.entry == 0x10288230 || active.entry == 0x102857c0 || active.entry == 0x10288f30 || active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0) {
         c.put32(c.r(2) - 0x7b90, data + 0x100);
-        c.put32(data + 0x100, active.entry == 0x10237830 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 ? active.random_seed : active.entry == 0x10244c60 ? 0 : active.second_role);
+        c.put32(data + 0x100, active.entry == 0x10237830 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0 ? active.random_seed : active.entry == 0x10244c60 ? 0 : active.second_role);
         c.put32(c.r(2) - 0x7b8c, data + 0x200);
         const auto span = active.entry == 0x102393c0 && active.mutate ? 0x3eu : 0x0eu;
         c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + 0x200 + span);
-        const auto position = active.entry == 0x10235db0 ? active.argument : active.entry == 0x10288230 ? active.strategy_high : active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 ? active.pool_position : unsigned(active.side);
+        const auto position = active.entry == 0x10235db0 ? active.argument : active.entry == 0x10288230 ? active.strategy_high : active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0 ? active.pool_position : unsigned(active.side);
         const auto offset = position >= 3 ? (position - 2) * 2 : position & 1 ? span : position & 2 ? span - 2 : 0;
         c.put32(c.r(2) - 0x7b84, data + 0x108); c.put32(data + 0x108, data + 0x200 + offset);
         for (unsigned at = 0; at <= span; at += 2)
@@ -408,6 +436,29 @@ void initialize_case(Cpu& c) {
         c.put32(data + 0xe42c, active.strategy_high & 16 ? 0 : data + 0xe600);
         c.put32(data + 0xe52c, active.strategy_high & 16 ? 0 : data + 0xe700);
         c.put8(data + 0xe719, active.column); c.put8(data + 0xe819, active.column);
+    }
+    if (active.entry == 0x102775e0) {
+        // Low flags select main actor, secondary actor/side, phase5 and +2c.
+        // High bytes are the two signed peer traits; strategy_high holds
+        // signed match context and the signed +110 status in its low bytes.
+        const auto flags = active.strategy_low;
+        c.put32(match + 0xe000, flags & 1 ? player : 0);
+        c.put32(match + 0xdff8, flags & 2 ? data + 0x9000 : 0);
+        c.put8(data + 0x9027, flags & 4 ? 1 - active.side : active.side);
+        c.put8(match + 0x7924, active.strategy_high);
+        c.put8(match + 0x791d, 4); c.put8(match + 0x791e, 5);
+        c.put8(match + 0x791f, active.context_flags & 512 ? -1 : 0);
+        c.put8(match + 0x7928, 0); c.put8(match + 0x1c0, 99);
+        c.put8(match + 0x1c4 + std::uint32_t(std::int32_t(std::int8_t(active.side))), flags & 8 ? 5 : 0);
+        c.put8(player + 0x2c, flags & 16 ? 1 : 0);
+        c.put8(player + 0x104, active.argument); c.put8(player + 0x107, flags >> 16);
+        c.put8(player + 0x10a, flags >> 24); c.put8(player + 0x110, active.strategy_high >> 8);
+        c.put_f32(player + 0x50, active.intensity); c.put_f32(player + 0x80, float(active.factor));
+        c.put16(player + 0x36, 6000); c.put16(player + 0x19c, 19);
+        for (unsigned index = 0; index < 127; ++index)
+            c.put32(player + 0x1b4 + index * 4, data + 0x9000 + index * 0x1c4);
+        c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
+        c.put32(other_match + 0xe000, 0); c.put8(other_match + 0x791f, 0);
     }
     if (active.entry == 0x10289d50) {
         const auto flags = active.strategy_low;
@@ -1161,6 +1212,52 @@ std::vector<Case> cases() {
         result.push_back(test);
         test.row = 1000; test.strategy_low &= ~8u; result.push_back(test);
     }
+    const auto action_case = [] {
+        Case test{0x102775e0};
+        test.first_role = 0; test.second_role = 0; test.strategy_high = 1;
+        test.strategy_low = 0x05050000; test.intensity = 100000; test.factor = 20;
+        test.custom_pool = true; test.pool_words = {1, 1, 1, 1, 1, 1, 1, 1}; return test;
+    };
+    for (int side : {0, 1}) for (auto role : {0u, 1u, 4u})
+        for (auto flags : {0u, 1u, 2u, 6u, 8u, 16u, 17u}) for (auto context : {0u, 1u, 2u, 255u})
+            for (auto count : {0u, 2u, 255u}) {
+                auto test = action_case(); test.side = side; test.first_role = role;
+                test.strategy_low |= flags; test.strategy_high = context; test.argument = count;
+                result.push_back(test);
+            }
+    for (auto position : {0u, 1u, 2u, 6u}) for (auto seed : {0u, 0xfffffff0u, 0x80000000u})
+        for (float intensity : {-100000.f, 0.f, 5.f, 100000.f, std::numeric_limits<float>::quiet_NaN()}) {
+            auto test = action_case(); test.pool_position = position; test.random_seed = seed;
+            test.intensity = intensity; test.argument = 2; result.push_back(test);
+        }
+    for (auto path : {0u, 1u, 2u, 3u, 4u}) for (auto context : {0u, 1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 65536u, 131072u})
+        for (int trait : {-128, -1, 0, 1, 127}) {
+            auto test = action_case(); test.argument = 2; test.context_flags = context;
+            test.strategy_low = (std::uint32_t(std::uint8_t(trait)) << 24) | (5u << 16);
+            test.pool_position = 1;
+            if (path == 0) test.intensity = -100000;
+            if (path == 1) { test.strategy_high = 1; test.pool_words.fill(0); }
+            if (path == 2) { test.strategy_low |= 8; test.column = 4; test.row = 11; test.strategy_high |= 0xff00; test.pool_words.fill(1); }
+            if (path == 3) { test.first_role = 1; test.strategy_low |= 16; }
+            if (path == 4) test.strategy_low |= 1;
+            result.push_back(test);
+        }
+    {
+        auto test = action_case(); test.pool_words.fill(0); test.strategy_high = 0x101;
+        result.push_back(test); // Zero /20 draw with nonzero signed +110.
+        test = action_case(); test.strategy_low |= 8; test.column = 4; test.row = 11;
+        test.strategy_high = 0x101; result.push_back(test); // Equal +110 and /10 draw.
+    }
+    for (auto returned : {0u, 1u, 255u}) for (auto flags : {0u, 256u, 512u, 768u}) {
+        auto test = action_case(); test.strategy_high = 2; test.second_role = returned;
+        test.context_flags = flags; test.first_role = 1; result.push_back(test);
+    }
+    for (double bound : {0., 1., -1., 20., -20., 65535., -65535., 65536., -65536., 2147483520., -2147483648., std::numeric_limits<double>::quiet_NaN()})
+        for (auto position : {0u, 1u, 2u, 6u}) for (auto flag : {0u, 2048u, 4096u, 8192u, 16384u, 32768u}) {
+            auto test = action_case(); test.strategy_low |= 1; test.context_flags = 1024 | flag;
+            test.intensity = -100000; test.factor = bound; test.pool_position = position;
+            result.push_back(test);
+        }
     return result;
 }
 }
