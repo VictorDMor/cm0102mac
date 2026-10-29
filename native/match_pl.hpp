@@ -77,6 +77,7 @@ std::uint32_t accepts_response(Cpu&, std::uint32_t player, std::uint32_t kind, s
 std::uint32_t sample_decision(Cpu&, std::uint32_t player, std::uint32_t trait);
 std::uint32_t resolve_peer_contact(Cpu&, std::uint32_t player, std::uint32_t depth);
 void resolve_incident_response(Cpu&, std::uint32_t player, std::uint32_t policy);
+std::uint32_t choose_primary_action(Cpu&, std::uint32_t player, std::uint32_t mode);
 void choose_context_action(Cpu&, std::uint32_t player);
 void choose_secondary_action(Cpu&, std::uint32_t player);
 void dispatch_action(Cpu&, std::uint32_t player);

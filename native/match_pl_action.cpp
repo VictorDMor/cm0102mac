@@ -158,7 +158,7 @@ void dispatch_action(Cpu& c, std::uint32_t player) {
     }
     if (main_actor()) {
         visit_peers(0x10277e2c, 0x10277e5c, 0x10277ec4, 23);
-        leave(c, {{3, player}, {4, 0}}); c.call(0x10278220, 0x10277ee8);
+        enter(c, 0x10277ee8, {player, 0}); choose_primary_action(c, player, 0);
         c.set(3, actor.match()); c.put8(c.r(3) + 0x1c0, 0);
         if (main_actor() || compare(c, c.i16(player + 0x19c), 109) == 0 || compare(c, c.i8(player + 0x2c)) != 0) return;
         c.set(3, actor.match()); if (compare(c, c.i8(c.r(3) + 0x7928)) != 0 || compare(c, c.i8(player + 0x10a)) == 0) return;

@@ -172,3 +172,6 @@ MATCH_PL_ROUTINE(0x10281af0, 0x10283540, R3|F1, "d215dfddb4d868d2",
 
 MATCH_PL_ROUTINE(0x102836a0, 0x10285750, R3|F1, "fcaad8a1b3f4dd60",
     [](Cpu& c) { match_pl::choose_context_action(c, c.r(3)); })
+
+MATCH_PL_ROUTINE(0x10278220, 0x10281780, R3|F1, "cdd40109703f18c1",
+    [](Cpu& c) { match_pl::choose_primary_action(c, c.r(3), c.r(4)); })

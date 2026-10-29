@@ -750,6 +750,13 @@ comparisons; an explicit `cror EQ,LT,EQ` has different NaN behavior.
 Legacy original/profile switches must also decline the new module's hooks;
 otherwise a takeover silently turns a reference run into another C++ run.
 
+Primary action selection owns a guest linked list of player copies. The original
+population query appends at most two candidates; normal destruction releases
+payloads and nodes, clears the head, and retains count, tail and cursor fields.
+Keep destruction explicit on normal exits. A nonzero floating sampling bound
+can truncate to integer zero: its nontrapping modulo continuation can then make
+the following range wide, even when the first range is provably narrow.
+
 Response and decision sampling can pass a nonzero floating bound that truncates
 to integer zero. Their audited quotient-free divisions leave the dividend as
 the residual, followed by the original sign correction; introducing a host
