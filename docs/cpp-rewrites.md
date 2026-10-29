@@ -766,6 +766,13 @@ Its final delay bound is `3 - (trait0 > draw0) - (trait1 > draw1)`, with signed
 traits and signed remainders; both traits precede the first reseed and the
 first draw precedes the second reseed.
 
+The common ball-action core retains one guest activation across contests,
+trajectory publication and commentary callbacks. Its weather adjustment
+multiplies quality by the integer conversion of scaled quality, rather than
+applying a linear scale. Disciplinary descriptors retain their inherited padding
+bytes; their side byte belongs to the initiating player. A rejected opponent
+still leaves the original signed rating arguments live before later reseeds.
+
 Response and decision sampling can pass a nonzero floating bound that truncates
 to integer zero. Their audited quotient-free divisions leave the dividend as
 the residual, followed by the original sign correction; introducing a host

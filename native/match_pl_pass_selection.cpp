@@ -150,7 +150,9 @@ void choose_pass_action(Cpu& c, std::uint32_t player, std::uint32_t mode, std::u
     }
     c.set(4, c.u8(player + 0x2c) + 1); c.put8(player + 0x2c, c.r(4));
     leave(c, {{3, player}, {6, std::uint32_t(std::int32_t(std::int8_t(c.r(15))))}, {7, frame.at(0x40)}, {8, 0}, {9, c.r(20)}, {10, c.r(28)}});
-    c.put8(frame.at(0x40), 1); leave(c, {{4, c.u8(player + 0x105)}, {5, c.u8(player + 0x106)}}); c.call(0x10247030, 0x10246b30);
+    c.put8(frame.at(0x40), 1);
+    enter(c, 0x10246b30, {player, c.u8(player + 0x105), c.u8(player + 0x106), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10)});
+    resolve_ball_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10));
     if (compare(c, std::int8_t(c.r(3))) == 0) return;
     if (compare(c, std::int16_t(c.r(15)), 54) != 0) {
         leave(c, {{3, actor.match()}, {4, actor.side()}, {5, c.u8(player + 0x106)}, {6, c.r(28)}, {7, 0}}); c.call(0x101f5230, 0x10246b5c); c.set(26, c.r(3));

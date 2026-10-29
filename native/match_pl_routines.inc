@@ -15,6 +15,8 @@ MATCH_PL_ROUTINE(0x10239dc0, 0x10239e50, R3, "669a8ae62eb80937",
     [](Cpu& c) { match_pl::coordinates_in_goal_area(c, std::int8_t(c.r(4)), std::int8_t(c.r(5)), std::int8_t(c.r(6))); })
 MATCH_PL_ROUTINE(0x10239e50, 0x10239f10, NONE, "10751487df5b132b",
     [](Cpu& c) { match_pl::advance_row(c, c.r(3), std::int8_t(c.r(4))); })
+MATCH_PL_ROUTINE(0x10247030, 0x10251240, R3|F1, "acb43dfc3e3a0de1",
+    [](Cpu& c) { match_pl::resolve_ball_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10)); })
 MATCH_PL_ROUTINE(0x10251240, 0x10251270, R3, "3c0b299daf9ce161",
     [](Cpu& c) { match_pl::on_goal_line(c, c.r(3)); })
 MATCH_PL_ROUTINE(0x10272050, 0x102720a0, R3, "682ab8d1fd5d1aef",

@@ -33,7 +33,8 @@ void complete_targeted_action(Cpu& c, std::uint32_t player, std::uint32_t kind,
     c.put8(frame.at(0xe7), control); c.set(6, kind); c.set(7, frame.at(0xe7));
     c.set(3, c.u8(player + 0x2c)); c.put8(player + 0x2c, c.r(3) + 1);
     leave(c, {{3, player}, {4, c.u8(player + 0x105)}, {5, c.u8(player + 0x106)}});
-    c.call(0x10247030, 0x1024529c);
+    enter(c, 0x1024529c, {c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10)});
+    resolve_ball_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10));
     if (compare(c, std::int8_t(c.r(3))) == 0) return;
     if (compare(c, std::int8_t(c.r(20)), 54) != 0) {
         leave(c, {{3, actor.match()}, {4, actor.side()}, {5, c.u8(player + 0x106)}, {6, c.r(21)}, {7, 0}});
