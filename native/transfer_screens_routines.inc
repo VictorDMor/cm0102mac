@@ -1,6 +1,8 @@
 TRANSFER_SCREENS_ROUTINE(0x10417590, 0x10417880, R3, "5790b1a9950e67d3", [](Cpu& c) { transfer_screens::open_player_offer(c, c.r(3), c.r(4)); })
 TRANSFER_SCREENS_ROUTINE(0x10417880, 0x10417b60, R3, "0d061c796fbfebc4", [](Cpu& c) { transfer_screens::open_existing_offer(c, c.r(3), c.r(4)); })
 TRANSFER_SCREENS_ROUTINE(0x1041e760, 0x1041e770, R3, "9a6975b7e67b9b2b", [](Cpu& c) { transfer_screens::idle_callback(c); })
+TRANSFER_SCREENS_ROUTINE(0x1041e770, 0x1041ea60, R3, "ccfb77a79eecda10", [](Cpu& c) { transfer_screens::update_proposal_total(c, c.r(3), c.r(4)); })
+TRANSFER_SCREENS_ROUTINE(0x1041b600, 0x1041e760, R3, "a4f4d943bc8bd0c9", [](Cpu& c) { c.set(3, transfer_screens::proposal_command(c, c.r(3))); })
 TRANSFER_SCREENS_ROUTINE(0x1041ea60, 0x1041eb10, R3, "080984eac37961ed", [](Cpu& c) { transfer_screens::open_offer_context(c, c.r(3), c.r(4), c.r(5)); })
 TRANSFER_SCREENS_ROUTINE(0x10422570, 0x10422600, R3, "9c693fdfae70c2d1", [](Cpu& c) { transfer_screens::open_previous_offer(c, c.r(3), c.r(4)); })
 TRANSFER_SCREENS_ROUTINE(0x10421a20, 0x10421af0, R3, "606f42f75da5b3f3", [](Cpu& c) { transfer_screens::open_existing_from_news(c, c.r(3), c.r(4)); })

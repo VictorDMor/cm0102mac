@@ -6,6 +6,8 @@ using guest::Cpu;
 void open_player_offer(Cpu&, std::uint32_t player, std::uint32_t offer_link);
 void open_existing_offer(Cpu&, std::uint32_t offer_link, std::uint32_t create_screen);
 void idle_callback(Cpu&);
+void update_proposal_total(Cpu&, std::uint32_t draft_offer, std::uint32_t offer_link);
+std::uint32_t proposal_command(Cpu&, std::uint32_t selected_control);
 void open_offer_context(Cpu&, std::uint32_t, std::uint32_t, std::uint32_t);
 void open_previous_offer(Cpu&, std::uint32_t offer, std::uint32_t revision);
 void open_existing_from_news(Cpu&, std::uint32_t manager, std::uint32_t item);
