@@ -30,3 +30,4 @@ TRANSFER_SCREENS_ROUTINE(0x10423040, 0x10423160, R3, "05ee457323665734", [](Cpu&
 TRANSFER_SCREENS_ROUTINE(0x10426830, 0x10426970, R3, "175f0042e724271a", [](Cpu& c) { c.set(3, transfer_screens::withdraw_bid_command(c, c.r(3))); })
 TRANSFER_SCREENS_ROUTINE(0x10426970, 0x10426aa0, R3, "5ac9c2aba5529543", [](Cpu& c) { transfer_screens::open_exchange_candidates(c); })
 TRANSFER_SCREENS_ROUTINE(0x1042b3a0, 0x1042b500, R3, "1db186ea124df71d", [](Cpu& c) { c.set(3, transfer_screens::release_player_command(c, c.r(3))); })
+TRANSFER_SCREENS_ROUTINE(0x10417b60, 0x1041b600, R3, "93088ba994871231", [](Cpu& c) { transfer_screens::render_proposal(c); })

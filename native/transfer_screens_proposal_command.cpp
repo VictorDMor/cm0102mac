@@ -100,20 +100,6 @@ struct ProposalCommand {
         enter(c, open_back, {offer, revision}); open_previous_offer(c, offer, revision);
         return result(c, std::uint32_t(-11));
     }
-    void copy_fields(std::uint32_t destination, std::uint32_t source) {
-        // Copy the fields in declaration order, leaving the original gaps intact.
-        for (auto offset : {0u, 4u, 8u, 12u}) c.put32(destination + offset, c.u32(source + offset));
-        c.put8(destination + 0x10, c.u8(source + 0x10)); c.put8(destination + 0x11, c.u8(source + 0x11));
-        c.put16(destination + 0x16, c.u16(source + 0x16)); c.put16(destination + 0x14, c.u16(source + 0x14));
-        c.put8(destination + 0x18, c.u8(source + 0x18)); c.put8(destination + 0x1c, c.u8(source + 0x1c));
-        c.put32(destination + 0x20, c.u32(source + 0x20)); c.put8(destination + 0x24, c.u8(source + 0x24));
-        for (auto offset : {0x28u, 0x2cu, 0x30u}) c.put32(destination + offset, c.u32(source + offset));
-        for (auto offset : {0x34u, 0x35u, 0x36u, 0x37u, 0x38u}) c.put8(destination + offset, c.u8(source + offset));
-        c.put32(destination + 0x3c, c.u32(source + 0x3c)); c.put32(destination + 0x40, c.u32(source + 0x40));
-        c.put8(destination + 0x44, c.u8(source + 0x44)); c.put32(destination + 0x48, c.u32(source + 0x48));
-        c.put8(destination + 0x4c, c.u8(source + 0x4c)); c.put8(destination + 0x50, c.u8(source + 0x50));
-        c.put8(destination + 0x51, c.u8(source + 0x51));
-    }
     void reset_draft(bool negotiated) {
         p.call(0x10411f10, negotiated ? 0x1041e3e8 : 0x1041e188, {c.u32(draft_slot), 1});
         contract_or_control = p.call(0x10773520, negotiated ? 0x1041e3f0 : 0x1041e190, {0x54});
@@ -122,7 +108,7 @@ struct ProposalCommand {
         c.put32(draft_slot, contract_or_control);
         const auto source = negotiated ? c.u32(temporary) : std::uint32_t(temporary);
         c.set(3, c.u32(draft_slot));
-        copy_fields(c.r(3), source);
+        copy_offer_fields(c, c.r(3), source);
         c.set(4, c.u8(source + 0x51));
         if (negotiated) c.set(5, c.u8(source + 0x50));
         c.set(3, c.u32(draft_slot)); c.put32(c.r(3), 0);
