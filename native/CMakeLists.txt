@@ -3594,3 +3594,37 @@ if(CM_MATCH_PL_COVERAGE)
     target_compile_definitions(cm-match-pl-checks PRIVATE CM_MATCH_PL_COVERAGE=1)
     target_link_options(cm-match-pl-checks PRIVATE "-fprofile-instr-generate=${CM_MATCH_PL_PROFILE}")
 endif()
+
+file(GLOB CM_DISPUTE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/dispute*.cpp")
+list(FILTER CM_DISPUTE_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_DISPUTE_SOURCES})
+add_executable(cm-dispute-checks dispute_checks.cpp)
+target_link_libraries(cm-dispute-checks PRIVATE cm_aot)
+target_compile_options(cm-dispute-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_DISPUTE_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/dispute_reference.cpp")
+    add_custom_command(OUTPUT "${CM_DISPUTE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_dispute_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_DISPUTE_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_dispute_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/dispute_audit.py"
+            "${CMAKE_SOURCE_DIR}/dispute_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-dispute-checks PRIVATE "${CM_DISPUTE_REFERENCE}")
+    add_test(NAME dispute_equivalence COMMAND cm-dispute-checks "${CM_ORACLE_DIR}")
+    add_test(NAME dispute_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_dispute_audit.py")
+endif()
+option(CM_DISPUTE_COVERAGE "Instrument DISPUTE.CPP checker only" OFF)
+if(CM_DISPUTE_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/dispute-coverage")
+    set(CM_DISPUTE_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/dispute-coverage/check-%p.profraw")
+    add_library(cm_dispute_coverage OBJECT ${CM_DISPUTE_SOURCES})
+    target_link_libraries(cm_dispute_coverage PRIVATE cm_aot)
+    target_compile_options(cm_dispute_coverage PRIVATE "-fprofile-instr-generate=${CM_DISPUTE_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_dispute_coverage PRIVATE CM_DISPUTE_COVERAGE=1)
+    target_sources(cm-dispute-checks PRIVATE $<TARGET_OBJECTS:cm_dispute_coverage>)
+    target_compile_definitions(cm-dispute-checks PRIVATE CM_DISPUTE_COVERAGE=1)
+    target_link_options(cm-dispute-checks PRIVATE "-fprofile-instr-generate=${CM_DISPUTE_PROFILE}")
+endif()

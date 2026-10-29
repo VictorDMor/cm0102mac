@@ -784,3 +784,20 @@ to append; duplicate matches are observable. Incident responses also retain two
 consecutive kind2 attempts, each consuming its own RNG draw. Request, effect and
 announcement callbacks can change the match or choice byte, so later phases
 reload those fields before applying their consequences.
+
+## DISPUTE.CPP: dispute records and notifications
+
+`dispute.dat` stores a byte-array length, the person flags, a sign-extended
+16-bit list count as a word, then raw 20-byte records. Loads before version
+`0x3e046` decline; a failed load retains partial allocations for the constructor
+to clean up before building empty storage. The original can pass a null list to
+append after allocation failure with populated input; the external append then
+faults on its first list read. Caller-boundary evidence is recorded separately
+from returned comparisons.
+
+Daily expiration compares years unsigned and days signed. It excludes the final
+person index (`id < count - 1`) and rereads the live list count after removal,
+while still incrementing the iteration counter. Both original quirks remain.
+The sampler's wrapped signed `bound * 10 / 65535` correction is always within
+`[-32768,32768]`, so the original's deeper wide-range unrolling and recursive
+call cannot execute. Headline rendering deliberately reads news slot six twice.
