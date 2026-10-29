@@ -1,0 +1,6 @@
+ENG_CONF_ROUTINE(0x10524600, 0x10524940, R3, "9ee4aa53a4e110f5", [](Cpu& c) { c.set(3, eng_conf::construct(c, c.r(3), c.r(4), c.r(5))); })
+ENG_CONF_ROUTINE(0x10524940, 0x10524a50, R3, "23ecfad50a86fd48", [](Cpu& c) { c.set(3, eng_conf::destroy(c, c.r(3), c.r(4))); })
+ENG_CONF_ROUTINE(0x10524a50, 0x105262f0, R3, "48e59ef0c26548be", [](Cpu& c) { c.set(3, eng_conf::calendar(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7))); })
+ENG_CONF_ROUTINE(0x105262f0, 0x10526460, R3, "c995848ac00f2a77", [](Cpu& c) { c.set(3, eng_conf::collect_clubs(c, c.r(3))); })
+ENG_CONF_ROUTINE(0x10526460, 0x10526520, R3, "d51997a21f244011", [](Cpu& c) { c.set(3, eng_conf::configure(c, c.r(3))); })
+ENG_CONF_ROUTINE(0x10526520, 0x105267c0, R3, "8abf484d6c12a9ab", [](Cpu& c) { eng_conf::next_season(c, c.r(3)); })

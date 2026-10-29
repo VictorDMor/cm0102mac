@@ -100,6 +100,21 @@ target_sources(cm_aot PRIVATE ${CM_ENG_PRM_SOURCES})
 add_executable(cm-eng-prm-checks eng_prm_checks.cpp)
 target_link_libraries(cm-eng-prm-checks PRIVATE cm_aot)
 target_compile_options(cm-eng-prm-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+file(GLOB CM_ENG_CONF_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/eng_conf*.cpp")
+list(FILTER CM_ENG_CONF_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_ENG_CONF_SOURCES})
+add_executable(cm-eng-conf-checks eng_conf_checks.cpp)
+target_link_libraries(cm-eng-conf-checks PRIVATE cm_aot)
+target_compile_options(cm-eng-conf-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+option(CM_ENG_CONF_COVERAGE "Instrument ENG_CONF.CPP checker only" OFF)
+if(CM_ENG_CONF_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/eng-conf-coverage")
+    set(CM_ENG_CONF_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/eng-conf-coverage/check-%p.profraw")
+    target_sources(cm-eng-conf-checks PRIVATE ${CM_ENG_CONF_SOURCES})
+    target_compile_options(cm-eng-conf-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_CONF_PROFILE}" -fcoverage-mapping)
+    target_compile_definitions(cm-eng-conf-checks PRIVATE CM_ENG_CONF_COVERAGE=1)
+    target_link_options(cm-eng-conf-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_CONF_PROFILE}")
+endif()
 file(GLOB CM_CONTRACT_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/contract_manager*.cpp")
 list(FILTER CM_CONTRACT_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_CONTRACT_MANAGER_SOURCES})
@@ -3312,6 +3327,27 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME eng_prm_equivalence COMMAND cm-eng-prm-checks "${CM_ORACLE_DIR}")
     add_test(NAME eng_prm_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_prm_audit.py")
+endif()
+
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_ENG_CONF_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/eng_conf_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ENG_CONF_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_eng_conf_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ENG_CONF_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_eng_conf_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/eng_conf_audit.py"
+            "${CMAKE_SOURCE_DIR}/eng_conf_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-eng-conf-checks PRIVATE "${CM_ENG_CONF_REFERENCE}")
+    add_test(NAME eng_conf_equivalence COMMAND cm-eng-conf-checks "${CM_ORACLE_DIR}")
+    add_test(NAME eng_conf_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_conf_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        add_test(NAME eng_conf_career_state COMMAND cm-eng-conf-checks "${CM_ORACLE_DIR}"
+            "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+    endif()
 endif()
 
 if(EXISTS "${CM_ORACLE_DIR}/program.json")

@@ -536,6 +536,18 @@ promotes a lower-league club when all three remembered league slots are full,
 without changing that list; the rewrite preserves this behavior.
 
 
+## ENG_CONF.CPP: English Conference
+
+The six entries at 0x10524600–0x105267c0 (2,150 indexed instructions) live
+in `native/eng_conf_*`. The league calendar has 42 rounds and seven December
+variants. Its stage-zero branch also builds three knockout rounds, but normal
+Conference construction sets the extra-stage count to zero and last index to
+-1. The shared enumerator starts at -1 and continues only below that count;
+normal configuration therefore requests only the league calendar. The dormant
+knockout branch is preserved without enabling it. Destruction and annual reset
+use an inclusive last-stage index and reload the count and pointer after each
+virtual destructor, since callbacks can change them.
+
 ## SCRMAN.CPP: screen manager, history and command transport
 
 `native/screen_manager_*` owns all 85 entries in 0x1073c1b0–0x10744fc0,
