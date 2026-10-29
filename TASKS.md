@@ -5,23 +5,21 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] Close the running installed reCM 01-02 so the guarded DISPUTE installation can finish; all four required focused checks and isolated persistence checks pass.
-
 - [x] **Uninitialised stack decides results** (found 2026-10-23). Decided by Victor 2026-10-23: option A, keep exact results; every rewrite reproduces the stack image the original leaves, checked byte for byte. Architectural changes that give up stack fidelity wait until the recompilation is complete.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
 ## Now
 
-- [ ] **DISPUTE.CPP complete C++23 reconstruction (2026-10-29):** all 13 audited entries implemented and active in normal production; private per-entry ledger `.local/rewrites/dispute/ledger.json`. Installation is pending while Victor's installed app is running.
+- [x] **DISPUTE.CPP complete C++23 reconstruction (2026-10-29):** all 13 audited entries implemented, active in normal production and installed; all four completion dimensions are closed. Private per-entry ledger `.local/rewrites/dispute/ledger.json`.
   - [x] Close inventory: 13 entries / 2,063 indexed instructions, 0x1070bd00–0x1070dd80; source/numeric pools and neighbors, all incoming/cross-entry calls, traceback false pointer, five unindexed words and original digests audited. Ten structural tests pass, including negative controls.
   - [x] Reconstruct storage/lifecycle, dispute queries/daily expiration, RNG/attribute/peer updates and news construction/rendering as handwritten C++23; 13/13 normal entry guards and direct owned calls, no owned builder/generated fallback. Initial generation changes 19 module/caller pages; the final watched-boundary refresh changes only page_10738.
   - [x] Complete 1,132 returned comparisons (566 controlled +566 observed normal-production) across all 13 entries, zero differences/partials/internal faults. Explicit result, flag, actual-sample cursor and reseeded-bias corruptions are detected. Two expected fatal dependency-boundary prefixes match separately; two matching null-list faults are diagnostic only, never counted as equivalence. Partial IO mutates only its transferred prefix; list models preserve actual linked-node layout and live count/cursor effects.
   - [x] Close behavioral coverage: 305/310 module-body/shared-helper outcomes exercised; five have specific dominated-read, null-address or nonzero-divisor proofs. Wide sampling unroll/recursion is excluded by exact original arithmetic. Independent source/oracle/coverage review and explicit owned-diff review pass; code-review skill unavailable.
   - [x] Final coverage-OFF ARM64 app/checker build, strict syntax and 4/4 selected CTests pass (module audit/equivalence, generated direct-owner calls and block accounting). Original/C++ native-save replay pair and combined checked replay reach recorded states; combined replay checks one reached save entry without differences.
   - [x] Native original save, normal quit/restart and default C++ reload of an isolated all-leagues career preserve all 101,016 flag bytes, empty record list and date exactly. Populated streams, legacy versions, allocation/IO errors and rare branches have controlled original/C++ evidence.
-  - [x] Existing progress spreadsheet updated/read back and visually verified: 13/13 C++ routines, 100% source-production routing, status Em andamento until installation. Formulas and neighboring rows preserved; completed-module summary remains 16/754. Only the affected note row was enlarged to prevent clipping.
-  - [ ] Finish guarded installation/signature verification. The installer correctly refused to replace Victor's running installed app; no live session was terminated.
+  - [x] Existing progress spreadsheet updated/read back and visually verified: 13/13 C++ routines, 100% production, status Concluído. Formulas and neighboring rows preserved; completed-module summary is 17 modules / 767 routines. Only the affected note row was enlarged to prevent clipping.
+  - [x] Guarded installation completed after Victor closed the game. Installed ARM64 app passes strict deep signature verification; UUID 5B42C78D-C833-310A-B2F9-794C591544C5 matches the validated build, DISPUTE production adapter is present and LLVM coverage runtime is absent. Game data preserved. The earlier running-app guard was respected.
   - Limits: external boundary fixtures prove caller contracts, not service internals. Wide-bias and mapped malformed-index/payload cases are explicitly noncanonical characterization. Performance not measured. Gameplay QA belongs to Victor, outside this delivery's gates.
 
 - [ ] **MATCH_PL.CPP complete C++23 reconstruction (2026-10-28):** private per-entry evidence and pending contracts in `.local/rewrites/match_pl/`; overall module remains incomplete.
