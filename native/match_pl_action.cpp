@@ -200,7 +200,7 @@ void dispatch_action(Cpu& c, std::uint32_t player) {
         }
         return;
     }
-    if (context_selects_secondary(0x102781c0)) { leave(c, {{3, player}, {4, 1}}); c.call(0x10281af0, 0x102781f8); }
+    if (context_selects_secondary(0x102781c0)) { enter(c, 0x102781f8, {player, 1}); choose_secondary_action(c, player); }
     else { c.set(3, player); c.call(0x102836a0, 0x10278204); }
 }
 }

@@ -36,6 +36,15 @@ namespace {
 constexpr std::uint32_t data = 0x60000000, player = data + 0x1000,
     match = data + 0x10000, other_match = data + 0x20000,
     trace_at = data + 0x38000, stack = 0x71010000, sentinel = 0xfffffff0;
+struct SecondaryInputs {
+    int match_side = 0, phase = 0, other = 0;
+    int ball_column = 4, ball_row = 5, target_column = 4, target_row = 5;
+    int trait = 0, effort = 0, mobility = 0, count = 0, condition = 6000, profile = 0;
+    int line = -1, row_adjust = -1, crowd = 0, pursuit = 0, moving = 0;
+    int linked = 0, linked_column = 4, linked_row = 5;
+    float linked_metric = 0;
+    unsigned formation = 0, offer = 0, offer_after = 0;
+};
 struct Case {
     std::uint32_t entry;
     int side = 0, column = 4, row = 5;
@@ -53,6 +62,7 @@ struct Case {
     std::array<std::uint16_t, 8> pool_words{};
     bool mutate_choice = false, mutate_after_step = false;
     std::uint32_t context_flags = 0;
+    SecondaryInputs secondary{};
 };
 Case active;
 bool reference_mode = false, generated_mode = false;
@@ -78,7 +88,9 @@ bool scripted(State& s) {
                              0x10201180u, 0x101f51e0u, 0x101f1530u, 0x101eeac0u, 0x101eeeb0u,
                              0x101f1100u, 0x1022ba10u, 0x101d6860u, 0x101f5050u, 0x101d6780u, 0x101eea30u,
                              0x10717b20u, 0x1069e700u, 0x10658370u,
-                             0x101d8120u, 0x10278220u, 0x10281af0u, 0x102836a0u};
+                             0x101d8120u, 0x10278220u, 0x102836a0u,
+                             0x101e25a0u, 0x101d8260u, 0x101e28b0u, 0x101f5280u,
+                             0x101ee680u, 0x101ee9f0u, 0x101e4ea0u};
     if (std::ranges::find(services, target) == services.end()) return false;
     auto used = c.u32(trace_at);
     const auto append = [&](std::uint32_t word) { c.put32(trace_at + 4 + used, word); used += 4; };
@@ -102,9 +114,15 @@ bool scripted(State& s) {
         if (active.entry == 0x10289d50 && (active.context_flags & 64)) c.put32(player + 0x70, data + 0xd100);
         c.set(3, active.first_role);
     } else if (target == 0x101e3de0 || target == 0x101e3e70) c.set(3, active.second_role);
-    else if (target == 0x101149f0 || target == 0x101e4e10) c.set(3, active.argument);
+    else if (target == 0x101149f0 || target == 0x101e4e10) {
+        c.set(3, active.entry == 0x10281af0 ? target == 0x101149f0 ? active.secondary.formation : std::uint32_t(active.secondary.line) : active.argument);
+    }
     else if (target == 0x101f0dd0 || target == 0x1077b770) {
-        c.set(3, active.first_role);
+        c.set(3, target == 0x101f0dd0 && active.entry == 0x10281af0 ? std::uint32_t(active.secondary.moving) : active.first_role);
+        if (target == 0x1077b770 && active.entry == 0x10281af0) {
+            if (active.context_flags & 2) c.put8(player + 0x10a, 255);
+            if (active.context_flags & 4) c.put32(player + 0x1a4, other_match);
+        }
         if (target == 0x1077b770 && active.entry == 0x102775e0) {
             if (active.context_flags & 64) { c.put8(player + 0x107, 127); c.put8(player + 0x10a, 127); }
             if (active.context_flags & 128) c.put32(player + 0x1a4, other_match);
@@ -204,7 +222,23 @@ bool scripted(State& s) {
         if (active.context_flags & 32768) c.put32(player + 0x1a4, other_match);
         c.set(3, 7);
     }
-    else if (target == 0x10281af0 || target == 0x102836a0) c.set(3, 9);
+    else if (target == 0x102836a0) c.set(3, 9);
+    else if (target == 0x101e25a0 || target == 0x101e28b0 || target == 0x101d8260) {
+        c.put8(c.r(5), active.secondary.target_column); c.put8(c.r(6), active.secondary.target_row);
+        if (target == 0x101d8260) {
+            const auto count = c.u32(data + 0x314) + 1; c.put32(data + 0x314, count);
+            c.set(3, count > active.secondary.offer_after ? active.secondary.offer : 0);
+        }
+        if (active.entry == 0x10281af0 && (active.context_flags & 8)) {
+            c.put32(player + 0x1a4, other_match); c.put8(player + 0x27, 1 - active.side);
+        }
+        if (active.entry == 0x10281af0 && (active.context_flags & 16)) c.put16(player + 0x36, 32765);
+        if (active.entry == 0x10281af0 && (active.context_flags & 64) && target == 0x101d8260) c.put8(player + 0x10a, 0);
+    }
+    else if (target == 0x101f5280) c.set(3, active.secondary.pursuit);
+    else if (target == 0x101ee680) c.set(3, active.secondary.crowd);
+    else if (target == 0x101ee9f0) c.set(3, active.secondary.moving);
+    else if (target == 0x101e4ea0) c.set(3, active.secondary.row_adjust);
     else if (target == 0x10717b20) {
         const auto out = c.r(3), days = c.r(5);
         c.put16(out, std::uint32_t(-30000) + days); c.put16(out + 2, 60000 + days); c.put8(out + 4, 0x80 + days);
@@ -261,7 +295,7 @@ void initialize_case(Cpu& c) {
     c.put16(player + 0x19e, active.row); c.put16(player + 0x1c2, active.row);
     c.put8(player + 0x10b, 31); c.put8(player + 0x10d, 47);
     const bool geometry = active.entry == 0x1022e760 || active.entry == 0x10245160 ||
-        active.entry == 0x10270ba0 || active.entry == 0x10245050 || active.entry == 0x10237830 || active.entry == 0x10281780 || active.entry == 0x10244c60 || active.entry == 0x10237420 || active.entry == 0x102775e0;
+        active.entry == 0x10270ba0 || active.entry == 0x10245050 || active.entry == 0x10237830 || active.entry == 0x10281780 || active.entry == 0x10244c60 || active.entry == 0x10237420 || active.entry == 0x102775e0 || active.entry == 0x10281af0;
     if (geometry) {
         const auto distances = data + 0x4000, directions = data + 0x8000;
         c.put32(c.r(2) - 0x6424, distances); c.put32(c.r(2) - 0x641c, directions);
@@ -301,13 +335,13 @@ void initialize_case(Cpu& c) {
         c.put8(player + 0x1f, active.mutate ? -1 : 0); c.put8(player + 0x1c, active.argument >> 8);
         c.put_f32(player + 0x54, active.intensity); c.put_f32(player + 0x5c, float(active.factor));
     }
-    if (active.entry == 0x10235db0 || active.entry == 0x10226520 || active.entry == 0x10235ea0 || active.entry == 0x102393c0 || active.entry == 0x10237830 || active.entry == 0x10288230 || active.entry == 0x102857c0 || active.entry == 0x10288f30 || active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0) {
+    if (active.entry == 0x10235db0 || active.entry == 0x10226520 || active.entry == 0x10235ea0 || active.entry == 0x102393c0 || active.entry == 0x10237830 || active.entry == 0x10288230 || active.entry == 0x102857c0 || active.entry == 0x10288f30 || active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0 || active.entry == 0x10281af0) {
         c.put32(c.r(2) - 0x7b90, data + 0x100);
-        c.put32(data + 0x100, active.entry == 0x10237830 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0 ? active.random_seed : active.entry == 0x10244c60 ? 0 : active.second_role);
+        c.put32(data + 0x100, active.entry == 0x10237830 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0 || active.entry == 0x10281af0 ? active.random_seed : active.entry == 0x10244c60 ? 0 : active.second_role);
         c.put32(c.r(2) - 0x7b8c, data + 0x200);
         const auto span = active.entry == 0x102393c0 && active.mutate ? 0x3eu : 0x0eu;
         c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + 0x200 + span);
-        const auto position = active.entry == 0x10235db0 ? active.argument : active.entry == 0x10288230 ? active.strategy_high : active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0 ? active.pool_position : unsigned(active.side);
+        const auto position = active.entry == 0x10235db0 ? active.argument : active.entry == 0x10288230 ? active.strategy_high : active.entry == 0x10244c60 || active.entry == 0x10270320 || active.entry == 0x10286650 || active.entry == 0x10289620 || active.entry == 0x102876c0 || active.entry == 0x102884d0 || active.entry == 0x10289d50 || active.entry == 0x102775e0 || active.entry == 0x10281af0 ? active.pool_position : unsigned(active.side);
         const auto offset = position >= 3 ? (position - 2) * 2 : position & 1 ? span : position & 2 ? span - 2 : 0;
         c.put32(c.r(2) - 0x7b84, data + 0x108); c.put32(data + 0x108, data + 0x200 + offset);
         for (unsigned at = 0; at <= span; at += 2)
@@ -437,11 +471,42 @@ void initialize_case(Cpu& c) {
         c.put32(data + 0xe52c, active.strategy_high & 16 ? 0 : data + 0xe700);
         c.put8(data + 0xe719, active.column); c.put8(data + 0xe819, active.column);
     }
+    if (active.entry == 0x10281af0) {
+        const auto& in = active.secondary;
+        c.put32(data + 0x314, 0);
+        c.put32(c.r(2) - 0x7bac, data + 0x400); c.put32(c.r(2) - 0x7ba8, data + 0x500);
+        c.put32(player + 0x70, data + 0xd000); c.put32(player + 0x1b0, in.linked ? data + 0x9000 : 0);
+        c.put8(player + 0x19, 4); c.put8(player + 0x104, in.count); c.put8(player + 0x10a, in.trait);
+        c.put8(player + 0x10c, in.mobility); c.put8(player + 0x10d, in.effort); c.put8(player + 0x28, 255);
+        c.put16(player + 0x36, in.condition);
+        c.put_f32(player + 0xe4, float(active.factor) - c.f32(c.toc(-0x51e0) + 0x5c));
+        for (auto field : {0x17u, 0x18u, 0x19u}) c.put8(data + 0xd000 + field, 0);
+        c.put8(data + 0xd01a, in.profile);
+        c.put32(match + 0xe000, 0); c.put32(match + 0xdff8, in.other == 1 ? player : in.other == 2 ? data + 0x9000 : 0);
+        c.put8(match + 0x7924, in.match_side); c.put8(match + 0x791f, in.phase);
+        c.put8(match + 0x791d, in.ball_column); c.put8(match + 0x791e, in.ball_row); c.put8(match + 0x1de, active.context_flags & 32 ? 1 : 0);
+        c.put32(match + 0x81f4 + unsigned(active.side) * 0x18e0, 0);
+        c.put8(data + 0x9019, in.linked == 2 ? -1 : in.linked == 3 ? -5 : in.linked == 4 ? -2 : 4);
+        c.put8(data + 0x9027, 1 - active.side); c.put8(data + 0x9105, in.linked_column); c.put8(data + 0x9106, in.linked_row);
+        c.put_f32(data + 0x90b0, in.linked_metric);
+        for (unsigned column = 0; column < 9; ++column) for (unsigned row = 0; row < 12; ++row) {
+            const auto cell = match + 0xa08 + column * 0x450 + row * 0x5c;
+            c.put8(cell + 0x58, 0); c.put8(cell + 0x59, 0);
+        }
+        c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
+    }
     if (active.entry == 0x102775e0) {
         // Low flags select main actor, secondary actor/side, phase5 and +2c.
         // High bytes are the two signed peer traits; strategy_high holds
         // signed match context and the signed +110 status in its low bytes.
         const auto flags = active.strategy_low;
+        // The reconstructed secondary selector now runs as a real child of
+        // dispatch_action; retain the same root cases with valid dependencies.
+        c.put32(data + 0x314, 0); c.put32(player + 0x70, data + 0xd000); c.put32(player + 0x1b0, 0);
+        for (auto field : {0x17u, 0x18u, 0x19u, 0x1au}) c.put8(data + 0xd000 + field, 0);
+        c.put8(player + 0x19, 4); c.put8(player + 0x10c, 0); c.put8(player + 0x10d, 0);
+        c.put_f32(player + 0xe4, 20); c.put8(match + 0x1de, 0);
+        c.put32(match + 0x81f4 + unsigned(active.side) * 0x18e0, 0);
         c.put32(match + 0xe000, flags & 1 ? player : 0);
         c.put32(match + 0xdff8, flags & 2 ? data + 0x9000 : 0);
         c.put8(data + 0x9027, flags & 4 ? 1 - active.side : active.side);
@@ -1258,6 +1323,110 @@ std::vector<Case> cases() {
             test.intensity = -100000; test.factor = bound; test.pool_position = position;
             result.push_back(test);
         }
+    const auto secondary_case = [] {
+        Case test{0x10281af0}; test.first_role = 1; test.strategy_high = 0;
+        test.strategy_low = 0; test.factor = 20; test.custom_pool = true; test.pool_words.fill(1); return test;
+    };
+    for (int side : {0, 1}) for (auto role : {0u, 1u, 0x40u, 0x88u, 0x808u, 0x200u, 0x208u, 0x204u})
+        for (auto strategy : {0u, 1u << 21, 1u << 23}) for (auto alternate : {0u, 4u})
+            for (int trait : {-1, 0, 5, 127}) for (auto position : {std::pair{4,5}, {0,0}, {8,11}, {2,2}, {6,8}}) {
+                auto test = secondary_case(); test.side = side; test.first_role = role;
+                test.strategy_low = strategy; test.strategy_high = alternate;
+                test.column = position.first; test.row = position.second;
+                test.secondary.trait = trait; test.secondary.count = 2; result.push_back(test);
+            }
+    for (int phase : {-1, 0}) for (int context : {-1, 0, 1}) for (int other : {0, 1, 2})
+        for (int pursuit : {0, 1}) for (int trait : {0, 5}) {
+            auto test = secondary_case(); test.secondary.phase = phase; test.secondary.match_side = context;
+            test.secondary.other = other; test.secondary.pursuit = pursuit; test.secondary.trait = trait;
+            result.push_back(test);
+        }
+    for (int linked : {0, 1, 2, 3, 4}) for (int effort : {0, 1}) for (int side : {0, 1})
+        for (float metric : {-1.f, 50.f, std::numeric_limits<float>::quiet_NaN()}) for (int column : {0, 4, 8}) {
+            auto test = secondary_case(); test.side = side; test.secondary.linked = linked;
+            test.secondary.effort = effort; test.secondary.linked_metric = metric;
+            test.secondary.linked_column = column; test.secondary.linked_row = side == 0 ? 0 : 11;
+            result.push_back(test);
+        }
+    for (auto bound : {0., 1., -1., 20., -20., 65535., -65535., 65536., -65536., 2147483520., -2147483648., std::numeric_limits<double>::quiet_NaN()})
+        for (auto position : {0u, 1u, 2u, 6u}) for (int mobility : {-128, 0, 127}) {
+            auto test = secondary_case(); test.column = 3; test.factor = bound; test.pool_position = position;
+            test.secondary.mobility = mobility; result.push_back(test);
+        }
+    for (int side : {0, 1}) for (int profile : {-128, -1, 0, 1, 127})
+        for (auto seed : {0u, 0x80000000u}) for (auto offer : {0u, 1u, 255u}) {
+            auto test = secondary_case(); test.side = side; test.random_seed = seed;
+            test.strategy_low = 1u << 21; test.secondary.profile = profile;
+            test.secondary.offer = offer; test.secondary.trait = 5; test.secondary.count = 2;
+            test.pool_position = 1; result.push_back(test);
+        }
+    for (int line : {-128, -1, 0, 1, 127}) for (int adjust : {-128, -1, 0, 1, 127})
+        for (auto context : {0u, 2u, 4u, 8u, 16u}) {
+            auto test = secondary_case(); test.secondary.line = line; test.secondary.row_adjust = adjust;
+            test.secondary.trait = 5; test.secondary.count = 2; test.context_flags = context;
+            test.secondary.offer = 1; test.pool_position = 1; result.push_back(test);
+        }
+    for (int side : {0, 1}) for (auto role : {0x80u, 0x88u, 0x800u, 0x808u})
+        for (int column : {-1, 0, 1, 2, 6, 7}) for (int row : {-1, 0, 1, 9, 10, 11, 12}) {
+            auto test = secondary_case(); test.side = side; test.first_role = role; test.strategy_high = 4;
+            test.secondary.ball_column = column; test.secondary.ball_row = row; result.push_back(test);
+        }
+    for (int side : {0, 1}) for (auto formation : {0u, 4u}) for (auto moving : {0, 1, 255})
+        for (int row : {0, 5, 11}) for (int column : {0, 4, 8}) {
+            auto test = secondary_case(); test.side = side; test.secondary.linked = 1;
+            test.secondary.effort = 1; test.secondary.linked_column = column; test.secondary.linked_row = row;
+            test.secondary.linked_metric = -1; test.secondary.moving = moving; test.secondary.formation = formation;
+            result.push_back(test);
+        }
+    for (int side : {0, 1}) for (int mobility : {0, 1}) for (int crowd : {0, 1, 255}) {
+        auto test = secondary_case(); test.side = side; test.row = side == 0 ? 8 : 3;
+        test.secondary.ball_row = side == 0 ? 9 : 2; test.secondary.mobility = mobility;
+        test.secondary.crowd = crowd; result.push_back(test);
+    }
+    for (int side : {0, 1}) for (int column : {-128, -127, 4}) {
+        auto test = secondary_case(); test.side = side; test.strategy_low = 1u << 23;
+        test.secondary.trait = 127; test.secondary.target_column = column; result.push_back(test);
+    }
+    for (int line : {-128, -1, 0, 1, 127}) for (int adjust : {-128, -1, 0, 1, 127})
+        for (int trait : {-128, 0, 5}) {
+            auto test = secondary_case(); test.secondary.line = line; test.secondary.row_adjust = adjust;
+            test.secondary.trait = trait; test.secondary.count = 2; result.push_back(test);
+        }
+    for (int side : {0, 1}) for (int row : {-1, 5, 11}) {
+        auto test = secondary_case(); test.side = side; test.column = side == 0 ? 0 : 8;
+        test.row = side == 0 ? 11 : 0; test.secondary.ball_row = row;
+        test.secondary.ball_column = test.column; result.push_back(test);
+    }
+    for (int column : {3, 4}) for (auto after : {0u, 1u, 2u, 3u}) for (auto context : {0u, 16u}) {
+        auto test = secondary_case(); test.column = column; test.first_role = 0;
+        test.secondary.trait = 5; test.secondary.count = 2; test.secondary.mobility = 127;
+        test.secondary.offer = 1; test.secondary.offer_after = after; test.context_flags = context;
+        test.factor = 0; result.push_back(test);
+    }
+    for (auto seed : {0x80000000u, 0xffffffe0u, 0xffffffd8u}) for (auto position : {0u, 2u}) {
+        auto test = secondary_case(); test.random_seed = seed; test.pool_position = position;
+        test.strategy_low = 1u << 21; test.secondary.profile = -1; test.pool_words.fill(0);
+        test.secondary.trait = -128; result.push_back(test);
+    }
+    {
+        auto test = secondary_case(); test.secondary.match_side = -1; test.secondary.other = 1;
+        test.pool_words.fill(0); result.push_back(test);
+        test.secondary.other = 0; test.secondary.pursuit = 1; test.context_flags = 32; result.push_back(test);
+    }
+    for (int side : {0, 1}) {
+        auto test = secondary_case(); test.side = side; test.row = side == 0 ? 11 : 0;
+        test.secondary.trait = 5; test.secondary.count = 2; test.secondary.offer = 1; result.push_back(test);
+        test = secondary_case(); test.side = side; test.secondary.trait = 5; test.secondary.row_adjust = 1;
+        result.push_back(test);
+    }
+    {
+        auto test = secondary_case(); test.first_role = 0; test.secondary.effort = 1; result.push_back(test);
+    }
+    for (auto role : {0u, 2u, 4u}) for (int column : {3, 4}) {
+        auto test = secondary_case(); test.first_role = role; test.column = column;
+        test.secondary.count = 2; test.secondary.mobility = 127; test.factor = 0; result.push_back(test);
+        test.secondary.trait = 5; test.context_flags = 64; result.push_back(test);
+    }
     return result;
 }
 }
