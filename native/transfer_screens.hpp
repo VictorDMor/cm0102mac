@@ -51,4 +51,16 @@ std::uint32_t withdraw_bid_command(Cpu&, std::uint32_t);
 std::uint32_t release_player_command(Cpu&, std::uint32_t);
 void open_exchange_candidates(Cpu&);
 void open_completion_from_news(Cpu&, std::uint32_t, std::uint32_t);
+void open_player_transfer_status_from_news(Cpu&, std::uint32_t manager, std::uint32_t item);
+void open_player_transfer_status(Cpu&, std::uint32_t person, std::uint32_t manager, std::uint32_t item, std::uint32_t from_news);
+void render_transfer_listing_confirmation(Cpu&);
+std::uint32_t transfer_listing_command(Cpu&, std::uint32_t control);
+void open_loan_recall(Cpu&, std::uint32_t person);
+void render_loan_recall(Cpu&);
+std::uint32_t loan_recall_command(Cpu&, std::uint32_t control);
+void render_comparison_confirmation(Cpu&);
+std::uint32_t comparison_confirmation_command(Cpu&, std::uint32_t control);
+void render_shortlist_confirmation(Cpu&);
+void render_temporary_offer_confirmation(Cpu&);
+std::uint32_t temporary_offer_confirmation_command(Cpu&, std::uint32_t control);
 }
