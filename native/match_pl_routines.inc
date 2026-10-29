@@ -160,3 +160,6 @@ MATCH_PL_ROUTINE(0x102876c0, 0x10288230, R3|F1, "38409c0bfd2350d5",
 
 MATCH_PL_ROUTINE(0x102884d0, 0x10288f30, R3|F1, "dc6f7691e60f89a9",
     [](Cpu& c) { match_pl::resolve_incident_response(c, c.r(3), c.r(4)); })
+
+MATCH_PL_ROUTINE(0x10289d50, 0x1028abc0, R3|F1, "3a3ce6965da9017f",
+    [](Cpu& c) { match_pl::allows_event(c, c.r(3), c.r(4)); })

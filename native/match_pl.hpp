@@ -77,4 +77,5 @@ std::uint32_t accepts_response(Cpu&, std::uint32_t player, std::uint32_t kind, s
 std::uint32_t sample_decision(Cpu&, std::uint32_t player, std::uint32_t trait);
 std::uint32_t resolve_peer_contact(Cpu&, std::uint32_t player, std::uint32_t depth);
 void resolve_incident_response(Cpu&, std::uint32_t player, std::uint32_t policy);
+std::uint32_t allows_event(Cpu&, std::uint32_t player, std::uint32_t event);
 }
