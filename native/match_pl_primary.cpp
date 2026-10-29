@@ -83,7 +83,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
     const auto perform_action = [&](unsigned action, std::uint32_t target, std::uint32_t back) {
         c.put16(player + 0x19c, action);
         leave(c, {{3, player}, {4, action}, {5, target}, {6, c.u8(frame.at(0x56))},
-                  {7, c.u8(frame.at(0x55))}, {8, c.u8(frame.at(0x54))}}); c.call(0x10245220, back);
+                  {7, c.u8(frame.at(0x55))}, {8, c.u8(frame.at(0x54))}}); c.link(back); complete_targeted_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8));
     };
     const auto choose_shot = [&](unsigned kind_offset, std::uint32_t back) {
         leave(c, {{3, player}, {4, frame.at(kind_offset)}, {5, frame.at(0x5c)}}); c.call(0x10252080, back);
@@ -848,7 +848,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
                                 compare(c, near);
                             }
                             if (near) {
-                                leave(c, {{3, player}, {4, 1}}); c.call(0x10274170, 0x1027acf4); c.put16(player + 0x19c, 16); return finish(0, 0x1027ad0c);
+                                leave(c, {{3, player}, {4, 1}}); c.link(0x1027acf4); resolve_direct_action(c, c.r(3), c.r(4)); c.put16(player + 0x19c, 16); return finish(0, 0x1027ad0c);
                             }
                             if (!pursuit_half() && compare(c, c.i16(player + 0x2a), -20) > 0 && compare(c, std::int32_t(c.r(21))) < 0) {
                                 c.set(19, c.r(19) + 4000); c.put8(frame.at(0x102), 1);
@@ -958,7 +958,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
                 leave(c, {{3, actor.match()}, {4, actor.side()}}); c.call(0x101fd000, 0x1027ba98);
                 if (compare(c, std::int8_t(c.r(3))) != 0) {
                     enter(c, 0x1027baa8, {player}); match_context(c, player);
-                    leave(c, {{3, player}, {4, c.r(3)}, {5, 1}}); c.call(0x10245870, 0x1027bab8); return finish(0, 0x1027bac8);
+                    leave(c, {{3, player}, {4, c.r(3)}, {5, 1}}); c.link(0x1027bab8); choose_pass_action(c, c.r(3), c.r(4), c.r(5)); return finish(0, 0x1027bac8);
                 }
             }
         }
@@ -984,7 +984,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
             c.set(3, actor.match());
             if (compare(c, c.i8(c.r(3) + 0x791f), -1) != 0 && compare(c, std::int8_t(c.r(16)), 4) != 0) {
                 enter(c, 0x1027bf9c, {player}); match_context(c, player);
-                leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.call(0x10245870, 0x1027bfac); return finish(0, 0x1027bfbc);
+                leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.link(0x1027bfac); choose_pass_action(c, c.r(3), c.r(4), c.r(5)); return finish(0, 0x1027bfbc);
             }
         }
     }
@@ -1376,7 +1376,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
                 } else {
                     advance(0x1027fda4); const auto value = sample(); c.set(3, shifted_sign(high_product(value, 0x66666667), 2)); c.set(4, value);
                     if (compare(c, std::int32_t(value) % 10) != 0) {
-                        enter(c, 0x1027fde8, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.call(0x10245870, 0x1027fdf8); return finish(0, 0x1027fe08);
+                        enter(c, 0x1027fde8, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.link(0x1027fdf8); choose_pass_action(c, c.r(3), c.r(4), c.r(5)); return finish(0, 0x1027fe08);
                     }
                 }
             }
@@ -1421,7 +1421,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
                 c.set(13, 2); if (compare(c, c.i16(player + 0x19c), 16) == 0) c.set(13, 10);
                 bounded_draw(13, 14, 0xa4, 0xac, 0xb4, 0x10280790, 0x10280868); c.set(14, compare(c, std::int32_t(c.r(14))) == 0 ? 2 : 4);
             } else {
-                enter(c, 0x102808ec, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.call(0x10245870, 0x102808fc); return finish(0, 0x1028090c);
+                enter(c, 0x102808ec, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.link(0x102808fc); choose_pass_action(c, c.r(3), c.r(4), c.r(5)); return finish(0, 0x1028090c);
             }
         }
     }
@@ -1472,7 +1472,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
                         c.set(14, compare(c, std::int32_t(c.r(14) + std::uint32_t(std::int32_t(std::int8_t(c.r(13))))), std::int32_t(c.r(3))) < 0 ? 2 : 4);
                     } else c.set(14, 4);
                 } else {
-                    enter(c, 0x10280e4c, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.call(0x10245870, 0x10280e5c); return finish(0, 0x10280e6c);
+                    enter(c, 0x10280e4c, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.link(0x10280e5c); choose_pass_action(c, c.r(3), c.r(4), c.r(5)); return finish(0, 0x10280e6c);
                 }
             }
         }
@@ -1516,13 +1516,13 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
         const auto order = compare(c, std::int8_t(c.r(14)), 1);
         if (order == 0) {
             if (compare_logical(c, c.r(22)) == 0) {
-                c.put16(player + 0x19c, 9); enter(c, 0x10280ef0, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.call(0x10245870, 0x10280f00); return finish(0, 0x10280f10);
+                c.put16(player + 0x19c, 9); enter(c, 0x10280ef0, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.link(0x10280f00); choose_pass_action(c, c.r(3), c.r(4), c.r(5)); return finish(0, 0x10280f10);
             }
-            c.put16(player + 0x19c, 108); leave(c, {{3, player}, {4, c.u8(frame.at(0x50))}, {5, c.r(22)}, {6, c.u8(frame.at(0x56))}, {7, c.u8(frame.at(0x4f))}, {8, c.u8(frame.at(0x4e))}}); c.call(0x10245220, 0x10280f3c);
+            c.put16(player + 0x19c, 108); leave(c, {{3, player}, {4, c.u8(frame.at(0x50))}, {5, c.r(22)}, {6, c.u8(frame.at(0x56))}, {7, c.u8(frame.at(0x4f))}, {8, c.u8(frame.at(0x4e))}}); c.link(0x10280f3c); complete_targeted_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8));
             return finish(0, 0x10281758);
         }
         if (order > 0) {
-            leave(c, {{3, player}, {4, 0}}); c.call(0x10274170, 0x102815c0); c.put16(player + 0x19c, 16); return finish(0, 0x10281758);
+            leave(c, {{3, player}, {4, 0}}); c.link(0x102815c0); resolve_direct_action(c, c.r(3), c.r(4)); c.put16(player + 0x19c, 16); return finish(0, 0x10281758);
         }
     } else if (compare(c, std::int8_t(c.r(14)), 5) < 0) {
         if (compare(c, c.i8(frame.at(0x102))) != 0) {
@@ -1548,9 +1548,9 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
             advance(0x1028123c); const auto value = sample(); c.set(3, shifted_sign(high_product(value, 0x66666667), 2)); c.set(4, value);
             if (compare(c, std::int32_t(value) % 10) != 0) {
                 leave(c, {{3, actor.match()}, {4, player}, {5, 4}, {6, std::int8_t(actor.side()) == 0 ? 11u : 0u}, {7, std::uint32_t(std::int32_t(std::int8_t(actor.side())))}}); c.call(0x101eeac0, 0x102812a8);
-                if (compare(c, std::int8_t(c.r(3))) == 0) { leave(c, {{3, player}, {4, 0}}); c.call(0x10274170, 0x102812bc); c.put16(player + 0x19c, 16); return finish(0, 0x10281758); }
+                if (compare(c, std::int8_t(c.r(3))) == 0) { leave(c, {{3, player}, {4, 0}}); c.link(0x102812bc); resolve_direct_action(c, c.r(3), c.r(4)); c.put16(player + 0x19c, 16); return finish(0, 0x10281758); }
             }
-            c.put16(player + 0x19c, 9); enter(c, 0x102812d8, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.call(0x10245870, 0x102812e8); return finish(0, 0x102812f8);
+            c.put16(player + 0x19c, 9); enter(c, 0x102812d8, {player}); match_context(c, player); leave(c, {{3, player}, {4, c.r(3)}, {5, 0}}); c.link(0x102812e8); choose_pass_action(c, c.r(3), c.r(4), c.r(5)); return finish(0, 0x102812f8);
         }
         auto column = c.i8(frame.at(0x4d));
         if (compare(c, column) < 0) column = 0; else if (compare(c, column, 8) > 0) column = 8;

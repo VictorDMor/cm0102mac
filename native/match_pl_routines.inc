@@ -175,3 +175,11 @@ MATCH_PL_ROUTINE(0x102836a0, 0x10285750, R3|F1, "fcaad8a1b3f4dd60",
 
 MATCH_PL_ROUTINE(0x10278220, 0x10281780, R3|F1, "cdd40109703f18c1",
     [](Cpu& c) { match_pl::choose_primary_action(c, c.r(3), c.r(4)); })
+
+// Coherent action/pass completion and contest resolution.
+MATCH_PL_ROUTINE(0x10245220, 0x10245870, R3|F1, "56507dfea94f0ecc",
+    [](Cpu& c) { match_pl::complete_targeted_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8)); })
+MATCH_PL_ROUTINE(0x10245870, 0x10247030, R3|F1, "798ce792d70bb868",
+    [](Cpu& c) { match_pl::choose_pass_action(c, c.r(3), c.r(4), c.r(5)); })
+MATCH_PL_ROUTINE(0x10274170, 0x102775c0, R3|F1, "f63ba66712ac1245",
+    [](Cpu& c) { match_pl::resolve_direct_action(c, c.r(3), c.r(4)); })

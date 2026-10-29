@@ -757,6 +757,15 @@ Keep destruction explicit on normal exits. A nonzero floating sampling bound
 can truncate to integer zero: its nontrapping modulo continuation can then make
 the following range wide, even when the first range is provably narrow.
 
+Pass completion keeps the action core's mutable flag in the caller's argument
+slot, preserving the other bytes of that word. The two completion paths share
+their ordered distance sampler without adding a guest frame; the defender's
+two distance lookups remain fresh reads. In direct contests, the diagnostic
+area test uses the initiating player's side with the opponent's coordinates.
+Its final delay bound is `3 - (trait0 > draw0) - (trait1 > draw1)`, with signed
+traits and signed remainders; both traits precede the first reseed and the
+first draw precedes the second reseed.
+
 Response and decision sampling can pass a nonzero floating bound that truncates
 to integer zero. Their audited quotient-free divisions leave the dividend as
 the residual, followed by the original sign correction; introducing a host

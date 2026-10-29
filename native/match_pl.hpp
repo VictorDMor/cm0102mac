@@ -81,5 +81,9 @@ std::uint32_t choose_primary_action(Cpu&, std::uint32_t player, std::uint32_t mo
 void choose_context_action(Cpu&, std::uint32_t player);
 void choose_secondary_action(Cpu&, std::uint32_t player);
 void dispatch_action(Cpu&, std::uint32_t player);
+void complete_targeted_action(Cpu&, std::uint32_t player, std::uint32_t kind, std::uint32_t receiver,
+                             std::uint32_t control, std::uint32_t column, std::uint32_t row);
+void choose_pass_action(Cpu&, std::uint32_t player, std::uint32_t mode, std::uint32_t force);
+void resolve_direct_action(Cpu&, std::uint32_t player, std::uint32_t mode);
 std::uint32_t allows_event(Cpu&, std::uint32_t player, std::uint32_t event);
 }
