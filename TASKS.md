@@ -5,22 +5,20 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] **CASH.CPP installation:** close the running game so the ordinary installer can replace the app. All 12 typed implementations, normal production routes and focused verification are closed; the running-game guard was respected. Overall delivery is not certified complete until installation/signature verification.
-
 - [x] **Uninitialised stack decides results** (found 2026-10-23). Decided by Victor 2026-10-23: option A, keep exact results; every rewrite reproduces the stack image the original leaves, checked byte for byte. Architectural changes that give up stack fidelity wait until the recompilation is complete.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
 ## Now
 
-- [ ] **CASH.CPP complete C++23 reconstruction (2026-10-29):** inventory, implementation, normal production and local verification are closed; installation is pending the running-game guard. Private per-entry evidence: `.local/rewrites/cash/ledger.json`.
+- [x] **CASH.CPP complete C++23 reconstruction (2026-10-29):** all four completion dimensions are closed: 12/12 audited entries, complete typed C++23, normal production and verified installation/delivery. Private per-entry evidence: `.local/rewrites/cash/ledger.json`.
   - [x] Close 12 entries /2,847 indexed instructions, source/TOC/neighbors, 868 incoming calls, six owned calls, four switch banks, no callbacks/interior entries and all 21 skipped words. Nine structural tests and 33 retained legacy source/data audits pass.
   - [x] Reconstruct all 12 entries as typed C++23: conversions/editing/presets, 25 currency profiles, labels and full/compact formatting. All 12 exclusive `cash_adapter` owners replace the three legacy builder families, including direct callers; 89 module/caller pages regenerated and audited.
   - [x] Complete 9,354 returned comparisons (4,677 controlled +4,677 observed production), zero differences/partials/internal faults. Three result/amount/text corruptions are detected; all 12 no-owned-instruction-budget production controls pass while the originals fail their negative controls. Actual arithmetic/string/printf dependencies run; alert and transitive BlockMoveData boundaries are explicitly modeled.
   - [x] Close behavioral coverage: 197/208 body outcomes plus2/2 shared helper outcomes exercised; all 11 remaining outcomes have independently reviewed immutable-bank, decimal-loop, format-layout or enum reachability proofs. LLVM fork coverage uses a locked merge pool with checked explicit child flushes. Independent source/oracle/coverage and scoped diff reviews pass; code-review skill unavailable.
   - [x] Final normal ARM64 app/checker/replay build (CASH coverage OFF), strict syntax and all 4 selected CTests pass. Original/default-C++ game-save2 replay pair reaches the recorded state; combined checked replay compares three actual calls plus12 completed real-state synthetic calls, all without differences. Old game-load fails HGetVol r27 on both routes and is excluded. Save/reload not retested; CASH owns no serialization. Performance not measured.
-  - [x] Existing tracker row13 updated/read back with12/12 C++23 and100% normal production; installation pending explicitly, formulas/neighbors preserved and summary remains21 completed modules/883 routines. Native Google Sheets visual inspection confirms the note fits.
-  - [ ] Install and verify the normal app after Victor closes the game; build UUID878C5AF0-5031-33AF-9E15-1437E4E21A64. Do not stop his session or bypass the installer guard. Then certify the existing tracker and summary. Unrelated quick-save/MATCH_PL/bridge work is preserved and excluded from this scoped delivery.
+  - [x] Existing tracker row 13 certified Concluído and read back with 12/12 C++23 and 100% normal production. Formulas/neighbors are preserved; summary verifies 22 completed modules /895 routines. Native Google Sheets visual inspection confirms the final note and summary fit.
+  - [x] After Victor closed the game, ordinary installation and strict deep signature verification pass. Installed ARM64 UUID 878C5AF0-5031-33AF-9E15-1437E4E21A64 matches the validated build, contains all 12 CASH symbols and no LLVM coverage runtime. Existing game data were verified/preserved; the earlier running-game guard was respected. Unrelated quick-save/MATCH_PL/bridge work is preserved and excluded from this scoped delivery.
 
 - [x] **FIFA_RANKINGS.CPP complete C++23 reconstruction (2026-10-29):** all 15 audited entries implemented, active in normal production and installed; all four completion dimensions are closed. Private per-entry evidence: `.local/rewrites/fifa_rankings/ledger.json`.
   - [x] Close inventory: 15 entries / 1,575 indexed instructions, 0x104866f0–0x10487ff0. Neighbor/source and numeric pools, all incoming/cross-entry flows, both comparator transition vectors, 77 instruction-byte pointer coincidences and 25 skipped padding words audited. Eight structural tests pass, including stale-digest/duplicate/disabled-owner controls.
