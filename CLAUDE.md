@@ -80,9 +80,13 @@ QA is outside the agent's completion gates; do not present it as a blocker or
 missing verification for a completed module. Keep focused original/rewrite
 checks and the necessary integration/persistence checks above.
 
+Career testing, visual checks, manual save/reload and new gameplay captures are
+his too (confirmed 2026-10-30): do them only when he asks on the task. Existing
+captures and controlled fixtures supply the evidence for module delivery.
+
 ## Rewriting the game
 
-- Rewrite one coherent subsystem per block: routines that call each other and share data. Choose by measured cost first, then by how many callers a block unblocks.
+- Rewrite one coherent subsystem per block: routines that call each other and share data. Victor picks the module, currently at random (decided 2026-10-30). Whole-module reconstructions follow the `recompile-module` skill.
 - Write real C++: named types for game records, plain control flow, direct calls to other rewritten routines rather than through the dispatcher. The instruction-level builder (`SemanticGuestCall`) is a stepping stone, not the target.
 - Check each block against the generated reference: run both from the same captured states (real match and daily-update captures plus edge cases from the code) and compare what the game can observe. Include one case that shows the check fails when it should.
 - Then hook it in the generator, regenerate, run the area's tests, and run one paired replay with identical final state.
@@ -96,6 +100,7 @@ checks and the necessary integration/persistence checks above.
   status, checks and remaining limits, and verify the affected summary totals.
 - The commit message is the record: what changed, why, how it was verified, and what wasn't verified. Don't write separate delivery reports.
 - Commit each verified change to `main`. Push normally once the required focused checks pass. Never force-push or rewrite history.
+- After delivering a rewrite, delete its bulky evidence so the disk doesn't fill (`.claude/skills/recompile-module/scripts/clean_evidence.py`; decided 2026-10-30).
 - Update a doc only when the behaviour it describes changes, or when you learn something non-obvious (a quirk of the original, a contract). A few lines in that subsystem's doc. Update README.md when user-visible status changes.
 - Skip the old rituals: hash inventories of protected files, per-delivery install scripts, Mach-O section comparisons, handoff prompt files, and repeating the same status paragraph across several docs.
 
