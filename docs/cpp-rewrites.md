@@ -867,3 +867,18 @@ eight date bytes. Loading replaces the serialized pointer and sets capacity
 to the live count. Failed IO preserves transferred prefixes; the original
 load/save assertions leave the stream open, as in the original. Append retains
 the original unchecked allocation result.
+
+## INTERNATIONAL_AWARDS.CPP: six international prizes
+
+The three entries (0x10440620–0x10440c70, 397 indexed instructions) share
+a derived award-manager vtable. Its constructor retains the original virtual
+initialization boundary and existing base-class load service. Initialization
+keeps six pointer slots even when a child allocation fails; only successful
+allocations consume award ordinals, and only the array failure reports an
+assertion. The first award receives a stack-resident age/date restriction.
+
+The annual method skips 2001, then checks 6 May, 6 June and 16 June using the
+existing zero-based calendar constructor. It compares years unsigned and days
+signed. Publication retains the ratings pointer across related calls while
+reloading the live award array between them. Serialization, selection, ranking
+and publication services belong to the already separate NATION_AWARDS module.

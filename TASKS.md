@@ -3,6 +3,7 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+
 ## Blocked on Victor
 
 - [x] **Uninitialised stack decides results** (found 2026-10-23). Decided by Victor 2026-10-23: option A, keep exact results; every rewrite reproduces the stack image the original leaves, checked byte for byte. Architectural changes that give up stack fidelity wait until the recompilation is complete.
@@ -10,6 +11,15 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
 ## Now
+
+- [x] **INTERNATIONAL_AWARDS.CPP complete C++23 reconstruction (2026-10-30):** inventory, implementation, default production and verification/delivery closed for all 3 entries /397 indexed instructions. Private per-entry evidence: `.local/rewrites/international_awards/ledger.json`.
+  - [x] Reconstruct derived construction, six-prize allocation/initialization and dated publications as typed C++23. Exact source/TOC neighbors, two transition vectors, incoming/interior flows, zero padding and digests close the boundary; 10 structural tests pass. Normal constructor uses the owned initializer directly through the original TOC/LR boundary.
+  - [x] Complete 5,274 returned original/C++ comparisons (2,637 controlled +2,637 observed production), with zero differences, partials or internal faults. All allocation masks, signed-byte load status, assertion reporting, signed dates, unsigned years and publication outcomes are covered. Actual calendar dependencies test deadline neighbors in common/leap/century years. Wrong-memory corruption is detected; all 3 zero-budget production controls and original negative controls pass.
+  - [x] Exercise 35/36 body branch outcomes and 149/150 lines; the alternate virtual target requires noncanonical vtable/descriptor mutation, with an independently reviewed reachability proof. Source coverage uses only the valid run profile. Independent read-only diff review and follow-up, strict syntax and all 5 selected CTests pass. A fixture leaf-routing discrepancy was corrected without relaxing comparison requirements; the initializer retains the original assertion suffix's r3 result.
+  - [x] Replay the recent recorded career reload with original, default C++ and checked C++ routes, all matching the immutable expected state and 530,950 native calls; constructor and nested initializer each have one returned real-state comparison. Older ui/game-load has the same preexisting allocation-transcript mismatch on both module routes; its inputs/expectations remain unchanged.
+  - [x] Build and install the normal ARM64 app, UUID E902A4F3-2FDB-32B3-B9A1-0A0A136A963E, with strict deep signature verification, active production adapter and no LLVM coverage runtime. Existing game data preserved. Existing tracker updated/read back: 3/3, 100% production, Concluído; summary 23 modules /898 routines. Affected note row resized to avoid clipping.
+  - Limits: modeled external boundaries establish caller contracts, not service internals. No module-owned serializer; native career save/reload not retested. Performance not measured. Gameplay QA belongs to Victor and is outside these gates.
+
 
 - [x] **CASH.CPP complete C++23 reconstruction (2026-10-29):** all four completion dimensions are closed: 12/12 audited entries, complete typed C++23, normal production and verified installation/delivery. Private per-entry evidence: `.local/rewrites/cash/ledger.json`.
   - [x] Close 12 entries /2,847 indexed instructions, source/TOC/neighbors, 868 incoming calls, six owned calls, four switch banks, no callbacks/interior entries and all 21 skipped words. Nine structural tests and 33 retained legacy source/data audits pass.

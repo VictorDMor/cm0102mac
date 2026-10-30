@@ -3699,6 +3699,41 @@ if(CM_TRANSFER_SCREENS_COVERAGE)
     target_link_options(cm-transfer-screens-checks PRIVATE "-fprofile-instr-generate=${CM_TRANSFER_SCREENS_PROFILE}")
 endif()
 
+file(GLOB CM_INTERNATIONAL_AWARDS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/international_awards*.cpp")
+list(FILTER CM_INTERNATIONAL_AWARDS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_INTERNATIONAL_AWARDS_SOURCES})
+add_executable(cm-international-awards-checks international_awards_checks.cpp)
+target_link_libraries(cm-international-awards-checks PRIVATE cm_aot)
+target_compile_options(cm-international-awards-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_INTERNATIONAL_AWARDS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/international_awards_reference.cpp")
+    add_custom_command(OUTPUT "${CM_INTERNATIONAL_AWARDS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_international_awards_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_INTERNATIONAL_AWARDS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_international_awards_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/international_awards_audit.py"
+            "${CMAKE_SOURCE_DIR}/international_awards_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-international-awards-checks PRIVATE "${CM_INTERNATIONAL_AWARDS_REFERENCE}")
+    add_test(NAME international_awards_equivalence COMMAND cm-international-awards-checks "${CM_ORACLE_DIR}")
+    add_test(NAME international_awards_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_international_awards_audit.py")
+endif()
+option(CM_INTERNATIONAL_AWARDS_COVERAGE "Instrument INTERNATIONAL_AWARDS.CPP checker only" OFF)
+if(CM_INTERNATIONAL_AWARDS_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/international-awards-coverage")
+    set(CM_INTERNATIONAL_AWARDS_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/international-awards-coverage/check-%p.profraw")
+    add_library(cm_international_awards_coverage OBJECT ${CM_INTERNATIONAL_AWARDS_SOURCES})
+    target_link_libraries(cm_international_awards_coverage PRIVATE cm_aot)
+    target_compile_options(cm_international_awards_coverage PRIVATE "-fprofile-instr-generate=${CM_INTERNATIONAL_AWARDS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_international_awards_coverage PRIVATE CM_INTERNATIONAL_AWARDS_COVERAGE=1)
+    target_sources(cm-international-awards-checks PRIVATE $<TARGET_OBJECTS:cm_international_awards_coverage>)
+    target_compile_definitions(cm-international-awards-checks PRIVATE CM_INTERNATIONAL_AWARDS_COVERAGE=1)
+    target_link_options(cm-international-awards-checks PRIVATE "-fprofile-instr-generate=${CM_INTERNATIONAL_AWARDS_PROFILE}")
+endif()
+
+
 file(GLOB CM_NATION_AWARDS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/nation_awards*.cpp")
 list(FILTER CM_NATION_AWARDS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_NATION_AWARDS_SOURCES})
