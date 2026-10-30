@@ -22,7 +22,10 @@ int main() {
     require(destination.last() == "Second:Career.sav", "A successful Save As replaces the complete path");
     destination.begin_load("Third:Broken.sav");
     destination.finish_load(false);
-    require(destination.last() == "Second:Career.sav", "A failed load must preserve the active career's destination");
+    require(!destination.last(), "A failed load must not leave a destination for a world it may have replaced");
+    destination.begin_save("Second:Career.sav");
+    destination.finish_save(true);
+    require(destination.last() == "Second:Career.sav", "An ordinary save re-establishes the destination");
     destination.begin_load(std::nullopt);
     destination.finish_load(true);
     require(!destination.last(), "An unreadable successful load must not reuse another career's path");

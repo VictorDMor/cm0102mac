@@ -45,10 +45,13 @@ bool NativeDataForks::begin_write_audit(const std::filesystem::path& directory) 
 }
 bool NativeDataForks::finish_write_audit() {
     if (!impl_->audit_directory) return false;
-    for (auto& [ref, file] : impl_->files) {
-        (void)ref;
-        if (file.audited) impl_->audit_ok = false;
-        file.audited = false;
+    // A fork still open here is a failed save. The writer has returned and
+    // nothing will close it, and the failed output may be about to be removed.
+    for (auto file = impl_->files.begin(); file != impl_->files.end();) {
+        if (!file->second.audited) { ++file; continue; }
+        impl_->audit_ok = false;
+        ::FSCloseFork(file->first);
+        file = impl_->files.erase(file);
     }
     for (const auto& path : impl_->written)
         if (impl_->audited(path)) impl_->audit_ok = false;
@@ -57,7 +60,13 @@ bool NativeDataForks::finish_write_audit() {
     return result;
 }
 void NativeDataForks::abort_write_audit() noexcept {
-    for (auto& [ref, file] : impl_->files) { (void)ref; file.audited = false; }
+    // The writer that opened these is gone and nothing will close them. The
+    // files are not going to be promoted, so they need no durability either.
+    for (auto file = impl_->files.begin(); file != impl_->files.end();) {
+        if (file->second.audited) { ::FSCloseFork(file->first); file = impl_->files.erase(file); }
+        else ++file;
+    }
+    std::erase_if(impl_->written, [&](const auto& path) { return impl_->audited(path); });
     impl_->audit_directory.reset();
     impl_->audit_ok = false;
 }

@@ -70,10 +70,23 @@ public:
     // Removes only this transaction's empty staging directory after a
     // confirmed promotion; nonempty or replaced directories are retained.
     std::expected<void, QuickSaveTransactionError> remove_empty_staging_directory();
+    // Removes the writer's output and the directory while the destination has
+    // not been touched (state not_promoted). Anything else in it is retained.
+    std::expected<void, QuickSaveTransactionError> discard_failed_staging();
+    // Marks the directory so that remove_stale_quick_save_staging leaves it:
+    // for when neither file can be called the obsolete one.
+    std::expected<void, QuickSaveTransactionError> keep_for_recovery();
 
 private:
     struct Impl;
     explicit QuickSaveTransaction(std::unique_ptr<Impl>);
     std::unique_ptr<Impl> impl_;
 };
+
+// Removes staging directories left in `parent` by earlier sessions or failed
+// saves, keeping the newest one holding a save as a recovery copy. The caller
+// must have no transaction in progress there. Only directories this code could
+// have made are touched: private name, mode and owner, and the writer's two
+// file names inside. Returns how many were removed.
+std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent);
 }

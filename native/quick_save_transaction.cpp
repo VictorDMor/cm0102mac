@@ -1,4 +1,5 @@
 #include "quick_save_transaction.hpp"
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdlib>
@@ -7,10 +8,14 @@
 #include <sys/acl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 namespace cm::aot {
 namespace {
 constexpr const char* staged_name = "save.sav";
+// The writer works in this file and renames it to the requested name.
+constexpr const char* writer_temporary_name = "temp_save_file.sav";
+constexpr std::string_view private_prefix = ".cm-quicksave-";
 struct Descriptor {
     int value = -1;
     Descriptor() = default;
@@ -38,7 +43,7 @@ bool same_version(const struct stat& a, const struct stat& b) {
 std::string private_name() {
     std::array<unsigned char, 16> random{};
     ::arc4random_buf(random.data(), random.size());
-    std::string name = ".cm-quicksave-";
+    std::string name(private_prefix);
     constexpr char hex[] = "0123456789abcdef";
     for (auto byte : random) { name += hex[byte >> 4]; name += hex[byte & 15]; }
     return name;
@@ -278,5 +283,69 @@ std::expected<void, QuickSaveTransactionError> QuickSaveTransaction::remove_empt
     if (::fsync(t.staging_parent.value))
         return std::unexpected(failure("sync staging parent after cleanup", errno, t.staging));
     return {};
+}
+std::expected<void, QuickSaveTransactionError> QuickSaveTransaction::discard_failed_staging() {
+    auto& t = *impl_;
+    if (t.state != QuickSavePromotionState::not_promoted)
+        return std::unexpected(failure("the destination may have been exchanged", EINVAL, t.staging));
+    if (auto checked = t.check_directory(); !checked) return checked;
+    for (const auto* name : {staged_name, writer_temporary_name})
+        if (::unlinkat(t.directory.value, name, 0) && errno != ENOENT)
+            return std::unexpected(failure("discard failed staged save", errno, t.staging));
+    if (::unlinkat(t.staging_parent.value, t.directory_name.c_str(), AT_REMOVEDIR))
+        return std::unexpected(failure("remove failed staging directory", errno, t.staging));
+    return {};
+}
+
+std::expected<void, QuickSaveTransactionError> QuickSaveTransaction::keep_for_recovery() {
+    auto& t = *impl_;
+    Descriptor mark(::openat(t.directory.value, "keep-for-recovery", O_WRONLY | O_CREAT | O_CLOEXEC, 0600));
+    if (mark.value < 0) return std::unexpected(failure("mark staging for recovery", errno, t.staging));
+    return {};
+}
+
+std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent) try {
+    Descriptor root(::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+    if (root.value < 0) return 0;
+    struct Candidate { std::string name; bool has_save; struct timespec modified; };
+    std::vector<Candidate> candidates;
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(parent, error)) {
+        const auto name = entry.path().filename().string();
+        if (!name.starts_with(private_prefix) || name.size() != private_prefix.size() + 32 ||
+            !std::all_of(name.begin() + std::ptrdiff_t(private_prefix.size()), name.end(), [](char c) {
+                return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+            })) continue;
+        struct stat directory{}, file{};
+        if (::fstatat(root.value, name.c_str(), &directory, AT_SYMLINK_NOFOLLOW) || !S_ISDIR(directory.st_mode) ||
+            directory.st_uid != ::geteuid() || (directory.st_mode & 0777) != 0700) continue;
+        Candidate candidate{name, false, directory.st_mtimespec};
+        bool ours = true;
+        std::error_code inner;
+        for (const auto& child : std::filesystem::directory_iterator(entry.path(), inner)) {
+            const auto leaf = child.path().filename().string();
+            if ((leaf != staged_name && leaf != writer_temporary_name) ||
+                ::lstat(child.path().c_str(), &file) || !S_ISREG(file.st_mode)) { ours = false; break; }
+            if (leaf == staged_name) { candidate.has_save = true; candidate.modified = file.st_mtimespec; }
+        }
+        if (ours && !inner) candidates.push_back(std::move(candidate));
+    }
+    const auto newer = [](const Candidate& a, const Candidate& b) {
+        return a.modified.tv_sec != b.modified.tv_sec ? a.modified.tv_sec > b.modified.tv_sec
+                                                      : a.modified.tv_nsec > b.modified.tv_nsec;
+    };
+    std::sort(candidates.begin(), candidates.end(), newer);
+    std::size_t removed = 0;
+    bool kept = false;
+    for (const auto& candidate : candidates) {
+        if (candidate.has_save && !kept) { kept = true; continue; }
+        Descriptor directory(::openat(root.value, candidate.name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+        if (directory.value < 0) continue;
+        for (const auto* name : {staged_name, writer_temporary_name}) ::unlinkat(directory.value, name, 0);
+        if (!::unlinkat(root.value, candidate.name.c_str(), AT_REMOVEDIR)) ++removed;
+    }
+    return removed;
+} catch (const std::filesystem::filesystem_error&) {
+    return 0;  // Cleanup can wait for another time; it must never stop a save.
 }
 }

@@ -4,6 +4,8 @@
 #include "speech_bridge.hpp"
 #include "aot_runtime.hpp"
 #include "filesystem_bridge.hpp"
+#include <chrono>
+#include "quick_save_transaction.hpp"
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -75,6 +77,34 @@ int main() {
         {
             constexpr std::uint32_t managers = 0x10980000, path = 0x70008000, stack = 0x70002000;
             s.memory.map(managers, 0x2000);
+            // Just enough of the world for the original's save conditions.
+            constexpr std::uint32_t toc = 0x7000f000, world = 0x71000000, game_record = world + 0x8000,
+                                    manager_base = world + 0x9000, saved_flag = world + 0xa000, dirty_flag = world + 0xa001,
+                                    disk_flag = world + 0xa002, memory_flag = world + 0xa003, saved_date = world + 0xa010;
+            s.memory.map(world, 0x10000);
+            const auto previous_toc = s.r<4>(8);
+            s.wr<4>(8, toc);
+            s.memory.write<4>(toc - 0x7bb0, world);
+            s.memory.write<4>(world + 4, game_record);
+            s.memory.write<4>(game_record, 0x1000);
+            s.memory.write<4>(toc - 0x7be4, manager_base);
+            s.memory.write<4>(manager_base, 0x1010);
+            s.memory.write<4>(toc - 0x5158, 0x109806f0);
+            s.memory.write<1>(0x109806f0, 2);
+            s.memory.write<4>(toc - 0x63c0, saved_flag);
+            s.memory.write<4>(toc - 0x6434, dirty_flag);
+            s.memory.write<4>(toc - 0x63c8, saved_date);
+            s.memory.write<4>(toc - 0x63cc, disk_flag);
+            s.memory.write<4>(toc - 0x63d0, memory_flag);
+            s.platform->quick_save_note_boundary(s);
+            std::vector<std::string> alerts;
+            s.platform->set_quick_save_alert_observer([&](const std::string& message) { alerts.push_back(message); });
+            const auto staging_folders = [&] {
+                std::size_t count = 0;
+                for (const auto& entry : fs::directory_iterator(user))
+                    count += entry.path().filename().string().starts_with(".cm-quicksave-");
+                return count;
+            };
             const auto put_path = [&](std::string_view value) {
                 std::vector<std::uint8_t> bytes(value.begin(), value.end());
                 bytes.push_back(0);
@@ -113,7 +143,9 @@ int main() {
             s.memory.write<4>(fixture + 0x58, 0x1234);
             require(!s.platform->quick_save_pending(s), "A queued request must not cross into a human match");
             s.memory.write<4>(0x109806f0 + 0xf0, 0);
-            require(s.platform->quick_save_request(s), "A spectator match must not be mistaken for a human-managed match");
+            require(!s.platform->quick_save_request(s), "A live watched match must refuse quick save like a managed one");
+            s.memory.write<4>(fixture + 0x58, 0);
+            require(s.platform->quick_save_request(s), "A fixture with no engine must allow quick save");
             require(s.platform->quick_save_pending(s), "A quick save must remain queued until the dispatcher consumes it");
             s.wr<4>(4, stack);
             prepare_staged_save();
@@ -173,6 +205,150 @@ int main() {
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
             s.memory.write<4>(0x109806f0 + 0xec, 0);
+
+            // Every condition of the original's dispatcher holds a queued save back.
+            require(s.platform->quick_save_request(s), "Quick save unavailable before the original's conditions");
+            const auto holds_back = [&](auto&& hold, auto&& release, const char* message) {
+                hold();
+                s.platform->quick_save_note_boundary(s);
+                require(!s.platform->quick_save_pending(s), message);
+                release();
+                s.platform->quick_save_note_boundary(s);
+                require(s.platform->quick_save_pending(s), "A held quick save must stay queued");
+            };
+            holds_back([&] { s.memory.write<1>(toc - 0x356f, 1); }, [&] { s.memory.write<1>(toc - 0x356f, 0); },
+                       "A save must wait for an open alert");
+            holds_back([&] { s.memory.write<1>(world + 0x2c5f, 1); }, [&] { s.memory.write<1>(world + 0x2c5f, 0); },
+                       "A save must wait for the handler flag");
+            holds_back([&] { s.memory.write<2>(world, 3); }, [&] { s.memory.write<2>(world, 0); },
+                       "A remote screen must not save");
+            holds_back([&] { s.memory.write<1>(game_record + 0x6b, 5); }, [&] { s.memory.write<1>(game_record + 0x6b, 0); },
+                       "The game state 0x103557e0 refuses must not save");
+            holds_back([&] { s.memory.write<1>(0x109806f0, 1); }, [&] { s.memory.write<1>(0x109806f0, 2); },
+                       "A manager record not in play must not save");
+            holds_back([&] { s.memory.write<4>(manager_base, 0x2000); }, [&] { s.memory.write<4>(manager_base, 0x1010); },
+                       "A game without a manager record must not save");
+            holds_back([&] {
+                s.memory.write<4>(world + 0x10, world + 0xb000);
+                s.memory.write<4>(world + 0xb008, world + 0xb100);
+                s.memory.write<4>(world + 0xb100, 0x1028dc80);
+            }, [&] { s.memory.write<4>(world + 0x10, 0); }, "The live match view must not save");
+
+            // Promotion fails after the writer told the game it was saved.
+            prepare_staged_save();
+            const auto folders_during_save = staging_folders();
+            s.memory.write<1>(saved_flag, 0);
+            s.memory.write<1>(dirty_flag, 1);
+            s.memory.copy_in(saved_date, std::vector<std::uint8_t>{1, 2, 3, 4, 5});
+            s.wr<4>(12, stack + 0x133c);
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, 0);
+            s.platform->quick_save_write_renamed(s);
+            s.memory.write<1>(saved_flag, 1);
+            s.memory.write<1>(dirty_flag, 0);
+            s.memory.copy_in(saved_date, std::vector<std::uint8_t>{9, 9, 9, 9, 9});
+            std::ofstream(user / "Second.sav", std::ios::binary | std::ios::app) << " changed";
+            s.wr<4>(12, 1);
+            s.platform->quick_save_write_end(s);
+            require(s.r<4>(12) == 0, "A failed promotion must report failure");
+            require(s.memory.read<1>(saved_flag) == 0 && s.memory.read<1>(dirty_flag) == 1 &&
+                    s.memory.copy_out(saved_date, 5) == std::vector<std::uint8_t>({1, 2, 3, 4, 5}),
+                    "A failed promotion must leave the game marked as unsaved");
+            require(staging_folders() == folders_during_save, "A failed promotion must keep the complete new save");
+            require(!s.platform->quick_save_busy() && s.platform->quick_save_available(), "A failed save must allow another");
+
+            // A failed rename: the writer still marks the game saved and returns 1.
+            require(s.platform->quick_save_request(s), "Quick save unavailable after a failed promotion");
+            prepare_staged_save();
+            const auto folders_before_rename = staging_folders();
+            s.memory.write<1>(saved_flag, 0);
+            s.memory.write<1>(dirty_flag, 1);
+            s.wr<4>(12, stack + 0x133c);
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, std::uint32_t(-1));
+            s.platform->quick_save_write_renamed(s);
+            s.memory.write<1>(saved_flag, 1);
+            s.memory.write<1>(dirty_flag, 0);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_write_end(s);
+            require(s.r<4>(12) == 0 && s.memory.read<1>(saved_flag) == 0 && s.memory.read<1>(dirty_flag) == 1,
+                    "A failed rename must leave the game marked as unsaved");
+            require(staging_folders() + 1 == folders_before_rename, "Useless output must not stay behind");
+
+            // What will not pass by itself is refused now, not left queued.
+            s.memory.write<1>(0x109806f0, 1);
+            s.platform->quick_save_note_boundary(s);
+            require(!s.platform->quick_save_request(s), "A manager record not in play must refuse the request");
+            s.memory.write<1>(0x109806f0, 2);
+            s.platform->quick_save_note_boundary(s);
+
+            // A save that cannot start tells the player, and writes nothing.
+            fs::create_directory(user / "Sub");
+            std::ofstream(user / "Sub" / "Third.sav", std::ios::binary) << "third career";
+            put_path("CM User Data:Sub:Third.sav");
+            s.platform->quick_save_load_begin(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_load_end(s);
+            require(s.platform->quick_save_request(s), "Quick save unavailable after a load from a folder");
+            fs::remove_all(user / "Sub");
+            alerts.clear();
+            require(!s.platform->quick_save_prepare_path(s) && alerts.size() == 1, "A save that cannot start must alert");
+
+            // A failed load may have replaced the world.
+            put_path("CM User Data:First.sav");
+            s.platform->quick_save_load_begin(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_load_end(s);
+            require(s.platform->quick_save_available(), "A load must enable quick save");
+            put_path("CM User Data:Missing.sav");
+            s.platform->quick_save_load_begin(s);
+            s.wr<4>(12, 0);
+            s.platform->quick_save_load_end(s);
+            require(!s.platform->quick_save_available(), "A failed load must disable quick save");
+            put_path("CM User Data:First.sav");
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, 0);
+            s.platform->quick_save_write_renamed(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_write_end(s);
+            require(s.platform->quick_save_available(), "An ordinary save must enable quick save again");
+
+            // Leftovers: only what this code could have made, keeping the newest save.
+            const auto left = user / "left";
+            const auto staging = [&](char fill, std::initializer_list<const char*> files, int age_hours) {
+                const auto folder = left / (".cm-quicksave-" + std::string(32, fill));
+                fs::create_directories(folder);
+                fs::permissions(folder, fs::perms::owner_all);
+                for (const auto* file : files) {
+                    std::ofstream(folder / file, std::ios::binary) << "x";
+                    fs::last_write_time(folder / file, fs::file_time_type::clock::now() - std::chrono::hours(age_hours));
+                }
+                return folder;
+            };
+            const auto oldest = staging('a', {"save.sav"}, 30), newest = staging('b', {"save.sav"}, 2),
+                       partial = staging('c', {"temp_save_file.sav"}, 1), foreign = staging('d', {"save.sav", "notes.txt"}, 40);
+            const auto empty = staging('e', {}, 0);
+            const auto recovery = staging('f', {"save.sav", "keep-for-recovery"}, 50);
+            const auto other = left / ".cm-quicksave-short";
+            fs::create_directories(other);
+            std::ofstream(other / "save.sav") << "x";
+            require(remove_stale_quick_save_staging(left) == 3, "Stale staging folders were not removed");
+            require(!fs::exists(oldest) && !fs::exists(partial) && !fs::exists(empty), "A stale staging folder remained");
+            require(fs::exists(newest / "save.sav"), "The newest recovery copy must be kept");
+            require(fs::exists(foreign / "notes.txt") && fs::exists(other / "save.sav"), "Unknown folders must be left alone");
+            require(fs::exists(recovery / "save.sav"), "A folder marked for recovery must be left alone");
+            fs::remove_all(left);
+            s.platform->set_quick_save_alert_observer({});
+            s.wr<4>(8, previous_toc);
         }
         const std::vector<std::uint8_t> alphabet{'a', 'z', 0x8e, 0x9f, 0xa7, 0xde, 0xdf, 0}; // e acute, u umlaut, sharp-s, fi/fl.
         s.memory.write<4>(name, 0xa5a5a5a5); s.memory.write<4>(name + 12, 0xa5a5a5a5);

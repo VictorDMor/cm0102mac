@@ -6,6 +6,7 @@
 #include "native_drawing.hpp"
 #include "direct_commands.hpp"
 #include "quick_save.hpp"
+#include <functional>
 #include "quick_save_transaction.hpp"
 #include "quick_save_runtime.hpp"
 #include "guest_context_transfer.hpp"
@@ -126,7 +127,15 @@ std::uint32_t mac_date(std::int64_t unix_seconds) {
     return std::uint32_t(std::clamp<std::int64_t>(unix_seconds + 2082844800LL, 0, UINT32_MAX));
 }
 }
+namespace {
+// r2 inside an import is that import's. The rewritten event loop calls imports
+// directly, so the caller's linkage area does not hold the game's value either.
+constexpr std::uint32_t game_toc = 0x108bba90;
+}
 struct NativePlatform::Impl {
+    // At the last screen boundary, the original's save conditions held. They
+    // can only be read there: event waits leave the current row at 16.
+    bool quick_save_possible = false;
     NativeDrawingObserver drawing;
     std::optional<fs::path> debug_attribute_load_target, debug_attribute_save_target, debug_attribute_save_override;
     bool debug_attribute_loading = false, debug_attribute_saving = false;
@@ -138,6 +147,18 @@ struct NativePlatform::Impl {
     std::unique_ptr<QuickSaveTransaction> quick_save_transaction;
     std::unique_ptr<QuickSaveTransaction> quick_save_previous_transaction;
     std::uint32_t quick_save_path_address = 0;
+    bool quick_save_swept = false;
+    // What the writer's successful path overwrites, in case promotion then fails.
+    std::optional<std::array<std::uint8_t, 7>> quick_save_saved_markers;
+    enum class QuickSaveOutcome { none, complete, failed, uncertain } quick_save_outcome = QuickSaveOutcome::none;
+    std::function<void(const std::string&)> quick_save_alert_observer;
+    void quick_save_alert(const std::string& message) {
+        try {
+            if (quick_save_alert_observer) quick_save_alert_observer(message);
+            else if (automation) std::fprintf(stderr, "Quick save alert: %s\n", message.c_str());
+            else if (ui) ui->show_alert("Quick save failed", message);
+        } catch (const std::exception& error) { std::fprintf(stderr, "Quick save alert: %s\n", error.what()); }
+    }
     explicit Impl(AudioMode mode, EventMode events) : sound(mode), event_mode(events) {}
     std::optional<fs::path> debug_attribute_target(const State& s, std::uint32_t address) const {
         if (!address) return std::nullopt;
@@ -246,25 +267,18 @@ struct NativePlatform::Impl {
         CommandContext waiting;
         waiting.ready = true;
         waiting.identity = 0xd1a1000000000000ull | front_dialog;
+        bool automation_save = false;
         for (;;) {
             // Automation is offered at most every 50 ms; without it the wait is longer.
             if (const auto item = user_interface().dialog_click(front_dialog, automation ? 0.05 : 0.5)) return item;
-            // Preferences is the one native modal whose guest caller is idle
-            // here. End its AppKit session while the original writer runs so
-            // the writer's own error alerts can receive input.
-            if (s.r<4>(4128) == 0x10770e94 && user_interface().take_quick_save_request()) {
-                if (s.platform && s.platform->quick_save_request(s)) {
-                    const auto dialog = front_dialog;
-                    user_interface().suspend_dialog(dialog);
-                    // ModalDialog is a Carbon import: its descriptor uses a
-                    // different TOC. The caller's game TOC is saved by the
-                    // import glue in its linkage area.
-                    const auto import_toc = std::uint32_t(s.r<4>(8));
-                    const auto game_toc = std::uint32_t(s.memory.read<4>(std::uint32_t(s.r<4>(4)) + 0x14));
-                    s.wr<4>(8, game_toc);
-                    s.platform->quick_save_at_screen_boundary(s);
-                    s.wr<4>(8, import_toc);
-                    user_interface().show_dialog(dialog);
+            // The writer cannot run here: event waits leave the current row at
+            // 16, and it picks its view by that row. Preferences has no way out
+            // but closing, and the next screen boundary saves.
+            if (s.r<4>(4128) == 0x10770e94 && (std::exchange(automation_save, false) || user_interface().take_quick_save_request())) {
+                if (s.platform && s.platform->quick_save_request(s)) command_status = "Quick save queued until this dialog closes";
+                else {
+                    command_status = "Quick save unavailable";
+                    user_interface().beep();
                 }
             }
             if (!automation) continue;
@@ -279,6 +293,13 @@ struct NativePlatform::Impl {
                 // As AppKit's would, it waits until the dialog closes.
                 pending_events.push_back({UIEvent::Kind::quit});
                 automation->finish(*request, true, "quit queued");
+                continue;
+            }
+            // As the key equivalent reaches this modal in play.
+            if (request->kind == Kind::key && request->keys.size() == 1 &&
+                (request->keys[0].first & 0xff) == 's' && (request->keys[0].second & 0x100)) {
+                automation_save = true;
+                automation->finish(*request, true, "quick save requested");
                 continue;
             }
             const bool click = request->kind == Kind::dialog;
@@ -758,12 +779,14 @@ struct NativePlatform::Impl {
             const auto& region = handles.at(mouse_region);
             return !region_contains(s.memory.copy_out(region.payload, region.size), pointer.x, pointer.y);
         };
+        const auto request_quick_save = [&] {
+            const bool accepted = s.platform && s.platform->quick_save_request(s);
+            if (!accepted) user_interface().beep();
+            return accepted;
+        };
         const auto queued_save_status = [&]() -> const char* {
             try {
-                // The WaitNextEvent import glue saves the game TOC in the
-                // caller's linkage area; its own import TOC need not match.
-                const auto toc = std::uint32_t(s.memory.read<4>(std::uint32_t(s.r<4>(4)) + 0x14));
-                if (toc >= 0x356f && s.memory.read<1>(toc - 0x356f))
+                if (s.memory.read<1>(game_toc - 0x356f))
                     return "Quick save queued until a safe screen";
             } catch (const std::runtime_error&) {}
             return "Quick save queued";
@@ -897,7 +920,7 @@ struct NativePlatform::Impl {
                 automation->boundary(s, accepted ? CommandContext{} : commands, command_status);
             };
             if (available && event.kind == UIEvent::Kind::quick_save) {
-                const bool accepted = s.platform && s.platform->quick_save_request(s);
+                const bool accepted = request_quick_save();
                 command_status = accepted ? queued_save_status() : "Quick save unavailable";
                 user_interface().update_commands(commands, command_status, false);
                 s.memory.clear(address, 16);
@@ -963,7 +986,7 @@ struct NativePlatform::Impl {
                 return event.kind == UIEvent::Kind::key_up && event.message == message;
             });
             if (released != pending_events.end()) pending_events.erase(released);
-            const bool accepted = s.platform && s.platform->quick_save_request(s);
+            const bool accepted = request_quick_save();
             command_status = accepted ? queued_save_status() : "Quick save unavailable";
             command_cache.reset();
             return false;
@@ -1534,13 +1557,15 @@ enum class HumanMatchState { none, playing, finishing };
 HumanMatchState human_match_state(const State& s) {
     try {
         // The original keeps sixteen human-manager records across match views,
-        // including their nested tactics and confirmation screens.
+        // including their nested tactics and confirmation screens. A match the
+        // human only watches has no team link at +0xf0, but its engine is just
+        // as live: nothing shows the writer can serialize a world around one.
         auto result = HumanMatchState::none;
         for (unsigned i = 0; i < 16; ++i) {
             const auto record = 0x109806f0u + i * 0xfcu;
-            const auto bytes = s.memory.copy_out(record + 0xec, 8);
+            const auto bytes = s.memory.copy_out(record + 0xec, 4);
             const auto fixture = std::uint32_t(read_be<4>(bytes.data()));
-            if (!fixture || !read_be<4>(bytes.data() + 4)) continue;
+            if (!fixture) continue;
             const auto engine = s.memory.copy_out(fixture + 0x58, 4);
             const auto phase = s.memory.copy_out(fixture + 0x68, 1)[0];
             if (read_be<4>(engine.data())) {
@@ -1551,9 +1576,71 @@ HumanMatchState human_match_state(const State& s) {
         return result;
     } catch (const std::runtime_error&) { return HumanMatchState::playing; }
 }
+// The conditions under which the original's save dispatcher (0x102a54b0) gets
+// as far as saving, for the routes that do not pass through it. Its screen-count
+// test at 0x10744020 is left out on purpose: saving from a sub-screen is what
+// Command-S is for, and the dispatcher hook at 0x102a55b4 skips it as well.
+bool original_save_possible(const State& s) {
+    try {
+        const auto toc = std::uint32_t(s.r<4>(8));
+        if (toc < 0x8000) return false;
+        const auto u32 = [&](std::uint32_t address) { return std::uint32_t(s.memory.read<4>(address)); };
+        const auto root = u32(toc - 0x7bb0);
+        if (!root) return false;
+        const auto view = root + std::uint32_t(std::int32_t(std::int16_t(s.memory.read<2>(root + 0x2c58))) * 0x2c0);
+        if (s.memory.read<2>(view)) return false;  // 0x102a5590: a remote screen
+        const auto game = u32(view + 4);
+        if (!game || s.memory.read<1>(game + 0x6b) == 5) return false;  // 0x103557e0
+        // 0x102aa3d0: the record of the manager this view belongs to.
+        const auto index = std::int32_t(u32(game) - u32(u32(toc - 0x7be4))) + 0x10;
+        if (index < 0 || index >= 16) return false;
+        if (s.memory.read<1>(u32(toc - 0x5158) + std::uint32_t(index) * 0xfc) != 2) return false;  // 0x102a556c
+        // The live match view; a watched match need not be in any record.
+        const auto descriptor = u32(root + 0x10);
+        const auto vector = descriptor ? u32(descriptor + 8) : 0;
+        return !vector || u32(vector) != 0x1028dc80;
+    } catch (const std::runtime_error&) { return false; }
+}
+// What passes by itself, so a request can wait for it.
+bool original_save_settled(const State& s) {
+    try {
+        const auto toc = std::uint32_t(s.r<4>(8));
+        // An alert from 0x10769b60 can be up in the middle of any mutation.
+        if (toc < 0x8000 || s.memory.read<1>(toc - 0x356f)) return false;
+        return !s.memory.read<1>(std::uint32_t(s.memory.read<4>(toc - 0x7bb0)) + 0x2c5f);  // 0x102a5560
+    } catch (const std::runtime_error&) { return false; }
+}
+std::optional<std::array<std::uint8_t, 7>> quick_save_markers(const State& s) {
+    try {
+        const auto toc = std::uint32_t(s.r<4>(8));
+        if (toc < 0x8000) return std::nullopt;
+        std::array<std::uint8_t, 7> markers{};
+        markers[0] = std::uint8_t(s.memory.read<1>(std::uint32_t(s.memory.read<4>(toc - 0x63c0))));
+        markers[1] = std::uint8_t(s.memory.read<1>(std::uint32_t(s.memory.read<4>(toc - 0x6434))));
+        const auto date = s.memory.copy_out(std::uint32_t(s.memory.read<4>(toc - 0x63c8)), 5);
+        std::copy(date.begin(), date.end(), markers.begin() + 2);
+        return markers;
+    } catch (const std::runtime_error&) { return std::nullopt; }
+}
+void restore_quick_save_markers(State& s, const std::array<std::uint8_t, 7>& markers) {
+    const auto toc = std::uint32_t(s.r<4>(8));
+    s.memory.write<1>(std::uint32_t(s.memory.read<4>(toc - 0x63c0)), markers[0]);
+    s.memory.write<1>(std::uint32_t(s.memory.read<4>(toc - 0x6434)), markers[1]);
+    s.memory.copy_in(std::uint32_t(s.memory.read<4>(toc - 0x63c8)),
+                     std::vector<std::uint8_t>(markers.begin() + 2, markers.end()));
+}
+}
+void NativePlatform::set_quick_save_alert_observer(std::function<void(const std::string&)> observer) {
+    impl_->quick_save_alert_observer = std::move(observer);
 }
 void NativePlatform::quick_save_load_begin(State& s) {
     if (impl_->event_mode == EventMode::interactive) {
+        // The first load of a session: not the constructor, which check tools
+        // and replays also run on folders a game may be using.
+        if (!impl_->quick_save_swept && !impl_->quick_save_active) {
+            impl_->quick_save_swept = true;
+            remove_stale_quick_save_staging(impl_->writable);
+        }
         // A request from the previous career must not overwrite that career
         // after the original loader starts replacing the in-memory world.
         if (impl_->quick_save_queued) impl_->command_status = "Quick save canceled: loading another career";
@@ -1569,6 +1656,10 @@ void NativePlatform::quick_save_load_end(State& s) {
     const bool success = std::int8_t(s.r<4>(12)) != 0;
     impl_->quick_save_destination.finish_load(success);
     if (success) impl_->quick_save_last_target = std::move(impl_->quick_save_load_target);
+    else {
+        if (impl_->quick_save_last_target) impl_->command_status = "Quick save off until the next save or load";
+        impl_->quick_save_last_target.reset();
+    }
     impl_->quick_save_load_target.reset();
     impl_->quick_save_loading = false;
     if (!success || !impl_->quick_save_destination.last() || !impl_->quick_save_last_target) impl_->quick_save_queued = false;
@@ -1579,6 +1670,7 @@ bool NativePlatform::quick_save_write_begin(State& s) {
     // active transaction's tracking or write into the destination mid-save.
     if (impl_->quick_save_active && impl_->quick_save_tracking_write) return false;
     impl_->debug_attribute_save_override = impl_->quick_save_active ? impl_->quick_save_last_target : std::nullopt;
+    if (impl_->quick_save_active) impl_->quick_save_saved_markers = quick_save_markers(s);
     impl_->quick_save_tracking_write = s.r<4>(16) == 0x16;
     impl_->quick_save_rename_ok = false;
     impl_->quick_save_needs_rename = false;
@@ -1604,7 +1696,8 @@ void NativePlatform::quick_save_write_end(State& s) {
         bool promoted = false;
         bool has_previous_save = false;
         bool promotion_started = false;
-        impl_->command_status = "Quick save failed; files retained";
+        bool exchanged = false;  // The destination may already hold the new file.
+        bool unconfirmed = false;
         try {
             // The dispatcher also uses this buffer in its failure dialog.
             // Restore the user's path before returning from the staged writer.
@@ -1622,12 +1715,12 @@ void NativePlatform::quick_save_write_end(State& s) {
                 const auto result = impl_->quick_save_transaction->promote();
                 promoted = result.state == QuickSavePromotionState::promoted;
                 has_previous_save = !result.previous_save.empty();
+                unconfirmed = result.state == QuickSavePromotionState::promoted_unconfirmed;
+                exchanged = unconfirmed;
                 if (!promoted) {
                     std::fprintf(stderr, "Quick save promotion: %s: %s; retained: %s\n",
                                  result.error.operation.c_str(), result.error.code.message().c_str(),
                                  result.error.retained_directory.c_str());
-                    if (result.state == QuickSavePromotionState::promoted_unconfirmed)
-                        impl_->command_status = "Quick save uncertain; previous save retained";
                 } else if (!result.previous_save.empty()) {
                     std::fprintf(stderr, "Quick save retained previous file: %s\n", result.previous_save.c_str());
                 }
@@ -1636,16 +1729,37 @@ void NativePlatform::quick_save_write_end(State& s) {
             // An exception during promotion can follow the atomic exchange.
             // Preserve the staging directory and do not report success.
             std::fprintf(stderr, "Quick save completion error: %s\n", error.what());
-            if (promotion_started) impl_->command_status = "Quick save uncertain; files retained";
+            exchanged = promotion_started;
             impl_->data_forks.abort_write_audit();
         }
-        if (promoted) impl_->command_status = "Quick save complete";
-        else {
-            if (impl_->command_status != "Quick save uncertain; previous save retained" &&
-                impl_->command_status != "Quick save uncertain; files retained")
-                impl_->command_status = "Quick save failed; files retained";
+        using Outcome = Impl::QuickSaveOutcome;
+        impl_->quick_save_outcome = promoted ? Outcome::complete : exchanged ? Outcome::uncertain : Outcome::failed;
+        impl_->command_status = promoted ? "Quick save complete" : exchanged ?
+            "Quick save uncertain; previous save retained" : "Quick save failed; previous save unchanged";
+        if (!promoted) {
+            // The writer's successful path has already told the game it is
+            // saved, even after a failed rename. It is not, or not surely: keep
+            // the save prompt and the autosave clock as they were.
+            if (impl_->quick_save_saved_markers)
+                restore_quick_save_markers(s, *impl_->quick_save_saved_markers);
+            // The exchange happened, so the new career is probably in place,
+            // and its attribute locks must go with it.
+            if (unconfirmed) { s.wr<4>(12, 1); debug_attribute_save_end(s); }
             s.wr<4>(12, 0);
+            if (exchanged && impl_->quick_save_transaction) {
+                // Both versions must survive later cleanups.
+                const auto kept = impl_->quick_save_transaction->keep_for_recovery();
+                if (!kept) std::fprintf(stderr, "Quick save recovery mark: %s: %s\n",
+                                        kept.error().operation.c_str(), kept.error().code.message().c_str());
+            } else if (!promotion_started && impl_->quick_save_transaction) {
+                // Unlike a failed promotion, which leaves a complete new save
+                // there, this output is of no use to anyone.
+                const auto discarded = impl_->quick_save_transaction->discard_failed_staging();
+                if (!discarded) std::fprintf(stderr, "Quick save staging retained: %s: %s\n",
+                                             discarded.error().operation.c_str(), discarded.error().code.message().c_str());
+            }
         }
+        impl_->quick_save_saved_markers.reset();
         if (promoted && impl_->quick_save_transaction) {
             if (has_previous_save) {
                 // Keep one recovery copy until the next quick-save request.
@@ -1674,8 +1788,10 @@ bool NativePlatform::quick_save_available() const {
     return impl_->event_mode == EventMode::interactive && impl_->quick_save_destination.last().has_value() &&
         impl_->quick_save_last_target.has_value() && !impl_->quick_save_queued && !impl_->quick_save_active;
 }
+void NativePlatform::quick_save_note_boundary(const State& s) { impl_->quick_save_possible = original_save_possible(s); }
 bool NativePlatform::quick_save_request(State& s) {
-    if (!quick_save_available() || human_match_state(s) == HumanMatchState::playing) return false;
+    if (!quick_save_available() || human_match_state(s) == HumanMatchState::playing ||
+        !impl_->quick_save_possible) return false;
     impl_->quick_save_queued = true;
     return true;
 }
@@ -1686,22 +1802,32 @@ bool NativePlatform::quick_save_pending(State& s) {
         impl_->quick_save_queued = false;
         impl_->command_status = "Quick save canceled: match started";
     }
-    return impl_->quick_save_queued && match == HumanMatchState::none && !impl_->quick_save_tracking_write;
+    return impl_->quick_save_queued && match == HumanMatchState::none && !impl_->quick_save_tracking_write &&
+        impl_->quick_save_possible && original_save_settled(s);
 }
 bool NativePlatform::quick_save_prepare_path(State& s) {
     return quick_save_prepare_path_at(s, std::uint32_t(s.r<4>(4)) + 0x133c);
+}
+namespace {
+constexpr const char* quick_save_interrupted_message =
+    "The save was interrupted. Your previous save was not changed. Save again before quitting.";
 }
 void NativePlatform::quick_save_abandon() noexcept {
     if (!impl_->quick_save_active) return;
     if (impl_->debug_attribute_save_override) debug_attribute_save_abort();
     impl_->data_forks.abort_write_audit();
+    try {
+        if (impl_->quick_save_transaction) (void)impl_->quick_save_transaction->discard_failed_staging();
+    } catch (...) {}
     impl_->quick_save_transaction.reset();
+    impl_->quick_save_saved_markers.reset();
+    impl_->quick_save_outcome = Impl::QuickSaveOutcome::failed;
     impl_->quick_save_path_address = 0;
     impl_->quick_save_quiet = false;
     impl_->quick_save_active = false;
     impl_->quick_save_tracking_write = false;
     impl_->command_cache.reset();
-    try { impl_->command_status = "Quick save interrupted; files retained"; } catch (...) {}
+    try { impl_->command_status = "Quick save interrupted; previous save unchanged"; } catch (...) {}
 }
 bool NativePlatform::quick_save_call_dispatcher_writer(State& s) {
     // A nested dispatcher must take the ordinary call path, where the writer
@@ -1714,10 +1840,26 @@ bool NativePlatform::quick_save_call_dispatcher_writer(State& s) {
     s.wr<4>(4128, continuation);
     s.pc = 0x1034ba30;
     try { run_quick_save_until(s, continuation); }
-    catch (...) { quick_save_abandon(); throw; }
-    // A transfer may reach the continuation without the writer epilogue.
-    // Keep its guest state intact and do not promote the staged file.
-    if (impl_->quick_save_active) quick_save_abandon();
+    catch (...) {
+        quick_save_abandon();
+        impl_->quick_save_alert(quick_save_interrupted_message);
+        throw;
+    }
+    // A transfer may reach the continuation without the writer's epilogue, so
+    // the writer never reported anything: answer as a failed save, so that the
+    // dispatcher's own failure handling tells the player about the real path.
+    if (impl_->quick_save_active) {
+        try {
+            const auto& destination = impl_->quick_save_destination.last();
+            if (destination && impl_->quick_save_path_address) {
+                std::vector<std::uint8_t> path(destination->begin(), destination->end());
+                path.push_back(0);
+                s.memory.copy_in(impl_->quick_save_path_address, path);
+            }
+        } catch (const std::runtime_error&) {}
+        quick_save_abandon();
+        s.wr<4>(12, 0);
+    }
     return true;
 }
 bool NativePlatform::quick_save_prepare_path_at(State& s, std::uint32_t path_address, bool quiet_progress) {
@@ -1726,6 +1868,8 @@ bool NativePlatform::quick_save_prepare_path_at(State& s, std::uint32_t path_add
         std::fprintf(stderr, "Quick save preparation failed: %s\n", reason);
         impl_->command_status = "Quick save failed before writing";
         impl_->quick_save_queued = false;
+        impl_->quick_save_alert("The save could not start, so nothing was written. Your previous save was not changed. "
+                                "Save again before quitting.");
         return false;
     };
     if (!impl_->quick_save_last_target) return fail("no resolved destination");
@@ -1746,6 +1890,8 @@ bool NativePlatform::quick_save_prepare_path_at(State& s, std::uint32_t path_add
         }
         impl_->quick_save_previous_transaction.reset();
     }
+    remove_stale_quick_save_staging(impl_->writable);
+    remove_stale_quick_save_staging(impl_->quick_save_last_target->parent_path());
     auto transaction = QuickSaveTransaction::create(*impl_->quick_save_last_target, impl_->writable);
     if (!transaction) {
         std::fprintf(stderr, "Quick save staging: %s: %s\n", transaction.error().operation.c_str(),
@@ -1753,11 +1899,16 @@ bool NativePlatform::quick_save_prepare_path_at(State& s, std::uint32_t path_add
         return fail("cannot create private staging");
     }
     const auto path = impl_->quick_save_guest_staging_path((*transaction)->staged_path());
-    if (!path) return fail("staging path cannot be represented by the original game");
+    if (!path) {
+        (void)(*transaction)->discard_failed_staging();
+        return fail("staging path cannot be represented by the original game");
+    }
     std::vector<std::uint8_t> bytes(path->begin(), path->end());
     bytes.push_back(0);
-    if (!impl_->data_forks.begin_write_audit((*transaction)->staging_directory()))
+    if (!impl_->data_forks.begin_write_audit((*transaction)->staging_directory())) {
+        (void)(*transaction)->discard_failed_staging();
         return fail("cannot start staged-write audit");
+    }
     try { s.memory.copy_in(path_address, bytes); }
     catch (...) { impl_->data_forks.abort_write_audit(); throw; }
     impl_->quick_save_transaction = std::move(*transaction);
@@ -1765,9 +1916,11 @@ bool NativePlatform::quick_save_prepare_path_at(State& s, std::uint32_t path_add
     impl_->quick_save_quiet = quiet_progress;
     impl_->quick_save_queued = false;
     impl_->quick_save_active = true;
+    impl_->quick_save_outcome = Impl::QuickSaveOutcome::none;
     return true;
 }
 void NativePlatform::quick_save_at_screen_boundary(State& s) {
+    quick_save_note_boundary(s);
     if (!quick_save_pending(s)) return;
     struct Saved {
         decltype(State::registers) registers;
@@ -1795,14 +1948,40 @@ void NativePlatform::quick_save_at_screen_boundary(State& s) {
     s.pc = 0x1034ba30;
     auto* const caller_dispatch = s.dispatch_scope;
     try { run_quick_save_until(s, return_sentinel); }
-    catch (...) { quick_save_abandon(); throw; }
+    catch (...) {
+        quick_save_abandon();
+        impl_->quick_save_alert(quick_save_interrupted_message);
+        throw;
+    }
     // A context transfer can reach the continuation without the writer's
     // epilogue. Preserve that guest continuation rather than restoring the
     // abandoned screen callback's saved registers.
     if (impl_->quick_save_active) {
         quick_save_abandon();
+        impl_->quick_save_alert(quick_save_interrupted_message);
         if (caller_dispatch) throw GuestContextTransfer{&s, caller_dispatch};
         throw std::runtime_error("Quick-save writer abandoned without a dispatch owner");
+    }
+    // No dispatcher will look at the result on this route, so do its part:
+    // clear the writer's disk flags (0x102a56c4, 0x102a56f0) and tell the player.
+    using Outcome = Impl::QuickSaveOutcome;
+    if (impl_->quick_save_outcome != Outcome::complete) {
+        bool disk_full = false;
+        try {
+            const auto toc = std::uint32_t(s.r<4>(8));
+            for (const auto slot : {0x63ccu, 0x63d0u}) {
+                const auto flag = std::uint32_t(s.memory.read<4>(toc - slot));
+                if (s.memory.read<1>(flag)) disk_full = true;
+                s.memory.write<1>(flag, 0);
+            }
+        } catch (const std::runtime_error&) {}
+        impl_->quick_save_alert(
+            impl_->quick_save_outcome == Outcome::uncertain ?
+                "The save may have replaced your career file, but this could not be confirmed. "
+                "The previous version was kept. Save again before quitting." :
+            disk_full ? "There is not enough disk space. Your previous save was not changed. "
+                        "Free some space and save again before quitting." :
+                "The save did not complete. Your previous save was not changed. Save again before quitting.");
     }
     s.memory.copy_in(stack, scratch);
     s.registers = saved->registers;

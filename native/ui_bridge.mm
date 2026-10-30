@@ -821,12 +821,14 @@ void NativeUI::show_dialog(std::uint32_t token) {
     [dialog.panel makeKeyAndOrderFront:nil];
     if (!dialog.session) dialog.session = [NSApp beginModalSessionForWindow:dialog.panel];
 }
-void NativeUI::suspend_dialog(std::uint32_t token) {
-    auto& dialog = impl_->dialogs.at(token);
-    if (dialog.session) { [NSApp endModalSession:dialog.session]; dialog.session = nil; }
-    [dialog.panel orderOut:nil];
-    [NSApp.mainWindow makeKeyAndOrderFront:nil];
+void NativeUI::show_alert(const std::string& title, const std::string& message) {
+    NSAlert* alert = [NSAlert new];
+    alert.alertStyle = NSAlertStyleCritical;
+    alert.messageText = [NSString stringWithUTF8String:title.c_str()];
+    alert.informativeText = [NSString stringWithUTF8String:message.c_str()];
+    [alert runModal];
 }
+void NativeUI::beep() { NSBeep(); }
 bool NativeUI::take_quick_save_request() {
     const auto found = std::find_if(impl_->pending.begin(), impl_->pending.end(), [](const auto& event) {
         return event.kind == UIEvent::Kind::quick_save;

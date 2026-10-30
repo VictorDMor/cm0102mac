@@ -56,11 +56,14 @@ Rebuilding the original restart lifecycle is outside this presentation change.
 Command-S takes precedence over the original sound toggle and requests a save to
 the full path of the most recently completed career load or save. A failed save
 or final rename does not replace that path. When no destination is known, use
-Save Game to choose one. Requests are rejected while a human-controlled match is
-playing. They can be consumed at a screen-manager boundary or by the original
-save dispatcher; a request during a low-level alert can wait until it closes.
-Victor confirmed save and reload with the previous installed version. The later
-screen-boundary and staging changes have not been played or tested.
+Save Game to choose one, and after a failed load, which may have replaced part of
+the world. Requests are rejected while a match is live, managed or watched. They
+are consumed at a screen-manager boundary or by the original save dispatcher,
+under the dispatcher's own conditions; a request during a low-level alert, or
+in Preferences, waits until it closes. Those conditions and the writer depend on
+the current row at root+0x2c58, which event waits leave at 16: read it only at a
+boundary, and do not run the writer from inside an event wait. A failed save
+keeps the game marked as unsaved and shows the original's dialog or a host alert.
 Ordinary letters, Return, Escape and filename editing retain original input.
 The original file dialog accepts a typed name, Return to finish editing and
 Return to confirm. Existing names can be edited with End and Backspace. The

@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include "audio_bridge.hpp"
 #include <cstdint>
 #include <filesystem>
@@ -41,6 +42,7 @@ public:
     bool debug_attribute_change_available() const;
     bool quick_save_available() const;
     bool quick_save_request(State&);
+    void quick_save_note_boundary(const State&);
     bool quick_save_pending(State&);
     bool quick_save_prepare_path(State&);
     bool quick_save_call_dispatcher_writer(State&);
@@ -48,6 +50,8 @@ public:
     bool quick_save_prepare_path_at(State&, std::uint32_t buffer, bool quiet_progress = false);
     bool quick_save_quiet_progress() const;
     void quick_save_at_screen_boundary(State&);
+    // Receives the messages quick save would otherwise show in an alert.
+    void set_quick_save_alert_observer(std::function<void(const std::string&)>);
 private:
     void quick_save_abandon() noexcept;
     struct Impl;

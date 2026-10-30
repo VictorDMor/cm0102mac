@@ -89,8 +89,10 @@ public:
     void create_dialog(std::uint32_t token, const DialogDefinition& dialog, const std::vector<DialogItem>& items);
     bool is_dialog(std::uint32_t token) const;
     void show_dialog(std::uint32_t token);
-    void suspend_dialog(std::uint32_t token);
     bool take_quick_save_request();
+    // Waits for the player to acknowledge a message the game itself cannot show.
+    void show_alert(const std::string& title, const std::string& message);
+    void beep();
     // Waits up to `timeout_seconds` for a click on an enabled item: its number, or 0.
     std::int16_t dialog_click(std::uint32_t token, double timeout_seconds);
     bool dialog_item_enabled(std::uint32_t token, std::int16_t item) const;
