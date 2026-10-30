@@ -3698,3 +3698,37 @@ if(CM_TRANSFER_SCREENS_COVERAGE)
     target_compile_definitions(cm-transfer-screens-checks PRIVATE CM_TRANSFER_SCREENS_COVERAGE=1)
     target_link_options(cm-transfer-screens-checks PRIVATE "-fprofile-instr-generate=${CM_TRANSFER_SCREENS_PROFILE}")
 endif()
+
+file(GLOB CM_NATION_AWARDS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/nation_awards*.cpp")
+list(FILTER CM_NATION_AWARDS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_NATION_AWARDS_SOURCES})
+add_executable(cm-nation-awards-checks nation_awards_checks.cpp)
+target_link_libraries(cm-nation-awards-checks PRIVATE cm_aot)
+target_compile_options(cm-nation-awards-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_NATION_AWARDS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/nation_awards_reference.cpp")
+    add_custom_command(OUTPUT "${CM_NATION_AWARDS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_nation_awards_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_NATION_AWARDS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_nation_awards_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/nation_awards_audit.py"
+            "${CMAKE_SOURCE_DIR}/nation_awards_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-nation-awards-checks PRIVATE "${CM_NATION_AWARDS_REFERENCE}")
+    add_test(NAME nation_awards_equivalence COMMAND cm-nation-awards-checks "${CM_ORACLE_DIR}")
+    add_test(NAME nation_awards_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_nation_awards_audit.py")
+endif()
+option(CM_NATION_AWARDS_COVERAGE "Instrument NATION_AWARDS.CPP checker only" OFF)
+if(CM_NATION_AWARDS_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/nation-awards-coverage")
+    set(CM_NATION_AWARDS_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/nation-awards-coverage/check-%p.profraw")
+    add_library(cm_nation_awards_coverage OBJECT ${CM_NATION_AWARDS_SOURCES})
+    target_link_libraries(cm_nation_awards_coverage PRIVATE cm_aot)
+    target_compile_options(cm_nation_awards_coverage PRIVATE "-fprofile-instr-generate=${CM_NATION_AWARDS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_nation_awards_coverage PRIVATE CM_NATION_AWARDS_COVERAGE=1)
+    target_sources(cm-nation-awards-checks PRIVATE $<TARGET_OBJECTS:cm_nation_awards_coverage>)
+    target_compile_definitions(cm-nation-awards-checks PRIVATE CM_NATION_AWARDS_COVERAGE=1)
+    target_link_options(cm-nation-awards-checks PRIVATE "-fprofile-instr-generate=${CM_NATION_AWARDS_PROFILE}")
+endif()

@@ -813,3 +813,18 @@ while still incrementing the iteration counter. Both original quirks remain.
 The sampler's wrapped signed `bound * 10 / 65535` correction is always within
 `[-32768,32768]`, so the original's deeper wide-range unrolling and recursive
 call cannot execute. Headline rendering deliberately reads news slot six twice.
+
+## NATION_AWARDS.CPP: national awards and monthly ratings
+
+The base-class constructor, destructor, daily update and collection methods
+precede the first source-pool reference. Three sort callbacks and a one-instruction
+virtual method complete the 20-entry boundary. Selection retains the original
+threshold relaxation, signed-byte age checks and cumulative count of rejected
+older players across passes; it does not reset that count at each threshold.
+
+Serialization calls each child award first, then writes one byte indicating
+monthly-rating storage, followed by that external object's existing stream.
+Loading invokes the virtual reset before reading the flag. A failed monthly
+object allocation still returns success with a null pointer, as the original
+does. The global selector also retains its allocation when no candidate survives
+the initial scan. Neither quirk is silently changed by reconstruction.
