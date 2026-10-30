@@ -124,8 +124,11 @@ int main() {
                         characters:characters charactersIgnoringModifiers:characters isARepeat:repeat keyCode:code];
                     [NSApp postEvent:native atStart:NO];
                 };
-                ui.update_commands(context,"Ready");
-                key(@"s",1,false,0,NSEventModifierFlagCommand); expect_save();
+                ui.update_commands(context,"Ready",true);
+                key(@"s",1,false,0,NSEventModifierFlagCommand);
+                require(ui.poll(event,0) && event.kind == UIEvent::Kind::quick_save,
+                    "Command-S did not queue the quick-save request");
+                require(!ui.poll(event,0), "Quick save produced duplicate input");
                 // Releasing Command before S must still consume S's key-up;
                 // a nested original filename editor never received its down.
                 NSEvent* released = [NSEvent keyEventWithType:NSEventTypeKeyUp location:NSZeroPoint modifierFlags:0
@@ -141,6 +144,10 @@ int main() {
                 ui.update_commands({},"File dialog");
                 key(@"s",1,false,0,NSEventModifierFlagCommand);
                 require(!ui.poll(event,0), "Disabled Save reached a text field");
+                ui.update_commands({},"File dialog",true);
+                key(@"s",1,false,0,NSEventModifierFlagCommand);
+                require(ui.poll(event,0) && event.kind == UIEvent::Kind::quick_save,
+                    "Quick save was unavailable in a file dialog");
                 key(@"s",1,false,0,0);
                 require(ui.poll(event,0) && event.kind == UIEvent::Kind::key_down && (event.message & 255) == 's',
                     "Ordinary filename character was intercepted");

@@ -1,5 +1,6 @@
 #include "screen_manager_packets.hpp"
 #include "screen_manager_sound.hpp"
+#include "platform.hpp"
 
 namespace cm::aot::screen_manager {
 using namespace detail;
@@ -64,6 +65,7 @@ std::uint32_t run_client(Cpu& c,std::uint32_t address) {
                             do {
                                 p.call(0x1076fe80,0x1073ded0);p.call(0x10719350,0x1073dee4,{screen()});
                                 c.set(4,manager.history());p.callback(c.u32(c.r(4)+8),0x1073defc);c.set(16,c.r(3));
+                                if(c.s.platform)c.s.platform->quick_save_at_screen_boundary(c.s);
                                 if(compare(c,c.r(16),-9)==0)break;
                             }while(compare(c,c.r(16),-11)!=0);
                         }while(compare(c,c.r(16),-9)!=0);
@@ -101,6 +103,7 @@ std::uint32_t run_client(Cpu& c,std::uint32_t address) {
                 p.call(0x1077f900,0x1073e0e0,{frame.at(0x44)});
             }
         }
+        if(c.s.platform && !std::int8_t(c.r(26)))c.s.platform->quick_save_at_screen_boundary(c.s);
     }while(!byte_nonzero(c,c.r(26)));
     auto out=packet(c,frame,address);c.put32(out.position,0);
     out.integer(1,19,0x1073e118,0xe8,0x60,0x85);out.integer(2,missing,0x1073e198,0xc8,0x58,0x86);

@@ -1590,6 +1590,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_presentation.hpp"')
     if page in MATCH_SPEED_PAGES:
         code.insert(1, '#include "match_speed.hpp"')
+    if page in (0x100ac, 0x100ad, 0x100ae, 0x100af,
+                0x102a5, 0x10346, 0x1034b, 0x1034c, 0x1034d):
+        code.insert(1, '#include "platform.hpp"')
     if page in (0x10346, 0x1034b, 0x1034d):
         code.insert(1, '#include "platform.hpp"')
     if page in (0x1028c, 0x1028d, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
@@ -1711,21 +1714,56 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.append(f"case 0x{a:x}: goto i_{a:x};")
     code.extend(["default: return false;", "}"])
     hooked, isolated, special = set(), set(HOST_OBSERVED_INSTRUCTIONS), set()
+    quick_save_hooks = {
+        0x102a5584: ("beq 0x102a5784", "if (s.platform && s.platform->quick_save_pending(s)) goto i_102a5588;"),
+        0x102a55b4: ("bne 0x102a5784", "if (s.platform && s.platform->quick_save_pending(s)) goto i_102a55b8;"),
+        0x102a5668: ("blt 0x102a5784", "if (s.platform && s.platform->quick_save_pending(s)) goto i_102a566c;"),
+        0x102a5688: ("addi r3,r1,0x133c", "if (s.platform && !s.platform->quick_save_prepare_path(s)) goto i_102a5784;"),
+        0x102a5690: ("bl 0x1034ba30", "if (s.platform && s.platform->quick_save_call_dispatcher_writer(s)) goto i_102a5694;"),
+        0x10346bc0: ("mfspr r0,LR", "if (s.platform) s.platform->quick_save_load_begin(s);"),
+        0x1034ba18: ("lwz r0,0x2078(r1)", "if (s.platform) s.platform->quick_save_load_end(s);"),
+        0x1034ba30: ("mfspr r0,LR", "if (s.platform && !s.platform->quick_save_write_begin(s)) { s.wr<4>(12, 0); s.pc = std::uint32_t(s.r<4>(4128)); return true; }"),
+        0x1034ddb8: ("beq 0x1034de50", "if (s.platform) s.platform->quick_save_write_mode(s);"),
+        0x1034de50: ("lhz r0,0x2(r14)", "if (s.platform) s.platform->quick_save_write_renamed(s);"),
+        0x1034de8c: ("lwz r0,0x1798(r1)", "if (s.platform) s.platform->quick_save_write_end(s);"),
+    }
+    # The writer and its base-save helper show progress through the local
+    # screen even when the active view is a client/modal screen. Quiet saves
+    # skip only these known progress calls; alerts remain fully interactive.
+    quick_save_progress_calls = {
+        0x1034bd38, 0x1034c83c, 0x1034c8cc, 0x1034c95c, 0x1034c9ec,
+        0x1034ca88, 0x1034cb18, 0x1034cba8, 0x1034cc38, 0x1034ccc8,
+        0x1034cd58, 0x1034cde8, 0x1034ce78, 0x1034cf08, 0x1034cf98,
+        0x1034d028, 0x1034d0b0, 0x1034d140, 0x1034d1d0, 0x1034d260,
+        0x1034d2f0, 0x1034d380, 0x1034d410, 0x1034d4a0, 0x1034d530,
+        0x1034d610, 0x1034d6a0, 0x1034d730, 0x1034d7c0, 0x1034d850,
+        0x1034d8e0, 0x1034d978, 0x1034da08, 0x1034da98, 0x1034db28,
+        0x1034dbb8, 0x1034dc48,
+        0x100ac028, 0x100ac058, 0x100ac2a0, 0x100ac4e8, 0x100ac730,
+        0x100ac978, 0x100acbcc, 0x100ace20, 0x100ad080, 0x100ad2d4,
+        0x100ad528, 0x100ad790, 0x100ada6c, 0x100adcc0, 0x100adf20,
+        0x100ae174, 0x100ae3c8, 0x100ae61c, 0x100ae870, 0x100aeac8,
+        0x100aed90, 0x100af034, 0x100af2d8, 0x100af51c,
+    }
     for item in instructions:
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
         hooks_start = len(code)
-        if competition_retirement_hooks and a == 0x10482ca0:
-            if item["assembly"] != "mfspr r0,LR":
-                raise ValueError("Retired cup daily entry no longer matches the audited release")
-            code.append("if (inter_amer_cup_skip_daily(s)) return true;")
-            isolated.add(a)
-        if native_sort8_hooks and a == NATIVE_SORT8_ENTRY:
-            code.append("if (try_native_sort8(s)) return true;")
-        if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
-            code.append(f"if (try_native_record_fields(s, 0x{a:x})) return true;")
+        if a in quick_save_progress_calls:
+            if item["assembly"] != "bl 0x10743120" or a + 4 not in page_addresses:
+                raise ValueError(f"Quick-save progress boundary changed at {a:x}")
+            code.append(f"if (s.platform && s.platform->quick_save_quiet_progress()) {{ s.wr<4>(2440, s.r<4>(8)); s.wr<4>(4128, 0x{a + 4:x}); goto i_{a + 4:x}; }}")
         if a == 0x1034ba30:
             code.append("if (s.platform && !s.platform->debug_attribute_save_may_enter(s)) { s.wr<4>(12, 0); s.pc = std::uint32_t(s.r<4>(4128)); return true; }")
+        if a in quick_save_hooks:
+            expected, hook = quick_save_hooks[a]
+            if item["assembly"] != expected:
+                raise ValueError(f"Quick-save original boundary changed at {a:x}")
+            if a in (0x102a5584, 0x102a55b4, 0x102a5668, 0x102a5690) and a + 4 not in page_addresses:
+                raise ValueError(f"Incomplete quick-save dispatcher boundary at {a:x}")
+            if a == 0x102a5688 and 0x102a5784 not in page_addresses:
+                raise ValueError("Incomplete quick-save failure boundary")
+            code.append(hook)
         if a in (0x10346bc0, 0x1034ba18, 0x1034ba30, 0x1034ddb8, 0x1034de50, 0x1034de8c):
             instruction, method = {
                 0x10346bc0: ("mfspr r0,LR", "debug_attribute_load_begin"),
@@ -1741,6 +1779,15 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 code.append("if (s.platform && !s.platform->debug_attribute_save_begin(s)) { s.wr<4>(12, 0); s.pc = std::uint32_t(s.r<4>(4128)); return true; }")
             else:
                 code.append(f"if (s.platform) s.platform->{method}(s);")
+        if competition_retirement_hooks and a == 0x10482ca0:
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError("Retired cup daily entry no longer matches the audited release")
+            code.append("if (inter_amer_cup_skip_daily(s)) return true;")
+            isolated.add(a)
+        if native_sort8_hooks and a == NATIVE_SORT8_ENTRY:
+            code.append("if (try_native_sort8(s)) return true;")
+        if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
+            code.append(f"if (try_native_record_fields(s, 0x{a:x})) return true;")
         if a in (0x102e45b8, 0x102e4604, 0x102e27e0, 0x102da274, 0x100a4e50, 0x10343630):
             instruction, hook = {
                 0x102e45b8: ("lwz r3,-0x7a64(r2)", "s.memory.unlock_debug_player_attributes(std::uint32_t(s.r<4>(120)));"),

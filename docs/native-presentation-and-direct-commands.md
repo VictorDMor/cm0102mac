@@ -39,7 +39,8 @@ game frame/content dimensions. Save/Load was not retested for this change.
 | Stable identifier | Native control / shortcut | Supported context |
 | --- | --- | --- |
 | `continue_game` | Game > Continue Game; Command-Return | Enabled original Continue control on a career screen |
-| `save_game` | File > Save; Command-S; Game > Save Game… | Enabled original Save action on a career screen |
+| `save_game` | File > Save; Game > Save Game… | Enabled original Save action on a career screen |
+| `quick_save` | Game > Save to Last File; Command-S | A previously loaded or saved career outside a human-controlled match |
 | `load_game` | Game > Load Game…; Command-O | Start screen only |
 | `open_game_options` | Game > Game Options…; Command-comma | Start screen and supported career screens |
 | `back_or_cancel` | Game > Back or Cancel; Command-[ | Original Back control, file/options dialog Cancel, or confirmation No |
@@ -52,7 +53,14 @@ original button input. The native menu explains: save and quit first, reopen,
 then Load. It neither silently discards a career nor pretends Restart succeeded.
 Rebuilding the original restart lifecycle is outside this presentation change.
 
-The File Save shortcut takes precedence over the original Command-S sound toggle.
+Command-S takes precedence over the original sound toggle and requests a save to
+the full path of the most recently completed career load or save. A failed save
+or final rename does not replace that path. When no destination is known, use
+Save Game to choose one. Requests are rejected while a human-controlled match is
+playing. They can be consumed at a screen-manager boundary or by the original
+save dispatcher; a request during a low-level alert can wait until it closes.
+Victor confirmed save and reload with the previous installed version. The later
+screen-boundary and staging changes have not been played or tested.
 Ordinary letters, Return, Escape and filename editing retain original input.
 The original file dialog accepts a typed name, Return to finish editing and
 Return to confirm. Existing names can be edited with End and Backspace. The
@@ -91,7 +99,7 @@ input slots populated by the original control registration/input routines
 selection exactly once, returning it to the existing screen handler. The native
 callback only queues an identity; the engine is never reentered from AppKit.
 
-Save uses the original File menu identity 2/item 1. The native menu bridge latches
+Save Game uses the original File menu identity 2/item 1. The native menu bridge latches
 that selection and returns a reserved EventRecord Point token through the normal
 FindWindow/menu preparation/MenuSelect path. It is a dispatch token, not a physical
 position. The original `0x107708c0` menu handler and original save serialization
@@ -99,6 +107,19 @@ execute normally. MenuSelect verifies installed/enabled identities after origina
 menu preparation and consumes the latch once. Enable/DisableMenuItem and HiliteMenu
 support that path. GetMenu resolves the already installed menu for this narrow
 preparation path; this does not implement general menu-resource loading.
+
+Quick save tracks the complete original-game path at the load and save boundaries;
+the saved preference's folder and basename are insufficient because a failed
+Save As can change the basename and an external load can use another folder.
+Only successful load or save completion with a successful final rename establishes
+the destination. A host request invokes the original career serializer using a
+private staged file, followed by an atomic promotion to the selected destination.
+The prior file is retained as a recovery copy; the preceding managed copy may be
+discarded on the next quick-save request when the target and file identities
+still match. Failures not reported by the original serializer are not all
+observable. The original game's 256-byte path buffers limit guest paths to 255
+bytes. A human manager's linked fixture and live match engine prevent a save
+during match play. The original Save Game dialog remains available separately.
 
 The original Save/Quit global action is withdrawn at the next event boundary
 only if it still equals the value owned by that native event. This prevents a

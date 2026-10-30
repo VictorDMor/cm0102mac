@@ -15,7 +15,7 @@
 namespace cm::aot {
 struct NativeDrawing;
 struct UIEvent {
-    enum class Kind { launch, quit, open_files, mouse_down, mouse_up, key_down, update, menu, key_up, auto_key, wheel, activate, suspend_resume, mouse_moved, command, print_files };
+    enum class Kind { launch, quit, open_files, mouse_down, mouse_up, key_down, update, menu, key_up, auto_key, wheel, activate, suspend_resume, mouse_moved, command, print_files, quick_save };
     Kind kind;
     std::uint32_t window = 0, message = 0;
     std::int16_t x = 0, y = 0;
@@ -77,7 +77,7 @@ public:
     std::string menu_item_text(std::uint32_t menu, std::uint16_t item) const;
     void set_menu_item_text(std::uint32_t menu, std::uint16_t item, const std::string& text);
     void redraw_menu_bar();
-    void update_commands(const CommandContext& context, std::string_view status);
+    void update_commands(const CommandContext& context, std::string_view status, bool quick_save_available = false);
     bool set_interface_scale(InterfaceScale scale);
     InterfaceScale interface_scale() const;
     double presentation_scale() const;
@@ -89,6 +89,8 @@ public:
     void create_dialog(std::uint32_t token, const DialogDefinition& dialog, const std::vector<DialogItem>& items);
     bool is_dialog(std::uint32_t token) const;
     void show_dialog(std::uint32_t token);
+    void suspend_dialog(std::uint32_t token);
+    bool take_quick_save_request();
     // Waits up to `timeout_seconds` for a click on an enabled item: its number, or 0.
     std::int16_t dialog_click(std::uint32_t token, double timeout_seconds);
     bool dialog_item_enabled(std::uint32_t token, std::int16_t item) const;

@@ -1,4 +1,5 @@
 #include "guest_context_transfer.hpp"
+#include "quick_save_runtime.hpp"
 #include "aot_runtime.hpp"
 #include <algorithm>
 
@@ -6,6 +7,12 @@ namespace cm::aot {
 // Each State keeps its own scope chains, innermost first; scopes are stack
 // objects, so construction and destruction stay last-in, first-out.
 GuestDispatchScope* guest_dispatch_scope(State& state) noexcept { return state.dispatch_scope; }
+namespace { thread_local GuestDispatchScope* quick_save_boundary = nullptr; }
+GuestDispatchScope* set_quick_save_dispatch_boundary(GuestDispatchScope* boundary) noexcept {
+    auto* previous = quick_save_boundary;
+    quick_save_boundary = boundary;
+    return previous;
+}
 GuestDispatchScope::GuestDispatchScope(State& state) noexcept : GuestDispatchScope(state, return_sentinel) {}
 GuestDispatchScope::GuestDispatchScope(State& state, std::uint32_t return_pc) noexcept : state_(&state),
     entry_stack_(std::uint32_t(state.r<4>(4))), return_pc_(return_pc), previous_(state.dispatch_scope),
@@ -80,7 +87,8 @@ void complete_context_transfer(State& state) {
     // different function in that frame is still inside this callback dispatch;
     // its handler must finish before the surviving semantic caller resumes.
     if (function && current->caller_ && current->caller_->allocated_ &&
-        current->caller_->frame_ == frame && current->caller_->function_ != function)
+        current->caller_->frame_ == frame && current->caller_->function_ != function &&
+        (current != quick_save_boundary || frame <= current->entry_stack_))
         throw GuestContextTransfer{&state, current};
     // Use the unwound frame, not restored r1: the original can retain a deeper
     // stack address while replacing its backchain with the recovered caller's.

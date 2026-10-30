@@ -29,6 +29,18 @@ public:
                        std::span<const std::uint8_t> buffer, std::uint32_t& actual);
     std::int16_t resize(std::int16_t ref, std::int64_t bytes);
     std::int16_t resize(std::int16_t ref, std::uint16_t mode, std::int64_t offset);
+    // A quick-save staging directory is private to one operation. Track
+    // physical write, seek, resize, close and durability failures there.
+    // Unattributed mutating failures are conservatively latched separately.
+    bool begin_write_audit(const std::filesystem::path& directory);
+    bool finish_write_audit();
+    void abort_write_audit() noexcept;
+    void note_write_audit_failure(std::int16_t ref);
+    void note_write_audit_failure(const std::filesystem::path& path);
+    void note_write_audit_directory_failure(const std::filesystem::path& directory);
+    // For a failed mutating request whose path cannot be resolved. Such an
+    // unrelated concurrent failure can conservatively reject a quick save.
+    void note_unattributed_write_audit_failure();
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

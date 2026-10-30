@@ -5,6 +5,10 @@
 #include "ui_bridge.hpp"
 #include "native_drawing.hpp"
 #include "direct_commands.hpp"
+#include "quick_save.hpp"
+#include "quick_save_transaction.hpp"
+#include "quick_save_runtime.hpp"
+#include "guest_context_transfer.hpp"
 #include "match_debugging.hpp"
 #include "debug_attribute_persistence.hpp"
 #include "resource_bridge.hpp"
@@ -124,9 +128,16 @@ std::uint32_t mac_date(std::int64_t unix_seconds) {
 }
 struct NativePlatform::Impl {
     NativeDrawingObserver drawing;
-    std::optional<fs::path> debug_attribute_load_target, debug_attribute_save_target;
+    std::optional<fs::path> debug_attribute_load_target, debug_attribute_save_target, debug_attribute_save_override;
     bool debug_attribute_loading = false, debug_attribute_saving = false;
     bool debug_attribute_rename_needed = false, debug_attribute_rename_ok = false;
+    QuickSaveDestination quick_save_destination;
+    bool quick_save_queued = false, quick_save_rename_ok = false, quick_save_tracking_write = false, quick_save_active = false;
+    bool quick_save_needs_rename = false, quick_save_loading = false, quick_save_quiet = false;
+    std::optional<fs::path> quick_save_last_target, quick_save_load_target, quick_save_write_target;
+    std::unique_ptr<QuickSaveTransaction> quick_save_transaction;
+    std::unique_ptr<QuickSaveTransaction> quick_save_previous_transaction;
+    std::uint32_t quick_save_path_address = 0;
     explicit Impl(AudioMode mode, EventMode events) : sound(mode), event_mode(events) {}
     std::optional<fs::path> debug_attribute_target(const State& s, std::uint32_t address) const {
         if (!address) return std::nullopt;
@@ -238,6 +249,24 @@ struct NativePlatform::Impl {
         for (;;) {
             // Automation is offered at most every 50 ms; without it the wait is longer.
             if (const auto item = user_interface().dialog_click(front_dialog, automation ? 0.05 : 0.5)) return item;
+            // Preferences is the one native modal whose guest caller is idle
+            // here. End its AppKit session while the original writer runs so
+            // the writer's own error alerts can receive input.
+            if (s.r<4>(4128) == 0x10770e94 && user_interface().take_quick_save_request()) {
+                if (s.platform && s.platform->quick_save_request(s)) {
+                    const auto dialog = front_dialog;
+                    user_interface().suspend_dialog(dialog);
+                    // ModalDialog is a Carbon import: its descriptor uses a
+                    // different TOC. The caller's game TOC is saved by the
+                    // import glue in its linkage area.
+                    const auto import_toc = std::uint32_t(s.r<4>(8));
+                    const auto game_toc = std::uint32_t(s.memory.read<4>(std::uint32_t(s.r<4>(4)) + 0x14));
+                    s.wr<4>(8, game_toc);
+                    s.platform->quick_save_at_screen_boundary(s);
+                    s.wr<4>(8, import_toc);
+                    user_interface().show_dialog(dialog);
+                }
+            }
             if (!automation) continue;
             automation->enter(s.executed);
             automation->boundary(s, waiting, "Native dialog: awaiting interaction");
@@ -402,17 +431,21 @@ struct NativePlatform::Impl {
         return output;
     }
     std::int16_t delete_object(const fs::path& target) {
-        if (!fs::exists(fs::symlink_status(target))) return file_not_found;
+        const auto fail = [&](std::int16_t error) { data_forks.note_write_audit_failure(target); return error; };
+        if (!fs::exists(fs::symlink_status(target))) return fail(file_not_found);
         if (volume_root(target) || target == overlay() ||
-            logical_path(target) == logical_path(directory(current_volume, current_directory))) return -47;
+            logical_path(target) == logical_path(directory(current_volume, current_directory))) return fail(-47);
         // Original media is immutable. Removing a private replacement must not
         // reveal the original again: that case needs persistent tombstones.
         const auto logical = logical_path(target);
         if (!under(fs::canonical(target.parent_path()), writable) ||
-            (under(logical, game) && fs::exists(fs::symlink_status(logical))))
+            (under(logical, game) && fs::exists(fs::symlink_status(logical)))) {
+            data_forks.note_write_audit_failure(target);
             throw std::runtime_error("Deleting an original media entry requires private tombstone support: " + target.string());
+        }
         data_forks.make_durable(target.parent_path());
         const auto status = native_delete_object(target);
+        if (status) data_forks.note_write_audit_failure(target);
         if (!status) {
             file_ids.erase(logical);
             std::erase_if(directories, [&](const auto& entry) { return logical_path(entry.second) == logical; });
@@ -422,21 +455,24 @@ struct NativePlatform::Impl {
 
     // `name` is a host name; callers convert Mac names with host_name.
     std::int16_t rename_object(const fs::path& target, const std::string& name, std::uint32_t encoding = UINT32_MAX) {
+        const auto fail = [&](std::int16_t error) { data_forks.note_write_audit_failure(target); return error; };
         if (name.empty() || name == "." || name == ".." || name.find('/') != std::string::npos ||
-            name.find('\0') != std::string::npos) return bad_name;
-        if (!fs::exists(fs::symlink_status(target))) return file_not_found;
+            name.find('\0') != std::string::npos) return fail(bad_name);
+        if (!fs::exists(fs::symlink_status(target))) return fail(file_not_found);
         const auto logical = logical_path(target);
         // Renaming original entries requires a tombstone so the old media
         // name cannot reappear. Keep this unsupported case mutation-free.
         if (volume_root(target) || target == overlay() ||
             !under(fs::canonical(target.parent_path()), writable) ||
-            (under(logical, game) && fs::exists(fs::symlink_status(logical))))
+            (under(logical, game) && fs::exists(fs::symlink_status(logical)))) {
+            data_forks.note_write_audit_failure(target);
             throw std::runtime_error("Renaming an original media entry requires private tombstone support: " + target.string());
+        }
         const auto destination = visible_child(target.parent_path(), name);
-        if (fs::exists(fs::symlink_status(destination)) && !fs::equivalent(target, destination)) return -48;
+        if (fs::exists(fs::symlink_status(destination)) && !fs::equivalent(target, destination)) return fail(-48);
         data_forks.make_durable(target.parent_path());
         const auto error = native_rename_object(target, name, encoding);
-        if (error) return error;
+        if (error) return fail(error);
         const auto renamed = fs::canonical(target.parent_path() / name);
         const auto new_logical = logical_path(renamed);
         // PBHRename preserves file and directory IDs, including descendants of
@@ -679,6 +715,12 @@ struct NativePlatform::Impl {
             command_cache.emplace(*screen, commands);
             command_cache_at = std::chrono::steady_clock::now();
         }
+        // The writer pumps native events while serializing. Do not dispatch
+        // another host command against its transient progress screen.
+        if (s.platform && s.platform->quick_save_busy()) {
+            commands = {};
+            command_cache.reset();
+        }
         struct AutomationWait {
             Automation* automation; const State& s; std::uint64_t& polled_at;
             AutomationWait(Automation* a, const State& state, std::uint64_t& polled) : automation(a), s(state), polled_at(polled) {
@@ -697,15 +739,34 @@ struct NativePlatform::Impl {
                 command_status = "Original game returned to an interactive screen";
 
         }
-        user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing");
+        user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing",
+                                         s.platform && s.platform->quick_save_available());
         if (automation) automation->boundary(s, commands, commands.ready ? command_status : "Unavailable while processing");
-        auto matches = [&](const UIEvent& event) { return (legacy_event_mask(event) & mask) != 0; };
+        auto matches = [&](const UIEvent& event) {
+            // The writer may pump events while the staged output is open.
+            // Let its dialogs receive ordinary input, but do not start a new
+            // career or quit until the current save has finished.
+            if (s.platform && s.platform->quick_save_busy() &&
+                (event.kind == UIEvent::Kind::quit || event.kind == UIEvent::Kind::open_files ||
+                 event.kind == UIEvent::Kind::print_files || event.kind == UIEvent::Kind::launch)) return false;
+            return (legacy_event_mask(event) & mask) != 0;
+        };
         const auto deadline = poll_start + std::chrono::duration<double>(sleep ? sleep / 60.0 : quiet ? 0.008 : 0.0);
         auto pointer = pointer_now();
         auto mouse_outside = [&] {
             if (!mouse_region || !(mask & 0x8000)) return false;
             const auto& region = handles.at(mouse_region);
             return !region_contains(s.memory.copy_out(region.payload, region.size), pointer.x, pointer.y);
+        };
+        const auto queued_save_status = [&]() -> const char* {
+            try {
+                // The WaitNextEvent import glue saves the game TOC in the
+                // caller's linkage area; its own import TOC need not match.
+                const auto toc = std::uint32_t(s.memory.read<4>(std::uint32_t(s.r<4>(4)) + 0x14));
+                if (toc >= 0x356f && s.memory.read<1>(toc - 0x356f))
+                    return "Quick save queued until a safe screen";
+            } catch (const std::runtime_error&) {}
+            return "Quick save queued";
         };
         auto found = std::find_if(pending_events.begin(), pending_events.end(), matches);
         while (found == pending_events.end()) {
@@ -835,6 +896,13 @@ struct NativePlatform::Impl {
                 automation->finish(*request, accepted, result);
                 automation->boundary(s, accepted ? CommandContext{} : commands, command_status);
             };
+            if (available && event.kind == UIEvent::Kind::quick_save) {
+                const bool accepted = s.platform && s.platform->quick_save_request(s);
+                command_status = accepted ? queued_save_status() : "Quick save unavailable";
+                user_interface().update_commands(commands, command_status, false);
+                s.memory.clear(address, 16);
+                return false;
+            }
             if (available && (event.kind == UIEvent::Kind::command || event.kind == UIEvent::Kind::menu)) {
                 if (!commands.ready || (event.kind == UIEvent::Kind::command && event.command_context != commands.identity)) {
                     command_status = "Refused: the game context changed";
@@ -884,6 +952,21 @@ struct NativePlatform::Impl {
             s.memory.write<2>(address, 15); // osEvt / mouseMovedMessage
             s.memory.write<4>(address + 2, 0xfa000000);
             return true;
+        }
+        // Automation supplies the original key events rather than AppKit menu
+        // equivalents. Give the same gesture the same one-shot host behavior.
+        if (found->kind == UIEvent::Kind::key_down && (found->modifiers & 0x0100) &&
+            (found->message & 0xff) == 's') {
+            const auto message = found->message;
+            pending_events.erase(found);
+            const auto released = std::find_if(pending_events.begin(), pending_events.end(), [&](const auto& event) {
+                return event.kind == UIEvent::Kind::key_up && event.message == message;
+            });
+            if (released != pending_events.end()) pending_events.erase(released);
+            const bool accepted = s.platform && s.platform->quick_save_request(s);
+            command_status = accepted ? queued_save_status() : "Quick save unavailable";
+            command_cache.reset();
+            return false;
         }
         if (deliver_match_shortcut(s, commands, *found)) {
             const auto action = std::uint16_t(s.memory.read<2>(commands.root + 0x25819e));
@@ -1096,8 +1179,9 @@ struct NativePlatform::Impl {
         const auto permitted = allowed(input);
         if (!fs::is_directory(permitted)) throw FileError{directory_not_found};
         const auto path = fs::canonical(permitted);
+        std::error_code gone;  // A directory removed since it got its ID matches nothing.
         for (const auto& [id, existing] : directories)
-            if (logical_path(existing) == logical_path(path) || fs::equivalent(existing, path)) return id;
+            if (logical_path(existing) == logical_path(path) || fs::equivalent(existing, path, gone)) return id;
         const auto id = next_directory++;
         directories.emplace(id, path);
         return id;
@@ -1135,6 +1219,31 @@ struct NativePlatform::Impl {
             start = end + 1;
         }
         return allowed(base);
+    }
+    std::optional<fs::path> quick_save_target(const std::optional<std::string>& guest) const {
+        if (!guest) return std::nullopt;
+        try {
+            const auto name = convert(*guest, kCFStringEncodingMacRoman, kCFStringEncodingUTF8);
+            const auto logical = !name.empty() && name.front() == '/' ? allowed(fs::path(name)) : path(0, 0, name);
+            return writable_path(logical);
+        } catch (const FileError&) { return std::nullopt; }
+        catch (const std::exception&) { return std::nullopt; }
+    }
+    std::optional<std::string> quick_save_guest_staging_path(const fs::path& staged) const {
+        if (!under(staged, writable)) return std::nullopt;
+        try {
+            std::string result = "CM User Data";
+            for (const auto& component : staged.lexically_relative(writable)) {
+                const auto part = component.string();
+                if (part.empty() || part == "." || part == "..") return std::nullopt;
+                result += ':';
+                result += convert(hfs_name(part), kCFStringEncodingUTF8, kCFStringEncodingMacRoman);
+            }
+            // The original autosave dispatcher and writer use 256-byte path buffers.
+            if (result.size() >= 256) return std::nullopt;
+            return result;
+        } catch (const FileError&) { return std::nullopt; }
+        catch (const std::exception&) { return std::nullopt; }
     }
     fs::path from_spec(State& s, std::uint32_t spec) const {
         return path(std::int16_t(s.memory.read<2>(spec)), s.memory.read<4>(spec + 2), read_mac_string(s, spec + 6));
@@ -1370,7 +1479,8 @@ bool NativePlatform::debug_attribute_save_begin(State& s) {
     impl_->debug_attribute_rename_needed = false;
     impl_->debug_attribute_rename_ok = false;
     if (impl_->debug_attribute_saving)
-        impl_->debug_attribute_save_target = impl_->debug_attribute_target(s, std::uint32_t(s.r<4>(12)));
+        impl_->debug_attribute_save_target = impl_->debug_attribute_save_override ? impl_->debug_attribute_save_override :
+            impl_->debug_attribute_target(s, std::uint32_t(s.r<4>(12)));
     return true;
 }
 void NativePlatform::debug_attribute_save_mode(State& s) {
@@ -1392,10 +1502,12 @@ void NativePlatform::debug_attribute_save_end(State& s) {
         }
     }
     impl_->debug_attribute_save_target.reset();
+    impl_->debug_attribute_save_override.reset();
     impl_->debug_attribute_saving = false;
 }
 void NativePlatform::debug_attribute_save_abort() noexcept {
     impl_->debug_attribute_save_target.reset();
+    impl_->debug_attribute_save_override.reset();
     impl_->debug_attribute_saving = false;
     impl_->debug_attribute_rename_needed = false;
     impl_->debug_attribute_rename_ok = false;
@@ -1404,6 +1516,299 @@ bool NativePlatform::debug_attribute_change_available() const {
     return !impl_->debug_attribute_saving && !impl_->debug_attribute_loading;
 }
 
+namespace {
+std::optional<std::string> quick_save_guest_path(const State& s, std::uint32_t address) {
+    if (!address) return std::nullopt;
+    try {
+        std::string path;
+        // The original autosave path occupies 256 bytes in the dispatcher frame.
+        for (unsigned i = 0; i < 256; ++i) {
+            const auto byte = s.memory.copy_out(address + i, 1)[0];
+            if (!byte) return path.empty() ? std::nullopt : std::optional<std::string>(std::move(path));
+            path.push_back(char(byte));
+        }
+    } catch (const std::runtime_error&) {}
+    return std::nullopt;
+}
+enum class HumanMatchState { none, playing, finishing };
+HumanMatchState human_match_state(const State& s) {
+    try {
+        // The original keeps sixteen human-manager records across match views,
+        // including their nested tactics and confirmation screens.
+        auto result = HumanMatchState::none;
+        for (unsigned i = 0; i < 16; ++i) {
+            const auto record = 0x109806f0u + i * 0xfcu;
+            const auto bytes = s.memory.copy_out(record + 0xec, 8);
+            const auto fixture = std::uint32_t(read_be<4>(bytes.data()));
+            if (!fixture || !read_be<4>(bytes.data() + 4)) continue;
+            const auto engine = s.memory.copy_out(fixture + 0x58, 4);
+            const auto phase = s.memory.copy_out(fixture + 0x68, 1)[0];
+            if (read_be<4>(engine.data())) {
+                if (phase != 2 && phase != 8) return HumanMatchState::playing;
+                result = HumanMatchState::finishing;
+            }
+        }
+        return result;
+    } catch (const std::runtime_error&) { return HumanMatchState::playing; }
+}
+}
+void NativePlatform::quick_save_load_begin(State& s) {
+    if (impl_->event_mode == EventMode::interactive) {
+        // A request from the previous career must not overwrite that career
+        // after the original loader starts replacing the in-memory world.
+        if (impl_->quick_save_queued) impl_->command_status = "Quick save canceled: loading another career";
+        impl_->quick_save_queued = false;
+        impl_->quick_save_loading = true;
+        auto path = quick_save_guest_path(s, std::uint32_t(s.r<4>(12)));
+        impl_->quick_save_load_target = impl_->quick_save_target(path);
+        impl_->quick_save_destination.begin_load(std::move(path));
+    }
+}
+void NativePlatform::quick_save_load_end(State& s) {
+    if (impl_->event_mode != EventMode::interactive) return;
+    const bool success = std::int8_t(s.r<4>(12)) != 0;
+    impl_->quick_save_destination.finish_load(success);
+    if (success) impl_->quick_save_last_target = std::move(impl_->quick_save_load_target);
+    impl_->quick_save_load_target.reset();
+    impl_->quick_save_loading = false;
+    if (!success || !impl_->quick_save_destination.last() || !impl_->quick_save_last_target) impl_->quick_save_queued = false;
+}
+bool NativePlatform::quick_save_write_begin(State& s) {
+    if (impl_->event_mode != EventMode::interactive) return true;
+    // The original writer pumps events. A nested writer must not replace the
+    // active transaction's tracking or write into the destination mid-save.
+    if (impl_->quick_save_active && impl_->quick_save_tracking_write) return false;
+    impl_->debug_attribute_save_override = impl_->quick_save_active ? impl_->quick_save_last_target : std::nullopt;
+    impl_->quick_save_tracking_write = s.r<4>(16) == 0x16;
+    impl_->quick_save_rename_ok = false;
+    impl_->quick_save_needs_rename = false;
+    if (impl_->quick_save_tracking_write && !impl_->quick_save_active) {
+        auto path = quick_save_guest_path(s, std::uint32_t(s.r<4>(12)));
+        impl_->quick_save_write_target = impl_->quick_save_target(path);
+        impl_->quick_save_destination.begin_save(std::move(path));
+    }
+    return true;
+}
+void NativePlatform::quick_save_write_mode(State& s) {
+    if (impl_->event_mode == EventMode::interactive && impl_->quick_save_tracking_write)
+        impl_->quick_save_needs_rename = (s.r<1>(2304) & 2) == 0;
+}
+void NativePlatform::quick_save_write_renamed(State& s) {
+    if (impl_->event_mode == EventMode::interactive && impl_->quick_save_tracking_write)
+        impl_->quick_save_rename_ok = !impl_->quick_save_needs_rename || s.r<4>(12) == 0;
+}
+void NativePlatform::quick_save_write_end(State& s) {
+    if (impl_->event_mode != EventMode::interactive || !impl_->quick_save_tracking_write) return;
+    const bool success = std::int8_t(s.r<4>(12)) != 0 && impl_->quick_save_rename_ok;
+    if (impl_->quick_save_active) {
+        bool promoted = false;
+        bool has_previous_save = false;
+        bool promotion_started = false;
+        impl_->command_status = "Quick save failed; files retained";
+        try {
+            // The dispatcher also uses this buffer in its failure dialog.
+            // Restore the user's path before returning from the staged writer.
+            const auto& destination = impl_->quick_save_destination.last();
+            if (!destination || !impl_->quick_save_path_address)
+                throw std::runtime_error("quick-save destination unavailable at completion");
+            std::vector<std::uint8_t> path(destination->begin(), destination->end());
+            path.push_back(0);
+            s.memory.copy_in(impl_->quick_save_path_address, path);
+            if (impl_->quick_save_transaction)
+                impl_->data_forks.make_durable(impl_->quick_save_transaction->staging_directory());
+            const bool io_ok = impl_->data_forks.finish_write_audit();
+            if (success && io_ok && impl_->quick_save_transaction) {
+                promotion_started = true;
+                const auto result = impl_->quick_save_transaction->promote();
+                promoted = result.state == QuickSavePromotionState::promoted;
+                has_previous_save = !result.previous_save.empty();
+                if (!promoted) {
+                    std::fprintf(stderr, "Quick save promotion: %s: %s; retained: %s\n",
+                                 result.error.operation.c_str(), result.error.code.message().c_str(),
+                                 result.error.retained_directory.c_str());
+                    if (result.state == QuickSavePromotionState::promoted_unconfirmed)
+                        impl_->command_status = "Quick save uncertain; previous save retained";
+                } else if (!result.previous_save.empty()) {
+                    std::fprintf(stderr, "Quick save retained previous file: %s\n", result.previous_save.c_str());
+                }
+            }
+        } catch (const std::exception& error) {
+            // An exception during promotion can follow the atomic exchange.
+            // Preserve the staging directory and do not report success.
+            std::fprintf(stderr, "Quick save completion error: %s\n", error.what());
+            if (promotion_started) impl_->command_status = "Quick save uncertain; files retained";
+            impl_->data_forks.abort_write_audit();
+        }
+        if (promoted) impl_->command_status = "Quick save complete";
+        else {
+            if (impl_->command_status != "Quick save uncertain; previous save retained" &&
+                impl_->command_status != "Quick save uncertain; files retained")
+                impl_->command_status = "Quick save failed; files retained";
+            s.wr<4>(12, 0);
+        }
+        if (promoted && impl_->quick_save_transaction) {
+            if (has_previous_save) {
+                // Keep one recovery copy until the next quick-save request.
+                impl_->quick_save_previous_transaction = std::move(impl_->quick_save_transaction);
+            } else {
+                const auto removed = impl_->quick_save_transaction->remove_empty_staging_directory();
+                if (!removed) std::fprintf(stderr, "Quick save staging retained: %s: %s\n",
+                                           removed.error().operation.c_str(), removed.error().code.message().c_str());
+            }
+        }
+        impl_->quick_save_transaction.reset();
+        impl_->quick_save_path_address = 0;
+        impl_->quick_save_quiet = false;
+        impl_->quick_save_active = false;
+    } else {
+        impl_->quick_save_destination.finish_save(success);
+        if (success) impl_->quick_save_last_target = std::move(impl_->quick_save_write_target);
+        impl_->quick_save_write_target.reset();
+    }
+    impl_->quick_save_tracking_write = false;
+    if (!impl_->quick_save_destination.last() || !impl_->quick_save_last_target) impl_->quick_save_queued = false;
+}
+bool NativePlatform::quick_save_busy() const { return impl_->quick_save_active; }
+bool NativePlatform::quick_save_quiet_progress() const { return impl_->quick_save_active && impl_->quick_save_quiet; }
+bool NativePlatform::quick_save_available() const {
+    return impl_->event_mode == EventMode::interactive && impl_->quick_save_destination.last().has_value() &&
+        impl_->quick_save_last_target.has_value() && !impl_->quick_save_queued && !impl_->quick_save_active;
+}
+bool NativePlatform::quick_save_request(State& s) {
+    if (!quick_save_available() || human_match_state(s) == HumanMatchState::playing) return false;
+    impl_->quick_save_queued = true;
+    return true;
+}
+bool NativePlatform::quick_save_pending(State& s) {
+    if (!impl_->quick_save_queued || impl_->quick_save_loading) return false;
+    const auto match = human_match_state(s);
+    if (match == HumanMatchState::playing) {
+        impl_->quick_save_queued = false;
+        impl_->command_status = "Quick save canceled: match started";
+    }
+    return impl_->quick_save_queued && match == HumanMatchState::none && !impl_->quick_save_tracking_write;
+}
+bool NativePlatform::quick_save_prepare_path(State& s) {
+    return quick_save_prepare_path_at(s, std::uint32_t(s.r<4>(4)) + 0x133c);
+}
+void NativePlatform::quick_save_abandon() noexcept {
+    if (!impl_->quick_save_active) return;
+    if (impl_->debug_attribute_save_override) debug_attribute_save_abort();
+    impl_->data_forks.abort_write_audit();
+    impl_->quick_save_transaction.reset();
+    impl_->quick_save_path_address = 0;
+    impl_->quick_save_quiet = false;
+    impl_->quick_save_active = false;
+    impl_->quick_save_tracking_write = false;
+    impl_->command_cache.reset();
+    try { impl_->command_status = "Quick save interrupted; files retained"; } catch (...) {}
+}
+bool NativePlatform::quick_save_call_dispatcher_writer(State& s) {
+    // A nested dispatcher must take the ordinary call path, where the writer
+    // entry guard refuses it without abandoning the outer transaction.
+    if (!impl_->quick_save_active || impl_->quick_save_tracking_write) return false;
+    constexpr std::uint32_t continuation = 0x102a5694;
+    // Reproduce the dispatcher's original bl and give this invocation its
+    // own host boundary, so an escaping guest transfer can release the audit.
+    s.wr<4>(2440, s.r<4>(8));
+    s.wr<4>(4128, continuation);
+    s.pc = 0x1034ba30;
+    try { run_quick_save_until(s, continuation); }
+    catch (...) { quick_save_abandon(); throw; }
+    // A transfer may reach the continuation without the writer epilogue.
+    // Keep its guest state intact and do not promote the staged file.
+    if (impl_->quick_save_active) quick_save_abandon();
+    return true;
+}
+bool NativePlatform::quick_save_prepare_path_at(State& s, std::uint32_t path_address, bool quiet_progress) {
+    if (!quick_save_pending(s)) return true;
+    const auto fail = [&](const char* reason) {
+        std::fprintf(stderr, "Quick save preparation failed: %s\n", reason);
+        impl_->command_status = "Quick save failed before writing";
+        impl_->quick_save_queued = false;
+        return false;
+    };
+    if (!impl_->quick_save_last_target) return fail("no resolved destination");
+    if (impl_->quick_save_previous_transaction) {
+        std::error_code error;
+        const bool same_target = fs::equivalent(*impl_->quick_save_last_target,
+            impl_->quick_save_previous_transaction->destination_path(), error);
+        if (!error && same_target) {
+            const auto discarded = impl_->quick_save_previous_transaction->discard_previous_save();
+            if (discarded) {
+                const auto removed = impl_->quick_save_previous_transaction->remove_empty_staging_directory();
+                if (!removed) std::fprintf(stderr, "Quick save staging retained: %s: %s\n",
+                                           removed.error().operation.c_str(), removed.error().code.message().c_str());
+            } else {
+                std::fprintf(stderr, "Quick save previous file retained: %s: %s\n",
+                             discarded.error().operation.c_str(), discarded.error().code.message().c_str());
+            }
+        }
+        impl_->quick_save_previous_transaction.reset();
+    }
+    auto transaction = QuickSaveTransaction::create(*impl_->quick_save_last_target, impl_->writable);
+    if (!transaction) {
+        std::fprintf(stderr, "Quick save staging: %s: %s\n", transaction.error().operation.c_str(),
+                     transaction.error().code.message().c_str());
+        return fail("cannot create private staging");
+    }
+    const auto path = impl_->quick_save_guest_staging_path((*transaction)->staged_path());
+    if (!path) return fail("staging path cannot be represented by the original game");
+    std::vector<std::uint8_t> bytes(path->begin(), path->end());
+    bytes.push_back(0);
+    if (!impl_->data_forks.begin_write_audit((*transaction)->staging_directory()))
+        return fail("cannot start staged-write audit");
+    try { s.memory.copy_in(path_address, bytes); }
+    catch (...) { impl_->data_forks.abort_write_audit(); throw; }
+    impl_->quick_save_transaction = std::move(*transaction);
+    impl_->quick_save_path_address = path_address;
+    impl_->quick_save_quiet = quiet_progress;
+    impl_->quick_save_queued = false;
+    impl_->quick_save_active = true;
+    return true;
+}
+void NativePlatform::quick_save_at_screen_boundary(State& s) {
+    if (!quick_save_pending(s)) return;
+    struct Saved {
+        decltype(State::registers) registers;
+        decltype(State::unique) unique;
+        std::uint32_t pc;
+    };
+    auto saved = std::make_unique<Saved>(Saved{s.registers, s.unique, s.pc});
+    const auto previous_stack = std::uint32_t(s.r<4>(4));
+    if (previous_stack < 0x150) throw std::runtime_error("Invalid quick-save callback stack");
+    const auto stack = (previous_stack - 0x140) & ~15u;
+    const auto scratch = s.memory.copy_out(stack, previous_stack - stack);
+    s.memory.clear(stack, previous_stack - stack);
+    s.memory.write<4>(stack, previous_stack);
+    const auto buffer = stack + 0x40;
+    try {
+        if (!quick_save_prepare_path_at(s, buffer, true)) {
+            s.memory.copy_in(stack, scratch);
+            return;
+        }
+    } catch (...) { s.memory.copy_in(stack, scratch); throw; }
+    s.wr<4>(4, stack);
+    s.wr<4>(12, buffer);
+    s.wr<4>(16, 0x16);
+    s.wr<4>(4128, return_sentinel);
+    s.pc = 0x1034ba30;
+    auto* const caller_dispatch = s.dispatch_scope;
+    try { run_quick_save_until(s, return_sentinel); }
+    catch (...) { quick_save_abandon(); throw; }
+    // A context transfer can reach the continuation without the writer's
+    // epilogue. Preserve that guest continuation rather than restoring the
+    // abandoned screen callback's saved registers.
+    if (impl_->quick_save_active) {
+        quick_save_abandon();
+        if (caller_dispatch) throw GuestContextTransfer{&s, caller_dispatch};
+        throw std::runtime_error("Quick-save writer abandoned without a dispatch owner");
+    }
+    s.memory.copy_in(stack, scratch);
+    s.registers = saved->registers;
+    s.unique = saved->unique;
+    s.pc = saved->pc;
+}
 std::vector<fs::path> NativePlatform::save_window_images(const fs::path& directory) const {
     return impl_->ui ? impl_->ui->save_window_images(directory) : std::vector<fs::path>{};
 }
@@ -1437,6 +1842,17 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
     if (name == "CarbonLib::TickCount" || name == "CarbonLib::WaitNextEvent")
         impl_->sound.poll(s);
     auto arg = [&](unsigned i) { return std::uint32_t(s.r<4>((i + 3) * 4)); };
+    const auto failed_mutation = [&] {
+        if (name == "CarbonLib::FSpCreate" || name == "CarbonLib::PBHCreateSync" ||
+            name == "CarbonLib::FSCreateFileUnicode" || name == "CarbonLib::FSDeleteObject" ||
+            name == "CarbonLib::FSRenameUnicode" || name == "CarbonLib::PBHDeleteSync" ||
+            name == "CarbonLib::PBHRenameSync" ||
+            (name == "CarbonLib::FSOpenFork" && std::int8_t(arg(3)) != 1) ||
+            (name == "CarbonLib::FSpOpenDF" && std::int8_t(arg(1)) != 1)) return true;
+        if (name != "CarbonLib::PBHOpenDFSync") return false;
+        try { return std::int8_t(s.memory.read<1>(arg(0) + 27)) != 1; }
+        catch (const std::runtime_error&) { return true; }
+    };
     std::int16_t status = no_err;
     std::optional<std::uint32_t> return_value;
     try {
@@ -2274,46 +2690,57 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
                 impl_->reference_for(impl_->from_reference(s, arg(1))));
         } else if (name == "CarbonLib::FSCreateFileUnicode") {
             const auto parent = impl_->from_reference(s, arg(0));
-            if (!fs::is_directory(parent)) throw FileError{directory_not_found};
-            if (arg(3) && !arg(4)) throw FileError{parameter_error};
-            if (arg(3) & 0x400000) throw FileError{parameter_error};
-            const auto characters = impl_->unicode_units(s, arg(2), arg(1));
-            std::string leaf;
-            status = native_unicode_name(characters, leaf);
-            if (!status) {
-                if (fs::exists(fs::symlink_status(impl_->visible_child(parent, leaf)))) throw FileError{-48};
-                const auto input_catalog = read_guest_file_catalog(s, arg(4), arg(3));
-                const auto backing = impl_->writable_path(parent);
-                fs::create_directories(backing);
-                NativeFileReference created{};
-                status = native_create_unicode_file(impl_->reference_for(backing), characters, arg(3),
-                    input_catalog, created);
+            try {
+                if (!fs::is_directory(parent)) throw FileError{directory_not_found};
+                if (arg(3) && !arg(4)) throw FileError{parameter_error};
+                if (arg(3) & 0x400000) throw FileError{parameter_error};
+                const auto characters = impl_->unicode_units(s, arg(2), arg(1));
+                std::string leaf;
+                status = native_unicode_name(characters, leaf);
                 if (!status) {
-                    fs::path target;
-                    status = native_reference_path(created, target);
+                    if (fs::exists(fs::symlink_status(impl_->visible_child(parent, leaf)))) throw FileError{-48};
+                    const auto input_catalog = read_guest_file_catalog(s, arg(4), arg(3));
+                    const auto backing = impl_->writable_path(parent);
+                    fs::create_directories(backing);
+                    NativeFileReference created{};
+                    status = native_create_unicode_file(impl_->reference_for(backing), characters, arg(3),
+                        input_catalog, created);
                     if (!status) {
-                        if (arg(5)) impl_->write_reference(s, arg(5), created);
-                        if (arg(6)) impl_->write_spec(s, arg(6), target);
+                        fs::path target;
+                        status = native_reference_path(created, target);
+                        if (!status) {
+                            if (arg(5)) impl_->write_reference(s, arg(5), created);
+                            if (arg(6)) impl_->write_spec(s, arg(6), target);
+                        }
                     }
                 }
-            }
+                if (status) impl_->data_forks.note_write_audit_directory_failure(parent);
+            } catch (...) { impl_->data_forks.note_write_audit_directory_failure(parent); throw; }
         } else if (name == "CarbonLib::FSOpenFork") {
             auto target = impl_->from_reference(s, arg(0));
             auto permission = std::int8_t(arg(3));
             if (!permission) permission = under(target, impl_->writable) ? 3 : 1;
-            if (permission != 1) target = impl_->writable_file(target);
-            std::int16_t ref = 0;
-            status = impl_->data_forks.open(target, impl_->unicode_units(s, arg(2), arg(1)), permission, ref);
-            impl_->performance.mark("file-open", s, std::uint16_t(ref));
-            if (!status) s.memory.write<2>(arg(4), std::uint16_t(ref));
+            try {
+                if (permission != 1) target = impl_->writable_file(target);
+                std::int16_t ref = 0;
+                status = impl_->data_forks.open(target, impl_->unicode_units(s, arg(2), arg(1)), permission, ref);
+                impl_->performance.mark("file-open", s, std::uint16_t(ref));
+                if (!status) s.memory.write<2>(arg(4), std::uint16_t(ref));
+            } catch (...) {
+                if (permission != 1) impl_->data_forks.note_write_audit_failure(target);
+                throw;
+            }
         } else if (name == "CarbonLib::FSDeleteObject") {
             status = impl_->delete_object(impl_->from_reference(s, arg(0)));
         } else if (name == "CarbonLib::FSRenameUnicode") {
             const auto target = impl_->from_reference(s, arg(0));
-            std::string leaf;
-            status = native_unicode_name(impl_->unicode_units(s, arg(2), arg(1)), leaf);
-            if (!status) status = impl_->rename_object(target, leaf, arg(3));
-            if (!status && arg(4)) impl_->write_reference(s, arg(4), impl_->reference_for(target.parent_path() / leaf));
+            try {
+                std::string leaf;
+                status = native_unicode_name(impl_->unicode_units(s, arg(2), arg(1)), leaf);
+                if (!status) status = impl_->rename_object(target, leaf, arg(3));
+                if (!status && arg(4)) impl_->write_reference(s, arg(4), impl_->reference_for(target.parent_path() / leaf));
+                if (status) impl_->data_forks.note_write_audit_failure(target);
+            } catch (...) { impl_->data_forks.note_write_audit_failure(target); throw; }
         } else if (name == "CarbonLib::FSMakeFSSpec") {
             const auto target = impl_->path(std::int16_t(arg(0)), arg(1), read_mac_string(s, arg(2)));
             impl_->write_spec(s, arg(3), target);
@@ -2329,20 +2756,25 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             const bool pb = name == "CarbonLib::PBHCreateSync";
             const auto target = pb ? impl_->path(std::int16_t(s.memory.read<2>(arg(0) + 22)),
                 s.memory.read<4>(arg(0) + 48), read_mac_string(s, s.memory.read<4>(arg(0) + 18))) : impl_->from_spec(s, arg(0));
-            if (fs::exists(target)) throw FileError{-48};
-            const auto output = impl_->writable_path(target);
-            fs::create_directories(output.parent_path());
-            status = impl_->data_forks.create(output, pb ? 0 : arg(1), pb ? 0 : arg(2));
+            try {
+                if (fs::exists(target)) throw FileError{-48};
+                const auto output = impl_->writable_path(target);
+                fs::create_directories(output.parent_path());
+                status = impl_->data_forks.create(output, pb ? 0 : arg(1), pb ? 0 : arg(2));
+            } catch (...) { impl_->data_forks.note_write_audit_failure(target); throw; }
         } else if (name == "CarbonLib::PBHRenameSync") {
             const auto pb = arg(0);
             const auto replacement = std::uint32_t(s.memory.read<4>(pb + 28));
             if (!replacement || s.memory.read<1>(replacement) > 63) throw FileError{bad_name};
             const auto target = impl_->path(std::int16_t(s.memory.read<2>(pb + 22)),
                 s.memory.read<4>(pb + 48), read_mac_string(s, s.memory.read<4>(pb + 18)));
-            const auto leaf = read_mac_string(s, replacement);
-            status = leaf.find(':') != std::string::npos ? bad_name : impl_->rename_object(target, host_name(leaf));
-            if (std::getenv("CM_AOT_TRACE_FILES"))
-                std::fprintf(stderr, "Native file rename: %s -> %s status=%d\n", target.c_str(), leaf.c_str(), status);
+            try {
+                const auto leaf = read_mac_string(s, replacement);
+                status = leaf.find(':') != std::string::npos ? bad_name : impl_->rename_object(target, host_name(leaf));
+                if (status) impl_->data_forks.note_write_audit_failure(target);
+                if (std::getenv("CM_AOT_TRACE_FILES"))
+                    std::fprintf(stderr, "Native file rename: %s -> %s status=%d\n", target.c_str(), leaf.c_str(), status);
+            } catch (...) { impl_->data_forks.note_write_audit_failure(target); throw; }
         } else if (name == "CarbonLib::PBHDeleteSync") {
             const auto target = impl_->path(std::int16_t(s.memory.read<2>(arg(0) + 22)),
                 s.memory.read<4>(arg(0) + 48), read_mac_string(s, s.memory.read<4>(arg(0) + 18)));
@@ -2356,13 +2788,18 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             auto target = parameter_block ? impl_->path(std::int16_t(s.memory.read<2>(arg(0) + 22)),
                 s.memory.read<4>(arg(0) + 48), read_mac_string(s, s.memory.read<4>(arg(0) + 18))) : impl_->from_spec(s, arg(0));
             if (!permission) permission = under(target, impl_->writable) ? 3 : 1;
-            if (permission != 1) target = impl_->writable_file(target);
-            std::int16_t ref = 0;
-            status = impl_->data_forks.open(target, permission, ref);
-            impl_->performance.mark("file-open", s, std::uint16_t(ref));
-            if (std::getenv("CM_AOT_TRACE_FILES"))
-                std::fprintf(stderr, "Native file open: %s permission=%d status=%d\n", target.c_str(), permission, status);
-            if (!status) s.memory.write<2>(parameter_block ? arg(0) + 24 : arg(2), std::uint16_t(ref));
+            try {
+                if (permission != 1) target = impl_->writable_file(target);
+                std::int16_t ref = 0;
+                status = impl_->data_forks.open(target, permission, ref);
+                impl_->performance.mark("file-open", s, std::uint16_t(ref));
+                if (std::getenv("CM_AOT_TRACE_FILES"))
+                    std::fprintf(stderr, "Native file open: %s permission=%d status=%d\n", target.c_str(), permission, status);
+                if (!status) s.memory.write<2>(parameter_block ? arg(0) + 24 : arg(2), std::uint16_t(ref));
+            } catch (...) {
+                if (permission != 1) impl_->data_forks.note_write_audit_failure(target);
+                throw;
+            }
         } else if (name == "CarbonLib::PBWriteSync" || name == "CarbonLib::FSWrite") {
             const bool pb = name == "CarbonLib::PBWriteSync";
             const auto ref = std::int16_t(pb ? s.memory.read<2>(arg(0) + 24) : arg(0));
@@ -2459,8 +2896,13 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
         } else {
             return false;
         }
-    } catch (const FileError& error) { status = error.code; }
-    catch (const fs::filesystem_error&) { status = parameter_error; }
+    } catch (const FileError& error) {
+        status = error.code;
+        if (failed_mutation()) impl_->data_forks.note_unattributed_write_audit_failure();
+    } catch (const fs::filesystem_error&) {
+        status = parameter_error;
+        if (failed_mutation()) impl_->data_forks.note_unattributed_write_audit_failure();
+    }
     if (status && std::getenv("CM_AOT_TRACE_FILES") && name == "CarbonLib::PBGetCatInfoSync") {
         try {
             std::fprintf(stderr, "Native catalog failure: name=%s ref=%d dir=%u index=%d status=%d caller=%08x\n",

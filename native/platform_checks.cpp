@@ -4,6 +4,7 @@
 #include "speech_bridge.hpp"
 #include "aot_runtime.hpp"
 #include "filesystem_bridge.hpp"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
@@ -71,6 +72,108 @@ int main() {
         s.memory.map(0x70000000, 0x10000);
         s.platform = std::make_shared<NativePlatform>(game, user);
         constexpr std::uint32_t name = 0x70000000, spec = 0x70000200, pb = 0x70000400;
+        {
+            constexpr std::uint32_t managers = 0x10980000, path = 0x70008000, stack = 0x70002000;
+            s.memory.map(managers, 0x2000);
+            const auto put_path = [&](std::string_view value) {
+                std::vector<std::uint8_t> bytes(value.begin(), value.end());
+                bytes.push_back(0);
+                s.memory.copy_in(path, bytes);
+                s.wr<4>(12, path);
+            };
+            const auto prepare_staged_save = [&] {
+                require(s.platform->quick_save_prepare_path(s), "Could not prepare quick-save staging");
+                std::string guest;
+                for (std::uint32_t i = 0; i < 256; ++i) {
+                    const auto byte = s.memory.read<1>(stack + 0x133c + i);
+                    if (!byte) break;
+                    guest.push_back(char(byte));
+                }
+                constexpr std::string_view prefix = "CM User Data:";
+                require(guest.starts_with(prefix), "Quick save must use the writable volume");
+                auto relative = guest.substr(prefix.size());
+                std::replace(relative.begin(), relative.end(), ':', '/');
+                const auto staged = user / relative;
+                require(staged.filename() == "save.sav", "Quick save must use a private staged file");
+                std::ofstream(staged, std::ios::binary) << "staged career";
+            };
+            std::ofstream(user / "First.sav", std::ios::binary) << "first career";
+            put_path("CM User Data:First.sav");
+            s.platform->quick_save_load_begin(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_load_end(s);
+            constexpr std::uint32_t fixture = 0x70009000;
+            s.memory.write<4>(0x109806f0 + 0xec, fixture);
+            s.memory.write<4>(0x109806f0 + 0xf0, 0x5678);
+            s.memory.write<4>(fixture + 0x58, 0x1234);
+            s.memory.write<1>(fixture + 0x68, 1);
+            require(!s.platform->quick_save_request(s), "A human-managed match must refuse quick save");
+            s.memory.write<4>(fixture + 0x58, 0);
+            require(s.platform->quick_save_request(s), "A human team's pre-match screen must allow quick save");
+            s.memory.write<4>(fixture + 0x58, 0x1234);
+            require(!s.platform->quick_save_pending(s), "A queued request must not cross into a human match");
+            s.memory.write<4>(0x109806f0 + 0xf0, 0);
+            require(s.platform->quick_save_request(s), "A spectator match must not be mistaken for a human-managed match");
+            require(s.platform->quick_save_pending(s), "A quick save must remain queued until the dispatcher consumes it");
+            s.wr<4>(4, stack);
+            prepare_staged_save();
+            require(s.platform->quick_save_busy() && !s.platform->quick_save_available(),
+                    "The writer must disable host commands while quick save is active");
+            s.wr<4>(12, stack + 0x133c);
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, 0);
+            s.platform->quick_save_write_renamed(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_write_end(s);
+            require(!s.platform->quick_save_busy(), "Quick-save completion must restore host commands");
+            put_path("CM User Data:Second.sav");
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            require(s.platform->quick_save_request(s) && !s.platform->quick_save_pending(s),
+                    "A request during a save must wait until that save returns");
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, 0);
+            s.platform->quick_save_write_renamed(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_write_end(s);
+            require(s.platform->quick_save_pending(s), "Queued save was lost after successful serialization");
+            prepare_staged_save();
+            s.wr<4>(12, stack + 0x133c);
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, 0);
+            s.platform->quick_save_write_renamed(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_write_end(s);
+            put_path("CM User Data:Failed.sav");
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, std::uint32_t(-1));
+            s.platform->quick_save_write_renamed(s);
+            s.wr<4>(12, 1); // Original writer reports success even when final rename fails.
+            s.platform->quick_save_write_end(s);
+            require(s.platform->quick_save_request(s), "Quick save unavailable after a failed rename");
+            prepare_staged_save();
+            require(s.platform->quick_save_busy(), "Quick save must stay available after a failed rename");
+            s.wr<4>(12, stack + 0x133c);
+            s.wr<4>(16, 0x16);
+            s.platform->quick_save_write_begin(s);
+            s.wr<1>(2304, 4);
+            s.platform->quick_save_write_mode(s);
+            s.wr<4>(12, 0);
+            s.platform->quick_save_write_renamed(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_write_end(s);
+            s.memory.write<4>(0x109806f0 + 0xec, 0);
+        }
         const std::vector<std::uint8_t> alphabet{'a', 'z', 0x8e, 0x9f, 0xa7, 0xde, 0xdf, 0}; // e acute, u umlaut, sharp-s, fi/fl.
         s.memory.write<4>(name, 0xa5a5a5a5); s.memory.write<4>(name + 12, 0xa5a5a5a5);
         s.memory.copy_in(name + 4, alphabet);
@@ -326,6 +429,15 @@ int main() {
         require(changed_counts.first == initial_counts.first && changed_counts.second == initial_counts.second + 1,
                 "Cached volume retained a replaced entry's file type");
         fs::remove(game / "Data" / "renamed.dat");
+        // A directory gone after getting its ID (quick save's staging) must not
+        // stop other directories from getting theirs.
+        for (const std::string folder : {"gone", "later"}) {
+            fs::create_directory(game / "Data" / folder);
+            std::ofstream(game / "Data" / folder / "x.dat") << "x";
+            string(s, name, "CM 01-02:Data:" + folder + ":x.dat");
+            require(call(s, "CarbonLib::FSMakeFSSpec", {0, 0, name, spec}) == 0, "A removed directory broke later lookups");
+            fs::remove_all(game / "Data" / folder);
+        }
         // Symlink targets can change without touching the link's directory.
         const auto target = user / "target";
         std::ofstream(target) << "target";

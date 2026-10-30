@@ -1,5 +1,6 @@
 #include "screen_manager_packets.hpp"
 #include "screen_manager_sound.hpp"
+#include "platform.hpp"
 
 namespace cm::aot::screen_manager {
 using namespace detail;
@@ -290,6 +291,9 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
                 }
                 c.set(3,address+0x260000);const auto callback=c.u32(c.r(3)-0x7f08);
                 if(compare_logical(c,callback)!=0)p.callback(callback,0x1073d4c8);
+                // All handler results and history transitions are settled at
+                // this boundary; save only the already-confirmed game state.
+                if(c.s.platform)c.s.platform->quick_save_at_screen_boundary(c.s);
             }
         }
         if(byte_nonzero(c,c.r(23)) || compare(c,c.r(30),-7)==0)break;

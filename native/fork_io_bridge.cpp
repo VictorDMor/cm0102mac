@@ -61,16 +61,22 @@ std::int16_t write_guest_fork(State& s, NativeDataForks& forks, std::int16_t ref
     std::uint16_t mode, std::int64_t offset, std::uint32_t buffer,
     std::int64_t requested, std::uint32_t& actual) {
     actual = 0;
-    if (requested < 0 || requested > UINT32_MAX) return parameter_error;
-    check_extent(buffer, std::uint32_t(requested), "write");
+    if (requested < 0 || requested > UINT32_MAX) { forks.note_write_audit_failure(ref); return parameter_error; }
+    try { check_extent(buffer, std::uint32_t(requested), "write"); }
+    catch (...) { forks.note_write_audit_failure(ref); throw; }
     do {
         const auto count = std::min<std::uint32_t>(requested - actual, chunk_size);
-        const auto bytes = count ? s.memory.copy_out(buffer + actual, count) : std::vector<std::uint8_t>{};
+        std::vector<std::uint8_t> bytes;
+        try { if (count) bytes = s.memory.copy_out(buffer + actual, count); }
+        catch (...) { forks.note_write_audit_failure(ref); throw; }
         std::uint32_t written = 0;
         const auto error = forks.write(ref, mode, offset, bytes, written);
         actual += written;
         if (error || actual == std::uint32_t(requested)) return error;
-        if (!written) throw std::runtime_error("Native file write made no progress without reporting an error");
+        if (!written) {
+            forks.note_write_audit_failure(ref);
+            throw std::runtime_error("Native file write made no progress without reporting an error");
+        }
         mode = 0; offset = 0;
     } while (true);
 }

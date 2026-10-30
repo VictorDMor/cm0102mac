@@ -68,6 +68,22 @@ std::uint8_t original_character(NSEvent* event) {
 @implementation CMDialogView
 - (BOOL)isFlipped { return YES; }
 @end
+@interface CMDialogPanel : NSPanel {
+@public
+    std::deque<cm::aot::UIEvent>* pending;
+}
+@end
+@implementation CMDialogPanel
+- (BOOL)performKeyEquivalent:(NSEvent*)event {
+    const auto modifiers = event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift |
+                                                  NSEventModifierFlagControl | NSEventModifierFlagOption);
+    if (event.type == NSEventTypeKeyDown && event.keyCode == 1 && modifiers == NSEventModifierFlagCommand) {
+        if (!event.isARepeat && pending) pending->push_back({cm::aot::UIEvent::Kind::quick_save});
+        return YES;
+    }
+    return [super performKeyEquivalent:event];
+}
+@end
 // Records the clicked item. The Dialog Manager never changes a control's
 // value itself, so every check box and radio button gets back the value it
 // had (AppKit toggles the one clicked and clears its radio siblings).
@@ -209,10 +225,12 @@ std::uint8_t original_character(NSEvent* event) {
     std::function<void()> refreshPresentation;
     std::function<void(NSInteger)> selectScale;
     std::function<void(cm::aot::DirectCommand)> selectCommand;
+    std::function<void()> selectQuickSave;
 }
 - (void)originalMenuAction:(NSMenuItem*)sender;
 - (void)interfaceScaleAction:(NSMenuItem*)sender;
 - (void)directCommandAction:(NSMenuItem*)sender;
+- (void)quickSaveAction:(NSMenuItem*)sender;
 - (void)originalQuitAction:(NSMenuItem*)sender;
 - (void)validationClick:(NSMenuItem*)sender;
 - (void)validationMove:(NSMenuItem*)sender;
@@ -221,6 +239,9 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)interfaceScaleAction:(NSMenuItem*)sender { selectScale(sender.tag); }
 - (void)directCommandAction:(NSMenuItem*)sender {
     if (sender.enabled && !repeated_key_event(NSApp.currentEvent)) selectCommand(cm::aot::DirectCommand(sender.tag));
+}
+- (void)quickSaveAction:(NSMenuItem*)sender {
+    if (sender.enabled && !repeated_key_event(NSApp.currentEvent)) selectQuickSave();
 }
 - (void)applicationDidChangeScreenParameters:(NSNotification*)notification {
     (void)notification; if (refreshPresentation) refreshPresentation();
@@ -422,7 +443,7 @@ void select_native_match_speed(std::uint16_t value) {
 }
 std::uint16_t legacy_event_mask(const UIEvent& event) {
     switch (event.kind) {
-        case UIEvent::Kind::launch: case UIEvent::Kind::quit: case UIEvent::Kind::open_files: case UIEvent::Kind::print_files: return 0x0400;
+        case UIEvent::Kind::launch: case UIEvent::Kind::quit: case UIEvent::Kind::open_files: case UIEvent::Kind::print_files: case UIEvent::Kind::quick_save: return 0x0400;
         case UIEvent::Kind::mouse_down: case UIEvent::Kind::menu: case UIEvent::Kind::command: return 2;
         case UIEvent::Kind::mouse_up: return 4;
         case UIEvent::Kind::key_down: return 8;
@@ -514,12 +535,14 @@ struct NativeUI::Impl {
     NSMenu* scale_menu = nil;
     NSMenu* direct_menu = nil;
     CommandContext command_context;
+    bool quick_save_available = false;
     std::string command_status = "Unavailable while starting";
     void refresh_commands() {
         for (NSMenuItem* item in direct_menu.itemArray) {
             if (item.tag >= 0 && item.tag < NSInteger(direct_command_count))
                 item.enabled = command_context.ready && command_context.actions[item.tag] != 0;
             else if (item.tag == 101) { item.enabled = NO; }
+            else if (item.tag == 102) { item.enabled = quick_save_available; }
             else if (item.tag == 100) { item.title = [NSString stringWithUTF8String:command_status.c_str()]; item.enabled = NO; }
         }
         for (const auto& [token, menu] : menus) {
@@ -544,7 +567,7 @@ struct NativeUI::Impl {
         if (item.text == "-") native = [NSMenuItem separatorItem];
         else {
             if (item.key == 0x1b) throw std::runtime_error("Hierarchical menu resources require a submenu bridge");
-            NSString* key = item.key ? [menu_text(std::string(1, char(item.key))) lowercaseString] : @"";
+            NSString* key = item.key && !(menu.id == 2 && index == 1) ? [menu_text(std::string(1, char(item.key))) lowercaseString] : @"";
             native = [[NSMenuItem alloc] initWithTitle:menu_text(item.text)
                 action:@selector(originalMenuAction:) keyEquivalent:key];
             native.target = delegate;
@@ -702,6 +725,13 @@ struct NativeUI::Impl {
             command_status = "Queued for the original game";
             refresh_commands();
         };
+        delegate->selectQuickSave = [this] {
+            if (!quick_save_available) { NSBeep(); return; }
+            pending.push_back({UIEvent::Kind::quick_save});
+            quick_save_available = false;
+            command_status = "Quick save requested";
+            refresh_commands();
+        };
         if (!preference.empty()) {
             std::error_code error;
             const auto size = std::filesystem::file_size(preference, error);
@@ -733,8 +763,9 @@ void NativeUI::create_dialog(std::uint32_t token, const DialogDefinition& dialog
         const auto& bounds = dialog.bounds;
         const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
         const NSRect rect = NSMakeRect(bounds[1], height - bounds[2], bounds[3] - bounds[1], bounds[2] - bounds[0]);
-        NSPanel* panel = [[NSPanel alloc] initWithContentRect:rect styleMask:NSWindowStyleMaskTitled
+        CMDialogPanel* panel = [[CMDialogPanel alloc] initWithContentRect:rect styleMask:NSWindowStyleMaskTitled
             backing:NSBackingStoreBuffered defer:NO];
+        panel->pending = &impl_->pending;
         panel.title = menu_text(dialog.title);
         panel.releasedWhenClosed = NO;
         CMDialogView* view = [[CMDialogView alloc] initWithFrame:NSMakeRect(0, 0, rect.size.width, rect.size.height)];
@@ -789,6 +820,20 @@ void NativeUI::show_dialog(std::uint32_t token) {
     auto& dialog = impl_->dialogs.at(token);
     [dialog.panel makeKeyAndOrderFront:nil];
     if (!dialog.session) dialog.session = [NSApp beginModalSessionForWindow:dialog.panel];
+}
+void NativeUI::suspend_dialog(std::uint32_t token) {
+    auto& dialog = impl_->dialogs.at(token);
+    if (dialog.session) { [NSApp endModalSession:dialog.session]; dialog.session = nil; }
+    [dialog.panel orderOut:nil];
+    [NSApp.mainWindow makeKeyAndOrderFront:nil];
+}
+bool NativeUI::take_quick_save_request() {
+    const auto found = std::find_if(impl_->pending.begin(), impl_->pending.end(), [](const auto& event) {
+        return event.kind == UIEvent::Kind::quick_save;
+    });
+    if (found == impl_->pending.end()) return false;
+    impl_->pending.erase(found);
+    return true;
 }
 std::int16_t NativeUI::dialog_click(std::uint32_t token, double timeout_seconds) {
     @autoreleasepool {
@@ -1072,7 +1117,7 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds, bool throttled) {
                     if (command_key) impl_->host_command_keyups.insert(native.keyCode);
                     else impl_->host_command_keyups.erase(native.keyCode);
                 } else if (native.type == NSEventTypeKeyUp && impl_->host_command_keyups.erase(native.keyCode)) continue;
-                if (command_key && NSProcessInfo.processInfo.systemUptime - native.timestamp > 1.0) {
+                if (command_key && native.keyCode != 1 && NSProcessInfo.processInfo.systemUptime - native.timestamp > 1.0) {
                     impl_->command_status = "Refused: shortcut arrived while the game was busy";
                     impl_->refresh_commands(); NSBeep(); continue;
                 }
@@ -1243,6 +1288,10 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
             item.keyEquivalentModifierMask = NSEventModifierFlagCommand;
             [impl_->direct_menu addItem:item];
         }
+        NSMenuItem* quick = [[NSMenuItem alloc] initWithTitle:@"Save to Last File" action:@selector(quickSaveAction:) keyEquivalent:@"s"];
+        quick.tag = 102; quick.target = impl_->delegate; quick.identifier = @"quick_save";
+        quick.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        [impl_->direct_menu addItem:quick];
         NSMenuItem* status = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
         status.tag = 100; [impl_->direct_menu addItem:status];
         NSMenuItem* load_help = [[NSMenuItem alloc] initWithTitle:@"Load: start screen only; save and quit first" action:nil keyEquivalent:@""];
@@ -1300,10 +1349,12 @@ std::uint32_t NativeUI::menu_key(std::uint8_t key) const {
         return 0;
     }
 }
-void NativeUI::update_commands(const CommandContext& context, std::string_view status) {
-    if (!impl_->menus_edited && impl_->command_context == context && impl_->command_status == status) return;
+void NativeUI::update_commands(const CommandContext& context, std::string_view status, bool quick_save_available) {
+    if (!impl_->menus_edited && impl_->command_context == context && impl_->command_status == status &&
+        impl_->quick_save_available == quick_save_available) return;
     impl_->menus_edited = false;
     impl_->command_context = context;
+    impl_->quick_save_available = quick_save_available;
     impl_->command_status = status;
     impl_->refresh_commands();
 }
