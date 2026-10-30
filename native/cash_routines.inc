@@ -1,0 +1,13 @@
+// Audited CASH.CPP entries: complete typed implementations and default production owners.
+CASH_ROUTINE(0x10009ef0, 0x10009f18, R3|F1, "a6df7bb77313c601", [](Cpu& c) { c.set(3,cash::symbol_length(c)); })
+CASH_ROUTINE(0x10009f20, 0x1000a008, R3|F1, "bf9ff980d10ed9b2", [](Cpu& c) { cash::display_amount(c,c.r(3),c.r(4)); })
+CASH_ROUTINE(0x1000a010, 0x1000a05c, R3|F1, "089b6525b162889b", [](Cpu& c) { cash::store_amount(c,c.r(3),cash::detail::pair(c.r(4),c.r(5))); })
+CASH_ROUTINE(0x1000a060, 0x1000a164, R3|F1, "28007081c692be5c", [](Cpu& c) { c.set(3,cash::increase(c,c.r(3),c.r(4))); })
+CASH_ROUTINE(0x1000a170, 0x1000a26c, R3|F1, "9fa2ff5af4993a06", [](Cpu& c) { c.set(3,cash::decrease(c,c.r(3),c.r(4))); })
+CASH_ROUTINE(0x1000a270, 0x1000a32c, R3|F1, "5f372db28f5b768e", [](Cpu& c) { c.set(3,cash::standard(c,c.r(3),c.r(4))); })
+CASH_ROUTINE(0x1000a330, 0x1000a440, R3|F1, "5effcc613a9c71e9", [](Cpu& c) { c.set(3,cash::preset(c,c.r(3),c.r(4),c.r(5),c.r(6))); })
+CASH_ROUTINE(0x1000a440, 0x1000b148, R3|F1, "a9a2eb24f03688f0", [](Cpu& c) { c.set(3,cash::configure(c,c.r(3))); })
+CASH_ROUTINE(0x1000b150, 0x1000b158, R3|F1, "1179bd78a334bd29", [](Cpu& c) { c.set(3,cash::setting(c)); })
+CASH_ROUTINE(0x1000b160, 0x1000b410, R3|F1, "2435c4543cc47252", [](Cpu& c) { c.set(3,cash::label(c,c.r(3),c.r(4),c.r(5))); })
+CASH_ROUTINE(0x1000b410, 0x1000c764, R3|F1, "9029175b0fe52f1c", [](Cpu& c) { c.set(3,cash::format(c,c.r(3),c.r(4),cash::detail::pair(c.r(5),c.r(6)),c.r(7))); })
+CASH_ROUTINE(0x1000c770, 0x1000cbb4, R3|F1, "39b872019226aba8", [](Cpu& c) { cash::quantum(c,cash::detail::pair(c.r(3),c.r(4)),c.r(5)); })

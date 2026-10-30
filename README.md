@@ -35,7 +35,8 @@ transfer offers, player status, transfer history, loans and related confirmation
 `NATION_AWARDS.CPP` adds **20 audited routines** for award selection, publication,
 team awards and monthly-rating persistence. `FIFA_RANKINGS.CPP` adds
 **15 audited routines** for international ranking points, rolling history,
-classification and binary persistence.
+classification and binary persistence. `CASH.CPP` adds **12 audited routines**
+for monetary conversion, editing, currency configuration and text formatting.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,

@@ -95,9 +95,10 @@ def money_value_hook(entry):
     return f'if (try_modern_money_value(s, 0x{entry:x})) return true;'
 
 
-def require_money_value_hooks(page, instructions, code):
+def require_money_value_hooks(page, instructions, code, taken_over=()):
     addresses = {r['address'] for r in instructions}
     for entry in MONEY_VALUE_ENTRIES:
+        if entry in taken_over: continue
         if entry >> 12 != page or entry not in addresses: continue
         label, hook = f'i_{entry:x}:', money_value_hook(entry)
         fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]

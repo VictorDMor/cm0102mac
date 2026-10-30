@@ -354,6 +354,28 @@ reduction deliberately uses integer division before clamping. News type32
 loads the player id into r9 before checking the sentinel; the name formatter
 consumes this seventh argument even though decompilation omits it.
 
+## CASH.CPP: monetary values, currencies and presentation
+
+`CASH.CPP` owns 12 entries / 2,847 indexed instructions between
+0x10009ef0 and 0x1000cbc0 (`tools/cash_audit.py`). All incoming calls target
+entries; four in-body dispatch banks are switch labels, not callbacks.
+`cash_adapter` replaces the older money-value, money-text and currency-profile
+builder owners in normal generation, including direct calls from other pages.
+The older components remain reference/check tooling only.
+
+Stored amounts are signed 32-bit values; displayed amounts and quantization use
+signed 64-bit pairs with explicit wrapping. Flag 4 takes priority over flag 8
+when choosing a quantum, and flag 32 bypasses initial alignment. Currency
+configuration caches all six destination pointers before copying any text,
+loads all three factors before publishing them, and retains each profile's
+original load/store order. The format routine reconstructs at most 15 digits,
+leaves nonpositive signed inputs with no decimal digits, trims only the two
+fractional positions of compact layouts, falls back to millions when the
+billions suffix is empty, and changes output spaces to the renderer's pipe
+placeholder. Capacity checks and diagnostic pointer caching remain as original.
+Arithmetic, string and printf services are external dependencies; CASH has no
+RNG draws, callbacks or serialized IO of its own.
+
 ## CLUB_HISTORY.CPP: club league and cup archives
 
 `CLUB_HISTORY.CPP` has 11 routines and 1,702 indexed instructions in

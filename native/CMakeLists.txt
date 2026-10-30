@@ -3766,3 +3766,37 @@ if(CM_FIFA_RANKINGS_COVERAGE)
     target_compile_definitions(cm-fifa-rankings-checks PRIVATE CM_FIFA_RANKINGS_COVERAGE=1)
     target_link_options(cm-fifa-rankings-checks PRIVATE "-fprofile-instr-generate=${CM_FIFA_RANKINGS_PROFILE}")
 endif()
+
+file(GLOB CM_CASH_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cash*.cpp")
+list(FILTER CM_CASH_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_CASH_SOURCES})
+add_executable(cm-cash-checks cash_checks.cpp)
+target_link_libraries(cm-cash-checks PRIVATE cm_aot)
+target_compile_options(cm-cash-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_CASH_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/cash_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CASH_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_cash_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CASH_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_cash_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/cash_audit.py"
+            "${CMAKE_SOURCE_DIR}/cash_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-cash-checks PRIVATE "${CM_CASH_REFERENCE}")
+    add_test(NAME cash_equivalence COMMAND cm-cash-checks "${CM_ORACLE_DIR}")
+    add_test(NAME cash_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_cash_audit.py")
+endif()
+option(CM_CASH_COVERAGE "Instrument CASH.CPP checker only" OFF)
+if(CM_CASH_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/cash-coverage/verified")
+    set(CM_CASH_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/cash-coverage/verified/check-%m.profraw")
+    add_library(cm_cash_coverage OBJECT ${CM_CASH_SOURCES})
+    target_link_libraries(cm_cash_coverage PRIVATE cm_aot)
+    target_compile_options(cm_cash_coverage PRIVATE "-fprofile-instr-generate=${CM_CASH_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_cash_coverage PRIVATE CM_CASH_COVERAGE=1)
+    target_sources(cm-cash-checks PRIVATE $<TARGET_OBJECTS:cm_cash_coverage>)
+    target_compile_definitions(cm-cash-checks PRIVATE CM_CASH_COVERAGE=1)
+    target_link_options(cm-cash-checks PRIVATE "-fprofile-instr-generate=${CM_CASH_PROFILE}")
+endif()
