@@ -88,5 +88,8 @@ void resolve_direct_action(Cpu&, std::uint32_t player, std::uint32_t mode);
 std::uint32_t resolve_ball_action(Cpu&, std::uint32_t player, std::uint32_t from_column,
     std::uint32_t from_row, std::uint32_t kind, std::uint32_t control,
     std::uint32_t receiver, std::uint32_t to_column, std::uint32_t to_row);
+std::uint32_t sample_keeper_response(Cpu&, std::uint32_t player, std::uint32_t column,
+    std::uint32_t row, std::uint32_t alternate_skill, std::uint32_t action,
+    std::uint32_t reason, std::uint32_t resampled);
 std::uint32_t allows_event(Cpu&, std::uint32_t player, std::uint32_t event);
 }

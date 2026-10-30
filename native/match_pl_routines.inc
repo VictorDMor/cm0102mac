@@ -19,6 +19,8 @@ MATCH_PL_ROUTINE(0x10247030, 0x10251240, R3|F1, "acb43dfc3e3a0de1",
     [](Cpu& c) { match_pl::resolve_ball_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10)); })
 MATCH_PL_ROUTINE(0x10251240, 0x10251270, R3, "3c0b299daf9ce161",
     [](Cpu& c) { match_pl::on_goal_line(c, c.r(3)); })
+MATCH_PL_DRAFT(0x10251270, 0x10252080, R3|F1, "70c79d24c07796fc",
+    [](Cpu& c) { match_pl::sample_keeper_response(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9)); })
 MATCH_PL_ROUTINE(0x10272050, 0x102720a0, R3, "682ab8d1fd5d1aef",
     [](Cpu& c) { match_pl::in_defensive_third(c, c.r(3)); })
 MATCH_PL_ROUTINE(0x102720a0, 0x102720d0, R3, "fa1a7866fe4b74ec",
