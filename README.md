@@ -34,6 +34,8 @@ and binary records. `TRANSFER_SCREENS.CPP` adds **75 audited routines** for
 transfer offers, player status, transfer history, loans and related confirmations.
 `INTERNATIONAL_AWARDS.CPP` adds **3 audited routines** for constructing six
 international prizes and dispatching their dated publications.
+`AWARD_SHORTLIST.CPP` adds **14 audited routines** for candidate lists, ballots,
+award voting, publication and binary persistence.
 `NATION_AWARDS.CPP` adds **20 audited routines** for award selection, publication,
 team awards and monthly-rating persistence. `FIFA_RANKINGS.CPP` adds
 **15 audited routines** for international ranking points, rolling history,

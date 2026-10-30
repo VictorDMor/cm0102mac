@@ -882,3 +882,16 @@ existing zero-based calendar constructor. It compares years unsigned and days
 signed. Publication retains the ratings pointer across related calls while
 reloading the live award array between them. Serialization, selection, ranking
 and publication services belong to the already separate NATION_AWARDS module.
+
+## AWARD_SHORTLIST.CPP: candidates, ballots and voting
+
+The fourteen entries include three sort callbacks and stop before Belgium's
+default constructor at 0x10439fe0. The persisted stream is a four-byte
+count/capacity header, sixteen-byte candidates, sixteen two-byte ballots and
+an eight-byte date. Eligibility's two regional cases compare the regional ID
+against the country field at +0x30, then test +0x34 for the -1 sentinel;
+publication and automatic voting filter regions against +0x34 instead.
+Preserve that original asymmetry. Automatic voting's signed sixteen-bit prefix
+cannot reach its inlined wide random arms. The public sampler's first wide
+reduction wraps bound*10 to signed32 before division by 65535; its result is
+within [-32768,32768], excluding all deeper wide unrolls and recursion.

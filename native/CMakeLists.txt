@@ -3835,3 +3835,37 @@ if(CM_CASH_COVERAGE)
     target_compile_definitions(cm-cash-checks PRIVATE CM_CASH_COVERAGE=1)
     target_link_options(cm-cash-checks PRIVATE "-fprofile-instr-generate=${CM_CASH_PROFILE}")
 endif()
+
+file(GLOB CM_AWARD_SHORTLIST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/award_shortlist*.cpp")
+list(FILTER CM_AWARD_SHORTLIST_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_AWARD_SHORTLIST_SOURCES})
+add_executable(cm-award-shortlist-checks award_shortlist_checks.cpp)
+target_link_libraries(cm-award-shortlist-checks PRIVATE cm_aot)
+target_compile_options(cm-award-shortlist-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_AWARD_SHORTLIST_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/award_shortlist_reference.cpp")
+    add_custom_command(OUTPUT "${CM_AWARD_SHORTLIST_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_award_shortlist_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_AWARD_SHORTLIST_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_award_shortlist_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/award_shortlist_audit.py"
+            "${CMAKE_SOURCE_DIR}/award_shortlist_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-award-shortlist-checks PRIVATE "${CM_AWARD_SHORTLIST_REFERENCE}")
+    add_test(NAME award_shortlist_equivalence COMMAND cm-award-shortlist-checks "${CM_ORACLE_DIR}")
+    add_test(NAME award_shortlist_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_award_shortlist_audit.py")
+endif()
+option(CM_AWARD_SHORTLIST_COVERAGE "Instrument AWARD_SHORTLIST.CPP checker only" OFF)
+if(CM_AWARD_SHORTLIST_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/award_shortlist-coverage")
+    set(CM_AWARD_SHORTLIST_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/award_shortlist-coverage/check-%p.profraw")
+    add_library(cm_award_shortlist_coverage OBJECT ${CM_AWARD_SHORTLIST_SOURCES})
+    target_link_libraries(cm_award_shortlist_coverage PRIVATE cm_aot)
+    target_compile_options(cm_award_shortlist_coverage PRIVATE "-fprofile-instr-generate=${CM_AWARD_SHORTLIST_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_award_shortlist_coverage PRIVATE CM_AWARD_SHORTLIST_COVERAGE=1)
+    target_sources(cm-award-shortlist-checks PRIVATE $<TARGET_OBJECTS:cm_award_shortlist_coverage>)
+    target_compile_definitions(cm-award-shortlist-checks PRIVATE CM_AWARD_SHORTLIST_COVERAGE=1)
+    target_link_options(cm-award-shortlist-checks PRIVATE "-fprofile-instr-generate=${CM_AWARD_SHORTLIST_PROFILE}")
+endif()
