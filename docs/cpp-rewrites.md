@@ -906,4 +906,7 @@ formats remain opaque `PFor`/1000 resource handles managed by the original
 Printing Manager calls. Preserve the original calls that pass the address of
 the session field to `PMRelease`, and its absolute line-index vertical positions
 across page breaks. The zero lines-per-page remainder follows the generator
-proof at `0x1074d174`; no replacement page-layout policy is introduced.
+proof at `0x1074d174`; no replacement page-layout policy is introduced. Those
+absolute positions put every line past the first page off the sheet (on a
+QuickDraw port they would be clipped), so the host bridge subtracts the earlier
+pages' length when drawing; the routine and the memory it reads are unchanged.

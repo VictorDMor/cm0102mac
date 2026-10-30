@@ -115,7 +115,12 @@ Host CLI input paths are excluded from AppKit's launch-time document events.
 Printing checks cover native object lifetimes and page-format serialization.
 Startup restores the serialized format on subsequent runs. The private `PFor`
 resource uses an identified native representation; old flattened formats trigger
-the original fallback to defaults. Print dialogs and print jobs are not verified.
+the original fallback to defaults. Print jobs run through `native/printing_bridge.cpp`:
+AppKit's panels stand in for the Carbon dialogs (absent in 64-bit), pages are CoreGraphics
+contexts, and QuickDraw's text calls, which only SIPRINT makes, draw Courier with CoreText.
+Text is Latin-1. "Imprimir Para" (Printer/File/Both) is the game's own branch: File writes
+`print/NAME.txt`, Latin-1 with CR line ends, through the ordinary file calls.
+`CM_AOT_PRINT_PDF=path` skips the panel and prints to that PDF for tests.
 One remaining compatibility detail is the original startup's `PMRelease` call:
 it passes the address of the session slot rather than the opaque session token.
 The bridge returns an invalid-object error and retains ownership until cleanup;

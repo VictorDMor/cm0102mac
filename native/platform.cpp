@@ -1891,6 +1891,54 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             std::uint32_t token = 0;
             return_value = std::uint32_t(impl_->printing.unflatten(s.memory.copy_out(handle.payload, handle.size), token));
             s.memory.write<4>(arg(1), token);
+        } else if (name == "CarbonLib::PMSessionDefaultPrintSettings") {
+            return_value = std::uint32_t(impl_->printing.default_print_settings(arg(0), arg(1)));
+        } else if (name == "CarbonLib::PMSessionPrintDialog") {
+            bool accepted = false;
+            return_value = std::uint32_t(impl_->printing.print_dialog(arg(0), arg(1), arg(2), accepted));
+            if (!*return_value) s.memory.write<1>(arg(3), accepted);
+        } else if (name == "CarbonLib::PMSessionPageSetupDialog") {
+            bool accepted = false;
+            return_value = std::uint32_t(impl_->printing.page_setup_dialog(arg(0), arg(1), accepted));
+            if (!*return_value) s.memory.write<1>(arg(2), accepted);
+        } else if (name == "CarbonLib::PMSessionBeginDocument") {
+            return_value = std::uint32_t(impl_->printing.begin_document(arg(0), arg(1), arg(2)));
+        } else if (name == "CarbonLib::PMSessionEndDocument") {
+            return_value = std::uint32_t(impl_->printing.end_document(arg(0)));
+        } else if (name == "CarbonLib::PMSessionBeginPage") {
+            return_value = std::uint32_t(impl_->printing.begin_page(arg(0), arg(1)));
+        } else if (name == "CarbonLib::PMSessionEndPage") {
+            return_value = std::uint32_t(impl_->printing.end_page(arg(0)));
+        } else if (name == "CarbonLib::FMGetFontFamilyFromName") {
+            return_value = std::uint32_t(std::int32_t(impl_->printing.font_family(
+                s.memory.copy_out(arg(0) + 1, s.memory.read<1>(arg(0))))));
+        } else if (name == "CarbonLib::TextFont") {
+            impl_->printing.set_font(std::int16_t(arg(0)));
+            return_value = arg(0);
+        } else if (name == "CarbonLib::SetFractEnable") {
+            // Printed text is laid out with CoreText's fractional widths.
+            return_value = arg(0);
+        } else if (name == "CarbonLib::TextSize") {
+            impl_->printing.set_font_size(std::int16_t(arg(0)));
+            return_value = arg(0);
+        } else if (name == "CarbonLib::MoveTo") {
+            impl_->printing.move_to(std::int16_t(arg(0)), std::int16_t(arg(1)));
+            return_value = arg(0);
+        } else if (name == "CarbonLib::TextWidth") {
+            const auto count = std::max<std::int32_t>(std::int16_t(arg(2)), 0);
+            return_value = std::uint32_t(std::int32_t(impl_->printing.text_width(
+                s.memory.copy_out(arg(0) + std::int16_t(arg(1)), count))));
+        } else if (name == "CarbonLib::GetFontInfo") {
+            const auto info = impl_->printing.font_info();
+            s.memory.write<2>(arg(0), std::uint16_t(info.ascent));
+            s.memory.write<2>(arg(0) + 2, std::uint16_t(info.descent));
+            s.memory.write<2>(arg(0) + 4, std::uint16_t(info.width_max));
+            s.memory.write<2>(arg(0) + 6, std::uint16_t(info.leading));
+            return_value = arg(0);
+        } else if (name == "CarbonLib::DrawText") {
+            const auto count = std::max<std::int32_t>(std::int16_t(arg(2)), 0);
+            impl_->printing.draw_text(s.memory.copy_out(arg(0) + std::int16_t(arg(1)), count));
+            return_value = arg(0);
         } else if (name == "CarbonLib::GetNewMBar") {
             return_value = impl_->new_menu_bar(s, std::int16_t(arg(0)));
         } else if (name == "CarbonLib::SetMenuBar") {
