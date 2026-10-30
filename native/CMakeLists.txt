@@ -3909,3 +3909,39 @@ if(CM_SIPRINT_COVERAGE)
         CM_SIPRINT_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/siprint-coverage")
     target_link_options(cm-siprint-checks PRIVATE "-fprofile-instr-generate=${CM_SIPRINT_PROFILE}")
 endif()
+
+
+file(GLOB CM_DB_FILES_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/db_files*.cpp")
+list(FILTER CM_DB_FILES_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_DB_FILES_SOURCES})
+add_executable(cm-db-files-checks db_files_checks.cpp)
+target_link_libraries(cm-db-files-checks PRIVATE cm_aot)
+target_compile_options(cm-db-files-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_DB_FILES_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/db_files_reference.cpp")
+    add_custom_command(OUTPUT "${CM_DB_FILES_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_db_files_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_DB_FILES_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_db_files_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/db_files_audit.py"
+            "${CMAKE_SOURCE_DIR}/db_files_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-db-files-checks PRIVATE "${CM_DB_FILES_REFERENCE}")
+    add_test(NAME db_files_equivalence COMMAND cm-db-files-checks "${CM_ORACLE_DIR}")
+    add_test(NAME db_files_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_db_files_audit.py")
+endif()
+option(CM_DB_FILES_COVERAGE "Instrument DB_FILES.CPP checker only" OFF)
+if(CM_DB_FILES_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/db_files-coverage")
+    set(CM_DB_FILES_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/db_files-coverage/check-%p.profraw")
+    add_library(cm_db_files_coverage OBJECT ${CM_DB_FILES_SOURCES})
+    target_link_libraries(cm_db_files_coverage PRIVATE cm_aot)
+    target_compile_options(cm_db_files_coverage PRIVATE "-fprofile-instr-generate=${CM_DB_FILES_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_db_files_coverage PRIVATE CM_DB_FILES_COVERAGE=1)
+    target_sources(cm-db-files-checks PRIVATE $<TARGET_OBJECTS:cm_db_files_coverage>)
+    target_compile_definitions(cm-db-files-checks PRIVATE CM_DB_FILES_COVERAGE=1
+        CM_DB_FILES_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/db_files-coverage")
+    target_link_options(cm-db-files-checks PRIVATE "-fprofile-instr-generate=${CM_DB_FILES_PROFILE}")
+endif()

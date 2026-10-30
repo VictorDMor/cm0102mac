@@ -910,3 +910,25 @@ proof at `0x1074d174`; no replacement page-layout policy is introduced. Those
 absolute positions put every line past the first page off the sheet (on a
 QuickDraw port they would be clipped), so the host bridge subtracts the earlier
 pages' length when drawing; the routine and the memory it reads are unchanged.
+
+## DB_FILES.CPP: database tables on disk
+
+Eighteen tables, each with a loader, and all but `oldstaff` with a saver; every
+loader has a conversion from packed Windows records (little-endian, no padding) to
+the Mac layout. Clubs, non-players, players and club competitions also read
+version 1 files field by field. `oldstaff`'s loader keeps its values in other
+registers and reads the version later, so it has its own register map.
+
+A file ending in `0xf1fffff1` holds Mac records and is read whole. Otherwise the
+loader looks for a converted `<name> <header>.dam` in `CM3_DATA`, and failing that
+converts the file and writes that copy with the marker. A nonzero flag byte in `r4`
+selects the pack-file stream routines and skips the marker test. The version 1
+readers always read the original file, leaving an open `.dam` unclosed and a
+conversion buffer unfreed. Clubs repair a zero at `+0x1ec` to 1 on every
+current-version load, and the version 1 reader stores it times 500. `convert_staff`
+copies byte `+0x6d` and then clears it. These are the original's behaviour.
+
+The double-swapping conversions (continents, nations, cities) set r6-r8 before the
+loop, so an empty table still leaves them. Their stack frames hold the last record's
+doubles, unswapped and swapped. After a failed allocation the original calls `exit`
+and has code to continue, which only the fixture's returning `exit` stub reaches.
