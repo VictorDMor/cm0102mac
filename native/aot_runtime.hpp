@@ -155,6 +155,7 @@ private:
     std::uint64_t write_begin_ = 0, write_end_ = 0;
     bool restricted_writes_ = false;
 };
+class DebugAttributeLock;
 class Memory {
 public:
     MemoryObserver* observer = nullptr;
@@ -174,6 +175,12 @@ public:
     std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
     Vector128 read_vector(std::uint64_t address) const;
     void write_vector(std::uint64_t address, const Vector128& value);
+    void lock_debug_player_attributes(std::uint32_t staff, std::uint32_t player);
+    void unlock_debug_player_attributes(std::uint32_t staff);
+    void unlock_debug_player_record(std::uint32_t player);
+    void clear_debug_player_attributes();
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> debug_locked_players() const;
+    bool debug_attribute_metadata_required() const { return debug_attribute_lock_used_; }
     template <unsigned N> [[gnu::always_inline]] std::uint64_t read(std::uint64_t address) const {
         check_scalar<N>(address);
         if (read_trace || date_observer) observe_scalar_read(address, N);
@@ -182,11 +189,15 @@ public:
     template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
         check_scalar<N>(address);
         write_be<N>(data_ + address, value);
+        if (debug_attribute_lock_) [[unlikely]] apply_debug_attribute_lock(std::uint32_t(address), N);
         if (observer && observer->observes_write(address, N))
             observer->written(std::uint32_t(address), data_ + address, N);
         if (date_observer) date_observer->written(std::uint32_t(address), data_ + address, N);
     }
 private:
+    bool apply_debug_attribute_lock(std::uint32_t address, std::size_t size);
+    std::unique_ptr<DebugAttributeLock> debug_attribute_lock_;
+    bool debug_attribute_lock_used_ = false;
     // Keep diagnostic vector growth and virtual callbacks outside ordinary
     // loads so the native compiler can inline their checked scalar path.
     [[gnu::noinline]] void observe_scalar_read(std::uint64_t address, unsigned size) const;

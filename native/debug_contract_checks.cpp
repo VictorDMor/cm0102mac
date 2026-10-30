@@ -1,5 +1,9 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugging.hpp"
+#include "debug_player_attributes.hpp"
+#include "debug_attribute_lock.hpp"
+#include "debug_attribute_persistence.hpp"
+#include "platform.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -258,6 +262,146 @@ int main(int argc, char** argv) {
         require(!slot(exchange) && s.memory.read<4>(transfer + 0xa58) == 1 &&
                 s.memory.copy_out(contract, 100) == main_before && s.memory.copy_out(other_contract, 100) == other_before,
                 "Terminal sale collection changed the scheduled loan or current contracts");
+        // Exercise the real profile getter, including its goalkeeper-specific
+        // conversion, for the proposed maximum values at several abilities.
+        const auto player = std::uint32_t(s.memory.read<4>(staff + 0x14));
+        require(player != 0, "Missing player profile");
+        debug_player_attributes::for_each(staff, player, [&](auto address, auto value) { s.memory.write<1>(address, value); });
+        for (unsigned ability : {0u, 1u, 100u, 200u}) for (unsigned goalkeeper : {0u, 15u, 20u}) {
+            s.memory.write<2>(player + 4, ability);
+            s.memory.write<1>(player + 0xf, goalkeeper);
+            for (unsigned attribute = 1; attribute <= 31; ++attribute)
+                require(invoke(s, 0x100d2330, {staff, player, attribute}) == 20,
+                        "Original player profile did not display a maximum attribute");
+        }
+        DebugAttributeLock locks;
+        locks.add(staff, player);
+        std::array<std::uint8_t, 8> overlapping{};
+        locks.apply(player + 0x22, overlapping.data(), overlapping.size());
+        require(overlapping == std::array<std::uint8_t, 8>{20, 100, 100, 1, 100, 100, 20, 20},
+                "Lock did not protect a mixed multi-byte player write");
+        std::array<std::uint8_t, 4> staff_write{3, 4, 5, 6};
+        locks.apply(staff + 0x60, staff_write.data(), staff_write.size());
+        require(staff_write == std::array<std::uint8_t, 4>{3, 20, 5, 20},
+                "Lock changed the player's job or another unprotected staff byte");
+        overlapping.fill(0);
+        locks.remove(staff);
+        locks.apply(player + 0x22, overlapping.data(), overlapping.size());
+        require(locks.empty() && overlapping == std::array<std::uint8_t, 8>{},
+                "Removing a lock continued to alter writes");
+        const auto neighbor = std::uint32_t(s.memory.read<4>(exchanged + 0x14));
+        const auto neighbor_before = s.memory.copy_out(neighbor, 0x48);
+        s.memory.lock_debug_player_attributes(staff, player);
+        invoke(s, 0x100c2cb0, {staff});
+        debug_player_attributes::for_each(staff, player, [&](auto address, auto value) {
+            require(s.memory.read<1>(address) == value, "Original normalization changed a locked attribute");
+        });
+        const auto lock_random = random_state(s);
+        s.memory.write<4>(player + 0x23, 0);
+        require(s.memory.read<4>(player + 0x23) == 0x64640164, "Scalar write bypassed player lock");
+        s.memory.copy_in(player + 0x2c, std::vector<std::uint8_t>(8));
+        require(s.memory.copy_out(player + 0x2c, 8) == std::vector<std::uint8_t>{20, 1, 20, 20, 20, 100, 100, 100},
+                "Block write bypassed player lock");
+        Vector128 zero{};
+        s.memory.write_vector(player + 0x30, zero);
+        s.memory.clear(player + 0x1b, 0x2a);
+        debug_player_attributes::for_each(staff, player, [&](auto address, auto value) {
+            require(s.memory.read<1>(address) == value, "Locked value changed after vector write or clear");
+        });
+        require(s.memory.read<2>(player + 4) == 200 && s.memory.read<1>(player + 0xf) == 20 &&
+                s.memory.copy_out(neighbor, 0x48) == neighbor_before && random_state(s) == lock_random,
+                "Lock changed ability, positions, a different player or RNG");
+        s.memory.unlock_debug_player_attributes(staff);
+        s.memory.write<1>(player + 0x25, 3);
+        require(s.memory.read<1>(player + 0x25) == 3, "Unlocked record remained protected");
+        const auto career = root / "lock-fixture.sav", other_career = root / "other-fixture.sav";
+        const auto lock_directory = root / "lock-metadata";
+        { std::ofstream out(career, std::ios::binary); out << "isolated save fixture"; }
+        std::filesystem::copy_file(career, other_career);
+        s.memory.lock_debug_player_attributes(staff, player);
+        debug_attribute_persistence::save(s, lock_directory, career);
+        s.memory.clear_debug_player_attributes();
+        s.memory.write<1>(player + 0x25, 3);
+        debug_attribute_persistence::load(s, lock_directory, other_career);
+        require(s.memory.debug_locked_players().empty() && s.memory.read<1>(player + 0x25) == 3,
+                "A different career inherited the lock");
+        debug_attribute_persistence::load(s, lock_directory, career);
+        require(s.memory.debug_locked_players().size() == 1 && s.memory.read<1>(player + 0x25) == 1,
+                "Career metadata did not restore its player lock");
+        s.memory.clear_debug_player_attributes();
+        const auto original_birthday = s.memory.read<2>(staff + 0x34);
+        s.memory.write<2>(staff + 0x34, original_birthday ^ 1);
+        bool rejected = false;
+        try { debug_attribute_persistence::load(s, lock_directory, career); }
+        catch (const std::runtime_error&) { rejected = true; }
+        require(rejected && s.memory.debug_locked_players().empty(), "Changed player identity retained a lock");
+        s.memory.write<2>(staff + 0x34, original_birthday);
+        { std::ofstream out(career, std::ios::binary | std::ios::app); out << 'x'; }
+        debug_attribute_persistence::load(s, lock_directory, career);
+        require(s.memory.debug_locked_players().empty(), "Changed save contents reused old lock metadata");
+        s.memory.lock_debug_player_attributes(staff, player);
+        s.memory.lock_debug_player_attributes(exchanged, neighbor);
+        s.memory.unlock_debug_player_record(player);
+        require(s.memory.debug_locked_players().size() == 1 && s.memory.debug_locked_players()[0].first == exchanged,
+                "Reusing one player record removed another player's lock");
+        s.memory.write<1>(player + 0x25, 7);
+        s.memory.write<1>(neighbor + 0x25, 7);
+        require(s.memory.read<1>(player + 0x25) == 7 && s.memory.read<1>(neighbor + 0x25) == 1,
+                "Player record reuse retained or removed the wrong protection");
+        s.memory.clear_debug_player_attributes();
+        const auto platform_dir = root / "platform-fixture";
+        std::filesystem::create_directories(platform_dir);
+        const auto platform_save = platform_dir / "fixture.sav";
+        { std::ofstream out(platform_save, std::ios::binary); out << "synthetic writer bytes"; }
+        NativePlatform platform(argv[2], platform_dir, AudioMode::offline, EventMode::interactive);
+        const auto guest_path = platform_save.string();
+        require(guest_path.size() < 255, "Fixture path is too long");
+        std::vector<std::uint8_t> path_bytes(guest_path.begin(), guest_path.end());
+        path_bytes.push_back(0);
+        s.memory.copy_in(scratch, path_bytes);
+        s.memory.lock_debug_player_attributes(staff, player);
+        s.wr<4>(12, scratch); s.wr<4>(16, 0x16);
+        require(platform.debug_attribute_save_begin(s), "Platform refused the initial save");
+        require(!platform.debug_attribute_save_begin(s), "Platform accepted a nested writer with active locks");
+        require(!platform.debug_attribute_change_available(), "Attribute change accepted during a save");
+        s.wr<1>(2304, 2); platform.debug_attribute_save_mode(s);
+        s.wr<4>(12, 0); platform.debug_attribute_save_renamed(s);
+        s.wr<4>(12, 1); platform.debug_attribute_save_end(s);
+        require(platform.debug_attribute_change_available(), "Completed save left attribute changes disabled");
+        s.wr<4>(12, scratch); s.wr<4>(16, 0x16);
+        require(platform.debug_attribute_save_begin(s), "Platform refused a later save");
+        platform.debug_attribute_save_abort();
+        require(platform.debug_attribute_change_available(), "Aborted writer left attribute changes disabled");
+        const auto failed_save = platform_dir / "failed.sav";
+        { std::ofstream out(failed_save, std::ios::binary); out << "failed writer fixture"; }
+        const auto failed_path = failed_save.string();
+        require(failed_path.size() < 255, "Failed-save fixture path is too long");
+        path_bytes.assign(failed_path.begin(), failed_path.end()); path_bytes.push_back(0);
+        s.memory.copy_in(scratch, path_bytes);
+        s.wr<4>(12, scratch); s.wr<4>(16, 0x16);
+        require(platform.debug_attribute_save_begin(s), "Platform refused failed-save setup");
+        s.wr<1>(2304, 2); platform.debug_attribute_save_mode(s);
+        s.wr<4>(12, 0); platform.debug_attribute_save_renamed(s);
+        s.wr<4>(12, 0); platform.debug_attribute_save_end(s);
+        require(!std::filesystem::exists(platform_dir / "DebugAttributeLocks" /
+                debug_attribute_persistence::save_key(failed_save)), "Failed save published attribute locks");
+        path_bytes.assign(guest_path.begin(), guest_path.end()); path_bytes.push_back(0);
+        s.memory.copy_in(scratch, path_bytes);
+        s.wr<4>(12, scratch); platform.debug_attribute_load_begin(s);
+        require(s.memory.debug_locked_players().empty(), "Load did not clear old career locks");
+        s.memory.write<1>(player + 0x25, 7);
+        s.wr<4>(12, 1); platform.debug_attribute_load_end(s);
+        require(s.memory.read<1>(player + 0x25) == 1 && s.memory.debug_locked_players().size() == 1,
+                "Platform save/load boundaries did not restore the selected lock");
+        s.memory.clear_debug_player_attributes();
+        s.wr<4>(12, scratch); s.wr<4>(16, 0x16);
+        require(platform.debug_attribute_save_begin(s) && !platform.debug_attribute_save_begin(s),
+                "Debugging allowed a nested writer before the first player was locked");
+        platform.debug_attribute_save_abort();
+        select_native_debugging(false);
+        require(platform.debug_attribute_save_begin(s) && platform.debug_attribute_save_begin(s),
+                "Disabled debugging changed nested-save availability");
+        platform.debug_attribute_save_abort();
         std::cout << "Contract extension and sale cancellation: scheduled paid sale, exchange, deferred contracts, loan, unrelated offers and current terms passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

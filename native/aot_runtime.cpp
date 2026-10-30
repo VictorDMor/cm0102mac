@@ -1,4 +1,5 @@
 #include "aot_runtime.hpp"
+#include "debug_attribute_lock.hpp"
 #include "allocator_adapter.hpp"
 #include "import_bridge.hpp"
 #include "stream_buffer_adapter.hpp"
@@ -36,6 +37,32 @@ Memory::Memory() {
     data_ = static_cast<std::uint8_t*>(p);
 }
 Memory::~Memory() { munmap(data_, UINT64_C(1) << 32); }
+bool Memory::apply_debug_attribute_lock(std::uint32_t address, std::size_t size) {
+    return debug_attribute_lock_->apply(address, data_ + address, size);
+}
+void Memory::lock_debug_player_attributes(std::uint32_t staff, std::uint32_t player) {
+    // Reject incomplete records before applying any guest writes.
+    check(staff, 0x70);
+    check(player, 0x48);
+    if (!debug_attribute_lock_) debug_attribute_lock_ = std::make_unique<DebugAttributeLock>();
+    debug_attribute_lock_->add(staff, player);
+    debug_attribute_lock_used_ = true;
+    debug_player_attributes::for_each(staff, player, [&](auto address, auto value) { write<1>(address, value); });
+}
+void Memory::unlock_debug_player_attributes(std::uint32_t staff) {
+    if (!debug_attribute_lock_) return;
+    debug_attribute_lock_->remove(staff);
+    if (debug_attribute_lock_->empty()) debug_attribute_lock_.reset();
+}
+void Memory::unlock_debug_player_record(std::uint32_t player) {
+    if (!debug_attribute_lock_) return;
+    debug_attribute_lock_->remove_player(player);
+    if (debug_attribute_lock_->empty()) debug_attribute_lock_.reset();
+}
+void Memory::clear_debug_player_attributes() { debug_attribute_lock_.reset(); debug_attribute_lock_used_ = false; }
+std::vector<std::pair<std::uint32_t, std::uint32_t>> Memory::debug_locked_players() const {
+    return debug_attribute_lock_ ? debug_attribute_lock_->players() : std::vector<std::pair<std::uint32_t, std::uint32_t>>{};
+}
 void Memory::map(std::uint32_t start, std::uint64_t size) {
     if (!size || size > (UINT64_C(1) << 32) - start)
         throw std::runtime_error("Invalid data mapping");
@@ -139,14 +166,20 @@ void Memory::load(std::uint32_t start, const std::filesystem::path& file, std::u
 void Memory::copy_in(std::uint32_t start, const std::vector<std::uint8_t>& bytes) {
     check(start, bytes.size());
     std::memcpy(data_ + start, bytes.data(), bytes.size());
+    if (debug_attribute_lock_) apply_debug_attribute_lock(start, bytes.size());
     if (observer) observer->written(start, data_ + start, bytes.size());
     if (date_observer) date_observer->written(start, data_ + start, bytes.size());
 }
 void Memory::clear(std::uint32_t start, std::uint64_t size) {
     check(start, size);
     std::memset(data_ + start, 0, size);
-    if (observer) observer->cleared(start, size);
-    if (date_observer) date_observer->cleared(start, size);
+    if (debug_attribute_lock_ && apply_debug_attribute_lock(start, std::size_t(size))) {
+        if (observer) observer->written(start, data_ + start, std::size_t(size));
+        if (date_observer) date_observer->written(start, data_ + start, std::size_t(size));
+    } else {
+        if (observer) observer->cleared(start, size);
+        if (date_observer) date_observer->cleared(start, size);
+    }
 }
 std::vector<std::uint8_t> Memory::copy_out(std::uint32_t start, std::size_t size) const {
     check(start, size);

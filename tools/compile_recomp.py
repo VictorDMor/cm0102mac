@@ -1583,6 +1583,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_presentation.hpp"')
     if page in MATCH_SPEED_PAGES:
         code.insert(1, '#include "match_speed.hpp"')
+    if page in (0x10346, 0x1034b, 0x1034d):
+        code.insert(1, '#include "platform.hpp"')
     if page in (0x1028c, 0x1028d, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
         code.insert(1, '#include "match_debugging.hpp"')
     if page in (0x10331, 0x10715, 0x10717, 0x10718):
@@ -1711,8 +1713,41 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("if (try_native_sort8(s)) return true;")
         if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
             code.append(f"if (try_native_record_fields(s, 0x{a:x})) return true;")
+        if a == 0x1034ba30:
+            code.append("if (s.platform && !s.platform->debug_attribute_save_may_enter(s)) { s.wr<4>(12, 0); s.pc = std::uint32_t(s.r<4>(4128)); return true; }")
+        if a in (0x10346bc0, 0x1034ba18, 0x1034ba30, 0x1034ddb8, 0x1034de50, 0x1034de8c):
+            instruction, method = {
+                0x10346bc0: ("mfspr r0,LR", "debug_attribute_load_begin"),
+                0x1034ba18: ("lwz r0,0x2078(r1)", "debug_attribute_load_end"),
+                0x1034ba30: ("mfspr r0,LR", "debug_attribute_save_begin"),
+                0x1034ddb8: ("beq 0x1034de50", "debug_attribute_save_mode"),
+                0x1034de50: ("lhz r0,0x2(r14)", "debug_attribute_save_renamed"),
+                0x1034de8c: ("lwz r0,0x1798(r1)", "debug_attribute_save_end"),
+            }[a]
+            if item["assembly"] != instruction:
+                raise ValueError(f"Debug attribute persistence boundary changed at {a:x}")
+            if a == 0x1034ba30:
+                code.append("if (s.platform && !s.platform->debug_attribute_save_begin(s)) { s.wr<4>(12, 0); s.pc = std::uint32_t(s.r<4>(4128)); return true; }")
+            else:
+                code.append(f"if (s.platform) s.platform->{method}(s);")
+        if a in (0x102e45b8, 0x102e4604, 0x102e27e0, 0x102da274, 0x100a4e50, 0x10343630):
+            instruction, hook = {
+                0x102e45b8: ("lwz r3,-0x7a64(r2)", "s.memory.unlock_debug_player_attributes(std::uint32_t(s.r<4>(120)));"),
+                0x102e4604: ("stw r6,0x14(r30)", "s.memory.unlock_debug_player_record(std::uint32_t(s.r<4>(24)));"),
+                0x102e27e0: ("mfspr r0,LR", "s.memory.unlock_debug_player_attributes(std::uint32_t(s.r<4>(16)));"),
+                0x102da274: ("stw r6,0x14(r28)", "s.memory.unlock_debug_player_attributes(std::uint32_t(s.r<4>(112)));"),
+                0x100a4e50: ("mfspr r0,LR", "s.memory.clear_debug_player_attributes();"),
+                0x10343630: ("mfspr r0,LR", "s.memory.clear_debug_player_attributes();"),
+            }[a]
+            if item["assembly"] != instruction:
+                raise ValueError(f"Debug player lifetime boundary changed at {a:x}")
+            code.append(hook)
+        if a in (0x1028d04c, 0x1028d0cc):
+            if item["assembly"] != "bl 0x10719740":
+                raise ValueError("Original first match-speed control changed")
+            code.append("insert_turbo_match_speed(s);")
         if a == 0x1028d558:
-            code.append("if (append_turbo_match_speed(s)) return true;")
+            code.append("if (finish_turbo_match_speed_menu(s)) return true;")
         if a == 0x1028ce80:
             code.append("append_match_debugging_controls(s);")
         if a == 0x1028dc80:

@@ -14,6 +14,7 @@ void Memory::write_vector(std::uint64_t address, const Vector128& value) {
     // Check the entire access before changing any guest byte or observer.
     check(address, value.size());
     std::copy(value.begin(), value.end(), data_ + address);
+    if (debug_attribute_lock_) apply_debug_attribute_lock(std::uint32_t(address), value.size());
     if (observer) observer->written(std::uint32_t(address), data_ + address, 16);
     if (date_observer) date_observer->written(std::uint32_t(address), data_ + address, 16);
 }

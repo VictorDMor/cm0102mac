@@ -6,6 +6,7 @@
 #include "native_drawing.hpp"
 #include "direct_commands.hpp"
 #include "match_debugging.hpp"
+#include "debug_attribute_persistence.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
 #include "directory_catalog.hpp"
@@ -123,7 +124,27 @@ std::uint32_t mac_date(std::int64_t unix_seconds) {
 }
 struct NativePlatform::Impl {
     NativeDrawingObserver drawing;
+    std::optional<fs::path> debug_attribute_load_target, debug_attribute_save_target;
+    bool debug_attribute_loading = false, debug_attribute_saving = false;
+    bool debug_attribute_rename_needed = false, debug_attribute_rename_ok = false;
     explicit Impl(AudioMode mode, EventMode events) : sound(mode), event_mode(events) {}
+    std::optional<fs::path> debug_attribute_target(const State& s, std::uint32_t address) const {
+        if (!address) return std::nullopt;
+        try {
+            std::string guest;
+            for (unsigned i = 0; i < 256; ++i) {
+                const auto byte = s.memory.read<1>(address + i);
+                if (!byte) {
+                    if (guest.empty()) return std::nullopt;
+                    const auto name = convert(guest, kCFStringEncodingMacRoman, kCFStringEncodingUTF8);
+                    const auto logical = !name.empty() && name.front() == '/' ? allowed(fs::path(name)) : path(0, 0, name);
+                    return writable_path(logical);
+                }
+                guest += char(byte);
+            }
+        } catch (const FileError&) {} catch (const std::exception&) {}
+        return std::nullopt;
+    }
     NativeSound sound;
     EventMode event_mode;
     PerformanceTrace performance;
@@ -1317,6 +1338,72 @@ NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio
 NativePlatform::~NativePlatform() = default;
 const fs::path& NativePlatform::game_directory() const { return impl_->game; }
 const fs::path& NativePlatform::writable_directory() const { return impl_->writable; }
+
+void NativePlatform::debug_attribute_load_begin(State& s) {
+    if (impl_->event_mode != EventMode::interactive) return;
+    // Tables may be replaced in place while the loader runs.
+    s.memory.clear_debug_player_attributes();
+    impl_->debug_attribute_loading = true;
+    impl_->debug_attribute_load_target = impl_->debug_attribute_target(s, std::uint32_t(s.r<4>(12)));
+}
+void NativePlatform::debug_attribute_load_end(State& s) {
+    if (impl_->event_mode != EventMode::interactive) return;
+    if (std::int8_t(s.r<4>(12)) != 0 && impl_->debug_attribute_load_target) {
+        try { debug_attribute_persistence::load(s, impl_->writable / "DebugAttributeLocks", *impl_->debug_attribute_load_target); }
+        catch (const std::exception& error) {
+            s.memory.clear_debug_player_attributes();
+            impl_->command_status = "Could not restore player attribute locks";
+            std::fprintf(stderr, "Attribute locks: %s\n", error.what());
+        }
+    }
+    impl_->debug_attribute_load_target.reset();
+    impl_->debug_attribute_loading = false;
+}
+bool NativePlatform::debug_attribute_save_may_enter(const State& s) const {
+    return impl_->event_mode != EventMode::interactive || !impl_->debug_attribute_saving ||
+        (!s.memory.debug_attribute_metadata_required() && !native_debugging_enabled());
+}
+bool NativePlatform::debug_attribute_save_begin(State& s) {
+    if (impl_->event_mode != EventMode::interactive) return true;
+    if (!debug_attribute_save_may_enter(s)) return false;
+    impl_->debug_attribute_saving = s.r<4>(16) == 0x16;
+    impl_->debug_attribute_rename_needed = false;
+    impl_->debug_attribute_rename_ok = false;
+    if (impl_->debug_attribute_saving)
+        impl_->debug_attribute_save_target = impl_->debug_attribute_target(s, std::uint32_t(s.r<4>(12)));
+    return true;
+}
+void NativePlatform::debug_attribute_save_mode(State& s) {
+    if (impl_->debug_attribute_saving) impl_->debug_attribute_rename_needed = (s.r<1>(2304) & 2) == 0;
+}
+void NativePlatform::debug_attribute_save_renamed(State& s) {
+    if (impl_->debug_attribute_saving) impl_->debug_attribute_rename_ok = !impl_->debug_attribute_rename_needed || s.r<4>(12) == 0;
+}
+void NativePlatform::debug_attribute_save_end(State& s) {
+    if (impl_->event_mode != EventMode::interactive || !impl_->debug_attribute_saving) return;
+    if (std::int8_t(s.r<4>(12)) != 0 && impl_->debug_attribute_rename_ok && s.memory.debug_attribute_metadata_required()) {
+        try {
+            if (!impl_->debug_attribute_save_target) throw std::runtime_error("Saved career path is unavailable");
+            debug_attribute_persistence::save(s, impl_->writable / "DebugAttributeLocks", *impl_->debug_attribute_save_target);
+        }
+        catch (const std::exception& error) {
+            impl_->command_status = "Saved career, but could not save player attribute locks";
+            std::fprintf(stderr, "Attribute locks: %s\n", error.what());
+        }
+    }
+    impl_->debug_attribute_save_target.reset();
+    impl_->debug_attribute_saving = false;
+}
+void NativePlatform::debug_attribute_save_abort() noexcept {
+    impl_->debug_attribute_save_target.reset();
+    impl_->debug_attribute_saving = false;
+    impl_->debug_attribute_rename_needed = false;
+    impl_->debug_attribute_rename_ok = false;
+}
+bool NativePlatform::debug_attribute_change_available() const {
+    return !impl_->debug_attribute_saving && !impl_->debug_attribute_loading;
+}
+
 std::vector<fs::path> NativePlatform::save_window_images(const fs::path& directory) const {
     return impl_->ui ? impl_->ui->save_window_images(directory) : std::vector<fs::path>{};
 }

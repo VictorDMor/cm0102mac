@@ -1,6 +1,6 @@
 # Cancel a scheduled sale
 
-With Debugging enabled, the player Action menu offers **Cancel Sale** for a
+With Debugging enabled, the player Action → Debugging submenu offers **Cancel Sale** for a
 permanent transfer queued from the current manager's club. The action cancels
 the entire transaction, including any exchanged players; it does not change
 their current contracts or cancel unrelated loans and offers.

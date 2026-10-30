@@ -1,6 +1,8 @@
 #include "match_speed.hpp"
 #include "match_presentation.hpp"
 #include "semantic_io_checks.hpp"
+#include <array>
+#include <utility>
 
 using namespace cm::semantic_io_checks;
 namespace {
@@ -54,6 +56,24 @@ int main() {
         select_native_match_speed(55);
         select_native_match_speed(65535);
         require(native_match_speed() == 55, "Invalid speed replaced the preference");
+        // The original menu selects each option by storing its predecessor.
+        // Turbo is constructed immediately before the first original option.
+        constexpr std::uint32_t page = 0x31000000;
+        s.memory.map(page, 0x130000);
+        s.memory.write<2>(fixture + 0x100, 0);
+        s.memory.write<4>(fixture + 0x104, page);
+        s.wr<4>(80, fixture + 0x100);
+        s.wr<4>(76, fixture + 0x104);
+        s.wr<4>(68, 11); s.wr<4>(56, 12); s.wr<4>(84, 13);
+        s.wr<4>(88, 14); s.wr<4>(52, 15);
+        for (const auto& [choice, previous] : std::array<std::pair<unsigned, unsigned>, 6>{{
+                 {0, 15}, {20, 10}, {55, 11}, {90, 12}, {125, 13}, {150, 14}}}) {
+            select_native_match_speed(choice);
+            require(finish_turbo_match_speed_menu(s) && s.memory.read<2>(page + 0x12a902) == previous &&
+                    s.memory.read<1>(page + 0x12a901) == 0x20 && s.pc == 0x1028d660,
+                    "Speed menu selected the wrong predecessor");
+        }
+        select_native_match_speed(55);
         s.wr<4>(12, 0x8000659a);
         s.wr<4>(16, 20);
         s.pc = 0x10147e50;

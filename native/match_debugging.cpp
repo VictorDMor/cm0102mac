@@ -6,6 +6,8 @@
 #include "ui_bridge.hpp"
 #include "debug_localization.hpp"
 #include "debug_contract_date.hpp"
+#include "debug_attribute_persistence.hpp"
+#include "platform.hpp"
 #include "best_xi_selection.hpp"
 #include <array>
 #include <algorithm>
@@ -19,6 +21,7 @@ constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 3
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
+constexpr unsigned maximize_attributes_action = 30009;
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -882,13 +885,27 @@ void append_debug_contract_action(State& s) {
     const auto staff = std::uint32_t(s.r<4>(23 * 4));
     const auto original_stack = std::uint32_t(s.r<4>(4));
     GuestCall call(s);
+    // Build the same parent control and child menu used by the original
+    // player comparison menu, then add the debugging actions to that child.
+    const auto ui = root(s), page = screen(s, ui);
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto width = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bcc)));
+    const auto heading = call.call(0x103abf20, {original_stack + 0x6c,
+        std::uint32_t(s.memory.read<2>(original_stack + 0x70)),
+        std::uint32_t(s.memory.read<2>(original_stack + 0x6e)), call.text("Debugging"), 0, 0});
+    call.args({0, 0x30, width, heading});
+    const auto submenu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
+    s.memory.write<2>(call.stack + 0xd0, submenu);
     const auto append = [&](DebugText text, unsigned action) {
-        call.call(0x103abf20, {original_stack + 0x6c,
+        call.call(0x103abf20, {call.stack + 0xd0,
             std::uint32_t(s.memory.read<2>(original_stack + 0x70)),
             std::uint32_t(s.memory.read<2>(original_stack + 0x6e)),
             call.text(debug_text(s, text)), action, 0});
     };
     const auto contract = debug_primary_contract(s, call, staff);
+    if (staff && debug_attribute_persistence::resolve(s, debug_attribute_persistence::tables(s),
+            std::uint32_t(s.memory.read<4>(staff))) == staff)
+        append(DebugText::maximize_attributes, maximize_attributes_action);
     if (contract) {
         append(DebugText::extend_contract, extend_contract_action);
         if (s.memory.read<1>(contract + 0x1d)) append(DebugText::remove_sale_clause, remove_sale_clause_action);
@@ -902,12 +919,20 @@ bool dispatch_debug_contract_action(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != extend_contract_action && action != cancel_sale_action && action != remove_sale_clause_action) return false;
+    if (action != extend_contract_action && action != cancel_sale_action && action != remove_sale_clause_action &&
+        action != maximize_attributes_action) return false;
     bool accepted = false;
     if (s.memory.read<4>(control + 12) & 2) {
         GuestCall call(s);
         const auto staff = call.call(0x1073ef70, {root(s), 0});
-        if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
+        if (action == maximize_attributes_action) {
+            if (staff && (!s.platform || s.platform->debug_attribute_change_available()) &&
+                debug_attribute_persistence::resolve(s, debug_attribute_persistence::tables(s),
+                    std::uint32_t(s.memory.read<4>(staff))) == staff) {
+                s.memory.lock_debug_player_attributes(staff, std::uint32_t(s.memory.read<4>(staff + 0x14)));
+                accepted = true;
+            }
+        } else if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
         else if (action == remove_sale_clause_action) accepted = remove_debug_sale_clause(s, staff);
         else if (current_managed_employer(s, call, staff)) accepted = cancel_scheduled_sale(s, staff);
         // Refresh the player page after changing a contract or transfer.

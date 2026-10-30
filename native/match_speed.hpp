@@ -17,5 +17,6 @@ inline std::uint32_t match_simulation_speed(std::uint32_t value) {
     return native_match_speed_enabled() && value == turbo_match_speed ? 20 : value;
 }
 struct State;
-bool append_turbo_match_speed(State&);
+void insert_turbo_match_speed(State&);
+bool finish_turbo_match_speed_menu(State&);
 }

@@ -1,7 +1,7 @@
 # Debugging: extend a player contract
 
 With Debugging enabled, a player with a primary contract has **Extend Contract by
-1 Year** in the Action menu. It advances the existing expiration by one calendar
+1 Year** in the Action → Debugging submenu. It advances the existing expiration by one calendar
 year, clamping February 29 to February 28, and keeps the remaining contract
 terms. Both the primary contract and staff copy of the expiration are updated.
 
