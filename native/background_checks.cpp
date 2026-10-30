@@ -13,11 +13,12 @@ constexpr std::uint32_t random_seed = fixture + 0xa08, random_bytes = fixture + 
 constexpr std::uint32_t data_mode = fixture + 0xc00, mapping = fixture + 0xc10;
 constexpr std::uint32_t mapping_table = fixture + 0xc20, cache = fixture + 0xd00;
 struct BackgroundCase {
-    std::uint32_t category_id, wrapper, getter_return, getter, null_fault;
+    std::uint32_t category_id, wrapper, getter_return, getter, null_fault, null_address;
 };
 constexpr BackgroundCase cases[] = {
-    {1, 0x10713ad0, 0x10713af0, 0x100d5310, 0x100d53d8},
-    {3, 0x10713b20, 0x10713b40, 0x100d4fd0, 0x100d5084},
+    {0, 0x10713a80, 0x10713aa0, 0x100d4df0, 0x100d4ea0, 0x68},
+    {1, 0x10713ad0, 0x10713af0, 0x100d5310, 0x100d53d8, 0},
+    {3, 0x10713b20, 0x10713b40, 0x100d4fd0, 0x100d5084, 0},
 };
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -60,6 +61,7 @@ std::unique_ptr<State> setup(const char* program, const BackgroundCase& type) {
     s->memory.write<4>(0x108b80ac, cache);
     s->memory.write<4>(cache, 1);
     s->memory.write<4>(cache + 32, descriptor); // Club name cache.
+    s->memory.write<4>(cache + 44, descriptor); // Nation name cache (nation index at +0x68 is zero).
     s->memory.write<4>(cache + 20, 1); // One regular competition.
     s->memory.write<4>(cache + 56, descriptor); // Competition name cache.
     for (unsigned r = 14; r < 32; ++r) s->wr<4>(r * 4, 0xcafe0000u + r);
@@ -143,13 +145,17 @@ int main(int argc, char** argv) {
             s->pc = type.getter;
             s->wr<4>(12, 0);
             bool stopped = false;
+            std::string fault;
             try { run(*s); }
             catch (const std::runtime_error& error) {
-                stopped = std::string(error.what()) == "Unmapped data access at 0x00000000";
+                fault = error.what();
+                stopped = std::string(error.what()) == "Unmapped data access at " + hex_address(type.null_address);
             }
-            require(stopped && s->pc == type.null_fault, "Unrelated null access was concealed instead of fixing the call site");
+            if (!stopped || s->pc != type.null_fault)
+                throw std::runtime_error("Direct null getter " + hex_address(type.getter) + " stopped at " +
+                    hex_address(s->pc) + ": " + fault);
         }
-        std::cout << "Original club/competition/default background selection, RNG state, and null-access checks passed\n";
+        std::cout << "Original nation/club/competition/default background selection, RNG state, and null-access checks passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

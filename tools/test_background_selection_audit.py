@@ -7,10 +7,12 @@ import sqlite3
 import unittest
 
 from background_selection_audit import (
-    BACKGROUND_SELECTION_ENTRIES, CONTRACTS, require_background_selection_contract)
+    BACKGROUND_SELECTION_ENTRIES, BACKGROUND_SELECTION_ACCESS_INSTRUCTIONS,
+    CONTRACTS, require_background_selection_contract)
 from calendar_audit import DATE_SUBSYSTEM_ENTRIES
 from collection_lookup_audit import COLLECTION_LOOKUP_ENTRIES
-from compile_recomp import CALENDAR_ADAPTER_ENTRIES, SEMANTIC_REPLACEMENTS, generate_page, operation
+from compile_recomp import (CALENDAR_ADAPTER_ENTRIES, SEMANTIC_REPLACEMENTS,
+                            HOST_OBSERVED_INSTRUCTIONS, generate_page, operation)
 from rng_core_audit import RNG_CORE_ENTRIES
 
 INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
@@ -75,6 +77,28 @@ class BackgroundAuditTests(unittest.TestCase):
                     start - 4, 0, start >> 12, {start}, 1),
                     's.pc = std::uint32_t(s.r<4>(4200)); return true;')
 
+    def test_memory_access_and_getter_fault_pcs_are_exact(self):
+        accesses = set()
+        for page in {start >> 12 for start, _, _ in CONTRACTS}:
+            records = self.records(page)
+            accesses.update(r['address'] for r in records
+                            if any(start <= r['address'] < end for start, end, _ in CONTRACTS)
+                            and any(op[0] in ('LOAD', 'STORE') for op in r['ops']))
+            code = generate_page(page, records, {r['address'] for r in records}, block_accounting=True)
+            for address in BACKGROUND_SELECTION_ACCESS_INSTRUCTIONS:
+                if address >> 12 == page:
+                    fragment = code.split(f'i_{address:x}:', 1)[1].split(f'i_{address + 4:x}:', 1)[0]
+                    self.assertIn(f's.step(0x{address:x});\n', fragment)
+        # Both samplers sign-extend the count to 16 bits before their guards.
+        # The legacy FP blocks require a count outside [-65535, 65535], so
+        # their 28 memory instructions cannot reach the adapter's access path.
+        legacy_fp_accesses = {address for address in accesses if any(
+            0x10712380 + offset <= address < 0x10712458 + offset for offset in (0, 0x788))}
+        self.assertEqual(len(legacy_fp_accesses), 28)
+        self.assertEqual(accesses - legacy_fp_accesses, BACKGROUND_SELECTION_ACCESS_INSTRUCTIONS)
+        self.assertTrue((BACKGROUND_SELECTION_ACCESS_INSTRUCTIONS |
+                         {0x100d4ea0, 0x100d53d8, 0x100d5084}) <= HOST_OBSERVED_INSTRUCTIONS)
+
     def test_changed_or_incomplete_bodies_reject(self):
         for start, end, _ in CONTRACTS:
             page = start >> 12
@@ -109,7 +133,8 @@ class BackgroundAuditTests(unittest.TestCase):
         self.assertIn('s.pc = 0x1074df90; return true;', wrapper_code)
         for address in (0x10713a80, 0x10713ae0, 0x10713b30, 0x10713c10):
             self.assertNotIn(f'try_modern_background_selection(s, 0x{address:x})', wrapper_code)
-        for address, getter in ((0x10713aec, 0x100d5310), (0x10713b3c, 0x100d4fd0)):
+        for address, getter in ((0x10713a9c, 0x100d4df0), (0x10713aec, 0x100d5310),
+                                (0x10713b3c, 0x100d4fd0)):
             fragment = wrapper_code.split(f'i_{address:x}:', 1)[1].split(f'i_{address + 4:x}:', 1)[0]
             self.assertIn('if (s.r<4>(12) == 0) {', fragment)
             self.assertIn('s.wr<4>(2440, s.r<4>(8));', fragment)

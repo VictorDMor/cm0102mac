@@ -312,6 +312,16 @@ listed in the compilation manifest. A native regression fixture exercises the
 real compiled routines with two nonempty picture lists, disabled/empty lists,
 register preservation, and the original getter's remaining null-access error.
 
+The FIFA rankings renderer exposed the equivalent nation fallback: its call at
+`0x10074680` supplies a null nation, and `0x10713004` reaches an eager name getter
+at `0x10713a9c`, faulting at `0x100d4ea0` on nation+0x68 before the rankings query.
+The same null-only correction now covers that audited site (and the competition
+site `0x10713b3c`). The shared selector still chooses the category's original
+default image; nonnull getters and direct null-getter faults remain intact.
+The background audit also pins all 59 adapter memory-access PCs for block
+accounting, so table-driven fault checks retain the exact access instruction
+rather than reporting the start of its straight-line run.
+
 Runs `app.rCcF8C` and `app.tCEQVP` passed team selection. The user confirmed
 assuming control, and the retained `app.rCcF8C` frame shows the original Cruzeiro
 squad screen. Both runs then stopped when opening a player, at the missing

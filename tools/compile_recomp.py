@@ -25,7 +25,8 @@ from native_sort8 import ENTRY as NATIVE_SORT8_ENTRY, load_sort8, require_sort8_
 from vector_context_lowering import lower_vector_intrinsic
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
-from background_selection_audit import require_background_selection_contract, BACKGROUND_SELECTION_ENTRIES
+from background_selection_audit import (require_background_selection_contract, BACKGROUND_SELECTION_ENTRIES,
+                                        BACKGROUND_SELECTION_ACCESS_INSTRUCTIONS)
 from collection_lookup_audit import require_collection_lookup_contract, COLLECTION_LOOKUP_ENTRIES
 from string_core_audit import require_string_core_contract, STRING_CORE_ENTRIES
 from memory_primitives_audit import require_memory_primitives_contract, MEMORY_PRIMITIVES_ENTRIES
@@ -950,7 +951,9 @@ OBSERVED_INSTRUCTION_TABLES = {0x101355d4, 0x10135614, 0x1024773c, 0x10247768, 0
     0x101ccdf0, 0x101cd5ec, 0x101d3f78,
     0x101d3b50, 0x101d5680, 0x101d5690, 0x101d56c0, 0x101d5730, 0x101d5744, 0x101d7db0,
     0x101e3dc4, 0x101e3e54, 0x101e3ee4, 0x101e3f00, 0x101f189c, 0x101f1930, 0x101f1940,
-    0x101f196c, 0x101f1dcc, 0x101f1df4, 0x101f1e2c, 0x101f21c0, 0x10289550, 0x10289570, 0x102895b0, 0x102895f0}
+    0x101f196c, 0x101f1dcc, 0x101f1df4, 0x101f1e2c, 0x101f21c0, 0x10289550, 0x10289570, 0x102895b0, 0x102895f0,
+    # Table-driven background getter faults and adapter memory accesses.
+    0x100d4ea0, 0x100d53d8, 0x100d5084} | BACKGROUND_SELECTION_ACCESS_INSTRUCTIONS
 PC_COMPARISON = re.compile(r"\bpc\s*[!=]=\s*(0x[0-9a-fA-F]{8})\b|\b(0x[0-9a-fA-F]{8})\s*[!=]=\s*[\w>.-]*\bpc\b")
 
 
@@ -996,7 +999,7 @@ LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CAL
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
-    0x10713aec, 0x10713b3c, 0x1034f1f8, 0x1034f318, 0x1034a8e4, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
+    0x10713a9c, 0x10713aec, 0x10713b3c, 0x1034f1f8, 0x1034f318, 0x1034a8e4, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
     0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
@@ -2105,12 +2108,13 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             _, quotient, _, divisor = item["ops"][0]
             code.extend([f"if (s.r<4>({divisor[1]}) == 0) {{", f"s.wr<4>({quotient[1]}, 0);",
                          transfer(a + 4, transfer_page, selected), "}"])
-        if a in (0x10713aec, 0x10713b3c):
-            # Club and competition fallback callers (10713214 / 107133b8)
+        if a in (0x10713a9c, 0x10713aec, 0x10713b3c):
+            # Nation/club/competition fallbacks (10713004/10713214/107133b8)
             # deliberately pass a null object. The shared selector 107139c0
             # ignores its descriptor in that case. Avoid only these audited
             # eager getter calls; nonnull lookup and other accesses are intact.
-            getter = 0x100d5310 if a == 0x10713aec else 0x100d4fd0
+            getter = {0x10713a9c: 0x100d4df0, 0x10713aec: 0x100d5310,
+                      0x10713b3c: 0x100d4fd0}[a]
             continuation = a + 4
             if item["assembly"] != f"bl 0x{getter:x}" or plain_direct_call(item) != getter:
                 raise ValueError("Background call site no longer matches the audited release")
@@ -2768,6 +2772,7 @@ def main():
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}
                     for address, purpose in (
+                        (0x10713a9c, "Skip unused null-nation descriptor lookup for default background"),
                         (0x10713aec, "Skip unused null-club descriptor lookup for default background"),
                         (0x10713b3c, "Skip unused null-competition descriptor lookup for default background"),
                         (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"),
