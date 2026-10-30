@@ -656,6 +656,16 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] Builder multiply-adds look up their kind per call (binary search over 1,049 sites); resolve per call site if it ever shows in a profile.
 - [ ] 250 of 288 tests can't run here: their binaries aren't built or their inputs were deleted by earlier cleanups. Restore the ones that matter.
 
+## Later: DB_FILES.CPP quirks (found 2026-10-30, to discuss with Victor)
+
+All kept as the original has them; recommendation so far is to change none. Read from the installed `index.dam` and table files; effects not measured. Contract in `docs/cpp-rewrites.md`.
+
+- [ ] **Club reputation 0 becomes 1 on every current-version load** (`native/db_files.cpp`, `+0x1ec`). The only one reaching the game: 2,501 of 10,593 clubs in `clubs club.dam`. Changing it alters simulation and possibly RNG order, so it is a gameplay decision for Victor. Not checked: the effect of 0 versus 1, and whether anything divides by this field.
+- [ ] **Version 1 readers leak** an open `.dam` or the conversion buffer until the game closes (about 6 MB for clubs). A real bug, but it needs a version 1 table file without the end marker; the four tables with such a reader ship as version 2 with the marker. A fix changes the guest heap on that path and needs a checker exception.
+- [ ] **Version 1 reputation times 500** (`native/db_files_legacy.cpp`) looks like a scale conversion, but a byte above 65 overflows the 16-bit field and turns negative. Same reachability as above; only worth limiting if the game should accept old databases.
+- [ ] **`convert_staff` clears `+0x6d`** after copying it; contract code reads that byte as a status, so this looks intentional. Only Windows files reach it, and `staff.dat` is listed with 0 records and doesn't exist.
+- [ ] **`clubs nat_club.dam` has odd values at `+0x1ec`** (-32,630 to 31,076, 100 zeros in 426 records). Not established whether the field is reputation there or whether this file goes through the same repair.
+
 ## Profile notes
 
 - Match play (600 advances, Arsenal, 2026-10-20): ~12% generated pages; ~28% routine-to-routine plumbing (`run_until`, `dispatch_page`, dispatch/native scopes, thread-local lookups, hook entry, diagnostics checks); ~15% `SemanticGuestCall` instruction methods; `spatial_role::invoke` 12.6%; rewritten bodies ~11%; guest memory ~8%.
