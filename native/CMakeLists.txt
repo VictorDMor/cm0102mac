@@ -3869,3 +3869,39 @@ if(CM_AWARD_SHORTLIST_COVERAGE)
     target_compile_definitions(cm-award-shortlist-checks PRIVATE CM_AWARD_SHORTLIST_COVERAGE=1)
     target_link_options(cm-award-shortlist-checks PRIVATE "-fprofile-instr-generate=${CM_AWARD_SHORTLIST_PROFILE}")
 endif()
+
+
+file(GLOB CM_SIPRINT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/siprint*.cpp")
+list(FILTER CM_SIPRINT_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_SIPRINT_SOURCES})
+add_executable(cm-siprint-checks siprint_checks.cpp)
+target_link_libraries(cm-siprint-checks PRIVATE cm_aot)
+target_compile_options(cm-siprint-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_SIPRINT_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/siprint_reference.cpp")
+    add_custom_command(OUTPUT "${CM_SIPRINT_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_siprint_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_SIPRINT_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_siprint_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/siprint_audit.py"
+            "${CMAKE_SOURCE_DIR}/siprint_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-siprint-checks PRIVATE "${CM_SIPRINT_REFERENCE}")
+    add_test(NAME siprint_equivalence COMMAND cm-siprint-checks "${CM_ORACLE_DIR}")
+    add_test(NAME siprint_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_siprint_audit.py")
+endif()
+option(CM_SIPRINT_COVERAGE "Instrument SIPRINT.CPP checker only" OFF)
+if(CM_SIPRINT_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/siprint-coverage")
+    set(CM_SIPRINT_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/siprint-coverage/check-%p.profraw")
+    add_library(cm_siprint_coverage OBJECT ${CM_SIPRINT_SOURCES})
+    target_link_libraries(cm_siprint_coverage PRIVATE cm_aot)
+    target_compile_options(cm_siprint_coverage PRIVATE "-fprofile-instr-generate=${CM_SIPRINT_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_siprint_coverage PRIVATE CM_SIPRINT_COVERAGE=1)
+    target_sources(cm-siprint-checks PRIVATE $<TARGET_OBJECTS:cm_siprint_coverage>)
+    target_compile_definitions(cm-siprint-checks PRIVATE CM_SIPRINT_COVERAGE=1
+        CM_SIPRINT_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/siprint-coverage")
+    target_link_options(cm-siprint-checks PRIVATE "-fprofile-instr-generate=${CM_SIPRINT_PROFILE}")
+endif()

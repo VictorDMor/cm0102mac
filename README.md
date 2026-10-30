@@ -41,6 +41,8 @@ team awards and monthly-rating persistence. `FIFA_RANKINGS.CPP` adds
 **15 audited routines** for international ranking points, rolling history,
 classification and binary persistence. `CASH.CPP` adds **12 audited routines**
 for monetary conversion, editing, currency configuration and text formatting.
+`SIPRINT.CPP` adds **9 audited routines** for printer lifetime, page-format
+resources, page setup and text pagination.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,

@@ -895,3 +895,15 @@ Preserve that original asymmetry. Automatic voting's signed sixteen-bit prefix
 cannot reach its inlined wide random arms. The public sampler's first wide
 reduction wraps bound*10 to signed32 before division by 65535; its result is
 within [-32768,32768], excluding all deeper wide unrolls and recursion.
+
+## SIPRINT.CPP: printing compatibility
+
+The printer owns a 16-byte guest record: signed availability byte, resource-file
+reference at +2, saved port at +4, session at +8 and page format at +12. The
+static initializer registers its destructor; resource-file guards and filesystem
+templates following that initializer belong to separate dependencies. Page
+formats remain opaque `PFor`/1000 resource handles managed by the original
+Printing Manager calls. Preserve the original calls that pass the address of
+the session field to `PMRelease`, and its absolute line-index vertical positions
+across page breaks. The zero lines-per-page remainder follows the generator
+proof at `0x1074d174`; no replacement page-layout policy is introduced.
