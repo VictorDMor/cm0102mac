@@ -3732,3 +3732,37 @@ if(CM_NATION_AWARDS_COVERAGE)
     target_compile_definitions(cm-nation-awards-checks PRIVATE CM_NATION_AWARDS_COVERAGE=1)
     target_link_options(cm-nation-awards-checks PRIVATE "-fprofile-instr-generate=${CM_NATION_AWARDS_PROFILE}")
 endif()
+
+file(GLOB CM_FIFA_RANKINGS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fifa_rankings*.cpp")
+list(FILTER CM_FIFA_RANKINGS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_FIFA_RANKINGS_SOURCES})
+add_executable(cm-fifa-rankings-checks fifa_rankings_checks.cpp)
+target_link_libraries(cm-fifa-rankings-checks PRIVATE cm_aot)
+target_compile_options(cm-fifa-rankings-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_FIFA_RANKINGS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/fifa_rankings_reference.cpp")
+    add_custom_command(OUTPUT "${CM_FIFA_RANKINGS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_fifa_rankings_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_FIFA_RANKINGS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_fifa_rankings_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/fifa_rankings_audit.py"
+            "${CMAKE_SOURCE_DIR}/fifa_rankings_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-fifa-rankings-checks PRIVATE "${CM_FIFA_RANKINGS_REFERENCE}")
+    add_test(NAME fifa_rankings_equivalence COMMAND cm-fifa-rankings-checks "${CM_ORACLE_DIR}")
+    add_test(NAME fifa_rankings_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_fifa_rankings_audit.py")
+endif()
+option(CM_FIFA_RANKINGS_COVERAGE "Instrument FIFA_RANKINGS.CPP checker only" OFF)
+if(CM_FIFA_RANKINGS_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fifa-rankings-coverage")
+    set(CM_FIFA_RANKINGS_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/fifa-rankings-coverage/check-%p.profraw")
+    add_library(cm_fifa_rankings_coverage OBJECT ${CM_FIFA_RANKINGS_SOURCES})
+    target_link_libraries(cm_fifa_rankings_coverage PRIVATE cm_aot)
+    target_compile_options(cm_fifa_rankings_coverage PRIVATE "-fprofile-instr-generate=${CM_FIFA_RANKINGS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_fifa_rankings_coverage PRIVATE CM_FIFA_RANKINGS_COVERAGE=1)
+    target_sources(cm-fifa-rankings-checks PRIVATE $<TARGET_OBJECTS:cm_fifa_rankings_coverage>)
+    target_compile_definitions(cm-fifa-rankings-checks PRIVATE CM_FIFA_RANKINGS_COVERAGE=1)
+    target_link_options(cm-fifa-rankings-checks PRIVATE "-fprofile-instr-generate=${CM_FIFA_RANKINGS_PROFILE}")
+endif()

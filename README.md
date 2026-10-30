@@ -33,7 +33,9 @@ news, season archives and binary persistence. `EURO_CHAMP_QUAL.CPP` adds
 and binary records. `TRANSFER_SCREENS.CPP` adds **75 audited routines** for
 transfer offers, player status, transfer history, loans and related confirmations.
 `NATION_AWARDS.CPP` adds **20 audited routines** for award selection, publication,
-team awards and monthly-rating persistence.
+team awards and monthly-rating persistence. `FIFA_RANKINGS.CPP` adds
+**15 audited routines** for international ranking points, rolling history,
+classification and binary persistence.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,

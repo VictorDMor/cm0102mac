@@ -828,3 +828,20 @@ Loading invokes the virtual reset before reading the flag. A failed monthly
 object allocation still returns success with a null pointer, as the original
 does. The global selector also retains its allocation when no candidate survives
 the initial scan. Neither quirk is silently changed by reconstruction.
+
+## FIFA_RANKINGS.CPP: international ranking points and history
+
+The 15 original entries (0x104866f0–0x10487ff0, 1,575 indexed instructions)
+use 44-byte nation rows and six-byte match records. `fifa_rankings_*` owns
+match points, expiry, six-year weighting, sorted queries and persistence;
+owned calls are direct C++ and both qsort transition vectors remain original.
+The original counts some histories with signed bytes, clamps goals only above
+five, applies asymmetric category bonuses, and rounds at individual PowerPC
+single/double operations. These rules are retained explicitly.
+
+The save stream contains all 44-byte rows (including original pointer bytes),
+then each row's live 16-bit count and match bytes, the founding-month byte and
+eight date bytes. Loading replaces the serialized pointer and sets capacity
+to the live count. Failed IO preserves transferred prefixes; the original
+load/save assertions leave the stream open, as in the original. Append retains
+the original unchecked allocation result.
