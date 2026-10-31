@@ -1010,3 +1010,9 @@ manager, controls and text run, with only files, the clock and the error dialog 
 snapshot starts with no group current (16), so the pass makes group 0 current. A screen already
 in the history refuses to open again in the real manager, which is how it reaches the openers'
 refused branches. The checker's scratch memory must stay off 0x60000000, the game's real heap there.
+
+Its real-save cases read a copy of the reference save through the native file services. The native
+FSRef holds the host's process id at +0xc, and `native/file_reference_bridge.cpp` copies it onto the
+guest's stack, so two runs of the original differ in those bytes. The checker replaces that exact value
+with a marker in the five slots these screens leave it in, so its presence is still compared. The system's file services don't survive a fork after
+the parent has used them, so anything reading files in the checker's own process must run last.

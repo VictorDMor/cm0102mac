@@ -4,22 +4,28 @@
 // so their arguments are compared and their effects are not. Every dispatched call
 // puts its target, return address, arguments, non-volatile registers and CR into
 // compared memory.
-// Real state (run_real_state): from a capture's snapshot the screen manager,
-// controls and text run for real; only files, the clock and paths are scripted.
-// Calls the module itself makes are recorded the same way, and memory is compared.
+// Real state (run_real_state): from a capture's snapshot the screen manager, controls,
+// text and paths run for real; the clock, the error dialog, the dialog's filter and,
+// except in the real-save cases, files are scripted. Calls the module itself makes are
+// recorded the same way, and memory is compared.
 #include "file_screens_adapter.hpp"
+#include "file_screens_detail.hpp"
 #include "guest_values.hpp"
 #include "match_replay.hpp"
+#include "platform.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
 #include <array>
+#include <bit>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <iostream>
 #include <map>
+#include <algorithm>
 #include <ranges>
 #include <set>
+#include <sys/time.h>
 #include <unistd.h>
 #include <vector>
 
@@ -75,13 +81,15 @@ struct Case {
         spoken = 0, guard = 0, played = 0, saved = 0, wday = 3, table_row = 0x10, find_found = 0, find_end = 1, now = 0x12345, last_time = 0x12000,
         total_time = 0x500, person_count = 16, current_window = 0;
     std::vector<std::uint32_t> filter_flags{};     // what the filter returns, in turn
+    bool real_files = false;                       // the save's own bytes, through the native file services
+    enum class Proof { none, summary_on_stack, info_screen_open } proof = Proof::none;  // what a run on them must show
     std::string background{};
     std::vector<Person> managers{};
     std::uint32_t league_flags = 0;                // flags of the first two leagues, in their low bytes
     std::function<void(Cpu&)> prepare{};
 };
 Case active;
-bool real_mode = false;
+bool real_mode = false, error_shown = false;
 std::vector<std::uint8_t> real_summary;  // what the game's own writer wrote, for the reader
 bool original_mode = false, production_mode = false, ownership_mode = false, wrong_argument = false, wrong_return = false, clobbers = false;
 unsigned calls = 0, next_filter = 0, files_left = 0, tables = 0;
@@ -145,6 +153,7 @@ std::uint32_t script(Cpu& c, std::uint32_t target) {
         if (active.allocate_fails) return 0;
         next_heap += 16;
         return next_heap - 16;
+    case error_dialog: error_shown = true; return arg3 + 1;
     case usable_path: return active.usable;
     case create_directory: return active.created;
     case file_exists: return active.exists;
@@ -221,7 +230,8 @@ bool probe(State& s) {
     }
     // The dialog's filter has no real routine behind a fixture's vector.
     const bool stubbed_filter = real_mode && target == glue_call && c.lr() == 0x100ee558;
-    if (!stubbed_filter && !(real_mode ? real_scripted : scripted).contains(target)) {
+    const bool real_file_call = real_mode && active.real_files && (target == open_entry || target == read_entry || target == close_entry || target == file_exists);
+    if (real_file_call || (!stubbed_filter && !(real_mode ? real_scripted : scripted).contains(target))) {
         if (real_mode) {
             // Only the module's own calls: the real routines make over a million more.
             if (target != c.lr() && c.lr() >= module_low && c.lr() < module_high && !is_leaf_entry(target)) trace(c, target);
@@ -338,26 +348,85 @@ void flush_coverage() {
     if (__llvm_profile_write_file() != 0) throw std::runtime_error("Cannot flush FILE_SCREENS child coverage");
 #endif
 }
+// The native FSRef holds the host's process id (at +0xc, little-endian), and the bridge
+// copies it onto the guest's stack: two runs of the original differ there. Each child
+// replaces exactly that value with a marker, in the slots the reference save's screens
+// leave it in. So the id's presence must still match on both sides, a match anywhere
+// else can't be a coincidence with some other number, and any other value is compared.
+constexpr std::uint32_t host_id_marker = 0x50494421;
+constexpr std::uint32_t read_summary_below = 0x10d0 - 0x110;
+constexpr std::array<std::uint32_t, 5> host_id_slots{0x1a5c, 0x16b8, 0xe3c, 0xa98, 0xa48};
+void mark_host_process_id(State& s, std::uint32_t top) {
+    if (!real_mode || !active.real_files) return;
+    Cpu c(s);
+    for (const auto below : host_id_slots)
+        if (std::byteswap(c.u32(top - below)) == std::uint32_t(getpid())) c.put32(top - below, host_id_marker);
+}
+std::string guest_text(Cpu& c, std::uint32_t at) {
+    std::string text;
+    while (const auto character = c.u8(at++)) text += char(character);
+    return text;
+}
+// What the reference save's summary holds.
+constexpr std::string_view save_foreground = "Brasil", save_version = "3.9.62";
+// Each compared run must show it read the save: the parent's file services can work
+// while a forked child's don't, and two failed reads would match each other. This reads
+// memory only, so what the run left stays as it was for the comparison.
+void require_real_read(State& s, std::uint32_t top) {
+    if (!real_mode) return;
+    Cpu c(s);
+    if (active.proof == Case::Proof::summary_on_stack) {
+        const file_screens::detail::SaveSummary summary{c, top - read_summary_below};
+        if (error_shown || guest_text(c, summary.foreground()) != save_foreground || guest_text(c, summary.version()) != save_version)
+            throw std::runtime_error("The save's summary is not on the stack");
+    }
+    if (active.proof == Case::Proof::info_screen_open) {
+        // The newest history entry's first value, as 0x1073ef70 reads it.
+        const auto screens = c.u32(screens_slot);
+        const auto node = c.u32(screens + std::uint32_t(c.i16(screens + 0x2c58)) * 0x2c0 + 0x10);
+        if (!node || guest_text(c, c.u32(node + 0x14)).find("career.sav") == std::string::npos)
+            throw std::runtime_error("The save's information screen did not open");
+    }
+}
 void original(State& s, std::uint32_t entry) {
     original_mode = true;
     reset_script();
     s.pc = entry;
+    const auto top = std::uint32_t(s.r<4>(reg::gpr(1)));
     run_until(s, sentinel);
+    require_real_read(s, top);
+    mark_host_process_id(s, top);
     flush_coverage();
 }
 void rewrite(State& s, std::uint32_t entry) {
     original_mode = false;
     reset_script();
+    const auto top = std::uint32_t(s.r<4>(reg::gpr(1)));
     if (production_mode) {
         s.pc = entry;
         run_until(s, sentinel);
     } else {
         file_screens_run_rewrite(s, entry);
     }
+    require_real_read(s, top);
+    mark_host_process_id(s, top);
     flush_coverage();
 }
 void corrupt_memory(State& s, std::uint32_t entry) { rewrite(s, entry); Cpu c(s); c.put8(text_a, c.u8(text_a) ^ 1); }
 void corrupt_register(State& s, std::uint32_t entry) { rewrite(s, entry); s.wr<4>(reg::gpr(5), s.r<4>(reg::gpr(5)) ^ 1); }
+void corrupt_summary(State& s, std::uint32_t entry) {
+    rewrite(s, entry);
+    Cpu c(s);
+    const auto at = c.sp() - read_summary_below;
+    c.put8(at, c.u8(at) ^ 1);
+}
+// A run that lost the id at a slot: the marker must still have to match.
+void lose_host_id(State& s, std::uint32_t entry) {
+    rewrite(s, entry);
+    Cpu c(s);
+    if (c.u32(c.sp() - 0xa98) != host_id_marker) throw std::runtime_error("The host id is not at the slot");
+    c.put32(c.sp() - 0xa98, 0);
+}
 void corrupt_result(State& s, std::uint32_t entry) { rewrite(s, entry); s.wr<4>(reg::gpr(3), s.r<4>(reg::gpr(3)) ^ 1); }
 void corrupt_cr(State& s, std::uint32_t entry) { rewrite(s, entry); Cpu c(s); c.set_cr(0, c.cr(0) ^ 2); }
 void corrupt_stack(State& s, std::uint32_t entry) { rewrite(s, entry); Cpu c(s); c.put8(stack - 0x60, c.u8(stack - 0x60) ^ 1); }
@@ -375,10 +444,30 @@ History dialog_history(std::uint32_t mode, std::uint32_t question = 0) {
 // Every entry from a real capture's state. Each case first opens the screen it
 // needs with the original, then compares the entry; the screen manager's real
 // history, controls and text sit behind it.
-unsigned run_real_state(const std::filesystem::path& program, const std::filesystem::path& snapshot) {
+unsigned run_real_state(const std::filesystem::path& program, const std::filesystem::path& snapshot, const std::filesystem::path& save) {
     State base;
     load_program(base, program);
     load_match_snapshot(base, snapshot);
+    // A copy of a real save in a scratch game folder, reached through the native file
+    // services; the reference save itself stays untouched.
+    const auto scratch = std::filesystem::temp_directory_path() / ("cm-file-screens-" + std::to_string(getpid()));
+    struct ScratchFolder {
+        std::filesystem::path path;
+        ~ScratchFolder() { std::error_code ignored; std::filesystem::remove_all(path, ignored); }
+    } scratch_folder{scratch};
+    std::filesystem::create_directories(scratch / "game");
+    if (save.empty()) std::cout << "real save: not run, no save given\n";
+    else {
+        if (std::filesystem::file_size(save) < 1000000) throw std::runtime_error("Not a whole save (an unfetched Git LFS pointer?): " + save.string());
+        const auto copy = scratch / "game" / "career.sav";
+        std::filesystem::copy_file(save, copy, std::filesystem::copy_options::overwrite_existing);
+        // Fixed dates, the access date after the modification date so reading doesn't
+        // change it. Not confirmed as needed: two runs of the original once differed in
+        // two stack bytes before this, one run in twelve, and never in 70 runs since.
+        const timeval dates[2]{{1000000000 + 86400, 0}, {1000000000, 0}};
+        if (utimes(copy.c_str(), dates) != 0) throw std::runtime_error("Cannot set the save copy's dates");
+    }
+    base.platform = std::make_shared<NativePlatform>(scratch / "game", scratch / "user", AudioMode::offline);
     // The snapshot stops at the end of an import, inside its glue: the game's
     // TOC is the one the glue saved at sp+0x14.
     base.wr<4>(reg::gpr(2), base.memory.read<4>(std::uint32_t(base.r<4>(reg::gpr(1))) + 0x14));
@@ -396,7 +485,8 @@ unsigned run_real_state(const std::filesystem::path& program, const std::filesys
         throw std::runtime_error("The snapshot lacks the window, people or clubs this pass uses");
     const auto frame = (std::uint32_t(base.r<4>(reg::gpr(1))) - 0x10000) & ~0xfu;
     const auto path = data + 0x1000, summary = data + 0x10000, heading = data + 0x1100, body = data + 0x1200, folder = data + 0x1400, name = data + 0x1500,
-               extension = data + 0x1540, object_text = data + 0x1580, blank = data + 0x15c0;
+               extension = data + 0x1540, object_text = data + 0x1580, blank = data + 0x15c0, save_file = data + 0x1600, no_save = data + 0x1640,
+               no_folder = data + 0x1680;
     const auto write_texts = [=](Cpu& c) {
         write_text(c, path, "Mac HD:Saves:career.sav");
         write_text(c, heading, "Save Game");
@@ -404,6 +494,9 @@ unsigned run_real_state(const std::filesystem::path& program, const std::filesys
         write_text(c, folder, "Mac HD:Saves");
         write_text(c, name, "career.sav");
         write_text(c, extension, ".sav");
+        write_text(c, save_file, "career.sav");
+        write_text(c, no_save, "missing.sav");
+        c.put8(no_folder, 0);
         c.put8(blank, 0);
         c.put32(object_text, body);
         c.put32(object_text + 4, 0);
@@ -437,11 +530,11 @@ unsigned run_real_state(const std::filesystem::path& program, const std::filesys
             c.put32(person + 0x20, at % 2 ? clubs + (at + 1) * 0x248 : 0);
         }
     };
-    struct DialogOptions { std::uint32_t mode = 0, folders_only = 0, plain_cancel = 0, info_button = 1; bool blank_name = false; std::uint32_t extension_text = extension, filter = 0; bool rendered = true; };
+    struct DialogOptions { std::uint32_t mode = 0, folders_only = 0, plain_cancel = 0, info_button = 1; bool blank_name = false; std::uint32_t extension_text = extension, filter = 0; bool rendered = true; std::uint32_t folder_text = folder; };
     const auto open_dialog_screen = [=](Cpu& c, const DialogOptions& o) {
         c.put32(frame + 0x38, 0xfedc); c.put32(frame + 0x3c, 0x1234);
         c.put8(frame + 0x43, o.folders_only); c.put8(frame + 0x47, 0); c.put8(frame + 0x4b, o.plain_cancel); c.put8(frame + 0x4f, o.info_button);
-        prepare(c, open_dialog, {heading, body, o.mode, folder, o.extension_text, name, o.filter, 0x1234});
+        prepare(c, open_dialog, {heading, body, o.mode, o.folder_text, o.extension_text, name, o.filter, 0x1234});
         // The typed name, as the dialog's field holds it.
         c.set(3, c.u32(screens_slot));
         c.set(4, 7);
@@ -551,6 +644,20 @@ unsigned run_real_state(const std::filesystem::path& program, const std::filesys
             add({"dialog layout", render_dialog, {.folders = 2}, [=](Cpu& c) {
                      open_dialog_screen(c, {.folders_only = only, .plain_cancel = layout[0], .info_button = layout[1], .rendered = false}); }});
 
+    // The real save's bytes: the screen a capture never opens, and the dialog's route to it.
+    const RealCase real_save_from_dialog{"real save from the dialog", dialog_action, {.real_files = true, .proof = Case::Proof::info_screen_open},
+                                         [=](Cpu& c) { open_dialog_screen(c, {.folder_text = no_folder}); pending_action(c, 5); }, {0xffff}};
+    const RealCase real_save_screen{"real save screen", render_info, {.real_files = true, .proof = Case::Proof::summary_on_stack},
+                                    [=](Cpu& c) { prepare(c, open_info, {save_file}); }};
+    if (!save.empty()) {
+        for (const std::uint32_t saved_text : {save_file, no_save}) {
+            const Case data{.real_files = true, .proof = saved_text == save_file ? Case::Proof::summary_on_stack : Case::Proof::none};
+            const std::string name = saved_text == save_file ? "real save screen" : "missing save screen";
+            add({name, render_info, data, [=](Cpu& c) { prepare(c, open_info, {saved_text}); }});
+            add({name + ", rated", render_info, data, [=](Cpu& c) { prepare(c, open_info, {saved_text}); c.put8(toc_base - 0x35ac, 0); }});
+        }
+        add(real_save_from_dialog);
+    }
     // A screen already in the history refuses to open again, in the real manager.
     add({"open info refused", open_info, {}, info_screen, {path}});
     add({"open message refused", open_message, {}, [=](Cpu& c) { prepare(c, open_message, {heading, body, body, 0, 0x1234, 0x7654, 0x55}); },
@@ -572,6 +679,7 @@ unsigned run_real_state(const std::filesystem::path& program, const std::filesys
     const auto fresh = [&](const Case& data, std::unique_ptr<State>& s) {
         active = data;
         s = cm::semantic_io_checks::clone(base);
+        s->platform = base.platform;
         s->budget = s->executed + 200000000;
         Cpu c(*s);
         c.put32(trace_at, 0);
@@ -645,11 +753,67 @@ unsigned run_real_state(const std::filesystem::path& program, const std::filesys
         wrong_return = true;
         const bool recorded = detected(message, rewrite);
         wrong_return = false;
-        if (byte && register_value && result && argument && recorded) std::cout << "ok real-state corruptions detected, production=" << production << '\n';
+        // On the real save too: a wrong byte of what was read and a lost host id, each seen
+        // as a byte, not as a run that stopped. A read that fails must stop the run with
+        // the proof's own message.
+        const auto lines = [&](const RealCase& test, RoutineRunner runner) {
+            std::unique_ptr<State> s;
+            ready(test, s);
+            if (production) s->memory.observer = &observer;
+            auto found = compare_routine_call(*s, test.entry, original, runner, RoutineChecker::result_r3);
+            s->memory.observer = nullptr;
+            return found;
+        };
+        const auto reports = [](const std::vector<std::string>& found, std::string_view text) {
+            return std::ranges::any_of(found, [&](const std::string& line) { return line.find(text) != std::string::npos; });
+        };
+        bool save_byte = true;
+        if (!save.empty()) {
+            const RealCase failed_screen{"control", render_info, real_save_screen.data, [=](Cpu& c) { prepare(c, open_info, {no_save}); }};
+            const RealCase failed_dialog{"control", dialog_action, real_save_from_dialog.data,
+                                         [=](Cpu& c) { open_dialog_screen(c, {.folder_text = no_folder}); pending_action(c, 6); }, {0xffff}};
+            const auto wrong_byte = lines(real_save_screen, corrupt_summary);
+            const auto lost_id = lines(real_save_from_dialog, lose_host_id);
+            save_byte = !wrong_byte.empty() && !reports(wrong_byte, "stopped") && reports(wrong_byte, "byte ") &&
+                        !lost_id.empty() && !reports(lost_id, "stopped") && reports(lost_id, "byte ") &&
+                        reports(lines(failed_screen, rewrite), "summary is not on the stack") &&
+                        reports(lines(failed_dialog, rewrite), "information screen did not open");
+        }
+        if (byte && register_value && result && argument && recorded && save_byte) std::cout << "ok real-state corruptions detected, production=" << production << '\n';
         else {
             ++failures;
             std::cout << "FAIL real-state corruption control, production=" << production << " byte=" << byte << " register=" << register_value
-                      << " result=" << result << " argument=" << argument << " recorded=" << recorded << '\n';
+                      << " result=" << result << " argument=" << argument << " recorded=" << recorded << " save=" << save_byte << '\n';
+        }
+    }
+    // The original must match itself on the real save: nothing else about the host reaches
+    // what is compared.
+    production_mode = false;
+    for (const auto& test : cases) {
+        if (!test.data.real_files) continue;
+        std::unique_ptr<State> run;
+        ready(test, run);
+        for (const auto& line : compare_routine_call(*run, test.entry, original, original, RoutineChecker::result_r3)) {
+            ++failures;
+            std::cout << "FAIL the original differs from itself on '" << test.label << "': " << line << '\n';
+        }
+    }
+    // What the save held, in this process and last: the system's file services don't
+    // survive a later fork.
+    if (!save.empty()) {
+        std::unique_ptr<State> run;
+        fresh(real_save_screen.data, run);
+        Cpu c(*run);
+        prepare(c, open_info, {save_file});
+        error_shown = false;
+        prepare(c, render_info, {});
+        const file_screens::detail::SaveSummary summary_read{c, frame - read_summary_below};
+        const auto foreground = guest_text(c, summary_read.foreground()), version = guest_text(c, summary_read.version()),
+                   manager = guest_text(c, summary_read.manager(0).name());
+        std::cout << "real save read: foreground [" << foreground << "] version [" << version << "] manager [" << manager << "]\n";
+        if (error_shown || foreground != save_foreground || version != save_version || manager.empty()) {
+            ++failures;
+            std::cout << "FAIL the real save was not read\n";
         }
     }
     production_mode = false;
@@ -879,8 +1043,8 @@ std::vector<Case> all_cases() {
 }
 }
 int main(int argc, char** argv) {
-    if (argc != 2 && argc != 3) {
-        std::cerr << "Usage: cm-file-screens-checks <export> [<a session capture's initial.snapshot>]\n";
+    if (argc < 2 || argc > 4) {
+        std::cerr << "Usage: cm-file-screens-checks <export> [<a session capture's initial.snapshot> [<the reference save>]]\n";
         return 2;
     }
     try {
@@ -976,7 +1140,7 @@ int main(int argc, char** argv) {
         for (const auto& [entry, n] : counts) std::cout << hex_address(entry) << " returned " << n[0] << " controlled + " << n[1] << " production\n";
         std::cout << ownership << "/" << entries.size() << " production controls; " << completed << " returned comparisons; " << failures << " failures\n";
         if (counts.size() != entries.size()) { std::cout << "FAIL an entry has no returned comparison\n"; return 1; }
-        if (argc == 3) failures += run_real_state(argv[1], argv[2]);
+        if (argc >= 3) failures += run_real_state(argv[1], argv[2], argc == 4 ? argv[3] : "");
         else std::cout << "real state: not run, no snapshot\n";
         return failures ? 1 : 0;
     } catch (const std::exception& e) {

@@ -4074,7 +4074,10 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
     target_sources(cm-file-screens-checks PRIVATE "${CM_FILE_SCREENS_REFERENCE}")
-    if(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
+    if(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot" AND EXISTS "${CMAKE_SOURCE_DIR}/../saves/Mac-Teste-Validado-Pos-Jogo.sav")
+        add_test(NAME file_screens_equivalence COMMAND cm-file-screens-checks "${CM_ORACLE_DIR}" "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot"
+            "${CMAKE_SOURCE_DIR}/../saves/Mac-Teste-Validado-Pos-Jogo.sav")
+    elseif(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
         add_test(NAME file_screens_equivalence COMMAND cm-file-screens-checks "${CM_ORACLE_DIR}" "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
     else()
         add_test(NAME file_screens_equivalence COMMAND cm-file-screens-checks "${CM_ORACLE_DIR}")
