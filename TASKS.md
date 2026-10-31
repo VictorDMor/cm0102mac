@@ -20,6 +20,19 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [ ] **MATCH_ENG.CPP complete C++23 reconstruction (2026-10-31):** 235 entries / 46,271 indexed instructions, 0x101d16a0-0x101fef60 (`tools/match_eng_audit.py`). All entries are hooked from the start; 79 older builder owners left production at takeover. Private brief and block list in `.local/rewrites/match_eng/`.
+  - [x] Close the inventory: source pools, neighbors, all direct targets, one transition vector, seven switch tables, no crossing flows.
+  - [x] Generator takeover, adapter, leaf inlining as C++, checker with live/case/mutated evidence.
+  - [x] leaves (98), flow, tactics_a, space, report, routes: committed.
+  - [x] setup, shots, advance, team_b, roster: committed (not pushed).
+  - [ ] events, team_a, contact, rating: unfinished, UNCOMMITTED drafts in `native/`, stopped at the usage limit. events: 0x101db340 passes captures; remove its debug scaffolding (clean copies in `.local/rewrites/match_eng/wip/events/`), `events-replay` and `bin/events`. team_a: remove `match_eng_team_a_sites.cpp` and TR macros (register tables are out), r7 difference and a fault on snapshot 677 open. contact, rating: partial, not reported.
+  - [ ] Add the return-address scan to `tools/test_match_eng_audit.py`: a literal in the module must be an entry or follow a `bl` (a first draft flagged helper-call sites too, so it needs the helpers' convention).
+  - [ ] `.local/base-3cedce1` (git worktree), `.local/base-gen` and `.local/base-build` hold the pre-module baseline for timing pairs; remove them after delivery.
+  - [ ] Consolidation after all blocks: settle field names in `match_eng_fields.hpp` (0x791d/0x791e row/column are swapped in `ball_column`/`ball_row`; 0xe000/0xdff8 holder names; 0x7924 kick-off side), one `draw`/`post_message`/`integer_double`/`KeptFloat`, direct typed calls for leaves and hot cross-block calls, remove register no-ops, fix misdescribed comments the reviews listed.
+  - [ ] Case gaps from reviews: team kinds and TOC slots -0x7300..-0x7498 in team_lines; restarts with no taker and squads off the pitch; home_cell own-cell path (instruction word); marker_available false exits; side flag 0x400; carrier exits to Next::skip. Coverage will list the rest.
+  - [ ] Retire older family tests that watch owners no page calls (`*_actual_production`, `*_original_profile`, `*_nonlocal_transfer`, match_debugger counters).
+  - [ ] Coverage pass; production routing proof; replay pair; timing pairs; install; sheet.
+
 - [x] **SIPRINT.CPP complete C++23 reconstruction (2026-10-30):** all four completion dimensions closed: 9/9 audited entries, complete handwritten implementations, default production routing and verified delivery. Private per-entry ledger: `.local/rewrites/siprint/ledger.json`.
   - [x] Close 634 indexed instructions, source/TOC/neighbors, 8 incoming calls, 2 direct owned calls, the destructor transition vector, 12 zero padding words and one unreachable alignment NOP. Ten structural tests and seven retained engine-initialization audit tests pass.
   - [x] Reconstruct printer lifetime, page-format resource persistence, signed availability, setup, text pagination and static initialization. All 9 exclusive production owners are active; the old initializer builder leaves normal routing. Exactly 7 module/caller pages regenerate; final regeneration changes none.
