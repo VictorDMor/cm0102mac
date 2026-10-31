@@ -6,6 +6,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
+- [ ] **Host process id on the guest's stack** (found 2026-10-31, FILE_SCREENS.CPP): `native/file_reference_bridge.cpp` copies native FSRefs into guest memory, and +0xc holds the host's process id, so it varies per launch and reaches the stack in production. Whether the game ever reads it isn't confirmed. Masking it there and restoring `getpid()` on the way back would remove the variation, but it changes stack bytes the game could read, so it waits for your decision. Nothing depends on it; `cm-file-screens-checks` handles it with a marker.
+
 - [x] **Uninitialised stack decides results** (found 2026-10-23). Decided by Victor 2026-10-23: option A, keep exact results; every rewrite reproduces the stack image the original leaves, checked byte for byte. Architectural changes that give up stack fidelity wait until the recompilation is complete.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
