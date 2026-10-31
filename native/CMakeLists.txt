@@ -3942,6 +3942,45 @@ if(CM_SIPRINT_COVERAGE)
 endif()
 
 
+file(GLOB CM_BRA_REG_CENTRAL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bra_reg_central*.cpp")
+list(FILTER CM_BRA_REG_CENTRAL_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_BRA_REG_CENTRAL_SOURCES})
+add_executable(cm-bra-reg-central-checks bra_reg_central_checks.cpp)
+target_link_libraries(cm-bra-reg-central-checks PRIVATE cm_aot)
+target_compile_options(cm-bra-reg-central-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_BRA_REG_CENTRAL_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/bra_reg_central_reference.cpp")
+    add_custom_command(OUTPUT "${CM_BRA_REG_CENTRAL_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_bra_reg_central_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_BRA_REG_CENTRAL_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_bra_reg_central_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/bra_reg_central_audit.py"
+            "${CMAKE_SOURCE_DIR}/bra_reg_central_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-bra-reg-central-checks PRIVATE "${CM_BRA_REG_CENTRAL_REFERENCE}")
+    add_test(NAME bra_reg_central_equivalence COMMAND cm-bra-reg-central-checks "${CM_ORACLE_DIR}")
+    add_test(NAME bra_reg_central_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_bra_reg_central_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        add_test(NAME bra_reg_central_career_state COMMAND cm-bra-reg-central-checks "${CM_ORACLE_DIR}"
+            "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+    endif()
+endif()
+option(CM_BRA_REG_CENTRAL_COVERAGE "Instrument bra_reg_central.cpp checker only" OFF)
+if(CM_BRA_REG_CENTRAL_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bra-reg-central-coverage")
+    set(CM_BRA_REG_CENTRAL_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/bra-reg-central-coverage/check-%p.profraw")
+    add_library(cm_bra_reg_central_coverage OBJECT ${CM_BRA_REG_CENTRAL_SOURCES})
+    target_link_libraries(cm_bra_reg_central_coverage PRIVATE cm_aot)
+    target_compile_options(cm_bra_reg_central_coverage PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_CENTRAL_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_bra_reg_central_coverage PRIVATE CM_BRA_REG_CENTRAL_COVERAGE=1)
+    target_sources(cm-bra-reg-central-checks PRIVATE $<TARGET_OBJECTS:cm_bra_reg_central_coverage>)
+    target_compile_definitions(cm-bra-reg-central-checks PRIVATE CM_BRA_REG_CENTRAL_COVERAGE=1)
+    target_link_options(cm-bra-reg-central-checks PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_CENTRAL_PROFILE}")
+endif()
+
+
 file(GLOB CM_DB_FILES_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/db_files*.cpp")
 list(FILTER CM_DB_FILES_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_DB_FILES_SOURCES})

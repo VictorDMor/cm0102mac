@@ -956,3 +956,18 @@ guest fault in both. The fixture's scripted services never see leaf routines
 (0x10738c00, 0x10775550, 0x10768810, 0x1037fa70): `run_until` runs those before
 the probe, so a case steers them through the memory they read.
 
+
+## BRA_REG_CENTRAL.CPP: Brazilian Central regional championship
+
+The 14 entries at 0x106d73f0–0x106d9170 (1,862 indexed instructions) live in
+`native/bra_reg_central_*`; `tools/bra_reg_central_audit.py` pins them. A
+15-club league of 15 rounds is followed by an eight-club knockout: the first
+stage advance copies league rows 0, 7, 2, 5, 6, 1, 4, 3 into the bracket. Unlike
+the English modules, destruction releases the stage array even when null and
+keeps the pointer. No existing capture reaches these routines (63 censused), so
+`bra_reg_central_career_state` builds the competition on a real career's
+database. That check runs the real club scan, RNG, calendars and knockout record;
+it scripts club history, the fixture builder, the saved-competition load and the
+season route because they stop at file or dialog imports, so those calls have
+their arguments compared but not their effects. Fixture slots and base-class news
+are covered by fixtures only.
