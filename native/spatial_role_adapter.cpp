@@ -1,5 +1,5 @@
 #include "spatial_role_adapter.hpp"
-#include "match_pl_adapter.hpp"
+#include "match_eng_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
@@ -69,7 +69,7 @@ bool try_modern_spatial_role(State& s, std::uint32_t entry) {
     try {
         if (original) {
             OriginalBody selected(s, entry);
-            match_pl_run_original(s, entry);
+            match_family_run_original(s, entry);
         } else spatial_role::invoke(s, spatial_role::Entry(index));
     } catch (const ApplicationExit&) { leave(s, index, original, SpatialRoleOutcome::terminated); throw; }
     catch (const GuestContextTransfer&) { leave(s, index, original, SpatialRoleOutcome::context_transfer); throw; }

@@ -1,3 +1,4 @@
+#include "match_eng_adapter.hpp"
 #include "match_engine_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
@@ -40,9 +41,8 @@ bool try_modern_match_engine(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original match-engine body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_family_run_original(s, entry);
         } else {
             if (index == 0) match_engine::advance_watched(s);
             else if (index == 1) match_engine::advance_background(s);

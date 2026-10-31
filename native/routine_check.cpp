@@ -26,6 +26,7 @@ extern "C" int __llvm_profile_write_file(void);
 namespace cm::aot {
 RoutineChecker* routine_checker = nullptr;
 bool (*dispatch_probe)(State&) = nullptr;
+void (*routine_child_exit)() = nullptr;
 namespace {
 bool in_child = false;
 constexpr unsigned page_shift = 12;
@@ -214,6 +215,7 @@ std::vector<std::uint8_t> page_bytes(const Memory& memory, std::uint32_t page) {
 #if defined(CM_SHORTLIST_COVERAGE)
     __llvm_profile_write_file();
 #endif
+    if (routine_child_exit) routine_child_exit();
     _exit(0);
 }
 

@@ -1,3 +1,4 @@
+#include "match_eng_adapter.hpp"
 #include "team_line_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
@@ -39,9 +40,8 @@ bool try_modern_team_line(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original team-line body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_family_run_original(s, entry);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
             constexpr Function methods[]{team_line::tactical_flags, team_line::line_adjustment_enabled, team_line::actor_column_excess, team_line::column_excess, team_line::row_lane_clear};

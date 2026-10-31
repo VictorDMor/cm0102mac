@@ -1,3 +1,4 @@
+#include "match_eng_adapter.hpp"
 #include "team_spatial_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
@@ -39,9 +40,8 @@ bool try_modern_team_spatial(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original team-spatial body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_family_run_original(s, entry);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
             constexpr Function methods[]{team_spatial::nearest_actor, team_spatial::nearest_distance, team_spatial::nearby_weight, team_spatial::refresh_column_limits};

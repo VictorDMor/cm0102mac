@@ -203,6 +203,8 @@ from main_program_audit import MAIN_PROGRAM_ENTRIES, require_main_program_index,
 from club_history_audit import CLUB_HISTORY_ENTRIES, require_club_history_index, club_history_hook
 from club_records_audit import CLUB_RECORDS_ENTRIES, require_club_records_index, club_records_hook
 from match_pl_audit import MATCH_PL_ENTRIES, require_match_pl_index, match_pl_hook
+from match_eng_audit import (MATCH_ENG_ENTRIES, MATCH_ENG_LEAVES, require_match_eng_index, match_eng_hook,
+                            require_match_eng_hooks)
 from screen_manager_audit import SCREEN_MANAGER_ENTRIES, require_screen_manager_index, screen_manager_hook
 from inter_amer_cup_audit import INTER_AMER_CUP_ENTRIES, require_inter_amer_cup_index, inter_amer_cup_hook
 from euro_champ_qual_audit import EURO_CHAMP_QUAL_ENTRIES, require_euro_champ_qual_index, euro_champ_qual_hook
@@ -399,7 +401,8 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                             and entry not in PLAYER_STATS_ENTRIES and entry not in SHORTLIST_MANAGER_ENTRIES
                             and entry not in CONTRACT_MANAGER_ENTRIES and entry not in SCREEN_MANAGER_ENTRIES
                             and entry not in MATCH_PL_ENTRIES and entry not in CASH_ENTRIES
-                            and entry not in SIPRINT_ENTRIES and entry not in AWOL_ENTRIES) +
+                            and entry not in SIPRINT_ENTRIES and entry not in AWOL_ENTRIES
+                            and entry not in MATCH_ENG_ENTRIES) +
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES) +
                       tuple((entry, "main_program_adapter") for entry in MAIN_PROGRAM_ENTRIES) +
                       tuple((entry, "player_stats_adapter") for entry in PLAYER_STATS_ENTRIES) +
@@ -407,6 +410,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "club_history_adapter") for entry in CLUB_HISTORY_ENTRIES) +
                       tuple((entry, "club_records_adapter") for entry in CLUB_RECORDS_ENTRIES) +
                       tuple((entry, "match_pl_adapter") for entry in MATCH_PL_ENTRIES) +
+                      tuple((entry, "match_eng_adapter") for entry in MATCH_ENG_ENTRIES) +
                       tuple((entry, "eng_prm_adapter") for entry in ENG_PRM_ENTRIES) +
                       tuple((entry, "eng_conf_adapter") for entry in ENG_CONF_ENTRIES) +
                       tuple((entry, "bra_reg_central_adapter") for entry in BRA_REG_CENTRAL_ENTRIES) +
@@ -439,10 +443,11 @@ SHORTLIST_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEME
 SCREEN_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SCREEN_MANAGER_ENTRIES)
 CONTRACT_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in CONTRACT_MANAGER_ENTRIES)
 MATCH_PL_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in MATCH_PL_ENTRIES)
+MATCH_ENG_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in MATCH_ENG_ENTRIES)
 SIPRINT_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SIPRINT_ENTRIES)
 CASH_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in CASH_ENTRIES)
 AWOL_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in AWOL_ENTRIES)
-CPP_LEAVES = frozenset(TACTICS_LEAVES)
+CPP_LEAVES = frozenset(TACTICS_LEAVES) | frozenset(MATCH_ENG_LEAVES)
 
 
 def integer(value):
@@ -1006,9 +1011,6 @@ INLINE_OWNER_MODULES = frozenset({
     "movement_choice_adapter", "actor_effects_adapter", "actor_motion_adapter", "match_actor_adapter",
     "match_target_adapter", "actor_attributes_adapter", "utility_object_adapter", "stdlib_core_adapter",
     "contract_review_adapter", "contract_terms_adapter"})
-# run_until still enters these owners' hooks for their leaves: host code (the
-# Match Debugger's lineup edits) relies on them seeing direct calls.
-RUN_LEAF_EXCLUDED_OWNERS = frozenset({"match_actor_adapter"})
 # Leaves rewritten in C++ (CPP_LEAVES, native/tactics_routines_leaves.inc): a
 # direct call site calls the inline tactics_leaf_<entry> (native/
 # tactics_leaves.hpp) and runs the original instructions only when it
@@ -1025,6 +1027,11 @@ SPECIAL_LOWERINGS = frozenset({
     0x10713a9c, 0x10713aec, 0x10713b3c, 0x1034f1f8, 0x1034f318, 0x1034a8e4, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
     0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
+
+
+def cpp_leaf_family(target):
+    """The family whose inline <family>_leaf_<entry> runs this leaf at direct call sites."""
+    return "match_eng" if target in MATCH_ENG_LEAVES else "tactics" if target in CPP_LEAVES else None
 
 
 def inline_leaves(db, divisions=frozenset()):
@@ -1079,8 +1086,7 @@ def leaf_body(records, userops, local_temporaries=True):
 def render_leaves(leaves, userops):
     owners = SEMANTIC_OWNERS
     leaves = {target: body for target, body in leaves.items()
-              if target not in CPP_LEAVES and
-              not any(owners.get(target + 4 * n) in RUN_LEAF_EXCLUDED_OWNERS for n in range(len(body) + 1))}
+              if target not in CPP_LEAVES or target in MATCH_ENG_LEAVES}
     """run_leaf: runs the leaf at the PC exactly as its page would (its run's
     step and charge, then blr), without a dispatcher scope; run_until uses it
     for calls from C++ owners. Faults and budget stops are the page's."""
@@ -1093,7 +1099,7 @@ def render_leaves(leaves, userops):
     bitmap = [0] * words
     for page in pages:
         bitmap[(page - (base >> 12)) // 64] |= 1 << ((page - (base >> 12)) % 64)
-    code = ['#include "aot_runtime.hpp"', '#include "floating_point.hpp"', "#include <array>", "namespace cm::aot {",
+    code = ['#include "aot_runtime.hpp"', '#include "floating_point.hpp"', '#include "match_eng_leaves.hpp"', "#include <array>", "namespace cm::aot {",
             f"static constexpr std::array<std::uint64_t, {words}> leaf_pages{{" +
             ", ".join(f"0x{word:x}" for word in bitmap) + "};",
             "bool is_leaf_entry(std::uint32_t address) {",
@@ -1106,6 +1112,9 @@ def render_leaves(leaves, userops):
     for target in sorted(leaves):
         body = leaves[target]
         code.append(f"case 0x{target:x}: {{")
+        if target in MATCH_ENG_LEAVES:
+            # Called from C++ owners as from generated pages: the C++ leaf, unless it declines.
+            code += [f"if (match_eng_leaf_{target:x}(s)) {{ s.pc = std::uint32_t(s.r<4>(4128)); return true; }}"]
         # Runs split where the page splits them: a watched instruction runs
         # alone, so the PC is its own (HOST_OBSERVED_INSTRUCTIONS).
         addresses = [target + 4 * n for n in range(len(body) + 1)]
@@ -1203,11 +1212,11 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, bra_reg_central_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, bra_reg_central_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
                   direct_owner_calls=None):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
-    cpp_leaves = False
+    cpp_leaves = set()
     require_native_drawing_contract(instructions)
     require_calendar_contract(page, instructions)
     require_rng_core_contract(page, instructions)
@@ -1402,6 +1411,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   (CONTRACT_MANAGER_TAKEOVERS if contract_manager_hooks else frozenset()) |
                   (SCREEN_MANAGER_TAKEOVERS if screen_manager_hooks else frozenset()) |
                   (MATCH_PL_TAKEOVERS if match_pl_hooks else frozenset()) |
+                  (MATCH_ENG_TAKEOVERS if match_eng_hooks else frozenset()) |
                   (CASH_TAKEOVERS if cash_hooks else frozenset()) |
                   (AWOL_TAKEOVERS if awol_hooks else frozenset()) |
                   (SIPRINT_TAKEOVERS if siprint_hooks else frozenset()))
@@ -1631,6 +1641,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "main_program_adapter.hpp"')
     if match_pl_hooks and page_addresses & set(MATCH_PL_ENTRIES):
         code.insert(1, '#include "match_pl_adapter.hpp"')
+    if match_eng_hooks and page_addresses & set(MATCH_ENG_ENTRIES):
+        code.insert(1, '#include "match_eng_adapter.hpp"')
     if club_records_hooks and page_addresses & set(CLUB_RECORDS_ENTRIES):
         code.insert(1, '#include "club_records_adapter.hpp"')
     if club_history_hooks and page_addresses & set(CLUB_HISTORY_ENTRIES):
@@ -2064,6 +2076,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             if a in MATCH_PL_TAKEOVERS:
                 code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(match_pl_hook(a))
+        if match_eng_hooks and a in MATCH_ENG_ENTRIES:
+            if a in MATCH_ENG_TAKEOVERS:
+                code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
+            code.append(match_eng_hook(a))
         if club_records_hooks and a in CLUB_RECORDS_ENTRIES:
             code.append(club_records_hook(a))
         if club_history_hooks and a in CLUB_HISTORY_ENTRIES:
@@ -2270,12 +2286,13 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             # The bl's own effects (TOC save, link), then the leaf's body.
             for op in item["ops"][:2]:
                 code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
-            if tactics_hooks and target in CPP_LEAVES:
-                code.append(f"if (!tactics_leaf_{target:x}(s)) {{ // C++ leaf; the original when it declines")
-                cpp_leaves = True
+            cpp_leaf = cpp_leaf_family(target) if (match_eng_hooks if target in MATCH_ENG_LEAVES else tactics_hooks) else None
+            if cpp_leaf:
+                code.append(f"if (!{cpp_leaf}_leaf_{target:x}(s)) {{ // C++ leaf; the original when it declines")
+                cpp_leaves.add(cpp_leaf)
             code.extend(leaf_body(leaves[target], userops, local_temporaries))
             code.append(f"{'counter' if match_hot_page else 's'}.charge({len(leaves[target]) + 1}); // inlined leaf 0x{target:x}")
-            if tactics_hooks and target in CPP_LEAVES:
+            if cpp_leaf:
                 code.append("}")
             code.append(transfer(a + item["size"], transfer_page, selected))
             inlining.inlined[target] = [r["address"] for r in leaves[target]] + [target + 4 * len(leaves[target])]
@@ -2369,8 +2386,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     code.append("}")
     for family in sorted(called_families):
         code.insert(1, f'#include "{family}_adapter.hpp"')
-    if cpp_leaves:
-        code.insert(1, '#include "tactics_leaves.hpp"')
+    for family in sorted(cpp_leaves):
+        code.insert(1, f'#include "{family}_leaves.hpp"')
     if called_families:
         code.insert(1, '#include "direct_owner_call.hpp"')
     result = "\n".join(code) + "\n"
@@ -2382,6 +2399,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_utils_hooks(page, instructions, result)
     if file_screens_hooks:
         require_file_screens_hooks(page, instructions, result)
+    if match_eng_hooks:
+        require_match_eng_hooks(page, instructions, result)
     if db_files_hooks:
         require_db_files_hooks(page, instructions, result)
     require_integer_parsing_hooks(page, instructions, result)
@@ -2414,9 +2433,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if record_history_hooks:
         require_record_history_hooks(page, instructions, result, taken_over)
     if match_engine_hooks:
-        require_match_engine_hooks(page, instructions, result)
+        require_match_engine_hooks(page, instructions, result, taken_over)
     if match_actor_hooks:
-        require_match_actor_hooks(page, instructions, result)
+        require_match_actor_hooks(page, instructions, result, taken_over)
     if actor_construction_hooks:
         require_actor_construction_hooks(page, instructions, result)
     if spatial_role_hooks:
@@ -2424,7 +2443,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if marking_pressure_hooks:
         require_marking_pressure_hooks(page, instructions, result, taken_over)
     if match_random_hooks:
-        require_match_random_hooks(page, instructions, result)
+        require_match_random_hooks(page, instructions, result, taken_over)
     if actor_attributes_hooks:
         require_actor_attributes_hooks(page, instructions, result, taken_over)
     if injury_record_hooks:
@@ -2504,13 +2523,13 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if match_target_hooks:
         require_match_target_hooks(page, instructions, result, taken_over)
     if match_selection_hooks:
-        require_match_selection_hooks(page, instructions, result)
+        require_match_selection_hooks(page, instructions, result, taken_over)
     if match_selection_support_hooks:
         require_match_selection_support_hooks(page, instructions, result, taken_over)
     if actor_encounter_hooks:
         require_actor_encounter_hooks(page, instructions, result, taken_over)
     if match_event_hooks:
-        require_match_event_hooks(page, instructions, result)
+        require_match_event_hooks(page, instructions, result, taken_over)
     if actor_flags_hooks:
         require_actor_flags_hooks(page, instructions, result, taken_over)
     if actor_effects_hooks:
@@ -2522,21 +2541,21 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if target_acceptance_hooks:
         require_target_acceptance_hooks(page, instructions, result, taken_over=taken_over)
     if team_spatial_hooks:
-        require_team_spatial_hooks(page, instructions, result)
+        require_team_spatial_hooks(page, instructions, result, taken_over)
     if pitch_distance_hooks:
         require_pitch_distance_hooks(page, instructions, result, taken_over)
     if actor_order_hooks:
-        require_actor_order_hooks(page, instructions, result)
+        require_actor_order_hooks(page, instructions, result, taken_over)
     if movement_choice_hooks:
-        require_movement_choice_hooks(page, instructions, result)
+        require_movement_choice_hooks(page, instructions, result, taken_over)
     if team_line_hooks:
-        require_team_line_hooks(page, instructions, result)
+        require_team_line_hooks(page, instructions, result, taken_over)
     if ball_action_hooks:
         require_ball_action_hooks(page, instructions, result)
     if ball_contact_hooks:
         require_ball_contact_hooks(page, instructions, result, taken_over=taken_over)
     if match_discipline_hooks:
-        require_match_discipline_hooks(page, instructions, result)
+        require_match_discipline_hooks(page, instructions, result, taken_over)
     if player_movement_hooks:
         require_player_movement_hooks(page, instructions, result)
     if actor_motion_hooks:
@@ -2598,8 +2617,8 @@ SELECTABLE_INDEX_AUDITS = (
 )
 INDEX_AUDITS = (
     require_list_search, require_tactics_index, require_main_program_index, require_club_history_index,
-    require_club_records_index, require_match_pl_index, require_eng_prm_index, require_eng_conf_index,
-    require_bra_reg_central_index, require_utils_index, require_file_screens_index,
+    require_club_records_index, require_match_pl_index, require_match_eng_index, require_eng_prm_index,
+    require_eng_conf_index, require_bra_reg_central_index, require_utils_index, require_file_screens_index,
     require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
     require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index,
     require_db_files_index, require_international_awards_index, require_nation_awards_index,

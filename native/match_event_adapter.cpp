@@ -1,3 +1,4 @@
+#include "match_eng_adapter.hpp"
 #include "match_event_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
@@ -39,9 +40,8 @@ bool try_modern_match_event(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original match-event body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_family_run_original(s, entry);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
             constexpr Function methods[]{match_event::actor_address,match_event::ball_cell_side,match_event::qualify_event,match_event::sample_event_jitter,match_event::select_transition,match_event::same_actor_pair,match_event::compatible_actor_context,match_event::emit_event,match_event::classify_event};

@@ -1,0 +1,16 @@
+#pragma once
+// The typed routines of every MATCH_ENG.CPP block, for the adapter's routine lists.
+#include "match_eng_setup.hpp"
+#include "match_eng_advance.hpp"
+#include "match_eng_tactics_a.hpp"
+#include "match_eng_flow.hpp"
+#include "match_eng_events.hpp"
+#include "match_eng_shots.hpp"
+#include "match_eng_space.hpp"
+#include "match_eng_report.hpp"
+#include "match_eng_team_a.hpp"
+#include "match_eng_team_b.hpp"
+#include "match_eng_routes.hpp"
+#include "match_eng_roster.hpp"
+#include "match_eng_contact.hpp"
+#include "match_eng_rating.hpp"

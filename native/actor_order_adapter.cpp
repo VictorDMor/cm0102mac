@@ -1,3 +1,4 @@
+#include "match_eng_adapter.hpp"
 #include "actor_order_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
@@ -39,9 +40,8 @@ bool try_modern_actor_order(State& s, std::uint32_t entry) {
     if (d.observer) d.observer->enter(s, entry, original);
     try {
         if (original) {
-            const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
-            if (!dispatch_page(s)) throw std::runtime_error("Missing original actor-order body");
-            if (s.pc != caller) run_until(s, caller);
+            OriginalBody selected(s, entry);
+            match_family_run_original(s, entry);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
             constexpr Function methods[]{actor_order::secondary_rating, actor_order::primary_rating, actor_order::build_queue, actor_order::compare_actors, actor_order::current_fitness};

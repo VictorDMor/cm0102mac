@@ -102,6 +102,10 @@ std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, Rou
 // routines without checking them again.
 bool routine_check_child();
 
+// Coverage builds of a checker only: runs in each child before it leaves
+// through _exit, past the runtime's own flush at exit.
+extern void (*routine_child_exit)();
+
 // Check tools only (null in the app): asked before the dispatcher runs the
 // page at s.pc. It may run the call itself (C++ routines the generator has
 // not hooked yet, or a census) and return true with s.pc at the return
