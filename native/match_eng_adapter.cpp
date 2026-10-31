@@ -93,7 +93,9 @@ bool try_modern_match_eng(State& s, std::uint32_t entry) {
 namespace match_eng {
 void call(guest::Cpu& c, std::uint32_t entry, std::uint32_t back) {
     // A checker's parent goes through the hook, so nested calls are checked too.
-    const auto* routine = (match_eng_declining || (routine_checker && !routine_check_child())) ? nullptr : listed(entry);
+    // --only runs the routines left out as their originals here too.
+    const bool through_hook = match_eng_declining || (routine_checker && (!routine_check_child() || !routine_checker->wants(entry)));
+    const auto* routine = through_hook ? nullptr : listed(entry);
     if (!routine || (!routine->production && !routine_checker)) { c.call(entry, back); return; }
     c.link(back);
     routine->hook(c);
