@@ -94,6 +94,23 @@ def _covers(varnode, register):
     return found is not None and found[0] <= register[0] and register[0] + register[1] <= found[0] + found[1]
 
 
+class IndexedRecords:
+    """Instruction records by address, decoded on first use. A walk reaches a
+    few thousand of the export's two million."""
+    def __init__(self, db):
+        self.db, self.decoded = db, {}
+
+    def __contains__(self, address):
+        if address not in self.decoded:
+            row = self.db.execute("SELECT body FROM instructions WHERE address=?", (address,)).fetchone()
+            self.decoded[address] = json.loads(row[0]) if row else None
+        return self.decoded[address] is not None
+
+    def __getitem__(self, address):
+        if address not in self: raise KeyError(address)
+        return self.decoded[address]
+
+
 def read_before_write(records, start, register, calls=2):
     """The first instruction from `start` (following branches, up to
     SCAN_LIMIT instructions a path) that reads `register` before any
@@ -142,13 +159,17 @@ def module_volatile_reads(db, routines, module, results, scratch=SCRATCH):
     entry -> "NONE" or "R3") and at the entry of each routine the module
     calls (the scratch registers). Empty when the C++ may leave them as it
     likes. `scratch` names the registers (default SCRATCH)."""
-    records = {}
-    for address, body in db.execute("SELECT address, body FROM instructions"):
-        records[address] = json.loads(body)
+    records = IndexedRecords(db)
     entries = {entry for entry, _ in routines}
     low, high = module
     found = []
-    for address, record in records.items():
+    # The call sites below: the module's own, and any instruction whose first
+    # flow is one of its routines. The walks decode what they reach on demand.
+    candidates = db.execute("SELECT address, body FROM instructions WHERE (address>=? AND address<?) OR "
+                            f"json_extract(body,'$.flows[0]') IN ({','.join('?' * len(entries))})",
+                            (low, high, *entries))
+    for address, body in candidates:
+        record = json.loads(body)
         if record.get("flow") != "UNCONDITIONAL_CALL" or not record.get("flows"):
             continue
         target = record["flows"][0]

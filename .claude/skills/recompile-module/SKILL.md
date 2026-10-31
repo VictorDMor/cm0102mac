@@ -109,10 +109,22 @@ hooks can hide a production gap. `production_mode` and `ownership_mode` in
 `native/siprint_checks.cpp` show the pattern: exhaust the instruction budget so
 that any generated execution fails.
 
-Then run one original/C++ replay pair (`CM_<MODULE>_ORIGINAL=1` for the original
-side) from the same existing capture, and require identical final states. If no
-existing capture reaches the module, say so and rely on the fixtures. A capture
-that fails even with the module forced to original is stale: don't count it.
+Find the captures that reach the module, then run the original/C++ pairs
+(`CM_<MODULE>_ORIGINAL=1` for the original side) from them, and require identical
+final states. Use the sweep rather than a loop of your own; it runs in parallel:
+
+```sh
+python3 tools/<module>_audit.py --entries > ENTRIES
+python3 tools/replay_sweep.py census ENTRIES
+python3 tools/replay_sweep.py pair CM_<MODULE>_ORIGINAL --captures CAPTURE...
+```
+
+One `MATCH` from a capture that reaches the module is the required pair. `STALE`
+means the capture fails even with the module forced to original, and `SAME` that
+the C++ may not have run: count neither. A census misses same-page and in-place
+calls and can't see into a capture that fails, so before relying on the fixtures
+try `--check-routines` (`references/verification.md`) on likely captures, then say
+that no existing capture reaches the module.
 
 ## 5. Test only what changed
 

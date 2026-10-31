@@ -18,6 +18,9 @@ and subsystem reports for subsequent gameplay and integration evidence.
 2. `index_recomp.py` creates a local SQLite build index. It verifies the instruction
    count and records the compressed export's SHA-256.
 3. `compile_recomp.py` translates the selected original instructions into C++.
+   Its index audits and its pages run in forked workers (`--jobs`). Pages only
+   add to what the parent merges and checks afterwards; a new module's
+   `require_<module>_index` goes in `INDEX_AUDITS` (`generator_workers` fails otherwise).
    `--all-analyzed` streams the entire analyzed listing with bounded memory.
 4. Apple Clang compiles the generated C++ and native support functions for ARM64.
    Generated code transfers directly between labels within a code page; a native

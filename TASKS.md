@@ -8,6 +8,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [ ] **Host process id on the guest's stack** (found 2026-10-31, FILE_SCREENS.CPP): `native/file_reference_bridge.cpp` copies native FSRefs into guest memory, and +0xc holds the host's process id, so it varies per launch and reaches the stack in production. Whether the game ever reads it isn't confirmed. Masking it there and restoring `getpid()` on the way back would remove the variation, but it changes stack bytes the game could read, so it waits for your decision. Nothing depends on it; `cm-file-screens-checks` handles it with a marker.
 
+- [ ] **Stop-hook goal against captures you own** (found 2026-10-31, delivery timing): on FILE_SCREENS.CPP the goal hook kept the run going for 2 h 51 min after the delivery commit because no capture reached 0x100ef840, while `CLAUDE.md` makes new captures yours. It also fired 12 times on AWOL.CPP and 10 on UTILS.CPP. Decide whether a goal may require evidence only you can produce; if not, word the goal so that gap is reported rather than chased.
+
+- [ ] **Write access for the progress sheet** (found 2026-10-31, delivery timing): the Drive connector is read-only, so the sheet step goes through the browser (18.3 min over five deliveries), and on AWOL.CPP the run waited 49.4 min for an answer about it. Decide whether to give a write route or to have the agent leave the sheet row for you.
+
+- [ ] **Review rounds on checker-only follow-ups** (found 2026-10-31, delivery timing): review waits are the largest measured cost (128.7 of 409.8 min), and 80.6 of those are FILE_SCREENS.CPP's 8 rounds. 7 of the 8 came after the delivery commit, and the follow-up commits touched only checkers, CMake, docs and this file. Skipping them would remove a review pass, so nothing changed; decide if you want a lighter rule for diffs that don't reach production code.
+
 - [x] **Uninitialised stack decides results** (found 2026-10-23). Decided by Victor 2026-10-23: option A, keep exact results; every rewrite reproduces the stack image the original leaves, checked byte for byte. Architectural changes that give up stack fidelity wait until the recompilation is complete.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).

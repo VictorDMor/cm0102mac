@@ -387,6 +387,9 @@ target_compile_options(cm-main-program-checks PRIVATE -Wall -Wextra -Werror -Wpe
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME main_program_volatile_audit
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_main_program_audit.py")
+add_test(NAME generator_workers COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_generator_workers.py")
+set_tests_properties(generator_workers PROPERTIES TIMEOUT 120)
+add_test(NAME replay_sweep COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_replay_sweep.py")
 # With the installed original (read only): MBAR 1, the only menu bar, holds
 # menus 1-3, so debug_menu (menu 4) is unreachable.
 set_tests_properties(main_program_volatile_audit PROPERTIES ENVIRONMENT "CM_MAIN_PROGRAM_GAME=${CM_MATCH_DEBUGGER_GAME_DIR}")

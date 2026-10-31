@@ -8,7 +8,7 @@ import shutil
 import sqlite3
 import subprocess
 import unittest
-from main_program_audit import RESULT, SCRATCH, read_before_write, volatile_reads
+from main_program_audit import IndexedRecords, RESULT, SCRATCH, module_volatile_reads, read_before_write, volatile_reads
 
 ROOT = Path(__file__).resolve().parent.parent
 INPUT = Path(os.environ.get("CM_MAIN_PROGRAM_INPUT", ROOT / ".local/current/export"))
@@ -23,6 +23,49 @@ def record(address, assembly, ops, flow="FALL_THROUGH", flows=(), fallthrough=No
 
 def register(number):
     return ["register", str(number * 4), 4]
+
+
+class ModuleVolatileTests(unittest.TestCase):
+    """The scan selects call sites in SQL, so check that it keeps both kinds."""
+    def reads(self, *records):
+        db = sqlite3.connect(":memory:")
+        self.addCleanup(db.close)
+        db.execute("CREATE TABLE instructions (address INTEGER PRIMARY KEY, body TEXT)")
+        db.executemany("INSERT INTO instructions VALUES (?, ?)", [(r["address"], json.dumps(r)) for r in records])
+        return module_volatile_reads(db, [(0x200, 0x210)], (0x200, 0x300), {}, {"r0": SCRATCH["r0"]})
+
+    READ_R0 = staticmethod(lambda address: record(address, "or r4,r0,r0", [["COPY", register(4), register(0)]]))
+
+    def test_a_caller_reading_after_the_call_is_found(self):
+        self.assertEqual(self.reads(
+            record(0x100, "bl 0x200", [["CALL", None]], flow="UNCONDITIONAL_CALL", flows=[0x200]),
+            self.READ_R0(0x104)), ["r0 read at 104 after the call of 200 at 100"])
+
+    def test_a_callee_of_the_module_reading_at_entry_is_found(self):
+        self.assertEqual(self.reads(
+            record(0x204, "bl 0x400", [["CALL", None]], flow="UNCONDITIONAL_CALL", flows=[0x400]),
+            self.READ_R0(0x400)), ["r0 read at 400 in 400, called by the module at 204"])
+
+    def test_a_jump_to_a_routine_is_not_a_call(self):
+        self.assertEqual(self.reads(
+            record(0x100, "b 0x200", [["BRANCH", None]], flow="UNCONDITIONAL_JUMP", flows=[0x200]),
+            self.READ_R0(0x104)), [])
+
+    def test_a_call_within_the_module_is_not_checked(self):
+        self.assertEqual(self.reads(
+            record(0x204, "bl 0x200", [["CALL", None]], flow="UNCONDITIONAL_CALL", flows=[0x200]),
+            self.READ_R0(0x208)), [])
+
+    def test_the_walk_decodes_only_what_it_reaches_and_treats_a_gap_as_an_end(self):
+        db = sqlite3.connect(":memory:")
+        self.addCleanup(db.close)
+        db.execute("CREATE TABLE instructions (address INTEGER PRIMARY KEY, body TEXT)")
+        db.execute("INSERT INTO instructions VALUES (?, ?)", (0x100, json.dumps(self.READ_R0(0x100))))
+        records = IndexedRecords(db)
+        self.assertNotIn(0x200, records)
+        self.assertEqual(records[0x100]["assembly"], "or r4,r0,r0")
+        with self.assertRaises(KeyError):
+            records[0x200]
 
 
 class ScanTests(unittest.TestCase):

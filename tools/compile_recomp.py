@@ -7,10 +7,14 @@ never fall back to interpreting instructions. Expand roots and rebuild offline.
 import argparse
 import bisect
 from collections import defaultdict, deque
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import closing
 import functools
 import json
 import hashlib
 import inspect
+import multiprocessing
+import os
 import re
 from pathlib import Path
 import sqlite3
@@ -2556,6 +2560,100 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     return result
 
 
+# Read-only audits of the indexed export. Each sees only its own connection and
+# raises on a changed contract, so they run in parallel; the first failure stops generation.
+SELECTABLE_INDEX_AUDITS = (
+    require_integer_parsing_index, require_formatted_input_index, require_character_conversion_index,
+    require_floating_input_index, require_formatted_output_index, require_allocator_index,
+    require_stream_buffer_index, require_stream_io_index, require_file_controller_index,
+    require_file_path_index, require_runtime_lifecycle_index, require_code_fragment_index,
+    require_cpp_object_storage_index, require_exception_runtime_index, require_compiler_arithmetic_index,
+    require_register_context_index, require_stdlib_core_index, require_time_runtime_index,
+    require_import_descriptor_index, require_native_service_index, require_engine_initialization_index,
+    require_utility_object_index, require_tree_mutation_index, require_aggregate_object_index,
+    require_record_history_index, require_match_engine_index, require_match_actor_index,
+    require_actor_construction_index, require_spatial_role_index, require_marking_pressure_index,
+    require_player_decision_index, require_actor_motion_index, require_match_random_index,
+    require_actor_attributes_index, require_injury_record_index, require_injury_progression_index,
+    require_injury_club_events_index, require_injury_readouts_index, require_injury_reporting_index,
+    require_injury_bootstrap_index, require_injury_persistence_index, require_injury_daily_index,
+    require_awol_records_index, require_contract_query_index, require_contract_storage_index,
+    require_contract_terms_index, require_contract_review_index, require_transfer_offer_index,
+    require_transfer_record_index, require_transfer_valuation_index, require_transfer_synthesis_index,
+    require_club_shortlist_storage_index, require_shortlist_category_index, require_shortlist_links_index,
+    require_shortlist_recruitment_index, require_shortlist_assessment_index,
+    require_shortlist_quotation_index, require_shortlist_policy_index, require_profile_qualification_index,
+    require_contract_draft_index, require_contract_display_index, require_money_value_index,
+    require_money_text_index, require_money_configuration_index, require_preferences_index,
+    require_preferences_actions_index, require_preferences_screen_index, require_localization_lookup_index,
+    require_localization_format_index, require_localization_catalog_index, require_range_sampling_index,
+    require_match_target_index, require_match_selection_index, require_match_selection_support_index,
+    require_actor_encounter_index, require_match_event_index, require_actor_flags_index,
+    require_actor_effects_index, require_target_acceptance_index, require_actor_action_index,
+    require_actor_policy_index, require_team_spatial_index, require_pitch_distance_index,
+    require_actor_order_index, require_movement_choice_index, require_team_line_index,
+    require_ball_action_index, require_ball_contact_index, require_match_discipline_index,
+    require_player_movement_index,
+    require_record_query_index, require_record_group_index,
+)
+INDEX_AUDITS = (
+    require_list_search, require_tactics_index, require_main_program_index, require_club_history_index,
+    require_club_records_index, require_match_pl_index, require_eng_prm_index, require_eng_conf_index,
+    require_bra_reg_central_index, require_utils_index, require_file_screens_index,
+    require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
+    require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index,
+    require_db_files_index, require_international_awards_index, require_nation_awards_index,
+    require_dispute_index, require_award_shortlist_index, require_transfer_screens_index,
+    require_oceania_nations_index, require_news_index, require_screen_manager_index,
+    require_contract_manager_index, require_player_stats_index, require_shortlist_manager_index,
+)
+
+
+def open_worker_index(export, selected, inlining=None, generation=None):
+    global WORKER_DB, WORKER_SELECTED, WORKER_LEAVES, WORKER_GENERATION
+    WORKER_DB = sqlite3.connect(f"file:{export / 'instructions.sqlite'}?mode=ro", uri=True)
+    WORKER_SELECTED, WORKER_LEAVES, WORKER_GENERATION = selected, inlining, generation
+
+
+def run_selectable_index_audit(audit):
+    audit(WORKER_DB, WORKER_SELECTED)
+
+
+def run_index_audit(audit):
+    audit(WORKER_DB)
+
+
+def generator_pool(jobs, *state):
+    # Fork, not spawn: workers need the tables loaded in this process. The
+    # parent holds no open database connection or thread when they start.
+    return ProcessPoolExecutor(jobs, multiprocessing.get_context("fork"), open_worker_index, state)
+
+
+def run_index_audits(pool, runner, audits):
+    for _ in pool.map(runner, audits): pass
+
+
+def generate_indexed_page(page):
+    """One code page, plus what the parent merges from it. Generation only
+    adds to these records and never reads them back, so pages are independent."""
+    records = [json.loads(row[0]) for row in WORKER_DB.execute(
+        "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
+        (page << 12, (page + 1) << 12))]
+    inlining, direct_calls = Inlining(WORKER_LEAVES), DirectOwnerCalls()
+    output, generation = WORKER_GENERATION
+    path = output / f"page_{page:x}.cpp"
+    content = generate_page(page, records, {r["address"] for r in records},
+                            block_accounting=True, inlining=inlining, direct_owner_calls=direct_calls, **generation)
+    if not path.exists() or path.read_text() != content: path.write_text(content)
+    return {"name": path.name, "count": len(records),
+            "fused_sites": [(r["address"], fused_site_kind(r)) for r in records if fused_mnemonic(r)],
+            "call_targets": {r["flows"][0] for r in records
+                             if r.get("flow") == "UNCONDITIONAL_CALL" and r.get("flows")},
+            "inlined": inlining.inlined, "special": inlining.special,
+            "called": direct_calls.called, "entry_hooks": direct_calls.entry_hooks}
+
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("export", type=Path)
@@ -2566,6 +2664,7 @@ def main():
                         help="Stream every analyzed instruction into native compilation units")
     parser.add_argument("--legacy-unique-storage", action="store_true",
                         help="Materialize translation scratch for comparison with instruction-local temporaries")
+    parser.add_argument("--jobs", type=int, default=os.cpu_count(), help="Parallel audit and page workers")
     parser.add_argument("--reuse-generated", type=Path,
                         help="Seed an empty output with independent copies of prior C++; every unit is regenerated and audited")
     args = parser.parse_args()
@@ -2575,7 +2674,7 @@ def main():
         raise ValueError("Expected 32-bit big-endian PowerPC")
     if metadata["executableSHA256"] != "91692f95df17cf851e7c1d6dbdecd0bd0a5809ce1937133e209aee859a6b516b":
         raise ValueError("This port's loader layout requires the audited CM 01/02 Mac binary")
-    with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
+    with closing(sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True)) as db:
         identity = db.execute("SELECT value FROM metadata WHERE key='executableSHA256'").fetchone()
         if identity != (metadata["executableSHA256"],): raise ValueError("Wrong instruction index")
         selected, missing, seen = {}, set(), set()
@@ -2592,212 +2691,93 @@ def main():
             selected[address] = item
             queue.extend(item["flows"])
             if "fallthrough" in item: queue.append(item["fallthrough"])
-        require_integer_parsing_index(db, None if args.all_analyzed else selected)
-        require_formatted_input_index(db, None if args.all_analyzed else selected)
-        require_character_conversion_index(db, None if args.all_analyzed else selected)
-        require_floating_input_index(db, None if args.all_analyzed else selected)
-        require_formatted_output_index(db, None if args.all_analyzed else selected)
-        require_allocator_index(db, None if args.all_analyzed else selected)
-        require_stream_buffer_index(db, None if args.all_analyzed else selected)
-        require_stream_io_index(db, None if args.all_analyzed else selected)
-        require_file_controller_index(db, None if args.all_analyzed else selected)
-        require_file_path_index(db, None if args.all_analyzed else selected)
-        require_runtime_lifecycle_index(db, None if args.all_analyzed else selected)
-        require_code_fragment_index(db, None if args.all_analyzed else selected)
-        require_cpp_object_storage_index(db, None if args.all_analyzed else selected)
-        require_exception_runtime_index(db, None if args.all_analyzed else selected)
-        require_compiler_arithmetic_index(db, None if args.all_analyzed else selected)
-        require_register_context_index(db, None if args.all_analyzed else selected)
-        require_stdlib_core_index(db, None if args.all_analyzed else selected)
-        require_time_runtime_index(db, None if args.all_analyzed else selected)
-        require_import_descriptor_index(db, None if args.all_analyzed else selected)
-        require_native_service_index(db, None if args.all_analyzed else selected)
-        require_engine_initialization_index(db, None if args.all_analyzed else selected)
-        require_utility_object_index(db, None if args.all_analyzed else selected)
-        require_tree_mutation_index(db, None if args.all_analyzed else selected)
-        require_aggregate_object_index(db, None if args.all_analyzed else selected)
-        require_record_history_index(db, None if args.all_analyzed else selected)
-        require_match_engine_index(db, None if args.all_analyzed else selected)
-        require_match_actor_index(db, None if args.all_analyzed else selected)
-        require_actor_construction_index(db, None if args.all_analyzed else selected)
-        require_spatial_role_index(db, None if args.all_analyzed else selected)
-        require_marking_pressure_index(db, None if args.all_analyzed else selected)
-        require_player_decision_index(db, None if args.all_analyzed else selected)
-        require_actor_motion_index(db, None if args.all_analyzed else selected)
-        require_match_random_index(db, None if args.all_analyzed else selected)
-        require_actor_attributes_index(db, None if args.all_analyzed else selected)
-        require_injury_record_index(db, None if args.all_analyzed else selected)
-        require_injury_progression_index(db, None if args.all_analyzed else selected)
-        require_injury_club_events_index(db, None if args.all_analyzed else selected)
-        require_injury_readouts_index(db, None if args.all_analyzed else selected)
-        require_injury_reporting_index(db, None if args.all_analyzed else selected)
-        require_injury_bootstrap_index(db, None if args.all_analyzed else selected)
-        require_injury_persistence_index(db, None if args.all_analyzed else selected)
-        require_injury_daily_index(db, None if args.all_analyzed else selected)
-        require_awol_records_index(db, None if args.all_analyzed else selected)
-        require_contract_query_index(db, None if args.all_analyzed else selected)
-        require_contract_storage_index(db, None if args.all_analyzed else selected)
-        require_contract_terms_index(db, None if args.all_analyzed else selected)
-        require_contract_review_index(db, None if args.all_analyzed else selected)
-        require_transfer_offer_index(db, None if args.all_analyzed else selected)
-        require_transfer_record_index(db, None if args.all_analyzed else selected)
-        require_transfer_valuation_index(db, None if args.all_analyzed else selected)
-        require_transfer_synthesis_index(db, None if args.all_analyzed else selected)
-        require_club_shortlist_storage_index(db, None if args.all_analyzed else selected)
-        require_shortlist_category_index(db, None if args.all_analyzed else selected)
-        require_shortlist_links_index(db, None if args.all_analyzed else selected)
-        require_shortlist_recruitment_index(db, None if args.all_analyzed else selected)
-        require_shortlist_assessment_index(db, None if args.all_analyzed else selected)
-        require_shortlist_quotation_index(db, None if args.all_analyzed else selected)
-        require_shortlist_policy_index(db, None if args.all_analyzed else selected)
-        require_profile_qualification_index(db, None if args.all_analyzed else selected)
-        require_contract_draft_index(db, None if args.all_analyzed else selected)
-        require_contract_display_index(db, None if args.all_analyzed else selected)
-        require_money_value_index(db, None if args.all_analyzed else selected)
-        require_money_text_index(db, None if args.all_analyzed else selected)
-        require_money_configuration_index(db, None if args.all_analyzed else selected)
-        require_preferences_index(db, None if args.all_analyzed else selected)
-        require_preferences_actions_index(db, None if args.all_analyzed else selected)
-        require_preferences_screen_index(db, None if args.all_analyzed else selected)
-        require_localization_lookup_index(db, None if args.all_analyzed else selected)
-        require_localization_format_index(db, None if args.all_analyzed else selected)
-        require_localization_catalog_index(db, None if args.all_analyzed else selected)
-        require_range_sampling_index(db, None if args.all_analyzed else selected)
-        require_match_target_index(db, None if args.all_analyzed else selected)
-        require_match_selection_index(db, None if args.all_analyzed else selected)
-        require_match_selection_support_index(db, None if args.all_analyzed else selected)
-        require_actor_encounter_index(db, None if args.all_analyzed else selected)
-        require_match_event_index(db, None if args.all_analyzed else selected)
-        require_actor_flags_index(db, None if args.all_analyzed else selected)
-        require_actor_effects_index(db, None if args.all_analyzed else selected)
-        require_target_acceptance_index(db, None if args.all_analyzed else selected)
-        require_actor_action_index(db, None if args.all_analyzed else selected)
-        require_actor_policy_index(db, None if args.all_analyzed else selected)
-        require_team_spatial_index(db, None if args.all_analyzed else selected)
-        require_pitch_distance_index(db, None if args.all_analyzed else selected)
-        require_actor_order_index(db, None if args.all_analyzed else selected)
-        require_movement_choice_index(db, None if args.all_analyzed else selected)
-        require_team_line_index(db, None if args.all_analyzed else selected)
-        require_ball_action_index(db, None if args.all_analyzed else selected)
-        require_ball_contact_index(db, None if args.all_analyzed else selected)
-        require_match_discipline_index(db, None if args.all_analyzed else selected)
-        require_player_movement_index(db, None if args.all_analyzed else selected)
-        if args.all_analyzed:
-            from actor_attributes_audit import load_actor_attributes_tables
-            load_actor_attributes_tables(args.export)
-            from injury_record_audit import load_injury_record_tables
-            load_injury_record_tables(args.export)
-            from injury_progression_audit import load_injury_progression_tables
-            load_injury_progression_tables(args.export)
-            from injury_club_events_audit import load_injury_club_events_tables
-            load_injury_club_events_tables(args.export)
-            from injury_readouts_audit import load_injury_readouts_tables
-            load_injury_readouts_tables(args.export)
-            from injury_reporting_audit import load_injury_reporting_tables
-            load_injury_reporting_tables(args.export)
-            from injury_bootstrap_audit import load_injury_bootstrap_tables
-            load_injury_bootstrap_tables(args.export)
-            from injury_persistence_audit import load_injury_persistence_tables
-            load_injury_persistence_tables(args.export)
-            from injury_daily_audit import load_injury_daily_tables
-            load_injury_daily_tables(args.export)
-            from awol_records_audit import load_awol_records_tables
-            load_awol_records_tables(args.export)
-            from contract_storage_audit import load_contract_storage_tables
-            load_contract_storage_tables(args.export)
-            from contract_terms_audit import load_contract_terms_tables
-            load_contract_terms_tables(args.export)
-            from contract_review_audit import load_contract_review_tables
-            load_contract_review_tables(args.export)
-            from transfer_offer_audit import load_transfer_offer_tables
-            load_transfer_offer_tables(args.export)
-            from transfer_record_audit import load_transfer_record_tables
-            load_transfer_record_tables(args.export)
-            from transfer_valuation_audit import load_transfer_valuation_tables
-            load_transfer_valuation_tables(args.export)
-            from transfer_synthesis_audit import load_transfer_synthesis_tables
-            load_transfer_synthesis_tables(args.export)
-            from club_shortlist_storage_audit import load_club_shortlist_storage_tables
-            load_club_shortlist_storage_tables(args.export)
-            from shortlist_category_audit import load_shortlist_category_tables
-            load_shortlist_category_tables(args.export)
-            from shortlist_links_audit import load_shortlist_links_tables
-            load_shortlist_links_tables(args.export)
-            from shortlist_recruitment_audit import load_shortlist_recruitment_tables
-            load_shortlist_recruitment_tables(args.export)
-            from shortlist_assessment_audit import load_shortlist_assessment_tables
-            load_shortlist_assessment_tables(args.export)
-            from shortlist_quotation_audit import load_shortlist_quotation_tables
-            load_shortlist_quotation_tables(args.export)
-            from shortlist_policy_audit import load_shortlist_policy_tables
-            load_shortlist_policy_tables(args.export)
-            from profile_qualification_audit import load_profile_qualification_tables
-            load_profile_qualification_tables(args.export)
-            from contract_draft_audit import load_contract_draft_tables
-            load_contract_draft_tables(args.export)
-            from contract_display_audit import load_contract_display_tables
-            load_contract_display_tables(args.export)
-            from money_value_audit import load_money_value_tables
-            load_money_value_tables(args.export)
-            from money_text_audit import load_money_text_tables
-            load_money_text_tables(args.export)
-            from money_configuration_audit import load_money_configuration_tables
-            load_money_configuration_tables(args.export)
-            from preferences_audit import load_preferences_tables
-            load_preferences_tables(args.export)
-            from preferences_actions_audit import load_preferences_actions_tables
-            load_preferences_actions_tables(args.export)
-            from preferences_screen_audit import load_preferences_screen_tables
-            load_preferences_screen_tables(args.export)
-            from localization_lookup_audit import load_localization_lookup_tables
-            load_localization_lookup_tables(args.export)
-            from localization_format_audit import load_localization_format_tables
-            load_localization_format_tables(args.export)
-            from localization_catalog_audit import load_localization_catalog_tables
-            load_localization_catalog_tables(args.export)
-            from player_movement_audit import load_player_movement_tables
-            load_player_movement_tables(args.export)
-            from ball_action_audit import load_ball_action_tables
-            load_ball_action_tables(args.export)
-            from ball_contact_audit import load_ball_contact_tables
-            load_ball_contact_tables(args.export)
-            load_actor_action_table(args.export)
-        require_record_query_index(db, None if args.all_analyzed else selected)
-        require_record_group_index(db, None if args.all_analyzed else selected)
-    with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
+    with generator_pool(args.jobs, args.export, None if args.all_analyzed else selected) as pool:
+        run_index_audits(pool, run_selectable_index_audit, SELECTABLE_INDEX_AUDITS)
+        run_index_audits(pool, run_index_audit, INDEX_AUDITS)
+    if args.all_analyzed:
+        from actor_attributes_audit import load_actor_attributes_tables
+        load_actor_attributes_tables(args.export)
+        from injury_record_audit import load_injury_record_tables
+        load_injury_record_tables(args.export)
+        from injury_progression_audit import load_injury_progression_tables
+        load_injury_progression_tables(args.export)
+        from injury_club_events_audit import load_injury_club_events_tables
+        load_injury_club_events_tables(args.export)
+        from injury_readouts_audit import load_injury_readouts_tables
+        load_injury_readouts_tables(args.export)
+        from injury_reporting_audit import load_injury_reporting_tables
+        load_injury_reporting_tables(args.export)
+        from injury_bootstrap_audit import load_injury_bootstrap_tables
+        load_injury_bootstrap_tables(args.export)
+        from injury_persistence_audit import load_injury_persistence_tables
+        load_injury_persistence_tables(args.export)
+        from injury_daily_audit import load_injury_daily_tables
+        load_injury_daily_tables(args.export)
+        from awol_records_audit import load_awol_records_tables
+        load_awol_records_tables(args.export)
+        from contract_storage_audit import load_contract_storage_tables
+        load_contract_storage_tables(args.export)
+        from contract_terms_audit import load_contract_terms_tables
+        load_contract_terms_tables(args.export)
+        from contract_review_audit import load_contract_review_tables
+        load_contract_review_tables(args.export)
+        from transfer_offer_audit import load_transfer_offer_tables
+        load_transfer_offer_tables(args.export)
+        from transfer_record_audit import load_transfer_record_tables
+        load_transfer_record_tables(args.export)
+        from transfer_valuation_audit import load_transfer_valuation_tables
+        load_transfer_valuation_tables(args.export)
+        from transfer_synthesis_audit import load_transfer_synthesis_tables
+        load_transfer_synthesis_tables(args.export)
+        from club_shortlist_storage_audit import load_club_shortlist_storage_tables
+        load_club_shortlist_storage_tables(args.export)
+        from shortlist_category_audit import load_shortlist_category_tables
+        load_shortlist_category_tables(args.export)
+        from shortlist_links_audit import load_shortlist_links_tables
+        load_shortlist_links_tables(args.export)
+        from shortlist_recruitment_audit import load_shortlist_recruitment_tables
+        load_shortlist_recruitment_tables(args.export)
+        from shortlist_assessment_audit import load_shortlist_assessment_tables
+        load_shortlist_assessment_tables(args.export)
+        from shortlist_quotation_audit import load_shortlist_quotation_tables
+        load_shortlist_quotation_tables(args.export)
+        from shortlist_policy_audit import load_shortlist_policy_tables
+        load_shortlist_policy_tables(args.export)
+        from profile_qualification_audit import load_profile_qualification_tables
+        load_profile_qualification_tables(args.export)
+        from contract_draft_audit import load_contract_draft_tables
+        load_contract_draft_tables(args.export)
+        from contract_display_audit import load_contract_display_tables
+        load_contract_display_tables(args.export)
+        from money_value_audit import load_money_value_tables
+        load_money_value_tables(args.export)
+        from money_text_audit import load_money_text_tables
+        load_money_text_tables(args.export)
+        from money_configuration_audit import load_money_configuration_tables
+        load_money_configuration_tables(args.export)
+        from preferences_audit import load_preferences_tables
+        load_preferences_tables(args.export)
+        from preferences_actions_audit import load_preferences_actions_tables
+        load_preferences_actions_tables(args.export)
+        from preferences_screen_audit import load_preferences_screen_tables
+        load_preferences_screen_tables(args.export)
+        from localization_lookup_audit import load_localization_lookup_tables
+        load_localization_lookup_tables(args.export)
+        from localization_format_audit import load_localization_format_tables
+        load_localization_format_tables(args.export)
+        from localization_catalog_audit import load_localization_catalog_tables
+        load_localization_catalog_tables(args.export)
+        from player_movement_audit import load_player_movement_tables
+        load_player_movement_tables(args.export)
+        from ball_action_audit import load_ball_action_tables
+        load_ball_action_tables(args.export)
+        from ball_contact_audit import load_ball_contact_tables
+        load_ball_contact_tables(args.export)
+        load_actor_action_table(args.export)
+    with closing(sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True)) as db:
         native_leaves = load_leaves(db, None if args.all_analyzed else selected)
         native_sort = load_sort8(db, None if args.all_analyzed else selected)
         divisions = quotient_free_divisions(db)
-        require_list_search(db)
-        require_tactics_index(db)
-        require_main_program_index(db)
-        require_club_history_index(db)
-        require_club_records_index(db)
-        require_match_pl_index(db)
-        require_eng_prm_index(db)
-        require_eng_conf_index(db)
-        require_bra_reg_central_index(db)
-        require_utils_index(db)
-        require_file_screens_index(db)
-        require_inter_amer_cup_index(db)
-        require_euro_champ_qual_index(db)
-        require_pol_cup_index(db)
-        require_fifa_rankings_index(db)
-        require_cash_index(db)
-        require_awol_index(db)
-        require_siprint_index(db)
-        require_db_files_index(db)
-        require_international_awards_index(db)
-        require_nation_awards_index(db)
-        require_dispute_index(db)
-        require_award_shortlist_index(db)
-        require_transfer_screens_index(db)
-        require_oceania_nations_index(db)
-        require_news_index(db)
-        require_screen_manager_index(db)
-        require_contract_manager_index(db)
-        require_player_stats_index(db)
-        require_shortlist_manager_index(db)
         inlining = Inlining({target: body for target, body in inline_leaves(db, divisions).items()
                              if args.all_analyzed or all(address in selected for address in range(target, target + 4 * len(body) + 4, 4))})
     if args.reuse_generated:
@@ -2820,25 +2800,22 @@ def main():
         # Keep memory bounded to one code page. Game-derived instruction JSON
         # does not need to be held in a multi-gigabyte Python object graph.
         generated_count = 0
-        with sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True) as db:
+        with closing(sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True)) as db:
             page_ids = [row[0] for row in db.execute("SELECT DISTINCT address >> 12 FROM instructions ORDER BY address")]
-            for page in page_ids:
-                records = [json.loads(row[0]) for row in db.execute(
-                    "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
-                    (page << 12, (page + 1) << 12))]
-                fused_sites.extend((r["address"], fused_site_kind(r)) for r in records if fused_mnemonic(r))
-                call_targets.update(r["flows"][0] for r in records
-                                    if r.get("flow") == "UNCONDITIONAL_CALL" and r.get("flows"))
-                path = args.output / f"page_{page:x}.cpp"
-                content = generate_page(page, records, {r["address"] for r in records},
-                                        local_temporaries=not args.legacy_unique_storage,
-                                        userops=metadata['userops'], block_accounting=True, inlining=inlining,
-                                        nontrapping_divisions=divisions, direct_owner_calls=direct_calls,
-                                        **production_hooks)
-                if not path.exists() or path.read_text() != content: path.write_text(content)
+        generation = (args.output, dict(local_temporaries=not args.legacy_unique_storage, userops=metadata['userops'],
+                                        nontrapping_divisions=divisions, **production_hooks))
+        direct_owner_entries()  # Cached here, so workers don't each read the sources again.
+        with generator_pool(args.jobs, args.export, None, inlining.leaves, generation) as pool:
+            for page, result in zip(page_ids, pool.map(generate_indexed_page, page_ids)):
+                fused_sites.extend(result["fused_sites"])
+                call_targets.update(result["call_targets"])
+                inlining.inlined.update(result["inlined"])
+                inlining.special.update(result["special"])
+                direct_calls.called.update(result["called"])
+                direct_calls.entry_hooks.update(result["entry_hooks"])
                 pages[page] = []
-                outputs[path.name] = None
-                generated_count += len(records)
+                outputs[result["name"]] = None
+                generated_count += result["count"]
         if generated_count != metadata["instructionCount"]: raise ValueError("Incomplete indexed listing")
         queue.clear()
     for page, instructions in pages.items():
