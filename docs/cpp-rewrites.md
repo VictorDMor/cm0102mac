@@ -1016,3 +1016,6 @@ FSRef holds the host's process id at +0xc, and `native/file_reference_bridge.cpp
 guest's stack, so two runs of the original differ in those bytes. The checker replaces that exact value
 with a marker in the five slots these screens leave it in, so its presence is still compared. The system's file services don't survive a fork after
 the parent has used them, so anything reading files in the checker's own process must run last.
+
+`.local/benchmarks/ui/save-info` is the capture for the save information screen, recorded with
+`tools/game_driver.py` on a copy of the reference save: load dialog, pick a file, Info, Ok, twice, cancel.
