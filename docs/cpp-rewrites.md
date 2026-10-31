@@ -971,3 +971,22 @@ it scripts club history, the fixture builder, the saved-competition load and the
 season route because they stop at file or dialog imports, so those calls have
 their arguments compared but not their effects. Fixture slots and base-class news
 are covered by fixtures only.
+
+## UTILS.CPP: text, path and file helpers
+
+The 23 entries at 0x10745e00–0x107475ac (1,488 indexed instructions) live in
+`native/utils_*`; `tools/utils_audit.py` pins them. 0x107474a0, which seeds the RNG
+and draws the sample-pool cursor and salt, stays routed through
+`try_modern_rng_core` for its diagnostics and calls `utils::initialize_random`.
+`rng_core_checks` pins the order of every access and the whole register file
+there, so that routine writes its prologue by hand instead of using `Frame`.
+
+Quirks worth knowing: `usable_path` never fails on a nonempty string, because its
+handle stub 0x10739870 always returns 0x1e. `environment_directory` maps
+CM3_TACTICS to `data`, and `-ignoreenv` in the command line skips `getenv`.
+`short_name` drops spaces only once a name reaches 31 characters, and then keeps 22
+characters plus the name's last eight. In `read_line` a `#` starts a comment
+anywhere, also inside a line, whose text then continues on the next line; byte 0xff
+reads as end of file. `copy_file` retries a failed 256-byte allocation forever, and
+a read returning nothing before the recorded size spins forever. `delete_temporary_files`
+lists 100 names at a time and searches again after a full listing.

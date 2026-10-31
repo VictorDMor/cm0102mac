@@ -4015,3 +4015,42 @@ if(CM_DB_FILES_COVERAGE)
         CM_DB_FILES_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/db_files-coverage")
     target_link_options(cm-db-files-checks PRIVATE "-fprofile-instr-generate=${CM_DB_FILES_PROFILE}")
 endif()
+
+
+file(GLOB CM_UTILS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/utils_*.cpp")
+list(FILTER CM_UTILS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_UTILS_SOURCES})
+add_executable(cm-utils-checks utils_checks.cpp)
+target_link_libraries(cm-utils-checks PRIVATE cm_aot)
+target_compile_options(cm-utils-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_UTILS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/utils_reference.cpp")
+    add_custom_command(OUTPUT "${CM_UTILS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_utils_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_UTILS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_utils_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/utils_audit.py"
+            "${CMAKE_SOURCE_DIR}/utils_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-utils-checks PRIVATE "${CM_UTILS_REFERENCE}")
+    add_test(NAME utils_equivalence COMMAND cm-utils-checks "${CM_ORACLE_DIR}")
+    add_test(NAME utils_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_utils_audit.py")
+endif()
+option(CM_UTILS_COVERAGE "Instrument UTILS.CPP checker only" OFF)
+if(CM_UTILS_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/utils-coverage")
+    set(CM_UTILS_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/utils-coverage/check-%p.profraw")
+    add_library(cm_utils_coverage OBJECT ${CM_UTILS_SOURCES})
+    target_link_libraries(cm_utils_coverage PRIVATE cm_aot)
+    target_compile_options(cm_utils_coverage PRIVATE "-fprofile-instr-generate=${CM_UTILS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    # The hook-free original too: which of its instructions the checks execute.
+    set_source_files_properties("${CM_UTILS_REFERENCE}" PROPERTIES COMPILE_OPTIONS
+        "-fprofile-instr-generate=${CM_UTILS_PROFILE};-fcoverage-mapping")
+    target_compile_definitions(cm_utils_coverage PRIVATE CM_UTILS_COVERAGE=1)
+    target_sources(cm-utils-checks PRIVATE $<TARGET_OBJECTS:cm_utils_coverage>)
+    target_compile_definitions(cm-utils-checks PRIVATE CM_UTILS_COVERAGE=1
+        CM_UTILS_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/utils-coverage")
+    target_link_options(cm-utils-checks PRIVATE "-fprofile-instr-generate=${CM_UTILS_PROFILE}")
+endif()

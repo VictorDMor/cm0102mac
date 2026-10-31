@@ -1,5 +1,7 @@
 #include "rng_core_adapter.hpp"
 #include "rng_core.hpp"
+#include "utils.hpp"
+#include "utils_adapter.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -10,23 +12,6 @@ namespace cm::aot {
 namespace {
 std::uint32_t reg(const State& s, unsigned n) { return std::uint32_t(s.r<4>(n * 4)); }
 void set(State& s, unsigned n, std::uint32_t value) { s.wr<4>(n * 4, value); }
-std::int32_t signed_word(std::uint32_t value) { return std::bit_cast<std::int32_t>(value); }
-std::uint32_t signed_high_product(std::uint32_t a, std::uint32_t b) {
-    return std::uint32_t((std::int64_t(signed_word(a)) * signed_word(b)) >> 32);
-}
-std::uint32_t arithmetic_shift(State& s, std::uint32_t value, unsigned shift) {
-    s.wr<1>(1027, signed_word(value) < 0 && (value & ((1u << shift) - 1)) != 0);
-    return std::uint32_t(signed_word(value) >> shift);
-}
-void compare_unsigned(State& s, std::uint32_t a, std::uint32_t b) {
-    s.wr<1>(2304, (a < b ? 8 : a > b ? 4 : 2) | (s.r<1>(1024) & 1));
-}
-void call(State& s, std::uint32_t entry, std::uint32_t link) {
-    s.wr<4>(2440, reg(s, 2));
-    s.wr<4>(4128, link);
-    s.pc = entry;
-    run_until(s, link);
-}
 void draw(State& s) {
     // Load after the original r3 assignment; leave r4 as the incoming state.
     set(s, 3, 0x41c60000);
@@ -40,75 +25,6 @@ void draw(State& s) {
 }
 void seed(State& s) {
     s.memory.write<4>(reg(s, 2) - 0x34c4, reg(s, 3));
-    s.pc = std::uint32_t(s.r<4>(4128));
-}
-void initialize_pool(State& s) {
-    // Interleave saves and slot reads: TOC slots may alias the frame.
-    set(s, 0, s.r<4>(4128));
-    s.memory.write<4>(reg(s, 1) - 4, reg(s, 31));
-    set(s, 31, s.memory.read<4>(reg(s, 2) - 0x7b84));
-    s.memory.write<4>(reg(s, 1) - 8, reg(s, 30));
-    set(s, 30, s.memory.read<4>(reg(s, 2) - 0x7b8c));
-    s.memory.write<4>(reg(s, 1) - 12, reg(s, 29));
-    set(s, 29, s.memory.read<4>(reg(s, 2) - 0x7b88));
-    s.memory.write<4>(reg(s, 1) - 16, reg(s, 28));
-    set(s, 28, reg(s, 3));
-    const auto requested = signed_word(reg(s, 28));
-    s.wr<1>(2304, (s.r<1>(2304) & 0xf0) |
-        (requested < 0 ? 8 : requested > 0 ? 4 : 2) | (s.r<1>(1024) & 1));
-    s.memory.write<4>(reg(s, 1) + 8, reg(s, 0));
-    const auto old_stack = reg(s, 1);
-    s.memory.write<4>(old_stack - 80, old_stack);
-    set(s, 1, old_stack - 80);
-    if (!reg(s, 28)) {
-        set(s, 3, 0);
-        call(s, 0x1077f900, 0x107474d8);
-        set(s, 28, reg(s, 3));
-    }
-    set(s, 3, reg(s, 28));
-    call(s, 0x1077b790, 0x107474e4);
-    set(s, 4, s.memory.read<4>(reg(s, 2) - 0x3e34));
-    set(s, 5, reg(s, 28));
-    set(s, 3, s.memory.read<4>(reg(s, 2) - 0x7bb8));
-    set(s, 4, reg(s, 4) + 0x25b);
-    call(s, 0x1077b720, 0x107474f8);
-    call(s, 0x1077b770, 0x107474fc);
-
-    // Signed constant division retains the original quotient/carry residues.
-    // In normal calls the draw is 15-bit, but slot/frame aliases remain live.
-    set(s, 5, signed_high_product(0x291ee171, reg(s, 3)));
-    set(s, 4, arithmetic_shift(s, reg(s, 5), 13));
-    set(s, 5, reg(s, 4) >> 31);
-    set(s, 4, reg(s, 4) + reg(s, 5));
-    set(s, 0, reg(s, 30) + 2 * (reg(s, 3) - reg(s, 4) * cm::rng::pool_samples));
-    s.memory.write<4>(reg(s, 31), reg(s, 0));
-    call(s, 0x1077b770, 0x10747534);
-
-    set(s, 8, s.memory.read<4>(reg(s, 31)));
-    set(s, 7, signed_high_product(0x80008001, reg(s, 3)));
-    set(s, 4, reg(s, 30) + 0x20000);
-    set(s, 6, 65535);
-    set(s, 5, s.memory.read<4>(reg(s, 2) - 0x7b90));
-    set(s, 0, reg(s, 4) - 0x7192); // Inclusive last uint16 sample.
-    compare_unsigned(s, reg(s, 8), reg(s, 30));
-    set(s, 4, reg(s, 7) + reg(s, 3));
-    s.memory.write<4>(reg(s, 29), reg(s, 0));
-    set(s, 4, arithmetic_shift(s, reg(s, 4), 15));
-    set(s, 7, reg(s, 4) >> 31);
-    set(s, 4, (reg(s, 4) + reg(s, 7)) * reg(s, 6));
-    set(s, 3, reg(s, 3) - reg(s, 4));
-    s.memory.write<4>(reg(s, 5), reg(s, 3));
-    bool reset_cursor = reg(s, 8) < reg(s, 30);
-    if (!reset_cursor) {
-        compare_unsigned(s, reg(s, 8), reg(s, 0));
-        reset_cursor = reg(s, 8) > reg(s, 0);
-    }
-    if (reset_cursor) s.memory.write<4>(reg(s, 31), reg(s, 30));
-    set(s, 0, s.memory.read<4>(reg(s, 1) + 88));
-    set(s, 1, reg(s, 1) + 80);
-    s.wr<4>(4128, reg(s, 0));
-    for (unsigned n = 31; n >= 28; --n)
-        set(s, n, s.memory.read<4>(reg(s, 1) - (32 - n) * 4));
     s.pc = std::uint32_t(s.r<4>(4128));
 }
 void digest_boundary(State& s, std::uint32_t entry, unsigned event) {
@@ -175,7 +91,7 @@ bool try_modern_rng_core(State& s, std::uint32_t entry) {
     const auto found = std::find(rng_core_entries.begin(), rng_core_entries.end(), entry);
     if (found == rng_core_entries.end()) throw std::runtime_error("Unknown RNG core entry");
     const auto index = std::size_t(found - rng_core_entries.begin());
-    const bool original = s.rng_original || s.rng_entry_original[index];
+    const bool original = s.rng_original || s.rng_entry_original[index] || (index == 2 && utils_declining());
     auto& count = original ? s.rng_original_calls[index] : s.rng_calls[index];
     ++count;
     if (original && !s.rng_trace && !s.rng_observer) return false;
@@ -190,7 +106,11 @@ bool try_modern_rng_core(State& s, std::uint32_t entry) {
         s.step(entry);
         if (index == 0) draw(s);
         else if (index == 1) seed(s);
-        else initialize_pool(s);
+        else {
+            guest::Cpu c(s);
+            utils::initialize_random(c, c.r(3));
+            c.finish();
+        }
     }
     if (s.rng_observer) s.rng_observer->leave(s, entry, original);
     if (s.rng_trace) {
@@ -214,7 +134,7 @@ std::string rng_core_call_summary(const State& s) {
     std::ostringstream out;
     for (unsigned i = 0; i < rng_core_entries.size(); ++i)
         out << "rng.entry=" << hex_address(rng_core_entries[i])
-            << " mode=" << (s.rng_original || s.rng_entry_original[i] ? "original" : "modern")
+            << " mode=" << (s.rng_original || s.rng_entry_original[i] || (i == 2 && utils_declining()) ? "original" : "modern")
             << " modern=" << s.rng_calls[i] << " original=" << s.rng_original_calls[i] << '\n';
     if (s.rng_trace) out << "rng.ordered-boundaries=" << std::hex << s.rng_ordered_digest << '\n';
     return out.str();
