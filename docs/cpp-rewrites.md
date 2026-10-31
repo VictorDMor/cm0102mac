@@ -990,3 +990,17 @@ anywhere, also inside a line, whose text then continues on the next line; byte 0
 reads as end of file. `copy_file` retries a failed 256-byte allocation forever, and
 a read returning nothing before the recorded size spins forever. `delete_temporary_files`
 lists 100 names at a time and searches again after a full listing.
+
+## FILE_SCREENS.CPP: the file browser, save information and message boxes
+
+The 11 entries at 0x100edf20–0x100f0ff4 (3,109 indexed instructions) live in
+`native/file_screens_*`; `tools/file_screens_audit.py` pins them. 0x100f05a0, the game's
+message box, has 216 callers. 0x100f1000 and 0x100f1010 sit right after the module but
+belong to FINANCE.CPP, the only code reading their vectors.
+
+Quirks worth knowing: a save from before 0x3e023 closes `general.dat` twice in the file
+dialog's Info path. The summary screen reads 0xf70 bytes below version 0x3e027 and zeroes
+the saved-time field, which it then still displays. Its Addictedness row appears only in
+language 0 and past a full day of play. Play time accumulates in `fill_save_summary` by
+wall clock, without checking for wrap. The action handlers' sign mask after 0x102a83a0
+leaves r3 unchanged, so the C++ omits it.

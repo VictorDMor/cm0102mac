@@ -4054,3 +4054,42 @@ if(CM_UTILS_COVERAGE)
         CM_UTILS_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/utils-coverage")
     target_link_options(cm-utils-checks PRIVATE "-fprofile-instr-generate=${CM_UTILS_PROFILE}")
 endif()
+
+
+file(GLOB CM_FILE_SCREENS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/file_screens_*.cpp")
+list(FILTER CM_FILE_SCREENS_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_FILE_SCREENS_SOURCES})
+add_executable(cm-file-screens-checks file_screens_checks.cpp)
+target_link_libraries(cm-file-screens-checks PRIVATE cm_aot)
+target_compile_options(cm-file-screens-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_FILE_SCREENS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/file_screens_reference.cpp")
+    add_custom_command(OUTPUT "${CM_FILE_SCREENS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_file_screens_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_FILE_SCREENS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_file_screens_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/file_screens_audit.py"
+            "${CMAKE_SOURCE_DIR}/file_screens_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-file-screens-checks PRIVATE "${CM_FILE_SCREENS_REFERENCE}")
+    add_test(NAME file_screens_equivalence COMMAND cm-file-screens-checks "${CM_ORACLE_DIR}")
+    add_test(NAME file_screens_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_file_screens_audit.py")
+endif()
+option(CM_FILE_SCREENS_COVERAGE "Instrument FILE_SCREENS.CPP checker only" OFF)
+if(CM_FILE_SCREENS_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/file_screens-coverage")
+    set(CM_FILE_SCREENS_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/file_screens-coverage/check-%p.profraw")
+    add_library(cm_file_screens_coverage OBJECT ${CM_FILE_SCREENS_SOURCES})
+    target_link_libraries(cm_file_screens_coverage PRIVATE cm_aot)
+    target_compile_options(cm_file_screens_coverage PRIVATE "-fprofile-instr-generate=${CM_FILE_SCREENS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    # The hook-free original too: which of its instructions the checks execute.
+    set_source_files_properties("${CM_FILE_SCREENS_REFERENCE}" PROPERTIES COMPILE_OPTIONS
+        "-fprofile-instr-generate=${CM_FILE_SCREENS_PROFILE};-fcoverage-mapping")
+    target_compile_definitions(cm_file_screens_coverage PRIVATE CM_FILE_SCREENS_COVERAGE=1)
+    target_sources(cm-file-screens-checks PRIVATE $<TARGET_OBJECTS:cm_file_screens_coverage>)
+    target_compile_definitions(cm-file-screens-checks PRIVATE CM_FILE_SCREENS_COVERAGE=1
+        CM_FILE_SCREENS_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/file_screens-coverage")
+    target_link_options(cm-file-screens-checks PRIVATE "-fprofile-instr-generate=${CM_FILE_SCREENS_PROFILE}")
+endif()
