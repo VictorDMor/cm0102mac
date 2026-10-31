@@ -1,5 +1,9 @@
 # AWOL records, daily review and supporting sampling
 
+The builder implementation this report describes no longer runs in production:
+`native/awol_*.cpp` direct C++ took over (see `docs/cpp-rewrites.md`). What it
+says about the original's behaviour still holds.
+
 ## Status and complete module boundary
 
 The original `AWOL.CPP` source block contains 21 complete operations and 6,958

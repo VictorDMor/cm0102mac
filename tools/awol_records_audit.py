@@ -79,9 +79,10 @@ def awol_records_hook(entry):
     return f'if (try_modern_awol_records(s, 0x{entry:x})) return true;'
 
 
-def require_awol_records_hooks(page, instructions, code):
+def require_awol_records_hooks(page, instructions, code, taken_over=()):
     addresses = {r['address'] for r in instructions}
     for entry in AWOL_RECORDS_ENTRIES:
+        if entry in taken_over: continue
         if entry >> 12 != page or entry not in addresses: continue
         label, hook = f'i_{entry:x}:', awol_records_hook(entry)
         fragment = code.split(label, 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]

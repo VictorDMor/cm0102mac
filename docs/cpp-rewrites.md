@@ -932,3 +932,27 @@ The double-swapping conversions (continents, nations, cities) set r6-r8 before t
 loop, so an empty table still leaves them. Their stack frames hold the last record's
 doubles, unswapped and swapped. After a failed allocation the original calls `exit`
 and has code to continue, which only the fixture's returning `exit` stub reaches.
+
+## AWOL.CPP: staff absence records and the daily review
+
+`AWOL.CPP` owns 21 entries / 6,958 indexed instructions between 0x100031b0 and
+0x10009ef0 (`tools/awol_audit.py`), with 49 incoming calls, 48 calls between
+entries and no callback vectors or computed transfers. `awol_adapter` replaces
+the older `awol_records` builder owner in normal generation; those files stay
+as reference tooling only.
+
+The inline random draw appears at 31 sites with an arm for bounds beyond 65535
+in size. Every bound there is a sign-extended byte or halfword, or a byte plus
+ten (pinned by a test), so the C++ has no such arm, and nothing can reach
+`sample` (0x10006080) in play; it is still rewritten and checked as an entry.
+Quirks worth knowing: `construct` frees only the flags and the first list after
+a failed load; removals XOR the flag bit behind a test of `flag | bit` that is
+never zero; `remove_secondary_item` toggles bit 1 for any nonzero flag byte;
+`training_event` reads the staff id again after its calls, so a callee changing
+it changes which record is written; `fitness_event` retries forever when no
+reporter exists and no word gives grade 0, as the original does; `notify` and
+`register_absence` read through the club unguarded, so a callee clearing it is a
+guest fault in both. The fixture's scripted services never see leaf routines
+(0x10738c00, 0x10775550, 0x10768810, 0x1037fa70): `run_until` runs those before
+the probe, so a case steers them through the memory they read.
+

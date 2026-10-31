@@ -1953,9 +1953,6 @@ target_compile_options(cm-injury-persistence-transfer-checks PRIVATE -Wall -Wext
 add_executable(cm-injury-daily-production-checks injury_daily_production_checks.cpp)
 target_link_libraries(cm-injury-daily-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-injury-daily-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-awol-records-production-checks awol_records_production_checks.cpp)
-target_link_libraries(cm-awol-records-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-awol-records-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-contract-production-checks contract_production_checks.cpp)
 target_link_libraries(cm-contract-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-contract-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -3838,6 +3835,40 @@ if(CM_CASH_COVERAGE)
     target_sources(cm-cash-checks PRIVATE $<TARGET_OBJECTS:cm_cash_coverage>)
     target_compile_definitions(cm-cash-checks PRIVATE CM_CASH_COVERAGE=1)
     target_link_options(cm-cash-checks PRIVATE "-fprofile-instr-generate=${CM_CASH_PROFILE}")
+endif()
+
+set(CM_AWOL_SOURCES awol_adapter.cpp awol_random.cpp awol_records.cpp awol_status.cpp
+    awol_absence.cpp awol_text.cpp awol_review.cpp awol_discipline.cpp)
+target_sources(cm_aot PRIVATE ${CM_AWOL_SOURCES})
+add_executable(cm-awol-checks awol_checks.cpp)
+target_link_libraries(cm-awol-checks PRIVATE cm_aot)
+target_compile_options(cm-awol-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_AWOL_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/awol_reference.cpp")
+    add_custom_command(OUTPUT "${CM_AWOL_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_awol_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_AWOL_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_awol_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/awol_audit.py"
+            "${CMAKE_SOURCE_DIR}/awol_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-awol-checks PRIVATE "${CM_AWOL_REFERENCE}")
+    add_test(NAME awol_equivalence COMMAND cm-awol-checks "${CM_ORACLE_DIR}")
+    add_test(NAME awol_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_awol_audit.py")
+endif()
+option(CM_AWOL_COVERAGE "Instrument AWOL.CPP checker only" OFF)
+if(CM_AWOL_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/awol-coverage")
+    set(CM_AWOL_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/awol-coverage/check-%m.profraw")
+    add_library(cm_awol_coverage OBJECT ${CM_AWOL_SOURCES})
+    target_link_libraries(cm_awol_coverage PRIVATE cm_aot)
+    target_compile_options(cm_awol_coverage PRIVATE "-fprofile-instr-generate=${CM_AWOL_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_awol_coverage PRIVATE CM_AWOL_COVERAGE=1)
+    target_sources(cm-awol-checks PRIVATE $<TARGET_OBJECTS:cm_awol_coverage>)
+    target_compile_definitions(cm-awol-checks PRIVATE CM_AWOL_COVERAGE=1)
+    target_link_options(cm-awol-checks PRIVATE "-fprofile-instr-generate=${CM_AWOL_PROFILE}")
 endif()
 
 file(GLOB CM_AWARD_SHORTLIST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/award_shortlist*.cpp")

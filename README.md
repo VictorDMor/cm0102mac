@@ -43,7 +43,8 @@ classification and binary persistence. `CASH.CPP` adds **12 audited routines**
 for monetary conversion, editing, currency configuration and text formatting.
 `SIPRINT.CPP` adds **9 audited routines** for printer lifetime, page-format
 resources, page setup and text pagination. `DB_FILES.CPP` adds **59 audited
-routines** for loading, converting and saving the database tables.
+routines** for loading, converting and saving the database tables. `AWOL.CPP`
+adds **21 audited routines** for staff absences, their messages and the daily review.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,
