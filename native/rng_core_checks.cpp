@@ -1,6 +1,7 @@
 #include "rng_core_adapter.hpp"
 #include "rng_core.hpp"
 #include "callbacks.hpp"
+#include "exception_runtime_adapter.hpp"
 #include "season_reference.hpp"
 #include "match_replay.hpp"
 #include <algorithm>
@@ -155,27 +156,36 @@ void controlled_clock_transcript(State& s, const std::filesystem::path& director
                 gzwrite(stream, &length, 8) == 8 && gzwrite(stream, bytes, unsigned(size)) == int(size), "Clock native write recording");
         }
     } effects(out);
-    while (s.pc != return_sentinel) {
-        const auto* name = import_name(s.pc);
-        if (!name) { require(dispatch_page(s), "Cannot execute original clock fixture"); continue; }
-        put(std::uint8_t(0)); put(s.pc); put(s.executed); put(s.native_calls); put(s.registers);
-        s.memory.observer = &effects;
+    // Imports now happen inside rewritten hooks' nested dispatches (the clock,
+    // formatted output), so they are recorded where the dispatcher serves them.
+    struct Recorder final : ExceptionRuntimeBoundaryObserver {
+        std::function<void(State&, const char*)> record;
+        void enter(const State&, std::uint32_t, bool) override {}
+        void leave(State&, std::uint32_t, bool, ExceptionRuntimeOutcome) override {}
+        bool import_fixture(State& state, const char* name) override { record(state, name); return true; }
+    } recorder;
+    recorder.record = [&](State& state, const char* name) {
+        put(std::uint8_t(0)); put(state.pc); put(state.executed); put(state.native_calls); put(state.registers);
+        state.memory.observer = &effects;
         if (std::string_view(name) == "CarbonLib::GetDateTime") {
             require(++clocks == 1, "Repeated clock query in fixture");
-            s.memory.write<4>(s.r<4>(12), clock); s.pc = s.r<4>(4128);
+            state.memory.write<4>(state.r<4>(12), clock); state.pc = state.r<4>(4128);
         } else {
             // Zero formatting uses an original BlockMoveData dependency.
             require(std::string_view(name) == "CarbonLib::BlockMoveData", "Unexpected nondeterministic clock fixture dependency");
-            require(bridge_import(s, name), "Unimplemented deterministic clock fixture dependency");
+            require(bridge_import(state, name), "Unimplemented deterministic clock fixture dependency");
         }
-        s.memory.observer = nullptr;
-        put(std::uint8_t(4)); put(s.pc); put(s.registers); put(s.unique); put(s.heap_end); put(s.memory_error);
-        for (const auto* table : {&s.allocated, &s.available}) {
+        state.memory.observer = nullptr;
+        put(std::uint8_t(4)); put(state.pc); put(state.registers); put(state.unique); put(state.heap_end); put(state.memory_error);
+        for (const auto* table : {&state.allocated, &state.available}) {
             put(std::uint32_t(table->size()));
             for (const auto& [a, n] : *table) { put(a); put(n); }
         }
-        put(std::uint8_t(7)); ++s.native_calls;
-    }
+        put(std::uint8_t(7));
+    };
+    s.exception_runtime_observer = &recorder;
+    run(s);
+    s.exception_runtime_observer = nullptr;
     require(clocks == 1 && gzclose(out) == Z_OK, "Clock transcript finalization");
 }
 }

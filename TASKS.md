@@ -10,10 +10,6 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
-## Known test failures
-
-- `modern_rng_core_equivalence` stops at its controlled-clock fixture: `Unimplemented native OS bridge: CarbonLib::GetDateTime`. The fixture steps imports from a top-level loop and predates the clock rewrite (4559ca6). It fails the same with the previous RNG adapter (checked 2026-10-31 by swapping that file back); setting `time_runtime_original` alone does not fix it. Everything before the clock section passes, including the initializer's alias, ordered-access and whole-register comparisons.
-
 ## Now
 
 - [x] **SIPRINT.CPP complete C++23 reconstruction (2026-10-30):** all four completion dimensions closed: 9/9 audited entries, complete handwritten implementations, default production routing and verified delivery. Private per-entry ledger: `.local/rewrites/siprint/ledger.json`.
