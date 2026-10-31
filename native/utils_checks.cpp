@@ -504,6 +504,58 @@ int main(int argc, char** argv) {
             } else std::cout << "ok deliberate return-address corruption detected\n";
             wrong_return = false;
         }
+        // Paths that stop at an uncaptured import on real state (0x10781290 and the
+        // error dialog): each must return here, through exactly these scripted calls.
+        struct PathCheck {
+            const char* name;
+            Case test;
+            std::vector<std::uint32_t> reached, absent;
+            std::uint32_t result;
+        };
+        const auto url_key = [](Cpu& c) { c.put32(c.toc(-0x5bbc) + 0x14, 0x434d3032); };
+        const std::array<PathCheck, 8> paths{{
+            {"open_url launches", {.entry = open_url, .arguments = {text_a}, .a = "http://x", .internet_status = 0, .prepare = url_key},
+             {internet_start, internet_launch, internet_stop}, {}, 0},
+            {"open_url empty url", {.entry = open_url, .arguments = {text_a}, .a = "", .internet_status = 0, .prepare = url_key},
+             {internet_start, internet_launch, internet_stop}, {}, 0},
+            {"open_url status with a zero low halfword", {.entry = open_url, .arguments = {text_a}, .a = "http://x", .internet_status = 0x10000, .prepare = url_key},
+             {internet_start, internet_launch, internet_stop}, {}, 0},
+            {"open_url start fails", {.entry = open_url, .arguments = {text_a}, .a = "http://x", .internet_status = 1, .prepare = url_key},
+             {internet_start}, {internet_launch, internet_stop}, 1},
+            {"number_text null output", {.entry = number_text, .arguments = {3, 0, 0x32, 1}},
+             {format_text, error_dialog}, {localized_text}, 0},
+            {"number_text capacity 0x31", {.entry = number_text, .arguments = {3, output, 0x31, 1}},
+             {format_text, error_dialog}, {localized_text}, 0},
+            {"number_text negative capacity", {.entry = number_text, .arguments = {3, output, 0x8000, 0}},
+             {format_text, error_dialog}, {localized_text}, 0},
+            {"number_text valid (control)", {.entry = number_text, .arguments = {3, output, 0x32, 1}},
+             {localized_text}, {error_dialog}, 1},
+        }};
+        unsigned path_runs = 0;
+        for (const auto& path : paths) for (const auto mode : {"original", "C++", "production"}) {
+            active = path.test;
+            production_mode = std::string_view(mode) == "production";
+            auto s = cm::semantic_io_checks::clone(*base);
+            Cpu c(*s);
+            initialize(c);
+            Observed observer;
+            if (production_mode) s->memory.observer = &observer;
+            std::string problem;
+            try {
+                if (std::string_view(mode) == "original") original(*s, path.test.entry);
+                else rewrite(*s, path.test.entry);
+                std::set<std::uint32_t> called;
+                for (std::uint32_t at = 0, words = c.u32(trace_at); at < words; at += 37) called.insert(c.u32(trace_at + 4 + at * 4));
+                if (s->pc != sentinel) problem = "did not return";
+                for (const auto target : path.reached) if (!called.contains(target)) problem = "missed " + hex_address(target);
+                for (const auto target : path.absent) if (called.contains(target)) problem = "reached " + hex_address(target);
+                if (c.r(3) != path.result) problem = "result " + hex_address(c.r(3));
+            } catch (const std::exception& e) { problem = e.what(); }
+            if (problem.empty()) { ++path_runs; std::cout << "ok path returned: " << path.name << " (" << mode << ")\n"; }
+            else { ++failures; std::cout << "FAIL path " << path.name << " (" << mode << "): " << problem << '\n'; }
+        }
+        production_mode = false;
+        std::cout << path_runs << "/" << paths.size() * 3 << " path runs returned\n";
         // Production routing: every entry returns with no instruction budget, so
         // no generated body of this module runs; the original exhausts it.
         unsigned ownership = 0;
