@@ -1,14 +1,20 @@
-// Returned comparisons against private hook-free originals. String routines and
-// path parts run for real; the screen manager, controls, files, dialogs, the
-// clock and localized or formatted text are scripted, so their arguments are
-// compared and their effects are not. Every dispatched call puts its target,
-// return address, arguments, non-volatile registers and CR into compared memory.
+// Returned comparisons against private hook-free originals, in two passes.
+// Controlled: string routines and path parts run for real; the screen manager,
+// controls, files, dialogs, the clock and localized or formatted text are scripted,
+// so their arguments are compared and their effects are not. Every dispatched call
+// puts its target, return address, arguments, non-volatile registers and CR into
+// compared memory.
+// Real state (run_real_state): from a capture's snapshot the screen manager,
+// controls and text run for real; only files, the clock and paths are scripted.
+// Calls the module itself makes are recorded the same way, and memory is compared.
 #include "file_screens_adapter.hpp"
 #include "guest_values.hpp"
+#include "match_replay.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
 #include <array>
 #include <cstdlib>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -25,9 +31,9 @@ using namespace cm::aot;
 using namespace cm::aot::guest;
 namespace cm::aot { bool file_screens_reference(State&); }
 namespace {
-constexpr std::uint32_t data = 0x60000000, text_a = data + 0x1000, text_b = data + 0x1100, text_c = data + 0x1200, folder_buffer = data + 0x1400,
+constexpr std::uint32_t data = 0x78000000, text_a = data + 0x1000, text_b = data + 0x1100, text_c = data + 0x1200, folder_buffer = data + 0x1400,
     copy_buffer = data + 0x1600, name_buffer = data + 0x1800, path_buffer = data + 0x1a00, tm_at = data + 0x1c00, leagues_at = data + 0x2000,
-    people_at = data + 0x4000, clubs_at = data + 0x8000, heap = data + 0x40000, trace_at = data + 0x60000, controls = data + 0x100000,
+    people_at = data + 0x4000, clubs_at = data + 0x8000, heap = data + 0x40000, trace_at = data + 0x200000, controls = data + 0x100000,
     stack = 0x71010000, sentinel = 0xfffffff0, toc_base = 0x108bba90, screens_slot = toc_base - 0x7bb0;
 constexpr std::uint32_t open_dialog = 0x100edf20, render_dialog = 0x100ee220, dialog_action = 0x100ee9d0, open_info = 0x100ef7d0,
     render_info = 0x100ef840, info_action = 0x100f0530, open_message = 0x100f05a0, open_long = 0x100f0720, render_message = 0x100f08c0,
@@ -43,7 +49,7 @@ constexpr std::uint32_t history_value = 0x1073ef70, set_history = 0x1073f1e0, ap
     select_row = 0x107145f0, add_cell = 0x107445a0, add_button = 0x107444e0, add_box = 0x10744390, add_frame = 0x103cbb30,
     row_for_item = 0x10743510, default_action = 0x102a54b0, common_action = 0x102a83a0, make_date = 0x10715880,
     date_text = 0x10716eb0, month_name = 0x107189d0, day_name = 0x107187d0, local_time = 0x1077f940, clock_time = 0x1077f900,
-    person_name = 0x100caeb0, text_object = 0x1074b730, init_text = 0x1074b6e0, destroy_text = 0x1074b7c0, set_text = 0x1074b830,
+    person_name = 0x100caeb0, get_date_time = 0x10780900, microseconds = 0x10780600, text_object = 0x1074b730, init_text = 0x1074b6e0, destroy_text = 0x1074b7c0, set_text = 0x1074b830,
     draw_text = 0x1074bcd0, add_text = 0x1074a350, add_text_object = 0x1074a500;
 const std::set<std::uint32_t> scripted{history_value, set_history, append_history, localized, format, error_dialog, copy_limited, allocate,
     release, allocate_object, usable_path, create_directory, file_exists, find_first, find_next, glue_call, language,
@@ -51,6 +57,10 @@ const std::set<std::uint32_t> scripted{history_value, set_history, append_histor
     add_cell, add_button, add_box, add_frame, row_for_item, default_action, common_action, make_date, date_text, month_name,
     day_name, local_time, clock_time, person_name, text_object, init_text, destroy_text, set_text, draw_text, add_text, add_text_object};
 
+// On a real snapshot the screen manager, controls and text run for real; these reach
+// files, the clock or (the error dialog) a window this pass can't show.
+const std::set<std::uint32_t> real_scripted{open_entry, read_entry, close_entry, clock_time, local_time, find_first, find_next, file_exists,
+    create_directory, usable_path, error_dialog, get_date_time, microseconds};
 using History = std::map<std::uint32_t, std::uint32_t>;
 struct Person { std::uint8_t manager = 0; std::uint32_t club = 0, second = 0; };
 struct Case {
@@ -71,6 +81,8 @@ struct Case {
     std::function<void(Cpu&)> prepare{};
 };
 Case active;
+bool real_mode = false;
+std::vector<std::uint8_t> real_summary;  // what the game's own writer wrote, for the reader
 bool original_mode = false, production_mode = false, ownership_mode = false, wrong_argument = false, wrong_return = false, clobbers = false;
 unsigned calls = 0, next_filter = 0, files_left = 0, tables = 0;
 std::uint32_t next_heap = 0;
@@ -83,8 +95,9 @@ std::uint64_t slack(std::uint32_t entry) {
     return entry == render_dialog ? 2 : entry == render_info ? 8 : entry == fill_summary ? 8 : entry == dialog_action ? 4 : 0;
 }
 void trace(Cpu& c, std::uint32_t target) {
-    if (++calls > 12000) throw std::runtime_error("fixture call limit");
-    if (std::getenv("FILE_SCREENS_TRACE")) std::cout << (original_mode ? "O " : "C ") << hex_address(target) << " back " << hex_address(c.lr())
+    if (++calls > 10000) throw std::runtime_error("fixture call limit");
+    static const bool show_calls = std::getenv("FILE_SCREENS_TRACE") != nullptr;
+    if (show_calls) std::cout << (original_mode ? "O " : "C ") << hex_address(target) << " back " << hex_address(c.lr())
         << " r3 " << hex_address(c.r(3)) << " r4 " << hex_address(c.r(4)) << std::endl;
     auto index = c.u32(trace_at);
     const auto add = [&](std::uint32_t word) { c.put32(trace_at + 4 + index++ * 4, word); };
@@ -151,6 +164,12 @@ std::uint32_t script(Cpu& c, std::uint32_t target) {
             return 1;
         }
         if (active.bad_read & summary_size(arg4) << 1) return 0;
+        if (real_mode) {
+            for (std::uint32_t at = 0; at < arg4; ++at) c.put8(arg3 + at, at < real_summary.size() ? real_summary[at] : 0);
+            c.put32(arg3 + 0xf6c, active.played);
+            if (arg4 == 0xf74) c.put32(arg3 + 0xf70, active.saved);
+            return 1;
+        }
         for (std::uint32_t at = 0; at < arg4; at += 4) c.put32(arg3 + at, 0x5a5a5a5a);
         write_text(c, arg3, "Premier");
         write_text(c, arg3 + 0x3e8, active.background);
@@ -181,6 +200,13 @@ std::uint32_t script(Cpu& c, std::uint32_t target) {
         if (arg3) c.put32(arg3, active.now);
         return active.now + (arg3 ? 0 : 7);
     case person_name: write_text(c, arg4, "Person"); return 1;
+    case microseconds:
+        c.put32(arg3, 0);
+        c.put32(arg3 + 4, active.now);
+        return 0;
+    case get_date_time:
+        c.put32(arg3, active.now);
+        return 0;
     default: return arg3 + 1;
     }
 }
@@ -193,7 +219,14 @@ bool probe(State& s) {
         file_screens_run_rewrite(s, target);
         return true;
     }
-    if (!scripted.contains(target)) {
+    // The dialog's filter has no real routine behind a fixture's vector.
+    const bool stubbed_filter = real_mode && target == glue_call && c.lr() == 0x100ee558;
+    if (!stubbed_filter && !(real_mode ? real_scripted : scripted).contains(target)) {
+        if (real_mode) {
+            // Only the module's own calls: the real routines make over a million more.
+            if (target != c.lr() && c.lr() >= module_low && c.lr() < module_high && !is_leaf_entry(target)) trace(c, target);
+            return false;
+        }
         if (ownership_mode) {
             // Runtime routines may run; the module has no instruction budget of its own.
             const auto saved = dispatch_probe;
@@ -214,7 +247,7 @@ bool probe(State& s) {
     if (ownership_mode) s.budget = s.executed + slack(active.entry);
     if (wrong_argument && !original_mode) c.set(3, c.r(3) ^ 1);
     trace(c, target);
-    if (target == glue_call) c.put32(c.sp() + 0x14, c.r(2));
+    if (target == glue_call || target == get_date_time || target == microseconds) c.put32(c.sp() + 0x14, c.r(2));
     const auto answer = script(c, target);
     if (clobbers) {
         const auto mark = 0xc0000000u ^ (target << 4) ^ calls;
@@ -325,6 +358,7 @@ void rewrite(State& s, std::uint32_t entry) {
 }
 void corrupt_memory(State& s, std::uint32_t entry) { rewrite(s, entry); Cpu c(s); c.put8(text_a, c.u8(text_a) ^ 1); }
 void corrupt_register(State& s, std::uint32_t entry) { rewrite(s, entry); s.wr<4>(reg::gpr(5), s.r<4>(reg::gpr(5)) ^ 1); }
+void corrupt_result(State& s, std::uint32_t entry) { rewrite(s, entry); s.wr<4>(reg::gpr(3), s.r<4>(reg::gpr(3)) ^ 1); }
 void corrupt_cr(State& s, std::uint32_t entry) { rewrite(s, entry); Cpu c(s); c.set_cr(0, c.cr(0) ^ 2); }
 void corrupt_stack(State& s, std::uint32_t entry) { rewrite(s, entry); Cpu c(s); c.put8(stack - 0x60, c.u8(stack - 0x60) ^ 1); }
 void corrupt_fpscr(State& s, std::uint32_t entry) { rewrite(s, entry); s.wr<1>(1296, s.r<1>(1296) ^ 1); }
@@ -338,6 +372,293 @@ History dialog_history(std::uint32_t mode, std::uint32_t question = 0) {
     return {{0, text_a}, {1, text_b}, {2, mode}, {3, folder_buffer}, {4, text_c}, {5, 0}, {6, copy_buffer}, {7, name_buffer}, {8, path_buffer},
             {9, question}, {10, 0x1234}, {11, 0xfedc}, {12, 0xabcd}, {13, 0}, {14, 3}, {15, 2}, {16, 1}, {17, 0}, {18, 0}};
 }
+// Every entry from a real capture's state. Each case first opens the screen it
+// needs with the original, then compares the entry; the screen manager's real
+// history, controls and text sit behind it.
+unsigned run_real_state(const std::filesystem::path& program, const std::filesystem::path& snapshot) {
+    State base;
+    load_program(base, program);
+    load_match_snapshot(base, snapshot);
+    // The snapshot stops at the end of an import, inside its glue: the game's
+    // TOC is the one the glue saved at sp+0x14.
+    base.wr<4>(reg::gpr(2), base.memory.read<4>(std::uint32_t(base.r<4>(reg::gpr(1))) + 0x14));
+    if (base.r<4>(reg::gpr(2)) != toc_base) throw std::runtime_error("The snapshot does not hold the game's TOC at sp+0x14");
+    base.memory.map(data, 0x400000);
+    base.memory.copy_in(data, std::vector<std::uint8_t>(0x60000, 0xa5));
+    real_mode = true;
+    // The capture starts between screens, with no group current; by its end group 0
+    // is current, and it is the group with a window.
+    const auto manager = std::uint32_t(base.memory.read<4>(screens_slot));
+    base.memory.write<2>(manager + 0x2c58, 0);
+    if (!base.memory.read<4>(manager + 0x24) || base.memory.read<4>(toc_base - 0x7be4) == 0 ||
+        base.memory.read<4>(std::uint32_t(base.memory.read<4>(toc_base - 0x7be4))) < 8 ||
+        !base.memory.read<4>(std::uint32_t(base.memory.read<4>(toc_base - 0x7be8))))
+        throw std::runtime_error("The snapshot lacks the window, people or clubs this pass uses");
+    const auto frame = (std::uint32_t(base.r<4>(reg::gpr(1))) - 0x10000) & ~0xfu;
+    const auto path = data + 0x1000, summary = data + 0x10000, heading = data + 0x1100, body = data + 0x1200, folder = data + 0x1400, name = data + 0x1500,
+               extension = data + 0x1540, object_text = data + 0x1580, blank = data + 0x15c0;
+    const auto write_texts = [=](Cpu& c) {
+        write_text(c, path, "Mac HD:Saves:career.sav");
+        write_text(c, heading, "Save Game");
+        write_text(c, body, "A real message");
+        write_text(c, folder, "Mac HD:Saves");
+        write_text(c, name, "career.sav");
+        write_text(c, extension, ".sav");
+        c.put8(blank, 0);
+        c.put32(object_text, body);
+        c.put32(object_text + 4, 0);
+    };
+    // Runs an entry with the original to prepare the state a later one reads.
+    const auto prepare = [=](Cpu& c, std::uint32_t entry, std::initializer_list<std::uint32_t> arguments) {
+        unsigned n = 3;
+        for (const auto value : arguments) c.set(n++, value);
+        c.set(1, frame);
+        c.set_lr(sentinel);
+        original_mode = true;
+        c.s.pc = entry;
+        run_until(c.s, sentinel);
+    };
+    // Real leagues in both lists, and managers with every mix of clubs.
+    const auto enrich = [=](Cpu& c) {
+        const auto leagues = c.toc(-0x7b44);
+        unsigned seen = 0;
+        for (std::uint32_t at = 0; at < 0x22 && seen < 5; ++at) {
+            const auto league = c.u32(leagues + at * 0x4c);
+            if (league) c.put8(league + 0x120, ++seen % 3 + 1);
+        }
+        const auto clubs = c.u32(c.toc(-0x7be8)), people = c.u32(c.toc(-0x7be0)), count = c.u32(c.toc(-0x7be4));
+        // Only the last person has a name here: the others borrow its record.
+        const auto named = people + (count - 1) * 0x70;
+        for (std::uint32_t at = 0; at < 8; ++at) {
+            const auto person = people + (count - at - 1) * 0x70;
+            if (at) for (std::uint32_t byte = 0; byte < 0x70; ++byte) c.put8(person + byte, c.u8(named + byte));
+            c.put8(person + 0x6b, at == 7 ? 0 : 1);
+            c.put32(person + 0x24, at % 4 < 2 ? clubs + at * 0x248 : 0);
+            c.put32(person + 0x20, at % 2 ? clubs + (at + 1) * 0x248 : 0);
+        }
+    };
+    struct DialogOptions { std::uint32_t mode = 0, folders_only = 0, plain_cancel = 0, info_button = 1; bool blank_name = false; std::uint32_t extension_text = extension, filter = 0; bool rendered = true; };
+    const auto open_dialog_screen = [=](Cpu& c, const DialogOptions& o) {
+        c.put32(frame + 0x38, 0xfedc); c.put32(frame + 0x3c, 0x1234);
+        c.put8(frame + 0x43, o.folders_only); c.put8(frame + 0x47, 0); c.put8(frame + 0x4b, o.plain_cancel); c.put8(frame + 0x4f, o.info_button);
+        prepare(c, open_dialog, {heading, body, o.mode, folder, o.extension_text, name, o.filter, 0x1234});
+        // The typed name, as the dialog's field holds it.
+        c.set(3, c.u32(screens_slot));
+        c.set(4, 7);
+        c.set(1, frame);
+        c.call(history_value, sentinel);
+        if (o.blank_name) c.put8(c.r(3), 0);
+        else write_text(c, c.r(3), "career.sav");
+        // As the game does before any action: this builds the list the action reads.
+        if (o.rendered) prepare(c, render_dialog, {});
+    };
+    const auto pending_action = [](Cpu& c, std::uint32_t action) { c.put16(c.u32(screens_slot) + 0x260000 - 0x7e62, action); };
+    const auto question_pending = [](Cpu& c, std::uint32_t question, std::uint32_t answer) {
+        const auto screens = c.u32(screens_slot);
+        c.set(3, screens); c.set(4, 9); c.set(5, question); c.set(6, 0);
+        c.call(set_history, sentinel);
+        c.put8(screens + 0x2c5f, 1);
+        c.put32(screens + 0x260000 - 0x7e5c, answer);
+    };
+    struct RealCase {
+        std::string label;
+        std::uint32_t entry;
+        Case data;
+        std::function<void(Cpu&)> setup;
+        std::array<std::uint32_t, 8> arguments{};
+        std::array<std::uint8_t, 4> caller_flags{};  // bytes at the caller's sp+0x43, +0x47, +0x4b and +0x4f
+    };
+    std::vector<RealCase> cases;
+    const auto add = [&](RealCase test) { cases.push_back(std::move(test)); };
+    add({"summary", fill_summary, {}, {}, {summary}});
+    add({"summary, leagues and managers", fill_summary, {}, enrich, {summary}});
+    add({"open info", open_info, {}, {}, {path}});
+    const auto info_screen = [=](Cpu& c) { prepare(c, open_info, {path}); };
+    // The rating rows exist only in language 0.
+    const auto info_in_english = [=](Cpu& c) { info_screen(c); c.put8(toc_base - 0x35ac, 0); };
+    for (const std::uint32_t version : {0x3e027u, 0x3e026u, 0xfffc1fd9u})
+        for (const std::uint32_t played : {0u, 3725u, 3 * 86400u + 7265u, 11 * 86400u + 13 * 3600u}) {
+            add({"info screen", render_info, {.version = version, .played = played, .saved = 0x3b000000}, info_screen});
+            add({"info screen, rated", render_info, {.version = version, .played = played, .saved = 0x3b000000}, info_in_english});
+        }
+    for (const std::uint32_t days : {1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u})
+        add({"rating", render_info, {.played = days * 86400 + 60, .saved = 0x3b000000}, info_in_english});
+    add({"rating, day and a half", render_info, {.played = 86400 + 13 * 3600, .saved = 0x3b000000}, info_in_english});
+    add({"rating, day and under half", render_info, {.played = 86400 + 12 * 3600, .saved = 0x3b000000}, info_in_english});
+    add({"info no entry", render_info, {.opened = 0}, info_screen});
+    add({"info no version", render_info, {.bad_read = 1}, info_screen});
+    add({"info no summary", render_info, {.bad_read = 4}, info_screen});
+    add({"info no old summary", render_info, {.version = 0x3e026, .bad_read = 2}, info_screen});
+    for (const std::uint32_t action : {0u, 1u, 2u})
+        add({"info action", info_action, {}, [=](Cpu& c) { info_screen(c); pending_action(c, action); }, {0xffff}});
+    for (const std::uint32_t confirm : {0u, 1u}) {
+        const auto message_screen = [=](Cpu& c) { prepare(c, open_message, {heading, body, body, confirm, 0x1234, 0x7654, 0x55}); };
+        add({"open message", open_message, {}, {}, {heading, body, body, confirm, 0x1234, 0x7654, 0x55}});
+        add({"message screen", render_message, {}, message_screen});
+        const auto long_screen = [=](Cpu& c) { prepare(c, open_long, {heading, body, object_text, confirm, 0x1234, 0x7654, 0x55}); };
+        add({"open long message", open_long, {}, {}, {heading, body, object_text, confirm, 0x1234, 0x7654, 0x55}});
+        add({"long message screen", render_message, {}, long_screen});
+        for (const std::uint32_t key : {std::uint32_t('Y'), std::uint32_t('N'), std::uint32_t('\r'), 0u})
+            for (const auto& screen : {std::function<void(Cpu&)>(message_screen), std::function<void(Cpu&)>(long_screen)})
+                add({"message key", message_action, {},
+                     [=](Cpu& c) { screen(c); prepare(c, render_message, {}); c.put8(c.toc(-0x74b0), key); }, {0xffff}});
+        for (const std::uint32_t action : {1u, 2u, 3u})
+            add({"message action", message_action, {}, [=](Cpu& c) { long_screen(c); prepare(c, render_message, {}); pending_action(c, action); }, {0xffff}});
+    }
+    add({"message default", message_action, {}, [=](Cpu& c) {
+             prepare(c, open_message, {heading, body, body, 0, 0x1234, 0x7654, 0x55}); prepare(c, render_message, {}); pending_action(c, 6); }, {0xffff}});
+    for (const std::array<std::uint8_t, 4> flags : {std::array<std::uint8_t, 4>{0, 0, 0, 0}, {1, 0, 1, 1}, {0x80, 0xff, 0x80, 0x80}})
+        for (const std::uint32_t mode : {0u, 1u, 2u, 0x101u})
+            add({"open dialog", open_dialog, {}, {}, {heading, body, mode, folder, extension, name, 0, 0x1234}, flags});
+    for (const std::uint32_t mode : {0u, 1u, 2u}) {
+        const DialogOptions options{.mode = mode};
+        const auto screen = [=](Cpu& c) { open_dialog_screen(c, options); };
+        for (const std::uint32_t files : {0u, 3u, 8u})
+            add({"dialog screen", render_dialog, {.folders = files}, [=](Cpu& c) { open_dialog_screen(c, {.mode = mode, .rendered = false}); }});
+        for (const std::uint32_t action : {1u, 3u, 4u, 5u})
+            for (const std::uint32_t exists : {0u, 1u})
+                add({"dialog action", dialog_action, {.usable = exists, .exists = exists}, [=](Cpu& c) { screen(c); pending_action(c, action); }, {0xffff}});
+        for (const std::uint32_t key : {std::uint32_t('Y'), std::uint32_t('N')})
+            add({"dialog key", dialog_action, {}, [=](Cpu& c) { screen(c); c.put8(c.toc(-0x74b0), key); }, {0xffff}});
+        add({"ok, folders only", dialog_action, {}, [=](Cpu& c) { open_dialog_screen(c, {.mode = mode, .folders_only = 1}); pending_action(c, 4); }, {0xffff}});
+        add({"ok, blank folder", dialog_action, {}, [=](Cpu& c) {
+                 open_dialog_screen(c, {.mode = mode, .folders_only = 1, .blank_name = true}); pending_action(c, 4); }, {0xffff}});
+        add({"ok, blank name", dialog_action, {}, [=](Cpu& c) { open_dialog_screen(c, {.mode = mode, .blank_name = true}); pending_action(c, 4); }, {0xffff}});
+        add({"info, blank name", dialog_action, {}, [=](Cpu& c) { open_dialog_screen(c, {.mode = mode, .blank_name = true}); pending_action(c, 5); }, {0xffff}});
+        add({"ok, no extension", dialog_action, {}, [=](Cpu& c) { open_dialog_screen(c, {.mode = mode, .extension_text = 0}); pending_action(c, 4); }, {0xffff}});
+        // The three questions and each answer.
+        for (const std::uint32_t question : {1u, 2u, 3u, 4u})
+            for (const std::uint32_t answer : {0u, 1u, 2u})
+                for (const std::uint32_t created : {0u, 1u})
+                    add({"question", dialog_action, {.created = created}, [=](Cpu& c) { screen(c); question_pending(c, question, answer); }, {0xffff}});
+        // A control picks a name from the list.
+        const auto with_control = [=](Cpu& c, std::uint32_t action) {
+            screen(c);
+            const auto controls_at = c.u32(c.u32(screens_slot) + 0x24) + 0xc0000 + 3 * 0x17c;
+            c.put32(controls_at - 0x5794, action);
+            write_text(c, controls_at - 0x5724, "chosen.sav");
+        };
+        add({"pick", dialog_action, {}, [=](Cpu& c) { with_control(c, 2); }, {3}});
+        add({"control without action", dialog_action, {.default_result = 0x77}, [=](Cpu& c) { with_control(c, 0); }, {3}});
+    }
+    add({"common action", dialog_action, {}, [=](Cpu& c) { open_dialog_screen(c, {}); pending_action(c, 6); }, {0xffff}});
+    add({"info, no entry", dialog_action, {.opened = 0}, [=](Cpu& c) { open_dialog_screen(c, {}); pending_action(c, 5); }, {0xffff}});
+    add({"info, no version", dialog_action, {.bad_read = 1}, [=](Cpu& c) { open_dialog_screen(c, {}); pending_action(c, 5); }, {0xffff}});
+    add({"info, old save", dialog_action, {.version = 0x3e022}, [=](Cpu& c) { open_dialog_screen(c, {}); pending_action(c, 5); }, {0xffff}});
+    add({"info, opens", dialog_action, {.version = 0x3e023}, [=](Cpu& c) { open_dialog_screen(c, {}); pending_action(c, 5); }, {0xffff}});
+    for (const std::array<std::uint8_t, 2> layout : {std::array<std::uint8_t, 2>{0, 0}, {1, 0}, {0, 1}, {1, 1}})
+        for (const std::uint32_t only : {0u, 1u})
+            add({"dialog layout", render_dialog, {.folders = 2}, [=](Cpu& c) {
+                     open_dialog_screen(c, {.folders_only = only, .plain_cancel = layout[0], .info_button = layout[1], .rendered = false}); }});
+
+    // A screen already in the history refuses to open again, in the real manager.
+    add({"open info refused", open_info, {}, info_screen, {path}});
+    add({"open message refused", open_message, {}, [=](Cpu& c) { prepare(c, open_message, {heading, body, body, 0, 0x1234, 0x7654, 0x55}); },
+         {heading, body, body, 0, 0x1234, 0x7654, 0x55}});
+    add({"open long message refused", open_long, {}, [=](Cpu& c) { prepare(c, open_long, {heading, body, object_text, 0, 0x1234, 0x7654, 0x55}); },
+         {heading, body, object_text, 0, 0x1234, 0x7654, 0x55}});
+    add({"open dialog refused", open_dialog, {}, [=](Cpu& c) { open_dialog_screen(c, {.rendered = false}); },
+         {heading, body, 0, folder, extension, name, 0, 0x1234}});
+    // A filter chooses rows and their colours.
+    add({"filter", render_dialog, {.folders = 6, .filter_flags = {1, 5, 9, 13, 0, 2}}, [=](Cpu& c) { open_dialog_screen(c, {.filter = 0x10a00000, .rendered = false}); }});
+    // Null arguments reach the assertion.
+    for (const auto& [title, prompt, target] : std::array<std::array<std::uint32_t, 3>, 3>{{{0, body, folder}, {heading, 0, folder}, {heading, body, 0}}}) {
+        add({"assertion", open_dialog, {}, {}, {title, prompt, 0, target, extension, name, 0, 0x1234}});
+        for (const auto entry : {open_message, open_long})
+            add({"assertion", entry, {}, {}, {title, prompt, target, 0, 0x1234, 0x7654, 0x55}});
+    }
+
+    // A state ready for a case, with the script reset.
+    const auto fresh = [&](const Case& data, std::unique_ptr<State>& s) {
+        active = data;
+        s = cm::semantic_io_checks::clone(base);
+        s->budget = s->executed + 200000000;
+        Cpu c(*s);
+        c.put32(trace_at, 0);
+        write_texts(c);
+        reset_script();
+    };
+    // The reader gets what the game's writer wrote, with both lists and every kind of row.
+    {
+        std::unique_ptr<State> s;
+        fresh({}, s);
+        Cpu c(*s);
+        enrich(c);
+        prepare(c, fill_summary, {summary});
+        real_summary.clear();
+        for (std::uint32_t at = 0; at < 0xf74; ++at) real_summary.push_back(c.u8(summary + at));
+    }
+    const auto ready = [&](const RealCase& test, std::unique_ptr<State>& s) {
+        fresh(test.data, s);
+        Cpu c(*s);
+        for (unsigned n = 0; n < test.caller_flags.size(); ++n) c.put8(frame + 0x43 + n * 4, test.caller_flags[n]);
+        if (test.entry == open_dialog) { c.put32(frame + 0x38, 0xfedc); c.put32(frame + 0x3c, 0x1234); }
+        if (test.setup) test.setup(c);
+        for (unsigned n = 0; n < 8; ++n) c.set(3 + n, test.arguments[n]);
+        c.set(1, frame);
+        c.set_lr(sentinel);
+    };
+    unsigned completed = 0, failures = 0;
+    std::set<std::uint32_t> reached;
+    Observed observer;
+    for (const bool production : {false, true}) {
+        production_mode = production;
+        for (const auto& test : cases) {
+            std::unique_ptr<State> s;
+            std::vector<std::string> differences;
+            try {
+                ready(test, s);
+                if (production) s->memory.observer = &observer;
+                differences = compare_routine_call(*s, test.entry, original, rewrite, RoutineChecker::result_r3);
+                s->memory.observer = nullptr;
+            } catch (const std::exception& e) { differences.push_back(e.what()); }
+            if (differences.empty()) { ++completed; reached.insert(test.entry); continue; }
+            ++failures;
+            if (failures < 8) {
+                std::cout << "REAL DIFFERS " << hex_address(test.entry) << " '" << test.label << "' production=" << production << '\n';
+                for (const auto& difference : differences) std::cout << "  " << difference << '\n';
+            }
+        }
+    }
+    // The comparison must notice a wrong byte the real routines wrote, a wrong result
+    // and a wrong argument to a scripted call, through production too. A wrong return
+    // address on the message screen, which calls only real routines, shows the module's
+    // calls to them are recorded: nothing but the record differs.
+    const RealCase info{"control", render_info, {.played = 3725, .saved = 0x3b000000}, info_screen};
+    const RealCase message{"control", render_message, {}, [=](Cpu& c) { prepare(c, open_message, {heading, body, body, 1, 0x1234, 0x7654, 0x55}); }};
+    for (const bool production : {false, true}) {
+        production_mode = production;
+        const auto detected = [&](const RealCase& test, RoutineRunner runner, bool corrupt = false) {
+            std::unique_ptr<State> s;
+            ready(test, s);
+            if (production) s->memory.observer = &observer;
+            const bool found = !compare_routine_call(*s, test.entry, original, runner, RoutineChecker::result_r3, corrupt).empty();
+            s->memory.observer = nullptr;
+            return found;
+        };
+        const bool byte = detected(info, rewrite, true);
+        const bool register_value = detected(info, corrupt_register);
+        const bool result = detected(info, corrupt_result);
+        wrong_argument = true;
+        const bool argument = detected(info, rewrite);
+        wrong_argument = false;
+        wrong_return = true;
+        const bool recorded = detected(message, rewrite);
+        wrong_return = false;
+        if (byte && register_value && result && argument && recorded) std::cout << "ok real-state corruptions detected, production=" << production << '\n';
+        else {
+            ++failures;
+            std::cout << "FAIL real-state corruption control, production=" << production << " byte=" << byte << " register=" << register_value
+                      << " result=" << result << " argument=" << argument << " recorded=" << recorded << '\n';
+        }
+    }
+    production_mode = false;
+    real_mode = false;
+    std::cout << "real state: " << completed << " returned comparisons, " << reached.size() << "/" << entries.size() << " entries, " << failures << " failures\n";
+    if (reached.size() != entries.size()) ++failures;
+    return failures;
+}
+
 std::vector<Case> all_cases() {
     std::vector<Case> cases;
     const auto add = [&](Case test) { cases.push_back(std::move(test)); };
@@ -558,14 +879,18 @@ std::vector<Case> all_cases() {
 }
 }
 int main(int argc, char** argv) {
-    if (argc != 2) return 2;
+    if (argc != 2 && argc != 3) {
+        std::cerr << "Usage: cm-file-screens-checks <export> [<a session capture's initial.snapshot>]\n";
+        return 2;
+    }
     try {
         auto base = std::make_unique<State>();
         load_program(*base, argv[1]);
         dispatch_probe = probe;
         // A leaf runs before the probe from C++ and after it from a page: it can't be scripted.
-        for (const auto target : scripted)
-            if (is_leaf_entry(target)) throw std::runtime_error("Scripted leaf " + hex_address(target));
+        for (const auto& list : {scripted, real_scripted})
+            for (const auto target : list)
+                if (is_leaf_entry(target)) throw std::runtime_error("Scripted leaf " + hex_address(target));
         const auto cases = all_cases();
         unsigned completed = 0, failures = 0;
         std::map<std::uint32_t, std::array<unsigned, 2>> counts;
@@ -651,6 +976,8 @@ int main(int argc, char** argv) {
         for (const auto& [entry, n] : counts) std::cout << hex_address(entry) << " returned " << n[0] << " controlled + " << n[1] << " production\n";
         std::cout << ownership << "/" << entries.size() << " production controls; " << completed << " returned comparisons; " << failures << " failures\n";
         if (counts.size() != entries.size()) { std::cout << "FAIL an entry has no returned comparison\n"; return 1; }
+        if (argc == 3) failures += run_real_state(argv[1], argv[2]);
+        else std::cout << "real state: not run, no snapshot\n";
         return failures ? 1 : 0;
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';

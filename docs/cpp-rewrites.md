@@ -1004,3 +1004,9 @@ the saved-time field, which it then still displays. Its Addictedness row appears
 language 0 and past a full day of play. Play time accumulates in `fill_save_summary` by
 wall clock, without checking for wrap. The action handlers' sign mask after 0x102a83a0
 leaves r3 unchanged, so the C++ omits it.
+
+`cm-file-screens-checks` has a second pass from `ui/game-save/initial.snapshot`: the real screen
+manager, controls and text run, with only files, the clock and the error dialog scripted. The
+snapshot starts with no group current (16), so the pass makes group 0 current. A screen already
+in the history refuses to open again in the real manager, which is how it reaches the openers'
+refused branches. The checker's scratch memory must stay off 0x60000000, the game's real heap there.
