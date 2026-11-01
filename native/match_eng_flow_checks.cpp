@@ -8,9 +8,12 @@ using namespace cm::aot::match_eng_checks;
 MATCH_ENG_CASES("flow") {
     const auto match = scenario.match;
     const auto fixture = scenario.r32(match + 0x3118);
+    const auto toc = [&](std::int32_t offset) { return scenario.r32(std::uint32_t(scenario.s.r<4>(8)) + std::uint32_t(offset)); };
+    const auto seed_at = toc(-0x7b90);
     const auto add = [&](std::uint32_t entry, std::vector<std::pair<unsigned, std::uint32_t>> registers, std::vector<Write> memory,
-                         std::string label) {
-        cases.push_back({.entry = entry, .registers = std::move(registers), .memory = std::move(memory), .f1 = {}, .label = std::move(label)});
+                         std::string label, std::vector<std::pair<std::uint32_t, std::uint32_t>> answers = {}) {
+        cases.push_back({.entry = entry, .registers = std::move(registers), .memory = std::move(memory), .f1 = {}, .label = std::move(label),
+                         .answers = std::move(answers)});
     };
 
     // 0x101d95a0: each period mark, with the clock before, at and past it, and the tie rules of the fixture.
@@ -69,6 +72,17 @@ MATCH_ENG_CASES("flow") {
             for (const std::uint32_t second : {0u, 1u})
                 add(0x101da020, {{3, match}, {4, side}}, {{2, fixture + 0x30, code}, {2, fixture + 0x32, second}, {1, match + 0x7931, 1}}, "reports");
 
+    // Code 0x96 reports through 0x101fcf20 when the side leads (the goals of the period, 0x101f21d0); code 0x82 through
+    // 0x101fce60. The second side also asks about the first one (the extra-time flag clear).
+    for (const std::uint32_t side : {0u, 1u})
+        for (const std::uint32_t code : {0x96u, 0x82u})
+            for (const auto [goals_a, goals_b] : {std::pair{2u, 0u}, {0u, 2u}, {1u, 1u}})
+                for (const std::uint32_t extra_flag : {0u, 1u})
+                    add(0x101da020, {{3, match}, {4, side}},
+                        {{2, fixture + 0x30, code}, {2, fixture + 0x32, 0}, {1, match + 0x7931, 1}, {1, match + 0xe03d, goals_a},
+                         {1, match + 0xe073, goals_b}, {1, match + 0x1c1, extra_flag}},
+                        "reports by goals");
+
     // Ratings of the whole squad (+0x1b) against the teams' strengths.
     for (const std::uint32_t side : {0u, 1u}) {
         for (const std::uint32_t rating : {0u, 6u, 10u, 32u, 60u, 100u, 127u, 0x80u, 0xffu}) {
@@ -96,6 +110,34 @@ MATCH_ENG_CASES("flow") {
             std::vector<Write> memory{{4, stats + 0x20, 0}};
             for (std::uint32_t index = kept; index < 20; ++index) memory.push_back({1, scenario.player(side, index) + 0x19, 0xff});
             add(0x101da3c0, {{3, match}}, memory, "kick order, " + std::to_string(kept) + " players");
+        }
+    }
+
+    // A side's statistics record that passes the competition test (its first word just below the limit): the side can
+    // supply a kicker unless the record, the team or the side's flag byte say otherwise. The routines of other modules
+    // that decide it answer 0 or 1.
+    {
+        const auto top = scenario.r32(toc(-0x7be4));
+        for (const std::uint32_t record_ok : {0u, 1u}) {
+            for (const std::uint32_t by_record : {0u, 1u})
+                for (const std::uint32_t by_team : {0u, 1u})
+                    for (const std::uint32_t by_competition : {0u, 1u})
+                        for (const std::uint32_t flag_byte : {0u, 1u}) {
+                            std::vector<Write> memory;
+                            for (const std::uint32_t side : {0u, 1u}) {
+                                const auto stats = match + 0x7aac + side * 0xd8;
+                                const auto record = scenario.r32(stats + 0x20);
+                                if (record_ok) {
+                                    memory.push_back({4, record, top - 1});
+                                    memory.push_back({1, record + 0x6b, 1});
+                                }
+                                memory.push_back({1, stats + 0x1b, flag_byte});
+                            }
+                            const std::vector<std::pair<std::uint32_t, std::uint32_t>> answers = {
+                                {0x10147e70, by_record}, {0x100c7d00, by_team}, {0x101481d0, by_competition}};
+                            for (const std::uint32_t side : {0u, 1u}) add(0x101da5a0, {{3, match}, {4, side}}, memory, "can supply", answers);
+                            add(0x101da3c0, {{3, match}}, memory, "kick order by team", answers);
+                        }
         }
     }
 
@@ -136,7 +178,7 @@ MATCH_ENG_CASES("flow") {
         for (const std::uint32_t kicking : {0u, 1u}) {
             for (const std::uint32_t mode : {3u, 4u, 0u}) {
                 for (const auto [goals_a, goals_b] : {std::pair{0u, 0u}, {2u, 0u}, {0u, 3u}, {4u, 4u}}) {
-                    for (const auto [left_a, left_b] : {std::pair{5u, 5u}, {1u, 1u}, {0u, 0u}, {5u, 1u}}) {
+                    for (const auto [left_a, left_b] : {std::pair{5u, 5u}, {1u, 1u}, {0u, 0u}, {5u, 1u}, {0u, 5u}, {0u, 1u}}) {
                         auto memory = shootout;
                         for (const auto& write : std::vector<Write>{{1, match + 0x7929, stage}, {1, match + 0x7914, kicking},
                                                                     {1, match + 0x7915, 2}, {1, match + 0x7916, 3},
@@ -180,4 +222,29 @@ MATCH_ENG_CASES("flow") {
     for (const std::uint32_t stage : {3u, 6u})
         for (const auto [goals_a, goals_b] : {std::pair{3u, 1u}, {1u, 3u}, {2u, 2u}})
             add(0x101da820, {{3, match}, {4, 0}}, {{1, match + 0x7929, stage}, {1, match + 0xe03c, goals_a}, {1, match + 0xe072, goals_b}}, "finish");
+    // Kicks over random seeds: the keeper's and the taker's moves vary with the draws, and so does the state the
+    // kick leaves behind (the loop that retries while the taker is still pending).
+    unsigned lcg = 4099;
+    const auto below = [&](unsigned limit) {
+        lcg = lcg * 1103515245u + 12345u;
+        return (lcg >> 16) % limit;
+    };
+    for (unsigned n = 0; n < 240; ++n) {
+        const std::uint32_t stage = below(2) ? 2u : 5u, kicking = below(2), mode = below(3) == 0 ? 0u : (below(2) ? 3u : 4u);
+        auto memory = shootout;
+        const std::uint32_t taken = below(12);
+        const auto slot = kicking * 11 + taken % 11;
+        for (const auto& write : std::vector<Write>{{1, match + 0x7929, stage}, {1, match + 0x7914, kicking}, {1, match + 0x7915 + kicking, taken},
+                                                    {1, match + 0x7917, 1 + below(5)}, {1, match + 0x7918, 1 + below(5)}, {1, match + 0x7919, below(2)},
+                                                    {1, match + 0xe03c, below(4)}, {1, match + 0xe072, below(4)}, {1, match + 0x7928, 8},
+                                                    {4, seed_at, 1237u * (n + 1)}})
+            memory.push_back(write);
+        if (below(3) == 0) memory.push_back({4, match + 0xe000, scenario.player(kicking, slot % 11)});
+        else if (below(2) == 0) memory.push_back({4, match + 0xe000, scenario.player(1 - kicking, below(2) ? 0u : below(11))});
+        // The keeper's routine looks at the side that last touched the ball (-1: none) and at the held player.
+        memory.push_back({1, match + 0x7924, below(3) == 0 ? 0xffu : below(2)});
+        memory.push_back({1, match + 0x1de, below(2)});
+        memory.push_back({1, match + 0x1be + below(2), below(2)});
+        add(0x101da820, {{3, match}, {4, mode}}, memory, "kick over seeds");
+    }
 }

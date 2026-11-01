@@ -122,6 +122,108 @@ MATCH_ENG_CASES("events") {
         // A match already decided (the 0x1c1 flag) and one with a stored result.
         add(0x101db340, {{3, match}}, {{1, match + 0x1c1, 1}}, "flag 0x1c1");
         add(0x101db340, {{3, match}}, {{1, match + 0x1c1, 1}, {1, fixture + 0x4b, 0xff}}, "flag 0x1c1, no first leg");
+
+        // Combinations the lists above do not cross, drawn from fixed lists (the same on every run): the tie rules
+        // (all flag bits, with and without the 0x4000 aggregate rule), the first-leg results (a difference of three
+        // makes an abandoned match level on aggregate), dismissals that abandon the match, squads off the pitch, a
+        // weaker or stronger side of the cup reference, a null word at the shoot-out check's pointer, an unrated
+        // fixture and low ratings (the rebuilt rating is clamped).
+        unsigned pick_state = 977;
+        const auto below = [&](unsigned limit) {
+            pick_state = pick_state * 1103515245u + 12345u;
+            return (pick_state >> 16) % limit;
+        };
+        const std::uint32_t all_flags[] = {0, 1, 2, 3, 4, 0x20, 0x21, 0x22, 0x23, 0x40, 0x41, 0x42, 0x43, 0x80, 0x81, 0x82, 0x83, 0x4000, 0x4001,
+                                           0x4002, 0x4003, 0x4004, 0x4020, 0x4022, 0x4041, 0x44, 0x84, 0xc3, 0x4023, 0x4083};
+        const Legs sampled_legs[] = {{0xff, 0xff}, {0xff, 0xff}, {0, 0}, {1, 0}, {0, 1}, {0, 2}, {2, 2}, {1, 1}, {3, 0}, {0, 3}, {4, 1}, {1, 4}, {2, 0}};
+        for (unsigned n = 0; n < 700; ++n) {
+            const auto flags = all_flags[below(std::size(all_flags))];
+            const auto& leg = sampled_legs[below(std::size(sampled_legs))];
+            std::vector<Write> memory;
+            if (below(4) != 0) {
+                const std::uint32_t levels[] = {0, 0, 2, 6, 10};
+                memory = attributes(levels[below(std::size(levels))], 0x10);
+            }
+            if (below(2) == 0) memory.push_back({1, scenario.player(0, 0) + 0x19, below(8) == 0 ? 0xffu : 0u});
+            memory.push_back({2, fixture + 0x38, flags});
+            memory.push_back({1, fixture + 0x4b, leg.first});
+            memory.push_back({1, fixture + 0x4c, leg.second});
+            if (below(3) == 0) memory.push_back({1, fixture + 0x47, 0xff});
+            memory.push_back({4, seed_at, 3571u * ++seed + n});
+            if (team_one && team_two) {
+                if (below(2) == 0) memory.push_back({4, fixture + 0x14, scenario.r32(team_one + 0x30)});
+                const std::uint32_t ratings[] = {1000, 1100, 2000, 3000, 4000};
+                memory.push_back({2, team_one + 0x1ec, ratings[below(std::size(ratings))]});
+                memory.push_back({2, team_two + 0x1ec, ratings[below(std::size(ratings))]});
+            }
+            if (below(6) == 0) memory.push_back({4, toc(-0x7b54), 0});
+            if (below(8) == 0) memory.push_back({4, fixture, 0xfffffffe});
+            if (below(3) == 0) {
+                const unsigned side = below(2);
+                const std::uint32_t bytes = match + 0x10000 + side * 0x36;
+                memory.push_back({1, bytes - 0x1fb5, below(2) ? 4u : 3u});
+                memory.push_back({1, bytes - 0x1fb4, 1});
+            }
+            if (below(6) == 0) {
+                const unsigned side = below(2), kept = below(3);
+                for (unsigned index = kept; index < 20; ++index) memory.push_back({1, scenario.player(side, index) + 0x19, 0xff});
+            }
+            if (below(4) == 0) {
+                const std::uint32_t ratings_low[] = {0x100, 0x600, 0xd00, 0xf000, 0x7000, 0x2f00};
+                for (unsigned side = 0; side < 2; ++side)
+                    for (unsigned index = 0; index < 20; ++index) memory.push_back({2, scenario.player(side, index) + 0x36, ratings_low[below(std::size(ratings_low))]});
+            }
+            add(0x101db340, {{3, match}}, memory, "sampled match");
+        }
+        // A side with a single outfield player left on the pitch (a lone goalkeeper ends the match at once): the draws for a player run out now and then, and the match
+        // ends on the spot. Over many seeds this happens in extra time too, with and without a first leg.
+        for (const unsigned side : {0u, 1u}) {
+            for (const std::uint32_t flags : {2u, 0x82u, 0x80u, 0x22u}) {
+                for (const auto& leg : {Legs{0xff, 0xff}, Legs{0, 0}, Legs{1, 1}, Legs{3, 0}}) {
+                    for (unsigned repeat = 0; repeat < 14; ++repeat) {
+                        auto memory = attributes(0, 0x10);
+                        for (unsigned index = 0; index < 20; ++index)
+                            if (index != 5) memory.push_back({1, scenario.player(side, index) + 0x19, 0xff});
+                        memory.push_back({2, fixture + 0x38, flags});
+                        memory.push_back({1, fixture + 0x4b, leg.first});
+                        memory.push_back({1, fixture + 0x4c, leg.second});
+                        memory.push_back({4, seed_at, 2053u * ++seed});
+                        add(0x101db340, {{3, match}}, memory, "one player left");
+                    }
+                }
+            }
+        }
+        // Level on aggregate after 90 minutes under the 0x4000 rule: the first leg's home goals against the away goals.
+        for (const std::uint32_t flags : {0x4000u, 0x4001u, 0x4020u, 0x4021u, 0x4040u}) {
+            for (const auto& leg : {Legs{2, 2}, Legs{1, 1}, Legs{3, 3}}) {
+                for (unsigned repeat = 0; repeat < 6; ++repeat) {
+                    auto memory = attributes(0, 0x10);
+                    memory.push_back({2, fixture + 0x38, flags});
+                    memory.push_back({1, fixture + 0x4b, leg.first});
+                    memory.push_back({1, fixture + 0x4c, leg.second});
+                    memory.push_back({4, seed_at, 3011u * ++seed});
+                    add(0x101db340, {{3, match}}, memory, "aggregate rule");
+                }
+            }
+        }
+        // One side's players far above the other's in every attribute, both ways round, so the tendency pairs hit
+        // their clamps from either side.
+        for (const unsigned strong : {0u, 1u}) {
+            for (const std::uint32_t weak_level : {0u, 2u}) {
+                for (unsigned repeat = 0; repeat < 6; ++repeat) {
+                    std::vector<Write> memory;
+                    for (unsigned side = 0; side < 2; ++side) {
+                        for (unsigned index = 0; index < 20; ++index) {
+                            const auto record = scenario.r32(scenario.player(side, index) + 0x70);
+                            if (!record) continue;
+                            for (const auto offset : byte_offsets) memory.push_back({1, record + offset, side == strong ? 20u : weak_level});
+                        }
+                    }
+                    memory.push_back({4, seed_at, 4211u * ++seed});
+                    add(0x101db340, {{3, match}}, memory, "lopsided match");
+                }
+            }
+        }
     }
 
     // The role-flag adjusters: every flag bit, both sides, a few amounts.

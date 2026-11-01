@@ -4,6 +4,7 @@
 #include "match_eng_checks.hpp"
 #include <cstdlib>
 #include <string>
+#include <tuple>
 
 using namespace cm::aot::match_eng_checks;
 
@@ -15,6 +16,9 @@ MATCH_ENG_CASES("report") {
     // Every restart, for each side that touched the ball last, over the ball's cells (some outside the pitch).
     for (const std::uint32_t entry : {0x101e50c0u, 0x101e53a0u, 0x101e59b0u, 0x101e6420u, 0x101e66b0u, 0x101e68b0u}) {
         for (const std::uint32_t side : {0u, 1u, 0xffu}) {
+            // The kick-off takes its side from the kick-off flip, never -1: the nearest-player search would read
+            // before the player table (both runs fault there).
+            if (entry == 0x101e68b0u && side == 0xffu) continue;
             for (const std::uint32_t across : {0u, 1u, 4u, 7u, 8u, 9u, 0xffu}) {
                 for (const std::uint32_t along : {0u, 2u, 3u, 5u, 6u, 8u, 9u, 11u, 12u, 0xfeu}) {
                     add(entry, {{1, match + 0x7924, side}, {1, match + 0x791d, across}, {1, match + 0x791e, along},
@@ -54,7 +58,7 @@ MATCH_ENG_CASES("report") {
         memory.push_back({2, match + 0x7948, pick(clocks)});
         memory.push_back({2, match + 0x794c, pick(marks)});
         memory.push_back({1, match + 0x792d, below(40)});
-        memory.push_back({1, match + 0x7924, below(4) == 0 ? 0xffu : below(2)});
+        memory.push_back({1, match + 0x7924, below(4) == 0 && state != 8 ? 0xffu : below(2)});
         memory.push_back({1, match + 0x791d, below(10)});
         memory.push_back({1, match + 0x791e, below(13)});
         memory.push_back({1, match + 0x7931, below(2)});
@@ -81,5 +85,122 @@ MATCH_ENG_CASES("report") {
             }
         }
         cases.push_back({.entry = 0x101e6c50, .registers = {{3, match}}, .memory = std::move(memory), .f1 = {}, .label = "review " + std::to_string(n) + " state " + std::to_string(state)});
+    }
+
+    // --- Roles and formation cells of the restarts of states 3 and 6 ---
+    // The role of a player comes from the low word of his side's tendency flags (0x20000: 1, 0x40000000: 2 for the
+    // taking side; 0x80000000: 3, 0x80000: 4 for the other); the formation cells are bytes (along << 4 | across).
+    const auto tendency_words = [&](std::uint32_t first, std::uint32_t second) {
+        std::vector<Write> writes;
+        for (std::uint32_t side = 0; side < 2; ++side)
+            for (std::uint32_t position = 0; position <= 10; ++position)
+                writes.push_back({4, match + 0x7c6c + side * 0x18e0 + 0x188c + position * 8, side ? second : first});
+        return writes;
+    };
+    const auto cell_bytes = [&](std::uint32_t mode, std::uint32_t offset, std::uint32_t value) {
+        std::vector<Write> writes;
+        for (const std::uint32_t table_at : {0xdfecu, 0xdff0u}) {
+            const auto table = scenario.r32(match + table_at);
+            for (std::uint32_t position = 0; position <= 10; ++position) writes.push_back({1, table + position * 0xd8 + mode * 0x6c + offset, value});
+        }
+        return writes;
+    };
+    struct Ball { std::uint32_t across, along; };
+    const std::uint32_t roles[] = {0, 0x20000, 0x40000000, 0x80000000, 0x80000};
+    for (const std::uint32_t entry : {0x101e53a0u, 0x101e59b0u}) {
+        for (const std::uint32_t first : roles) {
+            for (const std::uint32_t second : roles) {
+                for (const std::uint32_t side : {0u, 1u}) {
+                    for (const auto ball : {Ball{4, 6}, Ball{2, 5}, Ball{7, 8}, Ball{4, 3}, Ball{3, 4}}) {
+                        auto memory = tendency_words(first, second);
+                        for (const auto& write : std::vector<Write>{{1, match + 0x7924, side}, {1, match + 0x791d, ball.across}, {1, match + 0x791e, ball.along},
+                                                                    {4, match + 0xe01c, scenario.player(0, 7)}, {4, match + 0xe020, scenario.player(1, 7)}})
+                            memory.push_back(write);
+                        add(entry, std::move(memory), "roles");
+                    }
+                }
+            }
+        }
+    }
+    // A formation cell past the pitch's far line (state 3), and cells equal to the ball's own cell near the goal of
+    // the side that did not take the ball (state 6).
+    for (const std::uint32_t side : {0u, 1u}) {
+        for (const std::uint32_t mode : {0u, 1u}) {
+            for (const std::uint32_t value : {0xc0u, 0xc4u, 0xf8u}) {
+                for (const std::uint32_t offset : {0x30u, 0x3bu}) {
+                    auto memory = cell_bytes(mode, offset, value);
+                    for (const auto& write : std::vector<Write>{{1, match + 0x7924, side}, {1, match + 0x791d, 4}, {1, match + 0x791e, 6},
+                                                                {4, match + 0xe01c, scenario.player(0, 7)}, {4, match + 0xe020, scenario.player(1, 7)}})
+                        memory.push_back(write);
+                    add(0x101e53a0, std::move(memory), "far cell");
+                }
+            }
+        }
+    }
+    for (const auto [side, across, along] : {std::tuple{0u, 4u, 1u}, {0u, 3u, 0u}, {1u, 4u, 10u}, {1u, 5u, 11u}, {0u, 4u, 2u}, {1u, 6u, 9u}}) {
+        for (const std::uint32_t first : {0u, 0x20000u, 0x40000000u}) {
+            auto memory = cell_bytes(1, 0x36, (along << 4) | across);
+            for (const auto& write : tendency_words(first, first)) memory.push_back(write);
+            for (const auto& write : std::vector<Write>{{1, match + 0x7924, side}, {1, match + 0x791d, across}, {1, match + 0x791e, along},
+                                                        {4, match + 0xe01c, scenario.player(0, 7)}, {4, match + 0xe020, scenario.player(1, 7)}})
+                memory.push_back(write);
+            add(0x101e59b0, std::move(memory), "ball cell equals the formation cell");
+        }
+    }
+
+    // --- The review's commentary: the goals of the period decide which team the lines are about ---
+    // Per case: the goals (so the three numbers of 0x101f21d0 vary), the first-leg result, the kind bytes of both
+    // teams' detail records, the random seed, tired players with and without a status, and the answers of the other
+    // modules' routines (the team test of the lines, the name comparison, whether a side can supply a substitute).
+    const auto fixture = scenario.r32(match + 0x3118);
+    const auto seed_at = scenario.r32(toc - 0x7b90);
+    const auto top = scenario.r32(scenario.r32(toc - 0x7be4));
+    const std::uint32_t kinds[] = {0, 4, 5, 0xc, 0xc, 0xd, 0xe, 0xf};
+    for (unsigned n = 0; n < 600; ++n) {
+        std::vector<Write> memory;
+        const std::uint32_t states[] = {1, 1, 1, 1, 2, 4, 6};
+        const auto state = states[below(std::size(states))];
+        for (const auto& write : std::vector<Write>{{4, match + 0xe01c, scenario.player(0, 7)}, {4, match + 0xe020, scenario.player(1, 7)},
+                                                    {1, match + 0x7928, state}, {1, match + 0x7931, below(8) == 0 ? 0u : 1u},
+                                                    {1, match + 0x7924, below(3)}, {1, match + 0x791d, 1 + below(7)}, {1, match + 0x791e, 3 + below(6)},
+                                                    {1, match + 0xe03d, below(5)}, {1, match + 0xe073, below(5)}, {2, match + 0x7948, pick(clocks)},
+                                                    {2, match + 0x794c, pick(marks)}, {1, match + 0x792d, below(40)}, {4, seed_at, 7331u * (n + 1)},
+                                                    {1, match + 0x1c1, 0}}) {
+            memory.push_back(write);
+        }
+        if (fixture) {
+            const std::uint32_t legs[] = {0xff, 0xff, 0, 1, 2, 3};
+            const std::uint32_t flag_sets[] = {0, 4, 0x4000, 0x80, 0x4004, 2};
+            memory.push_back({1, fixture + 0x4b, legs[below(std::size(legs))]});
+            memory.push_back({1, fixture + 0x4c, legs[below(std::size(legs))]});
+            memory.push_back({2, fixture + 0x38, flag_sets[below(std::size(flag_sets))]});
+            for (const std::uint32_t at : {0x1cu, 0x20u}) {
+                const auto detail = scenario.r32(scenario.r32(fixture + at) + 0x2c);
+                if (!detail) continue;
+                memory.push_back({1, detail + 0x118, kinds[below(std::size(kinds))]});
+                memory.push_back({1, detail + 0x119, below(2) ? 8u : 0x13u});
+            }
+        }
+        for (const std::uint32_t side : {0u, 1u}) {
+            const auto stats = match + 0x7aac + side * 0xd8;
+            const auto record = scenario.r32(stats + 0x20);
+            if (record && below(2)) {
+                memory.push_back({4, record, top - 1});
+                memory.push_back({1, record + 0x6b, 1});
+            }
+            if (below(3) == 0) memory.push_back({1, stats + 0x1b, 0});
+        }
+        if (below(3) == 0) {
+            // The first players of the first side are tired, the first of them with a status.
+            for (unsigned index = 0; index < 3; ++index) {
+                memory.push_back({4, scenario.player(0, index) + 0x50, 0});
+                memory.push_back({1, scenario.player(0, index) + 0x110, index < 2 ? 1u : 0u});
+            }
+            memory.push_back({1, scenario.player(0, 3) + 0x110, 0});
+        }
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> answers = {{0x101b0020, below(2)}, {0x1036ff00, below(2)}, {0x10147e70, below(2) && below(2)},
+                                                                        {0x100c7d00, below(2)}, {0x101481d0, below(2)}};
+        cases.push_back({.entry = 0x101e6c50, .registers = {{3, match}}, .memory = std::move(memory), .f1 = {}, .label = "commentary " + std::to_string(n) + " state " + std::to_string(state),
+                         .answers = std::move(answers)});
     }
 }
