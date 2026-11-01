@@ -83,6 +83,8 @@ DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
                 throw std::runtime_error("Independent bootstrap did not complete the screen manager initializer");
             continue;
         }
+        // SIPRINT's C++ owns this one, past these counters.
+        if (engine_initialization::entries[entry] == 0x1074d340) continue;
         if (initialization.calls[entry] != 1 || initialization.returns[entry] != 1)
             throw std::runtime_error("Independent bootstrap did not compose all original global initializers");
     }

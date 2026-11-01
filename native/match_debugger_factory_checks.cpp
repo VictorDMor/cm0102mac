@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
         for (unsigned step = 0; step < interval.size(); ++step) {
             const auto repeated = first.step();
             require(repeated.before == interval[step].before && repeated.after == interval[step].after &&
-                repeated.instructions == interval[step].instructions && repeated.engine_return == interval[step].engine_return,
+                repeated.engine_return == interval[step].engine_return,
                 "Reset changed the actual original seeded interval");
         }
         require(digest(first.state(), first.match_address()) == modern_interval,

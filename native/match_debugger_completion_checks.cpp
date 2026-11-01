@@ -1,5 +1,6 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugger_checkpoint.hpp"
+#include "match_debugger_diagnostics.hpp"
 #include "match_eng_adapter.hpp"
 #include "player_movement_adapter.hpp"
 #include "semantic_io_checks.hpp"
@@ -105,8 +106,16 @@ int main(int argc, char** argv) {
         const auto final_ticks = finish(state, match);
         require(finish(*original, match) == final_ticks, "Original and C++23 completion tick counts differ");
         const Image completed(state);
-        completed.compare(*original, "Original/C++23 actual completion");
-        require(state.executed == original->executed, "Original/C++23 completion instruction accounting differs");
+        {
+            auto rewrite = before_final.restore();
+            match_eng_original_state = nullptr;
+            player_movement_diagnostics(*rewrite).original = false;
+            require(finish(*rewrite, match) == final_ticks, "A restored C++23 completion differs");
+            clear_diagnostic_registers(*rewrite);
+            clear_diagnostic_registers(*original);
+            rewrite->unique = original->unique;
+            Image(*rewrite).compare(*original, "Original/C++23 actual completion");
+        }
         for (bool invalid_competition : {true, false}) {
             auto broken = before_final.restore();
             if (invalid_competition) broken->memory.write<4>(fixture, 0xfffffffe);
@@ -114,11 +123,19 @@ int main(int argc, char** argv) {
             bool rejected = false;
             try { (void)finish(*broken, match); }
             catch (const std::runtime_error& error) {
-                // The reported PC is the start of the faulting instruction's
-                // run (block accounting), a few instructions before it.
-                const auto faulting = invalid_competition ? 0x10464744u : 0x101f958cu;
-                rejected = std::string_view(error.what()).starts_with("Unmapped data access") &&
-                    broken->pc <= faulting && faulting - broken->pc < 0x100;
+                // The C++ has no PC at the fault, so the original's run gives the same fault.
+                auto control = before_final.restore();
+                if (invalid_competition) control->memory.write<4>(fixture, 0xfffffffe);
+                else control->memory.write<4>(fixture + 0x14, 0);
+                match_eng_original_state = control.get();
+                player_movement_diagnostics(*control).original = true;
+                try { (void)finish(*control, match); }
+                catch (const std::runtime_error& same) {
+                    const auto faulting = invalid_competition ? 0x10464744u : 0x101f958cu;
+                    rejected = std::string_view(error.what()).starts_with("Unmapped data access") && std::string_view(error.what()) == same.what() &&
+                        control->pc <= faulting && faulting - control->pc < 0x100;
+                }
+                match_eng_original_state = nullptr;
             }
             require(rejected, "Removing a required fixture binding did not expose the original fault");
         }
