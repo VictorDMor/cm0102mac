@@ -14,3 +14,5 @@
 #include "match_eng_roster.hpp"
 #include "match_eng_contact.hpp"
 #include "match_eng_rating.hpp"
+#include "match_eng_rating_pick.hpp"
+#include "match_eng_rating_pred.hpp"

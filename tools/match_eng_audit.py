@@ -273,7 +273,7 @@ SWITCH_TABLES = (
 TRANSITION_VECTORS = ((0x108b8c34, 0x101d91b0),)
 INCLUDES = ROOT / "native/match_eng_routines.inc"
 LEAVES_HEADER = ROOT / "native/match_eng_leaves.hpp"
-ROUTINE = re.compile(r'MATCH_ENG_(ROUTINE|DRAFT)\(\s*(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+),\s*([\w|]+),\s*"([0-9a-f]+)"')
+ROUTINE = re.compile(r'MATCH_ENG_(ROUTINE|DRAFT)\(\s*(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+),\s*([\w| ]+),\s*"([0-9a-f]+)"')
 INCLUDE = re.compile(r'#include "(match_eng_routines_\w+\.inc)"')
 LEAF = re.compile(r"inline bool match_eng_leaf_([0-9a-f]+)\(State& s\)")
 # The generator hooks every entry from the start: the adapter runs the
@@ -288,7 +288,7 @@ def routine_lines(path=INCLUDES):
         return ""
     text = path.read_text()
     for name in INCLUDE.findall(text):
-        text += (path.parent / name).read_text()
+        text += routine_lines(path.parent / name)
     return text
 
 
