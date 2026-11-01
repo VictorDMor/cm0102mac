@@ -40,21 +40,43 @@ MATCH_ENG_CASES("rating_pred") {
             memory.push_back({4, global, 0});
             add(0x101fd900, {{3, match}}, memory, "grade, no global");
         }
+    // The two draws of the grade (500, then 25) come from the pool of halfwords at the cursor: all zero or all large, with a zero offset.
+    const auto cursor_address = scenario.r32(r2 - 0x7b84), offset_address = scenario.r32(r2 - 0x7b90);
+    const auto cursor = scenario.r32(cursor_address);
+    for (const std::uint32_t pool_value : {0u, 0xfffeu}) for (const std::uint32_t year : {0u, 1000u, 5000u, 9500u, 12000u, 16000u})
+        for (const std::uint32_t first : {0u, 1u, 3u}) for (const std::uint32_t second : {0u, 4u, 6u}) {
+            std::vector<Write> memory = {{2, list + 8, year}, {1, match + 0xe04b, first}, {1, match + 0xe081, 0},
+                                         {1, match + 0xe04c, second}, {1, match + 0xe082, 0}, post_target, post_table, {4, global, 0}, {4, offset_address, 0}};
+            for (unsigned k = 1; k <= 4; ++k) memory.push_back({2, cursor + 2 * k, pool_value});
+            add(0x101fd900, {{3, match}}, memory, "grade, drawn");
+        }
     add(0x101fd900, {{3, match}}, {{4, list + 4, 0}, post_target, post_table}, "grade, no list");
     add(0x101fd900, {{3, match}}, {{4, match + 0x3118, 0}, post_target, post_table}, "grade, no fixture");
     add(0x101fd900, {{3, match}}, {{4, fixture + 0x14, 0}, post_target, post_table}, "grade, fixture without id");
 
-    // 0x101fd6b0: the stage lookup over a pair record and a record whose objects fill the three stages.
+    // 0x101fd6b0: the stage lookup over a pair record and a record whose objects fill the three stages. The objects are
+    // competition objects: the category test (0x100cdae0) reads the id word at their start, so each gets one the game lists.
     const auto pair = scenario.player(1, 1), record = scenario.player(0, 0);
-    const std::uint32_t objects[] = {0, scenario.player(0, 3), fixture};
-    for (const std::uint32_t mode : {0u, 1u, 0x100u}) for (unsigned pattern = 0; pattern < 64; ++pattern) {
-        std::vector<Write> memory;
-        for (unsigned word = 0; word < 6; ++word)
-            memory.push_back({4, pair + 0x44 + 4 * word, (pattern >> word) & 1 ? objects[1 + (word & 1)] : 0});
-        add(0x101fd6b0, {{3, pair}, {4, record}, {5, mode}}, memory, "stage");
-        memory.push_back({4, record + 0x44, 0});
-        memory.push_back({4, record + 0x48, 0});
-        add(0x101fd6b0, {{3, pair}, {4, record}, {5, mode}}, memory, "stage, empty record");
+    const auto objects_at = ((std::uint32_t(scenario.s.r<4>(4)) - 0x6000) & ~0xfu) + 0x2000;
+    std::vector<std::uint32_t> category_ids;
+    for (const std::int32_t offset : {-0x7668, -0x7670, -0x7678, -0x767c, -0x7688, -0x7698}) category_ids.push_back(scenario.r32(scenario.r32(r2 + std::uint32_t(offset))));
+    const unsigned id_triples[][3] = {{0, 0, 0}, {0, 1, 1}, {1, 0, 0}, {2, 3, 3}, {3, 4, 2}, {4, 5, 4}, {5, 4, 5}, {1, 1, 2}, {0, 2, 2}, {3, 3, 3}};
+    for (const auto& triple : id_triples) {
+        const std::uint32_t objects[] = {0, objects_at, objects_at + 0x100};
+        const std::uint32_t limit = objects_at + 0x200, home = objects_at + 0x300;
+        for (const std::uint32_t mode : {0u, 1u, 0x100u}) for (unsigned pattern = 0; pattern < 64; ++pattern) {
+            std::vector<Write> memory = {{4, objects_at, category_ids[triple[0]]}, {4, objects_at + 0x100, category_ids[triple[1]]},
+                                         {4, limit, category_ids[triple[2]]}, {4, home, category_ids[triple[0]]}};
+            for (unsigned word = 0; word < 6; ++word)
+                memory.push_back({4, pair + 0x44 + 4 * word, (pattern >> word) & 1 ? objects[1 + (word & 1)] : 0});
+            auto full = memory;
+            full.push_back({4, record + 0x44, home});
+            full.push_back({4, record + 0x48, limit});
+            add(0x101fd6b0, {{3, pair}, {4, record}, {5, mode}}, full, "stage");
+            memory.push_back({4, record + 0x44, 0});
+            memory.push_back({4, record + 0x48, 0});
+            add(0x101fd6b0, {{3, pair}, {4, record}, {5, mode}}, memory, "stage, empty record");
+        }
     }
     add(0x101fd6b0, {{3, 0}, {4, record}, {5, 0}}, {}, "stage, no pair");
     add(0x101fd6b0, {{3, pair}, {4, 0}, {5, 0}}, {}, "stage, no record");

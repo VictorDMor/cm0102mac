@@ -19,6 +19,17 @@ MATCH_ENG_CASES("rating_pick") {
                 add(entry, {{3, match}, {4, argument}}, {{2, fixture + 0x32, pending}, {2, fixture + 0x30, kind}, {4, fixture, word}}, "fixture");
                 add(entry, {{3, match}, {4, argument}}, {{2, fixture + 0x32, pending}, {2, fixture + 0x30, kind}, {4, fixture, word}, {1, fixture + 0x3a, 9}}, "fixture, byte");
             }
+    // The tie totals (0x101f21d0) behind the three: goals of the match and of the first leg, the flag halfword, the clock, and a
+    // competition code whose last digit is 3 (the knockout byte).
+    for (const std::uint32_t entry : {0x101fce60u, 0x101fcf20u, 0x101feae0u}) for (const unsigned side : {0u, 1u}) for (const std::uint32_t code : {3u, 13u, 0x82u, 0x96u})
+        for (const auto& [home_goals, away_goals] : {std::pair{0u, 0u}, {1u, 1u}, {2u, 1u}, {1u, 2u}})
+            for (const auto& [first_leg_home, first_leg_away] : {std::pair{0xffu, 0xffu}, {0u, 0u}, {1u, 1u}, {2u, 0u}})
+                for (const std::uint32_t flags : {0u, 4u, 0x8000u, 0x8004u}) for (const std::uint32_t clock : {0x3deu, 0x3dfu}) {
+                    std::vector<Write> memory = {{2, fixture + 0x32, 0}, {2, fixture + 0x30, code}, {1, match + 0xe03d, home_goals}, {1, match + 0xe073, away_goals},
+                                                 {1, fixture + 0x4b, first_leg_home}, {1, fixture + 0x4c, first_leg_away}, {2, fixture + 0x38, flags},
+                                                 {2, match + 0x794c, clock}};
+                    add(entry, {{3, match}, {4, side}}, memory, "totals");
+                }
     // 0x101fd000: fixture byte 0x3a (1 and 9 end at once), the club test, the side's tactical word, positions 3 and 4.
     for (const std::uint32_t kind_byte : {1u, 9u, 0u, 5u}) for (const std::uint32_t side : {0u, 1u, 0xffu, 2u})
         for (const std::uint32_t position : {2u, 3u, 4u, 0xffu}) for (const std::uint32_t word : {0u, 0x4000u, 0xffffffffu}) {
@@ -26,6 +37,12 @@ MATCH_ENG_CASES("rating_pick") {
             std::vector<Write> memory = {{1, fixture + 0x3a, kind_byte}, {1, match + 0x1c4 + signed_side, position},
                                          {4, match + 0x7c6c + 0x18e0 * signed_side + 0x588, word}};
             add(0x101fd000, {{3, match}, {4, side}}, memory, "side flagged");
+            if (side < 2) {
+                cases.push_back({.entry = 0x101fd000, .registers = {{3, match}, {4, side}}, .memory = memory, .f1 = {}, .label = "side flagged, answered",
+                                 .answers = {{0x1014c2e0, 1}}});
+                cases.push_back({.entry = 0x101fd000, .registers = {{3, match}, {4, side}}, .memory = memory, .f1 = {}, .label = "side flagged, answered no",
+                                 .answers = {{0x1014c2e0, 0}}});
+            }
             memory.push_back({4, fixture + 0x20, 0});
             memory.push_back({4, fixture + 0x24, 0});
             add(0x101fd000, {{3, match}, {4, side}}, memory, "side flagged, no club");
@@ -44,7 +61,23 @@ MATCH_ENG_CASES("rating_pick") {
             add(0x101fd100, {{3, match}, {4, side}, {5, index}}, memory, "pick_opponent");
         }
     }
-    for (const unsigned side : {0u, 1u, 0xffu, 2u}) {
+    // Players with no flag at all leave the decoder's two output halfwords untouched: the values that were on the stack.
+    // The frame of 0x101fd100 is 0x80 bytes below the stack pointer; its outputs are at +0x3a and +0x38.
+    const auto frame_base = std::uint32_t(scenario.s.r<4>(4)) - 0x80;
+    for (const unsigned side : {0u, 1u}) {
+        const auto base = scenario.r32(scenario.player(side, 0) + 0x1a4);
+        const auto own_table = scenario.r32(base + 0x7934 + side * 4), other_table = scenario.r32(base + 0x7934 + (1 - side) * 4);
+        for (const std::uint32_t low : {0u, 1u, 0x18u, 0x30u, 0x50u, 0x7fu}) for (const std::uint32_t high : {0u, 2u, 0x180u, 0x1ffu, 0x300u, 0x801u, 0x1000u})
+            for (const bool others_flagged : {false, true}) {
+                std::vector<Write> memory = {{2, frame_base + 0x3a, low}, {2, frame_base + 0x38, high}};
+                for (unsigned k = 0; k < 11; ++k) {
+                    memory.push_back({2, own_table + 2 * k, 0});
+                    memory.push_back({2, other_table + 2 * k, others_flagged ? 0x80u : 0u});
+                }
+                add(0x101fd100, {{3, match}, {4, side}, {5, 9}}, memory, "pick_opponent, stack leftovers");
+            }
+    }
+    for (const unsigned side : {0u, 1u}) {
         add(0x101fd100, {{3, match}, {4, side}, {5, 3}}, {}, "pick_opponent, plain");
         add(0x101fd100, {{3, match}, {4, side}, {5, 3}}, {{1, scenario.player(side & 1, 3) + 0x19, 0xff}}, "pick_opponent, off pitch");
         add(0x101fd100, {{3, match}, {4, side}, {5, 3}}, {{1, scenario.player(1 - (side & 1), 5) + 0x19, 0xff}}, "pick_opponent, opponent off");
@@ -84,12 +117,13 @@ MATCH_ENG_CASES("rating_pick") {
     add(0x101fee90, {}, {}, "free tables");
     // A record with a table of no entries, of one entry with both slots empty, and a record holding the sentinel.
     const auto records = scenario.r32(std::uint32_t(scenario.s.r<4>(8)) - 0x5298), sentinel = scenario.r32(std::uint32_t(scenario.s.r<4>(8)) - 0x529c);
-    const auto table = match + 0x9000;
+    // Only memory the allocator handed out can be freed: the first record keeps its real table (the plain case above frees the real
+    // entries too) with a count of none, or holds the sentinel, or no table at all.
     for (const std::uint32_t count : {0u, 1u, 3u, 0xffffu}) {
-        std::vector<Write> memory = {{4, records + 8, table}, {2, records + 0xc, count}};
-        for (unsigned k = 0; k < 3; ++k) { memory.push_back({4, table + 0x104 + 0x10c * k, 0}); memory.push_back({4, table + 0x108 + 0x10c * k, 0}); }
-        add(0x101fee90, {}, memory, "free tables, a record");
-        memory[0].value = sentinel;
-        add(0x101fee90, {}, memory, "free tables, sentinel");
+        add(0x101fee90, {}, {{4, records + 8, sentinel}, {2, records + 0xc, count}}, "free tables, sentinel");
+        add(0x101fee90, {}, {{2, records + 0xc, 0}}, "free tables, a record without entries");
     }
+    // A record with no table at all, and one with a count of no entries but a table.
+    add(0x101fee90, {}, {{4, records + 8, 0}, {2, records + 0xc, 3}}, "free tables, no table");
+    add(0x101fee90, {}, {{4, records + 8 + 0x14, 0}, {4, records + 8 + 0x28, 0}}, "free tables, other records without tables");
 }
