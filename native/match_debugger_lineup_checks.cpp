@@ -1,5 +1,5 @@
 #include "match_debugger_factory.hpp"
-#include "match_engine_adapter.hpp"
+#include "match_eng_adapter.hpp"
 #include "match_actor_adapter.hpp"
 #include <chrono>
 #include <iostream>
@@ -116,8 +116,7 @@ int main(int argc, char** argv) {
         auto factory = [&] { return create_match({argv[1], argv[2], root / ("session-" + std::to_string(generation++))}, {677,5677,12345,2001,194}); };
         Session session(factory, fresh_match_step_limit);
         auto control = create_match({argv[1], argv[2], root / "control"}, {677,5677,12345,2001,194});
-        match_engine_diagnostics(*control.state).entry_original[2] = true;
-        match_actor_diagnostics(*control.state).original = true;
+        match_eng_original_state = control.state.get();
         const Baseline baseline{session.state().executed, control.state->executed, session.state().native_calls,
             control.state->native_calls, session.state().budget, control.state->budget};
         const auto initial_reserve = session.state().memory.read<4>(actor_address(session.match_address(),0,11)+0x6c);

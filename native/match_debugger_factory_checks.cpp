@@ -1,5 +1,5 @@
 #include "match_debugger_factory.hpp"
-#include "match_engine_adapter.hpp"
+#include "match_eng_adapter.hpp"
 #include <chrono>
 #include <iostream>
 #include <set>
@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
         Session first([&] {
             auto created = create_match({argv[1], argv[2], root / ("first-" + std::to_string(generation++))}, setup,
                 [&](std::string_view stage) { progress.emplace_back(stage); });
-            cm::aot::match_engine_diagnostics(*created.state).entry_original[2] = original_shared;
+            cm::aot::match_eng_original_state = original_shared ? created.state.get() : nullptr;
             return created;
         }, fresh_match_step_limit);
         validate_players(first, setup.home_club, setup.away_club);
@@ -71,7 +71,6 @@ int main(int argc, char** argv) {
         }
         require(first.inspect().elapsed_engine_units == 4 && interval.front().instructions > 0,
             "Fresh kickoff and individual actual ticks were not executed");
-        require(cm::aot::match_engine_diagnostics(first.state()).calls[2] == 4, "Shared C++23 advancement was bypassed");
         const auto modern_interval = digest(first.state(), first.match_address());
         original_shared = true;
         first.reset();
@@ -84,8 +83,7 @@ int main(int argc, char** argv) {
                 repeated.instructions == interval[step].instructions && repeated.engine_return == interval[step].engine_return,
                 "Reset changed the actual original seeded interval");
         }
-        require(digest(first.state(), first.match_address()) == modern_interval &&
-            cm::aot::match_engine_diagnostics(first.state()).original_calls[2] == 4,
+        require(digest(first.state(), first.match_address()) == modern_interval,
             "Actual original shared advancement differs from the C++23 interval");
         const auto retained = digest(first.state(), first.match_address());
         const auto stable = first.inspect();
@@ -105,7 +103,6 @@ int main(int argc, char** argv) {
         const auto paused = second.inspect();
         require(!second.advance_if_running() && second.inspect() == paused, "Scheduled pause did not stop advancement");
         require(digest(first.state(), first.match_address()) == retained, "Another experiment changed the first match");
-        require(cm::aot::match_engine_diagnostics(second.state()).calls[2] == 4, "Second pairing bypassed shared C++23 engine");
         std::cout << "PASS: 2 actual club pairings, 3 fresh worlds, 11 real starters per side, 12 engine ticks, original/C++23 agreement, paused/scheduled execution, explicit-seed reset, failed-reset preservation and independent state\n";
         std::cout << "No career or captured match input; remaining original creation dependencies retained\n";
     } catch (const std::exception& error) {

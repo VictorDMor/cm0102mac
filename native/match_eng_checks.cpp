@@ -8,6 +8,7 @@
 // A mutated call in which both sides fault alike is counted apart, never as a pass.
 // --corrupt is the negative control: a check must then fail.
 #include "match_eng_checks.hpp"
+#include "application_exit.hpp"
 #include "code_fragment_adapter.hpp"
 #include "guest_abi.hpp"
 #include "match_eng_adapter.hpp"
@@ -385,10 +386,25 @@ int main(int argc, char** argv) {
         state->code_fragment_observer = &inputs;
         set_match_turbo_enabled(false);
         routine_child_exit = flush_child;
+        // The assertion's error dialog needs Toolbox imports a match snapshot has no
+        // host for. Both sides answer it here, so what follows the assert is compared
+        // instead of stopping at the first dialog import.
+        dispatch_probe = [](State& target) {
+            // exit(): nothing follows it in the game, so a run ends here and what it
+            // wrote up to this call is compared.
+            if (target.pc == 0x1076f7d0) throw ApplicationExit{};
+            if (target.pc != 0x10769b60) return false;
+            target.pc = target.r<4>(4128);
+            return true;
+        };
         live_random.seed(options.seed);
         std::mt19937 random(options.seed + 1);
         auto& s = *state;
-        const auto wanted = [](std::uint32_t entry) { return options.only.empty() || options.only.count(entry) != 0; };
+        // exit() runs as MAIN.CPP's C++, which generated pages call in place, past the
+        // probe below: left out, its hook declines and both sides reach the dispatcher.
+        const auto wanted = [](std::uint32_t entry) {
+            return entry != 0x1076f7d0 && (options.only.empty() || options.only.count(entry) != 0);
+        };
         RoutineChecker checker(wanted, options.all, options.every);
         checker.corrupt_first = options.corrupt;
         checker.compare_f1 = true;

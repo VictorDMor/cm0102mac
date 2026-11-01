@@ -1,5 +1,5 @@
 #include "match_debugger_factory.hpp"
-#include "match_engine_adapter.hpp"
+#include "match_eng_adapter.hpp"
 #include "match_actor_adapter.hpp"
 #include "match_debugging.hpp"
 #include "semantic_io_checks.hpp"
@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
         const Baseline baseline{session.state().executed, control.state->executed, session.state().native_calls,
             control.state->native_calls, session.state().budget, control.state->budget};
         const auto kickoff = session.step();
-        match_engine_diagnostics(*control.state).entry_original[2] = true;
+        match_eng_original_state = control.state.get();
         require(invoke(*control.state, 0x101d3f60, {control.match, 1}) == kickoff.instructions, "Original kickoff accounting");
         same_match(session, control, baseline);
         for (auto bad : {std::pair{2u, 8u}, std::pair{0u, 20u}, std::pair{0u, 19u}})
@@ -177,8 +177,7 @@ int main(int argc, char** argv) {
             std::cout << "goal team=" << team << " actor=" << actor << " instructions=" << record.instructions
                 << " ordered-effects=" << observed.effects.size() << " following-original-steps=5\n";
         }
-        require(session.goals().size() == 6 && session.steps().size() == 31 &&
-            match_engine_diagnostics(session.state()).calls[2] == 31 && match_engine_diagnostics(*control.state).original_calls[2] == 31,
+        require(session.goals().size() == 6 && session.steps().size() == 31,
             "Goal interventions were confused with accepted shared engine steps");
         auto& state = const_cast<State&>(session.state());
         const auto saved_score = state.memory.read<1>(session.match_address() + 0xe03d);

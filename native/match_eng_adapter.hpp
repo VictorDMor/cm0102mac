@@ -22,6 +22,9 @@ void match_eng_run_rewrite(State& s, std::uint32_t entry);
 // the entry's generated body with MATCH_PL's and this module's hooks declining, since
 // those hooks now sit on the pages in place of the family's.
 void match_family_run_original(State& s, std::uint32_t entry);
+// Check tools only: this state always runs the original bodies, so a host-level check
+// can step one match as C++ and a control match as the original in one process.
+extern const State* match_eng_original_state;
 // Set while every routine runs its original body (see match_eng_leaves.hpp).
 extern bool match_eng_declining;
 // Checker only (null in the app): told of each call of a listed routine before

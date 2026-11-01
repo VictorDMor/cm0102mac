@@ -12,6 +12,7 @@ namespace cm::aot {
 // CM_MATCH_ENG_ORIGINAL=1 (to compare a build's behaviour without the rewrites).
 bool match_eng_declining = std::getenv("CM_MATCH_ENG_ORIGINAL") != nullptr;
 void (*match_eng_call_observer)(State&, std::uint32_t, unsigned) = nullptr;
+const State* match_eng_original_state = nullptr;
 namespace {
 using guest::Cpu;
 [[maybe_unused]] constexpr unsigned NONE = 0, R3 = RoutineChecker::result_r3, R4 = RoutineChecker::result_r4,
@@ -77,7 +78,7 @@ std::vector<std::uint32_t> match_eng_production_entries() {
 }
 
 bool match_eng_dispatch_probe(State& s) {
-    if (match_eng_declining) return false;
+    if (match_eng_declining || &s == match_eng_original_state) return false;
     const auto* routine = listed(s.pc);
     return routine && (!routine_checker || routine_checker->wants(s.pc)) && run(s, *routine);
 }
@@ -85,7 +86,7 @@ bool match_eng_dispatch_probe(State& s) {
 bool try_modern_match_eng(State& s, std::uint32_t entry) {
     // A check run with --only runs the other routines' originals, so each
     // routine is checked at every call from the original's own callers.
-    if (match_eng_declining || (routine_checker && !routine_checker->wants(entry))) return false;
+    if (match_eng_declining || &s == match_eng_original_state || (routine_checker && !routine_checker->wants(entry))) return false;
     const auto* routine = listed(entry);
     if (!routine || (!routine->production && !routine_checker)) return false;
     return run(s, *routine);
@@ -94,7 +95,8 @@ namespace match_eng {
 void call(guest::Cpu& c, std::uint32_t entry, std::uint32_t back) {
     // A checker's parent goes through the hook, so nested calls are checked too.
     // --only runs the routines left out as their originals here too.
-    const bool through_hook = match_eng_declining || (routine_checker && (!routine_check_child() || !routine_checker->wants(entry)));
+    const bool through_hook = match_eng_declining || &c.s == match_eng_original_state ||
+                              (routine_checker && (!routine_check_child() || !routine_checker->wants(entry)));
     const auto* routine = through_hook ? nullptr : listed(entry);
     if (!routine || (!routine->production && !routine_checker)) { c.call(entry, back); return; }
     c.link(back);

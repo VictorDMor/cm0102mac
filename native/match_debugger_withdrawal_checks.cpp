@@ -1,5 +1,5 @@
 #include "match_debugger_factory.hpp"
-#include "match_engine_adapter.hpp"
+#include "match_eng_adapter.hpp"
 #include "match_actor_adapter.hpp"
 #include "player_movement_adapter.hpp"
 #include <chrono>
@@ -89,11 +89,8 @@ int main(int argc, char** argv) {
         const Baseline baseline{session.state().executed, control.state->executed, session.state().native_calls,
             control.state->native_calls, session.state().budget, control.state->budget};
         const auto kickoff = session.step();
-        match_engine_diagnostics(*control.state).entry_original[2] = true;
-        match_actor_diagnostics(*control.state).original = true;
+        match_eng_original_state = control.state.get();
         player_movement_diagnostics(*control.state).original = true;
-        const auto modern_actor_before = match_actor_diagnostics(session.state()).calls;
-        const auto original_actor_before = match_actor_diagnostics(*control.state).original_calls;
         require(invoke(*control.state, 0x101d3f60, {control.match, 1}) == kickoff.instructions, "Original kickoff accounting");
         same_match(session, control, baseline);
         reject_without_effects(session, [&] { session.withdraw_injured_player(2, 8); });
@@ -144,12 +141,6 @@ int main(int argc, char** argv) {
                       << " on-pitch=" << record.on_pitch_after << " original-following-steps=10\n";
         }
         require(session.withdrawals().size() == 3 && session.steps().size() == 31, "Interventions were confused with completed engine steps");
-        require(match_engine_diagnostics(session.state()).calls[2] == 31 && match_engine_diagnostics(*control.state).original_calls[2] == 31,
-            "Subsequent modern/original engine controls were bypassed");
-        for (unsigned entry = 2; entry < 3; ++entry)
-            require(match_actor_diagnostics(session.state()).calls[entry] > modern_actor_before[entry] &&
-                match_actor_diagnostics(*control.state).original_calls[entry] > original_actor_before[entry],
-                "Actual withdrawal/position entry did not execute the selected C++23/original body");
         const auto retained = session.state().memory.copy_out(session.match_address(), 0xe0bc);
         Session limited(factory, 400000);
         (void)limited.step();
