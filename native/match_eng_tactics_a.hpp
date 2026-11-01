@@ -70,7 +70,5 @@ inline double unsigned_double(Cpu& c, std::uint32_t at, std::uint32_t value) {
     c.put32(at, 0x43300000);
     return c.f64(at);
 }
-// Division by a constant as the original's mulhw sequence computes it: toward zero.
-inline std::int32_t halfword(std::uint32_t value) { return std::int16_t(value); }
 }
 }

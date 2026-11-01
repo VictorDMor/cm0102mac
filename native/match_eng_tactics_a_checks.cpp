@@ -5,6 +5,13 @@
 
 using namespace cm::aot::match_eng_checks;
 
+namespace {
+std::vector<Write> joined_writes(std::vector<Write> first, const std::vector<Write>& second) {
+    first.insert(first.end(), second.begin(), second.end());
+    return first;
+}
+}
+
 MATCH_ENG_CASES("tactics_a") {
     const auto match = scenario.match;
     const auto toc = std::uint32_t(scenario.s.r<4>(8));
@@ -101,6 +108,22 @@ MATCH_ENG_CASES("tactics_a") {
         }
     }
 
+    // The same on every edge and corner of the grid, and where the cells around hold nobody or everybody.
+    for (const unsigned side : {0u, 1u}) {
+        for (const unsigned index : {2u, 8u}) {
+            const auto player = scenario.player(side, index);
+            for (const std::uint32_t row : {0u, 1u, 4u, 7u, 8u}) {
+                for (const std::uint32_t column : {0u, 1u, 5u, 10u, 11u}) {
+                    for (std::uint32_t mode = 0; mode < 16; ++mode) {
+                        add(0x101d8260, {{3, match}, {4, player}, {5, row_out}, {6, column_out}, {7, mode}},
+                            {{1, player + 0x105, row}, {1, player + 0x106, column}, {1, row_out, 0xff}, {1, column_out, 0xff}},
+                            "cell choice at " + std::to_string(row) + "," + std::to_string(column));
+                    }
+                }
+            }
+        }
+    }
+
     // 0x101d91b0: the comparator through two queue slots.
     const auto first_slot = match + 0x79f8, second_slot = match + 0x79fc;
     for (const std::uint32_t state : {0u, 8u}) {
@@ -136,5 +159,66 @@ MATCH_ENG_CASES("tactics_a") {
                 add(0x101d7dc0, {{3, match}, {4, player}, {5, match + 0xd1f0}, {6, copy}}, {{2, match + 0xd1f0, 0x7ff0}}, "assess cell, running total");
             }
         }
+    }
+
+    // --- Coverage closure.
+    const auto record = scenario.r32(match + 0x3118);
+    const auto tactical_word = [&](unsigned side) { return match + 0x7c6c + side * 0x18e0 + 0x588; };
+    const auto position_values = [&](std::uint32_t value) {
+        std::vector<Write> writes;
+        for (unsigned side = 0; side < 2; ++side) {
+            const auto positions = scenario.r32(match + 0x7934 + side * 4);
+            for (unsigned k = 0; k < 11; ++k) writes.push_back({2, positions + 2 * k, value});
+        }
+        return writes;
+    };
+    for (const unsigned side : {0u, 1u}) {
+        for (const unsigned index : {0u, 3u, 6u, 9u, 12u, 15u, 18u}) {
+            const auto player = scenario.player(side, index);
+            // Without a team record for either side (the shared-club test of the relation term is skipped).
+            for (const auto& [home, away] : {std::pair{0u, 1u}, {1u, 0u}, {0u, 0u}}) {
+                std::vector<Write> memory;
+                if (home) memory.push_back({4, record + 0x1c, 0});
+                if (away) memory.push_back({4, record + 0x20, 0});
+                if (!home && !away) { memory.push_back({4, record + 0x1c, 0}); memory.push_back({4, record + 0x20, 0}); }
+                add(0x101d70d0, {{3, match}, {4, player}}, memory, "target, a side without a team record");
+            }
+            // A side flagged 0x400, with and without the player's trait.
+            for (const std::uint32_t flags : {0x400u, 0u})
+                for (const std::uint32_t trait : {0u, 1u, 7u})
+                    add(0x101d70d0, {{3, match}, {4, player}},
+                        {{4, tactical_word(0), flags}, {4, tactical_word(1), flags}, {1, player + 0x10d, trait}}, "target, flagged side");
+            // The position values the candidates' state tests read.
+            for (const std::uint32_t value : {0x20u, 0x820u, 0xa0u, 0x8a0u, 0x140u, 0x240u, 0x440u, 0x40u, 0x1u})
+                add(0x101d70d0, {{3, match}, {4, player}}, position_values(value), "target, position values");
+            // A marking target who has left the pitch, and a carrier without the trait next to the player.
+            const auto candidate = scenario.player(1 - side, 3);
+            add(0x101d70d0, {{3, match}, {4, player}}, {{4, player + 0x1b0, candidate}, {1, candidate + 0x104, 0}, {1, candidate + 0x19, 0xff}},
+                "target off the pitch");
+        }
+    }
+    // A carrier standing off the grid next to the player: the goal distance falls back to the pool's default figure.
+    for (const unsigned side : {0u, 1u}) {
+        for (const unsigned index : {0u, 6u, 12u}) {
+            const auto player = scenario.player(side, index);
+            const auto holder = scenario.player(1 - side, 5);
+            for (const auto [row, column] : {std::pair{0x7fu, 5u}, {0x80u, 5u}, {4u, 0x7fu}, {4u, 0x80u}, {0xffu, 0xffu}, {0x30u, 0x30u}})
+                for (const std::uint32_t trait : {0u, 1u})
+                    add(0x101d70d0, {{3, match}, {4, player}},
+                        {{4, match + 0xe000, holder}, {1, holder + 0x105, row}, {1, holder + 0x106, column}, {1, player + 0x105, row},
+                         {1, player + 0x106, column}, {1, holder + 0x10c, trait}, {1, holder + 0x104, 0}},
+                        "carrier off the grid");
+        }
+    }
+    // The cell choice for a player on a rim row who cannot take a contested cell: tired or restricted position values
+    // (0x30 and either 0x80 or 0x800) with the caller's mode asking for the first cell.
+    for (const unsigned side : {0u, 1u}) {
+        const auto player = scenario.player(side, 2);
+        for (const std::uint32_t row : {0u, 1u, 7u, 8u})
+            for (const std::uint32_t value : {0xb0u, 0x830u, 0x8b0u})
+                for (std::uint32_t mode = 0; mode < 16; ++mode)
+                    add(0x101d8260, {{3, match}, {4, player}, {5, row_out}, {6, column_out}, {7, mode}},
+                        joined_writes(position_values(value), {{1, player + 0x105, row}, {1, player + 0x106, 5}, {1, row_out, 0xff}, {1, column_out, 0xff}}),
+                        "cell choice, restricted position");
     }
 }

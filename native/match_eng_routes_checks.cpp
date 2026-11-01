@@ -50,7 +50,8 @@ MATCH_ENG_CASES("routes") {
     for (const auto [column_1, row_1] : ends) {
         for (const auto [column_2, row_2] : ends) {
             for (const std::uint32_t entry : {0x101eeeb0u, 0x101ef3c0u})
-                add(entry, {{3, match}, {4, neg(column_1)}, {5, neg(row_1)}, {6, neg(column_2)}, {7, neg(row_2)}}, {}, "line");
+                add(entry, {{3, match}, {4, neg(column_1)}, {5, neg(row_1)}, {6, neg(column_2)}, {7, neg(row_2)}}, {},
+                    "line " + std::to_string(column_1) + "," + std::to_string(row_1) + ">" + std::to_string(column_2) + "," + std::to_string(row_2));
         }
     }
     for (const auto [column_2, row_2] : {std::pair{9, 5}, {4, 13}, {5, -1}, {-3, 2}, {8, 8}, {1, 2}, {6, 7}, {2, 5}}) {
@@ -59,6 +60,12 @@ MATCH_ENG_CASES("routes") {
             add(entry, {{3, match}, {4, 0x103}, {5, 0x204}, {6, 0x100 + neg(column_2)}, {7, 0x300 + neg(row_2)}}, {}, "line, high bytes");
         }
     }
+
+    // Straight along a row to columns past the grid (the counting walk stops after column 8, the blocking one after 11).
+    for (const std::uint32_t entry : {0x101eeeb0u, 0x101ef3c0u})
+        for (const auto [column_1, row_1] : {std::pair{0, 4}, {5, 0}, {3, 7}, {8, 11}})
+            for (const int column_2 : {9, 10, 11, 12, 13, 15})
+                add(entry, {{3, match}, {4, neg(column_1)}, {5, neg(row_1)}, {6, neg(column_2)}, {7, neg(row_1)}}, {}, "row walk past the grid");
 
     // 0x101ef8d0: the distance table, spans on and off the grid.
     for (const int d_column : {0, 1, 4, 8, 9, 127, 128, 200}) {
@@ -77,6 +84,13 @@ MATCH_ENG_CASES("routes") {
             }
         }
     }
+    // Starts above the first row, and on the last row with nowhere to go (the step then leaves the pitch).
+    for (const int row : {-1, -3, -128, 12, 100})
+        for (const int column : {0, 4, 8})
+            for (const std::uint32_t flag : {0u, 1u}) add(0x101ef9a0, {{3, match}, {4, neg(column)}, {5, neg(row)}, {6, 7}, {7, flag}, {8, 1}, {9, 3}}, {}, "route from off the pitch");
+    for (const int row : {11, 0, 5, 12})
+        for (const std::uint32_t flag : {6u, 8u, 0x36u, 0x5au})
+            add(0x101f0090, {{3, match}, {4, 2}, {5, neg(row)}, {6, 2}, {7, neg(row)}, {8, flag}, {9, 0}, {10, 4}}, {}, "route of no length at the edge");
     add(0x101ef9a0, {{3, match}, {4, 4}, {5, 11}, {6, 7}, {7, 1}, {8, 1}, {9, 3}}, {}, "already at the goal");
     add(0x101ef9a0, {{3, match}, {4, 4}, {5, 0}, {6, 7}, {7, 0}, {8, 1}, {9, 3}}, {}, "already at the goal, row 0");
     for (const std::uint32_t flag : {0u, 6u, 8u, 9u, 0x1eu, 0x1fu, 0x20u, 0x34u, 0x35u, 0x36u, 0x37u, 0x38u, 0x3bu, 0x3cu, 0x3du, 0x3eu, 0x3fu,

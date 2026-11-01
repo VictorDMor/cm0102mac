@@ -172,6 +172,7 @@ bool Receiver::start() {
     }
     // The score to beat: noise around a figure of the pending player.
     const auto first = rnd(500, 0x101e8b20);
+    c.set(5, pending());  // lwz r5,-0x2000(r4) of the pending player's word
     c.set(6, u(std::int32_t(c.i16(pending() + 0x2a))));  // lha r6,0x2a(r5)
     c.set(15, first + u(std::int32_t(c.i16(pending() + 0x2a)) * 3) - 0xbb8);
     const auto second = rnd(500, 0x101e8b40);
@@ -418,7 +419,8 @@ void Receiver::destination() {
         r26 = column(c, cand);
         return;
     }
-    // Clamp the cell onto the pitch.
+    // Clamp the cell onto the pitch. The bytes come from 0x101d8260, which only stores cells it has checked (rows 0..8,
+    // columns 0..11) and answers 0 otherwise, so no clamp ever applies; the compares are kept as the original has them.
     if (compare(c, slot_s8(slot::dest_row)) < 0) { c.set(14, 0); c.put8(frame.at(slot::dest_row), 0); }
     else if (compare(c, slot_s8(slot::dest_row), 8) > 0) { c.set(0, 8); c.put8(frame.at(slot::dest_row), 8); }
     if (compare(c, slot_s8(slot::dest_column)) < 0) { c.set(4, 0); c.put8(frame.at(slot::dest_column), 0); }

@@ -59,20 +59,6 @@ private:
         c.put64(frame.at(at), bits);
         return std::uint32_t(bits);
     }
-    bool less_equal(double a, double b) {
-        fpu.fcmp(0, a, b);
-        auto cr = c.cr(0);
-        if (cr & 8) cr |= 2;
-        c.set_cr(0, cr);
-        return (cr & 2) != 0;
-    }
-    bool greater_equal(double a, double b) {
-        fpu.fcmp(0, a, b);
-        auto cr = c.cr(0);
-        if (cr & 4) cr |= 2;
-        c.set_cr(0, cr);
-        return (cr & 2) != 0;
-    }
     bool less(double a, double b) { fpu.fcmp(0, a, b); return (c.cr(0) & 8) != 0; }
     bool greater(double a, double b) { fpu.fcmp(0, a, b); return (c.cr(0) & 4) != 0; }
     // A trait test on 0x10286470 after the call returning at `back`.
@@ -132,9 +118,6 @@ private:
         const double f0 = fpu.fdivs(widen(widen_site, std::int32_t(std::int16_t(r26)), true), c.f(31));
         return rnd(truncate(truncate_site, f0), back);
     }
-    // status + gift of the candidate, as a double, less the pending speed figure f30 (single).
-    double standing(std::uint32_t widen_site, bool single, std::uint32_t status_back, std::uint32_t gift_back);
-
     bool start();
     void candidate();
     void speed_factor();
@@ -293,17 +276,6 @@ void Chooser::reference_factors() {
     if (less(c.f(31), D(0x1b0))) c.set_f(31, F(0x110));
 }
 
-// The chance roll of the kinds below: the candidate's standing (status plus gift, less f30) beats f29.
-double Chooser::standing(std::uint32_t widen_site, bool single, std::uint32_t status_back, std::uint32_t gift_back) {
-    (void)status_back;
-    (void)gift_back;
-    const auto status = s8(status_110(c, cand));
-    c.set(14, u(status));
-    const auto gift = s8(trait_10d(c, cand));
-    const double f0 = widen(widen_site, gift + status, single);
-    return f0;
-}
-
 void Chooser::case_a() {
     if (kind_is_one(cand, 0x101eb514)) {
         bool alternate = false;
@@ -312,6 +284,7 @@ void Chooser::case_a() {
         }
         const auto grown = [&](std::uint32_t count_site, std::uint32_t gift_site, double addend, std::uint32_t site,
                                std::uint32_t truncate_site, std::uint32_t pow_back, bool magic_in_r14) {
+            if (!magic_in_r14) c.set(5, c.u8(r19 + u(s8(r22)) + 0x58));  // lbzx r5,r19,r3 (0x101eb5dc): the alternate path keeps the raw count
             double f1 = widen(count_site, count_in_cell(), false);
             if (magic_in_r14) c.set(14, 0x43300000);  // lis r14,0x4330 (0x101eb578)
             const double f2 = D(0x30);
