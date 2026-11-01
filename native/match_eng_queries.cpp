@@ -63,15 +63,15 @@ void set_pressure_adjustment(Cpu& c, std::uint32_t player, std::uint32_t amount)
 // 0x101d68f0: records a pending restart unless one is already held. Its last two
 // bytes come from the caller's argument area.
 void set_pending_restart(Cpu& c, std::uint32_t match, std::uint32_t kind, std::uint32_t player, std::uint32_t other,
-                         std::uint32_t mode, std::uint32_t flag, std::uint32_t column, std::uint32_t row) {
+                         std::uint32_t mode, std::uint32_t flag, std::uint32_t row, std::uint32_t column) {
     if (compare_logical(c, c.u32(match + 0x30e4)) != 0) return;
     c.put16(match + 0x30e2, kind);
     c.put32(match + 0x30e4, player);
     c.put32(match + 0x30e8, other);
     c.put8(match + 0x30ec, mode);
     c.put8(match + 0x30dc, flag);
-    c.put8(match + 0x30dd, column);
-    c.put8(match + 0x30de, row);
+    c.put8(match + restart_row, row);
+    c.put8(match + restart_column, column);
     c.put8(match + 0x30df, c.u8(c.sp() + 0x3b));
     c.put8(match + 0x30e0, c.u8(c.sp() + 0x3f));
 }
@@ -83,8 +83,8 @@ void clear_pending_restart(Cpu& c, std::uint32_t match) {
     c.put32(match + 0x30e8, 0);
     c.put8(match + 0x30ec, 0);
     c.put8(match + 0x30dc, 0);
-    c.put8(match + 0x30dd, 0xff);
-    c.put8(match + 0x30de, 0xff);
+    c.put8(match + restart_row, 0xff);
+    c.put8(match + restart_column, 0xff);
     c.put8(match + 0x30df, 0xff);
     c.put8(match + 0x30e0, 0xff);
 }
@@ -157,18 +157,18 @@ std::uint32_t player_text(Cpu& c, std::uint32_t record) {
 }
 
 // 0x101ee610: the turn cost table entry for a move, or the default when none.
-std::uint32_t turn_cost(Cpu& c, std::uint32_t match, std::uint32_t from_column, std::uint32_t from_row,
-                        std::uint32_t to_column, std::uint32_t to_row) {
+std::uint32_t turn_cost(Cpu& c, std::uint32_t match, std::uint32_t from_row, std::uint32_t from_column,
+                        std::uint32_t to_row, std::uint32_t to_column) {
     c.put32(c.sp() - 4, c.r(31));
     c.put32(c.sp() - 8, c.r(30));
-    const auto columns = s8(to_column - from_column), rows = s8(to_row - from_row);
-    if (compare(c, columns) == 0 && compare(c, rows) == 0) return result(c, u(c.i16(match + 0x7950)));
+    const auto rows = s8(to_row - from_row), columns = s8(to_column - from_column);
+    if (compare(c, rows) == 0 && compare(c, columns) == 0) return result(c, u(c.i16(match + 0x7950)));
     const auto table = c.toc(-0x641c);
-    const auto across = u(columns + 9) * 0x30;
-    c.set(8, u(rows));
+    const auto across = u(rows + 9) * 0x30;
+    c.set(8, u(columns));
     c.set(9, across);
     c.set(10, table);
-    return result(c, u(c.i16(table + across + (u(rows + 12) << 1))));
+    return result(c, u(c.i16(table + across + (u(columns + 12) << 1))));
 }
 
 // 0x101ee9c0: whether a row lies outside 2..6.
@@ -177,24 +177,24 @@ std::uint32_t outside_central_rows(Cpu& c, std::uint32_t row) {
     return result(c, compare(c, s8(row), 6) > 0);
 }
 
-// 0x101ee9f0: whether a side's row lies past its attacking limit.
-std::uint32_t beyond_row(Cpu& c, std::uint32_t side, std::uint32_t row) {
-    if (compare(c, s8(side), 1) == 0 && compare(c, s8(row), 3) < 0) return result(c, 1);
+// 0x101ee9f0: whether a side's column lies past its attacking limit.
+std::uint32_t beyond_column(Cpu& c, std::uint32_t side, std::uint32_t column) {
+    if (compare(c, s8(side), 1) == 0 && compare(c, s8(column), 3) < 0) return result(c, 1);
     if (compare(c, s8(side)) != 0) return result(c, 0);
-    return result(c, compare(c, s8(row), 8) > 0);
+    return result(c, compare(c, s8(column), 8) > 0);
 }
 
 // 0x101eea30: whether a cell is in the end area a side defends.
-std::uint32_t inside_end_area(Cpu& c, std::uint32_t side, std::uint32_t column, std::uint32_t row) {
+std::uint32_t inside_end_area(Cpu& c, std::uint32_t side, std::uint32_t row, std::uint32_t column) {
     const auto low = compare(c, s8(side), 1) == 0 ? 0xa : 0, high = low + 1;
-    if (compare(c, s8(column), 2) < 0 || compare(c, s8(column), 6) > 0) return result(c, 0);
-    if (compare(c, s8(row), low) < 0) return result(c, 0);
-    return result(c, compare(c, s8(row), high) <= 0);
+    if (compare(c, s8(row), 2) < 0 || compare(c, s8(row), 6) > 0) return result(c, 0);
+    if (compare(c, s8(column), low) < 0) return result(c, 0);
+    return result(c, compare(c, s8(column), high) <= 0);
 }
 
 // 0x101f14b0: records the last touching side and updates the two side tallies.
 void set_last_touch_side(Cpu& c, std::uint32_t match, std::uint32_t side) {
-    c.put8(match + 0x7921, side);
+    c.put8(match + last_touch_side, side);
     if (compare(c, s8(side), -1) == 0) return;
     const auto own = u(s8(side)) + 0x77bc;
     c.put8(match + own, c.u8(match + own) + 1u);
@@ -221,7 +221,7 @@ void clear_goalkeeper(Cpu& c, std::uint32_t match, std::uint32_t side) {
 std::uint32_t scheduled_flag(Cpu& c, std::uint32_t match) {
     c.put32(c.sp() - 4, c.r(31));
     c.put32(c.sp() - 8, c.r(30));
-    bool active = compare(c, c.i16(match + 0x794c), 0x1ef) != 0 && compare(c, c.i16(match + 0x794c), 0x3de) != 0;
+    bool active = compare(c, c.i16(match + period_end), 0x1ef) != 0 && compare(c, c.i16(match + period_end), 0x3de) != 0;
     if (active) active = compare(c, 1) != 0;
     else compare(c, 0);
     if (!active) return result(c, 0);
@@ -269,6 +269,6 @@ std::uint32_t past_substitution_time(Cpu& c, std::uint32_t match) {
     if (compare(c, quarter, -1) == 0) return result(c, 0);
     const auto limit = std::int16_t(quarter * 0xb);
     c.set(4, u(limit));
-    return result(c, compare(c, limit, c.i16(match + 0x7948)) < 0);
+    return result(c, compare(c, limit, c.i16(match + clock_at)) < 0);
 }
 }

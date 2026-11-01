@@ -34,9 +34,9 @@ void fill_contact_grid(Cpu& c, std::uint32_t match, std::uint32_t grid) {
                              .extension = extension, .line = line});
     };
     if (compare_logical(c, grid) == 0) assertion(0x101f7c50, frame.at(0xa2), frame.at(0x56), 0x431c);
-    c.set(3, u(s8(c.u8(match + 0x791d))));
+    c.set(3, u(s8(c.u8(match + ball_row_at))));
     c.put8(grid, c.r(3));
-    c.set(3, u(s8(c.u8(match + 0x791e))));
+    c.set(3, u(s8(c.u8(match + ball_column_at))));
     c.put8(grid + 1, c.r(3));
     for (Kept<17> side(c, 0); compare(c, s8(side), 2) < 0; side = side + 1) {
         c.put32(frame.at(0x48), match + u(s8(side) * std::int32_t(side_size)) + players_at);
@@ -48,7 +48,7 @@ void fill_contact_grid(Cpu& c, std::uint32_t match, std::uint32_t grid) {
         }
     }
     const auto entry = [&](std::uint32_t side, std::uint32_t position) { return grid + 8 + u(s8(side) * 0x58) + u(s8(position) * 8); };
-    const auto holder = [&] { return c.u32(match + 0xe000); };
+    const auto holder = [&] { return c.u32(match + pending_player); };
     const auto sub_cells = frame.at(0x5b);
     const auto roll_bytes = [&](std::uint32_t a_slot, std::uint32_t b_slot) {
         return sub_cells + u(s8(c.u8(a_slot)) * 3) + u(s8(c.u8(b_slot)));

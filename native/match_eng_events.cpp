@@ -9,7 +9,7 @@ using namespace events_detail;
 namespace {
 constexpr std::uint32_t entry_point = 0x101db340;
 // Routines called (own block: the adjust_players_* family; the others belong to other blocks).
-constexpr std::uint32_t random_at = 0x101d3c90, usable_at = 0x101d3b50, role_flags_at = 0x10289560, team_at = 0x101d3c50,
+constexpr std::uint32_t usable_at = 0x101d3b50, role_flags_at = 0x10289560, team_at = 0x101d3c50,
                         tendencies_at = 0x101df110, notice_at = 0x101d6710, caution_at = 0x101f1530,
                         by_mode_at = 0x101e1a50, ranked_at = 0x101e1bd0, weighted_at = 0x101e1640, simple_at = 0x101e2100,
                         traits_at = 0x101e22e0, award_at = 0x101f4860, action_at = 0x101f6940, shoot_out_check_at = 0x10494d20,
@@ -77,9 +77,7 @@ private:
 
     // --- Calls ---
     std::int32_t draw(std::int32_t bound, std::uint32_t back) {
-        c.set(3, u(bound));
-        match_eng::call(c, random_at, back);
-        return std::int32_t(c.r(3));
+        return std::int32_t(match_eng::draw(c, u(bound), back));
     }
     std::uint32_t usable(std::uint32_t candidate, std::uint32_t back) {
         c.set(3, candidate);
@@ -100,7 +98,7 @@ private:
         match_eng::call(c, entry, back);
     }
     void notice(std::uint32_t kind, std::uint32_t first, std::uint32_t second, std::uint32_t back) {
-        c.set({{3, c.u32(match + 0x79f4)}, {4, kind}, {5, match}, {6, first}, {7, second}, {8, 0}});
+        c.set({{3, c.u32(match + message_target)}, {4, kind}, {5, match}, {6, first}, {7, second}, {8, 0}});
         match_eng::call(c, notice_at, back);
     }
     // --- Floating point helpers (stack slot, converted integer) ---
@@ -157,8 +155,8 @@ void Simulation::run() {
     for (const auto at : {l_shootout, l_ended, l_golden}) sb(at, 0);
     tries = 0;
     t14 = 0;
-    c.put16(match + 0x7948, 0);
-    c.put16(match + 0x794c, 0x1ef);
+    c.put16(match + clock_at, 0);
+    c.put16(match + period_end, 0x1ef);
     c.set({{3, 0}, {4, 0}, {5, 0x1ef}, {6, 0}});
     for (;;) {
         c.set(6, u(s8(finished)));
@@ -217,7 +215,7 @@ void Simulation::minute() {
         c.set(4, lb(l_round));
         c.set(6, u(round));
         if (compare(c, round, 2) >= 0) break;
-        if (compare(c, s8(c.u8(match + 0x1c1))) != 0) break;
+        if (compare(c, s8(c.u8(match + extra_time_flag))) != 0) break;
         if (take_turn()) break;
         t14 = lb(l_round);
         sb(l_round, lb(l_round) + 1u);
@@ -470,7 +468,7 @@ void Simulation::rate_chances() {
             c.set_f(31, c.f32(pool + 0x10));
             return;
         }
-        c.set_f(31, c.f32(pool + (compare(c, c.i16(match + 0x7948), 0x3c) > 0 ? 0x40u : 0x44u)));
+        c.set_f(31, c.f32(pool + (compare(c, c.i16(match + clock_at), 0x3c) > 0 ? 0x40u : 0x44u)));
     };
     const auto from_difference = [&](std::int32_t d) {
         c.set_f(31, fp.fsubs(converted(0x70, u(d)), magic()));
@@ -617,7 +615,7 @@ bool Simulation::scored() {
     c.set({{3, match}, {4, u(s8(u(opposing)))}, {5, u(-0x43)}});
     match_eng::call(c, award_at, 0x101dcd08);
     if (compare(c, s8(lb(l_golden))) != 0) {
-        c.put8(match + 0x1c1, 1);
+        c.put8(match + extra_time_flag, 1);
         return true;
     }
     return false;
@@ -630,7 +628,7 @@ void Simulation::missed() {
     with_side(adjust_f_at, u(s8(u(opposing))), 0xe1, 0x101dcd40);
     if (compare(c, s8(overtime)) == 0) return;
     sb(l_44, pick(weighted_at, side, overtime, 0x101dcd5c));
-    c.set({{3, c.u32(match + 0x79f4)}, {4, 0x1fce}, {5, match}, {6, lb(l_44)}, {7, side}, {8, 0}});
+    c.set({{3, c.u32(match + message_target)}, {4, 0x1fce}, {5, match}, {6, lb(l_44)}, {7, side}, {8, 0}});
     match_eng::call(c, notice_at, 0x101dcd80);
     t14 = lb(l_44);
     const auto shooter = player(own(), s8(lb(l_44)));
@@ -641,12 +639,12 @@ void Simulation::missed() {
 // 0x101dcdfc: the clock moves a minute; at the whiles of the periods the half-time, full-time and
 // extra-time bookkeeping stores the score into the fixture and decides whether the match goes on.
 void Simulation::advance_clock() {
-    c.put16(match + 0x7948, c.u16(match + 0x7948) + 1u);
+    c.put16(match + clock_at, c.u16(match + clock_at) + 1u);
     const auto home = [&] { return c.u8(match + stat_base - 0x1fc3); };
     const auto away = [&] { return c.u8(match + stat_base - 0x1f8d); };
     const auto bit = [&](std::int32_t mask) { return compare(c, fix_flags() & mask) != 0; };
     if (compare(c, s8(lb(l_ended))) != 0) {
-        if (compare(c, c.i16(match + 0x7948), 0x5a) <= 0) {
+        if (compare(c, c.i16(match + clock_at), 0x5a) <= 0) {
             set_fb(0x43, home());
             t14 = match + stat_base;
             set_fb(0x44, away());
@@ -693,24 +691,24 @@ void Simulation::advance_clock() {
         finished = 1;
         return;
     }
-    if (compare(c, s8(c.u8(match + 0x1c1))) != 0) {
+    if (compare(c, s8(c.u8(match + extra_time_flag))) != 0) {
         set_fb(0x47, home());
         set_fb(0x48, away());
         finished = 1;
         return;
     }
-    if (compare(c, c.i16(match + 0x7948), 0x2d) == 0) {
-        c.put16(match + 0x794c, 0x3de);
+    if (compare(c, c.i16(match + clock_at), 0x2d) == 0) {
+        c.put16(match + period_end, 0x3de);
         t14 = match + stat_base;
         t15 = home();
         set_fb(0x45, home());
         set_fb(0x46, away());
         return;
     }
-    if (compare(c, c.i16(match + 0x7948), 0x5a) == 0) {
+    if (compare(c, c.i16(match + clock_at), 0x5a) == 0) {
         set_fb(0x43, home());
         set_fb(0x44, away());
-        c.put16(match + 0x794c, 0x483);
+        c.put16(match + period_end, 0x483);
         if (compare(c, fbs(0x4b), -1) != 0) {
             t15 = u(fbs(0x4b));
             const auto left = std::int32_t(t15) + fbs(0x43);
@@ -763,11 +761,11 @@ void Simulation::advance_clock() {
         finished = 1;
         return;
     }
-    if (compare(c, c.i16(match + 0x7948), 0x69) == 0) {
-        c.put16(match + 0x794c, 0x528);
+    if (compare(c, c.i16(match + clock_at), 0x69) == 0) {
+        c.put16(match + period_end, 0x528);
         return;
     }
-    if (compare(c, c.i16(match + 0x7948), 0x78) != 0) return;
+    if (compare(c, c.i16(match + clock_at), 0x78) != 0) return;
     t14 = home();
     set_fb(0x47, home());
     set_fb(0x48, away());

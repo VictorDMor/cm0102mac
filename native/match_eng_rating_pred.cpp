@@ -4,14 +4,6 @@
 namespace cm::aot::match_eng {
 using namespace guest;
 
-namespace {
-std::uint32_t draw(Cpu& c, std::uint32_t bound, std::uint32_t back) {
-    c.set(3, bound);
-    call(c, 0x101d3c90, back);
-    return c.r(3);
-}
-}  // namespace
-
 // ---------------------------------------------------------------------------
 // 0x101fd6b0
 std::uint32_t stage_number(Cpu& c, std::uint32_t pair, std::uint32_t record, std::uint32_t mode) {

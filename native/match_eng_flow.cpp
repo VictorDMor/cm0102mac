@@ -6,25 +6,15 @@ using namespace guest;
 
 namespace {
 // Match object fields (offsets from the match).
-constexpr std::uint32_t play_state = 0x7928;          // 8: play stopped for the break
-constexpr std::uint32_t shootout_stage = 0x7929;      // 1, 4 begin; 2, 5 kick; 3, 6 finish
-constexpr std::uint32_t clock_at = 0x7948;            // elapsed clock
-constexpr std::uint32_t added_time = 0x792d;
-constexpr std::uint32_t period_end = 0x794c;          // the clock mark that ends the running period
 constexpr std::uint32_t kickoff_side = 0x792c;
-constexpr std::uint32_t last_kickoff_side = 0x7924;
 constexpr std::uint32_t restart_wait = 0x1e3;
-constexpr std::uint32_t extra_time_flag = 0x1c1;
-constexpr std::uint32_t message_target = 0x79f4;
 constexpr std::uint32_t kicking_side = 0x7914;
 constexpr std::uint32_t kicks_taken = 0x7915;         // per side
 constexpr std::uint32_t kicks_left = 0x7917;          // per side
 constexpr std::uint32_t announced = 0x7919;
 constexpr std::uint32_t saved_target_byte = 0x791a;
-constexpr std::uint32_t shot_state = 0x791f;          // -1: no shot in progress
 constexpr std::uint32_t kick_order = 0x1c8;           // 2 x 11 player indexes
 constexpr std::uint32_t has_kicked = 0x7952;          // 2 x 20 flags
-constexpr std::uint32_t pending_player = 0xe000;      // word
 
 // Per-side counters at stride 0x36: the period's goals, and the shoot-out's.
 constexpr std::uint32_t period_goals(unsigned side) { return 0xe03d + 0x36 * side; }
@@ -41,15 +31,9 @@ constexpr std::int32_t rule_1 = 1, rule_two_legs = 2, rule_4 = 4, rule_20 = 0x20
 
 std::uint32_t fixture_of(Cpu& c, std::uint32_t match) { return c.u32(match + fixture_at); }
 
-// 0x101d5810: a message to the match's target object.
-void post_message(Cpu& c, std::uint32_t match, std::uint32_t id, std::uint32_t argument, std::uint32_t back) {
-    c.set({{3, c.u32(match + message_target)}, {4, id}, {5, match}, {6, argument}, {7, 0}});
-    call(c, 0x101d5810, back);
-}
-
-// The kick-off side flips: the previous one is kept, the new one is 1 when the old was 0.
+// A kick-off: the side due to kick gets the ball, and the next one is the other side's (1 when this was 0).
 std::uint32_t flip_kickoff(Cpu& c, std::uint32_t match) {
-    c.put8(match + last_kickoff_side, c.u8(match + kickoff_side));
+    c.put8(match + possession_side, c.u8(match + kickoff_side));
     const auto flipped = std::uint32_t(c.i8(match + kickoff_side) == 0);
     c.put8(match + kickoff_side, flipped);
     return flipped;
@@ -532,8 +516,7 @@ void begin_shootout(Cpu& c, std::uint32_t match, bool drawn) {
     c.set({{3, c.u32(match + message_target)}, {4, 0}});
     set_byte_0(c, c.r(3), 0);
     if (drawn) {
-        c.set(3, 2);
-        call(c, 0x101d3c90, 0x101da964);
+        draw(c, 2, 0x101da964);
         c.set(3, u(s8(c.r(3))));
         c.put8(match + kicking_side, c.r(3));
     } else {
@@ -546,7 +529,7 @@ void begin_shootout(Cpu& c, std::uint32_t match, bool drawn) {
     c.put32(match + 0xe028, 0);
     c.put32(match + 0xe024, 0);
     c.put32(match + 0xdff4, 0);
-    c.put32(match + 0xdff8, 0);
+    c.put32(match + ball_holder, 0);
     c.put8(match + 0x791c, 0xff);
     c.put8(match + 0x792f, 0xff);
     c.put16(match + 0x794e, 0);
@@ -608,8 +591,7 @@ void kick(Cpu& c, Frame& frame, std::uint32_t match, std::uint32_t mode) {
     call(c, 0x1022e3a0, 0x101dab34);
     c.put8(match + shot_state, 0);
     // A random draw with the taker's skill; the base counts how many kicks remain for the side.
-    c.set(3, u(s8(c.u8(c.u32(taker + 0x70) + 0x35))));
-    call(c, 0x101d3c90, 0x101dab4c);
+    draw(c, u(s8(c.u8(c.u32(taker + 0x70) + 0x35))), 0x101dab4c);
     Kept<26> r_score(c, 0x190 - ((u(s8(c.u8(match + kicks_left + u(side_reloaded())))) << 1) + 8) * c.r(3));
 
     Fpu fp(c);
@@ -620,8 +602,7 @@ void kick(Cpu& c, Frame& frame, std::uint32_t match, std::uint32_t mode) {
         const double scaled = fp.fmul(c.f64(pool + scale_at), fp.fsub(c.f64(frame.at(temp)), c.f64(pool + 0x60)));
         c.set_f(1, c.f64(pool + 0x60));
         c.put64(frame.at(stored), fp.fctiwz(0, scaled));
-        c.set(3, c.u32(frame.at(stored + 4)));
-        call(c, 0x101d3c90, back);
+        draw(c, c.u32(frame.at(stored + 4)), back);
         r_score = std::uint32_t(r_score) + c.r(3);
     };
     const auto announce = [&](std::uint32_t id, std::uint32_t back) {
@@ -655,8 +636,7 @@ void kick(Cpu& c, Frame& frame, std::uint32_t match, std::uint32_t mode) {
         c.set({{3, taker}, {4, frame.at(0x38)}, {5, frame.at(0x3a)}});
         call(c, 0x10252080, 0x101dad40);
         Kept<20> r_value(c, u(std::int16_t(c.r(3))));
-        c.set(3, r_score);
-        call(c, 0x101d3c90, 0x101dad4c);
+        draw(c, r_score, 0x101dad4c);
         Kept<25> r_offset(c, std::uint32_t(r_value) - c.r(3));
         c.set({{3, taker}, {4, c.u8(frame.at(0x38))}, {5, u(std::int16_t(std::uint32_t(r_offset)))},
                {6, u(c.i16(frame.at(0x3a)))}, {7, 3}, {8, 0}, {9, 0}});
@@ -671,8 +651,7 @@ void kick(Cpu& c, Frame& frame, std::uint32_t match, std::uint32_t mode) {
         const auto skilled = compare(c, s8(c.u8(taker + 0x2e)), 3) > 0;
         if (skilled) {
             const auto steady = compare(c, s8(c.u8(taker + 0x2d))) == 0;
-            c.set(3, 2);
-            call(c, 0x101d3c90, first_side ? (steady ? 0x101dadbc : 0x101dadd0) : (steady ? 0x101daf54 : 0x101daf68));
+            draw(c, 2, first_side ? (steady ? 0x101dadbc : 0x101dadd0) : (steady ? 0x101daf54 : 0x101daf68));
             // the two sides add and subtract the draw the other way round
             const auto delta = u(s8(c.r(3)));
             r_mod = (first_side == steady) ? std::uint32_t(r_mod) - delta : std::uint32_t(r_mod) + delta;
@@ -695,8 +674,7 @@ void kick(Cpu& c, Frame& frame, std::uint32_t match, std::uint32_t mode) {
             }
         }
         // The kick itself.
-        c.set(3, r_score);
-        call(c, 0x101d3c90, 0x101db0b8);
+        draw(c, r_score, 0x101db0b8);
         c.set({{3, taker}, {4, u(std::int16_t(0xc8 - c.r(3)))}});
         set_pressure_adjustment(c, taker, c.r(4));
         Kept<23> r_flag(c, 0);

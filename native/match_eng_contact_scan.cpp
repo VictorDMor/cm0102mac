@@ -104,7 +104,7 @@ void flag_star_performers(Cpu& c, std::uint32_t match, std::uint32_t side) {
         if (compare(c, std::int16_t(score), 0x2134) <= 0) continue;
         c.set(3, player);
         c.set(4, position(c, player));
-        c.set({{3, match + u(s8(side) * 0x18e0) + 0x7c6c}, {5, 0}, {6, 0x800000}});
+        c.set({{3, match + u(s8(side) * team_tactics_size) + team_tactics}, {5, 0}, {6, 0x800000}});
         c.call(mark_event, 0x101f74d0);
     }
 }
@@ -121,7 +121,7 @@ void flag_players_on_pitch(Cpu& c, std::uint32_t match, std::uint32_t side) {
         if (compare(c, s8(position(c, player)), 0) < 0) continue;
         c.set(3, player);
         c.set(4, position(c, player));
-        c.set({{3, match + u(s8(side) * 0x18e0) + 0x7c6c}, {5, 0}, {6, 0x400000}});
+        c.set({{3, match + u(s8(side) * team_tactics_size) + team_tactics}, {5, 0}, {6, 0x400000}});
         c.call(mark_event, 0x101f7570);
     }
 }

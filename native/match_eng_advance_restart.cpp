@@ -8,8 +8,6 @@ using namespace guest;
 namespace {
 // The pending restart's fields (offsets from the match).
 constexpr std::uint32_t restart_flag = 0x30dc;      // the kind of stoppage (0: none)
-constexpr std::uint32_t restart_column = 0x30dd;
-constexpr std::uint32_t restart_row = 0x30de;
 constexpr std::uint32_t restart_byte_f = 0x30df;
 constexpr std::uint32_t restart_byte_0 = 0x30e0;
 constexpr std::uint32_t restart_kind = 0x30e2;      // int16, the switch of the message
@@ -17,10 +15,6 @@ constexpr std::uint32_t restart_player = 0x30e4;
 constexpr std::uint32_t restart_other = 0x30e8;
 constexpr std::uint32_t restart_mode = 0x30ec;
 constexpr std::uint32_t restart_scratch = 0x3110;    // a word set when the kick lands in an end area
-constexpr std::uint32_t play_state = 0x7928;
-constexpr std::uint32_t last_side = 0x7924;
-constexpr std::uint32_t ball_row_at = 0x791e;
-constexpr std::uint32_t pending_holder = 0xe000;      // the player holding a pending restart
 
 // The player's side (0 or 1) as the original flips it: `cntlzw` of the side byte, shifted.
 std::uint32_t other_side(std::uint32_t side_byte) { return std::uint32_t(s8(side_byte) == 0); }
@@ -31,7 +25,7 @@ std::uint32_t side_flag_1000(Cpu& c, std::uint32_t match, std::uint32_t side) {
     c.put32(frame.at(0x58), match);
     c.put8(frame.at(0x5f), side);
     const auto record = c.u32(frame.at(0x58));
-    const auto team = record + u(s8(c.u8(frame.at(0x5f))) * 0x18e0) + 0x7c6c;
+    const auto team = record + u(s8(c.u8(frame.at(0x5f))) * team_tactics_size) + team_tactics;
     c.set({{4, record}, {3, team}});
     const auto flags = tactical_flags(c, team);
     return result(c, compare(c, std::int32_t(flags & 0x1000)) != 0);
@@ -71,21 +65,21 @@ std::uint32_t restart_still_valid(Cpu& c, std::uint32_t match) {
     c.set(3, match);
     if (compare(c, s8(pending_restart_side(c, match)), -1) <= 0) return result(c, 1);
     c.set(3, match + 0x10000);
-    if (compare_logical(c, c.u32(match + pending_holder)) == 0) return result(c, 1);
-    const auto holder = c.u32(match + pending_holder);
+    if (compare_logical(c, c.u32(match + pending_player)) == 0) return result(c, 1);
+    const auto holder = c.u32(match + pending_player);
     c.set(3, holder);
     const auto holder_side = s8(c.u8(holder + 0x27));
     c.set(4, u(holder_side));
     const auto player = c.u32(match + restart_player);
     c.set(3, player);
     if (compare(c, holder_side, s8(other_side(c.u8(player + 0x27)))) != 0) return result(c, 1);
-    const auto row = [&] { const auto value = s8(c.u8(match + ball_row_at)); c.set(3, u(value)); return value; };
-    const auto wanted = [&] { return s8(c.u8(match + restart_row)); };
+    const auto column = [&] { const auto value = s8(c.u8(match + ball_column_at)); c.set(3, u(value)); return value; };
+    const auto wanted = [&] { return s8(c.u8(match + restart_column)); };
     const auto side_of_player = [&] { c.set(3, c.u32(match + restart_player)); return s8(c.u8(c.r(3) + 0x27)); };
     bool clear = false;
-    if (compare(c, row(), wanted()) > 0) clear = compare(c, side_of_player(), 1) == 0;
+    if (compare(c, column(), wanted()) > 0) clear = compare(c, side_of_player(), 1) == 0;
     if (!clear) {
-        if (compare(c, row(), wanted()) >= 0) return result(c, 1);
+        if (compare(c, column(), wanted()) >= 0) return result(c, 1);
         if (compare(c, side_of_player(), 0) != 0) return result(c, 1);
     }
     c.set(3, match);
@@ -100,11 +94,11 @@ std::uint32_t restart_owner(Cpu& c, std::uint32_t match) {
     if (compare(c, s8(pending_restart_side(c, match)), -1) <= 0) return result(c, 1);
     const auto player_side = s8(c.u8(c.u32(match + restart_player) + 0x27));
     c.set(3, u(player_side));
-    if (compare(c, player_side, s8(c.u8(match + last_side))) == 0) return result(c, 2);
+    if (compare(c, player_side, s8(c.u8(match + possession_side))) == 0) return result(c, 2);
     // A restart of kind 8 skips the end-area test.
     if (compare(c, s8(c.u8(match + restart_flag)), 8) != 0) {
-        const auto side = u(s8(other_side(c.u8(match + last_side))));
-        c.set({{3, match}, {4, side}, {5, c.u8(match + restart_column)}, {6, c.u8(match + restart_row)}});
+        const auto side = u(s8(other_side(c.u8(match + possession_side))));
+        c.set({{3, match}, {4, side}, {5, c.u8(match + restart_row)}, {6, c.u8(match + restart_column)}});
         if (compare(c, s8(inside_end_area(c, side, c.r(5), c.r(6)))) != 0) return result(c, 2);
     }
     if (compare(c, draw(c, 0xc8, 0x101d6a4c)) == 0) return result(c, 2);
@@ -148,18 +142,18 @@ std::uint32_t resolve_restart(Cpu& c, std::uint32_t match) {
     if (compare(c, s8(c.u8(match + play_state)), 0) != 0) {
         // A restart for the side that just had the ball, behind the line it was awarded on, is dropped.
         const auto cancelled = [&] {
-            const auto last = s8(c.u8(match + last_side));
+            const auto last = s8(c.u8(match + possession_side));
             const auto holder_side = s8(side_byte(player()));
             c.set({{4, u(last)}, {6, std::uint32_t(std::countl_zero(u(holder_side)))}, {3, u(holder_side == 0)}});
             if (compare(c, last, holder_side == 0) != 0) return false;
-            const auto row = [&] { const auto value = s8(c.u8(match + ball_row_at)); c.set(6, u(value)); return value; };
-            const auto wanted = [&] { return s8(c.u8(match + restart_row)); };
-            if (compare(c, row(), wanted()) > 0) {
+            const auto column = [&] { const auto value = s8(c.u8(match + ball_column_at)); c.set(6, u(value)); return value; };
+            const auto wanted = [&] { return s8(c.u8(match + restart_column)); };
+            if (compare(c, column(), wanted()) > 0) {
                 c.set(3, side_byte(player()));
                 c.set(6, u(s8(c.r(3))));
                 if (compare(c, s8(c.r(6)), 1) == 0) return true;
             }
-            if (compare(c, row(), wanted()) >= 0) return false;
+            if (compare(c, column(), wanted()) >= 0) return false;
             c.set(3, player());
             return compare(c, s8(side_byte(c.r(3))), 0) == 0;
         };
@@ -184,15 +178,15 @@ std::uint32_t resolve_restart(Cpu& c, std::uint32_t match) {
         count_side_event(c, match, c.r(4), 0x1fb6);
         c.set(3, player());
         increment_byte(c, player() + 0x13);
-        c.set({{3, match}, {4, c.u8(match + restart_column)}});
-        set_ball_column(c, match, c.r(4));
         c.set({{3, match}, {4, c.u8(match + restart_row)}});
         set_ball_row(c, match, c.r(4));
+        c.set({{3, match}, {4, c.u8(match + restart_column)}});
+        set_ball_column(c, match, c.r(4));
         c.set({{3, match}, {4, 7}});
         set_byte_7928(c, match, 7);
         c.set(6, u(s8(side_byte(player()))));
         c.set({{3, match}, {4, opposite(player())}});
-        set_byte_7924(c, match, c.r(4));
+        set_possession_side(c, match, c.r(4));
         c.set({{3, match}, {4, 0}});
         set_word_e000(c, match, 0);
         return finish();
@@ -257,7 +251,7 @@ std::uint32_t resolve_restart(Cpu& c, std::uint32_t match) {
         by_chance = true;
     }
     if (by_chance) {
-        const auto roll = draw(c, 7, pick(0x101d5be0, 0x101d62d0)) + 2;
+        const auto roll = std::int32_t(draw(c, 7, pick(0x101d5be0, 0x101d62d0))) + 2;
         c.set(3, u(roll));
         if (compare(c, s8(c.u8(match + restart_byte_0)), roll) > 0) follow_up = 0x210a;
     }
@@ -268,7 +262,7 @@ std::uint32_t resolve_restart(Cpu& c, std::uint32_t match) {
         c.set({{3, match}, {4, 7}});
         set_byte_7928(c, match, 7);
     } else {
-        c.set({{3, match}, {4, side_byte(player())}, {5, c.u8(match + restart_column)}, {6, c.u8(match + restart_row)}});
+        c.set({{3, match}, {4, side_byte(player())}, {5, c.u8(match + restart_row)}, {6, c.u8(match + restart_column)}});
         if (compare(c, s8(inside_end_area(c, c.r(4), c.r(5), c.r(6)))) != 0) {
             outcome = 0x1f7a;
             c.set({{3, match}, {4, 5}});
@@ -284,12 +278,12 @@ std::uint32_t resolve_restart(Cpu& c, std::uint32_t match) {
             set_byte_7928(c, match, 6);
         }
     }
-    c.set({{3, match}, {4, c.u8(match + restart_column)}});
-    set_ball_column(c, match, c.r(4));
     c.set({{3, match}, {4, c.u8(match + restart_row)}});
     set_ball_row(c, match, c.r(4));
+    c.set({{3, match}, {4, c.u8(match + restart_column)}});
+    set_ball_column(c, match, c.r(4));
     c.set({{3, match}, {4, opposite(player())}});
-    set_byte_7924(c, match, c.r(4));
+    set_possession_side(c, match, c.r(4));
     c.set({{3, match}, {4, 0}});
     set_word_e000(c, match, 0);
     if (compare(c, std::int16_t(outcome), 0x1f7a) == 0) {
@@ -300,7 +294,7 @@ std::uint32_t resolve_restart(Cpu& c, std::uint32_t match) {
     if (compare(c, std::int16_t(follow_up), -1) > 0) {
         if (compare(c, draw(c, 4, pick(0x101d5d10, 0x101d63f0)), 0) == 0) {
             r_scratch = u(draw(c, 0x14, pick(0x101d5d20, 0x101d6400)));
-            const auto roll = draw(c, u(s8(c.u8(match + restart_byte_0))), pick(0x101d5d30, 0x101d6410));
+            const auto roll = std::int32_t(draw(c, u(s8(c.u8(match + restart_byte_0))), pick(0x101d5d30, 0x101d6410)));
             if (compare(c, roll, std::int32_t(std::uint32_t(r_scratch))) > 0) player_event(0x20f5, pick(0x101d5d58, 0x101d6438), 0, 0);
             player_event(0x2109, pick(0x101d5d80, 0x101d6460), c.u8(player() + 0x2f), side_byte(player()));
         }

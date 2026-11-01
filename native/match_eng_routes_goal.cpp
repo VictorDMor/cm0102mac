@@ -6,29 +6,19 @@ namespace cm::aot::match_eng {
 using namespace guest;
 
 namespace {
-constexpr std::uint32_t grid_at = 0xa08, column_size = 0x450, cell_size = 0x5c;
-constexpr std::int32_t highest_column = 8, highest_row = 11;
+constexpr std::uint32_t grid_at = 0xa08, row_size = 0x450, cell_size = 0x5c;
+constexpr std::int32_t highest_row = 8, highest_column = 11;
 constexpr std::uint32_t nearest_blocker = 0xe02c;
-constexpr std::uint32_t random_below = 0x101d3c90;
 
-// 0x10775540: |value| in r3 and the sign mask in r4; the leaf is run in line.
-std::int32_t absolute_value(Cpu& c, std::int32_t value) {
-    const auto mask = u(value >> 31);
-    c.set(4, mask);
-    const auto magnitude = (u(value) ^ mask) - mask;
-    c.set(3, magnitude);
-    return std::int32_t(magnitude);
-}
-
-bool on_pitch(Cpu& c, std::uint32_t column, std::uint32_t row) {
-    if (compare(c, s8(column), 0) < 0) return false;
-    if (compare(c, s8(column), highest_column) > 0) return false;
+bool on_pitch(Cpu& c, std::uint32_t row, std::uint32_t column) {
     if (compare(c, s8(row), 0) < 0) return false;
-    return compare(c, s8(row), highest_row) <= 0;
+    if (compare(c, s8(row), highest_row) > 0) return false;
+    if (compare(c, s8(column), 0) < 0) return false;
+    return compare(c, s8(column), highest_column) <= 0;
 }
 
-// One of the four walks of a route: toward higher or lower numbers, along the columns or the
-// rows. They differ in where they keep their bytes on the stack and where the calls return to.
+// One of the four walks of a route: toward higher or lower numbers, along the rows or the
+// columns. They differ in where they keep their bytes on the stack and where the calls return to.
 struct Leg {
     std::uint32_t start_slot, step_slot, end_slot;  // stack bytes: the error at the start and after each cell, the other axis' step
     unsigned float_register;                        // holds the cell's distance
@@ -38,10 +28,10 @@ struct Leg {
 };
 // Which registers a route keeps its walk in, and how the two routes differ.
 struct Route {
-    unsigned start_column, start_row, target_column, target_row, cell, side;
+    unsigned start_row, start_column, target_row, target_column, cell, side;
     bool bounds_first;   // the pitch is checked before the error is advanced, too
     bool skips_target;   // the target cell itself is not asked, unless the walk has no length
-    Leg legs[4];         // up, along the columns; up, along the rows; down, along the columns; down, along the rows
+    Leg legs[4];         // up, along the rows; up, along the columns; down, along the rows; down, along the columns
 };
 
 // The walk from the start cell to the target, one cell per step of the longer side (a line
@@ -50,50 +40,50 @@ struct Route {
 template <Route R>
 class Walk {
 public:
-    Walk(Cpu& c, Frame& frame, std::uint32_t match, std::uint32_t start_column, std::uint32_t start_row,
-         std::uint32_t target_column, std::uint32_t target_row)
-        : c(c), frame(frame), match(c, match), start_column(c, start_column), start_row(c, start_row),
-          target_column(c, target_column), target_row(c, target_row), cell(c, c.r(R.cell)), side(c, c.r(R.side)),
-          column_span(c, c.r(27)), row_span(c, c.r(26)), error(c, c.r(29)), y(c, c.r(30)), x(c, c.r(31)),
-          column_step(c, c.r(16)) {}
+    Walk(Cpu& c, Frame& frame, std::uint32_t match, std::uint32_t start_row, std::uint32_t start_column,
+         std::uint32_t target_row, std::uint32_t target_column)
+        : c(c), frame(frame), match(c, match), start_row(c, start_row), start_column(c, start_column),
+          target_row(c, target_row), target_column(c, target_column), cell(c, c.r(R.cell)), side(c, c.r(R.side)),
+          row_span(c, c.r(27)), column_span(c, c.r(26)), error(c, c.r(29)), y(c, c.r(30)), x(c, c.r(31)),
+          row_step(c, c.r(16)) {}
 
     // The distances to the target along each axis.
     void measure() {
-        column_span = u(s8(absolute_value(c, s8(target_column) - s8(start_column))));
         row_span = u(s8(absolute_value(c, s8(target_row) - s8(start_row))));
+        column_span = u(s8(absolute_value(c, s8(target_column) - s8(start_column))));
     }
     bool nowhere_to_go() {
-        return compare(c, s8(column_span)) == 0 && compare(c, s8(row_span)) == 0;
+        return compare(c, s8(row_span)) == 0 && compare(c, s8(column_span)) == 0;
     }
     // Whether to walk toward higher numbers: the start lies before the target along the longer side.
     bool upward() {
-        if (compare(c, s8(column_span), s8(row_span)) >= 0 && compare(c, s8(start_column), s8(target_column)) < 0) return true;
-        if (compare(c, s8(row_span), s8(column_span)) > 0 && compare(c, s8(start_row), s8(target_row)) < 0) return true;
+        if (compare(c, s8(row_span), s8(column_span)) >= 0 && compare(c, s8(start_row), s8(target_row)) < 0) return true;
+        if (compare(c, s8(column_span), s8(row_span)) > 0 && compare(c, s8(start_column), s8(target_column)) < 0) return true;
         return false;
     }
-    std::uint32_t along_columns() { return compare(c, s8(column_span), s8(row_span)) >= 0; }
+    std::uint32_t along_rows() { return compare(c, s8(row_span), s8(column_span)) >= 0; }
 
     template <class Ask>
-    std::uint32_t run(bool up, bool columns, Ask&& ask) {
-        const Leg& leg = R.legs[(up ? 0 : 2) + (columns ? 0 : 1)];
-        // The step on the shorter axis: a byte on the stack for the column walks (added zero-extended), a register for the row walks.
-        if (columns) {
-            c.put8(frame.at(std::int32_t(leg.step_slot)), compare(c, s8(target_row) - s8(start_row)) < 0 ? 0xff : 1);
+    std::uint32_t run(bool up, bool rows, Ask&& ask) {
+        const Leg& leg = R.legs[(up ? 0 : 2) + (rows ? 0 : 1)];
+        // The step on the shorter axis: a byte on the stack for the row walks (added zero-extended), a register for the column walks.
+        if (rows) {
+            c.put8(frame.at(std::int32_t(leg.step_slot)), compare(c, s8(target_column) - s8(start_column)) < 0 ? 0xff : 1);
         } else {
-            column_step = compare(c, s8(target_column) - s8(start_column)) < 0 ? u(-1) : 1;
+            row_step = compare(c, s8(target_row) - s8(start_row)) < 0 ? u(-1) : 1;
         }
-        x = start_column;
-        y = start_row;
+        x = start_row;
+        y = start_column;
         error = 0;
         c.put8(frame.at(std::int32_t(leg.start_slot)), error);
-        const auto major = [&] { return columns ? std::uint32_t(x) : std::uint32_t(y); };
-        const auto target_major = [&] { return columns ? std::uint32_t(target_column) : std::uint32_t(target_row); };
-        const auto major_span = [&] { return columns ? std::uint32_t(column_span) : std::uint32_t(row_span); };
-        const auto minor_span = [&] { return columns ? std::uint32_t(row_span) : std::uint32_t(column_span); };
+        const auto major = [&] { return rows ? std::uint32_t(x) : std::uint32_t(y); };
+        const auto target_major = [&] { return rows ? std::uint32_t(target_row) : std::uint32_t(target_column); };
+        const auto major_span = [&] { return rows ? std::uint32_t(row_span) : std::uint32_t(column_span); };
+        const auto minor_span = [&] { return rows ? std::uint32_t(column_span) : std::uint32_t(row_span); };
         // After each cell: one step along the longer side, and the shorter side's share builds up.
         const auto advance = [&] {
             const auto next = major() + (up ? 1u : u(-1));
-            if (columns) x = next; else y = next;
+            if (rows) x = next; else y = next;
             error = std::uint32_t(error) + minor_span();
             c.put8(frame.at(std::int32_t(leg.end_slot)), error);
         };
@@ -103,24 +93,20 @@ public:
             if (R.bounds_first && !on_pitch(c, x, y)) return result(c, 0);
             if (compare(c, s8(error), s8(major_span())) >= 0) {
                 error = std::uint32_t(error) - major_span();
-                if (columns) y = std::uint32_t(y) + c.u8(frame.at(std::int32_t(leg.step_slot)));
-                else x = std::uint32_t(x) + std::uint32_t(column_step);
+                if (rows) y = std::uint32_t(y) + c.u8(frame.at(std::int32_t(leg.step_slot)));
+                else x = std::uint32_t(x) + std::uint32_t(row_step);
             }
-            if (R.skips_target && compare(c, s8(x), s8(target_column)) == 0 && compare(c, s8(y), s8(target_row)) == 0 &&
-                (compare(c, s8(column_span)) != 0 || compare(c, s8(row_span)) != 0))
+            if (R.skips_target && compare(c, s8(x), s8(target_row)) == 0 && compare(c, s8(y), s8(target_column)) == 0 &&
+                (compare(c, s8(row_span)) != 0 || compare(c, s8(column_span)) != 0))
                 continue;  // the target cell itself is not asked
             if (!on_pitch(c, x, y)) return result(c, 0);
-            cell = match + u(s8(x)) * column_size + u(s8(y)) * cell_size + grid_at;
+            cell = match + u(s8(x)) * row_size + u(s8(y)) * cell_size + grid_at;
             const auto distance = [&] {
-                enter(c, leg.back_distance, {match, x, y, start_column, start_row});
-                c.set_f(leg.float_register, cell_distance(c, x, y, start_column, start_row));
+                enter(c, leg.back_distance, {match, x, y, start_row, start_column});
+                c.set_f(leg.float_register, cell_distance(c, x, y, start_row, start_column));
             };
-            const auto draw = [&] {
-                c.set(3, 2);
-                call(c, random_below, leg.back_draw);
-                side = u(s8(c.r(3)));
-            };
-            if (leg.draws_first) { draw(); distance(); } else { distance(); draw(); }
+            const auto pick_side = [&] { side = u(s8(draw(c, 2, leg.back_draw))); };
+            if (leg.draws_first) { pick_side(); distance(); } else { distance(); pick_side(); }
             if (ask(std::uint32_t(side), false, leg)) return c.r(3);
             if (ask(u(s8(side) == 0), true, leg)) return c.r(3);
         }
@@ -130,18 +116,18 @@ public:
     Cpu& c;
     Frame& frame;
     Kept<28> match;
-    Kept<R.start_column> start_column;
     Kept<R.start_row> start_row;
-    Kept<R.target_column> target_column;
+    Kept<R.start_column> start_column;
     Kept<R.target_row> target_row;
+    Kept<R.target_column> target_column;
     Kept<R.cell> cell;
     Kept<R.side> side;
-    Kept<27> column_span;
-    Kept<26> row_span;
+    Kept<27> row_span;
+    Kept<26> column_span;
     Kept<29> error;
     Kept<30> y;
     Kept<31> x;
-    Kept<16> column_step;
+    Kept<16> row_step;
 };
 
 constexpr Route first_route{22, 23, 17, 21, 24, 25, false, false, {
@@ -190,21 +176,21 @@ Style classify(Cpu& c, std::int32_t v) {
 }
 }
 
-std::uint32_t first_blocker_to_goal(Cpu& c, std::uint32_t match, std::uint32_t column, std::uint32_t row, std::uint32_t r6,
+std::uint32_t first_blocker_to_goal(Cpu& c, std::uint32_t match, std::uint32_t row, std::uint32_t column, std::uint32_t r6,
                                     std::uint32_t attacking_down, std::uint32_t r8, std::uint32_t r9) {
     Frame frame(c, 0x101ef9a0, 0xb0, {.first_gpr = 16, .first_fpr = 28});
     keep(c, {{18, r6}, {19, r8}, {20, r9}});
     c.put8(frame.at(0xdb), attacking_down);
     c.set(3, match + 0x10000);
     c.put32(match + nearest_blocker, 0);
-    // The target is the middle column of the far goal line: row 11 when the flag is 1, else row 0.
-    const std::uint32_t target_row = compare(c, s8(c.u8(frame.at(0xdb))), 1) == 0 ? 0xb : 0;
-    Walk<first_route> walk(c, frame, match, column, row, 4, target_row);
+    // The target is the middle row of the far goal line: column 11 when the flag is 1, else column 0.
+    const std::uint32_t target_column = compare(c, s8(c.u8(frame.at(0xdb))), 1) == 0 ? 0xb : 0;
+    Walk<first_route> walk(c, frame, match, row, column, 4, target_column);
     walk.measure();
     if (walk.nowhere_to_go()) return result(c, 0);
     const bool up = walk.upward();
-    const bool columns = walk.along_columns();
-    return walk.run(up, columns, [&](std::uint32_t side, bool second, const Leg& leg) {
+    const bool rows = walk.along_rows();
+    return walk.run(up, rows, [&](std::uint32_t side, bool second, const Leg& leg) {
         c.set_f(1, c.f(leg.float_register));
         enter(c, second ? leg.back_second : leg.back_first, {match, side, walk.cell});
         c.set({{7, r6}, {8, 1}, {9, r8}, {10, r9}});
@@ -217,24 +203,22 @@ std::uint32_t first_blocker_to_goal(Cpu& c, std::uint32_t match, std::uint32_t c
     });
 }
 
-std::uint32_t first_taker_to_cell(Cpu& c, std::uint32_t match, std::uint32_t column, std::uint32_t row, std::uint32_t target_column,
-                                  std::uint32_t target_row, std::uint32_t flag, std::uint32_t r9, std::uint32_t r10) {
+std::uint32_t first_taker_to_cell(Cpu& c, std::uint32_t match, std::uint32_t row, std::uint32_t column, std::uint32_t target_row,
+                                  std::uint32_t target_column, std::uint32_t flag, std::uint32_t r9, std::uint32_t r10) {
     Frame frame(c, 0x101f0090, 0xb0, {.first_gpr = 16, .first_fpr = 28});
     keep(c, {{18, r9}, {17, r10}});
     c.put8(frame.at(0xdf), flag);
-    Walk<second_route> walk(c, frame, match, column, row, target_column, target_row);
+    Walk<second_route> walk(c, frame, match, row, column, target_row, target_column);
     // The number the players are asked about, by the flag byte.
     Kept<25> number(c, c.r(25));
     switch (classify(c, c.i8(frame.at(0xdf)))) {
     case Style::fixed: number = 4; break;
     case Style::roll:
-        c.set(3, 4);
-        call(c, random_below, 0x101f01ac);
+        draw(c, 4, 0x101f01ac);
         number = u(s8(c.r(3) + 1));
         break;
     case Style::chance:
-        c.set(3, u(std::int16_t(r9)) + 0xbb8);
-        call(c, random_below, 0x101f0174);
+        draw(c, u(std::int16_t(r9)) + 0xbb8, 0x101f0174);
         // 5 on a draw other than 0, else 4, through a stack word.
         c.put32(frame.at(0x44), compare(c, std::int32_t(c.r(3))) != 0 ? 5 : 4);
         number = u(s8(c.u32(frame.at(0x44))));
@@ -243,8 +227,8 @@ std::uint32_t first_taker_to_cell(Cpu& c, std::uint32_t match, std::uint32_t col
     }
     walk.measure();
     const bool up = walk.upward();
-    const bool columns = walk.along_columns();
-    return walk.run(up, columns, [&](std::uint32_t side, bool second, const Leg& leg) {
+    const bool rows = walk.along_rows();
+    return walk.run(up, rows, [&](std::uint32_t side, bool second, const Leg& leg) {
         c.set_f(1, c.f(leg.float_register));
         enter(c, second ? leg.back_second : leg.back_first, {match, side, walk.cell});
         c.set({{7, r9}, {8, number}, {9, r10}, {10, 1}});

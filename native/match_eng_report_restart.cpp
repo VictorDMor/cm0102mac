@@ -7,11 +7,7 @@ using namespace guest;
 
 namespace {
 // Match object fields. A cell of the pitch is (across 0..8, along 0..11).
-constexpr std::uint32_t last_side_at = 0x7924;        // side that last touched the ball (-1: none)
-constexpr std::uint32_t across_at = 0x791d, along_at = 0x791e;  // the ball's cell
-constexpr std::uint32_t shot_state_at = 0x791f;       // -1: no shot in progress
 constexpr std::uint32_t direction_at = 0x7927;
-constexpr std::uint32_t pending_player_at = 0xe000;
 
 constexpr std::uint32_t kStrings = 0x45;  // pool offsets of the assertion texts
 constexpr std::uint32_t kFormat = 0x53, kTitle = 0x60;
@@ -36,17 +32,11 @@ void take_restart(Cpu& c, std::uint32_t player, std::uint32_t back) {
     c.set(3, player);
     c.call(0x1022e3a0, back);
 }
-// 0x101d3c90: a random number below `bound`.
-std::uint32_t draw(Cpu& c, std::uint32_t bound, std::uint32_t back) {
-    c.set(3, bound);
-    call(c, 0x101d3c90, back);
-    return c.r(3);
-}
 // 0x1022e710: releases the player the match was holding.
 void release_pending(Cpu& c, std::uint32_t match, std::uint32_t back) {
-    const auto pending = c.u32(match + pending_player_at);
+    const auto pending = c.u32(match + pending_player);
     if (compare_logical(c, pending) != 0) {
-        c.set(3, c.u32(match + pending_player_at));
+        c.set(3, c.u32(match + pending_player));
         c.call(0x1022e710, back);
     }
 }
@@ -94,12 +84,12 @@ void restart_state_2(Cpu& c, std::uint32_t match) {
     Frame frame(c, 0x101e50c0, 0x90, {.first_gpr = 20});
     Kept<31> self(c, match);
     Kept<25> pool(c, c.toc(-0x52cc));
-    Kept<26> last_side(c, c.u8(match + last_side_at));
+    Kept<26> last_side(c, c.u8(match + possession_side));
     count_restart(c, match, last_side, 0x1fb8);
-    if (compare(c, c.i8(match + across_at), 0) < 0) c.put8(match + across_at, 0);
-    if (compare(c, c.i8(match + across_at), 8) > 0) c.put8(match + across_at, 8);
-    if (compare(c, c.i8(match + along_at), 0) < 0) c.put8(match + along_at, 0);
-    else if (compare(c, c.i8(match + along_at), 0xb) > 0) c.put8(match + along_at, 0xb);
+    if (compare(c, c.i8(match + ball_row_at), 0) < 0) c.put8(match + ball_row_at, 0);
+    if (compare(c, c.i8(match + ball_row_at), 8) > 0) c.put8(match + ball_row_at, 8);
+    if (compare(c, c.i8(match + ball_column_at), 0) < 0) c.put8(match + ball_column_at, 0);
+    else if (compare(c, c.i8(match + ball_column_at), 0xb) > 0) c.put8(match + ball_column_at, 0xb);
     c.set({{3, match}, {4, last_side}, {5, 2}, {6, 0}});
     call(c, 0x101f3a30, 0x101e5170);
     Kept<28> taker(c, c.r(3));
@@ -111,7 +101,7 @@ void restart_state_2(Cpu& c, std::uint32_t match) {
             if (compare(c, s8(position_of), 0) < 0) continue;
             Kept<23> second(c, second_side_player(c, player));
             const auto cell = formation_byte_at(c, team_table(c, match, second), position_of, attacking,
-                                                u(s8(c.u8(match + across_at))) * 0xc + u(s8(c.u8(match + along_at))));
+                                                u(s8(c.u8(match + ball_row_at))) * 0xc + u(s8(c.u8(match + ball_column_at))));
             Kept<21> across(c, across_of(cell));
             Kept<20> along(c, along_of(cell));
             send_to(c, player, across, along, 0x101e52a0);
@@ -119,9 +109,9 @@ void restart_state_2(Cpu& c, std::uint32_t match) {
         }
     }
     if (compare_logical(c, taker) != 0) {
-        send_to(c, taker, c.u8(match + across_at), c.u8(match + along_at), 0x101e52ec);
+        send_to(c, taker, c.u8(match + ball_row_at), c.u8(match + ball_column_at), 0x101e52ec);
         take_restart(c, taker, 0x101e52f4);
-        const auto heading = compare(c, c.i8(match + across_at)) == 0 ? 0x5au : 0x10eu;
+        const auto heading = compare(c, c.i8(match + ball_row_at)) == 0 ? 0x5au : 0x10eu;
         c.set({{3, taker}, {4, u(std::int16_t(heading))}});
         set_action_19e(c, taker, u(std::int16_t(heading)));
         c.set({{3, taker}, {4, 0xc8}});
@@ -162,10 +152,10 @@ void restart_state_3(Cpu& c, std::uint32_t match) {
     Kept<29> flag_at(c, c.toc(-0x7bac));
     Kept<30> text_at(c, c.toc(-0x7ba8));
     Kept<31> pool(c, c.toc(-0x52cc));
-    c.set(4, count_restart(c, match, c.u8(match + last_side_at), 0x1fb9));
+    c.set(4, count_restart(c, match, c.u8(match + possession_side), 0x1fb9));
     c.put8(match + direction_at, 3);
-    Kept<20> kicking(c, c.u8(match + last_side_at));
-    c.put8(match + last_side_at, 0xff);
+    Kept<20> kicking(c, c.u8(match + possession_side));
+    c.put8(match + possession_side, 0xff);
     Kept<16> spread_base(c, c.r(16));  // 4 plus a random number, kept by the spreads
     Kept<17> last_seen(c, c.r(17));
     Kept<26> along(c, c.r(26));
@@ -241,7 +231,7 @@ void restart_state_3(Cpu& c, std::uint32_t match) {
     };
     const auto near_side = [&](std::uint32_t back) {
         const auto limit = 4 - draw(c, 2, back);
-        return compare(c, c.i8(match + across_at), std::int32_t(limit)) > 0;
+        return compare(c, c.i8(match + ball_row_at), std::int32_t(limit)) > 0;
     };
     if (compare(c, s8(kicking), 0) != 0) {
         if (near_side(0x101e58a4)) go(0, 0, 0x101e58c8, 0x101e58d0);
@@ -249,7 +239,7 @@ void restart_state_3(Cpu& c, std::uint32_t match) {
     } else {
         if (near_side(0x101e5910)) go(0, 0xb, 0x101e5934, 0x101e593c);
         else go(8, 0xb, 0x101e595c, 0x101e5964);
-        const auto heading = compare(c, c.i8(match + across_at)) == 0 ? 0x10eu : 0x5au;
+        const auto heading = compare(c, c.i8(match + ball_row_at)) == 0 ? 0x10eu : 0x5au;
         c.set({{3, taker}, {4, u(std::int16_t(heading))}});
         set_action_19e(c, taker, u(std::int16_t(heading)));
     }
@@ -261,15 +251,15 @@ void restart_state_4(Cpu& c, std::uint32_t match) {
     Frame frame(c, 0x101e6420, 0xa0, {.first_gpr = 17});
     Kept<31> self(c, match);
     Kept<24> pool(c, c.toc(-0x52cc));
-    Kept<27> last_side(c, c.u8(match + last_side_at));
+    Kept<27> last_side(c, c.u8(match + possession_side));
     Kept<22> chosen(c, compare(c, s8(last_side)) != 0 ? c.u32(match + 0xe020) : c.u32(match + 0xe01c));
     Kept<29> taker(c, chosen);
     if (compare(c, s8(last_side), 1) == 0) {
-        c.put8(match + across_at, 4);
-        c.put8(match + along_at, 0xb);
+        c.put8(match + ball_row_at, 4);
+        c.put8(match + ball_column_at, 0xb);
     } else if (compare(c, s8(last_side)) == 0) {
-        c.put8(match + across_at, 4);
-        c.put8(match + along_at, 0);
+        c.put8(match + ball_row_at, 4);
+        c.put8(match + ball_column_at, 0);
     }
     release_pending(c, match, 0x101e64b8);
     Kept<17> last_seen(c, c.r(17));
@@ -299,12 +289,12 @@ void restart_state_4(Cpu& c, std::uint32_t match) {
         }
     }
     if (compare_logical(c, taker) != 0) {
-        c.put8(match + shot_state_at, 0);
-        send_to(c, taker, c.u8(match + across_at), c.u8(match + along_at), 0x101e65fc);
+        c.put8(match + shot_state, 0);
+        send_to(c, taker, c.u8(match + ball_row_at), c.u8(match + ball_column_at), 0x101e65fc);
         take_restart(c, taker, 0x101e6604);
         c.set({{3, taker}, {4, 0xc8}});
         set_pressure_adjustment(c, taker, 0xc8);
-        const auto heading = compare(c, c.i8(match + along_at)) == 0 ? 0u : 0xb4u;
+        const auto heading = compare(c, c.i8(match + ball_column_at)) == 0 ? 0u : 0xb4u;
         c.set({{3, taker}, {4, heading}});
         set_action_19e(c, taker, heading);
     } else {
@@ -319,15 +309,15 @@ void restart_state_4(Cpu& c, std::uint32_t match) {
 void restart_state_5(Cpu& c, std::uint32_t match) {
     Frame frame(c, 0x101e66b0, 0x50, {.first_gpr = 26});
     Kept<30> self(c, match);
-    Kept<27> last_side(c, c.u8(match + last_side_at));
+    Kept<27> last_side(c, c.u8(match + possession_side));
     c.set({{3, match}, {4, last_side}, {5, 5}, {6, 0}});
     call(c, 0x101f3a30, 0x101e66dc);
     Kept<28> taker(c, c.r(3));
     take_restart(c, taker, 0x101e66e8);
-    c.put8(match + across_at, 4);
+    c.put8(match + ball_row_at, 4);
     Kept<26> along(c, compare(c, s8(last_side)) != 0 ? 1u : 0xau);
-    c.put8(match + along_at, along);
-    send_to(c, taker, c.u8(match + across_at), c.u8(match + along_at), 0x101e6720);
+    c.put8(match + ball_column_at, along);
+    send_to(c, taker, c.u8(match + ball_row_at), c.u8(match + ball_column_at), 0x101e6720);
     for (Kept<29> index(c, 0); compare(c, index, 0x14) < 0; index = index + 1) {
         // The first side's player of this index, then the second side's.
         const auto settle = [&](std::uint32_t side, std::uint32_t designated_at, std::uint32_t designated_along,
@@ -364,10 +354,10 @@ void restart_state_8(Cpu& c, std::uint32_t match) {
     const auto constants = c.toc(-0x52c8);
     c.set(3, constants);
     c.set_f(31, c.f32(constants + 0xcc));  // the start for the minimum distance
-    Kept<20> last_side(c, c.u8(match + last_side_at));
-    c.put8(match + last_side_at, 0xff);
-    c.put8(match + across_at, 4);
-    c.put8(match + along_at, compare(c, s8(last_side)) != 0 ? 6 : 5);
+    Kept<20> last_side(c, c.u8(match + possession_side));
+    c.put8(match + possession_side, 0xff);
+    c.put8(match + ball_row_at, 4);
+    c.put8(match + ball_column_at, compare(c, s8(last_side)) != 0 ? 6 : 5);
     Kept<21> nearest(c, 0);
     Kept<23> across(c, c.r(23));
     Kept<28> along(c, c.r(28));
@@ -411,7 +401,7 @@ void restart_state_8(Cpu& c, std::uint32_t match) {
                 report(c, 0x101e6b38, pool, frame.at(0x41), frame.at(0x3c), 0x26bf);
                 abort_after_report(c, 0x101e6b7c);
             }
-            c.set({{3, candidate}, {4, c.u8(match + across_at)}, {5, c.u8(match + along_at)}});
+            c.set({{3, candidate}, {4, c.u8(match + ball_row_at)}, {5, c.u8(match + ball_column_at)}});
             c.call(0x1022e760, 0x101e6b8c);
             c.set_f(30, c.f(1));
             fpu.fcmp(0, c.f(30), c.f(31));
@@ -443,18 +433,18 @@ void restart_state_6(Cpu& c, std::uint32_t match) {
     Kept<28> flag_at(c, c.toc(-0x7bac));
     Kept<30> text_at(c, c.toc(-0x7ba8));
     Kept<31> pool(c, c.toc(-0x52cc));
-    const auto counter = u(s8(c.u8(match + last_side_at)) * 0x36) + 0x10000 - 0x1fba;
+    const auto counter = u(s8(c.u8(match + possession_side)) * 0x36) + 0x10000 - 0x1fba;
     Kept<15> scratch(c, c.u8(match + counter));
     c.set(3, counter);
     c.put8(match + counter, scratch + 1u);
-    Kept<20> last_side(c, c.u8(match + last_side_at));
-    c.put8(match + last_side_at, 0xff);
+    Kept<20> last_side(c, c.u8(match + possession_side));
+    c.put8(match + possession_side, 0xff);
     release_pending(c, match, 0x101e5a18);
     scratch = u(s8(last_side));
     bool near_own_goal = false;
-    if (compare(c, scratch) == 0 && compare(c, s8(c.u8(match + along_at)), 3) < 0) near_own_goal = true;
+    if (compare(c, scratch) == 0 && compare(c, s8(c.u8(match + ball_column_at)), 3) < 0) near_own_goal = true;
     if (!near_own_goal && compare(c, s8(last_side), 1) == 0) {
-        const auto along_now = c.u8(match + along_at);
+        const auto along_now = c.u8(match + ball_column_at);
         c.set(4, along_now);
         near_own_goal = compare(c, s8(along_now), 8) > 0;
     }
@@ -478,8 +468,8 @@ void restart_state_6(Cpu& c, std::uint32_t match) {
                     across = cell.across;
                     along = cell.along;
                     scratch = u(s8(across));
-                    if (compare(c, std::int32_t(scratch), s8(c.u8(match + across_at))) == 0) {
-                        scratch = c.u8(match + along_at);
+                    if (compare(c, std::int32_t(scratch), s8(c.u8(match + ball_row_at))) == 0) {
+                        scratch = c.u8(match + ball_column_at);
                         if (compare(c, s8(along), s8(scratch)) == 0 && compare(c, s8(attacking)) == 0) {
                             if (compare(c, s8(last_side)) == 0) {
                                 if (compare(c, s8(along), 0xb) < 0) along = along + 1;
@@ -510,11 +500,11 @@ void restart_state_6(Cpu& c, std::uint32_t match) {
     } else {
         // Elsewhere the ball's cell is pulled in, and the players spread around a base cell
         // (`base_across`, `base_along`) a few cells ahead of the ball.
-        if (compare(c, s8(c.u8(match + along_at)), 0xc) >= 0) c.put8(match + along_at, 0xb);
-        else if (compare(c, s8(c.u8(match + along_at)), 0) < 0) c.put8(match + along_at, 0);
-        c.set(4, c.u8(match + across_at));
-        if (compare(c, s8(c.u8(match + across_at)), 9) >= 0) c.put8(match + across_at, 8);
-        else if (compare(c, s8(c.u8(match + across_at)), 0) < 0) c.put8(match + across_at, 0);
+        if (compare(c, s8(c.u8(match + ball_column_at)), 0xc) >= 0) c.put8(match + ball_column_at, 0xb);
+        else if (compare(c, s8(c.u8(match + ball_column_at)), 0) < 0) c.put8(match + ball_column_at, 0);
+        c.set(4, c.u8(match + ball_row_at));
+        if (compare(c, s8(c.u8(match + ball_row_at)), 9) >= 0) c.put8(match + ball_row_at, 8);
+        else if (compare(c, s8(c.u8(match + ball_row_at)), 0) < 0) c.put8(match + ball_row_at, 0);
         Kept<25> base_across(c, c.r(25));
         Kept<24> base_along(c, c.r(24));
         const auto base = [&](bool second_draw_in_r5, std::uint32_t first_back, std::uint32_t second_back, std::uint32_t direction,
@@ -524,12 +514,12 @@ void restart_state_6(Cpu& c, std::uint32_t match) {
             const auto second = draw(c, 2, second_back);
             if (second_draw_in_r5) c.set(5, second);
             base_across = u(std::int8_t(scratch + 4 - second));
-            base_along = u(std::int8_t(c.u8(match + along_at) + u(along_shift)));
+            base_along = u(std::int8_t(c.u8(match + ball_column_at) + u(along_shift)));
         };
         if (compare(c, s8(last_side)) == 0) {
-            if (compare(c, s8(c.u8(match + along_at)), 6) > 0) base(false, 0x101e5c98, 0x101e5ca4, 7, 4);
+            if (compare(c, s8(c.u8(match + ball_column_at)), 6) > 0) base(false, 0x101e5c98, 0x101e5ca4, 7, 4);
             else base(true, 0x101e5cd0, 0x101e5cdc, 0xff, 3);
-        } else if (compare(c, s8(c.u8(match + along_at)), 5) < 0) {
+        } else if (compare(c, s8(c.u8(match + ball_column_at)), 5) < 0) {
             base(false, 0x101e5d1c, 0x101e5d28, 7, -4);
         } else {
             base(false, 0x101e5d54, 0x101e5d60, 0xff, -3);
@@ -572,7 +562,7 @@ void restart_state_6(Cpu& c, std::uint32_t match) {
                             }
                         } else {
                             switch (role_case(c, kind, 4, 3)) {
-                            case 2: spread(base_across, 0x101e5fe4, 0x101e5ff0); along = u(std::int8_t(0xb - draw(c, 2, 0x101e5ffc))); break;
+                            case 2: spread(base_across, 0x101e5fe4, 0x101e5ff0); along = u(std::int8_t(0xb - draw(c, 2, 0x101e6000))); break;
                             case 1: scratch = draw(c, 2, 0x101e5fc0) + 4; across = u(std::int8_t(scratch - draw(c, 2, 0x101e5fcc))); along = 6; break;
                             default: from_grid(c.u32(match + 0xdff0), false);
                             }
@@ -588,7 +578,7 @@ void restart_state_6(Cpu& c, std::uint32_t match) {
                             }
                         } else {
                             switch (role_case(c, kind, 4, 3)) {
-                            case 2: spread(base_across, 0x101e61e4, 0x101e61f0); along = u(std::int8_t(draw(c, 2, 0x101e6200))); break;
+                            case 2: spread(base_across, 0x101e61e4, 0x101e61f0); along = u(std::int8_t(draw(c, 2, 0x101e6204))); break;
                             case 1: scratch = draw(c, 2, 0x101e61c0) + 4; across = u(std::int8_t(scratch - draw(c, 2, 0x101e61cc))); along = 5; break;
                             default: from_grid(c.u32(match + 0xdfec), true);
                             }
@@ -620,14 +610,14 @@ void restart_state_6(Cpu& c, std::uint32_t match) {
             }
         }
     }
-    c.set({{3, match}, {4, last_side}, {5, c.u8(match + 0x7928)}, {6, 0}});
+    c.set({{3, match}, {4, last_side}, {5, c.u8(match + play_state)}, {6, 0}});
     call(c, 0x101f3a30, 0x101e639c);
     Kept<16> taker(c, c.r(3));
-    c.put8(match + shot_state_at, 0);
-    send_to(c, taker, c.u8(match + across_at), c.u8(match + along_at), 0x101e63b8);
+    c.put8(match + shot_state, 0);
+    send_to(c, taker, c.u8(match + ball_row_at), c.u8(match + ball_column_at), 0x101e63b8);
     take_restart(c, taker, 0x101e63c0);
     c.put32(frame.at(0x38), compare(c, s8(last_side)) == 0 ? 0xau : 1u);
-    c.set({{3, taker}, {4, c.u8(match + across_at)}, {5, c.u8(match + along_at)}, {6, 4}, {7, u(s8(c.u32(frame.at(0x38))))}});
+    c.set({{3, taker}, {4, c.u8(match + ball_row_at)}, {5, c.u8(match + ball_column_at)}, {6, 4}, {7, u(s8(c.u32(frame.at(0x38))))}});
     c.call(0x10237830, 0x101e63fc);
     c.set({{3, taker}, {4, 0xc8}});
     set_pressure_adjustment(c, taker, 0xc8);

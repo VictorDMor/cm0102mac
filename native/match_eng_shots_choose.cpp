@@ -60,15 +60,13 @@ std::uint32_t choose_candidate_weighted(Cpu& c, std::uint32_t match, std::uint32
         }
         if (compare(c, s8(c.u8(frame.at(0xb3))), 0) != 0) {
             const auto bound = truncated(c, fp, frame.at(0x40), c.f32(player + 0xcc));
-            c.set(3, bound);
-            call(c, 0x101d3c90, 0x101e1864);
+            draw(c, bound, 0x101e1864);
             c.set_f(30, from_int_single(c, fp, frame.at(0x38), c.r(3), reduction()));
         } else if (compare(c, std::int32_t(draw(c, 7, 0x101e188c)), 0) == 0) {
             const double bias = c.f32(pool + 0x3c);
             c.set_f(1, bias);
             const auto bound = truncated(c, fp, frame.at(0x38), fp.fadds(bias, c.f32(player + 0xa4)));
-            c.set(3, bound);
-            call(c, 0x101d3c90, 0x101e18b0);
+            draw(c, bound, 0x101e18b0);
             c.set_f(30, from_int_single(c, fp, frame.at(0x40), c.r(3), reduction()));
         } else if (compare(c, std::int32_t(draw(c, 3, 0x101e18d8)), 0) != 0) {
             const double f9 = c.f64(table + 0x258), f7 = c.f64(table + 0x1c0), f5 = c.f64(table + 0x260);
@@ -80,8 +78,7 @@ std::uint32_t choose_candidate_weighted(Cpu& c, std::uint32_t match, std::uint32
             sum = fp.multiply_add(0x101e1914, f7, c.f32(player + 0xa0), sum);
             sum = fp.fadd(c.f32(player + 0x9c), sum);
             sum = fp.fadd(f9, sum);
-            c.set(3, truncated(c, fp, frame.at(0x38), sum));
-            call(c, 0x101d3c90, 0x101e1930);
+            draw(c, truncated(c, fp, frame.at(0x38), sum), 0x101e1930);
             c.set_f(30, fp.fmuls(c.f(31), from_int_single(c, fp, frame.at(0x40), c.r(3), reduction())));
         } else {
             const double base = c.f32(pool + 0x28);
@@ -92,15 +89,13 @@ std::uint32_t choose_candidate_weighted(Cpu& c, std::uint32_t match, std::uint32
             double sum = fp.fadds(c.f32(player + 0xac), second);
             sum = fp.fadds(first, sum);
             sum = fp.fadds(base, sum);
-            c.set(3, truncated(c, fp, frame.at(0x38), sum));
-            call(c, 0x101d3c90, 0x101e1998);
+            draw(c, truncated(c, fp, frame.at(0x38), sum), 0x101e1998);
             c.set_f(30, fp.fmuls(c.f(31), from_int_single(c, fp, frame.at(0x40), c.r(3), reduction())));
         }
         const double limit = c.f32(pool + 0xac);
         fp.fcmp(0, c.f(30), limit);
         if (c.f(30) > limit) {
-            c.set(3, 5);
-            call(c, 0x101d3c90, 0x101e19cc);
+            draw(c, 5, 0x101e19cc);
             c.set_f(30, fp.fsubs(c.f(30), from_int_single(c, fp, frame.at(0x38), c.r(3), reduction())));
         }
         if (compare(c, s8(best), -1) != 0) {
@@ -140,8 +135,7 @@ std::uint32_t choose_candidate_by_mode(Cpu& c, std::uint32_t match, std::uint32_
         c.set(3, player);
         c.set(4, 0);
         c.call(trait_of, two ? 0x101e1afc : 0x101e1b3c);
-        c.set(3, u(s8(c.r(3)) + (two ? 0x19 : 5)));
-        call(c, 0x101d3c90, two ? 0x101e1b08 : 0x101e1b48);
+        draw(c, u(s8(c.r(3)) + (two ? 0x19 : 5)), two ? 0x101e1b08 : 0x101e1b48);
         const auto table = c.toc(-0x52c4);
         c.set(4, table);
         const double magic = c.f64(table + magic_at);
@@ -233,8 +227,7 @@ std::uint32_t choose_candidate_ranked(Cpu& c, std::uint32_t match, std::uint32_t
             c.set_f(1, fp.fsubs(c.f32(player + 0xa4), c.f32(player + 0x9c)));
             const double rest = fp.fsubs(c.f(1), c.f32(player + 0xb0));
             const auto bound = truncated(c, fp, frame.at(0x40), fp.fadds(lead, rest));
-            c.set(3, bound);
-            call(c, 0x101d3c90, 0x101e1fc8);
+            draw(c, bound, 0x101e1fc8);
             c.set_f(30, from_int_single(c, fp, frame.at(0x38), c.r(3), reduction()));
         } else if (compare(c, std::int32_t(draw(c, 5, 0x101e1ff0)), 0) != 0) {
             const double lead = c.f32(pool + 0x8);
@@ -242,15 +235,13 @@ std::uint32_t choose_candidate_ranked(Cpu& c, std::uint32_t match, std::uint32_t
             c.set_f(1, c.f32(player + 0xf4));
             sum = fp.fadds(c.f32(player + 0x90), sum);
             sum = fp.fadds(lead, sum);
-            c.set(3, truncated(c, fp, frame.at(0x38), sum));
-            call(c, 0x101d3c90, 0x101e2024);
+            draw(c, truncated(c, fp, frame.at(0x38), sum), 0x101e2024);
             c.set_f(30, fp.fmuls(c.f(31), from_int_single(c, fp, frame.at(0x40), c.r(3), reduction())));
         } else {
             const double lead = c.f32(pool + 0x8);
             c.set_f(1, lead);
             const double sum = fp.fadds(lead, c.f32(player + 0xac));
-            c.set(3, truncated(c, fp, frame.at(0x38), sum));
-            call(c, 0x101d3c90, 0x101e2064);
+            draw(c, truncated(c, fp, frame.at(0x38), sum), 0x101e2064);
             c.set_f(30, fp.fmuls(c.f(31), from_int_single(c, fp, frame.at(0x40), c.r(3), reduction())));
         }
         if (compare(c, s8(best), -1) != 0) {
@@ -376,7 +367,7 @@ void role_nibbles(Cpu& c, std::uint32_t match, std::uint32_t player, std::uint32
     keep(c, {{30, match}, {31, player}, {28, low_out}, {29, high_out}});
     // The offset of the rating byte in the side's table: by match mode 0 and 1 the side decides, any other mode has one.
     std::uint32_t offset = 0x35;
-    const auto mode = s8(c.u8(match + 0x7924));
+    const auto mode = s8(c.u8(match + possession_side));
     const auto side = [&] { return s8(c.u8(player + 0x27)); };
     if (compare(c, mode, 0) == 0) offset = compare(c, side(), 0) == 0 ? 0x9f : 0x30;
     else if (compare(c, mode, 1) == 0) offset = compare(c, side(), 1) == 0 ? 0xa4 : 0x3b;

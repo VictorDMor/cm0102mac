@@ -6,12 +6,7 @@ namespace cm::aot::match_eng {
 using namespace guest;
 
 namespace {
-constexpr std::uint32_t pending_at = 0xe000;     // the player about to act
-constexpr std::uint32_t last_touch_at = 0x7924;  // the side that touched the ball last
-constexpr std::uint32_t shot_state_at = 0x791f;
-constexpr std::uint32_t team_tactics = 0x7c6c, team_tactics_size = 0x18e0;
 constexpr std::uint32_t player_side = 0x27;
-constexpr std::uint32_t random_below = 0x101d3c90;
 constexpr std::uint32_t player_flags = 0x102864b0;  // 64 trait bits of a player: r3 high word, r4 low word
 
 // Frame slots of 0x101e8950 (relative to the new stack pointer).
@@ -35,8 +30,8 @@ private:
     // Pool constants (r31: single floats, r29: doubles).
     double F(std::uint32_t at) const { return c.f32(c.r(31) + at); }
     double D(std::uint32_t at) const { return c.f64(c.r(29) + at); }
-    std::uint32_t pending() const { return c.u32(match + pending_at); }
-    std::int32_t side() const { return s8(c.u8(match + last_touch_at)); }
+    std::uint32_t pending() const { return c.u32(match + pending_player); }
+    std::int32_t side() const { return s8(c.u8(match + possession_side)); }
     std::uint32_t other_side() const { return std::uint32_t(side() == 0); }
     std::int32_t kind() const { return s8(c.u8(frame.caller() + 0x3b)); }
     std::uint32_t slot_u8(std::uint32_t at) const { return c.u8(frame.at(at)); }
@@ -48,9 +43,7 @@ private:
 
     void call_to(std::uint32_t entry, std::uint32_t back) { c.call(entry, back); }
     std::uint32_t rnd(std::uint32_t n, std::uint32_t back) {
-        c.set(3, n);
-        call_to(random_below, back);
-        return c.r(3);
+        return draw(c, n, back);
     }
     // A routine of this module not yet reconstructed (or another block's).
     void other_routine(std::uint32_t entry, std::uint32_t back) {
@@ -156,7 +149,7 @@ bool Receiver::start() {
     c.set(3, 0);
     c.put8(frame.at(slot::special_b), 0);
     c.set(3, 0);
-    c.put8(match + 0x7928, 0);
+    c.put8(match + play_state, 0);
     c.set_f(29, F(0xb0));
     // The noise scale (f29) depends on the pending player's competition.
     const auto id = [&] { return c.u32(c.u32(c.u32(pending() + 0x6c) + 0xc) + 0x68); };
@@ -267,7 +260,7 @@ void Receiver::special_traits() {
         c.set(5, col);
         c.set(15, u(side()));
         enter(c, 0x101e8e24, {match, other_side(), col});
-        const auto beyond = beyond_row(c, other_side(), col);
+        const auto beyond = beyond_column(c, other_side(), col);
         if (compare(c, s8(beyond)) != 0) bump(r19, 0x2710);
         else bump(r19, 0xbb8);
     }
@@ -488,7 +481,7 @@ void Receiver::crowding() {
 
 // Whether the destination lies in an end area, how many opponents are near, and what that costs.
 void Receiver::exposure() {
-    const auto side_raw = c.u8(match + last_touch_at);
+    const auto side_raw = c.u8(match + possession_side);
     enter(c, 0x101e9730, {match, other_side(), r17, r26});
     c.put8(frame.at(slot::end_other), inside_end_area(c, other_side(), r17, r26));
     enter(c, 0x101e9748, {match, side_raw, r17, r26});
@@ -675,7 +668,7 @@ void Receiver::trait_scores() {
     c.set(15, c.r(3));  // or r15,r3,r3: the trait word's high half
     if (flag_40) {
         bool extra = false;
-        c.set(4, c.u8(match + last_touch_at));
+        c.set(4, c.u8(match + possession_side));
         c.set(5, u(side()));
         if (compare(c, side()) == 0) {
             const auto r = s8(row(c, cand));
@@ -697,7 +690,7 @@ void Receiver::trait_scores() {
     c.set(14, trait_low & 0x100);  // and r14,r4,r0
     if (flag_100) {
         bool extra = false;
-        c.set(7, c.u8(match + last_touch_at));
+        c.set(7, c.u8(match + possession_side));
         c.set(5, u(side()));
         if (compare(c, side()) == 0) {
             const auto r = s8(row(c, cand));
@@ -705,7 +698,7 @@ void Receiver::trait_scores() {
             extra = compare(c, r, 6) >= 0;
         }
         if (!extra) {
-            c.set(0, c.u8(match + last_touch_at));
+            c.set(0, c.u8(match + possession_side));
             c.set(3, u(side()));
             if (compare(c, side(), 1) == 0) {
                 c.set(4, row(c, cand));
@@ -737,11 +730,11 @@ bool Receiver::no_progress() {
 // The distance figure f31 as adjusted for where the origin and the destination lie, and the
 // cost of moving the ball backward.
 void Receiver::distance_adjustments() {
-    const auto side_raw = [&] { return c.u8(match + last_touch_at); };
+    const auto side_raw = [&] { return c.u8(match + possession_side); };
     const auto origin_row_s8 = [&] { return s8(c.u8(frame.caller() + 0x1f)); };
     const auto edge = [&](std::uint32_t entry_back, std::uint32_t column) {
         enter(c, entry_back, {match, side_raw(), column});
-        const auto answer = s8(beyond_row(c, side_raw(), column));
+        const auto answer = s8(beyond_column(c, side_raw(), column));
         return answer;
     };
     bool settled = false;
@@ -766,7 +759,7 @@ void Receiver::distance_adjustments() {
             }
             if (far) {
                 enter(c, 0x101ea150, {match, side_raw(), r26});
-                c.set(15, beyond_row(c, side_raw(), r26));
+                c.set(15, beyond_column(c, side_raw(), r26));
                 if (compare(c, s8(c.r(15))) != 0 && compare(c, s8(r17), 2) < 0) {
                     c.set_f(31, F(0xc));
                     bump(r27, -0x7d0);
@@ -785,7 +778,7 @@ void Receiver::distance_adjustments() {
                 }
                 if (near) {
                     enter(c, 0x101ea1d8, {match, side_raw(), r26});
-                    const auto answer = s8(beyond_row(c, side_raw(), r26));
+                    const auto answer = s8(beyond_column(c, side_raw(), r26));
                     c.set(15, u(answer));
                     if (compare(c, answer) != 0 && compare(c, s8(r17), 6) > 0) {
                         c.set_f(31, F(0xc));
@@ -854,11 +847,11 @@ void Receiver::distance_adjustments() {
 
 // Penalties for a pass that goes toward the side's own goal, or into a crowd.
 void Receiver::lane_scores() {
-    const auto side_raw = [&] { return c.u8(match + last_touch_at); };
+    const auto side_raw = [&] { return c.u8(match + possession_side); };
     bool handled = false;
     if (no_progress() && less(c.f(31), D(0x270))) {
         enter(c, 0x101ea4f4, {match, side_raw(), r26});
-        const auto beyond = beyond_row(c, side_raw(), r26);
+        const auto beyond = beyond_column(c, side_raw(), r26);
         if (compare(c, s8(beyond)) == 0) {
             bool open = compare(c, s8(adjustment_byte(c, pending()))) != 0;
             if (!open) open = compare(c, s8(trait_10e(c, pending()))) != 0;
@@ -912,7 +905,7 @@ void Receiver::lane_scores() {
             };
             weigh(gift() + 10, 0x64, 0x6c);
             enter(c, 0x101ea6dc, {match, side_raw(), r26});
-            const auto beyond = beyond_row(c, side_raw(), r26);
+            const auto beyond = beyond_column(c, side_raw(), r26);
             if (compare(c, s8(beyond)) != 0) {
                 c.set({{3, match}, {4, cand}});
                 other_routine(0x101eecb0, 0x101ea6f4);
@@ -1074,7 +1067,7 @@ void Receiver::choose_kind() {
         c.set(3, raw_kind());
         c.put8(frame.at(slot::chosen), raw_kind());
     } else {
-        const auto in_state = [&] { return s8(c.u8(match + shot_state_at)); };
+        const auto in_state = [&] { return s8(c.u8(match + shot_state)); };
         if (compare(c, in_state(), 4) == 0) {
             c.set_f(1, F(0x18));
             if (less_equal(c.f(30), F(0x18))) {
@@ -1168,8 +1161,8 @@ std::uint32_t Receiver::run() {
     const auto rw = origin_row_byte();
     enter(c, 0x101e8bd0, {match, other, rw, origin_column});
     c.put8(frame.at(slot::origin_other), inside_end_area(c, other, rw, origin_column));
-    enter(c, 0x101e8be8, {match, c.u8(match + last_touch_at), rw, origin_column});
-    c.put8(frame.at(slot::origin_own), inside_end_area(c, c.u8(match + last_touch_at), rw, origin_column));
+    enter(c, 0x101e8be8, {match, c.u8(match + possession_side), rw, origin_column});
+    c.put8(frame.at(slot::origin_own), inside_end_area(c, c.u8(match + possession_side), rw, origin_column));
     c.set(14, column(c, pending()));
     c.set(5, row(c, pending()));
     enter(c, 0x101e8c30, {match, other_side(), c.r(5), c.r(14), 1});

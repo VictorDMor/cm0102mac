@@ -8,8 +8,6 @@ using namespace tactics_a;
 namespace {
 constexpr std::uint32_t queue_count_at = 0x792e;   // byte
 constexpr std::uint32_t queue_at = 0x79f8;         // up to 40 player words
-constexpr std::uint32_t play_state_at = 0x7928;
-constexpr std::uint32_t ball_holder_at = 0xe000;   // word
 constexpr std::uint32_t pinned_at = 0x7c68;        // word: a player that always comes first
 
 // Pool offsets (doubles at TOC -0x52c4).
@@ -53,8 +51,7 @@ void build_actor_queue(Cpu& c, std::uint32_t match) {
     auto player = held<30>(c);
     while (compare(c, s8(index), 0x14) < 0) {
         // Both sides' player of this index join, in a random order.
-        c.set(3, 2);
-        call(c, 0x101d3c90, 0x101d90b8);
+        draw(c, 2, 0x101d90b8);
         side = u(s8(c.r(3)));
         player = match + u(std::int32_t(side) * 0x2350) + u(s8(index) * std::int32_t(player_size)) + players_at;
         if (compare(c, s8(position(c, player))) >= 0) enqueue(c, match, player);
@@ -80,8 +77,8 @@ std::int32_t compare_actors(Cpu& c, std::uint32_t first, std::uint32_t second) {
     Kept<30> b(c, c.u32(second));
     const auto current = [&] { return c.toc(-0x3910); };
     const auto early = [&](std::uint32_t player, std::uint32_t answer) {
-        if (compare(c, c.i8(current() + play_state_at)) == 0) return false;
-        const auto holder = c.u32(current() + ball_holder_at);
+        if (compare(c, c.i8(current() + play_state)) == 0) return false;
+        const auto holder = c.u32(current() + pending_player);
         if (compare_logical(c, player, holder) != 0) return false;
         c.set(3, answer);
         return true;

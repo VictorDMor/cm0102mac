@@ -7,9 +7,6 @@ using namespace tactics_a;
 
 namespace {
 // Match fields (offsets from the match).
-constexpr std::uint32_t ball_holder_at = 0xe000;    // word
-constexpr std::uint32_t second_holder_at = 0xdff8;  // word
-constexpr std::uint32_t play_state_at = 0x7928;
 constexpr std::uint32_t cells_at = 0xa08;           // 9 rows of 0x450 bytes, 12 columns of 0x5c each
 constexpr std::uint32_t row_stride = 0x450, column_stride = 0x5c, side_stride = 0x2c;
 constexpr std::uint32_t cell_counts = 0x58;         // per side, after the 2 x 11 player words
@@ -152,17 +149,17 @@ std::uint32_t marker_available(Cpu& c, std::uint32_t match, std::uint32_t player
     }
     if (compare(c, std::int32_t(std::uint32_t(elsewhere))) != 0 && compare(c, c.i8(player + 0x2c), 2) < 0) youngster = 1;
     if (compare(c, std::int32_t(std::uint32_t(youngster))) != 0 &&
-        compare_logical(c, player, c.u32(match + ball_holder_at)) != 0)
+        compare_logical(c, player, c.u32(match + pending_player)) != 0)
         not_holder = 1;
     if (compare(c, std::int32_t(std::uint32_t(not_holder))) != 0 &&
-        compare_logical(c, player, c.u32(match + second_holder_at)) != 0)
+        compare_logical(c, player, c.u32(match + ball_holder)) != 0)
         not_second = 1;
     if (compare(c, std::int32_t(std::uint32_t(not_second))) != 0) {
         c.set(3, player);
         call(c, 0x102373c0, 0x101d8210);
         if (compare(c, s8(c.r(3))) != 0) flagged = 1;
     }
-    if (compare(c, std::int32_t(std::uint32_t(flagged))) != 0 && compare(c, c.i8(match + play_state_at)) == 0)
+    if (compare(c, std::int32_t(std::uint32_t(flagged))) != 0 && compare(c, c.i8(match + play_state)) == 0)
         available = 1;
     return result(c, u(s8(available)));
 }
@@ -250,8 +247,7 @@ void rate_goal_pressure(Cpu& c, std::uint32_t match, std::uint32_t side_argument
             }
         }
     }
-    c.set(3, 0xf);
-    call(c, 0x101d3c90, 0x101d904c);
+    draw(c, 0xf, 0x101d904c);
     c.set(3, c.r(3) + 0x1e);
     if (compare(c, std::int16_t(weighted), std::int32_t(c.r(3))) > 0) {
         c.set({{4, 1}, {3, u(s8(side_argument))}});

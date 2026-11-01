@@ -29,8 +29,7 @@ private:
     std::uint32_t outcome() const { return c.u8(at(0x44)); }
     std::int32_t outcome_s() const { return s8(outcome()); }
     void bl(std::uint32_t address, std::uint32_t entry) {
-        if (entry >= 0x101d0000 && entry < 0x10200000) match_eng::call(c, entry, address + 4);
-        else c.call(entry, address + 4);
+        match_eng::call(c, entry, address + 4);
     }
     std::uint32_t team(std::uint32_t player, std::uint32_t address) {  // 0x10283690
         c.set(3, player);
@@ -38,22 +37,18 @@ private:
         return c.r(3);
     }
     std::uint32_t number(std::uint32_t player) { return byte_2f(c, player); }  // 0x101d6770
-    std::uint32_t random(std::uint32_t bound, std::uint32_t address) {         // 0x101d3c90
-        c.set(3, bound);
-        bl(address, 0x101d3c90);
-        return c.r(3);
-    }
+    std::uint32_t random(std::uint32_t bound, std::uint32_t address) { return draw(c, bound, address + 4); }  // 0x101d3c90
     void set_phase(std::uint32_t value) {  // 0x101d66b0
         c.set({{3, match}, {4, value}});
         set_byte_7928(c, match, value);
     }
     // 0x10201180 and 0x101d6710: a match message with players' teams and numbers.
     void say(std::uint32_t address, std::uint32_t id, std::uint32_t r6, std::uint32_t r7, std::uint32_t r8, std::uint32_t r9) {
-        leave(c, {{3, c.u32(match + 0x79f4)}, {4, id}, {5, match}, {6, r6}, {7, r7}, {8, r8}, {9, r9}, {10, 0}});
+        leave(c, {{3, c.u32(match + message_target)}, {4, id}, {5, match}, {6, r6}, {7, r7}, {8, r8}, {9, r9}, {10, 0}});
         bl(address, 0x10201180);
     }
     void say_short(std::uint32_t address, std::uint32_t id, std::uint32_t r6, std::uint32_t r7, std::uint32_t r8) {
-        leave(c, {{3, c.u32(match + 0x79f4)}, {4, id}, {5, match}, {6, r6}, {7, r7}, {8, r8}});
+        leave(c, {{3, c.u32(match + message_target)}, {4, id}, {5, match}, {6, r6}, {7, r7}, {8, r8}});
         bl(address, 0x101d6710);
     }
     // 0x101d5810: the message to the match's commentary target.
@@ -112,8 +107,8 @@ private:
         return false;
     }
     void ball_to_cell() {
-        c.put8(match + 0x791d, row);
-        c.put8(match + 0x791e, column);
+        c.put8(match + ball_row_at, row);
+        c.put8(match + ball_column_at, column);
     }
     void attempt_first();
     void attempt_second();
@@ -288,7 +283,7 @@ void Contest::announce_first() {
     ball_to_cell();
     keep(c, {{15, std::uint32_t(s8(team(n, 0x101ed0c4)) == 0)}});
     c.set({{3, match}, {4, x8(c.r(15))}});
-    set_byte_7924(c, match, c.r(4));
+    set_possession_side(c, match, c.r(4));
     c.set({{3, match}, {4, 0}});
     set_word_e000(c, match, 0);
     if (compare(c, s16(c.r(27)), 0x1f7a) == 0) { keep(c, {{15, team(m, 0x101ed0fc)}}); comment(0x101ed11c, c.r(27), c.r(15)); }
@@ -386,7 +381,7 @@ void Contest::announce_second() {
     ball_to_cell();
     const auto flag_of_rival = [&](std::uint32_t at_team) { return u(s8(team(m, at_team)) == 0); };
     c.set({{3, match}, {4, flag_of_rival(0x101ed8d8)}});
-    set_byte_7924(c, match, c.r(4));
+    set_possession_side(c, match, c.r(4));
     c.set({{3, match}, {4, 0}});
     set_word_e000(c, match, 0);
     if (compare(c, s16(c.r(27)), 0x1f7a) == 0) { keep(c, {{13, flag_of_rival(0x101ed910)}}); comment(0x101ed93c, c.r(27), c.r(13)); }
@@ -481,7 +476,7 @@ void Contest::announce_single() {
     const auto flag = [&](std::uint32_t at_team) { return u(s8(team(n, at_team)) == 0); };
     c.set(4, flag(0x101ede2c));
     c.set(3, match);
-    set_byte_7924(c, match, c.r(4));
+    set_possession_side(c, match, c.r(4));
     c.set({{3, match}, {4, 0}});
     set_word_e000(c, match, 0);
     if (compare(c, s16(c.r(27)), 0x1f7a) == 0) { keep(c, {{14, flag(0x101ede64)}}); comment(0x101ede94, c.r(27), c.r(14)); }
@@ -653,7 +648,7 @@ std::uint32_t Contest::run() {
     c.put8(at(0x4b), 0xff);
     c.put8(at(0x4a), 0xff);
     if (compare(c, s8(row)) < 0 || compare(c, s8(column)) < 0 || compare(c, s8(row), 9) >= 0 || compare(c, s8(column), 12) >= 0) {
-        leave(c, {{3, match}, {4, c.u8(match + 0x7921)}});
+        leave(c, {{3, match}, {4, c.u8(match + last_touch_side)}});
         bl(0x101ec908, 0x101f0c00);
         return result(c, 0);
     }

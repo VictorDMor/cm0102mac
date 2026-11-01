@@ -214,9 +214,12 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
 // stack image, so they must match at every call, also where no callee on this path saved them.
 // Each side runs in a child recording those registers at each `bl` the module makes through the
 // dispatcher; a same-page call or an in-place owner shows on one side only and isn't paired. The
-// k-th call from one site to one target on each side are compared. Findings don't stop the run.
+// k-th call from one site to one target on each side are compared, as are how many calls each
+// site made and the order of the sites both sides show. A return address the rewrite alone uses
+// that doesn't follow a `bl` to that target is wrong. Findings don't stop the run.
 struct TracedCall {
     std::uint32_t back, target;
+    bool after_bl;
     std::array<std::uint32_t, 19> gprs;
     std::array<std::uint64_t, 18> fprs;
 };
@@ -230,12 +233,10 @@ bool trace_probe(State& s) {
     if (back >= 0x101d16a4 && back <= 0x101fef60 && traced_calls->size() < 2'000'000) {
         const auto word = std::uint32_t(s.memory.read<4>(back - 4));
         const auto offset = std::int32_t(word << 6) >> 6 & ~3;
-        if ((word & 0xfc000003) == 0x48000001 && back - 4 + std::uint32_t(offset) == s.pc) {
-            TracedCall call{back, s.pc, {}, {}};
-            for (unsigned n = 13; n < 32; ++n) call.gprs[n - 13] = std::uint32_t(s.r<4>(guest::reg::gpr(n)));
-            for (unsigned n = 14; n < 32; ++n) call.fprs[n - 14] = s.r<8>(guest::reg::fpr(n));
-            traced_calls->push_back(call);
-        }
+        TracedCall call{back, s.pc, (word & 0xfc000003) == 0x48000001 && back - 4 + std::uint32_t(offset) == s.pc, {}, {}};
+        for (unsigned n = 13; n < 32; ++n) call.gprs[n - 13] = std::uint32_t(s.r<4>(guest::reg::gpr(n)));
+        for (unsigned n = 14; n < 32; ++n) call.fprs[n - 14] = s.r<8>(guest::reg::fpr(n));
+        traced_calls->push_back(call);
     }
     return scripted_services(s);
 }
@@ -287,16 +288,62 @@ std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner r
     return calls;
 }
 struct TraceFinding { std::uint64_t count = 0; std::uint64_t original = 0, rewrite = 0; };
+constexpr unsigned wrong_return = 200, wrong_count = 201, wrong_order = 202;
+bool trace_corrupted = false;
 std::map<std::tuple<std::uint32_t, std::uint32_t, unsigned>, TraceFinding> trace_findings;
 std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint64_t> traced_sites;
 std::uint64_t traced_pairs = 0;
 void compare_traces(State& s, std::uint32_t entry) {
-    const auto original = trace_run(s, entry, bounded_original), rewrite = trace_run(s, entry, bounded_rewrite);
-    std::map<std::pair<std::uint32_t, std::uint32_t>, std::vector<const TracedCall*>> sites;
+    const auto original = trace_run(s, entry, bounded_original);
+    auto rewrite = trace_run(s, entry, bounded_rewrite);
+    using Site = std::pair<std::uint32_t, std::uint32_t>;
+    std::map<Site, std::size_t> original_calls;
+    for (const auto& call : original) ++original_calls[{call.back, call.target}];
+    if (options.corrupt_trace && !trace_corrupted) {
+        // The control: out of order, one call too many, and one returning nowhere a bl does.
+        const auto shown = [&](const TracedCall& call) { return original_calls.count({call.back, call.target}) != 0; };
+        const auto first = std::ranges::find_if(rewrite, shown);
+        const auto second = std::find_if(first, rewrite.end(), [&](const TracedCall& call) {
+            return shown(call) && (call.back != first->back || call.target != first->target);
+        });
+        if (second != rewrite.end()) {
+            std::iter_swap(first, second);
+            auto extra = *first;
+            rewrite.push_back(extra);
+            extra.target += 4;
+            extra.after_bl = false;
+            rewrite.push_back(extra);
+            trace_corrupted = true;
+        }
+    }
+    std::map<Site, std::vector<const TracedCall*>> sites;
     for (const auto& call : rewrite) sites[{call.back, call.target}].push_back(&call);
-    std::map<std::pair<std::uint32_t, std::uint32_t>, std::size_t> next;
+    const auto record = [&](Site site, unsigned kind, std::uint64_t left, std::uint64_t right) {
+        auto& finding = trace_findings[{site.first, site.second, kind}];
+        if (!finding.count++) { finding.original = left; finding.rewrite = right; }
+    };
+    for (const auto& [site, calls] : sites) {
+        const auto seen = original_calls.find(site);
+        if (seen == original_calls.end()) {
+            if (!calls.front()->after_bl) record(site, wrong_return, 0, calls.size());
+        } else if (seen->second != calls.size()) {
+            record(site, wrong_count, seen->second, calls.size());
+        }
+    }
+    const auto next_shown = [&](const std::vector<TracedCall>& calls, std::size_t& at, const auto& shown) {
+        while (at < calls.size() && !shown(Site{calls[at].back, calls[at].target})) ++at;
+        return at < calls.size();
+    };
+    const auto both = [&](Site site) { return sites.count(site) != 0 && original_calls.count(site) != 0; };
+    for (std::size_t a = 0, b = 0; next_shown(original, a, both) && next_shown(rewrite, b, both); ++a, ++b)
+        if (original[a].back != rewrite[b].back || original[a].target != rewrite[b].target) {
+            record({original[a].back, original[a].target}, wrong_order, rewrite[b].back, rewrite[b].target);
+            break;
+        }
+    std::map<Site, std::size_t> next;
     for (const auto& call : original) {
         const auto key = std::make_pair(call.back, call.target);
+        if (!call.after_bl) continue;
         const auto found = sites.find(key);
         if (found == sites.end()) continue;
         auto& k = next[key];
@@ -318,6 +365,12 @@ void print_trace_findings() {
     std::cout << "call_trace_pairs=" << traced_pairs << " sites=" << traced_sites.size() << " findings=" << trace_findings.size() << '\n';
     for (const auto& [key, finding] : trace_findings) {
         const auto& [back, target, reg] = key;
+        if (reg >= wrong_return) {
+            std::cout << "call " << hex_address(back - 4) << " -> " << hex_address(target)
+                      << (reg == wrong_return ? " returns where no bl of the original does" : reg == wrong_count ? " count" : " out of order")
+                      << " x" << finding.count << " original " << std::hex << finding.original << " rewrite " << finding.rewrite << std::dec << '\n';
+            continue;
+        }
         std::cout << "call " << hex_address(back - 4) << " -> " << hex_address(target) << (reg >= 100 ? " f" : " r") << (reg >= 100 ? reg - 100 : reg)
                   << " x" << finding.count << " original " << std::hex << finding.original << " rewrite " << finding.rewrite << std::dec << '\n';
     }
@@ -628,8 +681,12 @@ int main(int argc, char** argv) {
         }
         const bool complete = summary(&checker);
         if (options.call_trace) print_trace_findings();
-        if (options.corrupt_trace) return trace_findings.empty() ? 1 : 0;
+        if (options.corrupt_trace) {
+            std::set<unsigned> kinds;
+            for (const auto& [key, finding] : trace_findings) kinds.insert(std::get<2>(key) < 100 ? 0 : std::get<2>(key));
+            return kinds.count(wrong_return) && kinds.count(wrong_count) && kinds.count(wrong_order) && kinds.count(0) ? 0 : 1;
+        }
         if (options.corrupt) { std::cerr << "The negative control found no difference\n"; return 1; }
-        return checker.differences() || !complete ? 1 : 0;
+        return checker.differences() || !complete || !trace_findings.empty() ? 1 : 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return options.corrupt && std::string_view(error.what()).find("differs") != std::string_view::npos ? 0 : 2; }
 }

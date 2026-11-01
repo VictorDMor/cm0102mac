@@ -88,9 +88,7 @@ std::uint32_t situation_met(Cpu& c, std::uint32_t match, std::uint32_t side, std
     const auto fail = [&] { return result(c, 0); };
     const auto pass = [&] { return result(c, 1); };
     const auto draw = [&](std::uint32_t bound, std::uint32_t back) {
-        c.set(3, bound);
-        call(c, 0x101d3c90, back);
-        return std::int32_t(c.r(3));
+        return std::int32_t(match_eng::draw(c, bound, back));
     };
     const auto rating = [&](std::uint32_t back) {
         enter(c, back, {match, side});
@@ -125,7 +123,7 @@ std::uint32_t situation_met(Cpu& c, std::uint32_t match, std::uint32_t side, std
         c.set(4, c.u32(team + 0x30));
         return compare_logical(c, c.r(4), c.u32(fixture() + 0x14)) == 0;
     };
-    const auto clock = [&] { return c.i16(match + 0x7948); };
+    const auto clock = [&] { return c.i16(match + clock_at); };
     // The out value, when asked for.
     const auto store_out = [&](std::uint32_t at) {
         if (compare_logical(c, out) != 0) c.put32(out, c.u32(at));

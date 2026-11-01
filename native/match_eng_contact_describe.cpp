@@ -217,7 +217,7 @@ void describe_contact(Cpu& c, std::uint32_t match, std::uint32_t player_a, std::
     c.put16(action(0), c.i16(caller + 0x22));
     c.put16(action(1), c.i16(caller + 0x2a));
     const auto B38 = frame.at(0x38), B3a = frame.at(0x3a), B3c = frame.at(0x3c), B40 = frame.at(0x40), B48 = frame.at(0x48);
-    const auto holder = [&] { return c.u32(match + 0xe000); };
+    const auto holder = [&] { return c.u32(match + pending_player); };
     Kept<31> index(c, 0);
     const auto more = [&] { c.set(7, u(s8(index))); return compare(c, s8(index), 2) < 0; };
     for (; more(); index = index + 1) {
@@ -330,8 +330,8 @@ void describe_contact(Cpu& c, std::uint32_t match, std::uint32_t player_a, std::
             }
             continue;
         }
-        c.set(6, c.u8(match + 0x791f));
-        if (s8(c.u8(match + 0x791f)) == 4) {
+        c.set(6, c.u8(match + shot_state));
+        if (s8(c.u8(match + shot_state)) == 4) {
             c.set({{7, four_o}, {6, B48}, {5, player_of(other)}});
             if (player_of(other) != 0) {
                 fire(0xb, 1, 0x101f6164, {{8, other}});

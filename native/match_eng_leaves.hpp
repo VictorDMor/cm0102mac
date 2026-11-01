@@ -84,13 +84,13 @@ inline bool match_eng_leaf_101d56c0(State& s) {
 inline bool match_eng_leaf_101d56d0(State& s) {
     if (match_eng_declining) return false;
     guest::Cpu c(s);
-    match_eng::ball_column(c,c.r(3));
+    match_eng::ball_row(c,c.r(3));
     return true;
 }
 inline bool match_eng_leaf_101d56e0(State& s) {
     if (match_eng_declining) return false;
     guest::Cpu c(s);
-    match_eng::ball_row(c,c.r(3));
+    match_eng::ball_column(c,c.r(3));
     return true;
 }
 inline bool match_eng_leaf_101d56f0(State& s) {
@@ -138,7 +138,7 @@ inline bool match_eng_leaf_101d6690(State& s) {
 inline bool match_eng_leaf_101d66a0(State& s) {
     if (match_eng_declining) return false;
     guest::Cpu c(s);
-    match_eng::set_byte_7924(c,c.r(3),c.r(4));
+    match_eng::set_possession_side(c,c.r(3),c.r(4));
     return true;
 }
 inline bool match_eng_leaf_101d66b0(State& s) {
@@ -150,13 +150,13 @@ inline bool match_eng_leaf_101d66b0(State& s) {
 inline bool match_eng_leaf_101d66c0(State& s) {
     if (match_eng_declining) return false;
     guest::Cpu c(s);
-    match_eng::set_ball_row(c,c.r(3),c.r(4));
+    match_eng::set_ball_column(c,c.r(3),c.r(4));
     return true;
 }
 inline bool match_eng_leaf_101d66d0(State& s) {
     if (match_eng_declining) return false;
     guest::Cpu c(s);
-    match_eng::set_ball_column(c,c.r(3),c.r(4));
+    match_eng::set_ball_row(c,c.r(3),c.r(4));
     return true;
 }
 inline bool match_eng_leaf_101d66e0(State& s) {

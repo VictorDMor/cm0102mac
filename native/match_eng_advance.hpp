@@ -5,12 +5,6 @@
 #include "match_eng.hpp"
 
 namespace cm::aot::match_eng {
-// `bl 0x101d3c90`: the match's random number below `bound` (RNG draw), left in r3.
-inline std::int32_t draw(Cpu& c, std::uint32_t bound, std::uint32_t back) {
-    c.set(3, bound);
-    call(c, 0x101d3c90, back);
-    return std::int32_t(c.r(3));
-}
 // 0x101d3f60: plays `count` ticks (stops early when the match ends or a break comes).
 // Returns 1 (ticks played), 2 (the match is over), 4 (a period ended), 8 (the deadline
 // for the stoppage was reached).

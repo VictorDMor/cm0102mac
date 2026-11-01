@@ -122,7 +122,7 @@ void process_contact_events(Cpu& c, std::uint32_t match, std::uint32_t queue) {
             c.set({{3, match}, {4, side}});
             call(c, 0x101da5a0, 0x101f7ad0);
             if (compare(c, s8(c.r(3)), 0) == 0) {
-                const auto stamp_clock = [&] { c.put16(match + 0x7944 + u(s8(side)) * 2, u(c.i16(match + 0x7948))); };
+                const auto stamp_clock = [&] { c.put16(match + 0x7944 + u(s8(side)) * 2, u(c.i16(match + clock_at))); };
                 c.set(3, stats);
                 if (compare(c, s8(position(c, stats)), 0) != 0) {
                     c.set({{3, stats}, {4, 1}});

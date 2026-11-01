@@ -39,6 +39,11 @@ void update_all_players(Cpu&, std::uint32_t match, std::uint32_t argument);
 // Helpers shared by the block's files.
 namespace tactics_a {
 using namespace guest;
+// `cror eq,gt,eq` after a floating compare: EQ also set when `bit` (LT 8, GT 4) is.
+inline void equal_or(Cpu& c, std::uint8_t bit) {
+    const auto field = c.cr(0);
+    if (field & bit) c.set_cr(0, field | 2);
+}
 // A register the routine already holds (its value is kept as it is).
 template <unsigned R>
 Kept<R> held(Cpu& c) { return Kept<R>(c, c.r(R)); }

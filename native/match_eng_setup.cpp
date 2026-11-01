@@ -15,8 +15,8 @@ std::uint32_t construct_match(Cpu& c, std::uint32_t match) {
     };
     construct(match + players_at, -0x6404, -0x6408, 0x1c4, 0x28, 0x101d16cc);
     construct(match + side_stats_at, -0x640c, -0x6410, 0xd8, 2, 0x101d16e8);
-    construct(match + 0x7c6c, -0x6414, -0x6418, 0x18e0, 2, 0x101d1704);
-    construct(match + 0x10000 - 0x51d4, -0x6414, -0x6418, 0x18e0, 2, 0x101d1724);
+    construct(match + team_tactics, -0x6414, -0x6418, team_tactics_size, 2, 0x101d1704);
+    construct(match + 0x10000 - 0x51d4, -0x6414, -0x6418, team_tactics_size, 2, 0x101d1724);
     c.set(3, match + 0x10000 - 0x1fd0);
     c.call(0x1021b010, 0x101d1734);
     c.put32(match + 0x3114, 0);  // the message object slot
@@ -102,10 +102,10 @@ std::uint32_t destroy_match(Cpu& c, std::uint32_t match, std::uint32_t free_memo
     keep(c, {{31, match}});
     c.put16(frame.at(0x5e), free_memory);
     if (compare_logical(c, match) == 0) return result(c, match);
-    if (compare(c, s8(c.u8(match + 0x7913))) != 0 && compare_logical(c, c.u32(match + 0x79f4)) != 0) {
-        c.set({{3, c.u32(match + 0x79f4)}, {4, 1}});
+    if (compare(c, s8(c.u8(match + 0x7913))) != 0 && compare_logical(c, c.u32(match + message_target)) != 0) {
+        c.set({{3, c.u32(match + message_target)}, {4, 1}});
         c.call(0x101ff140, 0x101d3e98);
-        c.put32(match + 0x79f4, 0);
+        c.put32(match + message_target, 0);
         c.put8(match + 0x7913, 0);
     }
     if (compare_logical(c, c.u32(match + 0x3114)) != 0) {
@@ -120,8 +120,8 @@ std::uint32_t destroy_match(Cpu& c, std::uint32_t match, std::uint32_t free_memo
         c.set({{3, at}, {4, c.toc(slot)}, {5, size}, {6, count}});
         c.call(0x10773420, back);
     };
-    destroy(match + 0x10000 - 0x51d4, -0x6418, 0x18e0, 2, 0x101d3ef0);
-    destroy(match + 0x7c6c, -0x6418, 0x18e0, 2, 0x101d3f04);
+    destroy(match + 0x10000 - 0x51d4, -0x6418, team_tactics_size, 2, 0x101d3ef0);
+    destroy(match + team_tactics, -0x6418, team_tactics_size, 2, 0x101d3f04);
     destroy(match + side_stats_at, -0x6410, 0xd8, 2, 0x101d3f18);
     destroy(match + players_at, -0x6408, 0x1c4, 0x28, 0x101d3f2c);
     if (compare(c, c.i16(frame.at(0x5e))) > 0) {

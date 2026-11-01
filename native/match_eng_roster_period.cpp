@@ -81,12 +81,12 @@ void period_statistics(Cpu& c, std::uint32_t match, std::uint32_t mode) {
     Frame frame(c, 0x101f2400, 0x60, {.first_gpr = 26});
     keep(c, {{31, match}});
     c.put16(frame.at(0x7e), mode);
-    const auto clock = std::int32_t(c.i16(match + 0x794c));
+    const auto clock = std::int32_t(c.i16(match + period_end));
     c.set(3, wrap(clock));
     std::uint32_t half;
     if (cmp_eq(c, clock, 0x1ef)) half = 0;
     else {
-        c.set(5, wrap(std::int32_t(c.i16(match + 0x794c))));
+        c.set(5, wrap(std::int32_t(c.i16(match + period_end))));
         half = cmp_eq(c, clock, 0x3de) ? 1 : 2;
     }
     keep(c, {{28, half}});
@@ -96,24 +96,23 @@ void period_statistics(Cpu& c, std::uint32_t match, std::uint32_t mode) {
     const auto totals = match + vault;
     const auto share_stores = [&](std::uint32_t at, double value) { c.put_f32(totals + at - vault, float(value)); };
     // The two draws of 7 (+3), as bytes, then 5 + the side totals (at least 10).
-    const auto draw = [&](std::uint32_t amount, std::uint32_t back) { c.set(3, amount); c.call(0x101d3c90, back); return c.r(3); };
     if (cmp_eq(c, entry, 1)) {
         // Mode 1.
-        auto value = draw(7, 0x101f2ec8);
+        auto value = draw(c, 7, 0x101f2ec8);
         c.set({{5, wrap(s8(value + 3))}, {6, totals}, {7, 0x43300000}});
         c.set(3, 0);
         auto minus = magic(c);
         share_stores(0xe0a8, convert(c, fp, s8(value + 3), frame.at(0x3c), frame.at(0x38), minus));
-        value = draw(7, 0x101f2f00);
+        value = draw(c, 7, 0x101f2f00);
         c.set({{4, totals}, {5, 0x43300000}});
         minus = magic(c);
         share_stores(0xe0ac, convert(c, fp, s8(value + 3), frame.at(0x44), frame.at(0x40), minus));
-        value = draw(5, 0x101f2f38);
+        value = draw(c, 5, 0x101f2f38);
         const auto goals_a = std::uint32_t(c.u8(totals + 0xe03d - vault)), goals_b = std::uint32_t(c.u8(totals + 0xe073 - vault));
         c.set({{8, totals}, {7, goals_a}, {5, totals}, {4, value + goals_b}});
         if (cmp_lt(c, std::int32_t(goals_a + value + goals_b), 10)) keep(c, {{26, 10}});
         else {
-            value = draw(5, 0x101f2f68);
+            value = draw(c, 5, 0x101f2f68);
             keep(c, {{26, goals_a + (value + std::uint32_t(c.u8(totals + 0xe073 - vault)))}});
         }
         minus = magic(c);
@@ -121,20 +120,20 @@ void period_statistics(Cpu& c, std::uint32_t match, std::uint32_t mode) {
         add_up_players(c, match, Tail::Second);
     } else if (!cmp_ge(c, entry, 1) && cmp_ge(c, entry, 0)) {
         // Mode 0.
-        auto value = draw(7, 0x101f2928);
+        auto value = draw(c, 7, 0x101f2928);
         c.set({{5, value + 3}, {4, wrap(s8(value + 3))}});
         auto minus = magic(c);
         share_stores(0xe0a8, convert(c, fp, s8(value + 3), frame.at(0x44), frame.at(0x40), minus));
-        value = draw(7, 0x101f2960);
+        value = draw(c, 7, 0x101f2960);
         c.set({{8, wrap(s8(value + 3))}, {4, magic_at(c) - 0x60}, {5, totals}});
         minus = magic(c);
         share_stores(0xe0ac, convert(c, fp, s8(value + 3), frame.at(0x3c), frame.at(0x38), minus));
-        value = draw(5, 0x101f2998);
+        value = draw(c, 5, 0x101f2998);
         const auto goals_a = std::uint32_t(c.u8(totals + 0xe03d - vault)), goals_b = std::uint32_t(c.u8(totals + 0xe073 - vault));
         c.set({{5, goals_a}, {4, goals_b}, {7, totals}, {9, value + goals_b}, {8, goals_a + (value + goals_b)}});
         if (cmp_lt(c, std::int32_t(goals_a + (value + goals_b)), 10)) keep(c, {{27, 10}});
         else {
-            value = draw(5, 0x101f29c8);
+            value = draw(c, 5, 0x101f29c8);
             c.set({{6, totals}, {5, std::uint32_t(c.u8(totals + 0xe03d - vault))}, {4, std::uint32_t(c.u8(totals + 0xe073 - vault))}});
             keep(c, {{27, c.r(5) + (value + c.r(4))}});
         }
@@ -238,7 +237,7 @@ void share_percentages(Cpu& c, std::uint32_t match, std::uint32_t first_kind) {
 // 0x101f4900
 void count_event(Cpu& c, std::uint32_t match, std::uint32_t side, std::uint32_t flag) {
     c.put32(c.sp() - 4, c.r(31));  // red zone: the caller's r31
-    const auto clock = std::int32_t(c.i16(match + 0x794c));
+    const auto clock = std::int32_t(c.i16(match + period_end));
     std::uint32_t period;
     if (cmp_eq(c, clock, 0x1ef)) period = 0;
     else {
@@ -260,7 +259,7 @@ void count_event(Cpu& c, std::uint32_t match, std::uint32_t side, std::uint32_t 
     const auto offset16 = 0x22e + period * 2;
     bump16(offset16);
     c.set({{6, bump16(0x234)}, {7, wrap(s8(flag))}});
-    const auto column = s8(c.u8(match + 0x791e));
+    const auto column = s8(c.u8(match + ball_column_at));
     // The ball's zone along the pitch: up to column 3, up to column 7, the rest.
     // For each: the side's word counter (by period) and its two totals, the half-word
     // counters, and what each of the six ring entries gets.

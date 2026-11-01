@@ -72,21 +72,40 @@ inline void increment_byte(Cpu& c, std::uint32_t at) {
 }
 
 // --- Match fields (r3 is the match) ---
-inline std::uint32_t ball_column(Cpu& c, std::uint32_t match) { return player_u8(c, match, 0x791d); }
-inline std::uint32_t ball_row(Cpu& c, std::uint32_t match) { return player_u8(c, match, 0x791e); }
-inline void set_ball_column(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + 0x791d, value); }
-inline void set_ball_row(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + 0x791e, value); }
+// Offsets from the match object; the ball's cell is read like a player's +0x105 / +0x106.
+inline constexpr std::uint32_t ball_row_at = 0x791d;       // the ball's row, 0..8
+inline constexpr std::uint32_t ball_column_at = 0x791e;    // the ball's column, 0..11
+inline constexpr std::uint32_t shot_state = 0x791f;        // -1: no shot in progress
+inline constexpr std::uint32_t last_touch_side = 0x7921;   // the side that touched the ball last, -1: none
+inline constexpr std::uint32_t possession_side = 0x7924;   // the side with the ball, -1: none (loose)
+inline constexpr std::uint32_t play_state = 0x7928;        // 8: play stopped
+inline constexpr std::uint32_t shootout_stage = 0x7929;    // penalty shoot-out stage
+inline constexpr std::uint32_t added_time = 0x792d;
+inline constexpr std::uint32_t clock_at = 0x7948;          // elapsed clock, int16
+inline constexpr std::uint32_t period_end = 0x794c;        // the clock mark that ends the running period, int16
+inline constexpr std::uint32_t message_target = 0x79f4;    // the object that receives the messages
+inline constexpr std::uint32_t extra_time_flag = 0x1c1;    // extra time is being played
+inline constexpr std::uint32_t pending_player = 0xe000;    // the player about to act
+inline constexpr std::uint32_t ball_holder = 0xdff8;       // the player holding the ball
+inline constexpr std::uint32_t team_tactics = 0x7c6c;      // each side's tactics record
+inline constexpr std::uint32_t team_tactics_size = 0x18e0; // bytes per side
+inline constexpr std::uint32_t restart_row = 0x30dd;       // the pending restart's cell: row, as the ball's
+inline constexpr std::uint32_t restart_column = 0x30de;    // and column
+inline std::uint32_t ball_row(Cpu& c, std::uint32_t match) { return player_u8(c, match, ball_row_at); }
+inline std::uint32_t ball_column(Cpu& c, std::uint32_t match) { return player_u8(c, match, ball_column_at); }
+inline void set_ball_row(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + ball_row_at, value); }
+inline void set_ball_column(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + ball_column_at, value); }
 inline std::uint32_t byte_7931(Cpu& c, std::uint32_t match) { return player_u8(c, match, 0x7931); }
-inline std::uint32_t word_79f4(Cpu& c, std::uint32_t match) { return result(c, c.u32(match + 0x79f4)); }
-inline void set_byte_7924(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + 0x7924, value); }
-inline void set_byte_7928(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + 0x7928, value); }
+inline std::uint32_t word_79f4(Cpu& c, std::uint32_t match) { return result(c, c.u32(match + message_target)); }
+inline void set_possession_side(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + possession_side, value); }
+inline void set_byte_7928(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put8(match + play_state, value); }
 inline void set_word_e000(Cpu& c, std::uint32_t match, std::uint32_t value) {
     const auto high = match + 0x10000;
     c.set(5, high);
     c.put32(high - 0x2000, value);
 }
-inline std::uint32_t minute_clock(Cpu& c, std::uint32_t match) { return result(c, u(c.i16(match + 0x794c))); }
-inline std::uint32_t match_clock(Cpu& c, std::uint32_t match) { return result(c, u(c.i16(match + 0x7948))); }
+inline std::uint32_t minute_clock(Cpu& c, std::uint32_t match) { return result(c, u(c.i16(match + period_end))); }
+inline std::uint32_t match_clock(Cpu& c, std::uint32_t match) { return result(c, u(c.i16(match + clock_at))); }
 inline void set_default_turn(Cpu& c, std::uint32_t match, std::uint32_t value) { c.put16(match + 0x7950, value); }
 inline void clear_word_310c(Cpu& c, std::uint32_t match) { c.put32(match + 0x310c, 0); }
 inline void clear_word_3108(Cpu& c, std::uint32_t match) { c.put32(match + 0x3108, 0); }

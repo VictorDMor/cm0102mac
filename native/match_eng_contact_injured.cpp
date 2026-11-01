@@ -34,7 +34,7 @@ void handle_injured_players(Cpu& c, std::uint32_t match) {
             side_report(player, back_side);
             c.set(3, player);
             c.set(6, byte_2f(c, player));
-            c.set({{3, c.u32(match + 0x79f4)}, {4, id}, {5, match}, {7, c.r(19)}, {8, 0}});
+            c.set({{3, c.u32(match + message_target)}, {4, id}, {5, match}, {7, c.r(19)}, {8, 0}});
             call(c, 0x101d6710, back_message);
         };
         for (; compare(c, std::int32_t(index), 0x14) < 0; index = index + 1, keep(c, {{20, player}}), player = player + player_size) {
@@ -60,7 +60,7 @@ void handle_injured_players(Cpu& c, std::uint32_t match) {
                     c.set({{3, match}, {4, player}, {5, 0}});
                     call(c, 0x101f1950, 0x101f6dcc);
                 }
-                c.put8(player + 0x22, u(contact_detail::divide_by_11(c.i16(match + 0x7948))));
+                c.put8(player + 0x22, u(contact_detail::divide_by_11(c.i16(match + clock_at))));
                 c.set(3, match);
                 // The player's minute is capped at the end of the period the clock has reached.
                 const auto cap_minute = [&](std::int32_t cap) {
@@ -89,7 +89,7 @@ void handle_injured_players(Cpu& c, std::uint32_t match) {
                 keep(c, {{17, c.r(3)}});
                 c.set(3, player);
                 c.set(6, byte_2f(c, player));
-                c.set({{3, c.u32(match + 0x79f4)}, {4, 0x20f6}, {5, match}, {7, c.r(17)}, {8, c.r(18)}, {9, c.r(19)}, {10, 0}});
+                c.set({{3, c.u32(match + message_target)}, {4, 0x20f6}, {5, match}, {7, c.r(17)}, {8, c.r(18)}, {9, c.r(19)}, {10, 0}});
                 c.call(0x10201180, 0x101f6f84);
             }
             c.put8(player + 0x1d, 0);
@@ -99,7 +99,7 @@ void handle_injured_players(Cpu& c, std::uint32_t match) {
         call(c, 0x101da5a0, 0x101f6fb8);
         if (compare(c, s8(c.r(3)), 0) != 0) continue;
         c.set(3, stats_of(side));
-        const auto stamp_clock = [&] { c.put16(match + 0x7944 + u(s8(side)) * 2, u(c.i16(match + 0x7948))); };
+        const auto stamp_clock = [&] { c.put16(match + 0x7944 + u(s8(side)) * 2, u(c.i16(match + clock_at))); };
         if (compare(c, s8(position(c, c.r(3))), 0) != 0) {
             c.set({{3, stats_of(side)}, {4, 0}});
             call(c, 0x1020ef70, 0x101f6ffc);

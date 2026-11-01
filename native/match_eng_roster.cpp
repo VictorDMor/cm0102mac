@@ -31,7 +31,7 @@ void player_arrives(Cpu& c, std::uint32_t match, std::uint32_t player, std::uint
     if (cmp_eq(c, s8(carried))) {
         c.put8(player + appearances, c.u8(player + appearances) + 1u);
         // clock / 11 (mulhw by 0x2e8ba2e9), kept as a byte.
-        const auto clock = std::int64_t(c.i16(match + 0x7948));
+        const auto clock = std::int64_t(c.i16(match + clock_at));
         auto quotient = std::int32_t((std::int64_t(0x2e8ba2e9) * clock) >> 32) >> 1;
         quotient += quotient < 0;
         c.put8(player + minutes, wrap(quotient));
@@ -61,7 +61,7 @@ void player_arrives(Cpu& c, std::uint32_t match, std::uint32_t player, std::uint
     const auto side = s8(c.u8(player + player_side));
     const auto stats = match + wrap(side * std::int32_t(side_stats_size)) + side_stats_at;
     const auto record_clock = [&] {
-        const auto clock = c.i16(match + 0x7948);
+        const auto clock = c.i16(match + clock_at);
         c.set({{3, wrap(side * 2)}, {4, extended(clock)}});
         c.put16(match + substitution_clock + wrap(side * 2), wrap(clock));
     };
@@ -334,7 +334,7 @@ std::uint32_t tie_totals(Cpu& c, std::uint32_t match, std::uint32_t side, std::u
             if (cmp_eq(c, flags & 4)) {
                 c.set(3, fixture);
                 bool skip = false;
-                if (cmp_ne(c, c.i16(fixture + 0x38) & 0x4000)) skip = cmp_le(c, c.i16(match + 0x794c), 0x3de);
+                if (cmp_ne(c, c.i16(fixture + 0x38) & 0x4000)) skip = cmp_le(c, c.i16(match + period_end), 0x3de);
                 if (!skip) {
                     if (cmp_eq(c, s8(side))) {
                         const auto total = std::int32_t(c.u8(match + 0xe073)) + s8(c.r(25));

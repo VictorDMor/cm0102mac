@@ -130,12 +130,10 @@ void update_side_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argu
     };
     // Two draws, 20 against the record's byte 0x21: the second below the first lowers the rating.
     const auto lucky = [&](unsigned rating, std::uint32_t back_first, std::uint32_t back_second, unsigned record_register) {
-        c.set(3, 20);
-        call(c, 0x101d3c90, back_first);
+        draw(c, 20, back_first);
         keep(c, {{15, c.r(3)}});
         if (record_register) c.set(record_register, record_of());
-        c.set(3, u(s8(c.u8(record_of() + 0x21))));
-        call(c, 0x101d3c90, back_second);
+        draw(c, u(s8(c.u8(record_of() + 0x21))), back_second);
         if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(15))) < 0) scale(rating, 0x44);
     };
     // The player's weight in the squad sum: the fitness divided by the pool constant.

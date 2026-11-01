@@ -68,15 +68,15 @@ std::uint32_t pick_player(Cpu& c, std::uint32_t match, std::uint32_t side, std::
         if (keeper) {
             if (cmp_eq(c, kind8, 2) || cmp_eq(c, kind8, 1) || cmp_eq(c, kind8, 3) || cmp_eq(c, kind8, 8)) continue;
             if (cmp_eq(c, kind8, 6) || cmp_eq(c, kind8, 7)) {
-                c.set({{3, match}, {4, side}, {5, c.u8(match + 0x791d)}, {6, c.u8(match + 0x791e)}});
+                c.set({{3, match}, {4, side}, {5, c.u8(match + ball_row_at)}, {6, c.u8(match + ball_column_at)}});
                 call(c, 0x101eea30, 0x101f3b80);
                 if (cmp_eq(c, s8(c.r(3)))) continue;
             }
         }
         if (cmp_gt(c, s8(c.u8(frame.at(0x38))), 10)) fail(0x101f3bb0, 0x3d23, 0xb9, 0x57, 0x101f3bf4);
         if (cmpl_eq(c, c.u32(player + 0x70))) fail(0x101f3c14, 0x3d26, 0x9a, 0x52, 0x101f3c58);
-        const auto row = [&] { return std::uint32_t(c.u8(match + 0x791d)); };
-        const auto column = [&] { return std::uint32_t(c.u8(match + 0x791e)); };
+        const auto row = [&] { return std::uint32_t(c.u8(match + ball_row_at)); };
+        const auto column = [&] { return std::uint32_t(c.u8(match + ball_column_at)); };
         // The player's team and fixture side asked of the other routines: is it this player's team's turn.
         const auto turn_matches = [&](std::uint32_t at, std::uint32_t round, std::uint32_t second) {
             c.set({{3, match}, {4, c.u8(player + 0x27)}});
@@ -90,8 +90,8 @@ std::uint32_t pick_player(Cpu& c, std::uint32_t match, std::uint32_t side, std::
         };
         // Own half of the pitch for the side: the first pair of lookups in the original's layout.
         const auto in_own_half = [&] {
-            if (cmp_eq(c, side8) && cmp_lt(c, s8(c.u8(match + 0x791d)), 4)) return true;
-            return cmp_eq(c, side8, 1) && cmp_gt(c, s8(c.u8(match + 0x791d)), 4);
+            if (cmp_eq(c, side8) && cmp_lt(c, s8(c.u8(match + ball_row_at)), 4)) return true;
+            return cmp_eq(c, side8, 1) && cmp_gt(c, s8(c.u8(match + ball_row_at)), 4);
         };
         const auto distance = [&](std::uint32_t back) {
             c.set({{3, player}, {4, row()}, {5, column()}});
@@ -124,12 +124,12 @@ std::uint32_t pick_player(Cpu& c, std::uint32_t match, std::uint32_t side, std::
                 finish_tail(0x101f3dc0, 0xec, 0xe8, 0xe0, 0xe4, 0x101f3da4);
             } else {
                 if (turn_matches(0x101f3e54, 3, 0)) {
-                    c.set(3, 1000); c.call(0x101d3c90, 0x101f3e94);
+                    draw(c, 1000, 0x101f3e94);
                     score = wrap(std::int16_t(10000 - c.r(3)));
                     break;
                 }
                 if (turn_matches(0x101f3ea8, 3, 1)) {
-                    c.set(3, 500); c.call(0x101d3c90, 0x101f3ee8);
+                    draw(c, 500, 0x101f3ee8);
                     score = wrap(std::int16_t(c.r(3) + 0x2328));
                     break;
                 }
@@ -164,7 +164,7 @@ std::uint32_t pick_player(Cpu& c, std::uint32_t match, std::uint32_t side, std::
                 keep(c, {{17, 0}});
                 for (; cmp_lt(c, s8(rank), 0x32); keep(c, {{17, rank + 1}})) {
                     c.set(3, match + wrap(side8 * 0xd8) + 0x7aac);
-                    c.call(0x101da750, 0x101f4060);
+                    call(c, 0x101da750, 0x101f4060);
                     c.set(5, c.r(3));
                     c.set({{3, c.u32(c.r(26))}, {4, rank}});
                     c.call(0x1014c890, 0x101f4070);
@@ -183,8 +183,7 @@ std::uint32_t pick_player(Cpu& c, std::uint32_t match, std::uint32_t side, std::
             else if (cmp_lt(c, s8(c.u16(c.u32(player + 0x6c) + 0x5c)), 0x18)) scale(0x118, 0xe4, 0xe0, 0xe8, 0xec, true);
             const auto trait = c.u32(player + 0x6c);
             if (cmp_ne(c, s8(c.u8(trait + 0x66)))) {
-                c.set(3, wrap(s8(c.u8(c.u32(player + 0x6c) + 0x66))));
-                c.call(0x101d3c90, 0x101f419c);
+                draw(c, wrap(s8(c.u8(c.u32(player + 0x6c) + 0x66))), 0x101f419c);
                 if (cmp_eq(c, std::int32_t(c.r(3)))) scale(0x1e0, 0xe4, 0xe0, 0xe8, 0xec, true);
             }
             const double f2 = c.f64(pool + 0x2a0);
@@ -208,7 +207,7 @@ std::uint32_t pick_player(Cpu& c, std::uint32_t match, std::uint32_t side, std::
                 // Not in the outer rows: how close is the ball (4.1 limit)?
                 c.put32(frame.at(0x40), cmp_ne(c, side8) ? 0 : 0xb);
                 c.set({{3, match}, {4, row()}, {5, column()}, {6, 4}, {7, wrap(s8(c.u32(frame.at(0x40))))}});
-                c.call(0x101ef8d0, 0x101f4294);
+                call(c, 0x101ef8d0, 0x101f4294);
                 fp.fcmp(0, c.f(1), c.f64(pool + 0x2a8));
                 near_goal = (c.cr(0) & 8) != 0;
                 if (near_goal) {
@@ -249,7 +248,7 @@ std::uint32_t pick_player(Cpu& c, std::uint32_t match, std::uint32_t side, std::
             if (cmp_ne(c, s8(c.r(3)))) {
                 c.put32(frame.at(0x3c), cmp_eq(c, side8) ? 0xb : 0);
                 c.set({{3, match}, {4, row()}, {5, column()}, {6, 4}, {7, wrap(s8(c.u32(frame.at(0x3c))))}});
-                c.call(0x101ef8d0, 0x101f46a4);
+                call(c, 0x101ef8d0, 0x101f46a4);
                 fp.fcmp(0, c.f(1), c.f64(pool + 0x128));
                 if ((c.cr(0) & 8) != 0) {
                     const double f3 = c.f32(singles + 0x18), f2 = c.f32(player + 0xa4), f1 = c.f32(player + 0xb0);

@@ -7,20 +7,12 @@ using namespace guest;
 namespace {
 // Match object fields (offsets from the match).
 constexpr std::uint32_t over_flag = 0;                 // set when the match was already completed
-constexpr std::uint32_t extra_flag = 0x1c1;            // extra time is being played
 constexpr std::uint32_t kickoff_wait = 0x1e3;          // the kick-off message was sent
 constexpr std::uint32_t carrier_wait = 0x1de;          // countdown while the ball owner is switched
-constexpr std::uint32_t play_state = 0x7928;           // 8: play stopped
-constexpr std::uint32_t last_side = 0x7924;
-constexpr std::uint32_t ball_column_at = 0x791d, ball_row_at = 0x791e;
 constexpr std::uint32_t restart_stage = 0x792a;
-constexpr std::uint32_t shootout_stage = 0x7929;
-constexpr std::uint32_t clock_at = 0x7948, tick_at = 0x794a, period_end = 0x794c;
-constexpr std::uint32_t added_time = 0x792d;
+constexpr std::uint32_t tick_at = 0x794a;
 constexpr std::uint32_t actors_count = 0x792e, actors_at = 0x79f8;
-constexpr std::uint32_t message_target = 0x79f4;
-constexpr std::uint32_t pending_holder = 0xe000, pending_word = 0xdff8, pending_word_28 = 0xe028, pending_word_24 = 0xe024;
-constexpr std::uint32_t team_stride = 0x18e0, teams_at = 0x7c6c;
+constexpr std::uint32_t pending_word_28 = 0xe028, pending_word_24 = 0xe024;
 constexpr std::uint32_t carrier_at = 0x3104;
 constexpr std::uint32_t fixture_ptr = 0x3118;
 
@@ -104,17 +96,17 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         c.set_f(1, built);
         const double scaled = fpu.fdiv(built, c.f64(pool + 0x78));
         c.put64(frame.at(store), fpu.fctiwz(0, scaled));
-        return draw(c, c.u32(frame.at(store + 4)), back);
+        return std::int32_t(draw(c, c.u32(frame.at(store + 4)), back));
     };
     // The ball's cells for the two sides: who is in the end area, the nearest players, and so on.
     const auto ball_cells = [&](bool again) {
-        const auto column = [&] { return c.u8(match + ball_column_at); };
         const auto row = [&] { return c.u8(match + ball_row_at); };
+        const auto column = [&] { return c.u8(match + ball_column_at); };
         for (std::uint32_t side = 0; side < 2; ++side) {
-            c.set({{3, match}, {4, side}, {5, column()}, {6, row()}});
-            const auto inside = inside_end_area(c, side, column(), row());
+            c.set({{3, match}, {4, side}, {5, row()}, {6, column()}});
+            const auto inside = inside_end_area(c, side, row(), column());
             c.set(7, u(s8(inside) == 0));
-            c.set({{3, match}, {4, side}, {5, column()}, {6, row()}});
+            c.set({{3, match}, {4, side}, {5, row()}, {6, column()}});
             call(c, 0x101e32e0, again ? (side ? 0x101d55c0 : 0x101d557c) : (side ? 0x101d4cd0 : 0x101d4c90));
             c.set(4, match + 0x10000);
             c.put32(match + (side ? 0xe008 : 0xe004), c.r(3));
@@ -122,13 +114,13 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         for (std::uint32_t side = 0; side < 2; ++side) {
             c.set({{3, match}, {4, side}});
             call(c, 0x101f1e10, again ? (side ? 0x101d55f8 : 0x101d55d4) : (side ? 0x101d4d08 : 0x101d4ce4));
-            c.set({{4, c.r(3)}, {3, match}, {5, column()}, {6, row()}});
+            c.set({{4, c.r(3)}, {3, match}, {5, row()}, {6, column()}});
             call(c, 0x101e31a0, again ? (side ? 0x101d560c : 0x101d55e8) : (side ? 0x101d4d1c : 0x101d4cf8));
             c.put8(match + 0x7922 + side, c.r(3));
         }
-        c.put8(frame.at(0x3d), column());
-        c.put8(frame.at(0x3c), row());
-        if (again) c.set(4, row());
+        c.put8(frame.at(0x3d), row());
+        c.put8(frame.at(0x3c), column());
+        if (again) c.set(4, column());
     };
 
     // The match was completed before: the closing calls, then 2.
@@ -202,12 +194,12 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         c.set(7, u(wait));
         if (compare(c, wait, 0) == 0) {
             c.set(4, u(field(play_state)));
-            if (compare(c, field(play_state), 8) == 0 && compare(c, field(extra_flag), 0) == 0) {
+            if (compare(c, field(play_state), 8) == 0 && compare(c, field(extra_time_flag), 0) == 0) {
                 const auto clock = c.i16(match + clock_at);
                 c.set(3, match);
                 const auto to = word_79f4(c, match);
-                if (compare(c, clock, 1) <= 0) event(0x212f, c.u8(match + last_side), 0x101d43cc, to);
-                else event(0x1f74, c.u8(match + last_side), 0x101d43f4, to);
+                if (compare(c, clock, 1) <= 0) event(0x212f, c.u8(match + possession_side), 0x101d43cc, to);
+                else event(0x1f74, c.u8(match + possession_side), 0x101d43f4, to);
                 c.set(3, 1);
                 c.put8(match + kickoff_wait, 1);
                 return -1;
@@ -223,7 +215,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             c.set(4, u(stage_now));
             picking = compare(c, stage_now, 0) == 0;
         }
-        if (picking) picking = compare(c, field(extra_flag), 0) == 0;
+        if (picking) picking = compare(c, field(extra_time_flag), 0) == 0;
         if (picking) {
             tries = 0;
             for (;;) {
@@ -274,36 +266,36 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
                 if (compare(c, s8(resolve_restart(c, match)), 0) != 0) return -1;
             }
         }
-        if (compare(c, field(extra_flag), 0) == 0 && compare(c, field(play_state), 0) != 0) {
+        if (compare(c, field(extra_time_flag), 0) == 0 && compare(c, field(play_state), 0) != 0) {
             c.set(3, match);
             call(c, 0x101e6c50, 0x101d4628);
         }
         // Nobody holds the stopped ball: the restart taker is chosen and put on the ball.
-        if (compare(c, field(extra_flag), 0) == 0 && compare(c, field(play_state), 0) != 0) {
+        if (compare(c, field(extra_time_flag), 0) == 0 && compare(c, field(play_state), 0) != 0) {
             c.set(3, match + 0x10000);
-            bool choose = compare_logical(c, c.u32(match + pending_holder)) == 0;
+            bool choose = compare_logical(c, c.u32(match + pending_player)) == 0;
             if (!choose) {
                 c.set(3, match + 0x10000);
-                const auto holder = c.u32(match + pending_holder);
+                const auto holder = c.u32(match + pending_player);
                 c.set(3, holder);
                 choose = compare(c, s8(position(c, holder)), 0) < 0;
             }
             if (choose) {
-                c.set({{3, match}, {4, c.u8(match + last_side)}, {5, c.u8(match + play_state)}, {6, 0}});
+                c.set({{3, match}, {4, c.u8(match + possession_side)}, {5, c.u8(match + play_state)}, {6, 0}});
                 call(c, 0x101f3a30, 0x101d4684);
                 c.set(4, match + 0x10000);
-                c.put32(match + pending_holder, c.r(3));
+                c.put32(match + pending_player, c.r(3));
                 c.set(3, match + 0x10000);
-                const auto holder = c.u32(match + pending_holder);
-                c.set({{3, holder}, {4, c.u8(match + ball_column_at)}, {5, c.u8(match + ball_row_at)}});
+                const auto holder = c.u32(match + pending_player);
+                c.set({{3, holder}, {4, c.u8(match + ball_row_at)}, {5, c.u8(match + ball_column_at)}});
                 c.call(0x102374f0, 0x101d46a0);
-                c.set({{3, c.u32(match + pending_holder)}, {4, 0xc8}});
+                c.set({{3, c.u32(match + pending_player)}, {4, 0xc8}});
                 set_pressure_adjustment(c, c.r(3), 0xc8);
-                c.set({{5, match + 0x10000}, {3, c.u32(match + pending_holder)}});
+                c.set({{5, match + 0x10000}, {3, c.u32(match + pending_player)}});
                 c.call(0x1022e3a0, 0x101d46bc);
-                c.put32(frame.at(0x40), compare(c, field(last_side), 0) == 0 ? 10 : 1);
-                c.set(3, c.u32(match + pending_holder));
-                c.set({{4, c.u8(match + ball_column_at)}, {5, c.u8(match + ball_row_at)}, {6, 4},
+                c.put32(frame.at(0x40), compare(c, field(possession_side), 0) == 0 ? 10 : 1);
+                c.set(3, c.u32(match + pending_player));
+                c.set({{4, c.u8(match + ball_row_at)}, {5, c.u8(match + ball_column_at)}, {6, 4},
                        {7, u(s8(c.u32(frame.at(0x40))))}});
                 c.call(0x10237830, 0x101d4700);
             }
@@ -316,7 +308,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         c.put16(match + tick_at, u(counter) + 1);
         const auto ticks = c.i16(match + tick_at);
         c.set(3, u(ticks));
-        if (compare(c, ticks, 1) >= 0 || compare(c, field(extra_flag), 0) != 0) {
+        if (compare(c, ticks, 1) >= 0 || compare(c, field(extra_time_flag), 0) != 0) {
             remaining = remaining - 1;
             c.set(3, match + 0x10000);
             const auto deadline = s8(c.u8(match + 0xe0b8));
@@ -374,7 +366,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
                 if (upper == 0) {
                     // the match ended: the first leg's totals, then the closing calls
                     c.set(3, match);
-                    call(c, 0x101f7100, 0x101d489c);
+                    call(c, 0x101f7100, 0x101d48a0);
                     const auto first_leg = s8(c.u8(fixture() + 0x4b));
                     c.set(3, u(first_leg));
                     if (compare(c, first_leg, -1) != 0) {
@@ -444,7 +436,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             const auto stopped_now = c.u8(match + play_state);
             c.set(4, u(s8(stopped_now)));
             if (compare(c, s8(stopped_now), 0) != 0) {
-                const auto roll = draw(c, 10, 0x101d4b68);
+                const auto roll = std::int32_t(draw(c, 10, 0x101d4b68));
                 c.put8(frame.at(0x3a), u(s8(roll)));
                 const auto clock = c.i16(match + clock_at);
                 c.set(4, u(clock));
@@ -457,8 +449,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         }
         // The pending restart's holder and its marker are cleared when somebody else holds the ball.
         c.set({{3, match + 0x10000}, {4, match + 0x10000}});
-        if (compare_logical(c, c.u32(match + pending_word_28), c.u32(match + pending_holder)) != 0) {
-            c.set(3, c.u32(match + pending_holder));
+        if (compare_logical(c, c.u32(match + pending_word_28), c.u32(match + pending_player)) != 0) {
+            c.set(3, c.u32(match + pending_player));
             if (compare_logical(c, c.r(3), 0) != 0) {
                 c.set(4, 0);
                 c.put32(match + pending_word_28, 0);
@@ -469,7 +461,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         // The ball's cells are worked out for both sides, and the teams' tactics are applied.
         c.set(3, match);
         c.set(5, byte_7931(c, match));
-        c.set(4, c.u8(match + last_side));
+        c.set(4, c.u8(match + possession_side));
         c.set(3, match);
         call(c, 0x101f4900, 0x101d4c30);
         c.set(3, match);
@@ -531,8 +523,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             const auto kind = position(c, who);
             c.set(4, kind);
             const auto side = s8(c.u8(who + 0x27));
-            const auto team = match + u(side * std::int32_t(team_stride)) + teams_at;
-            c.set({{5, u(side * std::int32_t(team_stride))}, {3, team}});
+            const auto team = match + u(side * std::int32_t(team_tactics_size)) + team_tactics;
+            c.set({{5, u(side * std::int32_t(team_tactics_size))}, {3, team}});
             c.call(0x101149f0, 0x101d4e2c);
             c.set(4, u(s8(c.r(3))) & 1);
             if (compare(c, std::int32_t(c.r(4)), 0) != 0) continue;
@@ -547,8 +539,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             c.call(0x10289560, 0x101d4e78);
             if (compare(c, std::int16_t(c.r(3)), 1) == 0) continue;
             c.set(3, match + 0x10000);
-            if (compare_logical(c, who, c.u32(match + pending_holder)) == 0) continue;
-            const auto team_now = match + u(s8(c.u8(who + 0x27)) * std::int32_t(team_stride)) + teams_at;
+            if (compare_logical(c, who, c.u32(match + pending_player)) == 0) continue;
+            const auto team_now = match + u(s8(c.u8(who + 0x27)) * std::int32_t(team_tactics_size)) + team_tactics;
             c.set(3, team_now);
             const auto flags = tactical_flags(c, team_now);
             if (compare(c, std::int32_t(flags & 0x4000), 0) != 0) {
@@ -561,11 +553,11 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             const auto other_end = [&]() {  // 0 for the second side's players, 1 for the first's
                 return u(s8(c.u8(who + 0x27)) == 0);
             };
-            if (compare(c, s8(c.u8(match + last_side)), s8(c.u8(who + 0x27))) == 0) {
+            if (compare(c, s8(c.u8(match + possession_side)), s8(c.u8(who + 0x27))) == 0) {
                 c.set(3, match);
-                r15 = ball_row(c, match);
+                r15 = ball_column(c, match);
                 c.set({{3, match}, {4, u(s8(other_end())), }, {5, r15}});
-                const auto beyond = beyond_row(c, c.r(4), c.r(5));
+                const auto beyond = beyond_column(c, c.r(4), c.r(5));
                 if (compare(c, s8(beyond), 0) == 0) continue;
             }
             const auto wants_link = [&]() -> bool {
@@ -593,16 +585,16 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
                 }
                 if (far) {
                     c.set(3, match);
-                    const auto row = ball_row(c, match);
-                    c.set(5, row);
+                    const auto column = ball_column(c, match);
+                    c.set(5, column);
                     c.set({{3, match}, {4, u(s8(other_end()))}});
-                    if (compare(c, s8(beyond_row(c, c.r(4), c.r(5))), 0) != 0) return true;
+                    if (compare(c, s8(beyond_column(c, c.r(4), c.r(5))), 0) != 0) return true;
                 }
                 c.set(3, match);
-                r15 = ball_row(c, match);
+                r15 = ball_column(c, match);
                 c.set(3, match);
-                const auto column = ball_column(c, match);
-                c.set({{5, column}, {3, match}, {4, c.u8(who + 0x27)}, {6, r15}});
+                const auto row = ball_row(c, match);
+                c.set({{5, row}, {3, match}, {4, c.u8(who + 0x27)}, {6, r15}});
                 return compare(c, s8(inside_end_area(c, c.r(4), c.r(5), c.r(6))), 0) != 0;
             };
             if (wants_link()) {
@@ -623,7 +615,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             c.set(3, current());
             const auto target = marking_target(c, current());
             if (compare_logical(c, target) != 0) {
-                const auto last = field(last_side);
+                const auto last = field(possession_side);
                 const auto who = current();
                 c.set({{3, u(s8(c.u8(who + 0x27)))}, {4, c.u8(who + 0x27)}});
                 if (compare(c, last, s8(c.u8(who + 0x27))) != 0) continue;
@@ -631,7 +623,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             // After a stopping action, the actor may be told off for a hard challenge.
             bool act_now = true;
             if (compare(c, s8(c.u8(frame.at(0x3b))), 0) != 0) {
-                const auto roll = draw(c, 10, 0x101d50c8);
+                const auto roll = std::int32_t(draw(c, 10, 0x101d50c8));
                 r15 = u(roll);
                 c.set(3, current());
                 const auto rating = primary_rating(c, current());
@@ -662,8 +654,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             }
             // While play is stopped (or in extra time) the clock runs on by a drawn amount.
             c.set(4, c.u8(match + play_state));
-            if (compare(c, field(play_state), 0) != 0 || compare(c, field(extra_flag), 0) != 0) {
-                const auto roll = draw(c, 10, 0x101d51d4);
+            if (compare(c, field(play_state), 0) != 0 || compare(c, field(extra_time_flag), 0) != 0) {
+                const auto roll = std::int32_t(draw(c, 10, 0x101d51d4));
                 c.put8(frame.at(0x39), u(s8(roll)));
                 const auto clock = c.i16(match + clock_at);
                 const auto byte = c.u8(frame.at(0x39));
@@ -685,7 +677,7 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
                 if (compare(c, field(carrier_wait), 0) != 0) {
                     c.put8(match + carrier_wait, c.u8(match + carrier_wait) - 1u);
                     c.set(4, c.u8(match + carrier_wait));
-                    if (compare(c, s8(c.u8(match + carrier_wait)), 0) == 0 && compare(c, field(0x791f), 4) == 0 &&
+                    if (compare(c, s8(c.u8(match + carrier_wait)), 0) == 0 && compare(c, field(shot_state), 4) == 0 &&
                         compare_logical(c, carrier()) == 0) {
                         c.set({{3, match}, {4, c.u8(match + 0x1df)}, {5, c.u8(match + 0x1e0)}});
                         call(c, 0x101ec890, 0x101d52b0);
@@ -701,12 +693,12 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
                     c.set(3, carrier());
                     const auto r = row(c, carrier());
                     c.set(4, u(s8(r)));
-                    if (compare(c, field(ball_column_at), s8(r)) != 0) return false;
+                    if (compare(c, field(ball_row_at), s8(r)) != 0) return false;
                     c.set(3, carrier());
                     const auto col = column(c, carrier());
                     c.set(4, col);
                     c.set(4, u(s8(col)));
-                    return compare(c, field(ball_row_at), s8(col)) == 0;
+                    return compare(c, field(ball_column_at), s8(col)) == 0;
                 };
                 const auto go = [&](std::uint32_t back) {
                     c.set({{3, carrier()}, {4, u(c.i16(match + 0x794e))}, {5, c.u8(match + 0x1e1)}, {6, c.u8(match + 0x1e2)}});
@@ -717,8 +709,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
                     return;
                 }
                 c.set(4, carrier());
-                c.set(3, c.u32(match + pending_word));
-                if (compare_logical(c, carrier(), c.u32(match + pending_word)) != 0) return;
+                c.set(3, c.u32(match + ball_holder));
+                if (compare_logical(c, carrier(), c.u32(match + ball_holder)) != 0) return;
                 c.set(3, carrier());
                 if (compare(c, s8(c.u8(carrier() + 0x2c)), 0) != 0) return;
                 c.set(3, carrier());
@@ -746,8 +738,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             carrier_turn();
             // The stopped clock, once more, then the normal turn.
             c.set(4, c.u8(match + play_state));
-            if (compare(c, field(play_state), 0) != 0 || compare(c, field(extra_flag), 0) != 0) {
-                const auto roll = draw(c, 10, 0x101d5424);
+            if (compare(c, field(play_state), 0) != 0 || compare(c, field(extra_time_flag), 0) != 0) {
+                const auto roll = std::int32_t(draw(c, 10, 0x101d5424));
                 c.put8(frame.at(0x38), u(s8(roll)));
                 c.put16(match + clock_at, u(c.i16(match + clock_at)) + u(s8(c.u8(frame.at(0x38)))));
                 c.set(4, u(s8(c.u8(frame.at(0x38)))));
@@ -781,8 +773,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
             c.set(3, match);
             call(c, 0x101e4130, 0x101d5514);
             c.set(7, c.u8(frame.at(0x3d)));
-            if (compare(c, s8(c.u8(frame.at(0x3d))), field(ball_column_at)) != 0 ||
-                compare(c, s8(c.u8(frame.at(0x3c))), field(ball_row_at)) != 0)
+            if (compare(c, s8(c.u8(frame.at(0x3d))), field(ball_row_at)) != 0 ||
+                compare(c, s8(c.u8(frame.at(0x3c))), field(ball_column_at)) != 0)
                 ball_cells(true);
         }
         return -1;

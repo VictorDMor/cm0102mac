@@ -6,18 +6,11 @@ using namespace guest;
 
 namespace {
 // Match object fields.
-constexpr std::uint32_t ball_row_at = 0x791d;      // 0..8
-constexpr std::uint32_t ball_column_at = 0x791e;   // 0..11
-constexpr std::uint32_t shot_state = 0x791f;       // -1: no shot in progress
-constexpr std::uint32_t last_touch_side = 0x7924;
 constexpr std::uint32_t line_after_side1 = 0x7925; // one past the last column of side 1's rearmost player
 constexpr std::uint32_t line_before_side0 = 0x7926;
 constexpr std::uint32_t tactics_mode = 0x7927;
-constexpr std::uint32_t ball_holder = 0xdff8;      // the player holding the ball (pointer)
-constexpr std::uint32_t pending_player = 0xe000;
 constexpr std::uint32_t formation_tables = 0xdfec; // per side: pointer to the cell table
 constexpr std::uint32_t flag_bytes = 6;            // per side
-constexpr std::uint32_t team_tactics = 0x7c6c, team_tactics_size = 0x18e0;
 // Player fields.
 constexpr std::uint32_t player_side = 0x27;
 constexpr std::uint32_t player_restricted = 0x2c;
@@ -57,7 +50,7 @@ double distance_to_cell(Cpu& c, std::uint32_t player, std::uint32_t target_row, 
 std::uint32_t side_has_ball(Cpu& c, std::uint32_t match, std::uint32_t side) {
     Frame frame(c, 0x101e3060, 0x40, {.first_gpr = 30});
     keep(c, {{31, match}, {30, side}});
-    const auto last = s8(c.u8(match + last_touch_side));
+    const auto last = s8(c.u8(match + possession_side));
     const auto other = std::uint32_t(s8(side) == 0);
     if (compare(c, last, std::int32_t(other)) == 0) return result(c, 0);
     if (compare(c, s8(side), last) == 0) return result(c, 1);

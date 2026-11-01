@@ -17,10 +17,10 @@ std::uint32_t side_players(std::uint32_t match, std::uint32_t side_word, bool op
 std::uint32_t ball_cell_side(Cpu& c, std::uint32_t match_in) {
     Frame frame(c, 0x101fea10, 0x40, {.first_gpr = 31});
     Kept<31> match(c, match_in);
-    c.set({{3, match}, {4, 0}, {5, c.u8(match + 0x791d)}, {6, c.u8(match + 0x791e)}});
+    c.set({{3, match}, {4, 0}, {5, c.u8(match + ball_row_at)}, {6, c.u8(match + ball_column_at)}});
     call(c, 0x101eea30, 0x101fea38);
     if (compare(c, s8(c.r(3))) != 0) return result(c, 1);
-    c.set({{3, match}, {4, 1}, {5, c.u8(match + 0x791d)}, {6, c.u8(match + 0x791e)}});
+    c.set({{3, match}, {4, 1}, {5, c.u8(match + ball_row_at)}, {6, c.u8(match + ball_column_at)}});
     call(c, 0x101eea30, 0x101fea60);
     if (compare(c, s8(c.r(3))) != 0) return result(c, 0xffffffff);
     return result(c, 0);
@@ -131,7 +131,7 @@ void apply_record(Cpu& c, std::uint32_t entry, std::uint32_t target, std::uint32
         c.set(3, match + 0x10000 - 0x6ab4);
         c.call(target, entry + 0x34);
     } else {
-        c.set(3, match + 0x7c6c);
+        c.set(3, match + team_tactics);
         c.call(target, entry + 0x40);
     }
 }

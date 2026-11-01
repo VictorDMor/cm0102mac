@@ -6,15 +6,9 @@ namespace cm::aot::match_eng {
 using namespace guest;
 
 namespace {
-constexpr std::uint32_t last_side_at = 0x7924;
-constexpr std::uint32_t across_at = 0x791d, along_at = 0x791e;
-constexpr std::uint32_t play_state_at = 0x7928;
-constexpr std::uint32_t clock_at = 0x7948, added_time_at = 0x792d;
-constexpr std::uint32_t message_target_at = 0x79f4;
 constexpr std::uint32_t tactic_at = 0x1c4;       // per side: the tactic in force
 constexpr std::uint32_t aggression_at = 0x1c6;   // per side, signed
 constexpr std::uint32_t announced_at = 0x1ec;    // per side, int16: the clock of the last announcement
-constexpr std::uint32_t tendencies_at = 0x7c6c, tendencies_size = 0x18e0;  // per side
 constexpr std::uint32_t floats_at = 0x30f0;      // per side
 
 // 11 clock ticks make a minute: the original divides by multiplying with 0x2e8ba2e9.
@@ -29,20 +23,10 @@ std::uint32_t after_165(std::int32_t elapsed) {
     return std::uint32_t((t >> 1) - (t & elapsed)) >> 31;
 }
 
-// 0x101d5810 to the match's message target.
-void post(Cpu& c, std::uint32_t match, std::uint32_t id, std::uint32_t side, std::uint32_t back) {
-    c.set({{3, c.u32(match + message_target_at)}, {4, id}, {5, match}, {6, side}, {7, 0}});
-    call(c, 0x101d5810, back);
-}
 // 0x10113b60: adds a tendency to a side's flags.
 void add_tendency(Cpu& c, std::uint32_t flags, std::uint32_t mask, std::uint32_t back) {
     c.set({{3, flags}, {4, mask}});
     c.call(0x10113b60, back);
-}
-std::uint32_t draw(Cpu& c, std::uint32_t bound, std::uint32_t back) {
-    c.set(3, bound);
-    call(c, 0x101d3c90, back);
-    return c.r(3);
 }
 // 0x101d3c50, the fixture's team record of a side.
 std::uint32_t team_of(Cpu& c, std::uint32_t match, std::uint32_t side) {
@@ -86,11 +70,11 @@ void review_play(Cpu& c, std::uint32_t match) {
     c.set(4, 0);
     c.put32(match + 0x3104, 0);
     c.put8(match + 0x7920, 0);
-    c.put8(match + 0x791f, 0);
+    c.put8(match + shot_state, 0);
     c.put32(match + 0xe028, 0);
     c.put32(match + 0xe024, 0);
     c.put32(match + 0xdff4, 0);
-    c.put32(match + 0xdff8, 0);
+    c.put32(match + ball_holder, 0);
     c.put8(match + 0x791c, 0xff);
     c.put8(match + 0x792f, 0xff);
     c.put16(match + 0x794e, 0);
@@ -98,11 +82,11 @@ void review_play(Cpu& c, std::uint32_t match) {
     c.put8(match + 0x1e6, 0);
     c.set(3, match);
     call(c, 0x101d6930, 0x101e6d0c);
-    c.set(3, u(c.i8(match + 0x1c1)));
-    if (compare(c, c.i8(match + 0x1c1)) != 0) return;
+    c.set(3, u(c.i8(match + extra_time_flag)));
+    if (compare(c, c.i8(match + extra_time_flag)) != 0) return;
 
     // Whether each side's tactic has been left alone for long (both, at the kick-off).
-    if (compare(c, c.i8(match + play_state_at), 8) == 0) {
+    if (compare(c, c.i8(match + play_state), 8) == 0) {
         c.put_f32(match + floats_at, c.f32(singles));
         c.put_f32(match + floats_at + 4, c.f32(singles));
         c.put8(frame.at(0x3f), 1);
@@ -134,7 +118,7 @@ void review_play(Cpu& c, std::uint32_t match) {
                         scratch = c.r(3);
                         c.set(3, player);
                         const auto energy = byte_2f(c, player);
-                        c.set({{3, c.u32(match + message_target_at)}, {4, 0x21cf}, {5, match}, {6, energy}, {7, scratch}, {8, 0}});
+                        c.set({{3, c.u32(match + message_target)}, {4, 0x21cf}, {5, match}, {6, energy}, {7, scratch}, {8, 0}});
                         call(c, 0x101d6710, 0x101e6e7c);
                         found = 1;
                     }
@@ -150,8 +134,8 @@ void review_play(Cpu& c, std::uint32_t match) {
     for (side = 0; ; side = side + 1) {
         c.set(4, u(s8(side)));
         if (compare(c, s8(side), 2) >= 0) break;
-        if (compare(c, c.i8(match + play_state_at), 5) == 0) break;
-        if (compare(c, c.i8(match + 0x1c1)) != 0) break;
+        if (compare(c, c.i8(match + play_state), 5) == 0) break;
+        if (compare(c, c.i8(match + extra_time_flag)) != 0) break;
         c.set(3, match + side_stats_at + u(s8(side)) * 0xd8);
         c.call(0x1020c5d0, 0x101e6ee0);
         tactic = c.r(3);
@@ -166,12 +150,12 @@ void review_play(Cpu& c, std::uint32_t match) {
     }
 
     // A side that has just kicked off with a time-wasting tactic gets added time.
-    if (compare(c, c.i8(match + last_side_at), -1) != 0) {
-        c.set(4, u(c.i8(match + last_side_at)));
-        auto wasting = compare(c, s8(c.u8(match + tactic_at + u(c.i8(match + last_side_at)))), 3) == 0;
+    if (compare(c, c.i8(match + possession_side), -1) != 0) {
+        c.set(4, u(c.i8(match + possession_side)));
+        auto wasting = compare(c, s8(c.u8(match + tactic_at + u(c.i8(match + possession_side)))), 3) == 0;
         if (!wasting) {
-            c.set(4, u(c.i8(match + last_side_at)));
-            const auto kind = s8(c.u8(match + tactic_at + u(c.i8(match + last_side_at))));
+            c.set(4, u(c.i8(match + possession_side)));
+            const auto kind = s8(c.u8(match + tactic_at + u(c.i8(match + possession_side))));
             c.set(5, u(kind));
             wasting = compare(c, kind, 4) == 0;
         }
@@ -181,8 +165,8 @@ void review_play(Cpu& c, std::uint32_t match) {
             const auto sign = std::uint32_t(s8(extra)) >> 31;
             c.set(4, sign);
             const auto half = std::int32_t(s8(extra) + sign) >> 1;
-            c.put8(match + added_time_at, c.u8(match + added_time_at) + u(s8(draw(c, u(half), 0x101e6fe8))));
-            const auto other = std::uint32_t(c.i8(match + last_side_at) == 0);
+            c.put8(match + added_time, c.u8(match + added_time) + u(s8(draw(c, u(half), 0x101e6fe8))));
+            const auto other = std::uint32_t(c.i8(match + possession_side) == 0);
             if (compare(c, s8(c.u8(match + tactic_at + other)), 1) == 0) {
                 c.set(3, match);
                 c.set(4, u(std::int8_t(other)));
@@ -220,12 +204,12 @@ void review_play(Cpu& c, std::uint32_t match) {
     c.set(3, match);
     const auto period = std::int16_t(minute_clock(c, match));
     const auto announce_added = [&](std::uint32_t flag_at, std::uint32_t kept_slot, std::uint32_t back) {
-        const auto added = ticks_to_minutes(s8(c.u8(match + added_time_at)));
+        const auto added = ticks_to_minutes(s8(c.u8(match + added_time)));
         const auto minutes = added > 2 ? added : 2;
         if (kept_slot == 0x39) r17 = u(minutes);
         else r16 = u(minutes);
         c.put8(frame.at(kept_slot), u(minutes));
-        c.set({{3, c.u32(match + message_target_at)}, {4, 0x21c1}, {5, match}, {6, c.u8(match + last_side_at)}, {7, 0}, {8, 0},
+        c.set({{3, c.u32(match + message_target)}, {4, 0x21c1}, {5, match}, {6, c.u8(match + possession_side)}, {7, 0}, {8, 0},
                {9, 0}, {10, u(s8(c.u8(frame.at(kept_slot))))}});
         c.call(0x10201180, back);
         c.put8(match + flag_at, 1);
@@ -268,11 +252,11 @@ void review_play(Cpu& c, std::uint32_t match) {
         c.set(4, u(s8(changed_flag)));
         if (compare(c, s8(changed_flag)) == 0) continue;
         const auto stats = match + side_stats_at + u(s8(side)) * 0xd8;
-        const auto flags = match + tendencies_at + u(s8(side)) * tendencies_size;
+        const auto flags = match + team_tactics + u(s8(side)) * team_tactics_size;
         const auto tendency = [&](std::uint32_t mask, std::uint32_t back) { add_tendency(c, flags, mask, back); };
         const auto previous = [&] { return c.u8(frame.at(0x43) + u(s8(side))); };
         const auto kicked = [&] { return c.u8(frame.at(0x3f) + u(s8(side))); };
-        const auto message = [&](std::uint32_t id, std::uint32_t back) { post(c, match, id, side, back); };
+        const auto message = [&](std::uint32_t id, std::uint32_t back) { post_message(c, match, id, side, back); };
         const auto announced_now = [&] { c.put16(match + announced_at + 2 * u(s8(side)), u(clock())); };
         const auto aggression_sign = [&](std::uint32_t slot) {
             if (compare(c, s8(c.u8(match + aggression_at + u(s8(side)))), 0) > 0) c.put32(frame.at(slot), 3);
@@ -350,7 +334,7 @@ void review_play(Cpu& c, std::uint32_t match) {
                 tendency(0x20000, 0x101e74ac);
             }
             tendency(0x800, 0x101e74c4);
-            c.set(5, u(s8(side)) * tendencies_size);
+            c.set(5, u(s8(side)) * team_tactics_size);
             tendency(0x2000, 0x101e74dc);
             if (compare(c, clock(), 1) <= 0) {
                 message(0x2137, 0x101e7500);
@@ -380,7 +364,7 @@ void review_play(Cpu& c, std::uint32_t match) {
                     if (heavy) {
                         tendency(0x20000, 0x101e7684);
                         scratch = u(s8(side));
-                        c.set(6, u(s8(scratch)) * tendencies_size);
+                        c.set(6, u(s8(scratch)) * team_tactics_size);
                         tendency(0x800, 0x101e769c);
                     } else {
                         tendency(0x8000, 0x101e76bc);
@@ -444,7 +428,7 @@ void review_play(Cpu& c, std::uint32_t match) {
                 if (compare(c, rating_of(0x2e), 0x12) > 0) {
                     tendency(0x20000, 0x101e7d34);
                 } else {
-                    c.set(5, u(s8(side)) * tendencies_size);
+                    c.set(5, u(s8(side)) * team_tactics_size);
                     tendency(0x8000, 0x101e7d54);
                 }
             } else {
@@ -481,7 +465,7 @@ void review_play(Cpu& c, std::uint32_t match) {
             const auto detail = c.u32(team + 0x2c);
             c.set(3, detail);
             if (compare(c, s8(c.u8(detail + 0x119)), 8) == 0) {
-                post(c, match, 0x2129, first, first_is_one ? 0x101e84f4 : 0x101e80f4);
+                post_message(c, match, 0x2129, first, first_is_one ? 0x101e84f4 : 0x101e80f4);
                 return;
             }
         }
@@ -509,7 +493,7 @@ void review_play(Cpu& c, std::uint32_t match) {
                 }
             }
             if (compare(c, std::int32_t(value), std::int32_t(word)) == 0) {
-                post(c, match, lines[k].id, other, lines[k].post_back);
+                post_message(c, match, lines[k].id, other, lines[k].post_back);
                 return;
             }
         }
@@ -519,7 +503,7 @@ void review_play(Cpu& c, std::uint32_t match) {
         c.set(3, u(s8(raw_kind)));
         if (!first_is_one) c.set(4, raw_kind);
         const auto kind = s8(raw_kind);
-        const auto say = [&](std::uint32_t id, std::uint32_t back) { post(c, match, id, other, back); };
+        const auto say = [&](std::uint32_t id, std::uint32_t back) { post_message(c, match, id, other, back); };
         const auto by_draw = [&](std::uint32_t draw_back, std::uint32_t high_id, std::uint32_t high_back, std::uint32_t low_id,
                                  std::uint32_t low_back) {
             if (compare(c, draw(c, 2, draw_back)) != 0) say(high_id, high_back);
@@ -542,19 +526,19 @@ void review_play(Cpu& c, std::uint32_t match) {
     };
     const auto commentary = [&] {
         if (compare(c, s8(byte_7931(c, match))) == 0) return;
-        scratch = c.u8(match + play_state_at);
+        scratch = c.u8(match + play_state);
         c.set(6, u(s8(scratch)));
         if (compare(c, s8(scratch), 3) == 0) return;
-        if (compare(c, c.i8(match + play_state_at), 5) == 0) return;
-        if (compare(c, c.i8(match + play_state_at), 6) == 0) {
+        if (compare(c, c.i8(match + play_state), 5) == 0) return;
+        if (compare(c, c.i8(match + play_state), 6) == 0) {
             const auto too_close = [&](std::uint32_t to_along, std::uint32_t back) {
-                c.set({{3, match}, {4, c.u8(match + across_at)}, {5, c.u8(match + along_at)}, {6, 4}, {7, to_along}});
+                c.set({{3, match}, {4, c.u8(match + ball_row_at)}, {5, c.u8(match + ball_column_at)}, {6, 4}, {7, to_along}});
                 call(c, 0x101ef8d0, back);
                 fpu.fcmp(0, c.f(1), c.f64(doubles + 0x30));
                 return (c.cr(0) & 8) != 0;
             };
-            if (compare(c, c.i8(match + last_side_at)) == 0 && too_close(0xb, 0x101e7f18)) return;
-            if (compare(c, c.i8(match + last_side_at), 1) == 0 && too_close(0, 0x101e7f4c)) return;
+            if (compare(c, c.i8(match + possession_side)) == 0 && too_close(0xb, 0x101e7f18)) return;
+            if (compare(c, c.i8(match + possession_side), 1) == 0 && too_close(0, 0x101e7f4c)) return;
         }
         c.set({{3, match}, {4, 0}, {5, frame.at(0x3e)}, {6, frame.at(0x3d)}, {7, frame.at(0x3c)}, {8, frame.at(0x3b)},
                {9, frame.at(0x3a)}, {10, 0}});
@@ -577,7 +561,7 @@ void review_play(Cpu& c, std::uint32_t match) {
             c.call(0x1036ff00, 0x101e7fe8);
             c.set(4, c.r(3));
             if (compare(c, s8(c.r(3))) != 0) {
-                post(c, match, 0x212a, 1, 0x101e8010);
+                post_message(c, match, 0x212a, 1, 0x101e8010);
                 return;
             }
         }
@@ -613,7 +597,7 @@ void review_play(Cpu& c, std::uint32_t match) {
     commentary();
 
     // The restart for the current play state.
-    const auto state = c.u8(match + play_state_at);
+    const auto state = c.u8(match + play_state);
     c.set(3, state);
     if (compare_logical(c, u(s8(state)), 8) <= 0) {
         switch (s8(state)) {

@@ -36,15 +36,5 @@ inline double widen(Cpu& c, std::uint32_t slot, std::uint32_t value) {
     c.put32(slot, 0x43300000);
     return c.f64(slot);
 }
-// fctiwz then stfd to the stack: the low word the original reads back.
-inline std::uint32_t truncated(Cpu& c, Fpu& fp, std::uint32_t slot, double value) {
-    c.put64(slot, fp.fctiwz(0, value));
-    return c.u32(slot + 4);
-}
-inline std::uint32_t draw(Cpu& c, std::uint32_t bound, std::uint32_t back) {
-    c.set(3, bound);
-    call(c, 0x101d3c90, back);
-    return c.r(3);
-}
 }
 }

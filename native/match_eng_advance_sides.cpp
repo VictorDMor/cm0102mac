@@ -8,11 +8,8 @@ using namespace guest;
 namespace {
 constexpr std::uint32_t side_player_count = 20;
 constexpr std::uint32_t record_at = 0x6c;           // a player's pointer to its record
-constexpr std::uint32_t team_stride = 0x18e0, teams_at = 0x7c6c;
-constexpr std::uint32_t play_state = 0x7928;
 constexpr std::uint32_t turn_at = 0x7950;           // the default turn, int16
-constexpr std::uint32_t drift_timer = 0x7920, drift_step = 0x791f;
-constexpr std::uint32_t ball_column_at = 0x791d, ball_row_at = 0x791e;
+constexpr std::uint32_t drift_timer = 0x7920;
 constexpr std::uint32_t pressure_total = 0x1e8;     // per side, int16
 constexpr std::uint32_t pressure_count = 0xaf;      // per side, byte
 
@@ -20,7 +17,7 @@ std::uint32_t side_players(std::uint32_t match, std::uint32_t side) {
     return match + u(s8(side) * std::int32_t(side_size)) + players_at;
 }
 std::uint32_t team_of_side(std::uint32_t match, std::uint32_t side) {
-    return match + u(s8(side) * std::int32_t(team_stride)) + teams_at;
+    return match + u(s8(side) * std::int32_t(team_tactics_size)) + team_tactics;
 }
 }  // namespace
 
@@ -210,13 +207,13 @@ void drift_ball(Cpu& c, std::uint32_t match) {
     Kept<31> r_match(c, match);
     Kept<30> r_roll(c, c.r(30));
     c.set(3, match + 0x10000);
-    if (compare_logical(c, c.u32(match + 0xe000)) != 0) return;
+    if (compare_logical(c, c.u32(match + pending_player)) != 0) return;
     c.set(3, match + 0x10000);
-    if (compare_logical(c, c.u32(match + 0xdff8)) != 0) return;
+    if (compare_logical(c, c.u32(match + ball_holder)) != 0) return;
     if (compare(c, s8(c.u8(match + drift_timer)), 0) == 0) return;
     if (compare(c, s8(c.u8(match + play_state)), 0) != 0) {
         c.put8(match + drift_timer, 0);
-        c.put8(match + drift_step, 0);
+        c.put8(match + shot_state, 0);
         return;
     }
     bool step = true;
@@ -238,23 +235,23 @@ void drift_ball(Cpu& c, std::uint32_t match) {
             c.put8(at, before + by);
         };
         bump(match + drift_timer, UINT32_MAX);
-        if (compare(c, s8(c.u8(match + drift_step)), 0) != 0) bump(match + drift_step, UINT32_MAX);
+        if (compare(c, s8(c.u8(match + shot_state)), 0) != 0) bump(match + shot_state, UINT32_MAX);
         const auto turn = [&] { return std::int32_t(c.i16(match + turn_at)); };
         if (compare(c, turn(), 0xdc) > 0 && compare(c, turn(), 0x140) < 0) {
-            bump(match + ball_column_at, UINT32_MAX);
-        } else if (compare(c, turn(), 0x28) > 0 && compare(c, turn(), 0x8c) < 0) {
-            bump(match + ball_column_at, 1);
-        } else if (compare(c, turn(), 0x82) > 0 && compare(c, turn(), 0xe6) < 0) {
             bump(match + ball_row_at, UINT32_MAX);
-        } else if (compare(c, turn(), 0x32) < 0 || compare(c, turn(), 0x136) > 0) {
+        } else if (compare(c, turn(), 0x28) > 0 && compare(c, turn(), 0x8c) < 0) {
             bump(match + ball_row_at, 1);
+        } else if (compare(c, turn(), 0x82) > 0 && compare(c, turn(), 0xe6) < 0) {
+            bump(match + ball_column_at, UINT32_MAX);
+        } else if (compare(c, turn(), 0x32) < 0 || compare(c, turn(), 0x136) > 0) {
+            bump(match + ball_column_at, 1);
         }
     }
-    // The ball left the pitch's cells (9 columns by 12 rows): the restart is set up.
-    if (compare(c, s8(c.u8(match + ball_column_at)), 0) >= 0 && compare(c, s8(c.u8(match + ball_row_at)), 0) >= 0 &&
-        compare(c, s8(c.u8(match + ball_column_at)), 9) < 0 && compare(c, s8(c.u8(match + ball_row_at)), 0xc) < 0)
+    // The ball left the pitch's cells (9 rows by 12 columns): the restart is set up.
+    if (compare(c, s8(c.u8(match + ball_row_at)), 0) >= 0 && compare(c, s8(c.u8(match + ball_column_at)), 0) >= 0 &&
+        compare(c, s8(c.u8(match + ball_row_at)), 9) < 0 && compare(c, s8(c.u8(match + ball_column_at)), 0xc) < 0)
         return;
-    c.set({{3, match}, {4, c.u8(match + 0x7921)}});
+    c.set({{3, match}, {4, c.u8(match + last_touch_side)}});
     call(c, 0x101f0c00, 0x101d6f6c);
 }
 

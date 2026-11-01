@@ -142,7 +142,7 @@ MATCH_ENG_ROUTINE(0x101ee610, 0x101ee680, R3, "375629258f2f5f1b",
 MATCH_ENG_ROUTINE(0x101ee9c0, 0x101ee9f0, R3, "5d7490ca0267212c",
     [](Cpu& c) { match_eng::outside_central_rows(c,c.r(4)); })
 MATCH_ENG_ROUTINE(0x101ee9f0, 0x101eea30, R3, "9836c9fbb7280785",
-    [](Cpu& c) { match_eng::beyond_row(c,c.r(4),c.r(5)); })
+    [](Cpu& c) { match_eng::beyond_column(c,c.r(4),c.r(5)); })
 MATCH_ENG_ROUTINE(0x101eea30, 0x101eeac0, R3, "43e28141e01fbb7f",
     [](Cpu& c) { match_eng::inside_end_area(c,c.r(4),c.r(5),c.r(6)); })
 MATCH_ENG_ROUTINE(0x101f0bf0, 0x101f0c00, NONE, "e4c88a6393f117a7",

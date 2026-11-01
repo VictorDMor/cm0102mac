@@ -7,8 +7,6 @@ using namespace tactics_a;
 
 namespace {
 // Match fields (offsets from the match).
-constexpr std::uint32_t ball_holder_at = 0xe000;    // the player holding the ball (word)
-constexpr std::uint32_t second_holder_at = 0xdff8;  // word
 constexpr std::uint32_t cells_at = 0xa08;           // 9 rows of 0x450 bytes, 12 columns of 0x5c each
 constexpr std::uint32_t row_stride = 0x450, column_stride = 0x5c, side_stride = 0x2c;
 constexpr std::uint32_t cell_counts = 0x58;         // per side, after the 2 x 11 player words
@@ -25,12 +23,6 @@ Scaled hundredths(std::int32_t value, unsigned shift) {
     return {shifted + std::int32_t(sign), high, sign};
 }
 std::uint32_t halfword_of(std::int32_t value) { return u(std::int16_t(value)); }
-
-// `cror eq,x,eq` after a floating compare: EQ also set when `bit` (LT 8, GT 4) is.
-void equal_or(Cpu& c, std::uint8_t bit) {
-    const auto field = c.cr(0);
-    if (field & bit) c.set_cr(0, field | 2);
-}
 }
 
 // 0x101d7d30
@@ -38,7 +30,7 @@ std::uint32_t side_flag_400(Cpu& c, std::uint32_t match, std::uint32_t side) {
     Frame frame(c, 0x101d7d30, 0x40, {});
     c.put32(frame.at(0x58), match);
     c.put8(frame.at(0x5f), side);
-    const auto team = match + u(s8(side) * 0x18e0) + 0x7c6c;
+    const auto team = match + u(s8(side) * team_tactics_size) + team_tactics;
     c.set(4, match);
     enter(c, 0x101d7d60, {team});
     const auto flags = tactical_flags(c, team);
@@ -74,11 +66,9 @@ std::uint32_t choose_challenge_target(Cpu& c, std::uint32_t match, std::uint32_t
     KeptFloat<30> distance(c);       // 0x101ef8d0 between the two
     KeptFloat<31> goal_distance(c);
 
-    const auto holder_of_ball = [&] { return c.u32(match + ball_holder_at); };
+    const auto pending_of_ball = [&] { return c.u32(match + pending_player); };
     const auto random = [&](std::uint32_t limit, std::uint32_t back) {
-        c.set(3, limit);
-        call(c, 0x101d3c90, back);
-        return c.r(3);
+        return draw(c, limit, back);
     };
     // A distance: 0x101ef8d0(match, row, column, row base, column base) or its goal form.
     const auto measure = [&](std::uint32_t row, std::uint32_t column, std::uint32_t a, std::uint32_t b,
@@ -177,7 +167,7 @@ std::uint32_t choose_challenge_target(Cpu& c, std::uint32_t match, std::uint32_t
 
     // --- Preliminary answers ---
     c.set(4, position(c, player));
-    c.set(3, match + u(s8(c.u8(player + 0x27)) * 0x18e0) + 0x7c6c);
+    c.set(3, match + u(s8(c.u8(player + 0x27)) * team_tactics_size) + team_tactics);
     call(c, 0x101149f0, 0x101d7128);
     if (compare(c, s8(c.r(3)) & 1) != 0) return result(c, 0);
 
@@ -206,28 +196,28 @@ std::uint32_t choose_challenge_target(Cpu& c, std::uint32_t match, std::uint32_t
     enum class Next { row_done, skip, answer };
     const auto at_carrier = [&]() -> Next {
         if (compare(c, s8(scan_row), s8(c.u8(row_base_at)) - 1) != 0) return Next::row_done;
-        c.set(4, holder_of_ball());
-        if (compare_logical(c, holder_of_ball()) == 0) return Next::row_done;
+        c.set(4, pending_of_ball());
+        if (compare_logical(c, pending_of_ball()) == 0) return Next::row_done;
         // Only a carrier within reach.
         scratch = column(c, player);
-        c.set({{3, holder_of_ball()}, {4, row(c, player)}, {5, scratch}});
+        c.set({{3, pending_of_ball()}, {4, row(c, player)}, {5, scratch}});
         call(c, 0x1022e760, 0x101d7280);
         fp.fcmp(0, c.f(1), c.f64(doubles + near_limit));
         equal_or(c, 8);
         if (!(c.cr(0) & 2)) return Next::row_done;
 
-        scratch = column(c, holder_of_ball());
-        const auto carrier_row = row(c, holder_of_ball());
+        scratch = column(c, pending_of_ball());
+        const auto carrier_row = row(c, pending_of_ball());
         distance = measure(carrier_row, scratch, c.u8(row_base_at), c.u8(column_base_at), 0x101d72c4);
-        scratch = column(c, holder_of_ball());
-        closeness_of(row(c, holder_of_ball()), scratch, 0x101d72fc);
+        scratch = column(c, pending_of_ball());
+        closeness_of(row(c, pending_of_ball()), scratch, 0x101d72fc);
         const bool left_side = compare(c, s8(c.u8(player + 0x27))) == 0;
-        scratch = column(c, holder_of_ball());
-        goal_distance = measure(row(c, holder_of_ball()), scratch, 4, left_side ? 0 : 0xb,
+        scratch = column(c, pending_of_ball());
+        goal_distance = measure(row(c, pending_of_ball()), scratch, 4, left_side ? 0 : 0xb,
                                 left_side ? 0x101d7344 : 0x101d7380);
         goal_distance = fp.fadds(goal_distance, c.f32(floats + 8));
 
-        candidate = holder_of_ball();
+        candidate = pending_of_ball();
         marking = marking_count(c, candidate);
         c.set(4, s8(marking));
         if (compare(c, s8(marking), 3) == 0) return Next::skip;
@@ -268,12 +258,12 @@ std::uint32_t choose_challenge_target(Cpu& c, std::uint32_t match, std::uint32_t
     const auto in_cell = [&]() -> bool {
         const auto j = s8(c.u8(index_at));
         candidate = c.u32(cell + u(s8(opposing) * std::int32_t(side_stride)) + (u(j) << 2));
-        if (compare_logical(c, candidate, holder_of_ball()) == 0) return false;
+        if (compare_logical(c, candidate, pending_of_ball()) == 0) return false;
         marking = marking_count(c, candidate);
         if (compare(c, s8(marking), 3) == 0) return false;
         if (wrong_half(false)) return false;
-        if (compare_logical(c, candidate, holder_of_ball()) != 0 &&
-            compare_logical(c, candidate, c.u32(match + second_holder_at)) != 0) {
+        if (compare_logical(c, candidate, pending_of_ball()) != 0 &&
+            compare_logical(c, candidate, c.u32(match + ball_holder)) != 0) {
             const auto side = c.u8(player + 0x27);
             enter(c, 0x101d7884, {match, side});
             const bool flagged = compare(c, s8(side_flag_400(c, match, side))) != 0;
@@ -296,7 +286,7 @@ std::uint32_t choose_challenge_target(Cpu& c, std::uint32_t match, std::uint32_t
                 c.set(3, candidate);
                 call(c, 0x102775c0, 0x101d79dc);
                 if (compare(c, s8(c.r(3))) != 0) return true;
-                if (compare_logical(c, candidate, c.u32(match + second_holder_at)) == 0) return true;
+                if (compare_logical(c, candidate, c.u32(match + ball_holder)) == 0) return true;
                 score = score + 0x14;
             }
         }
@@ -329,9 +319,9 @@ std::uint32_t choose_challenge_target(Cpu& c, std::uint32_t match, std::uint32_t
             compare(c, state_flags(0x101e3d50, 0x101d7b24) & 0x80) == 0) {
             score = score + halfword_of(s8(c.u8(c.u32(candidate + 0x70) + 0x1a)) * 10);
         } else {
-            bool tired = compare(c, state_flags(0x101e3d50, 0x101d7b5c), 0x140) == 0 ||
-                         compare(c, state_flags(0x101e3d50, 0x101d7b74), 0x240) == 0 ||
-                         compare(c, state_flags(0x101e3d50, 0x101d7b8c), 0x440) == 0;
+            bool tired = compare(c, state_flags(0x101e3d50, 0x101d7b60), 0x140) == 0 ||
+                         compare(c, state_flags(0x101e3d50, 0x101d7b78), 0x240) == 0 ||
+                         compare(c, state_flags(0x101e3d50, 0x101d7b90), 0x440) == 0;
             if (!tired) {
                 if (compare(c, state_flags(0x101e3de0, 0x101d7ba8), 0x140) == 0 ||
                     compare(c, state_flags(0x101e3de0, 0x101d7bc0), 0x240) == 0 ||

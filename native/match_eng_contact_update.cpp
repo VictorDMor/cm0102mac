@@ -355,7 +355,7 @@ void update_contacts(Cpu& c, std::uint32_t match) {
                 c.set(4, record());
                 const auto weight = std::int32_t(rec_byte(0x67) * 100);
                 const auto bound = u(rec_byte(0x69) * (rec_byte(0x66) * weight) + 0x7d0);
-                if (compare(c, std::int32_t(draw(c, bound, 0x101f904c)), std::int32_t(c.r(13))) >= 0) return;
+                if (compare(c, std::int32_t(draw(c, bound, 0x101f9050)), std::int32_t(c.r(13))) >= 0) return;
                 raise(0xb, 0, 0x101f9074, 0x101f90b4);
             };
             bool counted = true;

@@ -6,10 +6,6 @@ namespace cm::aot::match_eng {
 using namespace guest;
 
 namespace {
-constexpr std::uint32_t shot_state_at = 0x791f;
-constexpr std::uint32_t ball_row_at = 0x791d, ball_column_at = 0x791e;  // as the players' +0x105 / +0x106
-constexpr std::uint32_t team_tactics = 0x7c6c, team_tactics_size = 0x18e0;
-constexpr std::uint32_t random_below = 0x101d3c90;
 constexpr std::uint32_t player_traits = 0x10286470;  // 64 trait bits: r3 high word, r4 low word
 constexpr std::uint32_t player_kind = 0x10289560;
 
@@ -36,7 +32,7 @@ private:
     std::int32_t slot_s8(std::uint32_t at) const { return s8(c.u8(frame.at(at))); }
     std::int32_t slot_s16(std::uint32_t at) const { return c.i16(frame.at(at)); }
     std::uint32_t flag_pointer() const { return c.r(20); }
-    std::int32_t state() const { return s8(c.u8(match + shot_state_at)); }
+    std::int32_t state() const { return s8(c.u8(match + shot_state)); }
 
     void call_to(std::uint32_t entry, std::uint32_t back) { c.call(entry, back); }
     // A routine of this module (or another block's).
@@ -44,9 +40,7 @@ private:
         call(c, entry, back);
     }
     std::uint32_t rnd(std::uint32_t n, std::uint32_t back) {
-        c.set(3, n);
-        call_to(random_below, back);
-        return c.r(3);
+        return draw(c, n, back);
     }
     double widen(std::uint32_t at, std::int32_t value, bool single) {
         c.put32(frame.at(at) + 4, std::uint32_t(value) ^ 0x80000000u);
@@ -368,7 +362,7 @@ void Chooser::case_d() {
         call_to(0x10239d10, 0x101ebdc4);
         if (compare(c, s8(c.r(3))) == 0) {
             r23 = 1;
-        } else if (compare(c, s8(c.u8(match + 0x7929))) != 0) {
+        } else if (compare(c, s8(c.u8(match + shootout_stage))) != 0) {
             r26 = 5;
         } else {
             c.set(5, u(flag_10()));
@@ -647,7 +641,7 @@ bool Chooser::tail() {
             }
             if (!done) {
                 if (compare(c, s8(c.u8(flag_pointer()))) != 0 && !kind_is_one(cand, 0x101ec54c) && !less(c.f(30), D(0x98))) {
-                    c.set(15, c.u8(match + shot_state_at));
+                    c.set(15, c.u8(match + shot_state));
                     if (compare(c, s8(c.r(15)), 4) != 0 && compare(c, s8(adjustment_byte(c, cand))) != 0) return false;
                 }
                 c.put8(frame.at(slot::result), r17);

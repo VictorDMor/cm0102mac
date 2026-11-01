@@ -94,7 +94,7 @@ void SetUp::begin() {
     }
     c.put32(match + fixture_at, c.u32(frame.at(st_fixture)));
     c.set(15, 0);
-    c.put8(match + 0x7929, 0);
+    c.put8(match + shootout_stage, 0);
     c.put8(match + 0x792a, 0);
     memory_set(match + 0x238, 0x7d0, 0x101d17f0);
     c.put8(match + 0x791b, 0);
@@ -250,12 +250,12 @@ void SetUp::angle_table() {
 void SetUp::clear_counters() {
     c.put16(hi - 0x1f46, 0);
     c.put8(match + 0x7930, 0);
-    c.put16(match + 0x7948, 0);
-    c.put8(match + 0x792d, 0);
+    c.put16(match + clock_at, 0);
+    c.put8(match + added_time, 0);
     c.put8(match + 0x792b, 0);
-    c.put16(match + 0x794c, 0x1ef);
+    c.put16(match + period_end, 0x1ef);
     c.put16(match + 0x794a, 0);
-    c.put8(match + 0x1c1, 0);
+    c.put8(match + extra_time_flag, 0);
     c.put8(match + 0x1c2, 0);
     c.put8(match + 0x1c3, 0);
     c.put16(match + 0x7944, 0);
@@ -318,11 +318,11 @@ void SetUp::clear_counters() {
         if (n == 3 || n == 7) c.set(15, c.r(3));
     }
     c.put8(match + 0x7911, 0);
-    c.put8(match + 0x7921, 0xff);
+    c.put8(match + last_touch_side, 0xff);
     c.put16(match + 0x7950, 0xb4);
     c.put8(match + 0x7920, 0);
     c.put32(hi - 0x2000, 0);
-    c.put8(match + 0x791f, 0);
+    c.put8(match + shot_state, 0);
     c.put32(hi - 0x200c, 0);
     c.put32(hi - 0x2008, 0);
     c.put32(hi - 0x2004, 0);
@@ -385,13 +385,13 @@ void SetUp::attach_world() {
     c.set(15, team_b);
     const auto team_a = team_of(0);
     c.set({{3, team_a}, {4, team_b}, {5, 1}});
-    c.call(0x101fd6b0, 0x101d2510);
+    call(c, 0x101fd6b0, 0x101d2510);
     c.put8(match + 0x77c5, c.r(3));
     const auto first = team_of(0);
     c.set(15, first);
     const auto second = team_of(1);
     c.set({{3, second}, {4, first}, {5, 0}});
-    c.call(0x101fd6b0, 0x101d2548);
+    call(c, 0x101fd6b0, 0x101d2548);
     c.set(4, c.r(3));
     c.put8(match + 0x77c6, c.r(4));
     const auto attach = [&](std::uint32_t entry, std::uint32_t back) {
@@ -551,14 +551,14 @@ void SetUp::count_lineups() {
 
 // The message object the match reports through: the caller's, or a new one.
 bool SetUp::message_object() {
-    c.set({{3, hi - 0x51d4}, {4, match + 0x7c6c}, {5, 0x31c0}});
+    c.set({{3, hi - 0x51d4}, {4, match + team_tactics}, {5, 0x31c0}});
     c.call(0x10739ef0, 0x101d2c10);
     c.set(15, 0x6e);
     c.put16(match + 0x1e8, 0x6e);
     c.set(5, 0x6e);
     c.put16(match + 0x1ea, 0x6e);
     c.set(3, 0);
-    c.put32(match + 0x79f4, 0);
+    c.put32(match + message_target, 0);
     if (cmp(sb(match + 0x7930)) != 0) {
         c.put8(match, 1);
         c.put8(match + 0x7913, 0);
@@ -566,7 +566,7 @@ bool SetUp::message_object() {
         return false;
     }
     if (cmpu(c.u32(frame.at(st_target))) != 0) {
-        c.put32(match + 0x79f4, c.u32(frame.at(st_target)));
+        c.put32(match + message_target, c.u32(frame.at(st_target)));
         c.put8(match + 0x7913, 0);
     } else {
         c.set(3, 0x4074);
@@ -577,9 +577,9 @@ bool SetUp::message_object() {
             c.call(0x101fef60, 0x101d2c90);
         }
         c.set(3, c.u32(frame.at(0x68)));
-        c.put32(match + 0x79f4, c.r(3));
+        c.put32(match + message_target, c.r(3));
         c.put8(match + 0x7913, 1);
-        const auto object = c.u32(match + 0x79f4);
+        const auto object = c.u32(match + message_target);
         c.set({{3, object}, {4, 1}});
         set_byte_0(c, object, 1);
     }
@@ -1136,15 +1136,15 @@ void SetUp::kickoff() {
         c.set(5, 1);
         c.put8(match + 0x792c, 1);
         c.set(5, 0);
-        c.put8(match + 0x7924, 0);
+        c.put8(match + possession_side, 0);
     } else {
         c.set(6, 0);
         c.put8(match + 0x792c, 0);
         c.set(6, 1);
-        c.put8(match + 0x7924, 1);
+        c.put8(match + possession_side, 1);
     }
     c.set(9, 8);
-    c.put8(match + 0x7928, 8);
+    c.put8(match + play_state, 8);
     c.set(10, 0);
     c.put8(match + 0x1e3, 0);
 }

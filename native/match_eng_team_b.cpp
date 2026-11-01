@@ -44,7 +44,7 @@ std::uint32_t count_players_ahead(Cpu& c, std::uint32_t match, std::uint32_t thr
     std::uint32_t count = 0, player = match + u(s8(side) * std::int32_t(side_size)) + players_at;
     for (std::uint32_t index = 0; index < 20; ++index, player += player_size) {
         if (s8(position(c, player)) < 0) continue;  // not on the pitch
-        if (s8(skip_pending) != 0 && player == c.u32(match + 0xe000)) continue;
+        if (s8(skip_pending) != 0 && player == c.u32(match + pending_player)) continue;
         const auto here = s8(column(c, player));
         if (s8(side) == 1) { if (here < s8(threshold)) ++count; }
         else if (s8(side) == 0 && here > s8(threshold)) ++count;
@@ -153,7 +153,7 @@ std::uint32_t run_allowed(Cpu& c, std::uint32_t match, std::uint32_t player, std
         if (compare(c, std::int32_t(c.r(3)), 1) > 0) {
             keep(c, {{26, column(c, player)}});
             leave(c, {{3, match}, {4, target_row}, {5, target_column}, {6, row(c, player)}, {7, c.r(26)}});
-            c.call(0x101ef8d0, 0x101eec74);
+            call(c, 0x101ef8d0, 0x101eec74);
             fpu.fcmp(0, c.f(1), c.f64(c.toc(-0x52c4) + 0x1b8));
             return result(c, (c.cr(0) & 4) != 0);
         }

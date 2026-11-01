@@ -109,7 +109,7 @@ std::uint32_t side_flagged(Cpu& c, std::uint32_t match, std::uint32_t side) {
     c.set({{4, 0}, {5, c.u8(c.u32(match + fixture_at) + 0x40)}, {6, 0}, {7, 0}});
     c.call(0x1014c2e0, 0x101fd070);
     if (compare(c, s8(c.r(3))) != 0) {
-        c.set(3, match + u(s8(key) * 0x18e0) + 0x7c6c);
+        c.set(3, match + u(s8(key) * team_tactics_size) + team_tactics);
         call(c, 0x101d56f0, 0x101fd090);
         return result(c, nonzero(c, std::int32_t(c.r(3) & 0x4000)) ? 1 : 0);
     }

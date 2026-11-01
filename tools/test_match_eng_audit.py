@@ -14,6 +14,21 @@ from tactics_audit import digest, routine_records
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPORT = ROOT / ".local/current/export"
+RANDOM = 0x101d3c90
+BL_ADDRESS_HELPERS = {"assertion", "report_assertion", "report", "fail", "turn_matches", "role_bits", "team", "random", "say",
+                      "say_short", "comment", "names", "bl", "flag", "flag_of_rival"}
+BL_ADDRESS_FIELD = re.compile(r"(\.at = |\bbranch = .*)$")
+
+
+def open_call(text):
+    """The function whose argument list is still open at the end of `text`."""
+    depth = 0
+    for at in range(len(text) - 1, -1, -1):
+        depth += {")": 1, "(": -1}.get(text[at], 0)
+        if depth < 0:
+            found = re.search(r"(\w+)(?:<[^<>]*>)?$", text[:at])
+            return found.group(1) if found else None
+    return None
 
 
 def require_export():
@@ -106,6 +121,45 @@ class MatchEngAudit(unittest.TestCase):
                     continue
                 if not (is_call(address) or is_call(address - 4) or fused.match(assembly.get(address) or "")):
                     wrong.append(f"{path.name}:{source.count(chr(10), 0, found.start()) + 1} {hex(address)} {assembly.get(address)}")
+        self.assertEqual(wrong, [])
+
+    maxDiff = None
+
+    def test_a_call_returns_after_its_own_bl(self):
+        # A return address that names the wrong spot leaves a wrong word in the caller's frame,
+        # which the call trace can't pair and the end state shows only if nothing overwrites it.
+        low, high = audit.MODULE
+        assembly = dict(self.db.execute(
+            "select address, json_extract(body, '$.assembly') from instructions where address >= ? and address < ?", (low, high)))
+        entries = set(audit.MATCH_ENG_ENTRIES)
+        def called(address):
+            text = assembly.get(address) or ""
+            return int(text.split()[1], 16) if text.startswith("bl ") else None
+        calls = re.compile(r"(?:\bcall\(c,\s*|\bc\.call\()(0x[0-9a-f]+),\s*(0x[0-9a-f]+)\)")
+        draws = re.compile(r"\bdraw\(c,[^;]*?(0x101[d-f][0-9a-f]{4})\)")
+        literal = re.compile(r"\b0x(101[d-f][0-9a-f]{4})\b")
+        wrong = []
+        for path in sorted((ROOT / "native").glob("match_eng_*")):
+            if path.suffix not in (".cpp", ".hpp") or "checks" in path.name:
+                continue
+            source = re.sub(r"//[^\n]*", "", path.read_text())
+            where = lambda at: f"{path.name}:{source.count(chr(10), 0, at) + 1}"
+            for found in calls.finditer(source):
+                target, back = int(found.group(1), 16), int(found.group(2), 16)
+                if low <= back < high and called(back - 4) != target:
+                    wrong.append(f"{where(found.start())} {found.group(0)}")
+            for found in draws.finditer(source):
+                if called(int(found.group(1), 16) - 4) != RANDOM:
+                    wrong.append(f"{where(found.start())} {found.group(0)}")
+            # The address of a bl itself goes only to helpers that add 4 or report the site.
+            for found in literal.finditer(source):
+                address = int(found.group(1), 16)
+                if not low <= address < high or address in entries or called(address) is None or called(address - 4) is not None:
+                    continue
+                start = source.rfind("\n", 0, found.start()) + 1
+                before = source[start:found.start()]
+                if not BL_ADDRESS_FIELD.search(before) and open_call(before) not in BL_ADDRESS_HELPERS:
+                    wrong.append(f"{where(found.start())} {hex(address)} {source[start:found.end()].strip()}")
         self.assertEqual(wrong, [])
 
     def test_a_changed_digest_fails(self):

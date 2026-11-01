@@ -9,8 +9,7 @@ std::uint32_t random_mark(Cpu& c) {
     Frame frame(c, 0x101ec7b0, 0x70, {.first_gpr = 31});
     const auto pool = c.toc(-0x52cc);
     keep(c, {{31, pool}});
-    c.set(3, 4);
-    c.call(0x101d3c90, 0x101ec7cc);
+    draw(c, 4, 0x101ec7cc);
     const auto draw = std::int32_t(c.r(3));
     // 0..3 pick '*', '-', '+', '.'.
     std::uint32_t mark = 0;

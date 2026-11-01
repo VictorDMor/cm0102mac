@@ -15,12 +15,6 @@ constexpr std::uint32_t signed_bias = 0x60;
 
 // Bits of the caller's mode.
 constexpr std::int32_t mode_first = 1, mode_open = 2, mode_support = 4, mode_cross = 8;
-
-// `cror eq,gt,eq` after a floating compare: EQ also set when `bit` (LT 8, GT 4) is.
-void equal_or(Cpu& c, std::uint8_t bit) {
-    const auto field = c.cr(0);
-    if (field & bit) c.set_cr(0, field | 2);
-}
 }
 
 // 0x101d8260
@@ -50,9 +44,7 @@ std::uint32_t choose_cell(Cpu& c, std::uint32_t match, std::uint32_t player, std
     auto scan_row = held<28>(c);
 
     const auto random = [&](std::uint32_t limit, std::uint32_t back) {
-        c.set(3, limit);
-        call(c, 0x101d3c90, back);
-        return c.r(3);
+        return draw(c, limit, back);
     };
     // `lfd f1,k60; xoris; stw; stw; lfd f0; fsubs f0,f0,f1`: a signed integer as a single; the
     // result also lands in f1 where the original writes it there.
