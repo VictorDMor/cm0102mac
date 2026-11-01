@@ -241,7 +241,10 @@ std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner r
         ::close(fds[0]);
         static std::vector<TracedCall> calls;
         traced_calls = &calls;
-        RoutineChecker silent([](std::uint32_t) { return true; }, 0, 0);
+        // Same routing as the compared runs: another module's verified or wanted routine in place,
+        // the rest through the dispatcher, where a case's answers are given.
+        const auto* compared = routine_checker;
+        RoutineChecker silent([compared](std::uint32_t entry) { return compared && compared->wants(entry); }, 0, 0);
         routine_checker = &silent;
         match_eng_call_observer = nullptr;
         dispatch_probe = trace_probe;
