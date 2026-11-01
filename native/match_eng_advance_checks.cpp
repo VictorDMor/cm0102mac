@@ -3,10 +3,12 @@
 // the tick are set up by memory overrides on the real objects. Seeds vary the random draws.
 #include "match_eng_checks.hpp"
 #include <bit>
+#include <string_view>
 
 using namespace cm::aot::match_eng_checks;
 
 namespace {
+std::vector<Write> join_writes(std::vector<Write> a, const std::vector<Write>& b) { a.insert(a.end(), b.begin(), b.end()); return a; }
 std::uint32_t spare_player(const Scenario& scenario) { return scenario.player(0, 9); }
 }
 
@@ -265,17 +267,22 @@ MATCH_ENG_CASES("advance") {
         add(0x101d3f60, {{3, match}, {4, 1}}, memory, "choose taker");
     }
     // The end of a period or the match: the first leg, the extra-time score, the shoot-out rules.
+    // The competition table the match's closing code asks (0x104646d0: is this competition one of the
+    // three special ids) isn't in a match snapshot, so both sides answer it: 0, or 1 for the special ones.
+    for (const std::uint32_t special : {0u, 1u})
     for (const std::uint32_t mark : {0x3deu, 0x528u}) for (const std::uint32_t flags : {0u, 1u, 0x20u, 0x21u, 2u, 4u, 0x4002u})
         for (const std::uint32_t first_leg : {0xffu, 0u, 2u}) for (const std::uint32_t extra_score : {0xffu, 0u, 3u})
             for (const auto [goals_a, goals_b] : {std::pair{0u, 0u}, {1u, 1u}, {2u, 1u}}) for (const std::uint32_t statistics : {0u, 1u})
-              for (const std::uint32_t word : {0u, 0xfffffffeu})
-                add(0x101d3f60, {{3, match}, {4, 1}},
-                    {{4, fixture, word == 0 ? scenario.r32(fixture) : word}, {2, match + 0x794c, mark}, {2, match + 0x7948, mark + 2}, {1, match + 0x792d, 0}, {2, match + 0x794a, 0xffff},
+              for (const std::uint32_t word : {0u, 0xfffffffeu}) {
+                if (special && ((flags != 0 && flags != 0x20) || first_leg == 2 || extra_score == 3 || statistics)) continue;
+                cases.push_back({.entry = 0x101d3f60, .registers = {{3, match}, {4, 1}},
+                    .memory = {{4, fixture, word == 0 ? scenario.r32(fixture) : word}, {2, match + 0x794c, mark}, {2, match + 0x7948, mark + 2}, {1, match + 0x792d, 0}, {2, match + 0x794a, 0xffff},
                      {2, fixture + 0x38, flags}, {1, fixture + 0x4b, first_leg}, {1, fixture + 0x4c, first_leg}, {1, fixture + 0x47, extra_score},
                      {1, fixture + 0x48, extra_score}, {1, match + 0xe03d, goals_a}, {1, match + 0xe073, goals_b}, {1, match + 0x7928, 0},
                      {1, match + 0x7929, 0}, {1, match + 0x792a, 0}, {1, match + 0x1e3, 1}, {1, match + 0x1c1, mark == 0x528 ? 1u : 0u},
                      {1, match + 0x7931, statistics}},
-                    "match end");
+                    .f1 = {}, .label = "match end", .answers = {{0x104646d0, special}}});
+              }
     // A period ended with the statistics report; the clock stopped or not.
     for (const std::uint32_t mark : {0x1efu, 0x3deu}) for (const std::uint32_t statistics : {0u, 1u})
         add(0x101d3f60, {{3, match}, {4, 1}},
@@ -364,4 +371,84 @@ MATCH_ENG_CASES("advance") {
                 {{1, match + 0x30dc, kind}, {4, match + 0x30e4, player}, {4, match + 0x30e8, other}, {2, match + 0x30e2, 12},
                  {1, match + 0x7928, 0}, {1, match + 0x30dd, 3}, {1, match + 0x30de, row}, {1, match + 0x30e0, 9}, {4, seed_at, seed}},
                 "end area draws");
+    // --- coverage closure ---
+    using Answers = std::vector<std::pair<std::uint32_t, std::uint32_t>>;
+    const auto add_answered = [&](std::uint32_t entry, std::vector<std::pair<unsigned, std::uint32_t>> registers, std::vector<Write> memory,
+                                  std::string label, Answers answers) {
+        cases.push_back({.entry = entry, .registers = std::move(registers), .memory = std::move(memory), .f1 = {}, .label = std::move(label),
+                         .answers = std::move(answers)});
+    };
+    // A side's pressure with players found in the people list: every player of the side gets list entry 0, a zeroed
+    // entry at a scratch spot whose club is the first club record; the entry's flags and the players' records decide the rest.
+    {
+        const auto nodes = scenario.r32(scenario.r32(r2 - 0x7be8)), list = scenario.r32(scenario.r32(r2 - 0x7b7c));
+        const auto index_table = scenario.r32(scenario.r32(r2 - 0x7b9c));
+        const auto entry = std::uint32_t(scenario.s.r<4>(4)) - 0x10000;
+        // Variants of the players' records: rating of the club, +0x2f byte and +0xa height of the player's record.
+        struct Variant { std::uint32_t rating, byte2f, height; };
+        const Variant variants[] = {{0x1f40, 0x7f, 0x7fff}, {0x7000, 0x7f, 0x7fff}, {0x1f40, 0, 0x7fff}, {0x1f40, 0x7f, 0x100}, {0x7000, 0x7f, 0x1c00}};
+        for (const unsigned side : {0u, 1u}) for (const auto& variant : variants) for (const std::uint32_t bits : {1u, 0u})
+            for (const std::uint32_t byte67 : {0u, 3u, 5u}) for (const std::uint32_t seed : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 9u, 11u, 13u, 17u, 19u, 23u, 31u, 47u}) {
+                if (bits == 0 && (&variant != &variants[0] || byte67 != 0 || seed > 3)) continue;
+                std::vector<Write> memory = {{4, list, entry}, {4, entry + 4, 0}, {4, entry + 0x50, bits}, {4, nodes, 0}, {2, nodes + 0x1ec, variant.rating}, {4, seed_at, seed}};
+                for (unsigned index = 0; index < 20; ++index) {
+                    const auto player = scenario.player(side, index);
+                    const auto record = scenario.r32(player + 0x70), person = scenario.r32(player + 0x6c);
+                    if (record) { memory.push_back({1, record + 0x2f, variant.byte2f}); memory.push_back({2, record + 0xa, variant.height}); }
+                    if (person) { memory.push_back({1, person + 0x67, byte67}); memory.push_back({4, index_table + scenario.r32(person) * 0x64, 0}); }
+                }
+                add(0x101d6a90, {{3, match}, {4, side}}, memory, "pressure nodes");
+            }
+    }
+    // Seeds that make the rare draws come up: the owner's chance of 1 in 200 and the restart's 1 in 9, over many seeds.
+    for (std::uint32_t seed = 0; seed < 1000; ++seed)
+        add(0x101d69c0, {{3, match}},
+            {{1, match + 0x30dc, 8}, {4, match + 0x30e4, first}, {1, match + 0x7924, 1}, {1, match + 0x30dd, 3}, {1, match + 0x30de, 4}, {4, seed_at, seed}},
+            "owner rare draw");
+    for (std::uint32_t seed = 0; seed < 400; ++seed) for (const std::uint32_t other : {0u, second}) for (const std::uint32_t flag : {3u, 4u, 5u, 6u})
+        add(0x101d5980, {{3, match}},
+            {{1, match + 0x30dc, flag}, {4, match + 0x30e4, first}, {4, match + 0x30e8, other}, {2, match + 0x30e2, 12},
+             {1, match + 0x7928, 0}, {1, match + 0x30dd, 4}, {1, match + 0x30de, 5}, {1, match + 0x30e0, 9}, {4, seed_at, seed}},
+            "restart rare draws");
+    // The club reports: the team's club is asked about and the report is held back (the other modules answer).
+    {
+        const auto limit = scenario.r32(scenario.r32(r2 - 0x7be4));
+        const auto home_club = scenario.r32(scenario.r32(fixture + 0x1c) + 0x90), away_club = scenario.r32(scenario.r32(fixture + 0x20) + 0x90);
+        for (const std::uint32_t held : {0u, 1u}) {
+            const Answers answers = {{0x1014c2e0, 1}, {0x101481d0, held}};
+            const std::vector<Write> clubs = {{4, home_club, limit - 1}, {4, away_club, limit - 2}, {1, fixture + 0x40, 0}, {1, fixture + 0x41, 0}};
+            add_answered(0x101d3f60, {{3, match}, {4, 1}}, join_writes(clubs, {{1, match, 1}}), "completed reports answered", answers);
+            for (const std::uint32_t stage : {3u, 6u})
+                add_answered(0x101d3f60, {{3, match}, {4, 1}}, join_writes(clubs, {{1, match + 0x7929, stage}, {1, match + 0x792a, 0}}), "shoot-out reports answered", answers);
+            for (const std::uint32_t mark : {0x3deu, 0x528u})
+                add_answered(0x101d3f60, {{3, match}, {4, 1}},
+                             join_writes(clubs, {{2, match + 0x794c, mark}, {2, match + 0x7948, mark + 2}, {1, match + 0x792d, 0}, {2, match + 0x794a, 0xffff},
+                                                 {2, fixture + 0x38, 0}, {1, fixture + 0x4b, 0xff}, {1, fixture + 0x4c, 0xff}, {1, match + 0xe03d, 2}, {1, match + 0xe073, 1},
+                                                 {1, match + 0x7928, 0}, {1, match + 0x7929, 0}, {1, match + 0x792a, 0}, {1, match + 0x1e3, 1},
+                                                 {1, match + 0x1c1, mark == 0x528 ? 1u : 0u}}),
+                             "match end reports answered", {{0x1014c2e0, 1}, {0x101481d0, held}, {0x104646d0, 0}});
+        }
+    }
+    // A stopped match whose restart picks are locked: the first call hands the restart over (stage 1) and the tick ends.
+    for (const std::uint32_t seed : {0u, 1u, 3u, 8u}) for (const std::uint32_t last : {0u, 1u}) for (const std::uint32_t locked : {0u, 1u})
+        add(0x101d3f60, {{3, match}, {4, 1}},
+            with(base(seed), {{1, match + 0x7928, 8}, {1, match + 0x1c1, 0}, {1, match + 0x1bc, locked}, {1, match + 0x7924, last}, {4, match + 0xe000, 0},
+                              {4, match + 0xb4, first}, {4, match + 0xb8, second}, {1, match + 0xbc, 0}, {1, match + 0xbe, 0}}),
+            "pick locked");
+
+    // The carrier's switch over many seeds: waiting out its countdown and the decision of the action routine.
+    {
+        const auto row = std::uint32_t(scenario.s.memory.read<1>(first + 0x105)), column = std::uint32_t(scenario.s.memory.read<1>(first + 0x106));
+        for (std::uint32_t seed = 0; seed < 60; ++seed) for (const std::uint32_t wait : {0u, 1u}) for (const std::uint32_t at_ball : {0u, 1u})
+            add(0x101d3f60, {{3, match}, {4, 1}},
+                with(base(seed), {{1, match + 0x1de, wait}, {4, match + 0x3104, first}, {1, match + 0x791f, 4}, {4, match + 0xdff8, first},
+                                  {1, match + 0x7928, 0}, {1, match + 0x1c1, 0}, {1, first + 0x2c, 0}, {1, first + 0x108, 5}, {1, first + 0x10a, 3},
+                                  {1, match + 0x791d, at_ball ? row : 15}, {1, match + 0x791e, at_ball ? column : 15}, {4, match + 0x7c68, 0}}),
+                "carrier switch");
+    }
+    // The taker of a restart for every state of the stopped play and either side.
+    for (const std::uint32_t last : {0u, 1u}) for (const std::uint32_t stopped : {1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u}) for (const std::uint32_t seed : {0u, 1u, 2u, 5u})
+        add(0x101d3f60, {{3, match}, {4, 1}},
+            with(base(seed), {{1, match + 0x7928, stopped}, {1, match + 0x1c1, 0}, {1, match + 0x7924, last}, {4, match + 0xe000, 0}}),
+            "choose taker, state " + std::to_string(stopped) + " last " + std::to_string(last));
 }

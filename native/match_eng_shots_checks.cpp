@@ -11,6 +11,10 @@ MATCH_ENG_CASES("shots") {
     const auto add = [&](std::uint32_t entry, std::vector<std::pair<unsigned, std::uint32_t>> registers, std::vector<Write> memory, std::string label) {
         cases.push_back({.entry = entry, .registers = std::move(registers), .memory = std::move(memory), .f1 = {}, .label = std::move(label)});
     };
+    const auto add_answered = [&](std::uint32_t entry, std::vector<std::pair<unsigned, std::uint32_t>> registers, std::vector<Write> memory, std::string label,
+                                  std::vector<std::pair<std::uint32_t, std::uint32_t>> answers) {
+        cases.push_back({.entry = entry, .registers = std::move(registers), .memory = std::move(memory), .f1 = {}, .label = std::move(label), .answers = std::move(answers)});
+    };
     const auto toc = [&](std::int32_t offset) { return scenario.r32(scenario.s.r<4>(cm::aot::guest::reg::gpr(2)) + std::uint32_t(offset)); };
     // The per-position flag table of a side (0x7934 + side*4), one halfword per position.
     const auto flag_writes = [&](unsigned side, std::uint32_t flags) {
@@ -82,11 +86,18 @@ MATCH_ENG_CASES("shots") {
                     const auto id = scenario.r32(toc(at));
                     for (const bool handle_empty : {false, true}) {
                         std::vector<Write> memory = {{4, competition_record + 0x68, id}};
+                        if (reference) memory.push_back({4, reference + 8, competition_record});
                         if (handle_empty) memory.push_back({4, toc(-0x7b54), 0});
                         add(0x101df110, {{3, match}, {4, side}}, memory, "competition");
                     }
                 }
                 add(0x101df110, {{3, match}, {4, side}}, {{4, competition_record + 0x68, 12345}}, "other competition");
+                // With the fixture's reference pointing at the team's competition, the gate lets the scaling through.
+                if (reference) {
+                    add(0x101df110, {{3, match}, {4, side}}, {{4, competition_record + 0x68, 12345}, {4, reference + 8, competition_record}}, "other competition, gated");
+                    for (const std::uint32_t verdict : {0u, 1u})
+                        add_answered(0x101df110, {{3, match}, {4, side}}, {{4, reference + 8, competition_record}}, "reference verdict", {{0x10494d20, verdict}});
+                }
             }
             for (const std::int32_t gap : {1500, 1000, 800, 300, 0, -100, -300, -800, -2000}) {
                 for (const std::int32_t base : {1000, 3000}) {
@@ -121,5 +132,11 @@ MATCH_ENG_CASES("shots") {
                 add(0x101e25a0, {{3, match}, {4, player}, {5, match + 0x20}, {6, match + 0x24}}, {{1, match + 0x7924, mode}, {1, player + 0x27, 1 - side}}, "nibbles other side");
             }
         }
+    }
+    // A side byte of 2 (the second-side branch tests the byte): the "players" it reads are out of play.
+    {
+        std::vector<Write> out;
+        for (unsigned index = 0; index < 20; ++index) out.push_back({1, scenario.player(2, index) + 0x19, 0xff});
+        add(0x101df110, {{3, match}, {4, 2}}, out, "tendencies other side");
     }
 }
