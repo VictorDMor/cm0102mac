@@ -1019,3 +1019,47 @@ the parent has used them, so anything reading files in the checker's own process
 
 `.local/benchmarks/ui/save-info` is the capture for the save information screen, recorded with
 `tools/game_driver.py` on a copy of the reference save: load dialog, pick a file, Info, Ok, twice, cancel.
+
+## MATCH_ENG.CPP: the match object and its tick
+
+`CM3_MATCH_ENGINE`, 235 entries at `0x101d16a0..0x101fef60` (`tools/match_eng_audit.py`). All of them
+are hooked in the generator from the start, and 79 older builder entries of 19 families left production
+at that takeover. Their sources still build for checks but no page calls them. The 98 short routines
+in `match_eng_leaves.hpp` run in line at generated call sites. C++ calls into the module go through
+`match_eng::call`, which runs the hook in place and reaches the dispatcher only for a routine the module
+doesn't list.
+
+A cell has a row at 0x791d (0..8, as a player's +0x105) and a column at 0x791e (0..11, as +0x106), so an
+end area is rows 2..6 and columns 0..1 or 10..11. `0x7924` is the side with the ball, -1 while it's loose,
+and `0x7921` the side that touched it last. The kick-off flip never leaves 0x7924 at -1, and the
+nearest-player search reads before the player table if a kick-off sees -1, so a case claiming that state
+proves nothing. A draw of bound N answers 0..N-1 for a positive bound below 0xffff, which makes many of
+the original's negative-result branches dead.
+
+Argument registers matter here more than elsewhere: routines leave r3-r10 as scratch, and a caller's
+next varargs call stores them on the stack, where a later callee can read them. The coverage cases
+found real differences of that kind (r5 at 0x101e8b24 and 0x101eb5dc). The equivalence target for this
+module is therefore registers r3-r10 at return and r13-r31, f14-f31 at every call, not just results. A
+return address is part of it too, since the callee's prologue saves it in the caller's frame:
+`tools/test_match_eng_audit.py` pairs each literal call's target and return address with the listing.
+
+Some paths have no case, since a match snapshot can't produce the state; each lands on a join a covered
+branch reaches, proved from the listing: `shot_state` -1 in the kick (only the actor module's 0x1022e3a0
+stores it), `extra_time_flag` changing during the review's or the tick's loop, and 0x10281af0 changing
+the carrier at +0x3104. Faults kept on purpose fault alike on both sides: 0x101f5350 with player A absent
+and B present reads +0x70 of A (the original's quirk), and 0x101f7c10 with no grid reports its assertion
+and stores through 0.
+
+`cm-match-eng-checks` runs each entry's cases from a real 600-advance snapshot, then mutates values the
+original read, then (`--call-trace`) compares r13-r31 and f14-f31 at each `bl`, and the count and order
+of the calls both sides dispatch, which the end state can't show. A match snapshot lacks the discipline manager (the global at -0x7aa4 is null), so the checker answers
+its suspension query, the computer's lineup choice and the dialog entry. A case's `answers` only reach a
+routine dispatched on both sides, so the checker wants only the module's routines: another module's
+hooks decline and its originals run on both sides. A routine wanted by the checker would run in place in
+the original, past the answer, while the C++'s dispatched call received it: the difference that gives is
+false. `--no-live` runs the cases at three match states, and live runs at one, so a final coverage count
+needs both. Leave `LLVM_PROFILE_FILE` set on any coverage run: the default path grows by about 500 MB
+per process and filled the disk once.
+
+The module is not faster in wall time: the C++ keeps the stack image and scratch registers, so it does
+about what the generated code does. Guest instruction counts drop by 45%, which shows nothing here.
