@@ -94,6 +94,12 @@ struct ReadTrace final : MemoryObserver {
     }
 };
 
+// For a child that isn't comparing: the routing of the compared runs, with no nested checks.
+RoutineChecker routed_like_compared_runs() {
+    const auto* compared = routine_checker;
+    return RoutineChecker([compared](std::uint32_t entry) { return compared && compared->wants(entry); }, 0, 0);
+}
+
 // What the original reads on this call, from a child running it.
 std::vector<Read> reads_of(State& s, std::uint32_t entry) {
     int fds[2];
@@ -104,6 +110,8 @@ std::vector<Read> reads_of(State& s, std::uint32_t entry) {
     if (pid == 0) {
         ::close(fds[0]);
         ReadTrace trace;
+        auto silent = routed_like_compared_runs();
+        routine_checker = &silent;
         const auto previous = s.memory.date_observer;
         s.memory.date_observer = &trace;
         alarm(30);
@@ -241,10 +249,7 @@ std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner r
         ::close(fds[0]);
         static std::vector<TracedCall> calls;
         traced_calls = &calls;
-        // Same routing as the compared runs: another module's verified or wanted routine in place,
-        // the rest through the dispatcher, where a case's answers are given.
-        const auto* compared = routine_checker;
-        RoutineChecker silent([compared](std::uint32_t entry) { return compared && compared->wants(entry); }, 0, 0);
+        auto silent = routed_like_compared_runs();
         routine_checker = &silent;
         match_eng_call_observer = nullptr;
         dispatch_probe = trace_probe;
@@ -600,11 +605,11 @@ int main(int argc, char** argv) {
         live_random.seed(options.seed);
         std::mt19937 random(options.seed + 1);
         auto& s = *state;
-        // exit() runs as MAIN.CPP's C++, which generated pages call in place, past the
-        // probe below: left out, its hook declines and both sides reach the dispatcher.
+        // Other modules' routines run as their originals on both sides: left out, their hooks
+        // decline and calls reach the dispatcher, where exit() and a case's answers are given.
         if (options.production) return production_proof(s);
         const auto wanted = [](std::uint32_t entry) {
-            return entry != 0x1076f7d0 && (options.only.empty() || options.only.count(entry) != 0);
+            return match_eng_lists(entry) && (options.only.empty() || options.only.count(entry) != 0);
         };
         RoutineChecker checker(wanted, options.all, options.every);
         checker.corrupt_first = options.corrupt;
