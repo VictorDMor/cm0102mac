@@ -3605,7 +3605,13 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
 endif()
 if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262/initial.snapshot")
     add_test(NAME match_eng_equivalence COMMAND cm-match-eng-checks
-        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --mutate 8 --require-all)
+        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --mutate 8 --mutated-calls 3 --require-all)
+    add_test(NAME match_eng_production COMMAND cm-match-eng-checks
+        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --production)
+    add_test(NAME match_eng_negative_controls COMMAND cm-match-eng-checks
+        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --corrupt --only 0x101d91b0)
+    add_test(NAME match_eng_trace_control COMMAND cm-match-eng-checks
+        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --corrupt-trace --no-live --mutate 1 --mutated-calls 1 --only 0x101d1760)
 endif()
 option(CM_MATCH_ENG_COVERAGE "Instrument MATCH_ENG.CPP checker only" OFF)
 if(CM_MATCH_ENG_COVERAGE)

@@ -28,6 +28,7 @@
 #include <set>
 #include <sstream>
 #include <string_view>
+#include <tuple>
 
 #if defined(CM_MATCH_ENG_COVERAGE)
 extern "C" int __llvm_profile_write_file(void);
@@ -53,7 +54,7 @@ struct Options {
     unsigned advances = 600, all = 40, every = 400, mutate = 0, mutated_calls = 4, states = 3;
     std::uint32_t seed = 1;
     std::set<std::uint32_t> only;
-    bool corrupt = false, live = true, cases = true, strict = false, require_all = false, show_faults = false;
+    bool corrupt = false, live = true, cases = true, strict = false, require_all = false, show_faults = false, call_trace = false, corrupt_trace = false, production = false;
 } options;
 
 struct Tally { std::uint64_t returned = 0, faulted = 0, timed_out = 0, calls = 0; };
@@ -199,6 +200,108 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
     return outcome;
 }
 
+// --call-trace: what the end state can't show. A callee saves r13-r31 and f14-f31 into the
+// stack image, so they must match at every call, also where no callee on this path saved them.
+// Each side runs in a child recording those registers at each `bl` the module makes through the
+// dispatcher; a same-page call or an in-place owner shows on one side only and isn't paired. The
+// k-th call from one site to one target on each side are compared. Findings don't stop the run.
+struct TracedCall {
+    std::uint32_t back, target;
+    std::array<std::uint32_t, 19> gprs;
+    std::array<std::uint64_t, 18> fprs;
+};
+std::vector<TracedCall>* traced_calls = nullptr;
+bool (*scripted_services)(State&) = nullptr;
+bool trace_probe(State& s) {
+    const auto back = std::uint32_t(s.r<4>(4128));
+    if (back >= 0x101d16a4 && back <= 0x101fef60 && traced_calls->size() < 2'000'000) {
+        const auto word = std::uint32_t(s.memory.read<4>(back - 4));
+        const auto offset = std::int32_t(word << 6) >> 6 & ~3;
+        if ((word & 0xfc000003) == 0x48000001 && back - 4 + std::uint32_t(offset) == s.pc) {
+            TracedCall call{back, s.pc, {}, {}};
+            for (unsigned n = 13; n < 32; ++n) call.gprs[n - 13] = std::uint32_t(s.r<4>(guest::reg::gpr(n)));
+            for (unsigned n = 14; n < 32; ++n) call.fprs[n - 14] = s.r<8>(guest::reg::fpr(n));
+            traced_calls->push_back(call);
+        }
+    }
+    return scripted_services(s);
+}
+std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner runner) {
+    int fds[2];
+    if (::pipe(fds) != 0) throw std::runtime_error("pipe");
+    std::cout.flush(); std::cerr.flush();
+    const auto pid = ::fork();
+    if (pid < 0) throw std::runtime_error("fork");
+    if (pid == 0) {
+        ::close(fds[0]);
+        static std::vector<TracedCall> calls;
+        traced_calls = &calls;
+        RoutineChecker silent([](std::uint32_t) { return true; }, 0, 0);
+        routine_checker = &silent;
+        match_eng_call_observer = nullptr;
+        dispatch_probe = trace_probe;
+        try { runner(s, entry); } catch (...) {}
+        for (const auto& call : calls) if (::write(fds[1], &call, sizeof call) != ssize_t(sizeof call)) _exit(2);
+        ::close(fds[1]);
+        flush_child();
+        _exit(0);
+    }
+    ::close(fds[1]);
+    std::vector<TracedCall> calls;
+    TracedCall call{};
+    for (;;) {
+        std::size_t done = 0;
+        auto* bytes = reinterpret_cast<char*>(&call);
+        while (done < sizeof call) {
+            const auto n = ::read(fds[0], bytes + done, sizeof call - done);
+            if (n <= 0) break;
+            done += std::size_t(n);
+        }
+        if (done < sizeof call) break;
+        calls.push_back(call);
+    }
+    ::close(fds[0]);
+    int status = 0;
+    ::waitpid(pid, &status, 0);
+    return calls;
+}
+struct TraceFinding { std::uint64_t count = 0; std::uint64_t original = 0, rewrite = 0; };
+std::map<std::tuple<std::uint32_t, std::uint32_t, unsigned>, TraceFinding> trace_findings;
+std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint64_t> traced_sites;
+std::uint64_t traced_pairs = 0;
+void compare_traces(State& s, std::uint32_t entry) {
+    const auto original = trace_run(s, entry, bounded_original), rewrite = trace_run(s, entry, bounded_rewrite);
+    std::map<std::pair<std::uint32_t, std::uint32_t>, std::vector<const TracedCall*>> sites;
+    for (const auto& call : rewrite) sites[{call.back, call.target}].push_back(&call);
+    std::map<std::pair<std::uint32_t, std::uint32_t>, std::size_t> next;
+    for (const auto& call : original) {
+        const auto key = std::make_pair(call.back, call.target);
+        const auto found = sites.find(key);
+        if (found == sites.end()) continue;
+        auto& k = next[key];
+        if (k >= found->second.size()) continue;
+        auto other = *found->second[k++];
+        if (options.corrupt_trace && !traced_pairs) other.gprs[0] ^= 1;
+        ++traced_pairs; ++traced_sites[key];
+        for (unsigned n = 0; n < 19; ++n) if (call.gprs[n] != other.gprs[n]) {
+            auto& finding = trace_findings[{call.back, call.target, 13 + n}];
+            if (!finding.count++) { finding.original = call.gprs[n]; finding.rewrite = other.gprs[n]; }
+        }
+        for (unsigned n = 0; n < 18; ++n) if (call.fprs[n] != other.fprs[n]) {
+            auto& finding = trace_findings[{call.back, call.target, 100 + 14 + n}];
+            if (!finding.count++) { finding.original = call.fprs[n]; finding.rewrite = other.fprs[n]; }
+        }
+    }
+}
+void print_trace_findings() {
+    std::cout << "call_trace_pairs=" << traced_pairs << " sites=" << traced_sites.size() << " findings=" << trace_findings.size() << '\n';
+    for (const auto& [key, finding] : trace_findings) {
+        const auto& [back, target, reg] = key;
+        std::cout << "call " << hex_address(back - 4) << " -> " << hex_address(target) << (reg >= 100 ? " f" : " r") << (reg >= 100 ? reg - 100 : reg)
+                  << " x" << finding.count << " original " << std::hex << finding.original << " rewrite " << finding.rewrite << std::dec << '\n';
+    }
+}
+
 void report_difference(std::uint32_t entry, std::string_view kind, const std::vector<std::string>& lines, std::string_view detail = {}) {
     std::cerr << kind << " difference at " << hex_address(entry);
     if (!detail.empty()) std::cerr << " (" << detail << ")";
@@ -266,8 +369,62 @@ void observe_call(State& s, std::uint32_t entry, unsigned results) {
     if (call > options.mutated_calls) return;
     const auto pc = s.pc;
     s.pc = entry;
+    if (options.call_trace) compare_traces(s, entry);
     mutate_call(s, entry, results, live_random);
     s.pc = pc;
+}
+
+// Whether an entry reached through its generated page runs as C++ in the normal app: with no
+// instruction budget, the page's first instruction would stop. So the routine must return, or
+// have written its saved LR before a dependency's generated code stops (the prologue is the
+// first thing the C++ does). The control is the same call declining to the generated body,
+// which must stop before writing anything.
+enum class Route { returned, framed, stopped, faulted };
+Route route_of(State& s, std::uint32_t entry, std::uint32_t match, bool original) {
+    const auto pid = ::fork();
+    if (pid < 0) throw std::runtime_error("fork");
+    if (pid == 0) {
+        guest::Cpu c(s);
+        routine_checker = nullptr;
+        dispatch_probe = nullptr;
+        match_eng_declining = original;
+        c.set(3, match); c.set(4, match + 0x311c); c.set(5, 0); c.set(6, 0); c.set(7, 0);
+        c.set_lr(return_sentinel);
+        const auto slot = c.sp() + 8;
+        s.memory.observer = nullptr;
+        s.memory.write<4>(slot, 0xdeadbeef);
+        s.pc = entry;
+        s.budget = s.executed;
+        alarm(20);
+        try {
+            run_until(s, return_sentinel);
+            _exit(int(Route::returned));
+        } catch (const std::runtime_error& error) {
+            // A guest fault on this artificial argument, not a stop at a generated instruction.
+            if (std::string_view(error.what()) != "Native instruction budget exhausted") _exit(int(Route::faulted));
+        } catch (...) {}
+        _exit(int(s.memory.read<4>(slot) == return_sentinel ? Route::framed : Route::stopped));
+    }
+    int status = 0;
+    ::waitpid(pid, &status, 0);
+    if (!WIFEXITED(status)) return Route::stopped;
+    return Route(WEXITSTATUS(status));
+}
+int production_proof(State& s) {
+    unsigned returned = 0, framed = 0, controls = 0, failures = 0;
+    const auto entries = match_eng_production_entries();
+    for (const auto entry : entries) {
+        const auto route = route_of(s, entry, match_address, false);
+        if (route == Route::returned || route == Route::faulted) ++returned;
+        else if (route == Route::framed) ++framed;
+        else { std::cerr << "Generated code ran at " << hex_address(entry) << '\n'; ++failures; }
+        const auto control = route_of(s, entry, match_address, true);
+        if (control == Route::stopped) ++controls;
+        else { std::cerr << "The original control did not stop at " << hex_address(entry) << '\n'; ++failures; }
+    }
+    std::cout << "production entries=" << entries.size() << " returned_on_no_budget=" << returned << " framed_before_a_dependency=" << framed
+              << " original_controls_stopped=" << controls << " failures=" << failures << '\n';
+    return failures || entries.size() != 235 ? 1 : 0;
 }
 
 void advance(State& s, unsigned count) {
@@ -313,6 +470,7 @@ void run_cases(State& s, std::mt19937& random) {
         auto& tally = case_tally[item.entry];
         ++tally.calls; tally.returned += outcome.returned; tally.faulted += outcome.faulted; tally.timed_out += outcome.timed_out;
         if (!outcome.differences.empty()) report_difference(item.entry, "Case", outcome.differences, item.label);
+        if (options.call_trace && (tally.calls <= options.mutated_calls * 8 || tally.calls % 64 == 0)) compare_traces(s, item.entry);
         // One routine can have thousands of cases; a few of them seed its mutations.
         if (tally.calls <= options.mutated_calls * 8 || tally.calls % 64 == 0) mutate_call(s, item.entry, results_of(item.entry), random);
         s.memory.observer = nullptr;
@@ -355,7 +513,7 @@ bool summary(const RoutineChecker* checker) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::cerr << "usage: cm-match-eng-checks MATCH_DIR [--advances N] [--all N] [--every N] [--mutate K] [--mutated-calls N] [--states N] [--seed N] [--only 0x..,0x..] [--corrupt] [--no-live] [--no-cases] [--strict] [--require-all] [--show-faults]\n"; return 2; }
+    if (argc < 2) { std::cerr << "usage: cm-match-eng-checks MATCH_DIR [--advances N] [--all N] [--every N] [--mutate K] [--mutated-calls N] [--states N] [--seed N] [--only 0x..,0x..] [--corrupt] [--no-live] [--no-cases] [--strict] [--require-all] [--show-faults] [--call-trace] [--corrupt-trace] [--production]\n"; return 2; }
     try {
         options.input = argv[1];
         for (int n = 2; n < argc; ++n) {
@@ -375,6 +533,9 @@ int main(int argc, char** argv) {
             else if (option == "--strict") options.strict = true;
             else if (option == "--require-all") options.require_all = true;
             else if (option == "--show-faults") options.show_faults = true;
+            else if (option == "--call-trace") options.call_trace = true;
+            else if (option == "--corrupt-trace") options.call_trace = options.corrupt_trace = true;
+            else if (option == "--production") options.production = true;
             else throw std::runtime_error("Unknown option " + std::string(option));
         }
         std::ifstream(options.input / "match.txt") >> match_address;
@@ -389,19 +550,23 @@ int main(int argc, char** argv) {
         // The assertion's error dialog needs Toolbox imports a match snapshot has no
         // host for. Both sides answer it here, so what follows the assert is compared
         // instead of stopping at the first dialog import.
-        dispatch_probe = [](State& target) {
+        scripted_services = [](State& target) {
             // exit(): nothing follows it in the game, so a run ends here and what it
             // wrote up to this call is compared.
-            if (target.pc == 0x1076f7d0) throw ApplicationExit{};
-            if (target.pc != 0x10769b60) return false;
+            // Named: these only see dispatches, so production pages have nothing to isolate.
+            constexpr std::uint32_t exit_entry = 0x1076f7d0, dialog_entry = 0x10769b60;
+            if (target.pc == exit_entry) throw ApplicationExit{};
+            if (target.pc != dialog_entry) return false;
             target.pc = target.r<4>(4128);
             return true;
         };
+        dispatch_probe = scripted_services;
         live_random.seed(options.seed);
         std::mt19937 random(options.seed + 1);
         auto& s = *state;
         // exit() runs as MAIN.CPP's C++, which generated pages call in place, past the
         // probe below: left out, its hook declines and both sides reach the dispatcher.
+        if (options.production) return production_proof(s);
         const auto wanted = [](std::uint32_t entry) {
             return entry != 0x1076f7d0 && (options.only.empty() || options.only.count(entry) != 0);
         };
@@ -421,6 +586,8 @@ int main(int argc, char** argv) {
             for (unsigned n = 1; n < options.states; ++n) { routine_checker = nullptr; advance(s, 150); routine_checker = &checker; run_cases(s, random); }
         }
         const bool complete = summary(&checker);
+        if (options.call_trace) print_trace_findings();
+        if (options.corrupt_trace) return trace_findings.empty() ? 1 : 0;
         if (options.corrupt) { std::cerr << "The negative control found no difference\n"; return 1; }
         return checker.differences() || !complete ? 1 : 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return options.corrupt && std::string_view(error.what()).find("differs") != std::string_view::npos ? 0 : 2; }
