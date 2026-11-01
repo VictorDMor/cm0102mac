@@ -972,6 +972,22 @@ season route because they stop at file or dialog imports, so those calls have
 their arguments compared but not their effects. Fixture slots and base-class news
 are covered by fixtures only.
 
+## EUROPEAN_CUP.CPP: the Champions League
+
+The 23 entries at 0x104e9fb0–0x104ef380 (5,320 indexed instructions) live in
+`native/european_cup_*`; `tools/european_cup_audit.py` pins them. Thirteen stages:
+stage -1 is qualifying, 0–7 and 8–11 the two group phases, 12 the knockout. The
+first draw builds 32 pots from the 16 seeds plus qualifiers with status 1, pairs
+same-nation clubs and swaps within each half of the draw to separate nations. The
+second draw retries itself up to 20 times, then fills any free seat. Group draws
+hand qualifiers with status 2 and third-placed clubs to the UEFA Cup object.
+Quirks: `collect_qualifiers` reads before the entrants table when the count is 0,
+and an allocation failure in a draw carries on through null, so the checker maps
+page zero. The first draw's wide-range sample can't run (the bound is a sum of two
+signed bytes), so `random_below` is reached only by synthetic calls. In the
+checker, `check-%m.profraw` lets forked children merge coverage into one small
+file, where `%p` would expand before fork and overwrite.
+
 ## UTILS.CPP: text, path and file helpers
 
 The 23 entries at 0x10745e00–0x107475ac (1,488 indexed instructions) live in

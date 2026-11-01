@@ -3806,6 +3806,46 @@ if(CM_SIPRINT_COVERAGE)
 endif()
 
 
+file(GLOB CM_EUROPEAN_CUP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/european_cup*.cpp")
+list(FILTER CM_EUROPEAN_CUP_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_EUROPEAN_CUP_SOURCES})
+add_executable(cm-european-cup-checks european_cup_checks.cpp)
+target_link_libraries(cm-european-cup-checks PRIVATE cm_aot)
+target_compile_options(cm-european-cup-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_EUROPEAN_CUP_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/european_cup_reference.cpp")
+    add_custom_command(OUTPUT "${CM_EUROPEAN_CUP_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_european_cup_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_EUROPEAN_CUP_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_european_cup_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/european_cup_audit.py"
+            "${CMAKE_SOURCE_DIR}/european_cup_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-european-cup-checks PRIVATE "${CM_EUROPEAN_CUP_REFERENCE}")
+    add_test(NAME european_cup_equivalence COMMAND cm-european-cup-checks "${CM_ORACLE_DIR}")
+    add_test(NAME european_cup_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_european_cup_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        add_test(NAME european_cup_career_state COMMAND cm-european-cup-checks "${CM_ORACLE_DIR}"
+            "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+    endif()
+endif()
+option(CM_EUROPEAN_CUP_COVERAGE "Instrument european_cup.cpp checker only" OFF)
+if(CM_EUROPEAN_CUP_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/european-cup-coverage")
+    # %m: forked children merge into one file (LLVM expands %p before fork).
+    set(CM_EUROPEAN_CUP_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/european-cup-coverage/check-%m.profraw")
+    add_library(cm_european_cup_coverage OBJECT ${CM_EUROPEAN_CUP_SOURCES})
+    target_link_libraries(cm_european_cup_coverage PRIVATE cm_aot)
+    target_compile_options(cm_european_cup_coverage PRIVATE "-fprofile-instr-generate=${CM_EUROPEAN_CUP_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_european_cup_coverage PRIVATE CM_EUROPEAN_CUP_COVERAGE=1)
+    target_sources(cm-european-cup-checks PRIVATE $<TARGET_OBJECTS:cm_european_cup_coverage>)
+    target_compile_definitions(cm-european-cup-checks PRIVATE CM_EUROPEAN_CUP_COVERAGE=1)
+    target_link_options(cm-european-cup-checks PRIVATE "-fprofile-instr-generate=${CM_EUROPEAN_CUP_PROFILE}")
+endif()
+
+
 file(GLOB CM_BRA_REG_CENTRAL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bra_reg_central*.cpp")
 list(FILTER CM_BRA_REG_CENTRAL_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_BRA_REG_CENTRAL_SOURCES})
