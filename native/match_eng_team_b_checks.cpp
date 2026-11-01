@@ -47,6 +47,82 @@ MATCH_ENG_CASES("team_b") {
         }
         add(0x101ec890, {{3, match}, {4, row}, {5, column}}, std::move(memory), "random draws");
     }
+    // Outcomes and topologies the snapshot's own attempts never produce. The two attempt routines of another
+    // module (0x1021c260 for the first try of a contender, 0x1021b860 for the second) are answered with a chosen
+    // outcome, and the ball's cell is given one player per side (or one side only, whose bearing then sits exactly
+    // opposite the turn: the only way the contest sees a single contender). The attempts' follow-ups (0x10221e00,
+    // 0x1021bec0) are answered too. Draws come from tables with runs of zeros; a few use a negative seed, which the
+    // random routine turns into a negative draw (a state the game's masked seed never has, but the code sees).
+    {
+        const auto byte_at = [&](std::uint32_t at) { return std::uint32_t(scenario.s.memory.read<1>(at)); };
+        const auto sp = std::uint32_t(scenario.s.r<4>(4));
+        const auto frame = sp - 0xd0;
+        const auto ball_cell = match + 0xa08 + std::int32_t(std::int8_t(byte_at(match + 0x791d))) * 0x450 +
+                               std::int32_t(std::int8_t(byte_at(match + 0x791e))) * 0x5c;
+        const auto flag_table = [&](unsigned side, std::uint32_t flags) {
+            std::vector<Write> writes;
+            const auto at = word(match + 0x7934 + side * 4);
+            for (std::uint32_t position = 0; position <= 10; ++position) writes.push_back({2, at + position * 2, flags});
+            return writes;
+        };
+        const auto join = [](std::vector<Write>& a, const std::vector<Write>& b) { a.insert(a.end(), b.begin(), b.end()); };
+        std::mt19937 driven(0x5eed);
+        const auto table_start = word(toc - 0x7b8c), cursor_at = word(toc - 0x7b84), table_end = word(word(toc - 0x7b88));
+        const bool restartable = table_end >= table_start + 2 * 125;
+        struct Pair { std::uint32_t first, second; bool negative = false; };
+        std::vector<Pair> pairs;
+        for (const std::uint32_t k : {1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 0x80u, 0xffu}) pairs.push_back({k, 0});
+        for (const std::uint32_t k : {1u, 2u, 3u, 4u, 5u, 6u, 7u}) pairs.push_back({0, k});
+        pairs.push_back({3, 5}); pairs.push_back({7, 4}); pairs.push_back({5, 6}); pairs.push_back({4, 3});
+        // Outcomes without a message of their own draw one at random; with negative draws and small bytes the draw's sign is seen.
+        for (const std::uint32_t k : {1u, 8u, 0x80u, 0xffu}) pairs.push_back({k, 0, true});
+        unsigned serial = 0;
+        for (const auto [first, second, negative] : pairs)
+            for (unsigned variant = 0; variant < 48; ++variant, ++serial) {
+                const bool restart = restartable && variant % 2 == 0;
+                const unsigned topology = variant % 3;  // 0: both sides, 1: side 1 only (bearing opposite), 2: side 0 only
+                const std::uint32_t moduli[] = {3, 10, 100, 1000, 65536, 5};
+                const std::uint32_t modulus = moduli[(variant / 3) % 6];
+                const unsigned zero_percent = (variant / 18) % 3 * 30;  // 0, 30, 60
+                std::vector<std::uint32_t> values;
+                for (unsigned k = 0; k < 120; ++k) values.push_back(driven() % 100 < zero_percent ? 0 : driven() % modulus);
+                // The first draws of the contest decide which attempt is cleared: make them zero for some variants.
+                if (variant % 4 == 1) for (unsigned k = 0; k < 6; ++k) values[k] = 0;
+                auto memory = table([&](unsigned k) { return values[k]; });
+                if (restart) {  // the cursor at the table's start, so that no draw wraps and re-seeds
+                    memory.clear();
+                    memory.push_back({4, seed_at, 0});
+                    memory.push_back({4, cursor_at, table_start});
+                    for (unsigned k = 0; k < 120; ++k) memory.push_back({2, table_start + 2 * k, values[k]});
+                }
+                if (negative || serial % 5 < 2) memory[0] = {4, seed_at, 0xfffe7960u + serial % 7};  // seeds around -100000
+                const unsigned index0 = driven() % 11, index1 = driven() % 11;
+                const auto p0 = scenario.player(0, index0), p1 = scenario.player(1, index1);
+                memory.push_back({1, ball_cell + 0x58, topology == 1 ? 0u : 1u});
+                memory.push_back({1, ball_cell + 0x59, topology == 2 ? 0u : 1u});
+                memory.push_back({4, ball_cell + 0, p0});
+                memory.push_back({4, ball_cell + 0x2c, p1});
+                memory.push_back({1, match + 0x791f, driven() % 4 == 0 ? 0u : 1u});
+                const std::uint32_t turn = driven() % 360;
+                memory.push_back({2, match + 0x7950, turn});
+                const auto opposite = (turn + 180) % 360;
+                memory.push_back({2, p0 + 0x19e, topology == 2 ? opposite : driven() % 360});
+                memory.push_back({2, p1 + 0x19e, topology == 1 ? opposite : driven() % 360});
+                // The attempts' extra outputs (the bytes at +0x42, +0x43, +0x4c of the contest's frame).
+                const std::uint32_t outputs[] = {0, 1, 5, 0x20, 0x7f, 0x80, 0xff};
+                memory.push_back({1, frame + 0x42, negative ? 0x80u + driven() % 2 * 0x7f : outputs[driven() % 7]});
+                memory.push_back({1, frame + 0x43, outputs[driven() % 7]});
+                memory.push_back({1, frame + 0x4c, driven() % 2});
+                // The halfword flags of the player tables (what 0x10289560 reports) and the strengths compared in the fallback.
+                join(memory, flag_table(0, driven() % 3));
+                join(memory, flag_table(1, driven() % 3));
+                const std::uint32_t floats[] = {0x00000000u, 0x3f800000u, 0x41200000u, 0x461c4000u, 0xc61c4000u, 0x42c80000u};
+                for (const auto p : {p0, p1}) memory.push_back({4, p + 0xb0, floats[driven() % 6]});
+                const unsigned row = driven() % 9, column = driven() % 12;
+                cases.push_back({.entry = 0x101ec890, .registers = {{3, match}, {4, row}, {5, column}}, .memory = std::move(memory), .f1 = {},
+                                 .label = "driven outcomes", .answers = {{0x1021c260, first}, {0x1021b860, second}, {0x10221e00, 0}, {0x1021bec0, 0}}});
+            }
+    }
     // Cells outside the pitch.
     for (const auto [row, column] : {std::pair{9u, 0u}, {0u, 12u}, {0xffu, 3u}, {3u, 0xffu}, {8u, 11u}, {0u, 0u}, {0x80u, 0u}, {0u, 0x80u}})
         add(0x101ec890, {{3, match}, {4, row}, {5, column}}, {}, "cells");
@@ -55,7 +131,7 @@ MATCH_ENG_CASES("team_b") {
     // The small queries over the players: sides, columns, the pending player and the cell flag table.
     const auto fill_table = [&](std::uint32_t value) {
         std::vector<Write> writes;
-        for (std::uint32_t at = match + 0xa60; at < match + 0xa60 + 2 * 9 * 12 * 0x5c + 0x450; at += 4) writes.push_back({4, at, value});
+        for (std::uint32_t at = match + 0xa60; at < match + 0xa60 + 9 * 0x450; at += 4) writes.push_back({4, at, value});
         return writes;
     };
     for (const std::uint32_t side : {0u, 1u, 2u, 0xffu}) {
