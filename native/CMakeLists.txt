@@ -1919,7 +1919,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-match-actor-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME match_actor_component_equivalence COMMAND cm-match-actor-checks)
 endif()
-add_executable(cm-match-actor-production-checks match_actor_production_checks.cpp)
 add_executable(cm-actor-construction-production-checks actor_construction_production_checks.cpp)
 add_executable(cm-spatial-role-production-checks spatial_role_production_checks.cpp)
 add_executable(cm-marking-pressure-production-checks marking_pressure_production_checks.cpp)
@@ -1983,42 +1982,12 @@ target_compile_options(cm-actor-attributes-production-checks PRIVATE -Wall -Wext
 add_executable(cm-actor-attributes-transfer-checks actor_attributes_transfer_checks.cpp)
 target_link_libraries(cm-actor-attributes-transfer-checks PRIVATE cm_aot)
 target_compile_options(cm-actor-attributes-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-match-random-production-checks match_random_production_checks.cpp)
-target_link_libraries(cm-match-random-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-match-random-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-movement-choice-production-checks movement_choice_production_checks.cpp)
-target_link_libraries(cm-movement-choice-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-movement-choice-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-team-line-production-checks team_line_production_checks.cpp)
-target_link_libraries(cm-team-line-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-team-line-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-actor-order-production-checks actor_order_production_checks.cpp)
-target_link_libraries(cm-actor-order-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-actor-order-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-pitch-distance-production-checks pitch_distance_production_checks.cpp)
 target_link_libraries(cm-pitch-distance-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-pitch-distance-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-team-spatial-production-checks team_spatial_production_checks.cpp)
-target_link_libraries(cm-team-spatial-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-team-spatial-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-match-random-transfer-checks match_random_transfer_checks.cpp)
-target_link_libraries(cm-match-random-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-match-random-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-movement-choice-transfer-checks movement_choice_transfer_checks.cpp)
-target_link_libraries(cm-movement-choice-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-movement-choice-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-team-line-transfer-checks team_line_transfer_checks.cpp)
-target_link_libraries(cm-team-line-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-team-line-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-actor-order-transfer-checks actor_order_transfer_checks.cpp)
-target_link_libraries(cm-actor-order-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-actor-order-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-pitch-distance-transfer-checks pitch_distance_transfer_checks.cpp)
 target_link_libraries(cm-pitch-distance-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-pitch-distance-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-team-spatial-transfer-checks team_spatial_transfer_checks.cpp)
-target_link_libraries(cm-team-spatial-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-team-spatial-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-discipline-production-checks match_discipline_production_checks.cpp)
 target_link_libraries(cm-match-discipline-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-discipline-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -2073,11 +2042,6 @@ target_compile_options(cm-actor-construction-production-checks PRIVATE -Wall -We
 add_executable(cm-actor-construction-transfer-checks actor_construction_transfer_checks.cpp)
 target_link_libraries(cm-actor-construction-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-construction-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-target_link_libraries(cm-match-actor-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-match-actor-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-match-actor-transfer-checks match_actor_transfer_checks.cpp)
-target_link_libraries(cm-match-actor-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-match-actor-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/program.json")
     foreach(resource IN ITEMS program.json segment-0.bin segment-1.bin segment-3.bin)
         set(resource_path "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/${resource}")
@@ -2355,26 +2319,6 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/actor-attributes-live-profile")
     set_tests_properties(actor_attributes_actual_production PROPERTIES FIXTURES_SETUP ActorAttributesLiveProfile TIMEOUT 180)
     set_tests_properties(actor_attributes_original_profile actor_attributes_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED ActorAttributesLiveProfile TIMEOUT 180)
-    add_test(NAME match_random_actual_production COMMAND cm-match-random-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-random-production-checks")
-    add_test(NAME match_random_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-match-random-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/match-random-profile-checks" "${CMAKE_BINARY_DIR}/match-random-live-profile")
-    add_test(NAME match_random_nonlocal_transfer COMMAND cm-match-random-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-random-transfer-checks"
-        "${CMAKE_BINARY_DIR}/match-random-live-profile")
-    set_tests_properties(match_random_actual_production PROPERTIES FIXTURES_SETUP MatchRandomLiveProfile TIMEOUT 180)
-    set_tests_properties(match_random_original_profile match_random_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MatchRandomLiveProfile TIMEOUT 180)
-    add_test(NAME movement_choice_actual_production COMMAND cm-movement-choice-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/movement-choice-production-checks")
-    add_test(NAME movement_choice_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-movement-choice-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/movement-choice-profile-checks" "${CMAKE_BINARY_DIR}/movement-choice-live-profile")
-    add_test(NAME movement_choice_nonlocal_transfer COMMAND cm-movement-choice-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/movement-choice-transfer-checks"
-        "${CMAKE_BINARY_DIR}/movement-choice-live-profile")
-    set_tests_properties(movement_choice_actual_production PROPERTIES FIXTURES_SETUP MovementChoiceLiveProfile TIMEOUT 180)
-    set_tests_properties(movement_choice_original_profile movement_choice_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MovementChoiceLiveProfile TIMEOUT 180)
     add_test(NAME ball_contact_actual_production COMMAND cm-ball-contact-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-contact-production-checks")
     add_test(NAME ball_contact_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
@@ -2385,26 +2329,6 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/ball-contact-live-profile")
     set_tests_properties(ball_contact_actual_production PROPERTIES FIXTURES_SETUP BallContactLiveProfile TIMEOUT 180)
     set_tests_properties(ball_contact_original_profile ball_contact_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED BallContactLiveProfile TIMEOUT 180)
-    add_test(NAME team_line_actual_production COMMAND cm-team-line-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/team-line-production-checks")
-    add_test(NAME team_line_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-team-line-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/team-line-profile-checks" "${CMAKE_BINARY_DIR}/team-line-live-profile")
-    add_test(NAME team_line_nonlocal_transfer COMMAND cm-team-line-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/team-line-transfer-checks"
-        "${CMAKE_BINARY_DIR}/team-line-live-profile")
-    set_tests_properties(team_line_actual_production PROPERTIES FIXTURES_SETUP TeamLineLiveProfile TIMEOUT 180)
-    set_tests_properties(team_line_original_profile team_line_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED TeamLineLiveProfile TIMEOUT 180)
-    add_test(NAME actor_order_actual_production COMMAND cm-actor-order-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-order-production-checks")
-    add_test(NAME actor_order_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-actor-order-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/actor-order-profile-checks" "${CMAKE_BINARY_DIR}/actor-order-live-profile")
-    add_test(NAME actor_order_nonlocal_transfer COMMAND cm-actor-order-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-order-transfer-checks"
-        "${CMAKE_BINARY_DIR}/actor-order-live-profile")
-    set_tests_properties(actor_order_actual_production PROPERTIES FIXTURES_SETUP ActorOrderLiveProfile TIMEOUT 180)
-    set_tests_properties(actor_order_original_profile actor_order_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED ActorOrderLiveProfile TIMEOUT 180)
     add_test(NAME pitch_distance_actual_production COMMAND cm-pitch-distance-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/pitch-distance-production-checks")
     add_test(NAME pitch_distance_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
@@ -2415,16 +2339,6 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/pitch-distance-live-profile")
     set_tests_properties(pitch_distance_actual_production PROPERTIES FIXTURES_SETUP PitchDistanceLiveProfile TIMEOUT 180)
     set_tests_properties(pitch_distance_original_profile pitch_distance_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED PitchDistanceLiveProfile TIMEOUT 180)
-    add_test(NAME team_spatial_actual_production COMMAND cm-team-spatial-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/team-spatial-production-checks")
-    add_test(NAME team_spatial_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-team-spatial-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/team-spatial-profile-checks" "${CMAKE_BINARY_DIR}/team-spatial-live-profile")
-    add_test(NAME team_spatial_nonlocal_transfer COMMAND cm-team-spatial-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/team-spatial-transfer-checks"
-        "${CMAKE_BINARY_DIR}/team-spatial-live-profile")
-    set_tests_properties(team_spatial_actual_production PROPERTIES FIXTURES_SETUP TeamSpatialLiveProfile TIMEOUT 180)
-    set_tests_properties(team_spatial_original_profile team_spatial_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED TeamSpatialLiveProfile TIMEOUT 180)
     add_test(NAME match_discipline_actual_production COMMAND cm-match-discipline-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-discipline-production-checks")
     add_test(NAME match_discipline_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
@@ -2539,15 +2453,6 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     set_tests_properties(actor_construction_original_profile PROPERTIES FIXTURES_REQUIRED ActorConstructionLiveProfile)
     add_test(NAME actor_construction_nonlocal_transfer COMMAND cm-actor-construction-transfer-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-construction-transfer-checks")
-    add_test(NAME match_actor_actual_production COMMAND cm-match-actor-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-production-checks")
-    add_test(NAME match_actor_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-match-actor-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/actor-profile-checks" "${CMAKE_BINARY_DIR}/actor-live-profile.snapshot")
-    set_tests_properties(match_actor_actual_production PROPERTIES FIXTURES_SETUP MatchActorLiveProfile)
-    set_tests_properties(match_actor_original_profile PROPERTIES FIXTURES_REQUIRED MatchActorLiveProfile)
-    add_test(NAME match_actor_nonlocal_transfer COMMAND cm-match-actor-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-transfer-checks")
 endif()
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/program.json")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

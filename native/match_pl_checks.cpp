@@ -1,6 +1,7 @@
 // Full returned comparisons for the implemented MATCH_PL block. Dependencies
 // not yet reconstructed are scripted identically at their original boundaries.
 #include "match_pl_adapter.hpp"
+#include "match_eng_adapter.hpp"
 #include "match_pl.hpp"
 #include "actor_action_adapter.hpp"
 #include "actor_attributes_adapter.hpp"
@@ -1320,6 +1321,9 @@ void require_production_routes(const State& base) {
         if (action_entry(entry) || core_entry(entry) || entry == 0x10278220) {
             auto original_state = cm::semantic_io_checks::clone(base); Cpu original_cpu(*original_state); initialize_case(original_cpu);
             original_state->budget = external_budget(entry); original_state->pc = entry; bool exhausted = false;
+            // The original body runs its callees as the original too: MATCH_ENG.CPP's hook declines for this State.
+            match_eng_original_state = original_state.get();
+            struct Restore { ~Restore() { match_eng_original_state = nullptr; } } restore_original_state;
             try { match_pl_run_original(*original_state, entry); }
             catch (const std::runtime_error& error) {
                 if (std::string_view(error.what()) != "Native instruction budget exhausted") throw;
@@ -1351,9 +1355,14 @@ void require_production_routes(const State& base) {
             auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_case(c);
             state->budget = external_budget(entry); state->pc = entry;
             bool exhausted = false;
+            // The family's original route is the original bodies; MATCH_ENG.CPP's hook (on the pages of the
+            // routines it took over) declines for this State, as it does for a control match.
+            match_eng_original_state = state.get();
+            struct Restore { ~Restore() { match_eng_original_state = nullptr; } } restore_original_state;
             try { run(*state, entry); }
             catch (const std::runtime_error& error) {
-                if (std::string_view(error.what()) != "Native instruction budget exhausted") throw;
+                if (std::string_view(error.what()) != "Native instruction budget exhausted")
+                    throw std::runtime_error(std::string(error.what()) + " in the legacy original route of " + hex_address(entry));
                 exhausted = true;
             }
             cm::semantic_io_checks::require(exhausted, "Legacy original switch entered MATCH_PL C++");

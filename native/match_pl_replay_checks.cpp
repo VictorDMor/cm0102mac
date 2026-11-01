@@ -1,5 +1,6 @@
 // A bounded detailed-match interval with MATCH_PL original/default routing.
 #include "match_pl_adapter.hpp"
+#include "match_eng_adapter.hpp"
 #include "match_replay.hpp"
 #include "match_turbo.hpp"
 #include "code_fragment_adapter.hpp"
@@ -55,7 +56,12 @@ void measured_interval(State& s, bool original) {
     if (timed) std::cerr << "pair=" << pair_index << " route=" << (original ? "original" : "cpp")
                          << " milliseconds=" << std::fixed << std::setprecision(6) << milliseconds << '\n';
 }
-void original(State& s, std::uint32_t) { measured_interval(s, true); }
+void original(State& s, std::uint32_t) {
+    // The whole State runs the original bodies: MATCH_ENG.CPP's hook declines for it, as MATCH_PL's does.
+    match_eng_original_state = &s;
+    struct Restore { ~Restore() { match_eng_original_state = nullptr; } } restore;
+    measured_interval(s, true);
+}
 void rewrite(State& s, std::uint32_t) { measured_interval(s, false); }
 }
 int main(int argc, char** argv) {

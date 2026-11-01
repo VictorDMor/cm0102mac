@@ -1,4 +1,6 @@
 #include "match_engine_adapter.hpp"
+#include "match_eng_adapter.hpp"
+#include "match_debugger_diagnostics.hpp"
 #include "match_replay.hpp"
 #include "code_fragment_adapter.hpp"
 #include "register_context_adapter.hpp"
@@ -83,7 +85,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
         s->wr<4>(12, index == 2 ? match : manager); s->wr<4>(16, index == 0 ? watched : index == 1 ? 0 : 1);
         s->pc = parent_import; s->wr<4>(4128, caller); s->budget = s->executed + 1000000;
     }
-    match_engine_diagnostics(*a).original = true; a->register_context_original = true;
+    match_engine_diagnostics(*a).original = true; a->register_context_original = true; match_eng_original_state = a.get();
     b->register_context_original = original_context;
     Model old(index, scenario, *a), modern(index, scenario, *b); Monitor x(*a, old), y(*b, modern);
     a->code_fragment_observer = &old; b->code_fragment_observer = &modern;
@@ -94,7 +96,7 @@ void compare(const State& seed, unsigned index, Scenario scenario, bool original
         return std::string{};
     };
     set_match_turbo_enabled(false); const auto ae = execute(*a);
-    set_match_turbo_enabled(turbo); const auto be = execute(*b); set_match_turbo_enabled(false);
+    set_match_turbo_enabled(turbo); const auto be = execute(*b); set_match_turbo_enabled(false); match_eng_original_state = nullptr;
     a->memory.date_observer = b->memory.date_observer = nullptr; a->code_fragment_observer = b->code_fragment_observer = nullptr;
     const auto label = hex_address(engine::entries[index]) + " nonlocal scenario=" + std::to_string(unsigned(scenario));
     require(ae == be && !ae.empty() == (scenario != Scenario::jump), label + " outcomes original=" + ae + " modern=" + be);
@@ -122,7 +124,9 @@ int main(int argc, char** argv) {
         auto seed = std::make_unique<State>(); load_match_snapshot(*seed, argv[1]);
         require(seed->pc == engine::entries[2] && seed->r<4>(4128) == 0x101ccf1c, "Actual original shared-engine boundary");
         seed->memory.map(fixture, 0x1000); seed->memory.copy_in(fixture, std::vector<std::uint8_t>(0x1000, 0xa7));
-        for (unsigned root = 0; root < engine::entries.size(); ++root) {
+        // Root 2 (0x101d3f60) moved to MATCH_ENG.CPP, whose hook has no match-engine boundary or transfer counters;
+        // roots 0 and 1 stay with match_engine_adapter and keep every scenario below.
+        for (unsigned root = 0; root < 2; ++root) {
             for (auto scenario : {Scenario::jump, Scenario::restore_fault, Scenario::handler_fault})
                 for (bool original_context : {false,true}) compare(*seed, root, scenario, original_context, false);
             compare(*seed, root, Scenario::jump, false, true);
