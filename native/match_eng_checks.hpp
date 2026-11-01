@@ -20,6 +20,9 @@ struct Case {
     std::vector<Write> memory;                                  // applied to both sides, undone afterwards
     std::optional<double> f1;
     std::string label = {};
+    // Another module's routines answered on both sides (entry, r3) when dispatched, with no
+    // body run: for paths that depend on what a match snapshot can't produce.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> answers = {};
 };
 // A real match state: the object, its 40 players and one scratch stack area the
 // routine's frame can grow into.

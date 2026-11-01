@@ -175,6 +175,8 @@ std::uint64_t replacement(const Read& read, std::uint64_t before, std::mt19937& 
     }
 }
 
+std::string_view current_label;
+const std::vector<std::pair<std::uint32_t, std::uint32_t>>* case_answers = nullptr;
 struct Comparison { bool returned = false, faulted = false, timed_out = false; std::vector<std::string> differences; };
 Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool strict = false) {
     Comparison outcome;
@@ -193,7 +195,7 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
     }
     if (!rewrite_stop.empty() && rewrite_stop == original_stop) {
         outcome.faulted = true;
-        if (options.show_faults) std::cerr << "both faulted at " << hex_address(entry) << ": " << rewrite_stop << '\n';
+        if (options.show_faults) std::cerr << "both faulted at " << hex_address(entry) << " [" << current_label << "]: " << rewrite_stop << '\n';
     }
     else if (found.empty()) outcome.returned = true;
     else outcome.differences = std::move(found);
@@ -212,7 +214,10 @@ struct TracedCall {
 };
 std::vector<TracedCall>* traced_calls = nullptr;
 bool (*scripted_services)(State&) = nullptr;
+std::array<std::pair<std::uint32_t, std::uint32_t>, 24> recent_dispatches;
+unsigned dispatches_seen = 0;
 bool trace_probe(State& s) {
+    recent_dispatches[dispatches_seen++ % recent_dispatches.size()] = {s.pc, std::uint32_t(s.r<4>(4128))};
     const auto back = std::uint32_t(s.r<4>(4128));
     if (back >= 0x101d16a4 && back <= 0x101fef60 && traced_calls->size() < 2'000'000) {
         const auto word = std::uint32_t(s.memory.read<4>(back - 4));
@@ -240,7 +245,15 @@ std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner r
         routine_checker = &silent;
         match_eng_call_observer = nullptr;
         dispatch_probe = trace_probe;
-        try { runner(s, entry); } catch (...) {}
+        try { runner(s, entry); } catch (const std::exception& error) {
+            if (options.show_faults) {
+                std::cerr << "fault path of " << hex_address(entry) << " (pc " << hex_address(s.pc) << "): " << error.what() << '\n';
+                for (unsigned n = dispatches_seen > recent_dispatches.size() ? dispatches_seen - unsigned(recent_dispatches.size()) : 0; n < dispatches_seen; ++n) {
+                    const auto& [target, back] = recent_dispatches[n % recent_dispatches.size()];
+                    std::cerr << "  " << hex_address(target) << " lr " << hex_address(back) << '\n';
+                }
+            }
+        } catch (...) {}
         for (const auto& call : calls) if (::write(fds[1], &call, sizeof call) != ssize_t(sizeof call)) _exit(2);
         ::close(fds[1]);
         flush_child();
@@ -466,6 +479,8 @@ void run_cases(State& s, std::mt19937& random) {
             else s.memory.write<4>(write.address, write.value);
         }
         s.memory.observer = saved_observer;
+        current_label = item.label;
+        case_answers = &item.answers;
         const auto outcome = compare_call(s, item.entry, results_of(item.entry), options.strict);
         auto& tally = case_tally[item.entry];
         ++tally.calls; tally.returned += outcome.returned; tally.faulted += outcome.faulted; tally.timed_out += outcome.timed_out;
@@ -480,6 +495,7 @@ void run_cases(State& s, std::mt19937& random) {
             else s.memory.write<4>(w->first.address, w->second);
         }
         s.memory.observer = saved_observer;
+        case_answers = nullptr;
     }
     s.registers = saved;
 }
@@ -556,7 +572,24 @@ int main(int argc, char** argv) {
             // Named: these only see dispatches, so production pages have nothing to isolate.
             constexpr std::uint32_t exit_entry = 0x1076f7d0, dialog_entry = 0x10769b60;
             if (target.pc == exit_entry) throw ApplicationExit{};
-            if (target.pc != dialog_entry) return false;
+            // A match snapshot has no discipline manager (null global): setting up a
+            // fixture asks it about suspensions. No ban on either side, so the setup goes on.
+            constexpr std::uint32_t suspension_entry = 0x100e7920;
+            if (target.pc == suspension_entry && target.r<4>(guest::reg::gpr(3)) == 0) {
+                guest::Cpu(target).set(3, 0);
+                target.pc = target.r<4>(4128);
+                return true;
+            }
+            // The computer's lineup choice for a setup: it needs the whole world (transfers,
+            // loans, finances) a match snapshot lacks. The squad stays as it is on both sides.
+            constexpr std::uint32_t choose_lineup_entry = 0x102065f0;
+            if (case_answers) for (const auto& [entry, answer] : *case_answers) if (target.pc == entry) {
+                guest::Cpu(target).set(3, answer);
+                target.pc = target.r<4>(4128);
+                return true;
+            }
+            if (target.pc == choose_lineup_entry) guest::Cpu(target).set(3, 11);
+            else if (target.pc != dialog_entry) return false;
             target.pc = target.r<4>(4128);
             return true;
         };

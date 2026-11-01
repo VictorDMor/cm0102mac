@@ -39,6 +39,11 @@ MATCH_ENG_CASES("setup") {
         setup(0, 0, 0, memory, "club without players");
         setup(0, 0, 1, memory, "club without players, silent");
     }
+    // The computer can't pick eleven.
+    cases.push_back({.entry = 0x101d1760, .registers = {{3, match}, {4, fixture}, {5, 0}, {6, 0}, {7, 0}}, .memory = {}, .f1 = {},
+                     .label = "ten picked", .answers = {{0x102065f0, 10}}});
+    cases.push_back({.entry = 0x101d1760, .registers = {{3, match}, {4, fixture}, {5, 0}, {6, 0}, {7, 1}}, .memory = {}, .f1 = {},
+                     .label = "ten picked, silent", .answers = {{0x102065f0, 10}}});
     // The draws: zero, small, large and negative limits.
     for (const std::uint32_t limit : {0u, 1u, 2u, 7u, 100u, 0xffffu, 0x10000u, 0x12345u, 1000000u, 0xffffffffu, 0xffff0001u,
                                       0xfffefffeu, 0x80000000u, 0x7fffffffu})
