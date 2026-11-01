@@ -85,6 +85,29 @@ class MatchEngAudit(unittest.TestCase):
         import compile_recomp
         audit.require_match_eng_owners(compile_recomp.OWNER_REPLACEMENTS)
 
+    def test_addresses_in_the_cpp_name_what_they_should(self):
+        # A wrong return address leaves a wrong word in the stack image, and only a callee that
+        # reads it would show. A literal is an entry, a bl, what follows a bl, a fused instruction
+        # (multiply-add sites) or a PC the debugger's boundary watches.
+        low, high = audit.MODULE
+        assembly = dict(self.db.execute(
+            "select address, json_extract(body, '$.assembly') from instructions where address >= ? and address < ?", (low, high)))
+        entries = set(audit.MATCH_ENG_ENTRIES)
+        is_call = lambda address: (assembly.get(address) or "").startswith("bl ")
+        fused = re.compile(r"fn?m(add|sub)s? ")
+        wrong = []
+        for path in sorted((ROOT / "native").glob("match_eng_*")):
+            if path.suffix not in (".cpp", ".hpp") or "checks" in path.name:
+                continue
+            source = re.sub(r"//[^\n]*", "", path.read_text())
+            for found in re.finditer(r"(s\.pc = )?0x(101[d-f][0-9a-f]{4})\b", source):
+                address = int(found.group(2), 16)
+                if not low <= address < high or address in entries or found.group(1):
+                    continue
+                if not (is_call(address) or is_call(address - 4) or fused.match(assembly.get(address) or "")):
+                    wrong.append(f"{path.name}:{source.count(chr(10), 0, found.start()) + 1} {hex(address)} {assembly.get(address)}")
+        self.assertEqual(wrong, [])
+
     def test_a_changed_digest_fails(self):
         entry, end, count, pinned = audit.CONTRACTS[0]
         records = routine_records(self.db, entry, end)
