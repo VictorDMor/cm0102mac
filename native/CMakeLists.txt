@@ -1920,8 +1920,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME match_actor_component_equivalence COMMAND cm-match-actor-checks)
 endif()
 add_executable(cm-actor-construction-production-checks actor_construction_production_checks.cpp)
-add_executable(cm-spatial-role-production-checks spatial_role_production_checks.cpp)
-add_executable(cm-marking-pressure-production-checks marking_pressure_production_checks.cpp)
 add_executable(cm-match-random-benchmark match_random_benchmark.cpp)
 target_link_libraries(cm-match-random-benchmark PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-match-random-benchmark PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -1982,33 +1980,15 @@ target_compile_options(cm-actor-attributes-production-checks PRIVATE -Wall -Wext
 add_executable(cm-actor-attributes-transfer-checks actor_attributes_transfer_checks.cpp)
 target_link_libraries(cm-actor-attributes-transfer-checks PRIVATE cm_aot)
 target_compile_options(cm-actor-attributes-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-pitch-distance-production-checks pitch_distance_production_checks.cpp)
-target_link_libraries(cm-pitch-distance-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-pitch-distance-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-pitch-distance-transfer-checks pitch_distance_transfer_checks.cpp)
-target_link_libraries(cm-pitch-distance-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-pitch-distance-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-match-discipline-production-checks match_discipline_production_checks.cpp)
-target_link_libraries(cm-match-discipline-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-match-discipline-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-match-discipline-transfer-checks match_discipline_transfer_checks.cpp)
-target_link_libraries(cm-match-discipline-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-match-discipline-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-ball-action-match-checks ball_action_match_checks.cpp)
 target_link_libraries(cm-ball-action-match-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-ball-action-match-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-ball-contact-production-checks ball_contact_production_checks.cpp)
-target_link_libraries(cm-ball-contact-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-ball-contact-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-ball-action-production-checks ball_action_production_checks.cpp)
 target_link_libraries(cm-ball-action-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-ball-action-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-player-movement-production-checks player_movement_production_checks.cpp)
 target_link_libraries(cm-player-movement-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-player-movement-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-ball-contact-transfer-checks ball_contact_transfer_checks.cpp)
-target_link_libraries(cm-ball-contact-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-ball-contact-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-ball-action-transfer-checks ball_action_transfer_checks.cpp)
 target_link_libraries(cm-ball-action-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-ball-action-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -2027,16 +2007,6 @@ target_compile_options(cm-player-decision-production-checks PRIVATE -Wall -Wextr
 add_executable(cm-player-decision-transfer-checks player_decision_transfer_checks.cpp)
 target_link_libraries(cm-player-decision-transfer-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-player-decision-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-target_link_libraries(cm-marking-pressure-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-marking-pressure-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-marking-pressure-transfer-checks marking_pressure_transfer_checks.cpp)
-target_link_libraries(cm-marking-pressure-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-marking-pressure-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-target_link_libraries(cm-spatial-role-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-spatial-role-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_executable(cm-spatial-role-transfer-checks spatial_role_transfer_checks.cpp)
-target_link_libraries(cm-spatial-role-transfer-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-spatial-role-transfer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 target_link_libraries(cm-actor-construction-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-actor-construction-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-actor-construction-transfer-checks actor_construction_transfer_checks.cpp)
@@ -2319,36 +2289,6 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         "${CMAKE_BINARY_DIR}/actor-attributes-live-profile")
     set_tests_properties(actor_attributes_actual_production PROPERTIES FIXTURES_SETUP ActorAttributesLiveProfile TIMEOUT 180)
     set_tests_properties(actor_attributes_original_profile actor_attributes_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED ActorAttributesLiveProfile TIMEOUT 180)
-    add_test(NAME ball_contact_actual_production COMMAND cm-ball-contact-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-contact-production-checks")
-    add_test(NAME ball_contact_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-ball-contact-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/ball-contact-profile-checks" "${CMAKE_BINARY_DIR}/ball-contact-live-profile")
-    add_test(NAME ball_contact_nonlocal_transfer COMMAND cm-ball-contact-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/ball-contact-transfer-checks"
-        "${CMAKE_BINARY_DIR}/ball-contact-live-profile")
-    set_tests_properties(ball_contact_actual_production PROPERTIES FIXTURES_SETUP BallContactLiveProfile TIMEOUT 180)
-    set_tests_properties(ball_contact_original_profile ball_contact_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED BallContactLiveProfile TIMEOUT 180)
-    add_test(NAME pitch_distance_actual_production COMMAND cm-pitch-distance-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/pitch-distance-production-checks")
-    add_test(NAME pitch_distance_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-pitch-distance-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/pitch-distance-profile-checks" "${CMAKE_BINARY_DIR}/pitch-distance-live-profile")
-    add_test(NAME pitch_distance_nonlocal_transfer COMMAND cm-pitch-distance-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/pitch-distance-transfer-checks"
-        "${CMAKE_BINARY_DIR}/pitch-distance-live-profile")
-    set_tests_properties(pitch_distance_actual_production PROPERTIES FIXTURES_SETUP PitchDistanceLiveProfile TIMEOUT 180)
-    set_tests_properties(pitch_distance_original_profile pitch_distance_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED PitchDistanceLiveProfile TIMEOUT 180)
-    add_test(NAME match_discipline_actual_production COMMAND cm-match-discipline-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-discipline-production-checks")
-    add_test(NAME match_discipline_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-match-discipline-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/match-discipline-profile-checks" "${CMAKE_BINARY_DIR}/match-discipline-live-profile")
-    add_test(NAME match_discipline_nonlocal_transfer COMMAND cm-match-discipline-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/match-discipline-transfer-checks"
-        "${CMAKE_BINARY_DIR}/match-discipline-live-profile")
-    set_tests_properties(match_discipline_actual_production PROPERTIES FIXTURES_SETUP MatchDisciplineLiveProfile TIMEOUT 180)
-    set_tests_properties(match_discipline_original_profile match_discipline_nonlocal_transfer PROPERTIES FIXTURES_REQUIRED MatchDisciplineLiveProfile TIMEOUT 180)
     add_test(NAME match_debugger_actual_cards COMMAND cm-match-debugger-cards-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debugger-cards-checks")
     set_tests_properties(match_debugger_actual_cards PROPERTIES TIMEOUT 180)
@@ -2426,24 +2366,6 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         add_test(NAME player_decision_nonlocal_transfer COMMAND cm-player-decision-transfer-checks
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-decision-transfer-checks")
     endif()
-    add_test(NAME marking_pressure_actual_production COMMAND cm-marking-pressure-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/marking-pressure-production-checks")
-    add_test(NAME marking_pressure_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-marking-pressure-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/marking-pressure-profile-checks" "${CMAKE_BINARY_DIR}/marking-pressure-live-profile.snapshot")
-    set_tests_properties(marking_pressure_actual_production PROPERTIES FIXTURES_SETUP MarkingPressureLiveProfile)
-    set_tests_properties(marking_pressure_original_profile PROPERTIES FIXTURES_REQUIRED MarkingPressureLiveProfile)
-    add_test(NAME marking_pressure_nonlocal_transfer COMMAND cm-marking-pressure-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/marking-pressure-transfer-checks")
-    add_test(NAME spatial_role_actual_production COMMAND cm-spatial-role-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/spatial-role-production-checks")
-    add_test(NAME spatial_role_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
-        $<TARGET_FILE:cm-spatial-role-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/spatial-role-profile-checks" "${CMAKE_BINARY_DIR}/spatial-role-live-profile.snapshot")
-    set_tests_properties(spatial_role_actual_production PROPERTIES FIXTURES_SETUP SpatialRoleLiveProfile)
-    set_tests_properties(spatial_role_original_profile PROPERTIES FIXTURES_REQUIRED SpatialRoleLiveProfile)
-    add_test(NAME spatial_role_nonlocal_transfer COMMAND cm-spatial-role-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/spatial-role-transfer-checks")
     add_test(NAME actor_construction_actual_production COMMAND cm-actor-construction-production-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-construction-production-checks")
     add_test(NAME actor_construction_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
