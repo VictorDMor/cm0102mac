@@ -4113,3 +4113,41 @@ if(CM_FILE_SCREENS_COVERAGE)
         CM_FILE_SCREENS_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/file_screens-coverage")
     target_link_options(cm-file-screens-checks PRIVATE "-fprofile-instr-generate=${CM_FILE_SCREENS_PROFILE}")
 endif()
+
+file(GLOB CM_CUP_STAGE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cup_stage*.cpp")
+list(FILTER CM_CUP_STAGE_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_CUP_STAGE_SOURCES})
+add_executable(cm-cup-stage-checks cup_stage_checks.cpp)
+target_link_libraries(cm-cup-stage-checks PRIVATE cm_aot)
+target_compile_options(cm-cup-stage-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_CUP_STAGE_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/cup_stage_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CUP_STAGE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_cup_stage_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CUP_STAGE_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_cup_stage_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/cup_stage_audit.py"
+            "${CMAKE_SOURCE_DIR}/cup_stage_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-cup-stage-checks PRIVATE "${CM_CUP_STAGE_REFERENCE}")
+    add_test(NAME cup_stage_equivalence COMMAND cm-cup-stage-checks "${CM_ORACLE_DIR}")
+    add_test(NAME cup_stage_production COMMAND cm-cup-stage-checks "${CM_ORACLE_DIR}" --production)
+    add_test(NAME cup_stage_original_control COMMAND cm-cup-stage-checks "${CM_ORACLE_DIR}" --original-control)
+    set_tests_properties(cup_stage_original_control PROPERTIES ENVIRONMENT "CM_CUP_STAGE_ORIGINAL=1")
+    add_test(NAME cup_stage_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_cup_stage_audit.py")
+endif()
+option(CM_CUP_STAGE_COVERAGE "Instrument CUP_STAGE.CPP checker only" OFF)
+if(CM_CUP_STAGE_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/cup_stage-coverage")
+    set(CM_CUP_STAGE_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/cup_stage-coverage/check-%p.profraw")
+    add_library(cm_cup_stage_coverage OBJECT ${CM_CUP_STAGE_SOURCES})
+    target_link_libraries(cm_cup_stage_coverage PRIVATE cm_aot)
+    target_compile_options(cm_cup_stage_coverage PRIVATE "-fprofile-instr-generate=${CM_CUP_STAGE_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_cup_stage_coverage PRIVATE CM_CUP_STAGE_COVERAGE=1)
+    target_sources(cm-cup-stage-checks PRIVATE $<TARGET_OBJECTS:cm_cup_stage_coverage>)
+    target_compile_definitions(cm-cup-stage-checks PRIVATE CM_CUP_STAGE_COVERAGE=1
+        CM_CUP_STAGE_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/cup_stage-coverage")
+    target_link_options(cm-cup-stage-checks PRIVATE "-fprofile-instr-generate=${CM_CUP_STAGE_PROFILE}")
+endif()

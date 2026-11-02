@@ -987,6 +987,23 @@ The module owns no serialization routine; loading remains in the shared
 competition service. Its checker scripts external competition/news boundaries
 and also exercises the real date helpers.
 
+## CUP_STAGE.CPP: knockout-stage records and draws
+
+The eight entries cover construction, allocation for load, destruction, entrant
+initialization, binary load/save, draw links and the stage-local RNG. The loader
+deliberately tests the preceding round read's return value again after reading
+entrants; the original does not test the entrant read's return value there.
+Saving temporarily replaces club pointers with their database indices and
+restores them afterward. Draw links fill the home feed before the away feed;
+the host-country swap and RNG consumption retain that order.
+
+`cm-cup-stage-checks` compares every entry against separately generated original
+bodies, including partial IO and fatal assertion exits. Its `--production` mode
+uses the normal hooks with a memory observer and no instruction budget for owned
+code; only the base constructor, CFM trampoline and version-text leaf receive
+an external instruction allowance. `CM_CUP_STAGE_ORIGINAL=1` retains the original
+route for paired replays and the `--original-control` negative check.
+
 ## EUROPEAN_CUP.CPP: the Champions League
 
 The 23 entries at 0x104e9fb0–0x104ef380 (5,320 indexed instructions) live in

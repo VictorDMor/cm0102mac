@@ -213,6 +213,7 @@ from fifa_rankings_audit import FIFA_RANKINGS_ENTRIES, require_fifa_rankings_ind
 from cash_audit import CASH_ENTRIES, require_cash_index, cash_hook
 from awol_audit import AWOL_ENTRIES, require_awol_index, awol_hook
 from siprint_audit import SIPRINT_ENTRIES, require_siprint_index, siprint_hook, require_siprint_hooks
+from cup_stage_audit import CUP_STAGE_ENTRIES, require_cup_stage_index, cup_stage_hook, require_cup_stage_hooks
 from db_files_audit import DB_FILES_ENTRIES, require_db_files_index, db_files_hook, require_db_files_hooks
 from international_awards_audit import INTERNATIONAL_AWARDS_ENTRIES, require_international_awards_index, international_awards_hook
 from nation_awards_audit import NATION_AWARDS_ENTRIES, require_nation_awards_index, nation_awards_hook
@@ -429,6 +430,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "dispute_adapter") for entry in DISPUTE_ENTRIES) +
                       tuple((entry, "award_shortlist_adapter") for entry in AWARD_SHORTLIST_ENTRIES) +
                       tuple((entry, "siprint_adapter") for entry in SIPRINT_ENTRIES) +
+                      tuple((entry, "cup_stage_adapter") for entry in CUP_STAGE_ENTRIES) +
                       tuple((entry, "db_files_adapter") for entry in DB_FILES_ENTRIES) +
                       tuple((entry, "international_awards_adapter") for entry in INTERNATIONAL_AWARDS_ENTRIES) +
                       tuple((entry, "nation_awards_adapter") for entry in NATION_AWARDS_ENTRIES) +
@@ -1220,7 +1222,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
                   direct_owner_calls=None):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
@@ -1669,6 +1671,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "fifa_rankings_adapter.hpp"')
     if siprint_hooks and page_addresses & set(SIPRINT_ENTRIES):
         code.insert(1, '#include "siprint_adapter.hpp"')
+    if cup_stage_hooks and page_addresses & set(CUP_STAGE_ENTRIES):
+        code.insert(1, '#include "cup_stage_adapter.hpp"')
     if db_files_hooks and page_addresses & set(DB_FILES_ENTRIES):
         code.insert(1, '#include "db_files_adapter.hpp"')
     if international_awards_hooks and page_addresses & set(INTERNATIONAL_AWARDS_ENTRIES):
@@ -2119,6 +2123,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if siprint_hooks and a in SIPRINT_ENTRIES:
             code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(siprint_hook(a))
+        if cup_stage_hooks and a in CUP_STAGE_ENTRIES:
+            code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
+            code.append(cup_stage_hook(a))
         if db_files_hooks and a in DB_FILES_ENTRIES:
             code.append(db_files_hook(a))
         if international_awards_hooks and a in INTERNATIONAL_AWARDS_ENTRIES:
@@ -2417,6 +2424,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     result = "\n".join(code) + "\n"
     if siprint_hooks:
         require_siprint_hooks(page, instructions, result)
+    if cup_stage_hooks:
+        require_cup_stage_hooks(page, instructions, result)
     if bra_reg_central_hooks:
         require_bra_reg_central_hooks(page, instructions, result)
     if bra_reg_parana_hooks:
@@ -2652,7 +2661,7 @@ INDEX_AUDITS = (
     require_club_records_index, require_match_pl_index, require_match_eng_index, require_eng_prm_index,
     require_eng_conf_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
     require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
-    require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index,
+    require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index, require_cup_stage_index,
     require_db_files_index, require_international_awards_index, require_nation_awards_index,
     require_dispute_index, require_award_shortlist_index, require_transfer_screens_index,
     require_oceania_nations_index, require_news_index, require_news_screens_index, require_screen_manager_index,

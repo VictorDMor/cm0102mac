@@ -1,0 +1,8 @@
+CUP_STAGE_ROUTINE(0x104bc9b0, 0x104bca88, R3, "c6efef90686d646a", [](Cpu& c) { c.set(3, cup_stage::destroy(c, c.r(3), std::int16_t(c.r(4)))); })
+CUP_STAGE_ROUTINE(0x104bca90, 0x104bcb20, R3, "307ffd7eddca4592", [](Cpu& c) { c.set(3, cup_stage::initialize_entrants(c, c.r(3), std::int32_t(c.r(4)), c.r(5), std::int8_t(c.r(6)), c.r(7))); })
+CUP_STAGE_ROUTINE(0x104bc3c0, 0x104bc748, R3, "1cc2c1fc657c994e", [](Cpu& c) { c.set(3, cup_stage::construct(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10))); })
+CUP_STAGE_ROUTINE(0x104bc750, 0x104bc9a8, R3, "2a73a24301a6726c", [](Cpu& c) { c.set(3, cup_stage::allocate_for_load(c, c.r(3), std::int16_t(c.r(4)), std::int16_t(c.r(5)), c.r(6))); })
+CUP_STAGE_ROUTINE(0x104bcb20, 0x104bd550, R3, "4b7b80f93a8ee8f0", [](Cpu& c) { c.set(3, cup_stage::load(c, c.r(3), c.r(4))); })
+CUP_STAGE_ROUTINE(0x104bd550, 0x104bd8b8, R3, "8d4fa297f4bfc618", [](Cpu& c) { cup_stage::save(c, c.r(3), c.r(4)); })
+CUP_STAGE_ROUTINE(0x104be7e0, 0x104bed58, R3, "823d8b389f5c20e2", [](Cpu& c) { c.set(3, cup_stage::random_below(c, c.r(3))); })
+CUP_STAGE_ROUTINE(0x104bd8c0, 0x104be7dc, R3, "789abc96f9ee6717", [](Cpu& c) { c.set(3, cup_stage::build_draw(c, c.r(3))); })
