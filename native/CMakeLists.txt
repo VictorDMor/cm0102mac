@@ -464,6 +464,15 @@ add_test(NAME club_history_detect_difference
          COMMAND cm-world-replay "${CM_BENCHMARK_DIR}/ui/game-save2" 1 --check-routines-corrupted 1 1000 --only 0x1000e060)
 set_tests_properties(club_history_detect_difference PROPERTIES PASS_REGULAR_EXPRESSION "differs from the original")
 # CONTRACT_MANAGER: staged semantic rewrites, compared with generated bodies.
+add_executable(cm-manager-routing-checks manager_routing_checks.cpp)
+target_link_libraries(cm-manager-routing-checks PRIVATE cm_aot)
+target_compile_options(cm-manager-routing-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME manager_internal_checker_routing COMMAND cm-manager-routing-checks)
+set_tests_properties(manager_internal_checker_routing PROPERTIES
+    ENVIRONMENT_MODIFICATION "CM_CONTRACT_MANAGER_ORIGINAL=unset:;CM_SHORTLIST_MANAGER_ORIGINAL=unset:")
+add_test(NAME manager_internal_original_routing COMMAND cm-manager-routing-checks)
+set_tests_properties(manager_internal_original_routing PROPERTIES
+    ENVIRONMENT "CM_CONTRACT_MANAGER_ORIGINAL=1;CM_SHORTLIST_MANAGER_ORIGINAL=1")
 add_test(NAME contract_manager_audit
          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_contract_manager_audit.py")
 foreach(group records storage keyed pending)

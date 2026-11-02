@@ -66,9 +66,9 @@ unsigned shortlist_manager_results(std::uint32_t entry) {
 }
 ShortlistManagerCallHook* shortlist_manager_call_hook = nullptr;
 
-// Program::call into another routine of the module (shortlist_manager_detail.hpp):
-// a verified routine (or, in check tools, a draft) runs its C++ in place, so
-// a checked routine's callees run as C++ inside its check.
+// Normal internal calls bypass the dispatcher. The checker parent must see
+// each nested call through the entry hook; excluded callees run their originals
+// in both the parent and checker children. Fixture hooks keep first refusal.
 bool shortlist_manager::detail::call_rewritten(Cpu& c, std::uint32_t entry, std::uint32_t back) {
     if (auto* hook = shortlist_manager_call_hook) [[unlikely]] {
         const auto stack = c.sp();
@@ -79,6 +79,7 @@ bool shortlist_manager::detail::call_rewritten(Cpu& c, std::uint32_t entry, std:
             throw std::logic_error("Hooked call returned elsewhere: " + hex_address(entry));
         return true;
     }
+    if (routine_checker && (!routine_check_child() || !routine_checker->wants(entry))) return false;
     const auto* routine = listed(entry);
     if (declining || !routine || !(routine->verified || routine_checker)) return false;
     c.link(back);

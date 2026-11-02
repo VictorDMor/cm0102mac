@@ -80,8 +80,9 @@ unsigned contract_manager_results(std::uint32_t entry) {
     const auto* routine = listed(entry);
     return routine ? routine->results : 0;
 }
-// Calls within the rewritten module bypass the dispatcher while preserving
-// the original call-site link and non-volatile state.
+// Normal internal calls bypass the dispatcher. The checker parent must see
+// each nested call through the entry hook; excluded callees run their originals
+// in both the parent and checker children. Fixture hooks keep first refusal.
 bool contract_manager::detail::call_rewritten(Cpu& c, std::uint32_t entry, std::uint32_t back) {
     if (auto* hook = contract_manager_call_hook) [[unlikely]] {
         const auto stack = c.sp();
@@ -91,6 +92,7 @@ bool contract_manager::detail::call_rewritten(Cpu& c, std::uint32_t entry, std::
             throw std::logic_error("Hooked contract-manager call returned elsewhere: " + hex_address(entry));
         return true;
     }
+    if (routine_checker && (!routine_check_child() || !routine_checker->wants(entry))) return false;
     const auto* routine = listed(entry);
     if (declining || !routine || !(routine->verified || routine_checker)) return false;
     c.link(back);
