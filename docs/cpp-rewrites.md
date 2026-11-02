@@ -1112,3 +1112,16 @@ fault. With a negative player, a tone above 7 and no matching trait, 0x1064cf80 
 call trace doesn't pair formatter calls (the original's page reaches that hook directly): their arguments show
 through the text and spills they leave.
 
+## NEWS_SCREENS.CPP: the news screen and the message dialog
+
+`NEWS_SCREENS.CPP` owns 8 entries / 2,249 indexed instructions in 0x102ce710-0x102d0a50 (`tools/news_screens_audit.py`).
+Its pool is -0x50f0 and its six transition vectors are the screen manager's callbacks; 0x102d0a50 already belongs to
+OFFICIALS_MANAGER. `cm-news-screens-checks` is media's checker with each case in a forked child, so a case can set its
+screen up through the game's own routines on their original routes. A snapshot sits outside any routine: r2 is zero, and
+the screen manager's current group is 16 until a client runs, so the fixture sets r2 and selects group 0 (the human manager).
+
+Quirks kept on purpose: the title's 57-label jump table sends only the twelve vowels (both cases, Y included) to the
+French "d'" format, on the name's signed first byte; `news_command` recomputes the control's action for each test,
+addressing through r4 until the last test of each chain, which uses r3; with nothing selected the screen picks the last
+listed item that is unread or has an action (the item's priority byte only counts with a null filter, which play never
+produces); the send-to-all loop walks the sixteen human managers, the last people in the table.

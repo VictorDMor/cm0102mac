@@ -1,0 +1,8 @@
+NEWS_SCREENS_ROUTINE(0x102ce710, 0x102cea2c, R3, "736f3c5b9c9129ed", [](Cpu& c) { news_screens::open_news(c, c.r(3), c.r(4)); })
+NEWS_SCREENS_ROUTINE(0x102cea30, 0x102cfcd0, R3, "528990297196ea8e", [](Cpu& c) { news_screens::draw_news(c); })
+NEWS_SCREENS_ROUTINE(0x102cfcd0, 0x102d022c, R3, "636316d1f7526738", [](Cpu& c) { c.set(3, news_screens::news_command(c, c.r(3))); })
+NEWS_SCREENS_ROUTINE(0x102d0230, 0x102d02a4, R3, "9d18648de584528b", [](Cpu& c) { news_screens::close_news(c); })
+NEWS_SCREENS_ROUTINE(0x102d02b0, 0x102d036c, R3, "5425244fe584d342", [](Cpu& c) { news_screens::open_message(c, c.r(3), c.r(4)); })
+NEWS_SCREENS_ROUTINE(0x102d0370, 0x102d0500, R3, "0721647d32749af3", [](Cpu& c) { news_screens::open_reply(c, c.r(3), c.r(4)); })
+NEWS_SCREENS_ROUTINE(0x102d0500, 0x102d07b0, R3, "2a1f8d0329d0e80b", [](Cpu& c) { news_screens::draw_message(c); })
+NEWS_SCREENS_ROUTINE(0x102d07b0, 0x102d0a50, R3, "5d1d90a5eb8d89c4", [](Cpu& c) { c.set(3, news_screens::message_command(c, c.r(3))); })
