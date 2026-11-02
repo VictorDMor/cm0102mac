@@ -231,6 +231,36 @@ inline Reduced reduced_by(std::uint32_t sample, const Reciprocal& by) {
     const auto shifted = std::uint32_t(high >> by.shift), sign = shifted >> 31;
     return {sample, high, shifted, sign, std::int32_t(sample - (shifted + sign) * std::uint32_t(by.divisor))};
 }
+// The divisors the evaluations use besides the ones above. A negative magic with a positive divisor (15, 23, 30,
+// 60, 120) is a sequence that adds the sample back to the multiply-high word before the shift (reduced_by_signed).
+namespace divisors {
+constexpr Reciprocal by_15{std::int32_t(0x88888889), 3, 15}, by_23{std::int32_t(0xb21642c9), 4, 23},
+    by_30{std::int32_t(0x88888889), 4, 30}, by_36{0x38e38e39, 3, 36}, by_40{0x66666667, 4, 40}, by_50{0x51eb851f, 4, 50},
+    by_60{std::int32_t(0x88888889), 5, 60}, by_100{0x51eb851f, 5, 100}, by_120{std::int32_t(0x88888889), 6, 120},
+    by_150{0x1b4e81b5, 4, 150}, by_minus_5{std::int32_t(0x99999999), 1, -5};
+}
+// reduced_by for every divisor above: a magic below zero with a positive divisor makes the compiler add the sample to
+// the multiply-high word before the shift; `high` stays the multiply-high word itself.
+inline Reduced reduced_by_signed(std::uint32_t sample, const Reciprocal& by) {
+    const auto high = multiply_high(by.magic, std::int32_t(sample));
+    const auto word = by.magic < 0 && by.divisor > 0 ? std::int32_t(std::uint32_t(high) + sample) : high;
+    const auto shifted = std::uint32_t(word >> by.shift), sign = shifted >> 31;
+    return {sample, high, shifted, sign, std::int32_t(sample - (shifted + sign) * std::uint32_t(by.divisor))};
+}
+// Routines of the game's people and clubs that the evaluations ask. A person's relations record (the link at +0x18) keeps
+// three people he likes at +0x1c.. and three he dislikes at +0x28..; a club keeps three favoured people at +0x5c.. and three
+// disfavoured ones at +0x68.. (inferred from the lists they read).
+namespace relations {
+constexpr std::uint32_t favoured_by_club = 0x100d9480;     // (person, club) -> byte: he is on the club's first list
+constexpr std::uint32_t disfavoured_by_club = 0x100d94d0;  // (person, club) -> byte: he is on the club's second list
+constexpr std::uint32_t liked_by = 0x100d9520;             // (person, other) -> byte: `other` likes the person
+constexpr std::uint32_t disliked_by = 0x100d9580;          // (person, other) -> byte: `other` dislikes the person
+// (person, other, replace): `other` slips down in the person's regard: off the liked list when he is on it, else onto the
+// disliked list (over a drawn slot when its three are taken and `replace` is set); the AWOL module calls it as well.
+constexpr std::uint32_t fall_out = 0x100d9b80;
+// The mirror image: `other` rises in the person's regard, off the disliked list when he is on it, else onto the liked list.
+constexpr std::uint32_t warm_to = 0x100d9960;
+}
 
 // A column (a halfword) of the club's row in the ratings table (76-byte rows, the table behind TOC slot -0x79f0) moved by
 // `delta` and held within 1..10000, as the compiler expands it: the table's holder in register `holder` (r3, or r5

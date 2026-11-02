@@ -18,11 +18,10 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **media.cpp complete C++23 reconstruction (started 2026-11-01):** 75 entries, 99,976 instructions (0x10646d90-0x106a8a50): twice MATCH_ENG. Audit `tools/media_audit.py`; brief and blocks in `.local/rewrites/media/` (BRIEF.md, blocks.json). The generator hooks all 75 from the start; drafts stay generated in production. 
-  - [x] Blocks done: leaves (9/191) · store (16/2,057) · values (10/4,615) · text_small (10/5,421) · eval_d (1/3,819) · pick_c (7/5,203).
-  - [ ] Reviewed, fixes in progress, then commit: text_mid · pick_a · pick_b · text_a · text_b · text_c · text_d · eval_c. Written, review pending: eval_b. Being written: eval_a.
-  - Known failures until all 75 are `MEDIA_ROUTINE`: `media_audit` (2 of 10 tests pin the full list) and `media_production` (requires 75 entries). Both are required at delivery.
-  - [ ] Audit test `tools/test_media_audit.py`, coverage pass, replay pairs (tactics-continue, explore1, ps-newgame, cpp-reload, game-save2), production proof, review, install. The sheet is Victor's: give him the row in the final report.
+- [ ] **media.cpp, what's left after its production commit (2026-11-02):** all 75 entries run in C++. Still open:
+  - [ ] Central coverage build: needs 10 GB free. Blocks measured their own files only, some before their last cases.
+  - [ ] Review fixes stopped at the usage limit. Done: the return address, defects, game text, shared text helpers. Not finished: text_a's names (`media_text_a_members.hpp`, functions named by address), text_d's (`field15..1d`, c.r(13/14/17)), eval_a's and eval_b's names and copies, the logic blocks' remaining duplication. Agents: logic `a4befa5960d09bdf3`, text `af8345a98f81b734d`, eval `addcc1ac35b69e66e`.
+  - [ ] Rerun `--mutate 8 --call-trace` over all 75 after those; the commit's combined run had no mutations.
 
 - [ ] **Older match families after MATCH_ENG.CPP (found 2026-11-01):** the builder sources of the 19 families whose 79 entries left production at the takeover still build for checks but no page calls them, so they are candidates for deletion. Five family tests were retired with entries remaining outside the module (`spatial_role`, `marking_pressure`, `pitch_distance`, `ball_contact`, `match_discipline`): those entries get checks when their modules are reconstructed.
 

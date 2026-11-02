@@ -439,8 +439,9 @@ class MediaAuditTests(unittest.TestCase):
                 require_export(Path(directory))
         with closing(sqlite3.connect(':memory:')) as db:
             db.execute('CREATE TABLE instructions(address INTEGER PRIMARY KEY, body TEXT NOT NULL)')
-            with self.assertRaisesRegex(ValueError, 'Missing media.cpp instructions'):
-                audit.require_media_index(db)
+            with patch.object(audit, 'rewritten', return_value=[(a, b, '0') for a, b in audit.ROUTINES]):
+                with self.assertRaisesRegex(ValueError, 'Missing media.cpp instructions'):
+                    audit.require_media_index(db)
         stale = [(a, b, '0000000000000000') if i == 0 else (a, b, digest)
                  for i, (a, b, digest) in enumerate(audit.rewritten(drafts=True))]
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:

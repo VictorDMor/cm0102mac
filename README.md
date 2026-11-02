@@ -47,6 +47,8 @@ routines** for loading, converting and saving the database tables. `AWOL.CPP`
 adds **21 audited routines** for staff absences, their messages and the daily review.
 `EUROPEAN_CUP.CPP` adds **23 audited routines** for the Champions League's
 entrants, calendars, group draws, knockout and results.
+`media.cpp` adds **75 audited routines** for the press: its stories, reactions,
+news text, response dialog and data file.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,

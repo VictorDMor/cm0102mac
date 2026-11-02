@@ -46,8 +46,7 @@ UNREACHABLE = frozenset({0x10649cc0, 0x1064dddc, 0x10650b58, 0x10651808, 0x10651
                               0x10680e20, 0x106813ac, 0x106818fc, 0x10681c48, 0x106823c4, 0x10682b58, 0x10685338, 0x10689ab0, 
                               0x1068bfb0, 0x1068c500, 0x1068ca68, 0x1068d780, 0x1068f490, 0x106911a8, 0x10692308, 0x10692848, 
                               0x10692b24, 0x10692e60, 0x106937a8, 0x106943e8, 0x1069ca5c, 0x106a4bfc, 0x106a894c})
-# The generator hooks every entry from the start; the adapter declines drafts in
-# production, so same-page calls reach the checker and unfinished routines stay generated.
+# The generator hooks every entry; a MEDIA_DRAFT stays generated in production.
 MEDIA_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 
 
@@ -76,7 +75,10 @@ def rewritten(path=INCLUDES, drafts=False):
 
 def require_media_index(db, path=INCLUDES):
     """Every routine's original instructions are still the ones its C++ follows."""
-    for entry, end, expected in rewritten(path, drafts=True):
+    registered = rewritten(path, drafts=True)
+    if tuple((entry, end) for entry, end, _ in registered) != ROUTINES:
+        raise ValueError("media.cpp requires all seventy-five entries")
+    for entry, end, expected in registered:
         body = routine_records(db, entry, end)
         if [r['address'] for r in body] != [a for a in range(entry, end, 4) if a not in UNREACHABLE]:
             raise ValueError(f"Missing media.cpp instructions at {entry:x}")

@@ -1079,3 +1079,31 @@ per process and filled the disk once.
 
 The module is not faster in wall time: the C++ keeps the stack image and scratch registers, so it does
 about what the generated code does. Guest instruction counts drop by 45%, which shows nothing here.
+
+## media.cpp: the press
+
+`media.cpp` owns 75 entries / 99,976 indexed instructions in 0x10646d90-0x106a8a50, twice MATCH_ENG
+(`tools/media_audit.py`). Its pool (-0x41f8) and floats (-0x41fc, -0x4200) are loaded only inside the range;
+the next unit (pool -0x41e8, the pundit files) has no source name. Most of it is inline RNG sites and
+text: 1,890 formatter calls and 508 refills. Those compress well: a text routine is a struct of the story's
+variables and decision trees whose leaves are a phrase, a return address and named arguments
+(`native/media_text_b_*`: 6,228 instructions in about 1,100 lines).
+
+`cm-media-checks` compares cases and mutated inputs from the real career snapshot. Three things it adds to
+MATCH_ENG's checker: `--argument-masks` compares at each call the r3-r10 the callee reads, worked out from
+the export's p-code by `tools/call_arguments.py`, because a wrong argument to an answered callee shows nowhere
+else; a routine under check is never answered, since its C++ doesn't reach the dispatcher; and `--null-page`
+maps low memory, which the original machine could read, so a path through a null pointer returns and is
+compared. `answers` can't stand in for a routine another module owns, which the original reaches past the
+probe. Normal runs trace the first cases and each 64th: `--mutated-calls 1000000` traces all of them.
+
+Quirks kept on purpose: two history searches have no loop increment and look only at row 0; the managers-list
+loop in 0x106487d0 compares a rating with itself plus 750 and never passes; the draw's negative bound always
+clamps to n-1; a failed data-file load never closes the file and leaves the object part filled; 0x10699d10 stops
+at index 57, and a member weight above 127 reads as a signed byte; 0x10698f50 keeps the previous row's manager
+for a person with no club; 0x10649fb0 reads the caller's r30 when the player has no key. The compiler overlaps
+pairs of draws (`random(5) - random(5)`): the first remainder is computed before the second advance, and the
+second refill sees the first's scratch in r3-r6. Non-volatile registers serve as temporaries inside stories, so
+they reach callees' saved images, and the formatter spills r3-r10 including leftovers. Outgoing stack words go
+before the register loads, so a wild pointer faults after those stores.
+
