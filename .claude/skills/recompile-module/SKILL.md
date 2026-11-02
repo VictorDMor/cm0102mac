@@ -190,6 +190,47 @@ If a module takes several blocks, each block that passes its checks lands as its
 own reviewed commit, even while another gate is still open. Don't mark the module
 complete early.
 
+## Accurate, and careful with weekly usage
+
+Victor pays for this from a weekly limit (his request, 2026-11-02). media.cpp took
+19 points of it or more. Save tokens by not repeating work, never by checking less.
+
+**Not negotiable, whatever the usage:** original/C++ comparison of every entry, one
+run of all entries together, mutated inputs, the call trace with arguments, a negative
+control, a review before commit, and a report that says what wasn't verified. If
+something has to give, land less and say so. Don't weaken a check to finish.
+
+Machine time is free, tokens aren't, so prefer a long local run to an agent:
+
+- **Say the cost first.** A block costs about 80-200k tokens per 1,000 instructions,
+  and a `high` review 350-500k for about 15 files. For a module over 20,000
+  instructions, state the estimate and go on unless he objects.
+- **Fix the checker before fanning out.** Start from `native/media_checks.cpp` and
+  `tools/call_arguments.py`, the strongest checker so far: a gap found after the blocks
+  are written means rerunning them all. Pilot one or two blocks and read their code
+  before launching the rest.
+- **Compress before reading.** A script may draft repetitive routines from the
+  listing, and a data table may replace them, as long as what lands reads as source
+  (`native/media_text_b_*`: 6,228 instructions, about 1,100 lines, 339k tokens).
+  Agents read a routine in parts, once.
+- **One agent per block, `sonnet` by default.** No more than about six at once, none
+  waiting on timers or monitors, and stop finished ones that keep notifying.
+- **Get the design right in the brief.** Names, shared helpers and record views cost
+  least when written the first time: a later naming pass rewrites the block and repeats
+  its runs. Lessons go into the brief as soon as a block teaches them.
+- **Review in batches, once.** Review several finished blocks together. Don't repeat
+  a review after mechanical fixes; the checker covers those.
+- **Run the expensive checks once, on final code,** in one command: all entries,
+  mutations, trace and coverage on the instrumented binary, then pairs and tests. Do
+  this before spawning anything for coverage gaps, because mutations close many.
+- **Close coverage in one pass, by risk.** Paths that reach simulation, RNG or saves
+  first. Before spending on cases, sort out what a proof or a compiler mapping settles.
+- **Read reports, not transcripts.** Keep status notes to a line, and don't poll.
+
+If he says usage is tight, stop the agents and validate what they left with local
+runs. Then commit what passes, list the rest in `TASKS.md` and don't call the module
+complete. Production can be right with verification still open, and the report says so.
+
 ## Using subagents
 
 Small modules don't need any. For larger ones, split independent blocks and match
