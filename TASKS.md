@@ -18,10 +18,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **media.cpp, what's left after its production commit (2026-11-02):** all 75 entries run in C++. Still open:
-  - [ ] Central coverage build: needs 10 GB free. Blocks measured their own files only, some before their last cases.
-  - [ ] Review fixes stopped at the usage limit. Done: the return address, defects, game text, shared text helpers. Not finished: text_a's names (`media_text_a_members.hpp`, functions named by address), text_d's (`field15..1d`, c.r(13/14/17)), eval_a's and eval_b's names and copies, the logic blocks' remaining duplication. Agents: logic `a4befa5960d09bdf3`, text `af8345a98f81b734d`, eval `addcc1ac35b69e66e`.
-  - [ ] Rerun `--mutate 8 --call-trace` over all 75 after those; the commit's combined run had no mutations.
+- [ ] **media.cpp, what's left (2026-11-02):** all 75 entries run in C++, review fixes done. Coverage with mutations: 13,347/13,436 lines, 7,628/7,756 branch outcomes. Each of the 128 other outcomes needs a case or a reachability proof in `.local/rewrites/media/ledger.json`. Script: `.local/rewrites/media/cov_all.sh`.
 
 - [ ] **Older match families after MATCH_ENG.CPP (found 2026-11-01):** the builder sources of the 19 families whose 79 entries left production at the takeover still build for checks but no page calls them, so they are candidates for deletion. Five family tests were retired with entries remaining outside the module (`spatial_role`, `marking_pressure`, `pitch_distance`, `ball_contact`, `match_discipline`): those entries get checks when their modules are reconstructed.
 

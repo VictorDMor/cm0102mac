@@ -10,7 +10,8 @@ std::uint32_t signed_half(std::uint32_t value) { return extended(std::int16_t(va
 void Story::long_form() {
     text::RecordReader read{.c = c, .record = item, .back = 0x1064cfc8};
     const auto put = [&](unsigned offset, std::uint32_t value) { c.put32(at(offset), value); };
-    const auto kept = [&](unsigned reg, std::int32_t& field, std::uint32_t value) { field = std::int32_t(value); c.set(reg, value); };
+    const auto kept = [&](unsigned reg, std::int32_t& field,
+            std::uint32_t value) { field = std::int32_t(value); c.set(reg, value); };
     kept(27, player, read(0));
     put(0x3214, read(1)); put(0x3210, read(2)); put(0x320c, read(3));
     kept(26, club, read(4));
@@ -66,12 +67,15 @@ void Story::long_form() {
     c.call(entry::age_text, 0x1064d354);
     c.put8(at(0x3218), c.r(3));
     const auto rows = c.u32(c.toc(rows_slot));
-    const auto player_row = rows + std::uint32_t(player) * row_size, manager_row = rows + std::uint32_t(manager) * row_size;
+    const auto player_row = rows + std::uint32_t(player) * row_size,
+            manager_row = rows + std::uint32_t(manager) * row_size;
     status = player_row;
     c.set(28, status);
     c.set(16, manager_row);
-    const auto keys = [&](unsigned a, unsigned b, unsigned d) { return std::array<std::uint32_t, 3>{c.u32(at(a)), c.u32(at(b)), c.u32(at(d))}; };
-    const auto name = [&](std::array<std::uint32_t, 3> k, unsigned buffer, std::uint32_t mode, std::uint32_t index, std::uint32_t back) {
+    const auto keys = [&](unsigned a, unsigned b, unsigned d) { return std::array<std::uint32_t,
+            3>{c.u32(at(a)), c.u32(at(b)), c.u32(at(d))}; };
+    const auto name = [&](std::array<std::uint32_t, 3> k, unsigned buffer, std::uint32_t mode, std::uint32_t index,
+            std::uint32_t back) {
         person_name(c, k[0], k[1], k[2], at(buffer), mode, index, back, 0x78);
     };
     name(keys(0x3214, 0x3210, 0x320c), 0x398, 1, std::uint32_t(player), 0x1064d394);
@@ -89,7 +93,8 @@ void Story::long_form() {
         status = 0;
         c.set(28, 0);
     }
-    if (compare(c, second_person(), -1) != 0) name(keys(0x31fc, 0x31f8, 0x31f4), 0x230, 1, std::uint32_t(player), 0x1064d450);
+    if (compare(c, second_person(), -1) != 0) name(keys(0x31fc, 0x31f8, 0x31f4), 0x230, 1, std::uint32_t(player),
+            0x1064d450);
     else c.put8(at(0x230), 0);
     if (compare(c, third, -1) != 0) name(keys(0x31cc, 0x31c8, 0x31c4), 0xc8, 1, std::uint32_t(third), 0x1064d490);
     else c.put8(at(0xc8), 0);
@@ -111,7 +116,7 @@ void Story::long_form() {
     c.set(16, std::uint32_t(domestic));
 
     outlet();
-    by_kind();
+    write_column_by_kind();
     reply();
     finish_long();
 }
@@ -165,18 +170,22 @@ void Story::finish_long() {
     const auto rows = c.u32(c.toc(rows_slot));
     const auto person_row_of = [&](std::int32_t index) { return rows + std::uint32_t(index) * row_size; };
     if (compare(c, second_person(), -1) > 0 &&
-        person_listed(c, person_row_of(second_person()), c.u32(at(0x31fc)), c.u32(at(0x31f8)), c.u32(at(0x31f4)), 0x10653ce8) != 0)
+        person_listed(c, person_row_of(second_person()), c.u32(at(0x31fc)), c.u32(at(0x31f8)), c.u32(at(0x31f4)),
+                0x10653ce8) != 0)
         link(at(0x230), 0x7d7, person_row_of(second_person()), 0x10653d10);
     if (compare(c, player, -1) != 0 &&
-        person_listed(c, person_row_of(player), c.u32(at(0x3214)), c.u32(at(0x3210)), c.u32(at(0x320c)), 0x10653d38) != 0) {
+        person_listed(c, person_row_of(player), c.u32(at(0x3214)), c.u32(at(0x3210)), c.u32(at(0x320c)),
+                0x10653d38) != 0) {
         link(at(0x398), 0x7d7, person_row_of(player), 0x10653d5c);
         link(at(0x320), 0x7d7, person_row_of(player), 0x10653d78);
     }
     if (compare(c, third, -1) != 0 &&
-        person_listed(c, person_row_of(third), c.u32(at(0x31cc)), c.u32(at(0x31c8)), c.u32(at(0x31c4)), 0x10653da0) != 0)
+        person_listed(c, person_row_of(third), c.u32(at(0x31cc)), c.u32(at(0x31c8)), c.u32(at(0x31c4)),
+                0x10653da0) != 0)
         link(at(0xc8), 0x7d7, person_row_of(third), 0x10653dc4);
     if (compare(c, manager, -1) != 0 &&
-        person_listed(c, person_row_of(manager), c.u32(at(0x31ec)), c.u32(at(0x31e8)), c.u32(at(0x31e4)), 0x10653dec) != 0) {
+        person_listed(c, person_row_of(manager), c.u32(at(0x31ec)), c.u32(at(0x31e8)), c.u32(at(0x31e4)),
+                0x10653dec) != 0) {
         link(at(0x140), 0x7d7, person_row_of(manager), 0x10653e10);
         link(at(0x1b8), 0x7d7, person_row_of(manager), 0x10653e2c);
     }
@@ -206,13 +215,15 @@ void Story::finish_long() {
                {7, c.u16(at(0x70))}, {8, c.u16(at(0x72))}});
         c.call(entry::fixture, 0x106541f4);
         if (compare(c, std::int8_t(c.r(3))) != 0) link(at(0x64), 0x7d3, c.u32(at(0x90)), 0x10654210);
-        link(club_of(std::int32_t(rival_club())) + club_short_name_offset, 0x7d5, club_of(std::int32_t(rival_club())), 0x10654240, true);
+        link(club_of(std::int32_t(rival_club())) + club_short_name_offset, 0x7d5, club_of(std::int32_t(rival_club())),
+                0x10654240, true);
     }
 }
 
 void Story::short_form() {
     text::RecordReader read{.c = c, .record = item, .back = 0x10654250};
-    const auto kept = [&](unsigned reg, std::int32_t& field, std::uint32_t value) { field = std::int32_t(value); c.set(reg, value); };
+    const auto kept = [&](unsigned reg, std::int32_t& field,
+            std::uint32_t value) { field = std::int32_t(value); c.set(reg, value); };
     kept(13, player, read(0));
     const auto first = read(1); c.set(14, first);
     const auto second_key = read(2); c.set(17, second_key);
@@ -232,15 +243,18 @@ void Story::short_form() {
     c.call(entry::age_text, 0x10654398);
     c.set(16, club_of(club));
     person_name(c, first, second_key, third_key, at(0x398), 5, std::uint32_t(player), 0x106543c4);
-    if (compare(c, second, -1) != 0) person_name(c, other_first, other_second, other_third, at(0x230), 5, std::uint32_t(player), 0x106543ec);
+    if (compare(c, second, -1) != 0) person_name(c, other_first, other_second, other_third, at(0x230), 5,
+            std::uint32_t(player), 0x106543ec);
     else c.put8(at(0x230), 0);
     headline();
     // The headline goes to the output; the names in it become links.
     copy_text(c, output, at(0x1e3c), 0x106547a4);
     const auto rows = c.u32(c.toc(rows_slot));
     const auto row_of = [&](std::int32_t index) { return rows + std::uint32_t(index) * row_size; };
-    if (person_listed(c, row_of(player), first, second_key, third_key, 0x106547c4) != 0) link(at(0x398), 0x7d7, row_of(player), 0x106547e8);
-    if (compare(c, second, -1) > 0 && person_listed(c, row_of(second), other_first, other_second, other_third, 0x10654810) != 0)
+    if (person_listed(c, row_of(player), first, second_key, third_key, 0x106547c4) != 0) link(at(0x398), 0x7d7,
+            row_of(player), 0x106547e8);
+    if (compare(c, second, -1) > 0 && person_listed(c, row_of(second), other_first, other_second, other_third,
+            0x10654810) != 0)
         link(at(0x230), 0x7d7, row_of(second), 0x10654834);
     if (compare(c, club, -1) != 0) {
         link(club_of(club) + club_name_offset, 0x7d5, club_of(club), 0x10654864, true);

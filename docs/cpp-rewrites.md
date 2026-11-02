@@ -11,7 +11,9 @@ The rewrite may compute however it likes, but must leave everything the game
 can observe exactly as the original does (CLAUDE.md):
 
 - **Guest memory**, written through `guest::Cpu` (big-endian, checked; memory
-  observers see each write). Order of writes does not matter, final values do.
+  observers see each write). Order of writes does not matter at a return, where
+  final values do; a fault on both sides compares memory where each one stopped, so
+  writes before a load that can fault stay before it.
 - **The stack image.** The original reads stack bytes it never wrote
   (docs/aot-port.md, "Uninitialised stack reads"), so every byte the original
   leaves below the stack pointer must be left too: its prologue's saved
@@ -1105,5 +1107,8 @@ for a person with no club; 0x10649fb0 reads the caller's r30 when the player has
 pairs of draws (`random(5) - random(5)`): the first remainder is computed before the second advance, and the
 second refill sees the first's scratch in r3-r6. Non-volatile registers serve as temporaries inside stories, so
 they reach callees' saved images, and the formatter spills r3-r10 including leftovers. Outgoing stack words go
-before the register loads, so a wild pointer faults after those stores.
+before the register loads, so a wild pointer faults after those stores; the checker compares memory at such a
+fault. With a negative player, a tone above 7 and no matching trait, 0x1064cf80 retries forever on both sides. The
+call trace doesn't pair formatter calls (the original's page reaches that hook directly): their arguments show
+through the text and spills they leave.
 

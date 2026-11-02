@@ -47,14 +47,14 @@ std::uint32_t Press::value(Arg arg) const {
 // One phrase formatted into the text buffer: the first six arguments travel in r5-r10, the rest in the
 // frame's outgoing words.
 void Press::say(const Line& line) const {
-    std::array<std::uint32_t, 10> values{};
-    for (unsigned i = 0; i < line.count; ++i) values[i] = value(line.args[i]);
+    // The original stores the words past the sixth argument, in order, before it loads anything for the registers: the
+    // club's marker byte (+0x23b) is the one read that can fault, and the words are in memory when it does.
+    for (unsigned i = 6; i < line.count; ++i) c.put32(c.sp() + 0x38 + (i - 6) * 4, value(line.args[i]));
+    std::array<std::uint32_t, 6> registers{};
+    for (unsigned i = 0; i < line.count && i < 6; ++i) registers[i] = value(line.args[i]);
     c.set(3, text);
     c.set(4, c.toc(slot::pool) + line.phrase);
-    for (unsigned i = 0; i < line.count; ++i) {
-        if (i < 6) c.set(5 + i, values[i]);
-        else c.put32(c.sp() + 0x38 + (i - 6) * 4, values[i]);
-    }
+    for (unsigned i = 0; i < line.count && i < 6; ++i) c.set(5 + i, registers[i]);
     c.call(formatter, line.back);
 }
 

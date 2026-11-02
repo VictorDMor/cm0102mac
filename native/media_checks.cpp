@@ -205,8 +205,8 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
     if (!rewrite_stop.empty() && rewrite_stop == original_stop) {
         outcome.faulted = true;
         if (options.show_faults) std::cerr << "both faulted at " << hex_address(entry) << " [" << current_label << "]: " << rewrite_stop << '\n';
-        // Memory isn't compared at a fault (writes needn't be in the same order), but what the
-        // imports saw up to it is, and a difference there still counts.
+        // Registers aren't compared at a fault, but memory, the heap tables and what the imports
+        // saw up to it are, and a difference there still counts.
         std::erase_if(found, [&](const std::string& line) { return line.starts_with(stop_rewrite) || line.starts_with(stop_original); });
         if (!found.empty()) { outcome.faulted = false; outcome.differences = std::move(found); }
     }

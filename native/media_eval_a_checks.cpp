@@ -3,9 +3,12 @@
 // reputations, the story's amount and the random table set by the case. The club-record questions, the
 // contract finder and the staff trait routine are answered in most cases (so a case can steer each draw's range
 // and every branch) and run for real in the rest; the story value runs for real, scaled by the pool's float.
+// The transfer kinds (0x28-0x3b) are told by 0x1069ecf0, which the C++ calls directly: it cannot be answered, so
+// the cases pick the kind.
 #include "media_checks.hpp"
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <random>
 
 using namespace cm::aot::media_checks;
@@ -55,7 +58,6 @@ MEDIA_CASES("eval_a") {
         float factor = 1.0f;      // the pool's scale of the story value (0x10661a50 runs for real: the verdict calls it directly)
         std::uint32_t state = 0, contract_46 = 0, contract_44 = 0, contract_54 = 0, queries[6] = {0, 0, 0, 0, 0, 0};
         std::int32_t trait = 5;   // what 0x100d2f50 answers
-        bool transfer = false;
         std::uint32_t mover = 0;  // 0: none; 1: the player's id; 2: another
         unsigned wrap = 700;
         bool no_player = false;
@@ -101,7 +103,7 @@ MEDIA_CASES("eval_a") {
         if (k.answered) {
             answers = {{0x10082f90, contract_at}, {0x100d2f50, std::uint32_t(k.trait)}, {0x100d9580, k.queries[0]}, {0x100d9520, k.queries[1]},
                        {0x100d3150, k.queries[2]}, {0x100d3040, k.queries[3]}, {0x100d9b80, k.queries[5]},
-                       {0x1036d240, k.mover ? mover_at : 0}, {0x1069ecf0, k.transfer ? 1u : 0u}};
+                       {0x1036d240, k.mover ? mover_at : 0}};
         }
         cases.push_back({.entry = entry,
                          .registers = {{3, log}, {4, manager}, {5, player}, {6, kind}, {7, 0x81818181}, {8, 0x91919191}, {9, 0xa1a1a1a1}, {10, 0xb1b1b1b1}},
@@ -109,7 +111,7 @@ MEDIA_CASES("eval_a") {
     };
     const std::uint32_t kinds[] = {0x83, 0x82, 0x1f, 0x3c, 0x3d, 0x10, 0x00, 0x11, 0x52, 0x0d, 0x0e, 0x02, 0x21, 0x22, 0x23, 0x09, 0x0c, 0x08, 0x25, 0x01, 0x1e,
                                    0x20, 0x5a, 0x5b, 0x5c, 0x5d, 0x42, 0x43, 0x44, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x3f, 0x40, 0x41, 0x03, 0x04, 0x05, 0x06, 0x07,
-                                   0x45, 0xffff, 0x10083, 0x10006, 0xff};
+                                   0x45, 0xffff, 0x10083, 0x10006, 0xff, 0x27, 0x28, 0x2c, 0x3b};
     const auto random_knobs = [&](bool answered) {
         Knobs k;
         k.answered = answered;
@@ -120,7 +122,6 @@ MEDIA_CASES("eval_a") {
         k.contract_54 = pick({0, 0, 1, 0x80});
         for (auto& q : k.queries) q = pick({0, 1, 0x100, 0x80, 0xff});
         k.trait = pick({-128, -1, 0, 1, 2, 3, 5, 9, 10, 11, 15, 16, 30, 127, 0x80, 0x100});
-        k.transfer = random() % 6 == 0;
         k.mover = random() % 3;
         k.wrap = random() % 3 ? 700 : random() % 14;
         k.no_player = random() % 30 == 0;
@@ -141,18 +142,29 @@ MEDIA_CASES("eval_a") {
         }
     // Amounts beyond 16 bits through the chains that draw against the amount (the float form of the draw), with
     // traits that leave the draws before them nonzero.
-    for (const auto kind : {0x00u, 0x11u, 0x52u, 0x0du, 0x0eu, 0x02u, 0x21u, 0x22u, 0x23u, 0x09u, 0x0cu, 0x03u, 0x04u, 0x05u, 0x06u, 0x10u})
+    for (const auto kind : {0x00u, 0x11u, 0x52u, 0x0du, 0x0eu, 0x02u, 0x21u, 0x22u, 0x23u, 0x09u, 0x0cu, 0x03u, 0x04u, 0x05u, 0x06u,
+                            0x28u, 0x31u, 0x3bu})
         for (unsigned n = 0; n < 260; ++n) {
             auto k = random_knobs(true);
             k.factor = float(pick({1000000000, -1000000000, 3000000, -3000000, 50000, -50000, 1000000}));
             k.steady = true;
             k.trait = pick({2, 3, 5, 9, 16, 30, 127});
-            k.transfer = kind == 0x10;
             k.state = pick({0, 1, 2, 3, 4, 7, 8, 9});
             make(kind, k, "far amounts");
         }
+    // A factor that is not a number makes the amount 0x80000000 (fctiwz of a NaN), so `20 - amount` of the transfer
+    // stories wraps: the C++ computes it unsigned as the original's subfic does.
+    for (const auto kind : {0x28u, 0x31u, 0x3bu})
+        for (unsigned n = 0; n < 260; ++n) {
+            auto k = random_knobs(true);
+            k.factor = std::numeric_limits<float>::quiet_NaN();
+            k.steady = n % 2 == 0;
+            k.lucky = n % 5 == 4;
+            k.trait = pick({2, 3, 5, 9, 16, 30, 127});
+            make(kind, k, "wrapping amount");
+        }
     // Every pair of questions, every contract state, on the kinds that ask.
-    for (const auto kind : {0x82u, 0x1fu, 0x3cu, 0x83u, 0x10u, 0x03u})
+    for (const auto kind : {0x82u, 0x1fu, 0x3cu, 0x83u, 0x28u, 0x03u})
         for (unsigned state = 0; state < 16; ++state)
             for (unsigned q = 0; q < 4; ++q)
                 for (unsigned n = 0; n < 3; ++n) {

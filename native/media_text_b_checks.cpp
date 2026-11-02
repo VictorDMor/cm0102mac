@@ -45,8 +45,17 @@ struct Story {
     bool chairman_club = true;
     std::uint32_t club_first_word = 7, club_grade = 0, nation = 0;  // nation: 0 none, 1 no next, 2 other, 3 same
     std::uint32_t staff_slots = 0;     // which of the club's staff slots (+0x5c...+0x70) hold the subject: bitmask
+    std::uint32_t club_row = 0;        // where the club's row lies, when not in the table (0: the table's)
     std::uint32_t subject_club = 1, subject_club_44 = 0, subject_club_1c = 0, b63 = 0, b65 = 0, b66 = 0, b67 = 0;
 };
+
+// The club number whose row (number * 0x248 past the table) lies at `row`: the record's number is read as 32 bits and
+// the product wraps, so any address that is a multiple of 8 past the table has one.
+std::uint32_t id_of_row(std::uint32_t table, std::uint32_t row) {
+    std::uint32_t inverse = 1;  // 73 is odd: its inverse modulo 2^32 by Newton's steps
+    for (int step = 0; step < 5; ++step) inverse *= 2 - 73 * inverse;
+    return ((row - table) >> 3) * inverse;
+}
 
 struct Maker {
     const Scenario& scenario;
@@ -57,7 +66,9 @@ struct Maker {
         const auto& subject = staff[1];
         const auto& chairman = staff[2];
         const auto tweak = [&](std::uint32_t id) { return s.named ? id : id + 1; };
-        std::vector<std::uint32_t> v{s.board ? 1u : 0u, s.code, s.tone, s.seed, s.club, s.kind, manager.index, tweak(manager.first), manager.middle, manager.last};
+        const auto club_table = scenario.global(-0x7be8);
+        const auto club_id = s.club_row ? id_of_row(club_table, s.club_row) : s.club;
+        std::vector<std::uint32_t> v{s.board ? 1u : 0u, s.code, s.tone, s.seed, club_id, s.kind, manager.index, tweak(manager.first), manager.middle, manager.last};
         if (s.subject) v.insert(v.end(), {subject.index, tweak(subject.first), subject.middle, subject.last, 77});
         else v.push_back(none);
         if (s.chairman) v.insert(v.end(), {chairman.index, tweak(chairman.first), chairman.middle, chairman.last});
@@ -69,7 +80,7 @@ struct Maker {
         Writes memory;
         for (std::size_t n = 0; n < v.size(); ++n) put32(memory, record_at + 8 + 4 * std::uint32_t(n), v[n]);
         const auto row = [&](const Staff& member) { return scenario.global(-0x7be0) + member.index * 0x70; };
-        const auto club_row = scenario.club(s.club);
+        const auto club_row = s.club_row ? s.club_row : scenario.club(s.club);
         const auto chairman_club = scratch_base + 0x9000, subject_club = scratch_base + 0x9100, nation_at = scratch_base + 0x9200,
                    next_at = scratch_base + 0x9300;
         put32(memory, row(chairman) + 0x1c, s.chairman_club ? chairman_club : 0);
@@ -181,6 +192,23 @@ MEDIA_CASES("text_b") {
                                 cases.push_back(maker.make(s, name_of(s, "combination", n++)));
                             }
             }
+    // A club whose row ends the mapped scratch area: everything up to +0x237 is readable, the byte at +0x23b is not. The
+    // original has stored the outgoing words of a phrase before it loads that byte (0x1066e314, 0x1066e324 and the like);
+    // the words are in memory at the fault and are compared too.
+    {
+        const auto last_row = scratch_base + scratch_size - 0x238;
+        for (const bool full : {false, true})
+            for (const bool board : {true, false})
+                for (const std::uint32_t code : codes) {
+                    if (code > 0x64 && code != none) continue;
+                    for (const std::uint32_t tone : {1u, 2u}) {
+                        Story s;
+                        fill(s);
+                        s.full = full; s.board = board; s.code = code; s.tone = tone; s.kind = 4; s.club_row = last_row; s.club_first_word = 7;
+                        cases.push_back(maker.make(s, name_of(s, "club row ends the mapped memory, faults at the marker", n++)));
+                    }
+                }
+    }
     // The leaves that depend on the manager being the user's, the seed, the chairman and the subject's records.
     struct Records { std::uint32_t slots, b63, b65, b66; };
     constexpr Records plain{0, 0, 0, 0}, rated{0, 0x10, 5, 0}, listed{8, 0, 0, 6};

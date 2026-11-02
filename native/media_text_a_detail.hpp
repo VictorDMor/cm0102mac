@@ -16,7 +16,8 @@ using namespace detail::small;
 
 namespace entry {
 constexpr std::uint32_t decode_match = 0x1030dee0, today = 0x10715880, adjective = 0x10168a00, sprintf = 0x1077b720,
-    append = 0x1077dc60, age_text = 0x100db410, match_text = 0x100d6300, position_text = 0x100d6af0, nation_text = 0x100c76c0,
+    append = 0x1077dc60, age_text = 0x100db410, match_text = 0x100d6300, position_text = 0x100d6af0,
+            nation_text = 0x100c76c0,
     fixture = 0x1029eb20, set_text = 0x1074b830;
 }
 constexpr std::uint32_t club_article_offset = small::club_article, club_name_offset = small::club_name,
@@ -66,12 +67,14 @@ constexpr Line L(std::uint32_t phrase, std::uint32_t back, A... args) {
 }
 // The same for a line of the manager's reply.
 template <class... A>
-constexpr Line R(std::uint32_t phrase, std::uint32_t back, A... args) { return L(phrase, back, args...).to(Dest::reply_text); }
+constexpr Line R(std::uint32_t phrase, std::uint32_t back,
+        A... args) { return L(phrase, back, args...).to(Dest::reply_text); }
 inline constexpr Arg plain = Arg::plain, player_name = Arg::player_name, player_short = Arg::player_short,
     manager_name = Arg::manager_name, manager_short = Arg::manager_short, second_name = Arg::second_name,
     third_name = Arg::third_name, adjective_text = Arg::adjective_text, outlet_name = Arg::outlet_name,
     score_text = Arg::score_text, position_text = Arg::position_text, date_text = Arg::date_text,
-    club_article = Arg::club_article, club_name = Arg::club_name, club_short = Arg::club_short, clubs_base = Arg::clubs_base,
+    club_article = Arg::club_article, club_name = Arg::club_name, club_short = Arg::club_short,
+            clubs_base = Arg::clubs_base,
     club_short_article = Arg::club_short_article, nation = Arg::nation, nation_article = Arg::nation_article,
     nation_name = Arg::nation_name, rival_short_article = Arg::rival_short_article, rival_short = Arg::rival_short,
     other_article = Arg::other_article, other_name = Arg::other_name, person_article = Arg::person_article,
@@ -118,7 +121,9 @@ struct Story {
 
     std::uint32_t clubs() const { return c.u32(c.toc(slot::clubs)); }
     std::uint32_t club_of(std::int32_t index) const { return clubs() + std::uint32_t(index) * club_size; }
-    std::uint32_t person_at(std::int32_t index) const { return c.u32(c.toc(slot::persons)) + std::uint32_t(index) * 0x128; }
+    std::uint32_t person_at(std::int32_t index) const {
+        return c.u32(c.toc(slot::persons)) + std::uint32_t(index) * 0x128;
+    }
     std::uint32_t team_at() const { return c.u32(c.toc(teams_slot)) + team() * 0x38; }
     std::uint32_t value(Arg arg) const;
     // Writes the line (after its adjective, before its appended paragraph).
@@ -130,7 +135,8 @@ struct Story {
     void position(std::uint32_t back);
     // A link from the finished text to a record (0x1074bab0); `clubs_in_r7` is the stray value the
     // original leaves in r7 at the club links.
-    void link(std::uint32_t text, std::uint32_t kind, std::uint32_t record, std::uint32_t back, bool clubs_in_r7 = false);
+    void link(std::uint32_t text, std::uint32_t kind, std::uint32_t record, std::uint32_t back,
+            bool clubs_in_r7 = false);
 
     // The long form: the outlet, the column, the manager's reply and the links.
     void long_form();
@@ -139,8 +145,51 @@ struct Story {
     void reply();
     void level_ending(std::uint32_t first_back);
     void finish_long();
-    // The column, the replies and the headline, and the code they share (generated from the original's
-    // trees: media_text_a_story.cpp, _reply.cpp and _headline.cpp).
-#include "media_text_a_members.hpp"
+    // The story column, one function per way of choosing its wording (media_text_a_story.cpp).
+    void write_column_by_kind();
+    void write_column_by_tone_then_traits();
+    void append_ending_if_level();
+    void headline();  // the short form's one line (media_text_a_headline.cpp)
+
+    // The manager's reply (media_text_a_reply.cpp): who answers, then the kind of story or the player's traits.
+    void user_told();
+    void user_admitted();
+    void other_told();
+    void other_said();
+    bool reply_goes_by_traits();
+    void user_told_by_kind();
+    void user_told_by_traits();
+    void user_admitted_by_kind();
+    void user_admitted_by_traits();
+    void other_told_by_kind();
+    void other_told_by_traits();
+    void other_said_by_kind();
+    void other_said_by_traits();
+    // A line out of a set, chosen by the answer given, the kind of story, or the level and tone.
+    void say_by_answer_of_eleven(std::span<const Line> lines);
+    void say_by_answer_of_ten(std::span<const Line> lines);
+    void say_by_kind_of_eight(std::span<const Line> lines);
+    void say_by_level_and_tone(std::span<const Line> lines);
+
+    // The player's traits as the original tests them. The signed form compares `traits & mask` with the mask;
+    // the unsigned form compares `(traits & mask) - base` with `mask - base`, so the condition register comes
+    // out as the original leaves it.
+    bool has_all_traits(std::int32_t mask) const { return cmp(traits & mask, mask) == 0; }
+    bool has_all_traits_unsigned(std::uint32_t mask, std::uint32_t base) const {
+        return cmpl((std::uint32_t(traits) & mask) - base, mask - base) == 0;
+    }
+    bool has_any_trait(std::int32_t mask) const { return cmp(traits & mask, 0) != 0; }
+    // The traits that give the column its own wording, and the reply with it.
+    bool has_column_trait() const {
+        return has_all_traits_unsigned(0x400200, 0x400000) || has_all_traits_unsigned(0x102200, 0x100000) ||
+               has_all_traits_unsigned(0x104200, 0x100000) || has_all_traits_unsigned(0x100200, 0x100000) ||
+               has_all_traits(0x480) || has_all_traits(0x500) || has_all_traits_unsigned(0x20820, 0x20000) ||
+               has_all_traits(0x1020) || has_all_traits_unsigned(0x20810, 0x20000) ||
+               has_all_traits_unsigned(0x10001, 0x10000) || has_any_trait(0x1);
+    }
+    // A second tier of traits (the third also needs the story to be told at home).
+    bool has_secondary_trait() const {
+        return has_all_traits(0xa) || has_all_traits(0x8) || (has_all_traits(0x2) && cmp(domestic, 0) != 0);
+    }
 };
 }
