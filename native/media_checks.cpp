@@ -52,7 +52,7 @@ struct Options {
     unsigned all = 40, every = 400, mutate = 0, mutated_calls = 4;
     std::uint32_t seed = 1;
     std::set<std::uint32_t> only;
-    bool corrupt = false, strict = false, require_all = false, show_faults = false, call_trace = false, corrupt_trace = false, production = false;
+    bool corrupt = false, strict = false, require_all = false, show_faults = false, call_trace = false, corrupt_trace = false, production = false, null_page = false;
 } options;
 
 struct Tally { std::uint64_t returned = 0, faulted = 0, timed_out = 0, calls = 0; };
@@ -227,7 +227,11 @@ struct TracedCall {
     bool after_bl;
     std::array<std::uint32_t, 19> gprs;
     std::array<std::uint64_t, 18> fprs;
+    std::array<std::uint32_t, 8> arguments;  // r3-r10
 };
+// --argument-masks FILE (tools/call_arguments.py): which of r3-r10 each target reads. Those are
+// compared at each call too: a callee a case answers shows nothing else of what it was given.
+std::map<std::uint32_t, unsigned> argument_masks;
 std::vector<TracedCall>* traced_calls = nullptr;
 bool (*scripted_services)(State&) = nullptr;
 std::array<std::pair<std::uint32_t, std::uint32_t>, 24> recent_dispatches;
@@ -238,9 +242,10 @@ bool trace_probe(State& s) {
     if (back >= 0x10646d94 && back <= 0x106a8a50 && traced_calls->size() < 2'000'000) {
         const auto word = std::uint32_t(s.memory.read<4>(back - 4));
         const auto offset = std::int32_t(word << 6) >> 6 & ~3;
-        TracedCall call{back, s.pc, (word & 0xfc000003) == 0x48000001 && back - 4 + std::uint32_t(offset) == s.pc, {}, {}};
+        TracedCall call{back, s.pc, (word & 0xfc000003) == 0x48000001 && back - 4 + std::uint32_t(offset) == s.pc, {}, {}, {}};
         for (unsigned n = 13; n < 32; ++n) call.gprs[n - 13] = std::uint32_t(s.r<4>(guest::reg::gpr(n)));
         for (unsigned n = 14; n < 32; ++n) call.fprs[n - 14] = s.r<8>(guest::reg::fpr(n));
+        for (unsigned n = 3; n <= 10; ++n) call.arguments[n - 3] = std::uint32_t(s.r<4>(guest::reg::gpr(n)));
         traced_calls->push_back(call);
     }
     return scripted_services(s);
@@ -293,7 +298,7 @@ std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner r
 }
 struct TraceFinding { std::uint64_t count = 0; std::uint64_t original = 0, rewrite = 0; };
 constexpr unsigned wrong_return = 200, wrong_count = 201, wrong_order = 202;
-bool trace_corrupted = false;
+bool trace_corrupted = false, arguments_corrupted = false;
 std::map<std::tuple<std::uint32_t, std::uint32_t, unsigned>, TraceFinding> trace_findings;
 std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint64_t> traced_sites;
 std::uint64_t traced_pairs = 0;
@@ -354,11 +359,23 @@ void compare_traces(State& s, std::uint32_t entry) {
         if (k >= found->second.size()) continue;
         auto other = *found->second[k++];
         if (options.corrupt_trace && !traced_pairs) other.gprs[0] ^= 1;
+        // The control for the arguments: the first call to a target known to read r3.
+        const auto read_by_target = argument_masks.find(call.target);
+        if (options.corrupt_trace && !arguments_corrupted && read_by_target != argument_masks.end() && (read_by_target->second & 1)) {
+            other.arguments[0] ^= 1;
+            arguments_corrupted = true;
+        }
         ++traced_pairs; ++traced_sites[key];
         for (unsigned n = 0; n < 19; ++n) if (call.gprs[n] != other.gprs[n]) {
             auto& finding = trace_findings[{call.back, call.target, 13 + n}];
             if (!finding.count++) { finding.original = call.gprs[n]; finding.rewrite = other.gprs[n]; }
         }
+        const auto reads = argument_masks.find(call.target);
+        if (reads != argument_masks.end()) for (unsigned n = 0; n < 8; ++n)
+            if ((reads->second >> n & 1) && call.arguments[n] != other.arguments[n]) {
+                auto& finding = trace_findings[{call.back, call.target, 3 + n}];
+                if (!finding.count++) { finding.original = call.arguments[n]; finding.rewrite = other.arguments[n]; }
+            }
         for (unsigned n = 0; n < 18; ++n) if (call.fprs[n] != other.fprs[n]) {
             auto& finding = trace_findings[{call.back, call.target, 100 + 14 + n}];
             if (!finding.count++) { finding.original = call.fprs[n]; finding.rewrite = other.fprs[n]; }
@@ -569,7 +586,7 @@ bool summary(const RoutineChecker* checker) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::cerr << "usage: cm-media-checks WORLD_SNAPSHOT [--all N] [--every N] [--mutate K] [--mutated-calls N] [--seed N] [--only 0x..,0x..] [--corrupt] [--strict] [--require-all] [--show-faults] [--call-trace] [--corrupt-trace] [--production]\n"; return 2; }
+    if (argc < 2) { std::cerr << "usage: cm-media-checks WORLD_SNAPSHOT [--all N] [--every N] [--mutate K] [--mutated-calls N] [--seed N] [--only 0x..,0x..] [--corrupt] [--strict] [--require-all] [--show-faults] [--call-trace] [--corrupt-trace] [--production] [--null-page] [--argument-masks FILE]\n"; return 2; }
     try {
         options.input = argv[1];
         for (int n = 2; n < argc; ++n) {
@@ -588,11 +605,21 @@ int main(int argc, char** argv) {
             else if (option == "--call-trace") options.call_trace = true;
             else if (option == "--corrupt-trace") options.call_trace = options.corrupt_trace = true;
             else if (option == "--production") options.production = true;
+            // Maps low memory, so a path through a null pointer runs on as on the original machine
+            // and returns to be compared, instead of counting as a fault on both sides.
+            else if (option == "--null-page") options.null_page = true;
+            else if (option == "--argument-masks") {
+                std::ifstream masks(value());
+                if (!masks) throw std::runtime_error("Missing argument masks");
+                std::string target, mask;
+                while (masks >> target >> mask) argument_masks[std::uint32_t(std::stoul(target, nullptr, 16))] = unsigned(std::stoul(mask, nullptr, 16));
+            }
             else throw std::runtime_error("Unknown option " + std::string(option));
         }
         auto state = std::make_unique<State>();
         load_match_snapshot(*state, options.input);
         state->memory.map(scratch_base, scratch_size);  // for a case's own rows; nothing of the game's lives here
+        if (options.null_page) state->memory.map(0, 0x10000);
         state->code_fragment_observer = &inputs;
         routine_child_exit = flush_child;
         // The assertion's error dialog needs Toolbox imports a world snapshot has no
@@ -603,7 +630,9 @@ int main(int argc, char** argv) {
             // wrote up to this call is compared.
             constexpr std::uint32_t exit_entry = 0x1076f7d0, dialog_entry = 0x10769b60;
             if (target.pc == exit_entry) throw ApplicationExit{};
-            if (case_answers) for (const auto& [entry, answer] : *case_answers) if (target.pc == entry) {
+            // A routine under check is never answered: its C++ doesn't come through here, so only the
+            // original would get the answer. It runs for real on both sides.
+            if (case_answers) for (const auto& [entry, answer] : *case_answers) if (target.pc == entry && !(routine_checker && routine_checker->wants(entry))) {
                 guest::Cpu(target).set(3, answer);
                 target.pc = target.r<4>(4128);
                 return true;

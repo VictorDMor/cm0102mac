@@ -36,6 +36,19 @@ struct Stream {
             c.put32(seed, c.r(3) & 0xffff);
         }
     }
+    // A step the compiler scheduled differently: the scratch registers it left in r3-r10 stand while the end is compared
+    // and the refill is called (also when the table does not wrap), and r3 is not set to the new cursor.
+    void advance(std::uint32_t back, std::initializer_list<LeftValue> leftovers) const {
+        const auto next = c.u32(cursor) + 2;
+        c.put32(cursor, next);
+        const bool wraps = compare_logical(c, next, c.u32(end)) > 0;
+        leave(c, leftovers);
+        if (wraps) {
+            c.put32(cursor, start);
+            c.call(refill, back);
+            c.put32(seed, c.r(3) & 0xffff);
+        }
+    }
     std::uint32_t sample() const { return std::uint32_t(c.u16(c.u32(cursor))) + c.u32(seed); }
 };
 struct Program {
@@ -45,6 +58,13 @@ struct Program {
         unsigned n = 3;
         for (const auto value : args) c.set(n++, value);
         c.call(target, back);
+        return c.r(3);
+    }
+    // `bl` into another routine of this module (the C++ when it runs here, else the generated body), arguments as in call.
+    std::uint32_t module_call(std::uint32_t target, std::uint32_t back, std::initializer_list<std::uint32_t> args = {}) const {
+        unsigned n = 3;
+        for (const auto value : args) c.set(n++, value);
+        media::call(c, target, back);
         return c.r(3);
     }
     std::uint32_t virtual_call(std::uint32_t object, unsigned offset, std::uint32_t back) const {

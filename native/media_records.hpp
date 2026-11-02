@@ -80,7 +80,9 @@ struct Person {
     Field<std::uint8_t> ability() const { return {c, at + 0x5e}; }  // (inferred)
     // Personality bytes, signed (as shortlist_manager_records.hpp: ambition, loyalty, sportsmanship).
     Field<std::int8_t> ambition() const { return {c, at + 0x63}; }
+    Field<std::int8_t> trait_64() const { return {c, at + 0x64}; }  // (as shortlist_manager_records.hpp)
     Field<std::int8_t> loyalty() const { return {c, at + 0x65}; }
+    Field<std::int8_t> professionalism() const { return {c, at + 0x66}; }  // (inferred, as shortlist_manager_records.hpp)
     Field<std::int8_t> sportsmanship() const { return {c, at + 0x67}; }
     Field<std::int8_t> trait_68() const { return {c, at + 0x68}; }
     Field<std::int8_t> trait_69() const { return {c, at + 0x69}; }

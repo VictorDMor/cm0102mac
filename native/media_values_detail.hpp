@@ -188,6 +188,68 @@ inline std::int32_t draw_below(Cpu& c, const Frame& frame, Fpu& fpu, const Strea
 inline std::int32_t draw_below(Cpu& c, const Frame& frame, Fpu& fpu, const Stream& rng, const Floats& pool, const DrawSite& site, std::int32_t n) {
     return draw_below_with(c, frame, fpu, rng, [&]() -> const Floats& { return pool; }, site, n);
 }
+
+// x mod 2 as the compiler forms it (the sign of x rides along): ((x & 1) ^ s) - s with s the sign bit.
+inline std::uint32_t signed_mod2(std::uint32_t x) {
+    const auto sign = x >> 31;
+    return ((x & 1) ^ sign) - sign;
+}
+
+// An inlined random(n) site whose range is a signed byte (or a small sum), held in a register the caller names:
+// the draw goes to register `result`. Quirk: a zero n draws nothing and leaves 0 there. The original's wide form
+// (|n| beyond 65535) and its call to 0x10647c00 can never run for such a range. `draw_byte<R>` is this with the
+// register known when the program is compiled; blocks wrap this for the registers their routine uses.
+inline std::int32_t draw_narrow(Cpu& c, const Stream& rng, std::int32_t n, std::uint32_t refill_back, unsigned result) {
+    if (!nonzero(c, n)) {
+        c.set(result, 0);
+        return 0;
+    }
+    rng.advance(refill_back);
+    return narrow_site(c, rng, n, result);
+}
+
+// A division by a small constant as the compiler forms it: the magic of the multiply-high, its shift and the divisor.
+struct Reciprocal {
+    std::int32_t magic;
+    unsigned shift;
+    std::int32_t divisor;
+};
+namespace divisors {
+constexpr Reciprocal by_3{0x55555556, 0, 3}, by_5{0x66666667, 1, 5}, by_6{0x2aaaaaab, 0, 6}, by_10{0x66666667, 2, 10},
+    by_20{0x66666667, 3, 20}, by_25{0x51eb851f, 3, 25};
+}
+// A sample reduced by such a constant: the multiply-high word, the shifted quotient, its sign bit (added to round
+// toward zero) and the remainder: the values the compiler's sequence leaves in the registers around it.
+struct Reduced {
+    std::uint32_t sample;
+    std::int32_t high;
+    std::uint32_t shifted, sign;
+    std::int32_t rest;
+};
+inline Reduced reduced_by(std::uint32_t sample, const Reciprocal& by) {
+    const auto high = multiply_high(by.magic, std::int32_t(sample));
+    const auto shifted = std::uint32_t(high >> by.shift), sign = shifted >> 31;
+    return {sample, high, shifted, sign, std::int32_t(sample - (shifted + sign) * std::uint32_t(by.divisor))};
+}
+
+// A column (a halfword) of the club's row in the ratings table (76-byte rows, the table behind TOC slot -0x79f0) moved by
+// `delta` and held within 1..10000, as the compiler expands it: the table's holder in register `holder` (r3, or r5
+// when the routine keeps r3 for something else), the row and the new value left around it. Nothing is done for club 0.
+inline void move_club_rating(Cpu& c, std::uint32_t club, unsigned column, std::int32_t delta, unsigned holder = 3) {
+    const bool known = nonzero_logical(c, club);
+    const auto table = c.u32(c.toc(-0x79f0));
+    c.set(holder, table);
+    if (!known) return;
+    const auto row = c.u32(table) + c.u32(club) * 0x4c;
+    c.put16(row + column, extended(c.i16(row + column)) + std::uint32_t(delta));
+    std::uint32_t value;
+    if (compare(c, c.i16(row + column), 1) < 0) value = 1;
+    else if (compare(c, c.i16(row + column), 0x2710) > 0) value = 0x2710;
+    else value = extended(c.i16(row + column));
+    if (holder == 3) leave(c, {{3, row}, {4, value}, {5, row}});
+    else leave(c, {{3, row}, {4, value}});
+    c.put16(row + column, value);
+}
 }
 
 // Other blocks reach these helpers as `values` as well as `detail`.
