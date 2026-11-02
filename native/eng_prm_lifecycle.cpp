@@ -1,4 +1,5 @@
 #include "eng_prm_detail.hpp"
+#include "english_competition_rules.hpp"
 
 namespace cm::aot::eng_prm {
 using namespace detail;
@@ -131,6 +132,7 @@ std::uint32_t configure(Cpu& c, std::uint32_t address) {
     for (const auto [offset, value] : {std::pair{0xc4u, 3u}, {0xc5, 1}, {0xc6, 2},
              {0x42, 1}, {0xc7, 1}, {0xc8, 2}, {0xc9, 3}, {0xc0, 0}, {0xc1, 0}, {0xc2, 0}, {0xc3, 3}, {0x4c, 2}})
         c.put8(address + offset, value);
+    c.put8(address + 0xc3, english_rules::new_season().premier_relegated);
     c.put16(address + 0xa8, 0); c.put16(address + 0xde, 0);
     c.put32(address + 0x1c, missing); c.put32(address + 0x20, c.u32(c.r(8)));
     const auto schedule = p.virtual_call(address, 0x44, 0x1052bdf0);

@@ -1,4 +1,5 @@
 #include "eng_first_detail.hpp"
+#include "english_competition_rules.hpp"
 
 namespace cm::aot::eng_first {
 using namespace detail;
@@ -80,6 +81,23 @@ void set_fixture_places(Cpu& c, std::uint32_t address, std::uint32_t fixture,
     Kept<31> third_place(c, third);
     Program p{c};
     const auto record = p.call(0x10459b50, 0x10529704, {c.u32(address + 8), fixture});
+    if (english_rules::expanded_season(c, address)) {
+        if (std::int8_t(std::uint32_t(saved_stage)) == -1) {
+            const auto in_playoff = [](unsigned place) { return place >= 4 && place <= 11; };
+            if (in_playoff(std::uint8_t(std::uint32_t(second_place)))) second_place = 4;
+            if (in_playoff(std::uint8_t(std::uint32_t(third_place)))) third_place = 11;
+        } else if (std::int8_t(std::uint32_t(saved_stage)) == 0) {
+            const auto remap = [](auto& place) {
+                const auto rank = std::uint8_t(std::uint32_t(place));
+                if (rank >= 1 && rank <= 8) place = rank + english_rules::expanded.automatic;
+            };
+            remap(first_place); remap(second_place); remap(third_place);
+        }
+        c.put8(record + 0x76, first_place);
+        c.put8(record + 0x77, second_place);
+        c.put8(record + 0x78, third_place);
+        return;
+    }
     if (compare(c, std::int8_t(std::uint32_t(saved_stage)), -1) == 0) {
         const auto second_byte = std::uint8_t(std::uint32_t(second_place));
         if (compare(c, second_byte, 7) < 0 && compare(c, second_byte, 3) >= 0) second_place = 3;

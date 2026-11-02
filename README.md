@@ -12,7 +12,12 @@ unfinished. There is no public binary release yet.
 
 The Inter-American Cup is retired after its final 1998 edition: new careers
 omit it, and existing careers retain their history while future unplayed games
-are removed on load. Other competitions keep their original 2001/02 rules.
+are removed on load. New English seasons use three automatic First Division
+promotion places plus an eight-club, single-leg playoff (4th–11th), with the better
+league finisher hosting before a neutral final; four clubs leave the Premier
+League. Existing seasons retain their saved rules until the next season. See
+[competition rules](docs/native-competition-rules.md) for the original preset and
+backup. Other competitions keep their original 2001/02 rules.
 
 ## How it works
 

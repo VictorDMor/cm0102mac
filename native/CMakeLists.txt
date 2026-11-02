@@ -3165,6 +3165,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
         VERBATIM)
     target_sources(cm-eng-prm-checks PRIVATE "${CM_ENG_PRM_REFERENCE}")
     add_test(NAME eng_prm_equivalence COMMAND cm-eng-prm-checks "${CM_ORACLE_DIR}")
+    set_tests_properties(eng_prm_equivalence PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
     add_test(NAME eng_prm_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_prm_audit.py")
 endif()
@@ -4174,6 +4175,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME eng_first_equivalence COMMAND cm-eng-first-checks "${CM_ORACLE_DIR}")
     add_test(NAME eng_first_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_ENG_FIRST_ORIGINAL=1
         $<TARGET_FILE:cm-eng-first-checks> "${CM_ORACLE_DIR}" --original-routing)
+    set_tests_properties(eng_first_equivalence eng_first_original_override PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
     add_test(NAME eng_first_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_first_audit.py")
 endif()
 option(CM_ENG_FIRST_COVERAGE "Instrument ENG_FIRST.CPP checker only" OFF)
@@ -4185,4 +4187,12 @@ if(CM_ENG_FIRST_COVERAGE)
     target_compile_definitions(cm-eng-first-checks PRIVATE CM_ENG_FIRST_COVERAGE=1
         CM_ENG_FIRST_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/eng-first-coverage")
     target_link_options(cm-eng-first-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_FIRST_PROFILE}")
+endif()
+
+# Authorized English promotion/playoff preset, separate from equivalence tests.
+add_executable(cm-english-rules-checks english_rules_checks.cpp)
+target_link_libraries(cm-english-rules-checks PRIVATE cm_aot)
+target_compile_options(cm-english-rules-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME english_competition_rules COMMAND cm-english-rules-checks "${CM_ORACLE_DIR}")
 endif()

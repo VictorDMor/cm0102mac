@@ -1,4 +1,5 @@
 #include "eng_first_detail.hpp"
+#include "english_competition_rules.hpp"
 #include <array>
 #include <span>
 
@@ -34,14 +35,14 @@ void append_rounds(Cpu& c, const Frame& frame, const Competition& league,
     }
 }
 void knockout_round(Cpu& c, std::uint32_t record, unsigned label, unsigned index,
-                    unsigned flags, unsigned entrants, unsigned ties, unsigned legs,
-                    unsigned advance, unsigned seeding, unsigned kind, unsigned venues) {
+                    unsigned flags, unsigned entrants, unsigned ties, unsigned new_entrants,
+                    unsigned replay_flags, unsigned entrant_offset, unsigned legs, unsigned leg_gap) {
     c.put16(record + 8, label); c.put16(record + 0xa, index);
     c.put16(record + 0xc, 0); c.put16(record + 0xe, flags);
     c.put8(record + 0x18, 5); c.put16(record + 0x1a, entrants);
-    c.put16(record + 0x1c, ties); c.put16(record + 0x1e, legs);
-    c.put16(record + 0x10, advance); c.put16(record + 0x20, seeding);
-    c.put8(record + 0x22, 0); c.put8(record + 0x23, kind); c.put8(record + 0x24, venues);
+    c.put16(record + 0x1c, ties); c.put16(record + 0x1e, new_entrants);
+    c.put16(record + 0x10, replay_flags); c.put16(record + 0x20, entrant_offset);
+    c.put8(record + 0x22, 0); c.put8(record + 0x23, legs); c.put8(record + 0x24, leg_gap);
     c.put32(record + 0x6c, 0); c.put32(record + 0x70, 0); c.put32(record + 0x74, 0);
 }
 }
@@ -81,6 +82,28 @@ std::uint32_t calendar(Cpu& c, std::uint32_t address, std::uint32_t stage,
     }
     if (compare(c, std::int8_t(stage)) != 0) return 0;
     if (compare_logical(c, enabled_out) != 0) c.put8(enabled_out, 0);
+    if (english_rules::expanded_season(c, address)) {
+        using namespace english_rules;
+        c.put16(count_out, playoff_rounds); c.put16(extra_out, 160);
+        Kept<28> schedule(c, p.call(0x10775130, 0x10528a98, {playoff_rounds * round_bytes}));
+        if (!schedule) { assertion(c, f, 0x10528ab4, 0x60, 0x48, 0x1ed); return 0; }
+        for (unsigned i = 0; i < playoff_rounds * round_bytes; ++i) c.put8(std::uint32_t(schedule) + i, 0);
+        for (unsigned round = 0; round < playoff_rounds; ++round) {
+            const bool final = round == playoff_rounds - 1;
+            p.call(0x104854f0, 0x10528b14,
+                   {schedule, round, 7 + round * 7, 4, 1, 0, extended(league.year())});
+            c.put32(f.at(0x38), final ? neutral_venue : home_venue);
+            p.call(0x10485570, 0x10528b40,
+                   {schedule, round, final ? 28u : 12 + round * 7, 4, 1,
+                    final ? 0u : 5u, final ? 2u : 1u, extended(league.year())});
+            const auto record = std::uint32_t(schedule) + round * round_bytes;
+            knockout_round(c, record, final ? 150 : round == 0 ? 120 : 130, round,
+                           fixed_draw | extra_time_and_penalties, 8 >> round, 4 >> round,
+                           round == 0 ? 8 : 0, 0, 0, 1, 0);
+            c.put16(record + 0xc, final ? 0 : higher_seed_home);
+        }
+        return schedule;
+    }
     c.put16(count_out, 2); c.put16(extra_out, 160);
     Kept<28> schedule(c, p.call(0x10775130, 0x10528a98, {0xf0}));
     if (compare(c, schedule) == 0) { assertion(c, f, 0x10528ab4, 0x60, 0x48, 0x1ed); return 0; }
