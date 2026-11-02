@@ -974,6 +974,19 @@ season route because they stop at file or dialog imports, so those calls have
 their arguments compared but not their effects. Fixture slots and base-class news
 are covered by fixtures only.
 
+## BRA_REG_PARANA.CPP: two turns and an optional final
+
+The 16 entries at 0x106f6a80–0x106f8d30 implement the 12-club Paraná
+championship. Calendar stage -1 supplies 22 league rounds; stage 2 supplies a
+two-leg final. Fixture round indices below 11 select the first turn, then the
+second. Forwarding a fixture temporarily clears the parent's fixture pointer
+and restores it after the turn callback. Equal turn winners reduce the stage
+count to two, mark the title directly, and leave the original eight-byte
+finalists allocation unreleased. These original behaviors are preserved.
+The module owns no serialization routine; loading remains in the shared
+competition service. Its checker scripts external competition/news boundaries
+and also exercises the real date helpers.
+
 ## EUROPEAN_CUP.CPP: the Champions League
 
 The 23 entries at 0x104e9fb0–0x104ef380 (5,320 indexed instructions) live in

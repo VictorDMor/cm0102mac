@@ -3956,6 +3956,43 @@ if(CM_BRA_REG_CENTRAL_COVERAGE)
     target_link_options(cm-bra-reg-central-checks PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_CENTRAL_PROFILE}")
 endif()
 
+file(GLOB CM_BRA_REG_PARANA_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bra_reg_parana*.cpp")
+list(FILTER CM_BRA_REG_PARANA_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_BRA_REG_PARANA_SOURCES})
+add_executable(cm-bra-reg-parana-checks bra_reg_parana_checks.cpp)
+target_link_libraries(cm-bra-reg-parana-checks PRIVATE cm_aot)
+target_compile_options(cm-bra-reg-parana-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_BRA_REG_PARANA_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/bra_reg_parana_reference.cpp")
+    add_custom_command(OUTPUT "${CM_BRA_REG_PARANA_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_bra_reg_parana_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_BRA_REG_PARANA_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_bra_reg_parana_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/bra_reg_parana_audit.py"
+            "${CMAKE_SOURCE_DIR}/bra_reg_parana_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-bra-reg-parana-checks PRIVATE "${CM_BRA_REG_PARANA_REFERENCE}")
+    add_test(NAME bra_reg_parana_equivalence COMMAND cm-bra-reg-parana-checks "${CM_ORACLE_DIR}")
+    add_test(NAME bra_reg_parana_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_bra_reg_parana_audit.py")
+endif()
+option(CM_BRA_REG_PARANA_COVERAGE "Instrument bra_reg_parana.cpp checker only" OFF)
+add_library(cm_bra_reg_parana_checks OBJECT ${CM_BRA_REG_PARANA_SOURCES})
+target_link_libraries(cm_bra_reg_parana_checks PRIVATE cm_aot)
+target_compile_options(cm_bra_reg_parana_checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+target_compile_definitions(cm_bra_reg_parana_checks PRIVATE CM_BRA_REG_PARANA_CHECKS=1)
+target_sources(cm-bra-reg-parana-checks PRIVATE $<TARGET_OBJECTS:cm_bra_reg_parana_checks>)
+target_compile_definitions(cm-bra-reg-parana-checks PRIVATE CM_BRA_REG_PARANA_CHECKS=1)
+if(CM_BRA_REG_PARANA_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bra-reg-parana-coverage")
+    set(CM_BRA_REG_PARANA_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/bra-reg-parana-coverage/check-%p.profraw")
+    target_compile_options(cm_bra_reg_parana_checks PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_PARANA_PROFILE}" -fcoverage-mapping)
+    target_compile_definitions(cm-bra-reg-parana-checks PRIVATE CM_BRA_REG_PARANA_COVERAGE=1
+        CM_BRA_REG_PARANA_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/bra-reg-parana-coverage")
+    target_link_options(cm-bra-reg-parana-checks PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_PARANA_PROFILE}")
+endif()
+
 
 file(GLOB CM_DB_FILES_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/db_files*.cpp")
 list(FILTER CM_DB_FILES_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
