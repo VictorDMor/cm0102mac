@@ -4151,3 +4151,38 @@ if(CM_CUP_STAGE_COVERAGE)
         CM_CUP_STAGE_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/cup_stage-coverage")
     target_link_options(cm-cup-stage-checks PRIVATE "-fprofile-instr-generate=${CM_CUP_STAGE_PROFILE}")
 endif()
+
+# ENG_FIRST.CPP: handwritten English First Division implementation.
+file(GLOB CM_ENG_FIRST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/eng_first*.cpp")
+list(FILTER CM_ENG_FIRST_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_ENG_FIRST_SOURCES})
+add_executable(cm-eng-first-checks eng_first_checks.cpp)
+target_link_libraries(cm-eng-first-checks PRIVATE cm_aot)
+target_compile_options(cm-eng-first-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_ENG_FIRST_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/eng_first_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ENG_FIRST_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_eng_first_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ENG_FIRST_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_eng_first_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/eng_first_audit.py"
+            "${CMAKE_SOURCE_DIR}/eng_first_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-eng-first-checks PRIVATE "${CM_ENG_FIRST_REFERENCE}")
+    add_test(NAME eng_first_equivalence COMMAND cm-eng-first-checks "${CM_ORACLE_DIR}")
+    add_test(NAME eng_first_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_ENG_FIRST_ORIGINAL=1
+        $<TARGET_FILE:cm-eng-first-checks> "${CM_ORACLE_DIR}" --original-routing)
+    add_test(NAME eng_first_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_first_audit.py")
+endif()
+option(CM_ENG_FIRST_COVERAGE "Instrument ENG_FIRST.CPP checker only" OFF)
+if(CM_ENG_FIRST_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/eng-first-coverage")
+    set(CM_ENG_FIRST_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/eng-first-coverage/check-%p.profraw")
+    target_sources(cm-eng-first-checks PRIVATE ${CM_ENG_FIRST_SOURCES})
+    target_compile_options(cm-eng-first-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_FIRST_PROFILE}" -fcoverage-mapping)
+    target_compile_definitions(cm-eng-first-checks PRIVATE CM_ENG_FIRST_COVERAGE=1
+        CM_ENG_FIRST_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/eng-first-coverage")
+    target_link_options(cm-eng-first-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_FIRST_PROFILE}")
+endif()

@@ -572,6 +572,15 @@ knockout branch is preserved without enabling it. Destruction and annual reset
 use an inclusive last-stage index and reload the count and pointer after each
 virtual destructor, since callbacks can change them.
 
+## ENG_FIRST.CPP: English First Division
+
+The league uses 46 rounds and a two-round playoff calendar. Playoff entrants
+retain the original seed order: sixth, third, fifth, fourth. Stage-zero fixture
+places 1–3 map to league places 3–5; the league stage collapses places 3–6 to
+the third/sixth boundary pair. Event kinds and stage selectors use signed bytes,
+while fixture-place comparisons use unsigned bytes. Destruction and annual
+reset reload the inclusive stage index and array after virtual callbacks.
+
 ## SCRMAN.CPP: screen manager, history and command transport
 
 `native/screen_manager_*` owns all 85 entries in 0x1073c1b0–0x10744fc0,
