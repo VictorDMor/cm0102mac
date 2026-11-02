@@ -282,7 +282,7 @@ void Story::write_column_by_kind() {
             return say(L(0x7691, 0x10651300, outlet_article, outlet_article, club_article, club_article, plain, plain,
                     outlet_name, club_name, player_name, adjective_text).adjective(0x2, 0x10651288, of_person));
         }
-        case 6: {
+        default: {  // tone 6 (the guard above leaves 0-6)
             return say(L(0x779f, 0x106513b4, outlet_article, outlet_article, club_article, club_article, person_article,
                     person_article, outlet_name, club_name, player_name, person_text));
         }
@@ -415,7 +415,7 @@ void Story::write_column_by_tone_then_traits() {
                 return say(L(0x3a46, 0x1064f420, club_article, club_article, plain, club_name, manager_name,
                         player_name));
             }
-            case 7: {
+            default: {  // tone 7 (the guard above leaves 0-7)
                 if (cmp(domestic, 0) == 0) return say(L(0x3daf, 0x1064f5ac, plain, plain, club_article, club_article,
                         plain, adjective_text, club_name, manager_name, player_name).adjective(0x1d, 0x1064f544,
                         of_nation));

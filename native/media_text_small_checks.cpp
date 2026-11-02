@@ -427,3 +427,30 @@ MEDIA_CASES("text_small outlet") {
         build({.match = 1, .answers = {{0x1029eb20, found}}}, "outburst, match link answered");
     build({.unlinked = true}, "outburst, club without link"); build({.full = 0, .unlinked = true}, "outburst short, club without link");
 }
+
+MEDIA_CASES("text_small outlet") {
+    // The match's goals are the item's values 24 (home) and 25 (away), after the rival club's index (value 23); the cases
+    // above leave the home goals at the club number plus one and vary only the away goals. Here the away goals exceed the
+    // home goals, with and without an assistant answering, for both tones and the captain flag.
+    const auto people = known_persons(scenario, 3);
+    const auto& who = people.at(0);
+    const auto& helper = people.at(1);
+    const auto club_number = linked_club(scenario);
+    const auto club = scenario.club(club_number);
+    const auto world = scenario.toc(-0x7bb0);
+    const auto window = world + std::uint32_t(std::int16_t(scenario.s.memory.read<2>(world + 0x2c58))) * 0x2c0;
+    for (const std::uint32_t assisted : {0u, 1u}) for (const std::uint32_t assistant : {0xffffffffu, 0u}) for (const std::uint32_t tone : {0u, 1u})
+        for (const std::uint32_t captain : {0u, 1u}) for (const std::uint32_t home_goals : {0u, 1u, 2u}) for (const std::uint32_t away_goals : {3u, 0x7fu}) {
+            Values v(31, 0);
+            v[0] = who.index; v[1] = who.first; v[2] = who.second; v[3] = who.third; v[4] = club_number;
+            v[5] = captain; v[6] = 3; v[7] = tone; v[8] = assisted; v[10] = 1; v[11] = assistant == 0u ? helper.index : assistant;
+            v[12] = helper.first; v[13] = helper.second; v[14] = helper.third; v[15] = 1;
+            v[17] = 5; v[18] = 2001; v[23] = 7; v[24] = home_goals; v[25] = away_goals; v[27] = 11;
+            v[29] = 1; v[30] = 0xffffffffu;
+            auto memory = item_values(v);
+            memory.push_back({4, window + 4, 0});
+            memory.push_back({4, club + 0x90, 0x77000u});
+            cases.push_back({.entry = 0x10656450, .registers = {{3, 0x31313131}, {4, item_at}, {5, 1}, {6, output_at}}, .memory = std::move(memory),
+                             .f1 = {}, .label = "outburst, match lost at home", .answers = {}});
+        }
+}

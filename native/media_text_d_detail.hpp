@@ -98,7 +98,7 @@ struct Story {
     std::uint32_t users_club = 0;  // whether the manager of the club is the user's own manager
     // The numbers that follow the match result (or field 0x14 on, when the record holds none), read with a
     // counter. What the stories do with them: title_holder (field 0x15) is set when the club holds the title
-    // the story is about (the wordings say "retain" and "reigning"); host_one and host_two (0x16, 0x17) are
+    // the story is about (the wordings speak of keeping and of currently holding it); host_one and host_two (0x16, 0x17) are
     // the nations that host a tournament (-1: none, so one host only); spent (0x18) is the sum a club spent
     // on players; staff_club and staff_job (0x19, 0x1a) are the club and job of the subject, when he is quoted
     // as a club's manager or coach (-1: unknown); outlet_region (0x1d) is the region of the outlet that

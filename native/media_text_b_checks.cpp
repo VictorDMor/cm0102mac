@@ -242,3 +242,41 @@ MEDIA_CASES("text_b") {
         cases.push_back(maker.make(s, name_of(s, "draw", draw)));
     }
 }
+
+// Closing cases: a subject whose records pass the fan stories' trait tests the other way (a rating above 15 and
+// a sportsmanship above 10; a trait pair that is rated high at the one and not at the other), for every code,
+// tone, kind and flavour of the story.
+MEDIA_CASES("text_b") {
+    auto staff = named_staff(scenario, 3);
+    if (staff.size() < 3) return;
+    const auto user_base = scenario.toc(-0x7bb0);
+    const auto user_row = user_base + std::uint32_t(std::int32_t(std::int16_t(scenario.r32(user_base + 0x2c58) >> 16))) * 0x2c0;
+    const Maker maker{scenario, staff, user_row};
+    Random random{0x7e57b0a3};
+    const std::vector<std::uint32_t> codes{1, 2, 3, 5, 6, 7, 8, 9, 10, 0x15, 0x21, 0x22, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x35, 0x36,
+                                           0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x44, 0x45, 0x52, 0x5a, 0x5f, 0x60, 0x63};
+    unsigned n = 0;
+    for (const std::uint32_t code : codes)
+        for (const bool full : {false, true})
+            for (const bool board : {true, false})
+                for (const std::uint32_t tone : {1u, 2u, 3u})
+                    for (const std::uint32_t kind : {2u, 3u, 4u, 5u, 9u})
+                        for (const std::uint32_t slots : {0u, 1u, 2u, 8u}) {
+                            Story s;
+                            s.full = full; s.board = board; s.code = code; s.tone = tone; s.kind = kind; s.staff_slots = slots;
+                            s.count = random.pick<std::uint32_t>({1, 3, 4, 8, 4249, 7501, 9501});
+                            s.chair_rating = random.pick<std::uint32_t>({0, 19});
+                            s.own_manager = random.chance(2);
+                            s.seed = random.chance(2);
+                            s.last = random.chance(2);
+                            s.extra_a = random.chance(2); s.extra_b = random.chance(2);
+                            s.club_grade = random.pick<std::uint32_t>({0, 0x2000});
+                            s.nation = random.next() % 4;
+                            s.subject_club_44 = random.pick<std::uint32_t>({0x10, 0x20, 5});
+                            s.b63 = random.pick<std::uint32_t>({0x10, 0x20, 6});
+                            s.b65 = random.pick<std::uint32_t>({7, 0x20, 5});
+                            s.b66 = random.pick<std::uint32_t>({7, 5});
+                            s.b67 = random.pick<std::uint32_t>({0xb, 0x20, 5});
+                            cases.push_back(maker.make(s, "closing, strong traits " + std::to_string(n++)));
+                        }
+}

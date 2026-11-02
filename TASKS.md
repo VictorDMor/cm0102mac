@@ -18,7 +18,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **media.cpp, what's left (2026-11-02):** all 75 entries run in C++, review fixes done. Coverage with mutations: 13,347/13,436 lines, 7,628/7,756 branch outcomes. Each of the 128 other outcomes needs a case or a reachability proof in `.local/rewrites/media/ledger.json`. Script: `.local/rewrites/media/cov_all.sh`.
+- [ ] **media.cpp, what's left (2026-11-02):** all 75 entries run in C++ and are installed. Stopped at Victor's request to save weekly usage. Coverage without mutations: 13,379/13,425 lines, 7,652/7,718 branch outcomes. To reach "complete": match those 66 outcomes against the 61 proofs and mappings in `.local/rewrites/media/ledger.json`, give each remaining one a case or a proof, and run all 75 together at `--mutate 8 --call-trace --argument-masks` (the last such run predates the final cleanup). `.local/rewrites/media/cov_all.sh` reruns coverage; `tools/call_arguments.py 0x10646d90 0x106a8a50` remakes the masks.
 
 - [ ] **Older match families after MATCH_ENG.CPP (found 2026-11-01):** the builder sources of the 19 families whose 79 entries left production at the takeover still build for checks but no page calls them, so they are candidates for deletion. Five family tests were retired with entries remaining outside the module (`spatial_role`, `marking_pressure`, `pitch_distance`, `ball_contact`, `match_discipline`): those entries get checks when their modules are reconstructed.
 

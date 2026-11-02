@@ -77,9 +77,8 @@ std::int32_t Verdict::trait(const records::Person& who, Trait which) const {
     case Trait::professionalism: return who.professionalism().get();
     case Trait::sportsmanship: return who.sportsmanship().get();
     case Trait::composure: return who.composure().get();
-    case Trait::temperament: return who.temperament().get();
+    default: return who.temperament().get();  // Trait::temperament (the last of an exhaustive switch)
     }
-    return 0;
 }
 
 std::int32_t Verdict::skill(Skill which) const {
@@ -89,9 +88,8 @@ std::int32_t Verdict::skill(Skill which) const {
     case Skill::man_management: return record.man_management().get();
     case Skill::tactics: return record.tactics().get();
     case Skill::standing: return record.standing().get();
-    case Skill::discipline: return record.discipline().get();
+    default: return record.discipline().get();  // Skill::discipline
     }
-    return 0;
 }
 
 std::int32_t Verdict::attribute(Attribute which) const {
@@ -106,9 +104,8 @@ std::int32_t Verdict::draw_of(const Draw& what) {
     case From::effective: return draw(effective(Skill(what.which), what.query_back), what.refill_back);
     case From::amount: return draw_amount(what.refill_back);
     case From::subject: return draw(trait(subject(), Trait(what.which)), what.refill_back);
-    case From::subject_attribute: return draw(attribute(Attribute(what.which)), what.refill_back);
+    default: return draw(attribute(Attribute(what.which)), what.refill_back);  // From::subject_attribute
     }
-    return 0;
 }
 
 bool Verdict::passes(const Step& step) {
@@ -118,9 +115,8 @@ bool Verdict::passes(const Step& step) {
     case Test::nonzero: return compare(c, drawn) != 0;
     case Test::below: return compare_remainder(drawn, step.against, step.reduce_back) < 0;
     case Test::above: return compare_remainder(drawn, step.against, step.reduce_back) > 0;
-    case Test::at_most: return compare_remainder(drawn, step.against, step.reduce_back) <= 0;
+    default: return compare_remainder(drawn, step.against, step.reduce_back) <= 0;  // Test::at_most
     }
-    return false;
 }
 
 bool Verdict::all(std::initializer_list<Step> steps) {
@@ -135,7 +131,7 @@ std::int32_t Verdict::remainder(const Remainder& divisor, std::uint32_t refill_b
     switch (divisor.scratch) {
     case Scratch::quotient: leave(c, {{3, reduced.sign}, {4, reduced.sample}}); break;
     case Scratch::high: leave(c, {{3, std::uint32_t(reduced.high)}, {4, reduced.sample}}); break;
-    case Scratch::loaded: leave(c, {{3, std::uint32_t(reduced.rest)}, {4, reduced.sign}, {5, reduced.sample}}); break;
+    default: leave(c, {{3, std::uint32_t(reduced.rest)}, {4, reduced.sign}, {5, reduced.sample}}); break;  // Scratch::loaded
     }
     return divisor.negated ? std::int32_t(0u - std::uint32_t(reduced.rest)) : reduced.rest;
 }

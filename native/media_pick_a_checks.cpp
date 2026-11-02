@@ -120,16 +120,17 @@ MEDIA_CASES("pick_a") {
         }
         return squad;
     };
-    struct Style { bool scripted = false, known = false, steered = false, young = false, chain = false; };
+    struct Style { bool scripted = false, known = false, steered = false, young = false, chain = false, rival = false, listed = false; };
     const auto run_case = [&](std::uint32_t kind, Style style, const std::string& label) {
-        const auto [scripted, known, steered, young, chain] = style;
+        const auto [scripted, known, steered, young, chain, rival_on, listed] = style;
         auto t = teams[gen() % teams.size()];
         auto p = people[gen() % people.size()];
         // Three in five are a member of the club's own squad, whose standing the real lookup finds.
         if (const auto squad = squad_of(t); !squad.empty() && gen() % 5 < 3) p = squad[gen() % squad.size()];
         const auto profile = scenario.r32(p + 0x14);
         if (chain) p = squad_of(t).empty() ? p : squad_of(t)[gen() % squad_of(t).size()];
-        Writes m = chain ? table(scenario, std::vector<std::uint32_t>(120, 0), 0) : sample_table(gen() % 6 == 0);
+        Writes m = rival_on ? table(scenario, std::vector<std::uint32_t>(120, pick({50, 53, 77, 101})), 0)
+                            : chain ? table(scenario, std::vector<std::uint32_t>(120, 0), 0) : sample_table(gen() % 6 == 0);
         // Player.
         m.push_back(b8(p + 0x67, pick({0, 0, 1, 2, 3, 5, 6, 9, 12, 14, 15, 0x80, 0xf8})));
         m.push_back(b8(p + 0x65, pick({0, 0, 4, 9, 14, 15, 16, 0x80})));
@@ -165,12 +166,18 @@ MEDIA_CASES("pick_a") {
         } else {
             append(m, {w32(store_at, history_at), w32(store_at + 4, 4), w32(store_at + 8, 0), w32(store_at + 0xc, 0), w32(store_at + 0x10, 0), w32(store_at + 0x14, 0)});
         }
+        if (listed) {
+            // The press lists the player with the story kind 2 (the history row's byte +0x10), for a club that is not this one and
+            // a different kind, so that the scan for the same story does not find it.
+            append(m, {w32(store_at, history_at), w32(store_at + 4, 4), w32(store_at + 8, 1), w32(history_at + 8, scenario.r32(p)), w32(history_at + 0xc, 0),
+                       b8(history_at + 0x10, 2), h16(history_at + 0x12, 0x7777), w32(history_at + 0x14, 0xbd0)});
+        }
         if (scripted) {
             // Answers only for routines no other module owns (an owned one runs in place on the original's side).
             answers.push_back({0x10718130, pick({0, 0x2d, 0x2e, 0x16c, 0x16d, 0x16e, 0x1000, 0xfffff000u})});
             answers.push_back({0x1014c2e0, pick({0, 1, 0x100})});
-            answers.push_back({0x10658370, pick({0, 1})});
-            answers.push_back({0x106487d0, pick({0xffffffffu, 0xffffffffu, 3, 20, 700})});
+            if (!listed) answers.push_back({0x10658370, pick({0, 1})});
+            if (!rival_on) answers.push_back({0x106487d0, pick({0xffffffffu, 0xffffffffu, 3, 20, 700})});
             answers.push_back({0x100d9b80, 0});
             answers.push_back({0x100d8260, chain ? 0x200200 : pick({0, 8, 0x200200, 0x200208, 0x200380, 0x200100, 0x2000, 0x40208})});
             answers.push_back({0x100d1cb0, chain ? 0x7f : pick({0, 5, 9, 12, 20, 0x7f, 0x80})});
@@ -197,6 +204,15 @@ MEDIA_CASES("pick_a") {
         // The other person the club's draw may name: its +0x24 link.
         m.push_back(w32(persons_base + pick({3u, 20u, 700u}) * 0x70 + 0x24, pick({0u, t})));
         if (gen() % 8 == 0) m.push_back(w32(scenario.toc(-0x7b40), 0));
+        if (rival_on) {
+            // The rival the press finds for the club: the manager of its first affiliated club, in the same division and
+            // 750 or more above it in reputation, whose management byte draws 0 and ambition draws above 5; the table is a constant.
+            const auto affiliate = teams[0] == t ? teams[1] : teams[0];
+            const auto rival_person = scenario.r32(affiliate + 0x90);
+            append(m, {w32(t + 0x74, affiliate), w32(t + 0x30, scenario.r32(affiliate + 0x30)), h16(t + 0x1ec, 3000), h16(affiliate + 0x1ec, 9000),
+                       b8(rival_person + 0x68, 0), b8(rival_person + 0x63, pick({100, 127})), b8(rival_person + 0x69, pick({0, 3, 60, 127, 0xff})),
+                       w32(rival_person + 0x24, pick({0u, affiliate}))});
+        }
         auto registers = args({{3, store_at}, {4, p}, {5, t}, {6, kind}, {7, other ? people[1] : 0}, {8, third ? people[2] : 0}});
         for (const auto& [n, v] : extra) registers.push_back({n, v});
         cases.push_back({.entry = bd0, .registers = std::move(registers), .memory = std::move(m), .f1 = {}, .label = label, .answers = std::move(answers)});
@@ -207,6 +223,13 @@ MEDIA_CASES("pick_a") {
         if (kind == 0 || kind == 2)
             for (unsigned n = 0; n < 120; ++n) run_case(kind, {.scripted = n % 2 == 0, .steered = n % 4 < 2, .young = true}, "bd0 young");
     }
+    // The press lists the player with a story of kind 2: the kinds that turn into 0x21 or 0x22 for a young player of a club whose manager
+    // joined long ago, and the +5 on his score. Every callee runs for real (0x10658370 is the media routine itself).
+    for (const auto kind : {1u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 0x20u})
+        for (unsigned n = 0; n < 160; ++n) run_case(kind, {.scripted = n % 3 != 0, .steered = n % 4 < 2, .young = n % 4 != 3, .listed = true}, "bd0 listed");
+    // The rival found for real (no answer for 0x106487d0): kinds that draw on his bytes or name him in the item.
+    for (const auto kind : {9u, 0u, 1u, 2u, 3u, 5u, 13u, 0x20u})
+        for (unsigned n = 0; n < 120; ++n) run_case(kind, {.scripted = true, .steered = n % 4 < 2, .rival = true}, "bd0 rival");
     // The club's listener chain (0x10457d00, the lineup and the flags of the first tactic), reached from a squad member with
     // every draw zero; the covering draws (table all zero) make the figure draw fail and the reaction draw pass.
     for (unsigned n = 0; n < 300; ++n) run_case(pick({3u, 5u, 14u}), {.scripted = true, .steered = n % 3 == 0, .chain = true}, "bd0 chain");

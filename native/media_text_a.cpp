@@ -41,9 +41,8 @@ std::uint32_t Story::value(Arg arg) const {
     case Arg::teams_base: return c.u32(c.toc(teams_slot));
     case Arg::position_kind: return sign8(status);
     case Arg::outlet_article: return sign8(c.u8(at(0x61)));
-    case Arg::age_flag_arg: return sign8(c.u8(at(0x3218)));
+    default: return sign8(c.u8(at(0x3218)));  // Arg::age_flag_arg
     }
-    return 0;
 }
 
 void Story::say(const Line& line) {
@@ -61,10 +60,6 @@ void Story::say(const Line& line) {
     c.set(4, c.toc(slot::pool) + line.phrase);
     for (unsigned i = 0; i < std::min<unsigned>(line.count, 6); ++i) c.set(5 + i, registers[i]);
     c.call(line.sprintf_form ? entry::sprintf : formatter, line.back);
-    if (line.append_back) {
-        c.set({{3, at(0x1e3c)}, {4, at(0x6cc)}});
-        c.call(entry::append, line.append_back);
-    }
 }
 
 // `player % 8` the way the compiler wrote it for a signed value: the tone is taken from the player's number

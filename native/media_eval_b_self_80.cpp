@@ -31,7 +31,7 @@ public:
         switch (r.band(0x70)) {
         case Band::above: above(); break;
         case Band::between: between(); break;
-        case Band::below: below(); break;
+        default: below(); break;  // Band::below
         }
     }
 

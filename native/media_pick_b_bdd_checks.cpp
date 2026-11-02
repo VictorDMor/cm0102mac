@@ -291,3 +291,103 @@ MEDIA_CASES("pick_b_bdd") {
         build(s, club, regs(person_at, club, 0x20, 0), "young, flag");
     }
 }
+
+// ---- Closing the last uncovered outcomes (central coverage run): the history already holds the story (0x1069e700 finds a row,
+// which only real state steers), and the staff pick (0x10647730) returning nobody or a person with a club. The cases keep
+// every callee that is a media routine real (an answer for one is ignored when it is checked), so the state they need is
+// laid out: a one-row history in the press object, and one real person row turned into the only candidate of the staff pick.
+namespace {
+constexpr std::uint32_t history_at = scratch_base + 0x30000, nation_at = scratch_base + 0x30400;
+
+// The fixture of the first section's `build`, written out once more for this generator.
+Writes closure_memory(const Scenario& scenario, const Story& st, std::uint32_t club,
+                      const std::vector<std::uint32_t>& clubs, std::uint32_t frame, std::uint32_t real_people) {
+    Writes m;
+    append(m, {w32(person_at, st.person_id), w32(person_at + 0xc, owner_at), w32(person_at + 0x14, contract_at), w32(person_at + 0x20, st.word_20),
+               w32(person_at + 0x24, st.word_24 ? links_at + 0x100 : 0), w32(person_at + 0x28, links_at), w32(person_at + 0x2c, links_at + 0x40),
+               w32(person_at + 0x30, links_at + 0x80), h16(person_at + 0x4c, st.date_day), h16(person_at + 0x4e, st.date_year), b8(person_at + 0x50, 0),
+               h16(person_at + 0x5c, st.age), b8(person_at + 0x5e, st.byte_5e), b8(person_at + 0x63, st.grade), b8(person_at + 0x67, st.byte_67),
+               w32(links_at + 0x20, 0x11), w32(links_at + 0x60, 0x22), w32(links_at + 0xa0, 0x33), w32(links_at + 0x100, 0x44), w32(links_at + 0x120, 0x55),
+               h16(contract_at + 4, st.contract_4), h16(contract_at + 8, st.contract_8), h16(contract_at + 0xa, st.contract_a), h16(contract_at + 0xc, st.contract_c),
+               b8(contract_at + 0xf, st.region), b8(contract_at + 0x2f, st.byte_2f),
+               h16(owner_at + 0xac, st.owner), w32(owner_at + 0x68, 0x77),
+               w32(standing_at + 0x50, st.flags), w32(standing_at + 0x44, 0),
+               w32(extra_at, 0x1234), w32(extra_at + 0x1c, st.extra_pair & 1 ? club : clubs[1]), w32(extra_at + 0x20, st.extra_pair & 2 ? club : 0),
+               b8(extra_at + 0x49, st.extra_pair >> 24), b8(extra_at + 0x4a, (st.extra_pair >> 16) & 0xff),
+               w32(staff_at, 0x4321), w32(staff_at + 0x20, st.staff_20 ? links_at + 0x100 : 0), w32(staff_at + 0x24, st.staff_24 ? links_at + 0x120 : 0),
+               w32(staff_at + 0x28, links_at), w32(staff_at + 0x2c, links_at + 0x40), w32(staff_at + 0x30, links_at + 0x80),
+               b8(staff_at + 0x60, st.staff_60), b8(staff_at + 0x62, st.staff_62),
+               h16(found_at, 0x1234), h16(found_at + 2, 0x4567), w32(found_at + 8, 0x88),
+               w32(chain_at, chain_at + 0x40), w32(chain_at + 0x48, 0x99), w32(word_at, 0xabc),
+               w32(frame + 0x44, found_at),
+               w32(club + 0x30, st.special_ptr ? st.special_ptr : special_at), w32(special_at, 5), w32(scenario.toc(-0x7a0c), st.same_id ? 5 : 6),
+               w32(scenario.toc(-0x7b50), st.club_count)});
+    for (unsigned i = 0; i < 30; ++i) m.push_back(w32(frame + 0x7c + 4 * i, real_people + (i % 7 + 1) * 0x70));
+    const auto clock = scenario.toc(-0x7b80);
+    append(m, {h16(clock, st.today_day), h16(clock + 2, st.today_year), w32(clock + 4, 0)});
+    m.push_back(h16(club + 0x1ec, st.club_rating));
+    append(m, random_table(scenario, st.table, st.seed, st.wrap));
+    return m;
+}
+}
+
+MEDIA_CASES("pick_b_bdd_closure") {
+    std::vector<std::uint32_t> clubs;
+    for (unsigned i = 0; clubs.size() < 3 && i < 400; ++i) {
+        const auto c = scenario.club(i);
+        const auto manager = scenario.r32(c + 0x90);
+        if (manager && scenario.r32(c + 0x2c) && scenario.r32(c + 0x30) && scenario.r32(manager + 0x28) && scenario.r32(manager + 0x2c) && scenario.r32(manager + 0x30))
+            clubs.push_back(c);
+    }
+    if (clubs.size() < 3) return;
+    const auto sp = std::uint32_t(scenario.s.r<4>(cm::aot::guest::reg::gpr(1)));
+    const auto frame = sp - 0x240;
+    const auto press = scenario.global(-0x7b94);
+    const auto real_people = scenario.global(-0x7be0);
+    const auto club = clubs[0];
+    const auto push = [&](const Story& st, std::uint32_t kind, std::uint32_t extra, Writes more, const char* label) {
+        auto memory = closure_memory(scenario, st, club, clubs, frame, real_people);
+        append(memory, more);
+        Answers answers{{special_club, st.is_special}, {standing_of, standing_at}, {busy, st.busy_answer}, {league, st.league_answer}, {distance, st.distance_answer},
+                        {known, st.known_answer}, {staff_pick, st.staff_answer ? staff_at : 0}, {seller, st.seller_answer}, {found_of, st.found_answer}, {chain_of, chain_at},
+                        {people_of, st.people_count}, {open_club, st.open_answer}, {coach_of, st.coach_answer ? word_at : 0}, {form, st.form_answer},
+                        {roll_of, 3}, {sale, st.sale_answer}, {follow_up, 0}, {owner_hook, 0}};
+        cases.push_back({.entry = entry_bdd, .registers = {{3, press}, {4, person_at}, {5, club}, {6, kind}, {7, extra}, {8, 0x81818181}, {9, 0x91919191}, {10, 0xa1a1a1a1}},
+                         .memory = std::move(memory), .f1 = {}, .label = label, .answers = std::move(answers)});
+    };
+    Story base;
+    base.table = {1, 2, 3, 4, 5, 6};
+
+    // The history already holds the story (0x1069e700 finds the row of this person, club, story 0xbdd and kind): the routine ends
+    // before the numbered fields. A row of another kind, club or person does not end it.
+    const auto club_id = scenario.r32(club);
+    const auto history = [&](std::uint32_t person, std::uint32_t row_club, std::uint32_t grade, std::uint32_t story) {
+        return Writes{w32(press, history_at), w32(press + 4, 8), w32(press + 8, 1), w32(history_at + 8, person), w32(history_at + 0xc, row_club),
+                      b8(history_at + 0x10, 0), h16(history_at + 0x12, grade), w32(history_at + 0x14, story)};
+    };
+    for (const std::uint32_t kind : {0x33u, 0x34u}) {
+        push(base, kind, 0, history(base.person_id, club_id, kind, 0xbdd), "history holds the story");
+        push(base, kind, extra_at, history(base.person_id, club_id, kind, 0xbdd), "history holds the story, extra");
+        push(base, kind, 0, history(base.person_id, club_id, kind + 1, 0xbdd), "history, other kind");
+        push(base, kind, 0, history(base.person_id, club_id ^ 1, kind, 0xbdd), "history, other club");
+        push(base, kind, 0, history(base.person_id + 1, club_id, kind, 0xbdd), "history, other person");
+        push(base, kind, 0, history(base.person_id, club_id, kind, 0xbde), "history, other story");
+    }
+
+    // The staff pick (0x10647730 with the person as `other`) over a table of one person, the first record of the table, turned into
+    // the only candidate: old enough (age byte 0x30, ability 60), a staff record, not a player, not the club's manager.
+    const auto staff = [&](std::uint32_t nation, std::uint32_t at_club, const char* label, std::uint32_t kind) {
+        Writes more{w32(scenario.toc(-0x7be4), 1), h16(real_people + 0x5c, 0x30), b8(real_people + 0x5e, 60), w32(real_people + 0x14, 0),
+                    w32(real_people + 0x1c, staff_at), w32(real_people + 0x24, at_club), w32(real_people + 0xc, nation), w32(real_people + 0x20, 0),
+                    b8(real_people + 0x60, 7), b8(real_people + 0x62, 5), w32(real_people + 0x28, links_at), w32(real_people + 0x2c, links_at + 0x40),
+                    w32(real_people + 0x30, links_at + 0x80), h16(nation_at + 0xac, 0), w32(nation_at + 0x68, 0x66)};
+        for (const std::uint32_t extra : {0u, extra_at}) push(base, kind, extra, more, label);
+    };
+    // A candidate of another nation than the person's, with a rating of 0, fails the stranger's rating test on every round: nobody.
+    for (const std::uint32_t kind : {0x33u, 0x34u, 0x20u}) staff(nation_at, 0, "staff pick finds nobody", kind);
+    // A candidate of the person's own nation (his score doubles) who works for a club: the staff record of a coach.
+    for (const std::uint32_t kind : {0x33u, 0x34u, 0x20u}) {
+        staff(owner_at, club, "staff pick finds a coach with a club", kind);
+        staff(owner_at, 0, "staff pick finds a coach without a club", kind);
+    }
+}

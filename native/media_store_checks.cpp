@@ -2,6 +2,7 @@
 // of the game's own file layer, so the real read and write run), and its rows, events and
 // log records over the real clubs and over rows laid out in the scratch area.
 #include "media_checks.hpp"
+#include "guest_abi.hpp"
 #include <limits>
 
 using namespace cm::aot::media_checks;
@@ -451,5 +452,52 @@ MEDIA_CASES("store") {
         cases.push_back(make(entry_log_2e, {{3, 0}, {4, 0}, {5, club8}, {6, 3}}, {}, "log 2e no club"));
         cases.push_back(make(entry_log_2e, {{3, 0}, {4, club1}, {5, club8}, {6, 3}}, field(club1, 0x90, 0), "log 2e no manager"));
         cases.push_back(make(entry_log_2e, {{3, 0}, {4, club1}, {5, 0}, {6, 3}}, {}, "log 2e no other"));
+    }
+}
+
+// The last outcomes: allocation failures and a failing third write. The allocator itself runs natively on both sides
+// and cannot be answered, but when its arena list is empty it asks the system for memory (0x10778d50), which is
+// answered with nothing.
+MEDIA_CASES("store") {
+    constexpr std::uint32_t system_memory = 0x10778d50;
+    const auto real = scenario.global(-0x7b94);
+    const auto club1 = scenario.club(1);
+    const auto player1 = scenario.r32(club1 + 0x98);
+    const auto person_id = key_at + 0x40, club_id = key_at + 0x48;
+    const auto ids = [&](std::uint32_t person, std::uint32_t club) { return Writes{{4, person_id, person}, {4, club_id, club}}; };
+    const Writes no_arena{{4, scenario.toc(-0x3b74), 0}};
+    const std::vector<std::pair<std::uint32_t, std::uint32_t>> no_memory{{system_memory, 0}};
+    // An event for an empty store: its first table cannot be had.
+    {
+        auto item = make(entry_add_event, {{3, store_at}, {4, person_id}, {5, club_id}, {6, 5}},
+                         join({press(store_at, 0, 0, 0, 0, 0, 0), ids(0x5000, 0x3), no_arena}), "event: no first table", no_memory);
+        item.f1 = 1.0;
+        cases.push_back(std::move(item));
+    }
+    // A full table of events that cannot grow.
+    {
+        auto item = make(entry_add_event, {{3, real}, {4, person_id}, {5, club_id}, {6, 100}}, join({ids(0x11f9, 0x3cb), no_arena}),
+                         "event: table cannot grow", no_memory);
+        item.f1 = 1.0;
+        cases.push_back(std::move(item));
+    }
+    // A history row for an empty store: its first table cannot be had.
+    cases.push_back(make(entry_add_row, {{3, store_at}, {4, player1}, {5, club1}, {6, 0xbd0}, {7, 5}, {8, 1}},
+                         join({press(store_at, 0, 0, 0, 0, 0, 0), no_arena}), "add: no first table", no_memory));
+    // A save whose third write is refused: the handle in the frame is moved by the first write's byte total, which the
+    // handle's table of totals (row +0xc, 0x108 bytes each) places on the frame's slot. The events write (no events)
+    // and the third write then meet a handle shifted by four bytes, whose flag byte is not 1.
+    {
+        cm::aot::guest::Cpu c(scenario.s);
+        const std::uint32_t slot = c.sp() - 0x140 + 0x38;
+        std::uint32_t inverse = 33;
+        for (int round = 0; round < 5; ++round) inverse *= 2 - 33 * inverse;
+        const std::uint32_t row = ((slot - (file_at + 0x28)) / 8) * inverse;
+        const std::vector<std::pair<std::uint32_t, std::uint32_t>> closing{{open_entry, file_at}, {close_entry, 0}};
+        for (const std::uint32_t rows : {0u, 3u})
+            cases.push_back(make(entry_save, {{3, store_at}, {4, 0x2222}},
+                                 join({press(store_at, history_at, rows, rows, events_at, 0, 0), fill(history_at, rows * 0x18, 9),
+                                       write_file(), Writes{{4, file_at + 0xc, row}}}),
+                                 "save: third write refused " + std::to_string(rows), closing));
     }
 }

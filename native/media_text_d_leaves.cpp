@@ -74,7 +74,7 @@ void Story::foreign_media_on_competition(Adjective adjective, const Pick& p, Ord
         outgoing(2, competition_name(f));
         tell(w, {home_marker(), home_marker(), unmarked, unmarked, competition_marker(f), competition_marker(f)});
         break;
-    case Order::nation_club_competition:
+    default:  // Order::nation_club_competition
         outgoing(0, nationality);
         outgoing(1, home_short());
         outgoing(2, competition_name(f));

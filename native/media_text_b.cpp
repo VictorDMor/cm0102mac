@@ -29,8 +29,7 @@ bool Press::grade_band(std::uint32_t back) const {
 }
 
 std::uint32_t Press::value(Arg arg) const {
-    if (arg.v & detail::press::pool_base && !(arg.v & detail::press::slot_base)) return c.toc(slot::pool) + (arg.v - pool_base);
-    if (!(arg.v & detail::press::slot_base)) return arg.v;
+    if (!(arg.v & detail::press::slot_base)) return arg.v & detail::press::pool_base ? c.toc(slot::pool) + (arg.v - pool_base) : arg.v;
     switch (arg.v - slot_base) {
     case 1: return frame_at(0xc0);
     case 2: return frame_at(0x48);

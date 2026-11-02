@@ -189,3 +189,109 @@ MEDIA_CASES("eval_a") {
         basic(manager, 0, {}, {{0x10082f90, contract_at}, {0x100d9580, 0}, {0x100d9520, 0}}, "no player");
     }
 }
+
+// Closing cases: one manager and one player with every byte the verdict reads set by the case, and the random
+// table written entry by entry, for the outcomes the random sweeps above cannot choose: the contract-review
+// question saying yes (kind 0x1f), the second chain of kind 6 passing, and amounts of exactly 20 and between
+// 10 and 19 in the transfer stories (the factor is picked from the story value the probe printed).
+MEDIA_CASES("eval_a") {
+    const auto log = scenario.global(-0x7bf0);
+    const auto persons = scenario.global(-0x7be0), count = scenario.global(-0x7be4);
+    const auto indexes = scenario.global(-0x7b9c);
+    const auto singles = scenario.toc(-0x4200);
+    std::vector<std::uint32_t> managers, players;
+    for (unsigned i = 0; i < count && (managers.size() < 3 || players.size() < 40); i += 7) {
+        const auto row = persons + i * 0x70;
+        if (scenario.r32(row + 0x1c) && scenario.r32(row + 0x24) && scenario.r32(row) < count && managers.size() < 3) managers.push_back(row);
+        else if (scenario.r32(row + 0x14) && scenario.r32(row) < count && players.size() < 40) players.push_back(row);
+    }
+    if (managers.size() < 3 || players.size() < 40) return;
+    struct Spec {
+        std::uint32_t kind = 0;
+        float factor = 1.0f;
+        std::vector<std::uint32_t> entries;  // the random table, from its first sample; zeros after
+        unsigned who = 0, pl = 0;            // which manager and which player
+        int manager_traits[7] = {5, 5, 5, 5, 5, 5, 5};  // bytes 0x63-0x69 of the manager
+        int staff_skills = 5;                            // the five staff bytes
+        int sportsmanship = 5, dirtiness = 5, subject_loyalty = 5;
+        int trait = 1;                                   // what the effective-skill routine answers
+        std::uint32_t queries[6] = {0, 0, 0, 0, 0, 0};
+        std::uint32_t c44 = 0, c46 = 0, c50 = 0, c54 = 0, c5c = 0, state = 0;
+        std::uint32_t contract_person = 0, contract_club = 0;
+        const char* label = "closing";
+    };
+    const auto build = [&](const Spec& k) {
+        const auto manager = managers[k.who], player = players[k.pl];
+        const auto staff = scenario.r32(manager + 0x1c), club = scenario.r32(manager + 0x24);
+        std::vector<Write> memory;
+        for (unsigned i = 0; i < 7; ++i) memory.push_back(b8(manager + 0x63 + i, std::uint32_t(k.manager_traits[i])));
+        for (const unsigned offset : {0x34u, 0x39u, 0x3bu, 0x3du, 0x3fu}) memory.push_back(b8(staff + offset, std::uint32_t(k.staff_skills)));
+        memory.push_back(h16(club + 0x1ec, 5000));
+        const auto record = scenario.r32(player + 0x14);
+        const auto id = scenario.r32(player);
+        memory.push_back(b8(player + 0x66, 9)); memory.push_back(b8(player + 0x67, std::uint32_t(k.sportsmanship)));
+        memory.push_back(b8(player + 0x65, std::uint32_t(k.subject_loyalty)));
+        memory.push_back(b8(record + 0x44, 1)); memory.push_back(b8(record + 0x45, 9));
+        memory.push_back(b8(record + 0x25, std::uint32_t(k.dirtiness)));
+        memory.push_back(h16(record + 0xa, 5000));
+        memory.push_back(b8(indexes + id * 0x64 + 0xa, 1)); memory.push_back(b8(indexes + id * 0x64 + 0xc, 1));
+        memory.push_back(b8(contract_at + 0x60, 0xf0 | k.state));
+        memory.push_back(b8(contract_at + 0x44, k.c44)); memory.push_back(b8(contract_at + 0x46, k.c46));
+        memory.push_back(w32(contract_at + 0x50, k.c50)); memory.push_back(b8(contract_at + 0x54, k.c54));
+        memory.push_back(b8(contract_at + 0x5c, k.c5c));
+        memory.push_back(w32(contract_at, k.contract_person ? scenario.r32(k.contract_person) : 0));
+        memory.push_back(w32(contract_at + 4, k.contract_club ? scenario.r32(k.contract_club) : 0));
+        memory.push_back(w32(singles + 8, single_bits(1.0f)));
+        memory.push_back(w32(singles + 0xc, single_bits(k.factor)));
+        std::vector<std::uint32_t> entries = k.entries;
+        entries.resize(120, 0);
+        append(memory, table(scenario, entries, 0, 700));
+        const std::vector<std::pair<std::uint32_t, std::uint32_t>> answers = {
+            {0x10082f90, contract_at}, {0x100d2f50, std::uint32_t(k.trait)}, {0x100d9580, k.queries[0]}, {0x100d9520, k.queries[1]},
+            {0x100d3150, k.queries[2]}, {0x100d3040, k.queries[3]}, {0x100d9b80, k.queries[5]}, {0x1036d240, 0}};
+        cases.push_back({.entry = entry,
+                         .registers = {{3, log}, {4, manager}, {5, player}, {6, k.kind}, {7, 0x81818181}, {8, 0x91919191}, {9, 0xa1a1a1a1}, {10, 0xb1b1b1b1}},
+                         .memory = memory, .f1 = 1.0, .label = k.label, .answers = answers});
+    };
+    // Kind 0x1f: no team mate, a happiness above the draw, and the contract-review question saying yes (the
+    // visited person's loyalty under 15 and the contract's bit 1 in +0x5c, with some flag set).
+    for (unsigned who = 0; who < 3; ++who)
+        for (const std::uint32_t flags : {0x1000u, 0x20000u, 0x40000u, 0x2u, 0x800u}) {
+            Spec k;
+            k.kind = 0x1f; k.who = who; k.c44 = 100; k.c50 = flags; k.c5c = 1;
+            k.contract_person = players[who]; k.pl = who; k.contract_club = scenario.r32(managers[who] + 0x24);
+            k.label = "contract review says yes";
+            build(k);
+        }
+    // Kind 6, second chain: the manager's loyalty draw comes up 0 (the first chain ends), then the draws of his
+    // effective management and of the staff's discipline come up 0, the player's dirtiness beats a remainder of
+    // 50 and the amount's draw falls under a remainder of 5. The table is shifted by the draws that came before.
+    for (unsigned shift = 0; shift < 9; ++shift)
+        for (const std::uint32_t last : {3u, 1u, 4u})
+            for (const bool no_amount : {false, true}) {
+                Spec k;
+                k.kind = 6; k.pl = 17; k.dirtiness = 127; k.staff_skills = 1; k.trait = 1;
+                k.factor = no_amount ? 0.0f : 100.0f;  // an amount of 0 draws nothing, so the remainder follows at once
+                k.manager_traits[2] = 1;  // loyalty
+                k.entries.assign(shift, 0);
+                for (const auto e : {0u, 0u, 0u, 100u, 0u}) k.entries.push_back(e);
+                if (!no_amount) k.entries.push_back(0);
+                k.entries.push_back(last);
+                k.label = "kind 6 second chain";
+                build(k);
+            }
+    // Transfer kinds with an amount of exactly 20 (the range of the next draw is 0) and of 10 to 19 (the draw of 0 is
+    // not under 10). The story value of the player at index 17 is 0.633332968 for these kinds (the value routine
+    // printed it for the case with factor 1), so the factor makes the amount: trunc(factor * value).
+    constexpr double value_of_player_17 = 0.633332968;
+    for (unsigned shift = 0; shift < 9; ++shift)
+        for (const unsigned amount : {20u, 19u, 15u, 12u, 10u})
+            for (const std::uint32_t kind : {0x28u, 0x31u, 0x3bu}) {
+                Spec k;
+                k.kind = kind; k.pl = 17; k.sportsmanship = 127; k.trait = 1; k.factor = float((amount + 0.5) / value_of_player_17);
+                k.entries.assign(shift, 0);
+                for (const auto e : {100u, 0u, 0u, 0u, 0u, 0u}) k.entries.push_back(e);
+                k.label = "transfer story, exact amount";
+                build(k);
+            }
+}

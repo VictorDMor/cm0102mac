@@ -165,7 +165,7 @@ private:
         switch (r.band(0x70)) {
         case Band::above: high_verdict(); break;
         case Band::below: low_verdict(); break;
-        case Band::between: middle_verdict(); break;
+        default: middle_verdict(); break;  // Band::between
         }
     }
 

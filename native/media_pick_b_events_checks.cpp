@@ -446,3 +446,53 @@ MEDIA_CASES("pick_b_events") {
         cases.push_back({.entry = entry_events, .registers = entry_registers(live), .memory = {}, .f1 = 1234.5, .label = "the live press", .answers = {}});
     }
 }
+
+// ---- Closing the last uncovered outcomes (central coverage run): the audience list (0x103fc710 answered, its array laid out in the
+// frame) already holds the club of a row at a place before its end, so the duplicate scan stops on the match.
+MEDIA_CASES("pick_b_events_closure") {
+    const auto persons = scenario.global(-0x7be0);
+    const auto today_word = scenario.r32(scenario.toc(-0x7b80));
+    const int today_day = std::int16_t(today_word >> 16), today_year = int(today_word & 0xffff);
+    const auto live_press = scenario.global(-0x7b94);
+    const std::array<std::uint32_t, 3> history = {scenario.r32(live_press), scenario.r32(live_press + 4), scenario.r32(live_press + 8)};
+    std::vector<std::uint32_t> people;
+    for (std::uint32_t i = 0; people.size() < 2 && i < 20000; ++i) {
+        const auto p = persons + i * 0x70;
+        if (scenario.r32(p + 0x14) && scenario.r32(p + 0x28) && scenario.r32(p + 0x2c) && scenario.r32(p + 0x30) && scenario.r32(p + 0x24)) {
+            const auto home = scenario.r32(p + 0x24), manager = scenario.r32(home + 0x90);
+            if (manager && scenario.r32(manager + 0x28) && scenario.r32(manager + 0x2c) && scenario.r32(manager + 0x30)) people.push_back(i);
+        }
+    }
+    std::vector<std::uint32_t> clubs;
+    for (std::uint32_t i = 0; clubs.size() < 3 && i < 400; ++i) {
+        const auto manager = scenario.r32(scenario.club(i) + 0x90);
+        if (manager && scenario.r32(manager + 0x28) && scenario.r32(manager + 0x2c) && scenario.r32(manager + 0x30)) clubs.push_back(i);
+    }
+    if (people.empty() || clubs.size() < 3) return;
+    const auto A = people[0];
+    const auto X = clubs[0], Y = clubs[1], Z = clubs[2];
+    const auto person = persons + A * 0x70;
+    const auto contract = scenario.r32(person + 0x14);
+    const auto audience = stack_top - 0x220 + 0x64;  // the frame's array of places (0x103fc710 fills it for real)
+
+    const auto run = [&](const std::vector<std::uint32_t>& listed, std::uint32_t listed_count, const char* label) {
+        std::vector<Row> rows;
+        for (const auto club : {X, Y}) rows.push_back(Row{A, club, today_day, today_year, 0, 11, 100});
+        Writes memory = event_rows(rows, history);
+        append(memory, random_table(scenario, {25, 100, 7, 3}, 0));
+        append(memory, {w32(found_at + 4, X), b8(standing_at + 0x44, 60), b8(standing_at + 0x54, 0), w32(scenario.toc(-0x7b40), cache_at),
+                        b8(person + 0x65, 5), b8(person + 0x67, 5), h16(contract + 0xc, 0x7fff)});
+        for (std::size_t n = 0; n < listed.size(); ++n) memory.push_back(w32(audience + 4 * std::uint32_t(n), scenario.club(listed[n])));
+        // The standing lookups are the game's own (real people are members of their clubs); everything else outside the module is answered.
+        cases.push_back({.entry = entry_events, .registers = entry_registers(press_at), .memory = std::move(memory), .f1 = 1234.5, .label = label,
+                         .answers = {{cached, 1}, {club_flag, 0}, {person_flag, 0}, {fame, 5}, {listed_clubs, listed_count}, {rival_report, 0}}});
+    };
+    // The row clubs X then Y: X listed first (found with the list longer than one), Y listed last, both, neither, the list longer.
+    run({X, Y}, 2, "audience holds the first row club");
+    run({Y, X}, 2, "audience holds the first row club last");
+    run({X, Z, Y}, 3, "audience holds both row clubs");
+    run({Z, Y, X, Z}, 4, "audience holds both, later");
+    run({Z, X}, 2, "audience holds the club last");
+    run({Z, Z}, 2, "audience holds neither");
+    run({X}, 1, "audience holds one");
+}

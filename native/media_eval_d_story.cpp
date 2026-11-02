@@ -61,7 +61,6 @@ private:
     // The player's trait bytes (-128..127) the stories read and age.
     Person me() const { return {c, player}; }
     std::int32_t ambition() const { return me().ambition().get(); }
-    std::int32_t trait_64() const { return me().trait_64().get(); }
     std::int32_t loyalty() const { return me().loyalty().get(); }
     std::int32_t professionalism() const { return me().professionalism().get(); }
     std::int32_t sportsmanship() const { return me().sportsmanship().get(); }

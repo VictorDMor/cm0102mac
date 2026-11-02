@@ -78,7 +78,7 @@ bool Story::say_headline(std::span<const HeadlineEntry> table) {
         switch (entry.words) {
         case Words::club: say(body, phrase(entry.phrase), entry.back, {home_marker(), home_marker(), home_short()}); break;
         case Words::club_and_row: say(body, phrase(entry.phrase), entry.back, {home_marker(), home_marker(), home_short(), home()}); break;
-        case Words::subject: say(body, phrase(entry.phrase), entry.back, {subject_short}); break;
+        default: say(body, phrase(entry.phrase), entry.back, {subject_short}); break;  // Words::subject
         }
         return true;
     }

@@ -482,3 +482,16 @@ MEDIA_CASES("values-press") {
         }
     }
 }
+
+// A rating change for no club (the null page is readable in that mode): the club's rating counts as 0 and the report is
+// made, so the report's choice by rating (0x1066bc50) takes the zero rating: a fall from a weak rating, a fall, a rise.
+MEDIA_CASES("values-no-club") {
+    const auto people = contracted_persons(scenario, 2);
+    for (const std::uint32_t entry : {0x1066b600u, 0x1066bc50u})
+        for (const std::uint32_t change : {0xfffffb74u /* -1164 */, 0xfffffda8u /* -600 */, 1100u, 700u})
+            for (const auto& [a, b] : std::vector<std::pair<std::uint32_t, std::uint32_t>>{{0, 0}, {1, 0}, {0, 1}}) {
+                const std::uint32_t first = entry == 0x1066bc50 ? 0x100d9520 : 0x100d9480, second = entry == 0x1066bc50 ? 0x100d9580 : 0x100d94d0;
+                cases.push_back({.entry = entry, .registers = args({{4, 0}, {5, people[0]}, {6, 7}, {7, change}, {8, 1}, {9, 1}}), .memory = {}, .f1 = {},
+                                 .label = "no club, reported", .answers = {{first, a}, {second, b}}});
+            }
+}

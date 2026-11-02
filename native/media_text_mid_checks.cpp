@@ -358,3 +358,115 @@ MEDIA_CASES("text_mid") {
                             "rumour short story=" + std::to_string(int(story)) + " staff=" + std::to_string(staff_index) + " count=" + std::to_string(count) +
                                 " other=" + std::to_string(int(other_club)) + " lead=" + std::to_string(int(lead_club))));
 }
+
+// Outcomes the first sections do not reach: a story record whose clubs run to the record's fiftieth field, a story that
+// names no other club (the linked story, with and without money, with and without a user's manager), a staff id below zero,
+// the user's region taken from his manager's own record, a sent-off story without a second club, and a competition win
+// whose figures stop at the reputation 0x1c52 exactly.
+MEDIA_CASES("text_mid") {
+    const auto staff = named_staff(scenario, 3);
+    if (staff.size() < 3) throw std::runtime_error("text_mid cases: no named staff in the snapshot");
+    const auto user_base = scenario.toc(-0x7bb0);
+    const auto user_row = user_base + std::uint32_t(std::int32_t(std::int16_t(scenario.r32(user_base + 0x2c58) >> 16))) * 0x2c0;
+    std::uint32_t club_with_player = 7;
+    for (std::uint32_t index = 0; index < 400; ++index)
+        if (scenario.r32(scenario.club(index) + 0x3c) && scenario.r32(scenario.club(index) + 0x2c)) { club_with_player = index; break; }
+    const auto user_manager = scratch_base + 0x8000, manager_club = scratch_base + 0x8100;
+    const auto nation = scenario.r32(scenario.club(club_with_player) + 0x2c);
+    enum class Nation { none, same_by_club, same_by_manager, differs };
+    // The user's manager: none, with a club of this region, with no club and this region of his own, or another region.
+    const auto nation_writes = [&](Nation how, std::uint32_t region) {
+        Writes out;
+        switch (how) {
+        case Nation::none: put32(out, user_row + 4, 0); break;
+        case Nation::same_by_club: put32(out, user_row + 4, user_manager); put32(out, user_manager + 0x24, manager_club); put32(out, manager_club + 0x2c, region); break;
+        case Nation::same_by_manager: put32(out, user_row + 4, user_manager); put32(out, user_manager + 0x24, 0); put32(out, user_manager + 0xc, region); break;
+        case Nation::differs: put32(out, user_row + 4, user_manager); put32(out, user_manager + 0x24, 0); put32(out, user_manager + 0xc, region + 4); break;
+        }
+        return out;
+    };
+    const auto club_region = [&](std::uint32_t club) { return scenario.r32(scenario.club(club) + 0x2c); };
+    // The transfer story's record: staff (id and name), another club, the story type, money, a reply kind, two amount words,
+    // a second staff member (none), an undecided flag, the number of clubs and the clubs.
+    const auto rumour = [&](std::uint32_t staff_id, std::uint32_t story, std::uint32_t other_club, std::uint32_t money, std::uint32_t count,
+                            const std::vector<std::uint32_t>& clubs) {
+        const auto& s = staff[0];
+        std::vector<std::uint32_t> values{staff_id, s.first, s.middle, s.last, other_club, story, money, 0, 100, 5, 0xffffffffu,
+                                          staff[1].first, staff[1].middle, staff[1].last, 0, count};
+        values.insert(values.end(), clubs.begin(), clubs.end());
+        Writes out;
+        // The list is read at index 0 even when the record has no club: a value in the frame the routine never wrote.
+        put32(out, std::uint32_t(scenario.s.r<4>(4)) - 0x5c0 + 0x54, club_with_player);
+        for (std::size_t n = 0; n < values.size(); ++n) put32(out, record_at + 8 + 4 * std::uint32_t(n), values[n]);
+        return out;
+    };
+    const auto run = [&](std::uint32_t full, Writes memory, std::string label) {
+        cases.push_back(make(0x1069ace0, {{3, 0}, {4, record_at}, {5, full}, {6, output_at}}, std::move(memory), std::move(label)));
+    };
+    const auto text = [](std::uint32_t value) { return std::to_string(int(value)); };
+
+    // 0x1069ace0: transfer_rumour_text. The club list stops where the record's fifty fields run out (sixteen fields precede it).
+    for (const std::uint32_t full : {1u, 0u})
+        for (const std::uint32_t story : {0x24u, 1u, 0u})
+            for (const std::uint32_t other_club : {0xffffffffu, 8u})
+                for (const std::uint32_t count : {35u, 40u}) {
+                    std::vector<std::uint32_t> clubs;
+                    for (std::uint32_t n = 0; n < count; ++n) clubs.push_back(n == 0 ? club_with_player : 7 + (n * 2) % 9);
+                    run(full, join({rumour(staff[0].index, story, other_club, 5, count, clubs), nation_writes(Nation::same_by_club, nation)}),
+                        "rumour full=" + text(full) + " story=" + text(story) + " other=" + text(other_club) + " clubs run out, count=" + text(count));
+                }
+    // The linked story (1) names the user's region: with no other club and no money, and with money only; with and without a user's manager.
+    for (const std::uint32_t money : {0u, 5u})
+        for (const std::uint32_t count : {0u, 1u, 2u, 5u})
+            for (const auto how : {Nation::none, Nation::same_by_club, Nation::same_by_manager, Nation::differs}) {
+                std::vector<std::uint32_t> clubs;
+                for (std::uint32_t n = 0; n < count; ++n) clubs.push_back(n == 0 ? club_with_player : 7 + (n * 2) % 9);
+                run(1, join({rumour(staff[0].index, 1, 0xffffffffu, money, count, clubs), nation_writes(how, nation)}),
+                    "rumour linked, no other club money=" + text(money) + " count=" + text(count) + " nation=" + text(int(how)));
+            }
+    // A manager without a club whose own region is the region the story names: the other club's region (the story's remainder is 1 or 2).
+    for (std::uint32_t other_club = 8; other_club < 60; ++other_club) {
+        if (!club_region(other_club)) continue;
+        for (const std::uint32_t story : {1u, 2u, 0u}) {
+            const auto sum = std::int32_t(0 + staff[0].index + other_club + story) - 1;  // (the count of clubs is 0, the second staff member -1)
+            if (sum % 6 != 1 && sum % 6 != 2) continue;
+            for (const auto how : {Nation::same_by_manager, Nation::differs, Nation::same_by_club})
+                run(1, join({rumour(staff[0].index, story, other_club, 0, 0, {club_with_player}), nation_writes(how, club_region(other_club))}),
+                    "rumour region of club " + text(other_club) + " story=" + text(story) + " nation=" + text(int(how)));
+        }
+    }
+    // A staff id below zero: the remainder by three is negative, and the story's club is chosen by the count.
+    for (const std::uint32_t full : {0u, 1u})
+        for (const std::uint32_t staff_id : {0xffffffffu, 0xfffffffeu, 0xfffffffdu})
+            for (const std::uint32_t story : {0u, 2u, 0xffffffffu})
+                for (const std::uint32_t count : {0u, 1u, 2u}) {
+                    std::vector<std::uint32_t> clubs;
+                    for (std::uint32_t n = 0; n < count; ++n) clubs.push_back(n == 0 ? club_with_player : 7 + (n * 2) % 9);
+                    run(full, join({rumour(staff_id, story, 8, 0, count, clubs), nation_writes(Nation::same_by_club, nation)}),
+                        "rumour full=" + text(full) + " staff id=" + text(staff_id) + " story=" + text(story) + " count=" + text(count));
+                }
+
+    // 0x106a2330: sent_off_text with no second club (the id -1): the original takes the club at address 0.
+    for (const std::uint32_t full : {1u, 0u})
+        for (const std::uint32_t kind : {0u, 1u}) {
+            const auto& a = staff[0];
+            const auto& b = staff[1];
+            const auto& d = staff[2];
+            cases.push_back(make(0x106a2330, {{3, 0}, {4, record_at}, {5, full}, {6, output_at}},
+                fields(record_at, {a.index, a.first, a.middle, a.last, b.index, b.first, b.middle, b.last, kind, club_with_player, 0xffffffffu,
+                                   12, d.index, d.first, d.middle, d.last, a.index, a.first, a.middle, a.last, 0,
+                                   150, 2001, 3, 1, 2, 4, club_with_player, club_with_player + 1, 2, 1, 5}),
+                "sent off, no second club full=" + text(full) + " kind=" + text(kind)));
+        }
+
+    // 0x106a7120: competition_win_text, a third-place or lower story of a competition of level 11 that is not a first season: the
+    // reputation now is 0x1b58, before 0x1500: the sixth text needs a reputation now above 0x1c52, which this is not.
+    for (const std::uint32_t before : {0x1500u, 0x1a5eu, 0x1c52u})
+        for (const std::uint32_t now : {0x1b58u, 0x1c52u, 0x1c53u}) {
+            auto memory = fields(record_at, {staff[0].index, staff[0].first, staff[0].middle, staff[0].last, club_with_player, 3, 3, 1, 0xffffffffu, 3, before, 0, 400, now});
+            memory.push_back({2, scenario.competition(3) + 0x18, 11});
+            memory.insert(memory.end(), {{4, user_row + 4, 0}});
+            cases.push_back(make(0x106a7120, {{3, 0}, {4, record_at}, {5, 1}, {6, output_at}}, memory,
+                "win level 11 before=" + std::to_string(before) + " now=" + std::to_string(now)));
+        }
+}

@@ -16,7 +16,7 @@ using namespace detail::small;
 
 namespace entry {
 constexpr std::uint32_t decode_match = 0x1030dee0, today = 0x10715880, adjective = 0x10168a00, sprintf = 0x1077b720,
-    append = 0x1077dc60, age_text = 0x100db410, match_text = 0x100d6300, position_text = 0x100d6af0,
+    age_text = 0x100db410, match_text = 0x100d6300, position_text = 0x100d6af0,
             nation_text = 0x100c76c0,
     fixture = 0x1029eb20, set_text = 0x1074b830;
 }
@@ -40,7 +40,7 @@ enum class Dest : std::uint16_t { story_text = 0x1e3c, reply_text = 0x6cc, outle
 enum class Of : std::uint8_t { nation, person_record };
 
 // One phrase of the pool with the address after the call that writes it, up to sixteen arguments, where it
-// goes and what goes with it: a nationality adjective written first, and the paragraph appended after.
+// goes and what goes with it: a nationality adjective written first.
 struct Line {
     std::uint32_t phrase, back;
     std::array<Arg, 16> args;
@@ -49,13 +49,12 @@ struct Line {
     bool sprintf_form = false;
     std::uint8_t adjective_kind = 0;
     Of adjective_of = Of::nation;
-    std::uint32_t adjective_back = 0, append_back = 0;
+    std::uint32_t adjective_back = 0;
     constexpr Line to(Dest d) const { Line l = *this; l.dest = d; return l; }
     constexpr Line plain() const { Line l = *this; l.sprintf_form = true; return l; }
     constexpr Line adjective(std::uint8_t kind, std::uint32_t at, Of of) const {
         Line l = *this; l.adjective_kind = kind; l.adjective_back = at; l.adjective_of = of; return l;
     }
-    constexpr Line append(std::uint32_t at) const { Line l = *this; l.append_back = at; return l; }
 };
 template <class... A>
 constexpr Line L(std::uint32_t phrase, std::uint32_t back, A... args) {
@@ -126,7 +125,7 @@ struct Story {
     }
     std::uint32_t team_at() const { return c.u32(c.toc(teams_slot)) + team() * 0x38; }
     std::uint32_t value(Arg arg) const;
-    // Writes the line (after its adjective, before its appended paragraph).
+    // Writes the line (after its adjective).
     void say(const Line& line);
     void clobber_register(unsigned n) { c.set(n, clubs()); }
     void reseed_tone();

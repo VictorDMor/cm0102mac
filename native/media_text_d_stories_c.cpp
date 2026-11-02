@@ -7,7 +7,7 @@ using namespace detail;
 
 // Story 0x3d: the supporters turn on the club after a match. The wording depends on the kind (2: the user's own
 // view, 0 and 1: the club's fans, other: unhappy), on whether the match was a defeat or a draw, and on whether
-// the match has a round to name ("semi final", and so on) in its competition.
+// the match has a named knockout round in its competition.
 void Story::fans_protest_match() {
     if (cmp(sb(has_match), 0) == 0) return no_match();
     score(0x106936f0);

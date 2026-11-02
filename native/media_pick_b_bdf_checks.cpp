@@ -238,3 +238,76 @@ MEDIA_CASES("pick_b_bdf") {
                 add(club, story, with(club, {table(scenario, {1, 0, 0, 0, 0, 0})}),
                     {{club_check, story == 0x5a}, {club_gate, gate}, {manager_effect, effect}, {queue_id, queue_word}, {queue_known, 1}}, "history");
 }
+
+// ---- Closing the last uncovered outcomes (central coverage run). The history already holds the story (0x1069e700 is a media
+// routine, so its answer is ignored in the central run: a one-row history is laid out in the press object), a negative sample
+// for the tier's third draw (a seed word below zero), and the margin below the lively mark for the stories 0x50 and 0x51.
+MEDIA_CASES("pick_b_bdf_closure") {
+    const auto self = scenario.global(-0x7b94);
+    std::vector<Club> clubs;
+    for (unsigned i = 0; clubs.size() < 3 && i < 400; ++i) {
+        const auto at = scenario.club(i);
+        const auto manager = scenario.r32(at + 0x90);
+        const Club club{at, scenario.r32(at + 0x2c), scenario.r32(at + 0x30), scenario.r32(at + 0x3c), manager, manager ? scenario.r32(manager + 0x1c) : 0};
+        if (club.owner && club.link && club.third && club.manager && club.manager_link) clubs.push_back(club);
+    }
+    if (clubs.empty()) return;
+    const auto& club = clubs[0];
+    const auto today = scenario.toc(-0x7b80), copy_date = scenario.toc(-0x7a9c);
+    const auto year = scenario.r32(today) & 0xffff;
+    const auto fixture = [&]() {
+        Writes out{h16(copy_date + 2, year - 1), h16(club.at + 0x1ec, 0x1400)};
+        append(out, {w32(player_at + 0x14, contract_at), h16(contract_at + 0xa, 0x1000), w32(player_at, 77), w32(player_at + 0x24, link24_at),
+                     w32(link24_at, 0x2468), w32(player_at + 0x20, link20_at), w32(link20_at, 0x1357), b8(player_at + 0x60, 3),
+                     b8(player_at + 0x62, 4), b8(player_at + 0x5e, 1), w32(player_at + 0x28, ids_at), w32(player_at + 0x2c, ids_at + 0x40),
+                     w32(player_at + 0x30, ids_at + 0x80), w32(ids_at + 0x20, 11), w32(ids_at + 0x60, 12), w32(ids_at + 0xa0, 13),
+                     b8(match_at + 0x49, 2), b8(match_at + 0x4a, 1), w32(match_at + 0x1c, club.at), w32(match_at + 0x20, 0x5555),
+                     w32(queue_word, 0x3131)});
+        return out;
+    };
+    const auto add = [&](std::uint32_t story, std::initializer_list<Writes> more, Answers answers, const char* label, std::uint32_t margin = 5) {
+        auto memory = fixture();
+        for (const auto& part : more) append(memory, part);
+        answers.push_back({match_text, 0});
+        answers.push_back({match_fields, 0});
+        cases.push_back({.entry = entry_bdf, .registers = arguments(self, club.at, story, player_at, match_at, margin, 0x99), .memory = std::move(memory),
+                         .f1 = {}, .label = label, .answers = std::move(answers)});
+    };
+    const Answers quiet_club{{club_check, 0}, {club_gate, 0}, {queue_id, queue_word}, {queue_known, 1}};
+
+    // The history holds the story for this club: a row of story 0xbdf with the club's id and the story number as its grade (the scan
+    // of a story without expiry ignores the person); a row of another story number, club or story does not stop the item.
+    const auto club_id = scenario.r32(club.at);
+    const std::uint32_t history_at = scratch_base + 0x30000;
+    const auto row = [&](unsigned n, std::uint32_t row_club, std::uint32_t grade, std::uint32_t story) {
+        const auto at = history_at + n * 0x18;
+        return Writes{w32(at + 8, 77), w32(at + 0xc, row_club), b8(at + 0x10, 0), h16(at + 0x12, grade), w32(at + 0x14, story)};
+    };
+    const auto history = [&](std::initializer_list<Writes> rows) {
+        Writes out{w32(self, history_at), w32(self + 4, 8), w32(self + 8, std::uint32_t(rows.size()))};
+        for (const auto& r : rows) append(out, r);
+        return out;
+    };
+    for (const std::uint32_t story : {0x3du, 0x41u, 0x60u}) {
+        add(story, {table(scenario, {1, 0, 0, 0, 0, 0}), history({row(0, club_id, story, 0xbdf)})}, quiet_club, "history holds the story");
+        add(story, {table(scenario, {1, 0, 0, 0, 0, 0}), history({row(0, club_id + 1, story, 0xbdf), row(1, club_id, story, 0xbdf)})}, quiet_club, "history, second row");
+        add(story, {table(scenario, {1, 0, 0, 0, 0, 0}), history({row(0, club_id, story + 1, 0xbdf)})}, quiet_club, "history, other grade");
+        add(story, {table(scenario, {1, 0, 0, 0, 0, 0}), history({row(0, club_id + 1, story, 0xbdf)})}, quiet_club, "history, other club");
+        add(story, {table(scenario, {1, 0, 0, 0, 0, 0}), history({row(0, club_id, story, 0xbdd)})}, quiet_club, "history, other item");
+    }
+
+    // The tier's third draw below zero: the club's rating under the first draw's threshold (a negative remainder lowers it), the
+    // gate closed, and a seed word below zero, so x % 3 is -2, -1 or 0 and the choice of the tier is not the plain one.
+    for (const std::uint32_t seed : {0xfffffff0u, 0xfffffff1u, 0xfffffff2u, 0xffffffffu, 0xfffff000u})
+        for (const std::uint32_t entry : {0u, 1u})
+            add(0x3d, {{h16(club.at + 0x1ec, 0x1000)}, table(scenario, {entry, entry, entry, entry, entry, entry}, seed)}, quiet_club, "negative third draw");
+
+    // The stories 0x50 and 0x51 posted with the club below the top bracket (rating under 0x2328, level over 15) and the margin at or
+    // below 15: the lively test fails on the margin. The margin bonus applies from above 0x14 only.
+    for (const std::uint32_t story : {0x50u, 0x51u, 0x3du})
+        for (const std::uint32_t margin : {0u, 5u, 0xfu, 0x10u, 0x15u, 0x80u})
+            for (const std::uint32_t rating : {0x2000u, 0x2327u})
+                for (const std::uint32_t gate : {0u, 1u})
+                    add(story, {{h16(club.at + 0x1ec, rating), h16(club.link + 0x18, 0x10)}, table(scenario, {1, 0, 0, 0, 0, 0, 0, 0})},
+                        {{club_check, 0}, {club_gate, gate}, {queue_id, queue_word}, {queue_known, 1}}, "lively margin", margin);
+}

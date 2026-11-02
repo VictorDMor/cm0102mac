@@ -41,8 +41,9 @@ constexpr std::array<Roll, 40> rolls = [] {
     for (const int story : {0x42, 0x5d}) table[std::size_t(story - 0x3c)] = Roll::clears_by_3_late;
     return table;
 }();
-// The second switch, on the player's byte +0x62 (0-15): the kinds that are told, the others get -1.
-constexpr bool told_kind(std::uint32_t kind) { return kind <= 15 && ((0xb17eu >> kind) & 1); }
+// The second switch, on the player's byte +0x62 (0-15): the kinds that are told, the others get -1. The caller has
+// already sent the kinds above 15 to -1 (the original's range test before its jump table).
+constexpr bool told_kind(std::uint32_t kind) { return ((0xb17eu >> kind) & 1) != 0; }
 
 // Stories that have no pick and no follow-up: 0x3e, 0x50, 0x51 and 0x5e.
 bool exempt_story(Cpu& c, std::int32_t story) {
@@ -179,7 +180,7 @@ void Bdf::choose_pick() {
         set_pick(std::uint32_t(draw(0x106895bc) % 2));
         if (compare(c, std::int32_t(pick)) != 0) set_player(0);
         break;
-    case Roll::unlisted:
+    default:  // Roll::unlisted: the switch has no other value, so the last case takes the default
         set_pick(0);
         story_register = 0x63;
         c.set(17, 0x63);

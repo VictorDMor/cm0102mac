@@ -73,7 +73,7 @@ void Reaction::other_100() {
     switch (band(0x78)) {
     case Band::above: return high_verdict(*this);
     case Band::below: return low_verdict(*this);
-    case Band::between: return middle_verdict(*this);
+    default: return middle_verdict(*this);  // Band::between
     }
 }
 }

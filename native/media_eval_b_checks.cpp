@@ -151,3 +151,107 @@ MEDIA_CASES("eval_b") {
         cases.push_back({.entry = entry, .registers = {{3, log}, {4, squads[0].club}, {5, 1}, {6, 0x80}, {8, 1}, {9, 5}, {10, squads[1].players[0]}}, .memory = {}, .f1 = 1.0, .label = "player of another club"});
     }
 }
+
+// Closing cases for the outcomes the sweeps above leave out: the player's own contract answered by a scratch
+// record that the case fills (flags, morale, happiness), traits beyond the usual range, tally bytes at and above
+// 50, club members without a profile, and the factors that make the bounded draw's range exactly the pool's
+// marker, zero, or negative.
+MEDIA_CASES("eval_b") {
+    const auto log = scenario.global(-0x7bf0);
+    const auto ratings = scenario.global(-0x79f0);
+    const auto singles = scenario.toc(-0x4200), pool = scenario.toc(-0x41fc);
+    const auto tallies = scenario.global(-0x7b9c);
+    constexpr std::uint32_t contract_at = scratch_base + 0x4000;
+    struct Squad {
+        std::uint32_t club;
+        std::vector<std::uint32_t> players;
+    };
+    std::vector<Squad> squads;
+    for (unsigned i = 0; i < 600 && squads.size() < 12; ++i) {
+        const auto club = scenario.club(i);
+        if (!scenario.r32(club) || scenario.r32(club) >= 100 || !scenario.r32(club + 0x90)) continue;
+        Squad squad{club, {}};
+        for (unsigned slot = 0; slot < 50; ++slot) {
+            const auto person = scenario.r32(club + 0x98 + 4 * slot);
+            if (person && scenario.r32(person + 0x14)) squad.players.push_back(person);
+        }
+        if (squad.players.size() >= 5) squads.push_back(squad);
+    }
+    if (squads.size() < 3) return;
+    const auto as_float = [&](std::uint32_t at) { const auto bits = scenario.r32(at); float f; std::memcpy(&f, &bits, 4); return double(f); };
+    const double marker = as_float(singles + 8), base = as_float(singles + 0x50);
+    std::mt19937 random(0xeb02);
+    const auto pick = [&](std::initializer_list<int> values) { return *(values.begin() + random() % values.size()); };
+    // One closing case. `shape` picks the table: 0 random, 1 constant, 2 alternating low/high, 3 zeros with one high.
+    const auto make = [&](std::uint32_t kind, std::uint32_t flags, double factor, bool answered_contract, const char* label) {
+        const auto& squad = squads[random() % squads.size()];
+        const auto club = squad.club;
+        const auto player = squad.players[random() % squad.players.size()];
+        std::vector<Write> memory;
+        const auto row = ratings ? scenario.r32(ratings) + scenario.r32(club) * 0x4c : 0;
+        memory.push_back(h16(row + 0xa, pick({5000, 9999, 0x2711, 1})));
+        const auto rival = squad.players[random() % squad.players.size()];
+        memory.push_back(w32(club + 0x80, rival));
+        memory.push_back(b8(rival + 0x63, pick({0, 5, 20, 127})));
+        memory.push_back(w32(log, list_at));
+        memory.push_back(w32(log + 8, 3));
+        const bool listed = random() % 4 == 0;
+        for (unsigned i = 0; i < 3; ++i) {
+            memory.push_back(w32(list_at + i * 0x18 + 8, listed && i == 1 ? scenario.r32(player) : 0x7777 + i));
+            memory.push_back(b8(list_at + i * 0x18 + 0x10, listed ? 2 : i));
+        }
+        // The marker the verdict is compared with, below the lean too, so that a call with neither flag may raise one.
+        put_double(memory, pool + 0x38, double(pick({5, -5, -10, -20, -30, -500, -1000, -2000, -4000})) / 10.0);
+        // The player's traits (ambition .. temperament), beyond the usual range and at both signs.
+        for (unsigned offset = 0x63; offset <= 0x69; ++offset)
+            memory.push_back(b8(player + offset, pick({-128, -1, 0, 1, 2, 3, 6, 7, 8, 10, 15, 19, 20, 21, 22, 25, 28, 29, 40, 127})));
+        const auto record = scenario.r32(player + 0x14);
+        for (const unsigned offset : {0x1cu, 0x25u, 0x2fu, 0x44u, 0x45u})
+            memory.push_back(b8(record + offset, pick({-5, 0, 1, 4, 5, 10, 11, 19, 20, 21, 25, 40, 127})));
+        const auto id = scenario.r32(player);
+        memory.push_back(b8(tallies + id * 0x64 + 0xa, pick({0, 10, 49, 50, 51, 60, 255})));
+        memory.push_back(b8(tallies + id * 0x64 + 0xc, random() % 256));
+        // A bystander without a profile.
+        if (random() % 5 == 0) {
+            for (const auto other : squad.players) if (other != player) { memory.push_back(w32(other + 0x14, 0)); break; }
+        }
+        std::vector<std::uint32_t> entries;
+        const unsigned shape = random() % 4;
+        const auto low = std::uint32_t(pick({0, 1, 2, 3, 5, 7, 19, 29, 49, 59, 99, 119}));
+        const auto high = std::uint32_t(pick({0xffff, 0x7fff, 0xfffe, 29, 59, 89, 100, 127, 200}));
+        for (unsigned i = 0; i < 700; ++i)
+            entries.push_back(shape == 0 ? random() % 0x10000 : shape == 1 ? low : shape == 2 ? (i % 2 ? high : low) : (i % 5 == 3 ? high : low));
+        const auto t = table(scenario, entries, random() % 2 ? 0 : random() % 0x10000, 700);
+        memory.insert(memory.end(), t.begin(), t.end());
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> answers;
+        if (answered_contract) {
+            const std::uint32_t bits[] = {0x2000000, 0x40000, 0x100000, 0x8, 0x2000, 0x80000, 0x80, 0x4000000};
+            std::uint32_t contract_flags = 0;
+            for (const auto bit : bits) if (random() % 3 == 0) contract_flags |= bit;
+            if (kind == 0x13 && random() % 2) contract_flags |= 0x2000000;
+            memory.push_back(w32(contract_at + 0x50, contract_flags));
+            memory.push_back(b8(contract_at + 0x4c, pick({-100, -60, -51, -50, -49, 0, 30, 100})));
+            memory.push_back(b8(contract_at + 0x44, pick({-5, 0, 5, 20, 100})));
+            memory.push_back(b8(contract_at + 0x60, 0xf0 | random() % 16));
+            // The finder is answered for both the player and the visited person; the checks of other modules too.
+            answers = {{0x10082f90, contract_at}, {0x10187680, std::uint32_t(pick({0, 1, 2, 2}))},
+                       {0x10003dc0, std::uint32_t(random() % 2)}, {0x103f43b0, std::uint32_t(random() % 2)}, {0x100cab10, std::uint32_t(random() % 3 != 0)}};
+        }
+        cases.push_back({.entry = entry,
+                         .registers = {{3, log}, {4, club}, {5, kind}, {6, flags}, {7, 0x71717171}, {8, std::uint32_t(1 + random() % 3)}, {9, std::uint32_t(pick({0, 5, -5}))}, {10, player}},
+                         .memory = memory, .f1 = factor, .label = label, .answers = answers});
+    };
+    // The player's own contract answered: the reactions against the player (flags 0x100 and 0x80), every kind.
+    for (const auto kind : {0x13u, 6u, 1u, 0x1eu, 3u, 0xau, 0x20u, 4u, 0u})
+        for (const auto flags : {0x100u, 0x80u, 0u, 0x20u, 0x40u, 0x100u | 0x400u})
+            for (unsigned n = 0; n < 160; ++n)
+                make(kind, flags, double(pick({-30, -3, 0, 5, 10, 30, 100, 400, 2000, 700000, -700000, 3000000})) / 10.0, true, "answered contract");
+    // The bounded draw (flag 0x20): the sum equal to the pool's marker, a range of zero, a negative range.
+    for (unsigned n = 0; n < 60; ++n) {
+        make(1, 0x20, marker - base, n % 2, "range equal to the marker");
+        make(1, 0x20, 0.5 - base, n % 2, "range of zero");
+        make(1, 0x20, -base - double(pick({1, 5, 40, 300})), n % 2, "negative range");
+        make(6, 0x20 | 0x400, 0.5 - base, n % 2, "range of zero");
+        make(6, 0x20 | 0x400, -base - double(pick({1, 5, 40, 300})), n % 2, "negative range");
+    }
+}
