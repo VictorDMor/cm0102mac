@@ -22,6 +22,8 @@ constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned maximize_attributes_action = 30009;
+constexpr unsigned restore_attributes_action = 30016;
+static_assert(restore_attributes_action > shortcut_last);
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -904,8 +906,11 @@ void append_debug_contract_action(State& s) {
     };
     const auto contract = debug_primary_contract(s, call, staff);
     if (staff && debug_attribute_persistence::resolve(s, debug_attribute_persistence::tables(s),
-            std::uint32_t(s.memory.read<4>(staff))) == staff)
+            std::uint32_t(s.memory.read<4>(staff))) == staff) {
         append(DebugText::maximize_attributes, maximize_attributes_action);
+        if (!s.memory.original_debug_player_attributes(staff, std::uint32_t(s.memory.read<4>(staff + 0x14))).empty())
+            append(DebugText::restore_attributes, restore_attributes_action);
+    }
     if (contract) {
         append(DebugText::extend_contract, extend_contract_action);
         if (s.memory.read<1>(contract + 0x1d)) append(DebugText::remove_sale_clause, remove_sale_clause_action);
@@ -920,22 +925,23 @@ bool dispatch_debug_contract_action(State& s) {
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
     if (action != extend_contract_action && action != cancel_sale_action && action != remove_sale_clause_action &&
-        action != maximize_attributes_action) return false;
+        action != maximize_attributes_action && action != restore_attributes_action) return false;
     bool accepted = false;
     if (s.memory.read<4>(control + 12) & 2) {
         GuestCall call(s);
         const auto staff = call.call(0x1073ef70, {root(s), 0});
-        if (action == maximize_attributes_action) {
+        if (action == maximize_attributes_action || action == restore_attributes_action) {
             if (staff && (!s.platform || s.platform->debug_attribute_change_available()) &&
                 debug_attribute_persistence::resolve(s, debug_attribute_persistence::tables(s),
                     std::uint32_t(s.memory.read<4>(staff))) == staff) {
-                s.memory.lock_debug_player_attributes(staff, std::uint32_t(s.memory.read<4>(staff + 0x14)));
-                accepted = true;
+                const auto player = std::uint32_t(s.memory.read<4>(staff + 0x14));
+                if (action == restore_attributes_action) accepted = s.memory.restore_debug_player_attributes(staff, player);
+                else { s.memory.lock_debug_player_attributes(staff, player); accepted = true; }
             }
         } else if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
         else if (action == remove_sale_clause_action) accepted = remove_debug_sale_clause(s, staff);
         else if (current_managed_employer(s, call, staff)) accepted = cancel_scheduled_sale(s, staff);
-        // Refresh the player page after changing a contract or transfer.
+        // Refresh the player page after changing attributes, a contract or a transfer.
         if (accepted) call.call(0x103ab9e0, {});
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0));

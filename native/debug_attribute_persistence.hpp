@@ -1,5 +1,6 @@
 #pragma once
 #include "aot_runtime.hpp"
+#include "debug_player_attributes.hpp"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <array>
@@ -87,13 +88,16 @@ inline void save(const State& s, const std::filesystem::path& directory, const s
     const auto records = s.memory.debug_locked_players();
     const auto target = directory / save_key(career);
     std::ostringstream data;
-    data << "CMDEBUGATTR 1\n" << records.size() << '\n';
+    data << "CMDEBUGATTR 2\n" << records.size() << '\n';
     const auto t = tables(s);
     for (const auto& [staff, player] : records) {
         const auto id = std::uint32_t(s.memory.read<4>(staff));
         if (resolve(s, t, id) != staff || s.memory.read<4>(staff + 0x14) != player)
             throw std::runtime_error("Invalid locked player identity during save");
-        data << id << ' ' << identity(s, staff) << '\n';
+        const auto original = s.memory.original_debug_player_attributes(staff, player);
+        data << id << ' ' << identity(s, staff) << ' ' << original.size();
+        for (auto byte : original) data << ' ' << unsigned(byte);
+        data << '\n';
     }
     std::filesystem::create_directories(directory);
     auto pattern = (directory / ".locks-XXXXXX").string();
@@ -118,10 +122,11 @@ inline void load(State& s, const std::filesystem::path& directory, const std::fi
     if (!std::filesystem::exists(target)) return;
     std::ifstream data(target);
     std::string magic; unsigned version = 0; std::size_t count = 0;
-    if (!(data >> magic >> version >> count) || magic != "CMDEBUGATTR" || version != 1 || count > 100000)
+    if (!(data >> magic >> version >> count) || magic != "CMDEBUGATTR" || (version != 1 && version != 2) || count > 100000)
         throw std::runtime_error("Invalid attribute lock metadata");
     const auto t = tables(s);
-    std::vector<std::pair<std::uint32_t, std::uint32_t>> selected;
+    struct Record { std::uint32_t staff, player; std::vector<std::uint8_t> original; };
+    std::vector<Record> selected;
     std::set<std::uint32_t> seen_staff, seen_players;
     for (std::size_t i = 0; i < count; ++i) {
         std::uint32_t id; std::string fingerprint;
@@ -131,10 +136,22 @@ inline void load(State& s, const std::filesystem::path& directory, const std::fi
         const auto player = std::uint32_t(s.memory.read<4>(staff + 0x14));
         if (!seen_staff.insert(staff).second || !seen_players.insert(player).second)
             throw std::runtime_error("Duplicate player in attribute lock metadata");
-        selected.emplace_back(staff, player);
+        std::vector<std::uint8_t> original;
+        if (version == 2) {
+            int size = 0;
+            if (!(data >> size) || (size != 0 && size != int(debug_player_attributes::snapshot_size)))
+                throw std::runtime_error("Invalid original attribute count");
+            for (int j = 0; j < size; ++j) {
+                int byte = 0;
+                if (!(data >> byte) || byte < 0 || byte > 255) throw std::runtime_error("Invalid original attribute byte");
+                original.push_back(std::uint8_t(byte));
+            }
+        }
+        selected.push_back({staff, player, std::move(original)});
     }
     data >> std::ws;
     if (!data.eof()) throw std::runtime_error("Unexpected attribute lock metadata");
-    for (const auto& [staff, player] : selected) s.memory.lock_debug_player_attributes(staff, player);
+    for (const auto& record : selected)
+        s.memory.lock_debug_player_attributes(record.staff, record.player, &record.original);
 }
 }

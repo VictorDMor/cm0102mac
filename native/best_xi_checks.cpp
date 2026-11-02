@@ -325,7 +325,7 @@ int main(int argc, char** argv) {
         require(debug_text(9, DebugText::add_goal) == "Adicionar Gol" && debug_text(0, DebugText::add_goal) == "Add Goal" &&
                 debug_text(9, DebugText::goal) == "Gol" && debug_text(0, DebugText::goal) == "Goal", "Goal labels");
         for (unsigned language = 0; language < 11; ++language)
-            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::maximize_attributes})
+            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::maximize_attributes, DebugText::restore_attributes})
                 require(!debug_text(language, key).empty(), "Missing supported-language label");
         require(debug_text(255, DebugText::best_xi) == "Best XI", "Unknown language fallback");
         require(debug_text(9, DebugText::recover_squad) == "Recuperar" &&
@@ -343,6 +343,9 @@ int main(int argc, char** argv) {
         require(debug_text(9, DebugText::maximize_attributes) == "Maximizar Atributos" &&
                 debug_text(0, DebugText::maximize_attributes) == "Maximize Attributes" &&
                 debug_text(255, DebugText::maximize_attributes) == "Maximize Attributes", "Attribute localization/fallback");
+        require(debug_text(9, DebugText::restore_attributes) == "Restaurar Atributos Originais" &&
+                debug_text(0, DebugText::restore_attributes) == "Restore Original Attributes" &&
+                debug_text(255, DebugText::restore_attributes) == "Restore Original Attributes", "Restore localization/fallback");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         auto live = create_match({argv[1], argv[2], root}, {677, 5677, 12345, 2001, 194});
         auto& s = *live.state;

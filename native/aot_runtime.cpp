@@ -41,14 +41,37 @@ Memory::~Memory() { munmap(data_, UINT64_C(1) << 32); }
 bool Memory::apply_debug_attribute_lock(std::uint32_t address, std::size_t size) {
     return debug_attribute_lock_->apply(address, data_ + address, size);
 }
-void Memory::lock_debug_player_attributes(std::uint32_t staff, std::uint32_t player) {
+void Memory::lock_debug_player_attributes(std::uint32_t staff, std::uint32_t player,
+        const std::vector<std::uint8_t>* original) {
     // Reject incomplete records before applying any guest writes.
     check(staff, 0x70);
     check(player, 0x48);
+    if (original && !original->empty() && original->size() != debug_player_attributes::snapshot_size)
+        throw std::runtime_error("Invalid original player attributes");
+    // Repeated maximization must never replace the pre-cheat snapshot.
+    if (debug_attribute_lock_ && debug_attribute_lock_->contains(staff, player)) return;
+    std::vector<std::uint8_t> snapshot;
+    if (original) snapshot = *original;
+    else debug_player_attributes::for_each(staff, player, [&](auto address, auto) {
+        snapshot.push_back(std::uint8_t(read<1>(address)));
+    });
     if (!debug_attribute_lock_) debug_attribute_lock_ = std::make_unique<DebugAttributeLock>();
-    debug_attribute_lock_->add(staff, player);
+    debug_attribute_lock_->add(staff, player, snapshot);
     debug_attribute_lock_used_ = true;
     debug_player_attributes::for_each(staff, player, [&](auto address, auto value) { write<1>(address, value); });
+}
+std::vector<std::uint8_t> Memory::original_debug_player_attributes(std::uint32_t staff, std::uint32_t player) const {
+    return debug_attribute_lock_ ? debug_attribute_lock_->original(staff, player) : std::vector<std::uint8_t>{};
+}
+bool Memory::restore_debug_player_attributes(std::uint32_t staff, std::uint32_t player) {
+    const auto original = original_debug_player_attributes(staff, player);
+    if (original.empty()) return false;
+    check(staff, 0x70);
+    check(player, 0x48);
+    unlock_debug_player_attributes(staff);
+    std::size_t index = 0;
+    debug_player_attributes::for_each(staff, player, [&](auto address, auto) { write<1>(address, original[index++]); });
+    return true;
 }
 void Memory::unlock_debug_player_attributes(std::uint32_t staff) {
     if (!debug_attribute_lock_) return;

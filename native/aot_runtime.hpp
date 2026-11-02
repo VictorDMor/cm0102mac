@@ -175,7 +175,11 @@ public:
     std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
     Vector128 read_vector(std::uint64_t address) const;
     void write_vector(std::uint64_t address, const Vector128& value);
-    void lock_debug_player_attributes(std::uint32_t staff, std::uint32_t player);
+    // A supplied snapshot comes from metadata; an empty one denotes a legacy lock.
+    void lock_debug_player_attributes(std::uint32_t staff, std::uint32_t player,
+        const std::vector<std::uint8_t>* original = nullptr);
+    std::vector<std::uint8_t> original_debug_player_attributes(std::uint32_t staff, std::uint32_t player) const;
+    bool restore_debug_player_attributes(std::uint32_t staff, std::uint32_t player);
     void unlock_debug_player_attributes(std::uint32_t staff);
     void unlock_debug_player_record(std::uint32_t player);
     void clear_debug_player_attributes();

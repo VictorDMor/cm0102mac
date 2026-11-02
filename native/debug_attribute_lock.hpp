@@ -10,25 +10,34 @@ namespace cm::aot {
 // responsible for invalidating a registration before a record is reused.
 class DebugAttributeLock {
 public:
-    void add(std::uint32_t staff, std::uint32_t player) {
+    void add(std::uint32_t staff, std::uint32_t player, const std::vector<std::uint8_t>& original = {}) {
         remove(staff);
         remove_player(player);
         players_[staff] = player;
+        originals_[staff] = original;
         debug_player_attributes::for_each(staff, player, [&](auto address, auto value) {
             bytes_[address] = {staff, player, value};
         });
     }
     void remove(std::uint32_t staff) {
         players_.erase(staff);
+        originals_.erase(staff);
         for (auto it = bytes_.begin(); it != bytes_.end();)
             if (it->second.staff == staff) it = bytes_.erase(it); else ++it;
     }
-    void clear() { bytes_.clear(); players_.clear(); }
+    void clear() { bytes_.clear(); players_.clear(); originals_.clear(); }
     void remove_player(std::uint32_t player) {
         for (auto it = players_.begin(); it != players_.end();)
-            if (it->second == player) it = players_.erase(it); else ++it;
+            if (it->second == player) { originals_.erase(it->first); it = players_.erase(it); } else ++it;
         for (auto it = bytes_.begin(); it != bytes_.end();)
             if (it->second.player == player) it = bytes_.erase(it); else ++it;
+    }
+    bool contains(std::uint32_t staff, std::uint32_t player) const {
+        const auto it = players_.find(staff);
+        return it != players_.end() && it->second == player;
+    }
+    std::vector<std::uint8_t> original(std::uint32_t staff, std::uint32_t player) const {
+        return contains(staff, player) ? originals_.at(staff) : std::vector<std::uint8_t>{};
     }
     bool empty() const { return bytes_.empty(); }
     std::vector<std::pair<std::uint32_t, std::uint32_t>> players() const {
@@ -46,6 +55,7 @@ public:
     }
 private:
     struct Byte { std::uint32_t staff, player; std::uint8_t value; };
+    std::map<std::uint32_t, std::vector<std::uint8_t>> originals_;
     std::map<std::uint32_t, Byte> bytes_;
     std::map<std::uint32_t, std::uint32_t> players_;
 };

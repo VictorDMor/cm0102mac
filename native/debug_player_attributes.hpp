@@ -17,6 +17,9 @@ inline constexpr std::array negative{0x25, 0x2d}; // Dirtiness, injury proneness
 // personality bytes as a group; +0x62 between them is the club job.
 inline constexpr std::array personality{0x61, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69};
 
+// Snapshot order is part of the version 2 native metadata format.
+inline constexpr auto snapshot_size = technical.size() + positive.size() + negative.size() + personality.size();
+
 template <class F> void for_each(std::uint32_t staff, std::uint32_t player, F&& apply) {
     for (auto offset : technical) apply(player + offset, std::uint8_t{100});
     for (auto offset : positive) apply(player + offset, std::uint8_t{20});

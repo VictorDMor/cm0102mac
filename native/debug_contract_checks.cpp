@@ -266,6 +266,34 @@ int main(int argc, char** argv) {
         // conversion, for the proposed maximum values at several abilities.
         const auto player = std::uint32_t(s.memory.read<4>(staff + 0x14));
         require(player != 0, "Missing player profile");
+        // Restoration must round-trip the original raw bytes, including signed
+        // technical attributes, while leaving all unrelated record bytes alone.
+        const auto initial_staff = s.memory.copy_out(staff, 0x70);
+        const auto initial_player = s.memory.copy_out(player, 0x48);
+        const auto initial_random = random_state(s);
+        require(!s.memory.restore_debug_player_attributes(staff, player), "Unlocked player accepted restoration");
+        s.memory.lock_debug_player_attributes(staff, player);
+        s.memory.lock_debug_player_attributes(staff, player);
+        require(random_state(s) == initial_random, "Maximization changed RNG");
+        invoke(s, 0x100c2cb0, {staff});
+        const auto normalized_random = random_state(s);
+        const auto normalized_staff = s.memory.copy_out(staff, 0x70);
+        const auto normalized_player = s.memory.copy_out(player, 0x48);
+        auto expected_staff = normalized_staff, expected_player = normalized_player;
+        debug_player_attributes::for_each(staff, player, [&](auto address, auto) {
+            if (address >= player && address < player + 0x48) expected_player[address - player] = initial_player[address - player];
+            else expected_staff[address - staff] = initial_staff[address - staff];
+        });
+        require(!s.memory.restore_debug_player_attributes(staff, player + 0x48), "Mismatched player accepted restoration");
+        require(s.memory.restore_debug_player_attributes(staff, player) && s.memory.debug_locked_players().empty(),
+                "Restoration did not release the lock");
+        require(s.memory.copy_out(staff, 0x70) == expected_staff && s.memory.copy_out(player, 0x48) == expected_player &&
+                random_state(s) == normalized_random, "Restoration changed unrelated state or lost original bytes");
+        require(!s.memory.restore_debug_player_attributes(staff, player), "Consumed snapshot restored twice");
+        s.memory.write<1>(player + 0x25, 7);
+        s.memory.lock_debug_player_attributes(staff, player);
+        require(s.memory.restore_debug_player_attributes(staff, player) && s.memory.read<1>(player + 0x25) == 7,
+                "Second maximize/restore cycle used a stale snapshot");
         debug_player_attributes::for_each(staff, player, [&](auto address, auto value) { s.memory.write<1>(address, value); });
         for (unsigned ability : {0u, 1u, 100u, 200u}) for (unsigned goalkeeper : {0u, 15u, 20u}) {
             s.memory.write<2>(player + 4, ability);
@@ -318,6 +346,10 @@ int main(int argc, char** argv) {
         const auto lock_directory = root / "lock-metadata";
         { std::ofstream out(career, std::ios::binary); out << "isolated save fixture"; }
         std::filesystem::copy_file(career, other_career);
+        unsigned raw_byte = 128;
+        debug_player_attributes::for_each(staff, player, [&](auto address, auto) { s.memory.write<1>(address, raw_byte++); });
+        const auto persisted_staff = s.memory.copy_out(staff, 0x70);
+        const auto persisted_player = s.memory.copy_out(player, 0x48);
         s.memory.lock_debug_player_attributes(staff, player);
         debug_attribute_persistence::save(s, lock_directory, career);
         s.memory.clear_debug_player_attributes();
@@ -328,7 +360,10 @@ int main(int argc, char** argv) {
         debug_attribute_persistence::load(s, lock_directory, career);
         require(s.memory.debug_locked_players().size() == 1 && s.memory.read<1>(player + 0x25) == 1,
                 "Career metadata did not restore its player lock");
-        s.memory.clear_debug_player_attributes();
+        require(s.memory.restore_debug_player_attributes(staff, player) &&
+                s.memory.copy_out(staff, 0x70) == persisted_staff && s.memory.copy_out(player, 0x48) == persisted_player,
+                "Saved snapshot failed to restore exact original record bytes");
+        require(s.memory.debug_attribute_metadata_required(), "Restoring last player lost metadata tombstone");
         const auto original_birthday = s.memory.read<2>(staff + 0x34);
         s.memory.write<2>(staff + 0x34, original_birthday ^ 1);
         bool rejected = false;
@@ -339,11 +374,56 @@ int main(int argc, char** argv) {
         { std::ofstream out(career, std::ios::binary | std::ios::app); out << 'x'; }
         debug_attribute_persistence::load(s, lock_directory, career);
         require(s.memory.debug_locked_players().empty(), "Changed save contents reused old lock metadata");
+        // Legacy metadata must keep its lock without inventing original values.
+        const auto metadata = lock_directory / debug_attribute_persistence::save_key(career);
+        const auto fingerprint = debug_attribute_persistence::identity(s, staff);
+        { std::ofstream out(metadata); out << "CMDEBUGATTR 1\n1\n" << s.memory.read<4>(staff) << ' ' << fingerprint << '\n'; }
+        debug_attribute_persistence::load(s, lock_directory, career);
+        s.memory.lock_debug_player_attributes(staff, player);
+        require(s.memory.debug_locked_players().size() == 1 && !s.memory.restore_debug_player_attributes(staff, player),
+                "Legacy lock fabricated pre-maximize attributes");
+        debug_attribute_persistence::save(s, lock_directory, career);
+        s.memory.clear_debug_player_attributes();
+        debug_attribute_persistence::load(s, lock_directory, career);
+        require(!s.memory.restore_debug_player_attributes(staff, player), "Migrated legacy lock gained a false snapshot");
+        s.memory.clear_debug_player_attributes();
+        // Reject bad lengths, bytes, truncation and trailing records before
+        // applying any of the otherwise valid records in the same metadata.
+        for (const auto suffix : {"49", "-50", "50 256", "50 -1", "50 -4294967295", "50 1", "0 trailing"}) {
+            std::ofstream out(metadata);
+            out << "CMDEBUGATTR 2\n2\n" << s.memory.read<4>(exchanged) << ' '
+                << debug_attribute_persistence::identity(s, exchanged) << " 0\n"
+                << s.memory.read<4>(staff) << ' ' << fingerprint << ' ' << suffix << '\n';
+            out.close();
+            bool malformed = false;
+            try { debug_attribute_persistence::load(s, lock_directory, career); }
+            catch (const std::runtime_error&) { malformed = true; }
+            require(malformed && s.memory.debug_locked_players().empty(), "Malformed snapshot partially applied locks");
+        }
+        s.memory.lock_debug_player_attributes(staff, player);
+        require(s.memory.restore_debug_player_attributes(staff, player), "Missing new snapshot after legacy invalidation");
+        debug_attribute_persistence::save(s, lock_directory, career);
+        s.memory.clear_debug_player_attributes();
+        debug_attribute_persistence::load(s, lock_directory, career);
+        require(s.memory.debug_locked_players().empty(), "Save after restoration resurrected the last lock");
+        const auto before_multi_staff = s.memory.copy_out(staff, 0x70);
+        const auto before_multi_player = s.memory.copy_out(player, 0x48);
         s.memory.lock_debug_player_attributes(staff, player);
         s.memory.lock_debug_player_attributes(exchanged, neighbor);
+        debug_attribute_persistence::save(s, lock_directory, other_career);
+        s.memory.clear_debug_player_attributes();
+        debug_attribute_persistence::load(s, lock_directory, other_career);
+        require(s.memory.debug_locked_players().size() == 2 && s.memory.restore_debug_player_attributes(staff, player) &&
+                s.memory.copy_out(staff, 0x70) == before_multi_staff && s.memory.copy_out(player, 0x48) == before_multi_player &&
+                s.memory.debug_locked_players().size() == 1 && s.memory.debug_locked_players()[0].first == exchanged,
+                "Save As lost snapshots or restoring one player removed another lock");
+        s.memory.lock_debug_player_attributes(staff, player);
         s.memory.unlock_debug_player_record(player);
         require(s.memory.debug_locked_players().size() == 1 && s.memory.debug_locked_players()[0].first == exchanged,
                 "Reusing one player record removed another player's lock");
+        require(s.memory.original_debug_player_attributes(staff, player).empty() &&
+                !s.memory.original_debug_player_attributes(exchanged, neighbor).empty(),
+                "Player reuse retained a stale snapshot or discarded another player's snapshot");
         s.memory.write<1>(player + 0x25, 7);
         s.memory.write<1>(neighbor + 0x25, 7);
         require(s.memory.read<1>(player + 0x25) == 7 && s.memory.read<1>(neighbor + 0x25) == 1,
