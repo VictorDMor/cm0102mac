@@ -3373,6 +3373,10 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME inter_amer_cup_equivalence COMMAND cm-inter-amer-cup-checks "${CM_ORACLE_DIR}")
     add_test(NAME inter_amer_cup_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_inter_amer_cup_audit.py")
     add_test(NAME competition_retirement_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_competition_retirement.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
+        add_test(NAME inter_amer_cup_sidebar COMMAND cm-inter-amer-cup-checks
+            --sidebar "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
+    endif()
     if(IS_DIRECTORY "${CM_MATCH_DEBUGGER_GAME_DIR}" AND
        EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
         add_test(NAME inter_amer_cup_native_constructor COMMAND cm-inter-amer-cup-checks "${CM_ORACLE_DIR}"

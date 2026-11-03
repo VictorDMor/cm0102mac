@@ -19,7 +19,7 @@ class CompetitionRetirementTests(unittest.TestCase):
             cls.pages = {page: [json.loads(row[0]) for row in db.execute(
                 "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
                 (page << 12, (page + 1) << 12))]
-                for page in (0x1034f, 0x10345, 0x1034a, 0x10482, 0x10131, 0x1048a, 0x1049d)}
+                for page in (0x1034f, 0x10345, 0x1034a, 0x10482, 0x10131, 0x1048a, 0x1049d, 0x102a9)}
             cls.records = cls.pages[0x1034f]
         cls.userops = json.loads((EXPORT / "program.json").read_text())["userops"]
         cls.disabled = {name: False for name in inspect.signature(generate_page).parameters
@@ -64,10 +64,18 @@ class CompetitionRetirementTests(unittest.TestCase):
         self.assertIn("goto i_101313a4;", self.generate(self.pages[0x10131]))
         self.assertIn("goto i_1048acd8;", self.generate(self.pages[0x1048a]))
 
+    def test_sidebar_skips_the_retired_object_at_the_menu_item_loop(self):
+        page = self.pages[0x102a9]
+        hook = "if (inter_amer_cup_retired_object(s, std::uint32_t(s.r<4>(12)))) {"
+        production = self.generate(page)
+        self.assertIn(hook + "\ngoto i_102a9ef0;", production)
+        self.assertNotIn(hook, self.generate(page, retirement=False))
+
     def test_update_reader_and_call_contracts_reject_changed_original(self):
         for page, address in ((0x10345, 0x10345bb0), (0x10482, 0x10482ca0),
                               (0x10131, 0x101312b4), (0x10131, 0x101313a4),
                               (0x1048a, 0x1048aa94), (0x1048a, 0x1048acd8),
+                              (0x102a9, 0x102a9e74), (0x102a9, 0x102a9ef0),
                               (0x1049d, 0x1049dfa8), (0x1049d, 0x1049dfa4)):
             records = [dict(record, assembly="nop") if record["address"] == address else record
                        for record in self.pages[page]]

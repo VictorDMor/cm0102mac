@@ -10,9 +10,11 @@ career, managing a club, advancing dates, completing matches, returning to
 management, saving and reloading. Multiplayer and some less-used services remain
 unfinished. There is no public binary release yet.
 
-The Inter-American Cup is retired after its final 1998 edition: new careers
-omit it, and existing careers retain their history while future unplayed games
-are removed on load. New English seasons use three automatic First Division
+The Inter-American Cup is retired after its final 1998 edition. New careers
+omit it. Existing careers retain its history, hide it from the Competitions
+sidebar menu and remove future unplayed games on load.
+
+New English seasons use three automatic First Division
 promotion places plus an eight-club, single-leg playoff (4th–11th), with the better
 league finisher hosting before a neutral final; four clubs leave the Premier
 League. Existing seasons retain their saved rules until the next season. See

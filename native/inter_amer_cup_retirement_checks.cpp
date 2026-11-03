@@ -320,3 +320,64 @@ int inter_amer_cup_retirement_checks(const char* snapshot, const char* game, con
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 2; }
 }
+
+int inter_amer_cup_sidebar_checks(const char* snapshot) {
+    try {
+        constexpr std::uint32_t competition_action = 2000;
+        const auto build_sidebar = [&](bool historical) {
+            auto state = std::make_unique<State>();
+            load_match_snapshot(*state, snapshot);
+            Cpu c(*state);
+            // The capture is paused in the event import. Recover the caller's
+            // TOC and select the main screen frame for the menu builder.
+            c.set(2, c.u32(c.sp() + 0x14));
+            require(c.r(2) == 0x108bba90, "Sidebar capture has no game TOC");
+            const auto screens = c.toc(-0x7bb0);
+            const auto screen = c.u32(screens + 0x24);
+            c.put16(screens + 0x2c58, 0);
+            const auto year = c.toc(-0x7b80) + 2;
+            require(c.i16(year) > 1998, "Sidebar capture predates retirement");
+            if (historical) c.put16(year, 1998);
+
+            const auto id = c.u32(c.toc(-0x6af8));
+            require(id == 199, "Sidebar capture has a different cup ID");
+            const auto registered = c.u32(c.toc(-0x7b5c)) + id * 4;
+            const auto cup = c.u32(registered);
+            require(cup && c.u32(cup) == c.toc(-0x5cc0), "Sidebar capture lacks the legacy cup");
+            const auto definition = c.u32(cup + 4), records = c.u32(cup + 8);
+            const auto cup_bytes = state->memory.copy_out(cup, 0xb4);
+            const auto definition_bytes = state->memory.copy_out(definition, 0x6c);
+            const auto record_bytes = state->memory.copy_out(records, 0x634);
+            const auto rng = state->memory.copy_out(c.toc(-0x7b90), 0x10);
+
+            const auto before = c.u16(screen + 0x129da6);
+            state->budget = state->executed + 3000000;
+            call(c, 0x102a97b0, {4, competition_action});
+            const auto after = c.u16(screen + 0x129da6);
+            require(before < after && after <= 1200, "Sidebar did not add menu controls");
+            require(c.u32(registered) == cup && state->memory.copy_out(cup, 0xb4) == cup_bytes &&
+                    state->memory.copy_out(definition, 0x6c) == definition_bytes &&
+                    state->memory.copy_out(records, 0x634) == record_bytes,
+                    "Building the sidebar changed the registered cup or its history");
+            require(state->memory.copy_out(c.toc(-0x7b90), 0x10) == rng,
+                    "Building the sidebar changed RNG state");
+
+            std::vector<std::uint32_t> competitions;
+            for (unsigned i = before; i < after; ++i) {
+                const auto control = screen + 0xba864 + i * 0x17c;
+                if (c.u32(control + 8) == competition_action)
+                    competitions.push_back(c.u32(c.u32(control + 0x48)));
+            }
+            return competitions;
+        };
+        auto expected = build_sidebar(true);
+        require(std::erase(expected, 199u) == 1 && !expected.empty(),
+                "The 1998 sidebar must include the cup and other competitions");
+        require(build_sidebar(false) == expected, "Retired sidebar changed more than the cup item");
+        std::cout << "ok Competitions sidebar, 1998 boundary, other menu items and historical records\n";
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 2;
+    }
+}

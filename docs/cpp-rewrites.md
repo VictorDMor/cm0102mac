@@ -749,7 +749,9 @@ edition (Victor's gameplay change, 2026-10-28). This policy lives separately in
 original semantics. The new-world builder calls the ruling-body initializer at
 `0x10345bb0` and scopes the factory's existing absent-competition branches. The
 save loader calls the same initializer at `0x1034a8e4` and restores legacy
-objects and statistics. Daily and annual processing skip the retired object.
+objects and statistics. The Competitions sidebar skips the retired object when
+building menu items and keeps it registered for historical lookups. Daily and
+annual processing skip the retired object.
 FIX_MAN's validated row reader omits only post-1998 fixtures whose home score
 is -1.
 The object at cup+8 owns club/player statistics; it is not the pending-game

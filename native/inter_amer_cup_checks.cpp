@@ -262,7 +262,10 @@ std::vector<Case> cases() {
 }
 int inter_amer_cup_native_checks(const char* snapshot, const char* game_directory, const char* backing);
 int inter_amer_cup_retirement_checks(const char*, const char*, const char*);
+int inter_amer_cup_sidebar_checks(const char*);
 int main(int argc, char** argv) {
+    if (argc == 3 && std::string_view(argv[1]) == "--sidebar")
+        return inter_amer_cup_sidebar_checks(argv[2]);
     if (argc == 5) return inter_amer_cup_native_checks(argv[2], argv[3], argv[4]);
     if (argc == 6 && std::string_view(argv[2]) == "--retirement")
         return inter_amer_cup_retirement_checks(argv[3], argv[4], argv[5]);

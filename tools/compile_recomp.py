@@ -1039,7 +1039,7 @@ LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CAL
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
     0x10713a9c, 0x10713aec, 0x10713b3c, 0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -1695,7 +1695,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "oceania_nations_adapter.hpp"')
     if euro_champ_qual_hooks and page_addresses & set(EURO_CHAMP_QUAL_ENTRIES):
         code.insert(1, '#include "euro_champ_qual_adapter.hpp"')
-    if competition_retirement_hooks and page in (0x1034f, 0x10345, 0x10482, 0x10131, 0x1048a, 0x1049d):
+    if competition_retirement_hooks and page in (0x1034f, 0x10345, 0x10482, 0x10131, 0x1048a, 0x1049d, 0x102a9):
         code.insert(1, '#include "inter_amer_cup_retirement.hpp"')
     if inter_amer_cup_hooks and page_addresses & set(INTER_AMER_CUP_ENTRIES):
         code.insert(1, '#include "inter_amer_cup_adapter.hpp"')
@@ -2237,6 +2237,17 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 raise ValueError("Annual competition loop no longer matches the audited release")
             code.extend(["if (inter_amer_cup_retired_object(s, std::uint32_t(s.r<4>(64)))) {",
                          transfer(0x101313a4, transfer_page, selected), "}"])
+            isolated.add(a)
+        if competition_retirement_hooks and a == 0x102a9e74:
+            by_address = {record["address"]: record for record in instructions}
+            sequence = {0x102a9e68: "lwzx r3,r3,r15", 0x102a9e70: "beq 0x102a9ef0",
+                        0x102a9e74: "lwz r3,0x4(r3)", 0x102a9eec: "bl 0x10719740",
+                        0x102a9ef0: "addi r15,r15,0x4"}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in sequence.items()):
+                raise ValueError("Competitions sidebar loop no longer matches the audited release")
+            code.extend(["if (inter_amer_cup_retired_object(s, std::uint32_t(s.r<4>(12)))) {",
+                         transfer(0x102a9ef0, transfer_page, selected), "}"])
             isolated.add(a)
         if competition_retirement_hooks and a == 0x1049dfa8:
             by_address = {record["address"]: record for record in instructions}
@@ -2990,7 +3001,8 @@ def main():
                         (0x10482ca0, "Suspend daily processing of the retired Inter-American Cup"),
                         (0x101312b8, "Exclude the retired Inter-American Cup from annual processing"),
                         (0x1048aa94, "Cancel only unplayed post-1998 Inter-American fixtures while reading"),
-                        (0x1049dfa8, "Suppress future host announcements for the retired Inter-American Cup"))
+                        (0x1049dfa8, "Suppress future host announcements for the retired Inter-American Cup"),
+                        (0x102a9e74, "Omit the retired Inter-American Cup from the sidebar menu"))
                     if (args.all_analyzed and address >> 12 in pages) or address in selected],
                 "quotientFreeDivisions": len(divisions),
                 "missingStaticTargets": sorted(missing),
