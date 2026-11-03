@@ -371,6 +371,76 @@ installed process displayed the original start menu and exited normally. All
 priority is the complete post-match/Continue wait and league initialization;
 the measured engine gain does not meet the near-instant objective.
 
+## Current production hotspot diagnosis (2026-11-03)
+
+Reconstruction preserves the original algorithms; handwritten C++23 ownership
+does not establish that a subsystem has been optimized. A fresh isolated copy
+of the current ARM64 application advanced the reference career from January
+11 to 18, 2002. A host-only 2 ms sample recorded 7,139 main-thread observations:
+2,104 in the screen-manager branch (including event waits, news and autosave),
+and 5,035 in the remaining processing branch. These are sampled stack shares,
+not per-routine timers or percentages for an individual calendar day.
+
+| Processing path | Inclusive samples | Share of processing samples |
+| --- | ---: | ---: |
+| MATCH_ENG, including MATCH_PL and other descendants | 3,024 | 60.1% |
+| SHORTLIST_MANAGER, including its contract dependencies | 1,231 | 24.4% |
+| MATCH_PL, already inside MATCH_ENG above | 1,244 | 24.7% |
+| CONTRACT_MANAGER, mostly inside SHORTLIST_MANAGER above | 425 | 8.4% |
+
+MATCH_ENG and SHORTLIST_MANAGER did not overlap in these stacks; the other
+rows must not be added to them. The largest named daily paths were
+`scan_candidates` (0x1035e9f0, 15.9%), `refresh_club_shortlist` (0x10357cb0,
+13.2%), `share_out_budget` (0x10359020, 12.0%), `distribute_staff_interest`
+(0x10363ca0, 5.8%) and `process_daily_contracts` (0x10079050, 4.3%). Their
+inclusive times overlap. Candidate scanning walks category lists and performs
+eligibility/valuation work for each shortlist row; interest distribution walks
+clubs in game order until five accept. Reusing invariant inputs and replacing
+repeated lookups are candidates, not measured improvements. Any indexing or
+cache must preserve candidate order, ties, mutations and RNG consumption.
+
+A separate host-only sample of the existing 677 match snapshot retained 3,871
+simulation observations, excluding 446 driver/copy/comparison observations.
+`dispatch_action` (0x102775e0) occupied 58.0% inclusively, `choose_primary_action`
+(0x10278220) 32.1%, the role-query family (0x10289560/0x102895a0/0x102895e0)
+23.5%, and `best_pass_receiver` (0x101e8950) 22.2%. These paths overlap.
+Exclusive top-of-stack groups were dispatch/scope/adapter routing 21.0%, memory
+methods 14.3%, guest frame entry/exit 13.2%, generated pages 7.8%, exception
+bookkeeping 4.8%, and floating-point helpers 4.2%. Inlined work can instead be
+charged to its caller; a generated page is not an original source module.
+
+The first bounded optimization experiment should target the spatial/role
+query chain: MATCH_ENG scans up to 20 player slots, calls MATCH_PL for a role,
+and MATCH_PL dispatches back to MATCH_ENG for a table lookup. The table helper
+can read the same position three times. Direct typed internal calls and
+proven local reuse could reduce this overhead without changing football
+decisions. Preserve exported-entry ABI, live guest state, observer/debug paths,
+exception transfers, player order, eligibility differences, floating point and
+RNG. Then consider repeated candidate/contract lookups in SHORTLIST_MANAGER.
+Do not replace the RNG or reduce simulation detail to claim an equivalent win.
+
+Six unprofiled repetitions of 600 advances each had median times of 0.173226 s
+(snapshot 677) and 0.155947 s (2262), with repeated final-state agreement.
+These are intervals, not complete matches or new original/C++ comparisons.
+Five runs each of existing daily-transition and interest-pass/0 captures
+matched their recorded end states, with medians 0.022502 s and 0.016161 s;
+each capture is one operation, not a whole day's total cost. The sampled live
+Continue request settled in 14.40 s including UI/autosave; it is not a clean
+timing or comparable to the historical 26-country week below.
+
+Limits: no matched Windows benchmark, separate complete no-fixture-day timing,
+or optimized candidate was produced. The old season-day replay failed native
+input validation at GetPort (r19); the fresh 26-country run stopped on an
+invalid cursor hotspot and supplies no completed timing. Its cursor selector
+was 0xff and SetCursor received a code address; the selector's origin remains
+unresolved. The reference-career run above completed. A preliminary profile
+with simultaneous guest SIGPROF sampling was discarded for percentage claims;
+guest PCs can also remain stale across direct C++ calls. The host-only samples
+and weighted stack parsers are private under
+`.local/performance/2026-11-03-hotspots/`. Temporary app/runtime/save copies and
+the probe executable were removed; only about 11 MB of evidence remains.
+No production code, installed application or original save was changed.
+
 ## Complete 26-country Continue diagnosis
 
 A separate private diagnostic on revision `7430110` now completes one original
