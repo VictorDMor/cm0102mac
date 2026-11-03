@@ -894,6 +894,20 @@ signed. Publication retains the ratings pointer across related calls while
 reloading the live award array between them. Serialization, selection, ranking
 and publication services belong to the already separate NATION_AWARDS module.
 
+## AWARD_MANAGER.CPP: award groups, histories and news
+
+The 21 manager entries (0x10436080–0x10437cc0) include two predicates
+registered by transition vector. The preceding reusable base-award class
+has a separate vtable and numeric pool, with no source filename established.
+Group construction retains all 29 slots and chooses legacy variants from
+the original sentinels. The save and load operations keep the same shared
+stream, visiting groups in slot order and then the two histories.
+
+The volume check copies an odd-byte template whose trailing NUL is read
+from the guest stack beyond the copied bytes. The ballot context accepts
+index 16, which reaches the notification count field. Both behaviors are
+preserved as observed in the original.
+
 ## AWARD_SHORTLIST.CPP: candidates, ballots and voting
 
 The fourteen entries include three sort callbacks and stop before Belgium's

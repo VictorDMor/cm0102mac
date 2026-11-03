@@ -3781,6 +3781,45 @@ if(CM_AWARD_SHORTLIST_COVERAGE)
 endif()
 
 
+file(GLOB CM_AWARD_MANAGER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/award_manager*.cpp")
+list(FILTER CM_AWARD_MANAGER_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_AWARD_MANAGER_SOURCES})
+add_executable(cm-award-manager-checks award_manager_checks.cpp)
+target_link_libraries(cm-award-manager-checks PRIVATE cm_aot)
+target_compile_options(cm-award-manager-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_AWARD_MANAGER_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/award_manager_reference.cpp")
+    add_custom_command(OUTPUT "${CM_AWARD_MANAGER_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_award_manager_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_AWARD_MANAGER_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_award_manager_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/award_manager_audit.py"
+            "${CMAKE_SOURCE_DIR}/award_manager_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-award-manager-checks PRIVATE "${CM_AWARD_MANAGER_REFERENCE}")
+    add_test(NAME award_manager_equivalence COMMAND cm-award-manager-checks "${CM_ORACLE_DIR}")
+    add_test(NAME award_manager_production COMMAND cm-award-manager-checks "${CM_ORACLE_DIR}" --production)
+    add_test(NAME award_manager_original_control COMMAND cm-award-manager-checks "${CM_ORACLE_DIR}" --original-control)
+    set_tests_properties(award_manager_original_control PROPERTIES ENVIRONMENT "CM_AWARD_MANAGER_ORIGINAL=1")
+    add_test(NAME award_manager_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_award_manager_audit.py")
+endif()
+option(CM_AWARD_MANAGER_COVERAGE "Instrument AWARD_MANAGER.CPP checker only" OFF)
+if(CM_AWARD_MANAGER_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/award_manager-coverage")
+    set(CM_AWARD_MANAGER_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/award_manager-coverage/check-%p.profraw")
+    add_library(cm_award_manager_coverage OBJECT ${CM_AWARD_MANAGER_SOURCES})
+    target_link_libraries(cm_award_manager_coverage PRIVATE cm_aot)
+    target_compile_options(cm_award_manager_coverage PRIVATE "-fprofile-instr-generate=${CM_AWARD_MANAGER_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_award_manager_coverage PRIVATE CM_AWARD_MANAGER_COVERAGE=1)
+    target_sources(cm-award-manager-checks PRIVATE $<TARGET_OBJECTS:cm_award_manager_coverage>)
+    target_compile_definitions(cm-award-manager-checks PRIVATE CM_AWARD_MANAGER_COVERAGE=1
+        CM_AWARD_MANAGER_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/award_manager-coverage")
+    target_link_options(cm-award-manager-checks PRIVATE "-fprofile-instr-generate=${CM_AWARD_MANAGER_PROFILE}")
+endif()
+
+
 file(GLOB CM_SIPRINT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/siprint*.cpp")
 list(FILTER CM_SIPRINT_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_SIPRINT_SOURCES})
