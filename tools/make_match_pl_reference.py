@@ -20,9 +20,9 @@ def main():
     with sqlite3.connect((args.input / "instructions.sqlite").resolve().as_uri() + "?mode=ro", uri=True) as db:
         require_match_pl_index(db)
         ranges = {entry: end for entry, end, _ in rewritten(drafts=True)}
-        # Influence is checked as a suspended draft until all phases exist;
-        # no production/draft adapter exposes its unfinished suffix.
+        # Keep both originals available for the unrouted response block.
         ranges.setdefault(0x10227460, 0x1022ba10)
+        ranges.setdefault(0x1022ba10, 0x1022e3a0)
         records = [json.loads(row[0]) for entry, end in sorted(ranges.items()) for row in db.execute(
             "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address", (entry, end))]
     userops = json.loads((args.input / "program.json").read_text())["userops"]
