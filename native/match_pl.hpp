@@ -2,6 +2,7 @@
 #include "guest_values.hpp"
 
 namespace cm::aot::match_pl {
+void move_player(guest::Cpu&);
 using guest::Cpu;
 std::uint32_t construct_player(Cpu&, std::uint32_t player, std::uint32_t match,
     std::uint32_t staff, std::uint32_t side, std::uint32_t initial, std::uint32_t slot);

@@ -1,5 +1,6 @@
 #include "player_movement_adapter.hpp"
 #include "application_exit.hpp"
+#include "match_pl_adapter.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
 #include <algorithm>
@@ -29,6 +30,7 @@ void leave(State& s, unsigned index, bool original, PlayerMovementOutcome outcom
 bool try_modern_player_movement(State& s, std::uint32_t entry) {
     const auto found = std::find(player_movement::entries.begin(), player_movement::entries.end(), entry);
     if (found == player_movement::entries.end()) throw std::runtime_error("Unknown player-movement entry");
+    if (!match_pl_route_allowed(entry)) return false;
     const auto index = unsigned(found - player_movement::entries.begin()); s.pc = entry;
     auto& d = player_movement_diagnostics(s);
     if (d.original_body == entry) return false;
@@ -42,7 +44,9 @@ bool try_modern_player_movement(State& s, std::uint32_t entry) {
             const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
             if (!dispatch_page(s)) throw std::runtime_error("Missing original player-movement body");
             if (s.pc != caller) run_until(s, caller);
-        } else player_movement::move(s, nullptr, d.observer);
+        } else if (!try_modern_match_pl(s, entry)) {
+            throw std::logic_error("Selected MATCH_PL movement route was declined");
+        }
     } catch (const ApplicationExit&) { leave(s, index, original, PlayerMovementOutcome::terminated); throw; }
     catch (const GuestContextTransfer&) { leave(s, index, original, PlayerMovementOutcome::context_transfer); throw; }
     catch (const std::runtime_error& error) {

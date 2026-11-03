@@ -6,6 +6,7 @@
 #include "match_pl_player_response.hpp"
 #include "match_pl_pressure.hpp"
 #include "routine_check.hpp"
+#include "player_movement.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -44,14 +45,14 @@ const Routine* listed(std::uint32_t entry) {
 void run_rewrite(State& s, std::uint32_t entry) {
     Cpu c(s);
     listed(entry)->hook(c);
-    c.finish();
+    if (entry != player_movement::entry) c.finish();
 }
 void run_original(State& s, std::uint32_t entry) { run_original_body(s, entry, declining); }
 bool run(State& s, const Routine& routine) {
     if (routine_checker) routine_checker->check(s, routine.entry, run_original, run_rewrite, routine.results);
     Cpu c(s);
     routine.hook(c);
-    c.finish();
+    if (routine.entry != player_movement::entry) c.finish();
     return true;
 }
 }
@@ -64,10 +65,14 @@ bool match_pl_dispatch_probe(State& s) {
     return routine && (!routine_checker || routine_checker->wants(s.pc)) && run(s, *routine);
 }
 
-bool try_modern_match_pl(State& s, std::uint32_t entry) {
+bool match_pl_route_allowed(std::uint32_t entry) {
     // A check run with --only runs the other routines' originals, so each
     // routine is checked at every call from the original's own callers.
-    if (declining || (routine_checker && !routine_checker->wants(entry))) return false;
+    return !declining && (!routine_checker || routine_checker->wants(entry));
+}
+
+bool try_modern_match_pl(State& s, std::uint32_t entry) {
+    if (!match_pl_route_allowed(entry)) return false;
     const auto* routine = listed(entry);
     if (routine && !routine->production && !routine_checker) return false;
     if (!routine) throw std::runtime_error("Unknown MATCH_PL.CPP routine " + hex_address(entry));

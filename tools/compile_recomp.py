@@ -202,7 +202,8 @@ from tactics_audit import TACTICS_ENTRIES, TACTICS_LEAVES, require_tactics_index
 from main_program_audit import MAIN_PROGRAM_ENTRIES, require_main_program_index, main_program_hook
 from club_history_audit import CLUB_HISTORY_ENTRIES, require_club_history_index, club_history_hook
 from club_records_audit import CLUB_RECORDS_ENTRIES, require_club_records_index, club_records_hook
-from match_pl_audit import MATCH_PL_ENTRIES, require_match_pl_index, match_pl_hook
+from match_pl_audit import MATCH_PL_GENERATOR_ENTRIES as MATCH_PL_ENTRIES
+from match_pl_audit import require_match_pl_index, match_pl_hook
 from match_eng_audit import (MATCH_ENG_ENTRIES, MATCH_ENG_LEAVES, require_match_eng_index, match_eng_hook,
                             require_match_eng_hooks)
 from screen_manager_audit import SCREEN_MANAGER_ENTRIES, require_screen_manager_index, screen_manager_hook
@@ -994,6 +995,7 @@ def ends_run(item):
 # day_advance_checks.cpp and match_arithmetic_checks.cpp step to).
 OBSERVED_INSTRUCTION_TABLES = {0x101355d4, 0x10135614, 0x1024773c, 0x10247768, 0x10247948,
     0x101ccdf0, 0x101cd5ec, 0x101d3f78,
+    0x1022e83c, 0x10234e40,
     0x101d3b50, 0x101d5680, 0x101d5690, 0x101d56c0, 0x101d5730, 0x101d5744, 0x101d7db0,
     0x101e3dc4, 0x101e3e54, 0x101e3ee4, 0x101e3f00, 0x101f189c, 0x101f1930, 0x101f1940,
     0x101f196c, 0x101f1dcc, 0x101f1df4, 0x101f1e2c, 0x101f21c0, 0x10289550, 0x10289570, 0x102895b0, 0x102895f0,

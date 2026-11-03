@@ -206,7 +206,7 @@ class MatchPlAuditTests(unittest.TestCase):
         audit.require_match_pl_owners(audit.rewritten(), OWNER_REPLACEMENTS)
         self.assertEqual(tuple(a for a, _, _ in audit.rewritten()), audit.MATCH_PL_ENTRIES)
         self.assertEqual(MATCH_PL_TAKEOVERS, frozenset(
-            a for a, _ in SEMANTIC_REPLACEMENTS if a in audit.MATCH_PL_ENTRIES))
+            a for a, _ in SEMANTIC_REPLACEMENTS if a in audit.MATCH_PL_GENERATOR_ENTRIES))
 
     def test_manifest_candidates_replace_only_explicit_legacy_hooks(self):
         import compile_recomp as compiler
@@ -214,7 +214,7 @@ class MatchPlAuditTests(unittest.TestCase):
         # Drafts are temporarily selected here to exercise the structural
         # takeover machinery before promotion. This is not production evidence
         # for those entries; the separate owner test checks the real manifest.
-        candidates = frozenset(a for a, _, _ in audit.rewritten(drafts=True))
+        candidates = frozenset(a for a, _, _ in audit.rewritten(drafts=True)) - audit.MATCH_PL_DEDICATED_OWNERS.keys()
         old_owners = dict(compiler.SEMANTIC_REPLACEMENTS)
         taken = candidates.intersection(old_owners)
         families = {}
@@ -276,6 +276,23 @@ class MatchPlAuditTests(unittest.TestCase):
                         reference = compiler.generate_page(page, rows, selected,
                             userops=self.program["userops"], **disabled)
                         self.assertNotIn("try_modern_", reference)
+
+    def test_movement_keeps_one_dedicated_hook_and_explicit_transfer_sites(self):
+        import compile_recomp as compiler
+        from player_movement_audit import ENTRY, player_movement_hook
+
+        self.assertIn(ENTRY, audit.MATCH_PL_ENTRIES)
+        self.assertNotIn(ENTRY, audit.MATCH_PL_GENERATOR_ENTRIES)
+        self.assertTrue({0x1022e83c, 0x10234e40} <= compiler.HOST_OBSERVED_INSTRUCTIONS)
+        page = ENTRY >> 12
+        rows = [row for address, row in self.records.items() if address >> 12 == page]
+        disabled = {name: False for name in inspect.signature(compiler.generate_page).parameters
+                    if name.endswith("_hooks") or name == "guest_context_transfers"}
+        code = compiler.generate_page(page, rows, {row["address"] for row in rows},
+            userops=self.program["userops"],
+            **dict(disabled, player_movement_hooks=True, match_pl_hooks=True))
+        self.assertEqual(code.count(player_movement_hook(ENTRY)), 1)
+        self.assertNotIn(audit.match_pl_hook(ENTRY), code)
 
     def test_missing_duplicate_and_wrong_production_owner_are_rejected(self):
         entry, end, _, pinned = audit.CONTRACTS[0]

@@ -185,15 +185,19 @@ def require_match_pl_index(db):
             raise ValueError(f"MATCH_PL.CPP promoted digest changed at {entry:x}")
 
 
+MATCH_PL_DEDICATED_OWNERS = {0x1022e7e0: "player_movement_adapter"}
+
+
 def require_match_pl_owners(routines, owners):
     """Promoted entries must have exactly one normal production owner."""
     for entry, _, _ in routines:
         actual = [owner for at, owner in owners if at == entry]
-        if actual != ["match_pl_adapter"]:
+        if actual != [MATCH_PL_DEDICATED_OWNERS.get(entry, "match_pl_adapter")]:
             raise ValueError(f"MATCH_PL.CPP production ownership at {entry:x}: {actual}")
 
 
 MATCH_PL_ENTRIES = tuple(a for a, _, _ in rewritten())
+MATCH_PL_GENERATOR_ENTRIES = tuple(a for a in MATCH_PL_ENTRIES if a not in MATCH_PL_DEDICATED_OWNERS)
 
 
 def match_pl_hook(address):

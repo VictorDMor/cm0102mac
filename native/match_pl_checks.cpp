@@ -1959,6 +1959,10 @@ void initialize_case(Cpu& c) {
         c.set(3, player); c.set(4, scene); c.set(5, in.zero_page_staff ? 0 : data + 0xc000);
         c.set(6, active.side); c.set(7, in.initial); c.set(8, in.slot);
     }
+    if (active.entry == 0x1022e7e0) {
+        c.set({{4, std::uint32_t(active.column)}, {5, std::uint32_t(active.row)}, {6, 0}, {7, 0}, {8, 0}});
+        c.put8(player + 0x104, 0);
+    }
 }
 
 void initialize_influence(Cpu& c) {
@@ -2900,6 +2904,7 @@ std::uint64_t external_budget(std::uint32_t entry) {
     // Action rating's default invalid-action case also executes the actual
     // two-instruction diagnostic-context leaf at 0x10768810 after both abs calls.
     // Shot action 51 executes four original abs leaves for its geometry.
+    if (entry == 0x1022e7e0) return 1;
     return shot_entry(entry) ? 16 : entry == 0x10278220 ? 128 : entry == 0x10245870 ? 32 : entry == 0x10281780 ? 12 : rating_entry(entry) ? 10 : entry == 0x10247030 || entry == 0x10245220 || entry == 0x1022e760 || entry == 0x10245160 || entry == 0x10270ba0 || keeper_entry(entry) ? 8 :
         entry == 0x1028ac50 || entry == 0x10245050 || entry == 0x10244c60 || entry == 0x10237420 ? 4 : 0;
 }
@@ -2913,12 +2918,13 @@ Case route_case(std::uint32_t entry) {
     return test;
 }
 
-void require_production_routes(const State& base) {
+void require_production_routes(const State& base, std::uint32_t selected = 0) {
     reference_mode = false;
     for (const auto entry : production_entries) {
+        if (selected && selected != entry) continue;
         active = route_case(entry);
         auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_case(c);
-        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220 || entry == 0x10237b50 || entry == 0x10223ac0) {
+        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220 || entry == 0x10237b50 || entry == 0x10223ac0 || entry == 0x1022e7e0) {
             auto original_state = cm::semantic_io_checks::clone(base); Cpu original_cpu(*original_state); initialize_case(original_cpu);
             original_state->budget = external_budget(entry); original_state->pc = entry; bool exhausted = false;
             // The original body runs its callees as the original too: MATCH_ENG.CPP's hook declines for this State.
@@ -2954,6 +2960,7 @@ void require_production_routes(const State& base) {
     // after a family loses its production hook to MATCH_PL.
     const auto check_legacy = [&](const auto& entries, auto run) {
         for (const auto entry : entries) {
+            if (selected && selected != entry) continue;
             if (std::ranges::find(production_entries, entry) == std::end(production_entries)) continue;
             active = route_case(entry);
             auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_case(c);
@@ -3108,6 +3115,8 @@ std::vector<Case> shot_scoring_cases(unsigned phase) {
 
 std::vector<Case> cases() {
     auto result = construction_returned_cases();
+    for (int side : {0, 1}) for (int column : {2, 4, 7}) for (int row : {1, 5, 10})
+        result.push_back({0x1022e7e0, side, column, row});
     const std::array queries{0x10237b10u, 0x10239d10u, 0x10239dc0u, 0x10251240u,
         0x10272050u, 0x102720a0u, 0x102720d0u, 0x10272100u, 0x10272150u,
         0x102721a0u, 0x102721f0u, 0x10283620u};
@@ -5863,6 +5872,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         auto tests = cases();
+        std::uint32_t selected_entry = 0;
         for (int option_index = 2; option_index < argc; ++option_index) {
             const std::string_view option(argv[option_index]);
             if (option == "--production") generated_mode = true;
@@ -5870,8 +5880,8 @@ int main(int argc, char** argv) {
             else if (option.starts_with("--case=")) tests = {tests.at(std::stoul(std::string(option.substr(7))))};
             else {
                 if (!option.starts_with("--entry=")) throw std::runtime_error("Unknown MATCH_PL checker option");
-                const auto entry = std::stoul(std::string(option.substr(8)), nullptr, 0);
-                std::erase_if(tests, [entry](const Case& test) { return test.entry != entry; });
+                selected_entry = std::stoul(std::string(option.substr(8)), nullptr, 0);
+                std::erase_if(tests, [selected_entry](const Case& test) { return test.entry != selected_entry; });
             }
         }
         if (generated_mode) std::erase_if(tests, [](const Case& test) {
@@ -6032,7 +6042,7 @@ int main(int argc, char** argv) {
                 ++failures; std::cout << "FAIL action-rating fatal prefix corruption not detected\n";
             } else std::cout << "ok action-rating fatal prefix corruption detected\n";
         }
-        if (!failures && generated_mode) require_production_routes(*base);
+        if (!failures && generated_mode) require_production_routes(*base, selected_entry);
         for (const auto& [entry, count] : compared)
             std::cout << hex_address(entry) << " returned " << count << '\n';
         std::cout << completed << '/' << tests.size() << " returned comparisons, " << failures << " failures\n";

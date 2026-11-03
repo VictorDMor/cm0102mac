@@ -120,6 +120,8 @@ MATCH_PL_ROUTINE(0x102895e0, 0x10289620, R3, "7bed26fd08fa5736",
 // Geometry, intensity and one-draw condition recovery.
 MATCH_PL_ROUTINE(0x1022e760, 0x1022e7e0, F1, "a29c182df5561795",
     [](Cpu& c) { match_pl::distance_to(c, c.r(3), std::int8_t(c.r(4)), std::int8_t(c.r(5))); })
+MATCH_PL_ROUTINE(0x1022e7e0, 0x10235db0, R3|F1, "1a4fccfecd07f022",
+    [](Cpu& c) { match_pl::move_player(c); })
 MATCH_PL_ROUTINE(0x10235db0, 0x10235ea0, R3|F1, "df03e33747b7a155",
     [](Cpu& c) { match_pl::improve_condition(c, c.r(3)); })
 MATCH_PL_ROUTINE(0x10245050, 0x10245160, R3, "ef1f4ff8f6db8159",

@@ -8,6 +8,9 @@ namespace cm::aot {
 // (routine_check.hpp), for routines a check run leaves out (--only), or with
 // CM_MATCH_PL_ORIGINAL=1.
 bool try_modern_match_pl(State& s, std::uint32_t entry);
+// Shared by the dedicated movement hook so module-wide original/only controls
+// also cover that entry while retaining its per-state diagnostic routes.
+bool match_pl_route_allowed(std::uint32_t entry);
 // For check tools (routine_check.hpp dispatch_probe): runs a listed routine
 // reached through the dispatcher, hooked by the generator or not yet.
 bool match_pl_dispatch_probe(State& s);
