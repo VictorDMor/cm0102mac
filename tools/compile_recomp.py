@@ -2514,7 +2514,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if match_actor_hooks:
         require_match_actor_hooks(page, instructions, result, taken_over)
     if actor_construction_hooks:
-        require_actor_construction_hooks(page, instructions, result)
+        require_actor_construction_hooks(page, instructions, result, taken_over)
     if spatial_role_hooks:
         require_spatial_role_hooks(page, instructions, result, taken_over)
     if marking_pressure_hooks:

@@ -12,6 +12,13 @@ int arithmetic_shift(Cpu& c, int value, unsigned bits) {
 }
 }
 
+std::uint32_t construct_player(Cpu& c, std::uint32_t player, std::uint32_t match,
+    std::uint32_t staff, std::uint32_t side, std::uint32_t initial, std::uint32_t slot) {
+    PlayerConstruction activation(c, player, match, staff, side, initial, slot);
+    activation.run();
+    return c.r(3);
+}
+
 PlayerConstruction::PlayerConstruction(Cpu& cpu, std::uint32_t player, std::uint32_t match,
     std::uint32_t staff_address, std::uint32_t side, std::uint32_t initial, std::uint32_t initial_slot)
     : c(cpu), frame(c, 0x10223ac0, 0xd0, {.first_gpr = 13, .gpr_offset = -0x5c, .first_fpr = 30}),
@@ -146,12 +153,21 @@ void PlayerConstruction::copy_attributes_and_clubs() {
     keep(c, {{21, c.u32(c.r(3) + (away ? 0x1c : 0x20))}});
 }
 
-void PlayerConstruction::prepare_record() {
+void PlayerConstruction::run() {
     choose_record(); copy_attributes_and_clubs();
     initialize_fitness(); initialize_affiliation(); initialize_eligibility();
     copy_preferences_and_names(); inspect_special_club_context();
-    initialize_random_preferences(); prepare_personality_factors();
-    throw std::logic_error("MATCH_PL constructor suffix is not reconstructed");
+    initialize_random_preferences();
+    if (prepare_personality_factors()) {
+        Kept<14> bound(c, personality_bound());
+        Kept<13> selected(c, variable_draw(bound, 0x10224e94, 0x10224f6c));
+        choose_personality_band();
+    }
+    apply_personality_attributes();
+    if (!apply_coach_influence()) apply_fallback_influence();
+    if (own_competition_has_history()) { apply_standings_pressure(); apply_club_history_pressure(); }
+    apply_goalkeeper_context(); apply_staff_context(); finish_attributes();
+    frame.leave(); c.finish();
 }
 
 void PlayerConstruction::initialize_fitness() {

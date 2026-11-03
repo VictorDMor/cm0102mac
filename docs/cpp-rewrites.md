@@ -789,6 +789,13 @@ Acquiring possession can first clear the acquiring player itself. Receiver
 rewards and subsequent possession writes reload the match after external calls,
 so a call that changes the match pointer must affect the later accesses.
 
+Parameterized construction retains its incoming side for the final heading,
+while kit selection rereads the live side. Its first post-power home/away
+branch uses the already-computed condition field; an extra side read changes
+observer-visible behavior. The final probability gate can leave the old
+personality byte untouched. Legacy original construction must decline MATCH_PL
+for the whole preparation parent, including its direct constructor call.
+
 The match range sampler's nested wide arms are unreachable: after wrapping
 the signed bound times ten to 32 bits, division by 65535 produces a correction
 bound in [-32768,32768]. Attribute refresh likewise has only narrow draws after

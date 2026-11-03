@@ -5,6 +5,7 @@
 #include "match_pl.hpp"
 #include "match_pl_construction.hpp"
 #include "actor_action_adapter.hpp"
+#include "actor_construction_adapter.hpp"
 #include "actor_attributes_adapter.hpp"
 #include "actor_effects_adapter.hpp"
 #include "actor_encounter_adapter.hpp"
@@ -63,6 +64,17 @@ struct ConstructionInputs {
     int personality_gate = 0, contract_band = 0, contract_influence = 0;
     int competition_rating = 20, reputation_listed = 0, descriptor_status = 1;
     bool descriptor_present = true;
+    int attendance = 20000, capacity = 20000, neutral_home = 0;
+    bool capacity_present = true, short_pool = false, clear_table_at_keeper = false;
+    int personality_trait = 10, consistency = 100, determination = 10, initial_personality = 37;
+    int staff_loyalty = 15, staff_composure = 10, staff_pressure = 10;
+    bool coach_present = false, coach_record = true, manager_present = true;
+    int coach_rating = 10, relationship = 0, contract_games = 0, contract_pending = 0;
+    bool history_owner = true, history_result = true;
+    int standing = 4, points = 8, history_status = 0, staff_status = 0, club_status = 0;
+    int coach_context = INT32_MIN, keeper_context = INT32_MIN, staff_context = INT32_MIN;
+    int kit_number = 17, kit_auxiliary = 23;
+    bool override_power = false, split_side_after_power = false; double power = 1, threshold_multiplier = 0;
     unsigned names = 7;
     bool date = true, wrapped_controller = false, null_nation = false, clear_club = false;
     bool clear_staff_at_diagnostic = false;
@@ -246,10 +258,11 @@ struct ActionReads final : MemoryObserver {
     bool receiver_changed = false, publication_pending = false, published = false, ball_changed = false;
     bool enabled = (action_entry(active.entry) || core_entry(active.entry) || rating_entry(active.entry) || shot_entry(active.entry)) &&
         (active.action.split_attribute || active.action.receiver_busy_on_seed_read || active.action.core_wait_split || active.action.core_ball_column != INT32_MIN || active.action.receiver_busy_after_core_seed);
+    bool construction_enabled = active.entry == 0x10223ac0 && active.construction.split_side_after_power;
     explicit ActionReads(State& state) : s(state), previous(s.memory.date_observer) {
-        if (enabled) s.memory.date_observer = this;
+        if (enabled || construction_enabled) s.memory.date_observer = this;
     }
-    ~ActionReads() { if (enabled) s.memory.date_observer = previous; }
+    ~ActionReads() { if (enabled || construction_enabled) s.memory.date_observer = previous; }
     void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
     void written(std::uint32_t at, const std::uint8_t* bytes, std::size_t size) override {
         if (previous) previous->written(at, bytes, size);
@@ -259,6 +272,8 @@ struct ActionReads final : MemoryObserver {
     void cleared(std::uint32_t at, std::uint64_t size) override { if (previous) previous->cleared(at, size); }
     void read(std::uint32_t at, const std::uint8_t* bytes, unsigned size) override {
         if (previous) previous->read(at, bytes, size);
+        if (construction_enabled && at == player + 0x27 && size == 1 && s.r<4>(guest::reg::lr) == 0x10224c48 && ++count == 2)
+            s.memory.write<1>(at, 1);
         if (active.action.split_attribute && at == player + 0x50 && size == 4 && ++count == 2)
             s.memory.write<4>(at, std::bit_cast<std::uint32_t>(active.action.second_attribute));
         if (active.action.receiver_busy_on_seed_read && at == data + 0x100 && size == 4) {
@@ -279,6 +294,7 @@ struct ActionReads final : MemoryObserver {
         }
     }
     void require_reads() const {
+        cm::semantic_io_checks::require(!construction_enabled || count == 2, "Constructor must branch on the retained side comparison before its home-only reread");
         cm::semantic_io_checks::require(!active.action.split_attribute || count >= 2, "Both direct-action attribute reads must execute");
         cm::semantic_io_checks::require(!active.action.receiver_busy_on_seed_read || receiver_changed, "Receiver seed-read mutation must execute");
         cm::semantic_io_checks::require(!active.action.receiver_busy_after_core_seed || receiver_changed, "Post-core receiver seed-read mutation must execute");
@@ -322,7 +338,8 @@ void trace_call(Cpu& c, std::uint32_t target) {
 bool scripted_construction(Cpu& c, std::uint32_t target) {
     constexpr std::array services{0x101878d0u, 0x103d0990u, 0x10187680u, 0x100d9480u, 0x100d94d0u,
         0x100ce250u, 0x100c7d00u, 0x104646d0u, 0x10306a80u, 0x10305ae0u, 0x10305700u,
-        0x103058f0u, 0x100d9440u, 0x10303560u, 0x1014c2e0u, 0x101fce40u, 0x10452ed0u, 0x1077b770u};
+        0x103058f0u, 0x100d9440u, 0x10303560u, 0x1014c2e0u, 0x101fce40u, 0x10452ed0u, 0x1077b770u,
+        0x10780fc0u, 0x100d9580u, 0x100d2f50u, 0x10459b50u, 0x102de3c0u, 0x100d3150u, 0x100c7a50u};
     if (std::ranges::find(services, target) == services.end()) return false;
     trace_call(c, target); const auto& in = active.construction;
     switch (target) {
@@ -346,10 +363,30 @@ bool scripted_construction(Cpu& c, std::uint32_t target) {
     case 0x103058f0: c.set(3, in.second_rating); break;
     case 0x100d9440: c.set(3, in.date_valid); break;
     case 0x10303560: c.set_f(1, c.r(6) == 1 ? in.first_profile : in.second_profile); break;
-    case 0x1014c2e0: c.set(3, in.context); break;
+    case 0x1014c2e0: {
+        const auto chosen = c.lr() == 0x10225748 ? in.coach_context : c.lr() == 0x102261cc ? in.keeper_context : c.lr() == 0x1022625c ? in.staff_context : INT32_MIN;
+        c.set(3, chosen == INT32_MIN ? in.context : chosen); break;
+    }
     case 0x101fce40: c.set(3, in.personality_gate); break;
     case 0x10452ed0: c.set(3, in.descriptor_status); break;
     case 0x1077b770: c.set(3, active.first_role); break;
+    case 0x10780fc0:
+        c.put32(c.sp() + 0x14, c.r(2)); c.set_f(1, in.override_power ? in.power : std::pow(c.f(1), c.f(2)));
+        if (in.threshold_multiplier != 0) {
+            for (auto offset : {0x50u, 0x58u, 0x60u}) c.put_f64(c.toc(-0x51e8) + offset, in.threshold_multiplier);
+            c.put32(data + 0x38c, c.u32(data + 0x38c) + 1);
+        }
+        break;
+    case 0x100d9580: c.set(3, in.relationship); break;
+    case 0x100d2f50: c.set(3, in.coach_rating); break;
+    case 0x10459b50: c.set(3, in.history_result ? data + 0xf100 : 0); break;
+    case 0x102de3c0: c.set(3, in.history_status); break;
+    case 0x100d3150: c.set(3, in.staff_status); break;
+    case 0x100c7a50:
+        c.put16(c.r(5), in.kit_auxiliary); c.put16(c.r(6), in.kit_number); break;
+    }
+    if (in.clear_table_at_keeper && c.lr() == 0x102261cc) {
+        c.put32(data + 0x420, 0); c.put32(data + 0x388, c.u32(data + 0x388) + 1);
     }
     if (in.mutate_back && c.lr() == in.mutate_back) {
         c.put32(data + 0x380, c.u32(data + 0x380) + 1);
@@ -358,6 +395,7 @@ bool scripted_construction(Cpu& c, std::uint32_t target) {
         c.put16(player + 0x32, -32768); c.put16(player + 0x34, 32767);
         c.put32(data + 0xc028, 0); c.put32(data + 0xc030, data + 0xc500);
         if (in.clear_club) c.put32(player + 0xfc, 0);
+        if (c.lr() == 0x10224c48) c.set(2, 0x12345678); // The caller must reload its saved TOC.
     }
     c.finish(); return true;
 }
@@ -1488,12 +1526,12 @@ void initialize_case(Cpu& c) {
         c.put16(data + 0xd108, -301); c.put16(data + 0xd10a, -302); c.put16(data + 0xd10c, -303);
         c.put32(c.r(2) - 0x7b90, data + 0x100); c.put32(data + 0x100, active.random_seed);
         c.put32(c.r(2) - 0x7b8c, data + 0x200);
-        c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + 0x20e);
+        c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + (in.short_pool ? 0x200 : 0x20e));
         c.put32(c.r(2) - 0x7b84, data + 0x108);
         c.put32(data + 0x108, data + 0x200 + (active.pool_position == 1 ? 14 : active.pool_position == 2 ? 12 : 0));
-        for (unsigned offset = 0; offset <= 14; offset += 2) c.put16(data + 0x200 + offset, active.strategy_low + offset * 13);
+        for (unsigned offset = 0; offset <= 14; offset += 2) c.put16(data + 0x200 + offset, active.custom_pool ? active.pool_words[offset / 2] : active.strategy_low + offset * 13);
         c.put32(data + 0x37c, 0);
-        c.put32(data + 0x380, 0); c.put32(data + 0x384, 0);
+        c.put32(data + 0x380, 0); c.put32(data + 0x384, 0); c.put32(data + 0x388, 0); c.put32(data + 0x38c, 0);
         c.put16(player + 0x36, 0x1357); c.put16(player + 0x1c2, 0x2468);
         c.put32(c.r(2) - 0x7b5c, data + 0x420); c.put32(data + 0x420, data + 0xa800);
         c.put32(c.r(2) - 0x7b3c, data + 0x424); c.put32(data + 0x424, data + 0x900);
@@ -1505,17 +1543,27 @@ void initialize_case(Cpu& c) {
         c.put32(data + 0xa800, in.descriptor_present ? data + 0xad00 : 0);
         c.put32(data + 0xa828, in.descriptor_present ? data + 0xad00 : 0);
         c.put16(data + 0xa418, in.competition_rating);
+        c.put32(c.r(2) - 0x7b28, data + 0x438); c.put32(data + 0x438, data + 0xf300);
+        c.put32(c.r(2) - 0x7984, data + 0x43c); c.put32(data + 0x43c, data + 0xf400);
+        c.put8(data + 0xf405, in.club_status);
+        c.put32(data + 0xad08, in.history_owner ? data + 0xf000 : 0);
+        c.put32(data + 0xf11c, in.standing); c.put32(data + 0xf144, in.points);
+        c.put32(data + 0xd850, in.contract_pending); c.put8(data + 0xd844, in.contract_games);
+        c.put32(data + 0xe404, in.capacity);
+        c.put32(data + 0xc81c, in.coach_record ? data + 0xc900 : 0); c.put8(data + 0xc93b, 13);
+        c.put8(player + 0x103, in.initial_personality);
         c.put8(data + 0xd860, in.contract_band); c.put8(data + 0xd84c, in.contract_influence);
         c.put32(data + 0xa400, 2); c.put32(data + 0xa808, in.history_table ? data + 0xad00 : 0);
         c.put8(data + 0xa120, in.nation_history); c.put32(data + 0xa068, in.nation_id);
         for (const auto club : {data + 0xb000, data + 0xb400, data + 0xb800, data + 0xbc00}) {
+            c.put32(club, 0); c.put32(club + 0x90, in.manager_present ? data + 0xc800 : 0);
             c.put32(club + 0x2c, in.null_nation ? 0 : data + 0xa000);
             c.put32(club + 0x30, in.competition ? data + 0xa400 : 0); c.put16(club + 0x1ec, in.reputation);
             for (unsigned index = 1; index <= 3; ++index)
                 c.put32(club + 0x70 + index * 4, in.listed == int(index) ? (active.side ? data + 0xb400 : data + 0xb000) : 0);
         }
         for (const auto fixture : {data + 0xe000, data + 0xe100}) {
-            c.put32(fixture + 0x14, data + 0xa400);
+            c.put32(fixture + 0x14, data + 0xa400); c.put32(fixture + 0x18, in.capacity_present ? data + 0xe400 : 0);
             if (in.reputation_listed) {
                 const auto own = c.u32(fixture + (active.side ? 0x20 : 0x1c));
                 const auto opponent = c.u32(fixture + (active.side ? 0x1c : 0x20));
@@ -1526,12 +1574,14 @@ void initialize_case(Cpu& c) {
         }
         c.put8(match + 0x7931, in.history); c.put8(other_match + 0x7931, in.history);
         for (const auto record : {data + 0xd000, data + 0xd100}) {
+            c.put8(record + 0x2c, in.personality_trait); c.put8(record + 0x25, in.determination); c.put16(record + 4, in.consistency);
             c.put8(record + 0xf, record == data + 0xd000 ? in.preference_kind : 20);
             c.put8(record + 0x21, record == data + 0xd000 ? in.preference_trait : -17);
             c.put8(record + 0x30, record == data + 0xd000 ? in.preference_a : -17);
             c.put8(record + 0x3b, record == data + 0xd000 ? in.preference_b : 23);
         }
         for (const auto member : {data + 0xc000, data + 0xc200}) {
+            c.put8(member + 0x65, in.staff_loyalty); c.put8(member + 0x66, in.staff_composure); c.put8(member + 0x67, in.staff_pressure);
             c.put8(member + 0x69, member == data + 0xc000 ? in.temperament : -128);
             c.put8(member + 0x5e, in.special_flag); c.put8(member + 0x5f, in.special_rating);
         }
@@ -1544,8 +1594,17 @@ void initialize_case(Cpu& c) {
         auto scene = match;
         if (in.wrapped_controller) {
             scene = 0u - (0x7aac + std::uint32_t(std::int32_t(std::int8_t(active.side))) * 0xd8);
-            c.s.memory.map(0xffff0000, 0x10000);
+            c.s.memory.map(0xffff0000, 0x10000); c.s.memory.map(0, 0x1000);
             c.put32(scene + 0x3118, data + 0xe000); c.put8(scene + 0x7931, in.history);
+        }
+        for (const auto controller_match : {scene, other_match}) {
+            c.put32(controller_match + 0x7c5c, in.attendance); c.put8(controller_match + 0x1c6, in.neutral_home);
+            c.put8(controller_match + 0x1c7, 0);
+            c.put8(controller_match + 0x77c5, 3); c.put8(controller_match + 0x77c6, 4);
+            for (const int controller_side : {0, 1, int(std::int8_t(active.side))}) {
+                const auto controller = controller_match + std::uint32_t(controller_side) * 0xd8 + 0x7aac;
+                c.put32(controller + 0x20, in.coach_present ? data + 0xc800 : 0);
+            }
         }
         for (unsigned reg = 14; reg <= 31; ++reg) c.set_f(reg, double(reg) * -1.25);
         if (in.zero_page_staff) {
@@ -1559,6 +1618,20 @@ void initialize_case(Cpu& c) {
 }
 
 void require_return(const State& s) {
+    if (active.entry == 0x10223ac0) {
+        if (active.construction.clear_table_at_keeper)
+            cm::semantic_io_checks::require(s.memory.read<4>(data + 0x388) == 1, "Constructor table mutation did not execute exactly once");
+        if (active.construction.threshold_multiplier != 0)
+            cm::semantic_io_checks::require(s.memory.read<4>(data + 0x38c) == 1, "Constructor coefficient mutation did not execute exactly once");
+        if (active.construction.clear_staff_at_diagnostic)
+            cm::semantic_io_checks::require(s.memory.read<4>(data + 0x384) == 1, "Constructor diagnostic mutation did not execute exactly once");
+        if (active.construction.mutate_back)
+            cm::semantic_io_checks::require(s.memory.read<4>(data + 0x380) == 1, "Constructor mutation did not execute exactly once");
+        if (active.construction.mutate_lookup)
+            cm::semantic_io_checks::require(s.memory.read<4>(data + 0x37c) == 1, "Constructor lookup mutation did not execute exactly once");
+        cm::semantic_io_checks::require(s.memory.read<2>(player + 0x1c0) == std::uint16_t(active.construction.kit_number) &&
+            s.memory.read<2>(player + 0x19c) == 101, "Constructor did not publish its final kit/state");
+    }
     if (active.entry == 0x10237b50) {
         if (active.balance.mutate_refill || active.balance.mutate_back)
             cm::semantic_io_checks::require(s.memory.read<4>(data + 0x370) == 1, "Balance refill mutation did not execute exactly once");
@@ -1674,7 +1747,7 @@ void construction_record_prefix(State& s, std::uint32_t entry, bool original_rou
         if (original_route) { s.pc = entry; run_until(s, sentinel); }
         else {
             Cpu c(s); match_pl::PlayerConstruction activation(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8));
-            activation.prepare_record();
+            activation.run();
         }
     } catch (const std::runtime_error& error) {
         const auto expected = construction_factor_prefix ? "MATCH_PL constructor factor boundary" :
@@ -1896,6 +1969,113 @@ std::vector<Case> construction_factor_cases() {
     return result;
 }
 
+std::vector<Case> construction_returned_cases() {
+    auto result = construction_preference_cases(); const auto factors = construction_factor_cases();
+    result.insert(result.end(), factors.begin(), factors.end());
+    for (int gate : {-128, 1, 255, 256}) { Case test{0x10223ac0}; test.construction.personality_gate = gate; result.push_back(test); }
+    for (int side : {0, 1, -128}) for (int capacity : {-1, 0, 20000}) for (int attendance : {-1, 0, 1, 20000, INT32_MAX})
+    for (int pressure : {-128, 0, 1, 127}) for (int trait : {-128, 10, 127}) {
+        Case test{0x10223ac0, side}; auto& in = test.construction;
+        in.capacity = capacity; in.attendance = attendance; in.staff_pressure = pressure; in.personality_trait = trait;
+        test.first_role = 2; result.push_back(test);
+    }
+    for (int side : {0, 1}) for (int neutral : {0, 1}) for (bool capacity : {false, true}) {
+        Case test{0x10223ac0, side}; test.construction.neutral_home = neutral;
+        test.construction.capacity_present = capacity; result.push_back(test);
+    }
+    for (unsigned word : {0u, 1u, 65535u}) for (unsigned role : {1u, 2u}) for (int attendance : {-1, 0, 1, 1000000})
+    for (int reputation : {0, 10, 127}) for (int pressure : {1, 20}) {
+        Case test{0x10223ac0}; auto& in = test.construction;
+        test.custom_pool = true; test.pool_words.fill(word); test.first_role = role;
+        in.attendance = attendance; in.competition_rating = reputation; in.staff_pressure = pressure;
+        in.short_pool = true; result.push_back(test);
+    }
+    for (int trait : {-128, 0, 10, 127}) for (int consistency : {-32768, 0, 100, 400, 32767})
+    for (int personality : {-128, 0, 127}) for (int gate : {0, 1}) {
+        Case test{0x10223ac0}; auto& in = test.construction;
+        in.personality_trait = trait; in.consistency = consistency; in.initial_personality = personality;
+        in.personality_gate = gate; in.determination = trait; test.first_role = 2; result.push_back(test);
+    }
+    for (int side : {0, 1}) for (int coach : {0, 1, 2}) for (int context : {0, 1, 256})
+    for (int rating : {-128, 0, 9, 10, 11, 127}) for (unsigned position : {0u, 1u, 2u}) {
+        Case test{0x10223ac0, side}; auto& in = test.construction;
+        in.coach_present = coach != 0; in.coach_record = coach != 2; in.coach_context = context; in.coach_rating = rating;
+        test.pool_position = position; result.push_back(test);
+    }
+    for (int standing : {2, 3, 4, 5, 6, INT32_MAX}) for (int points : {5, 7, 9, 10})
+    for (int pressure : {-128, 0, 1, 14, 15, 127}) for (int trait : {0, 1, 15}) for (bool result_present : {false, true}) {
+        Case test{0x10223ac0}; auto& in = test.construction;
+        in.contract_games = 26; in.standing = standing; in.points = points; in.staff_pressure = pressure;
+        in.staff_composure = trait; in.staff_loyalty = trait; in.history_status = 1;
+        in.history_result = result_present; in.short_pool = true; test.first_role = 2; result.push_back(test);
+    }
+    for (unsigned flags = 0; flags < 32; ++flags) {
+        Case test{0x10223ac0}; auto& in = test.construction;
+        in.contract_games = flags & 1 ? 25 : 26; in.history_owner = flags & 2;
+        in.manager_present = flags & 4; in.history_table = flags & 8; in.history_status = flags & 16;
+        result.push_back(test);
+    }
+    for (unsigned flags = 0; flags < 128; ++flags) for (int loyalty : {-128, 0, 1, 15, 127}) {
+        Case test{0x10223ac0}; auto& in = test.construction;
+        in.staff_context = flags & 1 ? 0 : 1; in.contract_pending = flags & 2 ? 1 : 0;
+        in.contract_influence = flags & 4 ? 25 : 26; in.staff_status = flags & 8 ? 1 : 0;
+        in.club_status = flags & 16 ? 1 : 0; in.staff_pressure = flags & 32 ? 14 : 15;
+        in.clear_table_at_keeper = flags & 64; in.staff_loyalty = loyalty; in.short_pool = true;
+        result.push_back(test);
+    }
+    {
+        Case test{0x10223ac0}; test.construction.split_side_after_power = true;
+        test.construction.personality_trait = 20; test.first_role = 2; result.push_back(test);
+    }
+    for (auto back : {0x10224c48u, 0x102256fcu, 0x10225748u, 0x102257e4u, 0x10225aecu,
+                     0x10225eb0u, 0x102261ccu, 0x1022625cu, 0x1022629cu, 0x102264c0u}) {
+        Case test{0x10223ac0}; auto& in = test.construction;
+        in.mutate_back = back; in.coach_present = true; in.contract_games = 26;
+        in.history_status = 1; in.staff_context = 1; in.contract_influence = 26; in.staff_pressure = 15;
+        result.push_back(test);
+    }
+    { Case test{0x10223ac0}; test.construction.relationship = 1; result.push_back(test); }
+    { Case test{0x10223ac0}; test.construction.keeper_context = 1; test.first_role = 2; result.push_back(test); }
+    {
+        // Deliberate constant mutation characterizes the original's retained
+        // upper clamps; ordinary immutable coefficients stay below their caps.
+        Case test{0x10223ac0}; test.construction.threshold_multiplier = 100;
+        test.construction.attendance = 0; test.first_role = 0; test.custom_pool = true;
+        test.pool_words.fill(32767); result.push_back(test);
+    }
+    std::uint32_t seed = 0x43545231;
+    const auto next = [&] { seed = seed * 1664525 + 1013904223; return seed; };
+    for (unsigned index = 0; index < 256; ++index) {
+        Case test{0x10223ac0, int(next() >> 31)}; auto& in = test.construction;
+        in.attendance = std::int32_t(next()); in.capacity = std::int32_t(next()); in.capacity_present = next() >> 31;
+        in.neutral_home = next() >> 31; in.personality_trait = next() >> 24; in.consistency = std::int16_t(next() >> 16);
+        in.initial_personality = next() >> 24; in.determination = next() >> 24;
+        in.staff_loyalty = next() >> 24; in.staff_composure = next() >> 24; in.staff_pressure = next() >> 24;
+        in.personality_gate = next() >> 31; in.coach_present = next() >> 31; in.coach_record = next() >> 31;
+        in.coach_rating = next() >> 24; in.relationship = next() >> 31; in.contract_games = next() >> 24;
+        in.contract_influence = next() >> 24; in.contract_pending = next() >> 31; in.history_owner = next() >> 31;
+        in.history_result = next() >> 31; in.standing = std::int32_t(next()); in.points = std::int32_t(next());
+        in.history_status = next() >> 31; in.staff_status = next() >> 31; in.club_status = next() >> 31;
+        in.coach_context = next() >> 31; in.keeper_context = next() >> 31; in.staff_context = next() >> 31;
+        in.clear_table_at_keeper = next() >> 31; in.short_pool = next() >> 31;
+        test.first_role = 1 + (next() >> 31); test.strategy_low = next() >> 16; test.random_seed = next();
+        test.pool_position = next() % 3; result.push_back(test);
+    }
+    // Original-only --construction-witnesses found these sites in the stable
+    // leading corpus above. A full returned comparison must observe exactly
+    // one mutation; stale indices therefore fail instead of losing coverage.
+    for (const auto [back, index] : {std::pair{0x10223bb8u, 30u}, {0x10224528u, 0u}, {0x102245b4u, 150u},
+        {0x1022473cu, 0u}, {0x10224e94u, 0u}, {0x10224ff4u, 0u}, {0x102250d0u, 0u},
+        {0x10225130u, 165u}, {0x1022520cu, 165u}, {0x1022528cu, 4006u}, {0x10225368u, 4006u},
+        {0x102253ccu, 4030u}, {0x1022542cu, 4030u}, {0x102254f4u, 30u}, {0x10225818u, 4872u},
+        {0x10225990u, 1950u}, {0x102259f0u, 0u}, {0x10225bc4u, 5179u}, {0x10225d3cu, 5181u},
+        {0x10225eecu, 5142u}, {0x10226064u, 5144u}, {0x1022630cu, 6038u}}) {
+        auto test = result.at(index); test.construction.short_pool = true; test.construction.mutate_back = back;
+        result.push_back(test);
+    }
+    return result;
+}
+
 // This diagnostic prefix is a suspended frame, never a normally returned call.
 void balance_initial_prefix(State& s, std::uint32_t entry, bool original_route) {
     reference_mode = original_route;
@@ -2105,7 +2285,7 @@ void require_production_routes(const State& base) {
     for (const auto entry : production_entries) {
         active = route_case(entry);
         auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_case(c);
-        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220 || entry == 0x10237b50) {
+        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220 || entry == 0x10237b50 || entry == 0x10223ac0) {
             auto original_state = cm::semantic_io_checks::clone(base); Cpu original_cpu(*original_state); initialize_case(original_cpu);
             original_state->budget = external_budget(entry); original_state->pc = entry; bool exhausted = false;
             // The original body runs its callees as the original too: MATCH_ENG.CPP's hook declines for this State.
@@ -2163,6 +2343,7 @@ void require_production_routes(const State& base) {
             std::cout << "ok legacy original route " << hex_address(entry) << '\n';
         }
     };
+    check_legacy(actor_construction::entries, [](State& s, std::uint32_t entry) { actor_construction_diagnostics(s).original = true; try_modern_actor_construction(s, entry); });
     check_legacy(actor_action::entries, [](State& s, std::uint32_t entry) { actor_action_diagnostics(s).original = true; try_modern_actor_action(s, entry); });
     check_legacy(actor_attributes::entries, [](State& s, std::uint32_t entry) { actor_attributes_diagnostics(s).original = true; try_modern_actor_attributes(s, entry); });
     check_legacy(actor_effects::entries, [](State& s, std::uint32_t entry) { actor_effects_diagnostics(s).original = true; try_modern_actor_effects(s, entry); });
@@ -2293,7 +2474,7 @@ std::vector<Case> shot_scoring_cases(unsigned phase) {
 }
 
 std::vector<Case> cases() {
-    std::vector<Case> result;
+    auto result = construction_returned_cases();
     const std::array queries{0x10237b10u, 0x10239d10u, 0x10239dc0u, 0x10251240u,
         0x10272050u, 0x102720a0u, 0x102720d0u, 0x10272100u, 0x10272150u,
         0x102721a0u, 0x102721f0u, 0x10283620u};
@@ -4331,6 +4512,41 @@ int main(int argc, char** argv) {
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
+        if (mode == "--construction-witnesses") {
+            const auto selected = construction_returned_cases(); std::map<std::uint32_t, unsigned> witnesses;
+            for (unsigned index = 0; index < selected.size(); ++index) {
+                active = selected[index]; active.construction.short_pool = true;
+                auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c); original(*state, active.entry);
+                for (unsigned offset = 0; offset < c.u32(trace_at); offset += 77 * 4)
+                    if (c.u32(trace_at + 4 + offset) == construction_random_boundary &&
+                        c.u32(trace_at + 8 + offset) >= 0x10223ac0 && c.u32(trace_at + 8 + offset) < 0x10226520)
+                        witnesses.try_emplace(c.u32(trace_at + 8 + offset), index);
+                if (witnesses.size() == 22) break;
+            }
+            cm::semantic_io_checks::require(witnesses.size() == 22, "Incomplete constructor refill witnesses");
+            for (const auto& [back, index] : witnesses) std::cout << hex_address(back) << " case=" << index << '\n';
+            return 0;
+        }
+        if (mode == "--construction-returned") {
+            const auto selected = construction_returned_cases();
+            unsigned checked = 0;
+            for (const auto& test : selected) {
+                active = test; auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto found = compare_routine_call(*state, active.entry, original, rewrite, RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                if (!found.empty()) {
+                    std::cout << "CONSTRUCTION RETURN case=" << checked << '\n';
+                    for (const auto& line : found) std::cout << line << '\n'; return 1;
+                }
+                ++checked;
+            }
+            for (const auto corruption : {corrupt, corrupt_memory, corrupt_core_rng, corrupt_call_argument_trace}) {
+                active = {0x10223ac0}; auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto found = compare_routine_call(*state, active.entry, original, corruption, RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                const auto diagnostic = corruption == corrupt ? "r3 " : "byte ";
+                cm::semantic_io_checks::require(std::ranges::any_of(found, [&](const auto& line) { return line.starts_with(diagnostic); }), "Constructor corruption not detected");
+            }
+            std::cout << checked << '/' << selected.size() << " constructor returned comparisons; four corruptions detected\n"; return 0;
+        }
         if (mode == "--construction-record-prefix" || mode == "--construction-setup-prefix" ||
             mode == "--construction-preference-prefix" || mode == "--construction-factor-prefix") {
             construction_setup_prefix = mode == "--construction-setup-prefix";

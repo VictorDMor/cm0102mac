@@ -2375,15 +2375,22 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
         add_test(NAME player_decision_nonlocal_transfer COMMAND cm-player-decision-transfer-checks
             "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/player-decision-transfer-checks")
     endif()
+    # Existing match state covers legacy compatibility without creating captures.
+    set(CM_ACTOR_CONSTRUCTION_CAPTURE_ARGS)
+    set(CM_ACTOR_CONSTRUCTION_PROFILE_ARGS "${CMAKE_BINARY_DIR}/actor-construction-live-profile.snapshot")
+    if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262/initial.snapshot")
+        set(CM_ACTOR_CONSTRUCTION_CAPTURE_ARGS --capture "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262")
+        set(CM_ACTOR_CONSTRUCTION_PROFILE_ARGS ${CM_ACTOR_CONSTRUCTION_CAPTURE_ARGS})
+    endif()
     add_test(NAME actor_construction_actual_production COMMAND cm-actor-construction-production-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-construction-production-checks")
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-construction-production-checks" ${CM_ACTOR_CONSTRUCTION_CAPTURE_ARGS})
     add_test(NAME actor_construction_original_profile COMMAND "${CMAKE_COMMAND}" -E env CM_AOT_MATCH_PC_PROFILE=1
         $<TARGET_FILE:cm-actor-construction-production-checks> "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}"
-        "${CMAKE_BINARY_DIR}/actor-construction-profile-checks" "${CMAKE_BINARY_DIR}/actor-construction-live-profile.snapshot")
+        "${CMAKE_BINARY_DIR}/actor-construction-profile-checks" ${CM_ACTOR_CONSTRUCTION_PROFILE_ARGS})
     set_tests_properties(actor_construction_actual_production PROPERTIES FIXTURES_SETUP ActorConstructionLiveProfile)
     set_tests_properties(actor_construction_original_profile PROPERTIES FIXTURES_REQUIRED ActorConstructionLiveProfile)
     add_test(NAME actor_construction_nonlocal_transfer COMMAND cm-actor-construction-transfer-checks
-        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-construction-transfer-checks")
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/actor-construction-transfer-checks" ${CM_ACTOR_CONSTRUCTION_CAPTURE_ARGS})
 endif()
 if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_MATCH_DEBUGGER_PROGRAM_DIR}/program.json")
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -3496,15 +3503,15 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME match_pl_shot_rating_prefix COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --shot-rating-prefix)
     add_test(NAME match_pl_shot_context_prefix COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --shot-context-prefix)
     add_test(NAME match_pl_balance_initial_prefix COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --balance-initial-prefix)
-    add_test(NAME match_pl_construction_record_prefix COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --construction-record-prefix)
-    add_test(NAME match_pl_construction_setup_prefix COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --construction-setup-prefix)
-    add_test(NAME match_pl_construction_preference_prefix COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --construction-preference-prefix)
-    add_test(NAME match_pl_construction_factor_prefix COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --construction-factor-prefix)
+    # Completed construction uses returned comparisons; prefix modes remain diagnostic CLI options.
+    add_test(NAME match_pl_construction_returned COMMAND cm-match-pl-checks "${CM_ORACLE_DIR}" --construction-returned)
     add_test(NAME match_pl_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_match_pl_audit.py")
 endif()
 if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262/initial.snapshot")
     add_test(NAME match_pl_match_replay COMMAND cm-match-pl-replay-checks
         "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262")
+    add_test(NAME match_pl_construction_replay COMMAND cm-match-pl-replay-checks
+        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --construction)
 endif()
 option(CM_MATCH_PL_COVERAGE "Instrument MATCH_PL.CPP checker only" OFF)
 if(CM_MATCH_PL_COVERAGE)

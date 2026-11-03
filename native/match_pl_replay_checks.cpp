@@ -1,5 +1,6 @@
 // A bounded detailed-match interval with MATCH_PL original/default routing.
 #include "match_pl_adapter.hpp"
+#include "actor_construction_adapter.hpp"
 #include "match_eng_adapter.hpp"
 #include "match_replay.hpp"
 #include "match_turbo.hpp"
@@ -17,7 +18,7 @@ using namespace cm::aot;
 namespace {
 std::uint32_t match_address = 0;
 constexpr unsigned advances = 600;
-bool timed = false;
+bool timed = false, construction = false;
 unsigned pair_index = 0;
 struct Inputs final : CodeFragmentBoundaryObserver {
     unsigned clocks = 0;
@@ -35,7 +36,7 @@ struct Inputs final : CodeFragmentBoundaryObserver {
 struct ShotCalls final : MemoryObserver {
     State& s;
     MemoryObserver* previous;
-    unsigned calls = 0, balance_calls = 0;
+    unsigned calls = 0, balance_calls = 0, construction_calls = 0;
     explicit ShotCalls(State& state) : s(state), previous(s.memory.date_observer) { if (!timed) s.memory.date_observer = this; }
     ~ShotCalls() { if (!timed) s.memory.date_observer = previous; }
     void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
@@ -52,6 +53,7 @@ struct ShotCalls final : MemoryObserver {
         case 0x102787d4: case 0x10278b94: case 0x10279980: case 0x1028166c: case 0x102816a8:
             ++calls; break;
         case 0x101d93ec: case 0x101d942c: ++balance_calls; break;
+        case 0x1020e9e0: ++construction_calls; break;
         }
     }
 };
@@ -62,6 +64,23 @@ void interval(State& s, bool original) {
     guest::Cpu c(s);
     const auto initial_stack = c.sp();
     s.budget = UINT64_MAX;
+    if (construction) {
+        // Reuse an existing captured player's staff and the actual controller.
+        // The parent supplies the constructor arguments and continues afterward.
+        const auto staff = c.u32(match_address + 0x311c + 8 * 0x1c4 + 0x6c);
+        c.set(3, match_address + 0x7aac); c.set(4, 8); c.set(5, staff); c.set(6, 8);
+        c.set_lr(return_sentinel);
+        auto& diagnostics = actor_construction_diagnostics(s);
+        const auto previous = diagnostics.original;
+        diagnostics.original = original;
+        try {
+            if (original) match_pl_run_original(s, 0x1020e8f0);
+            else { s.pc = 0x1020e8f0; run_until(s, return_sentinel); }
+        } catch (...) { diagnostics.original = previous; throw; }
+        diagnostics.original = previous;
+        if (s.pc != return_sentinel || c.sp() != initial_stack || c.r(3) != 1 || shots.construction_calls != 1)
+            throw std::runtime_error("Captured construction parent did not return through its constructor");
+    }
     for (unsigned tick = 0; tick < advances; ++tick) {
         c.set(3, match_address); c.set(4, 1); c.set_lr(return_sentinel);
         if (original) match_pl_run_original(s, 0x101d3f60);
@@ -74,9 +93,10 @@ void interval(State& s, bool original) {
     c.put32(0x61000000, input.clocks);
     c.put32(0x61000004, shots.calls);
     c.put32(0x61000008, shots.balance_calls);
+    c.put32(0x6100000c, shots.construction_calls);
     if (!timed && !shots.balance_calls) throw std::runtime_error("Actual-match interval did not exercise periodic balance");
     if (!timed && !shots.calls) throw std::runtime_error("Actual-match interval did not exercise shot selection");
-    if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << " periodic-balance calls=" << shots.balance_calls << '\n';
+    if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << " periodic-balance calls=" << shots.balance_calls << " construction calls=" << shots.construction_calls << '\n';
 }
 void measured_interval(State& s, bool original) {
     const auto started = std::chrono::steady_clock::now();
@@ -101,10 +121,13 @@ int main(int argc, char** argv) {
         unsigned pairs = 1;
         if (argc == 3) {
             const std::string_view option(argv[2]);
-            if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");
-            pairs = unsigned(std::stoul(std::string(option.substr(15))));
-            if (!pairs || pairs > 100) throw std::runtime_error("MATCH_PL timing pairs must be in 1..100");
-            timed = true;
+            if (option == "--construction") construction = true;
+            else {
+                if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");
+                pairs = unsigned(std::stoul(std::string(option.substr(15))));
+                if (!pairs || pairs > 100) throw std::runtime_error("MATCH_PL timing pairs must be in 1..100");
+                timed = true;
+            }
         }
         const std::filesystem::path input(argv[1]);
         std::ifstream(input / "match.txt") >> match_address;
