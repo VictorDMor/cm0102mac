@@ -195,7 +195,7 @@ std::uint32_t negotiation_command(Cpu& c, std::uint32_t pressed) {
     struct Command { std::uint32_t entry, back; Handler handler; };
     constexpr Command commands[]{{0x1009a440, 0x10098050, nullptr},
                                  {0x1009c020, 0x10098064, negotiation_bonuses_command},
-                                 {0x1009d410, 0x10098078, nullptr},
+                                 {0x1009d410, 0x10098078, negotiation_clauses_command},
                                  {0x102a54b0, 0x1009808c, nullptr}};
     for (const auto& command : commands) {
         const auto handled = command.handler

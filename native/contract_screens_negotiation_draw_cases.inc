@@ -197,7 +197,7 @@ void negotiation_draw_case(Cpu& c, const NegotiationDrawInput& in) {
     switch (in.tab) {
     case 1: expect(0x10098130, 0x100976f8, {draft, proposal, staff, 140, 545}); break;
     case 2: bonuses_draw_case(c, {}, draft, proposal, sp, layout); break;
-    case 3: expect(0x1009c870, 0x10097714, {draft, proposal, staff, 140, 545}); break;
+    case 3: clauses_draw_case(c, {}, draft, proposal, sp, layout); break;
     default: assert_at(0x10097748, 0xb0, 0x98, 0x659); break;
     }
 

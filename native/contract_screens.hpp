@@ -15,6 +15,9 @@ void draw_negotiation(guest::Cpu&);
 void draw_negotiation_bonuses(guest::Cpu&, std::uint32_t draft, std::uint32_t proposal,
                               std::uint32_t person, std::uint32_t top, std::uint32_t bottom);
 std::uint32_t negotiation_bonuses_command(guest::Cpu&, std::uint32_t control);
+void draw_negotiation_clauses(guest::Cpu&, std::uint32_t draft, std::uint32_t proposal,
+                              std::uint32_t person, std::uint32_t top, std::uint32_t bottom);
+std::uint32_t negotiation_clauses_command(guest::Cpu&, std::uint32_t control);
 std::uint32_t negotiation_command(guest::Cpu&, std::uint32_t control);
 std::uint32_t negotiation_choice_command(guest::Cpu&, std::uint32_t control);
 void open_new_negotiation(guest::Cpu&, std::uint32_t person, std::uint32_t state,

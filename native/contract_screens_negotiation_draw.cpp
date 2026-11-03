@@ -290,21 +290,16 @@ void NegotiationScreen::draw_tabs() {
         program.call(0x1074aa90, 0x100976bc, {frame.at(0xf0), 3, std::uint32_t(tab),
                      frame.at(0x80), frame.at(0x7c), 1});
     }
-    std::uint32_t target = 0, back = 0;
     if (compare(c, tab, 2) == 0) {
         detail::call_owned(c, 0x1009b620, 0x10097730, draw_negotiation_bonuses, draft, proposal,
                            person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c)));
         return;
     } else if (tab < 2 && compare(c, tab, 1) >= 0) {
-        target = 0x10098130;
-        back = 0x100976f8;
+        program.call(0x10098130, 0x100976f8, {draft, proposal, person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c))});
     } else if (tab >= 2 && compare(c, tab, 4) < 0) {
-        target = 0x1009c870;
-        back = 0x10097714;
-    }
-    if (target)
-        program.call(target, back, {draft, proposal, person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c))});
-    else {
+        detail::call_owned(c, 0x1009c870, 0x10097714, draw_negotiation_clauses, draft, proposal,
+                           person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c)));
+    } else {
         alert(0x10097748, 0xb0, 0x98, 0x659);
         c.set(3, c.toc(-0x7bac));
     }

@@ -13,6 +13,8 @@ CONTRACT_SCREENS_ROUTINE(0x10097b70, [](guest::Cpu& c) { c.set(3, contract_scree
 CONTRACT_SCREENS_ROUTINE(0x100980d0, [](guest::Cpu& c) { contract_screens::release_offer_draft(c); })
 CONTRACT_SCREENS_ROUTINE(0x1009b620, [](guest::Cpu& c) { contract_screens::draw_negotiation_bonuses(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
 CONTRACT_SCREENS_ROUTINE(0x1009c020, [](guest::Cpu& c) { c.set(3, contract_screens::negotiation_bonuses_command(c, c.r(3))); })
+CONTRACT_SCREENS_ROUTINE(0x1009c870, [](guest::Cpu& c) { contract_screens::draw_negotiation_clauses(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
+CONTRACT_SCREENS_ROUTINE(0x1009d410, [](guest::Cpu& c) { c.set(3, contract_screens::negotiation_clauses_command(c, c.r(3))); })
 CONTRACT_SCREENS_ROUTINE(0x1009dab0, [](guest::Cpu& c) { contract_screens::open_offer_details(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8)); })
 CONTRACT_SCREENS_ROUTINE(0x1009dc00, [](guest::Cpu& c) { contract_screens::draw_offer_details(c); })
 CONTRACT_SCREENS_ROUTINE(0x1009e290, [](guest::Cpu& c) { c.set(3, contract_screens::offer_details_command(c, c.r(3))); })

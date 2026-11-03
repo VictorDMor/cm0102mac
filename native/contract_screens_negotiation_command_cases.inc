@@ -128,6 +128,16 @@ void negotiation_command_case(Cpu& c, const NegotiationCommandInput& in) {
                 }
                 continue;
             }
+            if (index == 2) {
+                read(0x1009d440, 2, draft_offer);
+                active(0x1009d454);
+                if (in.handler == 2) {
+                    expected_record_word = std::pair{draft + 0x24, value};
+                    expected_result = std::uint32_t(-11);
+                    return;
+                }
+                continue;
+            }
             const auto result = index == in.handler ? 0xfffffff6u : 0;
             expect(target, back, {control}, result);
             if (result) {

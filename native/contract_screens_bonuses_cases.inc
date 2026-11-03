@@ -38,16 +38,16 @@ struct BonusMoney {
     std::uint32_t parse, render, length = 0, short_parse = 0, short_render = 0;
 };
 
-void bonus_money(std::uint32_t text, std::uint32_t local, int value, bool compact, BonusMoney sites) {
+void bonus_money(std::uint32_t text, std::uint32_t local, int value, bool compact, BonusMoney sites, unsigned precision = 10) {
     const auto line = [&](unsigned precision, std::uint32_t parse, std::uint32_t render) {
         expect(0x10009f20, parse, {local, precision}, 0x11223344);
         expected.back().pointed_word = std::uint32_t(value);
         expected.back().second_result = 0x33445566;
         expect(0x1000b410, render, {text, 2000, 0x11223344, 0x33445566, precision});
     };
-    line(10, sites.parse, sites.render);
+    line(precision, sites.parse, sites.render);
     if (sites.length) expect(0x1077dbd0, sites.length, {text}, compact ? 9 : 8);
-    if (compact && sites.length) line(9, sites.short_parse, sites.short_render);
+    if (compact && sites.length) line(precision - 1, sites.short_parse, sites.short_render);
 }
 
 struct BonusesDrawInput {

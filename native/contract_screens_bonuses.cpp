@@ -1,5 +1,6 @@
 #include "contract_screens.hpp"
 #include "contract_screens_controls.hpp"
+#include "contract_screens_money.hpp"
 #include "screen_manager_detail.hpp"
 #include <array>
 
@@ -10,22 +11,11 @@ namespace {
 using screen_manager::detail::Manager;
 using screen_manager::detail::Program;
 constexpr auto history = 0x1073ef70u, write_history = 0x1073f1e0u, add_grid = 0x107198c0u,
-               button = 0x107444e0u, label = 0x107445a0u, text_length = 0x1077dbd0u;
+               button = 0x107444e0u, label = 0x107445a0u;
 constexpr auto redraw = std::uint32_t(-11);
 
-struct MoneySites {
-    std::uint32_t parse, render, length = 0, short_parse = 0, short_render = 0;
-};
-
-void money_text(Cpu& c, const Program& program, std::uint32_t text, std::uint32_t money, MoneySites sites) {
-    const auto render = [&](unsigned precision, std::uint32_t parse_back, std::uint32_t render_back) {
-        const auto number = program.call(0x10009f20, parse_back, {money, precision});
-        program.call(0x1000b410, render_back, {text, 2000, number, c.r(4), precision});
-    };
-    render(10, sites.parse, sites.render);
-    if (sites.length && compare_logical(c, program.call(text_length, sites.length, {text}), 8) > 0)
-        render(9, sites.short_parse, sites.short_render);
-}
+using detail::MoneySites;
+using detail::money_text;
 
 struct Division {
     std::int32_t value, shifted;

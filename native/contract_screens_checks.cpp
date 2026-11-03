@@ -29,7 +29,8 @@ constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_
                         choice_draw = 0x100952b0, negotiation_choice = 0x10095db0,
                         negotiation_draw = 0x10096c60, negotiation_command = 0x10097b70, open_details_end = 0x1009dbf8,
                         details_draw = 0x1009dc00, details_command = 0x1009e290,
-                        bonuses_draw = 0x1009b620, bonuses_command = 0x1009c020, bonuses_command_end = 0x1009c86c,
+                        bonuses_draw = 0x1009b620, bonuses_command = 0x1009c020, clauses_draw = 0x1009c870,
+                        clauses_command = 0x1009d410, clauses_end = 0x1009daac,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
                         compare_staff = 0x1009ee00, load_language = 0x1009ef30,
                         save_db = 0x1009ef60, load_db = 0x1009ef90;
@@ -140,14 +141,17 @@ bool service(State& s) {
         if (reference_mode) return contract_screens_reference(s);
         return false;
     }
-    const bool actual_leaf = s.pc == 0x10775540 || s.pc == 0x10768810 || s.pc == 0x10374b40 || s.pc == 0x10374b80;
+    const bool actual_leaf = s.pc == 0x10775540 || s.pc == 0x10768810 ||
+                             s.pc == 0x10374b40 || s.pc == 0x10374b60 || s.pc == 0x10374b80;
     if (reference_mode && (contract_screens_reference(s) || (actual_leaf && run_leaf(s)))) return true;
+    if (s.pc == 0x10374af0) return false;  // Execute the contract's mutually exclusive clause update.
     if (expect_nested_dispatch && ((s.pc >= new_negotiation && s.pc < 0x10096c58) ||
                                     (s.pc >= offer_choice && s.pc < offer_choice_end) ||
                                     (s.pc >= open_details && s.pc < open_details_end) ||
-                                    (s.pc >= bonuses_draw && s.pc < bonuses_command_end))) {
+                                    (s.pc >= bonuses_draw && s.pc < clauses_end))) {
         if (s.pc == new_negotiation || s.pc == existing_negotiation || s.pc == offer_choice ||
-            s.pc == open_details || s.pc == bonuses_draw || s.pc == bonuses_command)
+            s.pc == open_details || s.pc == bonuses_draw || s.pc == bonuses_command ||
+            s.pc == clauses_draw || s.pc == clauses_command)
             saw_nested_dispatch = true;
         return false;  // Continue the excluded original after each fixture service.
     }
@@ -209,7 +213,8 @@ bool service(State& s) {
         for (unsigned i = 0; i < c.r(5); ++i) c.put8(c.r(3) + i, c.r(4));
         break;
     case 0x1074bcd0:
-        if (c.lr() == 0x1009b778 || c.lr() == 0x1009be7c)
+        if (c.lr() == 0x1009b778 || c.lr() == 0x1009be7c ||
+            c.lr() == 0x1009ca7c || c.lr() == 0x1009d0a4 || c.lr() == 0x1009d274)
             c.put32(c.r(7), c.u32(c.r(7)) + 1);
         break;
     case 0x10411ea0:
@@ -569,6 +574,7 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
 #include "contract_screens_choice_draw_cases.inc"
 #include "contract_screens_transfer_cases.inc"
 #include "contract_screens_bonuses_cases.inc"
+#include "contract_screens_clauses_cases.inc"
 #include "contract_screens_negotiation_command_cases.inc"
 #include "contract_screens_negotiation_draw_cases.inc"
 #include "contract_screens_offer_detail_cases.inc"
@@ -1101,6 +1107,18 @@ int main(int argc, char** argv) {
                 check();
             }
         }
+        for (unsigned mutation = 0; mutation < 4; ++mutation) {
+            for (const auto& input : clause_draw_inputs) {
+                auto c = initialize(*state, random, clauses_draw);
+                clauses_draw_case(c, input);
+                check();
+            }
+            for (const auto& input : clause_command_inputs) {
+                auto c = initialize(*state, random, clauses_command);
+                clauses_command_case(c, input);
+                check();
+            }
+        }
         const std::array detail_draws{
             OfferDetailDrawInput{.missing = true},
             OfferDetailDrawInput{},
@@ -1202,7 +1220,7 @@ int main(int argc, char** argv) {
             NegotiationCommandInput{.linked = true, .populated = true, .status = 2},
             NegotiationCommandInput{.action = 8, .handler = 0},
             NegotiationCommandInput{.action = 0x2a, .handler = 1},
-            NegotiationCommandInput{.action = 8, .handler = 2},
+            NegotiationCommandInput{.action = 0x26, .handler = 2},
             NegotiationCommandInput{.action = 8, .handler = 3},
             NegotiationCommandInput{.action = 8, .common = 0xffffffff},
             NegotiationCommandInput{.action = 8, .common = 0x80000000},
@@ -1389,34 +1407,38 @@ int main(int argc, char** argv) {
             }
         }
 
-        for (const auto target : {negotiation_draw, negotiation_command}) {
-            const bool draw = target == negotiation_draw;
-            const auto setup = [&](Cpu& c) {
-                if (draw) negotiation_draw_case(c, {.tab = 2});
-                else negotiation_command_case(c, {.action = 0x2a, .handler = 1});
-            };
-            auto excluded = initialize(*state, random, target);
-            setup(excluded);
-            real_localization = draw;
-            if (draw) localization_format_diagnostics(*state).observer = &localization_trace;
-            const auto differences = compare_routine_call(*state, target, original, rewrite_with_original_children, results);
-            if (draw) localization_format_diagnostics(*state).observer = nullptr;
-            real_localization = false;
-            if (!differences.empty()) {
-                for (const auto& difference : differences) std::cerr << difference << '\n';
-                throw std::runtime_error("excluded bonuses entry differed from the original");
-            }
-            ++passed;
+        for (const auto tab : {2u, 3u}) {
+            for (const auto target : {negotiation_draw, negotiation_command}) {
+                const bool draw = target == negotiation_draw;
+                const auto setup = [&](Cpu& c) {
+                    if (draw) negotiation_draw_case(c, {.tab = int(tab)});
+                    else negotiation_command_case(c, {.action = tab == 2 ? 0x2au : 0x26u, .handler = tab - 1});
+                };
+                auto excluded = initialize(*state, random, target);
+                setup(excluded);
+                real_localization = draw;
+                if (draw) localization_format_diagnostics(*state).observer = &localization_trace;
+                const auto differences = compare_routine_call(*state, target, original, rewrite_with_original_children, results);
+                if (draw) localization_format_diagnostics(*state).observer = nullptr;
+                real_localization = false;
+                if (!differences.empty()) {
+                    for (const auto& difference : differences) std::cerr << difference << '\n';
+                    throw std::runtime_error("excluded negotiation tab entry differed from the original");
+                }
+                ++passed;
 
-            auto selected = initialize(*state, random, target);
-            setup(selected);
-            RoutineChecker selection([](std::uint32_t) { return true; }, 0, 0);
-            routine_checker = &selection;
-            rewrite(*state, target);
-            routine_checker = nullptr;
-            const auto seen = selection.totals().find(draw ? bonuses_draw : bonuses_command);
-            if (seen == selection.totals().end() || seen->second.calls != 1)
-                throw std::runtime_error("checker parent did not observe the selected bonuses entry");
+                auto selected = initialize(*state, random, target);
+                setup(selected);
+                RoutineChecker selection([](std::uint32_t) { return true; }, 0, 0);
+                routine_checker = &selection;
+                rewrite(*state, target);
+                routine_checker = nullptr;
+                const auto child = tab == 2 ? (draw ? bonuses_draw : bonuses_command)
+                                            : (draw ? clauses_draw : clauses_command);
+                const auto seen = selection.totals().find(child);
+                if (seen == selection.totals().end() || seen->second.calls != 1)
+                    throw std::runtime_error("checker parent did not observe the selected negotiation tab entry");
+            }
         }
 
         auto excluded_details = initialize(*state, random, negotiation_command);
