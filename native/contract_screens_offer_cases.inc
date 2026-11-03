@@ -5,8 +5,9 @@ enum class OfferPath { missing_instance, missing_club, pending, sole_role, reuse
 struct OfferChoiceInput {
     OfferPath path = OfferPath::list;
     bool link = false, blank_offer = false, with_offer = false, restricted = true,
-         same_day = false, same_year = true, profile = false, terms_apply = false;
-    unsigned available = 2, preferred = 1, opened = 1, permitted_categories = 0, rated_categories = 0;
+         same_day = false, same_year = true, profile = false, terms_apply = false, lose_profile = false;
+    unsigned available = 2, preferred = 1, opened = 1, permitted_categories = 0, rated_categories = 0,
+             rechecked_terms = 1;
     int pending_category = -1, club_category = -1, club_kind = 0, primary_kind = -1,
         age = 25, reputation = 4000, club_reputation = 1000, preferred_category = 0,
         reputation_factor = 0, interest_factor = 0, ambition_factor = 0;
@@ -132,8 +133,18 @@ void offer_choice_case(Cpu& c, const OfferChoiceInput& in, std::uint32_t outer =
         const auto adult_rating = in.reputation + 10 * in.reputation_factor + 25 * in.ambition_factor;
         for (unsigned category = 1; category <= 6; ++category) {
             if (current && category != 1) {
-                expect(0x1037e3e0, 0x10094f94, {current, staff}, 1);
-                if (std::uint32_t(in.club_category) <= category) continue;
+                expect(0x1037e3e0, 0x10094f94, {current, staff}, in.rechecked_terms);
+                if (in.lose_profile && category == 2) {
+                    // Inject a profile loss at the call boundary to exercise the defensive reload.
+                    // The original category query reports the missing profile and returns zero.
+                    expected.back().clear_profile = true;
+                    expect(0x1036f920, 0x1009512c, {recruitment, staff, category}, 0);
+                    expected.back().clear_success = true;
+                    expected_record_word = std::pair{staff + 0x14, 0u};
+                    expected_record_byte = std::pair{succeeded, std::uint8_t(0)};
+                    break;
+                }
+                if (in.rechecked_terms == 1 && std::uint32_t(in.club_category) <= category) continue;
             }
             if (in.age < 24) {
                 if (category == 1 && (in.reputation < 3250 || young_rating < in.club_reputation)) continue;

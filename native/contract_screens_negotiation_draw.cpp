@@ -295,7 +295,8 @@ void NegotiationScreen::draw_tabs() {
                            person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c)));
         return;
     } else if (tab < 2 && compare(c, tab, 1) >= 0) {
-        program.call(0x10098130, 0x100976f8, {draft, proposal, person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c))});
+        detail::call_owned(c, 0x10098130, 0x100976f8, draw_negotiation_basic, draft, proposal,
+                           person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c)));
     } else if (tab >= 2 && compare(c, tab, 4) < 0) {
         detail::call_owned(c, 0x1009c870, 0x10097714, draw_negotiation_clauses, draft, proposal,
                            person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c)));

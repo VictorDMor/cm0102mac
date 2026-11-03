@@ -8,9 +8,10 @@ struct NegotiationDrawInput {
     std::uint32_t limit = 500, wage = 600;
 };
 
-void negotiation_draw_case(Cpu& c, const NegotiationDrawInput& in) {
+void negotiation_draw_case(Cpu& c, const NegotiationDrawInput& in, std::uint32_t draft = fixture + 0x7100,
+                           std::uint32_t proposal = fixture + 0x7200) {
     constexpr auto sp = stack - 0xba0, box = sp + 0xa8, draft_manager = fixture + 0x7050,
-                   draft = fixture + 0x7100, proposal = fixture + 0x7200, contract_manager = fixture + 0x7300,
+                   contract_manager = fixture + 0x7300,
                    previous = fixture + 0x7400, current = fixture + 0x7500, link = fixture + 0x7600,
                    offer = fixture + 0x7700, club = fixture + 0x7800, other_club = fixture + 0x7b00,
                    instance = fixture + 0x7e00, calendar = fixture + 0x7f00, candidate = fixture + 0x8000,
@@ -195,7 +196,7 @@ void negotiation_draw_case(Cpu& c, const NegotiationDrawInput& in) {
         expect(0x1074aa90, 0x100976bc, {sp + 0xf0, 3, std::uint32_t(in.tab), sp + 0x80, sp + 0x7c, 1});
     }
     switch (in.tab) {
-    case 1: expect(0x10098130, 0x100976f8, {draft, proposal, staff, 140, 545}); break;
+    case 1: basic_draw_case(c, {}, draft, proposal, sp, layout); break;
     case 2: bonuses_draw_case(c, {}, draft, proposal, sp, layout); break;
     case 3: clauses_draw_case(c, {}, draft, proposal, sp, layout); break;
     default: assert_at(0x10097748, 0xb0, 0x98, 0x659); break;

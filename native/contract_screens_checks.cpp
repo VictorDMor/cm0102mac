@@ -2,6 +2,8 @@
 // entries enabled together on the production side.
 #include "application_exit.hpp"
 #include "contract_screens_adapter.hpp"
+#include "contract_display_adapter.hpp"
+#include "contract_draft_adapter.hpp"
 #include "guest_abi.hpp"
 #include "localization_format_adapter.hpp"
 #include "player_stats_detail.hpp"
@@ -29,6 +31,7 @@ constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_
                         choice_draw = 0x100952b0, negotiation_choice = 0x10095db0,
                         negotiation_draw = 0x10096c60, negotiation_command = 0x10097b70, open_details_end = 0x1009dbf8,
                         details_draw = 0x1009dc00, details_command = 0x1009e290,
+                        basic_draw = 0x10098130, basic_command = 0x1009a440,
                         bonuses_draw = 0x1009b620, bonuses_command = 0x1009c020, clauses_draw = 0x1009c870,
                         clauses_command = 0x1009d410, clauses_end = 0x1009daac,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
@@ -50,6 +53,7 @@ struct Call {
     std::optional<std::uint32_t> result, second_result, pointed_word, candidate_flags;
     std::optional<double> form;
     std::optional<std::uint32_t> pointed_result;
+    bool clear_profile = false, clear_success = false;
 };
 std::vector<Call> expected;
 unsigned calls = 0;
@@ -71,11 +75,30 @@ std::optional<std::pair<std::uint16_t, std::uint16_t>> detail_date;
 std::uint32_t entry = 0;
 std::uint32_t call_site = 0;
 unsigned fixture_instruction_budget = 0;
+unsigned basic_draw_calls = 0;
 
 void expect(std::uint32_t target, std::uint32_t back, std::initializer_list<std::uint32_t> args,
             std::optional<std::uint32_t> result = {}, std::optional<double> form = {}) {
     expected.push_back({target, back, args, {}, result, {}, {}, {}, form, {}});
 }
+
+void record_call(State& s, std::uint32_t at, unsigned stack_arguments) {
+    Cpu c(s);
+    if (at + trace_words * 4 > trace + trace_size) throw std::runtime_error("contract screen trace exceeded fixture bound");
+    auto put = [&](std::uint32_t value) { c.put32(at, value); at += 4; };
+    put(s.pc);
+    put(c.lr());
+    put(c.r(0));
+    for (unsigned r = 3; r <= 10; ++r) put(c.r(r));
+    for (unsigned r = 13; r <= 31; ++r) put(c.r(r));
+    for (unsigned field = 0; field < 8; ++field) put(c.cr(field));
+    c.put64(at, s.r<8>(reg::fpr(1)));
+    at += 8;
+    for (unsigned i = 0; i < stack_arguments; ++i) put(c.u32(c.sp() + 0x38 + 4 * i));
+}
+bool basic_draw_boundary(const Cpu& c);
+void trace_basic_draw(State& s);
+bool basic_draw_service(State& s);
 
 const Call& trace_expected_call(State& s) {
     Cpu c(s);
@@ -94,20 +117,23 @@ const Call& trace_expected_call(State& s) {
     if (call.pointed_word && c.u32(c.r(3)) != *call.pointed_word)
         throw std::runtime_error("unexpected contract screen indirect argument at " + hex_address(s.pc));
 
-    auto at = trace + calls++ * trace_words * 4;
-    if (at + trace_words * 4 > trace + trace_size) throw std::runtime_error("contract screen trace exceeded fixture bound");
-    auto put = [&](std::uint32_t value) { c.put32(at, value); at += 4; };
-    put(s.pc);
-    put(c.lr());
-    put(c.r(0));
-    for (unsigned r = 3; r <= 10; ++r) put(c.r(r));
-    for (unsigned r = 13; r <= 31; ++r) put(c.r(r));
-    for (unsigned field = 0; field < 8; ++field) put(c.cr(field));
-    c.put64(at, s.r<8>(reg::fpr(1)));
-    at += 8;
-    for (unsigned i = 0; i < call.stack_args.size(); ++i) put(c.u32(c.sp() + 0x38 + 4 * i));
+    record_call(s, trace + calls++ * trace_words * 4, call.stack_args.size());
     return call;
 }
+
+// These external owners can be called directly by an excluded Basic page.
+struct BasicDependencyTrace : ContractDisplayBoundaryObserver, ContractDraftBoundaryObserver {
+    bool active = false;
+    void enter(const State& state, std::uint32_t, bool) override {
+        auto& observed = const_cast<State&>(state);
+        if (basic_draw_boundary(Cpu(observed))) trace_basic_draw(observed);
+        active = true;
+    }
+    void leave(State&, std::uint32_t, bool, ContractDisplayOutcome) override { active = false; }
+    void leave(State&, std::uint32_t, bool, ContractDraftOutcome) override { active = false; }
+};
+BasicDependencyTrace basic_dependencies;
+bool real_basic_dependencies = false;
 
 // Excluded original pages can call localization directly, without dispatching
 // through the fixture. Observe the real service at the same boundary on both
@@ -116,7 +142,10 @@ struct LocalizationTrace : LocalizationFormatBoundaryObserver {
     bool active = false;
 
     void enter(const State& state, std::uint32_t, bool) override {
-        trace_expected_call(const_cast<State&>(state));
+        if (basic_dependencies.active) return;
+        auto& observed = const_cast<State&>(state);
+        if (basic_draw_boundary(Cpu(observed))) trace_basic_draw(observed);
+        else trace_expected_call(observed);
         active = true;
     }
     void leave(State&, std::uint32_t, bool, LocalizationFormatOutcome) override {
@@ -127,6 +156,11 @@ LocalizationTrace localization_trace;
 bool real_localization = false;
 
 bool service(State& s) {
+    if (real_basic_dependencies && (basic_dependencies.active ||
+        (basic_draw_boundary(Cpu(s)) &&
+         (std::ranges::find(contract_draft::entries, s.pc) != contract_draft::entries.end() ||
+          std::ranges::find(contract_display::entries, s.pc) != contract_display::entries.end()))))
+        return false;
     if (real_localization && (localization_trace.active ||
         std::ranges::find(localization_format::entries, s.pc) != localization_format::entries.end())) return false;
     if (sorting) {
@@ -148,9 +182,9 @@ bool service(State& s) {
     if (expect_nested_dispatch && ((s.pc >= new_negotiation && s.pc < 0x10096c58) ||
                                     (s.pc >= offer_choice && s.pc < offer_choice_end) ||
                                     (s.pc >= open_details && s.pc < open_details_end) ||
-                                    (s.pc >= bonuses_draw && s.pc < clauses_end))) {
+                                    (s.pc >= basic_draw && s.pc < clauses_end))) {
         if (s.pc == new_negotiation || s.pc == existing_negotiation || s.pc == offer_choice ||
-            s.pc == open_details || s.pc == bonuses_draw || s.pc == bonuses_command ||
+            s.pc == open_details || s.pc == basic_draw || s.pc == basic_command || s.pc == bonuses_draw || s.pc == bonuses_command ||
             s.pc == clauses_draw || s.pc == clauses_command)
             saw_nested_dispatch = true;
         return false;  // Continue the excluded original after each fixture service.
@@ -158,6 +192,7 @@ bool service(State& s) {
     if (contract_screens_lists(s.pc)) return false;  // Exercise the generated owner hook.
     if (call_site && s.pc == call_site) return false;
     Cpu c(s);
+    if (basic_draw_boundary(c)) return basic_draw_service(s);
     const auto& call = trace_expected_call(s);
 
     switch (s.pc) {
@@ -251,6 +286,10 @@ bool service(State& s) {
         c.put16(c.r(4), detail_date.value().first);
         c.put16(c.r(4) + 2, detail_date.value().second);
         break;
+    case 0x10380560:
+    case 0x10380630:
+        c.put32(c.r(3) + 0xc, call.result.value());
+        break;
     case 0x10374f50:
         c.put32(c.r(9), 337);
         c.put32(c.r(10), std::bit_cast<std::uint32_t>(2.0f));
@@ -303,6 +342,8 @@ bool service(State& s) {
         c.put32(fixture + 0x300, c.u32(c.r(3)));
         break;
     }
+    if (call.clear_profile) c.put32(c.r(4) + 0x14, 0);
+    if (call.clear_success) c.put8(c.toc(-0x7bac), 0);
     if (call.pointed_result) c.put32(c.r(3), *call.pointed_result);
     if (call.result) c.set(3, *call.result);
     if (call.second_result) c.set(4, *call.second_result);
@@ -406,6 +447,7 @@ Cpu initialize(State& s, std::mt19937& random, std::uint32_t target) {
     entry = target;
     call_site = 0;
     fixture_instruction_budget = 0;
+    basic_draw_calls = 0;
     Cpu c(s);
     const std::vector<std::uint8_t> stack_residue(0x3000, std::uint8_t(random()));
     s.memory.copy_in(stack - stack_residue.size(), stack_residue);
@@ -575,6 +617,8 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
 #include "contract_screens_transfer_cases.inc"
 #include "contract_screens_bonuses_cases.inc"
 #include "contract_screens_clauses_cases.inc"
+#include "contract_screens_basic_command_cases.inc"
+#include "contract_screens_basic_draw_cases.inc"
 #include "contract_screens_negotiation_command_cases.inc"
 #include "contract_screens_negotiation_draw_cases.inc"
 #include "contract_screens_offer_detail_cases.inc"
@@ -854,6 +898,29 @@ void database_case(Cpu& c, std::uint32_t target, std::uint32_t status, std::mt19
     expected_result = status;
 }
 
+// The existing capture stops before this screen. In this controlled replay,
+// a command and the following redraw share the same proposal and draft.
+constexpr auto replay_draft = fixture + 0x7100, replay_proposal = fixture + 0x7200;
+void replay_negotiation(State& state, RoutineRunner run) {
+    run(state, negotiation_command);
+    const auto command_trace = state.memory.copy_out(trace, calls * trace_words * 4);
+    state.memory.copy_in(trace + 0x18000, command_trace);
+    const auto draft = state.memory.copy_out(replay_draft, 0x64);
+    const auto proposal = state.memory.copy_out(replay_proposal, 0x64);
+    auto cpu = Cpu(state);
+    expected.clear();
+    expected_result.reset();
+    expected_record_word.reset();
+    negotiation_draw_case(cpu, {}, replay_draft, replay_proposal);
+    state.memory.copy_in(replay_draft, draft);
+    state.memory.copy_in(replay_proposal, proposal);
+    expected_record_word = std::pair{replay_draft + 0xc, 3000u};
+    run(state, negotiation_draw);
+}
+
+void replay_negotiation_original(State& state, std::uint32_t) { replay_negotiation(state, original); }
+void replay_negotiation_production(State& state, std::uint32_t) { replay_negotiation(state, rewrite); }
+
 constexpr auto results = RoutineChecker::result_r3 | RoutineChecker::result_f1;
 
 // Use the same pointer width, list size and CFM comparator descriptor as the
@@ -1119,6 +1186,18 @@ int main(int argc, char** argv) {
                 check();
             }
         }
+        for (unsigned mutation = 0; mutation < 4; ++mutation) {
+            for (const auto& input : basic_draw_inputs) {
+                auto c = initialize(*state, random, basic_draw);
+                basic_draw_case(c, input);
+                check();
+            }
+            for (const auto& input : basic_command_inputs) {
+                auto c = initialize(*state, random, basic_command);
+                basic_command_case(c, input);
+                check();
+            }
+        }
         const std::array detail_draws{
             OfferDetailDrawInput{.missing = true},
             OfferDetailDrawInput{},
@@ -1221,9 +1300,9 @@ int main(int argc, char** argv) {
             NegotiationCommandInput{.action = 8, .handler = 0},
             NegotiationCommandInput{.action = 0x2a, .handler = 1},
             NegotiationCommandInput{.action = 0x26, .handler = 2},
-            NegotiationCommandInput{.action = 8, .handler = 3},
-            NegotiationCommandInput{.action = 8, .common = 0xffffffff},
-            NegotiationCommandInput{.action = 8, .common = 0x80000000},
+            NegotiationCommandInput{.action = 0x70, .handler = 3},
+            NegotiationCommandInput{.action = 0x70, .common = 0xffffffff},
+            NegotiationCommandInput{.action = 0x70, .common = 0x80000000},
             NegotiationCommandInput{.action = 0},
         };
         for (unsigned mutation = 0; mutation < 4; ++mutation)
@@ -1294,6 +1373,12 @@ int main(int argc, char** argv) {
             OfferChoiceInput{.profile = true, .club_category = 4},
             OfferChoiceInput{.profile = true, .permitted_categories = 1 << 4, .club_category = 4, .preferred_category = 4},
             OfferChoiceInput{.profile = true, .terms_apply = true, .permitted_categories = 0x7e, .club_category = 3},
+            // Contract generation inside eligibility can consume another random draw.
+            OfferChoiceInput{.profile = true, .terms_apply = true, .permitted_categories = 0x7e,
+                             .rechecked_terms = 3, .club_category = 3, .preferred_category = 6},
+            OfferChoiceInput{.profile = true, .terms_apply = true, .lose_profile = true,
+                             .permitted_categories = 1 << 1, .rated_categories = 1 << 1,
+                             .club_category = 3, .age = 20},
             OfferChoiceInput{.profile = true, .permitted_categories = 0x7e, .rated_categories = 1 << 4,
                              .preferred_category = 6},
             OfferChoiceInput{.profile = true, .age = 19, .reputation = 3000, .club_reputation = 5000},
@@ -1407,18 +1492,34 @@ int main(int argc, char** argv) {
             }
         }
 
-        for (const auto tab : {2u, 3u}) {
+        constexpr std::array tab_routes{
+            std::array{basic_draw, basic_command, 8u},
+            std::array{bonuses_draw, bonuses_command, 0x2au},
+            std::array{clauses_draw, clauses_command, 0x26u},
+        };
+        for (unsigned tab = 1; tab <= tab_routes.size(); ++tab) {
+            const auto [tab_draw, tab_command, action] = tab_routes[tab - 1];
             for (const auto target : {negotiation_draw, negotiation_command}) {
                 const bool draw = target == negotiation_draw;
                 const auto setup = [&](Cpu& c) {
                     if (draw) negotiation_draw_case(c, {.tab = int(tab)});
-                    else negotiation_command_case(c, {.action = tab == 2 ? 0x2au : 0x26u, .handler = tab - 1});
+                    else negotiation_command_case(c, {.action = action, .handler = tab - 1});
                 };
                 auto excluded = initialize(*state, random, target);
                 setup(excluded);
                 real_localization = draw;
                 if (draw) localization_format_diagnostics(*state).observer = &localization_trace;
+                real_basic_dependencies = draw && tab == 1;
+                if (real_basic_dependencies) {
+                    contract_display_diagnostics(*state).observer = &basic_dependencies;
+                    contract_draft_diagnostics(*state).observer = &basic_dependencies;
+                }
                 const auto differences = compare_routine_call(*state, target, original, rewrite_with_original_children, results);
+                if (real_basic_dependencies) {
+                    contract_display_diagnostics(*state).observer = nullptr;
+                    contract_draft_diagnostics(*state).observer = nullptr;
+                    real_basic_dependencies = false;
+                }
                 if (draw) localization_format_diagnostics(*state).observer = nullptr;
                 real_localization = false;
                 if (!differences.empty()) {
@@ -1433,12 +1534,24 @@ int main(int argc, char** argv) {
                 routine_checker = &selection;
                 rewrite(*state, target);
                 routine_checker = nullptr;
-                const auto child = tab == 2 ? (draw ? bonuses_draw : bonuses_command)
-                                            : (draw ? clauses_draw : clauses_command);
+                const auto child = draw ? tab_draw : tab_command;
                 const auto seen = selection.totals().find(child);
                 if (seen == selection.totals().end() || seen->second.calls != 1)
                     throw std::runtime_error("checker parent did not observe the selected negotiation tab entry");
             }
+        }
+
+        auto replay_cpu = initialize(*state, random, negotiation_command);
+        negotiation_draw_case(replay_cpu, {}, replay_draft, replay_proposal);
+        expected.clear();
+        negotiation_command_case(replay_cpu, {.action = 8, .handler = 0}, replay_draft, replay_proposal);
+        replay_cpu.put32(replay_draft, 4);
+        production_mode = true;
+        const auto replay_difference = compare_routine_call(*state, negotiation_command,
+            replay_negotiation_original, replay_negotiation_production, results, false, true);
+        if (!replay_difference.empty()) {
+            for (const auto& difference : replay_difference) std::cerr << difference << '\n';
+            throw std::runtime_error("negotiation command/redraw replay differed from the original");
         }
 
         auto excluded_details = initialize(*state, random, negotiation_command);
@@ -1486,7 +1599,7 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << passed << " completed comparisons over " << compared.size() << " entries, seed " << seed
-                  << ", result, argument-trace and RNG cursor controls detected, three guest qsort pairs matched\n";
+                  << ", result, argument-trace and RNG cursor controls detected, negotiation replay and three guest qsort pairs matched\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

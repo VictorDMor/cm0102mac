@@ -193,7 +193,7 @@ std::uint32_t negotiation_command(Cpu& c, std::uint32_t pressed) {
     // dispatcher selects their bodies while their reconstruction is pending.
     using Handler = std::uint32_t (*)(Cpu&, std::uint32_t);
     struct Command { std::uint32_t entry, back; Handler handler; };
-    constexpr Command commands[]{{0x1009a440, 0x10098050, nullptr},
+    constexpr Command commands[]{{0x1009a440, 0x10098050, negotiation_basic_command},
                                  {0x1009c020, 0x10098064, negotiation_bonuses_command},
                                  {0x1009d410, 0x10098078, negotiation_clauses_command},
                                  {0x102a54b0, 0x1009808c, nullptr}};

@@ -12,6 +12,9 @@ void draw_transfer_request(guest::Cpu&);
 std::uint32_t transfer_request_command(guest::Cpu&, std::uint32_t control);
 std::uint32_t sample_transfer_request(guest::Cpu&, std::uint32_t bound);
 void draw_negotiation(guest::Cpu&);
+void draw_negotiation_basic(guest::Cpu&, std::uint32_t draft, std::uint32_t proposal,
+                            std::uint32_t person, std::uint32_t top, std::uint32_t bottom);
+std::uint32_t negotiation_basic_command(guest::Cpu&, std::uint32_t control);
 void draw_negotiation_bonuses(guest::Cpu&, std::uint32_t draft, std::uint32_t proposal,
                               std::uint32_t person, std::uint32_t top, std::uint32_t bottom);
 std::uint32_t negotiation_bonuses_command(guest::Cpu&, std::uint32_t control);

@@ -7,9 +7,10 @@ struct NegotiationCommandInput {
     std::uint32_t common = 0;
 };
 
-void negotiation_command_case(Cpu& c, const NegotiationCommandInput& in) {
-    constexpr auto draft_manager = fixture + 0x7500, draft = fixture + 0x7600, link_address = fixture + 0x7700,
-                   offer_record = fixture + 0x7800, draft_offer = fixture + 0x7900;
+void negotiation_command_case(Cpu& c, const NegotiationCommandInput& in, std::uint32_t draft = fixture + 0x7600,
+                              std::uint32_t draft_offer = fixture + 0x7900) {
+    constexpr auto draft_manager = fixture + 0x7500, link_address = fixture + 0x7700,
+                   offer_record = fixture + 0x7800;
     constexpr unsigned control_index = 8, value = 0x1234abcd, revision = 0x121, offer_id = 0x122,
                        year = 1999, day = 23, flags = 0x43;
     const auto layout = fixture + 0x5400 + in.group * 0x40;
@@ -118,6 +119,28 @@ void negotiation_command_case(Cpu& c, const NegotiationCommandInput& in) {
                                       std::pair{0x1009d410u, 0x10098078u}, std::pair{0x102a54b0u, 0x1009808cu}};
         for (unsigned index = 0; index < handlers.size(); ++index) {
             const auto [target, back] = handlers[index];
+            if (index == 0) {
+                const auto instance = fixture + 0x7f00, people_holder = fixture + 0x78;
+                c.put32(c.r(2) - 0x7be0, people_holder);
+                c.put32(people_holder, staff);
+                c.put32(screens + in.group * 0x2c0 + 4, instance);
+                c.put32(instance + 0x24, fixture + 0x8100);
+                active(0x1009a488);
+                read(0x1009a4f8, 0, 0);
+                read(0x1009a52c, 2, draft_offer);
+                read(0x1009a540, 0x15, 5000);
+                read(0x1009a560, 3, link);
+                read(0x1009a584, 9, 6);
+                read(0x1009a594, 0xa, 2001);
+                read(0x1009a5a4, 0xb, 7);
+                read(0x1009a5b4, 0xc, 2002);
+                if (in.handler == 0) {
+                    expected_record_word = std::pair{draft + 0xc, in.no_control ? 0u : value};
+                    expected_result = std::uint32_t(-11);
+                    return;
+                }
+                continue;
+            }
             if (index == 1) {
                 read(0x1009c05c, 2, draft_offer);
                 active(0x1009c070);
