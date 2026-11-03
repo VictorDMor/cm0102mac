@@ -4,6 +4,7 @@
 #include "match_eng_adapter.hpp"
 #include "match_pl.hpp"
 #include "match_pl_construction.hpp"
+#include "match_pl_influence.hpp"
 #include "actor_action_adapter.hpp"
 #include "actor_construction_adapter.hpp"
 #include "actor_attributes_adapter.hpp"
@@ -309,6 +310,13 @@ struct PopulationState {
 } population_state;
 bool reference_mode = false, generated_mode = false, balance_prefix = false;
 bool construction_prefix = false;
+bool influence_prefix = false;
+struct InfluenceInputs {
+    int age = 25, leadership = 13, ability = 100, loyalty = 10, temperament = 10;
+    int slot = 0, next_slot = 0;
+    bool missing_record = false;
+    std::uint32_t mutate_back = 0;
+} influence;
 bool construction_setup_prefix = false;
 bool construction_preference_prefix = false, construction_factor_prefix = false;
 constexpr std::uint32_t production_entries[]{
@@ -404,6 +412,15 @@ bool scripted(State& s) {
     Cpu c(s);
     const auto target = s.pc;
     if (active.entry == 0x10223ac0 && scripted_construction(c, target)) return true;
+    if (influence_prefix && target == 0x103b0a00) {
+        trace_call(c, target);
+        c.set(3, c.lr() == 0x1022752c ? influence.slot : influence.next_slot);
+        if (influence.mutate_back == c.lr()) {
+            c.put8(player + 0x27, 1 - active.side); c.put32(player + 0x1a4, other_match);
+            c.put32(data + 0x390, c.u32(data + 0x390) + 1);
+        }
+        c.finish(); return true;
+    }
     // Owned action, pass and core bodies execute on both routes, including
     // calls from the primary selector and the root continuation.
     if (action_entry(target) || core_entry(target) || keeper_entry(target) || shot_entry(target)) return false;
@@ -803,6 +820,10 @@ bool scripted(State& s) {
     return true;
 }
 bool probe(State& s) {
+    if (influence_prefix && s.pc == 0x100c7d00 && Cpu(s).lr() == 0x102278dc) {
+        Cpu c(s); trace_call(c, 0x100c7d00);
+        throw std::runtime_error("MATCH_PL captain influence boundary");
+    }
     if (construction_preference_prefix && s.pc == construction_preference_boundary && Cpu(s).lr() == 0x10224884) {
         Cpu c(s); trace_call(c, construction_preference_boundary);
         throw std::runtime_error("MATCH_PL constructor preference boundary");
@@ -1616,6 +1637,51 @@ void initialize_case(Cpu& c) {
         c.set(6, active.side); c.set(7, in.initial); c.set(8, in.slot);
     }
 }
+
+void initialize_influence(Cpu& c) {
+    c.put32(player + 0x6c, data + 0xc000); c.put16(data + 0xc05c, 25);
+    c.put32(c.r(2) - 0x7a6c, data + 0x304); c.put32(data + 0x304, data + 0x600);
+    c.put32(c.r(2) - 0x7b9c, data + 0x308); c.put32(c.r(2) - 0x7be4, data + 0x30c);
+    c.put32(c.r(2) - 0x7b7c, data + 0x100); c.put32(data + 0x100, data + 0x200);
+    c.put32(c.r(2) - 0x7b80, data + 0x300); c.put32(data + 0x390, 0);
+    c.put8(data + 0xe04c, 10); c.put8(data + 0xe060, 3);
+    c.put32(match + 0x3118, data + 0x8000);
+    c.put32(data + 0x801c, data + 0x9000); c.put32(data + 0x8020, data + 0xa000);
+    c.put8(data + 0x8040, 0); c.put8(data + 0x8041, 1);
+    c.put16(data + 0x91ec, 100); c.put16(data + 0xa1ec, 120);
+    for (unsigned side : {0u, 1u}) for (unsigned slot : {0u, 1u}) {
+        const auto captain = match + 0x311c + side * 0x2350 + slot * 0x1c4;
+        const auto record = data + 0xd000 + slot * 0x100;
+        c.put32(captain + 0x1a4, match); c.put8(captain + 0x27, side); c.put8(captain + 0x19, slot);
+        c.put32(captain + 0x6c, data + 0xc100); c.put32(captain + 0x70, influence.missing_record ? 0 : record);
+        c.put8(record + 0x39, influence.leadership); c.put8(record + 0x44, 13);
+        c.put16(record + 4, influence.ability + int(slot) * 20); c.put16(record + 0xc, 125); c.put8(record + 0x2f, 10);
+    }
+    c.put16(data + 0xc15c, influence.age); c.put8(data + 0xc165, influence.loyalty); c.put8(data + 0xc167, influence.temperament);
+    c.put8(data + 0xc15e, 75); c.put32(data + 0xc14c, 111); c.put32(data + 0xc150, 222);
+    c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
+    for (unsigned side : {0u, 1u}) for (unsigned slot : {0u, 1u})
+        c.put32(other_match + 0x311c + side * 0x2350 + slot * 0x1c4 + 0x1a4, other_match);
+    for (unsigned reg = 14; reg < 32; ++reg) c.set_f(reg, -1.25 * reg);
+    c.set(3, player);
+}
+void influence_phase(State& s, std::uint32_t entry, bool original) {
+    reference_mode = original; bool stopped = false;
+    try {
+        if (original) { s.pc = entry; run_until(s, sentinel); }
+        else { Cpu c(s); match_pl::PlayerInfluence activation(c, c.r(3)); activation.run(); }
+    } catch (const std::runtime_error& error) {
+        if (std::string_view(error.what()) != "MATCH_PL captain influence boundary") throw;
+        stopped = true;
+    }
+    Cpu c(s);
+    cm::semantic_io_checks::require(stopped && s.pc == 0x100c7d00 && c.lr() == 0x102278dc && c.sp() == stack - 0x100,
+        "Influence phase did not reach its live-frame service boundary");
+    cm::semantic_io_checks::require(c.u32(data + 0x390) == unsigned(influence.mutate_back != 0), "Influence mutation count");
+}
+void original_influence(State& s, std::uint32_t entry) { influence_phase(s, entry, true); }
+void rewrite_influence(State& s, std::uint32_t entry) { influence_phase(s, entry, false); }
+void corrupt_influence(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1); }
 
 void require_return(const State& s) {
     if (active.entry == 0x10223ac0) {
@@ -4512,6 +4578,34 @@ int main(int argc, char** argv) {
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
+        if (mode == "--influence-captain") {
+            influence_prefix = true;
+            std::vector<InfluenceInputs> inputs;
+            for (int age : {-128, 17, 18, 20, 21, 23, 24, 30, 31, 35, 36, 127}) {
+                InfluenceInputs in; in.age = age; inputs.push_back(in);
+            }
+            for (int ability : {-32768, 0, 32747}) { InfluenceInputs in; in.ability = ability; inputs.push_back(in); }
+            for (int temperament : {-128, 9, 127}) { InfluenceInputs in; in.temperament = temperament; inputs.push_back(in); }
+            { InfluenceInputs in; in.missing_record = true; inputs.push_back(in); }
+            { InfluenceInputs in; in.next_slot = 1; inputs.push_back(in); }
+            for (auto back : {0x1022752cu, 0x10227600u}) { InfluenceInputs in; in.mutate_back = back; inputs.push_back(in); }
+            unsigned checked = 0;
+            for (const auto& input : inputs) for (int side : {0, 1}) for (int role : {1, 2}) {
+                influence = input; active = {0x10227460, side}; active.first_role = role; active.second_role = 400;
+                auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c); initialize_influence(c);
+                const auto differences = compare_routine_call(*state, active.entry, original_influence, rewrite_influence,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                if (!differences.empty()) { std::cerr << "Influence case=" << checked << '\n'; for (const auto& line : differences) std::cerr << line << '\n'; return 1; }
+                ++checked;
+            }
+            influence = {}; active = {0x10227460}; active.first_role = 1; active.second_role = 400;
+            auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c); initialize_influence(c);
+            const auto differences = compare_routine_call(*state, active.entry, original_influence, corrupt_influence,
+                RoutineChecker::result_r3 | RoutineChecker::result_f1);
+            cm::semantic_io_checks::require(std::ranges::any_of(differences, [](const auto& line) { return line.starts_with("byte "); }), "Influence trace corruption was not detected");
+            std::cout << checked << " captain influence prefixes match; argument-trace corruption detected; suffix remains open\n";
+            return 0;
+        }
         if (mode == "--construction-witnesses") {
             const auto selected = construction_returned_cases(); std::map<std::uint32_t, unsigned> witnesses;
             for (unsigned index = 0; index < selected.size(); ++index) {
