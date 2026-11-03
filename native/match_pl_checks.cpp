@@ -3,6 +3,7 @@
 #include "match_pl_adapter.hpp"
 #include "match_eng_adapter.hpp"
 #include "match_pl.hpp"
+#include "match_pl_construction.hpp"
 #include "actor_action_adapter.hpp"
 #include "actor_attributes_adapter.hpp"
 #include "actor_effects_adapter.hpp"
@@ -42,6 +43,12 @@ constexpr std::uint32_t data = 0x60000000, player = data + 0x1000,
 // instruction. This assertion needs no extra generated instruction boundary.
 constexpr std::uint32_t fatal_boundary = 0x1076f7d0;
 constexpr std::uint32_t balance_query_boundary = 0x101e3d50;
+constexpr std::uint32_t construction_fitness_boundary = 0x101878d0;
+struct ConstructionInputs {
+    bool fallback = false, mutate_lookup = false;
+    int old_side = 0, staff_id = 0, staff_count = 10, fallback_count = 1;
+    unsigned initial = 3, slot = 4;
+};
 struct SecondaryInputs {
     int match_side = 0, phase = 0, other = 0;
     int ball_column = 4, ball_row = 5, target_column = 4, target_row = 5;
@@ -208,6 +215,7 @@ struct Case {
     RatingInputs rating{};
     ShotInputs shot{};
     BalanceInputs balance{};
+    ConstructionInputs construction{};
 };
 Case active;
 // Exercise the original's separate reads without introducing an import or
@@ -263,6 +271,7 @@ struct PopulationState {
     std::map<std::uint32_t, std::uint32_t> allocated, available;
 } population_state;
 bool reference_mode = false, generated_mode = false, balance_prefix = false;
+bool construction_prefix = false;
 constexpr std::uint32_t production_entries[]{
 #define MATCH_PL_ROUTINE(entry, ...) entry,
 #define MATCH_PL_DRAFT(...)
@@ -270,6 +279,22 @@ constexpr std::uint32_t production_entries[]{
 #undef MATCH_PL_DRAFT
 #undef MATCH_PL_ROUTINE
 };
+
+void trace_call(Cpu& c, std::uint32_t target) {
+    auto used = c.u32(trace_at);
+    const auto append = [&](std::uint32_t word) { c.put32(trace_at + 4 + used, word); used += 4; };
+    append(target); append(c.lr());
+    for (unsigned reg = 3; reg <= 10; ++reg) append(c.r(reg));
+    for (unsigned reg = 13; reg < 32; ++reg) append(c.r(reg));
+    for (unsigned field = 0; field < 8; ++field) append(c.cr(field));
+    for (unsigned reg = 1; reg <= 2; ++reg) {
+        const auto bits = std::bit_cast<std::uint64_t>(c.f(reg)); append(bits >> 32); append(bits);
+    }
+    for (unsigned reg = 14; reg < 32; ++reg) {
+        const auto bits = std::bit_cast<std::uint64_t>(c.f(reg)); append(bits >> 32); append(bits);
+    }
+    c.put32(trace_at, used);
+}
 
 bool scripted(State& s) {
     Cpu c(s);
@@ -320,20 +345,7 @@ bool scripted(State& s) {
     const bool core_team_query = action_context && target == 0x1014c2e0;
     if (std::ranges::find(services, target) == services.end() && !core_team_query &&
         (!action_context || std::ranges::find(action_services, target) == action_services.end())) return false;
-    auto used = c.u32(trace_at);
-    const auto append = [&](std::uint32_t word) { c.put32(trace_at + 4 + used, word); used += 4; };
-    append(target); append(c.lr());
-    for (unsigned reg = 3; reg <= 10; ++reg) append(c.r(reg));
-    for (unsigned reg = 13; reg < 32; ++reg) append(c.r(reg));
-    for (unsigned field = 0; field < 8; ++field) append(c.cr(field));
-    for (unsigned reg = 1; reg <= 2; ++reg) {
-        const auto bits = std::bit_cast<std::uint64_t>(c.f(reg));
-        append(bits >> 32); append(bits);
-    }
-    for (unsigned reg = 14; reg < 32; ++reg) {
-        const auto bits = std::bit_cast<std::uint64_t>(c.f(reg)); append(bits >> 32); append(bits);
-    }
-    c.put32(trace_at, used);
+    trace_call(c, target);
     if (target == 0x10113e10) {
         c.set(3, active.strategy_high); c.set(4, active.strategy_low);
         c.set_cr(0, active.strategy_low & 1 ? 4 : 2);
@@ -449,7 +461,13 @@ bool scripted(State& s) {
             c.put32(player + 0x6c, data + 0xc100); c.put32(player + 0x70, data + 0xd100);
         }
     }
-    else if (target == 0x10082f90) c.set(3, active.null_player ? 0 : data + 0xe000);
+    else if (target == 0x10082f90) {
+        c.set(3, active.null_player ? 0 : data + 0xe000);
+        if (active.entry == 0x10223ac0 && active.construction.mutate_lookup) {
+            c.put32(player + 0x70, data + 0xd100); c.put32(player + 0x1a4, other_match);
+            c.put32(data + 0x37c, c.u32(data + 0x37c) + 1);
+        }
+    }
     else if (target == 0x100c7d00) c.set(3, active.strategy_high);
     else if (target == 0x10718130) c.set(3, active.second_role);
     else if (target == 0x101f51e0) {
@@ -677,6 +695,10 @@ bool scripted(State& s) {
     return true;
 }
 bool probe(State& s) {
+    if (construction_prefix && s.pc == construction_fitness_boundary && Cpu(s).lr() == 0x10223e08) {
+        Cpu c(s); trace_call(c, construction_fitness_boundary);
+        throw std::runtime_error("MATCH_PL constructor fitness boundary");
+    }
     if (balance_prefix && s.pc == balance_query_boundary && Cpu(s).lr() == 0x10289584)
         throw std::runtime_error("MATCH_PL balance initial query boundary");
     // Cpu::call runs lowered leaves before the probe. Keep the reference's
@@ -1359,6 +1381,39 @@ void initialize_case(Cpu& c) {
         c.set(3, player); c.set(4, in.reference_column); c.set(5, in.reference_row);
         c.set(6, in.selector); c.set(7, active.argument); c.set(8, reason); c.set(9, resampled);
     }
+    if (active.entry == 0x10223ac0) {
+        const auto& in = active.construction;
+        c.put8(player + 0x27, in.old_side);
+        c.put32(data + 0xc000, in.staff_id); c.put32(data + 0xc014, in.fallback ? 0 : data + 0xd000);
+        c.put32(data + 0xc028, data + 0xc400); c.put32(data + 0xc02c, data + 0xc500);
+        c.put32(match + 0x3118, data + 0xe000); c.put32(other_match + 0x3118, data + 0xe100);
+        c.put32(data + 0xe01c, data + 0xb000); c.put32(data + 0xe020, data + 0xb400);
+        c.put32(data + 0xe11c, data + 0xb800); c.put32(data + 0xe120, data + 0xbc00);
+        c.put32(c.r(2) - 0x7b7c, data + 0x400); c.put32(data + 0x400, data + 0x600);
+        c.put32(c.r(2) - 0x7ba0, data + 0x404); c.put32(data + 0x404, data + 0x700);
+        c.put32(c.r(2) - 0x7be4, data + 0x408); c.put32(data + 0x408, in.staff_count);
+        c.put32(c.r(2) - 0x74d4, data + 0x40c); c.put32(data + 0x40c, in.fallback_count);
+        c.put32(c.r(2) - 0x7b38, data + 0x410); c.put32(data + 0x410, 0x62000000);
+        if (in.fallback) {
+            // Mapped records on both sides of the base allow the original's
+            // signed count/seed arithmetic to be checked without invalid reads.
+            c.s.memory.map(0x61b00000, 0xa00000);
+            c.put16(0x62000008, 101); c.put16(0x6200000a, 202); c.put16(0x6200000c, 303);
+            c.put8(0x62000045, 17);
+        }
+        c.put16(data + 0xd008, active.argument); c.put16(data + 0xd00a, active.argument + 1);
+        c.put16(data + 0xd00c, active.argument + 2); c.put8(data + 0xd045, active.second_role);
+        c.put16(data + 0xd108, -301); c.put16(data + 0xd10a, -302); c.put16(data + 0xd10c, -303);
+        c.put32(c.r(2) - 0x7b90, data + 0x100); c.put32(data + 0x100, active.random_seed);
+        c.put32(c.r(2) - 0x7b8c, data + 0x200);
+        c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + 0x20e);
+        c.put32(c.r(2) - 0x7b84, data + 0x108);
+        c.put32(data + 0x108, data + 0x200 + (active.pool_position == 1 ? 14 : active.pool_position == 2 ? 12 : 0));
+        for (unsigned offset = 0; offset <= 14; offset += 2) c.put16(data + 0x200 + offset, active.strategy_low + offset * 13);
+        c.put32(data + 0x37c, 0);
+        c.set(3, player); c.set(4, match); c.set(5, data + 0xc000);
+        c.set(6, active.side); c.set(7, in.initial); c.set(8, in.slot);
+    }
 }
 
 void require_return(const State& s) {
@@ -1470,6 +1525,69 @@ void corrupt_call_argument_trace(State& s, std::uint32_t entry) {
     // argument, leaving the routine's return value and game records intact.
     c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1);
 }
+// Constructor setup is a suspended frame, not a completed reconstruction.
+void construction_record_prefix(State& s, std::uint32_t entry, bool original_route) {
+    reference_mode = original_route; bool stopped = false;
+    try {
+        if (original_route) { s.pc = entry; run_until(s, sentinel); }
+        else {
+            Cpu c(s); match_pl::PlayerConstruction activation(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8));
+            activation.prepare_record();
+        }
+    } catch (const std::runtime_error& error) {
+        if (std::string_view(error.what()) != "MATCH_PL constructor fitness boundary") throw;
+        stopped = true;
+    }
+    Cpu c(s);
+    cm::semantic_io_checks::require(stopped && s.pc == construction_fitness_boundary && c.lr() == 0x10223e08 &&
+        c.sp() == stack - 0xd0 && c.r(3) == data + 0x700 && c.r(4) == data + 0xc000 && c.r(5) == 0 &&
+        c.u8(player + 0x27) == std::uint8_t(active.construction.old_side),
+        "Constructor prefix did not preserve its live frame and old side at the fitness call");
+    if (active.construction.mutate_lookup)
+        cm::semantic_io_checks::require(c.u32(data + 0x37c) == 1, "Constructor lookup mutation did not execute exactly once");
+}
+void original_construction_record(State& s, std::uint32_t entry) { construction_record_prefix(s, entry, true); }
+void rewrite_construction_record(State& s, std::uint32_t entry) { construction_record_prefix(s, entry, false); }
+void corrupt_construction_record(State& s, std::uint32_t entry) {
+    rewrite_construction_record(s, entry); Cpu c(s); c.put32(player + 0x70, c.u32(player + 0x70) ^ 1);
+}
+void corrupt_construction_result(State& s, std::uint32_t entry) {
+    rewrite_construction_record(s, entry); Cpu c(s); c.set(3, c.r(3) ^ 1);
+}
+void corrupt_construction_rng(State& s, std::uint32_t entry) {
+    rewrite_construction_record(s, entry); Cpu c(s); c.put32(data + 0x100, c.u32(data + 0x100) ^ 1);
+}
+void corrupt_construction_trace(State& s, std::uint32_t entry) {
+    rewrite_construction_record(s, entry); Cpu c(s); c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1);
+}
+std::vector<Case> construction_record_cases() {
+    std::vector<Case> result;
+    for (int side : {0, 1}) for (int old : {0, 1, -128}) for (int id : {-1, 0, 9, 10, INT32_MAX}) {
+        Case test{0x10223ac0, side}; test.construction.old_side = old; test.construction.staff_id = id;
+        test.argument = 32767; result.push_back(test);
+    }
+    for (int bound : {-70000, -65536, -65535, -1, 0, 1, 2, 65535, 65536, 70000})
+    for (auto seed : {0u, 65535u, 0x80000000u, UINT32_MAX}) for (unsigned position : {0u, 1u, 2u}) {
+        Case test{0x10223ac0}; test.construction.fallback = true; test.construction.fallback_count = bound;
+        test.random_seed = seed; test.strategy_low = 65535; test.pool_position = position; result.push_back(test);
+    }
+    for (int side : {0, 1}) for (bool fallback : {false, true}) {
+        Case test{0x10223ac0, side}; test.construction.old_side = 1 - side; test.construction.fallback = fallback;
+        test.construction.mutate_lookup = true; test.pool_position = 1; result.push_back(test);
+    }
+    std::uint32_t seed = 0x434f4e31;
+    const auto next = [&] { seed = seed * 1664525 + 1013904223; return seed; };
+    for (unsigned index = 0; index < 128; ++index) {
+        Case test{0x10223ac0, int(next() >> 31)}; auto& in = test.construction;
+        in.old_side = std::int8_t(next() >> 24); in.initial = next(); in.slot = next();
+        in.fallback = next() >> 31; in.staff_id = std::int32_t(next()); in.staff_count = std::int32_t(next());
+        in.fallback_count = int(next() % 140001) - 70000;
+        test.random_seed = next(); test.strategy_low = next() >> 16; test.pool_position = next() % 3;
+        test.argument = next(); test.second_role = next() >> 24; result.push_back(test);
+    }
+    return result;
+}
+
 // This diagnostic prefix is a suspended frame, never a normally returned call.
 void balance_initial_prefix(State& s, std::uint32_t entry, bool original_route) {
     reference_mode = original_route;
@@ -3904,6 +4022,31 @@ int main(int argc, char** argv) {
     if (argc < 2) return 2;
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
+        if (argc == 3 && std::string_view(argv[2]) == "--construction-record-prefix") {
+            construction_prefix = true; const auto prefixes = construction_record_cases(); unsigned checked = 0;
+            for (const auto& test : prefixes) {
+                active = test; auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto found = compare_routine_call(*state, active.entry, original_construction_record, rewrite_construction_record,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                if (!found.empty()) {
+                    std::cout << "CONSTRUCTION PREFIX case=" << checked << '\n';
+                    for (const auto& line : found) std::cout << line << '\n';
+                    return 1;
+                }
+                ++checked;
+            }
+            for (const auto corruption : {corrupt_construction_result, corrupt_construction_record, corrupt_construction_rng, corrupt_construction_trace}) {
+                active = {0x10223ac0}; active.construction.fallback = true; active.pool_position = 1;
+                auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto found = compare_routine_call(*state, active.entry, original_construction_record, corruption,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                const auto diagnostic = corruption == corrupt_construction_result ? "r3 " : "byte ";
+                cm::semantic_io_checks::require(std::ranges::any_of(found, [&](const auto& line) { return line.starts_with(diagnostic); }),
+                    "Constructor prefix corruption was not detected");
+            }
+            std::cout << checked << '/' << prefixes.size() << " construction-record prefixes matched (not guest returns); four corruptions detected\n";
+            return 0;
+        }
         if (argc == 3 && std::string_view(argv[2]) == "--balance-initial-prefix") {
             balance_prefix = true; const auto prefixes = balance_initial_cases(); unsigned checked = 0;
             for (const auto& test : prefixes) {
