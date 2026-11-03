@@ -19,6 +19,8 @@ void open_new_negotiation(guest::Cpu&, std::uint32_t person, std::uint32_t state
 void open_existing_negotiation(guest::Cpu&, std::uint32_t link, std::uint32_t person,
                                std::uint32_t state, std::uint32_t kind, std::uint32_t mode);
 void release_offer_draft(guest::Cpu&);
+void draw_offer_details(guest::Cpu&);
+std::uint32_t offer_details_command(guest::Cpu&, std::uint32_t control);
 void open_offer_details(guest::Cpu&, std::uint32_t offer_link, std::uint32_t first,
                         std::uint32_t second, std::uint32_t third, std::uint32_t fifth,
                         std::uint32_t fourth);

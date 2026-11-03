@@ -8,7 +8,7 @@ namespace {
 constexpr int screen_manager = -0x7bb0;
 constexpr int news_manager = -0x7bf0;
 constexpr int news_contract_draw = -0x56c4, news_contract_command = -0x56c8;
-constexpr int offer_details_draw = -0x5708, offer_details_command = -0x570c;
+constexpr int offer_details_draw_slot = -0x5708, offer_details_command_slot = -0x570c;
 constexpr int staff_contract_draw = -0x7994;
 constexpr int staff_contract_command = -0x7998;
 constexpr unsigned staff_history = 0;
@@ -81,7 +81,7 @@ void open_offer_details(Cpu& c, std::uint32_t offer_link, std::uint32_t first,
     keep(c, {{25, offer_link}, {26, first}, {27, second}, {28, third}, {29, fifth}, {30, fourth}});
     Kept<31> screens(c, c.toc(screen_manager));
     c.set(0, c.lr());
-    if (!append_contract_screen(c, screens, offer_details_draw, offer_details_command, 0x1009daf8)) return;
+    if (!append_contract_screen(c, screens, offer_details_draw_slot, offer_details_command_slot, 0x1009daf8)) return;
 
     set_history(c, screens, 0, offer_link, 0x1009db14);
     set_history(c, screens, 3, std::uint32_t(std::int8_t(first)), 0x1009db28);

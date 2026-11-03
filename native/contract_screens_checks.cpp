@@ -26,6 +26,7 @@ constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_
                         transfer_command = 0x10093e60, transfer_sample = 0x10094560,
                         choice_draw = 0x100952b0, negotiation_choice = 0x10095db0,
                         negotiation_draw = 0x10096c60, negotiation_command = 0x10097b70, open_details_end = 0x1009dbf8,
+                        details_draw = 0x1009dc00, details_command = 0x1009e290,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
                         compare_staff = 0x1009ee00, load_language = 0x1009ef30,
                         save_db = 0x1009ef60, load_db = 0x1009ef90;
@@ -59,6 +60,9 @@ std::optional<std::uint32_t> replacement_club;
 std::optional<std::uint16_t> group_after_open, group_before_valuation;
 struct OfferNewsPayload { std::uint32_t message, person, offer; };
 std::optional<OfferNewsPayload> offer_news_payload;
+struct DetailSubmission { std::uint8_t flags, role, clause; std::uint16_t year, day; std::uint8_t date_flags; };
+std::optional<DetailSubmission> detail_submission;
+std::optional<std::pair<std::uint16_t, std::uint16_t>> detail_date;
 std::uint32_t entry = 0;
 std::uint32_t call_site = 0;
 unsigned fixture_instruction_budget = 0;
@@ -162,6 +166,40 @@ bool service(State& s) {
     case 0x10369080:
         c.set_f(1, call.form.value());
         c.put32(c.r(9), call.candidate_flags.value());
+        break;
+    case 0x10411ea0:
+        if (c.lr() == 0x1009e520) c.put8(c.r(3) + 0x38, 0x0a);
+        break;
+    case 0x103e25d0: {
+        const auto& proposal = detail_submission.value();
+        const auto at = c.r(4);
+        if (c.u8(at + 0x38) != proposal.flags || c.u8(at + 0x11) != proposal.role ||
+            c.u8(at + 0x35) != proposal.clause || c.u16(at - 8) != proposal.year ||
+            c.u16(at - 6) != proposal.day || c.u8(at - 4) != proposal.date_flags)
+            throw std::runtime_error("offer details submitted different terms");
+        c.put32(at + 0x28, 0x10123);
+        c.put32(at + 0x2c, 0x20123);
+        break;
+    }
+    case 0x10738e00: {
+        const auto list = c.r(3), node = c.u32(list + 0xc);
+        c.set(5, node);
+        if (compare_logical(c, node) != 0) {
+            c.set({{4, c.u32(node)}, {0, c.u32(node + 8)}});
+            c.put32(list + 0xc, c.r(0));
+        }
+        const auto value = node ? c.r(4) : 0;
+        if (value != call.result.value())
+            throw std::runtime_error("offer details traversed participants out of order");
+        break;
+    }
+    case 0x10715880:
+        c.put32(c.r(3), 0);
+        c.put8(c.r(3) + 4, 0);
+        break;
+    case 0x103fb130:
+        c.put16(c.r(4), detail_date.value().first);
+        c.put16(c.r(4) + 2, detail_date.value().second);
         break;
     case 0x10374f50:
         c.put32(c.r(9), 337);
@@ -311,6 +349,8 @@ Cpu initialize(State& s, std::mt19937& random, std::uint32_t target) {
     group_after_open.reset();
     group_before_valuation.reset();
     offer_news_payload.reset();
+    detail_submission.reset();
+    detail_date.reset();
     entry = target;
     call_site = 0;
     fixture_instruction_budget = 0;
@@ -483,6 +523,7 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
 #include "contract_screens_transfer_cases.inc"
 #include "contract_screens_negotiation_command_cases.inc"
 #include "contract_screens_negotiation_draw_cases.inc"
+#include "contract_screens_offer_detail_cases.inc"
 
 struct ChoiceInput {
     unsigned action = 2;
@@ -976,6 +1017,55 @@ int main(int argc, char** argv) {
                 transfer_command_case(c, input);
                 check();
             }
+        const std::array detail_draws{
+            OfferDetailDrawInput{.missing = true},
+            OfferDetailDrawInput{},
+            OfferDetailDrawInput{.linked = true, .employed = true, .titled = true},
+            OfferDetailDrawInput{.employed = true, .same_club = true, .mode = 1, .option = 2},
+            OfferDetailDrawInput{.employed = true, .kind = 5, .height = 1},
+            OfferDetailDrawInput{.employed = true, .compensation = 500},
+            OfferDetailDrawInput{.employed = true, .titled = true, .mode = 1, .compensation = 500},
+            OfferDetailDrawInput{.employed = true, .same_year = false, .mode = 1, .compensation = 1},
+            OfferDetailDrawInput{.employed = true, .same_day = false, .mode = 1, .compensation = 0},
+            OfferDetailDrawInput{.employed = true, .withdraw = 1, .mode = 1, .option = 3, .compensation = 500},
+            OfferDetailDrawInput{.mode = 0, .option = 3},
+        };
+        const std::array detail_commands{
+            OfferDetailCommandInput{.action = 0x15},
+            OfferDetailCommandInput{.action = 0x15, .fallback = true, .no_control = true},
+            OfferDetailCommandInput{.action = 7, .handled = 0xfffffff6},
+            OfferDetailCommandInput{.action = 7, .fallback = true, .common = 0x80000000},
+            OfferDetailCommandInput{.action = 0, .fallback = true, .common = 0xffffffff},
+            OfferDetailCommandInput{.action = 0},
+            OfferDetailCommandInput{.withdraw = 1},
+            OfferDetailCommandInput{.linked = true, .stale = true, .category = 2},
+            OfferDetailCommandInput{.linked = true, .status = 3, .category = 3},
+            OfferDetailCommandInput{.linked = true, .status = 2, .category = 5},
+            OfferDetailCommandInput{.linked = true, .category = 0},
+            OfferDetailCommandInput{.linked = true, .listed_participant = true, .category = 6},
+            OfferDetailCommandInput{.employed = true, .same_club = true},
+            OfferDetailCommandInput{},
+            OfferDetailCommandInput{.person_role = 12},
+            OfferDetailCommandInput{.employed = true, .profile = true, .role = 11, .person_role = 12, .kind = 1},
+            OfferDetailCommandInput{.employed = true, .profile = true, .mode = 1, .role = 11, .person_role = 12},
+            OfferDetailCommandInput{.employed = true, .profile = true, .mode = 1, .option = 2, .role = 13, .person_role = 12},
+            OfferDetailCommandInput{.employed = true, .profile = true, .protected_player = true, .role = 15},
+            OfferDetailCommandInput{.profile = true, .role = 11},
+            OfferDetailCommandInput{.profile = true, .role = 15},
+            OfferDetailCommandInput{.profile = true, .role = 12},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation) {
+            for (const auto& input : detail_draws) {
+                auto c = initialize(*state, random, details_draw);
+                offer_details_draw_case(c, input);
+                check();
+            }
+            for (const auto& input : detail_commands) {
+                auto c = initialize(*state, random, details_command);
+                offer_details_command_case(c, input);
+                check();
+            }
+        }
         const std::array negotiation_draws{
             NegotiationDrawInput{.person = false},
             NegotiationDrawInput{},
