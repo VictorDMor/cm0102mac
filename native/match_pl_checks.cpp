@@ -310,9 +310,9 @@ struct PopulationState {
 } population_state;
 bool reference_mode = false, generated_mode = false, balance_prefix = false;
 bool construction_prefix = false;
-bool influence_prefix = false, influence_ability = false, influence_publication = false, influence_coaching = false, influence_technical = false;
-std::uint32_t influence_target() { return influence_technical ? 0x10780fc0u : influence_coaching ? 0x101fee30u : influence_publication ? 0x1014c2e0u : 0x100c7d00u; }
-std::uint32_t influence_boundary() { return influence_technical ? 0x10228e18u : influence_coaching ? 0x102288bcu : influence_publication ? 0x102286e4u : influence_ability ? 0x10228220u : 0x102278dcu; }
+bool influence_prefix = false, influence_ability = false, influence_publication = false, influence_coaching = false, influence_technical = false, influence_position = false, influence_leadership = false, influence_late = false;
+std::uint32_t influence_target() { return influence_late ? 0x101fedd0u : influence_leadership ? 0x10780fc0u : influence_position ? 0x101fee30u : influence_technical ? 0x10780fc0u : influence_coaching ? 0x101fee30u : influence_publication ? 0x1014c2e0u : 0x100c7d00u; }
+std::uint32_t influence_boundary() { return influence_late ? 0x10229bf4u : influence_leadership ? 0x1022987cu : influence_position ? 0x102293f8u : influence_technical ? 0x10228e18u : influence_coaching ? 0x102288bcu : influence_publication ? 0x102286e4u : influence_ability ? 0x10228220u : 0x102278dcu; }
 struct InfluenceInputs {
     int age = 25, leadership = 13, ability = 100, loyalty = 10, temperament = 10;
     int slot = 0, next_slot = 0;
@@ -322,7 +322,8 @@ struct InfluenceInputs {
     int ambition = 10, tendency = 5;
     int actor_age = 25, ability_cap = 150, reputation = 10, experience = 125, endurance = 10, motivation = 10;
     int coach_context = 0, coach_rating = 13, coaching = 2, attribute23 = 10, role = 0;
-    int opponent_context = 0, other_role = 400, attribute_offset = 0, attribute_value = 10;
+    int opponent_context = 0, own_context = 0, other_role = 400, attribute_offset = 0, attribute_value = 10;
+    int specialty = 10, coach_skill = 10;
     bool missing_competition = false;
     bool missing_record = false;
     std::uint32_t mutate_back = 0;
@@ -431,9 +432,9 @@ bool scripted(State& s) {
         }
         c.finish(); return true;
     }
-    if (influence_prefix && (target == 0x1014c2e0 || target == 0x100d2f50 || target == 0x101fee30)) {
+    if (influence_prefix && (target == 0x1014c2e0 || target == 0x100d2f50 || target == 0x101fee30 || target == 0x101fedd0)) {
         trace_call(c, target);
-        c.set(3, target == 0x1014c2e0 ? influence.coach_context : target == 0x101fee30 ? influence.opponent_context : influence.coach_rating);
+        c.set(3, target == 0x1014c2e0 ? influence.coach_context : target == 0x101fee30 ? influence.opponent_context : target == 0x101fedd0 ? influence.own_context : influence.coach_rating);
         if (influence.mutate_back == c.lr()) {
             c.put8(player + 0x27, 1 - active.side); c.put32(player + 0x1a4, other_match);
             c.put32(player + 0x70, data + 0xd500); c.put32(data + 0x390, c.u32(data + 0x390) + 1);
@@ -1700,14 +1701,15 @@ void initialize_influence(Cpu& c) {
         c.put16(record + 6, influence.ability_cap); c.put16(record + 0xc, influence.experience);
         c.put8(record + 0xf, influence.reputation); c.put8(record + 0x1e, influence.endurance);
         c.put8(record + 0x23, influence.attribute23);
-        for (unsigned offset : {0x24u, 0x26u, 0x27u, 0x2au, 0x2bu, 0x31u, 0x32u}) c.put8(record + offset, 10);
+        for (unsigned offset : {0x24u, 0x26u, 0x27u, 0x2au, 0x2bu, 0x31u, 0x32u, 0x33u, 0x35u, 0x37u, 0x38u, 0x39u, 0x3au, 0x3eu, 0x41u, 0x43u}) c.put8(record + offset, 10);
+        c.put8(record + 0x12, influence.specialty);
         if (influence.attribute_offset) c.put8(record + influence.attribute_offset, influence.attribute_value);
     }
     c.put16(data + 0xc15c, influence.age); c.put8(data + 0xc165, influence.loyalty); c.put8(data + 0xc167, influence.temperament);
     c.put8(data + 0xc15e, 75); c.put32(data + 0xc14c, 111); c.put32(data + 0xc150, 222);
     for (unsigned side : {0u, 1u})
         c.put32(match + 0x7aac + side * 0xd8 + 0x20, influence.coaching ? data + 0xc800 : 0);
-    c.put32(data + 0xc81c, influence.coaching == 2 ? data + 0xc900 : 0); c.put8(data + 0xc941, 17);
+    c.put32(data + 0xc81c, influence.coaching == 2 ? data + 0xc900 : 0); c.put8(data + 0xc941, 17); c.put8(data + 0xc92e, influence.coach_skill);
     c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
     for (unsigned side : {0u, 1u}) for (unsigned slot : {0u, 1u})
         c.put32(other_match + 0x311c + side * 0x2350 + slot * 0x1c4 + 0x1a4, other_match);
@@ -1730,7 +1732,7 @@ void influence_phase(State& s, std::uint32_t entry, bool original) {
 }
 void original_influence(State& s, std::uint32_t entry) { influence_phase(s, entry, true); }
 void rewrite_influence(State& s, std::uint32_t entry) { influence_phase(s, entry, false); }
-void corrupt_influence_result(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); const auto attribute = player + (influence_technical ? 0xb8 : 0x80); c.put32(attribute, c.u32(attribute) ^ 1); }
+void corrupt_influence_result(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); const auto attribute = player + (influence_late ? 0xec : influence_leadership ? 0xd0 : influence_position ? 0xbc : influence_technical ? 0xb8 : 0x80); c.put32(attribute, c.u32(attribute) ^ 1); }
 void corrupt_influence(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1); }
 
 void require_return(const State& s) {
@@ -4628,8 +4630,11 @@ int main(int argc, char** argv) {
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
-        if (mode == "--influence-captain" || mode == "--influence-ability" || mode == "--influence-publication" || mode == "--influence-coaching" || mode == "--influence-technical") {
-            influence_prefix = true; influence_technical = mode == "--influence-technical";
+        if (mode == "--influence-captain" || mode == "--influence-ability" || mode == "--influence-publication" || mode == "--influence-coaching" || mode == "--influence-technical" || mode == "--influence-position" || mode == "--influence-leadership" || mode == "--influence-late") {
+            influence_prefix = true; influence_late = mode == "--influence-late";
+            influence_leadership = influence_late || mode == "--influence-leadership";
+            influence_position = influence_leadership || mode == "--influence-position";
+            influence_technical = influence_position || mode == "--influence-technical";
             influence_coaching = influence_technical || mode == "--influence-coaching";
             influence_publication = influence_coaching || mode == "--influence-publication";
             influence_ability = mode != "--influence-captain";
@@ -4712,8 +4717,50 @@ int main(int argc, char** argv) {
                     InfluenceInputs in; in.base_ability = 1000; in.ability_cap = 2000; in.mutate_back = back; inputs.push_back(in);
                 }
             }
+            if (influence_position) {
+                for (int role : {8, 0x10, 0x18, 0x40, 0x88, 0x90, 0xa0, 0xc0, 0x800}) for (int specialty : {19, 20}) {
+                    InfluenceInputs in; in.role = role; in.specialty = specialty; in.opponent_context = 1; in.own_context = 1; inputs.push_back(in);
+                }
+                for (int other : {0, 8, 0x18, 0x80, 0x88, 0xc0}) {
+                    InfluenceInputs in; in.role = 0x80; in.other_role = other; in.opponent_context = 1; in.own_context = 1; inputs.push_back(in);
+                }
+                for (int offset : {0x33, 0x35, 0x37}) for (int value : {-128, 0, 127}) {
+                    InfluenceInputs in; in.attribute_offset = offset; in.attribute_value = value; inputs.push_back(in);
+                }
+                for (int skill : {-128, 0, 127}) { InfluenceInputs in; in.coach_skill = skill; in.coach_rating = 17; inputs.push_back(in); }
+                for (auto back : {0x10228e18u, 0x10228e60u, 0x10229078u, 0x102290c8u, 0x10229178u, 0x10229264u}) {
+                    InfluenceInputs in; in.base_ability = 1000; in.ability_cap = 2000; in.mutate_back = back; inputs.push_back(in);
+                }
+            }
+            if (influence_leadership) {
+                for (int role : {0x84, 0x88, 0x90, 0x80, 4}) for (int other : {4, 8, 0x80, 0xc0}) {
+                    InfluenceInputs in; in.role = role; in.other_role = other; in.opponent_context = 1; inputs.push_back(in);
+                }
+                for (int age : {20, 21, 22, 23, 37}) for (int experience : {3749, 3750}) {
+                    InfluenceInputs in; in.actor_age = age; in.experience = experience; in.role = 1; inputs.push_back(in);
+                }
+                for (int offset : {0x38, 0x39}) for (int value : {-128, 127}) {
+                    InfluenceInputs in; in.attribute_offset = offset; in.attribute_value = value; inputs.push_back(in);
+                }
+                for (auto back : {0x102293f8u, 0x1022973cu, 0x10229828u}) {
+                    InfluenceInputs in; in.mutate_back = back; inputs.push_back(in);
+                }
+            }
+            if (influence_late) {
+                for (int age : {37, 38, 39, 40}) {
+                    InfluenceInputs in; in.actor_age = age; in.attribute_offset = 0x3a; in.attribute_value = 127; inputs.push_back(in);
+                }
+                for (int ability : {79, 80, 124, 125}) {
+                    InfluenceInputs in; in.base_ability = ability; in.attribute_offset = 0x43; in.attribute_value = 11; inputs.push_back(in);
+                }
+                for (int offset : {0x3a, 0x3e, 0x41, 0x43}) for (int value : {-128, 127}) {
+                    InfluenceInputs in; in.attribute_offset = offset; in.attribute_value = value; inputs.push_back(in);
+                }
+                { InfluenceInputs in; in.mutate_back = 0x1022987c; inputs.push_back(in); }
+            }
             unsigned checked = 0;
             for (const auto& input : inputs) for (int side : {0, 1}) for (int role : {1, 2}) {
+                if (input.role && role == 2) continue; // This fixture already selects a role.
                 influence = input; active = {0x10227460, side}; active.first_role = influence.role ? influence.role : role; active.second_role = influence.other_role;
                 if (influence_ability) active.strategy_high = influence.club_context;
                 auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c); initialize_influence(c);
@@ -4733,7 +4780,7 @@ int main(int argc, char** argv) {
                     RoutineChecker::result_r3 | RoutineChecker::result_f1);
                 cm::semantic_io_checks::require(std::ranges::any_of(bad_result, [](const auto& line) { return line.starts_with("byte "); }), "Influence result corruption was not detected");
             }
-            std::cout << checked << (influence_technical ? " technical influence" : influence_coaching ? " coached influence" : influence_publication ? " published influence" : influence_ability ? " ability influence" : " captain influence") << " prefixes match; argument-trace corruption detected" << (influence_publication ? "; attribute corruption detected" : "") << "; suffix remains open\n";
+            std::cout << checked << (influence_late ? " late attribute influence" : influence_leadership ? " leadership influence" : influence_position ? " positional influence" : influence_technical ? " technical influence" : influence_coaching ? " coached influence" : influence_publication ? " published influence" : influence_ability ? " ability influence" : " captain influence") << " prefixes match; argument-trace corruption detected" << (influence_publication ? "; attribute corruption detected" : "") << "; suffix remains open\n";
             return 0;
         }
         if (mode == "--construction-witnesses") {

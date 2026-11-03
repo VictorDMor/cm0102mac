@@ -23,7 +23,13 @@ class PlayerInfluence {
     void publish_ability();
     void coaching_effects();
     void technical_attributes();
-    void derived_attribute(unsigned profile_offset, unsigned player_offset, std::uint32_t multiply_site, unsigned penalty_weight = 0);
+    void positional_attribute();
+    void leadership_attribute();
+    void late_ratings();
+    void aged_profile_rating(unsigned profile_offset, unsigned result_register);
+    void weighted_coaching(unsigned player_offset, unsigned coefficient_register, unsigned base_offset, unsigned fallback_offset,
+        std::uint32_t coefficient_site, std::uint32_t rating_back, std::uint32_t adjustment_site);
+    void derived_attribute(unsigned profile_offset, unsigned player_offset, std::uint32_t multiply_site, unsigned penalty_weight = 0, bool subtract_penalty = true);
     void floor_attribute(unsigned player_offset);
     void role_attribute_scale(unsigned player_offset, std::uint32_t first_back, std::uint32_t second_back);
     void soften_attribute(unsigned player_offset, unsigned threshold, unsigned exponent, std::uint32_t power_back, bool club_gate = false);

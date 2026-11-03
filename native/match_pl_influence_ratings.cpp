@@ -30,7 +30,7 @@ void PlayerInfluence::soften_attribute(unsigned player_offset, unsigned threshol
     c.put_f32(actor.address + player_offset, float(c.f(0)));
 }
 
-void PlayerInfluence::derived_attribute(unsigned profile_offset, unsigned player_offset, std::uint32_t multiply_site, unsigned penalty_weight) {
+void PlayerInfluence::derived_attribute(unsigned profile_offset, unsigned player_offset, std::uint32_t multiply_site, unsigned penalty_weight, bool subtract_penalty) {
     // These original attribute formulas share their integer staging and result
     // layout. Weighted penalties have a different FPR layout and use one fused
     // negative multiply-subtract rather than a separate subtraction.
@@ -47,7 +47,8 @@ void PlayerInfluence::derived_attribute(unsigned profile_offset, unsigned player
         c.set_f(1, c.f64(doubles + 0xb8)); c.set_f(2, fp.fsub(c.f(0), c.f(2)));
     }
     c.set_f(0, c.f64(doubles + 0x88)); c.set_f(2, fp.multiply_add(multiply_site, c.f(4), c.f(3), c.f(2)));
-    c.set_f(2, penalty_weight ? fp.multiply_add(multiply_site + 4, c.f(5), c.f(27), c.f(2)) : fp.fsub(c.f(2), c.f(27)));
+    if (penalty_weight) c.set_f(2, fp.multiply_add(multiply_site + 4, c.f(5), c.f(27), c.f(2)));
+    else if (subtract_penalty) c.set_f(2, fp.fsub(c.f(2), c.f(27)));
     c.set_f(2, fp.frsp(c.f(2))); c.set_f(1, fp.fdiv(c.f(2), c.f(1))); c.set_f(1, fp.frsp(c.f(1)));
     c.put_f32(actor.address + player_offset, float(c.f(1))); floor_attribute(player_offset);
 }

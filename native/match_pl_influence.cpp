@@ -124,6 +124,12 @@ void PlayerInfluence::run() {
     c.set(3, actor.match()); c.set(4, opponent); c.call(0x101fee30, 0x102288bc);
     technical_attributes();
     c.set_f(1, c.f32(actor.address + 0xb8)); c.set_f(2, c.f64(doubles + 0x198)); c.call(0x10780fc0, 0x10228e18);
+    positional_attribute();
+    const auto opposite = std::int8_t(actor.side()) == 0;
+    c.set(3, actor.match()); c.set(4, opposite); c.call(0x101fee30, 0x102293f8);
+    leadership_attribute();
+    c.set_f(1, c.f32(actor.address + 0xd0)); c.set_f(2, c.f64(doubles + 0x198)); c.call(0x10780fc0, 0x1022987c);
+    late_ratings();
     throw std::logic_error("MATCH_PL team influence suffix is not reconstructed");
 }
 }
