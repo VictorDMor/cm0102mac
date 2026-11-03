@@ -4239,3 +4239,24 @@ target_compile_options(cm-english-rules-checks PRIVATE -Wall -Wextra -Werror -Wp
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME english_competition_rules COMMAND cm-english-rules-checks "${CM_ORACLE_DIR}")
 endif()
+
+target_sources(cm_aot PRIVATE contract_screens_adapter.cpp contract_screens_history.cpp
+    contract_screens_candidates.cpp)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_CONTRACT_SCREENS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/contract_screens_reference.cpp")
+    add_custom_command(OUTPUT "${CM_CONTRACT_SCREENS_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_contract_screens_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_CONTRACT_SCREENS_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_contract_screens_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/contract_screens_audit.py"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_SOURCE_DIR}/contract_screens_routines.inc"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-contract-screens-checks contract_screens_checks.cpp "${CM_CONTRACT_SCREENS_REFERENCE}")
+    target_link_libraries(cm-contract-screens-checks PRIVATE cm_aot)
+    target_compile_options(cm-contract-screens-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME contract_screens_equivalence COMMAND cm-contract-screens-checks "${CM_ORACLE_DIR}")
+    add_test(NAME contract_screens_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_contract_screens_audit.py")
+endif()

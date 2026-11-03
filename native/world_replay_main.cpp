@@ -95,6 +95,7 @@
 #include "oceania_nations_adapter.hpp"
 #include "news_adapter.hpp"
 #include "news_screens_adapter.hpp"
+#include "contract_screens_adapter.hpp"
 #include "dispute_adapter.hpp"
 #include "award_manager_adapter.hpp"
 #include "award_shortlist_adapter.hpp"
@@ -256,6 +257,7 @@ int main(int argc, char** argv) {
                              : dispute_lists(entry)           ? dispute_run_original
                              : news_lists(entry)              ? news_run_original
                              : news_screens_lists(entry)      ? news_screens_run_original
+                             : contract_screens_lists(entry)  ? contract_screens_run_original
                              : oceania_nations_lists(entry)   ? oceania_nations_run_original
                              : inter_amer_cup_lists(entry)    ? inter_amer_cup_run_original
                              : euro_champ_qual_lists(entry)   ? euro_champ_qual_run_original
@@ -295,6 +297,7 @@ int main(int argc, char** argv) {
                              : dispute_lists(entry)           ? dispute_run_rewrite
                              : news_lists(entry)              ? news_run_rewrite
                              : news_screens_lists(entry)      ? news_screens_run_rewrite
+                             : contract_screens_lists(entry)  ? contract_screens_run_rewrite
                              : oceania_nations_lists(entry)   ? oceania_nations_run_rewrite
                              : inter_amer_cup_lists(entry)    ? inter_amer_cup_run_rewrite
                              : euro_champ_qual_lists(entry)   ? euro_champ_qual_run_rewrite

@@ -1,0 +1,5 @@
+CONTRACT_SCREENS_ROUTINE(0x10093ae0, [](guest::Cpu& c) { contract_screens::open_staff_contract_from_news(c, c.r(3), c.r(4)); })
+CONTRACT_SCREENS_ROUTINE(0x100980d0, [](guest::Cpu& c) { contract_screens::release_offer_draft(c); })
+CONTRACT_SCREENS_ROUTINE(0x1009dab0, [](guest::Cpu& c) { contract_screens::open_offer_details(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8)); })
+CONTRACT_SCREENS_ROUTINE(0x1009e880, [](guest::Cpu& c) { contract_screens::open_staff_contract(c, c.r(3)); })
+CONTRACT_SCREENS_ROUTINE(0x1009ee00, [](guest::Cpu& c) { c.set(3, contract_screens::compare_candidates(c, c.r(3), c.r(4))); })
