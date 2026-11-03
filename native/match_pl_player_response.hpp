@@ -4,8 +4,7 @@
 
 namespace cm::aot::match_pl {
 
-// Draft through the position penalties. The production entry remains original
-// until the remaining response phases and their caller checks are complete.
+// Full handwritten response. The production entry is switched after block verification.
 class PlayerResponse {
     guest::Cpu& c;
     guest::Frame frame;
@@ -22,6 +21,10 @@ class PlayerResponse {
     void secondary_specialty();
     void publish_initial_ratings();
     void publish_remaining_bytes();
+    void publish_reputation_composite();
+    void publish_physical_composites();
+    void publish_composite_attributes();
+    void normalize_attributes();
     void publish_simple_rating(unsigned field, unsigned previous_field, unsigned output_slot,
         unsigned compare_slot, unsigned recalculate_slot, unsigned coefficient = 0x84);
     void subtract_scaled(unsigned field, unsigned multiplier, bool count_side = false);
