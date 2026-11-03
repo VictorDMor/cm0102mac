@@ -36,7 +36,7 @@ struct OfferLink {
 };
 }
 
-void open_staff_contract_from_news(Cpu& c, std::uint32_t item, std::uint32_t revision) {
+void open_transfer_request_from_news(Cpu& c, std::uint32_t item, std::uint32_t revision) {
     Frame frame(c, 0x10093ae0, 0x140, {.first_gpr = 27});
     Kept<27> item_id(c, item);
     Kept<28> item_revision(c, revision);
@@ -103,7 +103,7 @@ void open_offer_details(Cpu& c, std::uint32_t offer_link, std::uint32_t first,
     set_history(c, screens, 2, 0xffffffff, 0x1009dbe4);
 }
 
-void open_staff_contract(Cpu& c, std::uint32_t staff) {
+void open_staff_release(Cpu& c, std::uint32_t staff) {
     Frame frame(c, 0x1009e880, 0x40, {.first_gpr = 30});
     Kept<31> screens(c, c.toc(screen_manager));
     Kept<30> selected_staff(c, staff);
