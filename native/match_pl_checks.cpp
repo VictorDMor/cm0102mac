@@ -23,6 +23,7 @@
 #include "target_acceptance_adapter.hpp"
 #include "ball_contact_adapter.hpp"
 #include "match_pl_goal_line.hpp"
+#include "match_pl_pressure.hpp"
 #include "match_pl_obstruction.hpp"
 #include "player_decision_adapter.hpp"
 #include "routine_check.hpp"
@@ -240,6 +241,18 @@ struct GoalLineInputs {
     int seed_after_tally = INT32_MIN;
     int milestone_reread = INT32_MIN;
 };
+constexpr std::uint32_t pressure_entry = 0x10239f10;
+struct PressureInputs {
+    bool override_contact_draws = false;
+    bool actual_acquisition = false;
+    unsigned expected_recipient_route = 0;
+    int keeper_after_contact = 0;
+    int clock = 0;
+    int wait = 7;
+    int seed_after_contact = INT32_MIN;
+    unsigned effects_second_draw = 9;
+    std::array<unsigned, 5> words{};
+};
 constexpr std::uint32_t obstruction_entry = 0x10272240;
 struct ObstructionInputs {
     unsigned restart = 0;
@@ -282,6 +295,7 @@ struct Case {
     ConstructionInputs construction{};
     GoalLineInputs goal_line{};
     ObstructionInputs obstruction{};
+    PressureInputs pressure{};
 };
 Case active;
 // Exercise the original's separate reads without introducing an import or
@@ -513,6 +527,87 @@ bool scripted_goal_line(Cpu& c, std::uint32_t target) {
     }
     c.finish();
     return true;
+}
+
+bool scripted_pressure(Cpu& c) {
+    auto& s = c.s;
+    switch (s.pc) {
+    case 0x101f50c0:
+        trace_call(c, s.pc);
+        c.put8(c.r(6), 4);
+        c.put8(c.r(7), active.pressure.wait);
+        c.set(3, active.context_flags);
+        if (active.mutate && active.context_flags)
+            c.put16(c.u32(c.toc(-0x7b84)) + 2, 0);
+        if (active.pressure.override_contact_draws) {
+            c.put8(match + 0x7920, active.pressure.clock);
+            const auto cursor = c.u32(c.toc(-0x7b84));
+            for (unsigned i = 0; i < active.pressure.words.size(); ++i)
+                c.put16(cursor + (i + 1) * 2, active.pressure.words[i]);
+        }
+        if (active.pressure.seed_after_contact != INT32_MIN)
+            c.put32(c.toc(-0x7b90), std::uint32_t(active.pressure.seed_after_contact));
+        c.finish();
+        return true;
+    case 0x101f5180:
+        trace_call(c, s.pc);
+        c.put_f32(c.r(9), 0.125f);
+        if (active.last_is_player) c.put8(c.r(5), 7);
+        if (active.mutate_choice) {
+            const auto cursor = c.u32(c.toc(-0x7b84));
+            for (unsigned i = 1; i <= 8; ++i) c.put16(cursor + i * 2, 400);
+        }
+        c.finish();
+        return true;
+    case 0x101f3a30:
+        trace_call(c, s.pc); c.set(3, active.null_player ? 0 : data + 0xf000); c.finish(); return true;
+    case 0x102720a0:
+        trace_call(c, s.pc); c.set(3, active.strategy_high); c.finish(); return true;
+    case 0x10272150:
+        trace_call(c, s.pc);
+        if (active.pressure.expected_recipient_route == 1 && c.lr() == 0x1023bc64) c.put8(trace_at + 0x4000, 1);
+        c.set(3, active.second_role);
+        c.finish();
+        return true;
+    case 0x101ee530:
+        trace_call(c, s.pc);
+        if (active.feedback_alias) {
+            const auto cursor = c.u32(c.toc(-0x7b84));
+            c.put16(cursor + 2, 81);
+            c.put16(cursor + 4, active.pressure.effects_second_draw);
+            c.put16(cursor + 6, 2);
+        }
+        c.set(3, active.no_feedback);
+        c.finish();
+        return true;
+    case 0x10288f30:
+        trace_call(c, s.pc); c.set(3, active.strategy_low); c.finish(); return true;
+    case 0x1022e3a0:
+        if (active.pressure.actual_acquisition) return false;
+        trace_call(c, s.pc); c.put32(match + 0xe000, c.r(3)); c.finish(); return true;
+    case 0x102884d0:
+    case 0x101d6780:
+    case 0x1022ba10:
+    case 0x101f1530:
+    case 0x101d68f0:
+    case 0x101f1100: trace_call(c, s.pc); c.finish(); return true;
+    case 0x10201180:
+        trace_call(c, s.pc);
+        if (active.pressure.expected_recipient_route == 2 && c.r(4) == 0x21df) c.put8(trace_at + 0x4000, 2);
+        c.finish();
+        return true;
+    case 0x101ee9f0: case 0x101e3d50: case 0x10226520:
+        trace_call(c, s.pc);
+        if (s.pc == 0x101ee9f0) c.set(3, active.second_role);
+        else if (s.pc == 0x101e3d50) {
+            const bool final_role = c.lr() == 0x1023bf50 || c.lr() == 0x1023c8f0;
+            c.set(3, final_role && active.pressure.override_contact_draws ? active.pressure.keeper_after_contact : active.first_role);
+        }
+        else c.set(3, active.argument);
+        c.finish();
+        return true;
+    default: return false;
+    }
 }
 
 bool scripted(State& s) {
@@ -1072,6 +1167,7 @@ bool probe(State& s) {
     // dispatch path symmetric, particularly the two-instruction side getter.
     if (run_leaf(s)) return true;
     if (goal_line_entry(active.entry) && scripted_goal_line(influence_cpu, s.pc)) return true;
+    if (active.entry == pressure_entry && scripted_pressure(influence_cpu)) return true;
     if (scripted(s)) return true;
     if (reference_mode && match_pl_lists(s.pc)) return match_pl_reference(s);
     if (reference_mode && s.pc >= 0x102238a0 && s.pc < 0x1028ad60)
@@ -5244,6 +5340,7 @@ int check_obstruction(const State& base, std::string_view mode) {
 }
 
 #include "match_pl_goal_line_checks.inc"
+#include "match_pl_pressure_checks.inc"
 
 int main(int argc, char** argv) {
     if (argc < 2) return 2;
@@ -5252,6 +5349,10 @@ int main(int argc, char** argv) {
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
         if (mode == "--goal-line-returned" || mode == "--goal-line-fatal")
             return check_goal_line(*base, mode == "--goal-line-fatal");
+        if (mode == "--pressure-matrix" || mode == "--pressure-published-return" || mode == "--pressure-unsettled-return")
+            return check_pressure_matrix(*base, mode);
+        if (mode == "--pressure-gaps" || mode == "--pressure-production" || mode == "--pressure-recipient-fallback")
+            return check_pressure_gaps(*base, mode);
         if (mode == "--goal-line-gaps") return check_goal_line_gaps(*base);
         if (mode == "--goal-line-production") return check_goal_line_production(*base);
         if (mode == "--obstruction-opening" || mode == "--obstruction-spatial" || mode == "--obstruction-contest" ||

@@ -10,6 +10,8 @@ MATCH_PL_ROUTINE(0x1026a1b0, 0x1026d660, R3|F1, "f4ec46acd3336988",
     [](Cpu& c) { match_pl::GoalLineAction(c, true).run(); })
 MATCH_PL_ROUTINE(0x1026d660, 0x10270320, R3|F1, "f3bb112ea6fd059e",
     [](Cpu& c) { match_pl::GoalLineAction(c, false).run(); })
+MATCH_PL_ROUTINE(0x10239f10, 0x1023cd20, R3|F1, "623db0dac28fc9de",
+    [](Cpu& c) { match_pl::CellPressure(c).run(); })
 // Original entries of the first MATCH_PL state/spatial-query block.
 MATCH_PL_ROUTINE(0x10237b50, 0x102393c0, R3|F1, "35946308526c1212",
     [](Cpu& c) { match_pl::update_periodic_balance(c, c.r(3)); })
