@@ -140,12 +140,21 @@ struct KeeperInputs {
     std::uint32_t selector = 0;
     int alias = 0;
     float reach = 0;
+    bool mutate_at_attribute_refill = false;
+    int wait_after_refill = 0;
+};
+struct RatingInputs {
+    float condition = 10000, fitness = 50;
+    int holder = 1, penalty = 0, score = 200, heading = 0, ball_heading = 0;
+    int mode = 0, wait = 1, alias = 0;
+    std::uint32_t mutate_back = 0;
 };
 constexpr bool action_entry(std::uint32_t entry) {
     return entry == 0x10245220 || entry == 0x10245870 || entry == 0x10274170;
 }
 constexpr bool core_entry(std::uint32_t entry) { return entry == 0x10247030; }
 constexpr bool keeper_entry(std::uint32_t entry) { return entry == 0x10251270; }
+constexpr bool rating_entry(std::uint32_t entry) { return entry == 0x10270c70; }
 struct Case {
     std::uint32_t entry;
     int side = 0, column = 4, row = 5;
@@ -168,6 +177,7 @@ struct Case {
     PrimaryInputs primary{};
     ActionInputs action{};
     KeeperInputs keeper{};
+    RatingInputs rating{};
 };
 Case active;
 // Exercise the original's separate reads without introducing an import or
@@ -175,7 +185,7 @@ Case active;
 struct ActionReads final : MemoryObserver {
     State& s; MemoryObserver* previous; unsigned count = 0, wait_count = 0;
     bool receiver_changed = false, publication_pending = false, published = false, ball_changed = false;
-    bool enabled = (action_entry(active.entry) || core_entry(active.entry)) &&
+    bool enabled = (action_entry(active.entry) || core_entry(active.entry) || rating_entry(active.entry)) &&
         (active.action.split_attribute || active.action.receiver_busy_on_seed_read || active.action.core_wait_split || active.action.core_ball_column != INT32_MIN || active.action.receiver_busy_after_core_seed);
     explicit ActionReads(State& state) : s(state), previous(s.memory.date_observer) {
         if (enabled) s.memory.date_observer = this;
@@ -276,7 +286,7 @@ bool scripted(State& s) {
     constexpr std::array action_services{0x101f5230u, 0x101d68f0u, 0x101f0c00u,
         0x101eaf60u, 0x101f5350u, 0x101f5110u, 0x101f3a30u, 0x101ee530u,
         0x10303560u, 0x101f0090u, 0x1026a1b0u, 0x1026d660u};
-    const bool action_context = action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry) || active.entry == 0x10278220 || active.entry == 0x102775e0;
+    const bool action_context = action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry) || rating_entry(active.entry) || active.entry == 0x10278220 || active.entry == 0x102775e0;
     const bool core_team_query = action_context && target == 0x1014c2e0;
     if (std::ranges::find(services, target) == services.end() && !core_team_query &&
         (!action_context || std::ranges::find(action_services, target) == action_services.end())) return false;
@@ -307,6 +317,24 @@ bool scripted(State& s) {
     }
     else if (target == 0x101f0dd0 || target == 0x1077b770) {
         c.set(3, target == 0x101f0dd0 && selection_entry ? std::uint32_t(selection.moving) : target == 0x1077b770 && active.entry == 0x102836a0 ? active.context.reseed : target == 0x1077b770 && active.entry == 0x10278220 ? active.primary.reseed : active.first_role);
+        if (target == 0x1077b770 && rating_entry(active.entry) && active.rating.mutate_back && c.lr() == active.rating.mutate_back) {
+            c.put32(data + 0x354, c.u32(data + 0x354) + 1);
+            c.put8(data + 0x350, 37); c.put_f32(player + 0x50, 20000); c.put_f32(player + 0x78, 60000);
+            c.put32(player + 0x1a4, other_match); c.put8(other_match + 0x791f, 4);
+            c.put8(other_match + 0x7920, 127); c.put16(other_match + 0x7950, 170);
+        }
+        if (target == 0x1077b770 && keeper_entry(active.entry) &&
+            active.keeper.mutate_at_attribute_refill && c.lr() == 0x10251a74) {
+            // The keeper has already captured the skill, attribute bound and
+            // wait byte. Its later waiting draw must retain that saved wait
+            // even if an external call changes both the record and match.
+            c.put32(data + 0x344, c.u32(data + 0x344) + 1);
+            c.put8(match + 0x7920, active.keeper.wait_after_refill);
+            c.put8(other_match + 0x7920, active.keeper.wait_after_refill + 1);
+            c.put32(player + 0x1a4, other_match);
+            c.put16(player + 0x16c, -700);
+            c.put_f32(player + 0xd4, 1000);
+        }
         if (target == 0x1077b770 && active.entry == 0x102836a0 && active.context.coefficient_back && c.lr() == active.context.coefficient_back) {
             c.put_f32(c.toc(-0x51e0) + 0xc8, active.context.coefficient_after);
             c.put32(data + 0x31c, c.u32(data + 0x31c) + 1);
@@ -480,7 +508,7 @@ bool scripted(State& s) {
     else if (target == 0x10768810) c.set(3, 17);
     else if (target == 0x10739890 || target == 0x1077b720 || target == 0x10769b60 || target == 0x1076f7d0) {
         if (target == 0x1076f7d0 && active.entry == 0x102836a0 && active.context.expected_exit) throw ApplicationExit{};
-        if (target == 0x1076f7d0 && core_entry(active.entry) && active.force_exit) throw ApplicationExit{};
+        if (target == 0x1076f7d0 && (core_entry(active.entry) || rating_entry(active.entry)) && active.force_exit) throw ApplicationExit{};
     }
     else if (target == 0x107735a0) {
         c.put32(data + 0x300, c.r(3));
@@ -1145,9 +1173,34 @@ void initialize_case(Cpu& c) {
     if ((active.mutate || active.mutate_after_step || (active.entry == 0x10289d50 && (active.context_flags & 8))) && active.entry != 0x1022e3a0) c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
     if (active.entry == 0x10289d50 && (active.context_flags & 8)) c.put16(other_match + 0x7948, active.row + 110);
     if (active.entry == 0x102836a0 && active.mutate) c.put8(other_match + 0x791e, (active.context.ball_row + 1) % 12);
-    if (action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry)) initialize_actions(c);
+    if (action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry) || rating_entry(active.entry)) initialize_actions(c);
+    if (rating_entry(active.entry)) {
+        const auto& in = active.rating;
+        c.put_f32(player + 0x50, in.condition); c.put_f32(player + 0x78, in.fitness);
+        c.put32(match + 0xe000, in.holder == 1 ? player : in.holder == 2 ? data + 0x9000 : 0);
+        c.put16(player + 0x1a0, in.penalty); c.put16(player + 0x19e, in.heading);
+        c.put16(match + 0x7950, in.ball_heading); c.put8(match + 0x791f, in.mode); c.put8(match + 0x7920, in.wait);
+        for (unsigned offset = 0x11e; offset <= 0x182; offset += 2) c.put16(player + offset, in.score + int(offset));
+        std::uint32_t action = data + 0x350, first = data + 0x351, second = data + 0x352;
+        c.put8(first, 0xa5); c.put8(second, 0x5a); c.put32(data + 0x354, 0);
+        if (in.alias == 1) second = first;
+        if (in.alias == 2) action = first;
+        if (in.alias == 3) action = second;
+        if (in.alias == 4) first = player + 0x148;
+        if (in.alias == 5) second = player + 0x149;
+        if (in.alias == 6) first = match + 0x791f;
+        if (in.alias == 7) second = match + 0x7920;
+        if (in.alias == 8) first = data + 0x103;
+        if (in.alias == 9) second = data + 0x103;
+        if (in.alias == 10) first = player + 0x50;
+        if (in.alias == 11) second = player + 0x78;
+        c.put8(action, active.argument);
+        c.s.memory.copy_in(other_match, c.s.memory.copy_out(match, 0x10000));
+        c.set(3, player); c.set(4, action); c.set(5, first); c.set(6, second);
+    }
     if (keeper_entry(active.entry)) {
         const auto& in = active.keeper;
+        c.put32(data + 0x344, 0);
         c.put16(player + 0x16c, in.first_skill); c.put16(player + 0x16e, in.alternate_skill);
         c.put16(player + 0x3c, in.trait); c.put_f32(player + 0xd4, in.reach); c.put8(player + 0xf, in.unsigned_trait);
         c.put8(player + 0x2c, in.delay); c.put8(match + 0x791d, in.ball_column); c.put8(match + 0x791e, in.ball_row);
@@ -1170,6 +1223,14 @@ void initialize_case(Cpu& c) {
 void require_return(const State& s) {
     cm::semantic_io_checks::require(s.pc == sentinel && s.r<4>(4) == stack,
                                    "MATCH_PL comparison did not return normally");
+    if (rating_entry(active.entry) && active.rating.mutate_back)
+        cm::semantic_io_checks::require(s.memory.read<4>(data + 0x354) == 1 &&
+            s.memory.read<4>(player + 0x1a4) == other_match,
+            "Action-rating refill mutation did not execute exactly once");
+    if (keeper_entry(active.entry) && active.keeper.mutate_at_attribute_refill)
+        cm::semantic_io_checks::require(s.memory.read<4>(data + 0x344) == 1 &&
+            s.memory.read<4>(player + 0x1a4) == other_match,
+            "Keeper attribute-refill mutation did not execute exactly once");
     if (active.action.defender_restart_after_query != INT32_MIN)
         cm::semantic_io_checks::require(s.memory.read<4>(data + 0x32c) == 1, "Post-core defender restart mutation did not execute");
     if (core_entry(active.entry) && active.action.core_queue) {
@@ -1245,6 +1306,13 @@ void corrupt_memory(State& s, std::uint32_t entry) {
 void corrupt_core_rng(State& s, std::uint32_t entry) {
     rewrite(s, entry); Cpu c(s); const auto seed_cell = c.toc(-0x7b90); c.put32(seed_cell, c.u32(seed_cell) ^ 1);
 }
+void corrupt_call_argument_trace(State& s, std::uint32_t entry) {
+    rewrite(s, entry); Cpu c(s);
+    cm::semantic_io_checks::require(c.u32(trace_at) >= 77 * 4, "No service argument trace to corrupt");
+    // Each record begins with target, LR and r3. Alter only the traced
+    // argument, leaving the routine's return value and game records intact.
+    c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1);
+}
 void explain_primary_trace(const State& prepared) {
     auto a = cm::semantic_io_checks::clone(prepared), b = cm::semantic_io_checks::clone(prepared);
     try { original(*a, active.entry); rewrite(*b, active.entry); }
@@ -1276,7 +1344,8 @@ void expected_fatal_prefix(State& s, std::uint32_t entry, bool original_route) {
     catch (const std::exception&) { throw; }
     catch (...) { throw std::runtime_error("Unexpected control flow at MATCH_PL fatal prefix"); }
     Cpu c(s);
-    const auto size = core_entry(entry) ? 0x150u : 0x100u, back = core_entry(entry) ? 0x102505ecu : 0x10284ed8u;
+    const auto size = core_entry(entry) ? 0x150u : rating_entry(entry) ? 0x140u : 0x100u;
+    const auto back = core_entry(entry) ? 0x102505ecu : rating_entry(entry) ? 0x10271280u : 0x10284ed8u;
     cm::semantic_io_checks::require(exited && s.pc == fatal_boundary && c.sp() == stack - size && c.lr() == back,
                                    "MATCH_PL fatal prefix did not reach the expected ApplicationExit boundary");
 #if defined(CM_MATCH_PL_COVERAGE)
@@ -1302,7 +1371,9 @@ std::uint64_t external_budget(std::uint32_t entry) {
     // Pass selection executes two original abs leaves (8 instructions), the
     // core's direction abs (4), and two original wide-column queries (16).
     // Its original-body negative control must still exhaust this allowance.
-    return entry == 0x10278220 ? 128 : entry == 0x10245870 ? 32 : entry == 0x10281780 ? 12 : entry == 0x10247030 || entry == 0x10245220 || entry == 0x1022e760 || entry == 0x10245160 || entry == 0x10270ba0 ? 8 :
+    // Action rating's default invalid-action case also executes the actual
+    // two-instruction diagnostic-context leaf at 0x10768810 after both abs calls.
+    return entry == 0x10278220 ? 128 : entry == 0x10245870 ? 32 : entry == 0x10281780 ? 12 : rating_entry(entry) ? 10 : entry == 0x10247030 || entry == 0x10245220 || entry == 0x1022e760 || entry == 0x10245160 || entry == 0x10270ba0 || keeper_entry(entry) ? 8 :
         entry == 0x1028ac50 || entry == 0x10245050 || entry == 0x10244c60 || entry == 0x10237420 ? 4 : 0;
 }
 Case route_case(std::uint32_t entry) {
@@ -1318,7 +1389,7 @@ void require_production_routes(const State& base) {
     for (const auto entry : production_entries) {
         active = route_case(entry);
         auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_case(c);
-        if (action_entry(entry) || core_entry(entry) || entry == 0x10278220) {
+        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || entry == 0x10278220) {
             auto original_state = cm::semantic_io_checks::clone(base); Cpu original_cpu(*original_state); initialize_case(original_cpu);
             original_state->budget = external_budget(entry); original_state->pc = entry; bool exhausted = false;
             // The original body runs its callees as the original too: MATCH_ENG.CPP's hook declines for this State.
@@ -1341,7 +1412,11 @@ void require_production_routes(const State& base) {
         state->pc = entry;
         cm::semantic_io_checks::Effects observer;
         observer.state = state.get(); state->memory.date_observer = &observer;
-        run_until(*state, sentinel);
+        try { run_until(*state, sentinel); }
+        catch (const std::runtime_error& error) {
+            throw std::runtime_error(std::string(error.what()) + " in production route " + hex_address(entry) +
+                " pc=" + hex_address(state->pc) + " lr=" + hex_address(c.lr()));
+        }
         state->memory.date_observer = nullptr;
         require_return(*state);
         std::cout << "ok production C++ route " << hex_address(entry) << '\n';
@@ -3053,32 +3128,165 @@ std::vector<Case> cases() {
     for (int side : {-1, 2}) for (int kind : {0, 26, 51}) {
         Case test{0x10251270, side, 4, 1, std::uint32_t(kind)}; test.keeper.reference_row = 1; test.strategy_low = 1; result.push_back(test);
     }
+    for (int side : {0, 1}) for (int wait : {-128, 0, 1, 127}) for (float reach : {0.f, 1e8f}) {
+        Case test{0x10251270, side, 4, side ? 11 : 0, 51};
+        test.keeper.reference_row = test.row; test.keeper.wait = wait; test.keeper.reach = reach;
+        test.keeper.unsigned_trait = 17; test.keeper.mutate_at_attribute_refill = true;
+        test.keeper.wait_after_refill = wait == 0 ? 127 : 0;
+        // Position 7 encodes pool index 5: the two initial samples consume
+        // indexes 6 and 7, then the attribute sample calls the refill service.
+        test.pool_position = 7; test.strategy_low = 17; result.push_back(test);
+    }
+    // Reproducible scalar mutations preserve all pointers and finite geometry.
+    // This complements the targeted alias, IEEE edge and callback cases above.
+    std::uint32_t keeper_seed = 0x4b505231;
+    const auto next_keeper_word = [&] {
+        keeper_seed ^= keeper_seed << 13; keeper_seed ^= keeper_seed >> 17;
+        keeper_seed ^= keeper_seed << 5; return keeper_seed;
+    };
+    constexpr std::array keeper_actions{0u, 3u, 5u, 26u, 27u, 51u};
+    for (unsigned mutation = 0; mutation < 128; ++mutation) {
+        Case test{0x10251270};
+        test.side = next_keeper_word() % 2; test.column = next_keeper_word() % 9; test.row = next_keeper_word() % 12;
+        test.argument = keeper_actions[next_keeper_word() % keeper_actions.size()];
+        test.keeper.reference_column = next_keeper_word() % 9; test.keeper.reference_row = next_keeper_word() % 12;
+        test.keeper.first_skill = std::int16_t(next_keeper_word()); test.keeper.alternate_skill = std::int16_t(next_keeper_word());
+        test.keeper.selector = next_keeper_word(); test.keeper.wait = std::int8_t(next_keeper_word());
+        test.keeper.trait = std::int16_t(next_keeper_word()); test.keeper.reach = float(int(next_keeper_word() % 241) - 40) / 2;
+        test.keeper.alias = next_keeper_word() % 9; test.keeper.unsigned_trait = next_keeper_word() % 256;
+        test.random_seed = next_keeper_word(); test.strategy_low = next_keeper_word() & 0xffff;
+        test.pool_position = next_keeper_word() % 10; test.nonuniform_pool = true;
+        result.push_back(test);
+    }
+    for (unsigned action : {21u, 37u}) for (int penalty : {0, 75}) {
+        Case test{0x10270c70, 0, 4, 5, action}; test.first_role = 2;
+        test.rating.penalty = penalty; result.push_back(test);
+    }
+    // Exercise both original tables, including holes and signed byte values.
+    for (unsigned action = 0; action < 256; ++action) {
+        Case test{0x10270c70, 0, 4, 0, action}; test.first_role = 2;
+        test.strategy_low = 3; result.push_back(test);
+    }
+    for (int side : {0, 1}) for (int row : {0, 1, 2, 5, 10, 11})
+    for (int column : {1, 2, 4, 6, 7}) for (unsigned action : {19u, 21u, 37u, 47u})
+    for (unsigned pool : {0u, 31u}) {
+        Case test{0x10270c70, side, column, row, action}; test.first_role = 2;
+        test.strategy_low = pool; result.push_back(test);
+    }
+    for (float condition : {0.f, 50.f, 9999.f, 10000.f, 10001.f, 20000.f, -32768.f, 32767.f,
+                            65536.f, -1e20f, 1e20f, std::numeric_limits<float>::infinity(),
+                            std::numeric_limits<float>::quiet_NaN()})
+    for (int holder : {0, 1, 2}) for (unsigned pool : {0u, 31u, 65535u}) {
+        Case test{0x10270c70, 0, 4, 0, 21}; test.first_role = 2;
+        test.rating.condition = condition; test.rating.holder = holder;
+        test.strategy_low = pool; test.pool_position = 1; result.push_back(test);
+    }
+    for (unsigned action : {19u, 33u, 34u, 47u, 49u}) for (unsigned seed : {0u, 1u, 0x80000000u, 0xfffffffcu, 0xfffffffdu, 0xfffffffeu, 0xffffffffu})
+    for (int value : {-1000, 0, 200}) {
+        Case test{0x10270c70, 0, 4, 0, action}; test.first_role = 2;
+        test.rating.score = value; test.random_seed = seed; result.push_back(test);
+    }
+    for (int mode : {-128, 0, 4, 127}) for (int side : {0, 1}) {
+        Case test{0x10270c70, side, 4, side ? 11 : 0, 21}; test.rating.mode = mode;
+        test.strategy_low = 17; test.pool_position = 1; result.push_back(test);
+    }
+    for (float fitness : {-1e20f, -65538.f, -65537.f, -2.f, -1.f, 0.f, 65533.f, 65534.f, 65535.f, 1e20f,
+                          std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+    for (unsigned position : {0u, 1u}) for (unsigned seed : {0u, 0x80000001u}) {
+        Case test{0x10270c70, 0, 4, 5, 47}; test.first_role = 2;
+        test.rating.fitness = fitness; test.random_seed = seed; test.pool_position = position;
+        test.strategy_low = 100; result.push_back(test);
+    }
+    for (float distance : {0.f, 0.125f, -0.125f, -40000.f, 40000.f, 1e20f,
+                           std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+    for (unsigned position : {0u, 1u, 2u}) for (unsigned seed : {0u, 0x80000001u}) {
+        Case test{0x10270c70, 0, 4, 5, 47}; test.first_role = 2;
+        test.action.custom_distance = true; test.action.distance = distance;
+        test.random_seed = seed; test.pool_position = position; test.strategy_low = 11; result.push_back(test);
+    }
+    for (int alias = 1; alias <= 11; ++alias) for (unsigned action : {1u, 19u, 21u, 34u, 37u, 42u, 47u, 49u, 50u}) {
+        Case test{0x10270c70, 0, 4, 0, action}; test.first_role = 2;
+        test.rating.alias = alias; test.rating.mode = 4; test.rating.wait = 3;
+        test.random_seed = 0xfffffffdu; test.strategy_low = 1; result.push_back(test);
+    }
+    for (int heading : {-32768, -181, -180, 0, 179, 180, 181, 360, 32767})
+    for (int mode : {-128, 0, 4, 5, 127}) for (int wait : {-128, 0, 1, 127}) {
+        Case test{0x10270c70, 0, 4, 0, 21}; test.first_role = 2;
+        test.rating.holder = 0; test.rating.heading = heading; test.rating.mode = mode; test.rating.wait = wait;
+        test.strategy_low = 31; result.push_back(test);
+    }
+    for (unsigned protected_action : {0u, 1u}) {
+        Case test{0x10270c70, 0, 4, 0, 47}; test.first_role = 2;
+        test.rating.holder = 0; test.action.protected_action = protected_action;
+        result.push_back(test); // Explicitly returning fatal service, or permitted action.
+    }
+    for (auto back : {0x10270e74u, 0x10270fecu, 0x10271310u, 0x10271718u, 0x10271ea8u}) {
+        Case test{0x10270c70, 0, 4, 0, 47}; test.first_role = 2;
+        test.rating.mutate_back = back; test.pool_position = 1; test.strategy_low = 0;
+        if (back == 0x10270e74 || back == 0x10270fec) test.row = 5;
+        if (back == 0x10270fec) test.pool_position = 2;
+        if (back == 0x10271310) { test.argument = 21; test.rating.condition = 50; }
+        if (back == 0x10271718) { test.argument = 21; test.rating.holder = 0; }
+        result.push_back(test);
+    }
+    for (float first : {0.f, 10000.f, 20000.f, -32768.f, 32767.f})
+    for (float second : {0.f, 10000.f, 20000.f, -32768.f, 32767.f}) {
+        Case test{0x10270c70, 0, 4, 0, 21}; test.first_role = 2;
+        test.rating.condition = first; test.action.split_attribute = true; test.action.second_attribute = second;
+        test.strategy_low = 17; test.pool_position = 1; result.push_back(test);
+    }
+    {
+        Case test{0x10270c70, 0, 4, 0, 37}; test.first_role = 2; test.rating.holder = 0;
+        result.push_back(test);
+        test.argument = 21; test.rating.holder = 1; test.rating.condition = 9993;
+        test.action.split_attribute = true; test.action.second_attribute = 31428;
+        test.strategy_low = 17; result.push_back(test);
+    }
+    std::uint32_t rating_seed = 0x41525431;
+    const auto next_rating_word = [&] {
+        rating_seed ^= rating_seed << 13; rating_seed ^= rating_seed >> 17; rating_seed ^= rating_seed << 5;
+        return rating_seed;
+    };
+    for (unsigned mutation = 0; mutation < 256; ++mutation) {
+        Case test{0x10270c70};
+        test.side = next_rating_word() % 2; test.column = next_rating_word() % 9; test.row = next_rating_word() % 12;
+        test.argument = next_rating_word() % 256; test.first_role = next_rating_word() % 3;
+        test.rating.condition = float(int(next_rating_word() % 100001) - 50000);
+        test.rating.fitness = float(int(next_rating_word() % 200001) - 100000);
+        test.rating.holder = next_rating_word() % 3; test.rating.penalty = std::int16_t(next_rating_word());
+        test.rating.score = std::int16_t(next_rating_word()); test.rating.heading = std::int16_t(next_rating_word());
+        test.rating.ball_heading = std::int16_t(next_rating_word()); test.rating.mode = std::int8_t(next_rating_word());
+        test.rating.wait = std::int8_t(next_rating_word()); test.rating.alias = next_rating_word() % 12;
+        test.random_seed = next_rating_word(); test.strategy_low = next_rating_word() & 0xffff;
+        test.pool_position = next_rating_word() % 10; test.nonuniform_pool = true;
+        test.action.protected_action = next_rating_word() % 2; result.push_back(test);
+    }
     return result;
 }
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 3) return 2;
+    if (argc < 2) return 2;
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         if (argc == 3 && std::string_view(argv[2]) == "--routes-only") {
             generated_mode = true; require_production_routes(*base); return 0;
         }
-        generated_mode = argc == 3 && std::string_view(argv[2]) == "--production";
         auto tests = cases();
-        if (argc == 3 && !generated_mode) {
-            const std::string_view option(argv[2]);
-            if (option == "--actions-block") std::erase_if(tests, [](const Case& test) { return !action_entry(test.entry); });
+        for (int option_index = 2; option_index < argc; ++option_index) {
+            const std::string_view option(argv[option_index]);
+            if (option == "--production") generated_mode = true;
+            else if (option == "--actions-block") std::erase_if(tests, [](const Case& test) { return !action_entry(test.entry); });
             else {
                 if (!option.starts_with("--entry=")) throw std::runtime_error("Unknown MATCH_PL checker option");
                 const auto entry = std::stoul(std::string(option.substr(8)), nullptr, 0);
                 std::erase_if(tests, [entry](const Case& test) { return test.entry != entry; });
             }
-            if (tests.empty()) throw std::runtime_error("No fixture cases for selected MATCH_PL entry");
         }
         if (generated_mode) std::erase_if(tests, [](const Case& test) {
             return std::ranges::find(production_entries, test.entry) == std::end(production_entries);
         });
+        if (tests.empty()) throw std::runtime_error("No fixture cases for selected MATCH_PL entry and route");
         unsigned failures = 0, completed = 0;
         std::map<std::uint32_t, unsigned> compared;
         for (const auto& test : tests) {
@@ -3092,7 +3300,7 @@ int main(int argc, char** argv) {
                           << " column=" << active.column << " row=" << active.row << " argument=" << active.argument << '\n';
                 if (active.entry == 0x10278220) std::cout << "  primary restart=" << active.primary.restart << " role=" << active.first_role << " mobility=" << active.primary.mobility << " trait109=" << active.primary.trait109 << " pool=" << active.pool_position << '\n';
                 for (const auto& line : found) std::cout << "  " << line << '\n';
-                if (active.entry == 0x10278220 || action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry)) explain_primary_trace(*state);
+                if (active.entry == 0x10278220 || action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry) || rating_entry(active.entry)) explain_primary_trace(*state);
                 if (++failures == 5) break;
             }
         }
@@ -3163,6 +3371,48 @@ int main(int argc, char** argv) {
             const bool detected = std::ranges::any_of(found, [&](const auto& line) { return line.starts_with(prefix); });
             if (!detected) { ++failures; std::cout << "FAIL negative control\n"; }
             else std::cout << "ok " << (memory ? "memory" : "result") << " corruption detected\n";
+        }
+        if (!failures && std::ranges::any_of(tests, [](const Case& test) { return keeper_entry(test.entry); })) {
+            for (const auto corruption : {corrupt, corrupt_memory, corrupt_core_rng, corrupt_call_argument_trace}) {
+                active = {0x10251270, 0, 4, 0, 51}; active.strategy_low = 17; active.pool_position = 7;
+                auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto changed = compare_routine_call(*state, active.entry, original, corruption,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                const auto prefix = corruption == corrupt ? "r3 " : "byte ";
+                if (!std::ranges::any_of(changed, [&](const auto& line) { return line.starts_with(prefix); })) {
+                    ++failures; std::cout << "FAIL keeper corruption was not detected\n";
+                } else std::cout << "ok keeper " << (corruption == corrupt ? "result" : corruption == corrupt_memory ? "memory" :
+                                                     corruption == corrupt_core_rng ? "RNG" : "call-argument trace")
+                                 << " corruption detected\n";
+            }
+        }
+        if (!failures && std::ranges::any_of(tests, [](const Case& test) { return rating_entry(test.entry); })) {
+            for (const auto corruption : {corrupt, corrupt_memory, corrupt_core_rng, corrupt_call_argument_trace}) {
+                active = {0x10270c70, 0, 4, 0, 47}; active.first_role = 2;
+                active.strategy_low = 3; active.pool_position = 1;
+                auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto changed = compare_routine_call(*state, active.entry, original, corruption,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                const auto prefix = corruption == corrupt ? "r3 " : "byte ";
+                if (!std::ranges::any_of(changed, [&](const auto& line) { return line.starts_with(prefix); })) {
+                    ++failures; std::cout << "FAIL action-rating corruption was not detected\n";
+                } else std::cout << "ok action-rating " << (corruption == corrupt ? "result" : corruption == corrupt_memory ? "memory" :
+                                                     corruption == corrupt_core_rng ? "RNG" : "call-argument trace")
+                                 << " corruption detected\n";
+            }
+        }
+        if (!failures && std::ranges::any_of(tests, [](const Case& test) { return rating_entry(test.entry); })) {
+            active = {0x10270c70, 0, 4, 0, 47}; active.first_role = 2; active.rating.holder = 0; active.force_exit = true;
+            auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+            const auto changed = compare_routine_call(*state, active.entry, fatal_original, fatal_rewrite,
+                RoutineChecker::result_r3 | RoutineChecker::result_f1);
+            if (!changed.empty()) { ++failures; for (const auto& line : changed) std::cout << "FAIL rating fatal prefix " << line << '\n'; }
+            else std::cout << "ok action-rating expected fatal-boundary prefix (excluded from guest returns)\n";
+            const auto corrupt_prefix = compare_routine_call(*state, active.entry, fatal_original, corrupt_fatal_prefix,
+                RoutineChecker::result_r3 | RoutineChecker::result_f1);
+            if (!std::ranges::any_of(corrupt_prefix, [](const auto& line) { return line.starts_with("r3 "); })) {
+                ++failures; std::cout << "FAIL action-rating fatal prefix corruption not detected\n";
+            } else std::cout << "ok action-rating fatal prefix corruption detected\n";
         }
         if (!failures && generated_mode) require_production_routes(*base);
         for (const auto& [entry, count] : compared)

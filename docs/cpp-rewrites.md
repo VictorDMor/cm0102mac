@@ -828,6 +828,18 @@ the residual, followed by the original sign correction; introducing a host
 division error changes that continuation. Nested wide corrections also retain
 the caller's incoming F1 until reseeding, where external code can observe it.
 
+Keeper response captures its skill and attribute bound before the attribute
+draw's refill callback, and captures the match's wait byte before that callback
+as well. The subsequent waiting draw uses this saved byte even if the callback
+changes the player's match pointer, wait byte, skill or reach. Reloading those
+fields after the callback would change the original draw sequence and rating.
+
+Action rating reads condition twice and narrows each converted value to a signed
+halfword before multiplying. Its resulting fitness bound is always narrow;
+the separate geometry and attribute samplers still require their wide paths.
+It may replace the action byte before selecting output flags. Those flags are
+written second-output first, including cases where a draw occurs between writes.
+
 Peer contacts update every matching contact-list record before deciding whether
 to append; duplicate matches are observable. Incident responses also retain two
 consecutive kind2 attempts, each consuming its own RNG draw. Request, effect and

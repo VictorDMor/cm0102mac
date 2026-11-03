@@ -91,5 +91,7 @@ std::uint32_t resolve_ball_action(Cpu&, std::uint32_t player, std::uint32_t from
 std::uint32_t sample_keeper_response(Cpu&, std::uint32_t player, std::uint32_t column,
     std::uint32_t row, std::uint32_t alternate_skill, std::uint32_t action,
     std::uint32_t reason, std::uint32_t resampled);
+std::uint32_t rate_action(Cpu&, std::uint32_t player, std::uint32_t action,
+                         std::uint32_t first_output, std::uint32_t second_output);
 std::uint32_t allows_event(Cpu&, std::uint32_t player, std::uint32_t event);
 }
