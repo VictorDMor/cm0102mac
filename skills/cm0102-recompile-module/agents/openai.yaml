@@ -1,0 +1,3 @@
+interface:
+  display_name: "CM 01/02 Module Reconstruction"
+  short_description: "Complete C++23 rewrites with verified game fidelity"
