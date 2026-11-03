@@ -148,8 +148,217 @@ void PlayerConstruction::copy_attributes_and_clubs() {
 
 void PlayerConstruction::prepare_record() {
     choose_record(); copy_attributes_and_clubs();
+    initialize_fitness(); initialize_affiliation(); initialize_eligibility();
+    copy_preferences_and_names(); inspect_special_club_context();
+    advance(0x10224528);
+    throw std::logic_error("MATCH_PL constructor suffix is not reconstructed");
+}
+
+void PlayerConstruction::initialize_fitness() {
     c.set(3, c.u32(c.r(13))); c.set(4, staff); c.set(5, 0);
     c.call(0x101878d0, 0x10223e08);
-    throw std::logic_error("MATCH_PL constructor suffix is not reconstructed");
+    const auto fitness = extended(std::int16_t(c.r(3))); c.set(3, fitness);
+    c.put32(at(0x4c), 0x43300000); c.set_f(1, c.f64(doubles + 0x80)); c.set(4, staff);
+    c.put32(at(0x50), fitness ^ 0x80000000); c.set(5, 0); c.set(3, c.toc(-0x7a7c));
+    c.set_f(0, c.f64(at(0x4c))); c.set_f(0, fp.fsubs(c.f(0), c.f(1)));
+    c.put_f32(actor.address + 0x50, float(c.f(0)));
+    c.set_f(0, c.f32(actor.address + 0x50)); c.put_f32(actor.address + 0x54, float(c.f(0)));
+    c.set(3, c.u32(c.r(3))); c.call(0x103d0990, 0x10223e48);
+    c.set_f(0, c.f32(floats)); c.set(4, staff); c.put_f32(actor.address + 0x5c, float(c.f(0)));
+    c.set(3, c.u32(c.r(13))); c.call(0x10187680, 0x10223e5c);
+    if (compare(c, std::int8_t(c.r(3)), 2) == 0) c.put8(actor.address + 0x19, -2);
+    else if (compare(c, std::int8_t(slot)) >= 0 && compare(c, std::int8_t(slot), 10) <= 0) {
+        c.put8(actor.address + 0x19, slot);
+        enter(c, 0x10223e94, {actor.address}); current_role(c, actor.address);
+        c.put16(actor.address + 0x1c2, c.r(3));
+    } else {
+        c.set(3, 6400); c.put8(actor.address + 0x19, -1);
+        c.put16(actor.address + 0x36, 6400); c.put16(actor.address + 0x1c2, 0);
+    }
+}
+
+bool PlayerConstruction::opponent_lists_club() {
+    for (const auto offset : {0x74u, 0x78u, 0x7cu}) {
+        c.set(3, c.u32(actor.address + 0xfc));
+        if (compare_logical(c, c.r(3), c.u32(c.r(21) + offset)) == 0) return true;
+    }
+    return false;
+}
+
+void PlayerConstruction::initialize_affiliation() {
+    c.set(3, 0x43300000); c.put8(actor.address + 0x1f, -1);
+    c.set(6, -1); c.set(5, -1); c.put8(actor.address + 0x22, -1);
+    c.set_f(1, c.f64(doubles + 0x80)); c.set(4, c.r(21));
+    c.put8(actor.address + 0x20, -1); c.put8(actor.address + 0x21, -1);
+    c.set(5, c.u32(actor.address + 0x6c)); c.put32(at(0x4c), c.r(3));
+    const auto doubled = std::uint32_t(std::int32_t(c.i8(c.r(5) + 0x69))) * 2;
+    const auto intensity = 50u - doubled;
+    c.s.wr<1>(reg::xer_ca, doubled <= 50); c.set(3, intensity ^ 0x80000000);
+    c.put32(at(0x50), c.r(3)); c.set_f(0, c.f64(at(0x4c)));
+    c.set_f(0, fp.fsubs(c.f(0), c.f(1))); c.put_f32(actor.address + 0x1a8, float(c.f(0)));
+    c.put16(actor.address + 0x32, 0);
+    const auto change = [&](unsigned offset, int amount) {
+        c.set(3, extended(c.i16(actor.address + offset)));
+        c.put16(actor.address + offset, c.r(3) + std::uint32_t(amount));
+    };
+    c.set(3, c.u32(actor.address + 0x6c)); c.call(0x100d9480, 0x10223f1c);
+    if (compare(c, std::int8_t(c.r(3))) != 0) change(0x32, 10);
+    else {
+        c.set(3, c.u32(actor.address + 0x6c)); c.set(4, c.r(21)); c.call(0x100d94d0, 0x10223f40);
+        if (compare(c, std::int8_t(c.r(3))) != 0) change(0x32, -20);
+    }
+    if (opponent_lists_club()) change(0x32, -10);
+    c.put16(actor.address + 0x34, 10);
+    c.set(3, c.u32(actor.address + 0x6c)); c.set(4, c.u32(actor.address + 0xfc));
+    c.call(0x100d9480, 0x10223fa4);
+    if (compare(c, std::int8_t(c.r(3))) != 0) change(0x34, 30);
+    else {
+        c.set(3, c.u32(actor.address + 0x6c)); c.set(4, c.u32(actor.address + 0xfc));
+        c.call(0x100d94d0, 0x10223fc8);
+        if (compare(c, std::int8_t(c.r(3))) != 0) change(0x34, -10);
+    }
+    if (opponent_lists_club()) change(0x34, 5);
+    c.set(4, 0); c.put8(actor.address + 0x1d, 0); c.set(3, 0);
+    c.put8(actor.address + 0x1e, 0); c.put16(actor.address + 0x3a, 0); c.put8(actor.address + 0x30, 0);
+}
+
+bool PlayerConstruction::eligibility_requires_history() {
+    c.set(3, actor.match());
+    if (compare(c, c.i8(c.r(3) + 0x7931)) == 0) return false;
+    if (compare(c, std::int8_t(side_argument)) == 0) {
+        c.set(3, c.u32(actor.match() + 0x3118));
+        if (compare(c, c.i8(c.r(3) + 0x40)) == 0) return false;
+    }
+    if (compare(c, std::int8_t(side_argument)) != 0) {
+        c.set(3, c.u32(actor.match() + 0x3118));
+        if (compare(c, c.i8(c.r(3) + 0x41)) == 0) return false;
+    }
+    if (compare_logical(c, staff) != 0) {
+        c.set(3, c.u32(staff));
+        if (compare(c, std::int32_t(c.r(3)), c.i32(staff_count)) >= 0) return false;
+    }
+    c.set(3, c.u32(actor.match() + 0x3118));
+    return compare(c, c.u8(c.r(3) + 0x3a), 1) != 0;
+}
+
+bool PlayerConstruction::competition_history_available() {
+    c.set(3, c.u32(actor.address + 0xfc)); c.set(3, c.u32(c.r(3) + 0x2c));
+    if (compare(c, c.i8(c.r(3) + 0x120)) == 0) return false;
+    c.set(3, c.u32(actor.address + 0xfc));
+    if (compare_logical(c, c.u32(c.r(3) + 0x30)) == 0) return false;
+    c.set(3, c.u32(actor.address + 0xfc)); c.set(4, c.u32(c.r(24)));
+    c.set(3, c.u32(c.r(3) + 0x30));
+    if (compare_logical(c, c.u32(c.r(4) + c.u32(c.r(3)) * 4)) == 0) return false;
+    c.set(4, c.u32(actor.address + 0xfc)); c.set(3, c.toc(-0x7a24));
+    c.set(4, c.u32(c.r(4) + 0x2c));
+    const auto nation = c.i32(c.r(3)); c.set(3, c.u32(c.r(4) + 0x68));
+    if (compare(c, std::int32_t(c.r(3)), nation) != 0) return true;
+    return compare_logical(c, c.u16(c.r(14) + 2), 2002) >= 0;
+}
+
+void PlayerConstruction::unknown_eligibility() {
+    c.set(3, -1000); c.put16(actor.address + 0x3e, -1000);
+    c.set(5, -1000); c.set(4, -1000); c.set(3, -1000); c.put16(actor.address + 0x40, -1000);
+    c.put16(actor.address + 0x42, -1000); c.put16(actor.address + 0x44, -1000);
+    c.put16(actor.address + 0x46, -1000); c.put8(actor.address + 0x31, 0);
+}
+
+void PlayerConstruction::special_club_eligibility() {
+    const auto eligible = c.u8(staff + 0x5e) == 0;
+    c.set(5, -1000); c.set(4, -1000); c.set(3, -1000); c.set(6, eligible);
+    c.put8(actor.address + 0x31, eligible); c.put16(actor.address + 0x3e, -1000);
+    c.set(5, c.u8(staff + 0x5f)); c.put16(actor.address + 0x40, c.r(5));
+    c.put16(actor.address + 0x44, -1000); c.put16(actor.address + 0x46, -1000); c.put16(actor.address + 0x42, -1000);
+}
+
+void PlayerConstruction::ordinary_eligibility() {
+    c.put16(actor.address + 0x40, -1000); c.set(3, c.u32(actor.match() + 0x3118));
+    bool use_attributes = compare(c, c.i32(c.r(3)), -1) > 0;
+    if (use_attributes) {
+        c.set(3, c.u32(c.u32(actor.match() + 0x3118))); c.call(0x104646d0, 0x10224208);
+        use_attributes = compare(c, std::int8_t(c.r(3))) != 0;
+    }
+    if (use_attributes) {
+        c.set(3, c.u32(c.r(23))); c.set(5, 2); c.set(4, c.u32(actor.address + 0x70));
+        c.call(0x10306a80, 0x10224220);
+        const auto converted = fp.fctiwz(0, c.f(1)); c.set(4, staff); c.put64(at(0x4c), converted);
+        c.put16(actor.address + 0x42, c.u32(at(0x50)));
+        c.set(3, c.u32(c.r(23))); c.call(0x10305ae0, 0x1022423c); c.put16(actor.address + 0x44, c.r(3));
+    } else {
+        c.set(3, -1000); c.put16(actor.address + 0x42, -1000); c.put16(actor.address + 0x44, -1000);
+    }
+    c.set(3, c.u32(c.r(23))); c.set(4, staff); c.set(5, c.u32(actor.address + 0xfc));
+    c.call(0x10305700, 0x10224264);
+    const bool eligible = std::int16_t(c.r(3)) == 0; c.set(4, staff); c.put8(actor.address + 0x31, eligible);
+    c.set(3, c.u32(c.r(23))); c.set(5, c.u32(actor.address + 0xfc)); c.call(0x103058f0, 0x10224284);
+    c.put16(actor.address + 0x3e, c.r(3)); c.put16(actor.address + 0x46, -1000);
+    if (compare_logical(c, c.u32(staff + 0x24)) == 0) return;
+    c.set(3, c.u32(staff + 0x24)); c.set(4, c.r(14)); c.call(0x100d9440, 0x102242a8);
+    if (compare(c, std::int8_t(c.r(3))) == 0) return;
+    c.set(3, c.u32(c.r(23))); c.set(5, 6); c.set(4, c.u32(actor.address + 0x70)); c.set(6, 1);
+    c.set_f(1, c.f32(floats + 4)); c.call(0x10303560, 0x102242c8);
+    c.set_f(0, c.f64(doubles + 8)); fp.fcmp(0, c.f(1), c.f(0));
+    c.set_cr(0, c.cr(0) | ((c.cr(0) & 4) ? 2 : 0));
+    if (!(c.cr(0) & 2)) return;
+    c.set(3, c.u32(c.r(23))); c.set(5, 6); c.set(4, c.u32(actor.address + 0x70)); c.set(6, 2);
+    c.set_f(1, c.f32(floats + 4)); c.call(0x10303560, 0x102242f0);
+    c.put64(at(0x4c), fp.fctiwz(0, c.f(1))); c.put16(actor.address + 0x46, c.u32(at(0x50)));
+}
+
+void PlayerConstruction::initialize_eligibility() {
+    if (eligibility_requires_history()) {
+        c.set(3, c.u32(actor.address + 0xfc)); c.call(0x100ce250, 0x102240b4);
+        if (compare(c, std::int8_t(c.r(3))) != 0) { unknown_eligibility(); return; }
+        c.set(3, c.u32(actor.address + 0xfc)); c.call(0x100c7d00, 0x102240f8);
+        if (compare(c, std::int8_t(c.r(3))) != 0) special_club_eligibility();
+        else if (competition_history_available()) ordinary_eligibility();
+        else unknown_eligibility();
+        return;
+    }
+    c.set(3, c.u32(actor.address + 0xfc)); c.call(0x100c7d00, 0x1022430c);
+    bool special = compare(c, std::int8_t(c.r(3))) != 0;
+    if (special) {
+        c.set(3, c.u32(actor.address + 0xfc)); c.call(0x100ce250, 0x1022431c);
+        special = compare(c, std::int8_t(c.r(3))) == 0;
+    }
+    if (special) {
+        c.set(3, c.u32(actor.match() + 0x3118)); special = compare(c, c.i8(c.r(3) + 0x40)) != 0;
+    }
+    if (special) special_club_eligibility(); else unknown_eligibility();
+}
+
+void PlayerConstruction::copy_preferences_and_names() {
+    c.set(4, c.u32(actor.address + 0x70)); c.set(3, c.u32(actor.address + 0x70));
+    c.set(4, c.u8(c.r(4) + 0x30)); const auto other = c.i8(c.r(3) + 0x3b);
+    c.set(3, std::int32_t(std::int8_t(c.r(4))));
+    const bool first = compare(c, std::int32_t(c.r(3)), other) > 0;
+    c.put8(actor.address + 0x2d, !first); c.set(3, c.u32(actor.address + 0x70));
+    const auto preference = c.u8(c.r(3) + (first ? 0x3b : 0x30));
+    c.s.wr<1>(reg::xer_ca, preference <= 20); c.put8(actor.address + 0x2e, 20u - preference);
+    for (const auto source : {0x28u, 0x2cu, 0x30u}) {
+        if (compare_logical(c, c.u32(staff + source)) != 0) {
+            c.set(3, c.u32(staff + source)); c.put32(actor.address + 0x60 + source - 0x28, c.u32(c.r(3) + 0x20));
+        } else c.put32(actor.address + 0x60 + source - 0x28, -1);
+    }
+    c.put8(actor.address + 0x27, side_argument);
+}
+
+void PlayerConstruction::inspect_special_club_context() {
+    if (compare_logical(c, c.u32(actor.address + 0xfc)) == 0) return;
+    c.set(3, c.u32(actor.address + 0xfc));
+    if (compare_logical(c, c.u32(c.r(3) + 0x2c)) == 0) return;
+    c.set(3, c.u32(actor.address + 0xfc));
+    if (compare(c, c.i16(c.r(3) + 0x1ec), 5750) <= 0) return;
+    const auto side = std::int8_t(actor.side()); c.set(4, actor.match());
+    c.set(3, std::uint32_t(std::int32_t(side)) * 0xd8);
+    // The original tests the wrapped controller address itself for zero.
+    if (compare(c, std::int32_t(c.r(4) + c.r(3) + 0x7aac)) != 0) return;
+    const auto reread_side = actor.side(); c.set(3, actor.match());
+    const bool away = compare(c, std::int8_t(reread_side)) != 0;
+    c.set(3, c.u32(c.r(3) + 0x3118)); c.set(3, c.u32(c.r(3) + (away ? 0x20 : 0x1c)));
+    c.set(4, 0); c.set(5, 1); c.set(6, 0); c.set(7, 0); c.call(0x1014c2e0, 0x102244e8);
+    if (compare(c, std::int8_t(c.r(3))) != 0) return;
+    c.set(3, c.u32(actor.address + 0xfc)); c.set(3, c.u32(c.r(3) + 0x2c));
+    if (compare(c, c.i8(c.r(3) + 0x120)) == 0) keep(c, {{19, 1}});
 }
 }

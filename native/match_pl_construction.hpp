@@ -17,6 +17,17 @@ class PlayerConstruction {
     std::uint32_t fallback_index(std::uint32_t count);
     void choose_record();
     void copy_attributes_and_clubs();
+    void initialize_fitness();
+    void initialize_affiliation();
+    bool opponent_lists_club();
+    bool eligibility_requires_history();
+    bool competition_history_available();
+    void unknown_eligibility();
+    void special_club_eligibility();
+    void ordinary_eligibility();
+    void initialize_eligibility();
+    void copy_preferences_and_names();
+    void inspect_special_club_context();
 public:
     PlayerConstruction(guest::Cpu&, std::uint32_t player, std::uint32_t match,
                        std::uint32_t staff, std::uint32_t side,

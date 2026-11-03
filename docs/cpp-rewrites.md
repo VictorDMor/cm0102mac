@@ -847,6 +847,12 @@ The final event table gives the lateral flag priority over distance; action 53
 consumes another draw when neither flag is set. Caller outputs may alias each other,
 player attributes or RNG storage, and retain the original write order.
 
+Parameterized player setup consults the actor's old side until the name-copy
+phase. Availability byte 2 changes the position but preserves the condition and
+cached-role fields. The optional second eligibility-profile query runs only when
+the first result is at least 3; unordered results skip it. Preference comparison
+uses signed bytes, but the subsequent subtraction rereads the selected byte unsigned.
+
 Periodic balance consumes its preliminary draw before checking the current balance,
 queries the role afresh at each decision, and rereads counters after a reseed.
 The keeper's three wide-sampler arms are unreachable: byte bounds are at most
