@@ -310,9 +310,16 @@ struct PopulationState {
 } population_state;
 bool reference_mode = false, generated_mode = false, balance_prefix = false;
 bool construction_prefix = false;
-bool influence_prefix = false, influence_ability = false, influence_publication = false, influence_coaching = false, influence_technical = false, influence_position = false, influence_leadership = false, influence_late = false;
-std::uint32_t influence_target() { return influence_late ? 0x101fedd0u : influence_leadership ? 0x10780fc0u : influence_position ? 0x101fee30u : influence_technical ? 0x10780fc0u : influence_coaching ? 0x101fee30u : influence_publication ? 0x1014c2e0u : 0x100c7d00u; }
-std::uint32_t influence_boundary() { return influence_late ? 0x10229bf4u : influence_leadership ? 0x1022987cu : influence_position ? 0x102293f8u : influence_technical ? 0x10228e18u : influence_coaching ? 0x102288bcu : influence_publication ? 0x102286e4u : influence_ability ? 0x10228220u : 0x102278dcu; }
+bool influence_prefix = false, influence_ability = false, influence_publication = false, influence_coaching = false, influence_technical = false, influence_position = false, influence_leadership = false, influence_late = false, influence_profile = false;
+std::uint32_t influence_target() { return influence_profile ? 0x101e3d50u : influence_late ? 0x101fedd0u : influence_leadership ? 0x10780fc0u : influence_position ? 0x101fee30u : influence_technical ? 0x10780fc0u : influence_coaching ? 0x101fee30u : influence_publication ? 0x1014c2e0u : 0x100c7d00u; }
+std::uint32_t influence_boundary() { return influence_profile ? 0x10289584u : influence_late ? 0x10229bf4u : influence_leadership ? 0x1022987cu : influence_position ? 0x102293f8u : influence_technical ? 0x10228e18u : influence_coaching ? 0x102288bcu : influence_publication ? 0x102286e4u : influence_ability ? 0x10228220u : 0x102278dcu; }
+bool at_influence_boundary(Cpu& c) {
+    if (c.s.pc != influence_target() || c.lr() != influence_boundary()) return false;
+    if (!influence_profile) return c.sp() == stack - 0x100;
+    // The two implementations stop in the same real role-query child, and
+    // the saved parent link disambiguates it from earlier uses of the child.
+    return c.sp() == stack - 0x140 && c.u32(stack - 0x100 + 8) == 0x1022a814;
+}
 struct InfluenceInputs {
     int age = 25, leadership = 13, ability = 100, loyalty = 10, temperament = 10;
     int slot = 0, next_slot = 0;
@@ -324,6 +331,8 @@ struct InfluenceInputs {
     int coach_context = 0, coach_rating = 13, coaching = 2, attribute23 = 10, role = 0;
     int opponent_context = 0, own_context = 0, other_role = 400, attribute_offset = 0, attribute_value = 10;
     int specialty = 10, coach_skill = 10;
+    int profile_match_kind = 0, profile_sum = 20, capped_rating = 20;
+    bool host_competition = false;
     bool missing_competition = false;
     bool missing_record = false;
     std::uint32_t mutate_back = 0;
@@ -846,8 +855,9 @@ bool scripted(State& s) {
     return true;
 }
 bool probe(State& s) {
-    if (influence_prefix && s.pc == influence_target() && Cpu(s).lr() == influence_boundary()) {
-        Cpu c(s); trace_call(c, influence_target());
+    Cpu influence_cpu(s);
+    if (influence_prefix && at_influence_boundary(influence_cpu)) {
+        trace_call(influence_cpu, influence_target());
         throw std::runtime_error("MATCH_PL influence boundary");
     }
     if (construction_preference_prefix && s.pc == construction_preference_boundary && Cpu(s).lr() == 0x10224884) {
@@ -1691,7 +1701,9 @@ void initialize_influence(Cpu& c) {
     c.put8(data + 0xc066, influence.composure); c.put8(data + 0xc067, influence.temperament);
     c.put32(data + 0x30c, 100); c.put32(data + 0x308, data + 0xa800);
     c.put8(data + 0xa800 + std::uint32_t(influence.staff_id) * 100 + 0xa, 5);
-    c.put8(match, influence.match_kind); c.put8(data + 0x803a, influence.fixture_kind);
+    c.put8(match, influence.match_kind); c.put8(match + 1, influence.profile_match_kind);
+    c.put8(data + 0x803a, influence.fixture_kind);
+    c.put32(data + 0x9030, influence.host_competition ? data + 0xa400 : 0);
     c.put32(data + 0x8014, influence.missing_competition ? 0 : data + 0xa400); c.put16(data + 0xa418, influence.competition_rank);
     for (unsigned side : {0u, 1u}) {
         c.put8(match + 0x1c6 + side, influence.fixture_pressure); c.put16(match + 0x1e8 + side * 2, influence.team_rating);
@@ -1703,6 +1715,10 @@ void initialize_influence(Cpu& c) {
         c.put8(record + 0x23, influence.attribute23);
         for (unsigned offset : {0x24u, 0x26u, 0x27u, 0x2au, 0x2bu, 0x31u, 0x32u, 0x33u, 0x35u, 0x37u, 0x38u, 0x39u, 0x3au, 0x3eu, 0x41u, 0x43u}) c.put8(record + offset, 10);
         c.put8(record + 0x12, influence.specialty);
+        for (unsigned offset : {0x1cu, 0x1du, 0x1fu, 0x20u, 0x22u, 0x28u, 0x29u, 0x2eu, 0x3cu, 0x3fu, 0x42u})
+            c.put8(record + offset, 10);
+        for (unsigned offset : {0x1bu, 0x36u, 0x40u}) c.put8(record + offset, influence.capped_rating);
+        c.put8(record + 0x3d, influence.profile_sum - 20); c.put8(record + 0x44, 20);
         if (influence.attribute_offset) c.put8(record + influence.attribute_offset, influence.attribute_value);
     }
     c.put16(data + 0xc15c, influence.age); c.put8(data + 0xc165, influence.loyalty); c.put8(data + 0xc167, influence.temperament);
@@ -1726,13 +1742,13 @@ void influence_phase(State& s, std::uint32_t entry, bool original) {
         stopped = true;
     }
     Cpu c(s);
-    cm::semantic_io_checks::require(stopped && s.pc == influence_target() && c.lr() == influence_boundary() && c.sp() == stack - 0x100,
+    cm::semantic_io_checks::require(stopped && at_influence_boundary(c),
         "Influence phase did not reach its live-frame service boundary");
     cm::semantic_io_checks::require(c.u32(data + 0x390) == unsigned(influence.mutate_back != 0), "Influence mutation count");
 }
 void original_influence(State& s, std::uint32_t entry) { influence_phase(s, entry, true); }
 void rewrite_influence(State& s, std::uint32_t entry) { influence_phase(s, entry, false); }
-void corrupt_influence_result(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); const auto attribute = player + (influence_late ? 0xec : influence_leadership ? 0xd0 : influence_position ? 0xbc : influence_technical ? 0xb8 : 0x80); c.put32(attribute, c.u32(attribute) ^ 1); }
+void corrupt_influence_result(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); const auto attribute = player + (influence_profile ? 0xc4 : influence_late ? 0xec : influence_leadership ? 0xd0 : influence_position ? 0xbc : influence_technical ? 0xb8 : 0x80); c.put32(attribute, c.u32(attribute) ^ 1); }
 void corrupt_influence(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1); }
 
 void require_return(const State& s) {
@@ -4630,8 +4646,9 @@ int main(int argc, char** argv) {
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
-        if (mode == "--influence-captain" || mode == "--influence-ability" || mode == "--influence-publication" || mode == "--influence-coaching" || mode == "--influence-technical" || mode == "--influence-position" || mode == "--influence-leadership" || mode == "--influence-late") {
-            influence_prefix = true; influence_late = mode == "--influence-late";
+        if (mode == "--influence-captain" || mode == "--influence-ability" || mode == "--influence-publication" || mode == "--influence-coaching" || mode == "--influence-technical" || mode == "--influence-position" || mode == "--influence-leadership" || mode == "--influence-late" || mode == "--influence-profile") {
+            influence_prefix = true; influence_profile = mode == "--influence-profile";
+            influence_late = influence_profile || mode == "--influence-late";
             influence_leadership = influence_late || mode == "--influence-leadership";
             influence_position = influence_leadership || mode == "--influence-position";
             influence_technical = influence_position || mode == "--influence-technical";
@@ -4758,6 +4775,24 @@ int main(int argc, char** argv) {
                 }
                 { InfluenceInputs in; in.mutate_back = 0x1022987c; inputs.push_back(in); }
             }
+            if (influence_profile) {
+                for (int kind : {1, 8, 32}) for (int sum : {14, 15, 19, 20, 25, 26, 30, 31, 35, 36, 40}) {
+                    InfluenceInputs in; in.profile_match_kind = kind; in.profile_sum = sum; inputs.push_back(in);
+                }
+                for (int rating : {-128, 15, 17, 18, 19, 127}) {
+                    InfluenceInputs in; in.profile_match_kind = 1; in.capped_rating = rating; in.profile_sum = 40; inputs.push_back(in);
+                }
+                for (int age : {19, 20, 23, 24, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39}) {
+                    InfluenceInputs in; in.actor_age = age; in.host_competition = true; in.competition_rank = 4; inputs.push_back(in);
+                }
+                for (int rank : {5, 8, 9}) {
+                    InfluenceInputs in; in.host_competition = true; in.competition_rank = rank; inputs.push_back(in);
+                }
+                for (int other : {0, 0x20}) {
+                    InfluenceInputs in; in.own_context = 1; in.role = 2; in.other_role = other; inputs.push_back(in);
+                }
+                { InfluenceInputs in; in.own_context = 1; in.role = 0x20; inputs.push_back(in); }
+            }
             unsigned checked = 0;
             for (const auto& input : inputs) for (int side : {0, 1}) for (int role : {1, 2}) {
                 if (input.role && role == 2) continue; // This fixture already selects a role.
@@ -4780,7 +4815,7 @@ int main(int argc, char** argv) {
                     RoutineChecker::result_r3 | RoutineChecker::result_f1);
                 cm::semantic_io_checks::require(std::ranges::any_of(bad_result, [](const auto& line) { return line.starts_with("byte "); }), "Influence result corruption was not detected");
             }
-            std::cout << checked << (influence_late ? " late attribute influence" : influence_leadership ? " leadership influence" : influence_position ? " positional influence" : influence_technical ? " technical influence" : influence_coaching ? " coached influence" : influence_publication ? " published influence" : influence_ability ? " ability influence" : " captain influence") << " prefixes match; argument-trace corruption detected" << (influence_publication ? "; attribute corruption detected" : "") << "; suffix remains open\n";
+            std::cout << checked << (influence_profile ? " profile and fixture influence" : influence_late ? " late attribute influence" : influence_leadership ? " leadership influence" : influence_position ? " positional influence" : influence_technical ? " technical influence" : influence_coaching ? " coached influence" : influence_publication ? " published influence" : influence_ability ? " ability influence" : " captain influence") << " prefixes match; argument-trace corruption detected" << (influence_publication ? "; attribute corruption detected" : "") << "; suffix remains open\n";
             return 0;
         }
         if (mode == "--construction-witnesses") {

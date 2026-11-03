@@ -26,6 +26,11 @@ class PlayerInfluence {
     void positional_attribute();
     void leadership_attribute();
     void late_ratings();
+    void profile_ratings();
+    std::int8_t fixture_rating(std::int8_t rating, std::int8_t kind, bool secondary);
+    void publish_fixture_rating(std::int8_t rating, unsigned offset, std::uint32_t back);
+    void base_profile_ratings();
+    void age_and_fixture_ratings();
     void aged_profile_rating(unsigned profile_offset, unsigned result_register);
     void weighted_coaching(unsigned player_offset, unsigned coefficient_register, unsigned base_offset, unsigned fallback_offset,
         std::uint32_t coefficient_site, std::uint32_t rating_back, std::uint32_t adjustment_site);

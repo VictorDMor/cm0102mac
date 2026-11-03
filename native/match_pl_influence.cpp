@@ -130,6 +130,8 @@ void PlayerInfluence::run() {
     leadership_attribute();
     c.set_f(1, c.f32(actor.address + 0xd0)); c.set_f(2, c.f64(doubles + 0x198)); c.call(0x10780fc0, 0x1022987c);
     late_ratings();
+    profile_ratings();
+    age_and_fixture_ratings();
     throw std::logic_error("MATCH_PL team influence suffix is not reconstructed");
 }
 }
