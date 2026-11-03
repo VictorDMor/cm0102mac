@@ -191,9 +191,16 @@ std::uint32_t negotiation_command(Cpu& c, std::uint32_t pressed) {
 
     // These subcommands are separate CONTRACT_SCREENS entries. The normal
     // dispatcher selects their bodies while their reconstruction is pending.
-    for (const auto& [target, back] : {std::pair{0x1009a440u, 0x10098050u}, {0x1009c020u, 0x10098064u},
-                                       {0x1009d410u, 0x10098078u}, {0x102a54b0u, 0x1009808cu}}) {
-        const auto handled = program.call(target, back, {pressed});
+    using Handler = std::uint32_t (*)(Cpu&, std::uint32_t);
+    struct Command { std::uint32_t entry, back; Handler handler; };
+    constexpr Command commands[]{{0x1009a440, 0x10098050, nullptr},
+                                 {0x1009c020, 0x10098064, negotiation_bonuses_command},
+                                 {0x1009d410, 0x10098078, nullptr},
+                                 {0x102a54b0, 0x1009808c, nullptr}};
+    for (const auto& command : commands) {
+        const auto handled = command.handler
+            ? detail::call_owned(c, command.entry, command.back, command.handler, pressed)
+            : program.call(command.entry, command.back, {pressed});
         if (compare(c, handled) != 0) return handled;
     }
     const auto common = program.call(0x102a83a0, 0x100980a0, {pressed});

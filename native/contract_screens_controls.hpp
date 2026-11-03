@@ -26,11 +26,11 @@ struct Controls {
         return selected;
     }
 
-    std::uint32_t value() const {
+    std::uint32_t value(unsigned scratch = 3) const {
         cpu.set(0, std::uint32_t(control));
         if (compare(cpu, control, -1) == 0) return 0;
         cpu.set(0, std::uint32_t(control) * 0x17c);
-        cpu.set(3, address());
+        cpu.set(scratch, address());
         return cpu.u32(address() - 0x5754);
     }
 };

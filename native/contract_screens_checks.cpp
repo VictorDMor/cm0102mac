@@ -1,7 +1,9 @@
 // Controlled comparisons against independent original pages, with all owned
 // entries enabled together on the production side.
+#include "application_exit.hpp"
 #include "contract_screens_adapter.hpp"
 #include "guest_abi.hpp"
+#include "localization_format_adapter.hpp"
 #include "player_stats_detail.hpp"
 #include "routine_check.hpp"
 #include <algorithm>
@@ -27,6 +29,7 @@ constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_
                         choice_draw = 0x100952b0, negotiation_choice = 0x10095db0,
                         negotiation_draw = 0x10096c60, negotiation_command = 0x10097b70, open_details_end = 0x1009dbf8,
                         details_draw = 0x1009dc00, details_command = 0x1009e290,
+                        bonuses_draw = 0x1009b620, bonuses_command = 0x1009c020, bonuses_command_end = 0x1009c86c,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
                         compare_staff = 0x1009ee00, load_language = 0x1009ef30,
                         save_db = 0x1009ef60, load_db = 0x1009ef90;
@@ -45,6 +48,7 @@ struct Call {
     std::vector<std::uint32_t> args, stack_args;
     std::optional<std::uint32_t> result, second_result, pointed_word, candidate_flags;
     std::optional<double> form;
+    std::optional<std::uint32_t> pointed_result;
 };
 std::vector<Call> expected;
 unsigned calls = 0;
@@ -69,32 +73,10 @@ unsigned fixture_instruction_budget = 0;
 
 void expect(std::uint32_t target, std::uint32_t back, std::initializer_list<std::uint32_t> args,
             std::optional<std::uint32_t> result = {}, std::optional<double> form = {}) {
-    expected.push_back({target, back, args, {}, result, {}, {}, {}, form});
+    expected.push_back({target, back, args, {}, result, {}, {}, {}, form, {}});
 }
 
-bool service(State& s) {
-    if (sorting) {
-        if (s.pc == compare_staff) {
-            Cpu c(s);
-            const auto at = fixture + 0x5000 + callbacks++ * 12;
-            if (at + 12 > fixture + 0x8000) throw std::runtime_error("candidate sort exceeded fixture bound");
-            c.put32(at, c.r(3));
-            c.put32(at + 4, c.r(4));
-            c.put32(at + 8, c.lr());
-        }
-        if (reference_mode) return contract_screens_reference(s);
-        return false;
-    }
-    if (reference_mode && (contract_screens_reference(s) || ((s.pc == 0x10775540 || s.pc == 0x10768810) && run_leaf(s)))) return true;
-    if (expect_nested_dispatch && ((s.pc >= new_negotiation && s.pc < 0x10096c58) ||
-                                    (s.pc >= offer_choice && s.pc < offer_choice_end) ||
-                                    (s.pc >= open_details && s.pc < open_details_end))) {
-        if (s.pc == new_negotiation || s.pc == existing_negotiation || s.pc == offer_choice || s.pc == open_details)
-            saw_nested_dispatch = true;
-        return false;  // Continue the excluded original after each fixture service.
-    }
-    if (contract_screens_lists(s.pc)) return false;  // Exercise the generated owner hook.
-    if (call_site && s.pc == call_site) return false;
+const Call& trace_expected_call(State& s) {
     Cpu c(s);
     if (calls >= expected.size()) throw std::runtime_error("unexpected contract screen service " + hex_address(s.pc));
     const auto& call = expected[calls];
@@ -123,8 +105,61 @@ bool service(State& s) {
     c.put64(at, s.r<8>(reg::fpr(1)));
     at += 8;
     for (unsigned i = 0; i < call.stack_args.size(); ++i) put(c.u32(c.sp() + 0x38 + 4 * i));
+    return call;
+}
+
+// Excluded original pages can call localization directly, without dispatching
+// through the fixture. Observe the real service at the same boundary on both
+// sides of the routing comparison.
+struct LocalizationTrace : LocalizationFormatBoundaryObserver {
+    bool active = false;
+
+    void enter(const State& state, std::uint32_t, bool) override {
+        trace_expected_call(const_cast<State&>(state));
+        active = true;
+    }
+    void leave(State&, std::uint32_t, bool, LocalizationFormatOutcome) override {
+        active = false;
+    }
+};
+LocalizationTrace localization_trace;
+bool real_localization = false;
+
+bool service(State& s) {
+    if (real_localization && (localization_trace.active ||
+        std::ranges::find(localization_format::entries, s.pc) != localization_format::entries.end())) return false;
+    if (sorting) {
+        if (s.pc == compare_staff) {
+            Cpu c(s);
+            const auto at = fixture + 0x5000 + callbacks++ * 12;
+            if (at + 12 > fixture + 0x8000) throw std::runtime_error("candidate sort exceeded fixture bound");
+            c.put32(at, c.r(3));
+            c.put32(at + 4, c.r(4));
+            c.put32(at + 8, c.lr());
+        }
+        if (reference_mode) return contract_screens_reference(s);
+        return false;
+    }
+    const bool actual_leaf = s.pc == 0x10775540 || s.pc == 0x10768810 || s.pc == 0x10374b40 || s.pc == 0x10374b80;
+    if (reference_mode && (contract_screens_reference(s) || (actual_leaf && run_leaf(s)))) return true;
+    if (expect_nested_dispatch && ((s.pc >= new_negotiation && s.pc < 0x10096c58) ||
+                                    (s.pc >= offer_choice && s.pc < offer_choice_end) ||
+                                    (s.pc >= open_details && s.pc < open_details_end) ||
+                                    (s.pc >= bonuses_draw && s.pc < bonuses_command_end))) {
+        if (s.pc == new_negotiation || s.pc == existing_negotiation || s.pc == offer_choice ||
+            s.pc == open_details || s.pc == bonuses_draw || s.pc == bonuses_command)
+            saw_nested_dispatch = true;
+        return false;  // Continue the excluded original after each fixture service.
+    }
+    if (contract_screens_lists(s.pc)) return false;  // Exercise the generated owner hook.
+    if (call_site && s.pc == call_site) return false;
+    Cpu c(s);
+    const auto& call = trace_expected_call(s);
 
     switch (s.pc) {
+    case 0x1076f7d0:
+        // The platform exit terminates the call after the assertion transcript.
+        throw ApplicationExit{};
     case 0x1077b770:
         // Count and trace the boundary, then execute the real original or
         // production entropy routine, including the seed write and leftovers.
@@ -166,6 +201,16 @@ bool service(State& s) {
     case 0x10369080:
         c.set_f(1, call.form.value());
         c.put32(c.r(9), call.candidate_flags.value());
+        break;
+    case 0x1000a330:
+        c.put32(c.r(3), c.u32(c.r(5) + c.r(4) * 4));
+        break;
+    case 0x10778300:
+        for (unsigned i = 0; i < c.r(5); ++i) c.put8(c.r(3) + i, c.r(4));
+        break;
+    case 0x1074bcd0:
+        if (c.lr() == 0x1009b778 || c.lr() == 0x1009be7c)
+            c.put32(c.r(7), c.u32(c.r(7)) + 1);
         break;
     case 0x10411ea0:
         if (c.lr() == 0x1009e520) c.put8(c.r(3) + 0x38, 0x0a);
@@ -223,7 +268,8 @@ bool service(State& s) {
         c.put32(c.r(7), 0x43505000);
         break;
     case 0x1077b720:
-        c.put32(c.r(3), c.r(8));
+        if (c.lr() == 0x1009b8c8) c.put32(c.r(3), 0x4e6f7465);
+        else c.put32(c.r(3), c.r(8));
         break;
     case 0x100c7a50:
         c.put16(c.r(5), 7);
@@ -252,6 +298,7 @@ bool service(State& s) {
         c.put32(fixture + 0x300, c.u32(c.r(3)));
         break;
     }
+    if (call.pointed_result) c.put32(c.r(3), *call.pointed_result);
     if (call.result) c.set(3, *call.result);
     if (call.second_result) c.set(4, *call.second_result);
     c.finish();
@@ -521,6 +568,7 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
 #include "contract_screens_offer_cases.inc"
 #include "contract_screens_choice_draw_cases.inc"
 #include "contract_screens_transfer_cases.inc"
+#include "contract_screens_bonuses_cases.inc"
 #include "contract_screens_negotiation_command_cases.inc"
 #include "contract_screens_negotiation_draw_cases.inc"
 #include "contract_screens_offer_detail_cases.inc"
@@ -1017,6 +1065,42 @@ int main(int argc, char** argv) {
                 transfer_command_case(c, input);
                 check();
             }
+        const std::array bonus_draw_inputs{
+            BonusesDrawInput{},
+            BonusesDrawInput{.draft = {4, 30, -1}, .proposal = {-1, 20, 50}, .supported = 7, .eligible = true},
+            BonusesDrawInput{.draft = {130, -1, 0}, .proposal = {50, 150, 90}, .supported = 7, .eligible = true, .compact = true},
+            BonusesDrawInput{.draft = {1, -1, -1}, .proposal = {50, 20, -1}, .supported = 3},
+            BonusesDrawInput{.draft = {20, 1, -1}, .proposal = {50, -1, 40}, .supported = 5, .eligible = true},
+        };
+        const std::array bonus_command_inputs{
+            BonusesCommandInput{},
+            BonusesCommandInput{.compact = true, .previous = 10, .adjusted = 5},
+            BonusesCommandInput{.action = 0xf, .adjusted = 60},
+            BonusesCommandInput{.action = 0xf, .fallback = true, .compact = true, .previous = 95, .adjusted = 100},
+            BonusesCommandInput{.action = 0x2a},
+            BonusesCommandInput{.action = 0x2c, .fallback = true, .no_control = true},
+            BonusesCommandInput{.action = 0x2d},
+            BonusesCommandInput{.action = 0x11},
+            BonusesCommandInput{.action = 0x11, .offer = -1, .cap = 55},
+            BonusesCommandInput{.action = 0xd},
+            BonusesCommandInput{.action = 0xd, .offer = -1},
+            BonusesCommandInput{.action = 0xe, .fallback = true, .no_control = true},
+            BonusesCommandInput{.action = 0x2e},
+            BonusesCommandInput{.action = 0, .fallback = true},
+            BonusesCommandInput{.action = 0, .missing_draft = true},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation) {
+            for (const auto& input : bonus_draw_inputs) {
+                auto c = initialize(*state, random, bonuses_draw);
+                bonuses_draw_case(c, input);
+                check();
+            }
+            for (const auto& input : bonus_command_inputs) {
+                auto c = initialize(*state, random, bonuses_command);
+                bonuses_command_case(c, input);
+                check();
+            }
+        }
         const std::array detail_draws{
             OfferDetailDrawInput{.missing = true},
             OfferDetailDrawInput{},
@@ -1117,7 +1201,7 @@ int main(int argc, char** argv) {
             NegotiationCommandInput{.linked = true, .populated = true, .status = 3},
             NegotiationCommandInput{.linked = true, .populated = true, .status = 2},
             NegotiationCommandInput{.action = 8, .handler = 0},
-            NegotiationCommandInput{.action = 8, .handler = 1},
+            NegotiationCommandInput{.action = 0x2a, .handler = 1},
             NegotiationCommandInput{.action = 8, .handler = 2},
             NegotiationCommandInput{.action = 8, .handler = 3},
             NegotiationCommandInput{.action = 8, .common = 0xffffffff},
@@ -1303,6 +1387,36 @@ int main(int argc, char** argv) {
                 if (seen == selection.totals().end() || seen->second.calls != 1)
                     throw std::runtime_error("checker parent did not observe the selected news and negotiation chain");
             }
+        }
+
+        for (const auto target : {negotiation_draw, negotiation_command}) {
+            const bool draw = target == negotiation_draw;
+            const auto setup = [&](Cpu& c) {
+                if (draw) negotiation_draw_case(c, {.tab = 2});
+                else negotiation_command_case(c, {.action = 0x2a, .handler = 1});
+            };
+            auto excluded = initialize(*state, random, target);
+            setup(excluded);
+            real_localization = draw;
+            if (draw) localization_format_diagnostics(*state).observer = &localization_trace;
+            const auto differences = compare_routine_call(*state, target, original, rewrite_with_original_children, results);
+            if (draw) localization_format_diagnostics(*state).observer = nullptr;
+            real_localization = false;
+            if (!differences.empty()) {
+                for (const auto& difference : differences) std::cerr << difference << '\n';
+                throw std::runtime_error("excluded bonuses entry differed from the original");
+            }
+            ++passed;
+
+            auto selected = initialize(*state, random, target);
+            setup(selected);
+            RoutineChecker selection([](std::uint32_t) { return true; }, 0, 0);
+            routine_checker = &selection;
+            rewrite(*state, target);
+            routine_checker = nullptr;
+            const auto seen = selection.totals().find(draw ? bonuses_draw : bonuses_command);
+            if (seen == selection.totals().end() || seen->second.calls != 1)
+                throw std::runtime_error("checker parent did not observe the selected bonuses entry");
         }
 
         auto excluded_details = initialize(*state, random, negotiation_command);

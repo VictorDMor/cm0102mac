@@ -118,6 +118,16 @@ void negotiation_command_case(Cpu& c, const NegotiationCommandInput& in) {
                                       std::pair{0x1009d410u, 0x10098078u}, std::pair{0x102a54b0u, 0x1009808cu}};
         for (unsigned index = 0; index < handlers.size(); ++index) {
             const auto [target, back] = handlers[index];
+            if (index == 1) {
+                read(0x1009c05c, 2, draft_offer);
+                active(0x1009c070);
+                if (in.handler == 1) {
+                    expected_record_word = std::pair{draft + 0x10, value};
+                    expected_result = std::uint32_t(-11);
+                    return;
+                }
+                continue;
+            }
             const auto result = index == in.handler ? 0xfffffff6u : 0;
             expect(target, back, {control}, result);
             if (result) {

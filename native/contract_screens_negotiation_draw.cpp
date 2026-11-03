@@ -1,4 +1,5 @@
 #include "contract_screens.hpp"
+#include "contract_screens_calls.hpp"
 #include "guest_fpu.hpp"
 #include "screen_manager_detail.hpp"
 #include <array>
@@ -291,8 +292,9 @@ void NegotiationScreen::draw_tabs() {
     }
     std::uint32_t target = 0, back = 0;
     if (compare(c, tab, 2) == 0) {
-        target = 0x1009b620;
-        back = 0x10097730;
+        detail::call_owned(c, 0x1009b620, 0x10097730, draw_negotiation_bonuses, draft, proposal,
+                           person, c.u32(frame.at(0x80)), c.u32(frame.at(0x7c)));
+        return;
     } else if (tab < 2 && compare(c, tab, 1) >= 0) {
         target = 0x10098130;
         back = 0x100976f8;
