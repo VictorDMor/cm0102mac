@@ -1,5 +1,5 @@
 #include "contract_screens.hpp"
-#include "contract_screens_adapter.hpp"
+#include "contract_screens_calls.hpp"
 #include "screen_manager_detail.hpp"
 
 namespace cm::aot::contract_screens {
@@ -52,27 +52,10 @@ bool needs_refresh(Cpu& c, std::uint32_t offer, std::uint32_t revision) {
 
 void proceed_to_negotiation(Cpu& c, bool existing, std::uint32_t link, std::uint32_t person,
                             std::uint32_t selected_terms, std::uint32_t kind) {
-    if (existing) {
-        constexpr auto entry = 0x100965c0u, back = 0x1009606cu;
-        leave(c, {{3, link}, {4, person}, {5, selected_terms}, {6, kind}, {7, 1}});
-        if (contract_screens_can_call_directly(entry)) {
-            c.link(back);
-            open_existing_negotiation(c, link, person, selected_terms, kind, 1);
-            c.s.pc = back;
-        } else {
-            c.call(entry, back);
-        }
-    } else {
-        constexpr auto entry = 0x100960d0u, back = 0x10096084u;
-        leave(c, {{3, person}, {4, selected_terms}, {5, kind}, {6, 1}});
-        if (contract_screens_can_call_directly(entry)) {
-            c.link(back);
-            open_new_negotiation(c, person, selected_terms, kind, 1);
-            c.s.pc = back;
-        } else {
-            c.call(entry, back);
-        }
-    }
+    if (existing)
+        detail::call_owned(c, 0x100965c0, 0x1009606c, open_existing_negotiation, link, person, selected_terms, kind, 1u);
+    else
+        detail::call_owned(c, 0x100960d0, 0x10096084, open_new_negotiation, person, selected_terms, kind, 1u);
 }
 }
 

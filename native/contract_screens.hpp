@@ -3,6 +3,10 @@
 
 namespace cm::aot::contract_screens {
 void open_transfer_request_from_news(guest::Cpu&, std::uint32_t item, std::uint32_t revision);
+void open_restricted_contract_from_news(guest::Cpu&, std::uint32_t item, std::uint32_t revision);
+void open_offer_contract_from_news(guest::Cpu&, std::uint32_t item, std::uint32_t revision);
+void open_contract_choice(guest::Cpu&, std::uint32_t person, std::uint32_t link,
+                          std::uint32_t with_offer, std::uint32_t restrictions);
 void draw_transfer_request(guest::Cpu&);
 std::uint32_t negotiation_choice_command(guest::Cpu&, std::uint32_t control);
 void open_new_negotiation(guest::Cpu&, std::uint32_t person, std::uint32_t state,

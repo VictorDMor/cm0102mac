@@ -20,6 +20,7 @@ namespace cm::aot { bool contract_screens_reference(State&); }
 
 namespace {
 constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_draft = 0x100980d0, open_details = 0x1009dab0,
+                        restricted_news = 0x10093a50, offer_news = 0x1009ed20, offer_choice = 0x10094ae0, offer_choice_end = 0x100952a4,
                         new_negotiation = 0x100960d0, existing_negotiation = 0x100965c0,
                         negotiation_choice = 0x10095db0,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
@@ -38,7 +39,7 @@ constexpr unsigned trace_words = 3 + 8 + 19 + 8 + 2 + 4;
 struct Call {
     std::uint32_t target, back;
     std::vector<std::uint32_t> args, stack_args;
-    std::optional<std::uint32_t> result, second_result, pointed_word;
+    std::optional<std::uint32_t> result, second_result, pointed_word, candidate_flags;
     std::optional<double> form;
 };
 std::vector<Call> expected;
@@ -49,12 +50,15 @@ unsigned callbacks = 0;
 std::optional<std::uint32_t> expected_result;
 std::optional<std::uint32_t> replacement_club;
 std::optional<std::uint16_t> group_after_open, group_before_valuation;
+struct OfferNewsPayload { std::uint32_t message, person, offer; };
+std::optional<OfferNewsPayload> offer_news_payload;
 std::uint32_t entry = 0;
 std::uint32_t call_site = 0;
+unsigned fixture_instruction_budget = 0;
 
 void expect(std::uint32_t target, std::uint32_t back, std::initializer_list<std::uint32_t> args,
             std::optional<std::uint32_t> result = {}, std::optional<double> form = {}) {
-    expected.push_back({target, back, args, {}, result, {}, {}, form});
+    expected.push_back({target, back, args, {}, result, {}, {}, {}, form});
 }
 
 bool service(State& s) {
@@ -70,9 +74,11 @@ bool service(State& s) {
         if (reference_mode) return contract_screens_reference(s);
         return false;
     }
-    if (reference_mode && (contract_screens_reference(s) || (s.pc == 0x10775540 && run_leaf(s)))) return true;
-    if (expect_nested_dispatch && s.pc >= new_negotiation && s.pc < 0x10096c58) {
-        if (s.pc == new_negotiation || s.pc == existing_negotiation) saw_nested_dispatch = true;
+    if (reference_mode && (contract_screens_reference(s) || ((s.pc == 0x10775540 || s.pc == 0x10768810) && run_leaf(s)))) return true;
+    if (expect_nested_dispatch && ((s.pc >= new_negotiation && s.pc < 0x10096c58) ||
+                                    (s.pc >= offer_choice && s.pc < offer_choice_end))) {
+        if (s.pc == new_negotiation || s.pc == existing_negotiation || s.pc == offer_choice)
+            saw_nested_dispatch = true;
         return false;  // Continue the excluded original after each fixture service.
     }
     if (contract_screens_lists(s.pc)) return false;  // Exercise the generated owner hook.
@@ -115,11 +121,18 @@ bool service(State& s) {
         c.put32(c.r(3) + 8, 0);
         break;
     case fetch_news:
-        c.put32(c.r(6), c.r(4) ^ club_payload_mask);
-        c.put32(c.r(6) + 8, c.r(5) ^ staff_payload_mask);
+        if (offer_news_payload) {
+            c.put32(c.r(6), offer_news_payload->message);
+            c.put32(c.r(6) + 0x10, offer_news_payload->person);
+            c.put32(c.r(6) + 0x18, offer_news_payload->person);
+            c.put32(c.r(6) + 0x2c, offer_news_payload->offer);
+        } else {
+            c.put32(c.r(6), c.r(4) ^ club_payload_mask);
+            c.put32(c.r(6) + 8, c.r(5) ^ staff_payload_mask);
+        }
         break;
     case news_payload:
-        c.set(3, c.u32(c.r(3) + 4 * c.r(4)));
+        c.set(3, c.u32(c.r(3) + 4 * c.r(4) + (offer_news_payload ? 0x10 : 0)));
         break;
     case write_history:
         c.put32(history_data + c.r(4) * 4, c.r(5));
@@ -132,6 +145,17 @@ bool service(State& s) {
         if (c.f(1) != c.f32(c.toc(-0x56f4) + 8))
             throw std::runtime_error("wrong default form argument");
         c.set_f(1, call.form.value());
+        break;
+    case 0x10369080:
+        c.set_f(1, call.form.value());
+        c.put32(c.r(9), call.candidate_flags.value());
+        break;
+    case 0x10739890:
+        c.put32(c.r(6), 0x434f4e54);
+        c.put32(c.r(7), 0x43505000);
+        break;
+    case 0x1077b720:
+        c.put32(c.r(3), c.r(8));
         break;
     case 0x100c7a50:
         c.put16(c.r(5), 7);
@@ -190,7 +214,7 @@ void rewrite(State& s, std::uint32_t target) {
         // Scripted services charge no instructions. Any generated instruction
         // in an owned body fails, including an accidental original fallback.
         // Entering a generated caller at its bl label charges that call once.
-        s.budget = s.executed + (call_site ? 1 : 0);
+        s.budget = s.executed + (call_site ? 1 : 0) + fixture_instruction_budget;
         s.pc = call_site ? call_site : target;
         run_until(s, call_site ? call_site + 4 : sentinel);
     } else {
@@ -232,8 +256,10 @@ Cpu initialize(State& s, std::mt19937& random, std::uint32_t target) {
     replacement_club.reset();
     group_after_open.reset();
     group_before_valuation.reset();
+    offer_news_payload.reset();
     entry = target;
     call_site = 0;
+    fixture_instruction_budget = 0;
     Cpu c(s);
     const std::vector<std::uint8_t> stack_residue(0x3000, std::uint8_t(random()));
     s.memory.copy_in(stack - stack_residue.size(), stack_residue);
@@ -397,6 +423,8 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
         }
     }
 }
+
+#include "contract_screens_offer_cases.inc"
 
 struct ChoiceInput {
     unsigned action = 2;
@@ -848,6 +876,62 @@ int main(int argc, char** argv) {
                 negotiation_case(c, input, negotiation_state, mode);
                 check();
             }
+        const std::array offer_inputs{
+            OfferChoiceInput{.path = OfferPath::missing_instance},
+            OfferChoiceInput{.path = OfferPath::missing_club},
+            OfferChoiceInput{.path = OfferPath::pending, .same_day = true, .available = 0, .pending_category = 3},
+            OfferChoiceInput{.path = OfferPath::pending, .link = true, .same_day = true,
+                             .available = 0, .pending_category = 2},
+            OfferChoiceInput{.path = OfferPath::sole_role, .available = 1},
+            OfferChoiceInput{.path = OfferPath::sole_role, .with_offer = true, .available = 1},
+            OfferChoiceInput{.path = OfferPath::reuse, .restricted = false, .available = 0, .club_category = 3},
+            OfferChoiceInput{.path = OfferPath::reuse, .link = true, .restricted = false, .available = 0,
+                             .club_category = 3, .primary_kind = 4},
+            OfferChoiceInput{.path = OfferPath::reuse, .link = true, .restricted = false, .same_day = true, .same_year = false,
+                             .available = 0, .pending_category = 2, .club_category = 3, .primary_kind = 4},
+            OfferChoiceInput{.opened = 0x100},
+            OfferChoiceInput{},
+            OfferChoiceInput{.link = true, .blank_offer = true, .same_day = true, .pending_category = 5},
+            OfferChoiceInput{.link = true, .same_day = true, .pending_category = 5},
+            OfferChoiceInput{.restricted = false, .available = 0, .club_category = 3, .primary_kind = 5},
+            OfferChoiceInput{.restricted = false, .available = 0, .club_category = 3, .club_kind = 6, .primary_kind = 4},
+            OfferChoiceInput{.restricted = false, .available = 0, .club_category = 0},
+            OfferChoiceInput{.restricted = false, .available = 0},
+            OfferChoiceInput{.restricted = false, .profile = true, .available = 0, .club_category = 7},
+            OfferChoiceInput{.restricted = false, .profile = true, .available = 0, .club_category = 8},
+            OfferChoiceInput{.profile = true, .club_category = 4},
+            OfferChoiceInput{.profile = true, .permitted_categories = 1 << 4, .club_category = 4, .preferred_category = 4},
+            OfferChoiceInput{.profile = true, .terms_apply = true, .permitted_categories = 0x7e, .club_category = 3},
+            OfferChoiceInput{.profile = true, .permitted_categories = 0x7e, .rated_categories = 1 << 4,
+                             .preferred_category = 6},
+            OfferChoiceInput{.profile = true, .age = 19, .reputation = 3000, .club_reputation = 5000},
+            OfferChoiceInput{.profile = true, .age = 20, .club_reputation = 4250},
+            OfferChoiceInput{.profile = true, .age = 21, .club_reputation = 3900},
+            OfferChoiceInput{.profile = true, .age = 24, .club_reputation = 6000},
+            OfferChoiceInput{.available = 1, .preferred = 11},
+            OfferChoiceInput{.available = 0, .pending_category = 2},
+            OfferChoiceInput{.available = 0, .pending_category = 255},
+            OfferChoiceInput{.profile = true, .permitted_categories = 0x7e, .age = 21,
+                             .club_reputation = 4150, .preferred_category = 1,
+                             .reputation_factor = 7, .interest_factor = -5, .ambition_factor = 11},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (const auto& input : offer_inputs) {
+                auto c = initialize(*state, random, offer_choice);
+                offer_choice_case(c, input);
+                check();
+            }
+        for (const auto& [target, input] : {
+                std::pair{restricted_news, OfferChoiceInput{.path = OfferPath::pending, .same_day = true, .available = 0, .pending_category = 3}},
+                std::pair{offer_news, OfferChoiceInput{.restricted = false}},
+                std::pair{offer_news, OfferChoiceInput{.path = OfferPath::sole_role, .link = true, .restricted = false,
+                                                       .available = 1}},
+                std::pair{offer_news, OfferChoiceInput{.path = OfferPath::sole_role, .with_offer = true, .restricted = false,
+                                                       .available = 1}}}) {
+            auto c = initialize(*state, random, target);
+            offer_choice_case(c, input, target);
+            check();
+        }
         const std::array choice_inputs{
             ChoiceInput{.action = 3},
             ChoiceInput{.action = 3, .control_default = true},
@@ -904,6 +988,31 @@ int main(int argc, char** argv) {
             const auto seen = selection.totals().find(callee);
             if (seen == selection.totals().end() || seen->second.calls != 1)
                 throw std::runtime_error("checker parent did not observe the selected negotiation child");
+        }
+
+        for (const auto target : {restricted_news, offer_news}) {
+            auto excluded = initialize(*state, random, target);
+            offer_choice_case(excluded, {.restricted = target == restricted_news, .opened = 0x100}, target);
+            const auto differences = compare_routine_call(*state, target, original, rewrite_with_original_children, results);
+            if (!differences.empty()) {
+                for (const auto& difference : differences) std::cerr << difference << '\n';
+                throw std::runtime_error("excluded offer choice differed from the original");
+            }
+            ++passed;
+
+            auto selected = initialize(*state, random, target);
+            const bool linked = target == offer_news;
+            offer_choice_case(selected, {.path = OfferPath::pending, .link = linked, .restricted = !linked,
+                                         .same_day = true, .available = 0, .pending_category = 3}, target);
+            RoutineChecker selection([](std::uint32_t) { return true; }, 0, 0);
+            routine_checker = &selection;
+            rewrite(*state, target);
+            routine_checker = nullptr;
+            for (const auto child : {offer_choice, linked ? existing_negotiation : new_negotiation}) {
+                const auto seen = selection.totals().find(child);
+                if (seen == selection.totals().end() || seen->second.calls != 1)
+                    throw std::runtime_error("checker parent did not observe the selected news and negotiation chain");
+            }
         }
 
         auto c = initialize(*state, random, open_staff);
