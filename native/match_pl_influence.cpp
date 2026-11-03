@@ -132,6 +132,9 @@ void PlayerInfluence::run() {
     late_ratings();
     profile_ratings();
     age_and_fixture_ratings();
-    throw std::logic_error("MATCH_PL team influence suffix is not reconstructed");
+    contextual_ratings();
+    if (!ordinary_player()) return;
+    contract_adjustments();
+    relationship_adjustments();
 }
 }

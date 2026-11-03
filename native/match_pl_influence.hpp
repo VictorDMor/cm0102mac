@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include "match_pl_detail.hpp"
 #include "guest_fpu.hpp"
 
@@ -31,6 +32,22 @@ class PlayerInfluence {
     void publish_fixture_rating(std::int8_t rating, unsigned offset, std::uint32_t back);
     void base_profile_ratings();
     void age_and_fixture_ratings();
+    void contextual_ratings();
+    void limit_contextual_ratings();
+    void personality_rating();
+    bool ordinary_player();
+    void contract_adjustments();
+    void relationship_adjustments();
+    void contract_history();
+    void scale_rating(unsigned field, unsigned coefficient);
+    void scale_six(const std::array<unsigned, 6>& fields, const std::array<unsigned, 6>& coefficients);
+    void contract_composure_penalty();
+    bool contract_random_test(unsigned bound, std::uint32_t back);
+    std::int8_t staff_trait(unsigned field);
+    void relationship_query(bool opposite, bool controller, std::uint32_t target, std::uint32_t back);
+    void captain_relationship(std::uint32_t lookup_back, std::uint32_t target, std::uint32_t back);
+    void relationship_bonus();
+    void relationship_penalty(unsigned secondary_field, bool loyalty);
     void aged_profile_rating(unsigned profile_offset, unsigned result_register);
     void weighted_coaching(unsigned player_offset, unsigned coefficient_register, unsigned base_offset, unsigned fallback_offset,
         std::uint32_t coefficient_site, std::uint32_t rating_back, std::uint32_t adjustment_site);
