@@ -4,7 +4,7 @@
 
 namespace cm::aot::match_pl {
 
-// Full handwritten response. The production entry is switched after block verification.
+// Guest activation for 0x1022ba10, including the final attribute refresh.
 class PlayerResponse {
     guest::Cpu& c;
     guest::Frame frame;

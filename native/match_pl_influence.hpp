@@ -4,8 +4,7 @@
 #include "guest_fpu.hpp"
 
 namespace cm::aot::match_pl {
-// Draft activation: completed phases are checked at external service boundaries
-// while the attribute suffix is reconstructed. No production entry is registered.
+// Guest activation for 0x10227460, also called by PlayerResponse.
 class PlayerInfluence {
     guest::Cpu& c;
     guest::Frame frame;

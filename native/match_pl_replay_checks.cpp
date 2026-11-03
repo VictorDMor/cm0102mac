@@ -18,7 +18,7 @@ using namespace cm::aot;
 namespace {
 std::uint32_t match_address = 0;
 constexpr unsigned advances = 600;
-bool timed = false, construction = false;
+bool timed = false, construction = false, response = false;
 unsigned pair_index = 0;
 struct Inputs final : CodeFragmentBoundaryObserver {
     unsigned clocks = 0;
@@ -36,7 +36,7 @@ struct Inputs final : CodeFragmentBoundaryObserver {
 struct ShotCalls final : MemoryObserver {
     State& s;
     MemoryObserver* previous;
-    unsigned calls = 0, balance_calls = 0, construction_calls = 0;
+    unsigned calls = 0, balance_calls = 0, construction_calls = 0, influence_calls = 0;
     explicit ShotCalls(State& state) : s(state), previous(s.memory.date_observer) { if (!timed) s.memory.date_observer = this; }
     ~ShotCalls() { if (!timed) s.memory.date_observer = previous; }
     void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
@@ -47,7 +47,13 @@ struct ShotCalls final : MemoryObserver {
         if (size != 4 || at != std::uint32_t(s.r<4>(4)) + 8) return;
         const auto back = (std::uint32_t(bytes[0]) << 24) | (std::uint32_t(bytes[1]) << 16) |
                           (std::uint32_t(bytes[2]) << 8) | bytes[3];
-        if (back != std::uint32_t(s.r<4>(4128))) return;
+        const auto live_lr = std::uint32_t(s.r<4>(4128));
+        if (back == 0x1022ba40 && (live_lr == back || live_lr == 0x1022746c)) {
+            // The original saves the incoming LR after calling its FPR save helper.
+            ++influence_calls;
+            return;
+        }
+        if (back != live_lr) return;
         switch (back) {
         case 0x101dad40: case 0x101db1b4: case 0x102586ac:
         case 0x102787d4: case 0x10278b94: case 0x10279980: case 0x1028166c: case 0x102816a8:
@@ -94,6 +100,12 @@ void interval(State& s, bool original) {
     c.put32(0x61000004, shots.calls);
     c.put32(0x61000008, shots.balance_calls);
     c.put32(0x6100000c, shots.construction_calls);
+    if (response) {
+        // The response routine is the sole caller of influence.
+        c.put32(0x61000010, shots.influence_calls);
+        if (!shots.influence_calls) throw std::runtime_error("Actual-match interval did not exercise player response");
+        std::cerr << (original ? "original" : "cpp") << " response and influence calls=" << shots.influence_calls << '\n';
+    }
     if (!timed && !shots.balance_calls) throw std::runtime_error("Actual-match interval did not exercise periodic balance");
     if (!timed && !shots.calls) throw std::runtime_error("Actual-match interval did not exercise shot selection");
     if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << " periodic-balance calls=" << shots.balance_calls << " construction calls=" << shots.construction_calls << '\n';
@@ -122,6 +134,7 @@ int main(int argc, char** argv) {
         if (argc == 3) {
             const std::string_view option(argv[2]);
             if (option == "--construction") construction = true;
+            else if (option == "--response") response = true;
             else {
                 if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");
                 pairs = unsigned(std::stoul(std::string(option.substr(15))));
