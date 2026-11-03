@@ -23,6 +23,8 @@ MATCH_PL_ROUTINE(0x10251270, 0x10252080, R3|F1, "70c79d24c07796fc",
     [](Cpu& c) { match_pl::sample_keeper_response(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9)); })
 MATCH_PL_ROUTINE(0x10270c70, 0x10272050, R3|F1, "fe00c9e7ef332838",
     [](Cpu& c) { match_pl::rate_action(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
+MATCH_PL_ROUTINE(0x10252080, 0x102576e0, R3|F1, "0dd9e22723a2d360",
+    [](Cpu& c) { match_pl::choose_shot(c, c.r(3), c.r(4), c.r(5)); })
 MATCH_PL_ROUTINE(0x10272050, 0x102720a0, R3, "682ab8d1fd5d1aef",
     [](Cpu& c) { match_pl::in_defensive_third(c, c.r(3)); })
 MATCH_PL_ROUTINE(0x102720a0, 0x102720d0, R3, "fa1a7866fe4b74ec",

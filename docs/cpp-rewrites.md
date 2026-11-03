@@ -840,6 +840,13 @@ the separate geometry and attribute samplers still require their wide paths.
 It may replace the action byte before selecting output flags. Those flags are
 written second-output first, including cases where a draw occurs between writes.
 
+Shot selection retains its lateral coefficient across reseeding while recomputing
+other live floating bounds. Its special distance adjustment rereads the action
+after the power call, so a callback can change the subsequent divisor and event.
+The final event table gives the lateral flag priority over distance; action 53
+consumes another draw when neither flag is set. Caller outputs may alias each other,
+player attributes or RNG storage, and retain the original write order.
+
 Peer contacts update every matching contact-list record before deciding whether
 to append; duplicate matches are observable. Incident responses also retain two
 consecutive kind2 attempts, each consuming its own RNG draw. Request, effect and

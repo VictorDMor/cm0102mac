@@ -86,7 +86,7 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
                   {7, c.u8(frame.at(0x55))}, {8, c.u8(frame.at(0x54))}}); c.link(back); complete_targeted_action(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8));
     };
     const auto choose_shot = [&](unsigned kind_offset, std::uint32_t back) {
-        leave(c, {{3, player}, {4, frame.at(kind_offset)}, {5, frame.at(0x5c)}}); c.call(0x10252080, back);
+        leave(c, {{3, player}, {4, frame.at(kind_offset)}, {5, frame.at(0x5c)}}); c.link(back); match_pl::choose_shot(c, c.r(3), c.r(4), c.r(5));
         c.set(21, extended(std::int16_t(c.r(3))));
     };
     const auto shoot = [&](unsigned action, unsigned shot_mode, std::uint32_t back) {
@@ -1499,13 +1499,13 @@ std::uint32_t choose_primary_action(Cpu& c, std::uint32_t player, std::uint32_t 
             c.set(3, actor.match()); if (compare(c, c.i8(c.r(3) + 0x791f)) == 0) publish_running(0x10281644);
         }
         if (compare(c, c.i8(frame.at(0x101))) != 0) {
-            leave(c, {{3, player}, {4, frame.at(0x51)}, {5, frame.at(0x5c)}}); c.call(0x10252080, 0x1028166c);
+            leave(c, {{3, player}, {4, frame.at(0x51)}, {5, frame.at(0x5c)}}); c.link(0x1028166c); match_pl::choose_shot(c, c.r(3), c.r(4), c.r(5));
             c.set(5, extended(std::int16_t(c.r(3)))); const auto prior = c.u32(frame.at(0x104));
             c.set(4, prior >> 31); const auto first_sum = c.r(5) + (c.r(5) >> 31), second_sum = prior + c.r(4);
             c.set(3, std::uint32_t(std::int32_t(first_sum) >> 1)); c.s.wr<1>(reg::xer_ca, std::int32_t(second_sum) < 0 && (second_sum & 1));
             c.set(21, c.r(3) + std::uint32_t(std::int32_t(second_sum) >> 1));
         } else {
-            leave(c, {{3, player}, {4, frame.at(0x51)}, {5, frame.at(0x5c)}}); c.call(0x10252080, 0x102816a8); c.set(21, extended(std::int16_t(c.r(3))));
+            leave(c, {{3, player}, {4, frame.at(0x51)}, {5, frame.at(0x5c)}}); c.link(0x102816a8); match_pl::choose_shot(c, c.r(3), c.r(4), c.r(5)); c.set(21, extended(std::int16_t(c.r(3))));
         }
         c.set(13, extended(c.i16(frame.at(0x74)))); c.set(3, actor.match()); c.call(0x101d69c0, 0x102816bc);
         leave(c, {{3, player}, {4, c.u8(frame.at(0x51))}, {5, extended(std::int16_t(c.r(21)))}, {6, extended(c.i16(frame.at(0x5c)))},
