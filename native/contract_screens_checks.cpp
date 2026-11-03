@@ -25,6 +25,7 @@ constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_
                         new_negotiation = 0x100960d0, existing_negotiation = 0x100965c0,
                         transfer_command = 0x10093e60, transfer_sample = 0x10094560,
                         choice_draw = 0x100952b0, negotiation_choice = 0x10095db0,
+                        negotiation_draw = 0x10096c60, negotiation_command = 0x10097b70, open_details_end = 0x1009dbf8,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
                         compare_staff = 0x1009ee00, load_language = 0x1009ef30,
                         save_db = 0x1009ef60, load_db = 0x1009ef90;
@@ -53,6 +54,7 @@ std::optional<std::uint32_t> expected_result;
 struct RandomEffects { unsigned refills; std::uint32_t seed, salt_address, salt, cursor_address, cursor; };
 std::optional<RandomEffects> expected_random;
 std::optional<std::pair<std::uint32_t, std::uint8_t>> expected_record_byte;
+std::optional<std::pair<std::uint32_t, std::uint32_t>> expected_record_word;
 std::optional<std::uint32_t> replacement_club;
 std::optional<std::uint16_t> group_after_open, group_before_valuation;
 struct OfferNewsPayload { std::uint32_t message, person, offer; };
@@ -81,8 +83,9 @@ bool service(State& s) {
     }
     if (reference_mode && (contract_screens_reference(s) || ((s.pc == 0x10775540 || s.pc == 0x10768810) && run_leaf(s)))) return true;
     if (expect_nested_dispatch && ((s.pc >= new_negotiation && s.pc < 0x10096c58) ||
-                                    (s.pc >= offer_choice && s.pc < offer_choice_end))) {
-        if (s.pc == new_negotiation || s.pc == existing_negotiation || s.pc == offer_choice)
+                                    (s.pc >= offer_choice && s.pc < offer_choice_end) ||
+                                    (s.pc >= open_details && s.pc < open_details_end))) {
+        if (s.pc == new_negotiation || s.pc == existing_negotiation || s.pc == offer_choice || s.pc == open_details)
             saw_nested_dispatch = true;
         return false;  // Continue the excluded original after each fixture service.
     }
@@ -160,6 +163,23 @@ bool service(State& s) {
         c.set_f(1, call.form.value());
         c.put32(c.r(9), call.candidate_flags.value());
         break;
+    case 0x10374f50:
+        c.put32(c.r(9), 337);
+        c.put32(c.r(10), std::bit_cast<std::uint32_t>(2.0f));
+        break;
+    case 0x10771110:
+        for (unsigned i = 0; i < c.r(5); ++i) c.put8(c.r(3) + i, c.u8(c.r(4) + i));
+        break;
+    case 0x10717b20:
+        c.put16(c.r(3), 2001);
+        c.put16(c.r(3) + 2, 42);
+        c.put8(c.r(3) + 4, 0);
+        break;
+    case 0x107156f0:
+        c.put16(c.r(3), 1999);
+        c.put16(c.r(3) + 2, 23);
+        c.put8(c.r(3) + 4, 0x43);
+        break;
     case 0x10739890:
         c.put32(c.r(6), 0x434f4e54);
         c.put32(c.r(7), 0x43505000);
@@ -206,8 +226,10 @@ void validate_return(State& s) {
     if (s.pc != back || c.sp() != stack || calls != expected.size() ||
         (expected_result && c.r(3) != *expected_result))
         throw std::runtime_error("contract screen call did not complete its expected effects");
+    if (expected_record_word && c.u32(expected_record_word->first) != expected_record_word->second)
+        throw std::runtime_error("contract screen left the wrong record word");
     if (expected_record_byte && c.u8(expected_record_byte->first) != expected_record_byte->second)
-        throw std::runtime_error("transfer request left the wrong contract byte");
+        throw std::runtime_error("contract screen left the wrong record byte");
     if (expected_random) {
         const auto& rng = *expected_random;
         const auto entered = s.rng_original_calls[0] + s.rng_calls[0];
@@ -280,6 +302,7 @@ Cpu initialize(State& s, std::mt19937& random, std::uint32_t target) {
     expected.clear();
     expected_result.reset();
     expected_record_byte.reset();
+    expected_record_word.reset();
     expected_random.reset();
     s.rng_entry_original[0] = false;
     s.rng_original_calls[0] = 0;
@@ -458,6 +481,8 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
 #include "contract_screens_offer_cases.inc"
 #include "contract_screens_choice_draw_cases.inc"
 #include "contract_screens_transfer_cases.inc"
+#include "contract_screens_negotiation_command_cases.inc"
+#include "contract_screens_negotiation_draw_cases.inc"
 
 struct ChoiceInput {
     unsigned action = 2;
@@ -951,6 +976,70 @@ int main(int argc, char** argv) {
                 transfer_command_case(c, input);
                 check();
             }
+        const std::array negotiation_draws{
+            NegotiationDrawInput{.person = false},
+            NegotiationDrawInput{},
+            NegotiationDrawInput{.linked = true, .tab = 2, .role = 12, .group = 1},
+            NegotiationDrawInput{.linked = true, .populated = true, .employer_text = true,
+                                  .menu_enabled = true, .menu_requested = true, .tab = 3, .role = 12},
+            NegotiationDrawInput{.tab = 0},
+            NegotiationDrawInput{.tab = 4, .role = 12},
+            NegotiationDrawInput{.same_club = true, .current = true, .employer_text = true, .menu_enabled = true,
+                                  .role = 12, .person_role = 12, .group = 2},
+            NegotiationDrawInput{.same_club = true, .current = true},
+            NegotiationDrawInput{.current = true, .person_role = 12},
+            NegotiationDrawInput{.current = true, .person_role = 12, .current_kind = 5},
+            NegotiationDrawInput{.linked = true, .without_club = true},
+            NegotiationDrawInput{.resume = false},
+            NegotiationDrawInput{.resume = false, .reuse_draft = true, .current = true,
+                                  .different_contract_club = true, .different_draft_club = true},
+            NegotiationDrawInput{.resume = false, .reuse_draft = true, .current = true, .tab = 2},
+            NegotiationDrawInput{.resume = false, .current = true, .previous = true, .wage = 400},
+            NegotiationDrawInput{.resume = false, .previous = true, .previous_kind = 5, .previous_status = 1},
+            NegotiationDrawInput{.resume = false, .previous = true, .previous_kind = 6, .previous_status = 4},
+            NegotiationDrawInput{.resume = false, .previous = true, .limit = 300},
+            NegotiationDrawInput{.linked = true, .populated = true, .resume = false, .current = true, .wage = 400},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (const auto& input : negotiation_draws) {
+                auto c = initialize(*state, random, negotiation_draw);
+                negotiation_draw_case(c, input);
+                check();
+            }
+        const std::array negotiation_commands{
+            NegotiationCommandInput{.action = 0xc},
+            NegotiationCommandInput{.action = 0xc, .group = 2, .fallback = true, .no_control = true},
+            NegotiationCommandInput{.action = 3, .fallback = true},
+            NegotiationCommandInput{.action = 3, .fallback = true, .no_control = true},
+            NegotiationCommandInput{.action = 0x31},
+            NegotiationCommandInput{.action = 0x1b},
+            NegotiationCommandInput{.action = 2},
+            NegotiationCommandInput{.action = 2, .linked = true, .populated = true},
+            NegotiationCommandInput{.action = 2, .linked = true, .populated = true, .review = true},
+            NegotiationCommandInput{.action = 2, .linked = true, .populated = true, .review = true, .stale = true},
+            NegotiationCommandInput{.action = 2, .linked = true, .populated = true, .review = true, .status = 3},
+            NegotiationCommandInput{.action = 2, .linked = true, .populated = true, .review = true, .status = 2},
+            NegotiationCommandInput{.action = 2, .linked = true, .review = true},
+            NegotiationCommandInput{},
+            NegotiationCommandInput{.details_open = false, .interval = -1},
+            NegotiationCommandInput{.linked = true, .populated = true, .interval = 29},
+            NegotiationCommandInput{.linked = true, .populated = true, .stale = true, .interval = 28},
+            NegotiationCommandInput{.linked = true, .populated = true, .status = 3},
+            NegotiationCommandInput{.linked = true, .populated = true, .status = 2},
+            NegotiationCommandInput{.action = 8, .handler = 0},
+            NegotiationCommandInput{.action = 8, .handler = 1},
+            NegotiationCommandInput{.action = 8, .handler = 2},
+            NegotiationCommandInput{.action = 8, .handler = 3},
+            NegotiationCommandInput{.action = 8, .common = 0xffffffff},
+            NegotiationCommandInput{.action = 8, .common = 0x80000000},
+            NegotiationCommandInput{.action = 0},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (const auto& input : negotiation_commands) {
+                auto c = initialize(*state, random, negotiation_command);
+                negotiation_command_case(c, input);
+                check();
+            }
         using Control = CategoryControl;
         constexpr std::array no_role{Control::unavailable_role, Control::unavailable_role,
             Control::unavailable_role, Control::unavailable_role, Control::unavailable_role, Control::unavailable_role};
@@ -1125,6 +1214,25 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("checker parent did not observe the selected news and negotiation chain");
             }
         }
+
+        auto excluded_details = initialize(*state, random, negotiation_command);
+        negotiation_command_case(excluded_details, {.action = 2});
+        const auto excluded_difference = compare_routine_call(*state, entry, original, rewrite_with_original_children, results);
+        if (!excluded_difference.empty()) {
+            for (const auto& difference : excluded_difference) std::cerr << difference << '\n';
+            throw std::runtime_error("excluded offer details differed from the original");
+        }
+        ++passed;
+
+        auto selected_details = initialize(*state, random, negotiation_command);
+        negotiation_command_case(selected_details, {.linked = true, .populated = true});
+        RoutineChecker detail_selection([](std::uint32_t) { return true; }, 0, 0);
+        routine_checker = &detail_selection;
+        rewrite(*state, entry);
+        routine_checker = nullptr;
+        const auto seen_details = detail_selection.totals().find(open_details);
+        if (seen_details == detail_selection.totals().end() || seen_details->second.calls != 1)
+            throw std::runtime_error("checker parent did not observe the selected offer details");
 
         auto c = initialize(*state, random, open_staff);
         staff_case(c, staff, 1);

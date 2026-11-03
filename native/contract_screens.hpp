@@ -11,6 +11,8 @@ void draw_contract_choice(guest::Cpu&);
 void draw_transfer_request(guest::Cpu&);
 std::uint32_t transfer_request_command(guest::Cpu&, std::uint32_t control);
 std::uint32_t sample_transfer_request(guest::Cpu&, std::uint32_t bound);
+void draw_negotiation(guest::Cpu&);
+std::uint32_t negotiation_command(guest::Cpu&, std::uint32_t control);
 std::uint32_t negotiation_choice_command(guest::Cpu&, std::uint32_t control);
 void open_new_negotiation(guest::Cpu&, std::uint32_t person, std::uint32_t state,
                           std::uint32_t kind, std::uint32_t mode);
