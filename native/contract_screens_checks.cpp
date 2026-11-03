@@ -23,6 +23,7 @@ namespace {
 constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_draft = 0x100980d0, open_details = 0x1009dab0,
                         restricted_news = 0x10093a50, offer_news = 0x1009ed20, offer_choice = 0x10094ae0, offer_choice_end = 0x100952a4,
                         new_negotiation = 0x100960d0, existing_negotiation = 0x100965c0,
+                        transfer_command = 0x10093e60, transfer_sample = 0x10094560,
                         choice_draw = 0x100952b0, negotiation_choice = 0x10095db0,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
                         compare_staff = 0x1009ee00, load_language = 0x1009ef30,
@@ -49,6 +50,9 @@ bool reference_mode = false, production_mode = false, sorting = false;
 bool expect_nested_dispatch = false, saw_nested_dispatch = false;
 unsigned callbacks = 0;
 std::optional<std::uint32_t> expected_result;
+struct RandomEffects { unsigned refills; std::uint32_t seed, salt_address, salt, cursor_address, cursor; };
+std::optional<RandomEffects> expected_random;
+std::optional<std::pair<std::uint32_t, std::uint8_t>> expected_record_byte;
 std::optional<std::uint32_t> replacement_club;
 std::optional<std::uint16_t> group_after_open, group_before_valuation;
 struct OfferNewsPayload { std::uint32_t message, person, offer; };
@@ -114,6 +118,11 @@ bool service(State& s) {
     for (unsigned i = 0; i < call.stack_args.size(); ++i) put(c.u32(c.sp() + 0x38 + 4 * i));
 
     switch (s.pc) {
+    case 0x1077b770:
+        // Count and trace the boundary, then execute the real original or
+        // production entropy routine, including the seed write and leftovers.
+        s.rng_entry_original[0] = reference_mode;
+        return false;
     case append:
         if (group_after_open) c.put16(screens + 0x2c58, *group_after_open);
         break;
@@ -197,6 +206,15 @@ void validate_return(State& s) {
     if (s.pc != back || c.sp() != stack || calls != expected.size() ||
         (expected_result && c.r(3) != *expected_result))
         throw std::runtime_error("contract screen call did not complete its expected effects");
+    if (expected_record_byte && c.u8(expected_record_byte->first) != expected_record_byte->second)
+        throw std::runtime_error("transfer request left the wrong contract byte");
+    if (expected_random) {
+        const auto& rng = *expected_random;
+        const auto entered = s.rng_original_calls[0] + s.rng_calls[0];
+        if (entered != rng.refills || c.u32(c.r(2) - 0x34c4) != rng.seed ||
+            c.u32(rng.salt_address) != rng.salt || c.u32(rng.cursor_address) != rng.cursor)
+            throw std::runtime_error("transfer request consumed the wrong random samples");
+    }
 }
 
 void original(State& s, std::uint32_t target) {
@@ -237,6 +255,13 @@ void corrupt_result(State& s, std::uint32_t target) {
     c.set(3, c.r(3) ^ 1);
 }
 
+void corrupt_random_cursor(State& s, std::uint32_t target) {
+    rewrite(s, target);
+    Cpu c(s);
+    const auto cursor = c.toc(-0x7b84);
+    c.put32(cursor, c.u32(cursor) ^ 2);
+}
+
 void rewrite_with_original_children(State& s, std::uint32_t target) {
     RoutineChecker selection([target](std::uint32_t address) { return address == target; }, 0, 0);
     routine_checker = &selection;
@@ -254,6 +279,11 @@ void rewrite_with_original_children(State& s, std::uint32_t target) {
 Cpu initialize(State& s, std::mt19937& random, std::uint32_t target) {
     expected.clear();
     expected_result.reset();
+    expected_record_byte.reset();
+    expected_random.reset();
+    s.rng_entry_original[0] = false;
+    s.rng_original_calls[0] = 0;
+    s.rng_calls[0] = 0;
     replacement_club.reset();
     group_after_open.reset();
     group_before_valuation.reset();
@@ -427,6 +457,7 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
 
 #include "contract_screens_offer_cases.inc"
 #include "contract_screens_choice_draw_cases.inc"
+#include "contract_screens_transfer_cases.inc"
 
 struct ChoiceInput {
     unsigned action = 2;
@@ -878,6 +909,48 @@ int main(int argc, char** argv) {
                 negotiation_case(c, input, negotiation_state, mode);
                 check();
             }
+        constexpr std::array<std::int32_t, 17> sample_bounds{
+            0, 1, -1, 17, -17, 65534, -65534, 65535, -65535, 65536, -65536, 1000000, -1000000,
+            429496730, std::numeric_limits<std::int32_t>::min(), std::numeric_limits<std::int32_t>::max(), 858993460
+        };
+        for (auto bound : sample_bounds)
+            for (const unsigned position : {0u, 2u, 3u})
+                for (const auto salt : {0u, 31u, 65535u}) {
+                    auto c = initialize(*state, random, transfer_sample);
+                    sample_transfer_case(c, bound, position, salt, random());
+                    check();
+                }
+        const std::array transfer_inputs{
+            TransferCommandInput{.action = 0x22},
+            TransferCommandInput{.action = 0x22, .fallback = true, .no_control = true},
+            TransferCommandInput{.action = 7, .group = 2, .handled = 0xfffffff6},
+            TransferCommandInput{.action = 7, .fallback = true, .common = 0x80000000},
+            TransferCommandInput{.action = 7, .common = 0xffffffff},
+            TransferCommandInput{.action = 0, .fallback = true},
+            TransferCommandInput{.missing_contract = true},
+            TransferCommandInput{.action = 0x20, .fallback = true, .missing_contract = true},
+            TransferCommandInput{.action = 0x20, .affected = true, .group = 3},
+            TransferCommandInput{.action = 0x20, .fallback = true, .no_control = true, .flags = 0x80},
+            TransferCommandInput{},
+            TransferCommandInput{.final_mood = -50, .staff_interest = 30},
+            TransferCommandInput{.position = 2, .listed = true},
+            TransferCommandInput{.position = 3},
+            TransferCommandInput{.listed = true, .immediate = true, .mood = -70, .interest = 2, .ambition = 3, .final_mood = -4},
+            TransferCommandInput{.listed = true, .first_draw = false, .mood = -50, .interest = 0, .final_mood = 6},
+            TransferCommandInput{.second_draw = false, .ambition = 15, .persistence = 60},
+            TransferCommandInput{.first_draw = false, .second_draw = false, .mood = -50, .interest = 0,
+                                 .ambition = 15, .persistence = 60, .final_mood = 6},
+            TransferCommandInput{.ambition = 120, .persistence = 120},
+            TransferCommandInput{.listed = true, .mood = -90, .interest = -10, .ambition = 15, .final_mood = -84},
+            TransferCommandInput{.mood = 95, .interest = 50, .final_mood = 100},
+            TransferCommandInput{.listed = true, .mood = -90, .interest = 35, .ambition = 12, .final_mood = -100},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (const auto& input : transfer_inputs) {
+                auto c = initialize(*state, random, transfer_command);
+                transfer_command_case(c, input);
+                check();
+            }
         using Control = CategoryControl;
         constexpr std::array no_role{Control::unavailable_role, Control::unavailable_role,
             Control::unavailable_role, Control::unavailable_role, Control::unavailable_role, Control::unavailable_role};
@@ -1060,6 +1133,15 @@ int main(int argc, char** argv) {
         if (trace_control.size() != 1 || !trace_control.front().starts_with("byte ") ||
             result_control.size() != 1 || !result_control.front().starts_with("r3 "))
             throw std::runtime_error("contract screen comparison missed a deliberate corruption");
+        auto rng_cpu = initialize(*state, random, transfer_sample);
+        sample_transfer_case(rng_cpu, 65536, 2, 31, 1);
+        production_mode = true;
+        const auto cursor_control = compare_routine_call(*state, entry, original, corrupt_random_cursor, results);
+        const auto cursor_difference = "byte " + hex_address(random_cursor + 3).substr(2);
+        if (cursor_control.size() != 1 || !cursor_control.front().starts_with(cursor_difference)) {
+            for (const auto& difference : cursor_control) std::cerr << difference << '\n';
+            throw std::runtime_error("contract screen comparison missed a deliberate RNG cursor change");
+        }
         for (const auto rotation : {0u, 17u, 43u}) {
             auto sort_cpu = initialize(*state, random, sort_entry);
             initialize_sort(sort_cpu, rotation);
@@ -1070,7 +1152,7 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << passed << " completed comparisons over " << compared.size() << " entries, seed " << seed
-                  << ", result and argument-trace controls detected, three guest qsort pairs matched\n";
+                  << ", result, argument-trace and RNG cursor controls detected, three guest qsort pairs matched\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
