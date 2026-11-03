@@ -237,6 +237,7 @@ void PlayerResponse::run() {
     secondary_position();
     secondary_specialty();
     publish_initial_ratings();
+    publish_remaining_bytes();
     throw std::logic_error("MATCH_PL player response suffix is not reconstructed");
 }
 }

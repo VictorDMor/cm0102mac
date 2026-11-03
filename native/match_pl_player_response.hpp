@@ -21,8 +21,9 @@ class PlayerResponse {
     void secondary_position();
     void secondary_specialty();
     void publish_initial_ratings();
+    void publish_remaining_bytes();
     void publish_simple_rating(unsigned field, unsigned previous_field, unsigned output_slot,
-        unsigned compare_slot, unsigned recalculate_slot);
+        unsigned compare_slot, unsigned recalculate_slot, unsigned coefficient = 0x84);
     void subtract_scaled(unsigned field, unsigned multiplier, bool count_side = false);
     void subtract_scaled_gap();
     void subtract_adjacent(unsigned multiplier);

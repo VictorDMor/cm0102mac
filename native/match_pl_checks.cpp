@@ -311,7 +311,8 @@ struct PopulationState {
 } population_state;
 bool reference_mode = false, generated_mode = false, balance_prefix = false;
 bool construction_prefix = false;
-bool player_response_position = false, player_response_ratings = false;
+bool player_response_position = false, player_response_ratings = false, player_response_bytes = false;
+int response_power_case = 0;
 bool influence_prefix = false, influence_ability = false, influence_publication = false, influence_coaching = false, influence_technical = false, influence_position = false, influence_leadership = false, influence_late = false, influence_profile = false, influence_returned = false;
 std::uint32_t influence_target() { return influence_profile ? 0x101e3d50u : influence_late ? 0x101fedd0u : influence_leadership ? 0x10780fc0u : influence_position ? 0x101fee30u : influence_technical ? 0x10780fc0u : influence_coaching ? 0x101fee30u : influence_publication ? 0x1014c2e0u : 0x100c7d00u; }
 std::uint32_t influence_boundary() { return influence_profile ? 0x10289584u : influence_late ? 0x10229bf4u : influence_leadership ? 0x1022987cu : influence_position ? 0x102293f8u : influence_technical ? 0x10228e18u : influence_coaching ? 0x102288bcu : influence_publication ? 0x102286e4u : influence_ability ? 0x10228220u : 0x102278dcu; }
@@ -441,6 +442,16 @@ bool scripted(State& s) {
     const auto target = s.pc;
     if (active.entry == 0x10223ac0 && scripted_construction(c, target)) return true;
     if (player_response_position && target == 0x1022ba10) return false;
+    if (player_response_bytes && response_power_case && target == 0x10780fc0 && c.lr() == 0x1022c9cc) {
+        trace_call(c, target);
+        c.put32(c.sp() + 0x14, c.r(2));
+        c.set_f(1, response_power_case == 2 ? 1.0e9 : 0.0);
+        c.put8(player + 0x17, 5);
+        c.put_f32(player + 0xa0, 21);
+        c.set(2, 0x12345678);
+        c.finish();
+        return true;
+    }
     if (influence_prefix && target == 0x103b0a00) {
         trace_call(c, target);
         c.set(3, c.lr() == 0x1022752c ? influence.slot : influence.next_slot);
@@ -883,6 +894,7 @@ bool scripted(State& s) {
     return true;
 }
 bool at_response_position(Cpu& c) {
+    if (player_response_bytes) return false;
     if (player_response_ratings)
         return c.s.pc == 0x10780fc0 && c.lr() == 0x1022c9cc && c.sp() == stack - 0x4f0;
     return c.s.pc == 0x101e3de0 && c.lr() == 0x10289604 && c.sp() == stack - 0x530 &&
@@ -1841,21 +1853,56 @@ void corrupt_influence_rng(State& s, std::uint32_t entry) {
 }
 void corrupt_influence(State& s, std::uint32_t entry) { rewrite_influence(s, entry); Cpu c(s); c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1); }
 
+struct ResponseBytePublication {};
+class ResponseByteBoundary final : public MemoryObserver {
+    State& s;
+    MemoryObserver* previous;
+public:
+    explicit ResponseByteBoundary(State& state) : s(state), previous(s.memory.date_observer) {
+        if (player_response_bytes) s.memory.date_observer = this;
+    }
+    ~ResponseByteBoundary() override {
+        if (player_response_bytes) s.memory.date_observer = previous;
+    }
+    void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
+    void cleared(std::uint32_t at, std::uint64_t size) override { if (previous) previous->cleared(at, size); }
+    void read(std::uint32_t at, const std::uint8_t* bytes, unsigned size) override {
+        if (previous) previous->read(at, bytes, size);
+    }
+    void written(std::uint32_t at, const std::uint8_t* bytes, std::size_t size) override {
+        if (previous) previous->written(at, bytes, size);
+        if (at == player + 0x11a && size == 1 && Cpu(s).sp() == stack - 0x4f0)
+            throw ResponseBytePublication{};
+    }
+};
+
 void response_position(State& s, std::uint32_t entry, bool original) {
     reference_mode = original;
     Cpu c(s);
     bool stopped = false;
+    ResponseByteBoundary byte_boundary(s);
     try {
         if (original) { s.pc = entry; run_until(s, sentinel); }
         else {
             match_pl::PlayerResponse response(c, c.r(3), c.r(4));
             response.run();
         }
+    } catch (const ResponseBytePublication&) {
+        cm::semantic_io_checks::require(player_response_bytes && c.sp() == stack - 0x4f0 &&
+            (c.lr() == 0x1022c9cc || c.lr() == 0x1022ca20), "Response byte publication boundary");
+        if (response_power_case)
+            cm::semantic_io_checks::require(c.lr() == (response_power_case == 2 ? 0x1022ca20u : 0x1022c9ccu),
+                "Response optional power did not take its selected path");
+        // Normalize only the dispatch PC. The boundary is the actual
+        // publication write, whose observers can run inside a lowered block.
+        s.pc = 0x1022cc24;
+        stopped = true;
     } catch (const std::runtime_error& error) {
         if (std::string_view(error.what()) != "MATCH_PL response position boundary") throw;
         stopped = true;
     }
-    cm::semantic_io_checks::require(stopped && at_response_position(c), "Response did not reach its live position boundary");
+    cm::semantic_io_checks::require(stopped && (player_response_bytes || at_response_position(c)),
+        "Response did not reach its live position boundary");
     cm::semantic_io_checks::require(c.u32(data + 0x390) == unsigned(influence.mutate_back != 0), "Response influence mutation count");
 }
 void original_response_position(State& s, std::uint32_t entry) { response_position(s, entry, true); }
@@ -1863,7 +1910,8 @@ void rewrite_response_position(State& s, std::uint32_t entry) { response_positio
 void corrupt_response_position(State& s, std::uint32_t entry) {
     rewrite_response_position(s, entry);
     Cpu c(s);
-    if (player_response_ratings) c.put8(player + 0x115, c.u8(player + 0x115) ^ 1);
+    if (player_response_bytes) c.put8(player + 0x11a, c.u8(player + 0x11a) ^ 1);
+    else if (player_response_ratings) c.put8(player + 0x115, c.u8(player + 0x115) ^ 1);
     else c.put16(player + 0x38, c.u16(player + 0x38) ^ 1);
 }
 
@@ -4762,13 +4810,15 @@ int main(int argc, char** argv) {
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
-        if (mode == "--player-response-position" || mode == "--player-response-ratings") {
-            player_response_ratings = mode == "--player-response-ratings";
+        if (mode == "--player-response-position" || mode == "--player-response-ratings" || mode == "--player-response-bytes") {
+            player_response_bytes = mode == "--player-response-bytes";
+            player_response_ratings = player_response_bytes || mode == "--player-response-ratings";
             player_response_position = influence_prefix = influence_returned = true;
             struct ResponseCase {
                 unsigned role, secondary;
                 int side = 0, argument = 0, reputation = 10, field = 0, value = 10;
                 unsigned strategy = 0, mutation = 0;
+                int power_case = 0;
             };
             std::vector<ResponseCase> cases;
             for (unsigned role : {0u, 1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u, 512u, 1024u, 2048u, 4096u})
@@ -4791,7 +4841,12 @@ int main(int argc, char** argv) {
                 for (int field : {0x28, 0x33, 0x36, 0x39, 0x42})
                     for (int value : {-128, 127}) cases.push_back({4, 0x440, 1, 1, 10, field, value});
             }
+            if (player_response_bytes) {
+                cases.push_back({4, 0x140, 0, 1, 15, 0, 10, 0, 0, 1});
+                cases.push_back({4, 0x140, 1, 1, 16, 0, 10, 0, 0, 2});
+            }
             const auto setup = [&](const ResponseCase& test) {
+                response_power_case = test.power_case;
                 influence = {};
                 influence.reputation = test.reputation;
                 influence.attribute_offset = test.field;
@@ -4822,7 +4877,7 @@ int main(int argc, char** argv) {
                 RoutineChecker::result_r3 | RoutineChecker::result_f1);
             cm::semantic_io_checks::require(std::ranges::any_of(spoiled, [](const auto& line) { return line.starts_with("byte "); }),
                 "Response position corruption was not detected");
-            std::cout << cases.size() << (player_response_ratings ? " response rating" : " response position")
+            std::cout << cases.size() << (player_response_bytes ? " response byte" : player_response_ratings ? " response rating" : " response position")
                 << " prefixes match with real nested influence; result corruption detected\n";
             return 0;
         }

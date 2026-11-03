@@ -132,13 +132,13 @@ void PlayerResponse::publish_initial_ratings() {
 }
 
 void PlayerResponse::publish_simple_rating(unsigned field, unsigned previous_field, unsigned output_slot,
-    unsigned compare_slot, unsigned recalculate_slot) {
+    unsigned compare_slot, unsigned recalculate_slot, unsigned coefficient) {
     const auto floats = c.r(29);
     const auto converted = fp.fctiwz(0, c.f(0));
     c.set(3, 0x55550000);
     c.put32(at(compare_slot), 0x43300000);
     c.set(3, 0x55555556);
-    c.set_f(3, c.f32(floats + 0x84));
+    c.set_f(3, c.f32(floats + coefficient));
     c.put64(at(output_slot), converted);
     c.set_f(2, c.f64(doubles + 0x80));
     const auto previous = c.u32(at(output_slot + 4));
@@ -162,7 +162,7 @@ void PlayerResponse::publish_simple_rating(unsigned field, unsigned previous_fie
     c.set(4, 0x55555556);
     c.set(3, std::uint32_t(signed_high_third(std::int16_t(c.r(3)))));
     c.put32(at(recalculate_slot), 0x43300000);
-    c.set_f(2, c.f32(floats + 0x84));
+    c.set_f(2, c.f32(floats + coefficient));
     c.set_f(0, c.f32(actor.address + field));
     c.set_f(1, c.f64(doubles + 0x80));
     c.set_f(2, fp.fadds(c.f(2), c.f(0)));
@@ -170,5 +170,98 @@ void PlayerResponse::publish_simple_rating(unsigned field, unsigned previous_fie
     c.set_f(0, c.f64(at(recalculate_slot)));
     c.set_f(0, fp.fsubs(c.f(0), c.f(1)));
     c.set_f(0, fp.fadds(c.f(2), c.f(0)));
+}
+}
+
+namespace cm::aot::match_pl {
+using namespace guest;
+
+void PlayerResponse::publish_remaining_bytes() {
+    const auto floats = c.r(29);
+    c.set(2, c.u32(at(0x14)));
+    c.set_f(2, c.f64(doubles + 0x40));
+    c.set_f(0, c.f64(doubles + 0xc8));
+    c.set_f(1, fp.fdiv(c.f(1), c.f(2)));
+    fp.fcmp(0, c.f(1), c.f(0));
+    if (c.cr(0) & 4) {
+        // The second evaluation rereads both values after the first call.
+        c.set(3, c.u8(actor.address + 0x17));
+        c.put32(at(0x420), 0x43300000);
+        c.set_f(3, c.f64(doubles + 0x80));
+        c.set_f(4, c.f32(actor.address + 0xa0));
+        c.put32(at(0x424), std::uint32_t(std::int32_t(std::int8_t(c.r(3)))) ^ 0x80000000);
+        c.set_f(0, c.f32(floats + 0x5c));
+        c.set_f(1, c.f64(at(0x420)));
+        c.set_f(2, c.f64(doubles + 0xc8));
+        c.set_f(1, fp.fsubs(c.f(1), c.f(3)));
+        c.set_f(1, fp.fadds(c.f(4), c.f(1)));
+        c.set_f(1, fp.fsubs(c.f(1), c.f(0)));
+        c.call(0x10780fc0, 0x1022ca20);
+        c.set(2, c.u32(at(0x14)));
+        c.set_f(0, c.f64(doubles + 0x40));
+        c.set_f(0, fp.fdiv(c.f(1), c.f(0)));
+    } else c.set_f(0, c.f64(doubles + 0xc8));
+
+    const auto movement = fp.fctiwz(3, c.f(0));
+    c.set(3, 0x55550000);
+    c.put32(at(0x410), 0x43300000);
+    c.set(3, 0x55555556);
+    c.set_f(4, c.f64(doubles + 0x130));
+    c.put64(at(0x418), movement);
+    c.set_f(1, c.f64(doubles + 0x18));
+    const auto movement_byte = c.u32(at(0x41c));
+    c.set_f(2, c.f64(doubles + 0x80));
+    c.put8(actor.address + 0x116, movement_byte);
+    c.set_f(0, c.f64(doubles + 0xc8));
+    const auto penalty = c.i16(actor.address + 0x38);
+    c.set_f(3, c.f32(actor.address + 0xf4));
+    c.set(3, std::uint32_t(signed_high_third(penalty)));
+    c.set_f(3, fp.multiply_add(0x1022ca70, c.f(4), c.f(3), c.f(1)));
+    c.put32(at(0x414), narrowed_third(std::int32_t(c.r(3))));
+    c.set_f(1, c.f64(at(0x410)));
+    c.set_f(1, fp.fsub(c.f(1), c.f(2)));
+    c.set_f(1, fp.fadd(c.f(3), c.f(1)));
+    fp.fcmp(0, c.f(1), c.f(0));
+    if (c.cr(0) & 4) {
+        c.set(4, 0x55550000);
+        c.set(3, std::int32_t(c.i16(actor.address + 0x38)));
+        c.set(4, 0x55555556);
+        c.set(3, std::uint32_t(signed_high_third(std::int16_t(c.r(3)))));
+        c.put32(at(0x408), 0x43300000);
+        c.set_f(3, c.f64(doubles + 0x130));
+        c.set_f(2, c.f32(actor.address + 0xf4));
+        c.set_f(0, c.f64(doubles + 0x18));
+        c.set_f(1, c.f64(doubles + 0x80));
+        c.set_f(2, fp.multiply_add(0x1022cac4, c.f(3), c.f(2), c.f(0)));
+        c.put32(at(0x40c), narrowed_third(std::int32_t(c.r(3))));
+        c.set_f(0, c.f64(at(0x408)));
+        c.set_f(0, fp.fsub(c.f(0), c.f(1)));
+        c.set_f(0, fp.fadd(c.f(2), c.f(0)));
+    } else c.set_f(0, c.f64(doubles + 0xc8));
+
+    publish_simple_rating(0x80, 0x117, 0x400, 0x3f8, 0x3f0, 0x3c);
+    struct Rating {
+        unsigned source, addend, previous, slot;
+    };
+    constexpr Rating ratings[]{
+        {0xf8, 0x2c, 0x118, 0x3e8},
+        {0x7c, 0x3c, 0x119, 0x3e0},
+        {0x94, 0x2c, 0x11a, 0x3d8},
+    };
+    for (const auto& rating : ratings) {
+        const auto converted = fp.fctiwz(1, c.f(0));
+        c.set_f(2, c.f32(floats + rating.addend));
+        c.set_f(0, c.f32(floats + 0x2c));
+        c.put64(at(rating.slot), converted);
+        c.put8(actor.address + rating.previous, c.u32(at(rating.slot + 4)));
+        c.set_f(1, c.f32(actor.address + rating.source));
+        c.set_f(1, fp.fadds(c.f(2), c.f(1)));
+        fp.fcmp(0, c.f(1), c.f(0));
+        if (c.cr(0) & 4) {
+            c.set_f(1, c.f32(floats + rating.addend));
+            c.set_f(0, c.f32(actor.address + rating.source));
+            c.set_f(0, fp.fadds(c.f(1), c.f(0)));
+        } else c.set_f(0, c.f32(floats + 0x2c));
+    }
 }
 }
