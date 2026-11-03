@@ -30,12 +30,12 @@ struct Inputs final : CodeFragmentBoundaryObserver {
         return true;
     }
 };
-// Count the shot prologue's saved LR at all eight inventoried incoming
+// Count saved LR writes at the eight shot and two periodic-balance incoming
 // call sites. This also sees direct C++ calls which bypass dispatch probes.
 struct ShotCalls final : MemoryObserver {
     State& s;
     MemoryObserver* previous;
-    unsigned calls = 0;
+    unsigned calls = 0, balance_calls = 0;
     explicit ShotCalls(State& state) : s(state), previous(s.memory.date_observer) { if (!timed) s.memory.date_observer = this; }
     ~ShotCalls() { if (!timed) s.memory.date_observer = previous; }
     void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
@@ -46,10 +46,12 @@ struct ShotCalls final : MemoryObserver {
         if (size != 4 || at != std::uint32_t(s.r<4>(4)) + 8) return;
         const auto back = (std::uint32_t(bytes[0]) << 24) | (std::uint32_t(bytes[1]) << 16) |
                           (std::uint32_t(bytes[2]) << 8) | bytes[3];
+        if (back != std::uint32_t(s.r<4>(4128))) return;
         switch (back) {
         case 0x101dad40: case 0x101db1b4: case 0x102586ac:
         case 0x102787d4: case 0x10278b94: case 0x10279980: case 0x1028166c: case 0x102816a8:
             ++calls; break;
+        case 0x101d93ec: case 0x101d942c: ++balance_calls; break;
         }
     }
 };
@@ -71,8 +73,10 @@ void interval(State& s, bool original) {
     // Require equal host input consumption through ordinary compared memory.
     c.put32(0x61000000, input.clocks);
     c.put32(0x61000004, shots.calls);
+    c.put32(0x61000008, shots.balance_calls);
+    if (!timed && !shots.balance_calls) throw std::runtime_error("Actual-match interval did not exercise periodic balance");
     if (!timed && !shots.calls) throw std::runtime_error("Actual-match interval did not exercise shot selection");
-    if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << '\n';
+    if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << " periodic-balance calls=" << shots.balance_calls << '\n';
 }
 void measured_interval(State& s, bool original) {
     const auto started = std::chrono::steady_clock::now();

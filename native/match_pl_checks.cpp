@@ -41,6 +41,7 @@ constexpr std::uint32_t data = 0x60000000, player = data + 0x1000,
 // The probe stops at a dispatcher service boundary, not an observed PPC
 // instruction. This assertion needs no extra generated instruction boundary.
 constexpr std::uint32_t fatal_boundary = 0x1076f7d0;
+constexpr std::uint32_t balance_query_boundary = 0x101e3d50;
 struct SecondaryInputs {
     int match_side = 0, phase = 0, other = 0;
     int ball_column = 4, ball_row = 5, target_column = 4, target_row = 5;
@@ -149,6 +150,16 @@ struct RatingInputs {
     int mode = 0, wait = 1, alias = 0;
     std::uint32_t mutate_back = 0;
 };
+struct BalanceInputs {
+    std::array<std::uint8_t, 0x12> counters{};
+    int value = 8000, delay = 0;
+    bool mutate_refill = false;
+    unsigned coefficient = 0;
+    int deadline = -1, opposing = 0, opposing_count = 0, time = 0;
+    std::uint32_t mutate_back = 0, role_after = 0;
+    unsigned mutate_role = 0;
+    bool neutral_ratio_limits = false;
+};
 struct ShotInputs {
     int skill = 100, keeper_column = 4, keeper_row = 11, trait = 2, alias = 0;
     int candidate_skill = 200, placement = 100, keeper_delay = 0;
@@ -196,6 +207,7 @@ struct Case {
     KeeperInputs keeper{};
     RatingInputs rating{};
     ShotInputs shot{};
+    BalanceInputs balance{};
 };
 Case active;
 // Exercise the original's separate reads without introducing an import or
@@ -250,7 +262,7 @@ struct PopulationState {
     std::uint32_t list = 0, tail = 0, heap_end = 0;
     std::map<std::uint32_t, std::uint32_t> allocated, available;
 } population_state;
-bool reference_mode = false, generated_mode = false;
+bool reference_mode = false, generated_mode = false, balance_prefix = false;
 constexpr std::uint32_t production_entries[]{
 #define MATCH_PL_ROUTINE(entry, ...) entry,
 #define MATCH_PL_DRAFT(...)
@@ -329,12 +341,29 @@ bool scripted(State& s) {
         if (active.mutate) c.put32(player + 0x1a4, other_match);
         if (active.entry == 0x10289d50 && (active.context_flags & 64)) c.put32(player + 0x70, data + 0xd100);
         c.set(3, active.entry == 0x10278220 && c.r(4) == data + 0xf000 && active.primary.keeper_role >= 0 ? std::uint32_t(active.primary.keeper_role) : active.entry == 0x102836a0 && c.lr() != 0x10283864 && active.context.role_later != UINT32_MAX ? active.context.role_later : active.first_role);
+        if (active.entry == 0x10237b50 && active.balance.mutate_role) {
+            const auto query = c.u32(data + 0x374) + 1; c.put32(data + 0x374, query);
+            if (query == active.balance.mutate_role) {
+                c.put32(data + 0x378, c.u32(data + 0x378) + 1);
+                c.put8(player + 0xc, 1); c.put8(player + 0x10, 2); c.put8(player + 9, 1);
+                c.put_f64(c.toc(-0x51e8) + 0x110, 2.5);
+                c.put_f64(c.toc(-0x51e8) + 0x138, 3.5);
+                c.put_f64(c.toc(-0x51e8) + 0x2c0, 4.5);
+            }
+            if (query >= active.balance.mutate_role) c.set(3, active.balance.role_after);
+        }
     } else if (target == 0x101e3de0 || target == 0x101e3e70) c.set(3, active.second_role);
     else if (target == 0x101149f0 || target == 0x101e4e10) {
         c.set(3, selection_entry ? target == 0x101149f0 ? selection.formation : std::uint32_t(selection.line) : active.argument);
     }
     else if (target == 0x101f0dd0 || target == 0x1077b770) {
         c.set(3, target == 0x101f0dd0 && selection_entry ? std::uint32_t(selection.moving) : target == 0x1077b770 && active.entry == 0x102836a0 ? active.context.reseed : target == 0x1077b770 && active.entry == 0x10278220 ? active.primary.reseed : active.first_role);
+        if (target == 0x1077b770 && active.entry == 0x10237b50 && (active.balance.mutate_refill || active.balance.mutate_back == c.lr())) {
+            c.put32(data + 0x370, c.u32(data + 0x370) + 1);
+            c.put16(player + 0x36, 32767); c.put8(player + 1, 255); c.put8(player + 2, 17);
+            c.put8(player + 3, 7); c.put8(player + 0xc, 3); c.put8(player + 0x10, 2);
+            c.put_f64(c.toc(-0x51e8) + 0x2b0, 0.375);
+        }
         if (target == 0x1077b770 && rating_entry(active.entry) && active.rating.mutate_back && c.lr() == active.rating.mutate_back) {
             c.put32(data + 0x354, c.u32(data + 0x354) + 1);
             c.put8(data + 0x350, 37); c.put_f32(player + 0x50, 20000); c.put_f32(player + 0x78, 60000);
@@ -648,6 +677,8 @@ bool scripted(State& s) {
     return true;
 }
 bool probe(State& s) {
+    if (balance_prefix && s.pc == balance_query_boundary && Cpu(s).lr() == 0x10289584)
+        throw std::runtime_error("MATCH_PL balance initial query boundary");
     // Cpu::call runs lowered leaves before the probe. Keep the reference's
     // dispatch path symmetric, particularly the two-instruction side getter.
     if (run_leaf(s)) return true;
@@ -1221,6 +1252,38 @@ void initialize_case(Cpu& c) {
     if (active.entry == 0x10289d50 && (active.context_flags & 8)) c.put16(other_match + 0x7948, active.row + 110);
     if (active.entry == 0x102836a0 && active.mutate) c.put8(other_match + 0x791e, (active.context.ball_row + 1) % 12);
     if (action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry) || rating_entry(active.entry) || shot_entry(active.entry)) initialize_actions(c);
+    if (active.entry == 0x10237b50) {
+        const auto& in = active.balance;
+        for (unsigned offset = 0; offset < in.counters.size(); ++offset) c.put8(player + offset, in.counters[offset]);
+        c.put16(player + 0x36, in.value); c.put8(player + 0x2c, in.delay);
+        c.put32(player + 0x6c, data + 0xc000); c.put8(data + 0xc069, 10);
+        c.put_f32(player + 0x1a8, active.intensity);
+        c.put32(c.r(2) - 0x7b90, data + 0x100); c.put32(data + 0x100, active.random_seed);
+        c.put32(c.r(2) - 0x7b8c, data + 0x200);
+        c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + 0x20e);
+        c.put32(c.r(2) - 0x7b84, data + 0x108);
+        const auto position = active.pool_position;
+        const auto offset = position >= 3 ? (position - 2) * 2 : position & 1 ? 14u : position & 2 ? 12u : 0u;
+        c.put32(data + 0x108, data + 0x200 + offset);
+        for (unsigned offset = 0; offset <= 14; offset += 2) c.put16(data + 0x200 + offset, active.strategy_low);
+        c.put32(data + 0x370, 0); c.put32(data + 0x374, 0); c.put32(data + 0x378, 0);
+        c.put8(player + 0x1f, in.deadline);
+        c.put8(match + 0xe03d, in.opposing); c.put8(match + 0xe073, in.opposing);
+        c.put8(match + 0xe03f, in.opposing_count); c.put8(match + 0xe075, in.opposing_count);
+        c.put16(match + 0x7948, in.time);
+        if (in.neutral_ratio_limits) {
+            c.put_f64(c.toc(-0x51e8) + 0x2c8, -std::numeric_limits<double>::infinity());
+            c.put_f64(c.toc(-0x51e8) + 0x2d0, std::numeric_limits<double>::infinity());
+        }
+        if (in.coefficient && in.coefficient <= 4) {
+            const double value = in.coefficient == 1 ? 0 : in.coefficient == 2 ? -0.375 :
+                in.coefficient == 3 ? std::numeric_limits<double>::quiet_NaN() : std::numeric_limits<double>::infinity();
+            c.put_f64(c.toc(-0x51e8) + 0x2b0, value);
+            c.put_f64(c.toc(-0x51e8) + 0x30, value);
+        }
+        if (in.coefficient == 5) c.put_f64(c.toc(-0x51e8) + 0x2b8, std::numeric_limits<double>::quiet_NaN());
+        c.set(3, player);
+    }
     if (shot_entry(active.entry)) {
         const auto& in = active.shot;
         const auto keeper = data + 0xf000;
@@ -1299,6 +1362,12 @@ void initialize_case(Cpu& c) {
 }
 
 void require_return(const State& s) {
+    if (active.entry == 0x10237b50) {
+        if (active.balance.mutate_refill || active.balance.mutate_back)
+            cm::semantic_io_checks::require(s.memory.read<4>(data + 0x370) == 1, "Balance refill mutation did not execute exactly once");
+        if (active.balance.mutate_role)
+            cm::semantic_io_checks::require(s.memory.read<4>(data + 0x378) == 1, "Balance role mutation did not execute exactly once");
+    }
     cm::semantic_io_checks::require(s.pc == sentinel && s.r<4>(4) == stack,
                                    "MATCH_PL comparison did not return normally");
     if (shot_entry(active.entry) && active.shot.mutate_at_refill)
@@ -1400,6 +1469,74 @@ void corrupt_call_argument_trace(State& s, std::uint32_t entry) {
     // Each record begins with target, LR and r3. Alter only the traced
     // argument, leaving the routine's return value and game records intact.
     c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1);
+}
+// This diagnostic prefix is a suspended frame, never a normally returned call.
+void balance_initial_prefix(State& s, std::uint32_t entry, bool original_route) {
+    reference_mode = original_route;
+    bool stopped = false;
+    try {
+        if (original_route) { s.pc = entry; run_until(s, sentinel); }
+        else match_pl_run_rewrite(s, entry);
+    } catch (const std::runtime_error& error) {
+        if (std::string_view(error.what()) != "MATCH_PL balance initial query boundary") throw;
+        stopped = true;
+    }
+    Cpu c(s);
+    cm::semantic_io_checks::require(stopped && s.pc == balance_query_boundary && c.lr() == 0x10289584 &&
+        c.sp() == stack - 0xc0 && c.r(3) == match && c.r(4) == player && c.u32(stack - 0x78) == 0x10237e34,
+        "Periodic balance prefix did not reach the first role query with its frame live");
+    if (active.balance.mutate_refill)
+        cm::semantic_io_checks::require(c.u32(data + 0x370) == 1, "Balance refill mutation did not execute exactly once");
+}
+void original_balance_initial(State& s, std::uint32_t entry) { balance_initial_prefix(s, entry, true); }
+void rewrite_balance_initial(State& s, std::uint32_t entry) { balance_initial_prefix(s, entry, false); }
+void corrupt_balance_result(State& s, std::uint32_t entry) {
+    rewrite_balance_initial(s, entry); Cpu c(s); c.set(3, c.r(3) ^ 1);
+}
+void corrupt_balance_memory(State& s, std::uint32_t entry) {
+    rewrite_balance_initial(s, entry); Cpu c(s); c.put16(player + 0x36, c.u16(player + 0x36) ^ 1);
+}
+void corrupt_balance_rng(State& s, std::uint32_t entry) {
+    rewrite_balance_initial(s, entry); Cpu c(s); c.put32(data + 0x100, c.u32(data + 0x100) ^ 1);
+}
+void corrupt_balance_trace(State& s, std::uint32_t entry) {
+    rewrite_balance_initial(s, entry); Cpu c(s);
+    cm::semantic_io_checks::require(c.u32(trace_at) >= 77 * 4, "Balance prefix has no refill argument trace");
+    c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1);
+}
+std::vector<Case> balance_initial_cases() {
+    std::vector<Case> result;
+    for (int delay : {-128, -1, 0, 1, 127}) for (int value : {-32768, 6500, 8249, 8250, 8251, 9750, 32767})
+    for (unsigned seed : {0u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) for (unsigned refill : {0u, 1u}) {
+        Case test{0x10237b50}; test.balance.delay = delay; test.balance.value = value;
+        test.random_seed = seed; test.pool_position = refill; test.strategy_low = 1; result.push_back(test);
+    }
+    for (unsigned offset : {1u, 2u, 3u, 6u, 0xcu, 0x10u, 0x11u})
+    for (int count : {0, 1, 2, 3, 4, 5, 6, 7, 49, 50, 51, 127, 255})
+    for (int value : {6000, 6500, 8250, 32767}) {
+        Case test{0x10237b50}; test.balance.counters[offset] = count; test.balance.value = value;
+        test.balance.counters[1] = offset == 1 ? count : 100;
+        test.balance.counters[2] = offset == 2 ? count : 10;
+        result.push_back(test);
+    }
+    for (unsigned coefficient = 0; coefficient <= 4; ++coefficient) for (int value : {9000, 32767}) {
+        Case test{0x10237b50}; test.balance.coefficient = coefficient; test.balance.value = value;
+        test.balance.counters[1] = 255; test.balance.counters[2] = 1; result.push_back(test);
+    }
+    for (int value : {8250, 32767}) {
+        Case test{0x10237b50}; test.balance.value = value; test.balance.mutate_refill = true;
+        test.pool_position = 1; result.push_back(test);
+    }
+    std::uint32_t mutation = 0x42414c41;
+    const auto next = [&] { mutation = mutation * 1664525 + 1013904223; return mutation; };
+    for (unsigned index = 0; index < 256; ++index) {
+        Case test{0x10237b50};
+        for (auto& counter : test.balance.counters) counter = std::uint8_t((next() >> 16) % 12);
+        test.balance.counters[1] = next() >> 24; test.balance.value = std::int16_t(next() >> 16);
+        test.balance.delay = std::int8_t(next() >> 24); test.random_seed = next();
+        test.strategy_low = next() >> 16; test.pool_position = next() & 1; result.push_back(test);
+    }
+    return result;
 }
 // The selection joins a later scoring phase with the guest frame still live.
 // Keep phase-boundary diagnostics separate from complete returned cases;
@@ -1530,6 +1667,7 @@ std::uint64_t external_budget(std::uint32_t entry) {
 Case route_case(std::uint32_t entry) {
     Case test{entry};
     if (shot_entry(entry)) test.argument = 51;
+    if (entry == 0x10237b50) test.first_role = 0;
     if (entry == 0x102374f0) { test.strategy_high = UINT32_MAX; test.argument = 4; test.first_role = 6; }
     if (entry == 0x10244c60) { test.argument = 4; test.first_role = 1; test.second_role = 5; }
     if (entry == 0x10247030 || entry == 0x10245220) { test.argument = 54; test.action.target = 0; test.action.receiver = 0; }
@@ -1541,7 +1679,7 @@ void require_production_routes(const State& base) {
     for (const auto entry : production_entries) {
         active = route_case(entry);
         auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_case(c);
-        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220) {
+        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220 || entry == 0x10237b50) {
             auto original_state = cm::semantic_io_checks::clone(base); Cpu original_cpu(*original_state); initialize_case(original_cpu);
             original_state->budget = external_budget(entry); original_state->pc = entry; bool exhausted = false;
             // The original body runs its callees as the original too: MATCH_ENG.CPP's hook declines for this State.
@@ -3678,6 +3816,86 @@ std::vector<Case> cases() {
         Case test{0x10252080, 0, 4, 5, 51}; test.shot.skill = skill;
         test.pool_position = 1; test.shot.mutate_at_refill = true; result.push_back(test);
     }
+    auto balance_cases = balance_initial_cases();
+    for (auto& test : balance_cases) { test.first_role = 0; result.push_back(test); }
+    for (unsigned role : {1u, 2u, 4u, 8u, 16u, 32u, 64u, 0x884u})
+    for (int value : {-32768, 4250, 5749, 5750, 6249, 6250, 6749, 6750, 6999, 7000, 7249, 7250, 7349, 7350, 7499, 7500, 7749, 7750, 8749, 8750, 32767})
+    for (unsigned word : {0u, 1u, 65535u}) for (unsigned refill : {0u, 1u}) {
+        Case test{0x10237b50}; test.first_role = role; test.balance.value = value;
+        test.strategy_low = word; test.pool_position = refill; result.push_back(test);
+    }
+    for (int side : {0, 1}) for (int count : {0, 1, 2, 3, 127, 255}) for (int deadline : {-128, -1, 0, 30, 31, 127})
+    for (int opposing : {0, 1, 2, 255}) for (int time : {-32768, -1, 0, 989, 990, 991, 32767}) {
+        Case test{0x10237b50, side}; test.first_role = 1; test.balance.counters[0xf] = count;
+        test.balance.deadline = deadline; test.balance.opposing_count = opposing; test.balance.time = time;
+        test.balance.value = 8751; test.strategy_low = 1; result.push_back(test);
+    }
+    for (unsigned role : {2u, 4u, 8u, 16u, 32u, 64u, 0x884u}) for (int opposing : {-128, -1, 0, 1, 2, 10, 127})
+    for (unsigned field : {0u, 3u, 6u, 9u, 0xbu, 0xcu, 0x10u}) for (int count : {0, 1, 255}) {
+        Case test{0x10237b50}; test.first_role = role; test.balance.opposing = opposing;
+        test.balance.value = 8000; test.balance.counters[field] = count; test.strategy_low = 0; result.push_back(test);
+    }
+    for (unsigned role : {4u, 0x884u}) for (int numerator : {0, 1, 10, 255})
+    for (int denominator : {4, 5, 9, 10, 255}) for (int opposing : {-128, 0, 1, 2, 127})
+    for (int value : {5000, 8000}) {
+        Case test{0x10237b50}; test.first_role = role; test.balance.value = value;
+        test.balance.counters[4] = denominator; test.balance.counters[7] = denominator;
+        test.balance.counters[5] = numerator; test.balance.counters[8] = numerator;
+        test.balance.opposing = opposing; test.strategy_low = 1; result.push_back(test);
+    }
+    {
+        Case test{0x10237b50}; test.first_role = 0; test.random_seed = 0xfffffa25; result.push_back(test);
+        test = {0x10237b50}; test.first_role = 1; test.balance.counters[3] = 4;
+        test.balance.counters[0xf] = 2; test.balance.opposing_count = 4;
+        test.balance.value = 9000; test.strategy_low = 1; result.push_back(test);
+    }
+    for (unsigned role : {2u, 4u, 8u}) for (int value : {5749, 6000, 6749}) {
+        Case test{0x10237b50, 1}; test.first_role = role; test.balance.value = value;
+        test.balance.counters[6] = 1; result.push_back(test);
+    }
+    for (int numerator : {0, 49}) for (int denominator : {20, 21, 255}) for (int value : {5000, 6000}) {
+        Case test{0x10237b50, 1}; test.first_role = 4; test.balance.value = value;
+        test.balance.counters[1] = numerator; test.balance.counters[2] = denominator; result.push_back(test);
+    }
+    for (unsigned role : {4u, 0x884u}) {
+        Case test{0x10237b50, 1}; test.first_role = role; test.balance.coefficient = 5;
+        test.balance.counters[4] = 10; test.balance.counters[7] = 10; test.balance.counters[6] = 1;
+        result.push_back(test);
+    }
+    struct BalanceRefill { unsigned role, back, position, counter; };
+    for (const auto witness : std::array{
+        BalanceRefill{1, 0x10237e74, 1, 1}, BalanceRefill{1, 0x102381fc, 2, 2},
+        BalanceRefill{1, 0x10238448, 2, 1}, BalanceRefill{2, 0x102386cc, 1, 0},
+        BalanceRefill{4, 0x102387e0, 1, 0}, BalanceRefill{8, 0x10238f38, 1, 0},
+        BalanceRefill{16, 0x102390a8, 1, 0}, BalanceRefill{32, 0x10239188, 1, 0},
+        BalanceRefill{64, 0x102392a8, 1, 0}}) {
+        Case test{0x10237b50}; test.first_role = witness.role; test.pool_position = witness.position;
+        test.balance.counters[3] = 4; test.balance.counters[0xf] = witness.counter;
+        test.balance.value = 8000; test.balance.opposing_count = 3; test.strategy_low = 1;
+        test.balance.mutate_back = witness.back; result.push_back(test);
+    }
+    for (unsigned query = 1; query <= 7; ++query) {
+        Case test{0x10237b50}; test.first_role = 0; test.balance.mutate_role = query;
+        test.balance.role_after = 1u << (query - 1); test.balance.value = 7800; result.push_back(test);
+    }
+    for (unsigned role : {4u, 0x884u}) for (unsigned query : {4u, 5u, 6u}) {
+        Case test{0x10237b50}; test.first_role = role; test.balance.mutate_role = query;
+        test.balance.role_after = 0x884; test.balance.counters[4] = 10; test.balance.counters[7] = 10;
+        test.balance.opposing = 3; test.balance.value = 8000; test.balance.neutral_ratio_limits = query == 6; result.push_back(test);
+    }
+    std::uint32_t balance_mutation = 0x42414c42;
+    const auto balance_next = [&] { balance_mutation = balance_mutation * 1664525 + 1013904223; return balance_mutation; };
+    for (unsigned index = 0; index < 512; ++index) {
+        Case test{0x10237b50}; test.first_role = (1u << (index % 7)) | (index % 3 == 0 ? 0x880 : 0);
+        for (auto& counter : test.balance.counters) counter = std::uint8_t(balance_next() >> 24);
+        test.balance.value = std::int16_t(balance_next() >> 16); test.balance.opposing = std::int8_t(balance_next() >> 24);
+        test.balance.opposing_count = balance_next() >> 24; test.balance.time = std::int16_t(balance_next() >> 16);
+        test.balance.deadline = std::int8_t(balance_next() >> 24); test.random_seed = balance_next();
+        test.strategy_low = balance_next() >> 16; test.pool_position = balance_next() % 8; result.push_back(test);
+    }
+    for (int value : {-32768, 0, 32767}) {
+        Case test{0x10237b50}; test.null_match = true; test.balance.value = value; result.push_back(test);
+    }
     return result;
 }
 }
@@ -3686,6 +3904,31 @@ int main(int argc, char** argv) {
     if (argc < 2) return 2;
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
+        if (argc == 3 && std::string_view(argv[2]) == "--balance-initial-prefix") {
+            balance_prefix = true; const auto prefixes = balance_initial_cases(); unsigned checked = 0;
+            for (const auto& test : prefixes) {
+                active = test; auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto found = compare_routine_call(*state, active.entry, original_balance_initial, rewrite_balance_initial,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                if (!found.empty()) {
+                    std::cout << "BALANCE PREFIX case=" << checked << '\n';
+                    for (const auto& line : found) std::cout << line << '\n';
+                    return 1;
+                }
+                ++checked;
+            }
+            for (const auto corruption : {corrupt_balance_result, corrupt_balance_memory, corrupt_balance_rng, corrupt_balance_trace}) {
+                active = {0x10237b50}; active.pool_position = 1;
+                auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto found = compare_routine_call(*state, active.entry, original_balance_initial, corruption,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                const auto prefix = corruption == corrupt_balance_result ? "r3 " : "byte ";
+                cm::semantic_io_checks::require(std::ranges::any_of(found, [&](const auto& line) { return line.starts_with(prefix); }),
+                    "Periodic balance prefix corruption was not detected");
+            }
+            std::cout << checked << '/' << prefixes.size() << " balance-initial prefixes matched (not guest returns); four corruptions detected\n";
+            return 0;
+        }
         if (argc == 3 && std::string_view(argv[2]) == "--routes-only") {
             generated_mode = true; require_production_routes(*base); return 0;
         }
@@ -3746,7 +3989,7 @@ int main(int argc, char** argv) {
                           << " column=" << active.column << " row=" << active.row << " argument=" << active.argument << '\n';
                 if (active.entry == 0x10278220) std::cout << "  primary restart=" << active.primary.restart << " role=" << active.first_role << " mobility=" << active.primary.mobility << " trait109=" << active.primary.trait109 << " pool=" << active.pool_position << '\n';
                 for (const auto& line : found) std::cout << "  " << line << '\n';
-                if (active.entry == 0x10278220 || action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry) || rating_entry(active.entry) || shot_entry(active.entry)) explain_primary_trace(*state);
+                if (active.entry == 0x10278220 || action_entry(active.entry) || core_entry(active.entry) || keeper_entry(active.entry) || rating_entry(active.entry) || shot_entry(active.entry) || active.entry == 0x10237b50) explain_primary_trace(*state);
                 if (++failures == 5) break;
             }
         }
@@ -3831,6 +4074,18 @@ int main(int argc, char** argv) {
                                                      corruption == corrupt_core_rng ? "RNG" : "call-argument trace")
                                  << " corruption detected\n";
             }
+        }
+        if (!failures && std::ranges::any_of(tests, [](const Case& test) { return test.entry == 0x10237b50; })) {
+            for (const auto corruption : {corrupt, corrupt_memory, corrupt_core_rng, corrupt_call_argument_trace}) {
+                active = {0x10237b50}; active.first_role = 0; active.pool_position = 1;
+                auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
+                const auto found = compare_routine_call(*state, active.entry, original, corruption,
+                    RoutineChecker::result_r3 | RoutineChecker::result_f1);
+                const auto prefix = corruption == corrupt ? "r3 " : "byte ";
+                cm::semantic_io_checks::require(std::ranges::any_of(found, [&](const auto& line) { return line.starts_with(prefix); }),
+                    "Periodic balance full-return corruption was not detected");
+            }
+            std::cout << "ok periodic-balance result/memory/RNG/call-argument corruptions detected\n";
         }
         if (!failures && std::ranges::any_of(tests, [](const Case& test) { return shot_entry(test.entry); })) {
             for (const auto corruption : {corrupt, corrupt_memory, corrupt_core_rng, corrupt_call_argument_trace}) {

@@ -847,6 +847,14 @@ The final event table gives the lateral flag priority over distance; action 53
 consumes another draw when neither flag is set. Caller outputs may alias each other,
 player attributes or RNG storage, and retain the original write order.
 
+Periodic balance consumes its preliminary draw before checking the current balance,
+queries the role afresh at each decision, and rereads counters after a reseed.
+The keeper's three wide-sampler arms are unreachable: byte bounds are at most
+65,025, and the signed-halfword clock gives `90 - trunc(time / 11)` within
+`[-2888, 3068]`. Preserve the signed remainder and carry effects of the original
+narrow paths. Midfield ratios use single-precision intermediate operations and
+separately narrow each contribution to the balance threshold to a signed halfword.
+
 Peer contacts update every matching contact-list record before deciding whether
 to append; duplicate matches are observable. Incident responses also retain two
 consecutive kind2 attempts, each consuming its own RNG draw. Request, effect and

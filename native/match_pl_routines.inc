@@ -1,4 +1,6 @@
 // Original entries of the first MATCH_PL state/spatial-query block.
+MATCH_PL_ROUTINE(0x10237b50, 0x102393c0, R3|F1, "35946308526c1212",
+    [](Cpu& c) { match_pl::update_periodic_balance(c, c.r(3)); })
 MATCH_PL_ROUTINE(0x102238a0, 0x10223ac0, R3, "f723a2754ee72021",
     [](Cpu& c) { match_pl::initialize(c, c.r(3)); })
 MATCH_PL_ROUTINE(0x102270f0, 0x10227140, R3, "bfddc345d197acea",

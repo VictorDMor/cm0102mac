@@ -94,5 +94,6 @@ std::uint32_t sample_keeper_response(Cpu&, std::uint32_t player, std::uint32_t c
 std::uint32_t rate_action(Cpu&, std::uint32_t player, std::uint32_t action,
                          std::uint32_t first_output, std::uint32_t second_output);
 std::uint32_t choose_shot(Cpu&, std::uint32_t player, std::uint32_t action, std::uint32_t event);
+void update_periodic_balance(Cpu&, std::uint32_t player);
 std::uint32_t allows_event(Cpu&, std::uint32_t player, std::uint32_t event);
 }
