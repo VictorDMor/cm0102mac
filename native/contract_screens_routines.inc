@@ -2,6 +2,7 @@ CONTRACT_SCREENS_ROUTINE(0x10093a50, [](guest::Cpu& c) { contract_screens::open_
 CONTRACT_SCREENS_ROUTINE(0x10093ae0, [](guest::Cpu& c) { contract_screens::open_transfer_request_from_news(c, c.r(3), c.r(4)); })
 CONTRACT_SCREENS_ROUTINE(0x10093bd0, [](guest::Cpu& c) { contract_screens::draw_transfer_request(c); })
 CONTRACT_SCREENS_ROUTINE(0x10094ae0, [](guest::Cpu& c) { contract_screens::open_contract_choice(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
+CONTRACT_SCREENS_ROUTINE(0x100952b0, [](guest::Cpu& c) { contract_screens::draw_contract_choice(c); })
 CONTRACT_SCREENS_ROUTINE(0x10095db0, [](guest::Cpu& c) { c.set(3, contract_screens::negotiation_choice_command(c, c.r(3))); })
 CONTRACT_SCREENS_ROUTINE(0x100960d0, [](guest::Cpu& c) { contract_screens::open_new_negotiation(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
 CONTRACT_SCREENS_ROUTINE(0x100965c0, [](guest::Cpu& c) { contract_screens::open_existing_negotiation(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })

@@ -4243,7 +4243,7 @@ endif()
 target_sources(cm_aot PRIVATE contract_screens_adapter.cpp contract_screens_history.cpp
     contract_screens_candidates.cpp contract_screens_release.cpp contract_screens_database.cpp
     contract_screens_transfer_request.cpp contract_screens_negotiation.cpp contract_screens_choices.cpp
-    contract_screens_offer_choice.cpp contract_screens_offer_news.cpp)
+    contract_screens_offer_choice.cpp contract_screens_offer_news.cpp contract_screens_choice_draw.cpp)
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
     set(CM_CONTRACT_SCREENS_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/contract_screens_reference.cpp")
     add_custom_command(OUTPUT "${CM_CONTRACT_SCREENS_REFERENCE}"

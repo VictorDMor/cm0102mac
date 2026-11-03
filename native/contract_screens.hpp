@@ -7,6 +7,7 @@ void open_restricted_contract_from_news(guest::Cpu&, std::uint32_t item, std::ui
 void open_offer_contract_from_news(guest::Cpu&, std::uint32_t item, std::uint32_t revision);
 void open_contract_choice(guest::Cpu&, std::uint32_t person, std::uint32_t link,
                           std::uint32_t with_offer, std::uint32_t restrictions);
+void draw_contract_choice(guest::Cpu&);
 void draw_transfer_request(guest::Cpu&);
 std::uint32_t negotiation_choice_command(guest::Cpu&, std::uint32_t control);
 void open_new_negotiation(guest::Cpu&, std::uint32_t person, std::uint32_t state,

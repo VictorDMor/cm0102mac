@@ -6,6 +6,7 @@
 #include "routine_check.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -22,7 +23,7 @@ namespace {
 constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_draft = 0x100980d0, open_details = 0x1009dab0,
                         restricted_news = 0x10093a50, offer_news = 0x1009ed20, offer_choice = 0x10094ae0, offer_choice_end = 0x100952a4,
                         new_negotiation = 0x100960d0, existing_negotiation = 0x100965c0,
-                        negotiation_choice = 0x10095db0,
+                        choice_draw = 0x100952b0, negotiation_choice = 0x10095db0,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
                         compare_staff = 0x1009ee00, load_language = 0x1009ef30,
                         save_db = 0x1009ef60, load_db = 0x1009ef90;
@@ -34,7 +35,7 @@ constexpr std::uint32_t fixture = 0x60000000, trace = fixture + 0x10000, trace_s
                         sentinel = 0xfffffff0;
 constexpr std::uint32_t history_data = fixture + 0x6000;
 constexpr std::uint32_t club_payload_mask = 0x00013579, staff_payload_mask = 0x0002468a;
-constexpr unsigned trace_words = 3 + 8 + 19 + 8 + 2 + 4;
+constexpr unsigned trace_words = 3 + 8 + 19 + 8 + 2 + 11;
 
 struct Call {
     std::uint32_t target, back;
@@ -425,6 +426,7 @@ void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state
 }
 
 #include "contract_screens_offer_cases.inc"
+#include "contract_screens_choice_draw_cases.inc"
 
 struct ChoiceInput {
     unsigned action = 2;
@@ -874,6 +876,42 @@ int main(int argc, char** argv) {
                 auto c = initialize(*state, random, input.existing ? existing_negotiation : new_negotiation);
                 const std::uint32_t negotiation_state = random(), mode = random();
                 negotiation_case(c, input, negotiation_state, mode);
+                check();
+            }
+        using Control = CategoryControl;
+        constexpr std::array no_role{Control::unavailable_role, Control::unavailable_role,
+            Control::unavailable_role, Control::unavailable_role, Control::unavailable_role, Control::unavailable_role};
+        constexpr std::array pending_rows{Control::pending_other, Control::pending_selected,
+            Control::pending_other, Control::pending_other, Control::pending_other, Control::pending_other};
+        constexpr std::array pending_options{Control::selectable, Control::selected,
+            Control::selectable, Control::selectable, Control::selectable, Control::selectable};
+        constexpr std::array declined_by_age{Control::selectable, Control::selectable,
+            Control::selectable, Control::selectable, Control::rejected, Control::rejected};
+        constexpr std::array declined_by_rating{Control::selectable, Control::selectable,
+            Control::selectable, Control::rejected, Control::rejected, Control::rejected};
+        constexpr unsigned multiple_roles = (1 << 10) | (1 << 12) | (1 << 15);
+        const std::array draw_inputs{
+            ChoiceDrawInput{},
+            ChoiceDrawInput{.profile = false, .category = 0},
+            ChoiceDrawInput{.profile = false, .secondary = true, .roles = multiple_roles, .category = -1, .height = 1},
+            ChoiceDrawInput{.secondary = true, .roles = multiple_roles, .group = 2, .height = 3},
+            ChoiceDrawInput{.player = false, .roles = 1 << 4, .category = 0, .role = 4, .age = 31, .controls = no_role},
+            ChoiceDrawInput{.pending = true, .roles = multiple_roles, .group = 3, .category = 2, .proposal = 2,
+                            .controls = pending_rows, .warning = 0xe7},
+            ChoiceDrawInput{.category = 2, .proposal = 2, .controls = pending_options, .warning = 0x129},
+            ChoiceDrawInput{.pending = true, .category = 7, .proposal = 7, .controls = {
+                Control::pending_other, Control::pending_other, Control::pending_other,
+                Control::pending_other, Control::pending_other, Control::pending_other}},
+            ChoiceDrawInput{.offer = true, .same_club = true, .category = 0, .age = 24,
+                            .controls = declined_by_age, .warning = 0x142},
+            ChoiceDrawInput{.offer = true, .category = 0, .age = 24, .rating = 33001,
+                            .controls = declined_by_rating, .warning = 0x174},
+            ChoiceDrawInput{.category = 0, .age = 24, .controls = declined_by_age, .warning = 0x142},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (const auto& input : draw_inputs) {
+                auto c = initialize(*state, random, choice_draw);
+                choice_draw_case(c, input);
                 check();
             }
         const std::array offer_inputs{
