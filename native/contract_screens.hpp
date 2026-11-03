@@ -4,6 +4,11 @@
 namespace cm::aot::contract_screens {
 void open_transfer_request_from_news(guest::Cpu&, std::uint32_t item, std::uint32_t revision);
 void draw_transfer_request(guest::Cpu&);
+std::uint32_t negotiation_choice_command(guest::Cpu&, std::uint32_t control);
+void open_new_negotiation(guest::Cpu&, std::uint32_t person, std::uint32_t state,
+                          std::uint32_t kind, std::uint32_t mode);
+void open_existing_negotiation(guest::Cpu&, std::uint32_t link, std::uint32_t person,
+                               std::uint32_t state, std::uint32_t kind, std::uint32_t mode);
 void release_offer_draft(guest::Cpu&);
 void open_offer_details(guest::Cpu&, std::uint32_t offer_link, std::uint32_t first,
                         std::uint32_t second, std::uint32_t third, std::uint32_t fifth,

@@ -33,6 +33,12 @@ void run(State& s, const Routine& routine) {
 }
 }
 
+// Let a checker parent see nested entries through the dispatcher, including
+// entries excluded from its C++ selection. The normal app calls them directly.
+bool contract_screens_can_call_directly(std::uint32_t entry) {
+    return !declining && (!routine_checker || (routine_check_child() && routine_checker->wants(entry)));
+}
+
 bool contract_screens_lists(std::uint32_t entry) { return find(entry) != nullptr; }
 
 void contract_screens_run_original(State& s, std::uint32_t entry) {

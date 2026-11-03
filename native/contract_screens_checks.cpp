@@ -5,6 +5,7 @@
 #include "player_stats_detail.hpp"
 #include "routine_check.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -19,36 +20,41 @@ namespace cm::aot { bool contract_screens_reference(State&); }
 
 namespace {
 constexpr std::uint32_t open_news = 0x10093ae0, draw_news = 0x10093bd0, release_draft = 0x100980d0, open_details = 0x1009dab0,
+                        new_negotiation = 0x100960d0, existing_negotiation = 0x100965c0,
+                        negotiation_choice = 0x10095db0,
                         open_staff = 0x1009e880, draw_staff = 0x1009e8f0, staff_command = 0x1009eb30,
                         compare_staff = 0x1009ee00, load_language = 0x1009ef30,
                         save_db = 0x1009ef60, load_db = 0x1009ef90;
 constexpr std::uint32_t append = 0x1073e4b0, read_history = 0x1073ef70, write_history = 0x1073f1e0,
                         release = 0x107735a0, init_news = 0x102bdf90, fetch_news = 0x102ccdd0,
                         news_payload = 0x102cb570, read_form = 0x10303560;
-constexpr std::uint32_t fixture = 0x60000000, trace = fixture + 0x1000, screens = fixture + 0x2000,
+constexpr std::uint32_t fixture = 0x60000000, trace = fixture + 0x10000, trace_size = 0x40000, screens = fixture + 0x2000,
                         staff = fixture + 0x3000, object = fixture + 0x4000, stack = 0x71010000,
                         sentinel = 0xfffffff0;
+constexpr std::uint32_t history_data = fixture + 0x6000;
 constexpr std::uint32_t club_payload_mask = 0x00013579, staff_payload_mask = 0x0002468a;
 constexpr unsigned trace_words = 3 + 8 + 19 + 8 + 2 + 4;
 
 struct Call {
     std::uint32_t target, back;
     std::vector<std::uint32_t> args, stack_args;
-    std::optional<std::uint32_t> result;
+    std::optional<std::uint32_t> result, second_result, pointed_word;
     std::optional<double> form;
 };
 std::vector<Call> expected;
 unsigned calls = 0;
 bool reference_mode = false, production_mode = false, sorting = false;
+bool expect_nested_dispatch = false, saw_nested_dispatch = false;
 unsigned callbacks = 0;
 std::optional<std::uint32_t> expected_result;
 std::optional<std::uint32_t> replacement_club;
+std::optional<std::uint16_t> group_after_open, group_before_valuation;
 std::uint32_t entry = 0;
 std::uint32_t call_site = 0;
 
 void expect(std::uint32_t target, std::uint32_t back, std::initializer_list<std::uint32_t> args,
             std::optional<std::uint32_t> result = {}, std::optional<double> form = {}) {
-    expected.push_back({target, back, args, {}, result, form});
+    expected.push_back({target, back, args, {}, result, {}, {}, form});
 }
 
 bool service(State& s) {
@@ -64,7 +70,11 @@ bool service(State& s) {
         if (reference_mode) return contract_screens_reference(s);
         return false;
     }
-    if (reference_mode && contract_screens_reference(s)) return true;
+    if (reference_mode && (contract_screens_reference(s) || (s.pc == 0x10775540 && run_leaf(s)))) return true;
+    if (expect_nested_dispatch && s.pc >= new_negotiation && s.pc < 0x10096c58) {
+        if (s.pc == new_negotiation || s.pc == existing_negotiation) saw_nested_dispatch = true;
+        return false;  // Continue the excluded original after each fixture service.
+    }
     if (contract_screens_lists(s.pc)) return false;  // Exercise the generated owner hook.
     if (call_site && s.pc == call_site) return false;
     Cpu c(s);
@@ -80,8 +90,11 @@ bool service(State& s) {
     for (unsigned i = 0; i < call.stack_args.size(); ++i)
         if (c.u32(c.sp() + 0x38 + 4 * i) != call.stack_args[i])
             throw std::runtime_error("unexpected contract screen stack argument at " + hex_address(s.pc));
+    if (call.pointed_word && c.u32(c.r(3)) != *call.pointed_word)
+        throw std::runtime_error("unexpected contract screen indirect argument at " + hex_address(s.pc));
 
     auto at = trace + calls++ * trace_words * 4;
+    if (at + trace_words * 4 > trace + trace_size) throw std::runtime_error("contract screen trace exceeded fixture bound");
     auto put = [&](std::uint32_t value) { c.put32(at, value); at += 4; };
     put(s.pc);
     put(c.lr());
@@ -94,6 +107,9 @@ bool service(State& s) {
     for (unsigned i = 0; i < call.stack_args.size(); ++i) put(c.u32(c.sp() + 0x38 + 4 * i));
 
     switch (s.pc) {
+    case append:
+        if (group_after_open) c.put16(screens + 0x2c58, *group_after_open);
+        break;
     case init_news:
         c.put32(c.r(3), 0);
         c.put32(c.r(3) + 8, 0);
@@ -106,7 +122,8 @@ bool service(State& s) {
         c.set(3, c.u32(c.r(3) + 4 * c.r(4)));
         break;
     case write_history:
-        c.put32(screens + c.r(4) * 4, c.r(5));
+        c.put32(history_data + c.r(4) * 4, c.r(5));
+        if (c.r(4) == 22 && group_before_valuation) c.put16(screens + 0x2c58, *group_before_valuation);
         break;
     case release:
         c.put32(c.r(3), 0);
@@ -144,6 +161,7 @@ bool service(State& s) {
         break;
     }
     if (call.result) c.set(3, *call.result);
+    if (call.second_result) c.set(4, *call.second_result);
     c.finish();
     return true;
 }
@@ -194,10 +212,26 @@ void corrupt_result(State& s, std::uint32_t target) {
     c.set(3, c.r(3) ^ 1);
 }
 
+void rewrite_with_original_children(State& s, std::uint32_t target) {
+    RoutineChecker selection([target](std::uint32_t address) { return address == target; }, 0, 0);
+    routine_checker = &selection;
+    expect_nested_dispatch = true;
+    saw_nested_dispatch = false;
+    calls = 0;
+    const auto before = s.executed;
+    contract_screens_run_rewrite(s, target);
+    routine_checker = nullptr;
+    validate_return(s);
+    if (!saw_nested_dispatch || s.executed <= before)
+        throw std::runtime_error("excluded negotiation child did not execute its original body");
+}
+
 Cpu initialize(State& s, std::mt19937& random, std::uint32_t target) {
     expected.clear();
     expected_result.reset();
     replacement_club.reset();
+    group_after_open.reset();
+    group_before_valuation.reset();
     entry = target;
     call_site = 0;
     Cpu c(s);
@@ -215,13 +249,215 @@ Cpu initialize(State& s, std::mt19937& random, std::uint32_t target) {
     c.put32(c.r(2) - 0x7b3c, fixture + 0x14);
     c.put32(fixture + 0x10, fixture + 0x100);
     c.put32(fixture + 0x14, fixture + 0x200);
-    for (unsigned i = 0; i < 8; ++i) c.put32(screens + 4 * i, random());
+    for (unsigned i = 0; i < 8; ++i) c.put32(history_data + 4 * i, random());
     s.budget = s.executed + 100000;
     return c;
 }
 
 void history(std::uint32_t back, unsigned slot, std::uint32_t value) {
-    expect(write_history, back, {screens, slot, value, 0}, screens + 4 * slot);
+    expect(write_history, back, {screens, slot, value, 0}, history_data + 4 * slot);
+}
+
+struct NegotiationInput {
+    bool existing = false, profile = false, link = false, exchange = false, permit = false, clear_link = false;
+    bool change_group = false;
+    std::uint32_t opened = 1, kind = 1;
+    std::int32_t budget = 100'000, current_wages = 8'000;
+    int first_club = -1, second_club = 0, final_club = 0;
+};
+
+void negotiation_case(Cpu& c, const NegotiationInput& input, std::uint32_t state, std::uint32_t mode,
+                      std::uint32_t caller_stack = stack) {
+    constexpr std::uint32_t league = fixture + 0x7100, leagues = fixture + 0x7200,
+        club = fixture + 0x7500, contracts = fixture + 0x8000, instance = fixture + 0x8200,
+        contract = fixture + 0x8400, record = fixture + 0x8500, profile = fixture + 0x8600,
+        primary_cache = fixture + 0x8700;
+    constexpr std::uint32_t person_id = 37, fee = 120'000, budget_limit = 5'000'000;
+    const auto link = !input.link ? 0 : input.clear_link ? history_data + 4 * 20 : object;
+    const auto first_back = input.existing ? 0x10096630u : 0x10096138u;
+    const auto set_toc = [&](int slot, std::uint32_t value) { c.put32(c.r(2) + std::uint32_t(slot), value); };
+    const auto manager = [&](int slot, std::uint32_t holder, std::uint32_t value) {
+        set_toc(slot, holder);
+        c.put32(holder, value);
+    };
+    manager(-0x7ab8, fixture + 0x20, leagues);
+    manager(-0x7b7c, fixture + 0x24, contracts);
+    manager(-0x7be8, fixture + 0x28, club);
+    set_toc(-0x7b78, primary_cache);
+    c.put32(primary_cache, 0);
+    c.put32(staff, person_id);
+    c.put32(staff + 0x14, input.profile ? profile : 0);
+    c.put16(screens + 0x2c58, 0);
+    c.put32(screens + 4, instance);
+    c.put32(instance + 0x24, club);
+    if (input.change_group) {
+        group_after_open = 1;
+        group_before_valuation = 2;
+        for (unsigned group = 1; group <= 2; ++group) {
+            c.put32(screens + group * 0x2c0 + 4, instance + group * 0x40);
+            c.put32(instance + group * 0x40 + 0x24, club + group * 0x248);
+        }
+    }
+    const auto budget_club = input.change_group ? club + 0x248 : club;
+    const auto valuation_club = input.change_group ? club + 0x490 : club;
+    if (link) c.put32(link, record);
+    c.put32(record + 0xc, input.exchange ? person_id + 1 : person_id);
+    c.put32(record + 0x20, fee);
+    c.put32(record + 0x28, 0x6b9);
+    c.put32(record + 0x2c, 0x37);
+    c.put8(record + 0x35, 0xfe);
+    for (unsigned i = 0; i <= 2; ++i) {
+        c.put32(contract + i * 0x60 + 4, i);
+        c.put32(contract + i * 0x60 + 0x50, 0x232 + i);
+    }
+    const auto signed_byte = [](auto value) { return std::uint32_t(std::int8_t(value)); };
+    const auto signed_mode = std::uint32_t(std::int16_t(mode));
+    if (input.existing) c.set({{3, link}, {4, staff}, {5, state}, {6, input.kind}, {7, mode}});
+    else c.set({{3, staff}, {4, state}, {5, input.kind}, {6, mode}});
+    expect(append, first_back, {screens, c.toc(-0x56e0), c.toc(-0x56e4), 1, c.toc(-0x56e8), 0}, input.opened);
+    if (std::uint8_t(input.opened) == 0) return;
+
+    const auto fields = [&](std::uint32_t back, unsigned first, std::initializer_list<std::uint32_t> values) {
+        for (const auto value : values) { history(back, first++, value); back += 0x14; }
+    };
+    if (input.existing) {
+        fields(0x1009664c, 1, {signed_mode, 0, link});
+        fields(0x10096688, 8, {signed_byte(input.kind), 0, 0x76c, 0, 0x76c, signed_byte(state)});
+        if (link) {
+            history(0x10096708, 0, person_id);
+            history(0x10096724, 7, 0xfffffffe);
+            history(0x1009673c, 4, 0x6b9);
+            history(0x10096754, 5, 0x37);
+            history(input.exchange ? 0x10096794 : 0x1009677c, 6, input.exchange);
+        } else {
+            history(0x100967ac, 0, person_id);
+            fields(0x100967c0, 6, {0, 0});
+        }
+        fields(0x100967e8, 14, {0, 0, 0, 0, 0, 0, 0});
+    } else {
+        fields(0x10096154, 0, {person_id, signed_mode, 0, 0});
+        fields(0x100961a4, 6, {0, 0, signed_byte(input.kind), 0, 0x76c, 0, 0x76c, signed_byte(state),
+                              0, 0, 0, 0, 0, 0, 0});
+    }
+    expect(0x10103510, input.existing ? 0x1009687c : 0x100962c8, {leagues, budget_club}, league);
+    expect(0x100f5770, input.existing ? 0x10096894 : 0x100962e0, {league, staff, 0, 0, 1, 0}, 0xa5);
+    expected.back().second_result = std::uint32_t(input.budget);
+    const auto fee_adjusted = std::int32_t(std::uint32_t(input.budget) - (link && !input.clear_link ? fee : 0));
+    const auto available = std::uint32_t(std::clamp(fee_adjusted, 0, std::int32_t(budget_limit)));
+    history(input.existing ? 0x100968e8 : 0x10096314, 21, available);
+    if (input.existing && input.profile) {
+        expect(0x10081b10, 0x10096904, {contracts, staff, budget_club}, 987);
+        history(0x10096918, 22, 987);
+    } else {
+        history(input.existing ? 0x10096930 : 0x10096328, 22, 0);
+    }
+    if (input.profile) {
+        expect(0x10084be0, input.existing ? 0x10096964 : 0x10096350,
+               {contracts, staff, valuation_club, 1, 0xffffffff, 0}, 120'000);
+        expect(0x1000a170, input.existing ? 0x100969a8 : 0x10096394,
+               {caller_stack - (input.existing ? 0xa0u : 0x90u) + 0x38, 4}, 4567);
+        expected.back().pointed_word = std::uint32_t(std::int32_t(120'000 * c.f64(c.toc(-0x56d0) + 0x28)));
+        history(input.existing ? 0x100969bc : 0x100963a8, 23, 4567);
+    } else {
+        history(input.existing ? 0x100969d4 : 0x100963c0, 23, 0);
+    }
+
+    const auto address_for = [&](int club_id) { return club_id < 0 ? 0u : contract + std::uint32_t(club_id) * 0x60; };
+    const bool exceptional = input.kind == 11 || input.kind == 12 || input.kind == 13 || input.kind == 15;
+    std::int32_t wage_ceiling = exceptional ? 6700 : 5000;
+    if (exceptional) {
+        expect(0x10103510, input.existing ? 0x10096af0 : 0x100964dc, {leagues, club}, league);
+        expect(0x100f2680, input.existing ? 0x10096afc : 0x100964e8,
+               {league, staff, input.existing ? state : 0xffffffffu}, wage_ceiling);
+    } else {
+        expect(0x10103510, input.existing ? 0x10096a04 : 0x100963f0, {leagues, club}, league);
+        expect(0x100f4790, input.existing ? 0x10096a0c : 0x100963f8, {league, input.kind}, wage_ceiling);
+        expect(0x10082f20, input.existing ? 0x10096a38 : 0x10096424, {contracts, staff}, address_for(input.first_club));
+        if (input.first_club >= 0) {
+            expect(0x10082f20, input.existing ? 0x10096a70 : 0x1009645c, {contracts, staff}, address_for(input.second_club));
+            if (input.second_club == 0) {
+                expect(0x10084b60, input.existing ? 0x10096aa8 : 0x10096494,
+                       {contracts, staff}, std::uint32_t(input.current_wages));
+                wage_ceiling = std::max(wage_ceiling, input.current_wages);
+            }
+        }
+    }
+    fields(input.existing ? 0x10096b38 : 0x10096524, 24, {std::uint32_t(wage_ceiling), 0, 0});
+    expect(0x10082f20, input.existing ? 0x10096b6c : 0x10096558, {contracts, staff}, address_for(input.final_club));
+    history(input.existing ? 0x10096b94 : 0x1009657c, 27, input.final_club < 0 ? 0 : 0x232 + input.final_club);
+    if (!input.existing) fields(0x10096590, 28, {3, 0});
+    else {
+        if (input.final_club >= 0)
+            expect(0x10380f20, 0x10096bb0, {address_for(input.final_club), budget_club, 0, 0}, input.permit);
+        if (input.final_club >= 0 && (input.permit || link)) fields(0x10096bd4, 28, {3, 0});
+        else {
+            history(0x10096c00, 28, 0);
+            const bool renew = input.final_club >= 0 && input.profile;
+            history(renew ? 0x10096c40 : 0x10096c28, 29, renew);
+        }
+    }
+}
+
+struct ChoiceInput {
+    unsigned action = 2;
+    bool fallback = false, control_default = false, existing = false, linked = false, stale = false;
+    std::uint8_t status = 1, term = 5, kind = 1;
+    std::uint32_t opened = 1, handled = 0, common = 0;
+    int final_club = 0;
+};
+
+void negotiation_choice_case(Cpu& c, const ChoiceInput& input) {
+    constexpr std::uint32_t layout = fixture + 0x7100, instance = fixture + 0x8200,
+                            club = fixture + 0x7500, contracts = fixture + 0x8000,
+                            offer = fixture + 0x8500, value = 0xabc123;
+    const auto control = input.control_default ? 0x1234ffffu : 2u;
+    std::vector<Call> nested;
+    const bool refresh = input.linked && (input.stale || input.status == 2 || input.status == 3);
+    const auto signed_term = std::int32_t(std::int8_t(input.term));
+    const auto term = std::uint32_t(std::int8_t(signed_term < 0 ? -signed_term : signed_term));
+    if (input.action == 2) {
+        negotiation_case(c, {.existing = input.existing, .profile = true, .link = input.linked,
+                             .opened = input.opened, .kind = input.kind, .final_club = input.final_club}, term, 1, stack - 0x60);
+        if (!refresh) nested = std::move(expected);
+        expected.clear();
+        c.put8(offer + 0x34, input.status);
+    }
+    c.put16(screens + 0x2c58, 0);
+    c.put32(screens + 0x24, layout);
+    c.put32(layout + 0xc0000 + 2 * 0x17c - 0x5794, input.fallback ? 0 : input.action);
+    c.put32(layout + 0xc0000 + 2 * 0x17c - 0x5754, value);
+    c.put16(screens + 0x260000 - 0x7e62, input.action);
+    c.set(3, control);
+    switch (input.action) {
+    case 3:
+    case 0x2f:
+        history(input.action == 3 ? 0x10095e54 : 0x10095ed4, input.action == 3 ? 1 : 4,
+                input.control_default ? 0 : value);
+        expected_result = std::uint32_t(-11);
+        break;
+    case 1:
+        expected_result = std::uint32_t(-9);
+        break;
+    case 2: {
+        const auto link = input.linked ? object : 0;
+        expect(read_history, 0x10095f78, {screens, 0}, staff);
+        expect(read_history, 0x10095f8c, {screens, 1}, input.term);
+        expect(read_history, 0x10095fa4, {screens, 2}, link);
+        expect(read_history, 0x10095fc4, {screens, 3}, input.existing ? 1 : 0);
+        expect(read_history, 0x10095fd4, {screens, 4}, input.kind);
+        expect(0x1007bb70, 0x10096000, {contracts, staff, instance, club, term});
+        expect(read_history, 0x1009600c, {screens, 7}, input.stale ? 0x38 : 0x37);
+        if (refresh) expect(0x10422570, 0x10096044, {offer, input.stale ? 0x38u : 0x37u});
+        else expected.insert(expected.end(), nested.begin(), nested.end());
+        expected_result = refresh ? std::uint32_t(-11) : std::uint32_t(-4);
+        break;
+    }
+    default:
+        expect(0x102a54b0, 0x10096094, {control}, input.handled);
+        if (!input.handled) expect(0x102a83a0, 0x100960a8, {control}, input.common);
+        expected_result = input.handled ? input.handled : input.common;
+        break;
+    }
 }
 
 void opening(Cpu& c, std::uint32_t back, int draw, int command, std::uint32_t result) {
@@ -494,6 +730,7 @@ int main(int argc, char** argv) {
         auto state = std::make_unique<State>();
         load_program(*state, argv[1]);
         state->memory.map(fixture, 0xe000);
+        state->memory.map(trace, trace_size);
         state->memory.map(fixture + 0xc0000, 0x4000);
         state->memory.map(fixture + 0x250000, 0x10000);
         state->memory.map(stack - 0x10000, 0x20000);
@@ -578,12 +815,95 @@ int main(int argc, char** argv) {
                             check();
                         }
 
+        const std::array negotiation_inputs{
+            NegotiationInput{.opened = 0x100},
+            NegotiationInput{.final_club = -1},
+            NegotiationInput{.profile = true, .budget = -10, .first_club = 0, .second_club = 0},
+            NegotiationInput{.budget = 6'000'000, .current_wages = 4000, .first_club = 0},
+            NegotiationInput{.profile = true, .current_wages = 5000, .first_club = 0},
+            NegotiationInput{.first_club = 0, .second_club = -1},
+            NegotiationInput{.first_club = 1, .second_club = 1},
+            NegotiationInput{.profile = true, .kind = 11},
+            NegotiationInput{.kind = 12},
+            NegotiationInput{.kind = 13},
+            NegotiationInput{.kind = 15},
+            NegotiationInput{.existing = true, .opened = 0x100},
+            NegotiationInput{.existing = true, .final_club = -1},
+            NegotiationInput{.existing = true, .profile = true, .first_club = 0},
+            NegotiationInput{.existing = true, .profile = true, .permit = true, .change_group = true},
+            NegotiationInput{.existing = true, .profile = true, .link = true, .first_club = 1, .second_club = 1},
+            NegotiationInput{.existing = true, .link = true, .exchange = true, .budget = 6'000'000,
+                             .first_club = 0, .second_club = -1, .final_club = -1},
+            NegotiationInput{.existing = true, .permit = true, .budget = -1, .current_wages = 100, .first_club = 0},
+            NegotiationInput{.existing = true, .link = true, .clear_link = true},
+            NegotiationInput{.existing = true, .profile = true, .link = true, .kind = 11},
+            NegotiationInput{.existing = true, .kind = 12},
+            NegotiationInput{.existing = true, .kind = 13},
+            NegotiationInput{.existing = true, .kind = 15},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (const auto& input : negotiation_inputs) {
+                auto c = initialize(*state, random, input.existing ? existing_negotiation : new_negotiation);
+                const std::uint32_t negotiation_state = random(), mode = random();
+                negotiation_case(c, input, negotiation_state, mode);
+                check();
+            }
+        const std::array choice_inputs{
+            ChoiceInput{.action = 3},
+            ChoiceInput{.action = 3, .control_default = true},
+            ChoiceInput{.action = 0x2f, .fallback = true},
+            ChoiceInput{.action = 0x2f, .control_default = true},
+            ChoiceInput{.action = 1},
+            ChoiceInput{.action = 7, .handled = 0xfffffff6},
+            ChoiceInput{.action = 7, .fallback = true, .common = 1},
+            ChoiceInput{.action = 7, .control_default = true, .common = 0x80000000},
+            ChoiceInput{.action = 0},
+            ChoiceInput{},
+            ChoiceInput{.fallback = true, .term = 0x80, .kind = 11},
+            ChoiceInput{.control_default = true, .existing = true, .term = 0xfc},
+            ChoiceInput{.existing = true, .linked = true, .term = 0x7f},
+            ChoiceInput{.existing = true, .linked = true, .opened = 0x100},
+            ChoiceInput{.existing = true, .linked = true, .stale = true},
+            ChoiceInput{.existing = true, .linked = true, .status = 3},
+            ChoiceInput{.existing = true, .linked = true, .status = 2},
+        };
+        for (unsigned mutation = 0; mutation < 4; ++mutation)
+            for (const auto& input : choice_inputs) {
+                auto c = initialize(*state, random, negotiation_choice);
+                negotiation_choice_case(c, input);
+                check();
+            }
+
         for (const auto& [target, from] : {std::pair{load_language, 0x10346df0u},
                  std::pair{load_db, 0x103353b0u}, std::pair{save_db, 0x1034bc98u}}) {
             auto caller_cpu = initialize(*state, random, target);
             database_case(caller_cpu, target, 1, random);
             call_site = from;
             check();
+        }
+
+        for (const bool existing : {false, true}) {
+            auto excluded = initialize(*state, random, negotiation_choice);
+            // With no primary contract, this routing fixture only needs services
+            // that respect the per-entry checker selection.
+            negotiation_choice_case(excluded, {.existing = existing, .final_club = -1});
+            const auto differences = compare_routine_call(*state, entry, original, rewrite_with_original_children, results);
+            if (!differences.empty()) {
+                for (const auto& difference : differences) std::cerr << difference << '\n';
+                throw std::runtime_error("excluded negotiation child differed from the original");
+            }
+            ++passed;
+
+            auto selected = initialize(*state, random, negotiation_choice);
+            negotiation_choice_case(selected, {.existing = existing});
+            RoutineChecker selection([](std::uint32_t) { return true; }, 0, 0);
+            routine_checker = &selection;
+            rewrite(*state, entry);
+            routine_checker = nullptr;
+            const auto callee = existing ? existing_negotiation : new_negotiation;
+            const auto seen = selection.totals().find(callee);
+            if (seen == selection.totals().end() || seen->second.calls != 1)
+                throw std::runtime_error("checker parent did not observe the selected negotiation child");
         }
 
         auto c = initialize(*state, random, open_staff);
