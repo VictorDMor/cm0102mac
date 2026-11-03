@@ -18,7 +18,7 @@ using namespace cm::aot;
 namespace {
 std::uint32_t match_address = 0;
 constexpr unsigned advances = 600;
-bool timed = false, construction = false, response = false, obstruction = false;
+bool timed = false, construction = false, response = false, obstruction = false, goal_line = false;
 unsigned pair_index = 0;
 struct Inputs final : CodeFragmentBoundaryObserver {
     unsigned clocks = 0;
@@ -31,12 +31,12 @@ struct Inputs final : CodeFragmentBoundaryObserver {
         return true;
     }
 };
-// Count saved LR writes at the eight shot and two periodic-balance incoming
-// call sites. This also sees direct C++ calls which bypass dispatch probes.
+// Count incoming calls by their saved LR, including direct C++ calls.
 struct ShotCalls final : MemoryObserver {
     State& s;
     MemoryObserver* previous;
     unsigned calls = 0, balance_calls = 0, construction_calls = 0, influence_calls = 0, obstruction_calls = 0;
+    unsigned opposite_goal_calls = 0, own_goal_calls = 0;
     explicit ShotCalls(State& state) : s(state), previous(s.memory.date_observer) { if (!timed) s.memory.date_observer = this; }
     ~ShotCalls() { if (!timed) s.memory.date_observer = previous; }
     void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
@@ -61,6 +61,10 @@ struct ShotCalls final : MemoryObserver {
         case 0x101d93ec: case 0x101d942c: ++balance_calls; break;
         case 0x1020e9e0: ++construction_calls; break;
         case 0x101f0b70: ++obstruction_calls; break;
+        case 0x101f1444: case 0x101f1464: case 0x1025107c: case 0x10251098:
+            ++opposite_goal_calls; break;
+        case 0x101f1434: case 0x101f1474: case 0x1025106c: case 0x102510a8:
+            ++own_goal_calls; break;
         }
     }
 };
@@ -112,6 +116,14 @@ void interval(State& s, bool original) {
         if (!shots.obstruction_calls) throw std::runtime_error("Actual-match interval did not exercise player obstruction");
         std::cerr << (original ? "original" : "cpp") << " obstruction calls=" << shots.obstruction_calls << '\n';
     }
+    if (goal_line) {
+        c.put32(0x61000018, shots.opposite_goal_calls);
+        c.put32(0x6100001c, shots.own_goal_calls);
+        std::cerr << (original ? "original" : "cpp") << " opposite goal-line calls=" << shots.opposite_goal_calls
+                  << " own goal-line calls=" << shots.own_goal_calls << '\n';
+        if (!(shots.opposite_goal_calls || shots.own_goal_calls))
+            throw std::runtime_error("Actual-match interval did not exercise either goal line");
+    }
     if (!timed && !shots.balance_calls) throw std::runtime_error("Actual-match interval did not exercise periodic balance");
     if (!timed && !shots.calls) throw std::runtime_error("Actual-match interval did not exercise shot selection");
     if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << " periodic-balance calls=" << shots.balance_calls << " construction calls=" << shots.construction_calls << '\n';
@@ -142,6 +154,7 @@ int main(int argc, char** argv) {
             if (option == "--construction") construction = true;
             else if (option == "--response") response = true;
             else if (option == "--obstruction") obstruction = true;
+            else if (option == "--goal-line") goal_line = true;
             else {
                 if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");
                 pairs = unsigned(std::stoul(std::string(option.substr(15))));

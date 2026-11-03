@@ -22,6 +22,7 @@
 #include "spatial_role_adapter.hpp"
 #include "target_acceptance_adapter.hpp"
 #include "ball_contact_adapter.hpp"
+#include "match_pl_goal_line.hpp"
 #include "match_pl_obstruction.hpp"
 #include "player_decision_adapter.hpp"
 #include "routine_check.hpp"
@@ -226,6 +227,19 @@ constexpr bool core_entry(std::uint32_t entry) { return entry == 0x10247030; }
 constexpr bool keeper_entry(std::uint32_t entry) { return entry == 0x10251270; }
 constexpr bool rating_entry(std::uint32_t entry) { return entry == 0x10270c70; }
 constexpr bool shot_entry(std::uint32_t entry) { return entry == 0x10252080; }
+constexpr std::uint32_t opposite_goal_line = 0x1026a1b0, own_goal_line = 0x1026d660;
+constexpr bool goal_line_entry(std::uint32_t entry) { return entry == opposite_goal_line || entry == own_goal_line; }
+struct GoalLineBoundary {};
+struct GoalLineInputs {
+    int score = 0;
+    bool tied_leg = false, late_tie = false;
+    int keeper_detail = 0;
+    unsigned offer = 0;
+    bool equal_standing = false;
+    int rival_score = 3;
+    int seed_after_tally = INT32_MIN;
+    int milestone_reread = INT32_MIN;
+};
 constexpr std::uint32_t obstruction_entry = 0x10272240;
 struct ObstructionInputs {
     unsigned restart = 0;
@@ -266,6 +280,7 @@ struct Case {
     ShotInputs shot{};
     BalanceInputs balance{};
     ConstructionInputs construction{};
+    GoalLineInputs goal_line{};
     ObstructionInputs obstruction{};
 };
 Case active;
@@ -458,6 +473,46 @@ bool scripted_construction(Cpu& c, std::uint32_t target) {
         if (c.lr() == 0x10224c48) c.set(2, 0x12345678); // The caller must reload its saved TOC.
     }
     c.finish(); return true;
+}
+
+bool scripted_goal_line(Cpu& c, std::uint32_t target) {
+    const auto& in = active.goal_line;
+    switch (target) {
+    case 0x10251270: case 0x101d6980: case 0x101f1e10: case 0x101f21d0:
+    case 0x10289560: case 0x10285ed0: case 0x10288f30: case 0x10289d50:
+    case 0x1022e3a0: case 0x101fcde0: case 0x101d5980: case 0x102884d0:
+    case 0x101eee20: case 0x1076f7d0:
+        trace_call(c, target);
+        break;
+    default: return false;
+    }
+    switch (target) {
+    case 0x10251270:
+        c.put8(c.r(8), in.keeper_detail);
+        c.put8(c.r(9), active.strategy_low);
+        c.set(3, active.argument);
+        break;
+    case 0x101d6980: c.set(3, active.second_role); break;
+    case 0x101f1e10: c.set(3, active.null_player ? 0 : active.last_is_player ? player : data + 0xf000); break;
+    case 0x101f21d0:
+        c.put8(c.r(5), in.score);
+        c.put8(c.r(6), in.rival_score);
+        c.put8(c.r(7), in.tied_leg);
+        c.put8(c.r(8), 0);
+        c.put8(c.r(9), in.late_tie);
+        if (in.seed_after_tally != INT32_MIN)
+            c.put32(c.toc(-0x7b90), std::uint32_t(in.seed_after_tally));
+        break;
+    case 0x10289560: c.set(3, active.first_role); break;
+    case 0x10288f30: c.set(3, active.mutate_choice); break;
+    case 0x10289d50: c.set(3, c.r(4) == in.offer); break;
+    case 0x101fcde0: c.set(3, active.strategy_low); break;
+    case 0x101d5980: c.set(3, 0); break;
+    case 0x101eee20: c.set(3, in.equal_standing ? 0 : c.r(4)); break;
+    case 0x1076f7d0: throw GoalLineBoundary{};
+    }
+    c.finish();
+    return true;
 }
 
 bool scripted(State& s) {
@@ -1016,6 +1071,7 @@ bool probe(State& s) {
     // Cpu::call runs lowered leaves before the probe. Keep the reference's
     // dispatch path symmetric, particularly the two-instruction side getter.
     if (run_leaf(s)) return true;
+    if (goal_line_entry(active.entry) && scripted_goal_line(influence_cpu, s.pc)) return true;
     if (scripted(s)) return true;
     if (reference_mode && match_pl_lists(s.pc)) return match_pl_reference(s);
     if (reference_mode && s.pc >= 0x102238a0 && s.pc < 0x1028ad60)
@@ -5187,11 +5243,17 @@ int check_obstruction(const State& base, std::string_view mode) {
 }
 }
 
+#include "match_pl_goal_line_checks.inc"
+
 int main(int argc, char** argv) {
     if (argc < 2) return 2;
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
+        if (mode == "--goal-line-returned" || mode == "--goal-line-fatal")
+            return check_goal_line(*base, mode == "--goal-line-fatal");
+        if (mode == "--goal-line-gaps") return check_goal_line_gaps(*base);
+        if (mode == "--goal-line-production") return check_goal_line_production(*base);
         if (mode == "--obstruction-opening" || mode == "--obstruction-spatial" || mode == "--obstruction-contest" ||
             mode == "--obstruction-gaps" || mode == "--obstruction-final-gaps" ||
             mode == "--obstruction-penalty-gaps" || mode == "--obstruction-production") {
