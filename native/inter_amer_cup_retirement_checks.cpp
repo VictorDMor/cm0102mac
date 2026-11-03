@@ -25,10 +25,18 @@ struct InitializationReturned {};
 bool initialization_boundary(State& s) {
     if (s.pc != 0x10191cd0) return false;
     dispatch_probe = nullptr;
-    // Run the entire real initializer, then stop before its outer caller's
-    // unrelated work. This also checks CreationScope's exception restoration.
-    run_until(s, 0x1034a8e8);
+    // Run the real initializer and stop at its caller's original return PC.
+    run_until(s, std::uint32_t(s.r<4>(4128)));
     throw InitializationReturned{};
+}
+void initialize_at(State& s, std::uint32_t call_site) {
+    dispatch_probe = initialization_boundary;
+    s.pc = call_site;
+    bool returned = false;
+    try { run_until(s, sentinel); }
+    catch (const InitializationReturned&) { returned = true; }
+    dispatch_probe = nullptr;
+    require(returned && s.pc == call_site + 4, "Ruling-body initializer did not return to its caller");
 }
 void call(Cpu& c, std::uint32_t entry, std::initializer_list<std::uint32_t> arguments) {
     unsigned reg = 3;
@@ -234,33 +242,32 @@ int inter_amer_cup_retirement_checks(const char* snapshot, const char* game, con
                     "Retirement query changed guest memory or RNG");
         }
         c.put16(year_address, original_year);
-        // Execute the full original ruling-body factory through production
-        // generation and real constructors, allocator and native services.
         const auto bodies = c.toc(-0x7b44), north = bodies + 2 * 0x4c;
         const auto saved_body = state->memory.copy_out(north, 0x4c);
         const auto definitions = c.u32(c.toc(-0x7bbc));
         const auto definition_bytes = state->memory.copy_out(definitions + id * 0x6c, 0x6c);
-        const auto registry = c.u32(c.toc(-0x7b5c)), saved_cup = c.u32(registry + id * 4);
+        const auto registry_slot = c.toc(-0x7b5c);
+        const auto registry = c.u32(registry_slot), saved_cup = c.u32(registry + id * 4);
         const auto cup_bytes = state->memory.copy_out(saved_cup, 0xb4);
         call(c, 0x10773520, {0x4c});
         const auto body = c.r(3); require(body != 0, "Cannot allocate test ruling body");
         state->memory.copy_in(body, saved_body);
         c.put8(c.toc(-0x7bac), 1);
-        call(c, 0x1034f130, {body});
-        require(c.r(3) == 1 && c.u8(c.toc(-0x7bac)) == 1, "Ruling-body factory failed");
-        require(c.u32(body + 0xc) == 3, "Loading no longer restores the legacy cup object");
-        // Isolate North America in the real 34-body initializer. Its factory,
-        // dependencies and original loop run normally through the production
-        // new-career wrapper; other initializer callbacks are outside this check.
+        // Isolate North America in the real 34-body loop and enter from both
+        // production call sites. Its factory and native services run normally.
         for (unsigned i = 0; i < 34; ++i)
             if (i != 2) c.put32(bodies + i * 0x4c + 8, 0);
-        dispatch_probe = initialization_boundary;
-        state->pc = 0x1034a8e4;
-        bool initialized = false;
-        try { run_until(*state, sentinel); }
-        catch (const InitializationReturned&) { initialized = true; }
-        dispatch_probe = nullptr;
-        require(initialized && state->pc == 0x1034a8e8, "Generated new-career call did not complete");
+        initialize_at(*state, 0x1034a8e4);
+        require(c.r(3) == 1 && c.u8(c.toc(-0x7bac)) == 1, "Save-load initializer failed");
+        require(c.u32(north + 0xc) == 3, "Save loader skipped the legacy cup object");
+        const auto loaded_cup = c.u32(c.u32(north + 0x10) + 8);
+        require(loaded_cup && c.u32(c.u32(loaded_cup + 4)) == id, "Save loader constructed a different cup");
+        call(c, 0x10354cb0, {});
+        require(c.r(3) == 1 && c.u32(c.u32(registry_slot) + id * 4) == loaded_cup,
+                "Save loader could not register the historical competition");
+        c.put32(registry_slot, registry);
+
+        initialize_at(*state, 0x10345bb0);
         require(c.r(3) == 1 && c.u8(c.toc(-0x7bac)) == 1, "New-career initializer failed");
         require(c.u32(north + 0xc) == 2, "Retired cup still counted in a new career");
         const auto objects = c.u32(north + 0x10);
@@ -274,6 +281,10 @@ int inter_amer_cup_retirement_checks(const char* snapshot, const char* game, con
                 state->memory.copy_out(definitions + id * 0x6c, 0x6c) == definition_bytes &&
                 state->memory.copy_out(saved_cup, 0xb4) == cup_bytes && c.u32(registry + id * 4) == saved_cup,
                 "Factory changed historical definition, registration or records");
+        call(c, 0x10354cb0, {});
+        require(c.r(3) == 1 && c.u32(c.u32(registry_slot) + id * 4) == 0,
+                "New career registered the retired competition");
+        c.put32(registry_slot, registry);
         require(inter_amer_cup_creation_id(*state, id) == id, "New-career scope leaked into loading");
         const auto memory = match_snapshot_memory_hash(*state);
         const auto stack = c.sp();

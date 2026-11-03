@@ -24,7 +24,7 @@ std::uint32_t inter_amer_cup_creation_id(State& s, std::uint32_t configured_id) 
 }
 void inter_amer_cup_initialize_new_career(State& s) {
     CreationScope scope(s);
-    guest::Cpu(s).call(0x10191cd0, 0x1034a8e8);
+    guest::Cpu(s).call(0x10191cd0, 0x10345bb4);
 }
 bool inter_amer_cup_retired_object(State& s, std::uint32_t object) {
     guest::Cpu c(s);

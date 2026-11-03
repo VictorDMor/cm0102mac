@@ -19,7 +19,7 @@ class CompetitionRetirementTests(unittest.TestCase):
             cls.pages = {page: [json.loads(row[0]) for row in db.execute(
                 "SELECT body FROM instructions WHERE address>=? AND address<? ORDER BY address",
                 (page << 12, (page + 1) << 12))]
-                for page in (0x1034f, 0x1034a, 0x10482, 0x10131, 0x1048a, 0x1049d)}
+                for page in (0x1034f, 0x10345, 0x1034a, 0x10482, 0x10131, 0x1048a, 0x1049d)}
             cls.records = cls.pages[0x1034f]
         cls.userops = json.loads((EXPORT / "program.json").read_text())["userops"]
         cls.disabled = {name: False for name in inspect.signature(generate_page).parameters
@@ -46,12 +46,18 @@ class CompetitionRetirementTests(unittest.TestCase):
                 self.generate(records)
 
 
-    def test_update_reader_and_new_career_hooks_are_optional_and_targeted(self):
-        for page, expression in ((0x1034a, "inter_amer_cup_initialize_new_career(s)"),
-                                 (0x10482, "inter_amer_cup_skip_daily(s)"),
-                                 (0x10131, "inter_amer_cup_retired_object(s,"),
-                                 (0x1048a, "inter_amer_cup_cancel_pending(s,"),
-                                 (0x1049d, "inter_amer_cup_skip_host_announcement(s,")):
+    def test_creation_scope_wraps_new_world_initializer_and_leaves_save_loader_alone(self):
+        expression = "inter_amer_cup_initialize_new_career(s)"
+        self.assertIn(expression, self.generate(self.pages[0x10345]))
+        self.assertNotIn(expression, self.generate(self.pages[0x10345], retirement=False))
+        self.assertNotIn(expression, self.generate(self.pages[0x1034a]))
+
+    def test_update_and_reader_hooks_are_optional_and_targeted(self):
+        for page, expression in (
+                (0x10482, "inter_amer_cup_skip_daily(s)"),
+                (0x10131, "inter_amer_cup_retired_object(s,"),
+                (0x1048a, "inter_amer_cup_cancel_pending(s,"),
+                (0x1049d, "inter_amer_cup_skip_host_announcement(s,")):
             with self.subTest(page=hex(page)):
                 self.assertIn(expression, self.generate(self.pages[page]))
                 self.assertNotIn(expression, self.generate(self.pages[page], retirement=False))
@@ -59,7 +65,7 @@ class CompetitionRetirementTests(unittest.TestCase):
         self.assertIn("goto i_1048acd8;", self.generate(self.pages[0x1048a]))
 
     def test_update_reader_and_call_contracts_reject_changed_original(self):
-        for page, address in ((0x1034a, 0x1034a8e4), (0x10482, 0x10482ca0),
+        for page, address in ((0x10345, 0x10345bb0), (0x10482, 0x10482ca0),
                               (0x10131, 0x101312b4), (0x10131, 0x101313a4),
                               (0x1048a, 0x1048aa94), (0x1048a, 0x1048acd8),
                               (0x1049d, 0x1049dfa8), (0x1049d, 0x1049dfa4)):
