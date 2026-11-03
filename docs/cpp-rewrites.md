@@ -28,6 +28,45 @@ can observe exactly as the original does (CLAUDE.md):
 - **Calls and their order**, so RNG draws, allocations and imports happen in
   the same sequence with the same arguments.
 
+## Lessons from Bosman Edition
+
+Bosman Edition statically recompiles the Windows 3.9.68 executable to C and
+extends it through checked hooks and native code. The reCM goal is to
+reconstruct every module of the Mac 3.9.62 executable in C++23 while improving
+performance in parallel. The faithful implementation gives future gameplay
+and simulation changes a reference to compare against.
+[Bosman recompilation design](https://github.com/maxevans60/cm0102-bosman-edition/blob/v0.6.1/docs/specs/2026-10-14-recompile-spec.md#bulk-recompile)
+
+- **Keep gameplay rules in one place.** Bosman's 48-team World Cup uses
+  separate hooks for entrant slots, the draw, and predicted places. Keep the
+  legacy offsets and calling conventions at the boundary where practical, and
+  let typed C++ callers share the rule for entrants, phases, or rankings.
+  [Bosman World Cup implementation](https://github.com/maxevans60/cm0102-bosman-edition/blob/ec04eb8983b42d68312b93b561458849458fceff/src/recomp_rt/win/season_wc48.c)
+- **Check fidelity and gameplay changes separately.** Bosman documents a
+  staff routine that reads an unwritten stack slot whose contents can depend
+  on event timing. Preserve observable stack, register, memory, and RNG
+  effects in rewrites and optimizations. Compare both bodies from the same
+  state, with a replay at the affected boundary. For a deliberate gameplay
+  change, retain the original behavior as a test reference and assert the
+  intended new outcomes separately.
+  [Bosman same-save checks](https://github.com/maxevans60/cm0102-bosman-edition/blob/ec04eb8983b42d68312b93b561458849458fceff/docs/TESTING.md#same-save-checks)
+- **Measure the work the player waits for.** Bosman tracks Continue and
+  holiday performance with all leagues loaded. Our `MATCH_ENG.CPP` takeover
+  also showed that fewer guest instructions can leave elapsed time unchanged.
+  After `MATCH_PL.CPP` closes, try direct typed role and position queries in
+  the spatial and pass-receiver scans. Compare paired match replays for
+  equivalence and timing, then measure the complete Continue separately.
+  [Bosman performance issue](https://github.com/maxevans60/cm0102-bosman-edition/issues/76) ·
+  [reCM performance notes](native-background-performance.md)
+- **Treat rules and save compatibility as one change.** Bosman 0.6.1 fixed a
+  save failure that could leave a career without its season data. The reCM
+  English playoff keeps the rules of the current saved season and adopts the
+  new preset at the next rollover. When a feature adds persistent state,
+  version it with the career, check the transition from older saves, and
+  verify that an interrupted write leaves the previous save usable.
+  [Bosman 0.6.1](https://github.com/maxevans60/cm0102-bosman-edition/releases/tag/v0.6.1) ·
+  [reCM English playoff](native-competition-rules.md)
+
 ## Writing one
 
 `native/guest_abi.hpp` has the pieces:
