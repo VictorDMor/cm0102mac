@@ -1,6 +1,7 @@
 #include "match_pl_adapter.hpp"
 #include "match_pl.hpp"
 #include "match_pl_influence.hpp"
+#include "match_pl_obstruction.hpp"
 #include "match_pl_player_response.hpp"
 #include "routine_check.hpp"
 #include <algorithm>

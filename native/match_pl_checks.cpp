@@ -22,6 +22,7 @@
 #include "spatial_role_adapter.hpp"
 #include "target_acceptance_adapter.hpp"
 #include "ball_contact_adapter.hpp"
+#include "match_pl_obstruction.hpp"
 #include "player_decision_adapter.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
@@ -225,6 +226,20 @@ constexpr bool core_entry(std::uint32_t entry) { return entry == 0x10247030; }
 constexpr bool keeper_entry(std::uint32_t entry) { return entry == 0x10251270; }
 constexpr bool rating_entry(std::uint32_t entry) { return entry == 0x10270c70; }
 constexpr bool shot_entry(std::uint32_t entry) { return entry == 0x10252080; }
+constexpr std::uint32_t obstruction_entry = 0x10272240;
+struct ObstructionInputs {
+    unsigned restart = 0;
+    int wait = 0;
+    bool receiver_missing = false;
+    bool skip_side_update = false;
+    bool late_keeper = false;
+    bool odd_review_draw = false;
+    bool even_review_draw = false;
+    bool reason_draws = false;
+    bool actual_acquisition = false;
+    int chance_seed = INT32_MIN;
+    int restart_seed = INT32_MIN;
+};
 struct Case {
     std::uint32_t entry;
     int side = 0, column = 4, row = 5;
@@ -251,6 +266,7 @@ struct Case {
     ShotInputs shot{};
     BalanceInputs balance{};
     ConstructionInputs construction{};
+    ObstructionInputs obstruction{};
 };
 Case active;
 // Exercise the original's separate reads without introducing an import or
@@ -447,6 +463,27 @@ bool scripted_construction(Cpu& c, std::uint32_t target) {
 bool scripted(State& s) {
     Cpu c(s);
     const auto target = s.pc;
+    if (active.entry == obstruction_entry) {
+        const auto& obstruction = active.obstruction;
+        if (target == 0x1022e3a0 && obstruction.actual_acquisition) return false;
+        switch (target) {
+        case 0x101f50c0: case 0x101f5180: case 0x101f3a30: case 0x101d68f0:
+        case 0x101ee530: case 0x102884d0: case 0x1022e3a0:
+            trace_call(c, target);
+            if (target == 0x101f50c0) {
+                c.put8(c.r(6), 6); c.put8(c.r(7), obstruction.wait);
+                c.set(3, obstruction.restart);
+                if (obstruction.chance_seed != INT32_MIN) {
+                    c.put32(c.toc(-0x7b90), std::uint32_t(obstruction.chance_seed));
+                    c.put16(c.u32(c.toc(-0x7b84)) + 2, 0);
+                }
+            } else if (target == 0x101f5180) c.put_f32(c.r(9), 0.125f);
+            else if (target == 0x101f3a30) c.set(3, obstruction.receiver_missing ? 0 : data + 0xd000);
+            else if (target == 0x101ee530) c.set(3, obstruction.skip_side_update);
+            c.finish();
+            return true;
+        }
+    }
     if (active.entry == 0x10223ac0 && scripted_construction(c, target)) return true;
     if (influence_returned && influence.fixture_stage) {
         const auto stage = influence.fixture_stage;
@@ -697,6 +734,21 @@ bool scripted(State& s) {
         }
     }
     else if (target == 0x10201180) {
+        if (active.entry == obstruction_entry) {
+            const auto& obstruction = active.obstruction;
+            const auto cursor = c.u32(c.toc(-0x7b84));
+            if (c.r(4) == 0x20df) {
+                if (obstruction.odd_review_draw) c.put16(cursor + 2, 1);
+                if (obstruction.even_review_draw) c.put16(cursor + 4, 2);
+            }
+            if (c.r(4) == 0x1fe8 && obstruction.restart_seed != INT32_MIN) {
+                c.put32(c.toc(-0x7b90), std::uint32_t(obstruction.restart_seed));
+                c.put16(cursor + 2, 0); c.put16(cursor + 4, 0);
+            }
+            if (c.r(4) == 0x1fe8 && obstruction.reason_draws) {
+                c.put16(cursor + 2, 0); c.put16(cursor + 4, 3); c.put16(cursor + 6, 0);
+            }
+        }
         if (active.entry == 0x10288230 && active.mutate && c.r(4) != 0x20dd) c.put8(c.sp() + 0x38, active.argument);
         if (active.entry == 0x102884d0 && active.mutate_after_step && c.r(4) == 0x21b9) {
             c.put32(player + 0x1a4, other_match); c.put8(player + 0x27, 1 - active.side);
@@ -772,7 +824,10 @@ bool scripted(State& s) {
         // nested shot query has a required keeper precondition on both routes.
         const bool no_keeper = active.entry == 0x10278220
             ? active.primary.keeper_null && c.lr() == 0x10278f04 : active.context.keeper_null;
-        c.set(3, no_keeper ? 0 : data + 0xf000);
+        const bool obstruction_keeper = active.entry == obstruction_entry &&
+            (active.last_is_player || (active.obstruction.late_keeper && c.lr() == 0x10273d88));
+        const auto keeper = obstruction_keeper ? player : data + 0xf000;
+        c.set(3, no_keeper ? 0 : keeper);
     }
     else if (target == 0x101e3f10) c.set_f(1, active.entry == 0x10278220 ? active.primary.metric : active.context.metric);
     else if (target == 0x101ee770) c.set(3, active.primary.team_shape);
@@ -4933,11 +4988,216 @@ std::vector<Case> cases() {
 }
 }
 
+namespace {
+int check_obstruction(const State& base, std::string_view mode) {
+    const bool spatial = mode == "--obstruction-spatial";
+    const bool production = mode == "--obstruction-production";
+    const bool contest = production || mode == "--obstruction-contest";
+    const bool penalty_gaps = mode == "--obstruction-penalty-gaps";
+    const bool final_gaps = penalty_gaps || mode == "--obstruction-final-gaps";
+    const bool gaps = final_gaps || mode == "--obstruction-gaps";
+    unsigned checked = 0;
+    for (int phase : {-1, 0, 1, 2, 3, 4, 5, 6, 7, 127})
+    for (int clock : {-128, 0, 6})
+    for (int variant : {0, 1, 2, 3})
+    for (bool wrap : {false, true}) {
+        if (spatial && (phase < 0 || phase > 4)) continue;
+        if (contest && (phase < 0 || phase > 7)) continue;
+        if (production && (clock != 0 || wrap || (phase != 0 && phase != 4) ||
+                variant != (phase == 0 ? 1 : 2))) continue;
+        if (!spatial && !contest && !gaps && (phase == 6 || phase == 7)) continue;
+        if (gaps && phase == 127) continue;
+        if (final_gaps && (phase > 4 || clock != 0)) continue;
+        if (penalty_gaps && phase != 2) continue;
+
+        active = {obstruction_entry, 1, 4, phase};
+        active.factor = variant ? 0.0 : 2.5;
+        active.first_role = 0;
+        active.last_is_player = variant == 1;
+        auto state = cm::semantic_io_checks::clone(base);
+        Cpu c(*state);
+        initialize_case(c);
+        c.set({{3, player}, {4, 23}, {6, 4}, {7, 1}});
+        c.put8(player + 0x110, 0);
+        c.put8(match + 0x7924, variant == 3 ? 0 : 1);
+        c.put8(match + 0x7921, 1);
+        c.put8(match + 0x7920, clock);
+        c.put32(match + 0xe000, variant == 2 ? player : 0);
+        c.put32(match + 0x3108, 200);
+        c.put32(c.r(2) - 0x7b90, data + 0x100); c.put32(data + 0x100, 0);
+        c.put32(c.r(2) - 0x7b8c, data + 0x200);
+        c.put32(c.r(2) - 0x7b88, data + 0x104); c.put32(data + 0x104, data + 0x206);
+        c.put32(c.r(2) - 0x7b84, data + 0x108); c.put32(data + 0x108, data + (wrap ? 0x206 : 0x200));
+        c.put16(data + 0x200, 0); c.put16(data + 0x202, 15);
+        c.put16(data + 0x204, wrap ? 1 : 0); c.put16(data + 0x206, 3);
+
+        if (spatial || contest || gaps) {
+            active.last_is_player = false;
+            c.put8(match + 0x7924, 1); c.put8(match + 0x7921, 0);
+            c.put32(match + 0xe000, 0);
+            c.put32(player + 0x6c, data + 0xc000);
+        }
+        constexpr unsigned attribute_slots[]{1, 21, 36, 37, 41};
+        if (spatial) {
+            c.set(4, variant == 3 ? 450 : 32767);
+            c.put8(player + 0x105, variant == 0 ? 0 : 4);
+            c.put8(player + 0x106, clock == 0 ? 10 : clock);
+            c.put8(data + 0xc068, clock);
+            for (unsigned index : attribute_slots)
+                c.put16(player + 0x11e + index * 2, variant == 3 ? 0 : clock == -128 ? -300 : index * 5);
+            active.first_role = variant == 1;
+        }
+        if (contest || gaps) {
+            active.obstruction = {unsigned(phase), clock, wrap, wrap};
+            c.set_f(1, 8);
+            c.set(4, variant == 1 ? 1000 : 0);
+            c.set(7, 0);
+            c.put8(match + 0x791f, wrap ? 3 : 0);
+            c.put32(match + 0xdff4, 0);
+            c.put8(player + 0x105, clock == -128 ? 0 : 4);
+            c.put8(player + 0x106, clock == 0 ? 11 : clock == 6 ? 0 : 6);
+            c.put8(data + 0xc068, 1);
+            c.put32(match + 0x3118, data + 0xa000);
+            c.put32(data + 0xa01c, data + 0xb000); c.put32(data + 0xa020, data + 0xb000);
+            c.put32(data + 0xb02c, data + 0xd000);
+            c.put8(data + 0xd119, 8);
+            c.put8(data + 0xd027, 0); c.put8(data + 0xd105, 2); c.put8(data + 0xd106, 10);
+            for (unsigned index : attribute_slots) c.put16(player + 0x11e + index * 2, 1600);
+            constexpr unsigned words[]{20, 800, 603, 200};
+            for (unsigned slot = 0; slot < 4; ++slot) c.put16(data + 0x200 + 2 * slot, words[variant]);
+            active.obstruction.actual_acquisition = production && phase == 0;
+        }
+        if (gaps) {
+            const bool home = wrap;
+            const bool protected_side = phase < 0;
+            const auto side = unsigned(!home);
+            c.put8(player + 0x27, side);
+            c.put8(player + 0x110, 1);
+            c.put8(match + 0x7924, protected_side ? 1 - side : side);
+            c.put8(match + 0x7921, protected_side ? side : 1 - side);
+            c.put8(match + 0x791f, 0);
+            c.put8(player + 0x105, clock == -128 ? 7 : 4);
+            c.put8(player + 0x106, clock == -128 ? 6 : home ? (clock == 0 ? 0 : 2) : (clock == 0 ? 11 : 12));
+            c.put8(data + 0xc068, variant == 2 ? -3 : 0);
+            c.put8(data + 0xd027, variant == 3 ? 2 : unsigned(home));
+            c.put8(data + 0xd105, clock == 0 ? 4 : 7);
+            c.put8(data + 0xd106, home ? (clock == 0 ? 2 : 6) : (clock == 0 ? 10 : 7));
+            c.put8(data + 0xd119, variant == 3 ? 7 : 8);
+            if (variant == 2) c.put32(data + 0xb02c, 0);
+            c.put32(data + 0x104, data + 0x23e);
+            c.put32(data + 0x108, data + 0x200);
+            active.obstruction = {unsigned(phase), clock, false, false, variant == 2, variant == 3};
+            c.set(6, variant == 1 ? 5 : 4);
+            c.set(7, variant == 2);
+            if (protected_side) {
+                constexpr std::int32_t seeds[]{-100, -101, -50, -99};
+                c.put32(data + 0x100, std::uint32_t(seeds[variant]));
+                c.set_f(1, -2);
+                for (unsigned slot = 0; slot < 32; ++slot) c.put16(data + 0x200 + 2 * slot, 0);
+            } else {
+                if (phase <= 2) active.obstruction.restart = 0;
+                const unsigned word = phase == 0 ? 0 : phase == 1 ? 200 : phase == 2 ? 800 :
+                    phase == 3 ? 1 : phase == 4 ? 603 : phase == 5 ? 8 : phase == 6 ? 27 : 9;
+                c.set(4, phase == 0 ? 60 : 0);
+                if (phase == 3 && variant == 0) c.put32(data + 0x100, std::uint32_t(-2));
+                for (unsigned slot = 0; slot < 32; ++slot) c.put16(data + 0x200 + 2 * slot, word);
+            }
+        }
+        if (final_gaps) {
+            auto& obstruction = active.obstruction;
+            const auto side = unsigned(!wrap);
+            if (phase < 0) c.put32(data + 0x100, std::uint32_t(-291));
+            else if (phase == 0) {
+                obstruction.restart = 0;
+                obstruction.late_keeper = false;
+                c.set(4, 0); c.set(7, 1);
+                c.put8(player + 0x105, 7);
+                for (unsigned slot = 0; slot < 32; ++slot) c.put16(data + 0x200 + 2 * slot, 40);
+            } else if (phase == 1) {
+                obstruction.restart = 4;
+                obstruction.chance_seed = variant == 0 ? -9 : -7;
+            } else if (phase == 2) {
+                obstruction.restart = 5;
+                obstruction.restart_seed = variant == 0 ? -1 : 1;
+                obstruction.wait = 0;
+                if (penalty_gaps)
+                    for (unsigned slot = 0; slot < 32; ++slot) c.put16(data + 0x200 + 2 * slot, 801);
+            } else if (phase == 3) {
+                obstruction.restart = 4;
+                obstruction.reason_draws = true;
+                obstruction.wait = 8;
+                c.put8(player + 0x106, side ? 12 : 2);
+            } else {
+                obstruction.restart = 6;
+                obstruction.odd_review_draw = true;
+                obstruction.even_review_draw = true;
+            }
+        }
+        const auto original = +[](State& s, std::uint32_t entry) {
+            reference_mode = true;
+            s.pc = entry;
+            run_until(s, sentinel);
+            require_return(s);
+            if (active.obstruction.actual_acquisition)
+                cm::semantic_io_checks::require(s.memory.read<4>(match + 0xe000) == player, "Original did not acquire the ball");
+        };
+        const auto rewrite = +[](State& s, std::uint32_t) {
+            reference_mode = false;
+            Cpu c(s);
+            if (generated_mode) {
+                s.pc = obstruction_entry;
+                s.budget = 64;
+                run_until(s, sentinel);
+            } else {
+                match_pl::PlayerObstruction(c).run();
+                c.finish();
+            }
+            require_return(s);
+            if (active.obstruction.actual_acquisition)
+                cm::semantic_io_checks::require(c.u32(match + 0xe000) == player, "C++ did not acquire the ball");
+#if defined(CM_MATCH_PL_COVERAGE)
+            __llvm_profile_write_file();
+#endif
+        };
+        const auto differences = compare_routine_call(*state, obstruction_entry, original, rewrite,
+            RoutineChecker::result_r3 | RoutineChecker::result_f1);
+        if (!differences.empty()) {
+            std::cerr << "Obstruction phase=" << phase << " clock=" << clock << " variant=" << variant << " wrap=" << wrap << '\n';
+            for (const auto& line : differences) std::cerr << line << '\n';
+            return 1;
+        }
+        ++checked;
+        if (production && phase == 0) {
+            const auto corrupted = +[](State& s, std::uint32_t entry) {
+                reference_mode = false;
+                s.pc = entry;
+                run_until(s, sentinel);
+                Cpu c(s);
+                c.put16(player + 0x19c, c.u16(player + 0x19c) ^ 1);
+            };
+            const auto control = compare_routine_call(*state, obstruction_entry, original, corrupted,
+                RoutineChecker::result_r3 | RoutineChecker::result_f1);
+            cm::semantic_io_checks::require(std::ranges::any_of(control, [](const auto& line) {
+                return line.starts_with("byte 6000119d ");
+            }), "Obstruction publication corruption escaped comparison");
+        }
+    }
+    std::cout << checked << " original/C++ obstruction returns match\n";
+    return 0;
+}
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) return 2;
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
         const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
+        if (mode == "--obstruction-opening" || mode == "--obstruction-spatial" || mode == "--obstruction-contest" ||
+            mode == "--obstruction-gaps" || mode == "--obstruction-final-gaps" ||
+            mode == "--obstruction-penalty-gaps" || mode == "--obstruction-production") {
+            generated_mode = mode == "--obstruction-production";
+            return check_obstruction(*base, mode);
+        }
         if (mode == "--player-response-position" || mode == "--player-response-ratings" || mode == "--player-response-bytes" || mode == "--player-response-returned" || mode == "--response-coverage-gaps" || mode == "--response-live-gaps" || mode == "--response-production") {
             generated_mode = mode == "--response-production";
             response_live_gaps = mode == "--response-live-gaps";

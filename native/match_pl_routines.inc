@@ -4,6 +4,8 @@ MATCH_PL_ROUTINE(0x10227460, 0x1022ba10, R3|F1, "36b5670e3bf1947a",
     [](Cpu& c) { match_pl::PlayerInfluence(c, c.r(3)).run(); })
 MATCH_PL_ROUTINE(0x1022ba10, 0x1022e3a0, R3|F1, "267b04268698447f",
     [](Cpu& c) { match_pl::PlayerResponse(c, c.r(3), c.r(4)).run(); })
+MATCH_PL_ROUTINE(0x10272240, 0x10274170, R3|F1, "75ec18c41067cd41",
+    [](Cpu& c) { match_pl::PlayerObstruction(c).run(); })
 // Original entries of the first MATCH_PL state/spatial-query block.
 MATCH_PL_ROUTINE(0x10237b50, 0x102393c0, R3|F1, "35946308526c1212",
     [](Cpu& c) { match_pl::update_periodic_balance(c, c.r(3)); })

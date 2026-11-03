@@ -18,7 +18,7 @@ using namespace cm::aot;
 namespace {
 std::uint32_t match_address = 0;
 constexpr unsigned advances = 600;
-bool timed = false, construction = false, response = false;
+bool timed = false, construction = false, response = false, obstruction = false;
 unsigned pair_index = 0;
 struct Inputs final : CodeFragmentBoundaryObserver {
     unsigned clocks = 0;
@@ -36,7 +36,7 @@ struct Inputs final : CodeFragmentBoundaryObserver {
 struct ShotCalls final : MemoryObserver {
     State& s;
     MemoryObserver* previous;
-    unsigned calls = 0, balance_calls = 0, construction_calls = 0, influence_calls = 0;
+    unsigned calls = 0, balance_calls = 0, construction_calls = 0, influence_calls = 0, obstruction_calls = 0;
     explicit ShotCalls(State& state) : s(state), previous(s.memory.date_observer) { if (!timed) s.memory.date_observer = this; }
     ~ShotCalls() { if (!timed) s.memory.date_observer = previous; }
     void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
@@ -60,6 +60,7 @@ struct ShotCalls final : MemoryObserver {
             ++calls; break;
         case 0x101d93ec: case 0x101d942c: ++balance_calls; break;
         case 0x1020e9e0: ++construction_calls; break;
+        case 0x101f0b70: ++obstruction_calls; break;
         }
     }
 };
@@ -106,6 +107,11 @@ void interval(State& s, bool original) {
         if (!shots.influence_calls) throw std::runtime_error("Actual-match interval did not exercise player response");
         std::cerr << (original ? "original" : "cpp") << " response and influence calls=" << shots.influence_calls << '\n';
     }
+    if (obstruction) {
+        c.put32(0x61000014, shots.obstruction_calls);
+        if (!shots.obstruction_calls) throw std::runtime_error("Actual-match interval did not exercise player obstruction");
+        std::cerr << (original ? "original" : "cpp") << " obstruction calls=" << shots.obstruction_calls << '\n';
+    }
     if (!timed && !shots.balance_calls) throw std::runtime_error("Actual-match interval did not exercise periodic balance");
     if (!timed && !shots.calls) throw std::runtime_error("Actual-match interval did not exercise shot selection");
     if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << " periodic-balance calls=" << shots.balance_calls << " construction calls=" << shots.construction_calls << '\n';
@@ -135,6 +141,7 @@ int main(int argc, char** argv) {
             const std::string_view option(argv[2]);
             if (option == "--construction") construction = true;
             else if (option == "--response") response = true;
+            else if (option == "--obstruction") obstruction = true;
             else {
                 if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");
                 pairs = unsigned(std::stoul(std::string(option.substr(15))));
