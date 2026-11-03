@@ -852,6 +852,11 @@ phase. Availability byte 2 changes the position but preserves the condition and
 cached-role fields. The optional second eligibility-profile query runs only when
 the first result is at least 3; unordered results skip it. Preference comparison
 uses signed bytes, but the subsequent subtraction rereads the selected byte unsigned.
+The following random preferences use bounds `35 - signed8(trait)` and
+`60 - 2 * signed8(trait)`: zero consumes no second draw, and neither can reach
+its wide sampler. Personality reputation is narrowed to a signed byte before
+the power calculation; a missing competition descriptor replaces both the
+fixture ID and its competition pointer, rereading the replacement ID after the write.
 
 Periodic balance consumes its preliminary draw before checking the current balance,
 queries the role afresh at each decision, and rereads counters after a reseed.

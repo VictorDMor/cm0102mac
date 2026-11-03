@@ -28,6 +28,12 @@ class PlayerConstruction {
     void initialize_eligibility();
     void copy_preferences_and_names();
     void inspect_special_club_context();
+    void initialize_random_preferences();
+    std::uint32_t narrow_preference(std::int32_t bound, std::uint32_t refill_back);
+    bool prepare_personality_factors();
+    void affiliation_factor();
+    void fixture_reputation();
+    void repair_competition_descriptor();
 public:
     PlayerConstruction(guest::Cpu&, std::uint32_t player, std::uint32_t match,
                        std::uint32_t staff, std::uint32_t side,

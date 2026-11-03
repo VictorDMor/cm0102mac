@@ -150,7 +150,7 @@ void PlayerConstruction::prepare_record() {
     choose_record(); copy_attributes_and_clubs();
     initialize_fitness(); initialize_affiliation(); initialize_eligibility();
     copy_preferences_and_names(); inspect_special_club_context();
-    advance(0x10224528);
+    initialize_random_preferences(); prepare_personality_factors();
     throw std::logic_error("MATCH_PL constructor suffix is not reconstructed");
 }
 

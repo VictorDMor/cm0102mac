@@ -45,6 +45,8 @@ constexpr std::uint32_t fatal_boundary = 0x1076f7d0;
 constexpr std::uint32_t balance_query_boundary = 0x101e3d50;
 constexpr std::uint32_t construction_fitness_boundary = 0x101878d0;
 constexpr std::uint32_t construction_random_boundary = 0x1077b770;
+constexpr std::uint32_t construction_preference_boundary = 0x101fce40;
+constexpr std::uint32_t construction_factor_boundary = 0x10780fc0;
 struct ConstructionInputs {
     bool fallback = false, mutate_lookup = false;
     int old_side = 0, staff_id = 0, staff_count = 10, fallback_count = 1;
@@ -57,6 +59,10 @@ struct ConstructionInputs {
     int attribute_gate = 1, eligibility = 1, first_rating = 11, second_rating = 15;
     int date_valid = 1, special_flag = 0, special_rating = 20, preference_a = 10, preference_b = 15;
     int reputation = 5751, context = 0;
+    int preference_kind = 0, preference_trait = 10;
+    int personality_gate = 0, contract_band = 0, contract_influence = 0;
+    int competition_rating = 20, reputation_listed = 0, descriptor_status = 1;
+    bool descriptor_present = true;
     unsigned names = 7;
     bool date = true, wrapped_controller = false, null_nation = false, clear_club = false;
     bool clear_staff_at_diagnostic = false;
@@ -288,6 +294,7 @@ struct PopulationState {
 bool reference_mode = false, generated_mode = false, balance_prefix = false;
 bool construction_prefix = false;
 bool construction_setup_prefix = false;
+bool construction_preference_prefix = false, construction_factor_prefix = false;
 constexpr std::uint32_t production_entries[]{
 #define MATCH_PL_ROUTINE(entry, ...) entry,
 #define MATCH_PL_DRAFT(...)
@@ -315,7 +322,7 @@ void trace_call(Cpu& c, std::uint32_t target) {
 bool scripted_construction(Cpu& c, std::uint32_t target) {
     constexpr std::array services{0x101878d0u, 0x103d0990u, 0x10187680u, 0x100d9480u, 0x100d94d0u,
         0x100ce250u, 0x100c7d00u, 0x104646d0u, 0x10306a80u, 0x10305ae0u, 0x10305700u,
-        0x103058f0u, 0x100d9440u, 0x10303560u, 0x1014c2e0u};
+        0x103058f0u, 0x100d9440u, 0x10303560u, 0x1014c2e0u, 0x101fce40u, 0x10452ed0u, 0x1077b770u};
     if (std::ranges::find(services, target) == services.end()) return false;
     trace_call(c, target); const auto& in = active.construction;
     switch (target) {
@@ -340,6 +347,9 @@ bool scripted_construction(Cpu& c, std::uint32_t target) {
     case 0x100d9440: c.set(3, in.date_valid); break;
     case 0x10303560: c.set_f(1, c.r(6) == 1 ? in.first_profile : in.second_profile); break;
     case 0x1014c2e0: c.set(3, in.context); break;
+    case 0x101fce40: c.set(3, in.personality_gate); break;
+    case 0x10452ed0: c.set(3, in.descriptor_status); break;
+    case 0x1077b770: c.set(3, active.first_role); break;
     }
     if (in.mutate_back && c.lr() == in.mutate_back) {
         c.put32(data + 0x380, c.u32(data + 0x380) + 1);
@@ -519,7 +529,7 @@ bool scripted(State& s) {
         }
     }
     else if (target == 0x10082f90) {
-        c.set(3, active.null_player ? 0 : data + 0xe000);
+        c.set(3, active.null_player ? 0 : data + (active.entry == 0x10223ac0 ? 0xd800 : 0xe000));
         if (active.entry == 0x10223ac0 && active.construction.mutate_lookup) {
             c.put32(player + 0x70, data + 0xd100); c.put32(player + 0x1a4, other_match);
             c.put32(data + 0x37c, c.u32(data + 0x37c) + 1);
@@ -755,6 +765,14 @@ bool scripted(State& s) {
     return true;
 }
 bool probe(State& s) {
+    if (construction_preference_prefix && s.pc == construction_preference_boundary && Cpu(s).lr() == 0x10224884) {
+        Cpu c(s); trace_call(c, construction_preference_boundary);
+        throw std::runtime_error("MATCH_PL constructor preference boundary");
+    }
+    if (construction_factor_prefix && s.pc == construction_factor_boundary && Cpu(s).lr() == 0x10224c48) {
+        Cpu c(s); trace_call(c, construction_factor_boundary);
+        throw std::runtime_error("MATCH_PL constructor factor boundary");
+    }
     if (construction_setup_prefix && s.pc == construction_random_boundary && Cpu(s).lr() == 0x10224528) {
         Cpu c(s); trace_call(c, construction_random_boundary);
         throw std::runtime_error("MATCH_PL constructor setup boundary");
@@ -1482,6 +1500,12 @@ void initialize_case(Cpu& c) {
         c.put32(c.r(2) - 0x7a7c, data + 0x428); c.put32(data + 0x428, data + 0x800);
         c.put32(c.r(2) - 0x7a24, data + 0x42c); c.put32(data + 0x42c, in.restricted_nation);
         c.put32(c.r(2) - 0x7b80, data + 0xac00); c.put16(data + 0xac02, in.year);
+        c.put32(c.r(2) - 0x7a50, data + 0x430); c.put32(data + 0x430, 2);
+        c.put32(c.r(2) - 0x7bbc, data + 0x434); c.put32(data + 0x434, data + 0xae00);
+        c.put32(data + 0xa800, in.descriptor_present ? data + 0xad00 : 0);
+        c.put32(data + 0xa828, in.descriptor_present ? data + 0xad00 : 0);
+        c.put16(data + 0xa418, in.competition_rating);
+        c.put8(data + 0xd860, in.contract_band); c.put8(data + 0xd84c, in.contract_influence);
         c.put32(data + 0xa400, 2); c.put32(data + 0xa808, in.history_table ? data + 0xad00 : 0);
         c.put8(data + 0xa120, in.nation_history); c.put32(data + 0xa068, in.nation_id);
         for (const auto club : {data + 0xb000, data + 0xb400, data + 0xb800, data + 0xbc00}) {
@@ -1491,11 +1515,19 @@ void initialize_case(Cpu& c) {
                 c.put32(club + 0x70 + index * 4, in.listed == int(index) ? (active.side ? data + 0xb400 : data + 0xb000) : 0);
         }
         for (const auto fixture : {data + 0xe000, data + 0xe100}) {
+            c.put32(fixture + 0x14, data + 0xa400);
+            if (in.reputation_listed) {
+                const auto own = c.u32(fixture + (active.side ? 0x20 : 0x1c));
+                const auto opponent = c.u32(fixture + (active.side ? 0x1c : 0x20));
+                c.put32(own + 0x70 + in.reputation_listed * 4, opponent);
+            }
             c.put32(fixture, in.fixture_id); c.put8(fixture + 0x3a, in.fixture_kind);
             c.put8(fixture + 0x40, in.home_eligible); c.put8(fixture + 0x41, in.away_eligible);
         }
         c.put8(match + 0x7931, in.history); c.put8(other_match + 0x7931, in.history);
         for (const auto record : {data + 0xd000, data + 0xd100}) {
+            c.put8(record + 0xf, record == data + 0xd000 ? in.preference_kind : 20);
+            c.put8(record + 0x21, record == data + 0xd000 ? in.preference_trait : -17);
             c.put8(record + 0x30, record == data + 0xd000 ? in.preference_a : -17);
             c.put8(record + 0x3b, record == data + 0xd000 ? in.preference_b : 23);
         }
@@ -1645,12 +1677,22 @@ void construction_record_prefix(State& s, std::uint32_t entry, bool original_rou
             activation.prepare_record();
         }
     } catch (const std::runtime_error& error) {
-        const auto expected = construction_setup_prefix ? "MATCH_PL constructor setup boundary" : "MATCH_PL constructor fitness boundary";
+        const auto expected = construction_factor_prefix ? "MATCH_PL constructor factor boundary" :
+            construction_preference_prefix ? "MATCH_PL constructor preference boundary" : construction_setup_prefix ? "MATCH_PL constructor setup boundary" : "MATCH_PL constructor fitness boundary";
         if (std::string_view(error.what()) != expected) throw;
         stopped = true;
     }
     Cpu c(s);
-    if (construction_setup_prefix) {
+    if (construction_factor_prefix || construction_preference_prefix) {
+        const auto target = construction_factor_prefix ? construction_factor_boundary : construction_preference_boundary;
+        const auto back = construction_factor_prefix ? 0x10224c48u : 0x10224884u;
+        cm::semantic_io_checks::require(stopped && s.pc == target && c.lr() == back && c.sp() == stack - 0xd0,
+            "Constructor did not reach the requested personality service with its live frame");
+        if (construction_preference_prefix)
+            cm::semantic_io_checks::require(c.r(3) == c.u32(player + 0x1a4), "Personality gate must receive the current match");
+        if (active.construction.mutate_back)
+            cm::semantic_io_checks::require(c.u32(data + 0x380) == 1, "Constructor personality mutation did not execute exactly once");
+    } else if (construction_setup_prefix) {
         cm::semantic_io_checks::require(stopped && s.pc == construction_random_boundary && c.lr() == 0x10224528 &&
             c.sp() == stack - 0xd0 && c.r(3) == data + 0x210 && c.u32(c.toc(-0x7b84)) == data + 0x200 &&
             c.u8(player + 0x27) == std::uint8_t(active.side),
@@ -1688,6 +1730,17 @@ void corrupt_construction_rng(State& s, std::uint32_t entry) {
 void corrupt_construction_trace(State& s, std::uint32_t entry) {
     rewrite_construction_record(s, entry); Cpu c(s); c.put32(trace_at + 12, c.u32(trace_at + 12) ^ 1);
 }
+void corrupt_construction_factor_trace(State& s, std::uint32_t entry, unsigned fpr) {
+    rewrite_construction_record(s, entry); Cpu c(s);
+    const auto used = c.u32(trace_at);
+    cm::semantic_io_checks::require(used >= 77 * 4, "Constructor factor trace is empty");
+    const auto last = trace_at + 4 + used - 77 * 4;
+    cm::semantic_io_checks::require(c.u32(last) == construction_factor_boundary, "Factor corruption missed the power service");
+    const auto slot = fpr == 2 ? 39 : 41 + (fpr - 14) * 2;
+    c.put32(last + slot * 4, c.u32(last + slot * 4) ^ 1);
+}
+void corrupt_construction_exponent(State& s, std::uint32_t entry) { corrupt_construction_factor_trace(s, entry, 2); }
+void corrupt_construction_affiliation(State& s, std::uint32_t entry) { corrupt_construction_factor_trace(s, entry, 30); }
 std::vector<Case> construction_record_cases() {
     std::vector<Case> result;
     for (int side : {0, 1}) for (int old : {0, 1, -128}) for (int id : {-1, 0, 9, 10, INT32_MAX}) {
@@ -1784,6 +1837,60 @@ std::vector<Case> construction_setup_cases() {
         Case test{0x10223ac0}; test.construction.mutate_back = back;
         if (back == 0x102244e8) test.construction.wrapped_controller = true;
         if (back == 0x102242f0) test.construction.first_profile = 3;
+        result.push_back(test);
+    }
+    return result;
+}
+
+std::vector<Case> construction_preference_cases() {
+    auto result = construction_setup_cases();
+    for (int kind : {0, 20, 255}) for (int trait : {-128, -1, 0, 29, 30, 31, 34, 35, 36, 127})
+    for (auto seed : {0u, 65535u, 0x7fffffffu, 0x80000000u, 0xffffffffu})
+    for (unsigned position : {0u, 1u, 2u}) {
+        Case test{0x10223ac0}; test.construction.preference_kind = kind; test.construction.preference_trait = trait;
+        test.random_seed = seed; test.strategy_low = 65535; test.pool_position = position; result.push_back(test);
+    }
+    for (auto back : {0x10224528u, 0x102245b4u, 0x1022473cu}) {
+        Case test{0x10223ac0}; test.construction.mutate_back = back;
+        test.construction.preference_kind = back == 0x102245b4 ? 20 : 0;
+        test.pool_position = back == 0x10224528 ? 1 : 2; result.push_back(test);
+    }
+    return result;
+}
+std::vector<Case> construction_factor_cases() {
+    std::vector<Case> result;
+    for (int side : {0, 1, -128}) for (int special : {0, 1, 256}) for (bool null_contract : {false, true})
+    for (int band : {0, 1, 2, 3, 4, 15, 17}) for (int influence : {-128, -1, 0, 127}) {
+        Case test{0x10223ac0, side}; auto& in = test.construction;
+        in.special = special; in.contract_band = band; in.contract_influence = influence;
+        test.null_player = null_contract; result.push_back(test);
+    }
+    for (int side : {0, 1}) for (int eligible : {0, 1}) for (int rating : {-32768, -129, -1, 0, 10, 127, 128, 32767})
+    for (int reputation : {-32768, -500, -1, 0, 499, 500, 32767}) for (int listed : {0, 1, 2, 3}) {
+        Case test{0x10223ac0, side}; auto& in = test.construction;
+        in.home_eligible = eligible; in.competition_rating = rating; in.reputation = reputation;
+        in.reputation_listed = listed; result.push_back(test);
+    }
+    for (int id : {-2, -1, 0, 10}) for (bool present : {false, true}) for (int status : {0, 1, 256, 255}) {
+        Case test{0x10223ac0}; auto& in = test.construction;
+        in.fixture_id = id; in.descriptor_present = present; in.descriptor_status = status; result.push_back(test);
+    }
+    for (auto back : {0x10224884u, 0x102248dcu, 0x10224bfcu}) {
+        Case test{0x10223ac0}; test.construction.mutate_back = back; result.push_back(test);
+    }
+    { Case test{0x10223ac0}; test.construction.zero_page_staff = true; result.push_back(test); }
+    std::uint32_t seed = 0x46414331;
+    const auto next = [&] { seed = seed * 1664525 + 1013904223; return seed; };
+    for (unsigned index = 0; index < 128; ++index) {
+        Case test{0x10223ac0, int(next() >> 31)}; auto& in = test.construction;
+        in.staff_id = std::int32_t(next()); in.staff_count = INT32_MAX;
+        in.personality_gate = next() >> 31 ? 256 : 0;
+        in.special = next() >> 31; in.contract_band = next() >> 24; in.contract_influence = next() >> 24;
+        in.competition_rating = std::int16_t(next() >> 16); in.reputation = std::int16_t(next() >> 16);
+        in.reputation_listed = next() % 4; in.home_eligible = next() >> 31;
+        in.descriptor_present = next() >> 31; in.descriptor_status = next() >> 31;
+        in.preference_kind = next() >> 31 ? 20 : 0; in.preference_trait = next() >> 24;
+        test.random_seed = next(); test.strategy_low = next() >> 16; test.pool_position = next() % 3;
         result.push_back(test);
     }
     return result;
@@ -4223,10 +4330,17 @@ int main(int argc, char** argv) {
     if (argc < 2) return 2;
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
-        if (argc == 3 && (std::string_view(argv[2]) == "--construction-record-prefix" || std::string_view(argv[2]) == "--construction-setup-prefix")) {
-            construction_setup_prefix = std::string_view(argv[2]) == "--construction-setup-prefix";
-            construction_prefix = !construction_setup_prefix;
-            const auto prefixes = construction_setup_prefix ? construction_setup_cases() : construction_record_cases(); unsigned checked = 0;
+        const auto mode = argc == 3 ? std::string_view(argv[2]) : std::string_view{};
+        if (mode == "--construction-record-prefix" || mode == "--construction-setup-prefix" ||
+            mode == "--construction-preference-prefix" || mode == "--construction-factor-prefix") {
+            construction_setup_prefix = mode == "--construction-setup-prefix";
+            construction_preference_prefix = mode == "--construction-preference-prefix";
+            construction_factor_prefix = mode == "--construction-factor-prefix";
+            construction_prefix = mode == "--construction-record-prefix";
+            const auto prefixes = construction_factor_prefix ? construction_factor_cases() :
+                construction_preference_prefix ? construction_preference_cases() :
+                construction_setup_prefix ? construction_setup_cases() : construction_record_cases();
+            unsigned checked = 0;
             for (const auto& test : prefixes) {
                 active = test; auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
                 const auto found = compare_routine_call(*state, active.entry, original_construction_record, rewrite_construction_record,
@@ -4238,7 +4352,12 @@ int main(int argc, char** argv) {
                 }
                 ++checked;
             }
-            for (const auto corruption : {corrupt_construction_result, corrupt_construction_record, corrupt_construction_rng, corrupt_construction_trace}) {
+            std::vector<decltype(&corrupt_construction_result)> corruptions{
+                corrupt_construction_result, corrupt_construction_record, corrupt_construction_rng, corrupt_construction_trace};
+            if (construction_factor_prefix) {
+                corruptions.push_back(corrupt_construction_exponent); corruptions.push_back(corrupt_construction_affiliation);
+            }
+            for (const auto corruption : corruptions) {
                 active = {0x10223ac0}; active.construction.fallback = true; active.pool_position = 1;
                 auto state = cm::semantic_io_checks::clone(*base); Cpu c(*state); initialize_case(c);
                 const auto found = compare_routine_call(*state, active.entry, original_construction_record, corruption,
@@ -4247,8 +4366,8 @@ int main(int argc, char** argv) {
                 cm::semantic_io_checks::require(std::ranges::any_of(found, [&](const auto& line) { return line.starts_with(diagnostic); }),
                     "Constructor prefix corruption was not detected");
             }
-            std::cout << checked << '/' << prefixes.size() << (construction_setup_prefix ? " construction-setup" : " construction-record")
-                << " prefixes matched (not guest returns); four corruptions detected\n";
+            std::cout << checked << '/' << prefixes.size() << (construction_factor_prefix ? " construction-factor" : construction_preference_prefix ? " construction-preference" : construction_setup_prefix ? " construction-setup" : " construction-record")
+                << " prefixes matched (not guest returns); " << corruptions.size() << " corruptions detected\n";
             return 0;
         }
         if (argc == 3 && std::string_view(argv[2]) == "--balance-initial-prefix") {
