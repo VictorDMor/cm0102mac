@@ -113,6 +113,17 @@ void PlayerInfluence::run() {
     const auto side = actor.side(); c.set(3, actor.match()); const bool away = compare(c, std::int8_t(side)) != 0;
     c.set(3, c.u32(c.r(3) + 0x3118)); c.set(3, c.u32(c.r(3) + (away ? 0x20 : 0x1c)));
     c.call(0x100c7d00, 0x102278dc);
+    contract_and_morale(); fixture_pressure(); initial_ability();
+    c.set(3, c.u32(actor.address + 0xfc)); c.call(0x100c7d00, 0x10228220);
+    experience_penalty(); limit_ability(); publish_ability();
+    const auto live_side = actor.side(); c.set(3, actor.match()); const bool live_away = compare(c, std::int8_t(live_side)) != 0;
+    c.set(3, c.u32(c.r(3) + 0x3118)); c.set(3, c.u32(c.r(3) + (live_away ? 0x20 : 0x1c)));
+    c.set({{4, 0}, {5, 1}, {6, 0}, {7, 0}}); c.call(0x1014c2e0, 0x102286e4);
+    coaching_effects();
+    const auto opponent = std::int8_t(actor.side()) == 0;
+    c.set(3, actor.match()); c.set(4, opponent); c.call(0x101fee30, 0x102288bc);
+    technical_attributes();
+    c.set_f(1, c.f32(actor.address + 0xb8)); c.set_f(2, c.f64(doubles + 0x198)); c.call(0x10780fc0, 0x10228e18);
     throw std::logic_error("MATCH_PL team influence suffix is not reconstructed");
 }
 }
