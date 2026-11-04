@@ -21,6 +21,7 @@
 #include "transfer_manager_save.hpp"
 #include "transfer_manager_schedule.hpp"
 #include "transfer_manager_selection.hpp"
+#include "transfer_manager_squad_quotas.hpp"
 #include "transfer_manager_valuation.hpp"
 #include "routine_check.hpp"
 #include <algorithm>
