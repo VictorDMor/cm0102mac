@@ -1,4 +1,5 @@
 // Only verified handwritten routines are registered for production.
+TRANSFER_MANAGER_ROUTINE(0x103df570, [](Cpu& c) { transfer_manager::destroy_transfer_manager(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103e6290, [](Cpu& c) { transfer_manager::append_staff_registration(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
 TRANSFER_MANAGER_ROUTINE(0x103e6360, [](Cpu& c) { transfer_manager::count_staff_registrations_for_club(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103e6470, [](Cpu& c) { transfer_manager::has_staff_registration(c, c.r(3), c.r(4)); })

@@ -25,6 +25,7 @@ int fees(int argc, char** argv);
 int installments(int argc, char** argv);
 int future(int argc, char** argv);
 int history(int argc, char** argv);
+int lifecycle(int argc, char** argv);
 }
 
 inline void install_check_coverage() {

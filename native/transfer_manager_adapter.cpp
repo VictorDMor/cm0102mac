@@ -7,6 +7,7 @@
 #include "transfer_manager_future.hpp"
 #include "transfer_manager_history.hpp"
 #include "transfer_manager_installments.hpp"
+#include "transfer_manager_lifecycle.hpp"
 #include "transfer_manager_offer_contracts.hpp"
 #include "transfer_manager_pending.hpp"
 #include "transfer_manager_permissions.hpp"
