@@ -1,9 +1,14 @@
 // MATCH_ENG.CPP, space: target cells, nearest players and the team's depth limits.
 #include "match_eng_space.hpp"
+#include "guest_profiler.hpp"
+#include "match_eng_adapter.hpp"
+#include "native_drawing.hpp"
 #include "match_pl.hpp"
 #include "match_pl_adapter.hpp"
 #include "match_turbo.hpp"
 #include "routine_check.hpp"
+#include <cstdlib>
+#include <optional>
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -71,6 +76,127 @@ double distance_to_cell(Cpu& c, std::uint32_t player, std::uint32_t target_row, 
     c.finish();
     return distance;
 }
+// The receiver calls two scans repeatedly. Their role and distance leaves
+// are read-only apart from the guest stack. Keep the original scan order,
+// but publish each leaf's frame and return effects without nested dispatch.
+class ReceiverSpatialQuery {
+public:
+    ReceiverSpatialQuery(Cpu& c, std::uint32_t match, std::uint32_t side) : sp(c.sp()) {
+        switch (c.lr()) {
+        case 0x101e8c30: case 0x101e8d20: case 0x101e9554: case 0x101e9794:
+            break;
+        default:
+            return;
+        }
+        const auto& s = c.s;
+        const auto& memory = s.memory;
+        const auto* observer = memory.observer;
+        if (side > 1 || sp < 0x80 || std::uint64_t(sp) + 12 > (UINT64_C(1) << 32) ||
+            std::uint64_t(match) + players_at + 2 * side_size > (UINT64_C(1) << 32) ||
+            s.budget != UINT64_MAX || s.executed > UINT64_MAX - 160 ||
+            dispatch_probe || routine_checker || match_eng_call_observer || match_eng_declining ||
+            &s == match_eng_original_state || guest_profiler::running() || match_pc_profile_enabled() ||
+            !match_pl_route_allowed(0x10289560) || !match_pl_route_allowed(0x1022e760) ||
+            memory.date_observer || memory.read_trace || memory.debug_attribute_metadata_required() ||
+            (observer && (!dynamic_cast<const NativeDrawingObserver*>(observer) ||
+                          observer->observes_write(sp - 0x80, 0x8c)))) return;
+        if (aliases_stack(match + players_at, 2 * side_size)) return;
+        // Preflight the exact write slots. With diagnostics disabled, reads
+        // use the same mapping checks without changing the guest state.
+        try {
+            for (const auto offset : {0x80u, 0x48u, 0x44u, 0x40u, 0x38u, 8u, 4u}) (void)c.u32(sp - offset);
+            (void)c.u32(sp + 8);
+            enabled = true;
+        } catch (const std::runtime_error&) {
+            // Let the original leaf reach the fault in its own order.
+        }
+    }
+
+    std::int16_t kind(Cpu& c, std::uint32_t player, unsigned position, std::uint32_t back) const {
+        if (enabled && position <= 10) {
+            if (const auto role = live_role(c, player, position)) {
+                c.put32(sp + 8, back);
+                c.put32(sp - 0x40, sp);
+                c.put32(sp - 0x48, c.r(30));
+                c.put32(sp - 0x44, c.r(31));
+                c.put32(sp - 0x38, 0x10289584);
+                c.put32(sp - 0x80, sp - 0x40);
+                c.link(back);
+                c.s.pc = back;
+                c.set({{0, back}, {3, u(*role)}, {4, position * 2}});
+                c.compare(0, std::int32_t(position), 10);
+                return *role;
+            }
+        }
+        return kind_of(c, player, back);
+    }
+
+    double distance(Cpu& c, std::uint32_t player, std::uint32_t target_row,
+                    std::uint32_t target_column, std::uint32_t back) const {
+        if (enabled) {
+            if (const auto distance = live_distance(c, player, target_row, target_column)) {
+                c.put32(sp - 8, c.r(30));
+                c.put32(sp - 4, c.r(31));
+                c.put32(sp + 8, back);
+                c.put32(sp - 0x40, sp);
+                c.set({{0, back}, {3, distance->row_offset}, {4, distance->table}, {5, target_column}});
+                c.link(back);
+                c.s.pc = back;
+                // Two four-instruction absolute-value leaves. The second
+                // leaves the carry from its signed shift.
+                c.s.charge(8);
+                c.s.wr<1>(reg::xer_ca, distance->row_carry);
+                c.set_f(1, distance->value);
+                return distance->value;
+            }
+        }
+        return distance_to_cell(c, player, target_row, target_column, back);
+    }
+
+private:
+    bool aliases_stack(std::uint32_t at, unsigned size) const {
+        return at < std::uint64_t(sp) + 12 && std::uint64_t(at) + size > sp - 0x80;
+    }
+
+    std::optional<std::int16_t> live_role(Cpu& c, std::uint32_t player, unsigned position) const try {
+        const auto match = c.u32(player + 0x1a4);
+        const auto side = c.u8(player + player_side);
+        if (!match || side > 1) return std::nullopt;
+        const auto slot = match + 0x7934 + side * 4;
+        if (aliases_stack(slot, 4)) return std::nullopt;
+        const auto entry = c.u32(slot) + position * 2;
+        if (aliases_stack(entry, 2)) return std::nullopt;
+        return c.i16(entry);
+    } catch (const std::runtime_error&) {
+        return std::nullopt;
+    }
+
+    struct Distance {
+        std::uint32_t table, row_offset;
+        double value;
+        bool row_carry;
+    };
+
+    std::optional<Distance> live_distance(Cpu& c, std::uint32_t player, std::uint32_t target_row,
+                                          std::uint32_t target_column) const try {
+        const auto slot = c.r(2) - 0x6424;
+        if (aliases_stack(slot, 4)) return std::nullopt;
+        const auto coordinates = c.u16(player + 0x105);
+        const auto dx = std::int8_t(coordinates >> 8) - std::int8_t(target_row);
+        const auto dy = std::int8_t(coordinates) - std::int8_t(target_column);
+        const auto row_offset = u(std::int8_t(std::abs(dy))) * 36;
+        const auto table = c.u32(slot);
+        const auto entry = table + row_offset + u(std::int8_t(std::abs(dx))) * 4;
+        if (aliases_stack(entry, 4)) return std::nullopt;
+        return Distance{table, row_offset, c.f32(entry), dy < 0};
+    } catch (const std::runtime_error&) {
+        return std::nullopt;
+    }
+
+    std::uint32_t sp;
+    bool enabled = false;
+};
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -353,11 +479,13 @@ double nearest_distance(Cpu& c, std::uint32_t match, std::uint32_t side, std::ui
     c.set(4, c.u32(frame.at(0x78)));
     Kept<29> other(c, first_player(c.u32(frame.at(0x78)), c.u8(frame.at(0x7f))));
     Kept<28> index(c, 0);
+    const ReceiverSpatialQuery query(c, match, side);
     for (; compare(c, s8(index), 0x14) < 0; index = index + 1, keep(c, {{27, other}}), other = other + player_size) {
-        if (compare(c, s8(position(c, other))) < 0) continue;
-        if (compare(c, kind_of(c, other, 0x101e3f84) & 1) != 0) continue;
+        const auto live_position = position(c, other);
+        if (compare(c, s8(live_position)) < 0) continue;
+        if (compare(c, query.kind(c, other, live_position, 0x101e3f84) & 1) != 0) continue;
         if (compare(c, s8(c.u8(frame.at(0x8b)))) == 0 && compare(c, s8(c.u8(other + player_restricted))) != 0) continue;
-        const double there = distance_to_cell(c, other, c.u8(frame.at(0x83)), c.u8(frame.at(0x87)), 0x101e3fc4);
+        const double there = query.distance(c, other, c.u8(frame.at(0x83)), c.u8(frame.at(0x87)), 0x101e3fc4);
         c.set_f(30, there);
         fpu.fcmp(0, c.f64(pool(c) + 0x50), there);
         if (c.cr(0) & 2) {  // standing on the cell
@@ -389,11 +517,13 @@ std::uint32_t count_nearby_players(Cpu& c, std::uint32_t match, std::uint32_t si
     c.set(4, c.u32(frame.at(0x78)));
     Kept<30> other(c, first_player(c.u32(frame.at(0x78)), c.u8(frame.at(0x7f))));
     Kept<28> index(c, 0);
+    const ReceiverSpatialQuery query(c, match, side);
     for (; compare(c, s8(index), 0x14) < 0; index = index + 1, keep(c, {{27, other}}), other = other + player_size) {
-        if (compare(c, s8(position(c, other))) < 0) continue;
-        if (compare(c, kind_of(c, other, 0x101e408c), 1) == 0) continue;
+        const auto live_position = position(c, other);
+        if (compare(c, s8(live_position)) < 0) continue;
+        if (compare(c, query.kind(c, other, live_position, 0x101e408c), 1) == 0) continue;
         if (compare(c, s8(c.u8(frame.at(0x8b)))) == 0 && compare(c, s8(c.u8(other + player_restricted))) != 0) continue;
-        const double there = distance_to_cell(c, other, c.u8(frame.at(0x83)), c.u8(frame.at(0x87)), 0x101e40c8);
+        const double there = query.distance(c, other, c.u8(frame.at(0x83)), c.u8(frame.at(0x87)), 0x101e40c8);
         c.set_f(31, there);
         fpu.fcmp(0, c.f64(pool(c) + 0x50), there);
         if (c.cr(0) & 2) { count = count + 3; continue; }
