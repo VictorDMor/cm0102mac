@@ -24,6 +24,7 @@ the scrollback. Remove ticked items once their commit is pushed.
   - [x] Reconstruct transfer price and eligibility. Both pass 94 controlled comparisons and 978 sampled comparisons across three matching original/C++ replays.
   - [x] Reconstruct the 15 callback entries and one unconditional gate. Verify 225 controlled comparisons, all 15 transition vectors and a paired sort using the original sorting service.
   - [x] Reconstruct seven offer collection, slot and filter routines. Verify 152 controlled cases, both direct-call controls and 818 sampled calls across three matching replays.
+  - [x] Reconstruct six registration and offer-selection routines. Verify 59 controlled cases, seven production controls and 855 sampled calls across three matching replays.
   - [ ] Reconstruct and verify the remaining functional blocks, including transfer processing, valuation, callbacks and persistence.
   - [ ] Verify combined routing and replays, review, build and install the app, push the owned changes, and update the progress tracker.
 

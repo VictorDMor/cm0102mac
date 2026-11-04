@@ -1,4 +1,7 @@
 // Only verified handwritten routines are registered for production.
+TRANSFER_MANAGER_ROUTINE(0x103e6290, [](Cpu& c) { transfer_manager::append_staff_registration(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
+TRANSFER_MANAGER_ROUTINE(0x103e6360, [](Cpu& c) { transfer_manager::count_staff_registrations_for_club(c, c.r(3), c.r(4)); })
+TRANSFER_MANAGER_ROUTINE(0x103e6470, [](Cpu& c) { transfer_manager::has_staff_registration(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103e76b0, [](Cpu& c) { c.set(3, 1); })
 TRANSFER_MANAGER_ROUTINE(0x103ea250, [](Cpu& c) { transfer_manager::mark_pending_contract(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103ea270, [](Cpu& c) { transfer_manager::clear_pending_contract(c, c.r(3), c.r(4)); })
@@ -11,6 +14,8 @@ TRANSFER_MANAGER_ROUTINE(0x103eb360, [](Cpu& c) { transfer_manager::collect_offe
 TRANSFER_MANAGER_ROUTINE(0x103eb440, [](Cpu& c) { transfer_manager::primary_offer_slot(c, c.r(3), std::int32_t(c.r(4))); })
 TRANSFER_MANAGER_ROUTINE(0x103eb470, [](Cpu& c) { transfer_manager::secondary_offer_slot(c, c.r(3), std::int32_t(c.r(4))); })
 TRANSFER_MANAGER_ROUTINE(0x103ee1a0, [](Cpu& c) { c.set(3, 1); })
+TRANSFER_MANAGER_ROUTINE(0x103f4240, [](Cpu& c) { transfer_manager::best_qualifying_offer(c, c.r(3), c.r(4), c.r(5)); })
+TRANSFER_MANAGER_ROUTINE(0x103f43b0, [](Cpu& c) { transfer_manager::find_special_offer(c, c.r(3), c.r(4), c.r(5)); })
 TRANSFER_MANAGER_ROUTINE(0x103f8810, [](Cpu& c) { c.set(3, 1); })
 TRANSFER_MANAGER_ROUTINE(0x103f9780, [](Cpu& c) { transfer_manager::initialize_record_sentinels(c, c.r(5)); })
 TRANSFER_MANAGER_ROUTINE(0x103fa840, [](Cpu& c) { c.set(3, 1); })
@@ -27,3 +32,4 @@ TRANSFER_MANAGER_ROUTINE(0x10411b70, [](Cpu& c) { transfer_manager::compare_date
 TRANSFER_MANAGER_ROUTINE(0x10411c40, [](Cpu& c) { transfer_manager::compare_linked_priorities(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x10411c80, [](Cpu& c) { transfer_manager::compare_optional_index(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x10411cd0, [](Cpu& c) { transfer_manager::compare_ranked_staff(c, c.r(3), c.r(4)); })
+TRANSFER_MANAGER_ROUTINE(0x10411e10, [](Cpu& c) { transfer_manager::club_passes_division_gate(c, c.r(3)); })
