@@ -3841,7 +3841,7 @@ endif()
 
 set(CM_TRANSFER_MANAGER_SOURCES
     transfer_manager_adapter.cpp transfer_manager_pending.cpp transfer_manager_valuation.cpp
-    transfer_manager_callbacks.cpp)
+    transfer_manager_callbacks.cpp transfer_manager_collections.cpp)
 target_sources(cm_aot PRIVATE ${CM_TRANSFER_MANAGER_SOURCES})
 option(CM_TRANSFER_MANAGER_COVERAGE "Instrument transfer-manager checker objects only" OFF)
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
@@ -3858,7 +3858,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_library(cm_transfer_manager_reference OBJECT "${CM_TRANSFER_MANAGER_REFERENCE}")
     target_include_directories(cm_transfer_manager_reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_options(cm_transfer_manager_reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-    foreach(block pending valuation callbacks)
+    foreach(block pending valuation callbacks collections)
         add_executable(cm-transfer-manager-${block}-checks
             transfer_manager_${block}_checks.cpp $<TARGET_OBJECTS:cm_transfer_manager_reference>)
         target_link_libraries(cm-transfer-manager-${block}-checks PRIVATE cm_aot)
@@ -3872,6 +3872,8 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME transfer_manager_valuation_production COMMAND cm-transfer-manager-valuation-checks --production)
     add_test(NAME transfer_manager_callbacks_equivalence COMMAND cm-transfer-manager-callbacks-checks)
     add_test(NAME transfer_manager_callbacks_vectors COMMAND cm-transfer-manager-callbacks-checks --vectors)
+    add_test(NAME transfer_manager_collections_equivalence COMMAND cm-transfer-manager-collections-checks)
+    add_test(NAME transfer_manager_collections_production COMMAND cm-transfer-manager-collections-checks --production)
     add_test(NAME transfer_manager_audit COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/../tools/test_transfer_manager_audit.py")
     if(CM_TRANSFER_MANAGER_COVERAGE)
@@ -3881,7 +3883,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         target_link_libraries(cm_transfer_manager_coverage PRIVATE cm_aot)
         target_compile_options(cm_transfer_manager_coverage PRIVATE
             -fprofile-instr-generate -fcoverage-mapping -ffp-contract=off)
-        foreach(block pending valuation callbacks)
+        foreach(block pending valuation callbacks collections)
             target_sources(cm-transfer-manager-${block}-checks PRIVATE $<TARGET_OBJECTS:cm_transfer_manager_coverage>)
             target_compile_definitions(cm-transfer-manager-${block}-checks PRIVATE CM_TRANSFER_MANAGER_COVERAGE=1
                 CM_TRANSFER_MANAGER_PROFILE_DIR="${CM_TRANSFER_MANAGER_PROFILE_DIR}")
@@ -3890,6 +3892,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         set_property(TEST transfer_manager_pending_equivalence transfer_manager_pending_production
             transfer_manager_pending_original transfer_manager_valuation_equivalence transfer_manager_valuation_production
             transfer_manager_callbacks_equivalence transfer_manager_callbacks_vectors
+            transfer_manager_collections_equivalence transfer_manager_collections_production
             APPEND PROPERTY ENVIRONMENT "LLVM_PROFILE_FILE=${CM_TRANSFER_MANAGER_PROFILE_DIR}/main-%p.profraw")
     endif()
 endif()

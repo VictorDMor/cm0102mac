@@ -1,5 +1,6 @@
 #include "transfer_manager_adapter.hpp"
 #include "transfer_manager_callbacks.hpp"
+#include "transfer_manager_collections.hpp"
 #include "transfer_manager_pending.hpp"
 #include "transfer_manager_valuation.hpp"
 #include "routine_check.hpp"
@@ -39,6 +40,12 @@ void run_rewrite(State& s, const Routine& routine) {
 }
 
 bool transfer_manager_lists(std::uint32_t entry) { return lookup(entry) != nullptr; }
+
+bool transfer_manager_direct_calls_enabled() {
+    // Checker and probe paths need to see every owned call. In particular
+    // --only can ask the dispatcher to decline a callee's handwritten body.
+    return !declining && !routine_checker && !dispatch_probe;
+}
 
 void transfer_manager_run_original(State& s, std::uint32_t entry) {
     run_original_body(s, entry, declining);
