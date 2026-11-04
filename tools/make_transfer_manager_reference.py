@@ -26,25 +26,33 @@ def main():
     entries = sorted(set(args.entry or (entry for entry, _, _ in registered())))
     if not entries or set(entries) - BOUNDS.keys():
         parser.error("expected at least one audited transfer-manager entry")
-    pages = defaultdict(list)
+    routines = defaultdict(lambda: defaultdict(list))
     with sqlite3.connect((args.export / "instructions.sqlite").resolve().as_uri() + "?mode=ro", uri=True) as db:
         require_transfer_manager_index(db)
         for entry in entries:
             for item in routine_records(db, entry, BOUNDS[entry]):
-                pages[item["address"] >> 12].append(item)
+                routines[entry][item["address"] >> 12].append(item)
     userops = json.loads((args.export / "program.json").read_text())["userops"]
-    selected = {r["address"] for page in pages.values() for r in page}
-    units, routes = [], []
-    for page, records in sorted(pages.items()):
-        code = generate_page(page, records, selected, userops=userops, **disabled)
-        name = f"transfer_manager_reference_{page:x}"
-        code = code.replace(f"page_{page:x}", name).replace(f"{name}_impl<true,", f"{name}_impl<false,")
-        if "try_modern_" in code:
-            raise ValueError("Original transfer-manager reference contains a replacement hook")
-        units.append(code)
-        routes.append(f"if ((s.pc >> 12) == 0x{page:x}) return {name}(s);")
+    units, routes = [], defaultdict(list)
+    for entry, pages in sorted(routines.items()):
+        # Keep calls between original entries visible to argument probes, even
+        # when both sides are on the same page. Local branches stay direct.
+        selected = {r["address"] for records in pages.values() for r in records}
+        for page, records in sorted(pages.items()):
+            code = generate_page(page, records, selected, userops=userops, **disabled)
+            name = f"transfer_manager_reference_{entry:x}_{page:x}"
+            code = code.replace(f"page_{page:x}", name).replace(f"{name}_impl<true,", f"{name}_impl<false,")
+            if "try_modern_" in code:
+                raise ValueError("Original transfer-manager reference contains a replacement hook")
+            units.append(code)
+            first = records[0]["address"]
+            last = records[-1]["address"]
+            routes[page].append(f"if (s.pc >= 0x{first:x} && s.pc <= 0x{last:x}) return {name}(s);")
     units.append("namespace cm::aot { bool transfer_manager_reference(State& s) {\n" +
-                 "\n".join(routes) + "\nreturn false; } }\n")
+                 "switch (s.pc >> 12) {\n" +
+                 "".join(f"case 0x{page:x}:\n" + "\n".join(cases) + "\nbreak;\n"
+                         for page, cases in sorted(routes.items())) +
+                 "}\nreturn false; } }\n")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text("\n".join(units))
 
