@@ -18,7 +18,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **TRANSFER_MANAGER.CPP reconstruction.** Inventory closed, with 68 of 214 entries verified and routed in production. Per-entry status, replay limits and reproducible checks are in `.local/rewrites/transfer_manager/ledger.json`.
+- [ ] **TRANSFER_MANAGER.CPP reconstruction.** Inventory closed, with 69 of 214 entries verified and routed in production. Per-entry status, replay limits and reproducible checks are in `.local/rewrites/transfer_manager/ledger.json`.
   - [ ] Reconstruct and verify the remaining functional blocks, including transfer processing, valuation, callbacks and persistence.
   - [ ] Verify combined routing and replays, review, build and install the app, push the owned changes, and update the progress tracker.
 

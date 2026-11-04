@@ -58,6 +58,7 @@ TRANSFER_MANAGER_ROUTINE(0x103fb390, [](Cpu& c) { transfer_manager::offer_is_fil
 TRANSFER_MANAGER_ROUTINE(0x103fb400, [](Cpu& c) { transfer_manager::find_sell_on_fee(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103fb510, [](Cpu& c) { transfer_manager::find_appearance_fee(c, transfer_manager::FeeKind::first_team_appearance, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103fb5a0, [](Cpu& c) { transfer_manager::find_appearance_fee(c, transfer_manager::FeeKind::international_appearance, c.r(3), c.r(4)); })
+TRANSFER_MANAGER_ROUTINE(0x103fd420, [](Cpu& c) { transfer_manager::initialize_nation_transfer_records(c, c.r(3)); })
 TRANSFER_MANAGER_ROUTINE(0x104119e0, [](Cpu& c) { transfer_manager::compare_priority_and_index(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x10411a10, [](Cpu& c) { transfer_manager::compare_index(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x10411a20, [](Cpu& c) { transfer_manager::compare_ranked_transfers(c, c.r(3), c.r(4)); })

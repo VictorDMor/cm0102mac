@@ -9,6 +9,7 @@
 #include "transfer_manager_installments.hpp"
 #include "transfer_manager_lifecycle.hpp"
 #include "transfer_manager_load.hpp"
+#include "transfer_manager_nations.hpp"
 #include "transfer_manager_offer_contracts.hpp"
 #include "transfer_manager_pending.hpp"
 #include "transfer_manager_permissions.hpp"
