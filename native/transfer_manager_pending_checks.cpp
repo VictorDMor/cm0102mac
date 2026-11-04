@@ -1,14 +1,8 @@
 #include "transfer_manager_pending.hpp"
-#include "routine_check.hpp"
+#include "transfer_manager_check_coverage.hpp"
 #include "semantic_io_checks.hpp"
 #include <random>
 #include <string_view>
-
-#if defined(CM_TRANSFER_MANAGER_COVERAGE)
-#include <unistd.h>
-extern "C" int __llvm_profile_write_file();
-extern "C" void __llvm_profile_set_filename(const char*);
-#endif
 
 namespace cm::aot {
 bool transfer_manager_reference(State&);
@@ -205,14 +199,7 @@ void production(bool force_original) {
 
 int main(int argc, char** argv) {
     try {
-#if defined(CM_TRANSFER_MANAGER_COVERAGE)
-        routine_child_exit = [] {
-            const auto profile = std::string(CM_TRANSFER_MANAGER_PROFILE_DIR) + "/pending-" +
-                                 std::to_string(getpid()) + ".profraw";
-            __llvm_profile_set_filename(profile.c_str());
-            if (__llvm_profile_write_file() != 0) std::abort();
-        };
-#endif
+        transfer_manager::install_check_coverage();
         if (argc == 2 && std::string_view(argv[1]) == "--production") {
             production(false);
             return 0;

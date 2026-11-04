@@ -3839,8 +3839,10 @@ if(CM_AWARD_MANAGER_COVERAGE)
 endif()
 
 
-set(CM_TRANSFER_MANAGER_SOURCES transfer_manager_adapter.cpp transfer_manager_pending.cpp)
+set(CM_TRANSFER_MANAGER_SOURCES
+    transfer_manager_adapter.cpp transfer_manager_pending.cpp transfer_manager_valuation.cpp)
 target_sources(cm_aot PRIVATE ${CM_TRANSFER_MANAGER_SOURCES})
+option(CM_TRANSFER_MANAGER_COVERAGE "Instrument transfer-manager checker objects only" OFF)
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     set(CM_TRANSFER_MANAGER_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/transfer_manager_reference.cpp")
     add_custom_command(OUTPUT "${CM_TRANSFER_MANAGER_REFERENCE}"
@@ -3852,16 +3854,40 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/transfer_manager_routines.inc"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-transfer-manager-pending-checks
-        transfer_manager_pending_checks.cpp "${CM_TRANSFER_MANAGER_REFERENCE}")
-    target_link_libraries(cm-transfer-manager-pending-checks PRIVATE cm_aot)
-    target_compile_options(cm-transfer-manager-pending-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_library(cm_transfer_manager_reference OBJECT "${CM_TRANSFER_MANAGER_REFERENCE}")
+    target_include_directories(cm_transfer_manager_reference PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(cm_transfer_manager_reference PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    foreach(block pending valuation)
+        add_executable(cm-transfer-manager-${block}-checks
+            transfer_manager_${block}_checks.cpp $<TARGET_OBJECTS:cm_transfer_manager_reference>)
+        target_link_libraries(cm-transfer-manager-${block}-checks PRIVATE cm_aot)
+        target_compile_options(cm-transfer-manager-${block}-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    endforeach()
     add_test(NAME transfer_manager_pending_equivalence COMMAND cm-transfer-manager-pending-checks)
     add_test(NAME transfer_manager_pending_production COMMAND cm-transfer-manager-pending-checks --production)
     add_test(NAME transfer_manager_pending_original COMMAND cm-transfer-manager-pending-checks --forced-original)
     set_tests_properties(transfer_manager_pending_original PROPERTIES ENVIRONMENT "CM_TRANSFER_MANAGER_ORIGINAL=1")
+    add_test(NAME transfer_manager_valuation_equivalence COMMAND cm-transfer-manager-valuation-checks)
+    add_test(NAME transfer_manager_valuation_production COMMAND cm-transfer-manager-valuation-checks --production)
     add_test(NAME transfer_manager_audit COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/../tools/test_transfer_manager_audit.py")
+    if(CM_TRANSFER_MANAGER_COVERAGE)
+        set(CM_TRANSFER_MANAGER_PROFILE_DIR "${CMAKE_CURRENT_BINARY_DIR}/transfer-manager-coverage")
+        file(MAKE_DIRECTORY "${CM_TRANSFER_MANAGER_PROFILE_DIR}")
+        add_library(cm_transfer_manager_coverage OBJECT ${CM_TRANSFER_MANAGER_SOURCES})
+        target_link_libraries(cm_transfer_manager_coverage PRIVATE cm_aot)
+        target_compile_options(cm_transfer_manager_coverage PRIVATE
+            -fprofile-instr-generate -fcoverage-mapping -ffp-contract=off)
+        foreach(block pending valuation)
+            target_sources(cm-transfer-manager-${block}-checks PRIVATE $<TARGET_OBJECTS:cm_transfer_manager_coverage>)
+            target_compile_definitions(cm-transfer-manager-${block}-checks PRIVATE CM_TRANSFER_MANAGER_COVERAGE=1
+                CM_TRANSFER_MANAGER_PROFILE_DIR="${CM_TRANSFER_MANAGER_PROFILE_DIR}")
+            target_link_options(cm-transfer-manager-${block}-checks PRIVATE -fprofile-instr-generate)
+        endforeach()
+        set_property(TEST transfer_manager_pending_equivalence transfer_manager_pending_production
+            transfer_manager_pending_original transfer_manager_valuation_equivalence transfer_manager_valuation_production
+            APPEND PROPERTY ENVIRONMENT "LLVM_PROFILE_FILE=${CM_TRANSFER_MANAGER_PROFILE_DIR}/main-%p.profraw")
+    endif()
 endif()
 
 file(GLOB CM_SIPRINT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/siprint*.cpp")
