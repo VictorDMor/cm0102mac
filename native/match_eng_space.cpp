@@ -76,14 +76,15 @@ double distance_to_cell(Cpu& c, std::uint32_t player, std::uint32_t target_row, 
     c.finish();
     return distance;
 }
-// The receiver calls two scans repeatedly. Their role and distance leaves
-// are read-only apart from the guest stack. Keep the original scan order,
-// but publish each leaf's frame and return effects without nested dispatch.
+// Pass receiver selection and cell scoring repeatedly call the spatial scans.
+// The role and distance leaves write only to the guest stack. Keep the
+// original scan order and publish each leaf's frame and return effects directly.
 class ReceiverSpatialQuery {
 public:
     ReceiverSpatialQuery(Cpu& c, std::uint32_t match, std::uint32_t side) : sp(c.sp()) {
         switch (c.lr()) {
         case 0x101e8c30: case 0x101e8d20: case 0x101e9554: case 0x101e9794:
+        case 0x101d88a4:  // choose_cell distance query
             break;
         default:
             return;
