@@ -8,6 +8,7 @@ import unittest
 
 from compile_recomp import DirectOwnerCalls, OWNER_REPLACEMENTS, generate_page
 from tactics_audit import routine_records
+from transfer_offer_audit import TRANSFER_OFFER_ENTRIES
 from transfer_manager_audit import (
     BOUNDS, ENTRIES, EXPORT, MODULE, TRANSFER_MANAGER_ENTRIES, registered,
     require_transfer_manager_hooks, require_transfer_manager_index, transfer_manager_hook, validate_export,
@@ -30,7 +31,8 @@ class TransferManagerAudit(unittest.TestCase):
         for entry in (0x10411e60, 0x10411ea0, 0x10411f10):
             self.assertNotIn(entry, ENTRIES)
             self.assertIn((entry, "transfer_record_adapter"), OWNER_REPLACEMENTS)
-        self.assertIn((0x103ea350, "transfer_offer_adapter"), OWNER_REPLACEMENTS)
+        self.assertTrue(set(TRANSFER_OFFER_ENTRIES) <= set(TRANSFER_MANAGER_ENTRIES))
+        self.assertNotIn("transfer_offer_adapter", {name for _, name in OWNER_REPLACEMENTS})
 
     def test_duplicate_unknown_and_changed_original_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

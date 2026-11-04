@@ -240,7 +240,7 @@ void check_vectors() {
 }
 }
 
-int main(int argc, char** argv) {
+int cm::aot::transfer_manager::checks::callbacks(int argc, char** argv) {
     try {
         transfer_manager::install_check_coverage();
         dispatch_probe = dependency;
@@ -314,4 +314,5 @@ int main(int argc, char** argv) {
         std::cerr << e.what() << '\n';
         return 1;
     }
+    return 0;
 }

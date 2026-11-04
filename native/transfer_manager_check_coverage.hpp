@@ -10,6 +10,15 @@ extern "C" void __llvm_profile_set_filename(const char*);
 #endif
 
 namespace cm::aot::transfer_manager {
+namespace checks {
+int pending(int argc, char** argv);
+int valuation(int argc, char** argv);
+int callbacks(int argc, char** argv);
+int collections(int argc, char** argv);
+int selection(int argc, char** argv);
+int rejection(int argc, char** argv);
+}
+
 inline void install_check_coverage() {
 #if defined(CM_TRANSFER_MANAGER_COVERAGE)
     routine_child_exit = [] {

@@ -217,7 +217,7 @@ void check(std::uint32_t entry, Case test, std::uint32_t expected, RoutineRunner
 }
 }
 
-int main(int argc, char** argv) {
+int cm::aot::transfer_manager::checks::collections(int argc, char** argv) {
     try {
         transfer_manager::install_check_coverage();
         if (argc == 2 && std::string_view(argv[1]) == "--production") {
@@ -296,4 +296,5 @@ int main(int argc, char** argv) {
         std::cerr << e.what() << '\n';
         return 1;
     }
+    return 0;
 }
