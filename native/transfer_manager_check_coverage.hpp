@@ -35,6 +35,7 @@ int schedule(int argc, char** argv);
 int nation_rules(int argc, char** argv);
 int candidate_club_collection(int argc, char** argv);
 int squad_quotas(int argc, char** argv);
+int offer_news(int argc, char** argv);
 }
 
 inline void install_check_coverage() {
