@@ -3844,7 +3844,7 @@ set(CM_TRANSFER_MANAGER_SOURCES
     transfer_manager_callbacks.cpp transfer_manager_collections.cpp transfer_manager_selection.cpp
     transfer_manager_rejection.cpp transfer_manager_permissions.cpp transfer_manager_approval.cpp
     transfer_manager_offer_contracts.cpp transfer_manager_approval_bootstrap.cpp transfer_manager_fees.cpp
-    transfer_manager_installments.cpp transfer_manager_future.cpp)
+    transfer_manager_installments.cpp transfer_manager_future.cpp transfer_manager_history.cpp)
 target_sources(cm_aot PRIVATE ${CM_TRANSFER_MANAGER_SOURCES})
 option(CM_TRANSFER_MANAGER_COVERAGE "Instrument transfer-manager checker objects only" OFF)
 if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
@@ -3863,7 +3863,7 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-transfer-manager-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     set(CM_TRANSFER_MANAGER_TESTS)
     foreach(block pending valuation callbacks collections selection rejection permissions approvals offer_contracts
-                  approval_bootstrap fees installments future)
+                  approval_bootstrap fees installments future history)
         target_sources(cm-transfer-manager-checks PRIVATE transfer_manager_${block}_checks.cpp)
         add_test(NAME transfer_manager_${block}_equivalence COMMAND cm-transfer-manager-checks ${block})
         if(block STREQUAL "callbacks")
