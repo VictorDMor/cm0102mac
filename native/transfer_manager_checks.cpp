@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
         Suite{"load_section", checks::load_section},
         Suite{"nations", checks::nations},
         Suite{"construct", checks::construct},
+        Suite{"offer_state", checks::offer_state},
     };
     if (argc > 1) {
         const auto suite = std::ranges::find(suites, std::string_view(argv[1]), &Suite::name);
