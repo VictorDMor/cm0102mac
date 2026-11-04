@@ -174,6 +174,8 @@ from contract_terms_audit import (require_contract_terms_contract, require_contr
     require_contract_terms_hooks, contract_terms_hook, CONTRACT_TERMS_ENTRIES)
 from contract_review_audit import (require_contract_review_contract, require_contract_review_index,
     require_contract_review_hooks, contract_review_hook, CONTRACT_REVIEW_ENTRIES)
+from transfer_manager_audit import (TRANSFER_MANAGER_ENTRIES, require_transfer_manager_index,
+    require_transfer_manager_hooks, transfer_manager_hook)
 from transfer_offer_audit import (require_transfer_offer_contract, require_transfer_offer_index,
     require_transfer_offer_hooks, transfer_offer_hook, TRANSFER_OFFER_ENTRIES)
 from transfer_record_audit import (require_transfer_record_contract, require_transfer_record_index,
@@ -412,7 +414,8 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                             and entry not in CONTRACT_MANAGER_ENTRIES and entry not in SCREEN_MANAGER_ENTRIES
                             and entry not in MATCH_PL_ENTRIES and entry not in CASH_ENTRIES
                             and entry not in SIPRINT_ENTRIES and entry not in AWOL_ENTRIES
-                            and entry not in MATCH_ENG_ENTRIES) +
+                            and entry not in MATCH_ENG_ENTRIES and entry not in TRANSFER_MANAGER_ENTRIES) +
+                      tuple((entry, "transfer_manager_adapter") for entry in TRANSFER_MANAGER_ENTRIES) +
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES) +
                       tuple((entry, "main_program_adapter") for entry in MAIN_PROGRAM_ENTRIES) +
                       tuple((entry, "player_stats_adapter") for entry in PLAYER_STATS_ENTRIES) +
@@ -465,6 +468,7 @@ MATCH_ENG_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if e
 SIPRINT_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in SIPRINT_ENTRIES)
 CASH_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in CASH_ENTRIES)
 AWOL_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in AWOL_ENTRIES)
+TRANSFER_MANAGER_TAKEOVERS = frozenset(entry for entry, _ in SEMANTIC_REPLACEMENTS if entry in TRANSFER_MANAGER_ENTRIES)
 CPP_LEAVES = frozenset(TACTICS_LEAVES) | frozenset(MATCH_ENG_LEAVES)
 
 
@@ -1232,7 +1236,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
 
 
 def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True,
-                  direct_owner_calls=None):
+                  direct_owner_calls=None, transfer_manager_hooks=True):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
     cpp_leaves = set()
@@ -1433,7 +1437,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   (MATCH_ENG_TAKEOVERS if match_eng_hooks else frozenset()) |
                   (CASH_TAKEOVERS if cash_hooks else frozenset()) |
                   (AWOL_TAKEOVERS if awol_hooks else frozenset()) |
-                  (SIPRINT_TAKEOVERS if siprint_hooks else frozenset()))
+                  (SIPRINT_TAKEOVERS if siprint_hooks else frozenset()) |
+                  (TRANSFER_MANAGER_TAKEOVERS if transfer_manager_hooks else frozenset()))
     if nontrapping_divisions is None:
         # Equivalence references compile parts of pages: use the whole-program
         # proof, so they continue exactly where production does; without an
@@ -1520,7 +1525,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "contract_terms_adapter.hpp"')
     if contract_review_hooks and page_addresses & set(CONTRACT_REVIEW_ENTRIES):
         code.insert(1, '#include "contract_review_adapter.hpp"')
-    if transfer_offer_hooks and page_addresses & set(TRANSFER_OFFER_ENTRIES):
+    if transfer_manager_hooks and page_addresses & set(TRANSFER_MANAGER_ENTRIES):
+        code.insert(1, '#include "transfer_manager_adapter.hpp"')
+    if transfer_offer_hooks and page_addresses & (set(TRANSFER_OFFER_ENTRIES) - taken_over):
         code.insert(1, '#include "transfer_offer_adapter.hpp"')
     if transfer_record_hooks and page_addresses & set(TRANSFER_RECORD_ENTRIES):
         code.insert(1, '#include "transfer_record_adapter.hpp"')
@@ -1993,7 +2000,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(contract_terms_hook(a))
         if contract_review_hooks and a in CONTRACT_REVIEW_ENTRIES:
             code.append(contract_review_hook(a))
-        if transfer_offer_hooks and a in TRANSFER_OFFER_ENTRIES:
+        if transfer_manager_hooks and a in TRANSFER_MANAGER_ENTRIES:
+            code.append(transfer_manager_hook(a))
+        if transfer_offer_hooks and a in TRANSFER_OFFER_ENTRIES and a not in taken_over:
             code.append(transfer_offer_hook(a))
         if transfer_record_hooks and a in TRANSFER_RECORD_ENTRIES:
             code.append(transfer_record_hook(a))
@@ -2551,8 +2560,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_contract_terms_hooks(page, instructions, result)
     if contract_review_hooks:
         require_contract_review_hooks(page, instructions, result)
+    if transfer_manager_hooks:
+        require_transfer_manager_hooks(page, instructions, result)
     if transfer_offer_hooks:
-        require_transfer_offer_hooks(page, instructions, result)
+        require_transfer_offer_hooks(page, instructions, result, taken_over)
     if transfer_record_hooks:
         require_transfer_record_hooks(page, instructions, result)
     if transfer_valuation_hooks:
@@ -2700,7 +2711,7 @@ INDEX_AUDITS = (
     require_eng_conf_index, require_eng_first_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
     require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
     require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index, require_cup_stage_index,
-    require_db_files_index, require_international_awards_index, require_nation_awards_index,
+    require_transfer_manager_index, require_db_files_index, require_international_awards_index, require_nation_awards_index,
     require_dispute_index, require_award_manager_index, require_award_shortlist_index, require_transfer_screens_index,
     require_oceania_nations_index, require_news_index, require_news_screens_index, require_screen_manager_index,
     require_contract_manager_index, require_contract_screens_index, require_player_stats_index, require_shortlist_manager_index,

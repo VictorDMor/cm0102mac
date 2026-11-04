@@ -3839,6 +3839,31 @@ if(CM_AWARD_MANAGER_COVERAGE)
 endif()
 
 
+set(CM_TRANSFER_MANAGER_SOURCES transfer_manager_adapter.cpp transfer_manager_pending.cpp)
+target_sources(cm_aot PRIVATE ${CM_TRANSFER_MANAGER_SOURCES})
+if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
+    set(CM_TRANSFER_MANAGER_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/transfer_manager_reference.cpp")
+    add_custom_command(OUTPUT "${CM_TRANSFER_MANAGER_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_transfer_manager_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_TRANSFER_MANAGER_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_transfer_manager_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/transfer_manager_audit.py"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/transfer_manager_routines.inc"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    add_executable(cm-transfer-manager-pending-checks
+        transfer_manager_pending_checks.cpp "${CM_TRANSFER_MANAGER_REFERENCE}")
+    target_link_libraries(cm-transfer-manager-pending-checks PRIVATE cm_aot)
+    target_compile_options(cm-transfer-manager-pending-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+    add_test(NAME transfer_manager_pending_equivalence COMMAND cm-transfer-manager-pending-checks)
+    add_test(NAME transfer_manager_pending_production COMMAND cm-transfer-manager-pending-checks --production)
+    add_test(NAME transfer_manager_pending_original COMMAND cm-transfer-manager-pending-checks --forced-original)
+    set_tests_properties(transfer_manager_pending_original PROPERTIES ENVIRONMENT "CM_TRANSFER_MANAGER_ORIGINAL=1")
+    add_test(NAME transfer_manager_audit COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/../tools/test_transfer_manager_audit.py")
+endif()
+
 file(GLOB CM_SIPRINT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/siprint*.cpp")
 list(FILTER CM_SIPRINT_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_SIPRINT_SOURCES})

@@ -18,6 +18,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [ ] **TRANSFER_MANAGER.CPP reconstruction.** Evidence and per-entry status in `.local/rewrites/transfer_manager/`.
+  - [x] Close the inventory at 214 entries using source pools, transition vectors, indirect branches and neighboring translation units.
+  - [x] Reconstruct the three pending-contract routines and verify the normal and forced-original routes. The pilot checks 112 returned cases, five negative controls and a combined sequence with the real contract lookup.
+  - [ ] Reconstruct and verify the remaining functional blocks, including transfer processing, valuation, callbacks and persistence.
+  - [ ] Verify combined routing and replays, review, build and install the app, push the owned changes, and update the progress tracker.
+
 - [x] **Daily and match performance investigation (2026-11-03):** host-only profiling of a completed reference-career week identified MATCH_ENG (60.1%) and SHORTLIST_MANAGER (24.4%) as the largest disjoint inclusive processing paths. A separate current 600-advance match profile identified action selection, role/position queries and receiver scans, with substantial dispatch/memory/guest-frame overhead. Six repeat-state checks on each of two match snapshots and five recorded-end-state checks on each of two daily operation captures passed. No optimization or Windows speed comparison is claimed. Details and limits: `docs/native-background-performance.md`, current hotspot diagnosis; compact private evidence: `.local/performance/2026-11-03-hotspots/`. Removed task-owned diagnostic app/runtime/save copies and probe binary (~1 GB); retained ~11 MB. No production or installation changes.
   - [ ] First performance experiment: typed MATCH_ENG–MATCH_PL role queries in spatial/receiver scans, preserving observable state, RNG, floating point and tie order; require alternating paired timings before accepting a change. Then measure invariant candidate/contract lookup reuse in SHORTLIST_MANAGER.
   - [ ] Diagnostic limitation: old full season-day replay fails GetPort input validation (r19); fresh All-Leagues-21Dec Continue stops on an invalid cursor hotspot (selector 0xff, code pointer passed to SetCursor). Origin unresolved. Neither supplies a completed day timing; the reference-career week succeeds. No separate complete no-fixture-day timing was established.
