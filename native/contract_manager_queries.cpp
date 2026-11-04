@@ -3,9 +3,7 @@
 namespace cm::aot::contract_manager {
 using namespace detail;
 namespace {
-// Each validation and index read is kept in its original order. In
-// particular, the person's id is read again after validating it; the
-// fields are mutable guest memory, not cached host records.
+// Keep the original validation and index loads in the leaf lookups.
 std::uint32_t find_contract(Cpu& c, std::uint32_t manager_address, std::uint32_t person, bool second) {
     if (!nonzero_logical(c, person)) return result(c, 0);
     const auto count_address = c.toc(slot::person_count);
@@ -51,19 +49,24 @@ std::uint32_t club_contract(Cpu& c, std::uint32_t manager_address, std::uint32_t
     Kept<31> club(c, requested_club);
     Program program(c);
     if (!nonzero_logical(c, person) || !nonzero_logical(c, club)) return result(c, 0);
+    const bool observed = c.s.memory.date_observer || c.s.memory.read_trace;
 
-    auto valid_person = [&] {
-        if (!nonzero_logical(c, person)) return false;
-        const auto id = c.i32(person), count = c.i32(count_address);
+    std::int32_t id;
+    const auto valid_person = [&] {
+        nonzero_logical(c, person);
+        id = c.i32(person);
+        const auto count = c.i32(count_address);
         c.set(5, std::uint32_t(id));
         c.set(0, std::uint32_t(count));
         return compare(c, id, count) < 0;
     };
     if (!valid_person()) return result(c, 0);
 
+    // The frame has already been written. The repeated validations and
+    // offset calculation have no calls or memory writes between them.
     Kept<30> primary(c, 0);
-    if (valid_person()) {
-        const auto offset = c.u32(person) * Contract::size;
+    if (!observed || valid_person()) {
+        const auto offset = (observed ? c.u32(person) : std::uint32_t(id)) * Contract::size;
         c.set(0, offset);
         const auto index_holder = c.toc(slot::contract_index);
         c.set(5, index_holder);

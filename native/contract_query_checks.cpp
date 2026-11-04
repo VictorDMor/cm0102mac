@@ -1,4 +1,5 @@
 #include "contract_queries.hpp"
+#include "contract_manager.hpp"
 #include "semantic_io_checks.hpp"
 #include <bit>
 #include <set>
@@ -214,10 +215,43 @@ void batched_cases() {
         require(stepped->executed==batched->executed && batched->executed>input->executed,"Batched builder count");
     }
 }
+
+void production_reuse_cases() {
+    for (auto id : {0u, 1u, 3u})
+        for (bool observed : {false, true}) {
+            auto input = seed(1);
+            input->memory.write<4>(staff, id);
+            // Both valid IDs have a contract at the requested club. The
+            // observer replaces the ID after the first validation read.
+            input->memory.write<4>(records + 204, 11);
+            auto original = clone(*input), modern = clone(*input);
+            Effects old_effects, new_effects;
+            if (observed)
+                for (auto [s, effects] : {std::pair{original.get(), &old_effects},
+                                          std::pair{modern.get(), &new_effects}}) {
+                    effects->state = s;
+                    effects->on_read = [](State& state, Effects& effect, std::uint32_t address, unsigned) {
+                        if (address == globals && !effect.mutated) {
+                            effect.mutated = true;
+                            state.memory.write<4>(staff, 1);
+                        }
+                    };
+                    s->memory.date_observer = effects;
+                }
+            Trace trace({});
+            Model model(true, {}, trace);
+            model.reference(*original);
+            cm::aot::guest::Cpu cpu(*modern);
+            cpu.set(3, cm::aot::contract_manager::club_contract(cpu, cpu.r(3), cpu.r(4), cpu.r(5)));
+            cpu.finish();
+            original->memory.date_observer = modern->memory.date_observer = nullptr;
+            Image(*original).compare(*modern, "Production club contract lookup with live validation");
+        }
+}
 }
 namespace cm::aot {void contract_query_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
 int main(){try {
-    leaf_cases();club_cases();batched_cases();
+    leaf_cases();club_cases();batched_cases();production_reuse_cases();
     for(unsigned index=0;index<3;++index) {
         auto s=seed(index);Options o;o.own_negative=true;compare(*s,o);
         constexpr auto moved=toc+0x10000;s->memory.map(moved-0x8000,0x9000);s->memory.copy_in(moved-0x8000,s->memory.copy_out(toc-0x8000,0x9000));s->wr<4>(8,moved);boundaries(*s);

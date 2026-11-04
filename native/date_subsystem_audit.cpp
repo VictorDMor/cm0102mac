@@ -103,6 +103,11 @@ struct ObservationScope {
     ~ObservationScope(){state.memory.date_observer=previous;if(active)observer.frames.pop_back();}
 };
 }
+bool can_batch_date_leap(const State& s) {
+    static const bool sample = std::getenv("CM_AOT_VALIDATION_EVENT_POINTER") != nullptr;
+    return !stream && !sample && !s.date_subsystem_original && !s.date_entry_original[leap_date_index] &&
+           !s.date_original_resume;
+}
 bool try_modern_date_subsystem(State& s,std::uint32_t entry) {
     // A same-page goto can reach this destination while the dispatcher's PC
     // still names its previous return. Publish the actual destination before

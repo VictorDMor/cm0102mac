@@ -1,6 +1,7 @@
 #include "calendar_adapter.hpp"
 #include "calendar.hpp"
 #include "date_subsystem_adapter.hpp"
+#include "date_subsystem_audit.hpp"
 #include <sstream>
 #include <algorithm>
 #include <zlib.h>
@@ -179,6 +180,28 @@ void execute_ordering(State& s, bool before = false) {
 }
 
 }
+bool try_candidate_cutoff(State& s, CandidateCutoff& cutoff) {
+    if (s.calendar_original || s.calendar_original_resume || audit ||
+        s.memory.date_observer || s.memory.read_trace || s.memory.debug_attribute_metadata_required() ||
+        s.executed >= s.budget || s.budget - s.executed < 4 || !can_batch_date_leap(s))
+        return false;
+    // A drawing observer may be active during Continue. Its notifications
+    // cannot intervene unless the date frame, guard or result is observed.
+    if (const auto* observer = s.memory.observer) {
+        const auto stack = std::uint32_t(s.r<4>(4));
+        const auto guard = std::uint32_t(s.r<4>(8)) - 0x35bd;
+        const auto result = std::uint32_t(s.r<4>(12));
+        if (stack < 80 || stack > UINT32_MAX - 11 || result > UINT32_MAX - 4 ||
+            observer->observes_write(stack - 80, 92) || observer->observes_write(guard, 1) ||
+            observer->observes_write(result, 5))
+            return false;
+    }
+    s.step(subtraction.entry);
+    ++s.calendar_calls[1];
+    execute_candidate_cutoff(s, cutoff);
+    return true;
+}
+
 bool try_modern_calendar(State& s, std::uint32_t entry) {
     if(s.calendar_original_resume==entry){s.calendar_original_resume=0;return false;}
     DatePause observation(s);

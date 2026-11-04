@@ -1,4 +1,5 @@
 #include "shortlist_manager_candidates_scan.hpp"
+#include "routine_check.hpp"
 
 // The candidate scan's filters (0x1035f2e4-0x1035fbb0): which listed persons
 // the club looks at. Each refusal moves on to the next entry; the registers
@@ -112,7 +113,14 @@ bool Scan::common_checks() {
     c.set(4, c.u32(c.toc(slot::person_meta)));
     if (compare_logical(c, std::uint32_t(meta(p.id()) >> 4), 10) >= 0) return false;
     if (nonzero(c, std::int8_t(player_row)) && nonzero_logical(c, p.club())) {
-        program.call(0x10717b20, 0x1035f64c, {at(local::joined_cutoff_result), c.toc(slot::today), 200});
+        constexpr auto back = 0x1035f64c;
+        const auto destination = at(local::joined_cutoff_result), today = c.toc(slot::today);
+        if (shortlist_manager_call_hook || dispatch_probe || routine_checker) {
+            program.call(0x10717b20, back, {destination, today, 200});
+        } else {
+            guest::enter(c, back, {destination, today, 200});
+            if (!try_candidate_cutoff(c.s, joined_cutoff)) c.call(0x10717b20, back);
+        }
         c.put32(at(local::joined_cutoff), c.u32(at(local::joined_cutoff_result)));
         c.put32(at(local::joined_cutoff) + 4, c.u32(at(local::joined_cutoff_result) + 4));
         const std::uint16_t cutoff_year = c.u16(at(local::joined_cutoff) + 2), joined_year = p.joined().year();

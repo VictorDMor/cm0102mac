@@ -1,6 +1,7 @@
 #include "date_subsystem_adapter.hpp"
 #include "calendar_adapter.hpp"
 #include "calendar.hpp"
+#include "date_subsystem_audit.hpp"
 
 namespace cm::aot {
 namespace {
@@ -267,13 +268,61 @@ void record_interval(State& s) {
     restore_frame(s,112,28);
 }
 
-void shift_days(State& s,bool backward) {
+// The 200-day candidate cutoff can cross at most one year for an ordinary
+// date. The leap leaves take just a year and write no memory. Keep the scratch
+// and destination stores in shift_days and replay only the leaf accounting
+// and register effects here. The key uses the actual words after the stores
+// above the loop, including when the source date aliases the scratch.
+bool reuse_candidate_cutoff(State& s, CandidateCutoff& cutoff, int day, std::uint16_t year) {
+    if (day < -200 || day > 165) return false;
+    const bool crossed = day < 0;
+    const auto previous = std::uint16_t(year - 1);
+    if (cutoff.input_day != day || cutoff.input_year != year) {
+        cutoff.input_day = day;
+        cutoff.input_year = year;
+        cutoff.year = crossed ? previous : year;
+        cutoff.leap = cm::calendar::is_leap(cutoff.year);
+        cutoff.day = std::uint16_t(day + (crossed ? 365 + int(cutoff.leap) : 0));
+        // The leaves see year-1, [year-2 if crossing], then the output year.
+        // Only a year divisible by four writes r4 and clears XER[CA].
+        const auto other = crossed ? std::uint16_t(previous - 1) : previous;
+        cutoff.leap_clobber_year = cutoff.year % 4 == 0 ? cutoff.year : other;
+        cutoff.clobbers_r4 = cutoff.leap_clobber_year % 4 == 0;
+    }
+    if (crossed) {
+        s.memory.write<2>(reg(s,31), cutoff.day);
+        s.memory.write<2>(reg(s,28), cutoff.year);
+    }
+    const unsigned calls = crossed ? 3 : 2;
+    s.charge(calls);
+    s.date_subsystem_calls[leap_date_index] += calls;
+    s.wr<4>(2440, reg(s,2));
+    s.wr<4>(4128, 0x10717c54);
+    s.pc = 0x10717c54;
+    set(s,5,cutoff.year);
+    set(s,3,cutoff.leap);
+    if (cutoff.clobbers_r4) {
+        set(s,4,(INT64_C(0x51eb851f) * cutoff.leap_clobber_year) >> 32);
+        s.wr<1>(1027,0);
+    }
+    // Each leap leaf starts with cmpwi, which clears CR0's upper nibble.
+    set(s,0,cutoff.leap);
+    compare(s,cutoff.leap,0);
+    s.memory.write<1>(reg(s,31)+4,cutoff.leap);
+    return true;
+}
+
+void shift_days(State& s,bool backward, CandidateCutoff* cutoff = nullptr) {
     set(s,0,s.r<4>(4128));s.memory.write<4>(reg(s,1)-4,reg(s,31));
     set(s,31,s.memory.read<4>(reg(s,2)-(backward?0x3fb4:0x3fac)));
     s.memory.write<4>(reg(s,1)-8,reg(s,30));set(s,30,reg(s,3));
     s.memory.write<4>(reg(s,1)-12,reg(s,29));s.memory.write<4>(reg(s,1)-16,reg(s,28));
     s.memory.write<4>(reg(s,1)+8,reg(s,0));frame(s,80);
     const auto guard=reg(s,2)-(backward?0x35bd:0x35bb);
+    const auto scratch = reg(s,31);
+    if (cutoff && s.memory.observer &&
+        (scratch > UINT32_MAX - 4 || s.memory.observer->observes_write(scratch, 5)))
+        cutoff = nullptr;
     set(s,0,byte_value(s.memory.read<1>(guard)));record(s,0);
     // This initialization is inline in both original bodies. There is no
     // independent initialization call to count or record at this boundary.
@@ -295,19 +344,23 @@ void shift_days(State& s,bool backward) {
         set(s,0,s.memory.read<2>(reg(s,4)+2));set(s,28,reg(s,31)+2);s.memory.write<2>(reg(s,31)+2,reg(s,0));
         set(s,0,short_value(s.memory.read<2>(reg(s,4))));set(s,0,backward?reg(s,0)-reg(s,5):reg(s,0)+reg(s,5));
         s.memory.write<2>(reg(s,31),reg(s,0));
-        for(;;) {
-            set(s,3,s.memory.read<2>(reg(s,28)));
-            if(backward){set(s,0,reg(s,3)-1);set(s,3,std::uint16_t(reg(s,0)));}
-            call(s,0x10718440,backward?0x10717c08:0x1071796c);set(s,0,byte_value(reg(s,3)));record(s,0);
-            const auto length=reg(s,0)?366u:365u;
-            set(s,3,short_value(s.memory.read<2>(reg(s,31))));
-            if(backward){set(s,0,short_value(reg(s,3)));record(s,0);if(signed_reg(s,0)>=0)break;set(s,0,reg(s,3)+length);}
-            else{compare(s,signed_reg(s,3),length-1);if(signed_reg(s,3)<=int(length-1))break;set(s,0,reg(s,3)-length);}
-            s.memory.write<2>(reg(s,31),reg(s,0));set(s,3,s.memory.read<2>(reg(s,28)));
-            set(s,0,reg(s,3)+(backward?std::uint32_t(-1):1u));s.memory.write<2>(reg(s,28),reg(s,0));
+        const bool reused = cutoff && reuse_candidate_cutoff(s, *cutoff, short_value(reg(s,0)),
+                                                            std::uint16_t(s.memory.read<2>(reg(s,28))));
+        if (!reused) {
+            for(;;) {
+                set(s,3,s.memory.read<2>(reg(s,28)));
+                if(backward){set(s,0,reg(s,3)-1);set(s,3,std::uint16_t(reg(s,0)));}
+                call(s,0x10718440,backward?0x10717c08:0x1071796c);set(s,0,byte_value(reg(s,3)));record(s,0);
+                const auto length=reg(s,0)?366u:365u;
+                set(s,3,short_value(s.memory.read<2>(reg(s,31))));
+                if(backward){set(s,0,short_value(reg(s,3)));record(s,0);if(signed_reg(s,0)>=0)break;set(s,0,reg(s,3)+length);}
+                else{compare(s,signed_reg(s,3),length-1);if(signed_reg(s,3)<=int(length-1))break;set(s,0,reg(s,3)-length);}
+                s.memory.write<2>(reg(s,31),reg(s,0));set(s,3,s.memory.read<2>(reg(s,28)));
+                set(s,0,reg(s,3)+(backward?std::uint32_t(-1):1u));s.memory.write<2>(reg(s,28),reg(s,0));
+            }
+            set(s,3,s.memory.read<2>(reg(s,28)));call(s,0x10718440,backward?0x10717c54:0x107179b8);
+            set(s,0,byte_value(reg(s,3)));record(s,0);set(s,0,reg(s,0)!=0);s.memory.write<1>(reg(s,31)+4,reg(s,0));
         }
-        set(s,3,s.memory.read<2>(reg(s,28)));call(s,0x10718440,backward?0x10717c54:0x107179b8);
-        set(s,0,byte_value(reg(s,3)));record(s,0);set(s,0,reg(s,0)!=0);s.memory.write<1>(reg(s,31)+4,reg(s,0));
         set(s,0,short_value(s.memory.read<2>(reg(s,31))));s.memory.write<2>(reg(s,30),reg(s,0));
         set(s,0,s.memory.read<2>(reg(s,28)));s.memory.write<2>(reg(s,30)+2,reg(s,0));
         set(s,0,s.memory.read<1>(reg(s,31)+4));s.memory.write<1>(reg(s,30)+4,reg(s,0));
@@ -703,6 +756,7 @@ bool execute_semantic_calendar_boundary(State& s,std::uint32_t entry) {
     if(entry==0x10717890||entry==0x10717b20){shift_days(s,entry==0x10717b20);return true;}
     if(entry==0x10718130){scalar_difference(s);return true;}return false;
 }
+void execute_candidate_cutoff(State& s, CandidateCutoff& cutoff) { shift_days(s, true, &cutoff); }
 bool execute_semantic_date(State& s,std::uint32_t entry) {
     for(const auto& b:formats)if(b.entry==entry) {format_date(s,b);return true;}
     switch(entry) {

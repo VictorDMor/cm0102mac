@@ -36,6 +36,44 @@ void initialize(State& s, unsigned year, unsigned day, unsigned leap, std::uint3
     s.executed = 0; s.native_calls = 0; s.budget = 15000;
     s.calendar_calls = {}; s.calendar_exceptional_calls = 0;
 }
+
+void check_candidate_cutoff(State& original, State& modern) {
+    CandidateCutoff cutoff;
+    unsigned cases = 0;
+    // Keep the same memo across repeat calls, date changes, wraparound and
+    // aliased sources/destinations. Invalid dates use the general loop.
+    for (unsigned year : {0u, 1u, 1900u, 1999u, 2000u, 2001u, 2002u, 2004u, 2100u, 65535u})
+        for (unsigned day : {0u, 199u, 200u, 365u, 366u, 32768u})
+            for (const auto source : {fixture + 16, fixture + 64})
+                for (const auto destination : {fixture + 32, source + 1, fixture + 64}) {
+                    const auto flags = cases % 2;
+                    for (auto* s : {&original, &modern}) {
+                        initialize(*s, year, day, 255, source, flags, false, 200, true);
+                        s->wr<4>(12, destination);
+                    }
+                    run(original);
+                    require(try_candidate_cutoff(modern, cutoff), "Candidate cutoff route declined");
+                    const auto stack = std::uint32_t(original.r<4>(4));
+                    require(original.registers == modern.registers && original.unique == modern.unique &&
+                                original.pc == modern.pc,
+                            "Candidate cutoff ABI mismatch in case " + std::to_string(cases));
+                    require(original.memory.copy_out(fixture, 256) == modern.memory.copy_out(fixture, 256) &&
+                                original.memory.copy_out(stack - 80, 92) == modern.memory.copy_out(stack - 80, 92) &&
+                                original.memory.read<1>(0x108b84d3) == modern.memory.read<1>(0x108b84d3),
+                            "Candidate cutoff memory mismatch in case " + std::to_string(cases));
+                    ++cases;
+                }
+
+    initialize(modern, 2001, 50, 0, fixture + 16, 1, false, 200, true);
+    modern.wr<4>(12, fixture + 32);
+    Writes observer;
+    modern.memory.observer = &observer;
+    require(!try_candidate_cutoff(modern, cutoff) && observer.bytes.empty(), "Candidate cutoff bypassed write observer");
+    modern.memory.observer = nullptr;
+    modern.budget = 3;
+    require(!try_candidate_cutoff(modern, cutoff) && modern.executed == 0, "Candidate cutoff bypassed budget");
+    std::cout << cases << " candidate cutoff comparisons against the generated original\n";
+}
 }
 int main(int argc, char** argv) {
     if (argc != 2) return 2;
@@ -44,6 +82,7 @@ int main(int argc, char** argv) {
         load_program(*original, argv[1]); load_program(*modern, argv[1]);
         original->calendar_original = true;
         original->memory.map(fixture, 256); modern->memory.map(fixture, 256);
+        check_candidate_cutoff(*original, *modern);
         unsigned cases = 0;
         for (unsigned year : {0u, 1u, 4u, 100u, 400u, 1900u, 1999u, 2000u, 2001u, 2004u, 2100u, 32767u, 65535u})
          for (unsigned day : {0u, 58u, 59u, 60u, 364u, 365u, 366u, 32767u, 32768u, 65535u})
