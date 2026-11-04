@@ -23,6 +23,7 @@ int offer_contracts(int argc, char** argv);
 int approval_bootstrap(int argc, char** argv);
 int fees(int argc, char** argv);
 int installments(int argc, char** argv);
+int future(int argc, char** argv);
 }
 
 inline void install_check_coverage() {

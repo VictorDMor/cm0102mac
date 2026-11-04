@@ -36,6 +36,8 @@ TRANSFER_MANAGER_ROUTINE(0x103f2250, [](Cpu& c) { transfer_manager::settle_trans
 TRANSFER_MANAGER_ROUTINE(0x103f29f0, [](Cpu& c) { transfer_manager::remove_transfer_fee(c, transfer_manager::FeeKind::sell_on, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103f2aa0, [](Cpu& c) { transfer_manager::remove_transfer_fee(c, transfer_manager::FeeKind::first_team_appearance, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103f2b50, [](Cpu& c) { transfer_manager::remove_transfer_fee(c, transfer_manager::FeeKind::international_appearance, c.r(3), c.r(4)); })
+TRANSFER_MANAGER_ROUTINE(0x103f2ec0, [](Cpu& c) { transfer_manager::enqueue_future_transfer(c, c.r(3), c.r(4), c.r(5)); })
+TRANSFER_MANAGER_ROUTINE(0x103f3540, [](Cpu& c) { transfer_manager::remove_future_transfer(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103f4240, [](Cpu& c) { transfer_manager::best_qualifying_offer(c, c.r(3), c.r(4), c.r(5)); })
 TRANSFER_MANAGER_ROUTINE(0x103f43b0, [](Cpu& c) { transfer_manager::find_special_offer(c, c.r(3), c.r(4), c.r(5)); })
 TRANSFER_MANAGER_ROUTINE(0x103f5e50, [](Cpu& c) { transfer_manager::has_visible_offer(c, c.r(3), c.r(4), c.r(5)); })
