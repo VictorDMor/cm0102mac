@@ -22,6 +22,7 @@ the scrollback. Remove ticked items once their commit is pushed.
   - [x] Close the inventory at 214 entries using source pools, transition vectors, indirect branches and neighboring translation units.
   - [x] Reconstruct the three pending-contract routines and verify the normal and forced-original routes. The pilot checks 112 returned cases, five negative controls and a combined sequence with the real contract lookup.
   - [x] Reconstruct transfer price and eligibility. Both pass 94 controlled comparisons and 978 sampled comparisons across three matching original/C++ replays.
+  - [x] Reconstruct the 15 callback entries and one unconditional gate. Verify 225 controlled comparisons, all 15 transition vectors and a paired sort using the original sorting service.
   - [ ] Reconstruct and verify the remaining functional blocks, including transfer processing, valuation, callbacks and persistence.
   - [ ] Verify combined routing and replays, review, build and install the app, push the owned changes, and update the progress tracker.
 

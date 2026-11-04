@@ -300,7 +300,9 @@ def require_transfer_manager_hooks(page, instructions, code):
         label = f"i_{entry:x}:"
         if label not in code:
             raise ValueError(f"Missing transfer-manager label at 0x{entry:x}")
-        fragment = code.split(label, 1)[1].split(f"i_{entry + 4:x}:", 1)[0]
+        # Some leaves end at their entry, followed by alignment rather than
+        # a label at entry + 4. Keep the audit inside this instruction.
+        fragment = re.split(r"^i_[0-9a-f]+:", code.split(label, 1)[1], maxsplit=1, flags=re.MULTILINE)[0]
         step = re.search(rf"(?:s|counter)\.step\(0x{entry:x}\);", fragment)
         if (code.count(hook) != 1 or hook not in fragment or not step or
                 fragment.index(hook) > step.start() or "try_modern_transfer_offer" in fragment):
