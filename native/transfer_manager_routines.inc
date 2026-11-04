@@ -1,4 +1,5 @@
 // Only verified handwritten routines are registered for production.
+TRANSFER_MANAGER_ROUTINE(0x103df0d0, [](Cpu& c) { transfer_manager::construct_transfer_manager(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103df570, [](Cpu& c) { transfer_manager::destroy_transfer_manager(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103df790, [](Cpu& c) { transfer_manager::load_transfer_manager(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103e1220, [](Cpu& c) { transfer_manager::save_transfer_manager(c, c.r(3), c.r(4)); })

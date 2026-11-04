@@ -3,6 +3,7 @@
 #include "transfer_manager_approval_bootstrap.hpp"
 #include "transfer_manager_callbacks.hpp"
 #include "transfer_manager_collections.hpp"
+#include "transfer_manager_construct.hpp"
 #include "transfer_manager_fees.hpp"
 #include "transfer_manager_future.hpp"
 #include "transfer_manager_history.hpp"

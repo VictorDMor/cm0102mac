@@ -29,6 +29,7 @@ int lifecycle(int argc, char** argv);
 int save_section(int argc, char** argv);
 int load_section(int argc, char** argv);
 int nations(int argc, char** argv);
+int construct(int argc, char** argv);
 }
 
 inline void install_check_coverage() {
