@@ -32,6 +32,7 @@ int nations(int argc, char** argv);
 int construct(int argc, char** argv);
 int offer_state(int argc, char** argv);
 int schedule(int argc, char** argv);
+int nation_rules(int argc, char** argv);
 }
 
 inline void install_check_coverage() {
