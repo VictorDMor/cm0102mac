@@ -51,6 +51,12 @@ void trace_call(Cpu& c) {
     for (unsigned r = 21; r <= 31; ++r) add(c.r(r));
     add(c.cr(0));
     add(c.s.r<1>(reg::xer_ca));
+    switch (c.lr()) {
+    case 0x103ecf50: case 0x103ecf54: case 0x103ecf70: case 0x103ecf80:
+    case 0x103ecfac: case 0x103ecfd4: case 0x103ed060:
+        add(c.r(0));
+        break;
+    }
 }
 
 struct LeafTrace final : MemoryObserver {

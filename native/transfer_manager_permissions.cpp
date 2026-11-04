@@ -77,6 +77,7 @@ std::uint32_t requires_regional_transfer_approval(Cpu& c, std::uint32_t manager,
                                                   std::uint32_t person_address, std::uint32_t club,
                                                   std::uint32_t mode) {
     Frame frame(c, 0x103ecef0, 0x90, {.first_gpr = 27});
+    c.set(0, c.lr());
     const bool has_club = nonzero_logical(c, club);
     const Kept<28> message(c, c.toc(message_slot));
     const Kept<29> pool(c, c.toc(source_slot));
@@ -98,19 +99,26 @@ std::uint32_t requires_regional_transfer_approval(Cpu& c, std::uint32_t manager,
         c.put8(success, 0);
         return 0;
     }
-    if (compare(c, c.u8(nation + 0x118), 14) != 0) return result(c, 0);
+    const auto nation_type = c.u8(nation + 0x118);
+    c.set(0, nation_type);
+    if (compare(c, nation_type, 14) != 0) return result(c, 0);
     if (byte_result(c, call(c, nation_exempts_person, 0x103ecfac, {person, 0}))) return result(c, 0);
     if (byte_result(c, strict)) return result(c, 1);
 
     auto contract = call(c, find_primary_contract, 0x103ecfd4, {c.u32(c.toc(contract_slot)), person});
-    if (nonzero_logical(c, contract) && compare(c, contract_kind(c, contract), 2) != 0) contract = 0;
+    if (nonzero_logical(c, contract)) {
+        const auto kind = contract_kind(c, contract);
+        c.set(0, std::uint32_t(kind));
+        if (compare(c, kind, 2) != 0) contract = 0;
+    }
     c.set(3, contract);
     if (!nonzero_logical(c, contract)) return result(c, 1);
     if (nonzero_logical(c, person)) {
         const auto count_address = c.toc(staff_count_slot);
         const auto id = c.i32(person);
-        c.set(4, std::uint32_t(id));
-        if (compare(c, id, c.i32(count_address)) >= 0) {
+        const auto count = c.i32(count_address);
+        c.set({{0, std::uint32_t(count)}, {4, std::uint32_t(id)}});
+        if (compare(c, id, count) >= 0) {
             compare_logical(c, 0);
             return result(c, 1);
         }
@@ -120,6 +128,7 @@ std::uint32_t requires_regional_transfer_approval(Cpu& c, std::uint32_t manager,
     const auto table = c.u32(transfers + 0x9a0);
     c.set(3, table);
     const auto approved = c.u8(table + id * 10u) & 0x20u;
+    c.set(0, approved);
     if (!nonzero(c, std::int32_t(approved))) {
         compare_logical(c, 0);
         return result(c, 1);

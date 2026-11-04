@@ -20,6 +20,7 @@ TRANSFER_MANAGER_ROUTINE(0x103eb470, [](Cpu& c) { transfer_manager::secondary_of
 TRANSFER_MANAGER_ROUTINE(0x103ec440, [](Cpu& c) { transfer_manager::remove_offer_pending_contracts(c, c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103ec4f0, [](Cpu& c) { transfer_manager::forget_offer_approaches(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103ec5d0, [](Cpu& c) { transfer_manager::mark_offer_contracts_for_withdrawal(c, c.r(4)); })
+TRANSFER_MANAGER_ROUTINE(0x103ec6d0, [](Cpu& c) { transfer_manager::initialize_staff_approvals(c, c.r(3)); })
 TRANSFER_MANAGER_ROUTINE(0x103ec940, [](Cpu& c) { transfer_manager::append_regional_approval(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(8)); })
 TRANSFER_MANAGER_ROUTINE(0x103ecb00, [](Cpu& c) { transfer_manager::find_regional_approval(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103ecb80, [](Cpu& c) { transfer_manager::find_regional_transfer_pair(c, c.r(3), c.r(4), c.r(5)); })
