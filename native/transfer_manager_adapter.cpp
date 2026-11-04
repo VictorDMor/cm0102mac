@@ -1,4 +1,5 @@
 #include "transfer_manager_adapter.hpp"
+#include "transfer_manager_approval.hpp"
 #include "transfer_manager_callbacks.hpp"
 #include "transfer_manager_collections.hpp"
 #include "transfer_manager_pending.hpp"

@@ -18,6 +18,7 @@ int collections(int argc, char** argv);
 int selection(int argc, char** argv);
 int rejection(int argc, char** argv);
 int permissions(int argc, char** argv);
+int approvals(int argc, char** argv);
 }
 
 inline void install_check_coverage() {

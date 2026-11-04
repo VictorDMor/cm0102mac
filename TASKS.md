@@ -27,6 +27,7 @@ the scrollback. Remove ticked items once their commit is pushed.
   - [x] Reconstruct six registration and offer-selection routines. Verify 59 controlled cases, seven production controls and 855 sampled calls across three matching replays.
   - [x] Reconstruct four rejection-policy routines, completing the legacy offer-query takeover. Verify 79 controlled cases and a paired reason-to-status sequence through production.
   - [x] Reconstruct three regional permission and visibility routines. Verify 58 controlled cases, four production routes and 1,024 sampled comparisons across three matching replays. The nation record lookup is covered by controlled checks.
+  - [x] Reconstruct four regional approval-table routines. Verify 51 controlled cases, two negative controls and five production comparisons, including a paired append, search and expiration sequence using real sort and search services. Three matching world replays do not enter these routines.
   - [ ] Reconstruct and verify the remaining functional blocks, including transfer processing, valuation, callbacks and persistence.
   - [ ] Verify combined routing and replays, review, build and install the app, push the owned changes, and update the progress tracker.
 
