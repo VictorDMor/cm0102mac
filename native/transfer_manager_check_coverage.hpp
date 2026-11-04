@@ -21,6 +21,7 @@ int permissions(int argc, char** argv);
 int approvals(int argc, char** argv);
 int offer_contracts(int argc, char** argv);
 int approval_bootstrap(int argc, char** argv);
+int fees(int argc, char** argv);
 }
 
 inline void install_check_coverage() {
