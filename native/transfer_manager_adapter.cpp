@@ -2,6 +2,7 @@
 #include "transfer_manager_callbacks.hpp"
 #include "transfer_manager_collections.hpp"
 #include "transfer_manager_pending.hpp"
+#include "transfer_manager_permissions.hpp"
 #include "transfer_manager_rejection.hpp"
 #include "transfer_manager_selection.hpp"
 #include "transfer_manager_valuation.hpp"
