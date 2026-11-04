@@ -24,6 +24,7 @@ TRANSFER_MANAGER_ROUTINE(0x103eb1f0, [](Cpu& c) { transfer_manager::collect_seco
 TRANSFER_MANAGER_ROUTINE(0x103eb360, [](Cpu& c) { transfer_manager::collect_offers_from_club(c, c.r(3), c.r(4), c.r(5)); })
 TRANSFER_MANAGER_ROUTINE(0x103eb440, [](Cpu& c) { transfer_manager::primary_offer_slot(c, c.r(3), std::int32_t(c.r(4))); })
 TRANSFER_MANAGER_ROUTINE(0x103eb470, [](Cpu& c) { transfer_manager::secondary_offer_slot(c, c.r(3), std::int32_t(c.r(4))); })
+TRANSFER_MANAGER_ROUTINE(0x103eb4a0, [](Cpu& c) { transfer_manager::schedule_transfer_offer(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
 TRANSFER_MANAGER_ROUTINE(0x103ec440, [](Cpu& c) { transfer_manager::remove_offer_pending_contracts(c, c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103ec4f0, [](Cpu& c) { transfer_manager::forget_offer_approaches(c, c.r(3), c.r(4)); })
 TRANSFER_MANAGER_ROUTINE(0x103ec5d0, [](Cpu& c) { transfer_manager::mark_offer_contracts_for_withdrawal(c, c.r(4)); })
