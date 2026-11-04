@@ -1,5 +1,9 @@
 // MATCH_ENG.CPP, space: target cells, nearest players and the team's depth limits.
 #include "match_eng_space.hpp"
+#include "match_pl.hpp"
+#include "match_pl_adapter.hpp"
+#include "match_turbo.hpp"
+#include "routine_check.hpp"
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -30,18 +34,42 @@ std::uint32_t team_of_side(std::uint32_t match, std::uint32_t side) {
     return match + u(s8(side) * std::int32_t(team_tactics_size)) + team_tactics;
 }
 
+bool direct_spatial_call(const Cpu& c, std::uint32_t entry) {
+    // These queries preserve their guest frames and cannot transfer control
+    // outside the call. Keep the dispatcher when diagnostics can intervene.
+    const auto& memory = c.s.memory;
+    return !dispatch_probe && !routine_checker && !memory.observer && !memory.date_observer &&
+           !memory.read_trace && !match_pc_profile_enabled() && match_pl_route_allowed(entry);
+}
+
 // 0x10289560 (another module) says whether the player is a goalkeeper-like one: 1.
 std::int16_t kind_of(Cpu& c, std::uint32_t player, std::uint32_t back) {
+    constexpr std::uint32_t entry = 0x10289560;
     c.set(3, player);
-    c.call(0x10289560, back);
-    return s16(c.r(3));
+    if (!direct_spatial_call(c, entry)) {
+        c.call(entry, back);
+        return s16(c.r(3));
+    }
+    c.link(back);
+    c.s.pc = entry;
+    const auto role = match_pl::current_role(c, player);
+    c.finish();
+    return s16(role);
 }
 
 // The loops over a side's 20 players, called with the distance routine 0x1022e760.
 double distance_to_cell(Cpu& c, std::uint32_t player, std::uint32_t target_row, std::uint32_t target_column, std::uint32_t back) {
+    constexpr std::uint32_t entry = 0x1022e760;
     c.set({{3, player}, {4, target_row}, {5, target_column}});
-    c.call(0x1022e760, back);
-    return c.f(1);
+    if (!direct_spatial_call(c, entry)) {
+        c.call(entry, back);
+        return c.f(1);
+    }
+    c.link(back);
+    c.s.pc = entry;
+    const double distance = match_pl::distance_to(c, player, std::int8_t(target_row), std::int8_t(target_column));
+    c.finish();
+    return distance;
 }
 }  // namespace
 
@@ -286,8 +314,12 @@ std::uint32_t side_table_value(Cpu& c, std::uint32_t entry, std::uint32_t match,
     Frame frame(c, entry, 0x40, {.first_gpr = 30});
     keep(c, {{31, player}, {30, match}});
     const auto kind = [&] { return s8(previous ? previous_position(c, player) : position(c, player)); };
-    if (compare(c, kind()) < 0 || compare(c, kind(), 10) > 0) return result(c, 0);
-    const auto offset = u(kind()) << 1;
+    const bool observed = c.s.memory.date_observer || c.s.memory.read_trace;
+    const auto initial = kind();
+    if (compare(c, initial) < 0) return result(c, 0);
+    // Read observers may replace the live position between the original loads.
+    if (compare(c, observed ? kind() : initial, 10) > 0) return result(c, 0);
+    const auto offset = u(observed ? kind() : initial) << 1;
     c.set(4, offset);
     const auto values = c.u32(match + (u(s8(c.u8(player + player_side))) << 2) + table);
     return result(c, u(c.i16(values + offset)));

@@ -7,6 +7,7 @@
 #include "code_fragment_adapter.hpp"
 #include "guest_abi.hpp"
 #include "routine_check.hpp"
+#include "semantic_io_checks.hpp"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -156,6 +157,7 @@ int main(int argc, char** argv) {
     if (argc < 2 || argc > 3) return 2;
     try {
         unsigned pairs = 1;
+        bool spatial_equivalence = false;
         if (argc == 3) {
             const std::string_view option(argv[2]);
             if (option == "--construction") construction = true;
@@ -163,6 +165,7 @@ int main(int argc, char** argv) {
             else if (option == "--obstruction") obstruction = true;
             else if (option == "--goal-line") goal_line = true;
             else if (option == "--pressure") pressure = true;
+            else if (option == "--spatial-equivalence") spatial_equivalence = true;
             else {
                 if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");
                 pairs = unsigned(std::stoul(std::string(option.substr(15))));
@@ -181,6 +184,23 @@ int main(int argc, char** argv) {
         set_match_turbo_enabled(false);
         if (match_pc_profile_enabled()) throw std::runtime_error("Disable match PC profiling for the paired check");
         dispatch_probe = nullptr;
+        if (spatial_equivalence) {
+            // The forked routine checker installs a memory observer, which
+            // keeps the diagnostic route. Compare the normal route separately.
+            struct PreserveObservedReads final : MemoryObserver {
+                void mapped(std::uint32_t, std::uint64_t) override {}
+                void written(std::uint32_t, const std::uint8_t*, std::size_t) override {}
+                void cleared(std::uint32_t, std::uint64_t) override {}
+            } observer;
+            auto diagnostic = cm::semantic_io_checks::clone(*state);
+            diagnostic->memory.date_observer = &observer;
+            timed = true;
+            interval(*diagnostic, false);
+            interval(*state, false);
+            cm::semantic_io_checks::Image(*diagnostic).compare(*state, "Observed versus normal spatial routing");
+            std::cout << advances << " advances agree with and without spatial diagnostics\n";
+            return 0;
+        }
         for (pair_index = 1; pair_index <= pairs; ++pair_index) {
             const bool cpp_first = pair_index % 2 == 0;
             const auto differences = compare_routine_call(*state, 0x101d3f60,

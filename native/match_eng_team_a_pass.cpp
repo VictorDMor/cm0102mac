@@ -223,8 +223,11 @@ bool Receiver::reachable() {
     c.set(14, col);
     const auto rw = row(c, cand);
     c.set(5, rw);
-    enter(c, 0x101e8d20, {match, other_side(), rw, col, 1});
-    c.set_f(31, nearest_distance(c, match, other_side(), rw, col, 1));
+    const bool observed = c.s.memory.date_observer || c.s.memory.read_trace;
+    const auto opposition = other_side();
+    enter(c, 0x101e8d20, {match, opposition, rw, col, 1});
+    // A read observer may change possession between argument preparation and the call.
+    c.set_f(31, nearest_distance(c, match, observed ? other_side() : opposition, rw, col, 1));
     c.set(3, 0);
     c.put8(frame.at(slot::scratch), 0);
     if (compare(c, kind(), 0x36) != 0 && compare(c, kind(), 0x37) != 0) {

@@ -1,4 +1,7 @@
 #include "match_pl_detail.hpp"
+#include "match_eng.hpp"
+#include "match_turbo.hpp"
+#include "routine_check.hpp"
 
 namespace cm::aot::match_pl {
 using namespace guest;
@@ -20,10 +23,18 @@ std::uint32_t test_strategy(Cpu& c, std::uint32_t player, std::uint32_t back, st
 std::uint32_t role_from(Cpu& c, std::uint32_t player, std::uint32_t entry, std::uint32_t target) {
     Frame frame(c, entry, 0x40, {});
     c.set(4, player);
+    const auto& memory = c.s.memory;
+    const bool observed = memory.date_observer || memory.read_trace;
     const auto match = Player{c, player}.match();
     if (compare_logical(c, match) == 0) return result(c, 0);
-    c.set(3, Player{c, c.r(4)}.match());
-    c.call(target, entry + 0x24);
+    c.set(3, observed ? Player{c, c.r(4)}.match() : match);
+    if (dispatch_probe || memory.observer || observed || match_pc_profile_enabled()) {
+        c.call(target, entry + 0x24);
+    } else {
+        c.s.pc = target;
+        match_eng::call(c, target, entry + 0x24);
+        c.finish();
+    }
     return c.r(3);
 }
 std::uint32_t condition_mask(Cpu& c, std::uint32_t player, std::uint32_t back, std::uint32_t mask) {
