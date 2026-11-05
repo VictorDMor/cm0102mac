@@ -89,6 +89,35 @@ bool is_rolling(Cpu& c, std::uint32_t contract) {
     return has_kind(c, contract, 1, 0x10374d50);
 }
 
+bool supports_bonus(Cpu& c, std::uint32_t person, std::int8_t bonus) {
+    constexpr unsigned attributes = 0x14, playing_role = 0x0f;
+    constexpr unsigned keeper = 20, clean_sheet_bonus = 2;
+    block(c, 0x103803b0, 3);
+    const auto profile = c.u32(person + attributes);
+    c.set(3, profile);
+    if (guest::compare_logical(c, profile, 0) == 0) {
+        block(c, 0x103803f8, 2);
+        return false;
+    }
+    block(c, 0x103803bc, 3);
+    const auto role = c.u8(profile + playing_role);
+    c.set(0, role);
+    const auto index = std::uint32_t(bonus);
+    const bool clean_sheet = index == clean_sheet_bonus;
+    if (guest::compare(c, role, keeper) == 0) {
+        block(c, 0x103803c8, 6);
+        c.s.wr<1>(guest::reg::xer_ca, index <= clean_sheet_bonus);
+        c.set(0, clean_sheet);
+        return clean_sheet;
+    }
+    block(c, 0x103803e0, 6);
+    c.set(4, index);
+    c.s.wr<1>(guest::reg::xer_ca, index <= clean_sheet_bonus);
+    const auto distance = index - clean_sheet_bonus;
+    c.set(0, distance | (0u - distance));
+    return !clean_sheet;
+}
+
 bool has_release_terms(Cpu& c, std::uint32_t contract) {
     constexpr std::array tests{std::pair{0u, 2u}, std::pair{1u, 1u}, std::pair{3u, 2u}};
     bool found = false;

@@ -6,6 +6,10 @@ namespace cm::aot::staff_contracts {
 
 inline constexpr std::uint32_t expiry_entry = 0x10380710;
 
+void initialize_draft(guest::Cpu&, std::uint32_t contract);
+std::int16_t end_date_delta(guest::Cpu&, std::uint32_t contract);
+bool supports_bonus(guest::Cpu&, std::uint32_t person, std::int8_t bonus);
+
 void enable_option(guest::Cpu&, std::uint32_t contract, std::int8_t option);
 void clear_option(guest::Cpu&, std::uint32_t contract, std::int8_t option);
 void set_bonus(guest::Cpu&, std::uint32_t contract, std::int8_t bonus, std::uint32_t amount);

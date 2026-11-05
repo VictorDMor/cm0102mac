@@ -2598,7 +2598,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if profile_qualification_hooks:
         require_profile_qualification_hooks(page, instructions, result, taken_over)
     if contract_draft_hooks:
-        require_contract_draft_hooks(page, instructions, result)
+        require_contract_draft_hooks(page, instructions, result, taken_over)
     if contract_display_hooks:
         require_contract_display_hooks(page, instructions, result)
     if money_value_hooks:

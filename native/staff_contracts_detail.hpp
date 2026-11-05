@@ -13,14 +13,20 @@ inline void block(Cpu& c, std::uint32_t pc, unsigned instructions) {
 }
 
 struct ContractRecord {
+    static constexpr unsigned club_id = 4;
+    static constexpr unsigned draft_auxiliary = 8;
     static constexpr unsigned bonus = 0x10;
     static constexpr unsigned option = 0x1c;
     static constexpr unsigned release_amount = 0x24;
+    static constexpr unsigned start_date = 0x28;
     static constexpr unsigned end_date = 0x30;
     static constexpr unsigned packed_kind = 0x38;
+    static constexpr unsigned review_marker = 0x42;
     static constexpr unsigned status = 0x48;
+    static constexpr unsigned review_conditions = 0x50;
     static constexpr unsigned terms_flag = 0x54;
     static constexpr unsigned terms_marker = 0x58;
+    static constexpr unsigned review_flags = 0x5c;
 };
 
 inline std::int32_t unpack_kind(std::uint8_t packed) {

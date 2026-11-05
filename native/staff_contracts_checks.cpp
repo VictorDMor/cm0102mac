@@ -24,6 +24,28 @@ constexpr auto dates = fixture + 0x800;
 constexpr auto dates_year = 2001;
 constexpr auto normal_budget = 10000;
 constexpr auto no_hole = UINT32_MAX;
+constexpr std::uint32_t draft_entry = 0x103721f0, delta_entry = 0x10374d10;
+constexpr std::uint32_t default_date = 0x10715880, difference = 0x10718130;
+
+struct DateCall {
+    std::uint32_t entry, return_address, frame, toc, saved_draft;
+    std::array<std::uint32_t, 3> arguments;
+    bool operator==(const DateCall&) const = default;
+};
+
+struct DateTrace {
+    std::vector<DateCall> calls;
+    bool corrupt = false;
+};
+DateTrace* date_trace = nullptr;
+
+bool trace_date_call(State& s) {
+    if (s.pc != default_date && s.pc != difference) return false;
+    guest::Cpu c(s);
+    if (date_trace->corrupt && s.pc == difference) c.set(4, c.r(4) ^ 0x10000u);
+    date_trace->calls.push_back({s.pc, c.lr(), c.sp(), c.r(2), c.r(31), {c.r(3), c.r(4), c.r(5)}});
+    return false;
+}
 
 std::unique_ptr<State> expiry_fixture() {
     auto s = std::make_unique<State>();
@@ -32,11 +54,15 @@ std::unique_ptr<State> expiry_fixture() {
     s->memory.map(fixture, 0x1000);
     s->memory.map(stack - 0x100, 0x200);
     s->memory.map(toc - 0x8000, 0x1000);
+    s->memory.map(0x108b7ad0, 4);  // Date difference's live scratch pointer.
+    s->memory.map(0x108b84d0, 1);  // Date difference's initialization flag.
     guest::Cpu c(*s);
     c.set({{1, stack}, {2, toc}, {3, record}});
     c.set_lr(return_sentinel);
     s->pc = expiry_entry;
     s->budget = normal_budget;
+    c.put32(0x108b7ad0, fixture + 0x300);
+    c.put8(0x108b84d0, 1);
     c.put8(record + 0x38, 8);
     c.put16(record + 0x30, 150);
     c.put16(record + 0x32, dates_year);
@@ -83,7 +109,7 @@ struct Counts {
 };
 
 Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no_hole,
-                      bool negative = false) {
+                      bool negative = false, bool call_negative = false) {
     auto original = state_with_hole(input, hole);
     auto modern = state_with_hole(input, hole);
     Effects expected, actual;
@@ -100,12 +126,37 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
             return std::string(error.what());
         }
     };
+    const bool date_call = input.pc == draft_entry || input.pc == delta_entry;
+    struct RestoreProbe {
+        decltype(dispatch_probe) saved = dispatch_probe;
+        ~RestoreProbe() { dispatch_probe = saved; date_trace = nullptr; }
+    } restore;
+    DateTrace old_calls, new_calls;
+    new_calls.corrupt = call_negative;
+    if (date_call) {
+        dispatch_probe = trace_date_call;
+        date_trace = &old_calls;
+    }
     const auto old_stop = call(*original, true);
+    if (date_call) date_trace = &new_calls;
     const auto new_stop = call(*modern, false);
     original->memory.date_observer = modern->memory.date_observer = nullptr;
     const auto test_case = counts.returned + counts.budgets + counts.faults + counts.negatives;
     const auto label = "Staff contract " + hex_address(input.pc) + " comparison " + std::to_string(test_case);
     require(old_stop == new_stop, label + " original=" + old_stop + " C++=" + new_stop);
+    if (call_negative) {
+        require(old_stop.empty() && old_calls.calls.size() == 1, label + " missed the call mutation");
+        auto changed = old_calls.calls;
+        changed.front().arguments[1] ^= 0x10000u;
+        require(new_calls.calls == changed, label + " did not isolate the changed date argument");
+        ++counts.negatives;
+        return {unsigned(modern->r<4>(12)), unsigned(modern->executed), std::move(actual.log)};
+    }
+    require(old_calls.calls == new_calls.calls, label + " changed Date arguments or call order");
+    if (date_call && old_stop.empty()) {
+        require(old_calls.calls.size() == (input.pc == draft_entry ? 2u : 1u),
+                label + " did not reach the expected Date calls");
+    }
     if (hole != no_hole) {
         require(old_stop.starts_with("Unmapped data access at "), label + " did not fault at the removed byte");
         ++counts.faults;
@@ -266,6 +317,52 @@ void terms_leaves(Counts& counts) {
     compare_entry(*input, counts, no_hole, true);
 }
 
+void draft_and_date_calls(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    input->pc = draft_entry;
+    input->memory.copy_in(record, std::vector<std::uint8_t>(100, 0x5a));
+    const auto draft = compare_entry(*input, counts);
+    require(draft.value == record, "Draft constructor result");
+    for (const auto& access : draft.accesses)
+        compare_entry(*input, counts, access.address);
+    for (unsigned cut : {0u, 1u, 7u, 14u}) {
+        input->budget = cut;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+
+    input->pc = delta_entry;
+    c.put32(dates + 4, 0);
+    for (const auto year : {1900, 2000, 2001, 2004, 2100}) {
+        c.put16(record + 0x32, year);
+        for (const auto day : {-32768, -1, 0, 1, 59, 60, 365, 366, 32767}) {
+            c.put16(record + 0x30, std::uint16_t(day));
+            c.put8(record + 0x34, year % 4 == 0);
+            compare_entry(*input, counts);
+        }
+    }
+    c.put16(record + 0x30, 150);
+    c.put16(record + 0x32, dates_year);
+    c.put8(record + 0x34, 0);
+    require(compare_entry(*input, counts).value == 149, "Independent same-year date difference");
+    compare_entry(*input, counts, no_hole, false, true);
+
+    input->pc = 0x103803b0;
+    c.put32(record + 0x14, 0);
+    require(compare_entry(*input, counts).value == 0, "No staff profile");
+    const auto profile = fixture + 0x600;
+    c.put32(record + 0x14, profile);
+    for (const auto role : {0u, 19u, 20u, 21u, 255u}) {
+        c.put8(profile + 0x0f, role);
+        for (unsigned index = 0; index < 256; ++index) {
+            c.set(4, 0xabcd0000 | index);
+            const auto value = compare_entry(*input, counts).value;
+            require(value == unsigned(role == 20 ? index == 2 : index != 2), "Bonus role eligibility");
+        }
+    }
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -301,10 +398,11 @@ int main() {
         date_boundaries(counts);
         faults_and_mutations(counts);
         terms_leaves(counts);
+        draft_and_date_calls(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "
-                  << counts.negatives << " rejected result mutations, " << hooks << " production hook comparisons\n";
+                  << counts.negatives << " rejected mutations, " << hooks << " production hook comparisons\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
