@@ -911,7 +911,13 @@ profile defaults prevent root-level artifacts; checker children flush before
 `_exit`. Forked LLVM writers can append cumulative records to one cached filename,
 so merged branch outcomes are meaningful while raw execution frequencies are not.
 
-## AFRICAN_NATIONS.CPP: placement and notification boundaries
+## AFRICAN_NATIONS.CPP: calendar and callback boundaries
+
+Calendar stages use the signed low byte. Every stage below three allocates
+three group rows; only stages -1, zero, one and two add custom fixture policies.
+Stage three builds four knockout rows, writing the final before the third-place
+round despite their priorities of 150 and 140. Higher stages return null without
+touching the output fields. Date builders reload the live tournament year.
 
 For stages below three, the placement callback maps its second field's values
 one/two to one, three to nine and four to thirteen. The first and third fields

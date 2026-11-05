@@ -1,5 +1,6 @@
 #include "african_nations_adapter.hpp"
 #include "guest_values.hpp"
+#include "guest_saved_registers.hpp"
 #include "routine_check.hpp"
 
 #include <algorithm>
@@ -16,6 +17,7 @@ constexpr auto placement_entry = 0x104f7000u;
 constexpr auto notification_entry = 0x104f5da0u;
 constexpr auto destroy_entry = 0x104f4ee0u;
 constexpr auto child_update_entry = 0x104f5d60u;
+constexpr auto calendar_entry = 0x104f4ff0u;
 
 void block(Cpu& c, std::uint32_t pc, unsigned instructions) {
     c.s.step(pc);
@@ -29,6 +31,226 @@ std::int32_t record_compare(Cpu& c, std::int32_t value) {
     const auto order = compare(c, value);
     c.set_cr(0, upper | c.cr(0));
     return order;
+}
+
+struct MatchSlot {
+    unsigned weekday, occurrence, flags;
+};
+
+// These are the tournament's ordered fixture policies. Call-site identity and
+// argument marshalling stay at the ABI boundary around the shared builders.
+constexpr std::array<std::array<MatchSlot, 6>, 4> group_slots{{
+    {{{5, 1, 4}, {6, 1, 0x40}, {2, 1, 4}, {2, 2, 0x40}, {6, 1, 4}, {6, 1, 0x40}}},
+    {{{0, 1, 4}, {0, 2, 0x40}, {3, 1, 4}, {3, 2, 0x40}, {0, 1, 4}, {0, 1, 0x40}}},
+    {{{6, 1, 0x80}, {6, 2, 0x80}, {2, 2, 0x80}, {3, 2, 0x80}, {0, 2, 0x80}, {0, 2, 0x40}}},
+    {{{0, 2, 0x80}, {1, 2, 0x80}, {4, 1, 0x80}, {4, 2, 0x80}, {1, 1, 0x40}, {1, 1, 0x80}}}
+}};
+
+void set_match_slot(Cpu& c, std::uint32_t pc, std::uint32_t builder,
+                    std::uint32_t rows, unsigned round, unsigned slot, MatchSlot policy) {
+    block(c, pc, 8);
+    c.set({{3, rows}, {4, round}, {5, slot}, {6, policy.weekday},
+           {7, policy.occurrence}, {8, 3}, {9, policy.flags}});
+    c.call(builder, pc + 32);
+}
+
+struct KnockoutRound {
+    unsigned priority, index, format, entrants, winners, extra_slots;
+    void store(Cpu& c, std::uint32_t address) const {
+        c.put16(address + 8, priority);
+        c.put16(address + 0xa, index);
+        c.put16(address + 0xc, 0);
+        c.put16(address + 0xe, format);
+        c.put8(address + 0x18, 10);
+        c.put16(address + 0x1a, entrants);
+        c.put16(address + 0x1c, winners);
+        c.put16(address + 0x1e, extra_slots);
+        c.put16(address + 0x10, 0);
+        c.put16(address + 0x20, 0);
+        c.put8(address + 0x22, 0);
+        c.put8(address + 0x23, 1);
+        c.put8(address + 0x24, 0);
+        c.put32(address + 0x6c, 0);
+        c.put32(address + 0x70, 0);
+        c.put32(address + 0x74, 0);
+    }
+};
+
+void calendar_allocation_failure(Cpu& c, std::uint32_t pc, unsigned name, unsigned extension, unsigned line) {
+    block(c, pc, 6);
+    c.set({{3, c.r(28)}, {6, c.sp() + name}, {7, c.sp() + extension}, {4, 0}, {5, 0}});
+    c.call(0x10739890, pc + 24);
+    block(c, pc + 24, 1);
+    c.call(0x10768810, pc + 28);
+    block(c, pc + 28, 7);
+    c.set({{5, c.r(3)}, {3, c.r(27)}, {4, c.r(28) + 0x14},
+           {6, c.sp() + name}, {7, c.sp() + extension}, {8, line}});
+    c.call(0x1077b720, pc + 56);
+    block(c, pc + 56, 4);
+    c.set({{4, c.r(27)}, {3, c.r(28) + 0x21}, {5, 0}});
+    c.call(0x10769b60, pc + 72);
+    block(c, pc + 72, 4);
+    c.set({{0, 0}, {3, 0}});
+    c.put8(c.r(31), 0);
+}
+
+void build_calendar(Cpu& c) {
+    GuestNativeScope scope(c.s, calendar_entry);
+    block(c, calendar_entry, 11);
+    const auto stack = c.sp(), frame = stack - 0xb0;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<26>(c, stack);
+    c.set(31, c.toc(-0x7bac));
+    c.set(29, c.r(3));
+    c.set(27, c.toc(-0x7ba8));
+    c.set(28, c.toc(-0x45ac));
+    c.put32(stack + 8, c.r(0));
+    c.set(0, std::uint32_t(std::int32_t(std::int8_t(c.r(4)))));
+    const auto stage_order = compare(c, std::int32_t(c.r(0)), 3);
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    if (stage_order < 0) {
+        block(c, 0x104f501c, 2);
+        if (compare_logical(c, c.r(7))) {
+            block(c, 0x104f5024, 2);
+            c.set(0, 1);
+            c.put8(c.r(7), 1);
+        }
+        block(c, 0x104f502c, 7);
+        c.set(0, 3);
+        const guest::Kept<30> stage(c, std::uint32_t(std::int32_t(std::int8_t(c.r(4)))));
+        c.put16(c.r(5), c.r(0));
+        c.set(0, stage + 1001);
+        c.set(3, 0xe4);
+        c.put16(c.r(6), c.r(0));
+        c.call(0x10775130, 0x104f5048);
+        block(c, 0x104f5048, 2);
+        const guest::Kept<26> rows(c, c.r(3));
+        if (!record_compare(c, std::int32_t(std::uint32_t(rows)))) {
+            calendar_allocation_failure(c, 0x104f5050, 0x70, 0x48, 0x9e);
+        } else {
+            constexpr std::array starts{0x104f50a8u, 0x104f50f0u, 0x104f513cu};
+            constexpr std::array finishes{0x104f50d0u, 0x104f511cu, 0x104f5168u};
+            for (unsigned round = 0; round < 3; ++round) {
+                const auto pc = starts[round];
+                block(c, pc, round ? 11 : 10);
+                c.set(0, 1);
+                if (round) c.set(3, rows);
+                c.put32(frame + 0x38, 1);
+                c.set({{4, round}, {5, 8 + round * 4}, {6, 1}});
+                if (!round) c.set(7, 0);
+                c.set(10, std::uint32_t(c.i16(c.r(29) + 0x40)));
+                if (round) c.set(7, 0);
+                c.set({{8, 6 - round * 3}, {9, 1}});
+                c.call(0x104a9810, finishes[round]);
+                block(c, finishes[round], 8);
+                c.set({{3, rows}, {4, round}, {5, 2}, {6, UINT32_MAX}, {7, UINT32_MAX}, {8, UINT32_MAX}, {9, 0}});
+                c.call(0x104a9890, finishes[round] + 32);
+            }
+            block(c, 0x104f5188, 2);
+            std::uint32_t policy_pc = 0x104f5338;
+            int policy = 2;
+            const auto order = compare(c, std::int32_t(std::uint32_t(stage)), 1);
+            if (order) {
+                block(c, 0x104f5190, 1);
+                if (order > 0) {
+                    block(c, 0x104f51a4, 2);
+                    if (compare(c, std::int32_t(std::uint32_t(stage)), 3) < 0) {
+                        block(c, 0x104f51ac, 1);
+                        policy = 3; policy_pc = 0x104f53fc;
+                    } else policy = -1;
+                } else {
+                    block(c, 0x104f5194, 2);
+                    const auto previous = compare(c, std::int32_t(std::uint32_t(stage)), -1);
+                    if (!previous) { policy = 0; policy_pc = 0x104f51b0; }
+                    else {
+                        block(c, 0x104f519c, 1);
+                        if (previous > 0) { policy = 1; policy_pc = 0x104f5274; }
+                        else { block(c, 0x104f51a0, 1); policy = -1; }
+                    }
+                }
+            }
+            if (policy >= 0) {
+                for (unsigned i = 0; i < 6; ++i)
+                    set_match_slot(c, policy_pc + i * 32, 0x104a9890, rows, i / 2, i % 2, group_slots[policy][i]);
+                if (policy != 3) block(c, policy_pc + 192, 1);
+            }
+            block(c, 0x104f54bc, 2);
+            c.set(3, rows);
+        }
+    } else {
+        block(c, 0x104f54c4, 1);
+        if (stage_order) { block(c, 0x104f58f0, 1); c.set(3, 0); }
+        else {
+            block(c, 0x104f54c8, 2);
+            if (compare_logical(c, c.r(7))) {
+                block(c, 0x104f54d0, 2);
+                c.set(0, 0); c.put8(c.r(7), 0);
+            }
+            block(c, 0x104f54d8, 6);
+            c.set({{3, 4}, {0, 0}});
+            c.put16(c.r(5), 4);
+            c.set(3, 0x1e0);
+            c.put16(c.r(6), 0);
+            c.call(0x10775130, 0x104f54f0);
+            block(c, 0x104f54f0, 2);
+            const guest::Kept<30> rows(c, c.r(3));
+            if (!record_compare(c, std::int32_t(std::uint32_t(rows)))) {
+                calendar_allocation_failure(c, 0x104f54f8, 0x50, 0x40, 0xe0);
+            } else {
+                block(c, 0x104f5550, 7);
+                c.set(9, std::uint32_t(c.i16(c.r(29) + 0x40)));
+                c.set({{4, 0}, {5, 18}, {6, 1}, {7, 0}, {8, 2}});
+                c.call(0x104854f0, 0x104f556c);
+                const auto closing_date = [&](std::uint32_t pc, unsigned round, unsigned day, unsigned weekday, unsigned weeks, unsigned flags) {
+                    block(c, pc, 11);
+                    c.set(0, flags); c.set(3, rows); c.put32(frame + 0x38, flags);
+                    c.set({{4, round}, {5, day}, {6, 1}});
+                    c.set(10, std::uint32_t(c.i16(c.r(29) + 0x40)));
+                    c.set({{7, 0}, {8, weekday}, {9, weeks}});
+                    c.call(0x10485570, pc + 44);
+                };
+                closing_date(0x104f556c, 0, 21, 5, 1, 1);
+                constexpr std::array quarter_slots{MatchSlot{4,2,0x80}, MatchSlot{5,1,4}, MatchSlot{5,2,0x40}, MatchSlot{6,1,0x40}};
+                for (unsigned i = 0; i < 4; ++i) set_match_slot(c, 0x104f5598 + i * 32, 0x10485600, rows, 0, i, quarter_slots[i]);
+                block(c, 0x104f5618, 8);
+                c.set({{3, rows}, {4, 0}, {5, 4}, {6, UINT32_MAX}, {7, UINT32_MAX}, {8, UINT32_MAX}, {9, 0}});
+                c.call(0x10485600, 0x104f5638);
+                block(c, 0x104f5638, 31);
+                KnockoutRound{120,0,0x303,8,4,8}.store(c, rows);
+                c.set({{0, 1}, {12, 0}, {11, 10}, {10, 8}, {3, rows}, {4, 1}, {5, 23}, {6, 1}, {7, 0}, {8, 0}});
+                c.set(9, std::uint32_t(c.i16(c.r(29) + 0x40)));
+                c.call(0x104854f0, 0x104f56b4);
+                closing_date(0x104f56b4, 1, 25, 2, 1, 1);
+                set_match_slot(c, 0x104f56e0, 0x10485600, rows, 1, 0, {2,1,4});
+                set_match_slot(c, 0x104f5700, 0x10485600, rows, 1, 1, {2,2,0x80});
+                block(c, 0x104f5720, 8);
+                c.set({{3, rows}, {4, 1}, {5, 2}, {6, UINT32_MAX}, {7, UINT32_MAX}, {8, UINT32_MAX}, {9, 0}});
+                c.call(0x10485600, 0x104f5740);
+                block(c, 0x104f5740, 31);
+                KnockoutRound{130,1,0x303,4,2,0}.store(c, rows + 0x78);
+                c.set({{0, 2}, {12, 1}, {11, 0}, {10, 10}, {3, rows}, {4, 2}, {5, 26}, {6, 1}, {7, 0}, {8, 3}});
+                c.set(9, std::uint32_t(c.i16(c.r(29) + 0x40)));
+                c.call(0x104854f0, 0x104f57bc);
+                closing_date(0x104f57bc, 2, 28, 5, 1, 4);
+                block(c, 0x104f57e8, 30);
+                KnockoutRound{150,2,0x203,2,1,0}.store(c, rows + 0xf0);
+                c.set({{0, 1}, {11, 2}, {10, 0}, {3, rows}, {4, 3}, {5, 26}, {6, 1}, {7, 0}, {8, 3}});
+                c.set(9, std::uint32_t(c.i16(c.r(29) + 0x40)));
+                c.call(0x104854f0, 0x104f5860);
+                closing_date(0x104f5860, 3, 27, 4, 2, 0x40);
+                block(c, 0x104f588c, 25);
+                KnockoutRound{140,3,0x203,2,1,0}.store(c, rows + 0x168);
+                c.set({{3, rows}, {0, 1}, {7, 0}, {6, 0x203}, {5, 10}, {4, 2}});
+            }
+        }
+    }
+    block(c, 0x104f58f4, 5);
+    c.set(0, c.u32(frame + 0xb8));
+    c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<26, true>(c, stack);
+    c.finish();
 }
 
 void destroy_competition(Cpu& c) {
