@@ -628,7 +628,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
                 entry == add_replacement || entry == replacement_objection || entry == automatic_replacement ||
                 entry == calendar_save || entry == calendar_load || entry == create_schedule || entry == register_fixture ||
-                entry == date_order || entry == score_order || entry == club_order || entry == mark_fixtures || entry == apply_marks || entry == publish_calendar_notices;
+                entry == date_order || entry == score_order || entry == club_order || entry == mark_fixtures || entry == apply_marks || entry == publish_calendar_notices ||
+                entry == render_calendar_notice;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection ||
@@ -648,7 +649,6 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
         std::string error;
         try {
             if (reference) national_teams_run_original(s, input.pc);
-            else if (input.pc == render_calendar_notice) national_teams_run_rewrite(s, input.pc);
             else run_until(s, done);
         } catch (const std::runtime_error& failure) {
             error = failure.what();
@@ -669,6 +669,13 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
     if (input.pc == automatic_replacement) {
         label += " mode=" + hex_address(std::uint32_t(input.r<4>(guest::reg::gpr(5)))) +
                  " tier=" + hex_address(std::uint32_t(input.r<4>(guest::reg::gpr(6))));
+    }
+    if (input.pc == render_calendar_notice) {
+        const auto field = [&](unsigned index) {
+            return std::int32_t(input.memory.read<4>(notice_render_item + 8 + index * 4));
+        };
+        label += " count=" + std::to_string(field(1)) + " variant=" + std::to_string(field(2)) +
+                 " detail=" + std::to_string(field(3)) + " secondary=" + std::to_string(field(5));
     }
     if (input.pc == calendar_load) {
         label += " read=" + std::to_string(input.memory.read<1>(archive_trace)) +
@@ -3083,13 +3090,10 @@ unsigned check_calendar_notice_formatter_reference(std::mt19937& random) {
         state->pc = render_calendar_notice;
         return state;
     };
-    unsigned comparisons = 0, headlines = 0;
+    unsigned comparisons = 0;
     const auto check = [&](const Case& scenario) {
         auto state = make_state(scenario);
-        if (!scenario.full) {
-            compare(*state);
-            ++headlines;
-        }
+        compare(*state);
         std::vector<DependencyCall> calls;
         ObserveCalls observer(calls);
         auto* saved_checker = routine_checker;
@@ -3168,6 +3172,8 @@ unsigned check_calendar_notice_formatter_reference(std::mt19937& random) {
     for (unsigned count : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 9u})
         for (int detail : {0, 1})
             for (int secondary : {-1, 1}) check({count, 0, detail, 0, secondary, true});
+    check({7, 0, -1, 0, 1, true});
+    check({5, 0, 2, 0, -1, true});
     unsigned prefixes = 0;
     for (const unsigned count : {1u, 2u, 3u, 4u, 5u, 6u, 9u}) {
         const auto state = make_state({count, 0, 0, 0, -1, true});
@@ -3184,10 +3190,16 @@ unsigned check_calendar_notice_formatter_reference(std::mt19937& random) {
     fault = make_state({1, 2, 0, 0, -1, false});
     Cpu(*fault).put32(notice_render_cup_slot, unmapped);
     compare(*fault, Stop::fault);
+    fault = make_state({1, 0, 0, 0, 1, true});
+    Cpu(*fault).put32(notice_render_cup_slot, unmapped);
+    compare(*fault, Stop::fault);
+    fault = make_state({7, 0, 0, 0, -1, true});
+    Cpu(*fault).put32(staff_slot, unmapped);
+    compare(*fault, Stop::fault);
     const auto budget = make_state(single);
     budget->budget = 0;
     compare(*budget, Stop::budget);
-    std::cout << headlines << " NATIONAL_TEAMS calendar headline comparisons, 2 faults and 1 budget stop\n";
+    std::cout << comparisons << " NATIONAL_TEAMS calendar formatter comparisons, 4 faults and 1 budget stop\n";
     std::cout << prefixes << " NATIONAL_TEAMS calendar article prefixes compared through localization\n";
     return comparisons;
 }

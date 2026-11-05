@@ -4412,7 +4412,7 @@ constexpr auto format_calendar_phrase = 0x10727890u;
 struct CalendarNoticeRender {
     std::uint32_t frame, label, clubs, nations, competitions, output, pool;
     std::uint32_t nation, year;
-    std::int32_t count, variant, primary, secondary;
+    std::int32_t count, variant, detail, primary, secondary;
 };
 
 CalendarNoticeRender read_calendar_notice(Cpu& c, GuestNativeScope& scope) {
@@ -4483,7 +4483,8 @@ CalendarNoticeRender read_calendar_notice(Cpu& c, GuestNativeScope& scope) {
     c.set({{3, count}, {4, frame + 0x68}, {5, 0x78}, {6, 0}});
     c.call(0x10746a70, 0x102bb148);
     return {frame, label, clubs, nations, competitions, output, pool, nation, year,
-        std::int32_t(count), std::int32_t(words[0]), std::int32_t(words[2]), std::int32_t(words[3])};
+        std::int32_t(count), std::int32_t(words[0]), std::int32_t(words[1]),
+        std::int32_t(words[2]), std::int32_t(words[3])};
 }
 
 void format_calendar_single_club(Cpu& c, const CalendarNoticeRender& notice,
@@ -4752,6 +4753,378 @@ void format_calendar_club_list(Cpu& c, const CalendarNoticeRender& notice) {
     }
 }
 
+struct CalendarArticlePhrase {
+    std::uint32_t pc;
+    unsigned key;
+};
+
+void finish_calendar_article_phrase(Cpu& c, CalendarArticlePhrase phrase, unsigned instructions) {
+    const auto resume = phrase.pc + instructions * 4;
+    c.call(format_calendar_phrase, resume);
+    if (resume != 0x102bc05c) block(c, resume, 1);
+}
+
+void format_calendar_article_single_with_secondary(Cpu& c, const CalendarNoticeRender& n,
+                                                   CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 41);
+    const auto club_id = c.u32(n.frame + 0xe0);
+    const auto secondary_offset = std::uint32_t(n.secondary) * 0x128;
+    c.set({{5, club_id}, {7, secondary_offset}});
+    const auto competitions = c.u32(n.competitions);
+    c.set({{6, competitions}, {4, n.pool + 0x10000}});
+    const auto nations = c.u32(n.nations);
+    const auto nation_offset = n.nation * 0x6c;
+    c.set({{10, nations}, {3, n.label}, {13, nation_offset}, {9, competitions + 0x116}});
+    const auto clubs = c.u32(n.clubs);
+    c.set(11, clubs);
+    const auto secondary_grammar = c.u8(competitions + secondary_offset + 0x116);
+    const auto club = clubs + club_id * 0x248;
+    const auto nation = nations + nation_offset;
+    c.set({{0, secondary_grammar}, {12, secondary_offset + 0xe1}, {14, club_id * 0x248}, {5, nation}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    const auto primary_offset = std::uint32_t(n.primary) * 0x128;
+    c.set({{7, nation_grammar}, {0, std::uint32_t(std::int8_t(secondary_grammar))}, {5, club},
+           {13, nation_offset + 0x1a}, {8, primary_offset}});
+    const auto club_grammar = c.u8(club + 0x23b);
+    c.set({{5, club_grammar}, {14, club_id * 0x248 + 0x221}, {13, nation + 0x1a}});
+    const auto primary_grammar = c.u8(competitions + primary_offset + 0x116);
+    c.set({{9, primary_grammar}, {14, club + 0x221}, {7, std::uint32_t(std::int8_t(nation_grammar))},
+           {5, std::uint32_t(std::int8_t(club_grammar))}});
+    c.put32(n.frame + 0x38, c.r(0));
+    const auto primary = std::uint32_t(std::int8_t(primary_grammar));
+    c.set({{9, primary}, {10, primary}, {4, n.pool + phrase.key}});
+    c.put32(n.frame + 0x3c, c.r(0));
+    c.set({{0, primary_offset + 0xe1}, {11, competitions + primary_offset + 0xe1}, {8, c.r(7)}});
+    c.put32(n.frame + 0x40, c.r(14));
+    c.set({{0, competitions + secondary_offset + 0xe1}, {6, c.r(5)}});
+    c.put32(n.frame + 0x44, n.year);
+    c.put32(n.frame + 0x48, c.r(13));
+    c.put32(n.frame + 0x4c, c.r(11));
+    c.put32(n.frame + 0x50, c.r(0));
+    finish_calendar_article_phrase(c, phrase, 41);
+}
+
+void format_calendar_article_single_primary(Cpu& c, const CalendarNoticeRender& n,
+                                             CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 33);
+    const auto club_id = c.u32(n.frame + 0xe0);
+    const auto competition_offset = std::uint32_t(n.primary) * 0x128;
+    c.set({{5, club_id}, {4, n.pool + 0x10000}, {10, competition_offset}});
+    const auto competitions = c.u32(n.competitions);
+    c.set(0, competitions);
+    const auto nations = c.u32(n.nations);
+    c.set({{6, nations}, {3, n.label}});
+    const auto clubs = c.u32(n.clubs);
+    const auto competition = competitions + competition_offset;
+    c.set({{8, clubs}, {4, n.pool + phrase.key}, {7, competition}, {10, competition_offset + 0xe1}});
+    const auto competition_grammar = c.u8(competition + 0x116);
+    const auto nation_offset = n.nation * 0x6c, club_offset = club_id * 0x248;
+    const auto nation = nations + nation_offset, club = clubs + club_offset;
+    c.set({{9, competition_grammar}, {11, nation_offset}, {0, competition + 0xe1},
+           {9, std::uint32_t(std::int8_t(competition_grammar))}, {12, club_offset}, {5, nation}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    c.set({{7, nation_grammar}, {11, nation_offset + 0x1a}, {5, club}, {10, c.r(9)},
+           {12, club_offset + 0x221}});
+    const auto club_grammar = c.u8(club + 0x23b);
+    c.set({{5, club_grammar}, {12, club + 0x221}, {8, nation + 0x1a}});
+    c.put32(n.frame + 0x38, c.r(12));
+    c.set({{5, std::uint32_t(std::int8_t(club_grammar))}, {7, std::uint32_t(std::int8_t(nation_grammar))}});
+    c.put32(n.frame + 0x3c, n.year);
+    c.set(6, c.r(5));
+    c.put32(n.frame + 0x40, c.r(8));
+    c.set(8, c.r(7));
+    c.put32(n.frame + 0x44, c.r(0));
+    finish_calendar_article_phrase(c, phrase, 33);
+}
+
+void format_calendar_article_list_with_secondary(Cpu& c, const CalendarNoticeRender& n,
+                                                 CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 33);
+    const auto secondary_offset = std::uint32_t(n.secondary) * 0x128;
+    c.set(3, secondary_offset);
+    const auto competitions = c.u32(n.competitions);
+    c.set(9, competitions);
+    const auto nations = c.u32(n.nations);
+    c.set({{12, nations}, {4, n.pool + 0x10000}, {8, competitions + 0x116}});
+    const auto secondary_grammar = c.u8(competitions + secondary_offset + 0x116);
+    const auto primary_offset = std::uint32_t(n.primary) * 0x128;
+    const auto nation_offset = n.nation * 0x6c;
+    const auto list = n.frame + calendar_club_list_offset;
+    c.set({{10, secondary_grammar}, {11, primary_offset}, {0, secondary_offset + 0xe1},
+           {10, std::uint32_t(std::int8_t(secondary_grammar))}, {7, list}, {5, nation_offset}});
+    const auto primary_grammar = c.u8(competitions + primary_offset + 0x116);
+    const auto nation = nations + nation_offset;
+    c.set({{8, primary_grammar}, {0, competitions + secondary_offset + 0xe1},
+           {8, std::uint32_t(std::int8_t(primary_grammar))}, {3, nation}, {4, n.pool + phrase.key}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    c.set({{6, nation_grammar}, {5, nation_offset + 0x1a}, {3, primary_offset + 0xe1},
+           {11, competitions + primary_offset + 0xe1}});
+    c.put32(n.frame + 0x38, c.r(10));
+    c.set({{5, nation + 0x1a}, {6, std::uint32_t(std::int8_t(nation_grammar))}});
+    c.put32(n.frame + 0x3c, list);
+    c.set({{3, n.label}, {7, c.r(6)}, {9, c.r(8)}});
+    c.put32(n.frame + 0x40, n.year);
+    c.put32(n.frame + 0x44, c.r(5));
+    c.set(5, 100);
+    c.put32(n.frame + 0x48, c.r(11));
+    c.put32(n.frame + 0x4c, c.r(0));
+    finish_calendar_article_phrase(c, phrase, 33);
+}
+
+void format_calendar_article_list_primary(Cpu& c, const CalendarNoticeRender& n,
+                                           CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 25);
+    const auto competition_offset = std::uint32_t(n.primary) * 0x128;
+    c.set(6, competition_offset);
+    const auto competitions = c.u32(n.competitions);
+    c.set({{7, competitions}, {4, n.pool + 0x10000}});
+    const auto nations = c.u32(n.nations);
+    const auto competition = competitions + competition_offset;
+    c.set({{11, nations}, {3, n.label}, {5, competition}});
+    const auto competition_grammar = c.u8(competition + 0x116);
+    const auto nation_offset = n.nation * 0x6c, nation = nations + nation_offset;
+    c.set({{8, competition_grammar}, {9, nation_offset}, {0, competition_offset + 0xe1},
+           {8, std::uint32_t(std::int8_t(competition_grammar))}, {5, nation}, {0, competition + 0xe1}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    c.set({{6, nation_grammar}, {5, nation + 0x1a}, {10, n.frame + calendar_club_list_offset}});
+    c.put32(n.frame + 0x38, n.year);
+    c.set({{6, std::uint32_t(std::int8_t(nation_grammar))}, {7, std::uint32_t(std::int8_t(nation_grammar))},
+           {9, c.r(8)}});
+    c.put32(n.frame + 0x3c, c.r(5));
+    c.set({{5, 100}, {4, n.pool + phrase.key}});
+    c.put32(n.frame + 0x40, c.r(0));
+    finish_calendar_article_phrase(c, phrase, 25);
+}
+
+void format_calendar_article_count_with_secondary(Cpu& c, const CalendarNoticeRender& n,
+                                                  CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 48);
+    const auto club_id = c.u32(n.frame + 0xe0);
+    const auto primary_offset = std::uint32_t(n.primary) * 0x128;
+    c.set({{3, club_id}, {5, primary_offset}});
+    const auto competitions = c.u32(n.competitions);
+    c.set({{12, competitions}, {4, n.pool + 0x10000}});
+    const auto nations = c.u32(n.nations);
+    const auto club_offset = club_id * 0x248;
+    c.set({{11, nations}, {7, 100}, {9, competitions + 0x116}, {14, club_offset}});
+    const auto primary_grammar = c.u8(competitions + primary_offset + 0x116);
+    c.set({{10, primary_grammar}, {0, primary_offset + 0xe1}});
+    const auto clubs = c.u32(n.clubs);
+    const auto nation_offset = n.nation * 0x6c, nation = nations + nation_offset;
+    const auto secondary_offset = std::uint32_t(n.secondary) * 0x128;
+    c.set({{15, clubs}, {10, std::uint32_t(std::int8_t(primary_grammar))}, {6, nation_offset},
+           {16, club_offset + 0x221}, {0, competitions + primary_offset + 0xe1}, {5, secondary_offset},
+           {4, n.pool + phrase.key}, {3, nation}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    const auto club = clubs + club_offset;
+    c.set({{8, nation_grammar}, {3, nation_offset + 0x1a}, {6, club}});
+    const auto secondary_grammar = c.u8(competitions + secondary_offset + 0x116);
+    c.set({{13, secondary_grammar}, {14, secondary_offset + 0xe1}});
+    const auto club_grammar = c.u8(club + 0x23b);
+    c.set({{6, club_grammar}, {9, n.frame + 0x68}, {13, std::uint32_t(std::int8_t(secondary_grammar))},
+           {11, nation + 0x1a}});
+    c.put32(n.frame + 0x38, c.r(10));
+    c.set({{5, club + 0x221}, {8, std::uint32_t(std::int8_t(nation_grammar))},
+           {6, std::uint32_t(std::int8_t(club_grammar))}});
+    c.put32(n.frame + 0x3c, c.r(13));
+    c.set(3, n.label);
+    c.put32(n.frame + 0x40, c.r(13));
+    c.set({{13, competitions + secondary_offset + 0xe1}, {12, n.frame + calendar_club_list_offset}});
+    c.put32(n.frame + 0x44, 100);
+    c.set(7, c.r(6));
+    c.put32(n.frame + 0x48, c.r(9));
+    c.set(9, c.r(8));
+    c.put32(n.frame + 0x4c, c.r(5));
+    c.set(5, 100);
+    c.put32(n.frame + 0x50, n.year);
+    c.put32(n.frame + 0x54, c.r(11));
+    c.put32(n.frame + 0x58, c.r(0));
+    c.put32(n.frame + 0x5c, c.r(13));
+    c.put32(n.frame + 0x60, c.r(12));
+    finish_calendar_article_phrase(c, phrase, 48);
+}
+
+void format_calendar_article_count_primary(Cpu& c, const CalendarNoticeRender& n,
+                                            CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 40);
+    const auto club_id = c.u32(n.frame + 0xe0);
+    const auto competition_offset = std::uint32_t(n.primary) * 0x128;
+    c.set({{6, club_id}, {4, n.pool + 0x10000}, {8, competition_offset}});
+    const auto competitions = c.u32(n.competitions);
+    c.set(0, competitions);
+    const auto nations = c.u32(n.nations);
+    c.set({{3, nations}, {14, 100}});
+    const auto clubs = c.u32(n.clubs);
+    const auto competition = competitions + competition_offset;
+    c.set({{5, clubs}, {13, n.frame + 0x68}, {7, competition}, {4, n.pool + phrase.key}});
+    const auto competition_grammar = c.u8(competition + 0x116);
+    const auto nation_offset = n.nation * 0x6c, nation = nations + nation_offset;
+    const auto club_offset = club_id * 0x248, club = clubs + club_offset;
+    c.set({{10, competition_grammar}, {9, nation_offset}, {7, competition_offset + 0xe1},
+           {10, std::uint32_t(std::int8_t(competition_grammar))}, {11, club_offset}, {6, nation}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    c.set({{8, nation_grammar}, {9, nation_offset + 0x1a}, {6, club}});
+    const auto club_grammar = c.u8(club + 0x23b);
+    c.set({{6, club_grammar}, {11, club_offset + 0x221}, {5, club + 0x221}, {12, nation + 0x1a}});
+    c.put32(n.frame + 0x38, c.r(10));
+    c.set({{11, competition + 0xe1}, {8, std::uint32_t(std::int8_t(nation_grammar))},
+           {6, std::uint32_t(std::int8_t(club_grammar))}});
+    c.put32(n.frame + 0x3c, 100);
+    c.set({{0, n.frame + calendar_club_list_offset}, {3, n.label}, {7, c.r(6)}});
+    c.put32(n.frame + 0x40, c.r(13));
+    c.set(9, c.r(8));
+    c.put32(n.frame + 0x44, c.r(5));
+    c.set(5, 100);
+    c.put32(n.frame + 0x48, n.year);
+    c.put32(n.frame + 0x4c, c.r(12));
+    c.put32(n.frame + 0x50, c.r(11));
+    c.put32(n.frame + 0x54, c.r(0));
+    finish_calendar_article_phrase(c, phrase, 40);
+}
+
+void format_calendar_article_many_with_secondary(Cpu& c, const CalendarNoticeRender& n,
+                                                 CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 45);
+    const auto club_id = c.u32(n.frame + 0xe0);
+    const auto nation_offset = n.nation * 0x6c;
+    c.set({{5, club_id}, {9, nation_offset}});
+    const auto competitions = c.u32(n.competitions);
+    c.set({{8, competitions}, {4, n.pool + 0x10000}});
+    const auto nations = c.u32(n.nations);
+    const auto secondary_offset = std::uint32_t(n.secondary) * 0x128;
+    c.set({{11, nations}, {3, 100}, {7, secondary_offset}, {6, competitions + 0x116}});
+    const auto clubs = c.u32(n.clubs);
+    const auto club_offset = club_id * 0x248;
+    c.set({{13, clubs}, {15, nation_offset + 0x1a}, {12, club_offset}});
+    const auto secondary_grammar = c.u8(competitions + secondary_offset + 0x116);
+    const auto nation = nations + nation_offset;
+    c.set({{0, secondary_grammar}, {5, nation}, {14, secondary_offset + 0xe1}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    const auto primary_offset = std::uint32_t(n.primary) * 0x128;
+    const auto club = clubs + club_offset;
+    c.set({{7, nation_grammar}, {10, primary_offset}, {5, club}});
+    const auto club_grammar = c.u8(club + 0x23b);
+    c.set({{5, club_grammar}, {0, std::uint32_t(std::int8_t(secondary_grammar))}});
+    const auto primary_grammar = c.u8(competitions + primary_offset + 0x116);
+    c.set({{9, primary_grammar}, {6, club + 0x221}, {10, primary_offset + 0xe1}});
+    c.put32(n.frame + 0x38, c.r(0));
+    c.set({{13, competitions + primary_offset + 0xe1}, {9, std::uint32_t(std::int8_t(primary_grammar))},
+           {12, competitions + secondary_offset + 0xe1}});
+    c.put32(n.frame + 0x3c, c.r(0));
+    c.set({{0, nation + 0x1a}, {7, std::uint32_t(std::int8_t(nation_grammar))},
+           {11, n.frame + calendar_club_list_offset}});
+    c.put32(n.frame + 0x40, 100);
+    c.set({{5, std::uint32_t(std::int8_t(club_grammar))}, {3, n.label}, {8, c.r(7)}});
+    c.put32(n.frame + 0x44, c.r(6));
+    c.set({{6, c.r(5)}, {10, c.r(9)}, {4, n.pool + phrase.key}});
+    c.put32(n.frame + 0x48, n.year);
+    c.put32(n.frame + 0x4c, c.r(0));
+    c.put32(n.frame + 0x50, c.r(13));
+    c.put32(n.frame + 0x54, c.r(12));
+    c.put32(n.frame + 0x58, c.r(11));
+    finish_calendar_article_phrase(c, phrase, 45);
+}
+
+void format_calendar_article_many_primary(Cpu& c, const CalendarNoticeRender& n,
+                                           CalendarArticlePhrase phrase) {
+    block(c, phrase.pc, 37);
+    const auto club_id = c.u32(n.frame + 0xe0);
+    const auto competition_offset = std::uint32_t(n.primary) * 0x128;
+    c.set({{5, club_id}, {4, n.pool + 0x10000}, {8, competition_offset}});
+    const auto competitions = c.u32(n.competitions);
+    c.set(0, competitions);
+    const auto nations = c.u32(n.nations);
+    c.set({{3, nations}, {12, 100}});
+    const auto clubs = c.u32(n.clubs);
+    const auto competition = competitions + competition_offset;
+    c.set({{6, clubs}, {4, n.pool + phrase.key}, {7, competition}, {8, competition_offset + 0xe1}});
+    const auto competition_grammar = c.u8(competition + 0x116);
+    const auto nation_offset = n.nation * 0x6c, nation = nations + nation_offset;
+    const auto club_offset = club_id * 0x248, club = clubs + club_offset;
+    c.set({{9, competition_grammar}, {10, nation_offset}, {9, std::uint32_t(std::int8_t(competition_grammar))},
+           {11, club_offset}, {5, nation}});
+    const auto nation_grammar = c.u8(nation + 0x6a);
+    c.set({{7, nation_grammar}, {10, nation_offset + 0x1a}, {5, club}});
+    const auto club_grammar = c.u8(club + 0x23b);
+    c.set({{5, club_grammar}, {11, club_offset + 0x221}, {6, club + 0x221}, {10, nation + 0x1a}});
+    c.put32(n.frame + 0x38, 100);
+    c.set({{11, competition + 0xe1}, {7, std::uint32_t(std::int8_t(nation_grammar))},
+           {0, n.frame + calendar_club_list_offset}});
+    c.put32(n.frame + 0x3c, c.r(6));
+    c.set({{5, std::uint32_t(std::int8_t(club_grammar))}, {3, n.label}, {8, c.r(7)}});
+    c.put32(n.frame + 0x40, n.year);
+    c.set(6, c.r(5));
+    c.put32(n.frame + 0x44, c.r(10));
+    c.set(10, c.r(9));
+    c.put32(n.frame + 0x48, c.r(11));
+    c.put32(n.frame + 0x4c, c.r(0));
+    finish_calendar_article_phrase(c, phrase, 37);
+}
+
+void format_calendar_article(Cpu& c, const CalendarNoticeRender& n) {
+    block(c, 0x102bb628, 2);
+    c.compare(0, n.detail, 1);
+    if (n.detail != 1) {
+        block(c, 0x102bb630, 1);
+        if (n.detail < 1) {
+            block(c, 0x102bb634, 2);
+            c.compare(0, n.detail, 0);
+            if (n.detail < 0) block(c, 0x102bb63c, 1);
+        }
+    }
+
+    const bool detailed = n.detail != 0;
+    block(c, detailed ? 0x102bbb68 : 0x102bb640, 2);
+    c.compare(0, n.count, 6);
+    if (n.count > 6) {
+        block(c, detailed ? 0x102bbb70 : 0x102bb648, 2);
+        c.compare(0, n.secondary, -1);
+        if (detailed) {
+            if (n.secondary >= 0) format_calendar_article_many_with_secondary(c, n, {0x102bbb78, 0x885e});
+            else format_calendar_article_many_primary(c, n, {0x102bbc30, 0x899e});
+        } else {
+            if (n.secondary >= 0) format_calendar_article_count_with_secondary(c, n, {0x102bb650, 0x80cc});
+            else format_calendar_article_count_primary(c, n, {0x102bb714, 0x820b});
+        }
+        return;
+    }
+    block(c, detailed ? 0x102bbcc8 : 0x102bb7b8, 2);
+    c.compare(0, n.count, 3);
+    if (n.count > 3) {
+        block(c, detailed ? 0x102bbcd0 : 0x102bb7c0, 2);
+        c.compare(0, n.secondary, -1);
+        if (detailed) {
+            if (n.secondary >= 0) format_calendar_article_many_with_secondary(c, n, {0x102bbcd8, 0x8ab0});
+            else format_calendar_article_many_primary(c, n, {0x102bbd90, 0x8be8});
+        } else {
+            if (n.secondary >= 0) format_calendar_article_count_with_secondary(c, n, {0x102bb7c8, 0x8320});
+            else format_calendar_article_count_primary(c, n, {0x102bb88c, 0x845b});
+        }
+        return;
+    }
+    block(c, detailed ? 0x102bbe28 : 0x102bb930, 2);
+    c.compare(0, n.count, 1);
+    if (n.count == 1) {
+        block(c, detailed ? 0x102bbe30 : 0x102bb938, 2);
+        c.compare(0, n.secondary, -1);
+        if (n.secondary >= 0)
+            format_calendar_article_single_with_secondary(c, n, detailed ? CalendarArticlePhrase{0x102bbe38, 0x8cf6}
+                                                                         : CalendarArticlePhrase{0x102bb940, 0x856c});
+        else
+            format_calendar_article_single_primary(c, n, detailed ? CalendarArticlePhrase{0x102bbee0, 0x8dd6}
+                                                                  : CalendarArticlePhrase{0x102bb9e8, 0x862f});
+        return;
+    }
+    block(c, detailed ? 0x102bbf68 : 0x102bba70, 2);
+    c.compare(0, n.secondary, -1);
+    if (n.secondary >= 0)
+        format_calendar_article_list_with_secondary(c, n, detailed ? CalendarArticlePhrase{0x102bbf70, 0x8e8c}
+                                                                   : CalendarArticlePhrase{0x102bba78, 0x86c8});
+    else
+        format_calendar_article_list_primary(c, n, detailed ? CalendarArticlePhrase{0x102bbff8, 0x8f89}
+                                                           : CalendarArticlePhrase{0x102bbb00, 0x87a8});
+}
+
 void link_calendar_notice_competition(Cpu& c, const CalendarNoticeRender& notice,
                                       int id, std::uint32_t pc) {
     block(c, pc, 2);
@@ -4813,7 +5186,6 @@ void write_calendar_notice_output(Cpu& c, const CalendarNoticeRender& notice) {
     }
 }
 
-// This partial owner is reachable only from the differential fixture.
 void render_calendar_notice(Cpu& c) {
     GuestNativeScope scope(c.s, render_calendar_notice_entry);
     const auto caller = c.sp();
@@ -4821,9 +5193,8 @@ void render_calendar_notice(Cpu& c) {
     block(c, 0x102bb148, 2);
     if (record_nonzero_byte(c, c.r(13))) {
         format_calendar_club_list(c, notice);
-        throw std::logic_error("Calendar notice article is not reconstructed");
-    }
-    format_calendar_notice_headline(c, notice);
+        format_calendar_article(c, notice);
+    } else format_calendar_notice_headline(c, notice);
     write_calendar_notice_output(c, notice);
     block(c, 0x102bc164, 5);
     c.set(0, c.u32(caller + 8));
