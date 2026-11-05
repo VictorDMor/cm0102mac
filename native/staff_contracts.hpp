@@ -24,6 +24,7 @@ void format_wage_text(guest::Cpu&, std::uint32_t contract, std::uint32_t destina
 void format_contract_end(guest::Cpu&, std::uint32_t contract, std::uint32_t destination);
 
 void describe_expiry_text(guest::Cpu&, std::uint32_t contract, std::uint32_t destination, std::int8_t style);
+void classify_renewal_offer(guest::Cpu&, std::uint32_t contract, std::uint32_t staff);
 void apply_country_wage_quote(guest::Cpu&, std::uint32_t contract, std::uint32_t player);
 void describe_squad_status(guest::Cpu&, std::uint32_t contract, std::int32_t capacity);
 void describe_release_summary(guest::Cpu&, std::uint32_t contract, std::int32_t capacity);
