@@ -4,6 +4,7 @@
 #include "national_teams_adapter.hpp"
 #include "news_adapter.hpp"
 #include "routine_check.hpp"
+#include "rng_core.hpp"
 #include "semantic_io_checks.hpp"
 #include "tactics.hpp"
 
@@ -55,6 +56,10 @@ constexpr auto create_schedule = 0x102ba1c0u, register_fixture = 0x102ba290u, ex
 constexpr auto mark_fixtures = 0x102ba7b0u, apply_marks = 0x102baa40u;
 constexpr auto mark_groups = fixture + 0xc000, mark_lists = fixture + 0xcc00;
 constexpr auto mark_array = fixture + 0xbe20, mark_matches = fixture + 0xbe40;
+constexpr auto queue_calendar_notice = 0x102bacc0u, publish_calendar_notices = 0x102bad10u;
+constexpr auto calendar_notice_trace = fixture + 0x8400, calendar_notice_pairs = fixture + 0x8600;
+constexpr auto calendar_notice_globals = fixture + 0x8700, calendar_variant_words = fixture + 0x8760;
+constexpr auto calendar_rng_seed = toc - 0x34c4;
 constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
 constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
 constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
@@ -119,6 +124,7 @@ bool observe_dependency(State& s) {
     const bool calendar_archive = calendar_read || (resume >= 0x102b9740 && resume <= 0x102b9e34);
     const bool domestic_schedule = resume >= 0x102ba204 && resume <= 0x102ba5dc;
     const bool fixture_marking = resume >= 0x102ba80c && resume <= 0x102ba9fc;
+    const bool calendar_news = resume >= 0x102bad6c && resume <= 0x102bb03c;
     switch (entry) {
     case 0x100ce250: case 0x100c7d00: case 0x10738e00: case 0x10717b20: case 0x10717890:
     case 0x1048b180: case dispose_list: case localize: case 0x107156b0: break;
@@ -129,8 +135,14 @@ bool observe_dependency(State& s) {
     case 0x107475b0: case 0x10747cc0: case 0x10747900: case 0x10487640:
         if (!calendar_archive) return false;
         break;
-    case 0x10747a80: case 0x10775130: case 0x10773520: case 0x10738d10:
+    case 0x10747a80: case 0x10775130: case 0x10773520:
         if (!calendar_read) return false;
+        break;
+    case 0x10738d10:
+        if (!calendar_read && resume != 0x102bacf8) return false;
+        break;
+    case 0x10738ca0: case 0x1049d330: case 0x102cc730: case 0x102cc8e0: case 0x1077b770:
+        if (!calendar_news) return false;
         break;
     case 0x10775200:
         if (!calendar_read && !domestic_schedule && !fixture_marking) return false;
@@ -163,6 +175,30 @@ bool observe_dependency(State& s) {
     for (unsigned i = 0; i < 32; ++i) call[i + 2] = c.r(i);
     dependencies->push_back(call);
     switch (entry) {
+    case 0x1077b770:
+        return false; // Run the real RNG core and compare its ordered writes.
+    case 0x10738ca0:
+        require(resume == 0x102bb03c && c.r(3) == calendar + 0x28, "calendar notice clear ABI");
+        c.put64(c.r(3), 0);
+        c.put64(c.r(3) + 8, 0);
+        c.put8(calendar_notice_trace + 2, 1);
+        break;
+    case 0x1049d330:
+        require(resume == 0x102baedc && c.r(3) == competition_manager &&
+                    c.r(5) == frame + 0x3c && c.r(6) == frame + 0x38, "calendar notice metadata ABI");
+        c.put32(c.r(5), 44 + c.r(4));
+        c.put32(c.r(6), 81 + c.r(4));
+        break;
+    case 0x102cc730: case 0x102cc8e0: {
+        const auto group = c.u8(calendar_notice_trace + 1);
+        require(group < 2 && c.r(3) == news_system && c.r(4) == frame + 0x40,
+                "calendar notice delivery ABI");
+        if (entry == 0x102cc730)
+            require(c.r(5) == calendar_notice_globals + 0xc8, "calendar notice local delivery recipient");
+        c.put8(calendar_notice_trace + 4 + group, entry == 0x102cc730 ? 1 : 2);
+        c.put8(calendar_notice_trace + 1, group + 1);
+        break;
+    }
     case 0x100ce250:
         if (resume != 0x102ba33c) return false;
         require(c.r(3) == release_team, "domestic fixture team classifier");
@@ -280,6 +316,14 @@ bool observe_dependency(State& s) {
     }
     case 0x10738d10: {
         const auto list = c.r(3);
+        if (resume == 0x102bacf8) {
+            require(list == calendar + 0x28 && c.r(4) == frame + 0x38 && c.r(5) == 8,
+                    "calendar notice append ABI");
+            c.put32(calendar_notice_pairs, c.u32(c.r(4)));
+            c.put32(calendar_notice_pairs + 4, c.u32(c.r(4) + 4));
+            c.put8(calendar_notice_trace, 1);
+            break;
+        }
         require(c.r(4) == frame + 0x108 && c.r(5) == 0x14, "calendar archive append ABI");
         const auto count = c.u16(list);
         require(count < 2, "calendar archive list capacity");
@@ -306,6 +350,19 @@ bool observe_dependency(State& s) {
         c.set(3, 0x456789ab);
         break;
     case news_create: case news_field:
+        if (calendar_news) {
+            require(c.r(3) == frame + 0x40, "calendar notice message ABI");
+            if (entry == news_create) {
+                require(c.r(4) == 0x2c && !c.r(5), "calendar notice message category");
+                c.put8(calendar_notice_trace, 1);
+            } else {
+                const auto group = c.u8(calendar_notice_trace + 1);
+                const auto field = c.r(4);
+                require(group < 2 && field < 16, "calendar notice fields");
+                c.put32(calendar_notice_trace + 0x20 + group * 0x40 + field * 4, c.r(5));
+            }
+            break;
+        }
         require(c.r(3) == frame + 0x38, "roster notice message frame");
         if (entry == news_create) {
             require((c.r(4) >= 0x20 && c.r(4) <= 0x22) && !c.r(5), "roster notice category and priority");
@@ -518,14 +575,16 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
                 entry == add_replacement || entry == replacement_objection || entry == automatic_replacement ||
                 entry == calendar_save || entry == calendar_load || entry == create_schedule || entry == register_fixture ||
-                entry == date_order || entry == score_order || entry == club_order || entry == mark_fixtures || entry == apply_marks;
+                entry == date_order || entry == score_order || entry == club_order || entry == mark_fixtures || entry == apply_marks || entry == publish_calendar_notices;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection ||
                                    input.pc == automatic_replacement || input.pc == calendar_save ||
                                    input.pc == calendar_load || input.pc == create_schedule ||
-                                   input.pc == register_fixture || nested_owners.size()))
+                                   input.pc == register_fixture || input.pc == publish_calendar_notices || nested_owners.size()))
             routine_checker = &notice_boundary;
+        if (input.pc == publish_calendar_notices)
+            utility_object_diagnostics(s).original_body = 0x10738ca0;
         if (input.pc == duty) {
             utility_object_diagnostics(s).original_body = dispose_list;
             localization_format_diagnostics(s).original_body = localize;
@@ -569,7 +628,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
         require(original->pc == done && rewrite->pc == done, label + " normal continuation");
         if (input.pc == create_schedule || input.pc == register_fixture || input.pc == expire_schedule ||
             input.pc == date_order || input.pc == score_order || input.pc == club_order ||
-            input.pc == mark_fixtures || input.pc == apply_marks)
+            input.pc == mark_fixtures || input.pc == apply_marks || input.pc == queue_calendar_notice ||
+            input.pc == publish_calendar_notices)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
     }
@@ -2775,6 +2835,149 @@ unsigned check_fixture_application(std::mt19937& random) {
     return comparisons;
 }
 
+unsigned check_calendar_notices(std::mt19937& random) {
+    const auto prepare = [&](std::uint32_t entry) {
+        auto state = domestic_schedule_seed(random);
+        Cpu c(*state);
+        constexpr std::array offsets{-0x7424, -0x7b5c, -0x7a70, -0x7520, -0x7b90,
+                                     -0x7b88, -0x7b84, -0x7bf0, -0x6948};
+        for (unsigned i = 0; i < offsets.size(); ++i) c.put32(toc + offsets[i], calendar_notice_globals + 4 * i);
+        c.put32(toc - 0x7b8c, calendar_variant_words);
+        c.put32(calendar_notice_globals, competition_manager);
+        c.put32(calendar_notice_globals + 4, calendar_notice_globals + 0x30);
+        c.put32(calendar_notice_globals + 8, 1);
+        c.put32(calendar_notice_globals + 12, calendar_notice_globals);
+        c.put32(calendar_notice_globals + 28, news_system);
+        c.put32(calendar_notice_globals + 32, 0);
+        c.put32(calendar_notice_globals + 0x30, team_nation);
+        c.put32(calendar_notice_globals + 0x34, allowed_nation);
+        c.put32(team_nation, 0);
+        c.put32(allowed_nation, 1);
+        c.put16(team_nation + 0x40, -12);
+        c.put16(allowed_nation + 0x40, 33);
+        c.put16(calendar_variant_words, 1);
+        c.put16(calendar_variant_words + 2, 2);
+        c.put16(calendar_variant_words + 4, 3);
+        c.put16(calendar_variant_words + 6, 4);
+        c.put32(calendar_rng_seed, 0x01234567);
+        c.set(3, calendar);
+        state->pc = entry;
+        return state;
+    };
+    unsigned comparisons = 0;
+    for (const auto& [club, nation] : {std::pair{0u, 0u}, std::pair{clubs, 0u},
+                                      std::pair{0u, team_nation}, std::pair{clubs, team_nation}}) {
+        const auto state = prepare(queue_calendar_notice);
+        Cpu(*state).set({{4, club}, {5, nation}});
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u8(calendar_notice_trace) == unsigned(club && nation) &&
+                    result.u32(calendar_notice_pairs) == (nation ? club : 0) &&
+                    result.u32(calendar_notice_pairs + 4) == (club ? nation : 0),
+                "calendar queue accepts only complete club and nation pairs");
+        ++comparisons;
+    }
+
+    const auto seed_pairs = [](Cpu& c, std::initializer_list<std::pair<int, std::uint32_t>> pairs) {
+        const auto list = calendar + 0x28;
+        c.put16(list, pairs.size());
+        c.put32(list + 4, pairs.size() ? fixture_nodes : 0);
+        c.put32(list + 12, unmapped);
+        unsigned index = 0;
+        for (const auto& [club, nation] : pairs) {
+            const auto pair = calendar_notice_pairs + index * 8, node = fixture_nodes + index * 16;
+            c.put32(pair, club < 0 ? 0 : clubs + unsigned(club) * 0x248);
+            c.put32(pair + 4, nation);
+            c.put32(node, pair);
+            c.put32(node + 8, ++index < pairs.size() ? node + 16 : 0);
+            if (club >= 0) c.put32(clubs + unsigned(club) * 0x248, club);
+        }
+    };
+    for (unsigned scenario = 0; scenario < 7; ++scenario) {
+        const auto state = prepare(publish_calendar_notices);
+        Cpu c(*state);
+        const auto initial_rng = c.u32(calendar_rng_seed);
+        unsigned groups = 1;
+        if (scenario == 0) {
+            groups = 0;
+        } else if (scenario == 1) {
+            seed_pairs(c, {{-1, 0}});
+            groups = 0;
+        } else if (scenario == 2 || scenario == 3) {
+            seed_pairs(c, {{0, team_nation}, {4, allowed_nation}, {-1, 0}, {1, team_nation},
+                           {2, team_nation}, {3, team_nation}});
+            c.put16(clubs + 0x1ec, -2);
+            c.put16(clubs + 0x248 + 0x1ec, 10);
+            c.put16(clubs + 2 * 0x248 + 0x1ec, 0);
+            c.put16(clubs + 3 * 0x248 + 0x1ec, 127);
+            if (scenario == 3) c.put32(calendar_notice_globals + 32, 1);
+            groups = 2;
+        } else {
+            seed_pairs(c, {{2, team_nation}});
+        }
+        const unsigned end = scenario == 4 ? 0 : scenario == 5 ? 2 : 6;
+        c.put32(calendar_notice_globals + 20, calendar_variant_words + end);
+        c.put32(calendar_notice_globals + 24, calendar_variant_words);
+        c.put32(calendar_notice_globals + 16, scenario == 6 ? 0x80000001u : 3u);
+
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u8(calendar_notice_trace) == unsigned(scenario != 0) &&
+                    result.u8(calendar_notice_trace + 1) == groups &&
+                    result.u8(calendar_notice_trace + 2) == unsigned(scenario != 0),
+                "calendar notices create once, publish by nation and clear once");
+        std::uint32_t rng = initial_rng, seed = c.u32(calendar_notice_globals + 16);
+        unsigned cursor = 0;
+        for (unsigned group = 0; group < groups; ++group) {
+            const auto fields = calendar_notice_trace + 0x20 + group * 0x40;
+            for (const unsigned variants : {4u, 2u}) {
+                cursor += 2;
+                if (cursor > end) {
+                    cursor = 0;
+                    rng = cm::rng::next_state(rng);
+                    seed = cm::rng::sample(rng);
+                }
+                const auto expected = std::int32_t(seed + c.u16(calendar_variant_words + cursor)) % int(variants);
+                require(result.u32(fields + (variants == 4 ? 8 : 12)) == std::uint32_t(expected),
+                        "calendar notice pool wrap and signed remainder");
+            }
+            require(result.u32(fields) == group && result.u32(fields + 16) == 44 + group &&
+                        result.u32(fields + 20) == 81 + group &&
+                        result.u32(fields + 24) == (group ? 33u : std::uint32_t(-12)) &&
+                        result.u8(calendar_notice_trace + 4 + group) == ((group == unsigned(scenario == 3)) ? 1 : 2),
+                    "calendar notice metadata and local versus headline delivery");
+        }
+        require(result.u32(calendar_rng_seed) == rng, "calendar notice RNG state");
+        if (groups == 2) {
+            const auto fields = calendar_notice_trace + 0x20;
+            require(result.u32(fields + 4) == 4 && result.u32(fields + 28) == 1 &&
+                        result.u32(fields + 32) == 2 && result.u32(fields + 36) == 0 &&
+                        result.u32(fields + 40) == 3 &&
+                        result.u32(fields + 0x40 + 4) == 1 && result.u32(fields + 0x40 + 28) == 4,
+                    "calendar notice grouping and the original unsorted final club");
+        }
+        if (groups)
+            require(result.u32(calendar_notice_globals + 24) == calendar_variant_words + cursor &&
+                        result.u32(calendar_notice_globals + 16) == seed &&
+                        !result.u16(calendar + 0x28), "calendar notices retain final variant state and clear the list");
+        ++comparisons;
+    }
+
+    const auto fault = prepare(publish_calendar_notices);
+    {
+        Cpu c(*fault);
+        seed_pairs(c, {{0, team_nation}, {1, 0}});
+        c.put32(calendar_notice_pairs + 4, 0);
+    }
+    compare(*fault, Stop::fault);
+    for (const auto entry : {queue_calendar_notice, publish_calendar_notices}) {
+        auto state = prepare(entry);
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    return comparisons;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -2842,6 +3045,8 @@ int main() try {
     const auto expired_schedules = check_schedule_expiry(random);
     const auto marked_fixtures = check_fixture_marking(random);
     const auto applied_marks = check_fixture_application(random);
+    const auto calendar_notices = check_calendar_notices(random);
+    std::cout << calendar_notices << " NATIONAL_TEAMS calendar notice comparisons, 1 fault and 2 budget stops\n";
     std::cout << applied_marks << " NATIONAL_TEAMS fixture application comparisons, 2 faults and 1 budget stop\n";
     std::cout << marked_fixtures << " NATIONAL_TEAMS fixture marking comparisons, 2 faults and 1 budget stop\n";
     std::cout << expired_schedules << " NATIONAL_TEAMS schedule expiry comparisons, 2 faults and 1 budget stop\n";

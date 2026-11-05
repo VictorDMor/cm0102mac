@@ -3642,7 +3642,7 @@ void expire_domestic_schedule(Cpu& c) {
 constexpr auto mark_fixtures_entry = 0x102ba7b0u;
 constexpr unsigned fixture_marks_offset = 0x24, fixture_groups_offset = 0x98, fixture_group_size = 0x4c;
 
-bool record_fixture_pointer(Cpu& c, unsigned reg) {
+bool record_nonzero_pointer(Cpu& c, unsigned reg) {
     const auto pointer = c.r(3);
     c.set(reg, pointer);
     const auto high = c.cr(0) & 0xf0;
@@ -3770,7 +3770,7 @@ void mark_fixture_group(Cpu& c, std::uint32_t calendar, std::uint32_t group, std
         c.set(5, slot);
         c.call(0x1048d420, 0x102ba8b8);
         block(c, 0x102ba8b8, 2);
-        if (record_fixture_pointer(c, 23)) {
+        if (record_nonzero_pointer(c, 23)) {
             const auto list = c.r(23);
             block(c, 0x102ba8c0, 3);
             c.set(0, c.u32(list + 4));
@@ -3780,7 +3780,7 @@ void mark_fixture_group(Cpu& c, std::uint32_t calendar, std::uint32_t group, std
                 c.set(3, list);
                 c.call(0x10738e00, 0x102ba9fc);
                 block(c, 0x102ba9fc, 2);
-                if (!record_fixture_pointer(c, 20)) break;
+                if (!record_nonzero_pointer(c, 20)) break;
                 mark_calendar_match(c, calendar, group, c.r(20), competitions, domestic);
             }
         }
@@ -4100,6 +4100,311 @@ void apply_fixture_marks(Cpu& c) {
     c.finish();
 }
 
+constexpr auto queue_calendar_notice_entry = 0x102bacc0u, publish_calendar_notices_entry = 0x102bad10u;
+constexpr unsigned calendar_notice_list_offset = 0x28, calendar_notice_message_offset = 0x40;
+constexpr unsigned calendar_notice_clubs_offset = 0x124;
+
+void queue_calendar_notice(Cpu& c) {
+    GuestNativeScope scope(c.s, queue_calendar_notice_entry);
+    block(c, queue_calendar_notice_entry, 5);
+    const auto caller = c.sp(), frame = caller - 0x40, calendar = c.r(3), club = c.r(4), nation = c.r(5);
+    c.set(0, c.lr());
+    c.compare_logical(0, club, 0);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    if (club) {
+        block(c, 0x102bacd4, 2);
+        c.compare_logical(0, nation, 0);
+        if (nation) {
+            block(c, 0x102bace0, 6);
+            c.put32(frame + 0x38, club);
+            c.set({{3, calendar + calendar_notice_list_offset}, {4, frame + 0x38}});
+            c.put32(frame + 0x3c, nation);
+            c.set(5, 8);
+            c.call(0x10738d10, 0x102bacf8);
+        } else block(c, 0x102bacdc, 1);
+    }
+    block(c, 0x102bacf8, 4);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.finish();
+}
+
+struct CalendarNoticeQueue {
+    std::uint32_t list, message, clubs, region_codes, nations, manager;
+    std::uint32_t variant_seed, variant_start, variant_end, variant_cursor;
+    std::uint32_t log, local_nation, local_manager, managers;
+};
+
+struct CalendarNoticeGroup {
+    std::uint32_t nation = 0;
+    unsigned count = 0;
+};
+
+CalendarNoticeGroup collect_calendar_notice_group(Cpu& c, const CalendarNoticeQueue& q) {
+    block(c, 0x102bad70, 4);
+    c.set(0, c.u32(q.list + 4));
+    c.set(15, 0);
+    c.put32(q.list + 12, c.r(0));
+    CalendarNoticeGroup group;
+    for (;;) {
+        block(c, 0x102bade4, 2);
+        c.set(3, q.list);
+        c.call(0x10738e00, 0x102badec);
+        block(c, 0x102badec, 2);
+        if (!record_nonzero_pointer(c, 16)) break;
+        const auto pair = c.r(16);
+        block(c, 0x102bad84, 3);
+        const auto club = c.u32(pair);
+        c.set(0, club);
+        c.compare_logical(0, club, 0);
+        if (!club) continue;
+        block(c, 0x102bad90, 2);
+        c.compare_logical(0, group.nation, 0);
+        if (!group.nation) {
+            block(c, 0x102bad98, 5);
+            group.nation = c.u32(pair + 4);
+            c.set({{15, group.nation}, {3, q.message}, {4, 0}});
+            c.set(5, c.u32(group.nation));
+            c.call(set_news_field, 0x102badac);
+            block(c, 0x102badac, 2);
+            group.count = 0;
+            c.set(14, 0);
+        } else {
+            block(c, 0x102badb4, 3);
+            const auto nation = c.u32(pair + 4);
+            c.set(0, nation);
+            c.compare_logical(0, nation, group.nation);
+            if (nation != group.nation) continue;
+        }
+
+        block(c, 0x102badc0, 9);
+        const auto entry = c.u32(pair);
+        c.set(5, entry);
+        const auto index = std::uint32_t(std::int8_t(group.count));
+        c.set({{0, index}, {4, index * 4}, {3, q.clubs}});
+        const auto club_id = c.u32(entry);
+        c.set({{5, club_id}, {0, 0}, {14, ++group.count}});
+        c.put32(q.clubs + index * 4, club_id);
+        c.put32(pair, 0);
+    }
+    return group;
+}
+
+template<unsigned Variants>
+void choose_calendar_notice_variant(Cpu& c, const CalendarNoticeQueue& q, std::uint32_t pc,
+                                    unsigned field) {
+    block(c, pc, 6);
+    const auto cursor = c.u32(q.variant_cursor);
+    c.set(3, cursor);
+    const auto last = c.u32(q.variant_end);
+    c.set(0, last);
+    const auto next = cursor + 2;
+    c.set(3, next);
+    c.compare_logical(0, next, last);
+    c.put32(q.variant_cursor, next);
+    if (next > last) {
+        block(c, pc + 24, 2);
+        c.put32(q.variant_cursor, q.variant_start);
+        c.call(0x1077b770, pc + 32);
+        block(c, pc + 32, 2);
+        c.set(0, std::uint16_t(c.r(3)));
+        c.put32(q.variant_seed, c.r(0));
+    }
+    block(c, pc + 40, Variants == 4 ? 12 : 11);
+    const auto selected = c.u32(q.variant_cursor);
+    c.set({{5, selected}, {3, q.message}});
+    const auto seed = c.u32(q.variant_seed);
+    c.set({{0, seed}, {4, field}});
+    const auto sum = seed + c.u16(selected);
+    const auto remainder = std::int32_t(sum) % std::int32_t(Variants);
+    // The two original divisions publish different volatile r0 residues.
+    const auto sign = sum >> 31;
+    const auto residue = Variants == 4 ? std::uint32_t(remainder) - sign : (sum & 1) ^ sign;
+    c.set({{0, residue}, {5, std::uint32_t(remainder)}});
+    c.call(set_news_field, pc + (Variants == 4 ? 88 : 84));
+}
+
+void calendar_notice_metadata(Cpu& c, const CalendarNoticeQueue& q, std::uint32_t nation) {
+    const auto frame = c.sp();
+    block(c, 0x102baeb8, 9);
+    c.set({{3, 0}, {0, UINT32_MAX}});
+    c.put32(frame + 0x3c, 0);
+    c.set(5, frame + 0x3c);
+    c.set(3, c.u32(q.manager));
+    c.set(6, frame + 0x38);
+    c.put32(frame + 0x38, UINT32_MAX);
+    c.set(4, c.u32(nation));
+    c.call(0x1049d330, 0x102baedc);
+    for (unsigned field = 4; field <= 5; ++field) {
+        const auto pc = field == 4 ? 0x102baedcu : 0x102baedcu + 16;
+        block(c, pc, 4);
+        c.set(5, c.u32(frame + (field == 4 ? 0x3c : 0x38)));
+        c.set({{3, q.message}, {4, field}});
+        c.call(set_news_field, pc + 16);
+    }
+    block(c, 0x102baefc, 8);
+    const auto id = c.u32(nation);
+    c.set({{0, id}, {3, q.message}});
+    const auto nations = c.u32(q.nations);
+    c.set({{5, nations}, {4, 6}, {0, id * 4}});
+    const auto record = c.u32(nations + id * 4);
+    c.set(5, record);
+    c.set(5, std::uint32_t(c.i16(record + 0x40)));
+    c.call(set_news_field, 0x102baf1c);
+}
+
+void order_calendar_notice_clubs(Cpu& c, const CalendarNoticeQueue& q, int count) {
+    block(c, 0x102baf1c, 8);
+    c.set(3, std::uint32_t(count));
+    const auto records = c.u32(q.region_codes);
+    c.set({{5, records}, {12, std::uint32_t(count - 2)}, {10, q.clubs},
+           {16, std::uint32_t(count - 1)}, {8, 0}, {4, 0}});
+    // The last queued club stays in its slot. The original descending
+    // exchange sort only visits the preceding clubs.
+    for (int outer = 0; ; ++outer) {
+        block(c, 0x102bafa4, 3);
+        c.set(3, outer);
+        c.compare(0, outer, count - 2);
+        if (outer >= count - 2) return;
+        block(c, 0x102baf3c, 5);
+        const auto current = q.clubs + unsigned(outer) * 4;
+        c.set({{0, unsigned(outer + 1)}, {9, unsigned(outer + 1)}, {3, unsigned(outer + 1) * 4},
+               {11, current + 4}});
+        for (int inner = outer + 1; ; ++inner) {
+            block(c, 0x102baf8c, 3);
+            c.set(0, inner);
+            c.compare(0, inner, count - 1);
+            if (inner >= count - 1) break;
+            block(c, 0x102baf50, 10);
+            const auto other = q.clubs + unsigned(inner) * 4;
+            const auto a = c.u32(current);
+            c.set(6, a);
+            const auto b = c.u32(other);
+            c.set({{7, b}, {29, a * 0x248}, {18, b * 0x248}, {0, a * 0x248 + 0x1ec}});
+            const auto left = c.i16(records + c.r(0));
+            c.set({{0, std::uint32_t(left)}, {18, b * 0x248 + 0x1ec}});
+            const auto right = c.i16(records + c.r(18));
+            c.set(18, std::uint32_t(right));
+            c.compare(0, left, right);
+            if (left < right) {
+                block(c, 0x102baf78, 2);
+                c.put32(current, b);
+                c.put32(other, a);
+            }
+            block(c, 0x102baf80, 3);
+            c.set({{3, unsigned(inner + 1) * 4}, {11, other + 4}, {9, unsigned(inner + 1)}});
+        }
+        block(c, 0x102baf98, 3);
+        c.set({{4, unsigned(outer + 1) * 4}, {10, current + 4}, {8, unsigned(outer + 1)}});
+    }
+}
+
+void publish_calendar_notice_group(Cpu& c, const CalendarNoticeQueue& q, CalendarNoticeGroup group) {
+    const auto count = std::int8_t(group.count);
+    block(c, 0x102badfc, 4);
+    c.set({{3, q.message}, {5, std::uint32_t(count)}, {4, 1}});
+    c.call(set_news_field, 0x102bae0c);
+    choose_calendar_notice_variant<4>(c, q, 0x102bae0c, 2);
+    choose_calendar_notice_variant<2>(c, q, 0x102bae64, 3);
+    calendar_notice_metadata(c, q, group.nation);
+    order_calendar_notice_clubs(c, q, count);
+
+    block(c, 0x102bafb0, 5);
+    c.set({{16, 0}, {29, std::uint32_t(count)}, {18, 0}, {30, q.clubs}});
+    for (int index = 0; ; ++index) {
+        block(c, 0x102bafe8, 3);
+        c.set(0, index);
+        c.compare(0, index, count);
+        if (index >= count) break;
+        block(c, 0x102bafc8, 5);
+        c.set(0, index + 7);
+        c.set(5, c.u32(q.clubs + unsigned(index) * 4));
+        c.set({{3, q.message}, {4, std::uint32_t(std::int8_t(index + 7))}});
+        c.call(set_news_field, 0x102bafdc);
+        block(c, 0x102bafdc, 3);
+        c.set({{18, unsigned(index + 1) * 4}, {30, q.clubs + unsigned(index + 1) * 4}, {16, unsigned(index + 1)}});
+    }
+    block(c, 0x102baff4, 4);
+    const auto id = c.u32(group.nation);
+    c.set(3, id);
+    const auto local = c.u32(q.local_nation);
+    c.set(0, local);
+    c.compare(0, id, local);
+    if (id == local) {
+        block(c, 0x102bb004, 7);
+        c.set(0, c.u32(q.local_manager));
+        c.set(4, q.message);
+        c.set(5, c.u32(q.managers));
+        c.set(0, c.r(0) * 0xc8);
+        c.set(3, c.u32(q.log));
+        c.set(5, c.r(5) + c.r(0));
+        c.call(0x102cc730, 0x102bb020);
+        block(c, 0x102bb020, 1);
+    } else {
+        block(c, 0x102bb024, 3);
+        c.set({{3, c.u32(q.log)}, {4, q.message}});
+        c.call(0x102cc8e0, 0x102bb030);
+        block(c, 0x102bb030, 1);
+    }
+}
+
+void publish_calendar_notices(Cpu& c) {
+    GuestNativeScope scope(c.s, publish_calendar_notices_entry);
+    block(c, publish_calendar_notices_entry, 19);
+    const auto caller = c.sp(), frame = caller - 0x310, calendar = c.r(3);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<13>(c, caller);
+    c.set({{19, c.toc(-0x7424)}, {31, calendar}});
+    c.set(20, c.toc(-0x7b5c));
+    c.set(21, c.toc(-0x7a70));
+    c.set(22, c.toc(-0x7520));
+    c.set(23, c.toc(-0x7b90));
+    c.set(24, c.toc(-0x7b8c));
+    c.set(25, c.toc(-0x7b88));
+    c.set(26, c.toc(-0x7b84));
+    c.set(13, c.toc(-0x7be8));
+    c.set(27, c.toc(-0x7bf0));
+    c.set(28, c.toc(-0x6948));
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto list = calendar + calendar_notice_list_offset;
+    const auto queued = c.i16(list);
+    c.set(0, std::uint32_t(queued));
+    c.compare(0, queued, 0);
+    if (queued) {
+        const CalendarNoticeQueue q{list, frame + calendar_notice_message_offset,
+            frame + calendar_notice_clubs_offset, c.r(13), c.r(20), c.r(19),
+            c.r(23), c.r(24), c.r(25), c.r(26), c.r(27), c.r(28), c.r(21), c.r(22)};
+        block(c, 0x102bad5c, 4);
+        c.set({{3, q.message}, {4, 0x2c}, {5, 0}});
+        c.call(create_news, 0x102bad6c);
+        block(c, 0x102bad6c, 1);
+        c.set(17, q.clubs);
+        for (;;) {
+            const auto group = collect_calendar_notice_group(c, q);
+            block(c, 0x102badf4, 2);
+            c.compare_logical(0, group.nation, 0);
+            if (!group.nation) break;
+            publish_calendar_notice_group(c, q, group);
+        }
+        block(c, 0x102bb034, 2);
+        c.set(3, list);
+        c.call(0x10738ca0, 0x102bb03c);
+    }
+    block(c, 0x102bb03c, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<13, true>(c, caller);
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -4326,6 +4631,8 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case expire_schedule_entry: expire_domestic_schedule(c); break;
     case mark_fixtures_entry: mark_domestic_fixtures(c); break;
     case apply_fixture_marks_entry: apply_fixture_marks(c); break;
+    case queue_calendar_notice_entry: queue_calendar_notice(c); break;
+    case publish_calendar_notices_entry: publish_calendar_notices(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;
