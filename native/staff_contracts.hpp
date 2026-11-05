@@ -8,6 +8,11 @@ inline constexpr std::uint32_t expiry_entry = 0x10380710;
 
 std::uint32_t sample_range(guest::Cpu&, std::int32_t bound);
 void initialize_draft(guest::Cpu&, std::uint32_t contract);
+void prepare_new_draft(guest::Cpu&, std::uint32_t contract, std::uint32_t staff, std::uint32_t club,
+                       std::uint8_t duration);
+void prepare_primary_draft(guest::Cpu&, std::uint32_t contract, std::uint32_t staff, std::uint32_t club,
+                           std::uint32_t end, std::uint32_t percentage, std::uint32_t first_clause,
+                           std::uint32_t second_clause);
 std::int16_t end_date_delta(guest::Cpu&, std::uint32_t contract);
 bool supports_bonus(guest::Cpu&, std::uint32_t person, std::int8_t bonus);
 

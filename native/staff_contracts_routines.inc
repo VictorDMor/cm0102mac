@@ -1,4 +1,6 @@
 STAFF_CONTRACTS_ROUTINE(0x103721f0, R3, [](Cpu& c) { initialize_draft(c, c.r(3)); })
+STAFF_CONTRACTS_ROUTINE(0x10372260, R3, [](Cpu& c) { prepare_new_draft(c, c.r(3), c.r(4), c.r(5), std::uint8_t(c.r(6))); })
+STAFF_CONTRACTS_ROUTINE(0x103723b0, R3, [](Cpu& c) { prepare_primary_draft(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8), c.r(9)); })
 STAFF_CONTRACTS_ROUTINE(0x10372590, R3, [](Cpu& c) { format_wage_text(c, c.r(3), c.r(4), c.r(5), std::int8_t(c.r(6))); })
 STAFF_CONTRACTS_ROUTINE(0x10372730, R3, [](Cpu& c) { format_contract_end(c, c.r(3), c.r(4)); })
 STAFF_CONTRACTS_ROUTINE(0x10374570, R3 | F1, [](Cpu& c) { sample_range(c, std::int32_t(c.r(3))); })
