@@ -594,6 +594,290 @@ void add_for_nation(Cpu& c) {
     c.finish();
 }
 
+constexpr auto encode_entry = 0x10142180u, decode_entry = 0x101426c0u;
+constexpr unsigned key_period = 480;
+constexpr std::uint32_t legacy_divisor = 0x88888889;
+
+struct FileTransform {
+    Cpu& c;
+    std::uint32_t data, keys;
+    unsigned size;
+
+    std::uint32_t key_address(unsigned index) const { return keys + 4 * (index % key_period); }
+    std::int32_t key(unsigned index) const { return c.i32(key_address(index)); }
+    std::uint32_t position(std::int32_t word) const {
+        return std::uint32_t(word % std::int32_t(size));
+    }
+    struct Swap {
+        std::uint32_t left, right;
+        std::uint8_t left_byte;
+    };
+    Swap swap(unsigned index, bool early_left_read = false) const {
+        const auto left = position(key(index));
+        // The fifth swap of the encoder's eight-swap block reads its
+        // left byte before its right key. The two ranges can alias.
+        auto left_byte = early_left_read ? c.u8(data + left) : std::uint8_t{};
+        const auto right = position(key(index + 1));
+        if (!early_left_read) left_byte = c.u8(data + left);
+        const auto right_byte = c.u8(data + right);
+        c.put8(data + left, right_byte);
+        c.put8(data + right, left_byte);
+        return {left, right, left_byte};
+    }
+};
+
+void set_ctr(Cpu& c, unsigned count) { c.s.wr<4>(guest::reg::ctr, count); }
+
+void encode_mask(FileTransform file, std::uint32_t checksum) {
+    auto& c = file.c;
+    unsigned index = 0;
+    const auto mask = [&](bool data_first) {
+        const auto address = file.data + index;
+        const auto sum = c.u32(checksum);
+        c.set(11, sum);
+        const auto byte = c.u8(address);
+        c.set(10, sum + byte);
+        c.put32(checksum, sum + byte);
+
+        std::uint32_t data = 0, key = 0;
+        if (data_first) data = c.u8(address);
+        c.set(0, (index % key_period) * 4);
+        c.set(12, index + 1);
+        key = std::uint32_t(file.key(index));
+        if (!data_first) data = c.u8(address);
+        c.set(10, data);
+        const auto encoded = data ^ (key & 0xff);
+        c.set(0, encoded);
+        c.put8(address, encoded);
+        ++index;
+    };
+
+    block(c, 0x10142234, 3);
+    const auto groups = file.size / 4;
+    c.set(0, groups);
+    record_compare(c, groups);
+    set_ctr(c, groups);
+    for (unsigned remaining = groups; remaining > 0; --remaining) {
+        block(c, 0x10142240, 62);
+        mask(true);
+        mask(false);
+        mask(false);
+        mask(false);
+        c.set(28, file.data + index);
+        set_ctr(c, remaining - 1);
+    }
+    auto tail = file.size;
+    if (groups) {
+        block(c, 0x10142338, 2);
+        tail %= 4;
+        c.set(7, tail);
+        record_compare(c, tail);
+        c.set(9, index / key_period);
+    }
+    if (!tail) return;
+    block(c, 0x10142340, 1);
+    set_ctr(c, tail);
+    for (unsigned remaining = tail; remaining > 0; --remaining) {
+        block(c, 0x10142344, 17);
+        c.set(9, index / key_period);
+        mask(true);
+        c.set(28, file.data + index);
+        set_ctr(c, remaining - 1);
+    }
+}
+
+void encode_permutation(FileTransform file) {
+    auto& c = file.c;
+    block(c, 0x10142394, 3);
+    c.compare(0, file.size, 8);
+    c.set(9, file.size - 8);
+    unsigned index = 0;
+    if (file.size > 8) {
+        block(c, 0x101423a0, 7);
+        const auto groups = (file.size - 1) / 8;
+        c.set({{7, groups}, {8, 0x88890000}, {0, legacy_divisor}});
+        set_ctr(c, groups);
+        c.compare(0, file.size - 8, 0);
+        for (unsigned remaining = groups; remaining > 0; --remaining) {
+            block(c, 0x101423bc, 151);
+            for (unsigned lane = 0; lane < 8; ++lane) {
+                const auto swapped = file.swap(index++, lane == 4);
+                if (lane == 6) c.set({{11, swapped.left}, {12, swapped.left_byte}});
+            }
+            c.set(5, index);
+            set_ctr(c, remaining - 1);
+        }
+    }
+    block(c, 0x10142618, 6);
+    c.set({{7, 0x88890000}, {0, file.size - index}, {10, legacy_divisor}});
+    set_ctr(c, file.size - index);
+    c.compare(0, index, file.size);
+    for (; index < file.size; ++index) {
+        block(c, 0x10142630, 25);
+        const auto swapped = file.swap(index);
+        c.set({{5, index + 1}, {7, swapped.right}, {8, swapped.left}, {9, swapped.left_byte}});
+        set_ctr(c, file.size - index - 1);
+    }
+}
+
+void decode_permutation(FileTransform file) {
+    auto& c = file.c;
+    block(c, 0x1014274c, 5);
+    const auto last = file.size - 1;
+    c.set(30, last);
+    c.s.wr<1>(guest::reg::xer_ca, file.size != 0);
+    record_compare(c, std::int32_t(last));
+    c.set({{7, file.size}, {12, legacy_divisor}});
+    if (!file.size) return;
+    block(c, 0x10142760, 3);
+    const auto groups = file.size / 2;
+    c.set(0, groups);
+    record_compare(c, groups);
+    set_ctr(c, groups);
+    unsigned index = last;
+    for (unsigned remaining = groups; remaining > 0; --remaining) {
+        block(c, 0x1014276c, 49);
+        file.swap(index--);
+        file.swap(index--);
+        c.set(30, index);
+        set_ctr(c, remaining - 1);
+    }
+    auto tail = file.size;
+    if (groups) {
+        block(c, 0x10142830, 2);
+        tail %= 2;
+        c.set(7, tail);
+        record_compare(c, tail);
+    }
+    if (!tail) return;
+    block(c, 0x10142838, 1);
+    set_ctr(c, tail);
+    block(c, 0x1014283c, 25);
+    file.swap(index--);
+    c.set(30, index);
+    set_ctr(c, 0);
+}
+
+std::uint32_t decode_mask(FileTransform file) {
+    auto& c = file.c;
+    block(c, 0x101428a0, 6);
+    c.compare(0, file.size, 0);
+    c.set({{7, 0x88890000}, {8, legacy_divisor}, {12, 0}, {11, 0}});
+    if (!file.size) return 0;
+
+    unsigned index = 0;
+    std::uint32_t sum = 0;
+    const auto mask = [&] {
+        const auto address = file.data + index;
+        c.set(9, index / key_period);
+        const auto byte = c.u8(address);
+        c.set(10, byte);
+        c.set(7, index % key_period);
+        c.set(11, index + 1);
+        const auto decoded = byte ^ (std::uint32_t(file.key(index)) & 0xff);
+        c.set(0, decoded);
+        c.put8(address, decoded);
+        const auto stored = c.u8(address);
+        c.set(0, stored);
+        sum += stored;
+        c.set(12, sum);
+        ++index;
+    };
+
+    block(c, 0x101428b8, 3);
+    const auto groups = file.size / 4;
+    c.set(0, groups);
+    record_compare(c, groups);
+    set_ctr(c, groups);
+    for (unsigned remaining = groups; remaining > 0; --remaining) {
+        block(c, 0x101428c4, 54);
+        for (unsigned lane = 0; lane < 4; ++lane) mask();
+        c.set(3, file.data + index);
+        set_ctr(c, remaining - 1);
+    }
+    auto tail = file.size;
+    if (groups) {
+        block(c, 0x1014299c, 2);
+        tail %= 4;
+        c.set(4, tail);
+        record_compare(c, tail);
+    }
+    if (!tail) return sum;
+    block(c, 0x101429a4, 1);
+    set_ctr(c, tail);
+    for (unsigned remaining = tail; remaining > 0; --remaining) {
+        block(c, 0x101429a8, 15);
+        mask();
+        c.set(3, file.data + index);
+        set_ctr(c, remaining - 1);
+    }
+    return sum;
+}
+
+template<bool Encode>
+void transform_file(Cpu& c) {
+    constexpr auto entry = Encode ? encode_entry : decode_entry;
+    constexpr auto validate_size = Encode ? 0x101421b0u : 0x101426e8u;
+    constexpr auto error = Encode ? 0x101421b8u : 0x101426f0u;
+    GuestNativeScope scope(c.s, entry);
+    block(c, entry, Encode ? 12 : 10);
+    const auto caller = c.sp(), frame = caller - 0x70;
+    const auto address = c.r(3), size = c.r(4), checksum = c.r(5);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.compare_logical(0, address, 0);
+    const auto keys = c.toc(-0x54d8);
+    c.set(6, keys);
+    c.put32(caller - 8, c.r(30));
+    const auto message = c.toc(-0x7ba8);
+    c.set(30, message);
+    if constexpr (Encode) c.put32(caller - 12, c.r(29));
+    else c.put32(caller + 8, c.r(0));
+    const auto source = c.toc(-0x54cc);
+    c.set(Encode ? 29 : 31, source);
+    if constexpr (Encode) {
+        c.put32(caller - 16, c.r(28));
+        c.put32(caller + 8, c.r(0));
+    }
+    push_frame(c, scope, caller, frame);
+    if (address) {
+        block(c, validate_size, 2);
+        c.compare(0, size, 0);
+    }
+    if (!address || std::int32_t(size) < 0) {
+        report_bad_record(c, error, source, message, 0x40, 0x38, Encode ? 0x367 : 0x391);
+    } else {
+        const FileTransform file{c, address, keys, size};
+        if constexpr (Encode) {
+            block(c, 0x10142214, 8);
+            c.set({{0, 0}, {8, 0x88890000}});
+            c.put32(checksum, 0);
+            c.set({{28, address}, {7, size}, {8, legacy_divisor}, {12, 0}});
+            if (size) encode_mask(file, checksum);
+            block(c, 0x10142388, 3);
+            c.compare(0, size, 0);
+            c.set(5, 0);
+            if (size) encode_permutation(file);
+            block(c, 0x10142694, 1);
+            c.set(3, 1);
+        } else {
+            decode_permutation(file);
+            const auto sum = decode_mask(file);
+            block(c, 0x101429e4, 4);
+            c.set(3, checksum == sum);
+        }
+    }
+    block(c, Encode ? 0x10142698 : 0x101429f4, Encode ? 8 : 6);
+    restore_link(c, caller);
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    if constexpr (Encode) {
+        c.set(29, c.u32(caller - 12));
+        c.set(28, c.u32(caller - 16));
+    }
+    c.finish();
+}
+
 }
 
 void hall_of_fame_run_original(State& state, std::uint32_t entry) {
@@ -610,6 +894,8 @@ void hall_of_fame_run_rewrite(State& state, std::uint32_t entry) {
     case add_for_nation_entry: add_for_nation(c); break;
     case insert_ranked_entry: insert_ranked(c); break;
     case category_for_nation_entry: category_for_nation(c); break;
+    case encode_entry: transform_file<true>(c); break;
+    case decode_entry: transform_file<false>(c); break;
     default: throw std::logic_error("Unknown Hall of Fame entry " + hex_address(entry));
     }
 }

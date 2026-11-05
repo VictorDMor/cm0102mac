@@ -134,7 +134,8 @@ struct Model {
 enum class Stop { returned, unmapped, budget };
 enum class Corrupt { none, result, dependency };
 
-void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt::none) {
+void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt::none,
+                  bool trace_memory = true) {
     auto original = clone(initial), rewrite = clone(initial);
     Effects original_effects, rewrite_effects;
     std::vector<Call> original_calls, rewrite_calls;
@@ -147,7 +148,7 @@ void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt
             s.time_runtime_original_body = 0x1077f900;
         }
         effects.state = &s;
-        s.memory.date_observer = &effects;
+        s.memory.date_observer = trace_memory ? &effects : nullptr;
         try {
             if (old) hall_of_fame_run_original(s, initial.pc);
             else run_until(s, done);
@@ -166,7 +167,8 @@ void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt
     const auto a = invoke(*original, original_effects, original_calls, true);
     const auto b = invoke(*rewrite, rewrite_effects, rewrite_calls, false);
     call_trace = nullptr;
-    const auto label = "Hall of Fame " + hex_address(initial.pc);
+    const auto label = "Hall of Fame " + hex_address(initial.pc) + " arg4 " +
+        std::to_string(initial.r<4>(guest::reg::gpr(4)));
     require(a.first == expected && a == b, label + " stop or fault changed (" + hex_address(original->pc) + " " + a.second + " / " + hex_address(rewrite->pc) + " " + b.second + ")");
     if (corrupt == Corrupt::dependency) {
         require(!rewrite_calls.empty(), "dependency corruption did not reach a call");
@@ -205,7 +207,8 @@ void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt
                     "shared sorter places the new high score first");
         }
     }
-    Image(*original).compare(*rewrite, corrupt == Corrupt::result ? "corrupted comparator" : "Hall of Fame " + hex_address(initial.pc), expected == Stop::unmapped);
+    Image(*original).compare(*rewrite, corrupt == Corrupt::result ? "corrupted comparator" :
+        label, expected == Stop::unmapped);
 }
 
 std::unique_ptr<State> seed(std::mt19937& random) {
@@ -403,12 +406,113 @@ void check_records() {
     std::cout << "100 Hall of Fame record and scoring comparisons, including aliased copies, duplicate keys and direct calls\n";
 }
 
+
+constexpr auto encode = 0x10142180u, decode = 0x101426c0u;
+constexpr auto codec_data = fixture + 0x20000, codec_keys = fixture + 0x5000;
+constexpr auto checksum_out = fixture + 0x990;
+
+std::unique_ptr<State> codec_seed(std::mt19937& random, unsigned size) {
+    auto state = seed(random);
+    state->memory.map(stack - 0x2000, 0x3000);
+    state->memory.map(toc - 0x8000, 0x8000);
+    state->memory.map(codec_keys, 480 * 4);
+    state->memory.map(codec_data - 0x1000, size + 0x2000);
+    Cpu c(*state);
+    for (unsigned offset = 0; offset < 0x100; offset += 4) c.put32(stack - offset, random());
+    for (unsigned i = 0; i < 480; ++i) c.put32(codec_keys + i * 4, random() & 0x7fffffff);
+    for (unsigned i = 0; i < size; ++i) c.put8(codec_data + i, random());
+    c.set({{1, stack}, {2, toc}, {3, codec_data}, {4, size}});
+    c.put32(toc - 0x54d8, codec_keys);
+    c.put32(toc - 0x54cc, source);
+    c.put32(toc - 0x7ba8, message);
+    c.put32(toc - 0x5b20, source + 0x50);
+    c.put32(toc - 0x7bac, success);
+    c.put8(success, 1);
+    state->wr<4>(guest::reg::ctr, random());
+    state->budget = 50000000;
+    return state;
+}
+
+void check_codec() {
+    std::mt19937 random(0x46414d43);
+    unsigned comparisons = 0;
+    for (unsigned size : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 15u, 16u, 17u,
+                          23u, 24u, 25u, 479u, 480u, 481u, 487u, 488u, 489u, 960u, 961u, 324000u}) {
+        auto state = codec_seed(random, size);
+        Cpu c(*state);
+        const auto plain = state->memory.copy_out(codec_data, size);
+        std::uint32_t sum = 0;
+        for (auto byte : plain) sum += byte;
+        c.set(5, checksum_out);
+        state->pc = encode;
+        compare_call(*state, Stop::returned, Corrupt::none, size < 10000);
+        ++comparisons;
+
+        // Feed the independently generated original bytes into both decoders.
+        hall_of_fame_run_original(*state, encode);
+        require(c.r(3) == 1 && c.u32(checksum_out) == sum, "Hall of Fame plaintext checksum");
+        c.set({{3, codec_data}, {4, size}, {5, sum}});
+        c.set_lr(done);
+        state->pc = decode;
+        compare_call(*state, Stop::returned, Corrupt::none, size < 10000);
+        ++comparisons;
+        if (size < 10000) {
+            c.set(5, sum + 1);
+            compare_call(*state, Stop::returned);
+            ++comparisons;
+            c.set(5, sum);
+        }
+        run_until(*state, done);
+        require(c.r(3) == 1 && state->memory.copy_out(codec_data, size) == plain,
+                "Hall of Fame original/C++ round trip");
+    }
+
+    for (const auto target : {encode, decode}) {
+        for (unsigned size : {1u, 3u, 4u, 8u, 9u, 16u, 17u}) {
+            auto state = codec_seed(random, size);
+            Cpu c(*state);
+            c.put32(toc - 0x54d8, codec_data);
+            // The key words can be edited by the same byte operations.
+            // Padding around the fixture covers signed negative offsets.
+            for (unsigned i = 0; i < 480; ++i) c.put32(codec_data + i * 4, random());
+            c.set(5, target == encode ? codec_data + 1 : 0);
+            state->pc = target;
+            compare_call(*state, Stop::returned);
+            ++comparisons;
+        }
+    }
+
+    {
+        Model model;
+        for (auto target : {encode, decode}) {
+            for (const auto [address, size] : std::array<std::pair<unsigned, unsigned>, 2>{{
+                     {0, 4}, {codec_data, UINT32_MAX}}}) {
+                auto state = codec_seed(random, 4);
+                Cpu(*state).set({{3, address}, {4, size}, {5, checksum_out}});
+                state->pc = target;
+                compare_call(*state, Stop::returned);
+                ++comparisons;
+            }
+        }
+    }
+
+    auto state = codec_seed(random, 0);
+    Cpu(*state).set(5, 0);
+    state->pc = encode;
+    compare_call(*state, Stop::unmapped);
+    state->budget = 1;
+    compare_call(*state, Stop::budget);
+    std::cout << comparisons << " Hall of Fame file transform comparisons, including 324000 bytes, "
+                 "table and checksum aliasing, a bad checksum, one fault and one budget stop\n";
+}
+
 }
 
 int main() try {
     check_rank();
     check_record_initialization();
     check_records();
+    check_codec();
     return 0;
 } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
