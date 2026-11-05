@@ -51,7 +51,7 @@ set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.
     staff_contracts_sampling.cpp staff_contracts_display.cpp staff_contracts_clause.cpp
     staff_contracts_release.cpp staff_contracts_review_state.cpp staff_contracts_prepare.cpp
     staff_contracts_expiry_text.cpp staff_contracts_quote.cpp staff_contracts_wage_quotes.cpp staff_contracts_renewal.cpp
-    staff_contracts_initialize.cpp
+    staff_contracts_initialize.cpp staff_contracts_proposal.cpp
     staff_contracts_terms_valuation.cpp
     staff_contracts_review_refresh.cpp staff_contracts_review_status.cpp staff_contracts_review_trigger.cpp
     staff_contracts_review_consequences.cpp
@@ -3961,7 +3961,7 @@ endif()
 
 
 add_executable(cm-staff-contracts-checks staff_contracts_checks.cpp staff_contracts_wage_checks.cpp
-    staff_contracts_initialize_checks.cpp)
+    staff_contracts_initialize_checks.cpp staff_contracts_proposal_checks.cpp)
 target_link_libraries(cm-staff-contracts-checks PRIVATE cm_aot)
 target_compile_options(cm-staff-contracts-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_test(NAME staff_contracts_equivalence COMMAND cm-staff-contracts-checks)

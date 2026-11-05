@@ -28,6 +28,8 @@ void value_contract_terms(guest::Cpu&, std::uint32_t contract, std::uint32_t sta
 void classify_renewal_offer(guest::Cpu&, std::uint32_t contract, std::uint32_t staff);
 inline constexpr auto initialize_entry = 0x103727c0u;
 void initialize_staff_contract(guest::Cpu&);
+inline constexpr auto proposal_entry = 0x10374f50u;
+void propose_staff_contract(guest::Cpu&);
 inline constexpr auto country_quote_entry = 0x10378da0u, reference_quote_entry = 0x1037b6f0u;
 void quote_country_wage(guest::Cpu&);
 void quote_reference_wage(guest::Cpu&);

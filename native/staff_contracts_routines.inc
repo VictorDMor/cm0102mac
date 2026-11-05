@@ -16,6 +16,7 @@ STAFF_CONTRACTS_ROUTINE(0x10374ce0, R3, [](Cpu& c) { c.set(3, is_expired(c, c.r(
 STAFF_CONTRACTS_ROUTINE(0x10374d10, R3, [](Cpu& c) { end_date_delta(c, c.r(3)); })
 STAFF_CONTRACTS_ROUTINE(0x10374d50, R3, [](Cpu& c) { c.set(3, is_rolling(c, c.r(3))); })
 STAFF_CONTRACTS_CONTINUATION(0x10374d80, R3, [](Cpu& c) { describe_expiry_text(c, c.r(3), c.r(4), std::int8_t(c.r(5))); })
+STAFF_CONTRACTS_CONTINUATION(0x10374f50, R3, propose_staff_contract)
 STAFF_CONTRACTS_ROUTINE(0x10378d30, R3 | F1, [](Cpu& c) { apply_country_wage_quote(c, c.r(3), c.r(4)); })
 STAFF_CONTRACTS_CONTINUATION(0x10378da0, F1, quote_country_wage)
 STAFF_CONTRACTS_CONTINUATION(0x1037b6f0, F1, quote_reference_wage)

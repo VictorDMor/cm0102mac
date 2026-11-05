@@ -10,7 +10,7 @@ using detail::record_nonzero;
 using guest::Cpu;
 using guest::Fpu;
 
-constexpr auto valuation_entry = 0x1037e660u, proposal_entry = 0x10374f50u;
+constexpr auto valuation_entry = 0x1037e660u;
 constexpr auto power = 0x10780fc0u, high_word = 0x43300000u;
 constexpr auto frame_size = 0x100u, temporary_contract = 0x38u;
 constexpr auto wage = 0x0cu, employment = 0x14u;
@@ -110,7 +110,7 @@ void make_alternative(Valuation& v) {
     c.set({{5, clubs_slot}, {3, c.sp() + temporary_contract}, {0, club * 0x248}, {6, UINT32_MAX}});
     const auto clubs = c.u32(clubs_slot);
     c.set({{5, clubs + club * 0x248}, {7, UINT32_MAX}, {8, 11}, {9, 0}, {10, 0}});
-    c.call(proposal_entry, 0x1037e80c);
+    detail::call_owned_continuation(c, proposal_entry, 0x1037e80c, propose_staff_contract);
 }
 
 std::int16_t remaining_term(Valuation& v) {

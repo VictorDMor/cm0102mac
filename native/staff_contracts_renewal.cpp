@@ -9,7 +9,7 @@ using detail::ContractRecord;
 using guest::Cpu;
 using guest::Fpu;
 
-constexpr auto renewal_entry = 0x1037e3e0u, proposal_entry = 0x10374f50u, comparison_entry = 0x1037e660u;
+constexpr auto renewal_entry = 0x1037e3e0u, comparison_entry = 0x1037e660u;
 constexpr auto frame_size = 0xf0u, comparison_draft = 0x38u;
 constexpr auto signed_integer_high = 0x43300000u, club_stride = 0x248u;
 constexpr auto floating_toc = -0x4dac;
@@ -42,7 +42,7 @@ void prepare_renewal_proposal(Cpu& c, const guest::Kept<28>& draft, const guest:
     if (choose_proposed) c.set(7, c.r(3));
     c.set({{0, club * club_stride}, {3, c.sp() + comparison_draft}, {6, UINT32_MAX}, {8, 11},
            {5, clubs + club * club_stride}, {9, 0}, {10, 0}});
-    c.call(proposal_entry, choose_proposed ? 0x1037e4b8 : 0x1037e4e8);
+    detail::call_owned_continuation(c, proposal_entry, choose_proposed ? 0x1037e4b8 : 0x1037e4e8, propose_staff_contract);
     if (choose_proposed) block(c, 0x1037e4b8, 1);
 }
 

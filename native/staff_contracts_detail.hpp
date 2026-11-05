@@ -59,6 +59,44 @@ void transfer_saved_registers(Cpu& c, std::uint32_t caller_stack) {
     }
 }
 
+inline bool qualifies_for_veteran_option(Cpu& c, std::uint32_t person,
+                                         std::uint32_t pc, unsigned reputation_reg) {
+    block(c, pc, 4);
+    const auto age = std::int8_t(c.i16(person + 0x5c));
+    c.set(0, std::uint32_t(age));
+    if (guest::compare(c, age, 32) <= 0) return false;
+    block(c, pc + 0x10, 3);
+    const auto reputation = std::int16_t(c.r(reputation_reg));
+    c.set(3, guest::extended(reputation));
+    if (guest::compare(c, reputation, 3250) <= 0) return false;
+    block(c, pc + 0x1c, 9);
+    c.set(4, 0x55550000);
+    const auto id = c.i32(person);
+    const auto third = (INT64_C(0x55555556) * id) >> 32;
+    c.set({{3, std::uint32_t(id)}, {4, 0x55555556}, {5, std::uint32_t(third)}});
+    if (record_nonzero(c, id % 3, 4)) return false;
+
+    block(c, pc + 0x40, 21);
+    c.set(4, 0x66660000);
+    const auto first = c.u8(person + 0x64);
+    c.set(6, first);
+    c.set(5, 0x66666667);
+    const auto second = c.u8(person + 0x67);
+    c.set(4, second);
+    const auto high = (INT64_C(0x66666667) * id) >> 32;
+    c.set(7, std::uint32_t(high));
+    const auto third_byte = c.i8(person + 0x63);
+    const auto combined = std::int8_t(first) + std::int8_t(second);
+    const auto tenth = id / 10;
+    const auto previous = std::int32_t(c.r(0));
+    const auto metric = combined + id % 10 + previous;
+    const auto final_metric = metric - 28 + third_byte;
+    c.s.wr<1>(guest::reg::xer_ca, high < 0 && (high & 3));
+    c.set({{6, std::uint32_t(tenth * 10)}, {4, std::uint32_t(combined)}, {5, std::uint32_t(third_byte)},
+           {7, high < 0 ? 1u : 0u}, {3, std::uint32_t(metric)}, {0, std::uint32_t(final_metric)}});
+    return guest::compare(c, final_metric, 45) > 0;
+}
+
 struct ContractRecord {
     static constexpr unsigned club_id = 4;
     static constexpr unsigned draft_auxiliary = 8;

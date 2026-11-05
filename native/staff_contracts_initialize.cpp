@@ -859,44 +859,6 @@ void clear_initial_clauses(InitialContract& draft, std::uint32_t pc) {
     initial_release_amount(draft, pc);
 }
 
-bool qualifies_for_veteran_option(InitialContract& draft) {
-    InitialCpu& c = draft.c;
-    block(c, 0x10372e44, 4);
-    const auto age = std::int8_t(c.i16(draft.person + 0x5c));
-    c.set(0, std::uint32_t(age));
-    if (guest::compare(c, age, 32) <= 0) return false;
-    block(c, 0x10372e54, 3);
-    const auto reputation = std::int16_t(c.r(23));
-    c.set(3, guest::extended(reputation));
-    if (guest::compare(c, reputation, 3250) <= 0) return false;
-    block(c, 0x10372e60, 9);
-    c.set(4, 0x55550000);
-    const auto id = c.i32(draft.person);
-    const auto third = (INT64_C(0x55555556) * id) >> 32;
-    c.set({{3, std::uint32_t(id)}, {4, 0x55555556}, {5, std::uint32_t(third)}});
-    if (detail::record_nonzero(c, id % 3, 4)) return false;
-
-    block(c, 0x10372e84, 21);
-    c.set(4, 0x66660000);
-    const auto first = c.u8(draft.person + 0x64);
-    c.set(6, first);
-    c.set(5, 0x66666667);
-    const auto second = c.u8(draft.person + 0x67);
-    c.set(4, second);
-    const auto high = (INT64_C(0x66666667) * id) >> 32;
-    c.set(7, std::uint32_t(high));
-    const auto third_byte = c.i8(draft.person + 0x63);
-    const auto combined = std::int8_t(first) + std::int8_t(second);
-    const auto tenth = id / 10;
-    const auto previous = std::int32_t(c.r(0));
-    const auto metric = combined + id % 10 + previous;
-    const auto final_metric = metric - 28 + third_byte;
-    c.s.wr<1>(guest::reg::xer_ca, high < 0 && (high & 3));
-    c.set({{6, std::uint32_t(tenth * 10)}, {4, std::uint32_t(combined)}, {5, std::uint32_t(third_byte)},
-           {7, high < 0 ? 1u : 0u}, {3, std::uint32_t(metric)}, {0, std::uint32_t(final_metric)}});
-    return guest::compare(c, final_metric, 45) > 0;
-}
-
 bool prepare_initial_options(InitialContract& draft) {
     InitialCpu& c = draft.c;
     initial_release_amount(draft, 0x10372e08);
@@ -907,7 +869,7 @@ bool prepare_initial_options(InitialContract& draft) {
     c.set(0, profile);
     if (!guest::nonzero_logical(c, profile)) return false;
     initial_option(draft, 0x10372e38, 4, false);
-    if (qualifies_for_veteran_option(draft)) {
+    if (detail::qualifies_for_veteran_option(c, draft.person, 0x10372e44, 23)) {
         initial_option(draft, 0x10372ed8, 4, true);
         block(c, 0x10372ee4, 1);
     } else {

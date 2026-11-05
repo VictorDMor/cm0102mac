@@ -22,6 +22,8 @@ bool wage_quote_hook(std::uint32_t, aot::RoutineChecker&);
 void wage_quote_cases();
 bool initializer_hook(std::uint32_t);
 void initializer_cases();
+bool proposal_hook(std::uint32_t);
+void proposal_cases();
 }
 
 namespace {
@@ -1983,7 +1985,8 @@ unsigned generated_hooks() {
     ScopedRoutineChecker scope(&checker);
     for (const auto entry : entries) {
         if (cm::staff_contracts_checks::wage_quote_hook(entry, checker)
-            || cm::staff_contracts_checks::initializer_hook(entry)) continue;
+            || cm::staff_contracts_checks::initializer_hook(entry)
+            || cm::staff_contracts_checks::proposal_hook(entry)) continue;
         auto s = expiry_fixture();
         s->pc = entry;
         s->wr<4>(16, 1);
@@ -2079,6 +2082,7 @@ int main() {
         expiry_and_quote_cases(counts);
         cm::staff_contracts_checks::wage_quote_cases();
         cm::staff_contracts_checks::initializer_cases();
+        cm::staff_contracts_checks::proposal_cases();
         review_policy_cases(counts);
         review_trigger_cases(counts);
         fixed_date_cases(counts);

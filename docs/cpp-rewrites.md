@@ -439,6 +439,33 @@ at an uncaptured import compare state only to that boundary; they do not
 establish completed archival I/O or full branch coverage. Career save/reload
 through the live app and performance are not retested by this delivery.
 
+## STAFF_CONTRACTS.CPP: staff terms and offers
+
+The [module audit](../tools/staff_contracts_audit.py) assigns 47 entries and
+15,214 reachable exported instructions to the contract string pool, between
+`0x103721f0` and `0x10381110` (exclusive). It distinguishes the five original
+switch tables from independent entry points and checks for external edges into
+the bodies. The production registry is `native/staff_contracts_routines.inc`.
+`CM_STAFF_CONTRACTS_ORIGINAL=1` selects the independent generated reference.
+
+The proposal at `0x10374f50` builds the existing contract record in place.
+It distinguishes the supplied destination, the primary contract's club and
+the incumbent contract. Release decisions read the live competition table and
+preserve the order of the CFM calls, valuation calls and record writes.
+Duration uses the live role table, current date and shared random pool.
+Compare the next cursor with its limit and store it before any reseed, then
+read the word and salt from their updated slots. Preserve the additional null-entry read in the
+transfer lookup path, including the partial state when that read faults.
+Bonus and clause contributions are applied in slot order before capping the
+proposal return value. The stored wage and the return value are distinct.
+
+Renewal and terms valuation call the proposal directly in normal execution.
+The proposal's reference quote still enters the shortlist observer boundary,
+which selects the typed wage owner and retains its original/profile selectors.
+The record layout and its readers and writers in CONTRACT_MANAGER.CPP remain
+the existing save ABI. The legacy initializer and reference-quote builders
+are linked only by their historical component checkers.
+
 ## CONTRACT_MANAGER.CPP: ABI and persistence quirks
 
 Global date initialization (`0x100939b0`) now belongs to this module. The
