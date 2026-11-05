@@ -439,6 +439,22 @@ at an uncaptured import compare state only to that boundary; they do not
 establish completed archival I/O or full branch coverage. Career save/reload
 through the live app and performance are not retested by this delivery.
 
+## SIMULATED_STATS.CPP
+
+The module lies between SHORTLIST_MANAGER.CPP and STAFF_CONTRACTS.CPP.
+The [audit](../tools/simulated_stats_audit.py) pins seven entries and
+2,201 reachable instructions. The range sampler and its staff-contract
+counterpart have identical normalized 350-instruction bodies and identical
+scale and signed-conversion constants. Their shared implementation retains
+each entry's live TOC slots, budget boundaries and reseed call sites.
+
+`simulated_stats.dat` contains a four-byte big-endian count followed by
+that many 68-byte rows. A short transfer leaves the original partial data
+and clears the shared success flag. Only a complete transfer calls close.
+The loader returns a success flag, while the saver leaves the last service's
+return value in r3. The squad count scans all 50 slots in order, so a service
+can change a slot before the scan reaches it.
+
 ## STAFF_CONTRACTS.CPP: staff terms and offers
 
 The [module audit](../tools/staff_contracts_audit.py) assigns 47 entries and

@@ -57,6 +57,7 @@ set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.
     staff_contracts_review_consequences.cpp
     staff_contracts_adapter.cpp)
 target_sources(cm_aot PRIVATE ${CM_STAFF_CONTRACTS_SOURCES})
+target_sources(cm_aot PRIVATE simulated_stats.cpp)
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
@@ -4390,4 +4391,28 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME contract_screens_equivalence COMMAND cm-contract-screens-checks "${CM_ORACLE_DIR}")
     add_test(NAME contract_screens_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_contract_screens_audit.py")
+endif()
+
+add_executable(cm-simulated-stats-checks simulated_stats_checks.cpp)
+target_link_libraries(cm-simulated-stats-checks PRIVATE cm_aot)
+target_compile_options(cm-simulated-stats-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME simulated_stats_equivalence COMMAND cm-simulated-stats-checks)
+if(Python3_EXECUTABLE)
+    add_test(NAME simulated_stats_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_simulated_stats_audit.py")
+endif()
+
+option(CM_SIMULATED_STATS_COVERAGE "Instrument the simulated-stats checker owner only" OFF)
+if(CM_SIMULATED_STATS_COVERAGE)
+    set(CM_SIMULATED_STATS_PROFILE_DIR "${CMAKE_CURRENT_BINARY_DIR}/simulated-stats-coverage")
+    file(MAKE_DIRECTORY "${CM_SIMULATED_STATS_PROFILE_DIR}")
+    set(CM_SIMULATED_STATS_PROFILE "${CM_SIMULATED_STATS_PROFILE_DIR}/check-%p.profraw")
+    add_library(cm_simulated_stats_coverage OBJECT simulated_stats.cpp)
+    target_link_libraries(cm_simulated_stats_coverage PRIVATE cm_aot)
+    target_compile_options(cm_simulated_stats_coverage PRIVATE
+        "-fprofile-instr-generate=${CM_SIMULATED_STATS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_sources(cm-simulated-stats-checks PRIVATE $<TARGET_OBJECTS:cm_simulated_stats_coverage>)
+    target_compile_definitions(cm-simulated-stats-checks PRIVATE
+        CM_SIMULATED_STATS_PROFILE_DIR="${CM_SIMULATED_STATS_PROFILE_DIR}")
+    target_link_options(cm-simulated-stats-checks PRIVATE "-fprofile-instr-generate=${CM_SIMULATED_STATS_PROFILE}")
 endif()
