@@ -27,7 +27,7 @@ VTABLES = {
 DIRECT_CALLS = {0x100e80bc: 0x106ab8f0}
 PADDING = {0x106ab884: 0, 0x106ab888: 0, 0x106ab88c: 0, 0x106ab8e8: 0,
            0x106ab8ec: 0, 0x106abb6c: 0x60000000, 0x106abe1c: 0}
-RB_GREECE_ENTRIES = ENTRIES[:3]
+RB_GREECE_ENTRIES = ENTRIES
 
 
 def validate_export(export):

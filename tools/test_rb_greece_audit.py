@@ -6,10 +6,10 @@ import rb_greece_audit as rulebook
 class GreekRulebookAudit(unittest.TestCase):
     def test_source_inventory(self):
         self.assertEqual(len(rulebook.ENTRIES), 4)
-        self.assertTrue(set(rulebook.RB_GREECE_ENTRIES) <= set(rulebook.ENTRIES))
+        self.assertEqual(rulebook.RB_GREECE_ENTRIES, rulebook.ENTRIES)
         self.assertEqual(rulebook.validate_export(rulebook.EXPORT), 397)
 
-    def test_pilot_hook_is_unique_and_precedes_generated_code(self):
+    def test_hook_is_unique_and_precedes_generated_code(self):
         for entry in rulebook.RB_GREECE_ENTRIES:
             label, step = f"i_{entry:x}:\n", f"s.step({entry:#x});\n"
             hook = rulebook.rb_greece_hook(entry) + "\n"

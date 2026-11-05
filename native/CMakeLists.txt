@@ -4531,3 +4531,13 @@ if(Python3_EXECUTABLE)
     add_test(NAME rb_greece_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_rb_greece_audit.py")
 endif()
+option(CM_RB_GREECE_COVERAGE "Instrument the Greek rulebook checker owner only" OFF)
+if(CM_RB_GREECE_COVERAGE)
+    add_library(cm_rb_greece_coverage OBJECT rb_greece.cpp)
+    target_link_libraries(cm_rb_greece_coverage PRIVATE cm_aot)
+    target_compile_options(cm_rb_greece_coverage PRIVATE
+        -fprofile-instr-generate -fcoverage-mapping -ffp-contract=off)
+    target_sources(cm-rb-greece-checks PRIVATE $<TARGET_OBJECTS:cm_rb_greece_coverage>)
+    target_compile_definitions(cm-rb-greece-checks PRIVATE CM_RB_GREECE_COVERAGE)
+    target_link_options(cm-rb-greece-checks PRIVATE -fprofile-instr-generate)
+endif()

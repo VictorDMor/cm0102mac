@@ -571,6 +571,20 @@ releases its array before selecting the new format. The original competition
 rules remain available with `CM_BRA_NAT_SECOND_RULES_ORIGINAL=1` for differential
 checks.
 
+## rb_greece.cpp
+
+The [audit](../tools/rb_greece_audit.py) closes four entries and 397 reachable
+instructions. The default C++23 owners cover rulebook construction, nation
+text, the card-threshold query, and disciplinary reporting. The constructor is
+called directly and the other three entries retain their CFM transition
+vectors. `CM_RB_GREECE_ORIGINAL=1` selects the generated bodies.
+
+The threshold query writes its optional outputs before reading the tally.
+Reporting shifts the booking-history bits in place and preserves the signed
+byte comparison in the caution loop. A dismissal can queue a hearing on the
+first Thursday strictly after the current date. The shared calendar, booking
+lookup, hearing queue and suspension publication stay outside this module.
+
 ## SIMULATED_STATS.CPP
 
 The module lies between SHORTLIST_MANAGER.CPP and STAFF_CONTRACTS.CPP.
