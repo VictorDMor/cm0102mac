@@ -935,6 +935,9 @@ calendar result and returns one even when calendar allocation failed. The
 constructor therefore still attempts the shared standings allocation on that
 path. Assertion version getters are inlined by the reference; preserve their
 call-site budget boundary rather than adding another dispatch.
+Season rollover keeps the shared standings object and child-pointer array,
+rereads the last-child index after each destructor, advances the stored year
+by two and rebuilds the calendar through the live configuration slot.
 
 ## OCEANIA_NATIONS.CPP
 

@@ -24,6 +24,7 @@ constexpr auto calendar = 0x104f4ff0u, calendar_rows = fixture + 0x3000;
 constexpr auto configure = 0x104f5c80u;
 constexpr auto create = 0x104f4c80u, initial_check = 0x104a6850u;
 constexpr auto create_caller = 0x1034efd4u, create_resume = 0x1034efd8u;
+constexpr auto next_season = 0x104f5f40u;
 constexpr auto construction_mode = fixture + 0x60;
 constexpr auto external_configure = fixture + 0x3b80;
 constexpr auto calendar_count = fixture + 0x50, calendar_code = fixture + 0x52, calendar_flag = fixture + 0x54;
@@ -78,7 +79,7 @@ bool message_service(std::uint32_t entry) {
 }
 bool lifecycle_service(std::uint32_t entry) {
     return entry == 0x104a6660 || entry == 0x10775170 || entry == 0x104536c0
-        || entry == 0x1049e600 || entry == 0x107735a0;
+        || entry == 0x1049e600 || entry == 0x107735a0 || entry == 0x104564a0;
 }
 bool calendar_service(std::uint32_t entry) {
     return entry == 0x104a9810 || entry == 0x104a9890 || entry == 0x104854f0
@@ -209,7 +210,7 @@ bool trace_lookup(State& s) {
         if (entry == 0x1077b720) {
             require(c.r(3) == fixture + 0xe00 && c.r(4) == fixture + 0xf14
                         && read_fixture_text(c, c.r(4)) == "v%s %s.%s %d"
-                        && (c.r(8) == 0x9e || c.r(8) == 0xe0 || c.r(8) == 0x58 || c.r(8) == 0x5f),
+                        && (c.r(8) == 0x9e || c.r(8) == 0xe0 || c.r(8) == 0x58 || c.r(8) == 0x5f || c.r(8) == 0x2a8),
                     "African assertion formatter destination/format/line");
             // Formatting's native stream/CFM initialization is outside the
             // fixture. Consume all supplied varargs and write their message;
@@ -242,12 +243,16 @@ bool trace_lookup(State& s) {
                 if (pointer == child && c.u8(lifecycle_mutation)) c.put32(object + 0x30, 0);
             }
             if (entry == 0x107735a0) require(pointer == object, "African final object delete argument");
+            if (entry == 0x104564a0)
+                require(pointer == stage && c.r(4) == 1, "African shared stage reset consumes stage/mode");
             for (unsigned i = 0; i < 4; ++i) c.put32(service_log + external_calls * 16 + i * 4, c.r(3 + i));
             ++external_calls;
             // These neighboring destructors/allocators are boundary models.
             // Record a consumed-pointer effect without substituting an owned
             // lifecycle routine or fabricating its branches and returned data.
-            c.put32(pointer, 0xd0000000u | (entry & 0xffff));
+            if (entry == 0x104a6660) c.put8(pointer + 0x49, 0);
+            else if (entry == 0x104564a0) c.put32(pointer + 0x5cc, 0);
+            else c.put32(pointer, 0xd0000000u | (entry & 0xffff));
             c.set({{3, 0x90909090}, {4, 0xbad0bad0}, {9, 0xfeedefee}});
             c.finish();
             return true;
@@ -383,12 +388,15 @@ std::unique_ptr<State> child_fixture(unsigned mode = 0) {
 
 std::unique_ptr<State> configuration_fixture(bool fail = false, unsigned year = 2002);
 std::unique_ptr<State> construction_fixture(unsigned mode = 0, unsigned year = 2001);
+std::unique_ptr<State> rollover_fixture(int last = 2, unsigned present = 5, unsigned year = 2002,
+                                      unsigned mode = 0, bool mutation = false);
 std::unique_ptr<State> entry_fixture(std::uint32_t entry) {
     if (entry == notify) return notification_fixture(0, 3);
     if (entry == destroy) return destruction_fixture(1);
     if (entry == update) return child_fixture();
     if (entry == configure) return configuration_fixture();
     if (entry == create) return construction_fixture();
+    if (entry == next_season) return rollover_fixture();
     return placement_fixture();
 }
 
@@ -466,6 +474,30 @@ std::unique_ptr<State> construction_fixture(unsigned mode, unsigned year) {
     c.put8(construction_mode, mode);
     c.put8(calendar_fail, mode == 5);
     s->pc = create;
+    return s;
+}
+
+std::unique_ptr<State> rollover_fixture(int last, unsigned present, unsigned year, unsigned mode, bool mutation) {
+    auto s = configuration_fixture(mode == 4, year);
+    Cpu c(*s);
+    c.put32(object + 4, definition);
+    c.put32(object + 0xbc, mode == 1 ? 0 : extra);
+    c.put32(object + 8, mode == 2 ? 0 : stage);
+    c.put32(object + 0xc, child_array);
+    c.put32(object + 0x30, std::uint32_t(last));
+    c.put8(object + 0x45, 0xa5); c.put8(object + 0x49, 0xa5);
+    c.put32(child_vtable + 8, child_descriptor + 8);
+    c.put32(child_descriptor + 8, 0x104536c0);
+    c.put32(child_descriptor + 12, toc);
+    c.put32(child_vtable + 0x94, child_descriptor + 16);
+    c.put32(child_descriptor + 16, mode == 3 ? external_configure : configure);
+    c.put32(child_descriptor + 20, toc);
+    for (unsigned i = 0; i < 3; ++i) {
+        c.put32(child_array + i * 4, present & (1u << i) ? child + i * 0x100 : 0);
+        c.put32(child + i * 0x100, child_vtable);
+    }
+    c.put8(lifecycle_mutation, mutation);
+    s->pc = next_season;
     return s;
 }
 
@@ -629,7 +661,7 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
     const auto record = c.r(3);
     if (negative) {
         const auto corrupt_at = seed.pc == calendar ? calendar_count : seed.pc == configure ? object + 0xbc : seed.pc == create ? object + 8
-            : seed.pc == notify || seed.pc == destroy ? service_log
+            : seed.pc == notify || seed.pc == destroy || seed.pc == next_season ? service_log
             : seed.pc == update ? child : record + 0x76;
         const auto before = c.u8(corrupt_at);
         c.put8(corrupt_at, before ^ 1);
@@ -658,10 +690,16 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
         out.fields = {c.u16(object + 0x40), c.u32(object + 0x2c), c.u8(calendar_success)};
         out.ids = {c.u32(object + 8), c.u32(object + 0xc), c.u32(object + 0xbc)};
     }
+    if (new_stop.empty() && seed.pc == next_season) {
+        out.fields = {c.u16(object + 0x40), c.u32(object + 0x30), c.u8(calendar_success)};
+        out.ids = {c.u32(object + 8), c.u32(object + 0xc), c.u32(object + 0xbc)};
+        require(!c.u8(object + 0x45) && !c.u8(object + 0x49), "African rollover clears state flags");
+    }
     return out;
 }
 
 struct ComparisonTotals { unsigned returned, budgets; };
+void compare_lifecycle_sequence();
 ComparisonTotals compare_calendars() {
     unsigned returned = 0, budgets = 0;
     const auto previous_results = rejected_results, previous_arguments = rejected_arguments;
@@ -808,6 +846,97 @@ ComparisonTotals compare_constructors() {
     std::cout << "AFRICAN_NATIONS constructor: " << returned << " returned comparisons, " << budgets << " budget stops; "
               << rejected_results - previous_results << " wrong results and " << rejected_arguments - previous_arguments << " wrong arguments detected\n";
     return {returned, budgets};
+}
+
+ComparisonTotals compare_rollovers() {
+    unsigned returned = 0, budgets = 0;
+    const auto previous_results = rejected_results, previous_arguments = rejected_arguments;
+    for (const auto year : {0u, 1995u, 1996u, 1999u, 2000u, 2001u, 2002u, 0x7ffeu, 0x7fffu, 0x8000u, 0xffffu, 0xdead07d2u}) {
+        const auto out = compare_routes(*rollover_fixture(2, 5, year), true, year == 2002);
+        require(out.stop.empty() && out.fields == std::array<unsigned,3>{std::uint16_t(year + 2), UINT32_MAX, 1}
+                    && out.ids == std::array<unsigned,3>{stage, child_array, calendar_rows}, "African rollover year and retained allocations");
+        ++returned;
+    }
+    for (unsigned mode = 1; mode <= 4; ++mode) {
+        const auto out = compare_routes(*rollover_fixture(2, 5, 2002, mode), true, mode == 3);
+        require(out.stop.empty() && out.fields == std::array<unsigned,3>{2004, UINT32_MAX, unsigned(mode < 3)}
+                    && out.ids == std::array<unsigned,3>{mode == 2 ? 0u : stage, child_array, mode >= 3 ? 0u : calendar_rows},
+                "African rollover missing allocations/foreign configuration/calendar failure");
+        ++returned;
+    }
+    for (const auto last : {-1, 0, 1, 2}) for (const auto present : {0u, 1u, 5u, 7u}) {
+        require(compare_routes(*rollover_fixture(last, present)).stop.empty(), "African rollover signed last child and sparse slots");
+        ++returned;
+    }
+    require(compare_routes(*rollover_fixture(2, 7, 2002, 0, true)).stop.empty(), "African rollover child changes live parent count");
+    ++returned;
+    std::mt19937 random(0x4146525f);
+    for (unsigned i = 0; i < 12; ++i) {
+        const auto year = random(), present = random() & 7;
+        const auto last = int(random() % 4) - 1;
+        require(compare_routes(*rollover_fixture(last, present, year)).stop.empty(), "African seeded rollover scalar mutation");
+        ++returned;
+    }
+    auto seed = rollover_fixture();
+    const auto complete = compare_routes(*seed);
+    ++returned;
+    for (unsigned limit = 0; limit < complete.instructions; limit += 7) {
+        seed->budget = limit;
+        if (compare_routes(*seed).stop == "Native instruction budget exhausted") ++budgets;
+    }
+    RoutineChecker checker([](std::uint32_t entry) { return entry == next_season; }, 1, 1);
+    checker.strict_volatile = true;
+    routine_checker = &checker;
+    std::vector<Call> calls;
+    Services services(&calls);
+    auto checked = rollover_fixture();
+    run_until(*checked, return_sentinel);
+    routine_checker = nullptr;
+    require(checker.totals().at(next_season).checked == 1 && !checker.differences(), "African rollover strict checked hook");
+    compare_lifecycle_sequence();
+    std::cout << "AFRICAN_NATIONS rollover: " << returned << " returned comparisons, " << budgets << " budget stops; "
+              << rejected_results - previous_results << " wrong results and " << rejected_arguments - previous_arguments << " wrong arguments detected\n";
+    return {returned, budgets};
+}
+
+void compare_lifecycle_sequence() {
+    auto seed = construction_fixture();
+    auto original = clone(*seed), modern = clone(*seed);
+    original->allocator_original = modern->allocator_original = true;
+    Effects old_effects, new_effects;
+    old_effects.state = original.get(); new_effects.state = modern.get();
+    original->memory.date_observer = &old_effects;
+    modern->memory.date_observer = &new_effects;
+    std::vector<Call> old_calls, new_calls;
+    const auto run = [](State& state, bool reference, std::vector<Call>& calls) {
+        Services services(&calls);
+        Cpu cpu(state);
+        unsigned year = 2002;
+        for (const auto entry : {create, next_season, next_season, destroy}) {
+            cpu.set(3, object);
+            if (entry == create) cpu.set({{4, 2001}, {5, definition}});
+            else cpu.set(4, entry == destroy ? 1 : 0);
+            cpu.set_lr(return_sentinel); state.pc = entry;
+            if (reference) african_nations_run_original(state, entry);
+            else run_until(state, return_sentinel);
+            require(state.pc == return_sentinel && cpu.r(2) == toc, "African lifecycle sequence return/TOC");
+            if (entry != destroy) {
+                if (entry == next_season) year += 2;
+                require(cpu.u16(object + 0x40) == year && cpu.u32(object + 8) == stage
+                            && cpu.u32(object + 0xc) == child_array && cpu.u32(object + 0xbc) == calendar_rows
+                            && cpu.u8(calendar_success) == 1, "African lifecycle preserved stage/array and rebuilt calendar");
+            }
+        }
+    };
+    run(*original, true, old_calls); run(*modern, false, new_calls);
+    original->memory.date_observer = modern->memory.date_observer = nullptr;
+    require(old_effects.bytes == new_effects.bytes && old_calls == new_calls
+                && original->executed == modern->executed, "African lifecycle sequence ordered effects/dependencies/accounting");
+    Image(*original).compare(*modern, "African lifecycle sequence final state");
+    Cpu result(*modern);
+    require(!result.u32(object + 0xbc) && !result.u32(object + 0xc) && result.u16(object + 0x40) == 2006,
+            "African lifecycle completed cleanup after two rollovers");
+    std::cout << "AFRICAN_NATIONS controlled create/two rollovers/destroy sequence: complete final state matches\n";
 }
 
 void compare_block_sequence() {
@@ -996,10 +1125,13 @@ void verify() {
     const auto constructors = compare_constructors();
     returned += constructors.returned;
     budgets += constructors.budgets;
+    const auto rollovers = compare_rollovers();
+    returned += rollovers.returned;
+    budgets += rollovers.budgets;
     compare_block_sequence();
-    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (52 scalar mutations; seeds0x414652/0x414652ca/0x414652c7), "
+    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (64 scalar mutations; seeds0x414652/0x414652ca/0x414652c7/0x4146525f), "
               << budgets << " budget stops, " << faults << " partial faults; " << rejected_results << " wrong result and "
-              << rejected_arguments << " wrong consumed argument detected; seven distinct checked hooks\n";
+              << rejected_arguments << " wrong consumed argument detected; eight distinct checked hooks\n";
 }
 }
 
@@ -1015,6 +1147,7 @@ int main(int argc, char** argv) try {
     else if (argc == 2 && std::string_view(argv[1]) == "--calendar") compare_calendars();
     else if (argc == 2 && std::string_view(argv[1]) == "--construction-reference") characterize_original_construction();
     else if (argc == 2 && std::string_view(argv[1]) == "--construction") compare_constructors();
+    else if (argc == 2 && std::string_view(argv[1]) == "--rollover") compare_rollovers();
     else if (argc == 1) verify();
-    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar|--construction-reference|--construction]");
+    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar|--construction-reference|--construction|--rollover]");
 } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

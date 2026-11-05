@@ -21,6 +21,7 @@ constexpr auto child_update_entry = 0x104f5d60u;
 constexpr auto calendar_entry = 0x104f4ff0u;
 constexpr auto configure_entry = 0x104f5c80u;
 constexpr auto create_entry = 0x104f4c80u;
+constexpr auto next_season_entry = 0x104f5f40u;
 void call_virtual(Cpu&, std::uint32_t resume);
 
 void block(Cpu& c, std::uint32_t pc, unsigned instructions) {
@@ -450,6 +451,81 @@ void configure_competition(Cpu& c) {
     c.set(0, c.u32(frame + 0x58));
     c.set(1, stack); c.set_lr(c.r(0));
     c.set(31, c.u32(stack - 4));
+    c.finish();
+}
+
+void start_next_season(Cpu& c) {
+    GuestNativeScope scope(c.s, next_season_entry);
+    block(c, next_season_entry, 11);
+    const auto stack = c.sp(), frame = stack - 0x80;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, stack);
+    const guest::Kept<30> message(c, c.toc(-0x7ba8));
+    const guest::Kept<27> competition(c, c.r(3));
+    const guest::Kept<31> file(c, c.toc(-0x45ac));
+    c.set(4, 0); c.put32(stack + 8, c.r(0)); c.set(0, 0);
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.put8(competition + 0x49, 0);
+    c.call(0x104a6660, 0x104f5f6c);
+    block(c, 0x104f5f6c, 3);
+    c.set(3, c.u32(competition + 0xbc));
+    if (compare_logical(c, c.r(3))) {
+        block(c, 0x104f5f78, 1);
+        c.call(0x10775170, 0x104f5f7c);
+        block(c, 0x104f5f7c, 2);
+        c.set(0, 0); c.put32(competition + 0xbc, 0);
+    }
+    block(c, 0x104f5f84, 3);
+    c.set(3, c.u32(competition + 8));
+    if (compare_logical(c, c.r(3))) {
+        block(c, 0x104f5f90, 2);
+        c.set(4, 1);
+        c.call(0x104564a0, 0x104f5f98);
+    }
+    block(c, 0x104f5f98, 3);
+    guest::Kept<28> index(c, 0);
+    guest::Kept<29> offset(c, 0);
+    for (;;) {
+        block(c, 0x104f5fd0, 3);
+        c.set(0, c.u32(competition + 0x30));
+        if (compare(c, std::int32_t(index), std::int32_t(c.r(0))) > 0) break;
+        block(c, 0x104f5fa4, 4);
+        c.set(3, c.u32(competition + 0xc));
+        c.set(3, c.u32(c.r(3) + offset));
+        if (compare_logical(c, c.r(3))) {
+            block(c, 0x104f5fb4, 4);
+            c.set(12, c.u32(c.r(3))); c.set(4, 1);
+            c.set(12, c.u32(c.r(12) + 8));
+            call_virtual(c, 0x104f5fc4);
+            block(c, 0x104f5fc4, 1);
+            c.set(2, c.u32(frame + 0x14));
+        }
+        block(c, 0x104f5fc8, 2);
+        offset = offset + 4; index = index + 1;
+    }
+    block(c, 0x104f5fdc, 9);
+    c.set({{3, UINT32_MAX}, {0, 0}});
+    c.put32(competition + 0x30, c.r(3));
+    c.set(3, competition);
+    c.set(4, std::uint32_t(c.i16(competition + 0x40)));
+    c.set(4, c.r(4) + 2);
+    c.put16(competition + 0x40, c.r(4));
+    c.put8(competition + 0x45, c.r(0));
+    c.set(12, c.u32(competition));
+    block(c, 0x104f6000, 2);
+    c.set(12, c.u32(c.r(12) + 0x94));
+    call_virtual(c, 0x104f6008);
+    block(c, 0x104f6008, 3);
+    c.set(2, c.u32(frame + 0x14));
+    if (!compare(c, std::int32_t(c.r(3)))) {
+        report_failure(c, 0x104f6014, file, message, 0x40, 0x38, 0x2a8);
+        block(c, 0x104f605c, 3);
+        c.set(3, c.toc(-0x7bac)); c.set(0, 0); c.put8(c.r(3), 0);
+    }
+    block(c, 0x104f6068, 5);
+    c.set(0, c.u32(frame + 0x88));
+    c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, stack);
     c.finish();
 }
 
