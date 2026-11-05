@@ -462,6 +462,21 @@ and six separately classified injected faults, preserving aliases and observed
 stack writes. Private profiles, pairs and compact state-comparison receipts
 are under `.local/performance/2026-11-05-current-hotspots/`.
 
+## Checked frame restores (2026-11-05)
+
+A host profile of the January 11–18 replay after the checked word-store change
+placed guest frame restoration at 94 of 2,725 main-thread samples. A contiguous
+saved GPR area now copies directly into the big-endian register file when the
+existing map index certifies the full span and read diagnostics are inactive.
+The scalar fallback preserves callback order and the register updates already
+completed at an observed fault.
+
+Five alternating Release pairs on the same replay reduced median wall time by
+0.91% and process CPU time by 0.85%, with median absolute deviations of 0.24 and
+0.15 percentage points. Every pair won on both clocks. Separate untimed runs
+matched the recorded state and ordered RNG. The result is for this replay.
+Private profile and pair evidence is in `.local/rewrites/runtime-followup/`.
+
 ## Complete 26-country Continue diagnosis
 
 A separate private diagnostic on revision `7430110` now completes one original

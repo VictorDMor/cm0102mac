@@ -172,6 +172,9 @@ public:
     void copy_in(std::uint32_t start, const std::vector<std::uint8_t>& bytes);
     void clear(std::uint32_t start, std::uint64_t size);
     std::vector<std::uint8_t> copy_out(std::uint32_t start, std::size_t size) const;
+    // Copy a fully certified contiguous read when scalar reads have no
+    // observers. A decline leaves the destination and diagnostics untouched.
+    bool try_copy_unobserved(std::uint32_t address, std::uint8_t* destination, std::size_t size) const;
     std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
     Vector128 read_vector(std::uint64_t address) const;
     void write_vector(std::uint64_t address, const Vector128& value);

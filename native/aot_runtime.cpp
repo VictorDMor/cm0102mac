@@ -176,6 +176,13 @@ void Memory::check(std::uint64_t address, std::uint64_t size) const {
     }
     unmapped_access(address);
 }
+bool Memory::try_copy_unobserved(std::uint32_t address, std::uint8_t* destination, std::size_t size) const {
+    if (read_trace || date_observer) return false;
+    const auto end = (*page_ends_)[address >> 16];
+    if (address >= end || size > end - address) return false;
+    std::memcpy(destination, data_ + address, size);
+    return true;
+}
 void Memory::observe_scalar_read(std::uint64_t address, unsigned size) const {
     if (read_trace) read_trace->emplace_back(std::uint32_t(address), size);
     if (date_observer) date_observer->read(std::uint32_t(address), data_ + address, size);

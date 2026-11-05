@@ -142,8 +142,17 @@ public:
     // abandons this invocation with the guest state the transfer left.
     void leave() {
         left_ = true;
-        for (unsigned n = saves_.first_gpr; n < 32; ++n)
-            c.set(n, c.u32(caller_sp + std::uint32_t(saves_.gpr_offset) + (n - saves_.first_gpr) * 4));
+        if (saves_.first_gpr < 32) {
+            const auto start = caller_sp + std::uint32_t(saves_.gpr_offset);
+            // The stack save area and register file have the same byte order.
+            // If the complete range cannot be certified, preserve the scalar
+            // reads, including writes to registers restored before a fault.
+            if (!c.s.memory.try_copy_unobserved(start, c.s.registers.data() + reg::gpr(saves_.first_gpr),
+                                                (32 - saves_.first_gpr) * 4)) {
+                for (unsigned n = saves_.first_gpr; n < 32; ++n)
+                    c.set(n, c.u32(start + (n - saves_.first_gpr) * 4));
+            }
+        }
         for (unsigned n = saves_.first_fpr; n < 32; ++n)
             c.s.wr<8>(reg::fpr(n), c.u64(caller_sp + std::uint32_t(saves_.fpr_offset) + (n - saves_.first_fpr) * 8));
         if (saves_.cr) {

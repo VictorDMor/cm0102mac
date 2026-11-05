@@ -1,4 +1,5 @@
 #include "aot_runtime.hpp"
+#include "guest_abi.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -207,8 +208,65 @@ void word_write_order_checks() {
                 "Faulting word observer changed write or notification semantics");
     }
 }
+void frame_restore_checks() {
+    auto state = std::make_unique<State>();
+    auto& memory = state->memory;
+    guest::Cpu c(*state);
+    constexpr std::uint32_t base = 0x37000000, caller = base + 0x100;
+    constexpr auto first = caller - 12;
+    memory.map(base, 0x200);
+    memory.map(base + 0x20c, 4);
+    memory.map(UINT32_MAX - 3, 4);
+    c.set({{1, caller}, {29, 0x12345678}, {30, 0x90abcdef}, {31, 0xdeadbeef}});
+    c.set_lr(0x56781234);
+    {
+        guest::Frame frame(c, 0x10100000, 0x40, {.first_gpr = 29});
+        c.set({{29, 1}, {30, 2}, {31, 3}});
+        frame.leave();
+        require(c.r(29) == 0x12345678 && c.r(30) == 0x90abcdef && c.r(31) == 0xdeadbeef &&
+                    c.sp() == caller && c.lr() == 0x56781234, "Contiguous frame restore changed the guest bytes");
+    }
+    std::array<std::uint8_t, 12> output;
+    output.fill(0x5a);
+    require(!memory.try_copy_unobserved(base + 0x1fc, output.data(), output.size()) &&
+                !memory.try_copy_unobserved(UINT32_MAX - 3, output.data(), output.size()) &&
+                std::ranges::all_of(output, [](auto byte) { return byte == 0x5a; }),
+            "Declined range changed destination across a hole or guest address wrap");
+
+    struct RestoreObserver final : MemoryObserver {
+        Memory& memory;
+        unsigned reads = 0;
+        explicit RestoreObserver(Memory& value) : memory(value) {}
+        void mapped(std::uint32_t, std::uint64_t) override {}
+        void cleared(std::uint32_t, std::uint64_t) override {}
+        void written(std::uint32_t, const std::uint8_t*, std::size_t) override {}
+        void read(std::uint32_t address, const std::uint8_t*, unsigned size) override {
+            require(size == 4 && address == first + 4 * reads, "Frame read callback order changed");
+            if (++reads == 2) throw std::runtime_error("Frame read fault");
+            memory.write<4>(address, 0xfedcba98);
+        }
+    } observer(memory);
+    std::vector<std::pair<std::uint32_t, unsigned>> trace;
+    guest::Frame frame(c, 0x10100000, 0x40, {.first_gpr = 29});
+    c.set({{29, 1}, {30, 2}, {31, 3}});
+    memory.date_observer = &observer;
+    memory.read_trace = &trace;
+    bool faulted = false;
+    try {
+        frame.leave();
+    } catch (const std::runtime_error& error) {
+        faulted = std::string_view(error.what()) == "Frame read fault";
+    }
+    memory.date_observer = nullptr;
+    memory.read_trace = nullptr;
+    require(faulted && trace == std::vector<std::pair<std::uint32_t, unsigned>>{{first, 4}, {first + 4, 4}} &&
+                c.r(29) == 0xfedcba98 && c.r(30) == 2 && c.r(31) == 3 && c.sp() == caller - 0x40,
+            "Frame observer mutation or partial fault effects changed");
+}
+
 void checks() {
     read_notification_checks();
+    frame_restore_checks();
     write_notification_checks();
     word_write_order_checks();
     constexpr std::uint32_t base = 0x32000000;
