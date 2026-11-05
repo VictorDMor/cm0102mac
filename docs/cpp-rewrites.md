@@ -443,10 +443,10 @@ through the live app and performance are not retested by this delivery.
 
 The [audit](../tools/ger_first_audit.py) closes 11 entries and 3,916
 structurally reachable instructions between FRA_THIRD.CPP and GER_SECOND.CPP.
-Construction/destruction, calendar generation, club collection, configuration,
-division relationships, four-slot promotion, regional-slot filling and reserve
-coordination currently use C++23; the remaining two entries still use their
-generated bodies.
+All 11 entries use handwritten C++23 in the normal route, including the
+next-season coordinator and geographic regional assignment. Owned direct and
+virtual calls remain inside the handwritten implementation; external virtual
+overrides and checker selection keep their actual targets.
 `CM_GER_FIRST_ORIGINAL=1` keeps the independent original route.
 
 Collection performs its 2001 regional reassignment before allocating the
@@ -486,6 +486,25 @@ Reserve coordination retains the incoming or previous destination row when
 neither previous regional ID matches. Its real external standing lookup runs
 on both comparison routes; notification callbacks can change the live source
 count. These quirks preserve the original behavior rather than add defaults.
+
+Geographic assignment requires exactly 36 entrants. It repeatedly widens the
+north/south latitude thresholds using ordered double arithmetic and original
+FP status, then fills two 18-club lists using previous memberships before a
+capacity-only pass. A NaN latitude can leave the threshold loop incomplete;
+there is no added timeout or default region. The contiguous scratch lists and
+pipelined old-membership copies retain their ordered reads/writes. Pair and
+three-way restoration reread prior mutations; a true three-cycle among three
+mismatches needs a third proposed region and is exercised with paired memory
+observers, since ordinary proposals have only two values.
+
+The next-season coordinator checks regional presence independently before
+reserve coordination, after division preparation and after the secondary
+division's rollover. It resets existing resources before incrementing the
+signed 16-bit year, then configures, collects and ranks clubs, stopping at the
+first failed phase. The controlled create/two-rollovers/destroy comparison
+reaches every owned operation, with neighboring modules and services modeled
+at validated call boundaries. This is controlled integration evidence, not a
+new gameplay recording or a performance measurement.
 
 ## POR_SECOND.CPP
 

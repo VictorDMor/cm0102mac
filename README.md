@@ -60,6 +60,8 @@ entrants, calendars, group draws, knockout and results.
 news text, response dialog and data file.
 `SIMULATED_STATS.CPP` adds **7 audited routines** for club groups, simulated
 fixtures, result publication and binary records.
+`GER_FIRST.CPP` adds **11 audited routines** for the German First Division's
+calendar, entrants, regional assignment and season transition.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,

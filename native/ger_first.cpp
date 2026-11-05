@@ -1,5 +1,6 @@
 #include "ger_first_adapter.hpp"
 #include "guest_values.hpp"
+#include "guest_fpu.hpp"
 #include "guest_saved_registers.hpp"
 #include "routine_check.hpp"
 #include "import_descriptor_adapter.hpp"
@@ -20,6 +21,8 @@ constexpr auto create_entry = 0x10536d50u, destroy_entry = 0x10537080u;
 constexpr auto calendar_entry = 0x10537120u, configure_entry = 0x105397b0u;
 constexpr auto link_entry = 0x10539bb0u, promote_entry = 0x10539d20u;
 constexpr auto fill_entry = 0x10539f30u, reserves_entry = 0x1053a900u;
+constexpr auto split_entry = 0x1053a200u;
+constexpr auto next_season_entry = 0x10539880u;
 constexpr unsigned club_stride = 0x248, standing_size = 0x44, definition_size = 0x6c;
 void call_virtual(Cpu&, std::uint32_t resume);
 
@@ -1212,6 +1215,808 @@ void coordinate_reserves(Cpu& c) {
     c.set_lr(c.r(0));
     guest::transfer_saved_registers<19, true>(c, stack);
     c.finish();
+}
+
+void split_region_assignments(Cpu& c, std::uint32_t frame, unsigned count,
+                              unsigned north_count, unsigned south_count,
+                              std::uint32_t north_definition, std::uint32_t south_definition) {
+    const auto combined = frame + 0xf0, north = frame + 0x138, previous = frame + 0x60;
+    const auto set_ctr = [&](unsigned value) { c.s.wr<4>(guest::reg::ctr, value); };
+    block(c, 0x1053a4e4, 3);
+    const auto nonempty = compare(c, std::int32_t(count)) > 0;
+    unsigned copied = 0;
+    c.set(4, copied);
+    if (nonempty) {
+        block(c, 0x1053a4f0, 3);
+        const auto wide = compare(c, std::int32_t(count), 8) > 0;
+        c.set(12, count - 8);
+        if (wide) {
+            block(c, 0x1053a4fc, 6);
+            c.set(6, (count - 1) / 8);
+            c.set(27, 0);
+            const auto batches = c.r(6);
+            set_ctr(batches);
+            if (compare(c, std::int32_t(count - 8)) > 0) {
+                for (unsigned batch = 0; batch < batches; ++batch) {
+                    block(c, 0x1053a514, 31);
+                    const auto from = combined + copied * 4, to = previous + copied * 4;
+                    c.set(26, from);
+                    c.set(28, previous);
+                    c.set(4, copied += 8);
+                    const auto club0 = c.u32(from); c.set(12, club0);
+                    c.set(28, to);
+                    const auto club4 = c.u32(from + 16); c.set(31, club4);
+                    c.set(27, copied * 4);
+                    const auto old0 = c.u32(club0 + 0x38); c.set(29, old0);
+                    const auto club1 = c.u32(from + 4); c.set(6, club1);
+                    const auto club2 = c.u32(from + 8); c.set(12, club2);
+                    c.put32(to, old0);
+                    const auto old1 = c.u32(club1 + 0x38); c.set(29, old1);
+                    const auto club3 = c.u32(from + 12); c.set(6, club3);
+                    c.put32(to + 4, old1);
+                    const auto old2 = c.u32(club2 + 0x38); c.set(12, old2);
+                    const auto old3 = c.u32(club3 + 0x38); c.set(29, old3);
+                    c.put32(to + 8, old2);
+                    const auto club5 = c.u32(from + 20); c.set(30, club5);
+                    const auto club6 = c.u32(from + 24); c.set(12, club6);
+                    const auto club7 = c.u32(from + 28); c.set(6, club7);
+                    c.put32(to + 12, old3);
+                    const auto old4 = c.u32(club4 + 0x38); c.set(31, old4);
+                    const auto old5 = c.u32(club5 + 0x38); c.set(30, old5);
+                    c.put32(to + 16, old4);
+                    const auto old6 = c.u32(club6 + 0x38); c.set(12, old6);
+                    c.put32(to + 20, old5);
+                    const auto old7 = c.u32(club7 + 0x38); c.set(6, old7);
+                    c.put32(to + 24, old6);
+                    c.put32(to + 28, old7);
+                    set_ctr(batches - batch - 1);
+                }
+            }
+        }
+        block(c, 0x1053a590, 9);
+        c.set(27, copied * 4);
+        auto source = combined + copied * 4, destination = previous + copied * 4;
+        c.set(30, source);
+        c.set(12, destination);
+        c.set(6, count - copied);
+        set_ctr(count - copied);
+        if (compare(c, std::int32_t(copied), std::int32_t(count)) < 0) {
+            for (unsigned i = copied; i < count; ++i) {
+                block(c, 0x1053a5b4, 6);
+                const auto club = c.u32(source); c.set(4, club);
+                c.set(30, source += 4);
+                const auto old = c.u32(club + 0x38); c.set(4, old);
+                c.put32(destination, old);
+                c.set(12, destination += 4);
+                set_ctr(count - i - 1);
+            }
+        }
+    }
+    block(c, 0x1053a5cc, 3);
+    const auto have_north = record_value(c, 12, std::int16_t(north_count)) > 0;
+    unsigned assigned = 0;
+    c.set(27, assigned);
+    if (have_north) {
+        block(c, 0x1053a5d8, 3);
+        const auto wide = compare(c, std::int16_t(north_count), 8) > 0;
+        c.set(6, north_count - 8);
+        if (wide) {
+            block(c, 0x1053a5e4, 6);
+            const auto batches = (north_count - 1) / 8;
+            c.set(4, batches);
+            c.set(11, 0);
+            set_ctr(batches);
+            if (compare(c, std::int32_t(north_count - 8)) > 0) {
+                for (unsigned batch = 0; batch < batches; ++batch) {
+                    block(c, 0x1053a5fc, 20);
+                    const auto source = north + assigned * 4;
+                    c.set(26, source);
+                    c.set(11, (batch + 1) * 32);
+                    auto left = c.u32(source); c.set(6, left);
+                    c.set(27, assigned += 8);
+                    auto right = c.u32(source + 4); c.set(4, right);
+                    c.put32(left + 0x38, north_definition);
+                    for (unsigned lane = 2; lane < 8; lane += 2) {
+                        left = c.u32(source + lane * 4); c.set(6, left);
+                        c.put32(right + 0x38, north_definition);
+                        right = c.u32(source + (lane + 1) * 4); c.set(4, right);
+                        c.put32(left + 0x38, north_definition);
+                    }
+                    c.put32(right + 0x38, north_definition);
+                    set_ctr(batches - batch - 1);
+                }
+            }
+        }
+        block(c, 0x1053a64c, 6);
+        auto cursor = north + assigned * 4;
+        c.set(6, cursor);
+        c.set(4, north_count - assigned);
+        set_ctr(north_count - assigned);
+        if (compare(c, std::int32_t(assigned), std::int16_t(north_count)) < 0) {
+            for (unsigned i = assigned; i < north_count; ++i) {
+                block(c, 0x1053a664, 4);
+                const auto club = c.u32(cursor); c.set(4, club);
+                c.set(6, cursor += 4);
+                c.put32(club + 0x38, north_definition);
+                set_ctr(north_count - i - 1);
+            }
+        }
+    }
+    block(c, 0x1053a674, 3);
+    const auto have_south = record_value(c, 10, std::int16_t(south_count)) > 0;
+    assigned = 0;
+    c.set(12, assigned);
+    if (have_south) {
+        block(c, 0x1053a680, 3);
+        const auto wide = compare(c, std::int16_t(south_count), 8) > 0;
+        c.set(4, south_count - 8);
+        if (wide) {
+            block(c, 0x1053a68c, 6);
+            const auto batches = (south_count - 1) / 8;
+            c.set(0, batches);
+            c.set(9, 0);
+            set_ctr(batches);
+            if (compare(c, std::int32_t(south_count - 8)) > 0) {
+                for (unsigned batch = 0; batch < batches; ++batch) {
+                    block(c, 0x1053a6a4, 20);
+                    const auto source = combined + assigned * 4;
+                    c.set(11, source);
+                    c.set(9, (batch + 1) * 32);
+                    auto left = c.u32(source); c.set(6, left);
+                    c.set(12, assigned += 8);
+                    auto right = c.u32(source + 4); c.set(4, right);
+                    c.put32(left + 0x38, south_definition);
+                    for (unsigned lane = 2; lane < 8; lane += 2) {
+                        left = c.u32(source + lane * 4); c.set(6, left);
+                        c.put32(right + 0x38, south_definition);
+                        right = c.u32(source + (lane + 1) * 4); c.set(4, right);
+                        c.put32(left + 0x38, south_definition);
+                    }
+                    c.put32(right + 0x38, south_definition);
+                    set_ctr(batches - batch - 1);
+                }
+            }
+        }
+        block(c, 0x1053a6f4, 6);
+        auto cursor = combined + assigned * 4;
+        c.set(4, cursor);
+        c.set(0, south_count - assigned);
+        set_ctr(south_count - assigned);
+        if (compare(c, std::int32_t(assigned), std::int16_t(south_count)) < 0) {
+            for (unsigned i = assigned; i < south_count; ++i) {
+                block(c, 0x1053a70c, 4);
+                const auto club = c.u32(cursor); c.set(6, club);
+                c.set(4, cursor += 4);
+                c.put32(club + 0x38, south_definition);
+                set_ctr(south_count - i - 1);
+            }
+        }
+    }
+    // Preserve previous memberships whenever a pair can exchange its proposed
+    // regions. Later rows observe every restoration made by an earlier pair.
+    block(c, 0x1053a71c, 5);
+    c.set(9, count - 1);
+    auto club_cursor = combined, old_cursor = previous;
+    c.set({{6, club_cursor}, {4, old_cursor}, {29, 0}});
+    for (unsigned i = 0;;) {
+        block(c, 0x1053a7d0, 2);
+        if (compare(c, std::int32_t(i), std::int32_t(count - 1)) >= 0) break;
+        block(c, 0x1053a730, 5);
+        const auto first = c.u32(club_cursor); c.set(30, first);
+        const auto first_old = c.u32(old_cursor); c.set(28, first_old);
+        const auto first_new = c.u32(first + 0x38); c.set(26, first_new);
+        if (compare_logical(c, first_new, first_old)) {
+            block(c, 0x1053a744, 10);
+            unsigned j = i + 1;
+            c.set(25, j);
+            c.set(12, combined);
+            c.set(27, j * 4);
+            c.set(10, previous);
+            c.set(0, count - j);
+            auto partner_cursor = combined + j * 4, partner_old = previous + j * 4;
+            c.set(8, partner_cursor);
+            c.set(7, partner_old);
+            set_ctr(count - j);
+            if (compare(c, std::int32_t(j), std::int32_t(count)) < 0) {
+                block(c, 0x1053a76c, 1);
+                for (; j < count;) {
+                    block(c, 0x1053a770, 5);
+                    const auto second = c.u32(partner_cursor); c.set(11, second);
+                    const auto second_old = c.u32(partner_old); c.set(0, second_old);
+                    const auto second_new = c.u32(second + 0x38); c.set(11, second_new);
+                    bool exchange = compare_logical(c, second_new, second_old) != 0;
+                    if (exchange) {
+                        block(c, 0x1053a784, 2);
+                        exchange = compare_logical(c, first_new, second_old) == 0;
+                    }
+                    if (exchange) {
+                        block(c, 0x1053a78c, 2);
+                        exchange = compare_logical(c, second_new, first_old) == 0;
+                    }
+                    if (exchange) {
+                        block(c, 0x1053a794, 6);
+                        c.set(7, j * 4);
+                        c.put32(first + 0x38, first_old);
+                        const auto old = c.u32(previous + j * 4); c.set(0, old);
+                        const auto club = c.u32(combined + j * 4); c.set(7, club);
+                        c.put32(club + 0x38, old);
+                        break;
+                    }
+                    block(c, 0x1053a7b0, 5);
+                    c.set(27, (j + 1) * 4);
+                    c.set(7, partner_old += 4);
+                    c.set(8, partner_cursor += 4);
+                    c.set(25, ++j);
+                    set_ctr(count - j);
+                }
+            }
+        }
+        block(c, 0x1053a7c4, 3);
+        c.set(4, old_cursor += 4);
+        c.set(6, club_cursor += 4);
+        c.set(29, ++i);
+    }
+    // The original also looks for three-way cycles. Keep its ordered fresh
+    // reads and partial writes, including observable mutation/alias cases.
+    block(c, 0x1053a7d8, 4);
+    club_cursor = combined; old_cursor = previous;
+    c.set({{6, club_cursor}, {4, old_cursor}, {31, 0}});
+    for (unsigned i = 0;;) {
+        block(c, 0x1053a8e4, 2);
+        if (compare(c, std::int32_t(i), std::int32_t(count)) >= 0) break;
+        // The mutation observer watches this read exactly; generation isolates
+        // it from the following run so a finite budget exposes the same prefix.
+        block(c, 0x1053a7e8, 1);
+        const auto first = c.u32(club_cursor); c.set(7, first);
+        block(c, 0x1053a7ec, 4);
+        const auto first_old = c.u32(old_cursor); c.set(0, first_old);
+        const auto first_new = c.u32(first + 0x38); c.set(7, first_new);
+        if (compare_logical(c, first_new, first_old)) {
+            block(c, 0x1053a7fc, 2);
+            unsigned j = 0;
+            c.set(25, j);
+            for (;;) {
+                block(c, 0x1053a8d0, 2);
+                if (compare(c, std::int32_t(j), std::int32_t(count)) >= 0) break;
+                block(c, 0x1053a804, 2);
+                if (compare(c, std::int32_t(i), std::int32_t(j))) {
+                    block(c, 0x1053a80c, 8);
+                    c.set(11, j * 4);
+                    c.set(30, combined);
+                    const auto second = c.u32(combined + j * 4); c.set(7, second);
+                    c.set(29, previous);
+                    const auto second_old = c.u32(previous + j * 4); c.set(12, second_old);
+                    const auto second_new = c.u32(second + 0x38); c.set(27, second_new);
+                    if (compare_logical(c, second_new, second_old)) {
+                        block(c, 0x1053a82c, 7);
+                        auto third_cursor = combined, third_old_cursor = previous;
+                        c.set({{8, third_cursor}, {7, third_old_cursor}, {24, 0}, {10, 0}});
+                        set_ctr(count);
+                        if (compare(c, std::int32_t(count)) > 0) {
+                            for (unsigned k = 0; k < count;) {
+                                block(c, 0x1053a848, 2);
+                                bool cycle = compare(c, std::int32_t(k), std::int32_t(i)) != 0;
+                                if (cycle) {
+                                    block(c, 0x1053a850, 2);
+                                    cycle = compare(c, std::int32_t(k), std::int32_t(j)) != 0;
+                                }
+                                if (cycle) {
+                                    block(c, 0x1053a858, 5);
+                                    const auto third = c.u32(third_cursor); c.set(9, third);
+                                    const auto third_old = c.u32(third_old_cursor); c.set(26, third_old);
+                                    const auto third_new = c.u32(third + 0x38); c.set(28, third_new);
+                                    cycle = compare_logical(c, third_new, third_old) != 0;
+                                    std::uint32_t restore_first = 0, restore_first_old = 0;
+                                    if (cycle) {
+                                        block(c, 0x1053a86c, 4);
+                                        restore_first = c.u32(club_cursor); c.set(9, restore_first);
+                                        const auto current_first = c.u32(restore_first + 0x38); c.set(0, current_first);
+                                        cycle = compare_logical(c, current_first, second_old) == 0;
+                                    }
+                                    if (cycle) {
+                                        block(c, 0x1053a87c, 2);
+                                        cycle = compare_logical(c, second_new, third_old) == 0;
+                                    }
+                                    if (cycle) {
+                                        block(c, 0x1053a884, 3);
+                                        restore_first_old = c.u32(old_cursor); c.set(0, restore_first_old);
+                                        cycle = compare_logical(c, third_new, restore_first_old) == 0;
+                                    }
+                                    if (cycle) {
+                                        block(c, 0x1053a890, 10);
+                                        c.put32(restore_first + 0x38, restore_first_old);
+                                        c.set(9, k * 4);
+                                        const auto restore_second = c.u32(previous + j * 4); c.set(8, restore_second);
+                                        const auto second_index = j;
+                                        j = count;
+                                        c.set(25, j);
+                                        const auto fresh_second = c.u32(combined + second_index * 4); c.set(7, fresh_second);
+                                        const auto restore_third = c.u32(previous + k * 4); c.set(0, restore_third);
+                                        c.put32(fresh_second + 0x38, restore_second);
+                                        const auto fresh_third = c.u32(combined + k * 4); c.set(7, fresh_third);
+                                        c.put32(fresh_third + 0x38, restore_third);
+                                        break;
+                                    }
+                                }
+                                block(c, 0x1053a8b8, 5);
+                                c.set(10, (k + 1) * 4);
+                                c.set(7, third_old_cursor += 4);
+                                c.set(8, third_cursor += 4);
+                                c.set(24, ++k);
+                                set_ctr(count - k);
+                            }
+                        }
+                    }
+                }
+                block(c, 0x1053a8cc, 1);
+                c.set(25, ++j);
+            }
+        }
+        block(c, 0x1053a8d8, 3);
+        c.set(4, old_cursor += 4);
+        c.set(6, club_cursor += 4);
+        c.set(31, ++i);
+    }
+}
+
+// Two contiguous 18-club lists are also the original's combined 36-club
+// scratch array. Keep the ordered guest accesses: observers and aliases see
+// the compiler's pipelined copies, even though iteration lives in C++ locals.
+void split_regions(Cpu& c) {
+    GuestNativeScope scope(c.s, split_entry);
+    block(c, split_entry, 34);
+    const auto stack = c.sp(), frame = stack - 0x230;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<24>(c, stack);
+    c.set(4, c.toc(-0x6748));
+    unsigned selected_count = 0, located_count = 0, north_count = 0, south_count = 0;
+    c.set(5, selected_count);
+    c.set(3, c.toc(-0x674c));
+    c.set(6, located_count);
+    c.set(7, c.toc(-0x7bbc));
+    c.set(9, south_count);
+    c.set(27, c.toc(-0x7b04));
+    c.set(11, north_count);
+    c.set(12, c.toc(-0x7b50));
+    c.set(28, c.toc(-0x7be8));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(0, c.u32(c.r(4)));
+    const auto south_list = frame + 0xf0, north_list = frame + 0x138;
+    const auto candidates = frame + 0x180;
+    c.set(8, south_list);
+    c.set(4, c.u32(c.r(3)));
+    c.set(10, north_list);
+    c.set(30, c.r(0) * definition_size);
+    c.set(31, c.u32(c.r(7)));
+    c.set(0, c.u32(c.r(27)));
+    c.set(3, 0);
+    c.set(12, c.u32(c.r(12)));
+    c.set(7, c.r(4) * definition_size);
+    c.set(29, c.r(0) * 2);
+    const auto constants = c.toc(-0x44fc);
+    c.set(4, constants);
+    const auto north_definition = c.r(31) + c.r(30);
+    c.set(0, north_definition);
+    const auto regional_id = c.toc(-0x6750);
+    c.set(27, regional_id);
+    const auto south_definition = c.r(31) + c.r(7);
+    c.set(7, south_definition);
+    const auto buffer = c.toc(-0x7ba8);
+    c.set(30, buffer);
+    const auto total_clubs = c.r(12) - c.r(29);
+    c.set(29, total_clubs);
+    const auto pool = c.toc(-0x44f8);
+    c.set(31, pool);
+    auto club = c.u32(c.r(28));
+    c.set(24, club);
+    for (unsigned examined = 0;;) {
+        block(c, 0x1053a2dc, 2);
+        if (compare(c, std::int32_t(examined), std::int32_t(total_clubs)) >= 0) break;
+        block(c, 0x1053a2e4, 3);
+        c.set(12, std::uint32_t(std::int8_t(selected_count)));
+        if (compare(c, std::int32_t(c.r(12)), 36) >= 0) break;
+        block(c, 0x1053a288, 3);
+        const auto definition = c.u32(club + 0x30);
+        c.set(12, definition);
+        bool eligible = compare_logical(c, definition) != 0;
+        if (eligible) {
+            block(c, 0x1053a294, 4);
+            const auto id = c.u32(definition);
+            c.set(28, id);
+            c.set(12, c.u32(regional_id));
+            eligible = compare(c, std::int32_t(id), std::int32_t(c.r(12))) == 0;
+        }
+        if (eligible) {
+            block(c, 0x1053a2a4, 8);
+            const auto location = c.u32(club + 0x3c);
+            c.set(26, location);
+            c.set(12, std::uint32_t(std::int8_t(selected_count)));
+            c.set(28, c.r(12) * 4);
+            c.set(12, candidates);
+            const auto has_location = compare_logical(c, location) != 0;
+            c.put32(candidates + c.r(28), club);
+            c.set(5, ++selected_count);
+            if (has_location) {
+                block(c, 0x1053a2c4, 3);
+                c.set(12, c.u32(location + 0x10));
+                if (compare_logical(c, c.r(12))) {
+                    block(c, 0x1053a2d0, 1);
+                    c.set(6, ++located_count);
+                }
+            }
+        }
+        block(c, 0x1053a2d4, 2);
+        c.set(3, ++examined);
+        club += club_stride;
+        c.set(24, club);
+    }
+    block(c, 0x1053a2f0, 3);
+    c.set(3, std::uint32_t(std::int8_t(selected_count)));
+    if (compare(c, std::int32_t(c.r(3)), 36)) {
+        report_failure(c, 0x1053a2fc, pool, buffer, 0x40, 0x38, 0x419);
+        block(c, 0x1053a344, 4);
+        c.set(3, c.toc(-0x7bac));
+        c.set(0, 0);
+        c.put8(c.r(3), 0);
+    } else {
+        guest::Fpu fp(c);
+        const auto set_ctr = [&](unsigned count) { c.s.wr<4>(guest::reg::ctr, count); };
+        block(c, 0x1053a354, 3);
+        auto north_threshold = c.f64(constants), south_threshold = 0.0;
+        c.set_f(2, north_threshold);
+        c.set(29, std::uint32_t(std::int8_t(located_count)));
+        south_threshold = c.f64(constants + 8);
+        c.set_f(3, south_threshold);
+        for (;;) {
+            block(c, 0x1053a360, 5);
+            auto cursor = candidates;
+            c.set(6, cursor);
+            c.set(27, 0);
+            set_ctr(selected_count);
+            const auto scan = compare(c, std::int32_t(selected_count)) > 0;
+            if (scan) {
+                block(c, 0x1053a374, 1);
+                for (unsigned i = 0; i < selected_count; ++i) {
+                    block(c, 0x1053a378, 3);
+                    const auto candidate = c.u32(cursor);
+                    c.set(26, candidate);
+                    bool located = compare_logical(c, candidate) != 0;
+                    auto coordinates = 0u;
+                    if (located) {
+                        block(c, 0x1053a384, 3);
+                        const auto location = c.u32(candidate + 0x3c);
+                        c.set(12, location);
+                        located = compare_logical(c, location) != 0;
+                        if (located) {
+                            block(c, 0x1053a390, 3);
+                            coordinates = c.u32(location + 0x10);
+                            c.set(12, coordinates);
+                            located = compare_logical(c, coordinates) != 0;
+                        }
+                    }
+                    if (located) {
+                        block(c, 0x1053a39c, 3);
+                        const auto latitude = c.f64(coordinates);
+                        c.set_f(0, latitude);
+                        fp.fcmp(0, latitude, north_threshold);
+                        bool northern = (c.cr(0) & 4) != 0;
+                        if (northern) {
+                            block(c, 0x1053a3a8, 3);
+                            c.set(12, std::uint32_t(std::int16_t(north_count)));
+                            northern = compare(c, std::int32_t(c.r(12)), 18) < 0;
+                        }
+                        if (northern) {
+                            block(c, 0x1053a3b4, 6);
+                            c.set(30, north_count * 4);
+                            c.set(12, 0);
+                            c.put32(north_list + north_count * 4, candidate);
+                            c.set(11, ++north_count);
+                            c.put32(cursor, 0);
+                        } else {
+                            block(c, 0x1053a3cc, 2);
+                            fp.fcmp(0, latitude, south_threshold);
+                            if (c.cr(0) & 8) {
+                                block(c, 0x1053a3d4, 3);
+                                c.set(12, std::uint32_t(std::int16_t(south_count)));
+                                if (compare(c, std::int32_t(c.r(12)), 18) < 0) {
+                                    block(c, 0x1053a3e0, 5);
+                                    c.set(30, south_count * 4);
+                                    c.set(12, 0);
+                                    c.put32(south_list + south_count * 4, candidate);
+                                    c.set(9, ++south_count);
+                                    c.put32(cursor, 0);
+                                }
+                            }
+                        }
+                    }
+                    block(c, 0x1053a3f4, 3);
+                    c.set(27, (i + 1) * 4);
+                    c.set(6, cursor += 4);
+                    set_ctr(selected_count - i - 1);
+                }
+            }
+            block(c, 0x1053a400, 5);
+            c.set(12, std::uint32_t(std::int16_t(north_count)));
+            c.set(6, std::uint32_t(std::int16_t(south_count)));
+            c.set(6, c.r(12) + c.r(6));
+            if (!compare(c, std::int8_t(located_count), std::int32_t(c.r(6)))) break;
+            block(c, 0x1053a414, 5);
+            const auto north_step = c.f64(constants + 0x10);
+            c.set_f(1, north_step);
+            const auto south_step = c.f64(constants + 0x18);
+            c.set_f(0, south_step);
+            north_threshold = fp.fsub(north_threshold, north_step);
+            c.set_f(2, north_threshold);
+            south_threshold = fp.fadd(south_threshold, south_step);
+            c.set_f(3, south_threshold);
+        }
+        block(c, 0x1053a428, 2);
+        unsigned pass = 0;
+        c.set(24, pass);
+        for (;;) {
+            block(c, 0x1053a4d8, 3);
+            c.set(4, std::uint32_t(std::int8_t(pass)));
+            if (compare(c, std::int32_t(c.r(4)), 2) >= 0) break;
+            block(c, 0x1053a430, 5);
+            auto cursor = candidates;
+            c.set(4, cursor);
+            c.set(27, 0);
+            set_ctr(selected_count);
+            if (compare(c, std::int32_t(selected_count)) > 0) {
+                block(c, 0x1053a444, 1);
+                for (unsigned i = 0; i < selected_count; ++i) {
+                    block(c, 0x1053a448, 3);
+                    const auto candidate = c.u32(cursor);
+                    c.set(26, candidate);
+                    if (compare_logical(c, candidate)) {
+                        block(c, 0x1053a454, 3);
+                        c.set(6, std::uint32_t(std::int8_t(pass)));
+                        bool northern = compare(c, std::int32_t(c.r(6)), 1) == 0;
+                        if (!northern) {
+                            block(c, 0x1053a460, 3);
+                            c.set(6, c.u32(candidate + 0x38));
+                            northern = compare_logical(c, c.r(6), north_definition) == 0;
+                        }
+                        if (northern) {
+                            block(c, 0x1053a46c, 3);
+                            c.set(6, std::uint32_t(std::int16_t(north_count)));
+                            northern = compare(c, std::int32_t(c.r(6)), 18) < 0;
+                        }
+                        if (northern) {
+                            block(c, 0x1053a478, 6);
+                            c.set(12, north_count * 4);
+                            c.set(6, 0);
+                            c.put32(north_list + north_count * 4, candidate);
+                            c.set(11, ++north_count);
+                            c.put32(cursor, 0);
+                        } else {
+                            block(c, 0x1053a490, 3);
+                            c.set(6, std::uint32_t(std::int8_t(pass)));
+                            bool southern = compare(c, std::int32_t(c.r(6)), 1) == 0;
+                            if (!southern) {
+                                block(c, 0x1053a49c, 3);
+                                c.set(6, c.u32(candidate + 0x38));
+                                southern = compare_logical(c, c.r(6), south_definition) == 0;
+                            }
+                            if (southern) {
+                                block(c, 0x1053a4a8, 3);
+                                c.set(6, std::uint32_t(std::int16_t(south_count)));
+                                southern = compare(c, std::int32_t(c.r(6)), 18) < 0;
+                            }
+                            if (southern) {
+                                block(c, 0x1053a4b4, 5);
+                                c.set(12, south_count * 4);
+                                c.set(6, 0);
+                                c.put32(south_list + south_count * 4, candidate);
+                                c.set(9, ++south_count);
+                                c.put32(cursor, 0);
+                            }
+                        }
+                    }
+                    block(c, 0x1053a4c8, 3);
+                    c.set(27, (i + 1) * 4);
+                    c.set(4, cursor += 4);
+                    set_ctr(selected_count - i - 1);
+                }
+            }
+            block(c, 0x1053a4d4, 1);
+            c.set(24, ++pass);
+        }
+        // Continued below: snapshot, assign and preserve previous pair/triple
+        // cycles. Keeping this phase separate makes scratch ownership clear.
+        split_region_assignments(c, frame, selected_count, north_count, south_count,
+                                 north_definition, south_definition);
+    }
+    block(c, 0x1053a8ec, 5);
+    c.set(0, c.u32(frame + 0x238));
+    c.set(1, stack);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<24, true>(c, stack);
+    c.finish();
+}
+
+void next_season(Cpu& c) {
+    GuestNativeScope scope(c.s, next_season_entry);
+    block(c, next_season_entry, 19);
+    const auto stack = c.sp(), frame = stack - 0x100;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<25>(c, stack);
+    const guest::Kept<28> regional_id(c, c.toc(-0x6750));
+    const guest::Kept<25> object(c, c.r(3));
+    const guest::Kept<26> divisions(c, c.toc(-0x7b5c));
+    const guest::Kept<27> second_id(c, c.toc(-0x673c));
+    const guest::Kept<29> failure_flag(c, c.toc(-0x7bac));
+    const guest::Kept<30> buffer(c, c.toc(-0x7ba8));
+    const guest::Kept<31> pool(c, c.toc(-0x44f8));
+    c.put32(stack + 8, c.r(0));
+    c.set(0, 0);
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.put8(object + 0x49, 0);
+    c.set(0, c.u32(regional_id));
+    c.set(4, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(0, c.u32(c.r(4) + c.r(0)));
+    const auto has_regional = compare_logical(c, c.r(0)) != 0;
+    const auto owned = [&](std::uint32_t entry, std::uint32_t resume, auto implementation) {
+        if (routine_checker) c.call(entry, resume);
+        else {
+            c.link(resume);
+            c.s.pc = entry;
+            implementation(c);
+        }
+    };
+    const auto finish = [&] {
+        block(c, 0x10539b98, 5);
+        c.set(0, c.u32(frame + 0x108));
+        c.set(1, stack);
+        c.set_lr(c.r(0));
+        guest::transfer_saved_registers<25, true>(c, stack);
+        c.finish();
+    };
+    const auto fail = [&](std::uint32_t pc, unsigned message, unsigned detail, unsigned line) {
+        report_failure(c, pc, pool, buffer, message, detail, line);
+        block(c, pc + 72, 3);
+        c.set(0, 0);
+        c.put8(failure_flag, 0);
+        finish();
+    };
+    if (has_regional) {
+        block(c, 0x105398cc, 1);
+        owned(reserves_entry, 0x105398d0, coordinate_reserves);
+    }
+    block(c, 0x105398d0, 5);
+    c.set({{3, object}, {4, 1}});
+    c.set(12, c.u32(object));
+    c.set(12, c.u32(c.r(12) + 0xb8));
+    call_virtual(c, 0x105398e4);
+    block(c, 0x105398e4, 7);
+    c.set(2, c.u32(frame + 0x14));
+    c.set(0, c.u32(regional_id));
+    c.set(3, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(0, c.u32(c.r(3) + c.r(0)));
+    if (compare_logical(c, c.r(0))) {
+        block(c, 0x10539900, 2);
+        c.set(3, object);
+        owned(fill_entry, 0x10539908, fill_regional_slots);
+        block(c, 0x10539908, 1);
+    } else {
+        block(c, 0x1053990c, 2);
+        c.set(3, object);
+        owned(promote_entry, 0x10539914, promote_four);
+    }
+    block(c, 0x10539914, 2);
+    c.set(3, object);
+    owned(split_entry, 0x1053991c, split_regions);
+    block(c, 0x1053991c, 3);
+    c.set({{3, object}, {4, 0}});
+    c.call(0x104a6660, 0x10539928);
+    block(c, 0x10539928, 3);
+    c.set(3, c.u32(object + 0xbc));
+    if (compare_logical(c, c.r(3))) {
+        block(c, 0x10539934, 1);
+        c.call(0x10775170, 0x10539938);
+        block(c, 0x10539938, 2);
+        c.set(0, 0);
+        c.put32(object + 0xbc, 0);
+    }
+    block(c, 0x10539940, 3);
+    c.set(3, c.u32(object + 8));
+    if (compare_logical(c, c.r(3))) {
+        block(c, 0x1053994c, 2);
+        c.set(4, 1);
+        c.call(0x104564a0, 0x10539954);
+    }
+    block(c, 0x10539954, 7);
+    c.set(4, std::uint32_t(c.i16(object + 0x40)));
+    c.set(3, object);
+    c.set(0, c.r(4) + 1);
+    c.put16(object + 0x40, c.r(0));
+    c.set(12, c.u32(object));
+    c.set(12, c.u32(c.r(12) + 0x94));
+    call_virtual(c, 0x10539970);
+    block(c, 0x10539970, 3);
+    c.set(2, c.u32(frame + 0x14));
+    if (!compare(c, std::int32_t(c.r(3)))) {
+        fail(0x1053997c, 0xb8, 0x50, 0x2ec);
+        return;
+    }
+    block(c, 0x105399d0, 2);
+    c.set(3, object);
+    owned(collect_entry, 0x105399d8, collect_clubs);
+    block(c, 0x105399d8, 2);
+    if (!compare(c, std::int32_t(c.r(3)))) {
+        fail(0x105399e0, 0x98, 0x48, 0x2f3);
+        return;
+    }
+    block(c, 0x10539a34, 2);
+    c.set(3, object);
+    c.call(0x104a00a0, 0x10539a3c);
+    block(c, 0x10539a3c, 2);
+    if (!compare(c, std::int32_t(c.r(3)))) {
+        fail(0x10539a44, 0x78, 0x40, 0x2f9);
+        return;
+    }
+    block(c, 0x10539a98, 3);
+    c.set({{3, object}, {4, 0}});
+    c.call(0x1049eb30, 0x10539aa4);
+    block(c, 0x10539aa4, 2);
+    if (!compare(c, std::int32_t(c.r(3)))) {
+        fail(0x10539aac, 0x58, 0x38, 0x300);
+        return;
+    }
+    block(c, 0x10539b00, 9);
+    c.set(0, c.u32(second_id));
+    c.set(4, 1);
+    c.set(3, c.u32(divisions));
+    c.set(5, 3);
+    c.set(0, c.r(0) * 4);
+    c.set(6, std::uint32_t(-3));
+    c.set(3, c.u32(c.r(3) + c.r(0)));
+    c.set(7, 1);
+    c.call(0x104aa240, 0x10539b24);
+    block(c, 0x10539b24, 7);
+    c.set(0, c.u32(second_id));
+    c.set(3, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(3, c.u32(c.r(3) + c.r(0)));
+    c.set(12, c.u32(c.r(3)));
+    c.set(12, c.u32(c.r(12) + 0x10));
+    call_virtual(c, 0x10539b40);
+    block(c, 0x10539b40, 7);
+    c.set(2, c.u32(frame + 0x14));
+    c.set(0, c.u32(regional_id));
+    c.set(3, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(3, c.u32(c.r(3) + c.r(0)));
+    if (compare_logical(c, c.r(3))) {
+        block(c, 0x10539b5c, 3);
+        c.set(12, c.u32(c.r(3)));
+        c.set(12, c.u32(c.r(12) + 0x10));
+        call_virtual(c, 0x10539b68);
+        block(c, 0x10539b68, 1);
+        c.set(2, c.u32(frame + 0x14));
+    }
+    block(c, 0x10539b6c, 4);
+    c.set(3, object);
+    c.set(12, c.u32(object));
+    c.set(12, c.u32(c.r(12) + 0x64));
+    call_virtual(c, 0x10539b7c);
+    block(c, 0x10539b7c, 3);
+    c.set(2, c.u32(frame + 0x14));
+    c.set(3, object);
+    c.call(0x104aa3a0, 0x10539b88);
+    block(c, 0x10539b88, 4);
+    c.set(3, c.toc(-0x7428));
+    c.set(4, c.u32(object + 4));
+    c.set(3, c.u32(c.r(3)));
+    c.call(0x102d46c0, 0x10539b98);
+    finish();
 }
 
 struct Routine { std::uint32_t entry; void (*run)(Cpu&); };
