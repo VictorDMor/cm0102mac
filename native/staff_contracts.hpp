@@ -10,6 +10,12 @@ void initialize_draft(guest::Cpu&, std::uint32_t contract);
 std::int16_t end_date_delta(guest::Cpu&, std::uint32_t contract);
 bool supports_bonus(guest::Cpu&, std::uint32_t person, std::int8_t bonus);
 
+void name_bonus(guest::Cpu&, std::int8_t index, std::uint32_t destination);
+void name_option(guest::Cpu&, std::int8_t index, std::uint32_t destination);
+void describe_bonus(guest::Cpu&, std::uint32_t contract, std::uint32_t index, std::uint32_t destination,
+                    std::uint32_t name_only);
+void describe_option(guest::Cpu&, std::uint32_t index, std::uint32_t destination);
+
 void enable_option(guest::Cpu&, std::uint32_t contract, std::int8_t option);
 void clear_option(guest::Cpu&, std::uint32_t contract, std::int8_t option);
 void set_bonus(guest::Cpu&, std::uint32_t contract, std::int8_t bonus, std::uint32_t amount);

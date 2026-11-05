@@ -22,6 +22,12 @@ constexpr auto routines = std::to_array<Routine>({
 bool declining = std::getenv("CM_STAFF_CONTRACTS_ORIGINAL") != nullptr;
 }
 
+bool staff_contracts_calls_directly() {
+    // An explicit checker must see the nested entries so that it can select
+    // their independent references and record them individually.
+    return !declining && !routine_checker;
+}
+
 void staff_contracts_run_original(State& s, std::uint32_t entry) {
     run_original_body(s, entry, declining);
 }

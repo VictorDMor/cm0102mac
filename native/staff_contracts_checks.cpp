@@ -1,4 +1,5 @@
 #include "staff_contracts.hpp"
+#include "localization_format_adapter.hpp"
 #include "staff_contracts_adapter.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
@@ -31,6 +32,30 @@ constexpr std::uint32_t default_date = 0x10715880, difference = 0x10718130;
 constexpr std::uint32_t primary_adjustment = 0x1000a060, alternate_adjustment = 0x1000a170;
 constexpr std::uint32_t primary_adjustment_entry = 0x10380560, alternate_adjustment_entry = 0x10380630;
 constexpr std::uint32_t preferences_slot = fixture + 0x620, preferences = fixture + 0x640;
+constexpr std::uint32_t bonus_name = 0x10380270, option_name = 0x10380300;
+constexpr std::uint32_t bonus_description = 0x10374be0, option_description = 0x10374cb0;
+constexpr std::uint32_t formatter = 0x10727890, string_copy = 0x1077dbf0;
+constexpr std::uint32_t money_value = 0x10009f20, money_text = 0x1000b410;
+constexpr std::uint32_t label_pool = fixture + 0x1000, output_buffer = fixture + 0x1800;
+
+bool label_entry(std::uint32_t entry) {
+    return entry == bonus_name || entry == option_name || entry == bonus_description || entry == option_description;
+}
+
+void write_text(guest::Cpu& c, std::uint32_t destination, std::string_view value) {
+    for (const char letter : value) c.put8(destination++, std::uint8_t(letter));
+    c.put8(destination, 0);
+}
+
+std::string read_text(guest::Cpu& c, std::uint32_t address) {
+    std::string result;
+    for (unsigned n = 0; n < 100; ++n) {
+        const char letter = char(c.u8(address + n));
+        if (!letter) return result;
+        result += letter;
+    }
+    throw std::runtime_error("Unterminated label fixture");
+}
 
 bool value_adjustment(std::uint32_t entry) {
     return entry == primary_adjustment_entry || entry == alternate_adjustment_entry;
@@ -38,7 +63,7 @@ bool value_adjustment(std::uint32_t entry) {
 
 struct DependencyCall {
     std::uint32_t entry, return_address, frame, toc, saved_draft;
-    std::array<std::uint32_t, 3> arguments;
+    std::array<std::uint32_t, 8> arguments;
     std::optional<std::uint32_t> adjustment_input;
     bool operator==(const DependencyCall&) const = default;
 };
@@ -46,12 +71,13 @@ struct DependencyCall {
 struct DependencyTrace {
     std::vector<DependencyCall> calls;
     std::optional<std::uint32_t> adjustment_output;
-    bool corrupt = false;
+    bool corrupt = false, text_fixture = false;
+    unsigned dispatched_names = 0;
 };
 DependencyTrace* dependency_trace = nullptr;
 
 bool is_value_service(std::uint32_t entry) {
-    return entry == primary_adjustment || entry == alternate_adjustment;
+    return entry == primary_adjustment || entry == alternate_adjustment || entry == money_value || entry == money_text;
 }
 
 struct ScopedRoutineChecker {
@@ -63,14 +89,43 @@ struct ScopedRoutineChecker {
 };
 
 bool trace_dependency(State& s) {
-    const bool adjustment = is_value_service(s.pc);
-    if (!adjustment && s.pc != default_date && s.pc != difference) return false;
-    guest::Cpu c(s);
+    const bool adjustment = s.pc == primary_adjustment || s.pc == alternate_adjustment;
     auto& trace = *dependency_trace;
+    if (trace.text_fixture && (s.pc == bonus_name || s.pc == option_name)) ++trace.dispatched_names;
+    const bool label = trace.text_fixture && (s.pc == formatter || s.pc == string_copy
+                                               || s.pc == money_value || s.pc == money_text);
+    if (!adjustment && !label && s.pc != default_date && s.pc != difference) return false;
+    guest::Cpu c(s);
     if (trace.corrupt && s.pc == difference) c.set(4, c.r(4) ^ 0x10000u);
-    DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), {c.r(3), c.r(4), c.r(5)}, std::nullopt};
+    if (trace.corrupt && s.pc == formatter) c.set(4, c.r(4) + 1);
+    DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), {}, std::nullopt};
+    for (unsigned n = 0; n < call.arguments.size(); ++n) call.arguments[n] = c.r(n + 3);
     if (adjustment) call.adjustment_input = c.u32(c.r(3));
     trace.calls.push_back(call);
+    if (label) {
+        switch (s.pc) {
+        case formatter:
+            if (c.r(4) == label_pool + 0xfb) {
+                const auto amount = read_text(c, c.r(5));
+                const auto name = read_text(c, c.r(6));
+                write_text(c, c.r(3), amount + " " + name);
+            } else {
+                write_text(c, c.r(3), read_text(c, c.r(4)));
+            }
+            break;
+        case string_copy:
+            write_text(c, c.r(3), read_text(c, c.r(4)));
+            break;
+        case money_value:
+            c.set({{3, c.u32(c.r(3)) ^ 0x11220000u}, {4, 0x33445566}});
+            break;
+        case money_text:
+            write_text(c, c.r(3), "amount");
+            break;
+        }
+        c.finish();
+        return true;
+    }
     if (!adjustment || !trace.adjustment_output) return false;
     // The fixture models the separate value service's in/out amount. It
     // deliberately clobbers its volatile result and flag state as well.
@@ -99,7 +154,9 @@ std::unique_ptr<State> expiry_fixture() {
     s->registers.fill(0xa5);
     s->unique.fill(0xb7);
     s->memory.map(fixture, 0x1000);
-    s->memory.map(stack - 0x100, 0x200);
+    s->memory.map(stack - 0x500, 0x600);
+    s->memory.map(label_pool, 0x1000);
+    s->memory.map(toc - 0x4da4, 4);
     s->memory.map(toc - 0x8000, 0x1000);
     s->memory.map(0x108b7ad0, 4);  // Date difference's live scratch pointer.
     s->memory.map(0x108b84d0, 1);  // Date difference's initialization flag.
@@ -109,6 +166,9 @@ std::unique_ptr<State> expiry_fixture() {
     s->pc = expiry_entry;
     s->budget = normal_budget;
     c.put32(0x108b7ad0, fixture + 0x300);
+    c.put32(toc - 0x4da4, label_pool);
+    for (const auto offset : {0x289, 0x294, 0x2a1, 0x2b3, 0x2c6, 0x2e3, 0x2fe, 0x319, 0x333, 0x34e})
+        write_text(c, label_pool + offset, "label" + std::to_string(offset));
     c.put32(toc - 0x7ac8, preferences_slot);
     c.put32(preferences_slot, preferences);
     c.put8(0x108b84d0, 1);
@@ -152,6 +212,7 @@ std::unique_ptr<State> state_with_hole(const State& input, std::uint32_t hole) {
 struct Result {
     unsigned value, steps;
     std::uint32_t contract_value;
+    std::string text;
     std::vector<Effects::Access> accesses;
 };
 struct Counts {
@@ -177,14 +238,23 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
             return std::string(error.what());
         }
     };
-    const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value();
-    DependencyTrace old_calls{.calls = {}, .adjustment_output = adjustment};
-    DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative};
+    const bool text_fixture = label_entry(input.pc);
+    const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value() || text_fixture;
+    if (text_fixture) {
+        // Decline the in-place formatting owner at the external boundary.
+        // The dispatcher probe then supplies the same fixture on both sides.
+        localization_format_diagnostics(*original).original_body = formatter;
+        localization_format_diagnostics(*modern).original_body = formatter;
+    }
+    DependencyTrace old_calls{.calls = {}, .adjustment_output = adjustment, .text_fixture = text_fixture};
+    DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
+                              .text_fixture = text_fixture};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
     // The generated caller can enter CASH.CPP in place. Decline just these
     // two services so both references reach the same external fixture.
     RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_value_service(entry); }, 0, 0);
-    ScopedRoutineChecker checker(adjustment ? &fixture_filter : nullptr);
+    const bool amount_description = input.pc == bonus_description && std::int8_t(input.r<4>(28)) != 1;
+    ScopedRoutineChecker checker(adjustment || amount_description ? &fixture_filter : nullptr);
     const auto old_stop = call(*original, true);
     if (traced) dependency_trace = &new_calls;
     const auto new_stop = call(*modern, false);
@@ -195,15 +265,21 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     if (call_negative) {
         require(old_stop.empty() && old_calls.calls.size() == 1, label + " missed the call mutation");
         auto changed = old_calls.calls;
-        changed.front().arguments[1] ^= 0x10000u;
-        require(new_calls.calls == changed, label + " did not isolate the changed date argument");
+        if (text_fixture) ++changed.front().arguments[1];
+        else changed.front().arguments[1] ^= 0x10000u;
+        require(new_calls.calls == changed, label + " did not isolate the changed external argument");
         ++counts.negatives;
-        return {unsigned(modern->r<4>(12)), unsigned(modern->executed), 0, std::move(actual.log)};
+        return {unsigned(modern->r<4>(12)), unsigned(modern->executed), 0, {}, std::move(actual.log)};
     }
     require(old_calls.calls == new_calls.calls, label + " changed external arguments or call order");
     if (traced && old_stop.empty()) {
-        require(old_calls.calls.size() == (input.pc == draft_entry ? 2u : 1u),
-                label + " did not reach the expected external calls");
+        const unsigned expected_calls = input.pc == bonus_description ? (amount_description ? 4 : 2)
+            : input.pc == draft_entry ? 2 : 1;
+        require(old_calls.calls.size() == expected_calls, label + " did not reach the expected external calls");
+        if (input.pc == option_description || (input.pc == bonus_description && !amount_description)) {
+            require(old_calls.dispatched_names == 1 && new_calls.dispatched_names == 0,
+                    label + " did not take the direct C++ label call");
+        }
     }
     if (hole != no_hole) {
         require(old_stop.starts_with("Unmapped data access at "), label + " did not fault at the removed byte");
@@ -232,7 +308,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         ++counts.negatives;
     }
     const auto contract_value = adjustment && old_stop.empty() ? std::uint32_t(modern->memory.read<4>(record + 12)) : 0;
-    return {band, unsigned(modern->executed), contract_value, std::move(actual.log)};
+    guest::Cpu cpu(*modern);
+    const auto text = text_fixture && old_stop.empty() ? read_text(cpu, output_buffer) : std::string{};
+    return {band, unsigned(modern->executed), contract_value, text, std::move(actual.log)};
 }
 
 void date_boundaries(Counts& counts) {
@@ -475,6 +553,50 @@ void adjustment_sequence() {
     require(original->executed == modern->executed, "Adjustment sequence changed accounting");
 }
 
+void label_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    constexpr std::array bonus_offsets{0x289, 0x294, 0x2a1, 0x2b3};
+    constexpr std::array option_offsets{0x2c6, 0x2e3, 0x2fe, 0x319, 0x333, 0x34e};
+    for (const auto entry : {bonus_name, option_name, bonus_description, option_description}) {
+        input->pc = entry;
+        for (unsigned raw = 0; raw < 256; ++raw) {
+            const auto index = std::int8_t(raw);
+            const auto selector = 0x9abc0000u | raw;
+            if (entry == bonus_name || entry == option_name)
+                c.set({{3, selector}, {4, output_buffer}});
+            else
+                c.set({{3, record}, {4, selector}, {5, output_buffer}, {7, 0x1101}});
+            const bool bonus = entry == bonus_name || entry == bonus_description;
+            const auto offset = bonus ? bonus_offsets[index >= 0 && index < 3 ? index : 3]
+                                      : option_offsets[index >= 0 && index < 5 ? index : 5];
+            const auto expected = "label" + std::to_string(offset);
+            require(compare_entry(*input, counts).text == expected, "Signed label selector");
+            if (entry == bonus_description) {
+                c.set(7, 0x1100);
+                require(compare_entry(*input, counts).text == "amount " + expected, "Full bonus label");
+            }
+        }
+    }
+    for (const auto entry : {bonus_name, option_name, bonus_description, option_description}) {
+        input->pc = entry;
+        if (entry == bonus_name || entry == option_name)
+            c.set({{3, 0}, {4, output_buffer}});
+        else
+            c.set({{3, record}, {4, 0}, {5, output_buffer}, {7, 1}});
+        const auto full = compare_entry(*input, counts);
+        for (unsigned cut : {0u, 1u, full.steps / 2, full.steps - 1}) {
+            input->budget = cut;
+            compare_entry(*input, counts);
+        }
+        input->budget = normal_budget;
+        compare_entry(*input, counts, output_buffer);
+    }
+    input->pc = bonus_name;
+    c.set({{3, 0}, {4, output_buffer}});
+    compare_entry(*input, counts, no_hole, false, true);
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -488,11 +610,20 @@ unsigned generated_hooks() {
         auto s = expiry_fixture();
         s->pc = entry;
         s->wr<4>(16, 1);
-        DependencyTrace trace{.calls = {}, .adjustment_output = 0};
-        ScopedDependencyProbe probe(value_adjustment(entry) ? &trace : nullptr);
+        const bool text_fixture = label_entry(entry);
+        if (text_fixture) {
+            localization_format_diagnostics(*s).original_body = formatter;
+            guest::Cpu c(*s);
+            if (entry == bonus_name || entry == option_name) c.set({{3, 0}, {4, output_buffer}});
+            else c.set({{4, 0}, {5, output_buffer}, {7, 0}});
+        }
+        DependencyTrace trace{.calls = {}, .adjustment_output = 0, .text_fixture = text_fixture};
+        ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture ? &trace : nullptr);
+        const auto before = checker.totals().find(entry);
+        const auto prior = before == checker.totals().end() ? 0 : before->second.checked;
         run_until(*s, return_sentinel);
         const auto result = checker.totals().find(entry);
-        require(result != checker.totals().end() && result->second.checked == 1
+        require(result != checker.totals().end() && result->second.checked == prior + 1
                     && result->second.differences == 0 && s->pc == return_sentinel,
                 "Default generated page did not enter the staff-contract owner at " + hex_address(entry));
     }
@@ -509,6 +640,7 @@ int main() {
         draft_and_date_calls(counts);
         value_adjustments(counts);
         adjustment_sequence();
+        label_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "
