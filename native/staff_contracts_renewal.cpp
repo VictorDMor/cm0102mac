@@ -51,7 +51,8 @@ void measure_relative_terms(Cpu& c, Fpu& fp, const guest::Kept<28>& draft, const
     block(c, 0x1037e4e8, 4);
     const auto other = c.sp() + comparison_draft;
     c.set({{3, draft}, {4, staff}, {5, other}});
-    c.call(comparison_entry, 0x1037e4f8);
+    detail::call_owned(c, comparison_entry, 0x1037e4f8, value_contract_terms,
+                       std::uint32_t(draft), std::uint32_t(staff), other);
 
     block(c, 0x1037e4f8, 12);
     const auto original = c.r(3) ^ 0x80000000;
@@ -65,7 +66,7 @@ void measure_relative_terms(Cpu& c, Fpu& fp, const guest::Kept<28>& draft, const
     c.put32(c.sp() + 0xb4, signed_integer_high);
     c.set_f(0, c.f64(c.sp() + 0xb4));
     c.set_f(31, fp.fsubs(c.f(0), c.f(1)));
-    c.call(comparison_entry, 0x1037e528);
+    detail::call_owned(c, comparison_entry, 0x1037e528, value_contract_terms, other, std::uint32_t(staff), other);
 
     block(c, 0x1037e528, 11);
     const auto replacement = c.r(3) ^ 0x80000000;

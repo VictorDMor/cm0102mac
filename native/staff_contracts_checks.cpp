@@ -4,7 +4,9 @@
 #include "staff_contracts_adapter.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
+#include "tactics_leaves.hpp"
 #include <array>
+#include <cmath>
 #include <optional>
 #include <random>
 #include <string_view>
@@ -68,6 +70,7 @@ constexpr std::uint32_t review_club = fixture + 0x500, review_league = fixture +
 constexpr std::uint32_t review_service_slot = fixture + 0x590;
 
 constexpr std::uint32_t renewal_entry = 0x1037e3e0, renewal_comparison = 0x1037e660;
+constexpr std::uint32_t valuation_role = 0x10117490, valuation_power = 0x10780fc0;
 constexpr std::uint32_t renewal_proposal = 0x10374f50, preferred_role = 0x1007c140;
 constexpr std::uint32_t expiry_text_entry = 0x10374d80, apply_quote_entry = 0x10378d30;
 constexpr std::uint32_t month_of_date = 0x10718360, expiry_month_table = label_pool + 0x900;
@@ -112,6 +115,10 @@ struct RenewalInputs {
     std::uint32_t role = 3, offered_value = 100, replacement_value = 100;
 };
 
+struct ValuationInputs {
+    std::uint32_t duration = 30, roles = 0;
+};
+
 struct ExternalInputs {
     WindowInputs window;
     std::uint32_t clause_reply = 1;
@@ -125,6 +132,7 @@ struct ExternalInputs {
     ReviewPolicyInputs policy;
     bool real_review_trigger = false;
     RenewalInputs renewal;
+    ValuationInputs valuation;
 };
 
 bool draft_preparation(std::uint32_t entry) {
@@ -172,6 +180,7 @@ struct DependencyCall {
     std::uint32_t entry, return_address, frame, toc, saved_draft, descriptor;
     std::array<std::uint32_t, 8> arguments;
     std::optional<std::uint32_t> adjustment_input;
+    std::optional<std::array<std::uint64_t, 2>> floating_arguments;
     bool operator==(const DependencyCall&) const = default;
 };
 
@@ -190,8 +199,7 @@ struct DependencyTrace {
     ReviewPolicyInputs policy;
     bool model_review_trigger = false, fixed_date_fixture = false;
     std::optional<RenewalInputs> renewal;
-    bool split_original_renewal = false;
-    std::uint64_t renewal_resume_budget = 0;
+    std::optional<ValuationInputs> valuation;
 };
 DependencyTrace* dependency_trace = nullptr;
 
@@ -208,6 +216,12 @@ struct ScopedRoutineChecker {
         if (checker) routine_checker = checker;
     }
     ~ScopedRoutineChecker() { routine_checker = saved; }
+};
+
+struct ScopedOriginalTactics {
+    bool saved = tactics_declining;
+    explicit ScopedOriginalTactics(bool enabled) { if (enabled) tactics_declining = true; }
+    ~ScopedOriginalTactics() { tactics_declining = saved; }
 };
 
 bool trace_dependency(State& s) {
@@ -234,7 +248,9 @@ bool trace_dependency(State& s) {
     const bool draft = trace.primary_contract && (s.pc == find_primary_contract || s.pc == draft_end_date);
     const bool fixed = trace.fixed_date_fixture && s.pc == construct_fixed_date;
     const bool renewal = trace.renewal && (s.pc == preferred_role || s.pc == renewal_proposal || s.pc == renewal_comparison);
-    if (!adjustment && !label && !window && !sample && !clause && !review && !draft && !fixed && !renewal
+    const bool valuation = trace.valuation && (s.pc == valuation_role || s.pc == valuation_power
+        || s.pc == difference || s.pc == renewal_proposal);
+    if (!adjustment && !label && !window && !sample && !clause && !review && !draft && !fixed && !renewal && !valuation
         && s.pc != default_date && s.pc != difference)
         return false;
     guest::Cpu c(s);
@@ -242,25 +258,35 @@ bool trace_dependency(State& s) {
     if (trace.corrupt && s.pc == formatter) c.set(4, c.r(4) + 1);
     if (trace.corrupt && review) c.set(4, c.r(4) ^ 0x10000u);
     if (trace.corrupt && clause) c.set(12, c.r(12) == first_descriptor ? second_descriptor : first_descriptor);
-    DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), c.r(12), {}, std::nullopt};
+    DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), c.r(12), {}, std::nullopt, std::nullopt};
     for (unsigned n = 0; n < call.arguments.size(); ++n) call.arguments[n] = c.r(n + 3);
     if (adjustment || s.pc == money_value) call.adjustment_input = c.u32(c.r(3));
+    if (valuation && s.pc == valuation_power) {
+        call.floating_arguments = std::array{s.r<8>(guest::reg::fpr(1)), s.r<8>(guest::reg::fpr(2))};
+    }
     trace.calls.push_back(call);
+    if (valuation) {
+        if (s.pc == valuation_role) c.set(3, trace.valuation->roles);
+        else if (s.pc == difference) c.set(3, trace.valuation->duration);
+        else if (s.pc == renewal_proposal) {
+            c.put32(c.r(3) + 12, 300);
+            c.put16(c.r(3) + 0x32, dates_year);
+        } else {
+            c.put32(c.sp() + 0x14, c.r(2));
+            c.set(2, 0x12345678);
+            c.set_f(1, std::pow(c.f(1), c.f(2)));
+        }
+        c.finish();
+        return true;
+    }
     if (renewal) {
-        unsigned upcoming_instructions = 0;
         if (s.pc == preferred_role) {
             c.set(3, trace.renewal->role);
         } else if (s.pc == renewal_proposal) {
             c.put32(c.r(3) + 12, trace.renewal->replacement_value);
-            upcoming_instructions = c.lr() == 0x1037e4b8 ? 5 : 4;
         } else {
             const bool first = c.lr() == 0x1037e4f8;
             c.set(3, first ? trace.renewal->offered_value : trace.renewal->replacement_value);
-            if (first) upcoming_instructions = 12;
-        }
-        if (trace.split_original_renewal && upcoming_instructions && s.executed + upcoming_instructions <= s.budget) {
-            trace.renewal_resume_budget = s.budget;
-            s.budget = s.executed + upcoming_instructions;
         }
         c.finish();
         return true;
@@ -414,29 +440,6 @@ struct ScopedDependencyProbe {
     ~ScopedDependencyProbe() { dispatch_probe = saved; dependency_trace = previous; }
 };
 
-void run_renewal_reference(State& s) {
-    // The generated page jumps straight to the adjacent valuation body. Stop
-    // at that exact entry before it changes state, then supply the same
-    // controlled dependency as the typed caller. All renewal instructions
-    // and their stack effects still execute from the generated original.
-    auto& trace = *dependency_trace;
-    for (bool first = true;; first = false) {
-        try {
-            if (first) staff_contracts_run_original(s, renewal_entry);
-            else run_until(s, return_sentinel);
-            return;
-        } catch (const std::runtime_error& stop) {
-            if (s.pc != renewal_comparison || !trace.renewal_resume_budget
-                || std::string_view(stop.what()) != "Native instruction budget exhausted")
-                throw;
-            require(s.executed == s.budget + 1, "Valuation entry stopped before guest side effects");
-            s.executed = s.budget;
-            s.budget = std::exchange(trace.renewal_resume_budget, 0);
-            require(trace_dependency(s), "Valuation dependency fixture");
-        }
-    }
-}
-
 std::unique_ptr<State> expiry_fixture() {
     auto s = std::make_unique<State>();
     s->registers.fill(0xa5);
@@ -453,7 +456,7 @@ std::unique_ptr<State> expiry_fixture() {
     s->memory.map(toc - 0x4dc0, 4);
     s->memory.map(toc - 0x5b20, 4);
     s->memory.map(toc - 0x628c, 4);
-    s->memory.map(sampling_constants, 0x220);
+    s->memory.map(sampling_constants, 0x260);
     s->memory.map(toc - 0x8000, 0x1000);
     s->memory.map(0x108b7ad0, 4);  // Date difference's live scratch pointer.
     s->memory.map(0x108b84d0, 1);  // Date difference's initialization flag.
@@ -590,10 +593,10 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     original->memory.date_observer = &expected;
     modern->memory.date_observer = &actual;
     const bool renewal_fixture = input.pc == renewal_entry;
-    const auto call = [renewal_fixture](State& s, bool reference) {
+    const bool valuation_fixture = input.pc == renewal_comparison;
+    const auto call = [](State& s, bool reference) {
         try {
-            if (reference && renewal_fixture) run_renewal_reference(s);
-            else if (reference) staff_contracts_run_original(s, s.pc);
+            if (reference) staff_contracts_run_original(s, s.pc);
             else run_until(s, return_sentinel);
             return std::string{};
         } catch (const GuestContextTransfer& transfer) {
@@ -614,7 +617,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const bool review_fixture = review_state_entry(input.pc) || draft_fixture || policy_fixture;
     const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value()
         || text_fixture || window_fixture || sample_fixture || clause_fixture || review_fixture
-        || quote_fixture || fixed_date_fixture || renewal_fixture;
+        || quote_fixture || fixed_date_fixture || renewal_fixture || valuation_fixture;
     if (text_fixture) {
         // Decline the in-place formatting owner at the external boundary.
         // The dispatcher probe then supplies the same fixture on both sides.
@@ -625,6 +628,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const bool model_review_trigger = policy_fixture && !inputs.real_review_trigger;
     const auto primary_contract = draft_fixture || policy_fixture ? std::optional(inputs.primary_contract)
         : quote_fixture || review_fixture ? std::optional(0u) : std::nullopt;
+    const auto valuation = valuation_fixture ? std::optional(inputs.valuation) : std::nullopt;
     const auto renewal = renewal_fixture ? std::optional(inputs.renewal) : std::nullopt;
     const auto month = input.pc == expiry_text_entry ? std::optional(inputs.month) : std::nullopt;
     const auto review_reply = review_fixture ? std::optional(inputs.review_reply) : std::nullopt;
@@ -637,7 +641,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
                               .change_release_field = inputs.change_release_field,
                               .review_reply = review_reply, .primary_contract = primary_contract, .month = month,
                               .policy = inputs.policy, .model_review_trigger = model_review_trigger,
-                              .fixed_date_fixture = fixed_date_fixture, .renewal = renewal, .split_original_renewal = renewal_fixture};
+                              .fixed_date_fixture = fixed_date_fixture, .renewal = renewal, .valuation = valuation};
     DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
                               .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture,
                                .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
@@ -645,18 +649,20 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
                               .change_release_field = inputs.change_release_field,
                               .review_reply = review_reply, .primary_contract = primary_contract, .month = month,
                               .policy = inputs.policy, .model_review_trigger = model_review_trigger,
-                              .fixed_date_fixture = fixed_date_fixture, .renewal = renewal};
+                              .fixed_date_fixture = fixed_date_fixture, .renewal = renewal, .valuation = valuation};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
     // Decline the in-place owners for the modeled external dependencies.
-    RoutineChecker fixture_filter([model_review_trigger](std::uint32_t entry) {
-        return !is_fixture_service(entry) && !(model_review_trigger && entry == review_trigger);
+    RoutineChecker fixture_filter([model_review_trigger, renewal_fixture](std::uint32_t entry) {
+        return !is_fixture_service(entry) && !(model_review_trigger && entry == review_trigger)
+            && !(renewal_fixture && entry == renewal_comparison);
     }, 0, 0);
     const bool amount_description = input.pc == bonus_description && std::int8_t(input.r<4>(28)) != 1;
     const bool reputation_call = input.pc == reset_review_entry && input.r<4>(20) != 0;
     const bool needs_policy_filter = policy_fixture || input.pc == clear_review_entry || input.pc == clear_all_review_entry;
     ScopedRoutineChecker checker(adjustment || amount_description || input.pc == wage_entry || reputation_call
-                                    || input.pc == prepare_primary_entry || quote_fixture || needs_policy_filter || renewal_fixture
+                                    || input.pc == prepare_primary_entry || quote_fixture || needs_policy_filter || renewal_fixture || valuation_fixture
                                     ? &fixture_filter : nullptr);
+    ScopedOriginalTactics tactics(valuation_fixture);
     const auto old_stop = call(*original, true);
     // The rewritten review graph can call its typed children directly. Its
     // remaining external calls reach the fixture through the dispatcher.
@@ -689,7 +695,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         require(old_calls.dispatched_review_children == 1 && new_calls.dispatched_review_children == 0,
                 label + " did not use the direct C++ refresh");
     if (traced && !sample_fixture && !clause_fixture && !release_entry(input.pc)
-        && !review_fixture && !renewal_fixture && input.pc != wage_entry && input.pc != expiry_text_entry
+        && !review_fixture && !renewal_fixture && !valuation_fixture && input.pc != wage_entry && input.pc != expiry_text_entry
         && old_stop.empty()) {
         const unsigned expected_calls = input.pc == bonus_description ? (amount_description ? 4 : 2)
             : input.pc == draft_entry ? 2 : 1;
@@ -1759,6 +1765,96 @@ void renewal_cases(Counts& counts) {
     compare_entry(*input, counts);
 }
 
+void seed_valuation_constants(guest::Cpu& c) {
+    for (auto offset : {0x28u, 0x34u, 0x38u, 0x3cu, 0x44u, 0x4cu, 0x50u, 0x98u, 0x170u, 0x174u,
+                        0x178u, 0x17cu, 0x180u, 0x184u})
+        c.put32(quote_pool + offset, std::bit_cast<std::uint32_t>(0.5f + float(offset) / 1024));
+    c.put32(quote_pool + 0x58, std::bit_cast<std::uint32_t>(1.0f));
+    c.put32(quote_pool + 0x16c, std::bit_cast<std::uint32_t>(1.0f));
+    c.put32(quote_pool + 0xc0, 0);
+    for (auto offset : {0x30u, 0xa0u, 0x100u, 0x108u, 0x118u, 0x140u, 0x1e8u, 0x228u, 0x248u, 0x250u, 0x258u})
+        c.put_f64(sampling_constants + offset, 1.0 + double(offset & 0xff) / 1024);
+    c.put_f64(sampling_constants + 0x28, 0.5);
+    c.put_f64(sampling_constants + 0x140, 1.5);
+}
+
+void terms_valuation_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    input->pc = renewal_comparison;
+    c.set({{4, staff_rows}, {5, draft_primary_contract}, {26, 0}});
+    seed_valuation_constants(c);
+    c.put32(record + 12, 100);
+    c.put16(draft_primary_contract + 0x32, dates_year);
+    for (auto duration : {0u, 6u, 7u, 30u, 0x10006u, 0x10007u, 0xffffu}) {
+        ExternalInputs inputs;
+        inputs.valuation.duration = duration;
+        const auto result = compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+        require(result.value == (std::int16_t(duration) < 7 ? 0 : 100), "Valuation starts at seven signed days");
+    }
+
+    c.set(5, 0);
+    ExternalInputs short_term;
+    short_term.valuation.duration = 6;
+    require(compare_entry(*input, counts, no_hole, false, false, std::nullopt, short_term).value == 0,
+            "A missing alternative is proposed before the short-term return");
+    input->memory.map(0, 0x100);
+    compare_entry(*input, counts);
+    c.set(5, draft_primary_contract);
+
+    c.put32(staff_rows + 0x14, draft_primary_contract);
+    c.put32(record + 0x08, 60);
+    c.put32(record + 0x10, 10);
+    c.put32(record + 0x14, 20);
+    c.put32(record + 0x18, 30);
+    for (auto roles : {0u, 1u, 2u, 4u, 8u, 0x38u, 0x40u, 0x7fu, 0xffffu}) {
+        ExternalInputs inputs;
+        inputs.valuation.roles = roles;
+        for (auto reputation : {0, 4000, 4001, 7250, 32767, 65535}) {
+            c.put16(draft_primary_contract + 12, reputation);
+            for (auto age : {0, 24, 28, 29, 35, 127, 128, 255}) {
+                c.put16(staff_rows + 0x5c, age);
+                compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+            }
+        }
+    }
+    c.put32(staff_rows + 0x14, 0);
+    constexpr std::array fees{0u, 999999u, 1000000u, 4999999u, 5000000u, 7499999u, 7500000u, 0xffffffffu};
+    for (unsigned clause = 0; clause < 5; ++clause) {
+        for (unsigned field = 0; field < 5; ++field) c.put8(record + 0x1c + field, field == clause);
+        for (auto current : fees) {
+            c.put32(record + 0x24, current);
+            for (auto rival : fees) {
+                c.put32(draft_primary_contract + 0x24, rival);
+                for (auto flags : {0u, 1u, 255u}) {
+                    c.put8(draft_primary_contract + 0x1d, flags);
+                    c.put8(draft_primary_contract + 0x1f, flags);
+                    for (auto age : {23u, 24u, 28u, 29u}) {
+                        c.put16(staff_rows + 0x5c, age);
+                        compare_entry(*input, counts);
+                    }
+                }
+            }
+        }
+    }
+    for (auto years : {-4, 0, 4}) {
+        c.put16(draft_primary_contract + 0x32, dates_year + years);
+        for (auto role_delta : {-6, -5, 0, 5, 6}) {
+            c.set(26, std::uint32_t(role_delta));
+            compare_entry(*input, counts);
+        }
+    }
+
+    const auto complete = compare_entry(*input, counts);
+    for (unsigned budget = 1; budget < complete.steps; ++budget) {
+        input->budget = budget;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+    for (auto hole : {stack - 8, record + 12, draft_primary_contract + 0x42, sampling_constants + 0xc0})
+        compare_entry(*input, counts, hole);
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -1776,6 +1872,11 @@ unsigned generated_hooks() {
         s->wr<4>(16, 1);
         if (entry == sampling_entry) s->wr<4>(12, 17);
         if (entry == renewal_entry) s->wr<4>(16, 0);
+        if (entry == renewal_comparison) {
+            guest::Cpu c(*s);
+            c.set({{4, staff_rows}, {5, draft_primary_contract}, {26, 0}});
+            seed_valuation_constants(c);
+        }
         if (entry == clause_entry) {
             s->wr<4>(16, fixture_club);
             s->wr<4>(20, 1);
@@ -1815,9 +1916,10 @@ unsigned generated_hooks() {
                               .primary_contract = draft_fixture ? std::optional(draft_primary_contract)
                                   : quote_fixture || review_fixture ? std::optional(0u) : std::nullopt,
                               .month = entry == expiry_text_entry ? std::optional(0u) : std::nullopt,
-                              .fixed_date_fixture = entry == fixed_date_entry};
+                              .fixed_date_fixture = entry == fixed_date_entry,
+                              .valuation = entry == renewal_comparison ? std::optional(ValuationInputs{}) : std::nullopt};
         ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture || review_fixture || quote_fixture
-                                        || trace.fixed_date_fixture ? &trace : nullptr);
+                                        || trace.fixed_date_fixture || trace.valuation ? &trace : nullptr);
         const auto before = checker.totals().find(entry);
         const auto prior = before == checker.totals().end() ? 0 : before->second.checked;
         run_until(*s, return_sentinel);
@@ -1860,6 +1962,7 @@ int main() {
         review_trigger_cases(counts);
         fixed_date_cases(counts);
         renewal_cases(counts);
+        terms_valuation_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "
