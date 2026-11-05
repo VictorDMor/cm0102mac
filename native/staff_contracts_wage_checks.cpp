@@ -389,7 +389,7 @@ void wage_quote_cases() {
         }
         c.set(5, club);
     }
-    std::cout << "Wage quotes " << completed << " returns, " << budgets << " budget stops, "
+    std::cout << "Wage quotes " << completed << " returns, " << budgets << " budget limits, "
               << faults << " partial faults, and 2 detected result mutations\n";
 }
 }

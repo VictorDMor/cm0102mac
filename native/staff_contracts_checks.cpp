@@ -20,6 +20,8 @@ extern "C" void __llvm_profile_set_filename(const char*);
 namespace cm::staff_contracts_checks {
 bool wage_quote_hook(std::uint32_t, aot::RoutineChecker&);
 void wage_quote_cases();
+bool initializer_hook(std::uint32_t);
+void initializer_cases();
 }
 
 namespace {
@@ -1980,7 +1982,8 @@ unsigned generated_hooks() {
     checker.strict_volatile = true;
     ScopedRoutineChecker scope(&checker);
     for (const auto entry : entries) {
-        if (cm::staff_contracts_checks::wage_quote_hook(entry, checker)) continue;
+        if (cm::staff_contracts_checks::wage_quote_hook(entry, checker)
+            || cm::staff_contracts_checks::initializer_hook(entry)) continue;
         auto s = expiry_fixture();
         s->pc = entry;
         s->wr<4>(16, 1);
@@ -2075,6 +2078,7 @@ int main() {
         draft_preparation_cases(counts);
         expiry_and_quote_cases(counts);
         cm::staff_contracts_checks::wage_quote_cases();
+        cm::staff_contracts_checks::initializer_cases();
         review_policy_cases(counts);
         review_trigger_cases(counts);
         fixed_date_cases(counts);

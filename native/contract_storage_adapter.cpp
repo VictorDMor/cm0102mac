@@ -1,4 +1,5 @@
 #include "contract_storage_adapter.hpp"
+#include "staff_contracts_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
@@ -47,9 +48,11 @@ bool try_modern_contract_storage(State& s, std::uint32_t entry) {
             const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
             if (!dispatch_page(s)) throw std::runtime_error("Missing original contract-storage body");
             if (s.pc != caller) run_until(s, caller);
+        } else if (entry == contract_storage::initializer_entry) {
+            staff_contracts_run_checked_rewrite(s, entry);
         } else {
             using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
-            constexpr Function methods[]{contract_storage::bind_primary,contract_storage::reserve_record,contract_storage::initialize_contract};
+            constexpr Function methods[]{contract_storage::bind_primary, contract_storage::reserve_record};
             ContractStorageDispatch dependencies;
             methods[index](s, &dependencies, d.observer);
         }

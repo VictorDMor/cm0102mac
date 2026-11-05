@@ -43,7 +43,7 @@ target_sources(cm_aot PRIVATE record_group.cpp record_group_adapter.cpp)
 target_sources(cm_aot PRIVATE record_query.cpp record_query_adapter.cpp)
 target_sources(cm_aot PRIVATE record_history.cpp record_history_adapter.cpp)
 target_sources(cm_aot PRIVATE contract_queries.cpp contract_query_adapter.cpp contract_storage.cpp
-    contract_initializer.cpp contract_initializer_options.cpp contract_initializer_nations.cpp contract_storage_adapter.cpp)
+    contract_storage_adapter.cpp)
 target_sources(cm_aot PRIVATE contract_terms.cpp contract_terms_sampling.cpp contract_terms_presentation.cpp
     contract_terms_expiry.cpp contract_terms_adapter.cpp)
 set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.cpp staff_contracts_dates.cpp
@@ -51,6 +51,7 @@ set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.
     staff_contracts_sampling.cpp staff_contracts_display.cpp staff_contracts_clause.cpp
     staff_contracts_release.cpp staff_contracts_review_state.cpp staff_contracts_prepare.cpp
     staff_contracts_expiry_text.cpp staff_contracts_quote.cpp staff_contracts_wage_quotes.cpp staff_contracts_renewal.cpp
+    staff_contracts_initialize.cpp
     staff_contracts_terms_valuation.cpp
     staff_contracts_review_refresh.cpp staff_contracts_review_status.cpp staff_contracts_review_trigger.cpp
     staff_contracts_review_consequences.cpp
@@ -1165,7 +1166,9 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     target_compile_options(cm-contract-storage-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_storage_prepared_equivalence COMMAND cm-contract-storage-checks)
     set_tests_properties(contract_storage_prepared_equivalence PROPERTIES TIMEOUT 180)
-    add_executable(cm-contract-initializer-checks contract_initializer_checks.cpp "${CM_CONTRACT_STORAGE_REFERENCE}")
+    add_executable(cm-contract-initializer-checks contract_initializer_checks.cpp
+        contract_initializer.cpp contract_initializer_options.cpp contract_initializer_nations.cpp
+        "${CM_CONTRACT_STORAGE_REFERENCE}")
     target_link_libraries(cm-contract-initializer-checks PRIVATE cm_aot)
     target_compile_options(cm-contract-initializer-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_initializer_component_equivalence COMMAND cm-contract-initializer-checks)
@@ -3957,7 +3960,8 @@ if(CM_SIPRINT_COVERAGE)
 endif()
 
 
-add_executable(cm-staff-contracts-checks staff_contracts_checks.cpp staff_contracts_wage_checks.cpp)
+add_executable(cm-staff-contracts-checks staff_contracts_checks.cpp staff_contracts_wage_checks.cpp
+    staff_contracts_initialize_checks.cpp)
 target_link_libraries(cm-staff-contracts-checks PRIVATE cm_aot)
 target_compile_options(cm-staff-contracts-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_test(NAME staff_contracts_equivalence COMMAND cm-staff-contracts-checks)
