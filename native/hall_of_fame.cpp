@@ -165,6 +165,14 @@ void copy_rank_fields(Cpu& c, std::uint32_t to, std::uint32_t from) {
     c.set(0, c.u8(from + 0x74)); c.put8(to + 0x74, c.r(0));
 }
 
+void copy_ranked_row_tail(Cpu& c, std::uint32_t to, std::uint32_t from) {
+    copy_word_pairs(c, to, from, 7, 8, 40);
+    c.set(0, c.u16(from + 0x30));
+    c.put16(to + 0x30, c.r(0));
+    copy_word_pairs(c, to, from, 7, 0x32, 48);
+    copy_rank_fields(c, to, from);
+}
+
 void record_at(Cpu& c) {
     GuestNativeScope scope(c.s, record_at_entry);
     block(c, record_at_entry, 9);
@@ -474,10 +482,7 @@ void insert_ranked(Cpu& c) {
                 c.set({{4, 100}, {6, c.toc(-0x54d0)}, {5, record_size}});
                 c.put32(last, c.r(7));
                 c.put32(last + 4, c.r(0));
-                copy_word_pairs(c, last, candidate, 7, 8, 40);
-                c.set(0, c.u16(candidate + 0x30)); c.put16(last + 0x30, c.r(0));
-                copy_word_pairs(c, last, candidate, 7, 0x32, 48);
-                copy_rank_fields(c, last, candidate);
+                copy_ranked_row_tail(c, last, candidate);
                 c.call(0x10768300, 0x10140f34);
                 block(c, 0x10140f34, 2);
                 c.set(3, 1);
@@ -487,6 +492,104 @@ void insert_ranked(Cpu& c) {
     block(c, 0x10140f40, 5);
     restore_link(c, caller);
     guest::transfer_saved_registers<25, true>(c, caller);
+    c.finish();
+}
+
+constexpr auto merge_record_entry = 0x10140f60u;
+
+bool exact_duplicate(Cpu& c, std::uint32_t bucket, std::uint32_t candidate) {
+    block(c, 0x10141000, 2);
+    c.set({{28, 0}, {29, 0}});
+    for (unsigned row = 0; row < 99; ++row) {
+        block(c, 0x10141008, 5);
+        c.set({{3, bucket + row * record_size}, {4, candidate}, {5, record_size}});
+        c.call(0x10778390, 0x1014101c);
+        block(c, 0x1014101c, 2);
+        const auto difference = std::int32_t(c.r(3));
+        c.compare(0, difference, 0);
+        if (!difference) return true;
+        block(c, 0x1014102c, 4);
+        c.set({{28, row + 1}, {29, (row + 1) * record_size}});
+        c.compare(0, row + 1, 99);
+    }
+    return false;
+}
+
+void replace_last_rank(Cpu& c, std::uint32_t bucket, std::uint32_t candidate) {
+    const auto last = bucket + 99 * record_size;
+    block(c, 0x10141060, 68);
+    c.set(7, c.u32(candidate));
+    c.set(4, 100);
+    c.set(0, c.u32(candidate + 4));
+    c.set({{5, record_size}, {6, c.toc(-0x54d0)}});
+    c.put32(last, c.r(7));
+    c.put32(last + 4, c.r(0));
+    copy_ranked_row_tail(c, last, candidate);
+    c.call(0x10768300, 0x10141170);
+    block(c, 0x10141170, 2);
+    c.set(3, 1);
+}
+
+void merge_record(Cpu& c) {
+    GuestNativeScope scope(c.s, merge_record_entry);
+    block(c, merge_record_entry, 11);
+    const auto caller = c.sp(), table = c.r(3), candidate = c.r(5);
+    const auto category = std::int8_t(c.r(4));
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<26>(c, caller);
+    c.set(27, c.r(4));
+    const auto message = c.toc(-0x7ba8);
+    c.set(29, message);
+    const auto source = c.toc(-0x54cc);
+    c.set({{30, source}, {26, table}, {31, candidate}});
+    c.put32(caller + 8, c.r(0));
+    c.set(0, std::uint32_t(category));
+    record_compare(c, category);
+    push_frame(c, scope, caller, caller - 0x80);
+
+    const bool valid = [&] {
+        if (category < 0) return false;
+        block(c, 0x10140f8c, 3);
+        c.compare(0, category, 26);
+        if (category > 26) return false;
+        block(c, 0x10140f98, 2);
+        c.compare_logical(0, candidate, 0);
+        return candidate != 0;
+    }();
+    if (!valid) {
+        report_bad_record(c, 0x10140fa0, source, message, 0x40, 0x38, 0x18b);
+    } else {
+        block(c, 0x10140ffc, 1);
+        const auto offset = unsigned(category) * category_size, bucket = table + offset;
+        c.set(30, offset);
+        if (exact_duplicate(c, bucket, candidate)) {
+            block(c, 0x10141024, 2);
+            c.set(3, 0);
+        } else {
+            block(c, 0x1014103c, 6);
+            c.set(0, std::uint32_t(category));
+            const auto score = c.u32(candidate + 0x68);
+            c.set({{4, score}, {0, offset}});
+            c.compare_logical(0, score, 0);
+            c.set(3, bucket);
+            bool qualifies = false;
+            if (score) {
+                block(c, 0x10141054, 3);
+                const auto cutoff = c.u32(bucket + category_size - record_size + 0x68);
+                c.set(0, cutoff);
+                c.compare_logical(0, score, cutoff);
+                qualifies = score > cutoff;
+            }
+            if (qualifies) replace_last_rank(c, bucket, candidate);
+            else {
+                block(c, 0x10141178, 1);
+                c.set(3, 0);
+            }
+        }
+    }
+    block(c, 0x1014117c, 5);
+    restore_link(c, caller);
+    guest::transfer_saved_registers<26, true>(c, caller);
     c.finish();
 }
 
@@ -885,6 +988,7 @@ void transform_file(Cpu& c) {
 
 constexpr auto construct_table_entry = 0x10140730u;
 constexpr auto read_file_entry = 0x10141190u, write_file_entry = 0x10141990u;
+constexpr auto import_file_entry = 0x10141500u, validate_file_entry = 0x10143050u;
 constexpr unsigned table_size = 27 * category_size;
 constexpr auto file_magic = 0x003abfb2u;
 constexpr auto close_stream = 0x107766f0u, clear_memory = 0x10778300u;
@@ -958,6 +1062,31 @@ void close_success(const FileFrame& file, std::uint32_t pc) {
     c.set(3, 1);
 }
 
+bool valid_file_magic(Cpu& c, std::uint32_t pc, std::uint32_t header) {
+    block(c, pc, 4);
+    const auto magic = c.u32(header);
+    c.set({{3, magic}, {0, magic - 0x003a0000}});
+    c.compare_logical(0, c.r(0), 0xbfb2);
+    return magic == file_magic;
+}
+
+bool valid_file_version(Cpu& c, std::uint32_t pc, std::uint32_t header) {
+    block(c, pc, 3);
+    const auto version = c.u8(header + 4);
+    c.set(0, version);
+    c.compare(0, version, 1);
+    return version == 1;
+}
+
+bool decode_table(Cpu& c, std::uint32_t pc, std::uint32_t table, std::uint32_t checksum) {
+    block(c, pc, 5);
+    c.set(4, 0x50000);
+    c.set(5, c.u32(checksum));
+    c.set({{3, table}, {4, table_size}});
+    call_owned(c, decode_entry, pc + 20, transform_file<false>);
+    return nonzero_byte_result(c, pc + 20);
+}
+
 void load_table(const FileFrame& file) {
     auto& c = file.cpu;
     const auto header = file.frame() + 0x6c, checksum = file.frame() + 0x38;
@@ -969,30 +1098,16 @@ void load_table(const FileFrame& file) {
     if (!transfer_item(file, 0x101411d4, header, 8, false))
         return file_error(file, {0x101411f0, 0x114, 0x64, 0x1bc});
 
-    block(c, 0x10141250, 4);
-    const auto magic = c.u32(header);
-    c.set({{3, magic}, {0, magic - 0x003a0000}});
-    c.compare_logical(0, c.r(0), 0xbfb2);
-    if (magic != file_magic)
+    if (!valid_file_magic(c, 0x10141250, header))
         return file_error(file, {0x10141260, 0xf4, 0x5c, 0x1c4});
-
-    block(c, 0x101412c0, 3);
-    const auto version = c.u8(header + 4);
-    c.set(0, version);
-    c.compare(0, version, 1);
-    if (version != 1)
+    if (!valid_file_version(c, 0x101412c0, header))
         return file_error(file, {0x101412cc, 0xd4, 0x54, 0x1cc});
     if (!transfer_item(file, 0x1014132c, file.table, table_size, false))
         return file_error(file, {0x1014134c, 0xb4, 0x4c, 0x1d4}, true);
     if (!transfer_item(file, 0x101413c0, checksum, 4, false))
         return file_error(file, {0x101413dc, 0x94, 0x44, 0x1dd}, true);
 
-    block(c, 0x10141450, 5);
-    c.set(4, 0x50000);
-    c.set(5, c.u32(checksum));
-    c.set({{3, file.table}, {4, table_size}});
-    call_owned(c, decode_entry, 0x10141464, transform_file<false>);
-    if (!nonzero_byte_result(c, 0x10141464))
+    if (!decode_table(c, 0x10141450, file.table, checksum))
         return file_error(file, {0x1014146c, 0x74, 0x3c, 0x1e6}, true);
     close_success(file, 0x101414e0);
 }
@@ -1037,12 +1152,7 @@ void save_table(const FileFrame& file) {
     if (!transfer_item(file, 0x10141b88, checksum, 4, true))
         return file_error(file, {0x10141ba4, 0x8c, 0x44, 0x2a0});
 
-    block(c, 0x10141c04, 5);
-    c.set(4, 0x50000);
-    c.set(5, c.u32(checksum));
-    c.set({{3, file.table}, {4, table_size}});
-    call_owned(c, decode_entry, 0x10141c18, transform_file<false>);
-    if (!nonzero_byte_result(c, 0x10141c18))
+    if (!decode_table(c, 0x10141c04, file.table, checksum))
         return file_error(file, {0x10141c20, 0x6c, 0x3c, 0x2a8});
     close_success(file, 0x10141c80);
 }
@@ -1085,6 +1195,151 @@ void table_file(Cpu& c) {
     c.finish();
 }
 
+bool import_validation_only(Cpu& c, std::uint32_t pc, std::uint32_t mode) {
+    block(c, pc, 2);
+    const auto validation_only = std::int8_t(mode);
+    c.set(0, std::uint32_t(validation_only));
+    record_compare(c, validation_only);
+    return validation_only != 0;
+}
+
+void import_error(const FileFrame& file, FileError error, std::uint32_t mode) {
+    auto& c = file.cpu;
+    if (!import_validation_only(c, error.pc - 8, mode)) {
+        report_message(c, error.pc, file.source, file.message, error.filename, error.extension, error.line);
+        block(c, error.pc + 72, 2);
+        c.set(0, 0);
+        c.put8(file.success_flag, 0);
+    }
+    auto finish = error.pc + 80;
+    if (file.handle) {
+        block(c, finish, 2);
+        c.set(3, file.handle);
+        finish += 8;
+        c.call(close_stream, finish);
+    }
+    block(c, finish, 2);
+    c.set(3, 0);
+}
+
+void merge_table(Cpu& c, std::uint32_t table, std::uint32_t imported) {
+    block(c, 0x1014190c, 3);
+    c.set({{31, 0}, {30, 0}});
+    for (unsigned category = 0; ; ++category) {
+        block(c, 0x10141964, 3);
+        c.set(0, category);
+        c.compare(0, category, 27);
+        if (category == 27) break;
+        block(c, 0x10141918, 3);
+        c.set({{25, 0}, {29, 0}});
+        for (unsigned row = 0; ; ++row) {
+            block(c, 0x10141950, 3);
+            c.set(0, row);
+            c.compare(0, row, 100);
+            if (row == 100) break;
+            block(c, 0x10141928, 5);
+            const auto candidate = imported + category * category_size + row * record_size;
+            c.set(5, candidate);
+            const auto stamp = c.i32(candidate + 0x64);
+            c.set(0, std::uint32_t(stamp));
+            c.compare(0, stamp, 0);
+            if (stamp > 0) {
+                block(c, 0x1014193c, 3);
+                c.set({{3, table}, {4, category}});
+                call_owned(c, merge_record_entry, 0x10141948, merge_record);
+            }
+            block(c, 0x10141948, 2);
+            c.set({{29, (row + 1) * record_size}, {25, row + 1}});
+        }
+        block(c, 0x1014195c, 2);
+        c.set({{30, (category + 1) * category_size}, {31, category + 1}});
+    }
+}
+
+void read_import(const FileFrame& file, std::uint32_t imported, std::uint32_t mode) {
+    auto& c = file.cpu;
+    const auto header = file.frame() + 0x7c, checksum = file.frame() + 0x38;
+    if (!transfer_item(file, 0x10141604, header, 8, false))
+        return import_error(file, {0x10141628, 0x124, 0x64, 0x21c}, mode);
+    if (!valid_file_magic(c, 0x10141688, header))
+        return import_error(file, {0x101416a0, 0x104, 0x5c, 0x225}, mode);
+    if (!valid_file_version(c, 0x10141700, header))
+        return import_error(file, {0x10141714, 0xe4, 0x54, 0x22e}, mode);
+    if (!transfer_item(file, 0x10141774, imported, table_size, false))
+        return import_error(file, {0x1014179c, 0xc4, 0x4c, 0x237}, mode);
+    if (!transfer_item(file, 0x101417fc, checksum, 4, false))
+        return import_error(file, {0x10141820, 0xa4, 0x44, 0x240}, mode);
+    if (!decode_table(c, 0x10141880, imported, checksum))
+        return import_error(file, {0x101418a4, 0x84, 0x3c, 0x249}, mode);
+    if (!import_validation_only(c, 0x10141904, mode)) merge_table(c, file.table, imported);
+    close_success(file, 0x10141970);
+}
+
+void import_file(Cpu& c) {
+    GuestNativeScope scope(c.s, import_file_entry);
+    block(c, import_file_entry, 12);
+    const auto caller = c.sp(), table = c.r(3), path = c.r(4), mode = c.r(5);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<25>(c, caller);
+    c.compare_logical(0, path, 0);
+    const auto imported = c.toc(-0x54d4);
+    c.set(28, imported);
+    const auto success = c.toc(-0x7bac);
+    c.set({{29, success}, {26, table}});
+    const auto message = c.toc(-0x7ba8);
+    c.set({{30, message}, {25, mode}});
+    const auto source = c.toc(-0x54cc);
+    c.set(31, source);
+    c.put32(caller + 8, c.r(0));
+    push_frame(c, scope, caller, caller - 0x1b0);
+    if (!path) {
+        import_error({c, table, source, success, message, 0}, {0x10141538, 0x164, 0x74, 0x20b}, mode);
+    } else {
+        block(c, 0x10141590, 3);
+        c.set({{3, path}, {4, source + 0x54}});
+        c.call(0x10739de0, 0x1014159c);
+        block(c, 0x1014159c, 2);
+        const auto handle = c.r(3);
+        c.set(27, handle);
+        record_compare(c, std::int32_t(handle));
+        const FileFrame file{c, table, source, success, message, handle};
+        if (!handle) import_error(file, {0x101415ac, 0x144, 0x6c, 0x214}, mode);
+        else read_import(file, imported, mode);
+    }
+    block(c, 0x1014197c, 5);
+    restore_link(c, caller);
+    guest::transfer_saved_registers<25, true>(c, caller);
+    c.finish();
+}
+
+void validate_file(Cpu& c) {
+    GuestNativeScope scope(c.s, validate_file_entry);
+    block(c, validate_file_entry, 5);
+    const auto caller = c.sp(), path = c.r(3);
+    c.set(0, c.lr());
+    const auto slot = c.toc(-0x7414);
+    c.set(5, slot);
+    c.put32(caller + 8, c.r(0));
+    c.set(4, path);
+    push_frame(c, scope, caller, caller - 0x40);
+    block(c, 0x10143064, 3);
+    const auto table = c.u32(slot);
+    c.set(3, table);
+    c.compare_logical(0, table, 0);
+    bool valid = false;
+    if (table) {
+        block(c, 0x10143070, 2);
+        c.set(5, 1);
+        call_owned(c, import_file_entry, 0x10143078, import_file);
+        valid = nonzero_byte_result(c, 0x10143078);
+    }
+    block(c, valid ? 0x10143080 : 0x10143088, valid ? 2 : 1);
+    c.set(3, valid ? 1 : 2);
+    block(c, 0x1014308c, 4);
+    restore_link(c, caller);
+    c.finish();
+}
+
 void construct_table(Cpu& c) {
     GuestNativeScope scope(c.s, construct_table_entry);
     block(c, construct_table_entry, 10);
@@ -1124,6 +1379,9 @@ void hall_of_fame_run_original(State& state, std::uint32_t entry) {
 void hall_of_fame_run_rewrite(State& state, std::uint32_t entry) {
     Cpu c(state);
     switch (entry) {
+    case merge_record_entry: merge_record(c); break;
+    case import_file_entry: import_file(c); break;
+    case validate_file_entry: validate_file(c); break;
     case construct_table_entry: construct_table(c); break;
     case read_file_entry: table_file<false>(c); break;
     case write_file_entry: table_file<true>(c); break;

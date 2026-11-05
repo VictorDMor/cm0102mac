@@ -24,12 +24,14 @@ constexpr auto staff_count = fixture + 0x720, nation_values = fixture + 0x800;
 constexpr auto club_name = fixture + 0x900, nation_name = fixture + 0x920, rank_descriptor = fixture + 0x940;
 constexpr auto real_sort = fixture + 0x980;
 constexpr auto construct_table = 0x10140730u, read_file = 0x10141190u, write_file = 0x10141990u;
+constexpr auto merge_record = 0x10140f60u, import_file = 0x10141500u, validate_file = 0x10143050u;
 constexpr unsigned table_size = 27 * bucket_size;
 constexpr auto file_path = fixture + 0xa00, file_handle = fixture + 0xa80;
 constexpr auto file_position = fixture + 0xa90, file_size = fixture + 0xa94;
 constexpr auto fail_open = fixture + 0xa98, short_at = fixture + 0xa9c;
 constexpr auto file_contents = fixture + 0x100000;
-constexpr auto record_constructor = fixture + 0xb00;
+constexpr auto record_constructor = fixture + 0xb00, active_table_slot = fixture + 0xb10;
+constexpr auto imported_table = fixture + 0x180000;
 constexpr unsigned file_capacity = table_size + 12;
 constexpr auto read_item_entry = 0x10775fe0u, write_item_entry = 0x10776360u;
 using Call = std::array<std::uint32_t, 34>;
@@ -165,10 +167,19 @@ bool dependencies(State& s) {
         c.set(3, std::uint32_t(left.compare(right)));
         break;
     }
+    case 0x10778390:
+        require(c.r(3) >= table && c.r(3) < table + table_size && c.r(5) == row_size,
+                "import duplicate comparison arguments");
+        call_trace->push_back(call);
+        return false;
     case 0x10768300: {
         const auto bucket = c.r(3);
         require(bucket >= table && bucket < table + 27 * bucket_size && c.r(4) == 100 &&
                     c.r(5) == row_size && c.r(6) == rank_descriptor, "ranking sort arguments");
+        if (lr == 0x10141170) {
+            call_trace->push_back(call);
+            return false;
+        }
         const auto last = bucket + 99 * row_size;
         require(text_at(c, last) == "Fixture Manager" && c.u32(last + 0x64) == 0x80000001 &&
                     c.u32(last + 0x68) == 120 && c.u32(last + 0x6c) == 0x6789 &&
@@ -262,14 +273,14 @@ std::unique_ptr<State> compare_call(const State& initial, Stop expected, Corrupt
         Cpu c(*rewrite);
         c.set(3, c.r(3) ^ 1);
     }
-    if (std::ranges::any_of(original_calls, [](const Call& call) { return call[0] == 0x10768300; })) {
-        Cpu result(*rewrite);
-        if (result.u8(real_sort)) {
-            const auto sort = std::ranges::find_if(original_calls, [](const Call& call) { return call[0] == 0x10768300; });
-            const auto bucket = (*sort)[5];
-            require(text_at(result, bucket) == "Fixture Manager" && result.u32(bucket + 0x68) == 120,
-                    "shared sorter places the new high score first");
-        }
+    const auto sort = std::ranges::find_if(original_calls, [](const Call& call) {
+        return call[0] == 0x10768300 && call[1] == 0x10140f34;
+    });
+    Cpu result(*rewrite);
+    if (sort != original_calls.end() && result.u8(real_sort)) {
+        const auto bucket = (*sort)[5];
+        require(text_at(result, bucket) == "Fixture Manager" && result.u32(bucket + 0x68) == 120,
+                "shared sorter places the new high score first");
     }
     Image(*original).compare(*rewrite, corrupt == Corrupt::result ? "corrupted comparator" :
         label, expected == Stop::unmapped);
@@ -685,11 +696,158 @@ void check_persistence() {
     std::cout << "17 Hall of Fame persistence and table construction comparisons with ordered dependencies and file bytes\n";
 }
 
+void check_import() {
+    std::mt19937 random(0x494d5054);
+    auto state = score_seed(random);
+    state->memory.map(codec_keys, 480 * 4);
+    state->memory.map(file_contents, file_capacity);
+    state->memory.map(imported_table, table_size);
+    state->budget = 50000000;
+    Cpu c(*state);
+    c.put32(toc - 0x54d8, codec_keys);
+    c.put32(toc - 0x54d4, imported_table);
+    c.put32(toc - 0x7414, active_table_slot);
+    c.put32(active_table_slot, table);
+    for (unsigned i = 0; i < 480; ++i) c.put32(codec_keys + i * 4, random() & 0x7fffffff);
+
+    const auto set_row = [](Cpu& cpu, std::uint32_t row, unsigned score, std::int32_t stamp) {
+        cpu.put32(row + 0x64, std::uint32_t(stamp));
+        cpu.put32(row + 0x68, score);
+    };
+    const auto candidate = imported_table + 5 * row_size;
+    Model model;
+    unsigned comparisons = 0;
+    struct RankCase {
+        unsigned category, score, cutoff, duplicate;
+        bool null_record, qualifies, different_padding = false;
+    };
+    for (const auto test : std::array{
+            RankCase{0, 120, 0, 100, false, true},
+            RankCase{0, 120, 0, 0, false, false},
+            RankCase{0, 120, 0, 98, false, false},
+            RankCase{0, 120, 0, 98, false, true, true},
+            RankCase{0, 120, 0, 99, false, false},
+            RankCase{0, 120, 120, 100, false, false},
+            RankCase{0, 120, 121, 100, false, false},
+            RankCase{0, 0, 0, 100, false, false},
+            RankCase{0x1234001a, 0x80000001, 0, 100, false, true},
+            RankCase{0x80, 120, 0, 100, false, false},
+            RankCase{27, 120, 0, 100, false, false},
+            RankCase{0, 120, 0, 100, true, false}}) {
+        const auto bucket = table + ((test.category & 0xff) == 26 ? 26 : 0) * bucket_size;
+        const auto bottom = bucket + 99 * row_size;
+        state->memory.copy_in(table, std::vector<std::uint8_t>(table_size));
+        set_row(c, bottom, test.cutoff, 0);
+        set_row(c, candidate, test.score, 4);
+        // The comparison includes trailing padding that the subsequent copy omits.
+        c.put8(candidate + 0x77, 0xad);
+        if (test.duplicate < 100) {
+            const auto existing = bucket + test.duplicate * row_size;
+            state->memory.copy_in(existing, state->memory.copy_out(candidate, row_size));
+            if (test.different_padding) c.put8(existing + 0x77, 0);
+        }
+        c.set({{3, table}, {4, test.category}, {5, test.null_record ? 0 : candidate}});
+        state->pc = merge_record;
+        auto result = compare_call(*state, Stop::returned);
+        ++comparisons;
+        Cpu after(*result);
+        const bool invalid = test.null_record || (test.category & 0xff) > 26;
+        require(after.r(3) == test.qualifies && after.u8(success) == !invalid,
+                "rank import duplicate and cutoff result");
+        if (test.qualifies)
+            require(after.u32(bucket + 0x68) == test.score && after.u32(bucket + 0x64) == 4,
+                    "shared sorter places imported rank");
+    }
+
+    state->memory.copy_in(table, std::vector<std::uint8_t>(table_size));
+    state->memory.copy_in(imported_table, std::vector<std::uint8_t>(table_size));
+    set_row(c, table, 140, 4);
+    set_row(c, candidate, 140, 4); // duplicate of the live first row
+    set_row(c, candidate + row_size, 240, 5);
+    set_row(c, candidate + 2 * row_size, 900, -1); // nonpositive timestamps are skipped
+    set_row(c, candidate + 3 * row_size, 950, 0);
+    const auto final_bucket = table + 26 * bucket_size;
+    set_row(c, imported_table + table_size - row_size, 300, 9);
+    const auto live = state->memory.copy_out(table, table_size);
+    const auto plain_import = state->memory.copy_out(imported_table, table_size);
+    auto encoded_state = clone(*state);
+    Cpu(*encoded_state).set({{3, imported_table}, {4, table_size}, {5, checksum_out}});
+    encoded_state->pc = encode;
+    hall_of_fame_run_original(*encoded_state, encode);
+    const auto sum = Cpu(*encoded_state).u32(checksum_out);
+    state->memory.copy_in(file_contents + 8, encoded_state->memory.copy_out(imported_table, table_size));
+    const std::vector<std::uint8_t> blank_import(table_size, 0xf2);
+
+    struct ImportCase {
+        unsigned bytes, magic, version, checksum, line;
+        bool has_path, opens;
+    };
+    const std::array cases{
+        ImportCase{file_capacity, 0x003abfb2, 1, sum, 0, true, true},
+        ImportCase{file_capacity, 0x003abfb2, 1, sum, 0x20b, false, true},
+        ImportCase{file_capacity, 0x003abfb2, 1, sum, 0x214, true, false},
+        ImportCase{7, 0x003abfb2, 1, sum, 0x21c, true, true},
+        ImportCase{file_capacity, 0x003abfb3, 1, sum, 0x225, true, true},
+        ImportCase{file_capacity, 0x003abfb2, 2, sum, 0x22e, true, true},
+        ImportCase{8 + table_size - 1, 0x003abfb2, 1, sum, 0x237, true, true},
+        ImportCase{file_capacity - 1, 0x003abfb2, 1, sum, 0x240, true, true},
+        ImportCase{file_capacity, 0x003abfb2, 1, sum ^ 1, 0x249, true, true}};
+    const auto prepare = [&](ImportCase test) {
+        c.put32(file_contents, test.magic);
+        c.put8(file_contents + 4, test.version);
+        c.put32(file_contents + 8 + table_size, test.checksum);
+        c.put32(file_size, test.bytes);
+        c.put8(fail_open, !test.opens);
+        state->memory.copy_in(imported_table, blank_import);
+    };
+    for (const auto test : cases) {
+        for (unsigned mode : {0x100u, 0x180u}) {
+            prepare(test);
+            c.set({{3, table}, {4, test.has_path ? file_path : 0}, {5, mode}});
+            state->pc = import_file;
+            auto result = compare_call(*state, Stop::returned, Corrupt::none, false);
+            ++comparisons;
+            Cpu after(*result);
+            const bool validation_only = (mode & 0xff) != 0;
+            const auto line = validation_only ? 0 : test.line;
+            require(after.r(3) == !test.line && after.u32(message) == line && after.u8(success) == !line,
+                    "file import result and silent-validation diagnostic");
+            if (test.line || validation_only)
+                require(result->memory.copy_out(table, table_size) == live, "validation never changes live ranks");
+            else
+                require(after.u32(table + 0x68) == 240 && after.u32(table + row_size + 0x68) == 140 &&
+                            !after.u32(table + 2 * row_size + 0x68) && after.u32(final_bucket + 0x68) == 300,
+                        "file merges positive, nonduplicate ranks across categories");
+            if (!test.line || test.line == 0x249)
+                require(result->memory.copy_out(imported_table, table_size) == plain_import,
+                        "import scratch retains the decoded bytes even if the checksum mismatches");
+        }
+    }
+
+    for (unsigned scenario = 0; scenario < 3; ++scenario) {
+        prepare(scenario == 1 ? cases.back() : cases.front());
+        c.put32(active_table_slot, scenario == 2 ? 0 : table);
+        c.set(3, file_path);
+        state->pc = validate_file;
+        auto result = compare_call(*state, Stop::returned, Corrupt::none, false);
+        ++comparisons;
+        Cpu after(*result);
+        require(after.r(3) == (scenario == 0 ? 1u : 2u) && after.u8(success) == 1 &&
+                    result->memory.copy_out(table, table_size) == live,
+                "file picker callback reports validation without merging or displaying errors");
+    }
+    std::cout << comparisons << " Hall of Fame import and ranked merge comparisons with the shared comparator and sorter\n";
+}
+
 }
 
 int main(int argc, char** argv) try {
     if (argc == 2 && std::string_view(argv[1]) == "--persistence") {
         check_persistence();
+        return 0;
+    }
+    if (argc == 2 && std::string_view(argv[1]) == "--import") {
+        check_import();
         return 0;
     }
     require(argc == 1, "unknown Hall of Fame checker option");

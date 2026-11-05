@@ -4547,6 +4547,7 @@ target_link_libraries(cm-hall-of-fame-checks PRIVATE cm_aot)
 target_compile_options(cm-hall-of-fame-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_test(NAME hall_of_fame_equivalence COMMAND cm-hall-of-fame-checks)
 add_test(NAME hall_of_fame_persistence COMMAND cm-hall-of-fame-checks --persistence)
+add_test(NAME hall_of_fame_import COMMAND cm-hall-of-fame-checks --import)
 set_tests_properties(hall_of_fame_persistence PROPERTIES ENVIRONMENT "CM_UTILS_ORIGINAL=1")
 if(Python3_EXECUTABLE)
     add_test(NAME hall_of_fame_audit
