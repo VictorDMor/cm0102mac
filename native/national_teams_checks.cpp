@@ -203,6 +203,10 @@ bool observe_dependency(State& s) {
             for (unsigned arg = 0; arg < 11; ++arg) c.put32(record + 40 + arg * 4, c.u32(frame + 0x38 + arg * 4));
             c.put8(notice_render_trace, index + 1);
             c.put32(c.r(3), c.r(4) - source);
+            if (c.u8(notice_render_trace + 1)) {
+                require(c.r(3) == frame + 0x270, "calendar prefix fixture stops at the club list");
+                c.u8(unmapped);
+            }
             break;
         }
         case 0x1074b830:
@@ -630,19 +634,21 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                                    input.pc == replacement_notice || input.pc == injured_selection ||
                                    input.pc == automatic_replacement || input.pc == calendar_save ||
                                    input.pc == calendar_load || input.pc == create_schedule ||
-                                   input.pc == register_fixture || input.pc == publish_calendar_notices || nested_owners.size()))
+                                   input.pc == register_fixture || input.pc == publish_calendar_notices ||
+                                   input.pc == render_calendar_notice || nested_owners.size()))
             routine_checker = &notice_boundary;
         if (input.pc == publish_calendar_notices)
             utility_object_diagnostics(s).original_body = 0x10738ca0;
-        if (input.pc == duty) {
+        if (input.pc == duty)
             utility_object_diagnostics(s).original_body = dispose_list;
+        if (input.pc == duty || input.pc == render_calendar_notice)
             localization_format_diagnostics(s).original_body = localize;
-        }
         effects.state = &s;
         s.memory.date_observer = &effects;
         std::string error;
         try {
             if (reference) national_teams_run_original(s, input.pc);
+            else if (input.pc == render_calendar_notice) national_teams_run_rewrite(s, input.pc);
             else run_until(s, done);
         } catch (const std::runtime_error& failure) {
             error = failure.what();
@@ -678,7 +684,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
         if (input.pc == create_schedule || input.pc == register_fixture || input.pc == expire_schedule ||
             input.pc == date_order || input.pc == score_order || input.pc == club_order ||
             input.pc == mark_fixtures || input.pc == apply_marks || input.pc == queue_calendar_notice ||
-            input.pc == publish_calendar_notices)
+            input.pc == publish_calendar_notices || input.pc == render_calendar_notice)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
     }
@@ -3077,9 +3083,13 @@ unsigned check_calendar_notice_formatter_reference(std::mt19937& random) {
         state->pc = render_calendar_notice;
         return state;
     };
-    unsigned comparisons = 0;
+    unsigned comparisons = 0, headlines = 0;
     const auto check = [&](const Case& scenario) {
         auto state = make_state(scenario);
+        if (!scenario.full) {
+            compare(*state);
+            ++headlines;
+        }
         std::vector<DependencyCall> calls;
         ObserveCalls observer(calls);
         auto* saved_checker = routine_checker;
@@ -3158,6 +3168,27 @@ unsigned check_calendar_notice_formatter_reference(std::mt19937& random) {
     for (unsigned count : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 9u})
         for (int detail : {0, 1})
             for (int secondary : {-1, 1}) check({count, 0, detail, 0, secondary, true});
+    unsigned prefixes = 0;
+    for (const unsigned count : {1u, 2u, 3u, 4u, 5u, 6u, 9u}) {
+        const auto state = make_state({count, 0, 0, 0, -1, true});
+        Cpu(*state).put8(notice_render_trace + 1, 1);
+        const auto after = compare(*state, Stop::fault);
+        require(Cpu(*after).u32(formatter_frame + 0x270) == prefix(count),
+                "calendar prefix compares through the expected localized phrase");
+        ++prefixes;
+    }
+    const Case single{1, 0, 0, 0, -1, false};
+    auto fault = make_state(single);
+    Cpu(*fault).put32(clubs_slot, unmapped);
+    compare(*fault, Stop::fault);
+    fault = make_state({1, 2, 0, 0, -1, false});
+    Cpu(*fault).put32(notice_render_cup_slot, unmapped);
+    compare(*fault, Stop::fault);
+    const auto budget = make_state(single);
+    budget->budget = 0;
+    compare(*budget, Stop::budget);
+    std::cout << headlines << " NATIONAL_TEAMS calendar headline comparisons, 2 faults and 1 budget stop\n";
+    std::cout << prefixes << " NATIONAL_TEAMS calendar article prefixes compared through localization\n";
     return comparisons;
 }
 

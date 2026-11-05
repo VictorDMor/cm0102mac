@@ -4405,6 +4405,434 @@ void publish_calendar_notices(Cpu& c) {
     c.finish();
 }
 
+constexpr auto render_calendar_notice_entry = 0x102bb050u;
+constexpr auto read_news_word = 0x102cb570u;
+constexpr auto format_calendar_phrase = 0x10727890u;
+
+struct CalendarNoticeRender {
+    std::uint32_t frame, label, clubs, nations, competitions, output, pool;
+    std::uint32_t nation, year;
+    std::int32_t count, variant, primary, secondary;
+};
+
+CalendarNoticeRender read_calendar_notice(Cpu& c, GuestNativeScope& scope) {
+    block(c, render_calendar_notice_entry, 15);
+    const auto caller = c.sp(), frame = caller - 0x6b0;
+    const auto item = c.r(4), mode = c.r(5), output = c.r(6);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<13>(c, caller);
+    c.set(18, item);
+    const auto label = c.toc(-0x7bb8);
+    c.set(23, label);
+    const auto clubs = c.toc(-0x7be8);
+    c.set({{25, clubs}, {13, mode}});
+    const auto nations = c.toc(-0x7bbc);
+    c.set({{21, nations}, {28, output}});
+    const auto competitions = c.toc(-0x7b98);
+    c.set({{22, competitions}, {3, item}});
+    const auto pool = c.toc(-0x513c);
+    c.set({{30, pool}, {4, 0}});
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.call(read_news_word, 0x102bb08c);
+    block(c, 0x102bb08c, 4);
+    const auto nation = c.r(3);
+    c.set({{24, nation}, {3, item}, {4, 1}});
+    c.call(read_news_word, 0x102bb09c);
+    block(c, 0x102bb09c, 5);
+    const auto count = c.r(3);
+    c.set({{0, count}, {3, item}, {29, count}, {4, 2}});
+    c.call(read_news_word, 0x102bb0b0);
+
+    // Each following field has the same call shape, apart from the final
+    // setup of the club list index.
+    constexpr std::array result_register{15u, 20u, 27u, 26u};
+    constexpr std::array continuation{0x102bb0b0u, 0x102bb0c0u, 0x102bb0d0u, 0x102bb0e0u};
+    std::array<std::uint32_t, 4> words{};
+    for (unsigned index = 0; index < words.size(); ++index) {
+        const auto pc = continuation[index];
+        const bool last = index == words.size() - 1;
+        block(c, pc, last ? 5 : 4);
+        words[index] = c.r(3);
+        c.set({{result_register[index], words[index]}, {3, item}, {4, index + 3}});
+        if (last) c.set(19, 7);
+        c.call(read_news_word, pc + (last ? 20 : 16));
+    }
+
+    block(c, 0x102bb0f4, 6);
+    const auto year = c.r(3), club_words = frame + 0xe0, end = count + 7;
+    c.set({{0, 7}, {31, year}, {16, club_words}, {17, end}, {14, 28}});
+    for (unsigned field = 7; ; ++field) {
+        block(c, 0x102bb128, 3);
+        const auto index = std::int8_t(field);
+        c.set(0, std::uint32_t(index));
+        c.compare(0, index, end);
+        if (index >= std::int32_t(end)) break;
+        block(c, 0x102bb10c, 3);
+        c.set({{3, item}, {4, field}});
+        c.call(read_news_word, 0x102bb118);
+        block(c, 0x102bb118, 4);
+        const auto offset = (field - 7) * 4;
+        c.set({{0, offset}, {19, field + 1}});
+        c.put32(club_words + offset, c.r(3));
+        c.set(14, (field + 1) * 4);
+    }
+    block(c, 0x102bb134, 5);
+    c.set({{3, count}, {4, frame + 0x68}, {5, 0x78}, {6, 0}});
+    c.call(0x10746a70, 0x102bb148);
+    return {frame, label, clubs, nations, competitions, output, pool, nation, year,
+        std::int32_t(count), std::int32_t(words[0]), std::int32_t(words[2]), std::int32_t(words[3])};
+}
+
+void format_calendar_single_club(Cpu& c, const CalendarNoticeRender& notice,
+                                  std::uint32_t pc, unsigned key) {
+    block(c, pc, 13);
+    const auto id = c.u32(notice.frame + 0xe0);
+    c.set({{0, id}, {3, notice.label}});
+    const auto clubs = c.u32(notice.clubs);
+    c.set({{9, clubs}, {8, notice.year}, {6, id * 0x248}, {4, notice.pool + key}});
+    const auto club = clubs + id * 0x248;
+    c.set(5, club);
+    const auto grammar = c.u8(club + 0x23b);
+    c.set({{5, grammar}, {7, club + 0x221}});
+    const auto signed_grammar = std::uint32_t(std::int8_t(grammar));
+    c.set({{5, signed_grammar}, {6, signed_grammar}});
+    c.call(format_calendar_phrase, pc + 52);
+    block(c, pc + 52, 1);
+}
+
+void format_calendar_club_pair(Cpu& c, const CalendarNoticeRender& notice, std::uint32_t pc,
+                                std::uint32_t destination, unsigned key) {
+    block(c, pc, 19);
+    const auto right = c.u32(notice.frame + 0xe4);
+    c.set({{5, right}, {3, destination}});
+    const auto left = c.u32(notice.frame + 0xe0);
+    c.set({{0, left}, {4, notice.pool + key}, {5, right * 0x248}});
+    const auto clubs = c.u32(notice.clubs);
+    c.set({{6, clubs}, {9, clubs + 0x23b}});
+    const auto right_grammar = c.u8(clubs + right * 0x248 + 0x23b);
+    c.set({{7, std::uint32_t(std::int8_t(right_grammar))}, {10, clubs + right * 0x248 + 0x221},
+           {8, left * 0x248}});
+    const auto left_grammar = std::uint32_t(c.i8(clubs + left * 0x248 + 0x23b));
+    c.set({{5, left_grammar}, {9, clubs + left * 0x248 + 0x221}, {8, c.r(7)}, {6, left_grammar}});
+    c.call(format_calendar_phrase, pc + 76);
+    block(c, pc + 76, 1);
+}
+
+void format_calendar_nation_headline(Cpu& c, const CalendarNoticeRender& notice) {
+    block(c, 0x102bb224, 12);
+    const auto offset = notice.nation * 0x6c;
+    c.set(6, offset);
+    const auto nations = c.u32(notice.nations);
+    c.set({{0, nations}, {3, notice.label}, {8, notice.year}, {5, nations + offset},
+           {4, notice.pool + 0x7dc3}});
+    const auto grammar = std::uint32_t(c.i8(nations + offset + 0x67));
+    c.set({{5, grammar}, {7, nations + offset + 0x4d}, {6, grammar}});
+    c.call(format_calendar_phrase, 0x102bb254);
+    block(c, 0x102bb254, 1);
+}
+
+void format_calendar_competition_headline(Cpu& c, const CalendarNoticeRender& notice) {
+    block(c, 0x102bb258, 2);
+    c.compare(0, notice.secondary, -1);
+    if (notice.secondary >= 0) {
+        format_calendar_single_club(c, notice, 0x102bb260, 0x7e0b);
+        return;
+    }
+    block(c, 0x102bb298, 21);
+    const auto id = c.u32(notice.frame + 0xe0);
+    const auto cup_offset = std::uint32_t(notice.primary) * 0x128;
+    c.set({{0, id}, {6, cup_offset}});
+    const auto competitions = c.u32(notice.competitions);
+    c.set({{8, competitions}, {3, notice.label}});
+    const auto clubs = c.u32(notice.clubs);
+    const auto club_offset = id * 0x248;
+    c.set({{11, clubs}, {4, notice.pool + 0x7e46}, {9, club_offset}, {5, competitions + cup_offset}});
+    const auto cup_grammar = c.u8(competitions + cup_offset + 0x116);
+    c.set({{7, cup_grammar}, {10, cup_offset + 0xe1}, {5, clubs + club_offset}});
+    const auto club_grammar = std::uint32_t(c.i8(clubs + club_offset + 0x23b));
+    c.set({{5, club_grammar}, {9, club_offset + 0x221}, {7, std::uint32_t(std::int8_t(cup_grammar))},
+           {10, competitions + cup_offset + 0xe1}});
+    c.put32(notice.frame + 0x38, notice.year);
+    c.set({{6, club_grammar}, {8, c.r(7)}, {9, clubs + club_offset + 0x221}});
+    c.call(format_calendar_phrase, 0x102bb2ec);
+    block(c, 0x102bb2ec, 1);
+}
+
+void format_calendar_notice_headline(Cpu& c, const CalendarNoticeRender& notice) {
+    block(c, 0x102bb150, 2);
+    c.compare(0, notice.variant, 1);
+    if (notice.variant == 1) {
+        format_calendar_nation_headline(c, notice);
+        return;
+    }
+    block(c, 0x102bb158, 1);
+    if (notice.variant < 1) {
+        block(c, 0x102bb15c, 2);
+        c.compare(0, notice.variant, 0);
+        if (notice.variant == 0) {
+            block(c, 0x102bb174, 2);
+            c.compare(0, notice.count, 1);
+            if (notice.count == 1) {
+                format_calendar_single_club(c, notice, 0x102bb17c, 0x7ced);
+                return;
+            }
+            block(c, 0x102bb1b4, 2);
+            c.compare(0, notice.count, 2);
+            if (notice.count == 2) {
+                format_calendar_club_pair(c, notice, 0x102bb1bc, notice.label, 0x7d31);
+                return;
+            }
+            block(c, 0x102bb20c, 5);
+            c.set({{3, notice.label}, {6, notice.year}, {4, notice.pool + 0x7d83}, {5, notice.frame + 0x68}});
+            c.call(format_calendar_phrase, 0x102bb220);
+            block(c, 0x102bb220, 1);
+            return;
+        }
+        block(c, 0x102bb164, 1);
+    } else {
+        block(c, 0x102bb168, 2);
+        c.compare(0, notice.variant, 3);
+        if (notice.variant == 2) {
+            block(c, 0x102bb170, 1);
+            format_calendar_competition_headline(c, notice);
+            return;
+        }
+    }
+    format_calendar_single_club(c, notice, 0x102bb2f0, 0x7ea5);
+}
+
+constexpr unsigned calendar_club_list_offset = 0x270;
+
+void format_calendar_first_club(Cpu& c, const CalendarNoticeRender& notice) {
+    block(c, 0x102bb330, 12);
+    const auto id = c.u32(notice.frame + 0xe0);
+    c.set({{0, id}, {3, notice.frame + calendar_club_list_offset}});
+    const auto clubs = c.u32(notice.clubs);
+    const auto offset = id * 0x248;
+    c.set({{8, clubs}, {4, notice.pool + 0x7eea}, {6, offset}, {5, clubs + offset}});
+    const auto grammar = c.u8(clubs + offset + 0x23b);
+    c.set({{5, grammar}, {7, clubs + offset + 0x221}});
+    const auto signed_grammar = std::uint32_t(std::int8_t(grammar));
+    c.set({{5, signed_grammar}, {6, signed_grammar}});
+    c.call(format_calendar_phrase, 0x102bb360);
+    block(c, 0x102bb360, 1);
+}
+
+void format_calendar_three_clubs(Cpu& c, const CalendarNoticeRender& notice, bool skip_first) {
+    const auto pc = skip_first ? 0x102bb444u : 0x102bb3c4u;
+    block(c, pc, 29);
+    const auto rows = notice.frame + 0xe0 + unsigned(skip_first) * 4;
+    const auto last = c.u32(rows + 8);
+    c.set({{6, last}, {3, notice.frame + calendar_club_list_offset}});
+    const auto middle = c.u32(rows + 4);
+    c.set({{0, middle}, {4, notice.pool + 0x7f4b}});
+    const auto first = c.u32(rows);
+    const auto last_offset = last * 0x248, middle_offset = middle * 0x248, first_offset = first * 0x248;
+    c.set({{5, first}, {6, last_offset}});
+    const auto clubs = c.u32(notice.clubs);
+    c.set({{10, clubs}, {8, middle_offset}, {11, clubs + 0x23b}});
+    const auto last_grammar = c.u8(clubs + last_offset + 0x23b);
+    c.set({{9, last_grammar}, {0, last_offset + 0x221}});
+    const auto middle_grammar = c.u8(clubs + middle_offset + 0x23b);
+    c.set({{7, middle_grammar}, {6, clubs + middle_offset + 0x221}, {5, first_offset},
+           {0, clubs + last_offset + 0x221}, {9, std::uint32_t(std::int8_t(last_grammar))},
+           {8, first_offset + 0x221}});
+    const auto first_grammar = c.u8(clubs + first_offset + 0x23b);
+    c.set({{5, first_grammar}, {8, clubs + first_offset + 0x221}, {7, std::uint32_t(std::int8_t(middle_grammar))}});
+    c.put32(notice.frame + 0x38, c.r(8));
+    c.set({{5, std::uint32_t(std::int8_t(first_grammar))}, {8, c.r(7)}, {10, c.r(9)}});
+    c.put32(notice.frame + 0x3c, c.r(6));
+    c.set(6, c.r(5));
+    c.put32(notice.frame + 0x40, c.r(0));
+    c.call(format_calendar_phrase, pc + 116);
+    block(c, pc + 116, 1);
+}
+
+void format_calendar_four_clubs(Cpu& c, const CalendarNoticeRender& notice) {
+    block(c, 0x102bb4c4, 38);
+    const auto frame = notice.frame;
+    const auto fourth_id = c.u32(frame + 0xf0);
+    const auto fourth = fourth_id * 0x248;
+    c.set({{5, fourth_id}, {3, frame + calendar_club_list_offset}});
+    const auto third_id = c.u32(frame + 0xec);
+    c.set({{0, third_id}, {4, notice.pool + 0x7fac}, {9, fourth}});
+    const auto second_id = c.u32(frame + 0xe8);
+    c.set(7, second_id);
+    const auto first_id = c.u32(frame + 0xe4);
+    c.set(5, first_id);
+    const auto clubs = c.u32(notice.clubs);
+    const auto first = first_id * 0x248, second = second_id * 0x248, third = third_id * 0x248;
+    c.set({{6, clubs}, {8, third}, {12, clubs + 0x23b}});
+    const auto fourth_grammar = c.u8(clubs + fourth + 0x23b);
+    c.set({{0, fourth_grammar}, {10, fourth + 0x221}});
+    const auto third_grammar = c.u8(clubs + third + 0x23b);
+    c.set({{9, third_grammar}, {11, second}, {0, std::uint32_t(std::int8_t(fourth_grammar))},
+           {8, third + 0x221}});
+    const auto second_grammar = c.u8(clubs + second + 0x23b);
+    c.set({{7, second_grammar}, {13, first}, {11, second + 0x221}, {9, std::uint32_t(std::int8_t(third_grammar))}});
+    const auto first_grammar = c.u8(clubs + first + 0x23b);
+    c.set({{5, first_grammar}, {12, first + 0x221}, {14, clubs + first + 0x221}, {13, clubs + second + 0x221}});
+    c.put32(frame + 0x38, c.r(0));
+    c.set({{12, clubs + third + 0x221}, {11, clubs + fourth + 0x221},
+           {7, std::uint32_t(std::int8_t(second_grammar))}});
+    c.put32(frame + 0x3c, c.r(0));
+    c.set({{5, std::uint32_t(std::int8_t(first_grammar))}, {6, std::uint32_t(std::int8_t(first_grammar))}, {8, c.r(7)}});
+    c.put32(frame + 0x40, c.r(14));
+    c.set(10, c.r(9));
+    c.put32(frame + 0x44, c.r(13));
+    c.put32(frame + 0x48, c.r(12));
+    c.put32(frame + 0x4c, c.r(11));
+    c.call(format_calendar_phrase, 0x102bb55c);
+    block(c, 0x102bb55c, 1);
+}
+
+void format_calendar_five_clubs(Cpu& c, const CalendarNoticeRender& notice) {
+    block(c, 0x102bb568, 48);
+    const auto frame = notice.frame;
+    const auto fourth_id = c.u32(frame + 0xf0);
+    c.set({{5, fourth_id}, {4, notice.pool + 0x10000}});
+    const auto fifth_id = c.u32(frame + 0xf4);
+    c.set({{9, fifth_id}, {3, frame + calendar_club_list_offset}});
+    const auto third_id = c.u32(frame + 0xec);
+    const auto fourth = fourth_id * 0x248, fifth = fifth_id * 0x248, third = third_id * 0x248;
+    c.set({{0, third_id}, {10, fourth}});
+    const auto second_id = c.u32(frame + 0xe8);
+    c.set({{8, second_id}, {4, notice.pool + 0x802d}});
+    const auto clubs = c.u32(notice.clubs);
+    c.set({{6, clubs}, {9, fifth}});
+    const auto first_id = c.u32(frame + 0xe4);
+    const auto first = first_id * 0x248, second = second_id * 0x248;
+    c.set({{7, first_id}, {5, clubs + 0x23b}, {15, fourth + 0x221}, {11, third}});
+    const auto fourth_grammar = c.u8(clubs + fourth + 0x23b);
+    c.set(0, fourth_grammar);
+    const auto fifth_grammar = c.u8(clubs + fifth + 0x23b);
+    c.set({{10, fifth_grammar}, {14, fifth + 0x221}, {0, std::uint32_t(std::int8_t(fourth_grammar))}});
+    const auto third_grammar = c.u8(clubs + third + 0x23b);
+    c.set({{9, third_grammar}, {12, second}, {10, std::uint32_t(std::int8_t(fifth_grammar))},
+           {11, third + 0x221}, {14, clubs + fifth + 0x221}, {8, first}});
+    const auto second_grammar = c.u8(clubs + second + 0x23b);
+    c.set({{7, second_grammar}, {12, second + 0x221}, {11, clubs + third + 0x221}});
+    const auto first_grammar = c.u8(clubs + first + 0x23b);
+    c.set({{5, first_grammar}, {8, first + 0x221}, {13, clubs + first + 0x221}, {12, clubs + second + 0x221}});
+    c.put32(frame + 0x38, c.r(0));
+    c.set({{7, std::uint32_t(std::int8_t(second_grammar))}, {9, std::uint32_t(std::int8_t(third_grammar))},
+           {5, std::uint32_t(std::int8_t(first_grammar))}});
+    c.put32(frame + 0x3c, c.r(0));
+    c.set({{0, clubs + fourth + 0x221}, {6, c.r(5)}, {8, c.r(7)}});
+    c.put32(frame + 0x40, c.r(10));
+    c.put32(frame + 0x44, c.r(10));
+    c.set(10, c.r(9));
+    c.put32(frame + 0x48, c.r(13));
+    c.put32(frame + 0x4c, c.r(12));
+    c.put32(frame + 0x50, c.r(11));
+    c.put32(frame + 0x54, c.r(0));
+    c.put32(frame + 0x58, c.r(14));
+    c.call(format_calendar_phrase, 0x102bb628);
+}
+
+void format_calendar_club_list(Cpu& c, const CalendarNoticeRender& notice) {
+    constexpr std::array choices{0x102bb328u, 0x102bb364u, 0x102bb3bcu, 0x102bb43cu, 0x102bb4bcu, 0x102bb560u};
+    const auto count = notice.count;
+    const auto limit = count <= 0 || count >= 6 ? 6u : unsigned(count);
+    for (unsigned length = 1; length <= limit; ++length) {
+        block(c, choices[length - 1], 2);
+        c.compare(0, count, length);
+    }
+    switch (count) {
+    case 1: format_calendar_first_club(c, notice); break;
+    case 2: format_calendar_club_pair(c, notice, 0x102bb36c, notice.frame + calendar_club_list_offset, 0x7f09); break;
+    case 3: case 4: format_calendar_three_clubs(c, notice, count == 4); break;
+    case 5: format_calendar_four_clubs(c, notice); break;
+    default:
+        if (count >= 6) format_calendar_five_clubs(c, notice);
+        break;
+    }
+}
+
+void link_calendar_notice_competition(Cpu& c, const CalendarNoticeRender& notice,
+                                      int id, std::uint32_t pc) {
+    block(c, pc, 2);
+    c.compare(0, id, -1);
+    if (id < 0) return;
+    block(c, pc + 8, 4);
+    const auto offset = std::uint32_t(id) * 0x128;
+    c.set(13, offset);
+    const auto competitions = c.u32(notice.competitions);
+    c.set({{0, competitions}, {3, competitions + offset}});
+    c.call(0x100c76c0, pc + 24);
+    block(c, pc + 24, 7);
+    const auto name_base = c.u32(notice.competitions);
+    c.set({{0, name_base}, {4, offset + 0xe1}, {6, c.r(3)}, {3, notice.output},
+           {5, 0x7d5}, {4, name_base + offset + 0xe1}});
+    c.call(0x1074bab0, pc + 52);
+}
+
+void write_calendar_notice_output(Cpu& c, const CalendarNoticeRender& notice) {
+    block(c, 0x102bc05c, 3);
+    c.set({{3, notice.output}, {4, notice.label}});
+    c.call(0x1074b830, 0x102bc068);
+    block(c, 0x102bc068, 3);
+    const auto club_words = notice.frame + 0xe0;
+    c.set({{13, club_words}, {14, 0}});
+    for (unsigned index = 0; ; ++index) {
+        block(c, 0x102bc0bc, 3);
+        const auto i = std::int8_t(index);
+        c.set(0, std::uint32_t(i));
+        c.compare(0, i, notice.count);
+        if (i >= notice.count) break;
+        for (unsigned name = 0; name < 2; ++name) {
+            const auto pc = 0x102bc074u + name * 32;
+            block(c, pc, 8);
+            const auto id = c.u32(club_words + index * 4);
+            c.set({{0, id}, {3, notice.output}});
+            const auto clubs = c.u32(notice.clubs);
+            const auto club = clubs + id * 0x248;
+            c.set({{4, clubs}, {5, 0x7d5}, {0, id * 0x248}, {6, club},
+                   {4, club + (name ? 0x221 : 0x1ee)}});
+            c.call(0x1074bab0, pc + 32);
+        }
+        block(c, 0x102bc0b4, 2);
+        c.set({{13, club_words + (index + 1) * 4}, {14, index + 1}});
+    }
+    link_calendar_notice_competition(c, notice, notice.primary, 0x102bc0c8);
+    link_calendar_notice_competition(c, notice, notice.secondary, 0x102bc0fc);
+    const auto offset = notice.nation * 0x6c;
+    block(c, 0x102bc130, 1);
+    c.set(13, offset);
+    for (unsigned name = 0; name < 2; ++name) {
+        const auto pc = 0x102bc134u + name * 24;
+        block(c, pc, 6);
+        const auto nations = c.u32(notice.nations);
+        const auto nation = nations + offset;
+        c.set({{0, nations}, {3, notice.output}, {5, 0x7d0}, {6, nation},
+               {4, nation + (name ? 0x4d : 0x1a)}});
+        c.call(0x1074bab0, pc + 24);
+    }
+}
+
+// This partial owner is reachable only from the differential fixture.
+void render_calendar_notice(Cpu& c) {
+    GuestNativeScope scope(c.s, render_calendar_notice_entry);
+    const auto caller = c.sp();
+    const auto notice = read_calendar_notice(c, scope);
+    block(c, 0x102bb148, 2);
+    if (record_nonzero_byte(c, c.r(13))) {
+        format_calendar_club_list(c, notice);
+        throw std::logic_error("Calendar notice article is not reconstructed");
+    }
+    format_calendar_notice_headline(c, notice);
+    write_calendar_notice_output(c, notice);
+    block(c, 0x102bc164, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<13, true>(c, caller);
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -4633,6 +5061,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case apply_fixture_marks_entry: apply_fixture_marks(c); break;
     case queue_calendar_notice_entry: queue_calendar_notice(c); break;
     case publish_calendar_notices_entry: publish_calendar_notices(c); break;
+    case render_calendar_notice_entry: render_calendar_notice(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;
