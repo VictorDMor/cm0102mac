@@ -20,7 +20,7 @@ void apply_country_wage_quote(guest::Cpu& c, std::uint32_t contract, std::uint32
     c.set(1, frame);
     scope.frame(frame);
     c.set(5, c.u32(player + 0x24));
-    c.call(0x10378da0, 0x10378d5c);
+    detail::call_owned_continuation(c, country_quote_entry, 0x10378d5c, quote_country_wage);
 
     detail::block(c, 0x10378d5c, 7);
     // An enabled invalid conversion can stop before writing its result.

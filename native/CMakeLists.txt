@@ -50,7 +50,7 @@ set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.
     staff_contracts_value.cpp staff_contracts_labels.cpp staff_contracts_window.cpp
     staff_contracts_sampling.cpp staff_contracts_display.cpp staff_contracts_clause.cpp
     staff_contracts_release.cpp staff_contracts_review_state.cpp staff_contracts_prepare.cpp
-    staff_contracts_expiry_text.cpp staff_contracts_quote.cpp staff_contracts_renewal.cpp
+    staff_contracts_expiry_text.cpp staff_contracts_quote.cpp staff_contracts_wage_quotes.cpp staff_contracts_renewal.cpp
     staff_contracts_terms_valuation.cpp
     staff_contracts_review_refresh.cpp staff_contracts_review_status.cpp staff_contracts_review_trigger.cpp
     staff_contracts_review_consequences.cpp
@@ -153,8 +153,7 @@ target_sources(cm_aot PRIVATE club_control.cpp stack_audit.cpp shortlist_recruit
 target_sources(cm_aot PRIVATE shortlist_assessment.cpp shortlist_assessment_contribution.cpp
     shortlist_assessment_interest_context.cpp shortlist_assessment_interest_preferences.cpp
     shortlist_assessment_interest_score.cpp shortlist_assessment_adapter.cpp)
-target_sources(cm_aot PRIVATE shortlist_quotation.cpp shortlist_quotation_context.cpp
-    shortlist_quotation_quote_profile.cpp shortlist_quotation_quote_country.cpp shortlist_quotation_adapter.cpp)
+target_sources(cm_aot PRIVATE shortlist_quotation.cpp shortlist_quotation_context.cpp shortlist_quotation_adapter.cpp)
 target_sources(cm_aot PRIVATE shortlist_policy_offer.cpp shortlist_policy_country.cpp
     shortlist_policy_row.cpp shortlist_policy_adapter.cpp)
 target_sources(cm_aot PRIVATE profile_qualification_masks.cpp profile_qualification_classify.cpp
@@ -1350,7 +1349,9 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
     set_source_files_properties("${CM_SHORTLIST_QUOTATION_CASES}" PROPERTIES HEADER_FILE_ONLY TRUE)
-    add_executable(cm-shortlist-quotation-checks shortlist_quotation_checks.cpp "${CM_SHORTLIST_QUOTATION_REFERENCE}" "${CM_SHORTLIST_QUOTATION_CASES}")
+    add_executable(cm-shortlist-quotation-checks shortlist_quotation_checks.cpp
+        shortlist_quotation_quote_profile.cpp shortlist_quotation_quote_country.cpp
+        "${CM_SHORTLIST_QUOTATION_REFERENCE}" "${CM_SHORTLIST_QUOTATION_CASES}")
     target_include_directories(cm-shortlist-quotation-checks PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
     target_link_libraries(cm-shortlist-quotation-checks PRIVATE cm_aot)
     target_compile_options(cm-shortlist-quotation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -3956,7 +3957,7 @@ if(CM_SIPRINT_COVERAGE)
 endif()
 
 
-add_executable(cm-staff-contracts-checks staff_contracts_checks.cpp)
+add_executable(cm-staff-contracts-checks staff_contracts_checks.cpp staff_contracts_wage_checks.cpp)
 target_link_libraries(cm-staff-contracts-checks PRIVATE cm_aot)
 target_compile_options(cm-staff-contracts-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_test(NAME staff_contracts_equivalence COMMAND cm-staff-contracts-checks)

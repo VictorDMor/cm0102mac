@@ -25,6 +25,16 @@ void call_owned(Cpu& c, std::uint32_t entry, std::uint32_t resume, Operation ope
     if (c.s.pc != resume) run_until(c.s, resume);
 }
 
+inline void call_owned_continuation(Cpu& c, std::uint32_t entry, std::uint32_t resume, void (*operation)(Cpu&)) {
+    if (!staff_contracts_calls_directly()) {
+        c.call(entry, resume);
+        return;
+    }
+    c.link(resume);
+    operation(c);
+    if (c.s.pc != resume) run_until(c.s, resume);
+}
+
 // Record forms replace only CR0's low nibble.
 inline bool record_nonzero(Cpu& c, std::int32_t value, unsigned destination = 0) {
     c.set(destination, std::uint32_t(value));

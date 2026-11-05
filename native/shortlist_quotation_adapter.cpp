@@ -1,4 +1,5 @@
 #include "shortlist_quotation_adapter.hpp"
+#include "staff_contracts_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
@@ -47,11 +48,11 @@ bool try_modern_shortlist_quotation(State& s, std::uint32_t entry) {
             const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
             if (!dispatch_page(s)) throw std::runtime_error("Missing original shortlist-quotation body");
             if (s.pc != caller) run_until(s, caller);
+        } else if (entry == shortlist_quotation::calculate_reference_quote_entry) {
+            staff_contracts_run_checked_rewrite(s, entry);
         } else {
-            using Function = void(*)(State&, SemanticDependencyDispatch*, SemanticGuestObserver*);
-            constexpr Function methods[]{shortlist_quotation::evaluate_candidate_context,shortlist_quotation::calculate_reference_quote};
             ShortlistQuotationDispatch dependencies;
-            methods[index](s, &dependencies, d.observer);
+            shortlist_quotation::evaluate_candidate_context(s, &dependencies, d.observer);
         }
     } catch (const ApplicationExit&) { leave(s, index, original, ShortlistQuotationOutcome::terminated); throw; }
     catch (const GuestContextTransfer&) { leave(s, index, original, ShortlistQuotationOutcome::context_transfer); throw; }

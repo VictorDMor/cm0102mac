@@ -17,6 +17,11 @@ extern "C" int __llvm_profile_write_file();
 extern "C" void __llvm_profile_set_filename(const char*);
 #endif
 
+namespace cm::staff_contracts_checks {
+bool wage_quote_hook(std::uint32_t, aot::RoutineChecker&);
+void wage_quote_cases();
+}
+
 namespace {
 using namespace cm::aot;
 using cm::semantic_io_checks::Effects;
@@ -1975,6 +1980,7 @@ unsigned generated_hooks() {
     checker.strict_volatile = true;
     ScopedRoutineChecker scope(&checker);
     for (const auto entry : entries) {
+        if (cm::staff_contracts_checks::wage_quote_hook(entry, checker)) continue;
         auto s = expiry_fixture();
         s->pc = entry;
         s->wr<4>(16, 1);
@@ -2068,6 +2074,7 @@ int main() {
         review_state_cases(counts);
         draft_preparation_cases(counts);
         expiry_and_quote_cases(counts);
+        cm::staff_contracts_checks::wage_quote_cases();
         review_policy_cases(counts);
         review_trigger_cases(counts);
         fixed_date_cases(counts);

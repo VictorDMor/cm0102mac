@@ -2592,3 +2592,11 @@ void adjust_quote_club_context(Call& a) {
     return finish_quote_contract_limits(a);
 }
 }
+
+namespace cm::aot::shortlist_quotation {
+void calculate_reference_quote(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o) {
+    detail::Call a(s,calculate_reference_quote_entry,d,o);detail::prepare_reference_quote(a);
+    a.at(0x1037e3bc);a.load<4>(0,1,0xc8,false);a.offset(1,1,0xc0);a.floating_load(31,1,-0x8,false);
+    a.floating_load(30,1,-0x10,false);a.restore_link();a.multiple(13,true,-0x10);a.finish();
+}
+}

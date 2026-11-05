@@ -2,6 +2,7 @@
 #include "staff_contracts.hpp"
 #include "routine_check.hpp"
 #include "engine_initialization_adapter.hpp"
+#include "shortlist_quotation_adapter.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -72,6 +73,7 @@ bool try_modern_staff_contracts(State& s, std::uint32_t entry) {
     // Keep the engine's original/profile switch and startup observers at
     // this entry while STAFF_CONTRACTS supplies its typed implementation.
     if (entry == fixed_date_entry) return try_modern_engine_initialization(s, entry);
+    if (entry == reference_quote_entry) return try_modern_shortlist_quotation(s, entry);
     staff_contracts_run_checked_rewrite(s, entry);
     return true;
 }
