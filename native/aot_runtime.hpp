@@ -200,6 +200,8 @@ public:
     }
 private:
     bool apply_debug_attribute_lock(std::uint32_t address, std::size_t size);
+    [[gnu::noinline]] void write_word_slow(std::uint64_t address, std::uint64_t value);
+    [[gnu::noinline]] void report_word_write(std::uint64_t address);
     std::unique_ptr<DebugAttributeLock> debug_attribute_lock_;
     bool debug_attribute_lock_used_ = false;
     // Keep diagnostic vector growth and virtual callbacks outside ordinary
@@ -229,6 +231,8 @@ private:
     // earlier one there keeps the slow path). Valid because mappings only grow.
     std::unique_ptr<std::array<Range, 65536>> partial_starts_ = std::make_unique<std::array<Range, 65536>>();
 };
+
+template <> void Memory::write<4>(std::uint64_t address, std::uint64_t value);
 
 [[noreturn, gnu::cold, gnu::noinline]] void instruction_budget_exhausted();
 // Instruction counts saturate rather than wrap (State::charge).

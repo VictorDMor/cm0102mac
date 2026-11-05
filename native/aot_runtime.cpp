@@ -180,6 +180,25 @@ void Memory::observe_scalar_read(std::uint64_t address, unsigned size) const {
     if (read_trace) read_trace->emplace_back(std::uint32_t(address), size);
     if (date_observer) date_observer->read(std::uint32_t(address), data_ + address, size);
 }
+template <> void Memory::write<4>(std::uint64_t address, std::uint64_t value) {
+    // Keep the common store frameless. The page bound certifies the whole
+    // word, including unaligned words that extend into a contiguous page.
+    if (address >= (UINT64_C(1) << 32) || address + 4 > (*page_ends_)[address >> 16])
+        return write_word_slow(address, value);
+    write_be<4>(data_ + address, value);
+    if (debug_attribute_lock_ || observer || date_observer) report_word_write(address);
+}
+void Memory::write_word_slow(std::uint64_t address, std::uint64_t value) {
+    check_scalar<4>(address);
+    write_be<4>(data_ + address, value);
+    report_word_write(address);
+}
+void Memory::report_word_write(std::uint64_t address) {
+    const auto start = std::uint32_t(address);
+    if (debug_attribute_lock_) [[unlikely]] apply_debug_attribute_lock(start, 4);
+    if (observer && observer->observes_write(address, 4)) observer->written(start, data_ + address, 4);
+    if (date_observer) date_observer->written(start, data_ + address, 4);
+}
 void Memory::load(std::uint32_t start, const std::filesystem::path& file, std::uint64_t size) {
     if (std::filesystem::file_size(file) != size) throw std::runtime_error("Segment size mismatch");
     map(start, size);
