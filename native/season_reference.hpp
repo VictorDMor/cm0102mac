@@ -7,6 +7,8 @@
 namespace cm::aot {
 // Private, versioned diagnostic fixtures; never part of the game's save format.
 struct SeasonReplayComplete {};
+// Exact identity of the passive RNG-write checker; other observers are not qualified.
+bool passive_season_replay_observer(const MemoryObserver* observer) noexcept;
 void season_day_boundary(State& state, std::uint32_t pc);
 void season_record_import_begin(State& state);
 void season_record_import_end(State& state, const char* name = nullptr);

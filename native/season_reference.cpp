@@ -1015,6 +1015,9 @@ std::string compare_states(const State& expected, const State& actual, Compariso
     return {};
 }
 }
+bool passive_season_replay_observer(const MemoryObserver* observer) noexcept {
+    return observer && observer == replay_observer.get();
+}
 std::string compare_season_states(const State& expected, const State& actual, bool semantic_calendar) {
     return compare_states(expected, actual, semantic_calendar ? Comparison::semantic_calendar : Comparison::strict);
 }

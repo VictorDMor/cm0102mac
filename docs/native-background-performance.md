@@ -571,3 +571,13 @@ Private evidence is retained in
 `.local/native-background-performance/cumulative-progress-01/`: exact archive
 and executable hashes, compiler arguments, individual pairs, full snapshots and
 summary. No new production executable is installed for this comparison.
+
+## Native side-tendency arithmetic
+
+`update_side_tendencies` retains ratings and floating-point status in native
+values between audited legacy-call boundaries. The same formulas use immediate
+register access under state-inspecting diagnostics; only no observer, the final
+native drawing observer and the exact active passive replay observer qualify
+for deferred publication. Re-audit the guard if a child gains callbacks or can
+install observers. Preserve strict floating-point operations, conversion
+exceptions and RNG draw order when extending this pattern to another chain.
