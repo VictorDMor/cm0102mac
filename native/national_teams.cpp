@@ -469,6 +469,15 @@ void unlink_national_roster(Cpu& c, std::uint32_t player) {
     c.put32(player + player_national_team, 0);
 }
 
+void call_national_owner(Cpu& c, std::uint32_t entry, std::uint32_t resume, void (*body)(Cpu&)) {
+    if (declining || routine_checker || dispatch_probe) {
+        c.call(entry, resume);
+    } else {
+        c.link(resume);
+        body(c);
+    }
+}
+
 void remove_selection(Cpu& c) {
     GuestNativeScope scope(c.s, remove_selection_entry);
     block(c, remove_selection_entry, 11);
@@ -503,12 +512,7 @@ void remove_selection(Cpu& c) {
             const auto record = records + offset;
             c.set({{0, offset}, {31, record}, {5, record}});
             constexpr auto resume = 0x102b81d8;
-            if (declining || routine_checker || dispatch_probe) {
-                c.call(selection_tier_entry, resume);
-            } else {
-                c.link(resume);
-                selection_tier(c);
-            }
+            call_national_owner(c, selection_tier_entry, resume, selection_tier);
 
             block(c, resume, 8);
             const auto tier = unsigned(std::int8_t(c.r(3)));
@@ -1497,6 +1501,302 @@ void duty_conflict(Cpu& c) {
     c.finish();
 }
 
+constexpr auto injured_selection_entry = 0x102b8460u;
+
+struct InjuredSelection {
+    std::uint32_t frame, manager, player, team, nation, record, today, tactics;
+    unsigned mode;
+};
+
+void report_missing_injury_team(Cpu& c, std::uint32_t frame, std::uint32_t source, std::uint32_t buffer) {
+    block(c, 0x102b84a0, 6);
+    c.set({{3, source + 0x37}, {6, frame + 0x50}, {7, frame + 0x48}, {4, 0}, {5, 0}});
+    c.call(0x10739890, 0x102b84b8);
+    block(c, 0x102b84b8, 1);
+    c.call(0x10768810, 0x102b84bc);
+    block(c, 0x102b84bc, 7);
+    c.set({{5, c.r(3)}, {3, buffer}, {4, source + 0x4a}, {6, frame + 0x50}, {7, frame + 0x48}, {8, 0x1df8}});
+    c.call(0x1077b720, 0x102b84d8);
+    block(c, 0x102b84d8, 4);
+    c.set({{4, buffer}, {3, source + 0x57}, {5, 0}});
+    c.call(0x10769b60, 0x102b84e8);
+    block(c, 0x102b84e8, 4);
+    c.set(3, c.toc(-0x7bac));
+    c.set(0, 0);
+    c.put8(c.r(3), 0);
+}
+
+unsigned injured_team_mode(Cpu& c, std::uint32_t player, std::uint32_t team) {
+    block(c, 0x102b8520, 2);
+    c.set(3, team);
+    c.call(0x100ce250, 0x102b8528);
+    block(c, 0x102b8528, 2);
+    if (record_nonzero_byte(c, c.r(3))) {
+        block(c, 0x102b8530, 2);
+        c.set(29, 2);
+        return 2;
+    }
+    block(c, 0x102b8538, 3);
+    const bool reserve = record_nonzero_byte(c, c.u8(player + player_duty_flags) & 8u);
+    block(c, reserve ? 0x102b8544 : 0x102b854c, 2);
+    c.set(29, reserve);
+    return reserve;
+}
+
+bool injury_date_before(Cpu& c, std::uint32_t pc, std::uint16_t left_year, std::uint16_t right_year,
+                        std::uint32_t left_date, std::uint32_t right_date) {
+    if (left_year < right_year) {
+        block(c, pc, 2);
+        c.set(0, 1);
+    } else {
+        block(c, pc + 8, 1);
+        if (left_year > right_year) {
+            block(c, pc + 12, 2);
+            c.set(0, 0);
+        } else {
+            block(c, pc + 20, 8);
+            const auto left_day = c.i16(left_date);
+            c.set(0, std::uint32_t(left_day));
+            const auto right_day = c.i16(right_date);
+            c.set(4, std::uint32_t(right_day));
+            publish_day_order(c, left_day, right_day);
+        }
+    }
+    block(c, pc + 52, 2);
+    return record_nonzero_byte(c, c.r(0));
+}
+
+bool injured_selection_in_window(Cpu& c, const InjuredSelection& n, std::uint32_t slot) {
+    block(c, 0x102b85c4, 11);
+    c.set(0, n.mode);
+    c.set(3, c.u32(n.today));
+    c.set(26, n.mode * selection_slot_size);
+    c.set(0, c.u32(n.today + 4));
+    c.put32(n.frame + 0x40, c.r(3));
+    c.set(3, slot);
+    const auto today_year = c.u16(n.frame + 0x42);
+    c.set(5, today_year);
+    const auto deadline_year = c.u16(slot + 0x42);
+    c.set(4, deadline_year);
+    c.put32(n.frame + 0x44, c.r(0));
+    c.compare_logical(0, today_year, deadline_year);
+    return injury_date_before(c, 0x102b85f0, today_year, deadline_year, n.frame + 0x40, slot + 0x40);
+}
+
+bool retained_in_injury_list(Cpu& c, const InjuredSelection& n) {
+    block(c, 0x102b862c, 4);
+    const auto list = c.u32(n.manager);
+    c.set(3, list);
+    const auto team = c.u32(n.player + player_national_team);
+    c.set(28, team);
+    c.compare_logical(0, list, 0);
+    bool retained = false;
+    if (list) {
+        block(c, 0x102b863c, 3);
+        c.set(0, c.u32(list + 4));
+        c.put32(list + 12, c.r(0));
+        block(c, 0x102b86c0, 1);
+        for (;;) {
+            block(c, 0x102b86c4, 2);
+            c.set(3, c.u32(n.manager));
+            c.call(0x10738e00, 0x102b86cc);
+            block(c, 0x102b86cc, 2);
+            const auto item = c.r(3);
+            c.compare_logical(0, item, 0);
+            if (!item) break;
+
+            block(c, 0x102b864c, 4);
+            const auto listed = c.u32(item);
+            c.set(4, listed);
+            const auto team_id = c.u32(team);
+            c.set(0, team_id);
+            c.compare(0, listed, team_id);
+            if (listed != team_id) continue;
+
+            block(c, 0x102b865c, 8);
+            c.set(4, c.u32(item + 8));
+            c.set(0, c.u32(item + 12));
+            c.put32(n.frame + 0x38, c.r(4));
+            const auto today_year = c.u16(n.today + 2);
+            c.set(3, today_year);
+            const auto item_year = c.u16(n.frame + 0x3a);
+            c.set(4, item_year);
+            c.put32(n.frame + 0x3c, c.r(0));
+            c.compare_logical(0, item_year, today_year);
+            if (injury_date_before(c, 0x102b867c, item_year, today_year, n.frame + 0x38, n.today)) {
+                block(c, 0x102b86b8, 2);
+                retained = true;
+                break;
+            }
+        }
+    }
+    if (!retained) block(c, 0x102b86d4, 1);
+    c.set(0, retained);
+    block(c, 0x102b86d8, 2);
+    return record_nonzero_byte(c, c.r(0));
+}
+
+void remove_injured_player(Cpu& c, const InjuredSelection& n, std::uint32_t pc) {
+    for (const unsigned managed : {1u, 0u}) {
+        block(c, pc, 6);
+        c.set({{3, c.u32(n.tactics)}, {4, n.team}, {5, n.player}, {6, managed}, {7, 1}});
+        c.call(0x103afb90, pc + 24);
+        pc += 24;
+    }
+    block(c, pc, 5);
+    c.set({{3, n.manager}, {4, n.nation}, {5, n.mode}, {6, n.player}});
+    call_national_owner(c, drop_roster_player_entry, pc + 20, drop_roster_player);
+}
+
+bool offer_managed_replacement(Cpu& c, const InjuredSelection& n, unsigned tier) {
+    block(c, 0x102b876c, 8);
+    c.set({{0, tier}, {3, n.team}, {25, tier}, {4, 0}, {5, 1}, {6, 0}, {7, 0}});
+    c.call(0x1014c2e0, 0x102b878c);
+    block(c, 0x102b878c, 2);
+    if (!record_nonzero_byte(c, c.r(3))) {
+        block(c, 0x102b8794, 3);
+        const auto manager = c.u32(n.team + 0x90);
+        c.set(0, manager);
+        c.compare_logical(0, manager, 0);
+        if (manager) return false;
+
+        block(c, 0x102b87a0, 2);
+        c.set(3, n.nation);
+        c.call(0x100c76c0, 0x102b87a8);
+        if (!managed_notice_team(c, 0x102b87a8)) return false;
+    }
+    block(c, 0x102b87c4, 2);
+    c.set(3, n.nation);
+    c.call(0x100c76c0, 0x102b87cc);
+    block(c, 0x102b87cc, 3);
+    const bool non_primary = record_nonzero_byte(c, n.mode);
+    c.set(4, c.u32(c.r(3) + 0x90));
+    if (!non_primary) return true;
+
+    block(c, 0x102b87d8, 4);
+    c.set(3, c.toc(-0x7a54));
+    c.set(5, 0);
+    c.set(3, c.u32(c.r(3)));
+    c.call(0x101484b0, 0x102b87e8);
+    block(c, 0x102b87e8, 2);
+    return record_nonzero_byte(c, c.r(3));
+}
+
+void replace_injured_selection(Cpu& c, const InjuredSelection& n, std::uint32_t slot) {
+    block(c, 0x102b86e0, 5);
+    c.set({{3, n.manager}, {4, n.player}, {5, n.nation}, {6, n.mode}});
+    call_national_owner(c, club_roster_notice_entry, 0x102b86f4, club_roster_notice);
+    remove_injured_player(c, n, 0x102b86f4);
+
+    block(c, 0x102b8738, 13);
+    c.set({{6, slot}, {0, n.mode}});
+    const auto count = c.u8(slot + 0x4b);
+    c.set(4, count);
+    const bool alternate = n.mode == 2;
+    c.s.wr<1>(guest::reg::xer_ca, 1); // subfic from 2, with mode constrained to 0–2.
+    c.set({{3, n.manager}, {5, count + 1u}, {4, n.player}, {0, alternate}});
+    c.put8(slot + 0x4b, c.r(5));
+    c.set({{5, n.record}, {6, alternate}});
+    call_national_owner(c, selection_tier_entry, 0x102b876c, selection_tier);
+    const auto tier = c.r(3);
+    if (offer_managed_replacement(c, n, tier)) {
+        block(c, 0x102b87f0, 6);
+        c.set({{3, n.manager}, {4, n.player}, {5, n.nation}, {6, n.mode}, {7, tier}});
+        call_national_owner(c, national_roster_notice_entry, 0x102b8808, national_roster_notice);
+        block(c, 0x102b8808, 1);
+    } else {
+        block(c, 0x102b880c, 6);
+        c.set({{3, n.manager}, {4, n.nation}, {5, n.mode}, {6, tier}, {7, n.player}});
+        c.call(0x102b8850, 0x102b8824);
+        block(c, 0x102b8824, 3);
+        c.set({{3, n.manager}, {4, n.nation}});
+        call_national_owner(c, deduplicate_rosters_entry, 0x102b8830, deduplicate_rosters);
+    }
+}
+
+void process_injured_selection(Cpu& c, std::uint32_t frame, std::uint32_t manager, std::uint32_t player,
+                               std::uint32_t today, std::uint32_t tactics, std::uint32_t source, std::uint32_t buffer) {
+    block(c, 0x102b8494, 3);
+    const auto team = c.u32(player + player_national_team);
+    c.set(27, team);
+    c.compare_logical(0, team, 0);
+    if (!team) return report_missing_injury_team(c, frame, source, buffer);
+    block(c, 0x102b84f8, 3);
+    const auto status = c.u8(player + player_call_up_status);
+    c.set(0, status);
+    c.compare(0, status, 0xb);
+    if (status != 0xb) return;
+
+    block(c, 0x102b8504, 7);
+    const auto nation = c.u32(team + 0x2c);
+    c.set(24, nation);
+    c.compare_logical(0, team, 0);
+    const auto records = c.u32(manager + 4);
+    c.set(3, records);
+    const auto nation_index = c.u32(nation + nation_index_offset);
+    c.set(0, nation_index * nation_record_size);
+    const auto record = records + nation_index * nation_record_size;
+    c.set(25, record);
+    const auto mode = injured_team_mode(c, player, team);
+    const InjuredSelection n{frame, manager, player, team, nation, record, today, tactics, mode};
+
+    block(c, 0x102b8558, 4);
+    c.set(3, c.toc(-0x7ba0));
+    c.set(4, player);
+    c.set(3, c.u32(c.r(3)));
+    c.call(0x1018c340, 0x102b8568);
+    block(c, 0x102b8568, 2);
+    const auto injury = c.r(3);
+    c.compare_logical(0, injury, 0);
+    if (injury) {
+        block(c, 0x102b8570, 3);
+        const auto type = c.u8(injury);
+        c.set(0, type);
+        c.compare(0, type, 0x51);
+        if (type == 0x51) {
+            remove_injured_player(c, n, 0x102b857c);
+            block(c, 0x102b85c0, 1);
+            return;
+        }
+    }
+    const auto slot = record + mode * selection_slot_size;
+    if (injured_selection_in_window(c, n, slot) && !retained_in_injury_list(c, n)) {
+        replace_injured_selection(c, n, slot);
+    }
+}
+
+void injured_selection(Cpu& c) {
+    GuestNativeScope scope(c.s, injured_selection_entry);
+    block(c, injured_selection_entry, 13);
+    const auto caller = c.sp(), frame = caller - 0xa0;
+    const auto manager = c.r(3), player = c.r(4);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<22>(c, caller);
+    const auto tactics = c.toc(-0x7a6c);
+    c.set({{30, tactics}, {22, manager}});
+    const auto today = c.toc(-0x7b80);
+    c.set({{31, today}, {23, player}});
+    const auto buffer = c.toc(-0x7ba8);
+    c.set(25, buffer);
+    const auto source = c.toc(-0x513c);
+    c.set(24, source);
+    c.put32(caller + 8, c.r(0));
+    const auto duration = std::int16_t(c.r(5));
+    c.set(0, std::uint32_t(duration));
+    c.compare(0, duration, 14);
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    if (duration >= 14) process_injured_selection(c, frame, manager, player, today, tactics, source, buffer);
+
+    block(c, 0x102b8830, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<22, true>(c, caller);
+    c.finish();
+}
+
 }
 
 void national_teams_run_original(State& state, std::uint32_t entry) {
@@ -1522,6 +1822,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case drop_roster_player_entry: drop_roster_player(c); break;
     case club_roster_notice_entry: club_roster_notice(c); break;
     case national_roster_notice_entry: national_roster_notice(c); break;
+    case injured_selection_entry: injured_selection(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }

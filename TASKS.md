@@ -18,7 +18,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **NATIONAL_TEAMS.CPP reconstruction.** Inventory closed at 73 entries and 17,621 reachable instructions. Seventeen selection, competition, duty and news entries are handwritten, selected by default and verified locally. The daily and January captures preserve the recorded states and reached comparison calls. The new injury notices match 126 controlled comparisons with real message construction and modeled delivery. Continue with the injury-driven roster update and its remaining dependency. Private evidence is in `.local/rewrites/national_teams/`.
+- [ ] **NATIONAL_TEAMS.CPP reconstruction.** Inventory closed at 73 entries and 17,621 reachable instructions. Eighteen selection, competition, duty and news entries are handwritten, selected by default and verified locally. The injury roster update matches 55 controlled comparisons and all ten reached January calls. One controlled immediate-removal case runs real dependencies and the direct owned call. Continue with automatic replacement and its remaining dependencies. Private evidence is in `.local/rewrites/national_teams/`.
 
 - [x] **HALL_OF_FAME.CPP reconstruction.** All 20 entries and 2,736 original instructions are accounted for. The default C++23 owners pass 476 focused returned comparisons, a shared file lifecycle, ten focused CTests and four strict calls in the recorded startup. All 82 functions are measured by the owner-only coverage run. Three broader engine initialization tests fail with both the previous and current initializer implementations. Private evidence is in `.local/rewrites/hall_of_fame/`.
 
