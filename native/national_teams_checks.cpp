@@ -2,6 +2,7 @@
 #include "localization_format_adapter.hpp"
 #include "utility_object_adapter.hpp"
 #include "national_teams_adapter.hpp"
+#include "news_adapter.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
 #include "tactics.hpp"
@@ -20,6 +21,7 @@ constexpr auto club_count = fixture + 0x4200, nation_count = fixture + 0x4204;
 constexpr auto club = fixture + 0x4300, unmapped = fixture + 0xa000;
 constexpr auto remove_player = 0x102b8180u, selected_player = 0x102aefb0u;
 constexpr auto dedup_rosters = 0x102ace30u, drop_roster = 0x102b8d60u;
+constexpr auto club_notice = 0x102b1130u, nation_notice = 0x102b1be0u;
 constexpr auto international = 0x102b7c00u, duty = 0x102b7c70u;
 constexpr auto player = fixture + 0x5100, date = fixture + 0x5200, national_team = fixture + 0x5300;
 constexpr auto regular_club = fixture + 0x5400, team_nation = fixture + 0x5500;
@@ -34,6 +36,13 @@ constexpr auto calendar = fixture + 0x6000, calendar_date = fixture + 0x6200, al
 constexpr auto clubs = fixture + 0x7000, first_club = clubs + 0x248, second_club = first_club + 0x248;
 constexpr auto first_bound = fixture + 0x6300, second_bound = fixture + 0x6308, cutoff_date = fixture + 0x6310;
 constexpr auto disposed = fixture + 0x6318, fixture_count = fixture + 0x631c;
+constexpr auto news_slot = fixture + 0x6500, injury_slot = news_slot + 4, contracts_slot = news_slot + 8;
+constexpr auto contract_scratch = news_slot + 12, notice_policy = news_slot + 16, notice_events = news_slot + 24;
+constexpr auto news_system = fixture + 0x6700, injury_system = fixture + 0x6740, contract_system = fixture + 0x6780;
+constexpr auto notice_contract = fixture + 0x6800, notice_injury = fixture + 0x6840, injury_types = fixture + 0x6880;
+constexpr auto contract_answers = fixture + 0x6900, notice_language = fixture + 0x6940;
+constexpr auto recipient_club = clubs + 5 * 0x248;
+constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish = 0x102cc140u;
 constexpr auto localize = 0x10727890u, dispose_list = 0x10738c20u;
 constexpr unsigned record_size = 0x74, group_size = 0x14, staff_size = 0x6c;
 
@@ -83,14 +92,62 @@ bool observe_dependency(State& s) {
         break;
     case 0x100c76c0: case 0x100c7860: break;
     case 0x1014c2e0:
-        if (resume != 0x103b19a4) return false;
+        if (resume != 0x103b19a4 && resume != 0x102b1da8 && resume != 0x102b1de0) return false;
         break;
+    case news_create: case news_field: case news_publish: case 0x102cdbf0: case 0x1018c340:
+    case 0x10082f20: case 0x100c9070: break;
     default: return false;
     }
     DependencyCall call{entry, resume};
     for (unsigned i = 0; i < 32; ++i) call[i + 2] = c.r(i);
     dependencies->push_back(call);
     switch (entry) {
+    case news_create: case news_field:
+        require(c.r(3) == frame + 0x38, "roster notice message frame");
+        if (entry == news_create) {
+            require((c.r(4) == 0x20 || c.r(4) == 0x22) && !c.r(5), "roster notice category and priority");
+            c.put32(notice_events + 0x10, c.r(4));
+        } else {
+            const auto field = c.u32(notice_events + 0x14);
+            require(c.r(4) == field, "roster notice fields in order");
+            c.put32(notice_events + 0x14, field + 1);
+        }
+        news_run_rewrite(s, entry);
+        return true;
+    case news_publish: {
+        require(c.r(3) == news_system && c.r(4) == frame + 0x38, "roster notice publish arguments");
+        const auto index = c.u32(notice_events);
+        require(index < 2, "roster notice published at most twice");
+        c.put32(notice_events + 4 + index * 4, c.r(5));
+        c.put32(notice_events, index + 1);
+        c.set(3, 0x12345678);
+        break;
+    }
+    case 0x102cdbf0:
+        require(c.r(3) == news_system, "roster notice subscription lookup");
+        c.set(3, (c.u8(notice_policy) & (resume == 0x102b1174 ? 1u : 2u)) != 0);
+        break;
+    case 0x10082f20: {
+        require(c.r(3) == contract_system && c.r(4) == player, "roster notice contract lookup");
+        const auto index = c.u32(notice_events + 0x18);
+        require(index < 4, "roster notice contract lookup count");
+        c.put32(notice_events + 0x18, index + 1);
+        c.set(3, c.u32(contract_answers + index * 4));
+        break;
+    }
+    case 0x1018c340:
+        require(c.r(3) == injury_system && c.r(4) == player, "roster notice injury lookup");
+        c.set(3, (c.u8(notice_policy) & 4) ? notice_injury : 0);
+        break;
+    case 0x100c9070:
+        require((c.r(4) == 4 || c.r(4) == 8) && !c.r(5), "roster notice squad count mask");
+        c.set(3, c.r(4) == 4 ? 0x82 : 7);
+        break;
+    case 0x1014c2e0:
+        if (resume == 0x103b19a4) return false;
+        require(c.r(4) == 0 && c.r(5) == 1 && !c.r(6) && !c.r(7), "roster notice managed-team query");
+        c.set(3, (c.u8(notice_policy) & (resume == 0x102b1da8 ? 1u : 2u)) != 0);
+        break;
     case 0x10717b20: case 0x10717890: {
         const bool lower = entry == 0x10717b20;
         require(c.r(3) == frame + (lower ? 0x60 : 0x58) && c.r(4) == date && c.r(5) == 1,
@@ -157,6 +214,14 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
     std::vector<DependencyCall> original_calls, rewrite_calls;
     const auto run = [&](State& s, Effects& effects, std::vector<DependencyCall>& calls, bool reference) {
         ObserveCalls observer(calls);
+        struct RestoreChecker {
+            RoutineChecker* previous = routine_checker;
+            ~RestoreChecker() { routine_checker = previous; }
+        } restore;
+        RoutineChecker notice_boundary([](std::uint32_t entry) {
+            return entry == club_notice || entry == nation_notice;
+        }, 0, 0);
+        if (input.pc == club_notice || input.pc == nation_notice) routine_checker = &notice_boundary;
         if (input.pc == duty) {
             utility_object_diagnostics(s).original_body = dispose_list;
             localization_format_diagnostics(s).original_body = localize;
@@ -794,6 +859,102 @@ unsigned check_roster_cleanup_faults(std::mt19937& random) {
     return 2;
 }
 
+std::unique_ptr<State> notice_seed(std::mt19937& random, unsigned mode, unsigned policy, std::uint32_t entry) {
+    auto state = two_rosters(random);
+    Cpu c(*state);
+    c.set({{4, player}, {5, nation}, {6, mode}, {7, 0x180}});
+    c.put32(toc - 0x7bf0, news_slot);
+    c.put32(toc - 0x7ba0, injury_slot);
+    c.put32(toc - 0x7b7c, contracts_slot);
+    c.put32(toc - 0x7b78, contract_scratch);
+    c.put32(toc - 0x64d4, injury_types);
+    c.put32(toc - 0x7b80, date);
+    c.put32(toc - 0x79ec, notice_language);
+    c.put32(news_slot, news_system);
+    c.put32(injury_slot, injury_system);
+    c.put32(contracts_slot, contract_system);
+    c.put8(notice_policy, policy);
+    c.put8(notice_language, 1);
+    c.put8(notice_injury, 2);
+    c.put8(injury_types + 25, 0x81);
+    c.put32(notice_contract + 4, 5);
+    c.put32(player, 19);
+    c.put32(senior_team, 31);
+    c.put32(alternate_team, 42);
+    for (unsigned i = 1; i <= 3; ++i) {
+        const auto name = fixture + 0x6a00 + i * 0x30;
+        c.put32(player + 0x24 + i * 4, name);
+        c.put32(name + 0x20, 0x9870 + i);
+    }
+    state->pc = entry;
+    return state;
+}
+
+unsigned check_roster_notices(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (unsigned mode : {0u, 1u, 2u, 0x100u, 0x101u, 0x180u, UINT32_MAX}) {
+        const auto kind = std::int8_t(mode);
+        const auto team = kind == 0 || kind == 1 ? senior_team : alternate_team;
+        const auto check_message = [&](Cpu& c, unsigned category, bool injured) {
+            const auto news = stack - (category == 0x20 ? 0x140 : 0x150) + 0x38;
+            require(c.u32(notice_events + 0x10) == category && c.u32(news) == category &&
+                        c.u32(notice_events + 0x14) == (category == 0x20 ? 7 : 12),
+                    "roster news template and field count");
+            const std::array expected{19u, 0x9871u, 0x9872u, 0x9873u, team == senior_team ? 31u : 42u,
+                                      unsigned(kind == 1), injured ? 0xffffff81u : 0};
+            for (unsigned i = 0; i < expected.size(); ++i)
+                require(c.u32(news + 8 + i * 4) == expected[i], "roster notice player, team and injury payload");
+            if (category == 0x22) {
+                const std::array tail{0u, kind == 1 ? 7u : 0xffffff82u, 0xffffff80u, std::uint32_t(kind), fixture_nation_id};
+                for (unsigned i = 0; i < tail.size(); ++i)
+                    require(c.u32(news + 8 + (i + 7) * 4) == tail[i], "national notice signed payload");
+            }
+        };
+        for (unsigned policy = 0; policy < 8; ++policy) {
+            auto state = notice_seed(random, mode, policy, nation_notice);
+            auto result = compare(*state);
+            Cpu c(*result);
+            check_message(c, 0x22, policy & 4);
+            require(c.u32(notice_events) == unsigned((policy & 3) != 0) &&
+                        c.u32(notice_events + 4) == (policy & 1 ? team : policy & 2 ? senior_team : 0),
+                    "national notice selects current team or managed senior fallback");
+            ++comparisons;
+        }
+        for (unsigned scenario = 0; scenario < 10; ++scenario) {
+            constexpr std::array policies{0u, 0u, 0u, 1u, 5u, 1u, 2u, 6u, 2u, 2u};
+            auto state = notice_seed(random, mode, policies[scenario], club_notice);
+            Cpu c(*state);
+            const auto current = scenario == 0 || scenario == 7 ? 0u :
+                scenario == 5 ? recipient_club : regular_club;
+            c.put32(player + 0x24, current);
+            if (scenario == 2 || scenario >= 4) {
+                for (unsigned i = 0; i < 4; ++i) c.put32(contract_answers + i * 4, notice_contract);
+            }
+            if (scenario == 8) c.put32(contract_answers + 1 * 4, 0);
+            if (scenario == 9) c.put32(contract_answers + 3 * 4, 0);
+            auto result = compare(*state);
+            Cpu after(*result);
+            if (scenario >= 3) check_message(after, 0x20, policies[scenario] & 4);
+            constexpr std::array deliveries{0u, 0u, 0u, 2u, 2u, 1u, 2u, 1u, 2u, 2u};
+            require(after.u32(notice_events) == deliveries[scenario] &&
+                        after.u32(notice_events + 4) == (scenario < 3 ? 0 : scenario == 7 ? recipient_club : current) &&
+                        after.u32(notice_events + 8) == (scenario == 4 || scenario == 6 || scenario == 8 ? recipient_club : 0),
+                    "club notice original recipients and repeated contract reads");
+            ++comparisons;
+        }
+    }
+    for (const auto entry : {club_notice, nation_notice}) {
+        auto state = notice_seed(random, 1, 7, entry);
+        Cpu c(*state);
+        c.put32(player + 0x24, regular_club);
+        c.put32(player + 0x28, unmapped);
+        compare(*state, Stop::fault);
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    return comparisons;
+}
+
 unsigned check_roster_faults(std::mt19937& random) {
     for (const auto entry : {remove_player, selected_player}) {
         auto state = duty_seed(random);
@@ -879,6 +1040,8 @@ int main() try {
     const auto roster_faults = check_roster_faults(random);
     const auto cleanup = check_dedup_rosters(random) + check_drop_roster(random);
     const auto cleanup_faults = check_roster_cleanup_faults(random);
+    const auto notices = check_roster_notices(random);
+    std::cout << notices << " NATIONAL_TEAMS roster news comparisons, 2 faults and 2 budget stops\n";
     std::cout << cleanup << " NATIONAL_TEAMS roster cleanup comparisons, " << cleanup_faults
               << " faults and 2 budget stops\n";
     std::cout << roster << " NATIONAL_TEAMS roster comparisons, " << roster_faults << " faults and 2 budget stops\n";

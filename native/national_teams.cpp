@@ -758,6 +758,282 @@ void drop_roster_player(Cpu& c) {
     c.finish();
 }
 
+constexpr auto club_roster_notice_entry = 0x102b1130u, national_roster_notice_entry = 0x102b1be0u;
+constexpr auto create_news = 0x102bdf90u, set_news_field = 0x102cb4b0u, publish_news = 0x102cc140u;
+
+void roster_notice_header(Cpu& c, std::uint32_t news, std::uint32_t player,
+                          std::uint32_t pc, unsigned category) {
+    block(c, pc, 4);
+    c.set({{3, news}, {4, category}, {5, 0}});
+    c.call(create_news, pc + 16);
+    block(c, pc + 16, 4);
+    c.set(5, c.u32(player));
+    c.set({{3, news}, {4, 0}});
+    c.call(set_news_field, pc + 32);
+    for (unsigned field = 1; field <= 3; ++field) {
+        const auto field_pc = pc + 32 + (field - 1) * 20;
+        block(c, field_pc, 5);
+        const auto name = c.u32(player + 0x24 + field * 4);
+        c.set({{5, name}, {3, news}, {4, field}});
+        c.set(5, c.u32(name + 0x20));
+        c.call(set_news_field, field_pc + 20);
+    }
+}
+
+void set_roster_injury_field(Cpu& c, std::uint32_t news, std::uint32_t player,
+                             std::uint32_t injuries, std::uint32_t pc) {
+    block(c, pc, 3);
+    c.set({{3, c.u32(injuries)}, {4, player}});
+    c.call(0x1018c340, pc + 12);
+    block(c, pc + 12, 2);
+    c.compare_logical(0, c.r(3), 0);
+    if (!c.r(3)) {
+        block(c, pc + 68, 4);
+        c.set({{3, news}, {4, 6}, {5, 0}});
+        c.call(set_news_field, pc + 84);
+        return;
+    }
+
+    block(c, pc + 20, 3);
+    c.set({{3, c.u32(injuries)}, {4, player}});
+    c.call(0x1018c340, pc + 32);
+    block(c, pc + 32, 4);
+    c.set(4, c.r(3));
+    c.set(3, c.u32(injuries));
+    c.set(4, c.u8(c.r(4)));
+    c.call(0x1018c180, pc + 48);
+    block(c, pc + 48, 4);
+    c.set({{5, std::uint32_t(std::int8_t(c.r(3)))}, {3, news}, {4, 6}});
+    c.call(set_news_field, pc + 64);
+    block(c, pc + 64, 1);
+}
+
+struct ClubNotice {
+    std::uint32_t player, nation, mode, scratch, clubs, news_system, contracts, injuries;
+};
+
+std::uint32_t contract_club(Cpu& c, const ClubNotice& n, std::uint32_t pc, unsigned output) {
+    block(c, pc, 3);
+    c.set({{3, c.u32(n.contracts)}, {4, n.player}});
+    c.call(0x10082f20, pc + 12);
+    block(c, pc + 12, 3);
+    const auto contract = c.r(3);
+    c.compare_logical(0, contract, 0);
+    c.put32(n.scratch, contract);
+    if (!contract) {
+        block(c, pc + 44, 1);
+        c.set(output, 0);
+        return 0;
+    }
+    block(c, pc + 24, 5);
+    const auto index = c.u32(contract + 4);
+    c.set(0, index);
+    const auto clubs = c.u32(n.clubs);
+    c.set({{3, clubs}, {0, index * club_size}});
+    const auto club = clubs + index * club_size;
+    c.set(output, club);
+    return club;
+}
+
+bool club_receives_notice(Cpu& c, const ClubNotice& n, std::uint32_t pc) {
+    block(c, pc, 2);
+    c.set(3, c.u32(n.news_system));
+    c.call(0x102cdbf0, pc + 8);
+    block(c, pc + 8, 2);
+    return record_nonzero_byte(c, c.r(3));
+}
+
+bool wants_club_notice(Cpu& c, const ClubNotice& n) {
+    const auto current = c.u32(n.player + 0x24);
+    c.set(4, current);
+    c.compare_logical(0, current, 0);
+    if (current && club_receives_notice(c, n, 0x102b116c)) return true;
+    const auto contracted = contract_club(c, n, 0x102b117c, 0);
+    block(c, 0x102b11ac, 2);
+    c.compare_logical(0, contracted, 0);
+    if (!contracted) return false;
+    contract_club(c, n, 0x102b11b4, 4);
+    const bool interested = club_receives_notice(c, n, 0x102b11e4);
+    if (!interested) block(c, 0x102b11f4, 1);
+    return interested;
+}
+
+void send_club_roster_notice(Cpu& c, const ClubNotice& n, std::uint32_t message) {
+    roster_notice_header(c, message, n.player, 0x102b11f8, 0x20);
+    block(c, 0x102b1254, 2);
+    const auto mode = std::int8_t(n.mode);
+    if (record_nonzero_byte(c, n.mode)) {
+        block(c, 0x102b128c, 3);
+        c.compare(0, mode, 1);
+    }
+    const auto resolve = mode == 0 ? 0x102b125cu : mode == 1 ? 0x102b1298u : 0x102b12c8u;
+    block(c, resolve, 2);
+    c.set(3, n.nation);
+    c.call(mode == 0 || mode == 1 ? 0x100c76c0 : 0x100c7860, resolve + 8);
+    block(c, resolve + 8, 5);
+    const auto team = c.r(3);
+    c.set({{4, team}, {3, message}});
+    c.set(5, c.u32(team));
+    c.set(4, 4);
+    c.call(set_news_field, resolve + 28);
+    block(c, resolve + 28, 4);
+    c.set({{3, message}, {4, 5}, {5, mode == 1}});
+    c.call(set_news_field, resolve + 44);
+    if (mode == 0 || mode == 1) block(c, resolve + 44, 1);
+    set_roster_injury_field(c, message, n.player, n.injuries, 0x102b12f4);
+
+    block(c, 0x102b1348, 3);
+    const auto current = c.u32(n.player + 0x24);
+    c.set(5, current);
+    c.compare_logical(0, current, 0);
+    if (current) {
+        block(c, 0x102b1354, 3);
+        c.set({{3, c.u32(n.news_system)}, {4, message}});
+        c.call(publish_news, 0x102b1360);
+    }
+    const auto contracted = contract_club(c, n, 0x102b1360, 3);
+    block(c, 0x102b1390, 3);
+    const auto current_after_send = c.u32(n.player + 0x24);
+    c.set(0, current_after_send);
+    c.compare_logical(0, contracted, current_after_send);
+    if (contracted == current_after_send) return;
+    contract_club(c, n, 0x102b139c, 5);
+    block(c, 0x102b13cc, 3);
+    c.set({{3, c.u32(n.news_system)}, {4, message}});
+    c.call(publish_news, 0x102b13d8);
+}
+
+void club_roster_notice(Cpu& c) {
+    GuestNativeScope scope(c.s, club_roster_notice_entry);
+    block(c, club_roster_notice_entry, 15);
+    const auto caller = c.sp(), frame = caller - 0x140;
+    const auto player = c.r(4), nation = c.r(5), mode = c.r(6);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<24>(c, caller);
+    c.set(24, player);
+    const auto scratch = c.toc(-0x7b78);
+    c.set(27, scratch);
+    const auto clubs = c.toc(-0x7be8);
+    c.set({{28, clubs}, {25, nation}});
+    const auto news_system = c.toc(-0x7bf0);
+    c.set({{29, news_system}, {26, mode}});
+    const auto contracts = c.toc(-0x7b7c);
+    c.set(30, contracts);
+    const auto injuries = c.toc(-0x7ba0);
+    c.set(31, injuries);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const ClubNotice n{player, nation, mode, scratch, clubs, news_system, contracts, injuries};
+    if (wants_club_notice(c, n)) send_club_roster_notice(c, n, frame + 0x38);
+    block(c, 0x102b13d8, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<24, true>(c, caller);
+    c.finish();
+}
+
+bool managed_notice_team(Cpu& c, std::uint32_t pc) {
+    block(c, pc, 5);
+    c.set({{4, 0}, {5, 1}, {6, 0}, {7, 0}});
+    c.call(0x1014c2e0, pc + 20);
+    block(c, pc + 20, 2);
+    return record_nonzero_byte(c, c.r(3));
+}
+
+void national_roster_notice(Cpu& c) {
+    GuestNativeScope scope(c.s, national_roster_notice_entry);
+    block(c, national_roster_notice_entry, 12);
+    const auto caller = c.sp(), frame = caller - 0x150, news = frame + 0x38;
+    const auto player = c.r(4), nation = c.r(5), raw_mode = c.r(6), reason = c.r(7);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<23>(c, caller);
+    c.set(30, raw_mode);
+    const auto news_system = c.toc(-0x7bf0);
+    c.set(31, news_system);
+    const auto injuries = c.toc(-0x7ba0);
+    c.set({{28, injuries}, {23, player}, {29, nation}, {24, reason}});
+    c.put32(caller + 8, c.r(0));
+    const auto mode = std::int8_t(raw_mode);
+    const bool nonzero = record_nonzero_byte(c, raw_mode);
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+
+    if (nonzero) {
+        block(c, 0x102b1c28, 3);
+        c.compare(0, mode, 1);
+    }
+    const bool alternate = mode != 0 && mode != 1;
+    const auto resolve = mode == 0 ? 0x102b1c10u : mode == 1 ? 0x102b1c34u : 0x102b1c4cu;
+    block(c, resolve, 2);
+    c.set(3, nation);
+    c.call(alternate ? 0x100c7860 : 0x100c76c0, resolve + 8);
+    block(c, resolve + 8, alternate ? 3 : 4);
+    const auto team = c.r(3);
+    const unsigned squad_mask = mode == 1 ? 8 : 4;
+    c.set({{26, mode == 1}, {27, team}, {25, squad_mask}});
+    roster_notice_header(c, news, player, 0x102b1c60, 0x22);
+    block(c, 0x102b1cbc, 4);
+    c.set(5, c.u32(team));
+    c.set({{3, news}, {4, 4}});
+    c.call(set_news_field, 0x102b1ccc);
+    block(c, 0x102b1ccc, 4);
+    c.set({{3, news}, {5, mode == 1}, {4, 5}});
+    c.call(set_news_field, 0x102b1cdc);
+    set_roster_injury_field(c, news, player, injuries, 0x102b1cdc);
+
+    block(c, 0x102b1d30, 4);
+    c.set({{3, news}, {4, 7}, {5, 0}});
+    c.call(set_news_field, 0x102b1d40);
+    block(c, 0x102b1d40, 4);
+    c.set({{3, team}, {4, squad_mask}, {5, 0}});
+    c.call(0x100c9070, 0x102b1d50);
+    const auto squad_count = std::uint32_t(std::int8_t(c.r(3)));
+    const std::array fields{squad_count, std::uint32_t(std::int8_t(reason)), std::uint32_t(mode)};
+    for (unsigned field = 0; field < fields.size(); ++field) {
+        const auto pc = 0x102b1d50 + field * 16;
+        block(c, pc, 4);
+        c.set({{5, fields[field]}, {3, news}, {4, 8 + field}});
+        c.call(set_news_field, pc + 16);
+    }
+    block(c, 0x102b1d80, 4);
+    c.set(5, c.u32(nation + nation_index_offset));
+    c.set({{3, news}, {4, 11}});
+    c.call(set_news_field, 0x102b1d90);
+    block(c, 0x102b1d90, 6);
+    c.set({{3, team}, {4, 0}, {5, 1}, {6, 0}, {7, 0}});
+    c.call(0x1014c2e0, 0x102b1da8);
+    block(c, 0x102b1da8, 2);
+    if (record_nonzero_byte(c, c.r(3))) {
+        block(c, 0x102b1db0, 4);
+        c.set({{3, c.u32(news_system)}, {5, team}, {4, news}});
+        c.call(publish_news, 0x102b1dc0);
+        block(c, 0x102b1dc0, 1);
+    } else {
+        block(c, 0x102b1dc4, 2);
+        c.set(3, nation);
+        c.call(0x100c76c0, 0x102b1dcc);
+        if (managed_notice_team(c, 0x102b1dcc)) {
+            block(c, 0x102b1de8, 2);
+            c.set(3, nation);
+            c.call(0x100c76c0, 0x102b1df0);
+            block(c, 0x102b1df0, 4);
+            c.set(5, c.r(3));
+            c.set({{3, c.u32(news_system)}, {4, news}});
+            c.call(publish_news, 0x102b1e00);
+        }
+    }
+    block(c, 0x102b1e00, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<23, true>(c, caller);
+    c.finish();
+}
+
 struct DutyQuery {
     Cpu& c;
     std::uint32_t frame, manager, player, date, requested_club, label, competition;
@@ -1244,6 +1520,8 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case selected_for_nation_entry: selected_for_nation(c); break;
     case deduplicate_rosters_entry: deduplicate_rosters(c); break;
     case drop_roster_player_entry: drop_roster_player(c); break;
+    case club_roster_notice_entry: club_roster_notice(c); break;
+    case national_roster_notice_entry: national_roster_notice(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }
