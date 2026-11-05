@@ -465,6 +465,16 @@ Supplying a file delegates to the owned loader and returns the object even
 when loading fails. The constructor and sampler are direct C++ calls in
 normal mode and retain independent generated bodies in checker/original mode.
 
+The update exchanges club IDs between rows before processing the day's groups.
+Scheduling compares signed remainders modulo seven, then excludes calendar
+codes five and six; the second calendar query remains a separate call. Squad
+counts are stored as signed bytes alongside an unavailable marker of -1,
+ordered by the original swaps, and the positive prefix is shuffled with the
+original ordered RNG draws. A positive first count may pair with a zero second
+count. The pair index advances only after successful simulation and ordered
+publication to the external result services. Allocation and simulation failure
+retain that index and recheck the live row and score conditions.
+
 ## STAFF_CONTRACTS.CPP: staff terms and offers
 
 The [module audit](../tools/staff_contracts_audit.py) assigns 47 entries and

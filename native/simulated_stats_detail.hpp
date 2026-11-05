@@ -11,6 +11,7 @@ struct RandomPool {
 struct RangeDraw {
     std::uint32_t site;
     unsigned result, bound_scratch, remainder_scratch, result_scratch;
+    bool correction_in_r3 = false;
 };
 
 // The constructor and daily update inline the same sampler with distinct

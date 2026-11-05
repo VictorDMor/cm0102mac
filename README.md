@@ -58,6 +58,8 @@ adds **21 audited routines** for staff absences, their messages and the daily re
 entrants, calendars, group draws, knockout and results.
 `media.cpp` adds **75 audited routines** for the press: its stories, reactions,
 news text, response dialog and data file.
+`SIMULATED_STATS.CPP` adds **7 audited routines** for club groups, simulated
+fixtures, result publication and binary records.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,

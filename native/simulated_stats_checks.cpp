@@ -21,6 +21,7 @@ using guest::Cpu;
 
 constexpr auto destroy = 0x10370db0u, count_squad = 0x10371d90u;
 constexpr auto initialize = 0x1036ff60u;
+constexpr auto update = 0x10370e10u;
 constexpr auto load = 0x10371e60u, save = 0x10372040u, sample = 0x10370830u;
 constexpr auto reseed = 0x1077b770u;
 constexpr auto cursor = fixture + 0x1e00, salt = cursor + 4, end = cursor + 8;
@@ -46,6 +47,13 @@ constexpr auto media_first = fixture + 0x1f00, media_second = media_first + 0x20
 constexpr auto initial_clubs = fixture + 0x10000, initial_list = fixture + 0x80000;
 constexpr auto initial_rows = fixture + 0x81000;
 constexpr auto loader_resume = fixture + 0x1f80;
+constexpr auto update_services = fixture + 0x2100, update_text = fixture + 0x2200;
+constexpr auto match_object = fixture + 0x3000;
+constexpr auto month = fixture + 0xb0, month_calls = fixture + 0xb4;
+constexpr auto match_allocations = fixture + 0xb8, match_runs = fixture + 0xbc;
+constexpr auto notifications = fixture + 0xc0;
+
+std::unique_ptr<State> update_fixture(unsigned groups, unsigned members, std::int16_t day = 0, unsigned season_month = 7);
 
 struct Call {
     std::uint32_t target, continuation;
@@ -55,7 +63,7 @@ struct Call {
 
 struct Trace {
     std::vector<Call> calls;
-    bool change_argument = false;
+    std::uint32_t changed_target = 0;
 };
 
 Trace* active_trace = nullptr;
@@ -69,7 +77,70 @@ bool dependency(State& s) {
     switch (target) {
         case reseed:
             require(c.lr() == 0x10370884 || c.lr() == 0x10370970 || c.lr() == 0x103702dc
-                        || c.lr() == 0x10370440 || c.lr() == 0x10370598, "Stats RNG reseed call site");
+                        || c.lr() == 0x10370440 || c.lr() == 0x10370598 || c.lr() == 0x10370eb8
+                        || c.lr() == 0x10371020 || c.lr() == 0x10371188 || c.lr() == 0x10371304
+                        || c.lr() == 0x10371468 || c.lr() == 0x1037185c || c.lr() == 0x103719b4,
+                    "Stats RNG reseed call site");
+            break;
+        case 0x10773320:
+            require(arg0 == update_text + 0x120 && member == update_services + 0x40
+                        && c.r(5) == 0 && c.r(6) == 0x664 && c.r(7) == 2, "Stats metadata registration");
+            break;
+        case 0x10718360:
+            require(arg0 == date, "Stats calendar service arguments");
+            break;
+        case 0x10717b20: case 0x10717890:
+            require(arg0 == c.sp() + (target == 0x10717b20 ? 0x48 : 0x40) && member == date
+                        && c.r(5) == (target == 0x10717b20 ? 2u : 3u), "Stats date-window arguments");
+            break;
+        case 0x1048b180:
+            require(arg0 == update_services + 0x104 && c.r(4) == std::uint16_t(c.i16(date) - 2)
+                        && c.r(5) == c.u16(date + 2) && c.r(6) == std::uint16_t(c.i16(date) + 3)
+                        && c.r(7) == c.u16(date + 2) && c.r(8) < c.u32(club_count)
+                        && c.r(9) == 0 && c.r(10) == UINT32_MAX && c.u32(c.sp() + 0x38) == std::uint32_t(-2)
+                        && c.u32(c.sp() + 0x3c) == UINT32_MAX, "Stats availability service arguments");
+            break;
+        case 0x10430090: {
+            require(arg0 == update_services + 0x100 && member == c.sp() + 0xc8 && c.r(5) == std::uint32_t(-2)
+                        && c.r(6) == 0, "Stats match preparation arguments");
+            const auto home = c.u32(member + 12), away = c.u32(member + 16);
+            require(home < c.u32(club_count) && away < c.u32(club_count)
+                        && c.u32(member + 28) == initial_clubs + home * 0x248
+                        && c.u32(member + 32) == initial_clubs + away * 0x248
+                        && c.u32(member) == std::uint32_t(-2) && c.u32(member + 4) == UINT32_MAX
+                        && c.u8(member + 0x3a) == 2 && c.u8(member + 0x3c) == 0
+                        && c.u8(member + 0x40) == 1 && c.u8(member + 0x41) == 1 && c.u8(member + 0x4e) == 0,
+                    "Stats match record fields");
+            break;
+        }
+        case 0x10773520:
+            require(arg0 == 0xe0bc && c.lr() == 0x10371bf0, "Stats match object allocation");
+            break;
+        case 0x101d16a0:
+            require(arg0 == match_object && c.lr() == 0x10371bfc, "Stats match object initialization");
+            break;
+        case 0x101d1760:
+            require(arg0 == match_object && member == c.sp() + 0xc8 && c.r(5) == 1
+                        && c.r(6) == 0 && c.r(7) == 0 && c.u32(arg0) == 0x12344321, "Stats match simulation arguments");
+            break;
+        case 0x101d3f60: case 0x101d3e50:
+            require(arg0 == match_object && member == (target == 0x101d3f60 ? UINT32_MAX : 1),
+                    "Stats match finalization arguments");
+            break;
+        case 0x1029f920:
+            require(arg0 == update_services + 0x108 && member == match_object && c.r(5) == update_text
+                        && c.r(6) == 0, "Stats result broadcast arguments");
+            break;
+        case 0x103024a0: case 0x1007c4e0: case 0x10186fc0: case 0x104363e0: case 0x103e8d30: {
+            const auto service = target == 0x103024a0 ? update_services + 0x10c
+                : target == 0x1007c4e0 ? update_services + 0x110 : target == 0x10186fc0 ? role_service
+                : target == 0x104363e0 ? update_services + 0x114 : update_services + 0x118;
+            require(arg0 == service && member == c.sp() + 0xc8 && c.r(5) == update_text,
+                    "Stats result listener arguments");
+            break;
+        }
+        case 0x10430550:
+            require(arg0 == update_services + 0x100 && member == c.sp() + 0xc8, "Stats match publication arguments");
             break;
         case open_file:
             require((arg0 == file || arg0 == 0) && member == pool + 0x5e && c.r(5) <= 1
@@ -139,7 +210,8 @@ bool dependency(State& s) {
             break;
         case check_exclusion:
             require(arg0 == filter_service && c.lr() == 0x10371e20 && member >= staff
-                        && c.r(5) == date && c.r(6) == club && c.r(7) == 0 && c.r(8) == 0,
+                        && c.r(5) == date && (c.r(6) == club || (c.r(6) >= initial_clubs
+                            && c.r(6) < initial_clubs + c.u32(club_count) * 0x248)) && c.r(7) == 0 && c.r(8) == 0,
                     "Squad exclusion service arguments");
             break;
         default:
@@ -147,10 +219,41 @@ bool dependency(State& s) {
     }
     if (active_trace) {
         auto observed = member;
-        if (active_trace->change_argument && (target == check_exclusion || target == 0x102b7c00)) observed ^= 4;
+        if (target == active_trace->changed_target) observed ^= 4;
         active_trace->calls.push_back({target, c.lr(), {arg0, observed, c.r(5), c.r(6), c.r(7), c.r(8), c.r(9), c.r(10)}});
     }
     if (target == reseed) c.set(3, 0x1234f123);
+    if (target == 0x10773320) c.put32(arg0, 0xfeedface);
+    if (target == 0x10718360) {
+        const auto calls = c.u32(month_calls);
+        c.put32(month_calls, calls + 1);
+        c.set(3, 0x100 | (behavior() == 12 && (calls & 1) ? 7 : c.u8(month)));
+    }
+    if (target == 0x10717b20 || target == 0x10717890) {
+        c.put16(arg0, std::uint16_t(c.i16(date) + (target == 0x10717b20 ? -2 : 3)));
+        c.put16(arg0 + 2, c.u16(date + 2));
+    }
+    if (target == 0x1048b180) {
+        c.set(3, c.u32(initial_clubs + c.r(8) * 0x248 + 0x18));
+        if (behavior() == 15) c.put32(initial_rows, 0);
+    }
+    if (target == 0x10430090) c.put8(member + 0x43, 0x55);
+    if (target == 0x10773520) {
+        const auto count = c.u32(match_allocations);
+        c.put32(match_allocations, count + 1);
+        c.set(3, behavior() == 10 && count == 0 ? 0 : match_object);
+    }
+    if (target == 0x101d16a0) c.put32(arg0, 0x12344321);
+    if (target == 0x101d1760) {
+        const auto count = c.u32(match_runs);
+        c.put32(match_runs, count + 1);
+        c.put32(match_object + 4, c.u32(member + 12) ^ c.u32(member + 16));
+        c.set(3, behavior() == 11 && count == 0 ? 0x100 : 0x101);
+    }
+    if (target == 0x10430550) {
+        c.put32(notifications, c.u32(notifications) + 1);
+        if (behavior() == 14) c.put32(initial_rows, 1);
+    }
     if (target == open_file) {
         c.put32(position, 0);
         c.set(3, arg0 == 0 || behavior() == 1 ? 0 : stream);
@@ -287,7 +390,8 @@ Outcome compare(const State& seed, bool negative_value = false, bool negative_tr
     original->memory.date_observer = &expected;
     modern->memory.date_observer = &actual;
     Trace old_calls, new_calls;
-    new_calls.change_argument = negative_trace;
+    new_calls.changed_target = negative_trace ? seed.pc == initialize ? 0x102b7c00u
+        : seed.pc == update ? 0x1048b180u : check_exclusion : 0;
 
     const auto execute = [](State& s, Trace& trace, bool reference) {
         RoutineChecker no_hooks([](std::uint32_t) { return false; }, 0, 0);
@@ -320,13 +424,30 @@ Outcome compare(const State& seed, bool negative_value = false, bool negative_tr
     require(original->executed == modern->executed, context + " changed instruction accounting");
 
     if (negative_trace) {
-        const auto target = seed.pc == initialize ? 0x102b7c00u : check_exclusion;
+        const auto target = seed.pc == initialize ? 0x102b7c00u : seed.pc == update ? 0x1048b180u : check_exclusion;
         const bool reached = std::ranges::any_of(old_calls.calls, [target](const Call& call) { return call.target == target; });
         require(reached && old_calls.calls != new_calls.calls, context + " missed the changed exclusion argument");
         for (auto& call : new_calls.calls)
             if (call.target == target) call.arguments[1] ^= 4;
     }
-    require(old_calls.calls == new_calls.calls, context + " changed dependency arguments or order");
+    if (old_calls.calls != new_calls.calls) {
+        const auto count = std::min(old_calls.calls.size(), new_calls.calls.size());
+        std::size_t call = 0;
+        while (call < count && old_calls.calls[call] == new_calls.calls[call]) ++call;
+        require(call < count, context + " dependency call counts " + std::to_string(old_calls.calls.size())
+                    + " and " + std::to_string(new_calls.calls.size()));
+        const auto& before = old_calls.calls[call];
+        const auto& after = new_calls.calls[call];
+        std::string detail;
+        for (unsigned arg = 0; arg < before.arguments.size(); ++arg) {
+            if (before.arguments[arg] != after.arguments[arg])
+                detail += " r" + std::to_string(arg + 3) + "=" + hex_address(before.arguments[arg])
+                    + "/" + hex_address(after.arguments[arg]);
+        }
+        throw std::runtime_error(context + " dependency call " + std::to_string(call) + " target="
+            + hex_address(before.target) + "/" + hex_address(after.target) + " return="
+            + hex_address(before.continuation) + "/" + hex_address(after.continuation) + detail);
+    }
 
     const Image image(*original);
     image.compare(*modern, context);
@@ -383,13 +504,13 @@ void check_hooks() {
         require(rejected, "Simulated stats adapter must reject unregistered addresses");
     }
 
-    RoutineChecker checker([](std::uint32_t entry) { return entry == initialize || entry == destroy || entry == count_squad || entry == load || entry == save || entry == sample; }, 1, 1);
+    RoutineChecker checker([](std::uint32_t entry) { return entry == initialize || entry == update || entry == destroy || entry == count_squad || entry == load || entry == save || entry == sample; }, 1, 1);
     checker.strict_volatile = true;
     Services services(nullptr, &checker);
-    for (auto entry : {initialize, destroy, count_squad, load, save, sample}) {
+    for (auto entry : {initialize, update, destroy, count_squad, load, save, sample}) {
         const auto previous = checker.totals().find(entry);
         const auto checked = previous == checker.totals().end() ? 0 : previous->second.checked;
-        auto s = fixture_for(entry);
+        auto s = entry == update ? update_fixture(0, 0) : fixture_for(entry);
         // Enter file hooks on the failed-open path, which needs no allocator.
         Cpu(*s).put8(mode, 1);
         if (entry == initialize) Cpu(*s).set(4, file);
@@ -505,6 +626,126 @@ std::unique_ptr<State> initial_fixture(unsigned count) {
     return s;
 }
 
+std::unique_ptr<State> update_fixture(unsigned groups, unsigned members, std::int16_t day, unsigned season_month) {
+    auto s = initial_fixture(std::max(1u, groups * members));
+    s->memory.map(fixture + 0x2000, 0x2000);
+    s->memory.map(initial_list + 0x2000, 0x10000);
+    s->memory.map(toc - 0x4000, 0x1000);
+    Cpu c(*s);
+    c.put32(toc - 0x4dd4, update_text);
+    c.put32(toc - 0x7b20, update_services);
+    c.put32(toc - 0x7acc, update_services + 0x40);
+    c.put32(toc - 0x7a60, update_services + 4);
+    c.put32(toc - 0x7b4c, update_services + 8);
+    c.put32(toc - 0x7b3c, update_services + 12);
+    c.put32(toc - 0x7b7c, update_services + 16);
+    c.put32(toc - 0x7bb4, update_services + 20);
+    c.put32(toc - 0x7b40, update_services + 24);
+    for (unsigned i = 0; i < 7; ++i) c.put32(update_services + i * 4, update_services + 0x100 + i * 4);
+    c.put8(month, season_month);
+    c.put16(date, std::uint16_t(day));
+    c.put16(date + 2, 2002);
+    c.put32(object, groups);
+    c.put32(object + 4, initial_rows);
+    for (unsigned group = 0; group < groups; ++group) {
+        c.put32(initial_rows + group * record_size, members);
+        for (unsigned member = 0; member < members; ++member)
+            c.put32(initial_rows + group * record_size + 4 + member * 4, group * members + member);
+    }
+    for (unsigned id = 0; id < groups * members; ++id) {
+        const auto club = initial_clubs + id * 0x248;
+        c.put32(club + 0x2c, live_profile);
+        for (unsigned slot = 0; slot < 50; ++slot)
+            c.put32(club + 0x98 + slot * 4, slot < 1 + id % 5 ? staff + slot * member_stride : 0);
+    }
+    for (unsigned slot = 0; slot < 50; ++slot) {
+        const auto person = staff + slot * member_stride;
+        c.put32(person + 0x14, live_profile);
+        c.put32(person + 0x1c, 0x180);
+        c.put32(person + 0x20, 0);
+        c.put32(person + 0x24, 0);
+    }
+    s->pc = update;
+    return s;
+}
+
+void check_updates(unsigned& returned, unsigned& budgets) {
+    for (unsigned members : {0u, 1u, 2u, 3u, 4u, 15u, 16u}) {
+        auto s = update_fixture(1, members);
+        const auto out = compare(*s);
+        require(out.stop.empty(), "Stats update candidate count=" + std::to_string(members) + " " + out.stop);
+        ++returned;
+    }
+    for (const auto [groups, day, season_month] : std::array<std::array<int, 3>, 10>{{
+            {0, 0, 7}, {2, 1, 4}, {2, 2, 5}, {7, 6, 6}, {7, -1, 7},
+            {7, 0, 0xff}, {1, -7, 7}, {1, -6, 7}, {1, INT16_MIN, 1}, {150, INT16_MAX, 7}}}) {
+        auto s = update_fixture(groups, 2, day, season_month);
+        const auto out = compare(*s);
+        require(out.stop.empty(), "Stats update calendar scenario " + std::to_string(day) + " " + out.stop);
+        ++returned;
+    }
+    for (unsigned mode_value : {10u, 11u, 12u, 14u, 15u}) {
+        auto s = update_fixture(1, 4, 0, mode_value == 12 ? 5 : 7);
+        Cpu(*s).put8(mode, mode_value);
+        const auto out = compare(*s);
+        require(out.stop.empty(), "Stats update callback scenario " + std::to_string(mode_value) + " " + out.stop);
+        ++returned;
+    }
+    for (bool upper : {false, true}) {
+        auto s = update_fixture(300, 1);
+        Cpu c(*s);
+        const std::array<unsigned, 6> words = upper ? std::array<unsigned, 6>{0, 299, 1, 0, 0, 1}
+            : std::array<unsigned, 6>{0, 0, 0, 1, 1, 0};
+        for (unsigned i = 0; i < words.size(); ++i) c.put16(random_words + i * 2, words[i]);
+        const auto out = compare(*s);
+        require(out.stop.empty(), "Stats row shuffle rejects an out-of-range destination " + out.stop);
+        ++returned;
+    }
+    for (unsigned scenario = 0; scenario < 4; ++scenario) {
+        auto s = update_fixture(1, 2);
+        Cpu c(*s);
+        c.put8(toc - 0x388e, 1);
+        for (unsigned id = 0; id < 2; ++id)
+            for (unsigned slot = 0; slot < 50; ++slot)
+                if (scenario == 0 || (scenario == 1 && id == 1))
+                    c.put32(initial_clubs + id * 0x248 + 0x98 + slot * 4, 0);
+        if (scenario == 2) c.put32(initial_clubs + 0x248 + 0x2c, 0);
+        if (scenario == 3) c.put32(initial_clubs + 0x248 + 0x18, 1);
+        const auto out = compare(*s);
+        require(out.stop.empty(), "Stats zero-roster or unavailable opponent " + std::to_string(scenario) + " " + out.stop);
+        ++returned;
+    }
+    std::uint32_t mutation = 0x10370e10;
+    const auto next = [&mutation] { mutation = mutation * 1664525u + 1013904223u; return mutation; };
+    for (unsigned scenario = 0; scenario < 4; ++scenario) {
+        auto s = update_fixture(2, 8, scenario & 1, scenario & 1 ? 4 : 7);
+        Cpu c(*s);
+        c.put32(salt, next() & 0xffff);
+        for (unsigned id = 0; id < 16; ++id) {
+            const auto club = initial_clubs + id * 0x248;
+            c.put32(club + 0x18, next() % 5 == 0 ? 1 : 0x10000);
+            c.put32(club + 0x2c, next() % 5 == 0 ? 0 : live_profile);
+            for (unsigned slot = 0; slot < 50; ++slot)
+                c.put32(club + 0x98 + slot * 4, next() % 3 ? staff + slot * member_stride : 0);
+        }
+        const auto out = compare(*s);
+        require(out.stop.empty(), "Seeded stats update " + std::to_string(scenario) + " " + out.stop);
+        ++returned;
+    }
+    auto s = update_fixture(1, 4);
+    Cpu c(*s);
+    c.put32(initial_clubs + 0x18, 0x10001);
+    c.put32(initial_clubs + 0x248 + 0x2c, 0);
+    c.put32(initial_clubs + 2 * 0x248 + 0x18, 0x10000);
+    const auto out = compare(*s, true, true);
+    require(out.stop.empty(), "Stats update eligibility and negative controls " + out.stop);
+    ++returned;
+    s = update_fixture(1, 2);
+    budgets += check_budgets(*s, compare(*s).instructions, 71);
+    s = update_fixture(0, 0);
+    budgets += check_budgets(*s, compare(*s).instructions, 1);
+}
+
 void check_initialization(unsigned& returned, unsigned& budgets) {
     for (unsigned count : {0u, 1u, 15u, 16u, 17u, 31u, 32u, 240u, 241u, 256u, 320u}) {
         auto s = initial_fixture(count);
@@ -602,18 +843,29 @@ unsigned check_inline_draws() {
     constexpr std::array draws{
         RangeDraw{0x103702e4, 19, 0x394, 0x38c, 0x384},
         RangeDraw{0x10370448, 18, 0x384, 0x38c, 0x394},
-        RangeDraw{0x103705a0, 17, 0x384, 0x38c, 0x394}
+        RangeDraw{0x103705a0, 17, 0x384, 0x38c, 0x394},
+        RangeDraw{0x10370ec0, 17, 0x128, 0x120, 0x118, true},
+        RangeDraw{0x10371028, 16, 0x118, 0x120, 0x128, true},
+        RangeDraw{0x10371190, 19, 0x118, 0x120, 0x128, true},
+        RangeDraw{0x1037130c, 18, 0x118, 0x120, 0x128, true},
+        RangeDraw{0x10371470, 19, 0x118, 0x120, 0x128, true},
+        RangeDraw{0x10371864, 16, 0x118, 0x120, 0x128},
+        RangeDraw{0x103719bc, 15, 0x118, 0x120, 0x128}
     };
+    constexpr std::array bound_registers{16u, 21u, 21u, 16u, 18u, 18u, 17u, 16u, 18u, 18u};
     unsigned checked = 0;
-    for (auto draw : draws) {
+    for (unsigned index = 0; index < draws.size(); ++index) {
+        const auto draw = draws[index];
         for (auto bound : {1, -1, 23, -23, 65535, -65535, 65536, -65536, 450000, -450000,
                             429496730, -429496730, -429503283, INT32_MIN, INT32_MAX}) {
             for (auto bias : {0u, 123u, 0x7fff1234u, 0xfffff123u, 0xfffd8003u}) {
                 auto seed = initial_fixture(0);
                 Cpu c(*seed);
-                const auto bound_register = draw.result == 19 ? 16u : 21u;
-                c.set(bound_register, std::uint32_t(bound));
-                c.set({{22, constants}, {23, salt}, {24, random_words}, {25, end}, {26, cursor}});
+                c.set(bound_registers[index], std::uint32_t(bound));
+                if (draw.site < update)
+                    c.set({{22, constants}, {23, salt}, {24, random_words}, {25, end}, {26, cursor}});
+                else
+                    c.set({{23, constants}, {24, salt}, {25, random_words}, {26, end}, {27, cursor}});
                 c.put32(salt, bias);
                 c.set(1, stack - 0x3f0);
                 seed->pc = draw.site;
@@ -717,12 +969,13 @@ void verify() {
     check_persistence(returned, budgets);
     check_sampler(returned, budgets);
     check_initialization(returned, budgets);
+    check_updates(returned, budgets);
     const auto inline_draws = check_inline_draws();
     check_hooks();
     std::cout << "Simulated stats " << returned << " full comparisons, " << budgets
               << " budget limits, " << inline_draws
-              << " complete inline draws, three partial faults, one checked allocation exit, four detected mutations"
-              << " and six checked production hooks\n";
+              << " complete inline draws, three partial faults, one checked allocation exit, six detected mutations"
+              << " and seven checked production hooks\n";
 }
 }
 

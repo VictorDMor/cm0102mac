@@ -28,6 +28,7 @@ class SimulatedStatsAuditTest(unittest.TestCase):
             stats.validate_ownership({}, [(0x1036ff5c, 0x1036ff64, "UNCONDITIONAL_CALL")])
 
     def test_only_registered_entries_are_owned(self):
+        self.assertEqual(stats.SIMULATED_STATS_ENTRIES, stats.ENTRIES)
         for entry in stats.ENTRIES:
             owners = [name for address, name in OWNER_REPLACEMENTS if address == entry]
             expected = ["simulated_stats_adapter"] if entry in stats.SIMULATED_STATS_ENTRIES else []
