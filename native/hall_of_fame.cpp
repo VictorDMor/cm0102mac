@@ -113,8 +113,8 @@ void restore_link(Cpu& c, std::uint32_t caller) {
     c.set_lr(c.r(0));
 }
 
-void report_bad_record(Cpu& c, std::uint32_t pc, std::uint32_t source, std::uint32_t message,
-                       unsigned filename, unsigned extension, unsigned line) {
+void report_message(Cpu& c, std::uint32_t pc, std::uint32_t source, std::uint32_t message,
+                    unsigned filename, unsigned extension, unsigned line) {
     const auto frame = c.sp();
     block(c, pc, 6);
     c.set({{3, source}, {4, 0}, {5, 0}, {6, frame + filename}, {7, frame + extension}});
@@ -130,6 +130,11 @@ void report_bad_record(Cpu& c, std::uint32_t pc, std::uint32_t source, std::uint
     block(c, pc + 56, 4);
     c.set({{4, message}, {3, source + 0x1e}, {5, 0}});
     c.call(0x10769b60, pc + 72);
+}
+
+void report_bad_record(Cpu& c, std::uint32_t pc, std::uint32_t source, std::uint32_t message,
+                       unsigned filename, unsigned extension, unsigned line) {
+    report_message(c, pc, source, message, filename, extension, line);
     block(c, pc + 72, 5);
     c.set(4, c.toc(-0x7bac));
     c.set({{0, 0}, {3, 0}});
@@ -878,6 +883,238 @@ void transform_file(Cpu& c) {
     c.finish();
 }
 
+constexpr auto construct_table_entry = 0x10140730u;
+constexpr auto read_file_entry = 0x10141190u, write_file_entry = 0x10141990u;
+constexpr unsigned table_size = 27 * category_size;
+constexpr auto file_magic = 0x003abfb2u;
+constexpr auto close_stream = 0x107766f0u, clear_memory = 0x10778300u;
+
+struct FileFrame {
+    Cpu& cpu;
+    std::uint32_t table, source, success_flag, message, handle;
+    std::uint32_t frame() const { return cpu.sp(); }
+};
+
+struct FileError {
+    std::uint32_t pc;
+    unsigned filename, extension, line;
+};
+
+void file_error(const FileFrame& file, FileError error, bool clear_table = false) {
+    auto& c = file.cpu;
+    const auto pc = error.pc;
+    report_message(c, pc, file.source, file.message, error.filename, error.extension, error.line);
+    auto resume = pc + 88;
+    if (clear_table) {
+        block(c, pc + 72, 7);
+        c.set({{0, 0}, {4, 0x50000}});
+        c.put8(file.success_flag, 0);
+        c.set({{3, file.table}, {5, table_size}, {4, 0}});
+        c.call(clear_memory, pc + 100);
+        block(c, pc + 100, 2);
+        c.set(3, file.handle);
+        resume = pc + 108;
+    } else {
+        block(c, pc + 72, 4);
+        c.set({{0, 0}, {3, file.handle}});
+        c.put8(file.success_flag, 0);
+    }
+    c.call(close_stream, resume);
+    block(c, resume, 2);
+    c.set(3, 0);
+}
+
+bool stream_item(const FileFrame& file, std::uint32_t resume, bool write) {
+    auto& c = file.cpu;
+    c.call(write ? 0x10776360 : 0x10775fe0, resume);
+    block(c, resume, 2);
+    c.compare_logical(0, c.r(3), 1);
+    return c.r(3) == 1;
+}
+
+bool transfer_item(const FileFrame& file, std::uint32_t pc, std::uint32_t data, unsigned bytes,
+                   bool write) {
+    auto& c = file.cpu;
+    const unsigned count = bytes == table_size ? 6 : 5;
+    block(c, pc, count);
+    c.set({{3, data}, {4, bytes}, {5, 1}, {6, file.handle}});
+    return stream_item(file, pc + count * 4, write);
+}
+
+bool nonzero_byte_result(Cpu& c, std::uint32_t pc) {
+    block(c, pc, 2);
+    const auto status = std::int8_t(c.r(3));
+    c.set(0, std::uint32_t(status));
+    record_compare(c, status);
+    return status != 0;
+}
+
+void close_success(const FileFrame& file, std::uint32_t pc) {
+    auto& c = file.cpu;
+    block(c, pc, 2);
+    c.set(3, file.handle);
+    c.call(close_stream, pc + 8);
+    block(c, pc + 8, 1);
+    c.set(3, 1);
+}
+
+void load_table(const FileFrame& file) {
+    auto& c = file.cpu;
+    const auto header = file.frame() + 0x6c, checksum = file.frame() + 0x38;
+    if (!file.handle) {
+        block(c, 0x101411cc, 2);
+        c.set(3, 0);
+        return;
+    }
+    if (!transfer_item(file, 0x101411d4, header, 8, false))
+        return file_error(file, {0x101411f0, 0x114, 0x64, 0x1bc});
+
+    block(c, 0x10141250, 4);
+    const auto magic = c.u32(header);
+    c.set({{3, magic}, {0, magic - 0x003a0000}});
+    c.compare_logical(0, c.r(0), 0xbfb2);
+    if (magic != file_magic)
+        return file_error(file, {0x10141260, 0xf4, 0x5c, 0x1c4});
+
+    block(c, 0x101412c0, 3);
+    const auto version = c.u8(header + 4);
+    c.set(0, version);
+    c.compare(0, version, 1);
+    if (version != 1)
+        return file_error(file, {0x101412cc, 0xd4, 0x54, 0x1cc});
+    if (!transfer_item(file, 0x1014132c, file.table, table_size, false))
+        return file_error(file, {0x1014134c, 0xb4, 0x4c, 0x1d4}, true);
+    if (!transfer_item(file, 0x101413c0, checksum, 4, false))
+        return file_error(file, {0x101413dc, 0x94, 0x44, 0x1dd}, true);
+
+    block(c, 0x10141450, 5);
+    c.set(4, 0x50000);
+    c.set(5, c.u32(checksum));
+    c.set({{3, file.table}, {4, table_size}});
+    call_owned(c, decode_entry, 0x10141464, transform_file<false>);
+    if (!nonzero_byte_result(c, 0x10141464))
+        return file_error(file, {0x1014146c, 0x74, 0x3c, 0x1e6}, true);
+    close_success(file, 0x101414e0);
+}
+
+void save_table(const FileFrame& file) {
+    auto& c = file.cpu;
+    const auto frame = file.frame(), checksum = frame + 0x38;
+    if (!file.handle) {
+        block(c, 0x101419cc, 3);
+        c.set({{3, frame + 0x10c}, {4, file.source + 0x5a}});
+        c.call(0x10727890, 0x101419d8);
+        block(c, 0x101419d8, 3);
+        c.set({{3, frame + 0x170}, {4, file.source + 0x6f}});
+        c.call(0x10727890, 0x101419e4);
+        block(c, 0x101419e4, 4);
+        c.set({{3, frame + 0x10c}, {4, frame + 0x170}, {5, 0}});
+        c.call(0x10769b60, 0x101419f4);
+        block(c, 0x101419f4, 2);
+        c.set(3, 0);
+        return;
+    }
+
+    block(c, 0x101419fc, 10);
+    c.set({{3, 0x003b0000}, {0, 1}, {4, file_magic}});
+    c.put8(frame + 0x68, 1);
+    c.set({{6, file.handle}, {3, frame + 0x64}});
+    // The remaining three bytes of the header retain their stack contents.
+    c.put32(frame + 0x64, file_magic);
+    c.set({{4, 8}, {5, 1}});
+    if (!stream_item(file, 0x10141a24, true))
+        return file_error(file, {0x10141a2c, 0xec, 0x5c, 0x288});
+
+    block(c, 0x10141a8c, 5);
+    c.set({{3, file.table}, {4, table_size}, {5, checksum}});
+    call_owned(c, encode_entry, 0x10141aa0, transform_file<true>);
+    if (!nonzero_byte_result(c, 0x10141aa0))
+        return file_error(file, {0x10141aa8, 0xcc, 0x54, 0x290});
+
+    // A short write leaves the live table encoded in the original.
+    if (!transfer_item(file, 0x10141b08, file.table, table_size, true))
+        return file_error(file, {0x10141b28, 0xac, 0x4c, 0x298});
+    if (!transfer_item(file, 0x10141b88, checksum, 4, true))
+        return file_error(file, {0x10141ba4, 0x8c, 0x44, 0x2a0});
+
+    block(c, 0x10141c04, 5);
+    c.set(4, 0x50000);
+    c.set(5, c.u32(checksum));
+    c.set({{3, file.table}, {4, table_size}});
+    call_owned(c, decode_entry, 0x10141c18, transform_file<false>);
+    if (!nonzero_byte_result(c, 0x10141c18))
+        return file_error(file, {0x10141c20, 0x6c, 0x3c, 0x2a8});
+    close_success(file, 0x10141c80);
+}
+
+template<bool Write>
+void table_file(Cpu& c) {
+    constexpr auto entry = Write ? write_file_entry : read_file_entry;
+    constexpr auto end = Write ? 0x10141c8cu : 0x101414ecu;
+    GuestNativeScope scope(c.s, entry);
+    block(c, entry, 11);
+    const auto caller = c.sp(), table = c.r(3);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, caller);
+    const auto source = c.toc(-0x54cc);
+    c.set(Write ? 29 : 31, source);
+    c.set(27, table);
+    const auto success = c.toc(-0x7bac);
+    c.set(Write ? 31 : 29, success);
+    const auto message = c.toc(-0x7ba8);
+    c.set(Write ? 28 : 30, message);
+    c.set({{3, source + 0x39}, {4, source + 0x43}});
+    c.put32(caller + 8, c.r(0));
+    push_frame(c, scope, caller, caller - (Write ? 0x380 : 0x150));
+    c.call(0x10746280, entry + 44);
+    block(c, entry + 44, 2);
+    c.set(4, source + (Write ? 0x57 : 0x54));
+    c.call(0x10739de0, entry + 52);
+    block(c, entry + 52, 2);
+    const auto handle = c.r(3);
+    c.set(Write ? 30 : 28, handle);
+    record_compare(c, std::int32_t(handle));
+
+    const FileFrame file{c, table, source, success, message, handle};
+    if constexpr (Write) save_table(file);
+    else load_table(file);
+
+    block(c, end, 5);
+    restore_link(c, caller);
+    guest::transfer_saved_registers<27, true>(c, caller);
+    c.finish();
+}
+
+void construct_table(Cpu& c) {
+    GuestNativeScope scope(c.s, construct_table_entry);
+    block(c, construct_table_entry, 10);
+    const auto caller = c.sp(), table = c.r(3);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set(4, c.toc(-0x7404));
+    c.set(31, table);
+    c.put32(caller + 8, c.r(0));
+    c.set({{5, 0}, {6, record_size}, {7, table_size / record_size}});
+    push_frame(c, scope, caller, caller - 0x40);
+    c.call(0x10773320, 0x10140758);
+    block(c, 0x10140758, 5);
+    c.set({{3, table}, {4, 0}, {5, table_size}});
+    c.call(clear_memory, 0x1014076c);
+    block(c, 0x1014076c, 2);
+    c.set(3, table);
+    call_owned(c, read_file_entry, 0x10140774, table_file<false>);
+    if (!nonzero_byte_result(c, 0x10140774)) {
+        block(c, 0x1014077c, 2);
+        c.set(3, table);
+        call_owned(c, write_file_entry, 0x10140784, table_file<true>);
+    }
+    block(c, 0x10140784, 6);
+    c.set(3, table);
+    restore_link(c, caller);
+    c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
 }
 
 void hall_of_fame_run_original(State& state, std::uint32_t entry) {
@@ -887,6 +1124,9 @@ void hall_of_fame_run_original(State& state, std::uint32_t entry) {
 void hall_of_fame_run_rewrite(State& state, std::uint32_t entry) {
     Cpu c(state);
     switch (entry) {
+    case construct_table_entry: construct_table(c); break;
+    case read_file_entry: table_file<false>(c); break;
+    case write_file_entry: table_file<true>(c); break;
     case initialize_record_entry: initialize_record(c); break;
     case compare_rank_entry: compare_rank(c); break;
     case record_at_entry: record_at(c); break;

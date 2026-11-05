@@ -23,6 +23,15 @@ constexpr auto today = fixture + 0x710, game_id = fixture + 0x718, country_count
 constexpr auto staff_count = fixture + 0x720, nation_values = fixture + 0x800;
 constexpr auto club_name = fixture + 0x900, nation_name = fixture + 0x920, rank_descriptor = fixture + 0x940;
 constexpr auto real_sort = fixture + 0x980;
+constexpr auto construct_table = 0x10140730u, read_file = 0x10141190u, write_file = 0x10141990u;
+constexpr unsigned table_size = 27 * bucket_size;
+constexpr auto file_path = fixture + 0xa00, file_handle = fixture + 0xa80;
+constexpr auto file_position = fixture + 0xa90, file_size = fixture + 0xa94;
+constexpr auto fail_open = fixture + 0xa98, short_at = fixture + 0xa9c;
+constexpr auto file_contents = fixture + 0x100000;
+constexpr auto record_constructor = fixture + 0xb00;
+constexpr unsigned file_capacity = table_size + 12;
+constexpr auto read_item_entry = 0x10775fe0u, write_item_entry = 0x10776360u;
 using Call = std::array<std::uint32_t, 34>;
 std::vector<Call>* call_trace = nullptr;
 
@@ -47,6 +56,50 @@ bool dependencies(State& s) {
     Call call{pc, lr};
     for (unsigned reg = 0; reg < 32; ++reg) call[reg + 2] = c.r(reg);
     switch (pc) {
+    case 0x10746280:
+        require(c.r(3) == source + 0x39 && c.r(4) == source + 0x43, "Hall of Fame path");
+        c.set(3, file_path);
+        break;
+    case 0x10739de0: {
+        const auto mode = c.r(4) - source;
+        require(c.r(3) == file_path && (mode == 0x54 || mode == 0x57), "Hall of Fame open arguments");
+        const bool write = mode == 0x57;
+        const bool missing = (c.u8(fail_open) & (write ? 2 : 1)) != 0;
+        if (!missing) {
+            c.put32(file_position, 0);
+            if (write) c.put32(file_size, 0);
+        }
+        c.set(3, missing ? 0 : file_handle);
+        break;
+    }
+    case read_item_entry: case write_item_entry: {
+        const auto buffer = c.r(3), bytes = c.r(4), position = c.u32(file_position);
+        const bool write = pc == write_item_entry;
+        require(c.r(5) == 1 && c.r(6) == file_handle &&
+                    (position == 0 ? bytes == 8 : position == 8 ? bytes == table_size :
+                     position == 8 + table_size && bytes == 4), "Hall of Fame stream transfer");
+        const auto available = c.u32(file_size) - position;
+        const auto transferred = write ? bytes - (c.u32(short_at) == position) : std::min(bytes, available);
+        const auto file = file_contents + position;
+        const auto from = write ? buffer : file, to = write ? file : buffer;
+        if (transferred) s.memory.copy_in(to, s.memory.copy_out(from, transferred));
+        c.put32(file_position, position + transferred);
+        if (write) c.put32(file_size, position + transferred);
+        c.set(3, transferred == bytes);
+        break;
+    }
+    case 0x107766f0:
+        require(c.r(3) == file_handle, "Hall of Fame close argument");
+        c.set(3, UINT32_MAX); // The original disregards a close error.
+        break;
+    case 0x10773320:
+        require(c.r(3) == table && c.r(4) == record_constructor && !c.r(5) && c.r(6) == row_size &&
+                    c.r(7) == table_size / row_size, "Hall of Fame table constructor arguments");
+        break;
+    case 0x10778300:
+        require(c.r(3) == table && !c.r(4) && c.r(5) == table_size, "Hall of Fame table clear arguments");
+        s.memory.copy_in(table, std::vector<std::uint8_t>(table_size));
+        break;
     case 0x10739890:
         require(c.r(3) == source && !c.r(4) && !c.r(5), "diagnostic filename");
         c.put8(c.r(6), 'H'); c.put8(c.r(7), 'C');
@@ -63,7 +116,10 @@ bool dependencies(State& s) {
         c.set(3, 5);
         break;
     case 0x10769b60:
-        require(c.r(3) == source + 0x1e && c.r(4) == message && !c.r(5), "assertion display");
+        if (lr == 0x101419f4)
+            require(c.r(3) == frame + 0x10c && c.r(4) == frame + 0x170 && !c.r(5), "open error display");
+        else
+            require(c.r(3) == source + 0x1e && c.r(4) == message && !c.r(5), "assertion display");
         break;
     case 0x100caeb0:
         require(c.r(3) == person && c.r(4) == frame + 0x270 && c.r(5) == 200 && c.r(6) == 1,
@@ -90,8 +146,15 @@ bool dependencies(State& s) {
         put_text(c, c.r(3), text_at(c, c.r(4)));
         break;
     case 0x10727890:
-        require(c.r(3) == frame + 0x270 && c.r(4) == source + 0x2a, "fallback affiliation name");
-        put_text(c, c.r(3), "No Club/Nation");
+        if (lr == 0x101419d8 || lr == 0x101419e4) {
+            const bool title = lr == 0x101419d8;
+            require(c.r(3) == frame + (title ? 0x10c : 0x170) && c.r(4) == source + (title ? 0x5a : 0x6f),
+                    "open error formatting");
+            put_text(c, c.r(3), title ? "Hall of Fame" : "Could not open the file");
+        } else {
+            require(c.r(3) == frame + 0x270 && c.r(4) == source + 0x2a, "fallback affiliation name");
+            put_text(c, c.r(3), "No Club/Nation");
+        }
         break;
     case 0x1077f900:
         require(!c.r(3), "ranking timestamp ABI");
@@ -134,7 +197,7 @@ struct Model {
 enum class Stop { returned, unmapped, budget };
 enum class Corrupt { none, result, dependency };
 
-void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt::none,
+std::unique_ptr<State> compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt::none,
                   bool trace_memory = true) {
     auto original = clone(initial), rewrite = clone(initial);
     Effects original_effects, rewrite_effects;
@@ -146,6 +209,7 @@ void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt
         if (dispatch_probe) {
             localization_format_diagnostics(s).original_body = 0x10727890;
             s.time_runtime_original_body = 0x1077f900;
+            s.stream_io_original = s.stream_buffer_original = true;
         }
         effects.state = &s;
         s.memory.date_observer = trace_memory ? &effects : nullptr;
@@ -209,6 +273,7 @@ void compare_call(const State& initial, Stop expected, Corrupt corrupt = Corrupt
     }
     Image(*original).compare(*rewrite, corrupt == Corrupt::result ? "corrupted comparator" :
         label, expected == Stop::unmapped);
+    return rewrite;
 }
 
 std::unique_ptr<State> seed(std::mt19937& random) {
@@ -506,9 +571,128 @@ void check_codec() {
                  "table and checksum aliasing, a bad checksum, one fault and one budget stop\n";
 }
 
+void check_persistence() {
+    std::mt19937 random(0x46494c45);
+    auto state = score_seed(random);
+    state->memory.map(codec_keys, 480 * 4);
+    state->memory.map(file_contents, file_capacity);
+    state->budget = 50000000;
+    Cpu c(*state);
+    c.put32(toc - 0x54d8, codec_keys);
+    c.put32(toc - 0x7404, record_constructor);
+    for (unsigned i = 0; i < 480; ++i) c.put32(codec_keys + i * 4, random() & 0x7fffffff);
+    for (unsigned i = 0; i < table_size; ++i) c.put8(table + i, random());
+    const auto plain = state->memory.copy_out(table, table_size);
+    const std::vector<std::uint8_t> empty(table_size);
+    c.set({{3, table}, {4, table_size}, {5, checksum_out}});
+    state->pc = encode;
+    auto encoded_state = clone(*state);
+    hall_of_fame_run_original(*encoded_state, encode);
+    const auto encoded = encoded_state->memory.copy_out(table, table_size);
+    const auto checksum = Cpu(*encoded_state).u32(checksum_out);
+    require(encoded != plain, "persistence fixture must transform the table");
+
+    Model model;
+    struct ReadCase {
+        unsigned bytes, magic, version, sum, line;
+        bool missing, clears;
+    };
+    for (const auto test : std::array{
+            ReadCase{file_capacity, 0x003abfb2, 1, checksum, 0, false, false},
+            ReadCase{file_capacity, 0x003abfb2, 1, checksum, 0, true, false},
+            ReadCase{7, 0x003abfb2, 1, checksum, 0x1bc, false, false},
+            ReadCase{file_capacity, 0x003abfb3, 1, checksum, 0x1c4, false, false},
+            ReadCase{file_capacity, 0x003abfb2, 2, checksum, 0x1cc, false, false},
+            ReadCase{8 + table_size - 1, 0x003abfb2, 1, checksum, 0x1d4, false, true},
+            ReadCase{file_capacity - 1, 0x003abfb2, 1, checksum, 0x1dd, false, true},
+            ReadCase{file_capacity, 0x003abfb2, 1, checksum ^ 1, 0x1e6, false, true}}) {
+        state->memory.copy_in(file_contents + 8, encoded);
+        c.put32(file_contents, test.magic);
+        c.put8(file_contents + 4, test.version);
+        c.put32(file_contents + 8 + table_size, test.sum);
+        c.put32(file_size, test.bytes);
+        c.put8(fail_open, test.missing);
+        state->memory.copy_in(table, std::vector<std::uint8_t>(table_size, 0xa5));
+        const auto initial = state->memory.copy_out(table, table_size);
+        c.set(3, table);
+        state->pc = read_file;
+        auto result = compare_call(*state, Stop::returned, Corrupt::none, false);
+        Cpu after(*result);
+        const bool ok = !test.missing && !test.line;
+        require(after.r(3) == ok && after.u32(message) == test.line &&
+                    after.u8(success) == !test.line, "load result and diagnostic");
+        require(result->memory.copy_out(table, table_size) == (ok ? plain : test.clears ? empty : initial),
+                "load table result, including the clear-on-failure boundary");
+    }
+
+    struct WriteCase { unsigned short_position, line; bool missing, null_table; };
+    for (const auto test : std::array{
+            WriteCase{UINT32_MAX, 0, false, false},
+            WriteCase{UINT32_MAX, 0, true, false},
+            WriteCase{0, 0x288, false, false},
+            WriteCase{UINT32_MAX, 0x290, false, true},
+            WriteCase{8, 0x298, false, false},
+            WriteCase{8 + table_size, 0x2a0, false, false}}) {
+        c.put32(file_size, 0);
+        c.put32(short_at, test.short_position);
+        c.put8(fail_open, test.missing ? 2 : 0);
+        state->memory.copy_in(table, plain);
+        c.set(3, test.null_table ? 0 : table);
+        state->pc = write_file;
+        auto result = compare_call(*state, Stop::returned, Corrupt::none, false);
+        Cpu after(*result);
+        const bool ok = !test.missing && !test.line;
+        const bool leaves_encoded = test.line == 0x298 || test.line == 0x2a0;
+        require(after.r(3) == ok && after.u32(message) == test.line &&
+                    after.u8(success) == !test.line, "save result and diagnostic");
+        require(result->memory.copy_out(table, table_size) == (leaves_encoded ? encoded : plain),
+                "save table result, including the encoded short-write state");
+        if (ok)
+            require(after.u32(file_size) == file_capacity && after.u32(file_contents) == 0x003abfb2 &&
+                        after.u8(file_contents + 4) == 1 &&
+                        result->memory.copy_out(file_contents + 8, table_size) == encoded &&
+                        after.u32(file_contents + 8 + table_size) == checksum, "save bytes");
+    }
+
+    c.put32(short_at, UINT32_MAX);
+    c.put8(fail_open, 0);
+    c.set(3, table);
+    state->pc = write_file;
+    bool rejected = false;
+    try { compare_call(*state, Stop::returned, Corrupt::dependency, false); }
+    catch (const std::runtime_error& error) {
+        rejected = std::string_view(error.what()).find("ordered dependency arguments") != std::string_view::npos;
+    }
+    require(rejected, "file dependency trace corruption must fail");
+
+    for (const unsigned open_mask : {0u, 1u, 3u}) {
+        state->memory.copy_in(file_contents + 8, encoded);
+        c.put32(file_contents, 0x003abfb2);
+        c.put8(file_contents + 4, 1);
+        c.put32(file_contents + 8 + table_size, checksum);
+        c.put32(file_size, file_capacity);
+        c.put32(short_at, UINT32_MAX);
+        c.put8(fail_open, open_mask);
+        c.set(3, table);
+        state->pc = construct_table;
+        auto result = compare_call(*state, Stop::returned, Corrupt::none, false);
+        Cpu after(*result);
+        require(after.r(3) == table && result->memory.copy_out(table, table_size) == (open_mask ? empty : plain),
+                "table construction initializes before loading");
+        require(after.u32(file_contents + 8 + table_size) == (open_mask == 1 ? 0u : checksum),
+                "table construction writes a new empty table only when required");
+    }
+    std::cout << "17 Hall of Fame persistence and table construction comparisons with ordered dependencies and file bytes\n";
 }
 
-int main() try {
+}
+
+int main(int argc, char** argv) try {
+    if (argc == 2 && std::string_view(argv[1]) == "--persistence") {
+        check_persistence();
+        return 0;
+    }
+    require(argc == 1, "unknown Hall of Fame checker option");
     check_rank();
     check_record_initialization();
     check_records();
