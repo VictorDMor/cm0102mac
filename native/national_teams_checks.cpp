@@ -50,10 +50,12 @@ constexpr auto injury_assert_buffer = fixture + 0x6b00, injury_success = fixture
 constexpr auto recipient_club = clubs + 5 * 0x248;
 constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish = 0x102cc140u;
 constexpr auto calendar_availability = 0x102b9e50u, calendar_save = 0x102b96e0u;
+constexpr auto calendar_load = 0x102b8ec0u;
 constexpr auto archive_path = fixture + 0x6c80, archive_companion = fixture + 0x6ca0;
 constexpr auto archive_primary = fixture + 0x6d00, archive_secondary = fixture + 0x6d20;
 constexpr auto archive_years = fixture + 0x6d40, archive_flags = fixture + 0x6d50;
 constexpr auto archive_trace = fixture + 0x8000, archive_bytes = fixture + 0x8200;
+constexpr auto archive_arena = fixture + 0xb000, archive_nodes = archive_arena + 0x3000;
 constexpr auto archive_stream = 0x51515151u;
 constexpr std::array archive_error_lines{0x2039u, 0x2041u, 0x2048u, 0x2061u, 0x2079u, 0x2092u,
                                          0x20b2u, 0x20c0u, 0x20c0u, 0x20c9u, 0x20d6u, 0x20dfu, 0x20e6u};
@@ -102,7 +104,8 @@ void fixture_date(Cpu& c, std::uint32_t to, int day, unsigned year) {
 bool observe_dependency(State& s) {
     Cpu c(s);
     const auto entry = s.pc, resume = c.lr(), frame = c.sp();
-    const bool calendar_archive = resume >= 0x102b9740 && resume <= 0x102b9e34;
+    const bool calendar_read = resume >= 0x102b8f24 && resume <= 0x102b96c4;
+    const bool calendar_archive = calendar_read || (resume >= 0x102b9740 && resume <= 0x102b9e34);
     switch (entry) {
     case 0x100ce250: case 0x100c7d00: case 0x10738e00: case 0x10717b20: case 0x10717890:
     case 0x1048b180: case dispose_list: case localize: case 0x107156b0: break;
@@ -112,6 +115,9 @@ bool observe_dependency(State& s) {
     case 0x100c76c0: case 0x100c7860: break;
     case 0x107475b0: case 0x10747cc0: case 0x10747900: case 0x10487640:
         if (!calendar_archive) return false;
+        break;
+    case 0x10747a80: case 0x10775130: case 0x10775200: case 0x10773520: case 0x10738d10:
+        if (!calendar_read) return false;
         break;
     case 0x10494d20:
         if (resume != 0x102b9f08) return false;
@@ -130,7 +136,7 @@ bool observe_dependency(State& s) {
     dependencies->push_back(call);
     switch (entry) {
     case 0x107475b0:
-        require(c.r(3) == archive_path && c.r(4) == source + 0x7cda && c.r(5) == 1 &&
+        require(c.r(3) == archive_path && c.r(4) == source + 0x7cda && c.r(5) == unsigned(!calendar_read) &&
                     c.r(6) == 0x16 && c.r(7) == 4, "calendar archive open ABI");
         c.set(3, c.u8(archive_trace) == 0xff ? 0 : archive_stream);
         break;
@@ -147,6 +153,45 @@ bool observe_dependency(State& s) {
         c.put32(archive_trace + 4, call);
         c.put32(archive_trace + 8, offset + size);
         c.set(3, actual);
+        break;
+    }
+    case 0x10747a80: {
+        const auto width = c.r(4), requested = c.r(5);
+        require(c.r(6) == archive_stream && width && width <= 0x74, "calendar archive read ABI");
+        const auto call = c.u32(archive_trace + 4) + 1;
+        const auto offset = c.u32(archive_trace + 8);
+        const auto available = c.u32(archive_trace + 0x14);
+        require(offset <= available, "calendar archive read cursor");
+        auto actual = std::min(requested, (available - offset) / width);
+        if (actual && c.u8(archive_trace) == call) --actual;
+        const auto size = actual * width;
+        if (size) s.memory.copy_in(c.r(3), s.memory.copy_out(archive_bytes + offset, size));
+        c.put32(archive_trace + 4, call);
+        c.put32(archive_trace + 8, offset + size);
+        c.set(3, actual);
+        break;
+    }
+    case 0x10775130: case 0x10775200: case 0x10773520: {
+        const auto call = c.u32(archive_trace + 0x1c) + 1;
+        const auto size = entry == 0x10775200 ? c.r(3) * c.r(4) : c.r(3);
+        require(call <= 7 && size <= 0x400, "calendar archive allocation capacity");
+        c.put32(archive_trace + 0x1c, call);
+        c.set(3, c.u8(archive_trace + 0x18) == call ? 0 : archive_arena + (call - 1) * 0x400);
+        break;
+    }
+    case 0x10738d10: {
+        const auto list = c.r(3);
+        require(c.r(4) == frame + 0x108 && c.r(5) == 0x14, "calendar archive append ABI");
+        const auto count = c.u16(list);
+        require(count < 2, "calendar archive list capacity");
+        const auto node = archive_nodes + count * 0x40, data = node + 0x10, tail = c.u32(list + 8);
+        s.memory.copy_in(data, s.memory.copy_out(c.r(4), c.r(5)));
+        c.put32(node, data);
+        c.put32(node + 4, tail);
+        c.put32(node + 8, 0);
+        c.put32(tail ? tail + 8 : list + 4, node);
+        c.put32(list + 8, node);
+        c.put16(list, count + 1);
         break;
     }
     case 0x10747900:
@@ -338,7 +383,12 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
     std::vector<DependencyCall> original_calls, rewrite_calls;
     const auto run = [&](State& s, Effects& effects, std::vector<DependencyCall>& calls, bool reference) {
         std::optional<ObserveCalls> observer;
-        if (!real_dependencies) observer.emplace(calls);
+        if (!real_dependencies) {
+            observer.emplace(calls);
+            // The original caller can enter the allocator without dispatching.
+            // Decline that direct route so the fixture sees both calls.
+            if (input.pc == calendar_load) s.allocator_original = true;
+        }
         struct RestoreChecker {
             RoutineChecker* previous = routine_checker;
             ~RestoreChecker() { routine_checker = previous; }
@@ -346,11 +396,13 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
         RoutineChecker notice_boundary([](std::uint32_t entry) {
             return entry == club_notice || entry == nation_notice || entry == replacement_notice || entry == injured_selection ||
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
-                entry == add_replacement || entry == replacement_objection || entry == automatic_replacement || entry == calendar_save;
+                entry == add_replacement || entry == replacement_objection || entry == automatic_replacement ||
+                entry == calendar_save || entry == calendar_load;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection ||
-                                   input.pc == automatic_replacement || input.pc == calendar_save))
+                                   input.pc == automatic_replacement || input.pc == calendar_save ||
+                                   input.pc == calendar_load))
             routine_checker = &notice_boundary;
         if (input.pc == duty) {
             utility_object_diagnostics(s).original_body = dispose_list;
@@ -374,6 +426,11 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
     if (input.pc == automatic_replacement) {
         label += " mode=" + hex_address(std::uint32_t(input.r<4>(guest::reg::gpr(5)))) +
                  " tier=" + hex_address(std::uint32_t(input.r<4>(guest::reg::gpr(6))));
+    }
+    if (input.pc == calendar_load) {
+        label += " read=" + std::to_string(input.memory.read<1>(archive_trace)) +
+                 " alloc=" + std::to_string(input.memory.read<1>(archive_trace + 0x18)) +
+                 " length=" + std::to_string(input.memory.read<4>(archive_trace + 0x14));
     }
     require(a == b && (expected == Stop::fault ? a.starts_with("Unmapped data access at ") :
                       expected == Stop::budget ? a == "Native instruction budget exhausted" : a.empty()),
@@ -1732,6 +1789,132 @@ unsigned check_calendar_save(std::mt19937& random) {
     return comparisons;
 }
 
+unsigned check_calendar_load(std::mt19937& random) {
+    constexpr unsigned headers_start = 302, years_start = 342, flags_start = 350;
+    constexpr std::array read_errors{0u, 0x1f84u, 0x1f8bu, 0x1f9bu, 0x1fb3u, 0x1fc3u,
+                                     0x1fdbu, 0x1fedu, 0x1fedu, 0u, 0x200du, 0u, 0u};
+    constexpr std::array allocation_errors{0u, 0x1f76u, 0u, 0u, 0x1f93u, 0x1fbbu, 0u, 0x2006u};
+    auto writer = calendar_save_seed(random, false);
+    const auto saved = compare(*writer);
+    const auto bytes = saved->memory.copy_out(archive_bytes, Cpu(*saved).u32(archive_trace + 8));
+    require(bytes.size() == flags_start + 2, "calendar populated archive size");
+
+    const auto loader = [&](unsigned length, unsigned read_failure = 0, unsigned alloc_failure = 0) {
+        auto state = clone(*writer);
+        state->pc = calendar_load;
+        state->memory.map(archive_arena, 0x4000);
+        state->memory.copy_in(archive_bytes, bytes);
+        Cpu c(*state);
+        c.set({{3, calendar}, {4, archive_path}});
+        c.put32(calendar, 0);
+        c.put64(calendar_headers, 0);
+        c.put64(calendar_headers + 8, 0);
+        c.put8(archive_trace, read_failure);
+        c.put32(archive_trace + 0x14, length);
+        c.put8(archive_trace + 0x18, alloc_failure);
+        return state;
+    };
+    unsigned comparisons = 0;
+    const auto run = [&](const State& state, unsigned error_line, bool opened = true) {
+        auto after = compare(state);
+        Cpu c(*after);
+        const bool success = opened && !error_line;
+        require(c.r(3) == unsigned(success) && c.u8(injury_success) == unsigned(!error_line) &&
+                    c.u8(archive_trace + 0xc) == unsigned(success) && !c.u8(archive_trace + 0xd) &&
+                    c.u32(archive_trace + 0x10) == error_line,
+                "calendar load return, assertion and close ordering");
+        ++comparisons;
+        return after;
+    };
+
+    for (const unsigned length : {unsigned(bytes.size()), flags_start + 1, flags_start,
+                                   years_start + 4, years_start, headers_start + 8, headers_start}) {
+        const auto state = loader(length);
+        const auto after = run(*state, 0);
+        Cpu c(*after);
+        require(after->memory.copy_out(c.u32(calendar + 4), 2 * record_size) ==
+                    writer->memory.copy_out(records, 2 * record_size), "calendar nation records restored");
+        const auto primary = c.u32(calendar + 0xc), secondary = c.u32(calendar + 0x10);
+        require(c.u32(calendar + 0x14) == 3 && c.u32(calendar + 0x18) == 2 &&
+                    c.u32(primary) == staff_table + 0xe0 && !c.u32(primary + 4) &&
+                    c.u32(primary + 8) == staff_table && !c.u32(secondary) &&
+                    c.u32(secondary + 4) == staff_table + 0x70, "calendar queue IDs restored as staff pointers");
+        const auto list = c.u32(calendar);
+        require(c.u16(list) == 2 && c.u32(list + 4) == archive_nodes &&
+                    c.u32(list + 8) == archive_nodes + 0x40 && !c.u32(list + 12),
+                "calendar list construction and append order");
+        for (unsigned i = 0; i < 2; ++i) {
+            const auto node = archive_nodes + i * 0x40;
+            require(after->memory.copy_out(c.u32(node), 0x14) ==
+                        writer->memory.copy_out(roster_rows + i * 0x20, 0x14), "calendar list row restored");
+        }
+        if (length >= years_start) {
+            require(c.u8(calendar_headers + 4) == 2 && c.u8(calendar_headers + 5) == 2 &&
+                        after->memory.copy_out(c.u32(calendar_headers), 24) ==
+                            writer->memory.copy_out(home_events, 24), "calendar club event rows restored");
+        } else {
+            require(!c.u8(calendar_headers + 4) && c.u32(archive_trace + 0x1c) == 6,
+                    "calendar short club headers skip row allocations");
+        }
+        const auto years = c.u32(calendar + 8), flags = c.u32(calendar + 0x38);
+        require(c.u32(years) == (length >= flags_start ? 0x10203040u : UINT32_MAX) &&
+                    c.u32(years + 4) == (length >= flags_start ? 0x50607080u : UINT32_MAX) &&
+                    c.u8(flags) == (length > flags_start ? 0x42u : 0u) &&
+                    c.u8(flags + 1) == (length > flags_start + 1 ? 0x81u : 0u),
+                "calendar load trailer defaults and partial flags");
+    }
+
+    for (unsigned call = 1; call < read_errors.size(); ++call) {
+        if (read_errors[call]) run(*loader(bytes.size(), call), read_errors[call]);
+    }
+    for (unsigned call = 1; call < allocation_errors.size(); ++call) {
+        if (allocation_errors[call]) run(*loader(bytes.size(), 0, call), allocation_errors[call]);
+    }
+    run(*loader(bytes.size(), 0xff), 0x1f6d, false);
+    auto state = loader(bytes.size());
+    Cpu(*state).set(4, 0);
+    run(*state, 0, false);
+    for (const unsigned call : {2, 3}) {
+        state = loader(bytes.size(), 0, call);
+        compare(*state, Stop::fault);
+    }
+    state = loader(bytes.size());
+    state->budget = 0;
+    compare(*state, Stop::budget);
+
+    constexpr unsigned list_rows_start = headers_start - 2 * 0x14;
+    auto negative_count = bytes;
+    negative_count[list_rows_start - 2] = 0xff;
+    negative_count[list_rows_start - 1] = 0xff;
+    negative_count.erase(negative_count.begin() + list_rows_start, negative_count.begin() + headers_start);
+    for (const unsigned failed_allocation : {0u, 6u}) {
+        state = loader(negative_count.size(), 0, failed_allocation);
+        state->memory.copy_in(archive_bytes, negative_count);
+        const auto loaded = run(*state, 0);
+        Cpu c(*loaded);
+        const auto list = c.u32(calendar);
+        require((failed_allocation ? !list : list == archive_arena + 5 * 0x400 && !c.u16(list)) &&
+                    c.u32(archive_trace + 4) == 10 && c.u32(archive_trace + 8) == negative_count.size(),
+                "negative list count skips appends even when list allocation fails");
+    }
+
+    const auto empty_writer = calendar_save_seed(random, true);
+    const auto empty = compare(*empty_writer);
+    const auto empty_bytes = empty->memory.copy_out(archive_bytes, Cpu(*empty).u32(archive_trace + 8));
+    require(empty_bytes.size() == 10, "calendar empty archive size");
+    state = loader(empty_bytes.size());
+    state->memory.copy_in(archive_bytes, empty_bytes);
+    Cpu c(*state);
+    c.put32(nation_count, 0);
+    c.put32(club_count, 0);
+    c.put32(calendar, roster_list);
+    const auto loaded_empty = run(*state, 0);
+    Cpu result(*loaded_empty);
+    require(result.u32(calendar) == roster_list && result.u32(archive_trace + 0x1c) == 5 &&
+                result.u32(archive_trace + 8) == empty_bytes.size(), "empty load preserves an existing list");
+    return comparisons;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -1793,6 +1976,8 @@ int main() try {
     const auto dispatch = check_replacement_dispatch(random);
     const auto calendar_cases = check_calendar_availability(random);
     const auto calendar_saves = check_calendar_save(random);
+    const auto calendar_loads = check_calendar_load(random);
+    std::cout << calendar_loads << " NATIONAL_TEAMS calendar load comparisons, 2 faults and 1 budget stop\n";
     std::cout << calendar_saves << " NATIONAL_TEAMS calendar save comparisons, 1 fault and 1 budget stop\n";
     std::cout << calendar_cases << " NATIONAL_TEAMS calendar comparisons, 2 faults and 2 budget stops\n";
     std::cout << dispatch << " NATIONAL_TEAMS replacement search comparisons, 2 faults and 1 budget stop\n";

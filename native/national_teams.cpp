@@ -2525,7 +2525,8 @@ struct CalendarArchive {
     std::uint32_t frame, calendar, path, nations, staff, success, buffer, source;
 };
 
-void calendar_save_error(Cpu& c, const CalendarArchive& a, std::uint32_t pc,
+template<bool Loading = false>
+void calendar_archive_error(Cpu& c, const CalendarArchive& a, std::uint32_t pc,
                          unsigned name, unsigned extension, unsigned line) {
     const auto name_at = a.frame + name, extension_at = a.frame + extension;
     block(c, pc, 6);
@@ -2539,8 +2540,9 @@ void calendar_save_error(Cpu& c, const CalendarArchive& a, std::uint32_t pc,
     block(c, pc + 56, 4);
     c.set({{4, a.buffer}, {3, a.source + 0x57}, {5, 0}});
     c.call(0x10769b60, pc + 72);
-    block(c, pc + 72, 3);
+    block(c, pc + 72, Loading ? 4 : 3);
     c.set(0, 0);
+    if constexpr (Loading) c.set(3, 0);
     c.put8(a.success, 0);
 }
 
@@ -2553,7 +2555,7 @@ bool calendar_archive_count(Cpu& c, const CalendarArchive& a, std::uint32_t pc,
     block(c, pc + 20, 2);
     c.compare(0, c.r(3), 1);
     if (c.r(3) == 1) return true;
-    calendar_save_error(c, a, pc + 28, name, extension, line);
+    calendar_archive_error(c, a, pc + 28, name, extension, line);
     return false;
 }
 
@@ -2585,11 +2587,15 @@ void calendar_pack_queue(Cpu& c, std::uint32_t calendar, unsigned offset, std::u
     }
 }
 
+template<bool Loading = false>
 void calendar_unpack_queue(Cpu& c, const CalendarArchive& a, unsigned offset, std::uint32_t pc) {
     block(c, pc, 4);
-    c.set(5, 0);
+    if constexpr (!Loading) c.set(5, 0);
     const auto queue = c.u32(a.calendar + offset);
-    c.set({{6, queue}, {3, 0}});
+    c.set(6, queue);
+    if constexpr (Loading) c.set(5, 0);
+    c.set(3, 0);
+    if constexpr (Loading) pc -= 4;
     for (unsigned i = 0; ; ++i) {
         block(c, pc + 64, 3);
         const auto count = c.u32(a.calendar + offset + 8);
@@ -2633,7 +2639,7 @@ bool calendar_write_queue(Cpu& c, const CalendarArchive& a, bool secondary) {
     c.compare(0, count, c.r(3));
     if (count != c.r(3)) {
         // The original returns with IDs still in this queue on a short write.
-        calendar_save_error(c, a, 0x102b98e0 + shift, secondary ? 0x160 : 0x1a0,
+        calendar_archive_error(c, a, 0x102b98e0 + shift, secondary ? 0x160 : 0x1a0,
                             secondary ? 0x70 : 0x80, secondary ? 0x2092 : 0x2061);
         return false;
     }
@@ -2661,7 +2667,7 @@ bool calendar_write_list(Cpu& c, const CalendarArchive& a) {
     block(c, 0x102b9b24, 2);
     c.compare(0, c.r(3), 1);
     if (c.r(3) != 1) {
-        calendar_save_error(c, a, 0x102b9b2c, 0x140, 0x68, 0x20b2);
+        calendar_archive_error(c, a, 0x102b9b2c, 0x140, 0x68, 0x20b2);
         return false;
     }
     block(c, 0x102b9b80, 3);
@@ -2686,7 +2692,7 @@ bool calendar_write_list(Cpu& c, const CalendarArchive& a) {
         block(c, 0x102b9bac, 2);
         c.compare(0, c.r(3), 1);
         if (c.r(3) != 1) {
-            calendar_save_error(c, a, 0x102b9bb4, 0x120, 0x60, 0x20c0);
+            calendar_archive_error(c, a, 0x102b9bb4, 0x120, 0x60, 0x20c0);
             return false;
         }
     }
@@ -2700,7 +2706,7 @@ bool calendar_write_club_schedule(Cpu& c, const CalendarArchive& a, std::uint32_
     block(c, 0x102b9c2c, 2);
     c.compare(0, clubs, c.r(3));
     if (clubs != c.r(3)) {
-        calendar_save_error(c, a, 0x102b9c34, 0x100, 0x58, 0x20c9);
+        calendar_archive_error(c, a, 0x102b9c34, 0x100, 0x58, 0x20c9);
         return false;
     }
     block(c, 0x102b9c88, 3);
@@ -2728,7 +2734,7 @@ bool calendar_write_club_schedule(Cpu& c, const CalendarArchive& a, std::uint32_
             c.set(0, written);
             c.compare(0, written, c.r(3));
             if (written != c.r(3)) {
-                calendar_save_error(c, a, 0x102b9cd8, 0xe0, 0x50, 0x20d6);
+                calendar_archive_error(c, a, 0x102b9cd8, 0xe0, 0x50, 0x20d6);
                 return false;
             }
         }
@@ -2747,7 +2753,7 @@ void calendar_write_trailer(Cpu& c, const CalendarArchive& a) {
     const auto count = c.u32(a.nations);
     c.set(5, count);
     c.compare(0, count, c.r(3));
-    if (count != c.r(3)) return calendar_save_error(c, a, 0x102b9d5c, 0xc0, 0x48, 0x20df);
+    if (count != c.r(3)) return calendar_archive_error(c, a, 0x102b9d5c, 0xc0, 0x48, 0x20df);
     block(c, 0x102b9db0, 4);
     c.set({{3, c.u32(a.calendar + 0x38)}, {4, 1}});
     c.set(6, c.u32(a.frame + 0x3c));
@@ -2756,7 +2762,7 @@ void calendar_write_trailer(Cpu& c, const CalendarArchive& a) {
     const auto flags = c.u32(a.nations);
     c.set(0, flags);
     c.compare(0, flags, c.r(3));
-    if (flags != c.r(3)) return calendar_save_error(c, a, 0x102b9dcc, 0xa0, 0x40, 0x20e6);
+    if (flags != c.r(3)) return calendar_archive_error(c, a, 0x102b9dcc, 0xa0, 0x40, 0x20e6);
     block(c, 0x102b9e20, 2);
     c.set(3, a.frame + 0x3c);
     c.call(0x10747900, 0x102b9e28);
@@ -2773,7 +2779,7 @@ void calendar_write_archive(Cpu& c, const CalendarArchive& a, std::uint32_t club
     c.compare(0, stream, 0);
     c.set_cr(0, preserved | c.cr(0));
     c.put32(a.frame + 0x3c, stream);
-    if (!stream) return calendar_save_error(c, a, 0x102b974c, 0x200, 0x98, 0x2039);
+    if (!stream) return calendar_archive_error(c, a, 0x102b974c, 0x200, 0x98, 0x2039);
 
     block(c, 0x102b97a0, 4);
     c.set({{3, c.u32(a.calendar + 4)}, {4, nation_record_size}});
@@ -2783,7 +2789,7 @@ void calendar_write_archive(Cpu& c, const CalendarArchive& a, std::uint32_t club
     const auto count = c.u32(a.nations);
     c.set(0, count);
     c.compare(0, count, c.r(3));
-    if (count != c.r(3)) return calendar_save_error(c, a, 0x102b97bc, 0x1e0, 0x90, 0x2041);
+    if (count != c.r(3)) return calendar_archive_error(c, a, 0x102b97bc, 0x1e0, 0x90, 0x2041);
 
     if (calendar_write_queue(c, a, false) && calendar_write_queue(c, a, true) &&
         calendar_write_list(c, a) && calendar_write_club_schedule(c, a, clubs)) {
@@ -2831,6 +2837,287 @@ void calendar_save(Cpu& c) {
     c.finish();
 }
 
+constexpr auto calendar_load_entry = 0x102b8ec0u, archive_read = 0x10747a80u;
+
+bool calendar_load_error(Cpu& c, const CalendarArchive& a, std::uint32_t pc,
+                         unsigned name, unsigned extension, unsigned line) {
+    calendar_archive_error<true>(c, a, pc, name, extension, line);
+    return false;
+}
+
+bool calendar_read_queue(Cpu& c, const CalendarArchive& a, bool secondary) {
+    const auto pc = secondary ? 0x102b9238u : 0x102b9094u;
+    const unsigned offset = secondary ? 0x10 : 0xc;
+    block(c, pc, 5);
+    c.set(6, c.u32(a.frame + 0x3c));
+    c.set({{3, a.calendar + offset + 8}, {4, 4}, {5, 1}});
+    c.call(archive_read, pc + 20);
+    block(c, pc + 20, 2);
+    c.compare(0, c.r(3), 1);
+    if (c.r(3) != 1)
+        return calendar_load_error(c, a, pc + 28, secondary ? 0x17c : 0x1dc,
+                                   secondary ? 0x70 : 0x88, secondary ? 0x1fb3 : 0x1f8b);
+
+    block(c, pc + 116, 3);
+    const auto count = c.u32(a.calendar + offset + 8);
+    c.set({{0, count}, {3, count * 4}});
+    c.call(0x10775130, pc + 128);
+    block(c, pc + 128, 4);
+    c.put32(a.calendar + offset, c.r(3));
+    c.set(3, c.u32(a.calendar + offset));
+    c.compare_logical(0, c.r(3), 0);
+    if (!c.r(3))
+        return calendar_load_error(c, a, pc + 144, secondary ? 0x15c : 0x1bc,
+                                   secondary ? 0x68 : 0x80, secondary ? 0x1fbb : 0x1f93);
+
+    block(c, pc + 232, 4);
+    c.set({{5, c.u32(a.calendar + offset + 8)}, {4, 4}});
+    c.set(6, c.u32(a.frame + 0x3c));
+    c.call(archive_read, pc + 248);
+    block(c, pc + 248, 3);
+    c.set(0, c.u32(a.calendar + offset + 8));
+    c.compare(0, c.r(0), c.r(3));
+    if (c.r(0) != c.r(3))
+        return calendar_load_error(c, a, pc + 260, secondary ? 0x13c : 0x19c,
+                                   secondary ? 0x60 : 0x78, secondary ? 0x1fc3 : 0x1f9b);
+    calendar_unpack_queue<true>(c, a, offset, pc + 348);
+    return true;
+}
+
+bool calendar_read_list(Cpu& c, const CalendarArchive& a) {
+    block(c, 0x102b93dc, 5);
+    c.set(6, c.u32(a.frame + 0x3c));
+    c.set({{3, a.frame + 0x38}, {4, 2}, {5, 1}});
+    c.call(archive_read, 0x102b93f0);
+    block(c, 0x102b93f0, 2);
+    c.compare(0, c.r(3), 1);
+    if (c.r(3) != 1) return calendar_load_error(c, a, 0x102b93f8, 0x11c, 0x58, 0x1fdb);
+
+    block(c, 0x102b9450, 3);
+    const auto initial_count = c.i16(a.frame + 0x38);
+    c.set(0, std::uint32_t(initial_count));
+    c.compare(0, initial_count, 0);
+    if (!initial_count) return true;
+    block(c, 0x102b945c, 2);
+    c.set(3, a.frame + 0x110);
+    c.call(0x10715880, 0x102b9464);
+    block(c, 0x102b9464, 2);
+    c.set(3, 0x10);
+    c.call(0x10773520, 0x102b946c);
+    block(c, 0x102b946c, 2);
+    const auto list = c.r(3);
+    c.set(26, list);
+    const auto high = c.cr(0) & 0xf0;
+    c.compare(0, list, 0);
+    c.set_cr(0, high | c.cr(0));
+    if (list) {
+        block(c, 0x102b9474, 1);
+        c.link(0x102b9478);
+        c.set(0, 0);
+        for (const unsigned offset : {4u, 8u, 12u}) c.put32(list + offset, 0);
+        c.put16(list, 0);
+        c.s.charge(6);
+    }
+    block(c, 0x102b9478, 3);
+    c.put32(a.calendar, list);
+    c.set(26, 0);
+    for (unsigned i = 0; ; ++i) {
+        block(c, 0x102b950c, 3);
+        const auto count = c.i16(a.frame + 0x38);
+        c.set(0, std::uint32_t(count));
+        c.compare(0, i, count);
+        if (int(i) >= count) return true;
+        block(c, 0x102b9484, 5);
+        c.set(6, c.u32(a.frame + 0x3c));
+        c.set({{3, a.frame + 0x108}, {4, 0x14}, {5, 1}});
+        c.call(archive_read, 0x102b9498);
+        block(c, 0x102b9498, 2);
+        c.compare(0, c.r(3), 1);
+        if (c.r(3) != 1) return calendar_load_error(c, a, 0x102b94a0, 0xe8, 0x50, 0x1fed);
+        block(c, 0x102b94f8, 4);
+        c.set({{3, c.u32(a.calendar)}, {4, a.frame + 0x108}, {5, 0x14}});
+        c.call(0x10738d10, 0x102b9508);
+        block(c, 0x102b9508, 1);
+        c.set(26, i + 1);
+    }
+}
+
+bool calendar_read_schedule(Cpu& c, const CalendarArchive& a, std::uint32_t clubs) {
+    block(c, 0x102b9518, 5);
+    c.set({{3, c.u32(a.calendar + 0x20)}, {5, clubs}});
+    c.set({{6, c.u32(a.frame + 0x3c)}, {4, 8}});
+    c.call(archive_read, 0x102b952c);
+    block(c, 0x102b952c, 2);
+    c.compare(0, clubs, c.r(3));
+    if (clubs != c.r(3)) return true; // Skip per-club rows after a short header read.
+    block(c, 0x102b9534, 3);
+    c.set({{26, 0}, {27, 0}});
+    for (unsigned club = 0; ; ++club) {
+        block(c, 0x102b9670, 2);
+        c.compare(0, club, clubs);
+        if (std::int32_t(club) >= std::int32_t(clubs)) return true;
+        block(c, 0x102b9540, 5);
+        const auto table = c.u32(a.calendar + 0x20);
+        c.set(0, table);
+        const auto offset = club * 8, header = table + offset;
+        c.set(4, header);
+        const auto rows = c.u8(header + 5);
+        c.set(3, rows);
+        if (record_nonzero_byte(c, rows)) {
+            block(c, 0x102b9554, 7);
+            c.put8(header + 4, rows);
+            c.set(0, offset + 4);
+            c.set(3, c.u32(a.calendar + 0x20));
+            const auto count = c.i8(c.r(3) + c.r(0));
+            c.set({{0, std::uint32_t(count)}, {3, std::uint32_t(count) * 12}});
+            c.call(0x10775130, 0x102b9570);
+            block(c, 0x102b9570, 7);
+            c.set(4, c.u32(a.calendar + 0x20));
+            c.put32(c.r(4) + offset, c.r(3));
+            c.set(0, c.u32(a.calendar + 0x20));
+            c.set(4, c.r(0) + offset);
+            c.set(3, c.u32(c.r(4)));
+            c.compare_logical(0, c.r(3), 0);
+            if (!c.r(3)) return calendar_load_error(c, a, 0x102b958c, 0xc8, 0x48, 0x2006);
+            block(c, 0x102b95e4, 5);
+            c.set({{5, c.u8(c.r(4) + 5)}, {4, 12}});
+            c.set(6, c.u32(a.frame + 0x3c));
+            c.set(5, std::uint32_t(std::int8_t(c.r(5))));
+            c.call(archive_read, 0x102b95f8);
+            block(c, 0x102b95f8, 6);
+            c.set({{4, c.u32(a.calendar + 0x20)}, {0, offset + 5}});
+            c.set(0, std::uint32_t(c.i8(c.r(4) + c.r(0))));
+            c.compare(0, c.r(0), c.r(3));
+            if (c.r(0) != c.r(3)) return calendar_load_error(c, a, 0x102b9610, 0xa8, 0x40, 0x200d);
+        }
+        block(c, 0x102b9668, 2);
+        c.set({{27, (club + 1) * 8}, {26, club + 1}});
+    }
+}
+
+void calendar_read_trailer(Cpu& c, const CalendarArchive& a) {
+    block(c, 0x102b9678, 5);
+    c.set({{3, c.u32(a.calendar + 8)}, {4, 4}});
+    c.set(5, c.u32(a.nations));
+    c.set(6, c.u32(a.frame + 0x3c));
+    c.call(archive_read, 0x102b968c);
+    block(c, 0x102b968c, 3);
+    const auto count = c.u32(a.nations);
+    c.set(0, count);
+    c.compare(0, count, c.r(3));
+    if (count != c.r(3)) {
+        block(c, 0x102b9698, 4);
+        c.set({{3, c.u32(a.calendar + 8)}, {5, count * 4}, {4, UINT32_MAX}});
+        c.call(0x10778300, 0x102b96a8);
+    }
+    block(c, 0x102b96a8, 5);
+    c.set({{3, c.u32(a.calendar + 0x38)}, {4, 1}});
+    c.set(5, c.u32(a.nations));
+    c.set(6, c.u32(a.frame + 0x3c));
+    c.call(archive_read, 0x102b96bc);
+    block(c, 0x102b96bc, 2);
+    c.set(3, a.frame + 0x3c);
+    c.call(0x10747900, 0x102b96c4);
+    block(c, 0x102b96c4, 1);
+    c.set(3, 1);
+}
+
+void calendar_read_archive(Cpu& c, const CalendarArchive& a, std::uint32_t clubs) {
+    block(c, 0x102b8f0c, 6);
+    c.set({{3, a.path}, {4, a.source + 0x7cda}, {5, 0}, {6, 0x16}, {7, 4}});
+    c.call(0x107475b0, 0x102b8f24);
+    block(c, 0x102b8f24, 3);
+    c.compare_logical(0, c.r(3), 0);
+    c.put32(a.frame + 0x3c, c.r(3));
+    if (!c.r(3)) {
+        calendar_load_error(c, a, 0x102b8f30, 0x23c, 0xa0, 0x1f6d);
+        return;
+    }
+
+    block(c, 0x102b8f88, 3);
+    c.set(0, c.u32(a.nations));
+    c.set(3, c.r(0) * nation_record_size);
+    c.call(0x10775130, 0x102b8f94);
+    block(c, 0x102b8f94, 4);
+    c.put32(a.calendar + 4, c.r(3));
+    c.set(0, c.u32(a.calendar + 4));
+    c.compare_logical(0, c.r(0), 0);
+    if (!c.r(0)) {
+        calendar_load_error(c, a, 0x102b8fa4, 0x21c, 0x98, 0x1f76);
+        return;
+    }
+
+    block(c, 0x102b8ffc, 1);
+    c.set(0, c.u32(a.nations));
+    block(c, 0x102b9000, 2);
+    c.set(3, c.r(0) * 4);
+    c.call(0x10775130, 0x102b9008);
+    block(c, 0x102b9008, 4);
+    c.put32(a.calendar + 8, c.r(3));
+    c.set(3, 1);
+    c.set(4, c.u32(a.nations));
+    c.call(0x10775200, 0x102b9018);
+    block(c, 0x102b9018, 6);
+    c.put32(a.calendar + 0x38, c.r(3));
+    c.set(4, nation_record_size);
+    c.set(3, c.u32(a.calendar + 4));
+    c.set(5, c.u32(a.nations));
+    c.set(6, c.u32(a.frame + 0x3c));
+    c.call(archive_read, 0x102b9030);
+    block(c, 0x102b9030, 3);
+    c.set(0, c.u32(a.nations));
+    c.compare(0, c.r(0), c.r(3));
+    if (c.r(0) != c.r(3)) {
+        calendar_load_error(c, a, 0x102b903c, 0x1fc, 0x90, 0x1f84);
+        return;
+    }
+
+    if (calendar_read_queue(c, a, false) && calendar_read_queue(c, a, true) &&
+        calendar_read_list(c, a) && calendar_read_schedule(c, a, clubs))
+        calendar_read_trailer(c, a);
+}
+
+void calendar_load(Cpu& c) {
+    GuestNativeScope scope(c.s, calendar_load_entry);
+    block(c, calendar_load_entry, 17);
+    const auto caller = c.sp(), frame = caller - 0x280, calendar = c.r(3), path = c.r(4);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<24>(c, caller);
+    const auto nations = c.toc(-0x7b04);
+    c.set(28, nations);
+    c.compare_logical(0, path, 0);
+    const auto clubs = c.toc(-0x7b50);
+    c.set({{5, clubs}, {24, calendar}});
+    const auto staff = c.toc(-0x7be0);
+    c.set(27, staff);
+    const auto success = c.toc(-0x7bac);
+    c.set(29, success);
+    const auto buffer = c.toc(-0x7ba8);
+    c.set(30, buffer);
+    const auto source = c.toc(-0x513c);
+    c.set(31, source);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(6, c.u32(nations));
+    c.set(0, c.u32(clubs));
+    c.set(3, c.r(6) * 2);
+    const auto domestic = c.r(0) - c.r(3);
+    c.set(25, domestic);
+    if (path) calendar_read_archive(c, {frame, calendar, path, nations, staff, success, buffer, source}, domestic);
+    else {
+        block(c, 0x102b8f04, 2);
+        c.set(3, 0);
+    }
+    block(c, 0x102b96c8, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<24, true>(c, caller);
+    c.finish();
+}
+
 }
 
 void national_teams_run_original(State& state, std::uint32_t entry) {
@@ -2863,6 +3150,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case automatic_replacement_entry: automatic_replacement(c); break;
     case calendar_availability_entry: calendar_availability(c); break;
     case calendar_save_entry: calendar_save(c); break;
+    case calendar_load_entry: calendar_load(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }
