@@ -3479,6 +3479,166 @@ void register_domestic_fixture(Cpu& c) {
 }
 
 
+constexpr auto expire_schedule_entry = 0x102ba610u;
+
+bool schedule_row_has_expired(Cpu& c, std::uint32_t header, std::uint32_t today, unsigned offset) {
+    block(c, 0x102ba664, 10);
+    const auto frame = c.sp();
+    c.set(4, c.u32(today));
+    const auto rows = c.u32(header);
+    c.set(0, rows);
+    c.put32(frame + 0x38, c.r(4));
+    const auto row = rows + offset;
+    c.set(4, row);
+    const auto today_tail = c.u32(today + 4);
+    c.set(0, today_tail);
+    const auto today_year = c.u16(frame + 0x3a);
+    c.set(7, today_year);
+    const auto row_year = c.u16(row + 2);
+    c.set(5, row_year);
+    c.put32(frame + 0x3c, today_tail);
+    c.compare_logical(0, today_year, row_year);
+
+    if (row_year < today_year) {
+        block(c, 0x102ba68c, 2);
+        c.set(0, 1);
+    } else {
+        block(c, 0x102ba694, 1);
+        if (row_year != today_year) {
+            block(c, 0x102ba698, 2);
+            c.set(0, 0);
+        } else {
+            block(c, 0x102ba6a0, 8);
+            const auto today_day = c.i16(frame + 0x38);
+            c.set(5, std::uint32_t(today_day));
+            const auto row_day = c.i16(row);
+            publish_day_order<4>(c, row_day, today_day);
+        }
+    }
+    block(c, 0x102ba6c0, 2);
+    return record_nonzero_byte(c, c.r(0));
+}
+
+unsigned count_expired_schedule_rows(Cpu& c, std::uint32_t header, std::uint32_t today) {
+    block(c, 0x102ba654, 4);
+    c.set({{3, 0}, {8, 0}, {6, 0}});
+    unsigned expired = 0;
+    for (unsigned index = 0; ; ++index) {
+        block(c, 0x102ba6d8, 5);
+        const auto count = c.i8(header + schedule_size_offset);
+        c.set({{4, index}, {0, std::uint32_t(count)}});
+        c.compare(0, index, count);
+        if (int(index) >= count) return expired;
+        if (schedule_row_has_expired(c, header, today, index * schedule_row_size)) {
+            block(c, 0x102ba6c8, 2);
+            ++expired;
+            c.set({{0, expired}, {3, expired}});
+        }
+        block(c, 0x102ba6d0, 2);
+        c.set({{6, (index + 1) * schedule_row_size}, {8, index + 1}});
+    }
+}
+
+void retain_schedule_rows(Cpu& c, std::uint32_t header, unsigned expired) {
+    // The rows are sorted on insertion. Drop the expired prefix, copying
+    // only the live fields and preserving padding at each destination slot.
+    block(c, 0x102ba6ec, 4);
+    c.set({{6, expired}, {9, expired}, {7, expired * schedule_row_size}});
+    unsigned count;
+    for (unsigned index = expired; ; ++index) {
+        block(c, 0x102ba73c, 5);
+        count = c.u8(header + schedule_size_offset);
+        c.set({{4, count}, {5, index}, {0, std::uint32_t(std::int8_t(count))}});
+        c.compare(0, index, std::int8_t(count));
+        if (int(index) >= std::int8_t(count)) break;
+
+        block(c, 0x102ba6fc, 16);
+        c.set(0, index);
+        const auto rows = c.u32(header);
+        c.set({{8, rows}, {0, index - expired}, {9, index + 1}});
+        const auto offset = (index - expired) * schedule_row_size;
+        c.set(4, offset);
+        const auto source = rows + index * schedule_row_size;
+        c.set(5, source);
+        c.set(0, c.u16(source + 2));
+        c.set(7, (index + 1) * schedule_row_size);
+        const auto target = rows + offset;
+        c.set(4, target);
+        c.put16(target + 2, c.r(0));
+        c.set(0, std::uint32_t(c.i16(source)));
+        c.put16(target, c.r(0));
+        c.set(0, c.u8(source + 4));
+        c.put8(target + 4, c.r(0));
+        c.set(0, c.u8(source + schedule_release_offset));
+        c.put8(target + schedule_release_offset, c.r(0));
+    }
+
+    block(c, 0x102ba750, 5);
+    c.set(0, count - expired);
+    c.put8(header + schedule_size_offset, c.r(0));
+    if (record_nonzero_byte(c, c.u8(header + schedule_size_offset))) return;
+
+    block(c, 0x102ba764, 3);
+    const auto rows = c.u32(header);
+    c.set(3, rows);
+    c.compare_logical(0, rows, 0);
+    if (!rows) return;
+    block(c, 0x102ba770, 1);
+    c.call(0x10775170, 0x102ba774);
+    block(c, 0x102ba774, 3);
+    c.set(0, 0);
+    c.put8(header + schedule_capacity_offset, 0);
+    c.put32(header, 0);
+}
+
+void expire_domestic_schedule(Cpu& c) {
+    GuestNativeScope scope(c.s, expire_schedule_entry);
+    block(c, expire_schedule_entry, 17);
+    const auto caller = c.sp(), frame = caller - 0x50, calendar = c.r(3);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set(5, c.toc(-0x7b04));
+    c.put32(caller - 8, c.r(30));
+    c.set(30, 0);
+    c.set(4, c.toc(-0x7b50));
+    c.put32(caller - 12, c.r(29));
+    const auto today = c.toc(-0x7b80);
+    c.set(31, today);
+    c.put32(caller - 16, c.r(28));
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto nations = c.u32(c.r(5));
+    c.set(5, nations);
+    const auto clubs = c.u32(c.r(4));
+    c.set({{0, clubs}, {4, nations * 2}});
+    const auto headers = c.u32(calendar + schedule_headers_offset);
+    const auto domestic = std::int32_t(clubs - nations * 2);
+    c.set({{28, headers}, {29, std::uint32_t(domestic)}});
+
+    for (int club = 0; ; ++club) {
+        block(c, 0x102ba788, 2);
+        c.compare(0, club, domestic);
+        if (club >= domestic) break;
+        const auto header = headers + unsigned(club) * schedule_header_size;
+        const auto expired = count_expired_schedule_rows(c, header, today);
+        retain_schedule_rows(c, header, expired);
+        block(c, 0x102ba780, 2);
+        c.set({{30, std::uint32_t(club + 1)}, {28, header + schedule_header_size}});
+    }
+
+    block(c, 0x102ba790, 8);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.set(29, c.u32(caller - 12));
+    c.set(28, c.u32(caller - 16));
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -3702,6 +3862,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case calendar_load_entry: calendar_load(c); break;
     case create_schedule_entry: create_domestic_schedule(c); break;
     case register_fixture_entry: register_domestic_fixture(c); break;
+    case expire_schedule_entry: expire_domestic_schedule(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;

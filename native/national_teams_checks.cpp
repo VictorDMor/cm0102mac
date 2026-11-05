@@ -51,7 +51,7 @@ constexpr auto recipient_club = clubs + 5 * 0x248;
 constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish = 0x102cc140u;
 constexpr auto calendar_availability = 0x102b9e50u, calendar_save = 0x102b96e0u;
 constexpr auto calendar_load = 0x102b8ec0u;
-constexpr auto create_schedule = 0x102ba1c0u, register_fixture = 0x102ba290u;
+constexpr auto create_schedule = 0x102ba1c0u, register_fixture = 0x102ba290u, expire_schedule = 0x102ba610u;
 constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
 constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
 constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
@@ -131,6 +131,9 @@ bool observe_dependency(State& s) {
     case 0x10775200:
         if (!calendar_read && !domestic_schedule) return false;
         break;
+    case 0x10775170:
+        if (resume != 0x102ba774) return false;
+        break;
     case 0x107751b0: case 0x10768300:
         if (!domestic_schedule) return false;
         break;
@@ -155,6 +158,14 @@ bool observe_dependency(State& s) {
         require(c.r(3) == release_team, "domestic fixture team classifier");
         c.set(3, c.u8(release_policy + 1));
         break;
+    case 0x10775170: {
+        const auto index = c.u32(release_policy + 8);
+        require(index < 3 && (c.r(3) == release_rows || c.r(3) == away_events || c.r(3) == grown_rows),
+                "domestic schedule release pointer");
+        c.put32(release_policy + 12 + 4 * index, c.r(3));
+        c.put32(release_policy + 8, index + 1);
+        break;
+    }
     case 0x107751b0: {
         const auto rows = c.r(3);
         require(resume == 0x102ba50c && c.r(4) == (rows ? 4 : 3) * 12u,
@@ -449,7 +460,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             observer.emplace(calls);
             // The original caller can enter the allocator without dispatching.
             // Decline that direct route so the fixture sees both calls.
-            if (input.pc == calendar_load || input.pc == create_schedule || input.pc == register_fixture)
+            if (input.pc == calendar_load || input.pc == create_schedule || input.pc == register_fixture ||
+                input.pc == expire_schedule)
                 s.allocator_original = true;
         }
         struct RestoreChecker {
@@ -510,7 +522,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                 " / " + b + " at " + hex_address(rewrite->pc));
     if (expected == Stop::returned) {
         require(original->pc == done && rewrite->pc == done, label + " normal continuation");
-        if (input.pc == create_schedule || input.pc == register_fixture ||
+        if (input.pc == create_schedule || input.pc == register_fixture || input.pc == expire_schedule ||
             input.pc == date_order || input.pc == score_order || input.pc == club_order)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
@@ -2303,6 +2315,135 @@ unsigned check_schedule_comparators(std::mt19937& random) {
     return comparisons;
 }
 
+unsigned check_schedule_expiry(std::mt19937& random) {
+    const auto prepare = [&] {
+        auto state = domestic_schedule_seed(random);
+        Cpu c(*state);
+        c.put32(toc - 0x7b80, date);
+        fixture_date(c, date, -1, 0x8000);
+        c.put32(date + 4, 0x12345678);
+        c.set(3, calendar);
+        state->pc = expire_schedule;
+        return state;
+    };
+    const auto header = [](Cpu& c, unsigned club, std::uint32_t rows, unsigned count) {
+        const auto at = release_headers + 8 * club;
+        c.put32(at, rows);
+        c.put8(at + 4, 7);
+        c.put8(at + 5, count);
+        c.put16(at + 6, 0x55aa);
+    };
+    const auto row = [](Cpu& c, std::uint32_t at, int day, unsigned year, unsigned weight) {
+        fixture_date(c, at, day, year);
+        c.put8(at + 8, weight);
+        c.put8(at + 7, weight ^ 0x80);
+        c.put8(at + 11, weight ^ 0x40);
+    };
+    unsigned comparisons = 0;
+    {
+        const auto state = prepare();
+        Cpu c(*state);
+        header(c, 0, release_rows, 5);
+        header(c, 1, away_events, 2);
+        header(c, 2, 0, 0);
+        row(c, release_rows, 32767, 0x7fff, 1);
+        row(c, release_rows + 12, -2, 0x8000, 2);
+        row(c, release_rows + 24, -1, 0x8000, 3);
+        row(c, release_rows + 36, 4, 0x8000, 4);
+        row(c, release_rows + 48, -32768, 0x8001, 5);
+        row(c, away_events, 0, 0x7fff, 9);
+        row(c, away_events + 12, -4, 0x8000, 10);
+
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(release_headers) == release_rows && result.u8(release_headers + 4) == 7 &&
+                    result.u8(release_headers + 5) == 3 && result.u16(release_headers + 6) == 0x55aa,
+                "expired prefix removal retains the live schedule allocation");
+        for (unsigned i = 0; i < 3; ++i) {
+            const auto target = release_rows + i * 12, source = target + 24;
+            require(result.u32(target) == c.u32(source) && result.u8(target + 4) == c.u8(source + 4) &&
+                        result.u8(target + 8) == c.u8(source + 8) &&
+                        result.u8(target + 7) == c.u8(target + 7) &&
+                        result.u8(target + 11) == c.u8(target + 11),
+                    "schedule expiry retains today and later dates with destination padding");
+        }
+        require(!result.u32(release_headers + 8) && !result.u8(release_headers + 12) &&
+                    !result.u8(release_headers + 13) && result.u16(release_headers + 14) == 0x55aa &&
+                    result.u8(release_headers + 20) == 7 &&
+                    result.u32(release_policy + 8) == 1 && result.u32(release_policy + 12) == away_events,
+                "schedule expiry frees the emptied buffer and leaves the unallocated header alone");
+        ++comparisons;
+    }
+    for (const unsigned scenario : {0u, 1u, 2u, 3u, 4u, 5u}) {
+        const auto state = prepare();
+        Cpu c(*state);
+        if (scenario < 2) {
+            c.put32(club_count, scenario ? 3 : 4);
+            c.put32(calendar + 0x20, unmapped);
+        } else if (scenario == 2) {
+            header(c, 0, unmapped, 0xff);
+            c.put32(toc - 0x7b80, unmapped);
+        } else if (scenario == 3) {
+            header(c, 0, release_rows, 0);
+            header(c, 1, grown_rows, 0);
+            c.put32(toc - 0x7b80, unmapped);
+        } else if (scenario == 4) {
+            header(c, 0, release_rows, 2);
+            row(c, release_rows, -1, 0x8000, 1);
+            row(c, release_rows + 12, 0, 0x8000, 2);
+        } else {
+            header(c, 0, release_rows, 1);
+            row(c, release_rows, -2, 0x8000, 1);
+        }
+        const auto after = compare(*state);
+        Cpu result(*after);
+        if (scenario < 3 || scenario == 4) {
+            require(!result.u32(release_policy + 8) &&
+                        after->memory.copy_out(release_headers, 24) == state->memory.copy_out(release_headers, 24) &&
+                        after->memory.copy_out(release_rows, 24) == state->memory.copy_out(release_rows, 24),
+                    "empty, skipped and still-current calendar states retain their bytes");
+        } else {
+            require(!result.u32(release_headers) && !result.u8(release_headers + 4) &&
+                        result.u32(release_policy + 8) == (scenario == 3 ? 2u : 1u) &&
+                        result.u32(release_policy + 12) == release_rows &&
+                        result.u32(release_policy + 16) == (scenario == 3 ? grown_rows : 0u),
+                    "schedule expiry releases empty buffers in club order");
+        }
+        ++comparisons;
+    }
+    {
+        const auto state = prepare();
+        Cpu c(*state);
+        header(c, 0, release_rows, 2);
+        row(c, release_rows, 30, 0x8000, 1);
+        row(c, release_rows + 12, -2, 0x8000, 2);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u8(release_headers + 5) == 1 && result.i16(release_rows) == -2 &&
+                    result.u8(release_rows + 8) == 2 && !result.u32(release_policy + 8),
+                "unordered input drops the counted prefix as in the original");
+        ++comparisons;
+    }
+    auto state = prepare();
+    {
+        Cpu c(*state);
+        header(c, 0, release_rows, 0);
+        header(c, 1, unmapped, 1);
+        const auto after = compare(*state, Stop::fault);
+        Cpu result(*after);
+        require(!result.u32(release_headers) && result.u32(release_policy + 8) == 1 &&
+                    result.u32(release_headers + 8) == unmapped,
+                "schedule expiry preserves earlier club effects on a later invalid row");
+    }
+    state = prepare();
+    Cpu(*state).put32(calendar + 0x20, unmapped);
+    compare(*state, Stop::fault);
+    state = prepare();
+    state->budget = 0;
+    compare(*state, Stop::budget);
+    return comparisons;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -2367,6 +2508,8 @@ int main() try {
     const auto calendar_loads = check_calendar_load(random);
     const auto schedules = check_domestic_schedule(random);
     const auto sort_comparisons = check_schedule_comparators(random);
+    const auto expired_schedules = check_schedule_expiry(random);
+    std::cout << expired_schedules << " NATIONAL_TEAMS schedule expiry comparisons, 2 faults and 1 budget stop\n";
     std::cout << sort_comparisons << " NATIONAL_TEAMS schedule comparator comparisons, 4 faults and 3 budget stops\n";
     std::cout << schedules << " NATIONAL_TEAMS domestic schedule comparisons, 1 fault and 2 budget stops\n";
     std::cout << calendar_loads << " NATIONAL_TEAMS calendar load comparisons, 2 faults and 1 budget stop\n";
