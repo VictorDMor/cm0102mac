@@ -43,8 +43,18 @@ bool direct_spatial_call(const Cpu& c, std::uint32_t entry) {
     // These queries preserve their guest frames and cannot transfer control
     // outside the call. Keep the dispatcher when diagnostics can intervene.
     const auto& memory = c.s.memory;
-    return !dispatch_probe && !routine_checker && !memory.observer && !memory.date_observer &&
-           !memory.read_trace && !match_pc_profile_enabled() && match_pl_route_allowed(entry);
+    if (dispatch_probe || routine_checker || memory.date_observer || memory.read_trace ||
+        match_pc_profile_enabled() || !match_pl_route_allowed(entry)) return false;
+    if (const auto* observer = memory.observer) {
+        const auto sp = c.sp();
+        // These role/distance leaves write only their retained stack frames.
+        // A drawing surface disjoint from those frames observes no writes or
+        // drawing boundaries in the query. Keep every other observer's route.
+        if (c.s.budget != UINT64_MAX || match_eng_call_observer || guest_profiler::running() ||
+            !dynamic_cast<const NativeDrawingObserver*>(observer) || sp < 0x80 ||
+            sp > UINT32_MAX - 11 || observer->observes_write(sp - 0x80, 0x8c)) return false;
+    }
+    return true;
 }
 
 // 0x10289560 (another module) says whether the player is a goalkeeper-like one: 1.

@@ -409,15 +409,12 @@ methods 14.3%, guest frame entry/exit 13.2%, generated pages 7.8%, exception
 bookkeeping 4.8%, and floating-point helpers 4.2%. Inlined work can instead be
 charged to its caller; a generated page is not an original source module.
 
-The first bounded optimization experiment should target the spatial/role
-query chain: MATCH_ENG scans up to 20 player slots, calls MATCH_PL for a role,
-and MATCH_PL dispatches back to MATCH_ENG for a table lookup. The table helper
-can read the same position three times. Direct typed internal calls and
-proven local reuse could reduce this overhead without changing football
-decisions. Preserve exported-entry ABI, live guest state, observer/debug paths,
-exception transfers, player order, eligibility differences, floating point and
-RNG. Then consider repeated candidate/contract lookups in SHORTLIST_MANAGER.
-Do not replace the RNG or reduce simulation detail to claim an equivalent win.
+The first spatial/role optimizations are delivered in `9cb0bba`, `9e62dfa` and
+`3182749`: typed internal calls and bounded role/distance reuse preserve the
+exported ABI, live state, diagnostics, player order, floating point and RNG.
+Further work must profile the accepted code before choosing another shortcut.
+Repeated candidate/contract lookups in SHORTLIST_MANAGER remain a separate
+measured-cost target; changing RNG or simulation detail is not an equivalent win.
 
 Six unprofiled repetitions of 600 advances each had median times of 0.173226 s
 (snapshot 677) and 0.155947 s (2262), with repeated final-state agreement.
@@ -440,6 +437,30 @@ and weighted stack parsers are private under
 `.local/performance/2026-11-03-hotspots/`. Temporary app/runtime/save copies and
 the probe executable were removed; only about 11 MB of evidence remains.
 No production code, installed application or original save was changed.
+
+## Drawing-aware spatial calls (2026-11-05)
+
+Fresh host-only samples of production `7a23947`, using the existing 677 and
+2262 inputs, retain 2,181 and 2,210 simulation observations. Role queries occupy
+13.1% and 13.3% inclusively. Each profile runs 100 repeated 600-advance intervals
+with native drawing observation, fixed external clock inputs and repeated full
+state agreement. These bounded snapshots do not measure a complete game week.
+
+The spatial role/distance wrappers now use their existing direct typed callees
+when a native drawing observer is disjoint from the retained stack frames.
+Queries contain no drawing boundaries. General observers, stack-overlapping
+surfaces, finite budgets, probes and profiling retain dispatch. Guest writes,
+frames, fault effects and diagnostic routes remain intact.
+
+Five alternating Release pairs per input, with one warmup and two measured
+repetitions per process, reduce median paired wall time by 2.70% and 2.35%
+(process CPU 2.75% and 2.39%). Every pair wins on both clocks; wall-time median
+absolute deviations are 1.19 and 0.11 percentage points. Both complete 121 MiB
+end snapshots are byte-identical to their baselines, including instruction and
+import accounting. Focused checks add 22 returned drawing-caller comparisons
+and six separately classified injected faults, preserving aliases and observed
+stack writes. Private profiles, pairs and compact state-comparison receipts
+are under `.local/performance/2026-11-05-current-hotspots/`.
 
 ## Complete 26-country Continue diagnosis
 

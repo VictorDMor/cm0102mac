@@ -3471,6 +3471,7 @@ file(GLOB CM_MATCH_ENG_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ma
 list(FILTER CM_MATCH_ENG_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_MATCH_ENG_SOURCES})
 file(GLOB CM_MATCH_ENG_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/match_eng_*checks.cpp")
+list(FILTER CM_MATCH_ENG_CHECK_SOURCES EXCLUDE REGEX "/match_eng_tendency_checks\\.cpp$")
 add_executable(cm-match-eng-checks ${CM_MATCH_ENG_CHECK_SOURCES})
 target_link_libraries(cm-match-eng-checks PRIVATE cm_aot)
 target_compile_options(cm-match-eng-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)

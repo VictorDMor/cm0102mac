@@ -1,4 +1,5 @@
 #include "match_eng_adapter.hpp"
+#include "match_eng_space.hpp"
 #include "match_pl_adapter.hpp"
 #include "native_drawing.hpp"
 #include "routine_check.hpp"
@@ -117,6 +118,80 @@ void partial_frame() {
             "fragmented frame lost its visible partial writes");
     Image(*expected).compare(*actual, "fragmented frame");
 }
+
+unsigned drawing_spatial_callers() {
+    constexpr auto constants = fixture + 0x8800, distances = fixture + 0x8200;
+    unsigned cases = 0, faults = 0;
+    for (const auto entry : {0x101e4130u, 0x101e32e0u}) for (unsigned side = 0; side < 2; ++side) {
+        for (unsigned scenario = 0; scenario < 7; ++scenario) {
+            auto initial = seed(0, 3, 0);
+            initial->memory.map(stack - 0x200, 0x170);
+            initial->memory.map(stack + 0x10, 0x50);
+            initial->memory.map(toc - 0x8000, 0x8000);
+            initial->memory.map(fixture + 0x8200, 0x1000);
+            guest::Cpu c(*initial);
+            c.put32(toc - 0x52c4, constants);
+            c.put32(toc - 0x52c8, constants);
+            c.put32(toc - 0x6424, distances);
+            c.put_f64(constants + 0x50, 0);
+            c.put_f32(constants + 0xc8, 1000);
+            for (unsigned y = 0; y < 9; ++y) for (unsigned x = 0; x < 9; ++x)
+                c.put_f32(distances + y * 36 + x * 4, float(x + y));
+            for (unsigned team = 0; team < 2; ++team) {
+                c.put32(match + 0x7934 + team * 4, role_table);
+                for (unsigned n = 0; n < 20; ++n) {
+                    const auto actor = match + match_eng::players_at + team * match_eng::side_size + n * match_eng::player_size;
+                    c.put8(actor + 0x19, n < 11 ? n : 0xff);
+                    c.put8(actor + 0x27, team);
+                    c.put8(actor + 0x2c, 0);
+                    c.put8(actor + 0x105, n % 12);
+                    c.put8(actor + 0x106, (n + team) % 9);
+                    c.put32(actor + 0x1a4, match);
+                }
+            }
+            for (unsigned n = 0; n < 11; ++n) c.put16(role_table + n * 2, n == 0 ? 1 : 0);
+            const auto actor = match + match_eng::players_at + side * match_eng::side_size + 2 * match_eng::player_size;
+            if (scenario == 1) c.put8(actor + 0x19, 11);
+            if (scenario == 2) c.put32(actor + 0x1a4, 0);
+            if (scenario == 3) c.put32(match + 0x7934 + side * 4, stack - 0xa8);
+            if (scenario == 4) c.put32(match + 0x7934 + side * 4, 0xffe00000);
+            if (scenario == 5) c.put32(toc - 0x6424, 0xffe00000);
+            c.set({{3, match}, {4, side}, {5, 3}, {6, 4}, {7, 0}});
+            c.set_lr(return_sentinel);
+            initial->pc = entry;
+            auto expected = clone(*initial), actual = clone(*initial);
+            NativeDrawingObserver old_drawing, new_drawing;
+            const auto surface = scenario == 6 ? stack - 0xa0 : pixels;
+            old_drawing.register_surface(*expected, surface, 1, 1, 2, 16);
+            new_drawing.register_surface(*actual, surface, 1, 1, 2, 16);
+            // The diagnostic forces the accepted dispatch route. The other
+            // state uses the normal drawing-aware direct route when eligible.
+            Effects observe;
+            observe.state = expected.get();
+            expected->memory.date_observer = &observe;
+            const auto run = [entry, side](State& s) {
+                guest::Cpu c(s);
+                try {
+                    if (entry == 0x101e4130) match_eng::update_line_limits(c, match);
+                    else match_eng::nearest_player_to_cell(c, match, side, 3, 4, 0);
+                    c.finish();
+                    return std::string{};
+                } catch (const std::runtime_error& error) { return std::string(error.what()); }
+            };
+            const auto old_stop = run(*expected), new_stop = run(*actual);
+            require(old_stop == new_stop, "drawing spatial caller fault changed");
+            const auto expected_fault = scenario == 4 || (scenario == 5 && entry == 0x101e32e0);
+            require(old_stop.empty() != expected_fault, "unexpected drawing spatial caller outcome");
+            expected->memory.date_observer = nullptr;
+            Image(*expected).compare(*actual, "drawing spatial caller " + std::to_string(cases++), !old_stop.empty());
+            faults += !old_stop.empty();
+            if (!old_stop.empty()) std::cout << hex_address(entry) << " side=" << side << " scenario=" << scenario
+                                             << " partial=" << old_stop << '\n';
+        }
+    }
+    require(faults == 6, "drawing spatial caller fault scenarios " + std::to_string(faults) + "/6");
+    return cases;
+}
 }
 
 int main() try {
@@ -140,7 +215,9 @@ int main() try {
     probed_child();
     partial_frame();
     exact_return(*seed(0, 3, 0), 0, false, true);
-    std::cout << cases << " generated role comparisons, alias, observer, probe, partial fault and negative control\n";
+    const auto drawing_cases = drawing_spatial_callers();
+    std::cout << cases << " generated role comparisons, alias, observer, probe, partial fault and negative control; "
+              << drawing_cases << " drawing spatial caller cases (six partial faults)\n";
     return 0;
 } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';
