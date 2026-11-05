@@ -18,6 +18,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [ ] **rb_greece.cpp reconstruction.** Inventory closed at four entries and 397 reachable instructions. Three entries are handwritten and verified locally in 2,112 returned comparisons. Complete disciplinary reporting at 0x106ab970, verify the combined module, and deliver. Private inventory and verification evidence are in `.local/rewrites/rb_greece/`.
+
 - [x] **BRA_NAT_SECOND.CPP reconstruction.** All 13 entries and 1,916 reachable original instructions are covered by handwritten owners. 521 focused returned comparisons and the complete owned competition sequence match the reference. The January replay reaches the recorded state and matches all 28 strict fixture-placement calls. Four focused normal tests pass. Private evidence is in `.local/rewrites/bra_nat_second/`.
   - [x] Single-round Série B for new seasons. The focused checks cover the 27-round calendar, table champion and runner-up, four-club exchange, and rollover from a saved playoff season.
 
