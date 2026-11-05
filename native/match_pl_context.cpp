@@ -1,7 +1,12 @@
 #include "match_pl_detail.hpp"
 #include "match_eng.hpp"
+#include "guest_profiler.hpp"
+#include "match_eng_adapter.hpp"
+#include "match_pl_adapter.hpp"
 #include "match_turbo.hpp"
+#include "native_drawing.hpp"
 #include "routine_check.hpp"
+#include "season_reference.hpp"
 
 namespace cm::aot::match_pl {
 using namespace guest;
@@ -20,7 +25,82 @@ std::uint32_t test_strategy(Cpu& c, std::uint32_t player, std::uint32_t back, st
     leave(c, {{4, 0}, {5, 0}, {6, flags}, {7, 0}});
     return result(c, flags != 0);
 }
+
+// The role wrapper and its table lookup have no callbacks. Compute in
+// native locals, then publish the six original stack words and final ABI
+// state. Decline before any change when a lookup may see its own frame.
+std::optional<std::uint32_t> native_role(Cpu& c, std::uint32_t player, std::uint32_t entry,
+                                         std::uint32_t target) {
+    const auto& s = c.s;
+    const auto& memory = s.memory;
+    const auto sp = c.sp();
+    if (sp < 0x80 || sp > UINT32_MAX - 11 || s.budget != UINT64_MAX ||
+        dispatch_probe || routine_checker || match_eng_call_observer ||
+        match_eng_declining || &s == match_eng_original_state || !match_pl_route_allowed(entry) ||
+        guest_profiler::running() || match_pc_profile_enabled() ||
+        memory.date_observer || memory.read_trace || memory.debug_attribute_metadata_required())
+        return std::nullopt;
+    if (const auto* observer = memory.observer;
+        observer && (observer->observes_write(sp - 0x80, 0x8c) ||
+                     (!dynamic_cast<const NativeDrawingObserver*>(observer) &&
+                      !passive_season_replay_observer(observer))))
+        return std::nullopt;
+
+    const auto aliases_frame = [sp](std::uint32_t address, unsigned size) {
+        return address < std::uint64_t(sp) + 12 && std::uint64_t(address) + size > sp - 0x80;
+    };
+    const auto match_slot = player + 0x1a4;
+    if (aliases_frame(match_slot, 4)) return std::nullopt;
+
+    std::uint32_t match, value = 0, r4 = player;
+    int position = 0;
+    try {
+        match = c.u32(match_slot);
+        (void)c.u32(sp + 8);
+        (void)c.u32(sp - 0x40);
+        if (match) {
+            const auto position_slot = player + (target == 0x101e3e70 ? 0x1a : 0x19);
+            if (aliases_frame(position_slot, 1)) return std::nullopt;
+            position = c.i8(position_slot);
+            if (position >= 0 && position <= 10) {
+                const auto side_slot = player + 0x27;
+                if (aliases_frame(side_slot, 1)) return std::nullopt;
+                const auto table_slot = match + (target == 0x101e3de0 ? 0x793c : 0x7934) +
+                                        std::uint32_t(c.i8(side_slot)) * 4;
+                if (aliases_frame(table_slot, 4)) return std::nullopt;
+                r4 = std::uint32_t(position) * 2;
+                const auto role_slot = c.u32(table_slot) + r4;
+                if (aliases_frame(role_slot, 2)) return std::nullopt;
+                value = std::uint32_t(c.i16(role_slot));
+            }
+            for (const auto offset : {0x48u, 0x44u, 0x38u, 0x80u}) (void)c.u32(sp - offset);
+        }
+    } catch (const std::runtime_error&) {
+        // Let the legacy route perform its stores and reach the same fault.
+        return std::nullopt;
+    }
+
+    const auto back = c.lr();
+    c.put32(sp + 8, back);
+    c.put32(sp - 0x40, sp);
+    if (match) {
+        c.put32(sp - 0x48, c.r(30));
+        c.put32(sp - 0x44, c.r(31));
+        c.put32(sp - 0x38, entry + 0x24);
+        c.put32(sp - 0x80, sp - 0x40);
+        c.s.wr<4>(reg::r2_save, c.r(2));
+        c.s.pc = entry + 0x24;
+        c.compare(0, position, position < 0 ? 0 : 10);
+    } else {
+        c.compare_logical(0, 0, 0);
+    }
+    c.set(0, back);
+    c.set(4, r4);
+    return result(c, value);
+}
+
 std::uint32_t role_from(Cpu& c, std::uint32_t player, std::uint32_t entry, std::uint32_t target) {
+    if (const auto role = native_role(c, player, entry, target)) return *role;
     Frame frame(c, entry, 0x40, {});
     c.set(4, player);
     const auto& memory = c.s.memory;
