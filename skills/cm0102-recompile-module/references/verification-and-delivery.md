@@ -111,6 +111,33 @@ and the controlled replay's exact scope. If no valid paired replay can establish
 integration, verification stays open. Do not require Victor's new gameplay
 captures or claim that an unreached pair checked the module.
 
+## Measure hot blocks before production promotion
+
+- Use an existing profile and a replay that actually reaches the block. Count
+  work at the relevant entry or phase, including direct calls where applicable.
+  Identify whether elapsed time comes from the block, its callees, or growth
+  in rows, lookups, or passes. Record an original or accepted production baseline
+  before tuning. Keep probes out of timing runs.
+- Start with redundant work inside the owned call graph. Consider ordered
+  indexes for repeated scans, reuse of stable values within one operation, or
+  direct typed calls with compatibility effects at observable boundaries. Prove
+  mutation, aliasing, callback, observer, ordering and lifetime assumptions before
+  taking a shortcut. Replace PowerPC idioms with typed arithmetic and ordinary
+  control flow. Remove redundant spills, register writes, or dispatches only
+  after proving the game and applicable observers cannot read the difference.
+  Preserve live stack bytes, ABI, FP state, and exact effect order wherever
+  observable. Use a faithful typed path when a faster path's preconditions fail.
+- Check equivalence first. Then use identical inputs and normal Release routes,
+  changing only the block under test. Run at least five alternating pairs and
+  record wall time, process CPU, workload size, pair spread and final-state
+  agreement. Report the reached operation separately from any measured full
+  Continue. Guest instruction counts help explain a result.
+- Keep a shortcut only with a repeatable improvement. A neutral faithful rewrite
+  can ship. For a repeatable material slowdown on a hot scenario, fix or defer
+  promotion of the affected block and report its production status separately.
+  If timing is unavailable, record the gap and deliver independently verified
+  work without a speed claim. Use existing captures or controlled fixtures.
+
 ## Coverage, provenance and disk use
 
 Instrument only the module's checker objects, using `CM_SIPRINT_COVERAGE` as a
@@ -124,9 +151,10 @@ gate). Compiler-generated branches need a mapping. One call per entry and 100%
 line coverage do not close behavioral paths. Prioritize simulation/RNG/save
 gaps; batching coverage is a cost saving, never permission to leave gaps open.
 
-Check available disk before a large run. Once a successful merge is verified,
-remove only its reproducible raw profiles; keep the merged profile until the
-relevant closure/review is done. Do not erase another active run's evidence.
+Check free disk space before builds, generation, and replay batches. After each
+batch, remove task-owned temporary binaries, duplicate outputs, and raw profiles
+that a verified replacement makes redundant. Keep the active build, compact
+evidence, and shared captures, exports, and saves.
 
 Keep a compact `.local/rewrites/<module>/ledger.json`: revision and relevant
 dirty source/configuration identity, per-entry implementation/production/check

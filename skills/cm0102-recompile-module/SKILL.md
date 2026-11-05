@@ -1,6 +1,6 @@
 ---
 name: cm0102-recompile-module
-description: Reconstruct a whole CM 01/02 module (X.CPP) as handwritten C++23 in cm0102mac, including closed inventory, production routing, differential checks and delivery. Use for a named module, unfinished verification or an authorized next/random module, including Portuguese requests such as "recompila", "reconstrói" and "próximo módulo". Exclude isolated bug fixes, gameplay features and performance tuning.
+description: Reconstruct a whole CM 01/02 module (X.CPP) as handwritten C++23 in cm0102mac, including closed inventory, production routing, differential checks, measured optimization of hot paths and delivery. Use for a named module, unfinished verification or an authorized next/random module, including Portuguese requests such as "recompila", "reconstrói" and "próximo módulo". Exclude isolated bug fixes, gameplay features and standalone performance tuning.
 ---
 
 # CM 01/02 complete module reconstruction
@@ -82,6 +82,11 @@ between rewritten routines and a narrow ABI adapter. Preserve memory/stack,
 call arguments and order, RNG, floating point, errors and serialized bytes.
 Keep an explicit list of external dependencies. Owned generated calls, builder
 transcriptions and algorithms living in a register array remain incomplete.
+
+Optimize within each reconstruction block when existing profiles or controlled
+measurements identify a worthwhile bottleneck. Move PowerPC bookkeeping to
+the ABI boundary and remove work proven unobservable. Follow the performance
+procedure in the verification reference before promoting a hot path.
 
 Syntax-check owned translation units before the serialized build. During a
 routine's implementation, test that routine and affected callers/dependencies.
