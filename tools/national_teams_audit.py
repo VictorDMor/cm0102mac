@@ -90,7 +90,8 @@ ROUTINES = (
     (0x102bc270, 0x102bc340, 52, "7aca1c4fa79c75cd"),
 )
 ENTRIES = tuple(entry for entry, _, _, _ in ROUTINES)
-NATIONAL_TEAMS_ENTRIES = (0x102ae9c0, 0x102aea20, 0x102aea50, 0x102af620, 0x102af650, 0x102b7450)
+NATIONAL_TEAMS_ENTRIES = (0x102ae9c0, 0x102aea20, 0x102aea50, 0x102af620, 0x102af650, 0x102b7450,
+                          0x102b7c00, 0x102b7c70)
 VECTORS = {
     0x108b8d14: 0x102bc180,
     0x108b8d1c: 0x102bc270,
