@@ -66,9 +66,14 @@ constexpr auto notice_render_trace = fixture + 0xd200, notice_render_cups = fixt
 constexpr auto notice_render_people = fixture + 0xd700, notice_render_cup_slot = fixture + 0xd900;
 constexpr auto append_appointment = 0x102b7000u, expire_nation_appointments = 0x102b70a0u;
 constexpr auto expire_pair_appointments = 0x102b7140u, replace_assignment = 0x102b71e0u, reconcile_assignments = 0x102b7280u;
+constexpr auto direct_assignment = 0x102b7490u, release_assignments = 0x102b7750u;
 constexpr auto appointment_trace = fixture + 0x8800, appointment_rows = fixture + 0x8900;
 constexpr auto assignment_nations = fixture + 0xc000, assignment_managers = fixture + 0xc500;
 constexpr auto assignment_slots = fixture + 0xc800;
+constexpr auto assignment_manager = assignment_slots + 0x10, assignment_club_list = assignment_slots + 0x30;
+constexpr auto assignment_descriptor = assignment_slots + 0x70, assignment_virtual_table = assignment_slots + 0x80;
+constexpr auto assignment_enumerator = assignment_slots + 0x100, assignment_callback_toc = toc + 0x1000;
+constexpr auto assignment_clubs = assignment_nations + 0x400;
 constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
 constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
 constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
@@ -135,7 +140,14 @@ bool observe_dependency(State& s) {
     const bool fixture_marking = resume >= 0x102ba80c && resume <= 0x102ba9fc;
     const bool calendar_news = resume >= 0x102bad6c && resume <= 0x102bb03c;
     const bool calendar_render = resume >= 0x102bb08c && resume <= 0x102bc164;
+    const bool direct_assertion = resume == 0x102b74f8 || resume == 0x102b7518 || resume == 0x102b7528;
     switch (entry) {
+    case assignment_enumerator:
+        if (resume != 0x102b7794) return false;
+        break;
+    case 0x101b83f0:
+        if (resume != 0x102b77f4) return false;
+        break;
     case 0x100ce250: case 0x100c7d00: case 0x10738e00: case 0x10717b20: case 0x10717890:
     case 0x1048b180: case dispose_list: case localize: case 0x107156b0: break;
     case tier:
@@ -164,13 +176,14 @@ bool observe_dependency(State& s) {
         if (!calendar_read && !domestic_schedule && !fixture_marking) return false;
         break;
     case 0x10775170:
-        if (resume != 0x102ba774) return false;
+        if (resume != 0x102ba774 && resume != 0x102b7814) return false;
         break;
     case 0x107751b0: case 0x10768300:
         if (!domestic_schedule) return false;
         break;
     case 0x101b5b20:
-        if (resume != 0x102b7268 && resume != 0x102b7414) return false;
+        if (resume != 0x102b7268 && resume != 0x102b7414 &&
+            resume != 0x102b7580 && resume != 0x102b7704 && resume != 0x102b7734) return false;
         break;
     case 0x1048a020:
         if (resume != 0x102bac8c) return false;
@@ -239,8 +252,34 @@ bool observe_dependency(State& s) {
         return true;
     }
     switch (entry) {
+    case assignment_enumerator:
+        require(c.r(2) == assignment_callback_toc && c.u32(frame + 0x14) == toc &&
+                    c.r(3) == assignment_nations && c.r(4) == frame + 0x38 && c.r(5) == 0,
+                "queued release virtual call ABI and TOC switch");
+        c.put32(c.r(4), c.u32(assignment_club_list + 0x14));
+        c.set(3, c.u32(assignment_club_list + 0x10));
+        break;
+    case 0x100c7d00:
+        if (resume != 0x102b77bc) return false;
+        require(c.r(2) == toc && c.r(3) >= assignment_clubs && c.r(3) < assignment_clubs + 3 * 0x40,
+                "queued release club classification and TOC restore");
+        c.set(3, c.u32(c.r(3) + 4));
+        break;
+    case 0x101b83f0: {
+        const auto index = c.u8(appointment_trace + 4);
+        require(index < 3 && c.r(3) == news_system && c.r(4) == assignment_manager &&
+                    c.r(5) >= assignment_clubs && c.r(5) < assignment_clubs + 3 * 0x40,
+                "queued release notification ABI");
+        const auto nation = c.u32(c.r(5) + 0x2c);
+        require(c.u32(records + c.u32(nation + 0x68) * record_size + 4) == UINT32_MAX,
+                "queued release clears the assignment before notification");
+        c.put32(appointment_trace + 8 + index * 4, c.r(5));
+        c.put8(appointment_trace + 4, index + 1);
+        break;
+    }
     case 0x100c76c0:
-        if (resume != 0x102b7258 && resume != 0x102b7404) return false;
+        if (resume != 0x102b7258 && resume != 0x102b7404 &&
+            resume != 0x102b7570 && resume != 0x102b76f4 && resume != 0x102b7724) return false;
         require(c.r(3) >= assignment_nations && c.r(3) < assignment_nations + 3 * 0x128,
                 "staff assignment identity argument");
         c.set(3, 0x8000 + (c.r(3) - assignment_nations) / 0x128);
@@ -300,6 +339,12 @@ bool observe_dependency(State& s) {
         break;
     }
     case 0x10775170: {
+        if (resume == 0x102b7814) {
+            require(c.r(3) == assignment_club_list && c.u8(appointment_trace + 0x18) == 0,
+                    "queued release frees the returned array exactly once");
+            c.put8(appointment_trace + 0x18, 1);
+            break;
+        }
         const auto index = c.u32(release_policy + 8);
         require(index < 3 && (c.r(3) == release_rows || c.r(3) == away_events || c.r(3) == grown_rows),
                 "domestic schedule release pointer");
@@ -530,7 +575,10 @@ bool observe_dependency(State& s) {
         break;
     case 0x10739890:
         require(c.r(3) == source + 0x37, "national assertion source");
-        if (!calendar_archive && !domestic_schedule && !fixture_marking) {
+        if (direct_assertion) {
+            require(resume == 0x102b74f8 && c.r(6) == frame + 0x40 && c.r(7) == frame + 0x38,
+                    "direct staff assignment assertion frame");
+        } else if (!calendar_archive && !domestic_schedule && !fixture_marking) {
             require(resume == 0x102b84b8 && c.r(6) == frame + 0x50 && c.r(7) == frame + 0x48,
                     "injury missing-team assertion frame");
         }
@@ -539,12 +587,13 @@ bool observe_dependency(State& s) {
         break;
     case 0x1077b720:
         require(c.r(3) == injury_assert_buffer, "national assertion output");
-        if (calendar_archive || domestic_schedule || fixture_marking) c.put32(archive_trace + 0x10, c.r(8));
+        if (calendar_archive || domestic_schedule || fixture_marking || direct_assertion)
+            c.put32(archive_trace + 0x10, c.r(8));
         else require(resume == 0x102b84d8 && c.r(8) == 0x1df8, "injury missing-team assertion line");
         c.put8(injury_assert_buffer, 13);
         break;
     case 0x10769b60:
-        require((calendar_archive || domestic_schedule || fixture_marking || resume == 0x102b84e8) &&
+        require((calendar_archive || domestic_schedule || fixture_marking || direct_assertion || resume == 0x102b84e8) &&
                     c.r(3) == source + 0x57 && c.r(4) == injury_assert_buffer, "national assertion dialog");
         break;
     case 0x10717b20: case 0x10717890: {
@@ -658,7 +707,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             // The original caller can enter the allocator without dispatching.
             // Decline that direct route so the fixture sees both calls.
             if (input.pc == calendar_load || input.pc == create_schedule || input.pc == register_fixture ||
-                input.pc == expire_schedule || input.pc == mark_fixtures || input.pc == apply_marks)
+                input.pc == expire_schedule || input.pc == mark_fixtures || input.pc == apply_marks ||
+                input.pc == release_assignments)
                 s.allocator_original = true;
         }
         struct RestoreChecker {
@@ -735,7 +785,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             input.pc == mark_fixtures || input.pc == apply_marks || input.pc == queue_calendar_notice ||
             input.pc == publish_calendar_notices || input.pc == render_calendar_notice ||
             input.pc == append_appointment || input.pc == expire_nation_appointments ||
-            input.pc == expire_pair_appointments || input.pc == replace_assignment || input.pc == reconcile_assignments)
+            input.pc == expire_pair_appointments || input.pc == replace_assignment || input.pc == reconcile_assignments ||
+            input.pc == direct_assignment || input.pc == release_assignments)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
     }
@@ -3439,6 +3490,145 @@ unsigned check_staff_assignment_updates(std::mt19937& random) {
     return cases;
 }
 
+unsigned check_direct_staff_assignments(std::mt19937& random) {
+    constexpr auto incoming = assignment_slots + 0x14, reserved_ids = assignment_slots + 0x120;
+    constexpr std::array offsets{0x7bc0, 0x7a40, 0x6948, 0x694c, 0x6950, 0x693c, 0x6a3c, 0x6938, 0x6b00};
+    const auto prepare = [&](std::uint32_t entry) {
+        auto state = domestic_schedule_seed(random);
+        state->memory.map(assignment_nations, 0x1000);
+        Cpu c(*state);
+        c.put32(toc - 0x79f0, assignment_slots);
+        c.put32(assignment_slots, news_system);
+        c.put32(calendar + 4, records);
+        c.put32(calendar + 8, release_rows);
+        c.put8(injury_success, 1);
+        for (unsigned i = 0; i < 3; ++i) {
+            c.put32(assignment_nations + i * 0x128 + 0x68, i);
+            c.put32(records + i * record_size + 4, i + 1);
+            c.put32(release_rows + i * 4, i + 100);
+        }
+        for (unsigned i = 0; i < offsets.size(); ++i) {
+            c.put32(toc - offsets[i], reserved_ids + i * 4);
+            c.put32(reserved_ids + i * 4, 20 + i);
+        }
+        c.put32(staff_table + 0x6c, 3);
+        c.put32(incoming, 7);
+        c.set({{3, calendar}, {4, assignment_nations}, {5, incoming}});
+        state->pc = entry;
+        return state;
+    };
+
+    unsigned cases = 0;
+    for (const auto argument : {4u, 5u}) {
+        auto state = prepare(direct_assignment);
+        Cpu(*state).set(argument, 0);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(archive_trace + 0x10) == 0x1ba5 && result.u8(injury_success) == 0 &&
+                    result.u32(records + 4) == 1 && result.u32(release_rows) == 100,
+                "invalid assignment reports the assertion without changing current or pending staff");
+        ++cases;
+    }
+    for (unsigned i = 0; i < offsets.size(); ++i) {
+        auto state = prepare(direct_assignment);
+        Cpu c(*state);
+        c.put32(staff_table + 0x6c, 20 + i);
+        if (i + 1 < offsets.size()) c.put32(toc - offsets[i + 1], unmapped);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(records + 4) == 1 && result.u32(release_rows) == 7 &&
+                    result.u8(appointment_trace + 4) == 0, "protected assignment queues replacement without notification");
+        ++cases;
+    }
+    for (unsigned mode = 0; mode < 9; ++mode) {
+        auto state = prepare(direct_assignment);
+        Cpu c(*state);
+        const bool empty = mode < 2, protected_incoming = mode >= 4 && mode <= 7;
+        const bool listener = mode != 0 && mode != 2 && mode != 4;
+        if (empty) c.put32(records + 4, UINT32_MAX);
+        if (!listener) c.put32(assignment_slots, 0);
+        if (protected_incoming) c.put32(incoming, mode == 4 ? 20 : 28);
+        if (mode == 6) {
+            c.set(5, release_rows);
+            c.put32(release_rows, 28);
+        }
+        if (mode == 7 || mode == 8) {
+            c.put32(records + 4, 0);
+            c.put32(staff_slot, 0);
+        }
+        const auto after = compare(*state);
+        Cpu result(*after);
+        const auto assigned = mode == 4 ? 20u : mode == 5 || mode == 7 ? 28u : mode == 6 ? 1u : 7u;
+        require(result.u32(records + 4) == assigned &&
+                    result.u32(release_rows) == (protected_incoming ? (mode == 7 ? 0u : 1u) : 100u),
+                "direct assignment installs staff and preserves pending order under aliasing");
+        require(result.u8(appointment_trace + 4) == listener &&
+                    (!listener || result.u32(appointment_trace + 8) == 0x8000),
+                "direct assignment notification");
+        ++cases;
+    }
+
+    const auto prepare_release = [&](unsigned count, bool allocate) {
+        auto state = prepare(release_assignments);
+        Cpu c(*state);
+        c.put32(toc - 0x7b5c, assignment_slots + 4);
+        c.put32(assignment_slots + 4, assignment_slots + 8);
+        c.put32(assignment_slots + 8, assignment_nations);
+        c.put32(assignment_manager, 0);
+        c.put32(assignment_nations, assignment_virtual_table);
+        c.put32(assignment_virtual_table + 0x60, assignment_descriptor);
+        c.put32(assignment_descriptor, assignment_enumerator);
+        c.put32(assignment_descriptor + 4, assignment_callback_toc);
+        c.put32(assignment_club_list + 0x10, count);
+        c.put32(assignment_club_list + 0x14, allocate ? assignment_club_list : 0);
+        for (unsigned i = 0; i < 3; ++i) {
+            const auto club = assignment_clubs + i * 0x40;
+            c.put32(assignment_club_list + i * 4, club);
+            c.put32(club + 4, i == 0 ? 0x180 : i == 1 ? 0x100 : 1);
+            c.put32(club + 0x2c, assignment_nations + i * 0x128);
+        }
+        c.set(4, assignment_manager);
+        return state;
+    };
+    for (unsigned mode = 0; mode < 5; ++mode) {
+        const bool active = mode >= 3, allocate = mode != 0, listener = mode == 4;
+        auto state = prepare_release(active ? 0x12340003u : mode == 2 ? 0x1ffffu : 0u, allocate);
+        if (!listener) Cpu(*state).put32(assignment_slots, 0);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(records + 4) == (active ? UINT32_MAX : 1) &&
+                    result.u32(records + record_size + 4) == 2 &&
+                    result.u32(records + 2 * record_size + 4) == (active ? UINT32_MAX : 3) &&
+                    result.u32(release_rows) == 100 && result.u32(release_rows + 8) == 102,
+                "queued releases use the signed count and clear only eligible current assignments");
+        require(result.u8(appointment_trace + 4) == (listener ? 2u : 0u) &&
+                    (!listener || (result.u32(appointment_trace + 8) == assignment_clubs &&
+                                   result.u32(appointment_trace + 12) == assignment_clubs + 0x80)),
+                "queued release notifications follow the returned order");
+        require(result.u8(appointment_trace + 0x18) == allocate && result.u32(stack - 0x28) == 0 &&
+                    result.r(2) == toc, "queued releases dispose of the array and clear the caller scratch slot");
+        ++cases;
+    }
+
+    auto fault = prepare(direct_assignment);
+    Cpu(*fault).put32(toc - 0x79f0, unmapped);
+    const auto assigned = compare(*fault, Stop::fault);
+    require(Cpu(*assigned).u32(records + 4) == 7, "assignment completes before a listener fault");
+    fault = prepare_release(3, true);
+    Cpu(*fault).put32(assignment_club_list + 8, unmapped);
+    const auto released = compare(*fault, Stop::fault);
+    Cpu result(*released);
+    require(result.u32(records + 4) == UINT32_MAX && result.u32(records + 2 * record_size + 4) == 3 &&
+                result.u8(appointment_trace + 4) == 1 && result.u8(appointment_trace + 0x18) == 0,
+            "queued release preserves earlier notifications and stops before disposal on a bad later club");
+    for (auto entry : {direct_assignment, release_assignments}) {
+        auto state = entry == direct_assignment ? prepare(entry) : prepare_release(3, true);
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    return cases;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -3510,6 +3700,8 @@ int main() try {
     const auto formatter_references = check_calendar_notice_formatter_reference(random);
     const auto appointments = check_calendar_appointments(random);
     const auto assignments = check_staff_assignment_updates(random);
+    const auto direct_assignments = check_direct_staff_assignments(random);
+    std::cout << direct_assignments << " NATIONAL_TEAMS direct assignments and release comparisons, 2 faults and 2 budget stops\n";
     std::cout << appointments << " NATIONAL_TEAMS appointment comparisons, 1 fault and 3 budget stops\n";
     std::cout << assignments << " NATIONAL_TEAMS staff assignment comparisons, 2 faults and 2 budget stops\n";
     std::cout << formatter_references << " NATIONAL_TEAMS calendar formatter reference cases\n";
