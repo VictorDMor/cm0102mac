@@ -1,6 +1,7 @@
 #pragma once
 
 #include "guest_values.hpp"
+#include "staff_contracts_adapter.hpp"
 
 namespace cm::aot::staff_contracts::detail {
 using guest::Cpu;
@@ -10,6 +11,27 @@ using guest::Cpu;
 inline void block(Cpu& c, std::uint32_t pc, unsigned instructions) {
     c.s.step(pc);
     c.s.charge(instructions - 1);
+}
+
+template<class Operation, class... Args>
+void call_owned(Cpu& c, std::uint32_t entry, std::uint32_t resume, Operation operation, Args... args) {
+    if (!staff_contracts_calls_directly()) {
+        c.call(entry, resume);
+        return;
+    }
+    c.link(resume);
+    operation(c, args...);
+    c.finish();
+    if (c.s.pc != resume) run_until(c.s, resume);
+}
+
+// Record forms replace only CR0's low nibble.
+inline bool record_nonzero(Cpu& c, std::int32_t value) {
+    c.set(0, std::uint32_t(value));
+    const auto upper = c.cr(0) & 0xf0;
+    const auto nonzero = guest::nonzero(c, value);
+    c.set_cr(0, std::uint8_t(upper | c.cr(0)));
+    return nonzero;
 }
 
 // The exported multiword moves leave the transfer address live in TEA,

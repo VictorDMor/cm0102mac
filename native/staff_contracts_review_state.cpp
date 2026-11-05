@@ -1,11 +1,11 @@
 #include "staff_contracts.hpp"
-#include "staff_contracts_adapter.hpp"
 #include "staff_contracts_detail.hpp"
 
 namespace cm::aot::staff_contracts {
 
 namespace {
 using detail::block;
+using detail::call_owned;
 using detail::ContractRecord;
 using guest::Cpu;
 
@@ -27,30 +27,6 @@ void restore_review_frame(Cpu& c, unsigned size, bool saves_r29 = false) {
     if (saves_r29) c.set(29, c.u32(stack - 12));
 }
 
-void call_clear_review_conditions(Cpu& c, std::uint32_t contract) {
-    constexpr auto back = 0x1037f088;
-    if (!staff_contracts_calls_directly()) {
-        c.call(clear_all_entry, back);
-        return;
-    }
-    c.link(back);
-    clear_review_conditions(c, contract, 0);
-    c.finish();
-    if (c.s.pc != back) run_until(c.s, back);
-}
-
-void call_reset_status(Cpu& c, std::uint32_t contract) {
-    constexpr auto back = 0x1037f090;
-    c.set(3, contract);
-    if (!staff_contracts_calls_directly()) {
-        c.call(reset_status_entry, back);
-        return;
-    }
-    c.link(back);
-    reset_status_bits(c, contract);
-    c.finish();
-    if (c.s.pc != back) run_until(c.s, back);
-}
 }
 
 void reset_review_state(Cpu& c, std::uint32_t contract, std::uint32_t staff, std::uint32_t club) {
@@ -74,9 +50,10 @@ void reset_review_state(Cpu& c, std::uint32_t contract, std::uint32_t staff, std
 
     c.put8(contract + clearance_counter, 0);
     c.put8(contract + ContractRecord::review_flags, 0);
-    call_clear_review_conditions(c, contract);
+    call_owned(c, clear_all_entry, 0x1037f088, clear_review_conditions, contract, 0u);
     block(c, 0x1037f088, 2);
-    call_reset_status(c, record);
+    c.set(3, record);
+    call_owned(c, reset_status_entry, 0x1037f090, reset_status_bits, std::uint32_t(record));
     block(c, 0x1037f090, 7);
     c.set({{3, 4}, {0, 0}});
     c.put8(record + ContractRecord::review_flags, 4);
@@ -132,7 +109,7 @@ void clear_review_condition(Cpu& c, std::uint32_t contract, std::uint32_t mask) 
     const auto remaining = flags & ~mask;
     c.set({{4, flags}, {0, remaining}});
     c.put32(contract + ContractRecord::review_conditions, remaining);
-    c.call(refresh_entry, 0x1037f7fc);
+    call_owned(c, refresh_entry, 0x1037f7fc, refresh_review_conditions, contract, flags);
 
     block(c, 0x1037f7fc, 7);
     const auto index = c.u32(record);
@@ -173,14 +150,10 @@ void clear_review_conditions(Cpu& c, std::uint32_t contract, std::uint32_t refre
 
     block(c, 0x1037f86c, 2);
     const auto flag = std::int8_t(std::uint32_t(refresh_flag));
-    c.set(0, std::uint32_t(flag));
-    const auto cr0 = c.cr(0) & 0xf0;
-    guest::compare(c, flag);
-    c.set_cr(0, std::uint8_t(c.cr(0) | cr0));
-    if (flag) {
+    if (detail::record_nonzero(c, flag)) {
         block(c, 0x1037f874, 3);
         c.set({{3, record}, {4, 0}});
-        c.call(refresh_entry, 0x1037f880);
+        call_owned(c, refresh_entry, 0x1037f880, refresh_review_conditions, std::uint32_t(record), 0u);
     }
     block(c, 0x1037f880, 6);
     restore_review_frame(c, 0x40);

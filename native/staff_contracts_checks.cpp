@@ -54,6 +54,10 @@ constexpr std::uint32_t draft_end = dates + 0x40;
 
 constexpr std::uint32_t reset_review_entry = 0x1037f050, clear_review_entry = 0x1037f7d0;
 constexpr std::uint32_t clear_all_review_entry = 0x1037f830, refresh_review_entry = 0x1037f590;
+constexpr std::uint32_t add_review_status_entry = 0x1037f8a0, review_trigger = 0x1037f110;
+constexpr std::uint32_t clearance_veto = 0x103ea290, clearance_notice = 0x1008f620;
+constexpr std::uint32_t followup_veto = 0x103f43b0, followup_active = 0x103e6470, followup_notice = 0x1008e350;
+constexpr std::uint32_t review_clubs_slot = fixture + 0x5b8, review_policy_slot = fixture + 0x5bc;
 constexpr std::uint32_t reset_status_entry = 0x1037fa60;
 constexpr std::uint32_t clear_staff_conditions = 0x100ddf30, clear_staff_condition = 0x100de090;
 constexpr std::uint32_t review_reputation = 0x103092f0;
@@ -94,6 +98,11 @@ struct WindowInputs {
     std::int16_t days = 0;
 };
 
+struct ReviewPolicyInputs {
+    std::uint32_t trigger = 0, veto = 0, active = 0;
+    std::optional<std::uint32_t> changed_conditions;
+};
+
 struct ExternalInputs {
     WindowInputs window;
     std::uint32_t clause_reply = 1;
@@ -104,10 +113,15 @@ struct ExternalInputs {
     std::uint32_t primary_contract = draft_primary_contract;
     std::uint32_t month = 0;
     bool quote_exception = false;
+    ReviewPolicyInputs policy;
 };
 
 bool draft_preparation(std::uint32_t entry) {
     return entry == prepare_new_entry || entry == prepare_primary_entry;
+}
+
+bool review_policy_entry(std::uint32_t entry) {
+    return entry == refresh_review_entry || entry == add_review_status_entry;
 }
 
 bool review_state_entry(std::uint32_t entry) {
@@ -121,7 +135,7 @@ bool release_entry(std::uint32_t entry) {
 bool label_entry(std::uint32_t entry) {
     return entry == bonus_name || entry == option_name || entry == bonus_description || entry == option_description
         || entry == wage_entry || entry == end_text_entry || release_entry(entry)
-        || entry == prepare_primary_entry || entry == expiry_text_entry;
+        || entry == prepare_primary_entry || entry == expiry_text_entry || entry == add_review_status_entry;
 }
 
 void write_text(guest::Cpu& c, std::uint32_t destination, std::string_view value) {
@@ -162,12 +176,15 @@ struct DependencyTrace {
     std::optional<std::uint32_t> change_release_field;
     std::optional<std::uint32_t> review_reply, primary_contract, month;
     unsigned dispatched_draft_children = 0;
+    ReviewPolicyInputs policy;
 };
 DependencyTrace* dependency_trace = nullptr;
 
 bool is_fixture_service(std::uint32_t entry) {
     return entry == primary_adjustment || entry == alternate_adjustment || entry == money_value
-        || entry == money_text || entry == review_reputation || entry == find_primary_contract;
+        || entry == money_text || entry == review_reputation || entry == find_primary_contract
+        || entry == clearance_veto || entry == clearance_notice || entry == followup_veto
+        || entry == followup_active || entry == followup_notice;
 }
 
 struct ScopedRoutineChecker {
@@ -190,10 +207,11 @@ bool trace_dependency(State& s) {
     const bool window = trace.window && (s.pc == interval_entry || s.pc == age_entry);
     const bool sample = trace.sample_fixture && s.pc == reseed_entry;
     const bool clause = trace.clause_reply && s.pc == cfm_entry;
-    if (trace.review_reply && (s.pc == clear_all_review_entry || s.pc == reset_status_entry))
+    if (trace.review_reply && (s.pc == clear_all_review_entry || s.pc == reset_status_entry || s.pc == refresh_review_entry))
         ++trace.dispatched_review_children;
-    const bool review = trace.review_reply && (s.pc == refresh_review_entry || s.pc == review_reputation
-        || s.pc == clear_staff_condition || s.pc == clear_staff_conditions);
+    const bool review = trace.review_reply && (s.pc == review_reputation || s.pc == clear_staff_condition
+        || s.pc == clear_staff_conditions || s.pc == review_trigger || s.pc == clearance_veto
+        || s.pc == clearance_notice || s.pc == followup_veto || s.pc == followup_active || s.pc == followup_notice);
     if (trace.primary_contract && (s.pc == reset_review_entry || s.pc == clear_option_entry
                                   || s.pc == clear_bonus_entry || s.pc == set_release_entry))
         ++trace.dispatched_draft_children;
@@ -221,9 +239,21 @@ bool trace_dependency(State& s) {
         return true;
     }
     if (review) {
-        if (s.pc == review_reputation) c.set(3, *trace.review_reply);
-        else if (s.pc == refresh_review_entry) c.put8(record + 0x45, 9);
-        else c.put32(c.r(3) + 0x34, s.pc == clear_staff_condition ? c.r(4) : 0);
+        switch (s.pc) {
+        case review_reputation: c.set(3, *trace.review_reply); break;
+        case review_trigger: c.set(3, trace.policy.trigger); break;
+        case clearance_veto:
+        case followup_veto: c.set(3, trace.policy.veto); break;
+        case followup_active: c.set(3, trace.policy.active); break;
+        case clearance_notice:
+            c.put8(c.r(4) + 0x45, 9);
+            if (trace.policy.changed_conditions) c.put32(c.r(4) + 0x50, *trace.policy.changed_conditions);
+            break;
+        case followup_notice: c.put8(c.r(4) + 0x45, 5); break;
+        default:
+            c.put32(c.r(3) + 0x34, s.pc == clear_staff_condition ? c.r(4) : 0);
+            break;
+        }
         c.finish();
         return true;
     }
@@ -410,6 +440,10 @@ std::unique_ptr<State> expiry_fixture() {
     c.put32(toc - 0x7be0, staff_slot);
     c.put32(staff_slot, staff_rows);
     c.put32(toc - 0x7b3c, review_service_slot);
+    c.put32(toc - 0x7be8, review_clubs_slot);
+    c.put32(review_clubs_slot, review_club);
+    c.put32(toc - 0x7b40, review_policy_slot);
+    c.put32(review_policy_slot, 0x1234b40);
     c.put32(review_service_slot, 0x1234b3c);
     c.put32(toc - 0x7b7c, draft_manager_slot);
     c.put32(draft_manager_slot, 0x1234b7c);
@@ -502,7 +536,8 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const bool clause_fixture = input.pc == clause_entry;
     const bool draft_fixture = draft_preparation(input.pc);
     const bool quote_fixture = input.pc == apply_quote_entry;
-    const bool review_fixture = review_state_entry(input.pc) || draft_fixture;
+    const bool policy_fixture = review_policy_entry(input.pc);
+    const bool review_fixture = review_state_entry(input.pc) || draft_fixture || policy_fixture;
     const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value()
         || text_fixture || window_fixture || sample_fixture || clause_fixture || review_fixture || quote_fixture;
     if (text_fixture) {
@@ -513,11 +548,11 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         original->formatted_output_original = modern->formatted_output_original = true;
     }
     if (review_fixture) {
-        contract_review_diagnostics(*original).original_body = refresh_review_entry;
-        contract_review_diagnostics(*modern).original_body = refresh_review_entry;
+        contract_review_diagnostics(*original).original_body = review_trigger;
+        contract_review_diagnostics(*modern).original_body = review_trigger;
     }
-    const auto primary_contract = draft_fixture ? std::optional(inputs.primary_contract)
-        : quote_fixture ? std::optional(0u) : std::nullopt;
+    const auto primary_contract = draft_fixture || policy_fixture ? std::optional(inputs.primary_contract)
+        : quote_fixture || review_fixture ? std::optional(0u) : std::nullopt;
     const auto month = input.pc == expiry_text_entry ? std::optional(inputs.month) : std::nullopt;
     const auto review_reply = review_fixture ? std::optional(inputs.review_reply) : std::nullopt;
     const auto window_inputs = window_fixture ? std::optional(inputs.window) : std::nullopt;
@@ -527,22 +562,28 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
                               .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
                               .transfer_clause = inputs.transfer_clause,
                               .change_release_field = inputs.change_release_field,
-                              .review_reply = review_reply, .primary_contract = primary_contract, .month = month};
+                              .review_reply = review_reply, .primary_contract = primary_contract, .month = month,
+                              .policy = inputs.policy};
     DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
                               .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture,
                                .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
                               .transfer_clause = inputs.transfer_clause,
                               .change_release_field = inputs.change_release_field,
-                              .review_reply = review_reply, .primary_contract = primary_contract, .month = month};
+                              .review_reply = review_reply, .primary_contract = primary_contract, .month = month,
+                              .policy = inputs.policy};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
     // Decline the in-place owners for the modeled external dependencies.
     RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_fixture_service(entry); }, 0, 0);
     const bool amount_description = input.pc == bonus_description && std::int8_t(input.r<4>(28)) != 1;
     const bool reputation_call = input.pc == reset_review_entry && input.r<4>(20) != 0;
+    const bool needs_policy_filter = policy_fixture || input.pc == clear_review_entry || input.pc == clear_all_review_entry;
     ScopedRoutineChecker checker(adjustment || amount_description || input.pc == wage_entry || reputation_call
-                                    || input.pc == prepare_primary_entry || quote_fixture
+                                    || input.pc == prepare_primary_entry || quote_fixture || needs_policy_filter
                                     ? &fixture_filter : nullptr);
     const auto old_stop = call(*original, true);
+    // The rewritten review graph can call its typed children directly. Its
+    // remaining external calls reach the fixture through the dispatcher.
+    if (needs_policy_filter) routine_checker = checker.saved;
     if (traced) dependency_trace = &new_calls;
     const auto new_stop = call(*modern, false);
     original->memory.date_observer = modern->memory.date_observer = nullptr;
@@ -567,6 +608,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     if (input.pc == reset_review_entry && !reputation_call && old_stop.empty())
         require(old_calls.dispatched_review_children == 2 && new_calls.dispatched_review_children == 0,
                 label + " did not take both direct C++ review calls");
+    if (input.pc == clear_review_entry && old_stop.empty())
+        require(old_calls.dispatched_review_children == 1 && new_calls.dispatched_review_children == 0,
+                label + " did not use the direct C++ refresh");
     if (traced && !sample_fixture && !clause_fixture && !release_entry(input.pc)
         && !review_fixture && input.pc != wage_entry && input.pc != expiry_text_entry && old_stop.empty()) {
         const unsigned expected_calls = input.pc == bonus_description ? (amount_description ? 4 : 2)
@@ -616,6 +660,8 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const auto text = text_fixture && old_stop.empty() ? read_text(cpu, output_buffer) : std::string{};
     Result result{band, unsigned(modern->executed), contract_value, text, std::move(actual.log)};
     result.dependency_calls = old_calls.calls.size();
+    if (policy_fixture && old_stop.empty())
+        result.contract_value = cpu.u32(record + (input.pc == add_review_status_entry ? 0x48 : 0x50));
     if (window_fixture && old_stop.empty()) {
         result.boundary = cpu.u8(boundary_out);
         result.threshold = cpu.u8(threshold_out);
@@ -1360,6 +1406,121 @@ void expiry_and_quote_cases(Counts& counts) {
     compare_entry(*input, counts, no_hole, false, false, std::nullopt, fault);
 }
 
+void review_policy_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    c.put32(review_club, 34);
+    c.put32(record + 4, 34);
+    c.put32(staff_rows + 0x14, draft_primary_contract);
+    c.put8(staff_rows + 0x65, 0xf1);
+    c.put8(staff_rows + 0x67, 9);
+    c.put8(record + 0x5c, 8);
+    c.put8(record + 0x44, 128);
+    c.put8(record + 0x45, 5);
+    c.put8(draft_primary_contract + 0x38, 4);
+    c.set(4, fixture + 0x17);
+    input->pc = refresh_review_entry;
+    const auto simple = compare_entry(*input, counts);
+    require(simple.dependency_calls == 4, "Clearance checks policy before its notice");
+    ExternalInputs changes;
+    changes.policy.changed_conditions = 0x1019d;
+    const auto composed = compare_entry(*input, counts, no_hole, false, false, std::nullopt, changes);
+    require(composed.dependency_calls == 18 && composed.contract_value == 0,
+            "Clearance rereads callback-written conditions and clears each live bit");
+    for (auto cut : {1u, 16u, simple.steps / 2, simple.steps - 1, composed.steps - 1}) {
+        input->budget = cut;
+        compare_entry(*input, counts, no_hole, false, false, std::nullopt, changes);
+    }
+    input->budget = normal_budget;
+    compare_entry(*input, counts, staff_rows + 0x67);
+    compare_entry(*input, counts, review_club);
+    for (auto response : {0u, 1u, 128u, 256u, 0xffffffffu}) {
+        ExternalInputs inputs;
+        inputs.policy.trigger = response;
+        compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+        inputs.policy.trigger = 0;
+        inputs.policy.veto = response;
+        compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+    }
+    for (auto kind : {0u, 4u, 19u, 20u, 23u, 24u, 128u, 255u}) {
+        c.put8(draft_primary_contract + 0x38, kind);
+        compare_entry(*input, counts);
+    }
+
+    c.put8(draft_primary_contract + 0x38, 4);
+    for (unsigned gate = 0; gate < 5; ++gate) {
+        c.put32(staff_rows + 0x14, gate == 0 ? 0 : draft_primary_contract);
+        c.put32(record + 4, gate == 1 ? 35 : 34);
+        c.put8(record + 0x5c, gate == 2 ? 0 : 8);
+        c.put8(record + 0x54, gate == 3 ? 255 : 0);
+        c.put8(record + 0x60, gate == 4 ? 7 : 0);
+        const auto result = compare_entry(*input, counts);
+        require(result.dependency_calls == (gate == 4 ? 2 : 1), "A clearance gate skips the notice");
+    }
+    c.put8(record + 0x60, 0);
+
+    input->pc = add_review_status_entry;
+    c.put8(record + 0x4c, 1);
+    c.put8(record + 0x5c, 0);
+    c.put32(record + 0x48, 0x4c03);
+    c.put16(draft_primary_contract + 10, 4251);
+    for (auto mask : {0u, 1u, 0xfffu, 0x1000u, 0x1001u, 0x7fffffffu, 0x80000000u, 0xffffffffu}) {
+        c.set(4, mask);
+        ExternalInputs inputs;
+        inputs.policy.trigger = 1;
+        const auto result = compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+        require(result.contract_value == (0x4c03 | mask)
+                    && result.dependency_calls == (std::int32_t(mask) > 0x1000 ? 7 : 4),
+                "Status writes the raw mask and conditionally reports a signed out-of-range argument");
+    }
+    c.set(4, 1);
+    for (auto staff_status : {0, 12, 13, 15, 128, 255}) {
+        c.put8(staff_rows + 0x62, staff_status);
+        for (auto counter : {0, 1, 127, 128, 255}) {
+            c.put8(record + 0x4c, counter);
+            ExternalInputs inputs;
+            inputs.policy.trigger = 1;
+            compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+        }
+    }
+    c.put8(staff_rows + 0x62, 0);
+    c.put8(record + 0x4c, 1);
+    for (auto reply : {1u, 127u, 128u, 255u, 256u}) {
+        ExternalInputs inputs;
+        inputs.policy.trigger = 1;
+        inputs.policy.veto = reply;
+        compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+        inputs.policy.veto = 0;
+        inputs.policy.active = reply;
+        compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+    }
+    for (auto flag : {1u, 8u, 128u, 255u}) {
+        c.put8(record + 0x5c, flag);
+        ExternalInputs inputs;
+        inputs.policy.trigger = 1;
+        compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+    }
+    c.put8(record + 0x5c, 0);
+    c.put8(record + 0x54, 1);
+    require(compare_entry(*input, counts).dependency_calls == 0, "Terms flag suppresses follow-up");
+    c.put8(record + 0x54, 0);
+    c.set(4, 0x1001);
+    compare_entry(*input, counts, diagnostic_flag);
+    c.set(4, 1);
+    compare_entry(*input, counts, no_hole, true);
+    for (auto age : {0, 20, 21, 127, 128, 255, 276, 277}) {
+        c.put16(staff_rows + 0x5c, age);
+        for (auto service : {4249, 4250, 4251, 32768, 65535}) {
+            c.put16(draft_primary_contract + 10, service);
+            ExternalInputs inputs;
+            inputs.policy.trigger = 1;
+            const auto result = compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+            require(result.dependency_calls == (std::int8_t(age) > 20 || std::int16_t(service) > 4250 ? 4 : 3),
+                    "Follow-up preserves both signed eligibility thresholds");
+        }
+    }
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -1393,6 +1554,7 @@ unsigned generated_hooks() {
             else if (entry == wage_entry || entry == end_text_entry) c.set({{4, output_buffer}, {5, 0}, {6, 0}});
             else if (release_entry(entry)) c.set({{4, output_buffer}, {5, 20}});
             else if (entry == expiry_text_entry) c.set({{4, output_buffer}, {5, 1}});
+            else if (entry == add_review_status_entry) c.set(4, 1);
             else c.set({{4, 0}, {5, output_buffer}, {7, 0}});
         }
         const bool quote_fixture = entry == apply_quote_entry;
@@ -1402,9 +1564,9 @@ unsigned generated_hooks() {
             c.put8(staff_rows + 0x62, 16);
         }
         const bool draft_fixture = draft_preparation(entry);
-        const bool review_fixture = review_state_entry(entry) || draft_fixture;
+        const bool review_fixture = review_state_entry(entry) || draft_fixture || review_policy_entry(entry);
         if (review_fixture) {
-            contract_review_diagnostics(*s).original_body = refresh_review_entry;
+            contract_review_diagnostics(*s).original_body = review_trigger;
             s->wr<4>(20, review_club);
         }
         if (draft_fixture) {
@@ -1415,7 +1577,7 @@ unsigned generated_hooks() {
         DependencyTrace trace{.calls = {}, .adjustment_output = 0, .text_fixture = text_fixture,
                               .review_reply = review_fixture ? std::optional(8u) : std::nullopt,
                               .primary_contract = draft_fixture ? std::optional(draft_primary_contract)
-                                  : quote_fixture ? std::optional(0u) : std::nullopt,
+                                  : quote_fixture || review_fixture ? std::optional(0u) : std::nullopt,
                               .month = entry == expiry_text_entry ? std::optional(0u) : std::nullopt};
         ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture || review_fixture || quote_fixture
                                         ? &trace : nullptr);
@@ -1457,6 +1619,7 @@ int main() {
         review_state_cases(counts);
         draft_preparation_cases(counts);
         expiry_and_quote_cases(counts);
+        review_policy_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "

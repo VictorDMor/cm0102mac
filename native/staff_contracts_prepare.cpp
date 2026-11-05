@@ -1,28 +1,16 @@
 #include "staff_contracts.hpp"
-#include "staff_contracts_adapter.hpp"
 #include "staff_contracts_detail.hpp"
 
 namespace cm::aot::staff_contracts {
 namespace {
 using detail::block;
+using detail::call_owned;
 using detail::ContractRecord;
 using guest::Cpu;
 
 constexpr std::uint32_t new_draft_entry = 0x10372260, primary_draft_entry = 0x103723b0;
 constexpr std::uint32_t reset_review_entry = 0x1037f050;
 constexpr unsigned wage_field = 0x0c, initial_wage = 0x3c, adjustment_flag = 0x40;
-
-template<class Operation, class... Args>
-void call_owned(Cpu& c, std::uint32_t entry, std::uint32_t resume, Operation operation, Args... args) {
-    if (!staff_contracts_calls_directly()) {
-        c.call(entry, resume);
-        return;
-    }
-    c.link(resume);
-    operation(c, args...);
-    c.finish();
-    if (c.s.pc != resume) run_until(c.s, resume);
-}
 
 template<unsigned Register>
 void copy_date(Cpu& c, std::uint32_t source, std::uint32_t destination) {
