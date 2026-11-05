@@ -58,6 +58,7 @@ set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.
     staff_contracts_adapter.cpp)
 target_sources(cm_aot PRIVATE ${CM_STAFF_CONTRACTS_SOURCES})
 target_sources(cm_aot PRIVATE simulated_stats.cpp)
+target_sources(cm_aot PRIVATE por_second.cpp)
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
@@ -4415,4 +4416,28 @@ if(CM_SIMULATED_STATS_COVERAGE)
     target_compile_definitions(cm-simulated-stats-checks PRIVATE
         CM_SIMULATED_STATS_PROFILE_DIR="${CM_SIMULATED_STATS_PROFILE_DIR}")
     target_link_options(cm-simulated-stats-checks PRIVATE "-fprofile-instr-generate=${CM_SIMULATED_STATS_PROFILE}")
+endif()
+
+add_executable(cm-por-second-checks por_second_checks.cpp)
+target_link_libraries(cm-por-second-checks PRIVATE cm_aot)
+target_compile_options(cm-por-second-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME por_second_equivalence COMMAND cm-por-second-checks)
+if(Python3_EXECUTABLE)
+    add_test(NAME por_second_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_por_second_audit.py")
+endif()
+
+option(CM_POR_SECOND_COVERAGE "Instrument the Portuguese Second Division checker owner only" OFF)
+if(CM_POR_SECOND_COVERAGE)
+    set(CM_POR_SECOND_PROFILE_DIR "${CMAKE_CURRENT_BINARY_DIR}/por-second-coverage")
+    file(MAKE_DIRECTORY "${CM_POR_SECOND_PROFILE_DIR}")
+    set(CM_POR_SECOND_PROFILE "${CM_POR_SECOND_PROFILE_DIR}/check-%p.profraw")
+    add_library(cm_por_second_coverage OBJECT por_second.cpp)
+    target_link_libraries(cm_por_second_coverage PRIVATE cm_aot)
+    target_compile_options(cm_por_second_coverage PRIVATE
+        "-fprofile-instr-generate=${CM_POR_SECOND_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_sources(cm-por-second-checks PRIVATE $<TARGET_OBJECTS:cm_por_second_coverage>)
+    target_compile_definitions(cm-por-second-checks PRIVATE
+        CM_POR_SECOND_PROFILE_DIR="${CM_POR_SECOND_PROFILE_DIR}")
+    target_link_options(cm-por-second-checks PRIVATE "-fprofile-instr-generate=${CM_POR_SECOND_PROFILE}")
 endif()

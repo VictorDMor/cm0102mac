@@ -439,6 +439,36 @@ at an uncaptured import compare state only to that boundary; they do not
 establish completed archival I/O or full branch coverage. Career save/reload
 through the live app and performance are not retested by this delivery.
 
+## POR_SECOND.CPP
+
+The [audit](../tools/por_second_audit.py) closes six entries and 1,531
+reachable instructions between POR_PRM.CPP and SCO_FIRST.CPP. Construction,
+destruction, calendar generation, club collection, configuration and the next
+season use the normal C++ owner. `CM_POR_SECOND_ORIGINAL=1` retains the
+independent generated reference for comparisons.
+
+The calendar contains 34 rounds and rereads the signed season year before
+every date call. Only the low signed byte of its format argument matters;
+unsupported formats return null before writing output headers. The optional
+flag is written first, then the round count and starting round, including
+when those pointers alias. Allocation failure keeps those writes and clears
+the shared success flag after the original diagnostic.
+
+Club collection keeps the live division IDs and club count across callbacks,
+selects 18 clubs and marks qualifying first-division reserve teams with -4.
+Child destruction uses an inclusive last index, reread after each callback.
+The deleting-destructor flag is a signed short; season advancement wraps the
+signed year through its original 16-bit store. Construction reloads the object
+from its caller parameter slot after callbacks. Owned direct and virtual calls
+stay in C++, with the shared CFM owner preserving descriptor/TOC semantics.
+
+External services still own base-division and stage lifetimes, standings/date
+record updates, reserve lookup, ranking/fixture generation, allocation,
+diagnostics and country notification. There is no module-owned save format
+or RNG call. The focused checker compares the combined lifecycle against the
+original with validated scripted external services; existing daily and January
+Continue captures do not reach this competition's lifecycle.
+
 ## SIMULATED_STATS.CPP
 
 The module lies between SHORTLIST_MANAGER.CPP and STAFF_CONTRACTS.CPP.
