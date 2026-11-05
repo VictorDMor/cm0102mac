@@ -12,6 +12,7 @@ using namespace cm::semantic_io_checks;
 using guest::Cpu;
 constexpr auto context = 0x102ae9c0u, read_flag = 0x102aea20u, clear_flag = 0x102aea50u;
 constexpr auto read_value = 0x102af620u, get_slot = 0x102af650u, get_staff = 0x102b7450u;
+constexpr auto tier = 0x102aea80u, prefix = 0x102aeb40u, international_event = 0x102aed80u;
 constexpr auto done = fixture + 0x20, manager = fixture + 0x100, nation = fixture + 0x200;
 constexpr auto records = fixture + 0x1800, staff_table = fixture + 0x3000, staff_slot = fixture + 0x4100;
 constexpr auto club_count = fixture + 0x4200, nation_count = fixture + 0x4204;
@@ -208,6 +209,112 @@ unsigned check_selection_slots(std::mt19937& random) {
         }
     }
     return comparisons;
+}
+
+unsigned check_selection_tiers(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (const unsigned mode : {0u, 1u, 0x100u, 0x180u, UINT32_MAX}) {
+        for (const int pool : {-1, 0, 49, 50, 51, 99, 100, 101, INT16_MAX}) {
+            for (unsigned first_stop = 0; first_stop <= 6; ++first_stop) {
+                auto state = seed(random);
+                Cpu c(*state);
+                c.set({{4, club}, {5, nation}, {6, mode}});
+                c.put32(club + 0x14, club + 0x80);
+                c.put16(nation, pool);
+                for (unsigned score = 0; score < 6; ++score) {
+                    const auto value = score < first_stop ? (score % 2 ? 0x80 : 14) :
+                        score == first_stop ? 15 : 127;
+                    c.put8(club + 0x8f + score, value);
+                }
+                state->pc = tier;
+                const unsigned expected = pool < (std::int8_t(mode) ? 50 : 100) ? 0 :
+                    first_stop == 0 ? 0 : first_stop <= 2 ? 1 : first_stop <= 5 ? 2 : 3;
+                auto result = compare(*state);
+                require(Cpu(*result).r(3) == expected, "signed pool limit and first limiting assessment");
+                ++comparisons;
+            }
+        }
+    }
+    return comparisons;
+}
+
+unsigned check_selection_prefixes(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (const auto group : {0u, 1u, 0x17fu, 0x180u, UINT32_MAX}) {
+        for (const auto count : {0u, 1u, 7u, 8u, 9u, 15u, 16u, 17u, 24u, 25u, 127u,
+                                 0x100u, 0x101u, 0x109u, 0x180u, UINT32_MAX}) {
+            auto state = seed(random);
+            Cpu c(*state);
+            c.set({{4, records}, {5, group}, {6, count}});
+            const auto row = records + std::uint32_t(std::int8_t(group)) * 0x18;
+            std::uint32_t expected = UINT32_MAX - (random() & 0xf);
+            c.put32(row + 8, expected);
+            for (int i = 0; i < std::int8_t(count); ++i) {
+                const auto weight = (random() & 0x7f) + 0x80;
+                c.put8(row + 0xf + i * 4, weight);
+                expected += weight;
+            }
+            state->pc = prefix;
+            auto result = compare(*state);
+            require(Cpu(*result).r(3) == expected, "signed group and count, unsigned weights and wrapping total");
+            ++comparisons;
+        }
+    }
+    return comparisons;
+}
+
+unsigned check_international_competition(std::mt19937& random) {
+    constexpr std::array toc_offsets{-0x7bc0, -0x7a40, -0x6948, -0x694c, -0x6950,
+                                     -0x693c, -0x6a3c, -0x6938, -0x6b00};
+    unsigned comparisons = 0;
+    for (unsigned match = 0; match <= toc_offsets.size() + 2; ++match) {
+        auto state = seed(random);
+        Cpu c(*state);
+        const auto id = match % 2 ? 7u : UINT32_MAX;
+        const auto available = toc_offsets.size();
+        for (unsigned slot = 0; slot < available; ++slot) {
+            const auto entry = records + slot * 4;
+            const auto hit = slot == match || (match == available + 2 && (slot == 2 || slot == 6));
+            c.put32(toc + toc_offsets[slot], entry);
+            c.put32(entry, hit ? id : slot + 10);
+        }
+        c.put32(nation, id);
+        c.set(4, match == available + 1 ? 0 : nation);
+        state->pc = international_event;
+        auto result = compare(*state);
+        require(Cpu(*result).r(3) == (match < available || match == available + 2),
+                "nullable competition and ordered dynamic IDs");
+        ++comparisons;
+    }
+    return comparisons;
+}
+
+unsigned check_selection_query_faults(std::mt19937& random) {
+    unsigned faults = 0;
+    for (const auto entry : {tier, prefix, international_event}) {
+        auto state = seed(random);
+        Cpu c(*state);
+        c.set({{4, unmapped}, {5, unmapped}, {6, 0}});
+        state->pc = entry;
+        if (entry == international_event) c.put32(toc - 0x7bc0, nation);
+        compare(*state, Stop::fault);
+        ++faults;
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    for (const unsigned count : {3u, 9u}) {
+        auto state = seed(random);
+        Cpu c(*state);
+        const auto row = fixture + 0x5000 - (count == 3 ? 20 : 24);
+        c.set({{4, row}, {5, 0}, {6, count}});
+        c.put32(row + 8, 17);
+        c.put8(row + 0xf, 3);
+        c.put8(row + 0x13, 255);
+        state->pc = prefix;
+        compare(*state, Stop::fault);
+        ++faults;
+    }
+    return faults;
 }
 
 unsigned check_staff(std::mt19937& random) {
@@ -455,6 +562,11 @@ int main() try {
     const auto contexts = check_context(random);
     check_controls(random);
     const auto eligibility = check_international_club(random) + check_duty(random);
+    const auto queries = check_selection_tiers(random) + check_selection_prefixes(random) +
+        check_international_competition(random);
+    const auto query_faults = check_selection_query_faults(random);
+    std::cout << queries << " NATIONAL_TEAMS selection tier, prefix and competition comparisons, "
+              << query_faults << " faults and 3 budget stops\n";
     std::cout << eligibility << " NATIONAL_TEAMS club and duty eligibility comparisons\n";
     std::cout << slots + staff + contexts << " NATIONAL_TEAMS returned comparisons, "
                  "8 faults, 8 budget stops and two rejected corruptions\n";

@@ -3,6 +3,7 @@
 #include "guest_saved_registers.hpp"
 #include "routine_check.hpp"
 
+#include <array>
 #include <cstdlib>
 
 namespace cm::aot {
@@ -12,6 +13,8 @@ bool declining = std::getenv("CM_NATIONAL_TEAMS_ORIGINAL") != nullptr;
 constexpr auto selection_context_entry = 0x102ae9c0u;
 constexpr auto selection_flag_entry = 0x102aea20u, clear_selection_flag_entry = 0x102aea50u;
 constexpr auto selection_value_entry = 0x102af620u, selection_slot_entry = 0x102af650u;
+constexpr auto selection_tier_entry = 0x102aea80u, selection_prefix_entry = 0x102aeb40u;
+constexpr auto international_competition_entry = 0x102aed80u;
 constexpr auto assigned_staff_entry = 0x102b7450u;
 constexpr unsigned nation_record_size = 0x74, selection_slot_size = 0x14, staff_record_size = 0x6c;
 constexpr unsigned nation_index_offset = 0x68, selection_slots_offset = 0x40;
@@ -71,6 +74,158 @@ void selection_context(Cpu& c) {
     c.set(1, caller);
     c.set_lr(c.r(0));
     c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
+// The nation pool unlocks the first tier at 100 (50 in alternate mode).
+// The assessment bytes are signed, and each tier stops at the first score
+// that decides it. The guest can observe the final comparison and load.
+void selection_tier(Cpu& c) {
+    block(c, selection_tier_entry, 2);
+    const bool alternate = record_nonzero_byte(c, c.r(6));
+    block(c, alternate ? 0x102aea9c : 0x102aea88, 3);
+    const auto pool_size = c.i16(c.r(5));
+    const auto minimum = alternate ? 50 : 100;
+    c.set(0, std::uint32_t(pool_size));
+    c.compare(0, pool_size, minimum);
+    if (pool_size < minimum) {
+        block(c, alternate ? 0x102aeaa8 : 0x102aea94, 2);
+        c.set(3, 0);
+        c.finish();
+        return;
+    }
+
+    block(c, 0x102aeab0, 5);
+    const auto assessment = c.u32(c.r(4) + 0x14);
+    c.set(3, assessment);
+    const auto first_score = c.i8(assessment + 0xf);
+    c.set(0, std::uint32_t(first_score));
+    c.compare(0, first_score, 15);
+    if (first_score >= 15) {
+        block(c, 0x102aeac4, 2);
+        c.set(3, 0);
+        c.finish();
+        return;
+    }
+    constexpr std::array score_blocks{0x102aeaccu, 0x102aeadcu, 0x102aeaf4u, 0x102aeb04u, 0x102aeb14u};
+    for (unsigned score = 0; score < score_blocks.size(); ++score) {
+        block(c, score_blocks[score], 4);
+        const auto value = c.i8(assessment + 0x10 + score);
+        c.set(0, std::uint32_t(value));
+        c.compare(0, value, 15);
+        if (value >= 15) {
+            const bool second_tier = score >= 2;
+            block(c, second_tier ? 0x102aeb24 : 0x102aeaec, 2);
+            c.set(3, second_tier ? 2 : 1);
+            c.finish();
+            return;
+        }
+    }
+    block(c, 0x102aeb2c, 2);
+    c.set(3, 3);
+    c.finish();
+}
+
+void selection_prefix(Cpu& c) {
+    block(c, selection_prefix_entry, 7);
+    const auto records = c.r(4), raw_count = c.r(6);
+    const auto group = std::int8_t(c.r(5)), count = std::int8_t(raw_count);
+    c.set(3, std::uint32_t(group));
+    record_nonzero_byte(c, raw_count);
+    const auto group_offset = std::uint32_t(group) * 0x18;
+    c.set({{9, group_offset}, {11, 0}});
+    const auto row = records + group_offset;
+    c.set(3, row);
+    auto total = c.u32(row + 8);
+    c.set(3, total);
+    if (count <= 0) {
+        c.finish();
+        return;
+    }
+
+    block(c, 0x102aeb5c, 4);
+    constexpr unsigned batch_size = 8, stride = 4, first_weight = 0xf;
+    c.set(5, raw_count - batch_size);
+    c.compare(0, count, batch_size);
+    const auto weights_to_sum = unsigned(count);
+    unsigned used = 0;
+    if (weights_to_sum > batch_size) {
+        block(c, 0x102aeb6c, 3);
+        const auto batch_limit = weights_to_sum - batch_size;
+        c.set({{0, batch_limit}, {8, 0}});
+        while (true) {
+            block(c, 0x102aebcc, 3);
+            c.set(5, used);
+            c.compare(0, used, batch_limit);
+            if (used >= batch_limit) break;
+            block(c, 0x102aeb78, 21);
+            const auto offset = used * stride;
+            const auto weights = row + offset + first_weight;
+            used += batch_size;
+            c.set({{5, group_offset + offset}, {8, used * stride}, {10, weights}, {11, used}});
+            auto previous = c.u8(weights);
+            c.set(7, previous);
+            for (unsigned j = 1; j < batch_size; ++j) {
+                const auto next = c.u8(weights + j * stride);
+                c.set(j % 2 ? 5 : 7, next);
+                total += previous;
+                c.set(3, total);
+                previous = next;
+            }
+            total += previous;
+            c.set(3, total);
+        }
+    }
+    block(c, 0x102aebd8, 4);
+    c.set({{5, used}, {0, std::uint32_t(count)}, {6, used * stride}});
+    while (true) {
+        block(c, 0x102aec00, 3);
+        c.set(5, used);
+        c.compare(0, used, count);
+        if (used >= weights_to_sum) break;
+        block(c, 0x102aebe8, 6);
+        const auto offset = group_offset + used * stride;
+        c.set({{5, offset + first_weight}, {6, (used + 1) * stride}, {11, used + 1}});
+        const auto weight = c.u8(records + offset + first_weight);
+        total += weight;
+        c.set({{5, weight}, {3, total}});
+        ++used;
+    }
+    block(c, 0x102aec0c, 1);
+    c.finish();
+}
+
+void international_competition(Cpu& c) {
+    block(c, international_competition_entry, 2);
+    const auto competition = c.r(4);
+    c.compare_logical(0, competition, 0);
+    if (competition) {
+        constexpr std::array international_ids{-0x7bc0, -0x7a40, -0x6948, -0x694c, -0x6950,
+                                                -0x693c, -0x6a3c, -0x6938, -0x6b00};
+        block(c, 0x102aed88, 5);
+        auto slot = c.toc(international_ids.front());
+        c.set(3, slot);
+        const auto id = c.u32(competition);
+        c.set(4, id);
+        for (unsigned i = 0; i < international_ids.size(); ++i) {
+            if (i != 0) {
+                block(c, 0x102aed9c + 16 * (i - 1), 4);
+                slot = c.toc(international_ids[i]);
+                c.set(3, slot);
+            }
+            const auto international_id = c.u32(slot);
+            c.set(0, international_id);
+            c.compare(0, id, international_id);
+            if (id == international_id) {
+                block(c, 0x102aee1c, 2);
+                c.set(3, 1);
+                c.finish();
+                return;
+            }
+        }
+    }
+    block(c, 0x102aee24, 2);
+    c.set(3, 0);
     c.finish();
 }
 
@@ -663,6 +818,9 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case selection_slot_entry: selection_slot<SelectionAccess::address>(c); break;
     case international_club_entry: international_club(c); break;
     case duty_conflict_entry: duty_conflict(c); break;
+    case selection_tier_entry: selection_tier(c); break;
+    case selection_prefix_entry: selection_prefix(c); break;
+    case international_competition_entry: international_competition(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }

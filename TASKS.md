@@ -18,7 +18,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **NATIONAL_TEAMS.CPP reconstruction.** Inventory closed at 73 entries and 17,621 reachable instructions. Eight selection and duty queries are handwritten, selected by default and verified locally. The daily capture matches all 38 strict selection calls. The January capture reaches the recorded final state and matches 52 sampled strict duty calls out of 29,643. Continue with competition classification and selection. Private evidence is in `.local/rewrites/national_teams/`.
+- [ ] **NATIONAL_TEAMS.CPP reconstruction.** Inventory closed at 73 entries and 17,621 reachable instructions. Eleven selection, competition and duty queries are handwritten, selected by default and verified locally. The daily capture matches all 38 strict selection calls. The January capture reaches the recorded final state and matches 52 sampled strict duty calls out of 29,643, all five selection-tier calls and ten sampled competition calls out of 2,965. Continue with the selection list and roster mutation paths. Private evidence is in `.local/rewrites/national_teams/`.
 
 - [x] **HALL_OF_FAME.CPP reconstruction.** All 20 entries and 2,736 original instructions are accounted for. The default C++23 owners pass 476 focused returned comparisons, a shared file lifecycle, ten focused CTests and four strict calls in the recorded startup. All 82 functions are measured by the owner-only coverage run. Three broader engine initialization tests fail with both the previous and current initializer implementations. Private evidence is in `.local/rewrites/hall_of_fame/`.
 
