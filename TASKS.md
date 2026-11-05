@@ -18,6 +18,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [x] **Native recruitment valuation in Continue.** A clean ARM64 Release build of `7937550` matches the recorded operation state and ordered RNG for the complete January 11–18 Continue. Three native profiles (28,598 processing samples) put the scan at 24.16% inclusive and `Scan::value` at 19.26% inclusive. The bodies of `Scan::value` and the contribution assessment it calls account for 0.54% combined (0.46–0.74% per run), including arithmetic and frame work. Of the 5.79% inclusive in that assessment, 1.87 percentage points are transcript reads. Seven alternating pairs with the same binary on both sides show paired variation (median absolute deviation) of 2.12 percentage points elapsed and 0.80 CPU. Close this register and temporary lowering hypothesis at profiling. The volatile audit and daily transition pass, including 401 original comparisons at the two target entries. The baseline tactics replay stops at the recorded `GetDateTime` input check (r20). Private evidence is in `.local/performance/2026-11-04-recruitment-valuation/`.
+
 - [ ] **TRANSFER_MANAGER.CPP reconstruction.** Inventory closed, with 87 of 214 entries verified and routed in production. Paused after the offer notification block. Per-entry status, replay limits and reproducible checks are in `.local/rewrites/transfer_manager/ledger.json`.
   - [ ] Reconstruct and verify the remaining functional blocks, including transfer processing, valuation, callbacks and persistence.
   - [ ] Verify combined routing and replays, review, build and install the app, push the owned changes, and update the progress tracker.
