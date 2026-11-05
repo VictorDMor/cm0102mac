@@ -60,6 +60,10 @@ constexpr std::uint32_t review_reputation = 0x103092f0;
 constexpr std::uint32_t review_club = fixture + 0x500, review_league = fixture + 0x200;
 constexpr std::uint32_t review_service_slot = fixture + 0x590;
 
+constexpr std::uint32_t expiry_text_entry = 0x10374d80, apply_quote_entry = 0x10378d30;
+constexpr std::uint32_t month_of_date = 0x10718360, expiry_month_table = label_pool + 0x900;
+constexpr std::uint32_t quote_pool = fixture + 0x2300, quote_lookup_result = fixture + 0x5b0;
+
 constexpr std::uint32_t squad_entry = 0x10380c10, summary_entry = 0x10380d50;
 constexpr std::uint32_t diagnostic_parameters = 0x10739890, diagnostic_alert = 0x10769b60;
 constexpr std::uint32_t external_continuation = 0x18000e00;
@@ -98,6 +102,8 @@ struct ExternalInputs {
     std::optional<std::uint32_t> change_release_field;
     std::uint32_t review_reply = 8;
     std::uint32_t primary_contract = draft_primary_contract;
+    std::uint32_t month = 0;
+    bool quote_exception = false;
 };
 
 bool draft_preparation(std::uint32_t entry) {
@@ -114,7 +120,8 @@ bool release_entry(std::uint32_t entry) {
 
 bool label_entry(std::uint32_t entry) {
     return entry == bonus_name || entry == option_name || entry == bonus_description || entry == option_description
-        || entry == wage_entry || entry == end_text_entry || release_entry(entry) || entry == prepare_primary_entry;
+        || entry == wage_entry || entry == end_text_entry || release_entry(entry)
+        || entry == prepare_primary_entry || entry == expiry_text_entry;
 }
 
 void write_text(guest::Cpu& c, std::uint32_t destination, std::string_view value) {
@@ -153,7 +160,7 @@ struct DependencyTrace {
     std::optional<std::uint32_t> clause_reply, wage_preferences;
     bool transfer_clause = false;
     std::optional<std::uint32_t> change_release_field;
-    std::optional<std::uint32_t> review_reply, primary_contract;
+    std::optional<std::uint32_t> review_reply, primary_contract, month;
     unsigned dispatched_draft_children = 0;
 };
 DependencyTrace* dependency_trace = nullptr;
@@ -179,7 +186,7 @@ bool trace_dependency(State& s) {
                                                || s.pc == money_value || s.pc == money_text
                                                || s.pc == plain_format || s.pc == date_format
                                                || s.pc == diagnostic_parameters || s.pc == diagnostic_alert
-                                               || s.pc == external_continuation);
+                                               || s.pc == external_continuation || s.pc == month_of_date);
     const bool window = trace.window && (s.pc == interval_entry || s.pc == age_entry);
     const bool sample = trace.sample_fixture && s.pc == reseed_entry;
     const bool clause = trace.clause_reply && s.pc == cfm_entry;
@@ -276,11 +283,18 @@ bool trace_dependency(State& s) {
         case diagnostic_alert:
             require(read_text(c, c.r(4)) == "diagnostic", "Missing short-buffer diagnostic message");
             break;
+        case month_of_date:
+            c.set(3, *trace.month);
+            break;
         case external_continuation: {
             const auto caller_stack = c.u32(c.sp());
             c.set(1, caller_stack);
             c.set(31, c.u32(caller_stack - 4));
             c.set(30, c.u32(caller_stack - 8));
+            if (trace.month) {
+                c.set(29, c.u32(caller_stack - 12));
+                c.set_lr(c.u32(caller_stack + 8));
+            }
             c.set(3, 19);
             break;
         }
@@ -334,6 +348,9 @@ std::unique_ptr<State> expiry_fixture() {
     s->memory.map(label_pool, 0x1000);
     s->memory.map(toc - 0x4da4, 4);
     s->memory.map(toc - 0x4dac, 4);
+    s->memory.map(toc - 0x4db0, 4);
+    s->memory.map(toc - 0x4da8, 4);
+    s->memory.map(quote_pool, 0x100);
     s->memory.map(toc - 0x4dc0, 4);
     s->memory.map(toc - 0x5b20, 4);
     s->memory.map(sampling_constants, 0x100);
@@ -360,6 +377,16 @@ std::unique_ptr<State> expiry_fixture() {
     for (const auto offset : {0x460, 0x4a4, 0x4eb, 0x52b, 0x582})
         write_text(c, label_pool + offset, "label" + std::to_string(offset));
     c.put32(toc - 0x4dac, sampling_constants);
+    c.put32(toc - 0x4db0, expiry_month_table);
+    c.put32(toc - 0x4da8, quote_pool);
+    c.put32(toc - 0x7b78, quote_lookup_result);
+    c.put32(toc - 0x7be4, quote_lookup_result + 4);
+    c.put32(quote_lookup_result + 4, 1000);
+    c.put32(quote_pool + 0xa8, std::bit_cast<std::uint32_t>(123.5f));
+    for (unsigned n = 0; n < 12; ++n) {
+        c.put32(expiry_month_table + n * 4, 0x10374df8 + n * 16);
+        write_text(c, label_pool + 0x11e + n * 0x11, "M" + std::to_string(n));
+    }
     c.put_f64(sampling_constants, 65535.0);
     c.put64(sampling_constants + 0xc0, UINT64_C(0x4330000080000000));
     c.put32(toc - 0x7b5c, competition_slot);
@@ -474,9 +501,10 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const bool sample_fixture = input.pc == sampling_entry;
     const bool clause_fixture = input.pc == clause_entry;
     const bool draft_fixture = draft_preparation(input.pc);
+    const bool quote_fixture = input.pc == apply_quote_entry;
     const bool review_fixture = review_state_entry(input.pc) || draft_fixture;
     const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value()
-        || text_fixture || window_fixture || sample_fixture || clause_fixture || review_fixture;
+        || text_fixture || window_fixture || sample_fixture || clause_fixture || review_fixture || quote_fixture;
     if (text_fixture) {
         // Decline the in-place formatting owner at the external boundary.
         // The dispatcher probe then supplies the same fixture on both sides.
@@ -488,7 +516,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         contract_review_diagnostics(*original).original_body = refresh_review_entry;
         contract_review_diagnostics(*modern).original_body = refresh_review_entry;
     }
-    const auto primary_contract = draft_fixture ? std::optional(inputs.primary_contract) : std::nullopt;
+    const auto primary_contract = draft_fixture ? std::optional(inputs.primary_contract)
+        : quote_fixture ? std::optional(0u) : std::nullopt;
+    const auto month = input.pc == expiry_text_entry ? std::optional(inputs.month) : std::nullopt;
     const auto review_reply = review_fixture ? std::optional(inputs.review_reply) : std::nullopt;
     const auto window_inputs = window_fixture ? std::optional(inputs.window) : std::nullopt;
     const auto clause_reply = clause_fixture ? std::optional(inputs.clause_reply) : std::nullopt;
@@ -497,20 +527,20 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
                               .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
                               .transfer_clause = inputs.transfer_clause,
                               .change_release_field = inputs.change_release_field,
-                              .review_reply = review_reply, .primary_contract = primary_contract};
+                              .review_reply = review_reply, .primary_contract = primary_contract, .month = month};
     DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
                               .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture,
                                .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
                               .transfer_clause = inputs.transfer_clause,
                               .change_release_field = inputs.change_release_field,
-                              .review_reply = review_reply, .primary_contract = primary_contract};
+                              .review_reply = review_reply, .primary_contract = primary_contract, .month = month};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
     // Decline the in-place owners for the modeled external dependencies.
     RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_fixture_service(entry); }, 0, 0);
     const bool amount_description = input.pc == bonus_description && std::int8_t(input.r<4>(28)) != 1;
     const bool reputation_call = input.pc == reset_review_entry && input.r<4>(20) != 0;
     ScopedRoutineChecker checker(adjustment || amount_description || input.pc == wage_entry || reputation_call
-                                    || input.pc == prepare_primary_entry
+                                    || input.pc == prepare_primary_entry || quote_fixture
                                     ? &fixture_filter : nullptr);
     const auto old_stop = call(*original, true);
     if (traced) dependency_trace = &new_calls;
@@ -538,7 +568,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         require(old_calls.dispatched_review_children == 2 && new_calls.dispatched_review_children == 0,
                 label + " did not take both direct C++ review calls");
     if (traced && !sample_fixture && !clause_fixture && !release_entry(input.pc)
-        && !review_fixture && input.pc != wage_entry && old_stop.empty()) {
+        && !review_fixture && input.pc != wage_entry && input.pc != expiry_text_entry && old_stop.empty()) {
         const unsigned expected_calls = input.pc == bonus_description ? (amount_description ? 4 : 2)
             : input.pc == draft_entry ? 2 : 1;
         require(old_calls.calls.size() == expected_calls || (window_fixture && old_calls.calls.size() == 4),
@@ -552,6 +582,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         require(old_stop == "Competition callback transfer" && modern->pc == 0x18000e00,
                 label + " lost nonlocal transfer");
         ++counts.transfers;
+    } else if (inputs.quote_exception) {
+        require(old_stop.starts_with("Original enabled floating "), label + " did not preserve the enabled conversion trap");
+        ++counts.faults;
     } else if (hole != no_hole) {
         require(old_stop.starts_with("Unmapped data access at "), label + " did not fault at the removed byte");
         ++counts.faults;
@@ -559,7 +592,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         require(input.budget < normal_budget, label + " exhausted the normal budget");
         ++counts.budgets;
     } else {
-        require(old_stop.empty() && modern->pc == return_sentinel, label + " did not return: " + old_stop);
+        require(old_stop.empty() && modern->pc == return_sentinel, label + " did not return at " + hex_address(original->pc) + ": " + old_stop);
         if (!negative) ++counts.returned;
     }
     require(expected.bytes == actual.bytes, label + " changed ordered memory accesses");
@@ -578,7 +611,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         require(rejected, label + " accepted a changed result");
         ++counts.negatives;
     }
-    const auto contract_value = (adjustment || draft_fixture) && old_stop.empty() ? std::uint32_t(modern->memory.read<4>(record + 12)) : 0;
+    const auto contract_value = (adjustment || draft_fixture || quote_fixture) && old_stop.empty() ? std::uint32_t(modern->memory.read<4>(record + 12)) : 0;
     guest::Cpu cpu(*modern);
     const auto text = text_fixture && old_stop.empty() ? read_text(cpu, output_buffer) : std::string{};
     Result result{band, unsigned(modern->executed), contract_value, text, std::move(actual.log)};
@@ -1258,6 +1291,75 @@ void draft_preparation_cases(Counts& counts) {
     input->budget = normal_budget;
 }
 
+void expiry_and_quote_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    input->pc = expiry_text_entry;
+    c.set({{4, output_buffer}, {5, 1}});
+    c.put16(record + 0x32, 0x8000);
+    for (unsigned kind = 0; kind < 256; ++kind) {
+        c.put8(record + 0x38, kind);
+        for (auto style : {0u, 1u, 128u, 255u, 257u}) {
+            c.set(5, style);
+            compare_entry(*input, counts);
+        }
+    }
+    c.set(5, 1);
+    c.put8(record + 0x38, 8);
+    for (unsigned month = 0; month < 256; ++month) {
+        ExternalInputs inputs;
+        inputs.month = month;
+        const auto result = compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+        require(result.text == (month < 12 ? "M" + std::to_string(month) : "")
+                    && result.dependency_calls == (month < 12 ? 2 : 1), "Month selector and unsigned range check");
+    }
+    const auto complete = compare_entry(*input, counts);
+    for (unsigned budget = 1; budget < complete.steps; ++budget) {
+        input->budget = budget;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+    compare_entry(*input, counts, record + 0x32);
+    compare_entry(*input, counts, expiry_month_table);
+
+    input->memory.map(0, 16);
+    write_text(c, 0, "month");
+    input->memory.map(0x10374df8, 0xc0);
+    constexpr auto relocated = expiry_month_table + 0x40;
+    c.put32(toc - 0x4db0, relocated);
+    for (auto target : {0x10374df8u, 0x10374dfcu, 0x10374e00u, 0x10374e04u,
+                        0x10374eb4u, 0x10374eb8u, 0x10374f28u, external_continuation}) {
+        c.put32(relocated, target);
+        const auto result = compare_entry(*input, counts);
+        if (target == external_continuation)
+            require(result.value == 19 && result.dependency_calls == 2, "Expiry month external continuation");
+    }
+
+    input = expiry_fixture();
+    guest::Cpu quote(*input);
+    input->pc = apply_quote_entry;
+    quote.set(4, staff_rows);
+    quote.put8(staff_rows + 0x62, 16);
+    for (const auto& [bits, expected] : std::array{
+            std::pair{0x00000000u, 55u}, std::pair{0x425bffffu, 55u}, std::pair{0x425c0000u, 55u},
+            std::pair{0x425fffffu, 55u}, std::pair{0x42600000u, 56u}, std::pair{0x42f70000u, 123u},
+            std::pair{0xc2f70000u, 55u}, std::pair{0x7f800000u, 0x7fffffffu},
+            std::pair{0xff800000u, 55u}, std::pair{0x7fc00001u, 55u}}) {
+        quote.put32(quote_pool + 0xa8, bits);
+        require(compare_entry(*input, counts).contract_value == expected,
+                "Country quote truncates, then applies the signed wage floor");
+    }
+    compare_entry(*input, counts, record + 12);
+    ExternalInputs fault;
+    fault.quote_exception = true;
+    input->wr<1>(1304, 1);
+    compare_entry(*input, counts, no_hole, false, false, std::nullopt, fault);
+    input->wr<1>(1304, 0);
+    input->wr<1>(1308, 1);
+    quote.put32(quote_pool + 0xa8, 0x42f70000);
+    compare_entry(*input, counts, no_hole, false, false, std::nullopt, fault);
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -1290,7 +1392,14 @@ unsigned generated_hooks() {
             if (entry == bonus_name || entry == option_name) c.set({{3, 0}, {4, output_buffer}});
             else if (entry == wage_entry || entry == end_text_entry) c.set({{4, output_buffer}, {5, 0}, {6, 0}});
             else if (release_entry(entry)) c.set({{4, output_buffer}, {5, 20}});
+            else if (entry == expiry_text_entry) c.set({{4, output_buffer}, {5, 1}});
             else c.set({{4, 0}, {5, output_buffer}, {7, 0}});
+        }
+        const bool quote_fixture = entry == apply_quote_entry;
+        if (quote_fixture) {
+            guest::Cpu c(*s);
+            c.set(4, staff_rows);
+            c.put8(staff_rows + 0x62, 16);
         }
         const bool draft_fixture = draft_preparation(entry);
         const bool review_fixture = review_state_entry(entry) || draft_fixture;
@@ -1305,8 +1414,11 @@ unsigned generated_hooks() {
         }
         DependencyTrace trace{.calls = {}, .adjustment_output = 0, .text_fixture = text_fixture,
                               .review_reply = review_fixture ? std::optional(8u) : std::nullopt,
-                              .primary_contract = draft_fixture ? std::optional(draft_primary_contract) : std::nullopt};
-        ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture || review_fixture ? &trace : nullptr);
+                              .primary_contract = draft_fixture ? std::optional(draft_primary_contract)
+                                  : quote_fixture ? std::optional(0u) : std::nullopt,
+                              .month = entry == expiry_text_entry ? std::optional(0u) : std::nullopt};
+        ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture || review_fixture || quote_fixture
+                                        ? &trace : nullptr);
         const auto before = checker.totals().find(entry);
         const auto prior = before == checker.totals().end() ? 0 : before->second.checked;
         run_until(*s, return_sentinel);
@@ -1344,6 +1456,7 @@ int main() {
         release_presentation_cases(counts);
         review_state_cases(counts);
         draft_preparation_cases(counts);
+        expiry_and_quote_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "
