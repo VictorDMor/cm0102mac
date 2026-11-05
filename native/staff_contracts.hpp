@@ -18,6 +18,8 @@ void reset_terms(guest::Cpu&, std::uint32_t contract);
 bool is_expired(guest::Cpu&, std::uint32_t contract);
 bool is_rolling(guest::Cpu&, std::uint32_t contract);
 bool has_release_terms(guest::Cpu&, std::uint32_t contract);
+void adjust_primary_value(guest::Cpu&, std::uint32_t contract);
+void adjust_alternate_value(guest::Cpu&, std::uint32_t contract);
 void set_release_amount(guest::Cpu&, std::uint32_t contract, std::uint32_t amount);
 
 void clear_status_bits(guest::Cpu&, std::uint32_t contract, std::uint32_t mask);

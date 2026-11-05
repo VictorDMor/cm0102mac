@@ -12,5 +12,7 @@ STAFF_CONTRACTS_ROUTINE(0x1037fa60, [](Cpu& c) { reset_status_bits(c, c.r(3)); }
 STAFF_CONTRACTS_ROUTINE(0x1037fa70, [](Cpu& c) { c.set(3, status_bits(c, c.r(3))); })
 STAFF_CONTRACTS_ROUTINE(0x103803b0, [](Cpu& c) { c.set(3, supports_bonus(c, c.r(3), std::int8_t(c.r(4)))); })
 STAFF_CONTRACTS_ROUTINE(0x10380520, [](Cpu& c) { c.set(3, has_release_terms(c, c.r(3))); })
+STAFF_CONTRACTS_ROUTINE(0x10380560, [](Cpu& c) { adjust_primary_value(c, c.r(3)); })
+STAFF_CONTRACTS_ROUTINE(0x10380630, [](Cpu& c) { adjust_alternate_value(c, c.r(3)); })
 STAFF_CONTRACTS_ROUTINE(0x10380700, [](Cpu& c) { set_release_amount(c, c.r(3), c.r(4)); })
 STAFF_CONTRACTS_ROUTINE(0x10380710, [](Cpu& c) { c.set(3, classify_expiry(c, c.r(3))); })

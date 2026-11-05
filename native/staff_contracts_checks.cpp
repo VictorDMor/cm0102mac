@@ -3,6 +3,7 @@
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
 #include <array>
+#include <optional>
 #include <random>
 #include <string_view>
 
@@ -27,25 +28,71 @@ constexpr auto no_hole = UINT32_MAX;
 constexpr std::uint32_t draft_entry = 0x103721f0, delta_entry = 0x10374d10;
 constexpr std::uint32_t default_date = 0x10715880, difference = 0x10718130;
 
-struct DateCall {
+constexpr std::uint32_t primary_adjustment = 0x1000a060, alternate_adjustment = 0x1000a170;
+constexpr std::uint32_t primary_adjustment_entry = 0x10380560, alternate_adjustment_entry = 0x10380630;
+constexpr std::uint32_t preferences_slot = fixture + 0x620, preferences = fixture + 0x640;
+
+bool value_adjustment(std::uint32_t entry) {
+    return entry == primary_adjustment_entry || entry == alternate_adjustment_entry;
+}
+
+struct DependencyCall {
     std::uint32_t entry, return_address, frame, toc, saved_draft;
     std::array<std::uint32_t, 3> arguments;
-    bool operator==(const DateCall&) const = default;
+    std::optional<std::uint32_t> adjustment_input;
+    bool operator==(const DependencyCall&) const = default;
 };
 
-struct DateTrace {
-    std::vector<DateCall> calls;
+struct DependencyTrace {
+    std::vector<DependencyCall> calls;
+    std::optional<std::uint32_t> adjustment_output;
     bool corrupt = false;
 };
-DateTrace* date_trace = nullptr;
+DependencyTrace* dependency_trace = nullptr;
 
-bool trace_date_call(State& s) {
-    if (s.pc != default_date && s.pc != difference) return false;
-    guest::Cpu c(s);
-    if (date_trace->corrupt && s.pc == difference) c.set(4, c.r(4) ^ 0x10000u);
-    date_trace->calls.push_back({s.pc, c.lr(), c.sp(), c.r(2), c.r(31), {c.r(3), c.r(4), c.r(5)}});
-    return false;
+bool is_value_service(std::uint32_t entry) {
+    return entry == primary_adjustment || entry == alternate_adjustment;
 }
+
+struct ScopedRoutineChecker {
+    RoutineChecker* saved = routine_checker;
+    explicit ScopedRoutineChecker(RoutineChecker* checker) {
+        if (checker) routine_checker = checker;
+    }
+    ~ScopedRoutineChecker() { routine_checker = saved; }
+};
+
+bool trace_dependency(State& s) {
+    const bool adjustment = is_value_service(s.pc);
+    if (!adjustment && s.pc != default_date && s.pc != difference) return false;
+    guest::Cpu c(s);
+    auto& trace = *dependency_trace;
+    if (trace.corrupt && s.pc == difference) c.set(4, c.r(4) ^ 0x10000u);
+    DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), {c.r(3), c.r(4), c.r(5)}, std::nullopt};
+    if (adjustment) call.adjustment_input = c.u32(c.r(3));
+    trace.calls.push_back(call);
+    if (!adjustment || !trace.adjustment_output) return false;
+    // The fixture models the separate value service's in/out amount. It
+    // deliberately clobbers its volatile result and flag state as well.
+    c.put32(c.r(3), *trace.adjustment_output);
+    c.set(3, 0x76543210);
+    c.set_cr(0, 5);
+    c.s.wr<1>(guest::reg::xer_ca, 1);
+    c.finish();
+    return true;
+}
+
+struct ScopedDependencyProbe {
+    decltype(dispatch_probe) saved = dispatch_probe;
+    DependencyTrace* previous = dependency_trace;
+    explicit ScopedDependencyProbe(DependencyTrace* trace) {
+        if (trace) {
+            dispatch_probe = trace_dependency;
+            dependency_trace = trace;
+        }
+    }
+    ~ScopedDependencyProbe() { dispatch_probe = saved; dependency_trace = previous; }
+};
 
 std::unique_ptr<State> expiry_fixture() {
     auto s = std::make_unique<State>();
@@ -62,6 +109,8 @@ std::unique_ptr<State> expiry_fixture() {
     s->pc = expiry_entry;
     s->budget = normal_budget;
     c.put32(0x108b7ad0, fixture + 0x300);
+    c.put32(toc - 0x7ac8, preferences_slot);
+    c.put32(preferences_slot, preferences);
     c.put8(0x108b84d0, 1);
     c.put8(record + 0x38, 8);
     c.put16(record + 0x30, 150);
@@ -102,6 +151,7 @@ std::unique_ptr<State> state_with_hole(const State& input, std::uint32_t hole) {
 
 struct Result {
     unsigned value, steps;
+    std::uint32_t contract_value;
     std::vector<Effects::Access> accesses;
 };
 struct Counts {
@@ -109,7 +159,8 @@ struct Counts {
 };
 
 Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no_hole,
-                      bool negative = false, bool call_negative = false) {
+                      bool negative = false, bool call_negative = false,
+                      std::optional<std::uint32_t> adjustment = std::nullopt) {
     auto original = state_with_hole(input, hole);
     auto modern = state_with_hole(input, hole);
     Effects expected, actual;
@@ -126,19 +177,16 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
             return std::string(error.what());
         }
     };
-    const bool date_call = input.pc == draft_entry || input.pc == delta_entry;
-    struct RestoreProbe {
-        decltype(dispatch_probe) saved = dispatch_probe;
-        ~RestoreProbe() { dispatch_probe = saved; date_trace = nullptr; }
-    } restore;
-    DateTrace old_calls, new_calls;
-    new_calls.corrupt = call_negative;
-    if (date_call) {
-        dispatch_probe = trace_date_call;
-        date_trace = &old_calls;
-    }
+    const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value();
+    DependencyTrace old_calls{.calls = {}, .adjustment_output = adjustment};
+    DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative};
+    ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
+    // The generated caller can enter CASH.CPP in place. Decline just these
+    // two services so both references reach the same external fixture.
+    RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_value_service(entry); }, 0, 0);
+    ScopedRoutineChecker checker(adjustment ? &fixture_filter : nullptr);
     const auto old_stop = call(*original, true);
-    if (date_call) date_trace = &new_calls;
+    if (traced) dependency_trace = &new_calls;
     const auto new_stop = call(*modern, false);
     original->memory.date_observer = modern->memory.date_observer = nullptr;
     const auto test_case = counts.returned + counts.budgets + counts.faults + counts.negatives;
@@ -150,12 +198,12 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         changed.front().arguments[1] ^= 0x10000u;
         require(new_calls.calls == changed, label + " did not isolate the changed date argument");
         ++counts.negatives;
-        return {unsigned(modern->r<4>(12)), unsigned(modern->executed), std::move(actual.log)};
+        return {unsigned(modern->r<4>(12)), unsigned(modern->executed), 0, std::move(actual.log)};
     }
-    require(old_calls.calls == new_calls.calls, label + " changed Date arguments or call order");
-    if (date_call && old_stop.empty()) {
+    require(old_calls.calls == new_calls.calls, label + " changed external arguments or call order");
+    if (traced && old_stop.empty()) {
         require(old_calls.calls.size() == (input.pc == draft_entry ? 2u : 1u),
-                label + " did not reach the expected Date calls");
+                label + " did not reach the expected external calls");
     }
     if (hole != no_hole) {
         require(old_stop.starts_with("Unmapped data access at "), label + " did not fault at the removed byte");
@@ -183,7 +231,8 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         require(rejected, label + " accepted a changed result");
         ++counts.negatives;
     }
-    return {band, unsigned(modern->executed), std::move(actual.log)};
+    const auto contract_value = adjustment && old_stop.empty() ? std::uint32_t(modern->memory.read<4>(record + 12)) : 0;
+    return {band, unsigned(modern->executed), contract_value, std::move(actual.log)};
 }
 
 void date_boundaries(Counts& counts) {
@@ -363,31 +412,90 @@ void draft_and_date_calls(Counts& counts) {
     }
 }
 
+void value_adjustments(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    for (const auto entry : {primary_adjustment_entry, alternate_adjustment_entry}) {
+        input->pc = entry;
+        for (auto flags : {0u, 0x400000u, 0x800000u, 0xc00000u, UINT32_MAX}) {
+            c.put32(preferences + 4, flags);
+            const int scale = flags & 0x800000u ? 52 : flags & 0x400000u ? 4 : 1;
+            for (auto amount : {0u, 1u, 0x7fffffffu, 0x80000000u, UINT32_MAX}) {
+                c.put32(record + 12, amount);
+                for (int output : {INT32_MIN, -53, -52, -51, -5, -4, -3, -2, -1, 0, 1, 51, 52, 53, INT32_MAX}) {
+                    const auto result = compare_entry(*input, counts, no_hole, false, false, std::uint32_t(output));
+                    require(result.contract_value == std::uint32_t(output / scale), "Signed periodic adjustment");
+                }
+            }
+            const auto full = compare_entry(*input, counts, no_hole, false, false, 500);
+            for (auto cut : {0u, 1u, full.steps / 2, full.steps - 1}) {
+                input->budget = cut;
+                compare_entry(*input, counts, no_hole, false, false, 500);
+            }
+            input->budget = normal_budget;
+        }
+    }
+}
+
+void adjustment_sequence() {
+    auto original = expiry_fixture();
+    auto modern = clone(*original);
+    const auto run = [](State& s, bool reference) {
+        RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_value_service(entry); }, 0, 0);
+        ScopedRoutineChecker checker(&fixture_filter);
+        DependencyTrace trace;
+        ScopedDependencyProbe probe(&trace);
+        guest::Cpu c(s);
+        c.put32(record + 12, 10);
+        c.put32(preferences + 4, 0xc00000);
+        trace.adjustment_output = 1093;
+        const auto call = [&](std::uint32_t entry) {
+            s.pc = entry;
+            c.set(3, record);
+            c.set_lr(return_sentinel);
+            if (reference) staff_contracts_run_original(s, entry);
+            else run_until(s, return_sentinel);
+        };
+        call(primary_adjustment_entry);
+        require(c.i32(record + 12) == 21, "Periodic adjustment result before the second call");
+        c.put32(preferences + 4, 0x400000);
+        trace.adjustment_output = std::uint32_t(-9);
+        call(alternate_adjustment_entry);
+        require(c.i32(record + 12) == -2, "Signed adjusted value");
+        require(trace.calls.size() == 2
+                    && trace.calls[0].entry == primary_adjustment && trace.calls[0].arguments[1] == 4
+                    && trace.calls[0].adjustment_input == 520
+                    && trace.calls[1].entry == alternate_adjustment && trace.calls[1].arguments[1] == 8
+                    && trace.calls[1].adjustment_input == 84,
+                "Both adjustments must consume the live record in order");
+        return trace.calls;
+    };
+    require(run(*original, true) == run(*modern, false), "Adjustment sequence changed external arguments");
+    Image(*original).compare(*modern, "Adjustment sequence");
+    require(original->executed == modern->executed, "Adjustment sequence changed accounting");
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
 #include "staff_contracts_routines.inc"
 #undef STAFF_CONTRACTS_ROUTINE
     });
-    RoutineChecker checker([](std::uint32_t) { return true; }, 1, 1);
+    RoutineChecker checker([](std::uint32_t entry) { return !is_value_service(entry); }, 1, 1);
     checker.strict_volatile = true;
-    routine_checker = &checker;
-    try {
-        for (const auto entry : entries) {
-            auto s = expiry_fixture();
-            s->pc = entry;
-            s->wr<4>(16, 1);
-            run_until(*s, return_sentinel);
-            const auto result = checker.totals().find(entry);
-            require(result != checker.totals().end() && result->second.checked == 1
-                        && result->second.differences == 0 && s->pc == return_sentinel,
-                    "Default generated page did not enter the staff-contract owner at " + hex_address(entry));
-        }
-    } catch (...) {
-        routine_checker = nullptr;
-        throw;
+    ScopedRoutineChecker scope(&checker);
+    for (const auto entry : entries) {
+        auto s = expiry_fixture();
+        s->pc = entry;
+        s->wr<4>(16, 1);
+        DependencyTrace trace{.calls = {}, .adjustment_output = 0};
+        ScopedDependencyProbe probe(value_adjustment(entry) ? &trace : nullptr);
+        run_until(*s, return_sentinel);
+        const auto result = checker.totals().find(entry);
+        require(result != checker.totals().end() && result->second.checked == 1
+                    && result->second.differences == 0 && s->pc == return_sentinel,
+                "Default generated page did not enter the staff-contract owner at " + hex_address(entry));
     }
-    routine_checker = nullptr;
     return entries.size();
 }
 }
@@ -399,6 +507,8 @@ int main() {
         faults_and_mutations(counts);
         terms_leaves(counts);
         draft_and_date_calls(counts);
+        value_adjustments(counts);
+        adjustment_sequence();
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "
