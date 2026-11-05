@@ -911,6 +911,16 @@ profile defaults prevent root-level artifacts; checker children flush before
 `_exit`. Forked LLVM writers can append cumulative records to one cached filename,
 so merged branch outcomes are meaningful while raw execution frequencies are not.
 
+## AFRICAN_NATIONS.CPP: placement and notification boundaries
+
+For stages below three, the placement callback maps its second field's values
+one/two to one, three to nine and four to thirteen. The first and third fields
+instead map one to five, two/three to nine and four to thirteen. Comparisons use
+the low byte; other values retain their raw low byte. Later stages bypass this
+mapping. The shared stage lookup prefers its cached record without checking
+the requested key. Notifications reread the event, manager and competition
+definition after the award interpolation call, retaining that call's result.
+
 ## OCEANIA_NATIONS.CPP
 
 The 15 entries at `0x106e9940–0x106ebdd0` implement the Oceania Nations Cup.

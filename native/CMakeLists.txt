@@ -60,6 +60,7 @@ target_sources(cm_aot PRIVATE ${CM_STAFF_CONTRACTS_SOURCES})
 target_sources(cm_aot PRIVATE simulated_stats.cpp)
 target_sources(cm_aot PRIVATE por_second.cpp)
 target_sources(cm_aot PRIVATE ger_first.cpp)
+target_sources(cm_aot PRIVATE african_nations.cpp)
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
@@ -4451,6 +4452,29 @@ add_test(NAME ger_first_equivalence COMMAND cm-ger-first-checks)
 if(Python3_EXECUTABLE)
     add_test(NAME ger_first_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_ger_first_audit.py")
+endif()
+
+add_executable(cm-african-nations-checks african_nations_checks.cpp)
+target_link_libraries(cm-african-nations-checks PRIVATE cm_aot)
+target_compile_options(cm-african-nations-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME african_nations_equivalence COMMAND cm-african-nations-checks)
+if(Python3_EXECUTABLE)
+    add_test(NAME african_nations_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_african_nations_audit.py")
+endif()
+option(CM_AFRICAN_NATIONS_COVERAGE "Instrument the African Nations checker owner only" OFF)
+if(CM_AFRICAN_NATIONS_COVERAGE)
+    set(CM_AFRICAN_NATIONS_PROFILE_DIR "${CMAKE_CURRENT_BINARY_DIR}/african-nations-coverage")
+    file(MAKE_DIRECTORY "${CM_AFRICAN_NATIONS_PROFILE_DIR}")
+    set(CM_AFRICAN_NATIONS_PROFILE "${CM_AFRICAN_NATIONS_PROFILE_DIR}/check-%p.profraw")
+    add_library(cm_african_nations_coverage OBJECT african_nations.cpp)
+    target_link_libraries(cm_african_nations_coverage PRIVATE cm_aot)
+    target_compile_options(cm_african_nations_coverage PRIVATE
+        "-fprofile-instr-generate=${CM_AFRICAN_NATIONS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_sources(cm-african-nations-checks PRIVATE $<TARGET_OBJECTS:cm_african_nations_coverage>)
+    target_compile_definitions(cm-african-nations-checks PRIVATE
+        CM_AFRICAN_NATIONS_PROFILE_DIR="${CM_AFRICAN_NATIONS_PROFILE_DIR}")
+    target_link_options(cm-african-nations-checks PRIVATE "-fprofile-instr-generate=${CM_AFRICAN_NATIONS_PROFILE}")
 endif()
 
 option(CM_GER_FIRST_COVERAGE "Instrument the German First Division checker owner only" OFF)
