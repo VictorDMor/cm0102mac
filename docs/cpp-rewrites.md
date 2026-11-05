@@ -439,6 +439,28 @@ at an uncaptured import compare state only to that boundary; they do not
 establish completed archival I/O or full branch coverage. Career save/reload
 through the live app and performance are not retested by this delivery.
 
+## GER_FIRST.CPP
+
+The [audit](../tools/ger_first_audit.py) closes 11 entries and 3,916
+structurally reachable instructions between FRA_THIRD.CPP and GER_SECOND.CPP.
+Calendar generation, club collection and configuration currently use C++23;
+the remaining eight entries still use their generated bodies.
+`CM_GER_FIRST_ORIGINAL=1` keeps the independent original route.
+
+Collection performs its 2001 regional reassignment before allocating the
+18-club standings buffer, preserving those partial writes on allocation
+failure. It excludes twice the live youth-block count in that first pass,
+remembers the original definition at club+0x38 and selects clubs using the
+live division ID and count after insertion callbacks.
+
+The year read after allocation selects one of two 34-round calendars. Later
+date calls reread the signed year, while retaining the chosen table. Output
+flag/count/start writes preserve pointer aliasing. The final assertion compares
+literal 34 against 34 with no intervening observable boundary, so its error arm
+has no valid path from any audited entry. Configuration invokes the owned
+calendar directly after the shared CFM descriptor owner resolves the actual
+virtual target; external overrides and checker/original dispatch remain valid.
+
 ## POR_SECOND.CPP
 
 The [audit](../tools/por_second_audit.py) closes six entries and 1,531
