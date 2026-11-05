@@ -60,6 +60,10 @@ constexpr auto queue_calendar_notice = 0x102bacc0u, publish_calendar_notices = 0
 constexpr auto calendar_notice_trace = fixture + 0x8400, calendar_notice_pairs = fixture + 0x8600;
 constexpr auto calendar_notice_globals = fixture + 0x8700, calendar_variant_words = fixture + 0x8760;
 constexpr auto calendar_rng_seed = toc - 0x34c4;
+constexpr auto render_calendar_notice = 0x102bb050u;
+constexpr auto notice_render_item = fixture + 0xd000, notice_render_output = fixture + 0xd100;
+constexpr auto notice_render_trace = fixture + 0xd200, notice_render_cups = fixture + 0xd400;
+constexpr auto notice_render_people = fixture + 0xd700, notice_render_cup_slot = fixture + 0xd900;
 constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
 constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
 constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
@@ -125,6 +129,7 @@ bool observe_dependency(State& s) {
     const bool domestic_schedule = resume >= 0x102ba204 && resume <= 0x102ba5dc;
     const bool fixture_marking = resume >= 0x102ba80c && resume <= 0x102ba9fc;
     const bool calendar_news = resume >= 0x102bad6c && resume <= 0x102bb03c;
+    const bool calendar_render = resume >= 0x102bb08c && resume <= 0x102bc164;
     switch (entry) {
     case 0x100ce250: case 0x100c7d00: case 0x10738e00: case 0x10717b20: case 0x10717890:
     case 0x1048b180: case dispose_list: case localize: case 0x107156b0: break;
@@ -140,6 +145,9 @@ bool observe_dependency(State& s) {
         break;
     case 0x10738d10:
         if (!calendar_read && resume != 0x102bacf8) return false;
+        break;
+    case 0x102cb570: case 0x10746a70: case 0x1074b830: case 0x1074bab0:
+        if (!calendar_render) return false;
         break;
     case 0x10738ca0: case 0x1049d330: case 0x102cc730: case 0x102cc8e0: case 0x1077b770:
         if (!calendar_news) return false;
@@ -174,6 +182,47 @@ bool observe_dependency(State& s) {
     DependencyCall call{entry, resume};
     for (unsigned i = 0; i < 32; ++i) call[i + 2] = c.r(i);
     dependencies->push_back(call);
+    if (calendar_render) {
+        switch (entry) {
+        case 0x102cb570:
+            require(c.r(3) == notice_render_item && c.r(4) < 50, "calendar formatter field lookup");
+            c.set(3, c.u32(notice_render_item + 8 + c.r(4) * 4));
+            break;
+        case 0x10746a70:
+            require(c.r(3) == c.u32(notice_render_item + 12) && c.r(4) == frame + 0x68 &&
+                        c.r(5) == 0x78 && !c.r(6), "calendar formatter localized count");
+            c.put32(c.r(4), c.r(3));
+            c.set(3, 1);
+            break;
+        case localize: {
+            const auto index = c.u8(notice_render_trace);
+            require(index < 2 && (c.r(3) == label_shared || c.r(3) == frame + 0x270),
+                    "calendar formatter destination and number of phrases");
+            const auto record = notice_render_trace + 8 + index * 0x60;
+            for (unsigned arg = 3; arg <= 12; ++arg) c.put32(record + (arg - 3) * 4, c.r(arg));
+            for (unsigned arg = 0; arg < 11; ++arg) c.put32(record + 40 + arg * 4, c.u32(frame + 0x38 + arg * 4));
+            c.put8(notice_render_trace, index + 1);
+            c.put32(c.r(3), c.r(4) - source);
+            break;
+        }
+        case 0x1074b830:
+            require(c.r(3) == notice_render_output && c.r(4) == label_shared, "calendar formatter text assignment");
+            c.put32(c.r(3), c.u32(c.r(4)));
+            break;
+        case 0x100c76c0:
+            require(c.r(3) == notice_render_cups || c.r(3) == notice_render_cups + 0x128,
+                    "calendar formatter competition link object");
+            c.set(3, c.r(3) + 0x10);
+            break;
+        case 0x1074bab0:
+            require(c.r(3) == notice_render_output, "calendar formatter link output");
+            break;
+        default:
+            throw std::logic_error("Unexpected calendar formatter dependency");
+        }
+        c.finish();
+        return true;
+    }
     switch (entry) {
     case 0x1077b770:
         return false; // Run the real RNG core and compare its ordered writes.
@@ -2978,6 +3027,140 @@ unsigned check_calendar_notices(std::mt19937& random) {
     return comparisons;
 }
 
+unsigned check_calendar_notice_formatter_reference(std::mt19937& random) {
+    struct Case { unsigned count; int variant, detail, primary, secondary; bool full; };
+    const auto prefix = [](unsigned count) -> unsigned {
+        if (count == 0) return 0;
+        if (count == 1) return 0x7eea;
+        if (count == 2) return 0x7f09;
+        if (count <= 4) return 0x7f4b;
+        return count == 5 ? 0x7fac : 0x802d;
+    };
+    const auto headline = [](const Case& scenario) -> unsigned {
+        switch (scenario.variant) {
+        case 0: return scenario.count == 1 ? 0x7ced : scenario.count == 2 ? 0x7d31 : 0x7d83;
+        case 1: return 0x7dc3;
+        case 2: return scenario.secondary >= 0 ? 0x7e0b : 0x7e46;
+        default: return 0x7ea5;
+        }
+    };
+    const auto body = [](const Case& scenario) {
+        constexpr unsigned keys[2][4][2]{
+            {{0x820b, 0x80cc}, {0x845b, 0x8320}, {0x862f, 0x856c}, {0x87a8, 0x86c8}},
+            {{0x899e, 0x885e}, {0x8be8, 0x8ab0}, {0x8dd6, 0x8cf6}, {0x8f89, 0x8e8c}},
+        };
+        const auto count = scenario.count;
+        const unsigned band = count > 6 ? 0 : count > 3 ? 1 : count == 1 ? 2 : 3;
+        return keys[scenario.detail != 0][band][scenario.secondary >= 0];
+    };
+    constexpr auto formatter_frame = stack - 0x6b0;
+    const auto make_state = [&](const Case& scenario) {
+        auto state = domestic_schedule_seed(random);
+        state->memory.map(fixture + 0xd000, 0x1000);
+        state->memory.map(stack - 0x1400, 0x1000);
+        Cpu c(*state);
+        c.put32(toc - 0x7bbc, staff_slot);
+        c.put32(staff_slot, notice_render_people);
+        c.put32(toc - 0x7b98, notice_render_cup_slot);
+        c.put32(notice_render_cup_slot, notice_render_cups);
+        c.put8(notice_render_people + 0x67, 0x83);
+        c.put8(notice_render_people + 0x6a, 0x84);
+        c.put8(notice_render_cups + 0x116, 0x91);
+        c.put8(notice_render_cups + 0x128 + 0x116, 0x92);
+        for (unsigned club = 0; club <= 8; ++club)
+            c.put8(clubs + club * 0x248 + 0x23b, 0x80 + club);
+        const std::array<unsigned, 7> fields{0, scenario.count, unsigned(scenario.variant),
+            unsigned(scenario.detail), unsigned(scenario.primary), unsigned(scenario.secondary), 77};
+        for (unsigned i = 0; i < fields.size(); ++i) c.put32(notice_render_item + 8 + i * 4, fields[i]);
+        for (unsigned i = 0; i < scenario.count; ++i) c.put32(notice_render_item + 36 + i * 4, i);
+        c.set({{3, calendar}, {4, notice_render_item}, {5, scenario.full ? 0x101u : 0x100u}, {6, notice_render_output}});
+        state->pc = render_calendar_notice;
+        return state;
+    };
+    unsigned comparisons = 0;
+    const auto check = [&](const Case& scenario) {
+        auto state = make_state(scenario);
+        std::vector<DependencyCall> calls;
+        ObserveCalls observer(calls);
+        auto* saved_checker = routine_checker;
+        struct RestoreChecker {
+            RoutineChecker* previous;
+            ~RestoreChecker() { routine_checker = previous; }
+        } restore{saved_checker};
+        // Decline generated direct calls into the modeled dependencies.
+        RoutineChecker boundary([](std::uint32_t) { return false; }, 0, 0);
+        routine_checker = &boundary;
+        localization_format_diagnostics(*state).original_body = localize;
+        national_teams_run_original(*state, render_calendar_notice);
+        Cpu c(*state);
+        require(state->pc == done, "original calendar formatter returns normally");
+
+        std::size_t next = 0;
+        const auto take = [&](std::uint32_t target) -> const DependencyCall& {
+            require(next < calls.size() && calls[next][0] == target, "calendar formatter dependency order");
+            return calls[next++];
+        };
+        for (unsigned field = 0; field < 7 + scenario.count; ++field)
+            require(take(0x102cb570)[6] == field, "calendar formatter reads fields in order");
+        take(0x10746a70);
+        const auto intro = scenario.full ? prefix(scenario.count) : 0u;
+        const auto key = scenario.full ? body(scenario) : headline(scenario);
+        if (intro) {
+            const auto& call = take(localize);
+            require(call[5] == formatter_frame + 0x270 && call[6] == source + intro,
+                    "calendar formatter optional club list template");
+            const auto included = scenario.count <= 3 ? scenario.count : std::min(scenario.count - 1, 5u);
+            const auto first = scenario.count <= 3 ? 0u : 1u;
+            const auto arg = [&](unsigned i) {
+                const auto at = notice_render_trace + 8;
+                return c.u32(at + (i < 6 ? 8 + i * 4 : 40 + (i - 6) * 4));
+            };
+            for (unsigned i = 0; i < included; ++i) {
+                const auto club = first + i;
+                const auto grammar = std::uint32_t(std::int8_t(0x80 + club));
+                require(arg(i * 2) == grammar && arg(i * 2 + 1) == grammar &&
+                            arg(included * 2 + i) == clubs + club * 0x248 + 0x221,
+                        "calendar formatter club list grammar and names");
+            }
+        }
+        const auto& final = take(localize);
+        require(final[5] == label_shared && final[6] == source + key &&
+                    c.u8(notice_render_trace) == 1 + unsigned(intro != 0),
+                "calendar formatter final localized template");
+        take(0x1074b830);
+        require(c.u32(notice_render_output) == key, "calendar formatter assigns the final text");
+
+        const auto link = [&](std::uint32_t token, unsigned kind, std::uint32_t object) {
+            const auto& call = take(0x1074bab0);
+            require(call[6] == token && call[7] == kind && call[8] == object,
+                    "calendar formatter linked token, kind and identity");
+        };
+        for (unsigned club = 0; club < scenario.count; ++club) {
+            const auto object = clubs + club * 0x248;
+            link(object + 0x1ee, 0x7d5, object);
+            link(object + 0x221, 0x7d5, object);
+        }
+        for (const int cup : {scenario.primary, scenario.secondary}) {
+            if (cup < 0) continue;
+            const auto object = notice_render_cups + unsigned(cup) * 0x128;
+            require(take(0x100c76c0)[5] == object, "calendar formatter competition identity lookup");
+            link(object + 0xe1, 0x7d5, object + 0x10);
+        }
+        link(notice_render_people + 0x1a, 0x7d0, notice_render_people);
+        link(notice_render_people + 0x4d, 0x7d0, notice_render_people);
+        require(next == calls.size(), "calendar formatter has no unclassified dependency");
+        ++comparisons;
+    };
+    for (const auto& scenario : {Case{1, 0, 0, 0, -1, false}, Case{2, 0, 0, 0, 1, false},
+            Case{4, 0, 0, 0, -1, false}, Case{0, 0, 0, -1, -1, false}, Case{1, 1, 0, 0, -1, false},
+            Case{1, 2, 0, 0, 1, false}, Case{1, 2, 0, 0, -1, false}, Case{1, -1, 0, 0, -1, false},
+            Case{1, 3, 0, 0, -1, false}}) check(scenario);
+    for (unsigned count : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 9u})
+        for (int detail : {0, 1})
+            for (int secondary : {-1, 1}) check({count, 0, detail, 0, secondary, true});
+    return comparisons;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -3046,6 +3229,8 @@ int main() try {
     const auto marked_fixtures = check_fixture_marking(random);
     const auto applied_marks = check_fixture_application(random);
     const auto calendar_notices = check_calendar_notices(random);
+    const auto formatter_references = check_calendar_notice_formatter_reference(random);
+    std::cout << formatter_references << " NATIONAL_TEAMS calendar formatter reference cases\n";
     std::cout << calendar_notices << " NATIONAL_TEAMS calendar notice comparisons, 1 fault and 2 budget stops\n";
     std::cout << applied_marks << " NATIONAL_TEAMS fixture application comparisons, 2 faults and 1 budget stop\n";
     std::cout << marked_fixtures << " NATIONAL_TEAMS fixture marking comparisons, 2 faults and 1 budget stop\n";
