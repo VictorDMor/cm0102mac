@@ -4,6 +4,7 @@
 #include "national_teams_adapter.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
+#include "tactics.hpp"
 
 #include <random>
 
@@ -18,6 +19,7 @@ constexpr auto records = fixture + 0x1800, staff_table = fixture + 0x3000, staff
 constexpr auto club_count = fixture + 0x4200, nation_count = fixture + 0x4204;
 constexpr auto club = fixture + 0x4300, unmapped = fixture + 0xa000;
 constexpr auto remove_player = 0x102b8180u, selected_player = 0x102aefb0u;
+constexpr auto dedup_rosters = 0x102ace30u, drop_roster = 0x102b8d60u;
 constexpr auto international = 0x102b7c00u, duty = 0x102b7c70u;
 constexpr auto player = fixture + 0x5100, date = fixture + 0x5200, national_team = fixture + 0x5300;
 constexpr auto regular_club = fixture + 0x5400, team_nation = fixture + 0x5500;
@@ -80,6 +82,9 @@ bool observe_dependency(State& s) {
         if (resume != 0x102b81d8) return false;
         break;
     case 0x100c76c0: case 0x100c7860: break;
+    case 0x1014c2e0:
+        if (resume != 0x103b19a4) return false;
+        break;
     default: return false;
     }
     DependencyCall call{entry, resume};
@@ -612,6 +617,183 @@ unsigned check_selected_player(std::mt19937& random) {
     return comparisons;
 }
 
+constexpr unsigned club_stride = 0x248, national_roster_offset = 0x98, national_roster_size = 50;
+constexpr unsigned fixture_nation_id = 5, fixture_club_count = 200, fixture_nation_count = 20;
+constexpr auto senior_team = clubs + (fixture_club_count - 2 * fixture_nation_count + fixture_nation_id) * club_stride;
+constexpr auto alternate_team = clubs + (fixture_club_count - fixture_nation_count + fixture_nation_id) * club_stride;
+
+std::unique_ptr<State> two_rosters(std::mt19937& random, bool map_alternate = true,
+                                   unsigned team_size = club_stride) {
+    auto state = duty_seed(random);
+    Cpu c(*state);
+    c.put32(toc - 0x7b98, calendar_slot);
+    c.put32(nation + 0x68, fixture_nation_id);
+    c.put32(club_count, fixture_club_count);
+    c.put32(nation_count, fixture_nation_count);
+    state->memory.map(senior_team, team_size);
+    if (map_alternate) state->memory.map(alternate_team, team_size);
+    state->budget = 100000;
+    return state;
+}
+
+unsigned check_dedup_rosters(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (unsigned pattern = 0; pattern < 6; ++pattern) {
+        for (unsigned trial = 0; trial < 6; ++trial) {
+            auto state = two_rosters(random);
+            Cpu c(*state);
+            c.set(4, nation);
+            for (const auto team : {senior_team, alternate_team}) {
+                for (unsigned slot = 0; slot < national_roster_size; ++slot) {
+                    std::uint32_t value = 0;
+                    if (pattern == 1) value = player + 4 * slot;
+                    if (pattern == 2) value = player;
+                    if (pattern == 3 && (slot == 0 || slot == 49)) value = UINT32_MAX;
+                    if (pattern == 4 && (slot % 5 != 0)) value = player + 4 * (random() % (1 + trial * 8));
+                    if (pattern == 5 && slot == 49) value = player;
+                    c.put32(team + national_roster_offset + slot * 4, value);
+                }
+            }
+            state->pc = dedup_rosters;
+            auto result = compare(*state);
+            Cpu after(*result);
+            for (const auto team : {senior_team, alternate_team}) {
+                std::array<std::uint32_t, national_roster_size> seen{};
+                for (unsigned slot = 0; slot < seen.size(); ++slot) {
+                    const auto address = team + national_roster_offset + slot * 4;
+                    const auto prior = c.u32(address);
+                    const auto first = std::find(seen.begin(), seen.begin() + slot, prior) == seen.begin() + slot;
+                    require(after.u32(address) == (first ? prior : 0), "roster retains its first occurrence in place");
+                    seen[slot] = prior;
+                }
+            }
+            ++comparisons;
+        }
+    }
+    return comparisons;
+}
+
+constexpr auto tactics_slot = fixture + 0x6400, tactics_state = fixture + 0x7800;
+constexpr auto tactics_teams = fixture + 0x8000, staff_count = fixture + 0x6420;
+
+std::unique_ptr<State> drop_seed(std::mt19937& random, bool map_roster = true) {
+    auto state = two_rosters(random, true, map_roster ? club_stride : national_roster_offset);
+    Cpu c(*state);
+    c.set({{4, nation}, {6, player}});
+    c.put32(toc - 0x7a6c, tactics_slot);
+    c.put32(tactics_slot, tactics_state);
+    c.put32(toc - 0x7be0, staff_slot);
+    c.put32(staff_slot, player - 7 * tactics::staff_size);
+    c.put32(toc - 0x7be4, staff_count);
+    c.put32(staff_count, 12);
+    c.put32(tactics_state + tactics::field::teams, tactics_teams);
+    c.put32(tactics_state + tactics::field::team_count, 3);
+    c.put32(senior_team, 1);
+    c.put32(alternate_team, 2);
+    c.put32(player, 7);
+    c.put32(player + 0x14, player + 0x80);
+    c.put8(player + 0x60, 0xab);
+    c.put8(player + 0x6a, 0xfe);
+    state->pc = drop_roster;
+    return state;
+}
+
+unsigned check_drop_roster(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (const unsigned mode : {0u, 1u, 2u, 3u, 0x100u, 0x101u, 0x180u, UINT32_MAX}) {
+        for (unsigned scenario = 0; scenario < 6; ++scenario) {
+            auto state = drop_seed(random);
+            Cpu c(*state);
+            const auto variant = std::int8_t(mode);
+            const auto team = variant == 0 || variant == 1 ? senior_team : alternate_team;
+            const auto other = team == senior_team ? alternate_team : senior_team;
+            c.set(5, mode);
+            c.put32(player + 0x20, team);
+            c.put32(player + 0x24, team);
+            const auto roster_slot = team + national_roster_offset + (scenario == 2 ? 49u : 0u) * 4;
+            const auto other_slot = other + national_roster_offset;
+            const bool listed = scenario != 0 && scenario != 5;
+            c.put32(roster_slot, listed ? player : 0);
+            if (scenario == 3) {
+                c.put32(team + national_roster_offset + 49 * 4, player);
+                c.put32(other_slot + 4, player);
+            }
+            c.put32(other_slot, player);
+            auto team_record = tactics_teams + c.u32(team) * tactics::team_size;
+            for (unsigned offset = tactics::field::squad; offset < tactics::field::lineup; offset += 4)
+                c.put32(team_record + offset, UINT32_MAX);
+            if (scenario != 5) {
+                c.put32(team_record + tactics::field::squad, 7);
+                c.put32(team_record + tactics::field::captains, 7);
+                c.put32(team_record + tactics::field::takers + 9 * 4, 7);
+            }
+            c.put8(tactics_state + tactics::field::backup_count, 2);
+            for (unsigned managed : {1u, 0u}) {
+                const auto backup = tactics_state + tactics::field::backups + managed * tactics::backup_size;
+                c.put32(backup + tactics::field::backup_club, team);
+                c.put8(backup + tactics::field::backup_managed, managed);
+                c.put8(backup + tactics::field::backup_active, 1);
+            }
+
+            auto result = compare(*state);
+            Cpu after(*result);
+            require(after.u32(roster_slot) == 0 && after.u32(other_slot) == player &&
+                        after.u32(player + 0x20) == (listed ? 0 : team) &&
+                        after.u8(player + 0x60) == (listed ? 0 : 0xab) &&
+                        after.u8(player + 0x6a) == (listed ? 2 : 0xfe),
+                    "dropping a listed player clears their roster slot, link, call-up status and duty flags");
+            if (scenario == 3) require(after.u32(team + national_roster_offset + 49 * 4) == player,
+                                        "individual removal stops after the first roster slot");
+            require(after.u32(team_record + tactics::field::squad) == UINT32_MAX &&
+                        after.u32(team_record + tactics::field::captains) == UINT32_MAX &&
+                        after.u32(team_record + tactics::field::takers + 9 * 4) == UINT32_MAX &&
+                        after.u8(tactics_state + tactics::field::backup_count) == 0,
+                    "tactics and both managed-status backups are cleared even if the roster omits the player");
+            ++comparisons;
+            if (scenario == 3) {
+                // Continue from the verified removal state and check that
+                // deduplication is local to each roster.
+                after.set(4, nation);
+                result->pc = dedup_rosters;
+                auto deduplicated = compare(*result);
+                Cpu final(*deduplicated);
+                require(final.u32(team + national_roster_offset + 49 * 4) == player &&
+                            final.u32(other_slot) == player && final.u32(other_slot + 4) == 0,
+                        "deduplication after removal keeps the first appearance in each roster");
+                ++comparisons;
+            }
+        }
+    }
+    return comparisons;
+}
+
+unsigned check_roster_cleanup_faults(std::mt19937& random) {
+    auto state = two_rosters(random, false);
+    Cpu c(*state);
+    c.set(4, nation);
+    c.put32(senior_team + national_roster_offset, player);
+    c.put32(senior_team + national_roster_offset + 4, player);
+    state->pc = dedup_rosters;
+    auto result = compare(*state, Stop::fault);
+    require(Cpu(*result).u32(senior_team + national_roster_offset + 4) == 0,
+            "the first roster is cleaned before an unreadable second roster faults");
+    state->budget = 0;
+    compare(*state, Stop::budget);
+
+    state = drop_seed(random, false);
+    Cpu drop(*state);
+    drop.set(5, 0);
+    for (unsigned offset = tactics::field::squad; offset < tactics::field::lineup; offset += 4)
+        drop.put32(tactics_teams + tactics::team_size + offset, UINT32_MAX);
+    drop.put32(tactics_teams + tactics::team_size + tactics::field::squad, 7);
+    result = compare(*state, Stop::fault);
+    require(Cpu(*result).u32(tactics_teams + tactics::team_size + tactics::field::squad) == UINT32_MAX,
+            "tactics changes precede the fault on the roster");
+    state->budget = 0;
+    compare(*state, Stop::budget);
+    return 2;
+}
+
 unsigned check_roster_faults(std::mt19937& random) {
     for (const auto entry : {remove_player, selected_player}) {
         auto state = duty_seed(random);
@@ -695,6 +877,10 @@ int main() try {
     const auto query_faults = check_selection_query_faults(random);
     const auto roster = check_remove_selection(random) + check_selected_player(random);
     const auto roster_faults = check_roster_faults(random);
+    const auto cleanup = check_dedup_rosters(random) + check_drop_roster(random);
+    const auto cleanup_faults = check_roster_cleanup_faults(random);
+    std::cout << cleanup << " NATIONAL_TEAMS roster cleanup comparisons, " << cleanup_faults
+              << " faults and 2 budget stops\n";
     std::cout << roster << " NATIONAL_TEAMS roster comparisons, " << roster_faults << " faults and 2 budget stops\n";
     std::cout << queries << " NATIONAL_TEAMS selection tier, prefix and competition comparisons, "
               << query_faults << " faults and 3 budget stops\n";

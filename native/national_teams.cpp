@@ -292,11 +292,13 @@ void assigned_staff(Cpu& c) {
 }
 constexpr auto international_club_entry = 0x102b7c00u, duty_conflict_entry = 0x102b7c70u;
 constexpr auto remove_selection_entry = 0x102b8180u, selected_for_nation_entry = 0x102aefb0u;
+constexpr auto deduplicate_rosters_entry = 0x102ace30u, drop_roster_player_entry = 0x102b8d60u;
 constexpr auto classify_club = 0x100c7d00u;
 constexpr int first_all_star_id = -0x7208, second_all_star_id = -0x7204;
 constexpr unsigned club_size = 0x248, club_roster = 0x98, club_roster_size = 50;
 constexpr unsigned player_nation = 0xc, player_assessment = 0x14;
 constexpr unsigned player_national_team = 0x20, player_duty_flags = 0x6a;
+constexpr unsigned player_call_up_status = 0x60;
 
 void international_club(Cpu& c) {
     GuestNativeScope scope(c.s, international_club_entry);
@@ -592,6 +594,167 @@ void selected_for_nation(Cpu& c) {
     c.set(1, caller);
     c.set_lr(c.r(0));
     c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
+void deduplicate_roster(Cpu& c, std::uint32_t team) {
+    const auto roster = team + club_roster;
+    block(c, 0x102ace6c, 3);
+    c.set({{7, roster}, {6, 0}});
+    for (unsigned slot = 0; ; ++slot) {
+        block(c, 0x102acedc, 3);
+        c.set(0, slot);
+        c.compare(0, slot, club_roster_size);
+        if (slot == club_roster_size) return;
+        block(c, 0x102ace78, 3);
+        const auto player = c.u32(roster + slot * 4);
+        c.set(8, player);
+        c.compare_logical(0, player, 0);
+        if (player) {
+            block(c, 0x102ace84, 3);
+            c.set(4, slot);
+            c.compare(0, slot, club_roster_size);
+            block(c, 0x102ace90, 7);
+            const auto first = slot + 1;
+            c.set({{0, first}, {4, 0}, {5, first}, {9, roster + first * 4}});
+            for (unsigned later = first; ; ++later) {
+                block(c, 0x102acec8, 3);
+                c.set(0, later);
+                c.compare(0, later, club_roster_size);
+                if (later == club_roster_size) break;
+                block(c, 0x102aceb0, 3);
+                const auto address = roster + later * 4;
+                const auto candidate = c.u32(address);
+                c.set(0, candidate);
+                c.compare_logical(0, candidate, player);
+                if (candidate == player) {
+                    block(c, 0x102acebc, 1);
+                    c.put32(address, 0);
+                }
+                block(c, 0x102acec0, 2);
+                c.set({{5, later + 1}, {9, address + 4}});
+            }
+        }
+        block(c, 0x102aced4, 2);
+        c.set({{6, slot + 1}, {7, roster + (slot + 1) * 4}});
+    }
+}
+
+void deduplicate_rosters(Cpu& c) {
+    GuestNativeScope scope(c.s, deduplicate_rosters_entry);
+    block(c, deduplicate_rosters_entry, 8);
+    const auto caller = c.sp(), frame = caller - 0x40, nation = c.r(4);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set(31, 0);
+    c.put32(caller - 8, c.r(30));
+    c.set(30, nation);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+
+    for (unsigned team_kind = 0; ; ++team_kind) {
+        block(c, 0x102aceec, 3);
+        c.set(0, team_kind);
+        c.compare(0, team_kind, 2);
+        if (team_kind == 2) break;
+        block(c, 0x102ace50, 2);
+        const bool alternate = record_nonzero_byte(c, team_kind);
+        const auto pc = alternate ? 0x102ace64u : 0x102ace58u;
+        block(c, pc, 2);
+        c.set(3, nation);
+        c.call(alternate ? 0x100c7860 : 0x100c76c0, pc + 8);
+        if (!alternate) block(c, 0x102ace60, 1);
+        deduplicate_roster(c, c.r(3));
+        block(c, 0x102acee8, 1);
+        c.set(31, team_kind + 1);
+    }
+
+    block(c, 0x102acef8, 6);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.finish();
+}
+
+void drop_roster_player(Cpu& c) {
+    GuestNativeScope scope(c.s, drop_roster_player_entry);
+    block(c, drop_roster_player_entry, 10);
+    const auto caller = c.sp(), frame = caller - 0x50;
+    const auto nation = c.r(4), raw_mode = c.r(5), player = c.r(6);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    const auto tactics_slot = c.toc(-0x7a6c);
+    c.set(31, tactics_slot);
+    c.put32(caller - 8, c.r(30));
+    c.put32(caller - 12, c.r(29));
+    c.set(29, player);
+    c.put32(caller + 8, c.r(0));
+    const auto mode = std::int8_t(raw_mode);
+    const bool nonzero = record_nonzero_byte(c, raw_mode);
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+
+    if (nonzero) {
+        block(c, 0x102b8d88, 3);
+        c.compare(0, mode, 1);
+    }
+    const bool alternate = mode != 0 && mode != 1;
+    const auto lookup = alternate ? 0x102b8da4u : 0x102b8d94u;
+    block(c, lookup, 2);
+    c.set(3, nation);
+    c.call(alternate ? 0x100c7860 : 0x100c76c0, lookup + 8);
+    block(c, lookup + 8, alternate ? 1 : 2);
+    const auto team = c.r(3);
+    c.set(30, team);
+
+    for (const unsigned managed : {1u, 0u}) {
+        const auto pc = managed ? 0x102b8db0u : 0x102b8dc8u;
+        block(c, pc, 6);
+        c.set(3, c.u32(tactics_slot));
+        c.set({{4, team}, {5, player}, {6, managed}, {7, 1}});
+        c.call(0x103afb90, pc + 24);
+    }
+
+    block(c, 0x102b8de0, 3);
+    c.set({{4, 0}, {3, 0}});
+    for (unsigned slot = 0; ; ++slot) {
+        block(c, 0x102b8e38, 3);
+        c.set(0, slot);
+        c.compare(0, slot, club_roster_size);
+        if (slot == club_roster_size) break;
+        block(c, 0x102b8df0, 4);
+        const auto offset = slot * 4;
+        c.set(0, club_roster + offset);
+        const auto listed = c.u32(team + club_roster + offset);
+        c.set(0, listed);
+        c.compare_logical(0, player, listed);
+        if (player == listed) {
+            block(c, 0x102b8e00, 11);
+            c.set({{4, 0}, {0, offset}, {3, team + offset}});
+            c.put32(team + club_roster + offset, 0);
+            c.put32(player + player_national_team, 0);
+            c.put8(player + player_call_up_status, 0);
+            const auto flags = c.u8(player + player_duty_flags) & 3u;
+            c.set(0, flags);
+            c.put8(player + player_duty_flags, flags);
+            break;
+        }
+        block(c, 0x102b8e30, 2);
+        c.set({{3, offset + 4}, {4, slot + 1}});
+    }
+
+    block(c, 0x102b8e44, 7);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.set(29, c.u32(caller - 12));
     c.finish();
 }
 
@@ -1079,6 +1242,8 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case international_competition_entry: international_competition(c); break;
     case remove_selection_entry: remove_selection(c); break;
     case selected_for_nation_entry: selected_for_nation(c); break;
+    case deduplicate_rosters_entry: deduplicate_rosters(c); break;
+    case drop_roster_player_entry: drop_roster_player(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }
