@@ -51,11 +51,18 @@ constexpr auto recipient_club = clubs + 5 * 0x248;
 constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish = 0x102cc140u;
 constexpr auto calendar_availability = 0x102b9e50u, calendar_save = 0x102b96e0u;
 constexpr auto calendar_load = 0x102b8ec0u;
+constexpr auto create_schedule = 0x102ba1c0u, register_fixture = 0x102ba290u;
+constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
+constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
+constexpr auto release_limit = fixture + 0xbb40, release_excluded_nation = fixture + 0xbb44;
+constexpr auto release_headers = fixture + 0xbb50, release_rows = fixture + 0xbc00, grown_rows = fixture + 0xbd00;
+constexpr auto roster_comparator = fixture + 0xbe00, date_comparator = fixture + 0xbe08;
 constexpr auto archive_path = fixture + 0x6c80, archive_companion = fixture + 0x6ca0;
 constexpr auto archive_primary = fixture + 0x6d00, archive_secondary = fixture + 0x6d20;
 constexpr auto archive_years = fixture + 0x6d40, archive_flags = fixture + 0x6d50;
 constexpr auto archive_trace = fixture + 0x8000, archive_bytes = fixture + 0x8200;
 constexpr auto archive_arena = fixture + 0xb000, archive_nodes = archive_arena + 0x3000;
+constexpr auto release_policy = archive_trace + 0x40;
 constexpr auto archive_stream = 0x51515151u;
 constexpr std::array archive_error_lines{0x2039u, 0x2041u, 0x2048u, 0x2061u, 0x2079u, 0x2092u,
                                          0x20b2u, 0x20c0u, 0x20c0u, 0x20c9u, 0x20d6u, 0x20dfu, 0x20e6u};
@@ -106,6 +113,7 @@ bool observe_dependency(State& s) {
     const auto entry = s.pc, resume = c.lr(), frame = c.sp();
     const bool calendar_read = resume >= 0x102b8f24 && resume <= 0x102b96c4;
     const bool calendar_archive = calendar_read || (resume >= 0x102b9740 && resume <= 0x102b9e34);
+    const bool domestic_schedule = resume >= 0x102ba204 && resume <= 0x102ba5dc;
     switch (entry) {
     case 0x100ce250: case 0x100c7d00: case 0x10738e00: case 0x10717b20: case 0x10717890:
     case 0x1048b180: case dispose_list: case localize: case 0x107156b0: break;
@@ -116,8 +124,14 @@ bool observe_dependency(State& s) {
     case 0x107475b0: case 0x10747cc0: case 0x10747900: case 0x10487640:
         if (!calendar_archive) return false;
         break;
-    case 0x10747a80: case 0x10775130: case 0x10775200: case 0x10773520: case 0x10738d10:
+    case 0x10747a80: case 0x10775130: case 0x10773520: case 0x10738d10:
         if (!calendar_read) return false;
+        break;
+    case 0x10775200:
+        if (!calendar_read && !domestic_schedule) return false;
+        break;
+    case 0x107751b0: case 0x10768300:
+        if (!domestic_schedule) return false;
         break;
     case 0x10494d20:
         if (resume != 0x102b9f08) return false;
@@ -135,6 +149,37 @@ bool observe_dependency(State& s) {
     for (unsigned i = 0; i < 32; ++i) call[i + 2] = c.r(i);
     dependencies->push_back(call);
     switch (entry) {
+    case 0x100ce250:
+        if (resume != 0x102ba33c) return false;
+        require(c.r(3) == release_team, "domestic fixture team classifier");
+        c.set(3, c.u8(release_policy + 1));
+        break;
+    case 0x107751b0: {
+        const auto rows = c.r(3);
+        require(resume == 0x102ba50c && c.r(4) == (rows ? 4 : 3) * 12u,
+                "domestic schedule grows by three rows");
+        require(!rows || rows == release_rows, "domestic schedule grows its current buffer");
+        if (c.u8(release_policy)) c.set(3, 0);
+        else {
+            if (rows) s.memory.copy_in(grown_rows, s.memory.copy_out(rows, 12));
+            c.set(3, grown_rows);
+        }
+        break;
+    }
+    case 0x10768300: {
+        const bool real_sort = c.u8(release_policy + 4);
+        if (resume == 0x102ba300) {
+            require(c.r(3) == release_team + 0x98 && c.r(4) == 50 && c.r(5) == 4 &&
+                        c.r(6) == (real_sort ? roster_comparator : 0x61515151u), "domestic roster sort");
+            c.put8(release_policy + 2, 1);
+        } else {
+            require(resume == 0x102ba5dc && c.r(5) == 12 && c.r(6) == (real_sort ? date_comparator : 0x61616161u) &&
+                        c.r(4) && c.r(4) <= 3, "domestic schedule row sort");
+            c.put8(release_policy + 3, c.u8(release_policy + 3) + 1);
+        }
+        if (real_sort) return false;
+        break;
+    }
     case 0x107475b0:
         require(c.r(3) == archive_path && c.r(4) == source + 0x7cda && c.r(5) == unsigned(!calendar_read) &&
                     c.r(6) == 0x16 && c.r(7) == 4, "calendar archive open ABI");
@@ -172,6 +217,11 @@ bool observe_dependency(State& s) {
         break;
     }
     case 0x10775130: case 0x10775200: case 0x10773520: {
+        if (domestic_schedule) {
+            require(resume == 0x102ba204 && c.r(3) == 3 && c.r(4) == 8, "domestic schedule header allocation");
+            c.set(3, c.u8(release_policy) ? 0 : release_headers);
+            break;
+        }
         const auto call = c.u32(archive_trace + 0x1c) + 1;
         const auto size = entry == 0x10775200 ? c.r(3) * c.r(4) : c.r(3);
         require(call <= 7 && size <= 0x400, "calendar archive allocation capacity");
@@ -284,7 +334,7 @@ bool observe_dependency(State& s) {
         break;
     case 0x10739890:
         require(c.r(3) == source + 0x37, "national assertion source");
-        if (!calendar_archive) {
+        if (!calendar_archive && !domestic_schedule) {
             require(resume == 0x102b84b8 && c.r(6) == frame + 0x50 && c.r(7) == frame + 0x48,
                     "injury missing-team assertion frame");
         }
@@ -293,16 +343,22 @@ bool observe_dependency(State& s) {
         break;
     case 0x1077b720:
         require(c.r(3) == injury_assert_buffer, "national assertion output");
-        if (calendar_archive) c.put32(archive_trace + 0x10, c.r(8));
+        if (calendar_archive || domestic_schedule) c.put32(archive_trace + 0x10, c.r(8));
         else require(resume == 0x102b84d8 && c.r(8) == 0x1df8, "injury missing-team assertion line");
         c.put8(injury_assert_buffer, 13);
         break;
     case 0x10769b60:
-        require((calendar_archive || resume == 0x102b84e8) &&
+        require((calendar_archive || domestic_schedule || resume == 0x102b84e8) &&
                     c.r(3) == source + 0x57 && c.r(4) == injury_assert_buffer, "national assertion dialog");
         break;
     case 0x10717b20: case 0x10717890: {
         const bool lower = entry == 0x10717b20;
+        if (resume == 0x102ba35c) {
+            require(lower && c.r(3) == frame + 0x40 && c.r(4) == frame + 0x58 && c.r(5) == 1,
+                    "domestic fixture shifts the release date by one");
+            fixture_date(c, c.r(3), c.i16(c.r(4)) - 1, c.u16(c.r(4) + 2));
+            break;
+        }
         const bool availability = resume == 0x102b9eb8 || resume == 0x102b9ee0;
         require(c.r(3) == frame + (lower ? 0x60 : 0x58) &&
                     c.r(4) == (availability ? frame + 0x80 : date) && c.r(5) == 1,
@@ -344,7 +400,11 @@ bool observe_dependency(State& s) {
         break;
     }
     case 0x107156b0:
-        if (resume == 0x102b9e90) {
+        if (resume == 0x102ba31c) {
+            require(c.r(3) == frame + 0x48 && c.r(4) == std::uint32_t(c.i16(calendar_match + 0x2a)) &&
+                        c.r(5) == c.u16(calendar_match + 0x28), "domestic fixture date argument widths");
+            fixture_date(c, c.r(3), c.i16(calendar_match + 0x2a), c.u16(calendar_match + 0x28));
+        } else if (resume == 0x102b9e90) {
             require(c.r(3) == frame + 0x68 && c.r(4) == std::uint32_t(c.i16(calendar_match + 0x2a)) &&
                         c.r(5) == c.u16(calendar_match + 0x28), "calendar match date argument widths");
             fixture_date(c, c.r(3), c.i16(calendar_match + 0x2a), c.u16(calendar_match + 0x28));
@@ -387,7 +447,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             observer.emplace(calls);
             // The original caller can enter the allocator without dispatching.
             // Decline that direct route so the fixture sees both calls.
-            if (input.pc == calendar_load) s.allocator_original = true;
+            if (input.pc == calendar_load || input.pc == create_schedule || input.pc == register_fixture)
+                s.allocator_original = true;
         }
         struct RestoreChecker {
             RoutineChecker* previous = routine_checker;
@@ -397,12 +458,13 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             return entry == club_notice || entry == nation_notice || entry == replacement_notice || entry == injured_selection ||
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
                 entry == add_replacement || entry == replacement_objection || entry == automatic_replacement ||
-                entry == calendar_save || entry == calendar_load;
+                entry == calendar_save || entry == calendar_load || entry == create_schedule || entry == register_fixture;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection ||
                                    input.pc == automatic_replacement || input.pc == calendar_save ||
-                                   input.pc == calendar_load))
+                                   input.pc == calendar_load || input.pc == create_schedule ||
+                                   input.pc == register_fixture))
             routine_checker = &notice_boundary;
         if (input.pc == duty) {
             utility_object_diagnostics(s).original_body = dispose_list;
@@ -436,9 +498,26 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                       expected == Stop::budget ? a == "Native instruction budget exhausted" : a.empty()),
             label + " outcome " + a + " at " + hex_address(original->pc) +
                 " / " + b + " at " + hex_address(rewrite->pc));
-    if (expected == Stop::returned)
+    if (expected == Stop::returned) {
         require(original->pc == done && rewrite->pc == done, label + " normal continuation");
-    require(original_effects.bytes == rewrite_effects.bytes, label + " ordered memory effects");
+        if (input.pc == create_schedule || input.pc == register_fixture)
+            require(original->executed == rewrite->executed, label + " instruction accounting original=" +
+                std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
+    }
+    if (original_effects.bytes != rewrite_effects.bytes) {
+        const auto describe = [](const Effects::Access& a) {
+            return " kind=" + std::to_string(a.kind) + " address=" + hex_address(a.address) +
+                   " width=" + std::to_string(a.size) + " value=" + std::to_string(a.value);
+        };
+        const auto [old, now] = std::mismatch(original_effects.log.begin(), original_effects.log.end(),
+            rewrite_effects.log.begin(), rewrite_effects.log.end(), [](const auto& a, const auto& b) {
+                return a.kind == b.kind && a.address == b.address && a.size == b.size && a.value == b.value;
+            });
+        throw std::runtime_error(label + " ordered memory effect " +
+            std::to_string(old - original_effects.log.begin()) +
+            " original:" + (old == original_effects.log.end() ? " end" : describe(*old)) +
+            " rewrite:" + (now == rewrite_effects.log.end() ? " end" : describe(*now)));
+    }
     if (corrupt == Corrupt::dependency) {
         require(!rewrite_calls.empty(), "dependency corruption must reach the shared club query");
         rewrite_calls.front()[5] ^= 1;
@@ -1915,6 +1994,173 @@ unsigned check_calendar_load(std::mt19937& random) {
     return comparisons;
 }
 
+std::unique_ptr<State> domestic_schedule_seed(std::mt19937& random) {
+    auto state = calendar_save_seed(random, false);
+    state->memory.map(release_team, 0x1000);
+    Cpu c(*state);
+    c.put32(club_count, 7);
+    c.put32(calendar + 0x20, release_headers);
+    c.put32(toc - 0x7b68, release_excluded_nation);
+    c.put32(toc - 0x7be4, release_limit);
+    c.put32(toc - 0x514c, 0x61616161);
+    c.put32(toc - 0x5148, 0x61515151);
+    c.put32(release_excluded_nation, 4);
+    c.put32(release_limit, 100);
+    c.put32(release_nation + 0x68, 3);
+    c.put8(release_nation + 0x120, 1);
+    c.put32(release_clubs, 0);
+    c.put32(release_clubs + 0x2c, release_nation);
+    c.put32(release_clubs + 0x100, 1);
+    c.put32(release_clubs + 0x12c, release_nation);
+    for (unsigned i = 0; i < 4; ++i) {
+        const auto at = release_players + 0x80 * i;
+        c.put32(at, i);
+        c.put32(at + 0x24, i < 2 ? release_clubs : i == 2 ? release_clubs + 0x100 : 0);
+        c.put32(release_team + 0x98 + 4 * i, at);
+    }
+    c.put16(calendar_match + 0x28, 2000);
+    c.put16(calendar_match + 0x2a, -7);
+    c.set({{3, calendar}, {4, release_team}, {5, 0}, {6, calendar_match}});
+    state->pc = register_fixture;
+    return state;
+}
+
+unsigned check_domestic_schedule(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (bool failure : {false, true}) {
+        const auto state = domestic_schedule_seed(random);
+        Cpu c(*state);
+        c.put32(calendar + 0x20, home_events);
+        c.put8(release_policy, failure);
+        state->pc = create_schedule;
+        auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(calendar + 0x20) == (failure ? 0 : release_headers) &&
+                    result.u8(injury_success) == !failure &&
+                    result.u32(archive_trace + 0x10) == (failure ? 0x2156u : 0u),
+                "domestic schedule publishes the cleared header array or reports failure");
+        ++comparisons;
+    }
+    for (unsigned scenario = 0; scenario < 17; ++scenario) {
+        auto state = domestic_schedule_seed(random);
+        Cpu c(*state);
+        const auto set_row = [&](unsigned i, int day, unsigned year, unsigned releases) {
+            const auto row = release_rows + i * 12;
+            fixture_date(c, row, day, year);
+            c.put8(row + 8, releases);
+        };
+        // Give the second club room to append independently of the first.
+        c.put32(release_headers + 8, away_events);
+        c.put8(release_headers + 12, 3);
+        switch (scenario) {
+        case 0: c.set(6, 0); break;
+        case 1: break;
+        case 2: case 3:
+            c.put32(release_headers, release_rows);
+            c.put8(release_headers + 4, 3);
+            c.put8(release_headers + 5, 3);
+            set_row(0, -7, 1999, 0x11);
+            set_row(1, -8, 2000, 0x22);
+            set_row(2, -7, 2000, 0xff);
+            if (scenario == 3) c.put8(release_policy + 1, 1);
+            break;
+        case 4: c.put8(release_policy, 1); break;
+        case 5: c.set(5, 0x180); c.put8(release_players + 0x6a, 4); break;
+        case 6: c.put8(release_players + 0x6a, 8); break;
+        case 7: c.put32(release_players, 100); break;
+        case 8: c.put32(release_clubs, 3); break;
+        case 9: c.put32(release_clubs, UINT32_MAX); break;
+        case 10: c.put32(release_clubs + 0x2c, 0); break;
+        case 11: c.put8(release_nation + 0x120, 0); break;
+        case 12: c.put32(release_nation + 0x68, 4); break;
+        case 13: c.put32(release_team + 0x98 + 3 * 4, 0); break;
+        case 14: case 15:
+            c.put32(release_headers, release_rows);
+            c.put8(release_headers + 4, scenario == 14 ? 3 : 1);
+            c.put8(release_headers + 5, 1);
+            set_row(0, -5, 2000, 0x11);
+            break;
+        case 16:
+            c.put32(release_team + 0x98, release_players + 0x180);
+            for (unsigned i = 1; i <= 3; ++i) c.put32(release_team + 0x98 + 4 * i, 0);
+            break;
+        }
+        auto after = compare(*state);
+        Cpu result(*after);
+        const bool failed = scenario == 4;
+        const bool existing_row = scenario == 14 || scenario == 15;
+        const bool append = scenario == 1 || (scenario >= 5 && scenario <= 7) || scenario == 13 || existing_row;
+        const bool away_append = scenario != 0 && !failed && scenario != 11 && scenario != 12 &&
+                                 scenario != 13 && scenario != 16;
+        const unsigned expected_size = append ? (existing_row ? 2 : 1) :
+                                       (scenario == 2 || scenario == 3 ? 3 : 0);
+        require(result.u8(release_policy + 2) && result.u8(injury_success) == !failed &&
+                    result.u32(archive_trace + 0x10) == (failed ? 0x21bbu : 0u) &&
+                    result.u8(release_headers + 5) == expected_size &&
+                    result.u8(release_headers + 13) == away_append &&
+                    result.u8(release_policy + 3) == unsigned(append) + unsigned(away_append),
+                "domestic schedule sorts roster first, then each appended date");
+        if (failed)
+            require(result.u8(release_headers + 4) == 3 && !result.u32(release_headers),
+                    "domestic schedule preserves capacity and cleared pointer on failed growth");
+        if (append) {
+            const auto row = result.u32(release_headers) + (existing_row ? 12 : 0);
+            require(result.i16(row) == (scenario == 5 ? -8 : -7) &&
+                        result.u16(row + 2) == 2000 && result.u8(row + 4) &&
+                        result.u8(row + 8) == (scenario >= 5 && scenario <= 7 ? 1u : 2u),
+                    "domestic schedule publishes date and the eligible club count");
+        }
+        if (scenario == 15)
+            require(result.u32(release_headers) == grown_rows && result.u8(release_headers + 4) == 4 &&
+                        after->memory.copy_out(grown_rows, 12) == state->memory.copy_out(release_rows, 12),
+                    "successful growth keeps the previous date row");
+        if (scenario == 2 || scenario == 3)
+            require(result.u8(release_rows + 20) == (scenario == 3 ? 0x24u : 0x22u) &&
+                        result.u8(release_rows + 32) == (scenario == 2 ? 1u : 0xffu),
+                    "domestic schedule increments only the exact day and year with byte wrapping");
+        ++comparisons;
+    }
+    {
+        const auto state = domestic_schedule_seed(random);
+        Cpu c(*state);
+        c.put8(release_policy + 4, 1);
+        c.put32(toc - 0x5148, roster_comparator);
+        c.put32(toc - 0x514c, date_comparator);
+        c.put32(roster_comparator, 0x102bc270);
+        c.put32(roster_comparator + 4, toc);
+        c.put32(date_comparator, 0x102bc180);
+        c.put32(date_comparator + 4, toc);
+        c.put32(release_team + 0x98, release_players + 0x100);
+        c.put32(release_team + 0x9c, release_players + 0x180);
+        c.put32(release_team + 0xa0, release_players);
+        c.put32(release_team + 0xa4, release_players + 0x80);
+        c.put32(release_headers, release_rows);
+        c.put8(release_headers + 4, 3);
+        c.put8(release_headers + 5, 1);
+        fixture_date(c, release_rows, 100, 2000);
+        c.put8(release_rows + 8, 17);
+        c.put16(calendar_match + 0x2a, 90);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(release_team + 0xa0) == release_players + 0x100 &&
+                    result.u8(release_headers + 5) == 2 && result.i16(release_rows) == 90 &&
+                    result.u8(release_rows + 8) == 2 && result.i16(release_rows + 12) == 100 &&
+                    result.u8(release_rows + 20) == 17 && result.u8(release_headers + 13) == 1,
+                "real comparators group roster players and order date rows");
+        ++comparisons;
+    }
+    const auto fault = domestic_schedule_seed(random);
+    Cpu(*fault).put32(calendar + 0x20, unmapped);
+    compare(*fault, Stop::fault);
+    for (const auto entry : {create_schedule, register_fixture}) {
+        const auto budget = domestic_schedule_seed(random);
+        budget->pc = entry;
+        budget->budget = 0;
+        compare(*budget, Stop::budget);
+    }
+    return comparisons;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -1977,6 +2223,8 @@ int main() try {
     const auto calendar_cases = check_calendar_availability(random);
     const auto calendar_saves = check_calendar_save(random);
     const auto calendar_loads = check_calendar_load(random);
+    const auto schedules = check_domestic_schedule(random);
+    std::cout << schedules << " NATIONAL_TEAMS domestic schedule comparisons, 1 fault and 2 budget stops\n";
     std::cout << calendar_loads << " NATIONAL_TEAMS calendar load comparisons, 2 faults and 1 budget stop\n";
     std::cout << calendar_saves << " NATIONAL_TEAMS calendar save comparisons, 1 fault and 1 budget stop\n";
     std::cout << calendar_cases << " NATIONAL_TEAMS calendar comparisons, 2 faults and 2 budget stops\n";

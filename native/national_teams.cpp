@@ -2525,21 +2525,25 @@ struct CalendarArchive {
     std::uint32_t frame, calendar, path, nations, staff, success, buffer, source;
 };
 
-template<bool Loading = false>
-void calendar_archive_error(Cpu& c, const CalendarArchive& a, std::uint32_t pc,
-                         unsigned name, unsigned extension, unsigned line) {
-    const auto name_at = a.frame + name, extension_at = a.frame + extension;
+void report_calendar_error(Cpu& c, std::uint32_t pc, std::uint32_t source, std::uint32_t buffer,
+                           std::uint32_t name, std::uint32_t extension, unsigned line) {
     block(c, pc, 6);
-    c.set({{3, a.source + 0x37}, {6, name_at}, {7, extension_at}, {4, 0}, {5, 0}});
+    c.set({{3, source + 0x37}, {6, name}, {7, extension}, {4, 0}, {5, 0}});
     c.call(0x10739890, pc + 24);
     block(c, pc + 24, 1);
     c.call(0x10768810, pc + 28);
     block(c, pc + 28, 7);
-    c.set({{5, c.r(3)}, {3, a.buffer}, {4, a.source + 0x4a}, {6, name_at}, {7, extension_at}, {8, line}});
+    c.set({{5, c.r(3)}, {3, buffer}, {4, source + 0x4a}, {6, name}, {7, extension}, {8, line}});
     c.call(0x1077b720, pc + 56);
     block(c, pc + 56, 4);
-    c.set({{4, a.buffer}, {3, a.source + 0x57}, {5, 0}});
+    c.set({{4, buffer}, {3, source + 0x57}, {5, 0}});
     c.call(0x10769b60, pc + 72);
+}
+
+template<bool Loading = false>
+void calendar_archive_error(Cpu& c, const CalendarArchive& a, std::uint32_t pc,
+                            unsigned name, unsigned extension, unsigned line) {
+    report_calendar_error(c, pc, a.source, a.buffer, a.frame + name, a.frame + extension, line);
     block(c, pc + 72, Loading ? 4 : 3);
     c.set(0, 0);
     if constexpr (Loading) c.set(3, 0);
@@ -3118,6 +3122,362 @@ void calendar_load(Cpu& c) {
     c.finish();
 }
 
+constexpr auto create_schedule_entry = 0x102ba1c0u, register_fixture_entry = 0x102ba290u;
+constexpr auto sort_schedule_rows = 0x10768300u;
+constexpr unsigned schedule_headers_offset = 0x20, schedule_header_size = 8, schedule_row_size = 12;
+constexpr unsigned schedule_capacity_offset = 4, schedule_size_offset = 5, schedule_release_offset = 8;
+
+void create_domestic_schedule(Cpu& c) {
+    GuestNativeScope scope(c.s, create_schedule_entry);
+    block(c, create_schedule_entry, 17);
+    const auto caller = c.sp(), frame = caller - 0x70, calendar = c.r(3);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set({{5, c.toc(-0x7b04)}, {4, schedule_header_size}});
+    c.put32(caller - 8, c.r(30));
+    const auto buffer = c.toc(-0x7ba8);
+    c.set(30, buffer);
+    c.put32(caller - 12, c.r(29));
+    c.set(29, calendar);
+    c.set(3, c.toc(-0x7b50));
+    c.put32(caller + 8, c.r(0));
+    const auto source = c.toc(-0x513c);
+    c.set(31, source);
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto nations = c.u32(c.r(5));
+    c.set(5, nations);
+    const auto clubs = c.u32(c.r(3));
+    c.set({{0, clubs}, {3, clubs - 2 * nations}});
+    c.call(0x10775200, 0x102ba204);
+
+    block(c, 0x102ba204, 4);
+    c.put32(calendar + schedule_headers_offset, c.r(3));
+    const auto headers = c.u32(calendar + schedule_headers_offset);
+    c.set(0, headers);
+    c.compare_logical(0, headers, 0);
+    if (!headers) {
+        report_calendar_error(c, 0x102ba214, source, buffer, frame + 0x40, frame + 0x38, 0x2156);
+        block(c, 0x102ba25c, 3);
+        c.set({{3, c.toc(-0x7bac)}, {0, 0}});
+        c.put8(c.r(3), 0);
+    }
+    block(c, 0x102ba268, 7);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.set(29, c.u32(caller - 12));
+    c.finish();
+}
+
+void set_schedule_date(Cpu& c, std::uint32_t at, bool shifted) {
+    c.set(0, c.u8(at + 4));
+    if (shifted) {
+        c.set(4, c.u16(at + 2));
+        c.set(3, std::uint32_t(c.i16(at)));
+        c.put16(c.sp() + 0x5a, c.r(4));
+        c.put16(c.sp() + 0x58, c.r(3));
+    } else {
+        c.set(3, c.r(29));
+        c.set(5, c.u16(at + 2));
+        c.set(4, std::uint32_t(c.i16(at)));
+        c.put16(c.sp() + 0x5a, c.r(5));
+        c.put16(c.sp() + 0x58, c.r(4));
+    }
+    c.put8(c.sp() + 0x5c, c.r(0));
+}
+
+void choose_schedule_date(Cpu& c, std::uint32_t fixture_date, std::uint32_t mode) {
+    const auto frame = c.sp();
+    block(c, 0x102ba308, 5);
+    c.set(0, c.u16(fixture_date + 0x2a));
+    c.set(3, frame + 0x48);
+    c.set(5, c.u16(fixture_date + 0x28));
+    c.set(4, std::uint32_t(std::int16_t(c.r(0))));
+    c.call(0x107156b0, 0x102ba31c);
+    block(c, 0x102ba31c, 8);
+    set_schedule_date(c, frame + 0x48, false);
+    c.call(0x100ce250, 0x102ba33c);
+    block(c, 0x102ba33c, 2);
+    const bool national = record_nonzero_byte(c, c.r(3));
+    if (!national) {
+        block(c, 0x102ba344, 2);
+        if (!record_nonzero_byte(c, mode)) return;
+    }
+    block(c, 0x102ba34c, 4);
+    c.set({{3, frame + 0x40}, {4, frame + 0x58}, {5, 1}});
+    c.call(0x10717b20, 0x102ba35c);
+    block(c, 0x102ba35c, 6);
+    set_schedule_date(c, frame + 0x40, true);
+}
+
+bool add_to_existing_schedule_date(Cpu& c, std::uint32_t header, unsigned releases) {
+    const auto frame = c.sp();
+    block(c, 0x102ba434, 7);
+    const auto date = c.u32(frame + 0x58);
+    c.set({{10, date}, {0, 0}});
+    const auto date_tail = c.u32(frame + 0x5c);
+    c.set({{9, date_tail}, {21, header}, {5, 0}, {3, 0}});
+    for (unsigned index = 0; ; ++index) {
+        block(c, 0x102ba4bc, 5);
+        const auto count = c.u8(header + schedule_size_offset);
+        c.set({{6, std::uint32_t(std::int8_t(index))}, {4, std::uint32_t(std::int8_t(count))}});
+        c.compare(0, c.r(6), c.r(4));
+        if (std::int8_t(index) >= std::int8_t(count)) {
+            block(c, 0x102ba4d0, 2);
+            return record_nonzero_byte(c, 0);
+        }
+
+        block(c, 0x102ba450, 9);
+        const auto rows = c.u32(header);
+        c.set({{4, rows}, {8, 0}});
+        c.put32(frame + 0x38, date);
+        const auto row = rows + index * schedule_row_size;
+        c.set(11, row);
+        c.set(7, c.u16(frame + 0x3a));
+        c.set(6, c.u16(row + 2));
+        c.put32(frame + 0x3c, date_tail);
+        c.compare_logical(0, c.r(7), c.r(6));
+        bool same = false;
+        if (c.r(7) == c.r(6)) {
+            block(c, 0x102ba474, 4);
+            c.set(7, std::uint32_t(c.i16(frame + 0x38)));
+            c.set(6, std::uint32_t(c.i16(row)));
+            c.compare(0, c.r(7), c.r(6));
+            same = c.r(7) == c.r(6);
+            if (same) {
+                block(c, 0x102ba484, 1);
+                c.set(8, 1);
+            }
+        }
+        block(c, 0x102ba488, 2);
+        c.compare(0, same, 0);
+        if (same) {
+            block(c, 0x102ba490, 9);
+            const auto offset = index * schedule_row_size + schedule_release_offset;
+            c.set({{0, 1}, {6, offset}});
+            const auto previous = c.u8(rows + offset);
+            c.set({{5, previous}, {3, std::uint32_t(previous + std::int8_t(releases))}});
+            c.put8(rows + offset, c.r(3));
+            block(c, 0x102ba4d0, 2);
+            return record_nonzero_byte(c, 1);
+        }
+        block(c, 0x102ba4b4, 2);
+        c.set({{3, (index + 1) * schedule_row_size}, {5, index + 1}});
+    }
+}
+
+bool append_schedule_date(Cpu& c, std::uint32_t header, unsigned releases, std::uint32_t comparator,
+                          std::uint32_t source, std::uint32_t buffer) {
+    block(c, 0x102ba4d8, 6);
+    const auto count = c.u8(header + schedule_size_offset);
+    c.set(0, count);
+    const auto capacity = c.u8(header + schedule_capacity_offset);
+    c.set({{3, capacity}, {4, std::uint32_t(std::int8_t(count))}, {0, std::uint32_t(std::int8_t(capacity))}});
+    c.compare(0, c.r(4), c.r(0));
+    const auto frame = c.sp();
+    if (count == capacity) {
+        block(c, 0x102ba4f0, 7);
+        c.set(0, capacity + 3);
+        c.put8(header + schedule_capacity_offset, c.r(0));
+        c.set(0, c.u8(header + schedule_capacity_offset));
+        c.set(3, c.u32(header));
+        c.set({{0, std::uint32_t(std::int8_t(c.r(0)))}, {4, c.r(0) * schedule_row_size}});
+        c.call(0x107751b0, 0x102ba50c);
+        block(c, 0x102ba50c, 4);
+        c.put32(header, c.r(3));
+        c.set(0, c.u32(header));
+        c.compare_logical(0, c.r(0), 0);
+        if (!c.r(0)) {
+            report_calendar_error(c, 0x102ba51c, source, buffer, frame + 0x60, frame + 0x50, 0x21bb);
+            block(c, 0x102ba564, 4);
+            c.set({{3, c.toc(-0x7bac)}, {0, 0}});
+            c.put8(c.r(3), 0);
+            return false;
+        }
+    }
+
+    block(c, 0x102ba574, 26);
+    c.set(0, c.u8(header + schedule_size_offset));
+    c.set(6, comparator);
+    c.set({{4, c.u32(header)}, {5, schedule_row_size}});
+    c.set(3, std::uint32_t(std::int8_t(c.r(0))));
+    c.set(0, c.u16(frame + 0x5a));
+    const auto row = c.r(4) + c.r(3) * schedule_row_size;
+    c.set(3, row);
+    c.put16(row + 2, c.r(0));
+    c.set(0, std::uint32_t(c.i16(frame + 0x58)));
+    c.put16(row, c.r(0));
+    c.set(0, c.u8(frame + 0x5c));
+    c.put8(row + 4, c.r(0));
+    c.set(0, c.u8(header + schedule_size_offset));
+    c.set(4, c.u32(header));
+    c.set({{0, std::uint32_t(std::int8_t(c.r(0)))}, {3, std::uint32_t(std::int8_t(c.r(0))) * schedule_row_size}});
+    c.set(0, c.r(3) + schedule_release_offset);
+    c.put8(c.r(4) + c.r(0), releases);
+    c.set(3, c.u8(header + schedule_size_offset));
+    c.set(0, c.r(3) + 1);
+    c.put8(header + schedule_size_offset, c.r(0));
+    c.set(4, c.u8(header + schedule_size_offset));
+    c.set(3, c.u32(header));
+    c.set(4, std::uint32_t(std::int8_t(c.r(4))));
+    c.call(sort_schedule_rows, 0x102ba5dc);
+    return true;
+}
+
+bool domestic_release_header(Cpu& c, std::uint32_t calendar, std::uint32_t club, std::uint32_t domestic,
+                             std::uint32_t excluded_nation, std::uint32_t& header) {
+    block(c, 0x102ba3e8, 2);
+    c.compare_logical(0, club, 0);
+    if (!club) return false;
+    block(c, 0x102ba3f0, 3);
+    const auto id = c.i32(club);
+    c.set(5, std::uint32_t(id));
+    c.compare(0, id, domestic);
+    if (id >= std::int32_t(domestic)) return false;
+    block(c, 0x102ba3fc, 2);
+    c.compare(0, id, 0);
+    if (id < 0) return false;
+    block(c, 0x102ba404, 3);
+    const auto nation = c.u32(club + 0x2c);
+    c.set(3, nation);
+    c.compare_logical(0, nation, 0);
+    if (!nation) return false;
+    block(c, 0x102ba410, 3);
+    if (!record_nonzero_byte(c, c.u8(nation + 0x120))) return false;
+    block(c, 0x102ba41c, 4);
+    c.set(3, c.u32(nation + nation_index_offset));
+    c.set(0, c.u32(excluded_nation));
+    c.compare(0, c.r(3), c.r(0));
+    if (c.r(3) == c.r(0)) return false;
+    block(c, 0x102ba42c, 2);
+    c.set({{4, c.u32(calendar + schedule_headers_offset)}, {3, std::uint32_t(id) * schedule_header_size}});
+    header = c.r(4) + c.r(3);
+    return true;
+}
+
+bool eligible_release_player(Cpu& c, std::uint32_t player, std::uint32_t limit, std::uint32_t mode) {
+    block(c, 0x102ba388, 2);
+    c.compare_logical(0, player, 0);
+    if (!player) return false;
+    block(c, 0x102ba390, 5);
+    c.set(3, c.u32(player));
+    c.set(0, c.u32(limit));
+    c.compare(0, c.r(3), c.r(0));
+    if (std::int32_t(c.r(3)) >= std::int32_t(c.r(0))) return false;
+    block(c, 0x102ba3a4, 2);
+    if (!record_nonzero_byte(c, mode)) {
+        block(c, 0x102ba3ac, 3);
+        if (record_nonzero_byte(c, c.u8(player + 0x6a) & 8)) return false;
+    }
+    block(c, 0x102ba3b8, 2);
+    if (record_nonzero_byte(c, mode)) {
+        block(c, 0x102ba3c0, 3);
+        if (record_nonzero_byte(c, c.u8(player + 0x6a) & 4)) return false;
+    }
+    return true;
+}
+
+void register_domestic_releases(Cpu& c, std::uint32_t calendar, std::uint32_t team, std::uint32_t mode,
+                                std::uint32_t domestic, std::uint32_t excluded_nation, std::uint32_t limit,
+                                std::uint32_t comparator, std::uint32_t source, std::uint32_t buffer) {
+    block(c, 0x102ba374, 3);
+    c.set({{19, 0}, {22, 0}});
+    // A later eligible player with a different club flushes the pending group.
+    std::uint32_t current_club = 0;
+    unsigned releases = 0;
+    for (unsigned slot = 0; ; ++slot) {
+        block(c, 0x102ba5ec, 3);
+        c.set(0, slot);
+        c.compare(0, slot, 50);
+        if (slot == 50) return;
+        block(c, 0x102ba380, 2);
+        const auto offset = 0x98 + slot * 4;
+        c.set(0, offset);
+        const auto player = c.u32(team + offset);
+        c.set(20, player);
+        if (eligible_release_player(c, player, limit, mode)) {
+            block(c, 0x102ba3cc, 3);
+            const auto club = c.u32(player + 0x24);
+            c.set(0, club);
+            c.compare_logical(0, club, current_club);
+            if (club == current_club) {
+                block(c, 0x102ba3d8, 2);
+                c.compare_logical(0, current_club, 0);
+            }
+            if (club == current_club && current_club) {
+                block(c, 0x102ba3e0, 2);
+                c.set(18, ++releases);
+            } else {
+                std::uint32_t header;
+                if (domestic_release_header(c, calendar, current_club, domestic, excluded_nation, header) &&
+                    !add_to_existing_schedule_date(c, header, releases) &&
+                    !append_schedule_date(c, header, releases, comparator, source, buffer)) return;
+                block(c, 0x102ba5dc, 2);
+                current_club = c.u32(player + 0x24);
+                releases = 1;
+                c.set({{21, current_club}, {18, releases}});
+            }
+        }
+        block(c, 0x102ba5e4, 2);
+        c.set({{22, (slot + 1) * 4}, {19, slot + 1}});
+    }
+}
+
+void register_domestic_fixture(Cpu& c) {
+    GuestNativeScope scope(c.s, register_fixture_entry);
+    block(c, register_fixture_entry, 17);
+    const auto caller = c.sp(), frame = caller - 0xc0;
+    const auto calendar = c.r(3), team = c.r(4), mode = c.r(5), fixture_date = c.r(6);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<18>(c, caller);
+    const auto comparator = c.toc(-0x514c);
+    c.set({{23, comparator}, {28, calendar}});
+    const auto excluded_nation = c.toc(-0x7b68);
+    c.set({{24, excluded_nation}, {29, team}});
+    const auto limit = c.toc(-0x7be4);
+    c.set({{25, limit}, {30, mode}});
+    const auto buffer = c.toc(-0x7ba8);
+    c.set({{26, buffer}, {19, fixture_date}});
+    const auto source = c.toc(-0x513c);
+    c.set({{27, source}, {21, 0}, {18, 0}});
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(3, frame + 0x58);
+    c.call(0x10715880, 0x102ba2d4);
+
+    block(c, 0x102ba2d4, 11);
+    c.set({{5, c.toc(-0x7b04)}, {3, team + 0x98}});
+    c.set({{6, c.toc(-0x7b50)}, {4, 50}});
+    c.set(7, c.u32(c.r(5)));
+    c.set(5, 4);
+    c.set(0, c.u32(c.r(6)));
+    c.set(7, c.r(7) * 2);
+    c.set(6, c.toc(-0x5148));
+    const auto domestic = c.r(0) - c.r(7);
+    c.set(31, domestic);
+    c.call(sort_schedule_rows, 0x102ba300);
+    block(c, 0x102ba300, 2);
+    c.compare_logical(0, fixture_date, 0);
+    if (fixture_date) {
+        choose_schedule_date(c, fixture_date, mode);
+        register_domestic_releases(c, calendar, team, mode, domestic, excluded_nation, limit, comparator, source, buffer);
+    }
+
+    block(c, 0x102ba5f8, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<18, true>(c, caller);
+    c.finish();
+}
+
+
 }
 
 void national_teams_run_original(State& state, std::uint32_t entry) {
@@ -3151,6 +3511,8 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case calendar_availability_entry: calendar_availability(c); break;
     case calendar_save_entry: calendar_save(c); break;
     case calendar_load_entry: calendar_load(c); break;
+    case create_schedule_entry: create_domestic_schedule(c); break;
+    case register_fixture_entry: register_domestic_fixture(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }
