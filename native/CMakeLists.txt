@@ -61,7 +61,7 @@ target_sources(cm_aot PRIVATE simulated_stats.cpp)
 target_sources(cm_aot PRIVATE por_second.cpp)
 target_sources(cm_aot PRIVATE ger_first.cpp)
 target_sources(cm_aot PRIVATE african_nations.cpp)
-target_sources(cm_aot PRIVATE bra_nat_second.cpp rb_greece.cpp hall_of_fame.cpp)
+target_sources(cm_aot PRIVATE bra_nat_second.cpp rb_greece.cpp hall_of_fame.cpp national_teams.cpp)
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
@@ -4567,4 +4567,13 @@ if(CM_HALL_OF_FAME_COVERAGE)
         -fprofile-instr-generate -fcoverage-mapping -ffp-contract=off)
     target_sources(cm-hall-of-fame-checks PRIVATE $<TARGET_OBJECTS:cm_hall_of_fame_coverage>)
     target_link_options(cm-hall-of-fame-checks PRIVATE -fprofile-instr-generate)
+endif()
+
+add_executable(cm-national-teams-checks national_teams_checks.cpp)
+target_link_libraries(cm-national-teams-checks PRIVATE cm_aot)
+target_compile_options(cm-national-teams-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME national_teams_equivalence COMMAND cm-national-teams-checks)
+if(Python3_EXECUTABLE)
+    add_test(NAME national_teams_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_national_teams_audit.py")
 endif()

@@ -18,6 +18,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
+- [ ] **NATIONAL_TEAMS.CPP reconstruction.** Inventory closed at 73 entries and 17,621 reachable instructions. Six selection access and assignment queries are handwritten, selected by default and verified locally. The controlled daily capture reaches two of them and all 38 strict calls match. Continue with the roster eligibility and selection path. Private evidence is in `.local/rewrites/national_teams/`.
+
 - [ ] **Install the verified Hall of Fame and Greek rulebook build.** The installer found the game running. The verified ARM64 build includes all 20 Hall of Fame routines, all four Greek rulebook routines and the checked frame restore. Retry the guarded installer after the game closes and update both installation notes in the tracker.
 
 - [x] **HALL_OF_FAME.CPP reconstruction.** All 20 entries and 2,736 original instructions are accounted for. The default C++23 owners pass 476 focused returned comparisons, a shared file lifecycle, ten focused CTests and four strict calls in the recorded startup. All 82 functions are measured by the owner-only coverage run. Three broader engine initialization tests fail with both the previous and current initializer implementations. Private evidence is in `.local/rewrites/hall_of_fame/`.
