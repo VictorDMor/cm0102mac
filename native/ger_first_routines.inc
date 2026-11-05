@@ -1,4 +1,8 @@
 // Register verified GER_FIRST.CPP owners in address order.
+GER_FIRST_ROUTINE(0x10536d50, create_division)
+GER_FIRST_ROUTINE(0x10537080, destroy_division)
 GER_FIRST_ROUTINE(0x10537120, make_calendar)
 GER_FIRST_ROUTINE(0x10539590, collect_clubs)
 GER_FIRST_ROUTINE(0x105397b0, configure_division)
+GER_FIRST_ROUTINE(0x10539bb0, link_divisions)
+GER_FIRST_ROUTINE(0x10539d20, promote_four)

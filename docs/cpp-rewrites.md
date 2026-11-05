@@ -443,8 +443,9 @@ through the live app and performance are not retested by this delivery.
 
 The [audit](../tools/ger_first_audit.py) closes 11 entries and 3,916
 structurally reachable instructions between FRA_THIRD.CPP and GER_SECOND.CPP.
-Calendar generation, club collection and configuration currently use C++23;
-the remaining eight entries still use their generated bodies.
+Construction/destruction, calendar generation, club collection, configuration,
+division relationships and four-slot promotion currently use C++23;
+the remaining four entries still use their generated bodies.
 `CM_GER_FIRST_ORIGINAL=1` keeps the independent original route.
 
 Collection performs its 2001 regional reassignment before allocating the
@@ -460,6 +461,20 @@ literal 34 against 34 with no intervening observable boundary, so its error arm
 has no valid path from any audited entry. Configuration invokes the owned
 calendar directly after the shared CFM descriptor owner resolves the actual
 virtual target; external overrides and checker/original dispatch remain valid.
+
+Construction returns the object after reporting a failed stage, retaining
+the partial state and shared failure flag. It reloads the caller's object slot
+after callbacks and stores the allocated stage pointer even when its initializer
+returns another value. The deleting-destructor flag is a signed short.
+
+Division relationships prepare both main divisions, then recheck the live
+regional entry before preparing it and its first child. Promotion filters live
+club/reserve state, calls the external selection service once for four slots,
+and consumes exactly four slots after any nonempty scan. With fewer candidates,
+the selector reports an error but this caller continues into retained list
+contents. Empty scans skip relegation as well. Flagged relegation rows are
+looked up again before moving the club; both inline getter reads and their
+read-before-budget-charge boundary match the generated reference.
 
 ## POR_SECOND.CPP
 

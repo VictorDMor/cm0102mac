@@ -16,7 +16,9 @@ using guest::compare_logical;
 
 bool declining = std::getenv("CM_GER_FIRST_ORIGINAL") != nullptr;
 constexpr auto collect_entry = 0x10539590u;
+constexpr auto create_entry = 0x10536d50u, destroy_entry = 0x10537080u;
 constexpr auto calendar_entry = 0x10537120u, configure_entry = 0x105397b0u;
+constexpr auto link_entry = 0x10539bb0u, promote_entry = 0x10539d20u;
 constexpr unsigned club_stride = 0x248, standing_size = 0x44, definition_size = 0x6c;
 void call_virtual(Cpu&, std::uint32_t resume);
 
@@ -417,6 +419,460 @@ void configure_division(Cpu& c) {
     c.set_lr(c.r(0));
     c.set(31, c.u32(stack - 4));
     c.set(30, c.u32(stack - 8));
+    c.finish();
+}
+
+void collect_direct(Cpu& c, std::uint32_t resume) {
+    if (routine_checker) c.call(collect_entry, resume);
+    else {
+        c.link(resume);
+        c.s.pc = collect_entry;
+        collect_clubs(c);
+    }
+}
+
+void create_division(Cpu& c) {
+    GuestNativeScope scope(c.s, create_entry);
+    block(c, create_entry, 12);
+    const auto stack = c.sp(), frame = stack - 0x120;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, stack);
+    const guest::Kept<29> failure_flag(c, c.toc(-0x7bac));
+    const guest::Kept<27> initial_year(c, c.r(4));
+    const guest::Kept<30> buffer(c, c.toc(-0x7ba8));
+    const guest::Kept<28> definition(c, c.r(5));
+    const guest::Kept<31> pool(c, c.toc(-0x44f8));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    // The original keeps this argument in the caller's parameter area. Reload
+    // it after callbacks, which can observe or replace that slot.
+    c.put32(frame + 0x138, c.r(3));
+    const auto object = [&] { return c.u32(frame + 0x138); };
+    const auto finish = [&] {
+        block(c, 0x10537064, 5);
+        c.set(0, c.u32(frame + 0x128));
+        c.set(1, stack);
+        c.set_lr(c.r(0));
+        guest::transfer_saved_registers<27, true>(c, stack);
+        c.finish();
+    };
+    const auto fail = [&](std::uint32_t pc, unsigned message, unsigned detail, unsigned line) {
+        report_failure(c, pc, pool, buffer, message, detail, line);
+        block(c, pc + 72, 4);
+        c.set(0, 0);
+        c.put8(failure_flag, 0);
+        c.set(3, object());
+        finish();
+    };
+    c.set(3, object());
+    c.call(0x1049e4f0, 0x10536d80);
+    block(c, 0x10536d80, 15);
+    c.set({{5, c.toc(-0x6000)}, {0, 0xd}, {3, object()}, {4, 1}});
+    c.put32(c.r(3), c.r(5));
+    c.set(3, object());
+    c.put16(c.r(3) + 0x40, initial_year);
+    c.set(3, object());
+    c.put32(c.r(3) + 4, definition);
+    c.set(3, object());
+    c.put8(c.r(3) + 0x4a, c.r(0));
+    c.set(3, object());
+    c.set(12, c.u32(c.r(3)));
+    c.set(12, c.u32(c.r(12) + 0x20));
+    call_virtual(c, 0x10536dbc);
+    block(c, 0x10536dbc, 3);
+    c.set(2, c.u32(frame + 0x14));
+    if (compare(c, std::int32_t(c.r(3)))) {
+        block(c, 0x10536dc8, 2);
+        c.set(3, object());
+        finish();
+        return;
+    }
+    block(c, 0x10536dd0, 12);
+    c.set({{3, object()}, {4, UINT32_MAX}, {0, 0}});
+    c.put8(c.r(3) + 0x44, c.r(4));
+    c.set(3, object());
+    c.put32(c.r(3) + 0x30, c.r(4));
+    c.set(3, object());
+    c.put32(c.r(3) + 0x2c, c.r(0));
+    c.set(4, object());
+    c.set(3, c.u32(c.r(4) + 0x2c));
+    if (compare(c, std::int32_t(c.r(3))) > 0) {
+        block(c, 0x10536e00, 2);
+        c.set(3, c.r(3) * 4);
+        c.call(0x10775130, 0x10536e08);
+        block(c, 0x10536e08, 3);
+        c.set(4, object());
+        c.put32(c.r(4) + 0xc, c.r(3));
+    } else {
+        block(c, 0x10536e14, 1);
+        c.put32(c.r(4) + 0xc, c.r(0));
+    }
+    block(c, 0x10536e18, 4);
+    c.set(3, object());
+    c.set(12, c.u32(c.r(3)));
+    c.set(12, c.u32(c.r(12) + 0x94));
+    call_virtual(c, 0x10536e28);
+    block(c, 0x10536e28, 3);
+    c.set(2, c.u32(frame + 0x14));
+    if (!compare(c, std::int32_t(c.r(3)))) { fail(0x10536e34, 0xe0, 0x58, 0x47); return; }
+    block(c, 0x10536e8c, 2);
+    c.set(3, object());
+    collect_direct(c, 0x10536e94);
+    block(c, 0x10536e94, 2);
+    if (!compare(c, std::int32_t(c.r(3)))) { fail(0x10536e9c, 0xc0, 0x50, 0x4e); return; }
+    block(c, 0x10536ef4, 2);
+    c.set(3, object());
+    c.call(0x104a00a0, 0x10536efc);
+    block(c, 0x10536efc, 2);
+    if (!compare(c, std::int32_t(c.r(3)))) { fail(0x10536f04, 0xa0, 0x48, 0x55); return; }
+    block(c, 0x10536f5c, 3);
+    c.set({{3, object()}, {4, 0}});
+    c.call(0x1049eb30, 0x10536f68);
+    block(c, 0x10536f68, 2);
+    if (!compare(c, std::int32_t(c.r(3)))) { fail(0x10536f70, 0x80, 0x40, 0x5e); return; }
+    block(c, 0x10536fc8, 2);
+    c.set(3, 0x634);
+    c.call(0x10773520, 0x10536fd0);
+    block(c, 0x10536fd0, 2);
+    if (record_value(c, 27, std::int32_t(c.r(3)))) {
+        block(c, 0x10536fd8, 2);
+        c.set(4, object());
+        c.call(0x104533a0, 0x10536fe0);
+    }
+    block(c, 0x10536fe0, 6);
+    const guest::Kept<27> stage(c, c.r(27));
+    c.set(3, object());
+    c.put32(c.r(3) + 8, stage);
+    c.set(3, object());
+    c.set(0, c.u32(c.r(3) + 8));
+    if (!compare_logical(c, c.r(0))) { fail(0x10536ff8, 0x60, 0x38, 0x65); return; }
+    block(c, 0x10537050, 3);
+    c.set(12, c.u32(c.r(3)));
+    c.set(12, c.u32(c.r(12) + 0x64));
+    call_virtual(c, 0x1053705c);
+    block(c, 0x1053705c, 2);
+    c.set(2, c.u32(frame + 0x14));
+    c.set(3, object());
+    finish();
+}
+
+
+void destroy_division(Cpu& c) {
+    GuestNativeScope scope(c.s, destroy_entry);
+    block(c, destroy_entry, 8);
+    const auto stack = c.sp(), frame = stack - 0x40;
+    c.set(0, c.lr());
+    c.put32(stack - 4, c.r(31));
+    const guest::Kept<31> delete_object(c, c.r(4));
+    c.put32(stack - 8, c.r(30));
+    const auto present = record_value(c, 30, std::int32_t(c.r(3)));
+    const guest::Kept<30> object(c, c.r(30));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    if (present) {
+        block(c, 0x105370a0, 4);
+        c.set({{0, c.toc(-0x6000)}, {4, 0}});
+        c.put32(object, c.r(0));
+        c.call(0x104a6660, 0x105370b0);
+        block(c, 0x105370b0, 3);
+        c.set(3, c.u32(object + 0xbc));
+        if (compare_logical(c, c.r(3))) {
+            block(c, 0x105370bc, 1);
+            c.call(0x10775170, 0x105370c0);
+            block(c, 0x105370c0, 2);
+            c.set(0, 0);
+            c.put32(object + 0xbc, 0);
+        }
+        block(c, 0x105370c8, 3);
+        c.set(3, c.u32(object + 8));
+        if (compare_logical(c, c.r(3))) {
+            block(c, 0x105370d4, 2);
+            c.set(4, 1);
+            c.call(0x104536c0, 0x105370dc);
+        }
+        block(c, 0x105370dc, 3);
+        c.set({{3, object}, {4, 0}});
+        c.call(0x1049e600, 0x105370e8);
+        block(c, 0x105370e8, 2);
+        if (record_value(c, 0, std::int16_t(std::uint32_t(delete_object))) > 0) {
+            block(c, 0x105370f0, 2);
+            c.set(3, object);
+            c.call(0x107735a0, 0x105370f8);
+        }
+    }
+    block(c, 0x105370f8, 7);
+    c.set(3, object);
+    c.set(0, c.u32(frame + 0x48));
+    c.set(1, stack);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(stack - 4));
+    c.set(30, c.u32(stack - 8));
+    c.finish();
+}
+
+void link_divisions(Cpu& c) {
+    GuestNativeScope scope(c.s, link_entry);
+    block(c, link_entry, 16);
+    const auto stack = c.sp(), frame = stack - 0x50;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, stack);
+    const guest::Kept<27> first_id(c, c.toc(-0x6738));
+    const guest::Kept<28> object(c, c.r(3));
+    const guest::Kept<29> divisions(c, c.toc(-0x7b5c));
+    const guest::Kept<30> second_id(c, c.toc(-0x673c));
+    const guest::Kept<31> regional_id(c, c.toc(-0x6750));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(0, c.u32(first_id));
+    c.set(3, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(3, c.u32(c.r(3) + c.r(0)));
+    c.set(12, c.u32(c.r(3)));
+    c.set(12, c.u32(c.r(12) + 0xac));
+    call_virtual(c, 0x10539bf0);
+    block(c, 0x10539bf0, 8);
+    c.set(2, c.u32(frame + 0x14));
+    c.set(0, c.u32(second_id));
+    c.set(3, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(3, c.u32(c.r(3) + c.r(0)));
+    c.set(12, c.u32(c.r(3)));
+    c.set(12, c.u32(c.r(12) + 0xac));
+    call_virtual(c, 0x10539c10);
+    block(c, 0x10539c10, 14);
+    c.set(2, c.u32(frame + 0x14));
+    c.set(4, c.u32(first_id));
+    c.set(3, object);
+    c.set(0, c.u32(second_id));
+    c.set(6, 1);
+    c.set(5, c.u32(divisions));
+    c.set({{4, c.r(4) * 4}, {0, c.r(0) * 4}, {7, 1}});
+    c.set(4, c.u32(c.r(5) + c.r(4)));
+    c.set(8, UINT32_MAX);
+    c.set(5, c.u32(c.r(5) + c.r(0)));
+    c.set(9, UINT32_MAX);
+    c.call(0x104a9210, 0x10539c48);
+    block(c, 0x10539c48, 6);
+    c.set(0, c.u32(regional_id));
+    c.set(3, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(3, c.u32(c.r(3) + c.r(0)));
+    if (compare_logical(c, c.r(3))) {
+        block(c, 0x10539c60, 3);
+        c.set(12, c.u32(c.r(3)));
+        c.set(12, c.u32(c.r(12) + 0xac));
+        call_virtual(c, 0x10539c6c);
+        block(c, 0x10539c6c, 10);
+        c.set(2, c.u32(frame + 0x14));
+        c.set(0, c.u32(regional_id));
+        c.set(3, c.u32(divisions));
+        c.set(0, c.r(0) * 4);
+        c.set(3, c.u32(c.r(3) + c.r(0)));
+        c.set(3, c.u32(c.r(3) + 0xc));
+        c.set(3, c.u32(c.r(3)));
+        c.set(12, c.u32(c.r(3)));
+        c.set(12, c.u32(c.r(12) + 0xac));
+        call_virtual(c, 0x10539c94);
+        block(c, 0x10539c94, 14);
+        c.set(2, c.u32(frame + 0x14));
+        c.set(4, c.u32(second_id));
+        c.set(3, object);
+        c.set(0, c.u32(regional_id));
+        c.set(6, 1);
+        c.set(5, c.u32(divisions));
+        c.set({{4, c.r(4) * 4}, {0, c.r(0) * 4}, {7, 1}});
+        c.set(4, c.u32(c.r(5) + c.r(4)));
+        c.set(8, UINT32_MAX);
+        c.set(5, c.u32(c.r(5) + c.r(0)));
+        c.set(9, UINT32_MAX);
+        c.call(0x104a9210, 0x10539ccc);
+        block(c, 0x10539ccc, 15);
+        c.set(0, c.u32(regional_id));
+        c.set(3, object);
+        c.set(10, c.u32(divisions));
+        c.set(6, 1);
+        c.set(0, c.r(0) * 4);
+        c.set(5, c.u32(second_id));
+        c.set(4, c.u32(c.r(10) + c.r(0)));
+        c.set(7, 1);
+        c.set(0, c.r(5) * 4);
+        c.set(8, UINT32_MAX);
+        c.set(5, c.u32(c.r(4) + 0xc));
+        c.set(9, UINT32_MAX);
+        c.set(4, c.u32(c.r(10) + c.r(0)));
+        c.set(5, c.u32(c.r(5)));
+        c.call(0x104a9210, 0x10539d08);
+    }
+    block(c, 0x10539d08, 5);
+    c.set(0, c.u32(frame + 0x58));
+    c.set(1, stack);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, stack);
+    c.finish();
+}
+
+void load_standing(Cpu& c, std::uint32_t resume) {
+    // The generated caller inlines the four-instruction external getter.
+    // Preserve its read-before-charge boundary even when a budget expires.
+    c.link(resume);
+    c.set(0, c.r(4) * standing_size);
+    c.set(3, c.u32(c.r(3) + 0xb0));
+    c.set(3, c.r(3) + c.r(0));
+    c.s.charge(4);
+}
+
+void promote_four(Cpu& c) {
+    GuestNativeScope scope(c.s, promote_entry);
+    block(c, promote_entry, 20);
+    const auto stack = c.sp(), frame = stack - 0x90;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<22>(c, stack);
+    const guest::Kept<28> second_id(c, c.toc(-0x673c));
+    const guest::Kept<22> object(c, c.r(3));
+    c.set(4, c.toc(-0x7b5c));
+    guest::Kept<25> selected(c, 0);
+    const guest::Kept<29> total(c, c.toc(-0x7b50));
+    const guest::Kept<30> regional_id(c, c.toc(-0x6750));
+    const guest::Kept<31> definitions(c, c.toc(-0x7bbc));
+    c.set(26, c.toc(-0x7ba8));
+    c.set(24, c.toc(-0x44f8));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(3, c.u32(second_id));
+    c.set(5, c.u32(c.r(4)));
+    c.set(4, c.r(3) * 4);
+    c.set(0, c.u32(total));
+    const guest::Kept<23> second(c, c.u32(c.r(5) + c.r(4)));
+    c.set(3, c.r(0) * 4);
+    c.call(0x10775130, 0x10539d70);
+    block(c, 0x10539d70, 2);
+    if (!record_value(c, 27, std::int32_t(c.r(3)))) {
+        report_failure(c, 0x10539d78, c.r(24), c.r(26), 0x44, 0x3c, 0x354);
+        block(c, 0x10539dc0, 4);
+        c.set(3, c.toc(-0x7bac));
+        c.set(0, 0);
+        c.put8(c.r(3), 0);
+    } else {
+        const guest::Kept<27> candidates(c, c.r(27));
+        block(c, 0x10539dd0, 4);
+        c.set(3, c.toc(-0x7be8));
+        guest::Kept<24> index(c, 0);
+        guest::Kept<26> club(c, c.u32(c.r(3)));
+        for (;;) {
+            block(c, 0x10539e48, 3);
+            c.set(0, c.u32(total));
+            if (compare(c, std::int32_t(std::uint32_t(index)), std::int32_t(c.r(0))) >= 0) break;
+            block(c, 0x10539de4, 3);
+            c.set(3, c.u32(club + 0x30));
+            bool eligible = compare_logical(c, c.r(3)) != 0;
+            if (eligible) {
+                block(c, 0x10539df0, 3);
+                c.set(0, c.u32(club + 0x2c));
+                eligible = compare_logical(c, c.r(0)) != 0;
+                if (eligible) {
+                    block(c, 0x10539dfc, 4);
+                    c.set(3, c.u32(c.r(3)));
+                    c.set(0, c.u32(regional_id));
+                    eligible = compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) == 0;
+                }
+            }
+            if (eligible) {
+                block(c, 0x10539e0c, 4);
+                c.set({{3, club}, {4, frame + 0x38}, {5, 1}});
+                c.call(0x100ce320, 0x10539e1c);
+                block(c, 0x10539e1c, 2);
+                if (compare_logical(c, c.r(3))) {
+                    block(c, 0x10539e24, 3);
+                    c.set(0, c.u8(frame + 0x38));
+                    eligible = record_value(c, 0, std::int8_t(c.r(0))) != 0;
+                }
+                if (eligible) {
+                    block(c, 0x10539e30, 4);
+                    c.set(0, std::uint32_t(std::int16_t(std::uint32_t(selected))));
+                    selected = selected + 1;
+                    c.set(0, c.r(0) * 4);
+                    c.put32(candidates + c.r(0), club);
+                }
+            }
+            block(c, 0x10539e40, 2);
+            index = index + 1;
+            club = club + club_stride;
+        }
+        block(c, 0x10539e54, 2);
+        if (!record_value(c, 0, std::int16_t(std::uint32_t(selected)))) {
+            block(c, 0x10539e5c, 2);
+            c.set(3, candidates);
+            c.call(0x10775170, 0x10539e64);
+            block(c, 0x10539e64, 1);
+        } else {
+            block(c, 0x10539e68, 4);
+            c.set({{3, candidates}, {4, selected}, {5, 4}});
+            c.call(0x104635b0, 0x10539e78);
+            block(c, 0x10539e78, 2);
+            selected = 0;
+            guest::Kept<24> cursor(c, candidates);
+            // The original always consumes four slots after a nonempty scan.
+            do {
+                block(c, 0x10539e80, 8);
+                c.set(0, c.u32(second_id));
+                c.set(3, object);
+                c.set(5, c.u32(definitions));
+                c.set(6, 1);
+                c.set(0, c.r(0) * definition_size);
+                c.set(4, c.u32(cursor));
+                c.set(5, c.r(5) + c.r(0));
+                c.call(0x1049f780, 0x10539ea0);
+                block(c, 0x10539ea0, 4);
+                selected = selected + 1;
+                cursor = cursor + 4;
+            } while (compare(c, std::int32_t(std::uint32_t(selected)), 4) < 0);
+            block(c, 0x10539eb0, 2);
+            index = 0;
+            for (;;) {
+                block(c, 0x10539f08, 3);
+                c.set(0, std::uint32_t(c.i16(second + 0x3e)));
+                if (compare(c, std::int32_t(std::uint32_t(index)), std::int32_t(c.r(0))) >= 0) break;
+                block(c, 0x10539ebc, 3);
+                c.set({{3, second}, {4, index}});
+                load_standing(c, 0x10539ec8);
+                block(c, 0x10539ec8, 3);
+                c.set(0, c.u8(c.r(3) + 0x40));
+                if (!compare(c, std::int32_t(c.r(0)), 3)) {
+                    block(c, 0x10539ed4, 3);
+                    c.set({{3, second}, {4, index}});
+                    load_standing(c, 0x10539ee0);
+                    block(c, 0x10539ee0, 9);
+                    c.set(0, c.u32(regional_id));
+                    c.set(4, c.r(3));
+                    c.set(5, c.u32(definitions));
+                    c.set(3, object);
+                    c.set(0, c.r(0) * definition_size);
+                    c.set(4, c.u32(c.r(4)));
+                    c.set(6, 1);
+                    c.set(5, c.r(5) + c.r(0));
+                    c.call(0x1049f8e0, 0x10539f04);
+                }
+                block(c, 0x10539f04, 1);
+                index = index + 1;
+            }
+            block(c, 0x10539f14, 2);
+            c.set(3, candidates);
+            c.call(0x10775170, 0x10539f1c);
+        }
+    }
+    block(c, 0x10539f1c, 5);
+    c.set(0, c.u32(frame + 0x98));
+    c.set(1, stack);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<22, true>(c, stack);
     c.finish();
 }
 
