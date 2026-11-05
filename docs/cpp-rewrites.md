@@ -945,6 +945,16 @@ null calendar. They free the temporary entrants and calendar before rereading
 the stored child pointer. The knockout bracket preserves the original ordered
 first/second-place reads; it does not sort the eight qualifiers again.
 
+Event text dispatches on signed low bytes for the phase and event kind.
+The detailed form forwards the original wide arguments and stack bytes.
+The plain form selects the original template and reloads club and competition
+names for the output annotations after formatting. The repeated equal branches
+in the knockout text path consume the same CR and skip the duplicate body.
+
+Final placement sorts a temporary entrant copy with the shared signed
+reputation comparator. It publishes exactly sixteen ranks with bands
+1, 2, 3, 4, 5, 9 and 13, and reloads the live standings table for each write.
+
 ## OCEANIA_NATIONS.CPP
 
 The 15 entries at `0x106e9940–0x106ebdd0` implement the Oceania Nations Cup.

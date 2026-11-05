@@ -15,7 +15,9 @@ using guest::compare;
 using guest::compare_logical;
 bool declining = std::getenv("CM_AFRICAN_NATIONS_ORIGINAL") != nullptr;
 constexpr auto placement_entry = 0x104f7000u;
+constexpr auto final_placement_entry = 0x104f6d50u;
 constexpr auto notification_entry = 0x104f5da0u;
+constexpr auto event_text_entry = 0x104f5910u;
 constexpr auto destroy_entry = 0x104f4ee0u;
 constexpr auto child_update_entry = 0x104f5d60u;
 constexpr auto calendar_entry = 0x104f4ff0u;
@@ -884,6 +886,195 @@ std::uint32_t normalize_outer_placing(Cpu& c, std::uint32_t placing, std::uint32
     }
     block(c, start + 0x1c, 1);
     return placing;
+}
+
+void write_event_text(Cpu& c) {
+    GuestNativeScope scope(c.s, event_text_entry);
+    block(c, event_text_entry, 16);
+    const auto stack = c.sp(), frame = stack - 0x50;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, stack);
+    const guest::Kept<31> club_index(c, c.r(4));
+    const guest::Kept<28> message(c, c.toc(-0x7bb8));
+    const guest::Kept<27> clubs(c, c.toc(-0x7be8));
+    guest::Kept<30> competition(c, c.r(3));
+    c.set(4, c.toc(-0x45ac));
+    c.put32(stack + 8, c.r(0));
+    const auto phase = std::int8_t(c.r(6));
+    c.set(0, std::uint32_t(std::int32_t(phase)));
+    const auto stage_order = compare(c, phase, 3);
+    c.set(6, c.r(5));
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.set(11, c.u8(stack + 0x3b)); c.set(10, c.u8(stack + 0x3f));
+    const guest::Kept<29> output(c, c.u32(stack + 0x40));
+
+    const auto read_kind = [&] {
+        const auto kind = std::int8_t(c.r(6));
+        c.set(0, std::uint32_t(std::int32_t(kind)));
+        return kind;
+    };
+    const auto has_detail = [&] {
+        c.set(0, std::uint32_t(std::int32_t(std::int8_t(c.r(10)))));
+        return record_compare(c, std::int32_t(c.r(0))) != 0;
+    };
+    const auto forward_group = [&](std::uint32_t pc) {
+        block(c, pc, 6);
+        c.set(5, c.u32(competition + 4));
+        c.set({{4, c.r(7)}, {3, club_index}, {7, c.r(10)}, {8, output}});
+        c.call(0x104698c0, pc + 24);
+        block(c, pc + 24, 1);
+    };
+    const auto copy_message = [&](std::uint32_t pc) {
+        block(c, pc, 3); c.set({{3, output}, {4, message}});
+        c.call(0x1074b830, pc + 12);
+    };
+    if (stage_order < 0) {
+        block(c, 0x104f5950, 3);
+        const auto kind = read_kind();
+        if (compare(c, kind, 6) == 0) {
+            block(c, 0x104f595c, 2);
+            if (has_detail()) {
+                forward_group(0x104f5964);
+            } else {
+                block(c, 0x104f5980, 11);
+                competition = club_index * 0x248;
+                c.set(0, c.u32(clubs)); c.set(3, message); c.set(4, c.r(4) + 0x27);
+                c.set(5, c.r(0) + competition); c.set(5, c.u8(c.r(5) + 0x23b));
+                c.set(7, c.r(0) + competition + 0x221);
+                c.set(5, std::uint32_t(std::int32_t(std::int8_t(c.r(5))))); c.set(6, c.r(5));
+                c.call(0x10727890, 0x104f59ac);
+                copy_message(0x104f59ac);
+                block(c, 0x104f59b8, 6);
+                c.set(0, c.u32(clubs)); c.set({{3, output}, {5, 2005}});
+                c.set(6, c.r(0) + competition); c.set(4, c.r(6) + 0x221);
+                c.call(0x1074bab0, 0x104f59d0);
+                block(c, 0x104f59d0, 1);
+            }
+        } else {
+            block(c, 0x104f59d4, 2);
+            if (compare(c, kind, -2) == 0) forward_group(0x104f59dc);
+        }
+    } else {
+        block(c, 0x104f59f8, 1);
+        if (stage_order == 0) {
+            block(c, 0x104f59fc, 2);
+            if (has_detail()) {
+                block(c, 0x104f5a04, 6);
+                c.set({{4, c.r(8)}, {3, club_index}, {5, c.r(11)}, {7, c.r(9)}, {8, output}});
+                c.call(0x10464d00, 0x104f5a1c);
+                block(c, 0x104f5a1c, 1);
+            } else {
+                struct TextChoice { unsigned test, body, offset; };
+                constexpr std::array<TextChoice, 4> choices{{
+                    {0x104f5a20, 0x104f5a2c, 0x69}, {0x104f5a70, 0x104f5a78, 0xb9},
+                    {0x104f5abc, 0x104f5ac4, 0x11a}, {0x104f5b08, 0x104f5b10, 0x17c},
+                }};
+                const auto format_final = [&](unsigned pc, unsigned offset) {
+                    block(c, pc, 16);
+                    c.set(8, club_index * 0x248); c.set(6, c.u32(competition + 4));
+                    c.set(0, c.u32(clubs)); c.set(3, message); c.set(7, c.u8(c.r(6) + 0x67));
+                    c.set(4, c.r(4) + offset); c.set(5, c.r(0) + c.r(8)); c.set(9, c.r(8) + 0x221);
+                    c.set(5, c.u8(c.r(5) + 0x23b));
+                    c.set(7, std::uint32_t(std::int32_t(std::int8_t(c.r(7))))); c.set(8, c.r(7));
+                    c.set(9, c.r(0) + c.r(9));
+                    c.set(5, std::uint32_t(std::int32_t(std::int8_t(c.r(5)))));
+                    c.set(10, c.r(6) + 0x4d); c.set(6, c.r(5)); c.call(0x10727890, pc + 64);
+                };
+                bool selected = false;
+                std::int8_t kind = 0;
+                for (unsigned i = 0; i < choices.size(); ++i) {
+                    const auto [test, body, offset] = choices[i];
+                    block(c, test, i == 0 ? 3 : 2);
+                    if (i == 0) kind = read_kind();
+                    if (compare(c, kind, i + 1) == 0) {
+                        format_final(body, offset); block(c, body + 64, 1);
+                        selected = true;
+                        break;
+                    }
+                }
+                if (!selected) {
+                    block(c, 0x104f5b54, 2);
+                    if (compare(c, kind, -1) == 0) {
+                        // Both following branches test the same unchanged CR.
+                        block(c, 0x104f5ba0, 1); block(c, 0x104f5be8, 1);
+                        format_final(0x104f5bec, 0x244);
+                    } else {
+                        format_final(0x104f5b5c, 0x1df); block(c, 0x104f5b9c, 1);
+                    }
+                }
+                copy_message(0x104f5c2c);
+                block(c, 0x104f5c38, 7);
+                c.set(0, club_index * 0x248); c.set(4, c.u32(clubs));
+                c.set({{3, output}, {5, 2005}}); c.set(6, c.r(4) + c.r(0)); c.set(4, c.r(6) + 0x221);
+                c.call(0x1074bab0, 0x104f5c54);
+                block(c, 0x104f5c54, 5);
+                c.set(6, c.u32(competition + 4)); c.set({{3, output}, {5, 2000}}); c.set(4, c.r(6) + 0x4d);
+                c.call(0x1074bab0, 0x104f5c68);
+            }
+        }
+    }
+    block(c, 0x104f5c68, 5);
+    c.set(0, c.u32(frame + 0x58)); c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, stack); c.finish();
+}
+
+void publish_final_placements(Cpu& c) {
+    GuestNativeScope scope(c.s, final_placement_entry);
+    block(c, final_placement_entry, 11);
+    const auto stack = c.sp(), frame = stack - 0xa0;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, stack);
+    const guest::Kept<27> success(c, c.toc(-0x7bac));
+    const guest::Kept<30> competition(c, c.r(3));
+    const guest::Kept<28> message(c, c.toc(-0x7ba8));
+    const guest::Kept<29> file(c, c.toc(-0x45ac));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.set(0, c.u32(competition + 8));
+    if (!compare_logical(c, c.r(0))) {
+        report_failure(c, 0x104f6d7c, file, message, 0x68, 0x40, 0x3f4);
+        block(c, 0x104f6dc4, 3); c.set(0, 0); c.put8(success, 0);
+    } else {
+        const guest::Field<std::int16_t> entrant_count{c, competition + 0xf0};
+        block(c, 0x104f6dd0, 3);
+        c.set(0, std::uint32_t(std::int32_t(entrant_count)));
+        c.set(3, c.r(0) * 4);
+        c.call(0x10775130, 0x104f6ddc);
+        block(c, 0x104f6ddc, 2);
+        const guest::Kept<31> sorted(c, c.r(3));
+        if (!record_compare(c, std::int32_t(std::uint32_t(sorted)))) {
+            report_failure(c, 0x104f6de4, file, message, 0x48, 0x38, 0x3fc);
+            block(c, 0x104f6e2c, 3); c.set(0, 0); c.put8(success, 0);
+        } else {
+            block(c, 0x104f6e38, 4);
+            c.set(0, std::uint32_t(std::int32_t(entrant_count)));
+            c.set(4, c.u32(competition + 0xec));
+            c.set(5, c.r(0) * 4);
+            c.call(0x10739ef0, 0x104f6e48);
+            block(c, 0x104f6e48, 5);
+            c.set(4, std::uint32_t(std::int32_t(entrant_count)));
+            c.set(3, sorted); c.set(6, c.toc(-0x6188)); c.set(5, 4);
+            c.call(0x10768300, 0x104f6e5c);
+            constexpr std::array ranks{1u, 2u, 3u, 4u, 5u, 5u, 5u, 5u,
+                                       9u, 9u, 9u, 9u, 13u, 13u, 13u, 13u};
+            // The original always publishes sixteen ranks after sorting,
+            // reloading the live standings table before each publication.
+            for (unsigned index = 0; index < ranks.size(); ++index) {
+                const auto pc = 0x104f6e5c + 24 * index;
+                block(c, pc, 6);
+                c.set(0, index);
+                c.set(3, c.u32(competition + 8));
+                c.set(0, index * 4); c.set(5, ranks[index]);
+                c.set(4, c.u32(sorted + c.r(0)));
+                c.call(0x10457490, pc + 24);
+            }
+            block(c, 0x104f6fdc, 2); c.set(3, sorted);
+            c.call(0x10775170, 0x104f6fe4);
+        }
+    }
+    block(c, 0x104f6fe4, 5);
+    c.set(0, c.u32(frame + 0xa8)); c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, stack); c.finish();
 }
 
 void set_placements(Cpu& c) {

@@ -3,6 +3,7 @@
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
 #include "import_descriptor_adapter.hpp"
+#include "localization_format_adapter.hpp"
 
 #include <array>
 #include <random>
@@ -18,6 +19,12 @@ using namespace cm::aot;
 using namespace cm::semantic_io_checks;
 using guest::Cpu;
 constexpr auto placements = 0x104f7000u, lookup = 0x10459b50u;
+constexpr auto final_placements = 0x104f6d50u;
+constexpr auto event_text = 0x104f5910u;
+constexpr auto event_output = fixture + 0x3900, event_message = fixture + 0x3980;
+constexpr auto final_mode = fixture + 0x6d;
+constexpr auto final_clubs = 0x31000000u, final_descriptor = 0x108b9a34u;
+constexpr auto placement_sort = 0x10768300u, publish_rank = 0x10457490u, compare_reputation = 0x104647e0u;
 constexpr auto notify = 0x104f5da0u, interpolate = 0x10476780u;
 constexpr auto destroy = 0x104f4ee0u, update = 0x104f5d60u;
 constexpr auto calendar = 0x104f4ff0u, calendar_rows = fixture + 0x3000;
@@ -96,6 +103,17 @@ bool construction_service(std::uint32_t entry) {
 bool stage_service(std::uint32_t entry) {
     return entry == 0x1056dc60 || entry == 0x104bc3c0 || entry == 0x104a0e40 || entry == 0x1047ef50;
 }
+bool final_service(std::uint32_t entry, std::uint32_t resume) {
+    return (entry == 0x10739ef0 && resume == 0x104f6e48)
+        || (entry == placement_sort && resume == 0x104f6e5c)
+        || (entry == publish_rank && resume >= 0x104f6e74 && resume <= 0x104f6fdc)
+        || entry == compare_reputation;
+}
+bool event_text_service(std::uint32_t entry, std::uint32_t resume) {
+    return resume > event_text && resume <= 0x104f5c68
+        && (entry == 0x10727890 || entry == 0x1074b830 || entry == 0x1074bab0
+            || entry == 0x104698c0 || entry == 0x10464d00);
+}
 std::string read_fixture_text(Cpu& c, std::uint32_t address) {
     std::string value;
     for (unsigned i = 0; i < 256; ++i) {
@@ -119,10 +137,18 @@ bool trace_lookup(State& s) {
     if (entry == lookup || entry == interpolate || entry == 0x10781320 || entry == 0x10715880 || entry == 0x107156f0
             || (entry == calendar && c.lr() == 0x104f5d34)
             || (entry == knockout_stage && c.lr() == 0x104f6124)
+            || final_service(entry, c.lr())
+            || event_text_service(entry, c.lr())
             || message_service(entry) || lifecycle_service(entry) || calendar_service(entry) || entry == 0x10775130
             || construction_service(entry) || stage_service(entry) || entry == 0x10739890 || entry == 0x1077b720 || entry == 0x10769b60) {
-        if (entry == lookup) require(c.r(3) == stage && c.r(4) == key && c.lr() == 0x104f7034,
+        if (entry == lookup && c.lr() == 0x104f7034) require(c.r(3) == stage && c.r(4) == key,
                 "African Nations real record lookup arguments");
+        if (entry == placement_sort && c.lr() == 0x104f6e5c)
+            require(c.r(3) == entrant_buffer && c.r(4) == c.u16(object + 0xf0)
+                        && c.r(5) == 4 && c.r(6) == final_descriptor, "African final sort consumes live count and real descriptor");
+        if (entry == publish_rank)
+            require(c.r(3) == stage && c.r(4) >= final_clubs && c.r(4) < final_clubs + 17 * 0x248,
+                    "African final publication uses a sorted entrant and its live standings");
         if (entry == 0x1049e4f0) require(c.r(3) == object && c.lr() == 0x104f4cb0, "African real base constructor argument");
         if (entry == 0x104533a0) require(c.r(3) == stage && c.r(4) == object && c.lr() == 0x104f4e54,
                 "African real shared table constructor arguments");
@@ -153,6 +179,35 @@ bool trace_lookup(State& s) {
                 require(c.r(5) == event && c.r(6) == extra, "African Nations forwarded event notification inputs");
         }
         if (active_trace) active_trace->push_back({entry, c.lr(), s.registers});
+        if (event_text_service(entry, c.lr())) {
+            // These localization and output services require the game's
+            // text database. Capture their consumed data in guest memory.
+            if (entry == 0x10727890) {
+                require(c.r(3) == event_message && c.r(5) == c.r(6), "African event formatter destination and club grammar");
+                const bool group = c.lr() == 0x104f59ac;
+                const auto name = c.r(group ? 7 : 9);
+                require(name == final_clubs + 0x248 + 0x221 && c.r(5) == std::uint32_t(c.i8(name + 0x1a)),
+                        "African event formatter consumes club name and signed grammar");
+                if (!group)
+                    require(c.r(7) == c.r(8) && c.r(7) == std::uint32_t(c.i8(c.r(10) + 0x1a)),
+                            "African event formatter consumes competition grammar");
+                c.put32(event_message, c.r(4) - (fixture + 0xf00));
+                c.put32(event_message + 4, c.u8(name));
+                c.put32(event_message + 8, group ? 0 : c.u8(c.r(10)));
+            } else if (entry == 0x1074b830) {
+                require(c.r(3) == event_output && c.r(4) == event_message, "African event output copy arguments");
+                for (unsigned i = 0; i < 3; ++i) c.put32(event_output + 4 * i, c.u32(event_message + 4 * i));
+            } else if (entry == 0x1074bab0) {
+                require(c.r(3) == event_output && (c.r(5) == 2005 || c.r(5) == 2000), "African event output annotation arguments");
+                c.put32(event_output + (c.r(5) == 2005 ? 12 : 16), c.u8(c.r(4)));
+            } else {
+                require(c.r(3) == 1 && c.r(8) == event_output, "African delegated event text output");
+                c.put32(event_output, entry);
+                for (unsigned i = 4; i <= 7; ++i) c.put32(event_output + (i - 3) * 4, c.r(i));
+            }
+            c.set({{3, 0x90909090}, {4, 0xbad0bad0}, {9, 0xfeedefee}});
+            c.finish(); return true;
+        }
         if (stage_service(entry)) {
             const auto index = c.u32(stage_index);
             const auto flags = c.u8(stage_flags);
@@ -244,6 +299,13 @@ bool trace_lookup(State& s) {
             return true;
         }
         if (entry == 0x10775130) {
+            if (c.lr() == 0x104f6ddc) {
+                require(c.r(3) == std::uint32_t(c.i16(object + 0xf0)) * 4, "African final allocation size");
+                const auto mode = c.u8(final_mode);
+                if (mode == 4) c.put16(object + 0xf0, 16);
+                c.set(3, mode == 2 ? 0 : entrant_buffer);
+                c.finish(); return true;
+            }
             if (c.u8(stage_testing) && (c.r(3) == 16 || c.r(3) == 32)) {
                 c.set(3, c.u8(stage_flags) & 1 ? 0 : entrant_buffer); c.finish(); return true;
             }
@@ -271,7 +333,8 @@ bool trace_lookup(State& s) {
             require(c.r(3) == fixture + 0xe00 && c.r(4) == fixture + 0xf14
                         && read_fixture_text(c, c.r(4)) == "v%s %s.%s %d"
                         && (c.r(8) == 0x9e || c.r(8) == 0xe0 || c.r(8) == 0x58 || c.r(8) == 0x5f || c.r(8) == 0x2a8
-                            || c.r(8) == 0x2dc || c.r(8) == 0x2f2 || c.r(8) == 0x311 || c.r(8) == 0x32c || c.r(8) == 0x2ba),
+                            || c.r(8) == 0x2dc || c.r(8) == 0x2f2 || c.r(8) == 0x311 || c.r(8) == 0x32c || c.r(8) == 0x2ba
+                            || c.r(8) == 0x3f4 || c.r(8) == 0x3fc),
                     "African assertion formatter destination/format/line");
             // Formatting's native stream/CFM initialization is outside the
             // fixture. Consume all supplied varargs and write their message;
@@ -297,7 +360,8 @@ bool trace_lookup(State& s) {
                 require(pointer == object && c.r(4) == 0, "African competition base cleanup arguments");
             if (entry == 0x10775170)
                 require(pointer == extra || pointer == child_array || pointer == calendar_rows
-                            || (c.u8(stage_testing) && (pointer == entrant_buffer || !pointer)), "African owned allocation release argument");
+                            || (c.u8(stage_testing) && (pointer == entrant_buffer || !pointer))
+                            || (c.lr() == 0x104f6fe4 && pointer == entrant_buffer), "African owned allocation release argument");
             if (entry == 0x104536c0) {
                 require(c.r(4) == 1 && (pointer == stage || pointer == child || pointer == child + 0x100
                             || pointer == child + 0x200), "African child/table destructor arguments");
@@ -379,6 +443,63 @@ std::unique_ptr<State> placement_fixture(std::uint32_t phase = 0, std::uint32_t 
     }
     s->pc = placements;
     s->budget = 1000000;
+    return s;
+}
+
+std::unique_ptr<State> calendar_fixture(std::uint32_t phase, bool flag, unsigned year, bool fail);
+
+std::unique_ptr<State> event_text_fixture(std::uint32_t phase, std::uint32_t kind, unsigned detail,
+                                         unsigned grammar = 0x81) {
+    auto s = placement_fixture();
+    s->memory.map(final_clubs, 2 * 0x248);
+    Cpu c(*s);
+    c.set({{4, 1}, {5, kind}, {6, phase}, {7, event}, {8, extra}, {9, key}});
+    c.put32(object + 4, definition);
+    c.put32(toc - 0x45ac, fixture + 0xf00);
+    c.put32(toc - 0x7bb8, event_message);
+    c.put32(toc - 0x7be8, manager_slot);
+    c.put32(manager_slot, final_clubs);
+    c.put8(final_clubs + 0x248 + 0x221, 'C');
+    c.put8(final_clubs + 0x248 + 0x23b, grammar);
+    c.put8(definition + 0x4d, 'D');
+    c.put8(definition + 0x67, 0xfe);
+    c.put8(stack + 0x3b, 0x87);
+    c.put8(stack + 0x3f, detail);
+    c.put32(stack + 0x40, event_output);
+    s->pc = event_text;
+    return s;
+}
+
+std::unique_ptr<State> final_placement_fixture(unsigned mode = 0, unsigned rotation = 5) {
+    auto s = calendar_fixture(0, true, 2002, false);
+    s->memory.map(final_clubs, 17 * 0x248);
+    Cpu c(*s);
+    c.put8(final_mode, mode);
+    c.put32(object + 8, mode == 1 ? 0 : stage);
+    c.put32(object + 0xec, entrant_pool);
+    c.put16(object + 0xf0, mode == 4 || mode == 5 ? 17 : 16);
+    c.put32(stage + 0x14, 17);
+    c.put32(stage + 0x5cc, 0);
+    c.put32(toc - 0x6188, final_descriptor);
+    c.put32(final_descriptor, compare_reputation);
+    c.put32(final_descriptor + 4, toc);
+    // The game loader installs this mutable CFM vector. Point it at the
+    // actual Carbon bridge so the real copy wrapper and sort can run.
+    constexpr auto block_move_vector = child_descriptor + 0x30;
+    c.put32(toc - 0x7e64, block_move_vector);
+    c.put32(block_move_vector, 280984508); // CarbonLib::BlockMoveData
+    c.put32(block_move_vector + 4, toc);
+    for (unsigned i = 0; i < 17; ++i) {
+        const auto club = final_clubs + i * 0x248;
+        c.put32(club, 100 + i);
+        c.put16(club + 0x1ec, mode == 3 ? i / 3 : 32767 - i * 4000);
+        c.put32(rows + i * 0x7c, 100 + i);
+        c.put8(rows + i * 0x7c + 0x75, 0xcb);
+        // Put the extra, lowest-rated entrant last for the live-count case.
+        const auto shuffled = i == 16 ? i : (i + rotation) % 16;
+        c.put32(entrant_pool + i * 4, final_clubs + shuffled * 0x248);
+    }
+    s->pc = final_placements;
     return s;
 }
 
@@ -640,6 +761,12 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
     original->allocator_original = modern->allocator_original = seed.allocator_original;
     original->import_descriptor_original = modern->import_descriptor_original = seed.import_descriptor_original;
     original->import_descriptor_original_body = modern->import_descriptor_original_body = seed.import_descriptor_original_body;
+    if (seed.pc == event_text) {
+        // Decline the generated in-place formatter edge on both routes so
+        // they reach the same localization boundary model in the dispatcher.
+        localization_format_diagnostics(*original).original_body = 0x10727890;
+        localization_format_diagnostics(*modern).original_body = 0x10727890;
+    }
     Effects expected, actual;
     expected.state = original.get(); actual.state = modern.get();
     DescriptorEffects old_descriptor, new_descriptor;
@@ -776,7 +903,11 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
                 "African direct owner/external probe handoff was not reached");
     const auto record = c.r(3);
     if (negative) {
+        require(new_stop.empty(), label + " negative control requires a complete return at "
+                    + hex_address(modern->pc) + ": " + new_stop);
         const auto corrupt_at = seed.pc == calendar ? calendar_count : seed.pc == configure ? object + 0xbc : seed.pc == create ? object + 8
+            : seed.pc == final_placements ? rows + 0x75
+            : seed.pc == event_text ? event_output
             : seed.pc == group_stage || seed.pc == knockout_stage || seed.pc == advance ? object + 0x30
             : seed.pc == notify || seed.pc == destroy || seed.pc == next_season ? service_log
             : seed.pc == update ? child : record + 0x76;
@@ -790,7 +921,9 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
         ++rejected_results;
         const auto target = std::ranges::find_if(new_calls, [](const Call& call) {
             return call.entry == lookup || message_service(call.entry) || lifecycle_service(call.entry)
-                || calendar_service(call.entry) || construction_service(call.entry) || stage_service(call.entry) || call.entry == 0x10715880;
+                || calendar_service(call.entry) || construction_service(call.entry) || stage_service(call.entry)
+                || final_service(call.entry, call.continuation) || event_text_service(call.entry, call.continuation)
+                || call.entry == 0x10715880;
         });
         require(target != new_calls.end(), "African argument control did not reach its call");
         target->machine[guest::reg::gpr(target->entry == 0x10715880 || construction_service(target->entry) ? 3 : 4)] ^= 4;
@@ -802,6 +935,19 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
     if (new_stop.empty() && seed.pc == placements) {
         for (unsigned i = 0; i < 3; ++i) { out.fields[i] = c.u8(record + 0x76 + i); out.ids[i] = c.u32(rows + i * 0x7c); }
         out.record_id = c.u32(record);
+    }
+    if (new_stop.empty() && seed.pc == final_placements) {
+        const auto mode = c.u8(final_mode);
+        require(c.u8(calendar_success) == unsigned(mode != 1 && mode != 2), "African final placement failure flag");
+        if (mode != 3) {
+            constexpr std::array ranks{1u, 2u, 3u, 4u, 5u, 5u, 5u, 5u, 9u, 9u, 9u, 9u, 13u, 13u, 13u, 13u, 0xcbu};
+            for (unsigned i = 0; i < ranks.size(); ++i)
+                require(c.u8(rows + i * 0x7c + 0x75) == (mode == 1 || mode == 2 ? 0xcb : ranks[i]),
+                        "African final rank band and untouched seventeenth entrant");
+        }
+    }
+    if (new_stop.empty() && seed.pc == event_text) {
+        out.fields = {c.u32(event_output), c.u32(event_output + 12), c.u32(event_output + 16)};
     }
     if (new_stop.empty() && seed.pc == create) {
         out.fields = {c.u16(object + 0x40), c.u32(object + 0x2c), c.u8(calendar_success)};
@@ -931,6 +1077,75 @@ ComparisonTotals compare_calendars() {
     }
     std::cout << "AFRICAN_NATIONS calendar: " << returned << " returned comparisons, " << budgets << " budget stops; "
               << rejected_results - previous_results << " wrong results and " << rejected_arguments - previous_arguments << " wrong arguments detected\n";
+    return {returned, budgets};
+}
+
+ComparisonTotals compare_final_placements() {
+    unsigned returned = 0;
+    for (unsigned mode = 0; mode <= 5; ++mode) {
+        auto seed = final_placement_fixture(mode);
+        require(compare_routes(*seed, true, mode == 0).stop.empty(), "African final placements mode " + std::to_string(mode));
+        ++returned;
+    }
+    std::mt19937 random(0x4146526d);
+    for (unsigned i = 0; i < 12; ++i) {
+        auto seed = final_placement_fixture(i & 1 ? 3 : 0, random() % 16);
+        require(compare_routes(*seed).stop.empty(), "African seeded entrant-order mutation");
+        ++returned;
+    }
+    auto failure = final_placement_fixture(2);
+    const auto complete = compare_routes(*failure);
+    unsigned budgets = 0;
+    for (unsigned limit = 0; limit < complete.instructions; ++limit) {
+        failure->budget = limit;
+        if (compare_routes(*failure).stop == "Native instruction budget exhausted") ++budgets;
+    }
+    RoutineChecker checker([](std::uint32_t entry) { return entry == final_placements; }, 1, 1);
+    checker.strict_volatile = true; routine_checker = &checker;
+    std::vector<Call> calls; Services services(&calls); auto checked = final_placement_fixture();
+    run_until(*checked, return_sentinel); routine_checker = nullptr;
+    require(checker.totals().at(final_placements).checked == 1 && !checker.differences(), "African final placement strict checked owner");
+    std::cout << "AFRICAN_NATIONS final placements: " << returned << " returned comparisons, " << budgets << " budget stops\n";
+    return {returned, budgets};
+}
+
+ComparisonTotals compare_event_text() {
+    struct Case { unsigned phase, kind, detail, result, club, competition; };
+    constexpr std::array cases{
+        Case{0, 6, 0, 0x27, 'C', 0}, Case{0xff, 0x106, 0, 0x27, 'C', 0},
+        Case{2, 6, 0x80, 0x104698c0, 6, 0x80}, Case{2, 0xfe, 0, 0x104698c0, 0xfe, 0},
+        Case{2, 1, 0, 0, 0, 0}, Case{4, 6, 0, 0, 0, 0},
+        Case{0x103, 1, 1, 0x10464d00, 1, key},
+        Case{3, 1, 0, 0x69, 'C', 'D'}, Case{3, 2, 0, 0xb9, 'C', 'D'},
+        Case{3, 3, 0, 0x11a, 'C', 'D'}, Case{3, 4, 0, 0x17c, 'C', 'D'},
+        Case{3, 0xff, 0, 0x244, 'C', 'D'}, Case{3, 0x80, 0, 0x1df, 'C', 'D'},
+    };
+    unsigned returned = 0;
+    for (const auto [phase, kind, detail, result, club, competition] : cases) {
+        const auto out = compare_routes(*event_text_fixture(phase, kind, detail), true, result == 0x69);
+        require(out.stop.empty() && out.fields == std::array{result, club, competition},
+                "African event template, annotations or delegated arguments");
+        ++returned;
+    }
+    std::mt19937 random(0x41465259);
+    for (unsigned i = 0; i < 12; ++i) {
+        require(compare_routes(*event_text_fixture(3, random(), 0, random())).stop.empty(), "African seeded event grammar and kind");
+        ++returned;
+    }
+    auto seed = event_text_fixture(3, 0xff, 0);
+    const auto complete = compare_routes(*seed);
+    unsigned budgets = 0;
+    for (unsigned limit = 0; limit < complete.instructions; ++limit) {
+        seed->budget = limit;
+        if (compare_routes(*seed).stop == "Native instruction budget exhausted") ++budgets;
+    }
+    RoutineChecker checker([](std::uint32_t entry) { return entry == event_text; }, 1, 1);
+    checker.strict_volatile = true; routine_checker = &checker;
+    std::vector<Call> calls; Services services(&calls); auto checked = event_text_fixture(3, 4, 0);
+    localization_format_diagnostics(*checked).original_body = 0x10727890;
+    run_until(*checked, return_sentinel); routine_checker = nullptr;
+    require(checker.totals().at(event_text).checked == 1 && !checker.differences(), "African event text strict checked owner");
+    std::cout << "AFRICAN_NATIONS event text: " << returned << " returned comparisons, " << budgets << " budget stops\n";
     return {returned, budgets};
 }
 
@@ -1390,10 +1605,14 @@ void verify() {
     const auto phases = compare_phases();
     returned += phases.returned;
     budgets += phases.budgets;
+    for (const auto totals : {compare_event_text(), compare_final_placements()}) {
+        returned += totals.returned;
+        budgets += totals.budgets;
+    }
     compare_block_sequence();
-    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (76 scalar mutations; seeds0x414652/0x414652ca/0x414652c7/0x4146525f/0x41465263), "
+    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (100 seeded mutations), "
               << budgets << " budget stops, " << faults << " partial faults; " << rejected_results << " wrong result and "
-              << rejected_arguments << " wrong consumed argument detected; eleven distinct checked hooks\n";
+              << rejected_arguments << " wrong consumed argument detected; thirteen distinct checked hooks\n";
 }
 }
 
@@ -1411,6 +1630,8 @@ int main(int argc, char** argv) try {
     else if (argc == 2 && std::string_view(argv[1]) == "--construction") compare_constructors();
     else if (argc == 2 && std::string_view(argv[1]) == "--rollover") compare_rollovers();
     else if (argc == 2 && std::string_view(argv[1]) == "--phases") compare_phases();
+    else if (argc == 2 && std::string_view(argv[1]) == "--final-placements") compare_final_placements();
+    else if (argc == 2 && std::string_view(argv[1]) == "--event-text") compare_event_text();
     else if (argc == 1) verify();
-    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar|--construction-reference|--construction|--rollover|--phases]");
+    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar|--construction-reference|--construction|--rollover|--phases|--final-placements|--event-text]");
 } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
