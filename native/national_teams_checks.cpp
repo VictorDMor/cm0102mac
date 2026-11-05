@@ -64,6 +64,11 @@ constexpr auto render_calendar_notice = 0x102bb050u;
 constexpr auto notice_render_item = fixture + 0xd000, notice_render_output = fixture + 0xd100;
 constexpr auto notice_render_trace = fixture + 0xd200, notice_render_cups = fixture + 0xd400;
 constexpr auto notice_render_people = fixture + 0xd700, notice_render_cup_slot = fixture + 0xd900;
+constexpr auto append_appointment = 0x102b7000u, expire_nation_appointments = 0x102b70a0u;
+constexpr auto expire_pair_appointments = 0x102b7140u, replace_assignment = 0x102b71e0u, reconcile_assignments = 0x102b7280u;
+constexpr auto appointment_trace = fixture + 0x8800, appointment_rows = fixture + 0x8900;
+constexpr auto assignment_nations = fixture + 0xc000, assignment_managers = fixture + 0xc500;
+constexpr auto assignment_slots = fixture + 0xc800;
 constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
 constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
 constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
@@ -140,11 +145,14 @@ bool observe_dependency(State& s) {
     case 0x107475b0: case 0x10747cc0: case 0x10747900: case 0x10487640:
         if (!calendar_archive) return false;
         break;
-    case 0x10747a80: case 0x10775130: case 0x10773520:
+    case 0x10747a80: case 0x10775130:
         if (!calendar_read) return false;
         break;
+    case 0x10773520:
+        if (!calendar_read && resume != 0x102b7034) return false;
+        break;
     case 0x10738d10:
-        if (!calendar_read && resume != 0x102bacf8) return false;
+        if (!calendar_read && resume != 0x102bacf8 && resume != 0x102b708c) return false;
         break;
     case 0x102cb570: case 0x10746a70: case 0x1074b830: case 0x1074bab0:
         if (!calendar_render) return false;
@@ -160,6 +168,9 @@ bool observe_dependency(State& s) {
         break;
     case 0x107751b0: case 0x10768300:
         if (!domestic_schedule) return false;
+        break;
+    case 0x101b5b20:
+        if (resume != 0x102b7268 && resume != 0x102b7414) return false;
         break;
     case 0x1048a020:
         if (resume != 0x102bac8c) return false;
@@ -228,6 +239,19 @@ bool observe_dependency(State& s) {
         return true;
     }
     switch (entry) {
+    case 0x100c76c0:
+        if (resume != 0x102b7258 && resume != 0x102b7404) return false;
+        require(c.r(3) >= assignment_nations && c.r(3) < assignment_nations + 3 * 0x128,
+                "staff assignment identity argument");
+        c.set(3, 0x8000 + (c.r(3) - assignment_nations) / 0x128);
+        break;
+    case 0x101b5b20: {
+        const auto index = c.u8(appointment_trace + 4);
+        require(index < 3 && c.r(3) == news_system && c.r(5) == 1, "staff assignment callback ABI");
+        c.put32(appointment_trace + 8 + index * 4, c.r(4));
+        c.put8(appointment_trace + 4, index + 1);
+        break;
+    }
     case 0x1077b770:
         return false; // Run the real RNG core and compare its ordered writes.
     case 0x10738ca0:
@@ -346,6 +370,12 @@ bool observe_dependency(State& s) {
         break;
     }
     case 0x10775130: case 0x10775200: case 0x10773520: {
+        if (resume == 0x102b7034) {
+            require(entry == 0x10773520 && c.r(3) == 0x10, "appointment list allocation ABI");
+            c.put8(appointment_trace + 1, 1);
+            c.set(3, c.u8(appointment_trace) ? 0 : roster_list);
+            break;
+        }
         if (fixture_marking) {
             require(resume == 0x102ba80c && c.r(3) == 3 && c.r(4) == 1, "fixture mark array allocation");
             if (c.u8(release_policy)) c.set(3, 0);
@@ -369,6 +399,13 @@ bool observe_dependency(State& s) {
     }
     case 0x10738d10: {
         const auto list = c.r(3);
+        if (resume == 0x102b708c) {
+            require((list == roster_list || list == 0) && c.r(4) == frame + 0x38 && c.r(5) == 0x14,
+                    "appointment append ABI");
+            s.memory.copy_in(appointment_rows, s.memory.copy_out(c.r(4), c.r(5)));
+            c.put8(appointment_trace + 2, 1);
+            break;
+        }
         if (resume == 0x102bacf8) {
             require(list == calendar + 0x28 && c.r(4) == frame + 0x38 && c.r(5) == 8,
                     "calendar notice append ABI");
@@ -512,6 +549,11 @@ bool observe_dependency(State& s) {
         break;
     case 0x10717b20: case 0x10717890: {
         const bool lower = entry == 0x10717b20;
+        if (resume == 0x102b7100 || resume == 0x102b71a8) {
+            require(!lower && c.r(3) == frame + 0x38 && c.r(4) == date && c.r(5) == 1,
+                    "appointment expiry shifts today forward");
+            return false;
+        }
         if (resume == 0x102baa84 || resume == 0x102baaac || resume == 0x102baaec || resume == 0x102bab20)
             return false; // Use the real date services in fixture application.
         if (resume == 0x102ba35c) {
@@ -691,7 +733,9 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
         if (input.pc == create_schedule || input.pc == register_fixture || input.pc == expire_schedule ||
             input.pc == date_order || input.pc == score_order || input.pc == club_order ||
             input.pc == mark_fixtures || input.pc == apply_marks || input.pc == queue_calendar_notice ||
-            input.pc == publish_calendar_notices || input.pc == render_calendar_notice)
+            input.pc == publish_calendar_notices || input.pc == render_calendar_notice ||
+            input.pc == append_appointment || input.pc == expire_nation_appointments ||
+            input.pc == expire_pair_appointments || input.pc == replace_assignment || input.pc == reconcile_assignments)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
     }
@@ -3204,6 +3248,197 @@ unsigned check_calendar_notice_formatter_reference(std::mt19937& random) {
     return comparisons;
 }
 
+unsigned check_calendar_appointments(std::mt19937& random) {
+    const auto prepare = [&](std::uint32_t entry) {
+        auto state = domestic_schedule_seed(random);
+        Cpu c(*state);
+        c.put32(toc - 0x7b80, date);
+        c.put32(toc - 0x3fac, appointment_trace + 0x60);
+        c.put8(toc - 0x35bb, 1);
+        c.put32(player, 10);
+        c.put32(national_team, 20);
+        fixture_date(c, date, 365, 2000);
+        c.set({{3, calendar}, {4, player}, {5, national_team}, {6, date}});
+        state->pc = entry;
+        return state;
+    };
+
+    unsigned cases = 0;
+    for (unsigned mode = 0; mode < 3; ++mode) {
+        auto state = prepare(append_appointment);
+        Cpu c(*state);
+        c.put32(calendar, mode == 0 ? roster_list : 0);
+        c.put32(roster_list + 4, roster_nodes);
+        c.put8(appointment_trace, mode == 2);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(calendar) == (mode == 2 ? 0 : roster_list) &&
+                    result.u8(appointment_trace + 1) == unsigned(mode != 0) &&
+                    result.u8(appointment_trace + 2) == 1 &&
+                    result.u32(roster_list + 4) == (mode == 1 ? 0 : roster_nodes) &&
+                    result.u32(appointment_rows) == 10 && result.u32(appointment_rows + 4) == 20 &&
+                    result.i16(appointment_rows + 8) == 365 && result.u16(appointment_rows + 10) == 2000 &&
+                    result.u8(appointment_rows + 12) == 1 && result.u16(appointment_rows + 16) == 1000,
+                "calendar appointment payload, allocation and list initialization");
+        ++cases;
+    }
+
+    for (const auto entry : {expire_nation_appointments, expire_pair_appointments}) {
+        for (unsigned mode = 0; mode < 3; ++mode) {
+            auto state = prepare(entry);
+            Cpu c(*state);
+            const bool exact = entry == expire_pair_appointments;
+            c.put32(calendar, mode == 0 ? 0 : roster_list);
+            c.put32(roster_list + 4, mode == 2 ? fixture_nodes : 0);
+            c.put32(roster_list + 12, unmapped);
+            if (!exact) c.set(4, national_team);
+            for (unsigned index = 0; index < 4; ++index) {
+                const auto node = fixture_nodes + index * 0x10, row = appointment_rows + index * 0x20;
+                c.put32(node, row);
+                c.put32(node + 8, index == 3 ? 0 : node + 0x10);
+                c.put32(row, index == 1 ? 11 : 10);
+                c.put32(row + 4, index == 2 ? 21 : 20);
+                c.put16(row + 8, 12);
+                c.put16(row + 10, 1999);
+                c.put16(row + 0x10, 1000);
+                c.put16(row + 0x12, 0x5aa5);
+            }
+            const auto after = compare(*state);
+            Cpu result(*after);
+            require(result.u32(roster_list + 12) == (mode ? 0 : unmapped),
+                    "calendar appointment scan leaves the cursor as in the original");
+            for (unsigned index = 0; index < 4; ++index) {
+                const auto row = appointment_rows + index * 0x20;
+                const bool updated = mode == 2 && index != 2 && (!exact || index != 1);
+                require(result.u16(row + 0x10) == (updated ? 0 : 1000) &&
+                            result.u16(row + 0x12) == 0x5aa5 && result.u16(row + 10) == 1999,
+                        "calendar appointment expires the matching rows on the next day of a new year");
+            }
+            ++cases;
+        }
+    }
+
+    auto fault = prepare(append_appointment);
+    Cpu(*fault).set(6, unmapped);
+    Cpu(*fault).put32(calendar, 0);
+    const auto after = compare(*fault, Stop::fault);
+    require(Cpu(*after).u32(calendar) == roster_list, "appointment allocation precedes date access");
+    for (const auto entry : {append_appointment, expire_nation_appointments, expire_pair_appointments}) {
+        auto state = prepare(entry);
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    return cases;
+}
+
+unsigned check_staff_assignment_updates(std::mt19937& random) {
+    constexpr auto local_manager = assignment_managers + 0xc8, other_manager = assignment_managers;
+    const auto prepare = [&](std::uint32_t entry) {
+        auto state = domestic_schedule_seed(random);
+        state->memory.map(assignment_nations, 0x1000);
+        Cpu c(*state);
+        c.put32(toc - 0x79f0, assignment_slots);
+        c.put32(toc - 0x7a70, assignment_slots + 4);
+        c.put32(toc - 0x7520, assignment_slots + 8);
+        c.put32(toc - 0x7b98, assignment_slots + 12);
+        c.put32(assignment_slots, news_system);
+        c.put32(assignment_slots + 4, 1);
+        c.put32(assignment_slots + 8, assignment_managers);
+        c.put32(assignment_slots + 12, assignment_nations);
+        c.put32(calendar + 4, records);
+        c.put32(calendar + 8, release_rows);
+        c.put32(nation_count, 3);
+        for (unsigned i = 0; i < 3; ++i) {
+            const auto nation = assignment_nations + i * 0x128;
+            c.put32(nation + 0x68, i);
+            c.put32(nation + 0x74, competition + (i == 2 ? 4 : 0));
+            c.put32(records + i * record_size + 4, 1 + 2 * i);
+            c.put32(release_rows + i * 4, 2 + 2 * i);
+        }
+        c.set({{3, calendar}, {4, entry == replace_assignment ? assignment_nations + 0x128 : competition}, {5, 0}});
+        state->pc = entry;
+        return state;
+    };
+    const auto notifications_are = [](Cpu& c, std::initializer_list<unsigned> indices) {
+        require(c.u8(appointment_trace + 4) == indices.size(), "staff assignment notification count");
+        unsigned index = 0;
+        for (const auto nation : indices)
+            require(c.u32(appointment_trace + 8 + index++ * 4) == 0x8000 + nation,
+                    "staff assignment notification order");
+    };
+    unsigned cases = 0;
+    for (unsigned mode = 0; mode < 3; ++mode) {
+        auto state = prepare(replace_assignment);
+        Cpu c(*state);
+        if (mode == 0) c.put32(release_rows + 4, UINT32_MAX);
+        if (mode == 1) c.put32(assignment_slots, 0);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(records + record_size + 4) == (mode == 0 ? UINT32_MAX : 4) &&
+                    result.u32(release_rows + 4) == UINT32_MAX && result.u32(records + 4) == 1 &&
+                    result.u32(release_rows) == 2, "staff replacement clears the old assignment then promotes its pending staff");
+        if (mode == 2) notifications_are(result, {1});
+        else notifications_are(result, {});
+        ++cases;
+    }
+
+    for (unsigned mode = 0; mode < 8; ++mode) {
+        auto state = prepare(reconcile_assignments);
+        Cpu c(*state);
+        const auto employer = [&](unsigned id, std::uint32_t value) { c.put32(staff_table + id * 0x6c + 4, value); };
+        for (unsigned id = 1; id <= 6; ++id) employer(id, other_manager);
+        switch (mode) {
+        case 0: c.put32(nation_count, UINT32_MAX); break;
+        case 1: c.set(4, 0); break;
+        case 2: employer(1, 0); employer(4, 0); c.set(5, 0x100); break;
+        case 3: employer(1, local_manager); employer(4, local_manager); c.set(5, 0x180); break;
+        case 4: employer(1, local_manager); employer(2, local_manager); c.set(5, 1); break;
+        case 5: employer(1, 0); employer(4, 0); c.put32(assignment_slots, 0); break;
+        case 6:
+            c.put32(records + 4, UINT32_MAX);
+            c.put32(records + record_size + 4, UINT32_MAX);
+            break;
+        case 7:
+            c.put32(release_rows, UINT32_MAX);
+            c.put32(release_rows + 4, UINT32_MAX);
+            break;
+        }
+        const auto after = compare(*state);
+        Cpu result(*after);
+        const auto first = mode == 4 ? UINT32_MAX : mode == 2 || mode == 3 || mode == 5 || mode == 6 ? 2u : 1u;
+        const auto second = mode == 6 ? 4u : 3u;
+        require(result.u32(records + 4) == first && result.u32(records + record_size + 4) == second &&
+                    result.u32(records + 2 * record_size + 4) == 5 && result.u32(release_rows + 8) == 6,
+                "staff reconciliation filters nations and validates existing assignments");
+        require(result.u32(release_rows) == (mode < 2 ? 2u : UINT32_MAX) &&
+                    result.u32(release_rows + 4) == (mode < 2 || mode == 4 ? 4u : UINT32_MAX),
+                "staff reconciliation retains only valid pending assignments");
+        if (mode == 2 || mode == 3) notifications_are(result, {0});
+        else if (mode == 6) notifications_are(result, {0, 1});
+        else notifications_are(result, {});
+        ++cases;
+    }
+
+    auto fault = prepare(replace_assignment);
+    Cpu(*fault).put32(calendar + 8, unmapped);
+    const auto after = compare(*fault, Stop::fault);
+    require(Cpu(*after).u32(records + record_size + 4) == UINT32_MAX, "old assignment clears before pending lookup");
+    fault = prepare(reconcile_assignments);
+    {
+        Cpu c(*fault);
+        c.put32(staff_table + 0x6c + 4, 0);
+        c.put32(calendar + 8, unmapped);
+    }
+    const auto reconciliation = compare(*fault, Stop::fault);
+    require(Cpu(*reconciliation).u32(records + 4) == UINT32_MAX, "reconciliation clears invalid staff before pending lookup");
+    for (const auto entry : {replace_assignment, reconcile_assignments}) {
+        auto state = prepare(entry);
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    return cases;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -3273,6 +3508,10 @@ int main() try {
     const auto applied_marks = check_fixture_application(random);
     const auto calendar_notices = check_calendar_notices(random);
     const auto formatter_references = check_calendar_notice_formatter_reference(random);
+    const auto appointments = check_calendar_appointments(random);
+    const auto assignments = check_staff_assignment_updates(random);
+    std::cout << appointments << " NATIONAL_TEAMS appointment comparisons, 1 fault and 3 budget stops\n";
+    std::cout << assignments << " NATIONAL_TEAMS staff assignment comparisons, 2 faults and 2 budget stops\n";
     std::cout << formatter_references << " NATIONAL_TEAMS calendar formatter reference cases\n";
     std::cout << calendar_notices << " NATIONAL_TEAMS calendar notice comparisons, 1 fault and 2 budget stops\n";
     std::cout << applied_marks << " NATIONAL_TEAMS fixture application comparisons, 2 faults and 1 budget stop\n";

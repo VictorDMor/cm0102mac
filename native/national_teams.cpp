@@ -2889,6 +2889,15 @@ bool calendar_read_queue(Cpu& c, const CalendarArchive& a, bool secondary) {
     return true;
 }
 
+void initialize_calendar_list(Cpu& c, std::uint32_t list, std::uint32_t call_site) {
+    block(c, call_site, 1);
+    c.link(call_site + 4);
+    c.set(0, 0);
+    for (const unsigned offset : {4u, 8u, 12u}) c.put32(list + offset, 0);
+    c.put16(list, 0);
+    c.s.charge(6);
+}
+
 bool calendar_read_list(Cpu& c, const CalendarArchive& a) {
     block(c, 0x102b93dc, 5);
     c.set(6, c.u32(a.frame + 0x3c));
@@ -2915,14 +2924,7 @@ bool calendar_read_list(Cpu& c, const CalendarArchive& a) {
     const auto high = c.cr(0) & 0xf0;
     c.compare(0, list, 0);
     c.set_cr(0, high | c.cr(0));
-    if (list) {
-        block(c, 0x102b9474, 1);
-        c.link(0x102b9478);
-        c.set(0, 0);
-        for (const unsigned offset : {4u, 8u, 12u}) c.put32(list + offset, 0);
-        c.put16(list, 0);
-        c.s.charge(6);
-    }
+    if (list) initialize_calendar_list(c, list, 0x102b9474);
     block(c, 0x102b9478, 3);
     c.put32(a.calendar, list);
     c.set(26, 0);
@@ -5204,6 +5206,350 @@ void render_calendar_notice(Cpu& c) {
     c.finish();
 }
 
+constexpr auto append_appointment_entry = 0x102b7000u, expire_nation_appointments_entry = 0x102b70a0u;
+constexpr auto expire_pair_appointments_entry = 0x102b7140u, replace_staff_assignment_entry = 0x102b71e0u;
+constexpr auto reconcile_staff_assignments_entry = 0x102b7280u;
+
+void append_calendar_appointment(Cpu& c) {
+    GuestNativeScope scope(c.s, append_appointment_entry);
+    block(c, append_appointment_entry, 11);
+    const auto caller = c.sp(), frame = caller - 0x70;
+    const auto calendar = c.r(3), first = c.r(4), second = c.r(5), date = c.r(6);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, caller);
+    c.set({{28, calendar}, {29, first}, {30, second}, {31, date}});
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto current_list = c.u32(calendar);
+    c.set(0, current_list);
+    c.compare_logical(0, current_list, 0);
+    if (!current_list) {
+        block(c, 0x102b702c, 2);
+        c.set(3, 0x10);
+        c.call(0x10773520, 0x102b7034);
+        block(c, 0x102b7034, 2);
+        const auto list = c.r(3);
+        if (record_nonzero_pointer(c, 27)) initialize_calendar_list(c, list, 0x102b703c);
+        block(c, 0x102b7040, 1);
+        c.put32(calendar, list);
+    }
+
+    block(c, 0x102b7044, 2);
+    c.set(3, frame + 0x40);
+    c.call(0x10715880, 0x102b704c);
+    block(c, 0x102b704c, 16);
+    const auto first_id = c.u32(first);
+    c.set({{3, first_id}, {0, 1000}, {4, frame + 0x38}, {5, 0x14}});
+    c.put32(frame + 0x38, first_id);
+    c.set(3, c.u32(second));
+    c.put32(frame + 0x3c, c.r(3));
+    c.set(3, c.u16(date + 2));
+    c.put16(frame + 0x42, c.r(3));
+    c.set(3, std::uint32_t(c.i16(date)));
+    c.put16(frame + 0x40, c.r(3));
+    c.set(3, c.u8(date + 4));
+    c.put8(frame + 0x44, c.r(3));
+    c.put16(frame + 0x48, c.r(0));
+    c.set(3, c.u32(calendar));
+    c.call(0x10738d10, 0x102b708c);
+    block(c, 0x102b708c, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, caller);
+    c.finish();
+}
+
+template<bool ExactPair>
+void expire_calendar_appointment_list(Cpu& c, std::uint32_t calendar, std::uint32_t first,
+                                      std::uint32_t second, std::uint32_t today) {
+    constexpr auto reset = ExactPair ? 0x102b716cu : 0x102b70d4u;
+    constexpr auto next = ExactPair ? 0x102b71b0u : 0x102b7108u;
+    constexpr auto check = ExactPair ? 0x102b7178u : 0x102b70e0u;
+    constexpr auto shift = ExactPair ? 0x102b7198u : 0x102b70f0u;
+    block(c, reset, 3);
+    c.set(0, c.u32(c.r(3) + 4));
+    c.put32(c.r(3) + 12, c.r(0));
+    for (;;) {
+        block(c, next, 2);
+        c.set(3, c.u32(calendar));
+        c.call(0x10738e00, next + 8);
+        block(c, next + 8, 2);
+        const auto row = c.r(3);
+        if (!record_nonzero_pointer(c, 31)) return;
+        block(c, check, 4);
+        c.set(3, c.u32(row + 4));
+        c.set(0, c.u32(second));
+        c.compare(0, c.r(3), c.r(0));
+        if (c.r(3) != c.r(0)) continue;
+        if constexpr (ExactPair) {
+            block(c, check + 16, 4);
+            c.set(3, c.u32(row));
+            c.set(0, c.u32(first));
+            c.compare(0, c.r(3), c.r(0));
+            if (c.r(3) != c.r(0)) continue;
+        }
+        block(c, shift, 4);
+        c.set({{4, today}, {3, c.sp() + 0x38}, {5, 1}});
+        c.call(0x10717890, shift + 16);
+        block(c, shift + 16, 2);
+        c.set(0, std::uint32_t(c.i16(c.sp() + 0x38)));
+        c.put16(row + 0x10, c.r(0));
+    }
+}
+
+template<bool ExactPair>
+void expire_calendar_appointments(Cpu& c) {
+    constexpr auto entry = ExactPair ? expire_pair_appointments_entry : expire_nation_appointments_entry;
+    GuestNativeScope scope(c.s, entry);
+    block(c, entry, ExactPair ? 11 : 13);
+    const auto caller = c.sp(), frame = caller - (ExactPair ? 0x60 : 0x50);
+    const auto calendar = c.r(3), first = c.r(4), second = ExactPair ? c.r(5) : first;
+    c.set(0, c.lr());
+    if constexpr (ExactPair) {
+        guest::transfer_saved_registers<27>(c, caller);
+        c.set(27, calendar);
+    } else {
+        c.put32(caller - 4, c.r(31));
+        c.put32(caller - 8, c.r(30));
+    }
+    const auto today = c.toc(-0x7b80);
+    c.set(30, today);
+    if constexpr (ExactPair) {
+        c.set({{28, first}, {29, second}});
+    } else {
+        c.put32(caller - 12, c.r(29));
+        c.set(29, second);
+        c.put32(caller - 16, c.r(28));
+        c.set(28, calendar);
+    }
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto list = c.u32(calendar);
+    c.set(3, list);
+    c.compare_logical(0, list, 0);
+    if (list) expire_calendar_appointment_list<ExactPair>(c, calendar, first, second, today);
+
+    block(c, ExactPair ? 0x102b71c0 : 0x102b7118, ExactPair ? 5 : 8);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    if constexpr (ExactPair) guest::transfer_saved_registers<27, true>(c, caller);
+    else {
+        c.set(31, c.u32(caller - 4));
+        c.set(30, c.u32(caller - 8));
+        c.set(29, c.u32(caller - 12));
+        c.set(28, c.u32(caller - 16));
+    }
+    c.finish();
+}
+
+void notify_staff_assignment(Cpu& c, std::uint32_t notifications, std::uint32_t pc) {
+    c.call(0x100c76c0, pc);
+    block(c, pc, 4);
+    c.set(4, c.r(3));
+    c.set({{3, c.u32(notifications)}, {5, 1}});
+    c.call(0x101b5b20, pc + 16);
+}
+
+void replace_staff_assignment(Cpu& c) {
+    GuestNativeScope scope(c.s, replace_staff_assignment_entry);
+    block(c, replace_staff_assignment_entry, 17);
+    const auto caller = c.sp(), frame = caller - 0x40, calendar = c.r(3), nation = c.r(4);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set(7, UINT32_MAX);
+    const auto notifications = c.toc(-0x79f0);
+    c.set(31, notifications);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto initial_index = c.u32(nation + nation_index_offset);
+    c.set(0, initial_index);
+    const auto records = c.u32(calendar + 4);
+    const auto record = records + initial_index * nation_record_size;
+    c.set({{5, records}, {0, initial_index * nation_record_size}, {5, record}});
+    c.put32(record + 4, UINT32_MAX);
+
+    const auto index = c.u32(nation + nation_index_offset);
+    c.set(8, index);
+    const auto pending = c.u32(calendar + 8);
+    c.set({{5, pending}, {0, index * 4}});
+    const auto staff = c.u32(pending + index * 4);
+    c.set(6, staff);
+    c.compare(0, staff, -1);
+    if (staff != UINT32_MAX) {
+        block(c, 0x102b7224, 11);
+        c.set(0, index * nation_record_size);
+        const auto current_records = c.u32(calendar + 4);
+        c.set({{5, current_records}, {5, current_records + index * nation_record_size}});
+        c.put32(c.r(5) + 4, staff);
+        const auto current_index = c.u32(nation + nation_index_offset);
+        c.set(0, current_index);
+        const auto current_pending = c.u32(calendar + 8);
+        c.set({{3, current_pending}, {0, current_index * 4}});
+        c.put32(current_pending + current_index * 4, UINT32_MAX);
+        const auto listener = c.u32(notifications);
+        c.set(0, listener);
+        c.compare_logical(0, listener, 0);
+        if (listener) {
+            block(c, 0x102b7250, 2);
+            c.set(3, nation);
+            notify_staff_assignment(c, notifications, 0x102b7258);
+        }
+    }
+    block(c, 0x102b7268, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
+struct StaffAssignmentContext {
+    std::uint32_t calendar, filter, mode, notifications, manager_index, managers, staff, nations, count;
+};
+
+template<bool Pending>
+void remove_invalid_assignment(Cpu& c, const StaffAssignmentContext& a, unsigned index) {
+    constexpr auto entry = Pending ? 0x102b734cu : 0x102b72dcu;
+    constexpr auto mode = Pending ? 0x102b735cu : 0x102b72f0u;
+    constexpr auto employed = Pending ? 0x102b7364u : 0x102b72f8u;
+    constexpr auto local = Pending ? 0x102b7388u : 0x102b731cu;
+    block(c, entry, Pending ? 4 : 5);
+    const auto rows = c.u32(a.calendar + (Pending ? 8 : 4));
+    const auto offset = Pending ? index * 4 : index * nation_record_size + 4;
+    c.set(3, rows);
+    if constexpr (!Pending) c.set(0, offset);
+    const auto staff_id = c.u32(rows + offset);
+    c.set(Pending ? 4 : 5, staff_id);
+    c.compare(0, staff_id, -1);
+    if (staff_id == UINT32_MAX) return;
+    block(c, mode, 2);
+    const auto staff_offset = staff_id * staff_record_size;
+    if (!record_nonzero_byte(c, a.mode, Pending ? 0 : 4)) {
+        block(c, employed, 6);
+        c.set(4, staff_offset);
+        const auto table = c.u32(a.staff);
+        c.set({{5, table}, {Pending ? 0u : 4u, staff_offset + 4}});
+        const auto employer = c.u32(table + staff_offset + 4);
+        c.set(Pending ? 0 : 4, employer);
+        c.compare_logical(0, employer, 0);
+        if (employer) return;
+        block(c, employed + 24, 3);
+    } else {
+        block(c, local, 10);
+        c.set(Pending ? 5 : 6, staff_offset);
+        const auto manager = c.u32(a.manager_index);
+        c.set(Pending ? 0 : 4, manager);
+        const auto table = c.u32(a.staff);
+        c.set(Pending ? 6 : 7, table);
+        const auto managers = c.u32(a.managers);
+        c.set(Pending ? 4 : 5, managers);
+        c.set({{Pending ? 0u : 4u, manager * 0xc8}, {Pending ? 5u : 6u, staff_offset + 4}});
+        const auto employer = c.u32(table + staff_offset + 4);
+        const auto local_manager = managers + manager * 0xc8;
+        c.set({{Pending ? 5u : 6u, employer}, {Pending ? 0u : 4u, local_manager}});
+        c.compare_logical(0, employer, local_manager);
+        if (employer != local_manager) return;
+        block(c, local + 40, 2);
+    }
+    c.set(Pending ? 0 : 4, UINT32_MAX);
+    c.put32(rows + offset, UINT32_MAX);
+}
+
+void reconcile_staff_assignment(Cpu& c, const StaffAssignmentContext& a, unsigned index) {
+    block(c, 0x102b72c8, 5);
+    const auto nations = c.u32(a.nations);
+    const auto nation_offset = index * 0x128;
+    c.set({{3, nations}, {0, nation_offset + 0x74}});
+    const auto competition = c.u32(nations + nation_offset + 0x74);
+    c.set(0, competition);
+    c.compare_logical(0, competition, a.filter);
+    if (competition != a.filter) return;
+    remove_invalid_assignment<false>(c, a, index);
+    remove_invalid_assignment<true>(c, a, index);
+
+    block(c, 0x102b73b8, 4);
+    const auto pending = c.u32(a.calendar + 8);
+    c.set(3, pending);
+    const auto staff_id = c.u32(pending + index * 4);
+    c.set(4, staff_id);
+    c.compare(0, staff_id, -1);
+    if (staff_id == UINT32_MAX) return;
+    block(c, 0x102b73c8, 5);
+    const auto rows = c.u32(a.calendar + 4);
+    const auto offset = index * nation_record_size + 4;
+    c.set({{3, rows}, {5, offset}});
+    const auto assigned = c.u32(rows + offset);
+    c.set(0, assigned);
+    c.compare(0, assigned, -1);
+    if (assigned != UINT32_MAX) return;
+    block(c, 0x102b73dc, 7);
+    c.put32(rows + offset, staff_id);
+    c.set(0, UINT32_MAX);
+    const auto current_pending = c.u32(a.calendar + 8);
+    c.set(3, current_pending);
+    c.put32(current_pending + index * 4, UINT32_MAX);
+    const auto listener = c.u32(a.notifications);
+    c.set(0, listener);
+    c.compare_logical(0, listener, 0);
+    if (!listener) return;
+    block(c, 0x102b73f8, 3);
+    const auto base = c.u32(a.nations);
+    c.set({{0, base}, {3, base + nation_offset}});
+    notify_staff_assignment(c, a.notifications, 0x102b7404);
+}
+
+void reconcile_staff_assignments(Cpu& c) {
+    GuestNativeScope scope(c.s, reconcile_staff_assignments_entry);
+    block(c, reconcile_staff_assignments_entry, 18);
+    const auto caller = c.sp(), frame = caller - 0x70;
+    const auto calendar = c.r(3), filter = c.r(4), mode = c.r(5);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<19>(c, caller);
+    c.set(25, 0);
+    const auto notifications = c.toc(-0x79f0);
+    c.set(26, notifications);
+    const auto manager_index = c.toc(-0x7a70);
+    c.set({{27, manager_index}, {19, calendar}});
+    const auto managers = c.toc(-0x7520);
+    c.set({{28, managers}, {20, filter}});
+    const auto staff = c.toc(-0x7bbc);
+    c.set({{29, staff}, {21, mode}});
+    const auto nations = c.toc(-0x7b98);
+    c.set({{30, nations}, {24, 0}});
+    const auto count = c.toc(-0x7b04);
+    c.set({{31, count}, {23, 0}, {22, 0}});
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const StaffAssignmentContext context{calendar, filter, mode, notifications, manager_index, managers, staff, nations, count};
+    for (unsigned index = 0; ; ++index) {
+        block(c, 0x102b7424, 3);
+        const auto length = c.i32(context.count);
+        c.set(0, std::uint32_t(length));
+        c.compare(0, index, length);
+        if (std::int32_t(index) >= length) break;
+        reconcile_staff_assignment(c, context, index);
+        block(c, 0x102b7414, 4);
+        const auto next = index + 1;
+        c.set({{25, next * 0x128}, {24, next * nation_record_size}, {23, next * 4}, {22, next}});
+    }
+    block(c, 0x102b7430, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<19, true>(c, caller);
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -5433,6 +5779,11 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case queue_calendar_notice_entry: queue_calendar_notice(c); break;
     case publish_calendar_notices_entry: publish_calendar_notices(c); break;
     case render_calendar_notice_entry: render_calendar_notice(c); break;
+    case append_appointment_entry: append_calendar_appointment(c); break;
+    case expire_nation_appointments_entry: expire_calendar_appointments<false>(c); break;
+    case expire_pair_appointments_entry: expire_calendar_appointments<true>(c); break;
+    case replace_staff_assignment_entry: replace_staff_assignment(c); break;
+    case reconcile_staff_assignments_entry: reconcile_staff_assignments(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;
