@@ -37,3 +37,4 @@ STAFF_CONTRACTS_ROUTINE(0x10380710, R3, [](Cpu& c) { c.set(3, classify_expiry(c,
 STAFF_CONTRACTS_CONTINUATION(0x10380c10, R3, [](Cpu& c) { describe_squad_status(c, c.r(3), std::int32_t(c.r(5))); })
 STAFF_CONTRACTS_ROUTINE(0x10380d50, R3, [](Cpu& c) { describe_release_summary(c, c.r(3), std::int32_t(c.r(5))); })
 STAFF_CONTRACTS_ROUTINE(0x10380f20, R3, [](Cpu& c) { query_start_date_window(c, c.r(3), c.r(5), c.r(6)); })
+STAFF_CONTRACTS_ROUTINE(0x103810d0, R3, [](Cpu& c) { initialize_fixed_date(c); })

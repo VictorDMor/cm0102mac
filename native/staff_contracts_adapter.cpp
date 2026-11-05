@@ -1,6 +1,7 @@
 #include "staff_contracts_adapter.hpp"
 #include "staff_contracts.hpp"
 #include "routine_check.hpp"
+#include "engine_initialization_adapter.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -58,13 +59,20 @@ void staff_contracts_run_rewrite(State& s, std::uint32_t entry) {
     run_routine(s, find_routine(entry));
 }
 
-bool try_modern_staff_contracts(State& s, std::uint32_t entry) {
-    if (declining || (routine_checker && !routine_checker->wants(entry))) return false;
+void staff_contracts_run_checked_rewrite(State& s, std::uint32_t entry) {
     const auto& routine = find_routine(entry);
     if (routine_checker)
         routine_checker->check(s, entry, staff_contracts_run_original, staff_contracts_run_rewrite,
                                routine.results);
     run_routine(s, routine);
+}
+
+bool try_modern_staff_contracts(State& s, std::uint32_t entry) {
+    if (declining || (routine_checker && !routine_checker->wants(entry))) return false;
+    // Keep the engine's original/profile switch and startup observers at
+    // this entry while STAFF_CONTRACTS supplies its typed implementation.
+    if (entry == fixed_date_entry) return try_modern_engine_initialization(s, entry);
+    staff_contracts_run_checked_rewrite(s, entry);
     return true;
 }
 }

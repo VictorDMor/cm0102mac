@@ -5,8 +5,10 @@
 namespace cm::aot::staff_contracts {
 
 inline constexpr std::uint32_t expiry_entry = 0x10380710;
+inline constexpr std::uint32_t fixed_date_entry = 0x103810d0;
 
 std::uint32_t sample_range(guest::Cpu&, std::int32_t bound);
+void initialize_fixed_date(guest::Cpu&);
 void initialize_draft(guest::Cpu&, std::uint32_t contract);
 void prepare_new_draft(guest::Cpu&, std::uint32_t contract, std::uint32_t staff, std::uint32_t club,
                        std::uint8_t duration);

@@ -20,6 +20,24 @@ void leave_date_frame(Cpu& c) {
 }
 }
 
+void initialize_fixed_date(Cpu& c) {
+    block(c, fixed_date_entry, 9);
+    GuestNativeScope scope(c.s, fixed_date_entry);
+    const auto stack = c.sp(), caller = c.lr();
+    c.set(0, caller);
+    c.set(3, c.toc(-0x628c));
+    c.put32(stack + 8, caller);
+    c.set({{4, 23}, {5, 6}, {6, 1971}});
+    const auto frame = stack - date_frame_size;
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(7, UINT32_MAX);
+    c.call(0x107156f0, 0x103810f4);
+    block(c, 0x103810f4, 4);
+    leave_date_frame(c);
+}
+
 void initialize_draft(Cpu& c, std::uint32_t contract) {
     block(c, 0x103721f0, 7);
     const auto caller_stack = c.sp();

@@ -1,6 +1,8 @@
 #include "engine_initialization_adapter.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
+#include "staff_contracts.hpp"
+#include "staff_contracts_adapter.hpp"
 #include <sstream>
 #include <string_view>
 
@@ -38,6 +40,8 @@ bool try_modern_engine_initialization(State& s, std::uint32_t entry) {
             const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
             if (!dispatch_page(s)) throw std::runtime_error("Missing original engine-initialization body");
             if (s.pc != caller) run_until(s, caller);
+        } else if (entry == staff_contracts::fixed_date_entry) {
+            staff_contracts_run_checked_rewrite(s, entry);
         } else engine_initialization::invoke(s, index);
     } catch (const GuestContextTransfer&) {
         leave(s, index, original, EngineInitializationOutcome::context_transfer); throw;

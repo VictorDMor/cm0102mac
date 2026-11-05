@@ -1,4 +1,5 @@
 #include "staff_contracts.hpp"
+#include "engine_initialization_adapter.hpp"
 #include "localization_format_adapter.hpp"
 #include "staff_contracts_adapter.hpp"
 #include "routine_check.hpp"
@@ -24,12 +25,15 @@ using cm::semantic_io_checks::require;
 using cm::semantic_io_checks::stack;
 using cm::semantic_io_checks::toc;
 using staff_contracts::expiry_entry;
+using staff_contracts::fixed_date_entry;
 
 constexpr std::array date_slots{-0x7b80, -0x79b4, -0x79a8, -0x79ac, -0x79b0, -0x79a0, -0x79a4, -0x799c};
 constexpr std::array date_days{1, 180, 120, 140, 160, 80, 100, 60};
 constexpr auto record = fixture + 0x400;
 constexpr auto dates = fixture + 0x800;
 constexpr auto dates_year = 2001;
+constexpr auto fixed_date = dates + 0x50;
+constexpr auto construct_fixed_date = 0x107156f0u;
 constexpr auto normal_budget = 10000;
 constexpr auto no_hole = UINT32_MAX;
 constexpr std::uint32_t draft_entry = 0x103721f0, delta_entry = 0x10374d10;
@@ -177,7 +181,7 @@ struct DependencyTrace {
     std::optional<std::uint32_t> review_reply, primary_contract, month;
     unsigned dispatched_draft_children = 0;
     ReviewPolicyInputs policy;
-    bool model_review_trigger = false;
+    bool model_review_trigger = false, fixed_date_fixture = false;
 };
 DependencyTrace* dependency_trace = nullptr;
 
@@ -218,7 +222,8 @@ bool trace_dependency(State& s) {
                                   || s.pc == clear_bonus_entry || s.pc == set_release_entry))
         ++trace.dispatched_draft_children;
     const bool draft = trace.primary_contract && (s.pc == find_primary_contract || s.pc == draft_end_date);
-    if (!adjustment && !label && !window && !sample && !clause && !review && !draft
+    const bool fixed = trace.fixed_date_fixture && s.pc == construct_fixed_date;
+    if (!adjustment && !label && !window && !sample && !clause && !review && !draft && !fixed
         && s.pc != default_date && s.pc != difference)
         return false;
     guest::Cpu c(s);
@@ -230,6 +235,15 @@ bool trace_dependency(State& s) {
     for (unsigned n = 0; n < call.arguments.size(); ++n) call.arguments[n] = c.r(n + 3);
     if (adjustment || s.pc == money_value) call.adjustment_input = c.u32(c.r(3));
     trace.calls.push_back(call);
+    if (fixed) {
+        require(c.r(3) == fixed_date && c.r(4) == 23 && c.r(5) == 6 && c.r(6) == 1971 && c.r(7) == UINT32_MAX,
+                "Fixed contract date constructor arguments");
+        c.put16(fixed_date, 174);
+        c.put16(fixed_date + 2, c.r(6));
+        c.put8(fixed_date + 4, 0);
+        c.finish();
+        return true;
+    }
     if (draft) {
         if (s.pc == find_primary_contract) c.set(3, *trace.primary_contract);
         else {
@@ -385,6 +399,7 @@ std::unique_ptr<State> expiry_fixture() {
     s->memory.map(quote_pool, 0x100);
     s->memory.map(toc - 0x4dc0, 4);
     s->memory.map(toc - 0x5b20, 4);
+    s->memory.map(toc - 0x628c, 4);
     s->memory.map(sampling_constants, 0x100);
     s->memory.map(toc - 0x8000, 0x1000);
     s->memory.map(0x108b7ad0, 4);  // Date difference's live scratch pointer.
@@ -398,6 +413,7 @@ std::unique_ptr<State> expiry_fixture() {
     c.put32(toc - 0x4da4, label_pool);
     c.put32(toc - 0x4dc0, squad_table);
     c.put32(toc - 0x5b20, label_pool + 0x21);
+    c.put32(toc - 0x628c, fixed_date);
     c.put32(toc - 0x7ba8, diagnostic_text);
     c.put32(toc - 0x7bac, diagnostic_flag);
     c.put8(diagnostic_flag, 1);
@@ -532,6 +548,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
             return std::string(error.what());
         }
     };
+    const bool fixed_date_fixture = input.pc == fixed_date_entry;
     const bool text_fixture = label_entry(input.pc);
     const bool window_fixture = input.pc == window_entry;
     const bool sample_fixture = input.pc == sampling_entry;
@@ -541,7 +558,8 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const bool policy_fixture = review_policy_entry(input.pc);
     const bool review_fixture = review_state_entry(input.pc) || draft_fixture || policy_fixture;
     const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value()
-        || text_fixture || window_fixture || sample_fixture || clause_fixture || review_fixture || quote_fixture;
+        || text_fixture || window_fixture || sample_fixture || clause_fixture || review_fixture
+        || quote_fixture || fixed_date_fixture;
     if (text_fixture) {
         // Decline the in-place formatting owner at the external boundary.
         // The dispatcher probe then supplies the same fixture on both sides.
@@ -562,14 +580,16 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
                               .transfer_clause = inputs.transfer_clause,
                               .change_release_field = inputs.change_release_field,
                               .review_reply = review_reply, .primary_contract = primary_contract, .month = month,
-                              .policy = inputs.policy, .model_review_trigger = model_review_trigger};
+                              .policy = inputs.policy, .model_review_trigger = model_review_trigger,
+                              .fixed_date_fixture = fixed_date_fixture};
     DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
                               .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture,
                                .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
                               .transfer_clause = inputs.transfer_clause,
                               .change_release_field = inputs.change_release_field,
                               .review_reply = review_reply, .primary_contract = primary_contract, .month = month,
-                              .policy = inputs.policy, .model_review_trigger = model_review_trigger};
+                              .policy = inputs.policy, .model_review_trigger = model_review_trigger,
+                              .fixed_date_fixture = fixed_date_fixture};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
     // Decline the in-place owners for the modeled external dependencies.
     RoutineChecker fixture_filter([model_review_trigger](std::uint32_t entry) {
@@ -1598,6 +1618,34 @@ void review_trigger_cases(Counts& counts) {
         compare_entry(*input, counts, hole);
 }
 
+void fixed_date_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    input->pc = fixed_date_entry;
+    const auto result = compare_entry(*input, counts);
+    require(result.value == fixed_date && result.dependency_calls == 1,
+            "Fixed date returns the constructor result");
+    for (unsigned budget = 1; budget < result.steps; ++budget) {
+        input->budget = budget;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+    compare_entry(*input, counts, toc - 0x628c);
+    compare_entry(*input, counts, fixed_date + 2);
+
+    const auto index = engine_initialization::entry_index(fixed_date_entry);
+    for (bool original : {false, true}) {
+        auto seed = clone(*input);
+        auto& diagnostics = engine_initialization_diagnostics(*seed);
+        diagnostics.entry_original[index] = original;
+        DependencyTrace trace{.calls = {}, .fixed_date_fixture = true};
+        ScopedDependencyProbe probe(&trace);
+        run_until(*seed, return_sentinel);
+        require(diagnostics.calls[index] == unsigned(!original) && diagnostics.returns[index] == unsigned(!original)
+                    && diagnostics.original_calls[index] == unsigned(original) && diagnostics.original_body == 0
+                    && trace.calls.size() == 1, "Engine observers retain the fixed-date selector and accounting");
+    }
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -1652,9 +1700,10 @@ unsigned generated_hooks() {
                               .review_reply = review_fixture ? std::optional(8u) : std::nullopt,
                               .primary_contract = draft_fixture ? std::optional(draft_primary_contract)
                                   : quote_fixture || review_fixture ? std::optional(0u) : std::nullopt,
-                              .month = entry == expiry_text_entry ? std::optional(0u) : std::nullopt};
+                              .month = entry == expiry_text_entry ? std::optional(0u) : std::nullopt,
+                              .fixed_date_fixture = entry == fixed_date_entry};
         ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture || review_fixture || quote_fixture
-                                        ? &trace : nullptr);
+                                        || trace.fixed_date_fixture ? &trace : nullptr);
         const auto before = checker.totals().find(entry);
         const auto prior = before == checker.totals().end() ? 0 : before->second.checked;
         run_until(*s, return_sentinel);
@@ -1695,6 +1744,7 @@ int main() {
         expiry_and_quote_cases(counts);
         review_policy_cases(counts);
         review_trigger_cases(counts);
+        fixed_date_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "
