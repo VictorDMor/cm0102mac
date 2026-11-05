@@ -1,5 +1,5 @@
 #include "staff_contracts.hpp"
-#include "staff_contracts_detail.hpp"
+#include "staff_contracts_review_followup.hpp"
 
 namespace cm::aot::staff_contracts {
 namespace {
@@ -9,7 +9,7 @@ using detail::ContractRecord;
 using guest::Cpu;
 
 constexpr auto status_entry = 0x1037f8a0u, staff_stride = 0x70u;
-constexpr auto review_counter = 0x4cu, staff_contract = 0x14u;
+constexpr auto review_counter = 0x4cu;
 
 void report_status_mask(Cpu& c, const guest::Kept<28>& source, const guest::Kept<27>& diagnostic) {
     const auto frame = c.sp();
@@ -33,8 +33,7 @@ void report_status_mask(Cpu& c, const guest::Kept<28>& source, const guest::Kept
     c.put8(active, 0);
 }
 
-bool needs_followup(Cpu& c, const guest::Kept<29>& draft, const guest::Kept<30>& staff_slot,
-                    const guest::Kept<31>& policy_slot) {
+bool needs_followup(Cpu& c, const guest::Kept<29>& draft, const guest::Kept<30>& staff_slot) {
     auto index = c.u32(draft);
     c.set(0, index);
     auto staff_table = c.u32(staff_slot);
@@ -56,58 +55,7 @@ bool needs_followup(Cpu& c, const guest::Kept<29>& draft, const guest::Kept<30>&
     block(c, 0x1037f978, 3);
     if (record_nonzero(c, c.i8(draft + ContractRecord::terms_flag))) return false;
 
-    block(c, 0x1037f984, 2);
-    c.set(3, draft);
-    detail::call_owned(c, 0x1037f110, 0x1037f98c, has_review_trigger, std::uint32_t(draft));
-    block(c, 0x1037f98c, 2);
-    if (!record_nonzero(c, std::int8_t(c.r(3)))) return false;
-
-    block(c, 0x1037f994, 7);
-    index = c.u32(draft);
-    c.set({{0, index}, {5, 0}});
-    staff_table = c.u32(staff_slot);
-    c.set({{4, staff_table}, {0, index * staff_stride}});
-    c.set(3, c.u32(policy_slot));
-    c.set(4, staff_table + index * staff_stride);
-    c.call(0x103f43b0, 0x1037f9b0);
-    block(c, 0x1037f9b0, 2);
-    if (record_nonzero(c, std::int8_t(c.r(3)))) return false;
-
-    block(c, 0x1037f9b8, 4);
-    const auto review = c.i8(draft + ContractRecord::review_flags);
-    c.set(3, std::uint32_t(review));
-    if (record_nonzero(c, review & 8)) return false;
-    block(c, 0x1037f9c8, 2);
-    if (record_nonzero(c, review & 1)) return false;
-
-    block(c, 0x1037f9d0, 6);
-    index = c.u32(draft);
-    c.set(0, index);
-    staff_table = c.u32(staff_slot);
-    c.set({{4, staff_table}, {0, index * staff_stride}});
-    c.set(3, c.u32(policy_slot));
-    c.set(4, staff_table + index * staff_stride);
-    c.call(0x103e6470, 0x1037f9e8);
-    block(c, 0x1037f9e8, 2);
-    if (record_nonzero(c, std::int8_t(c.r(3)))) return false;
-
-    block(c, 0x1037f9f0, 8);
-    index = c.u32(draft);
-    c.set(0, index);
-    staff_table = c.u32(staff_slot);
-    c.set({{4, staff_table}, {3, index * staff_stride}, {0, index * staff_stride + 0x5c}});
-    const auto age = std::int8_t(c.u16(staff_table + index * staff_stride + 0x5c));
-    c.set(0, std::uint32_t(age));
-    if (guest::compare(c, age, 20) > 0) return true;
-
-    block(c, 0x1037fa10, 5);
-    const auto person = staff_table + index * staff_stride;
-    c.set(3, person);
-    const auto primary = c.u32(person + staff_contract);
-    c.set(3, primary);
-    const auto value = c.i16(primary + 10);
-    c.set(0, guest::extended(value));
-    return guest::compare(c, value, 4250) > 0;
+    return true;
 }
 }
 
@@ -135,13 +83,8 @@ void add_review_status_bits(Cpu& c, std::uint32_t contract, std::uint32_t bits) 
     const auto combined = c.u32(draft + ContractRecord::status) | mask;
     c.set(0, combined);
     c.put32(draft + ContractRecord::status, combined);
-    if (needs_followup(c, draft, staff_slot, policy_slot)) {
-        block(c, 0x1037fa24, 4);
-        const auto manager = c.toc(-0x7b7c);
-        c.set({{3, manager}, {4, draft}});
-        c.set(3, c.u32(manager));
-        c.call(0x1008e350, 0x1037fa34);
-    }
+    if (needs_followup(c, draft, staff_slot))
+        detail::notify_review_followup<0x1037f984>(c, draft, staff_slot, policy_slot);
     block(c, 0x1037fa34, 5);
     const auto restored = c.sp() + 0x80;
     const auto caller = c.u32(restored + 8);

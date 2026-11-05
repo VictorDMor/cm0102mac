@@ -27,6 +27,7 @@ STAFF_CONTRACTS_ROUTINE(0x1037f8a0, R3, [](Cpu& c) { add_review_status_bits(c, c
 STAFF_CONTRACTS_ROUTINE(0x1037fa50, R3, [](Cpu& c) { clear_status_bits(c, c.r(3), c.r(4)); })
 STAFF_CONTRACTS_ROUTINE(0x1037fa60, R3, [](Cpu& c) { reset_status_bits(c, c.r(3)); })
 STAFF_CONTRACTS_ROUTINE(0x1037fa70, R3, [](Cpu& c) { c.set(3, status_bits(c, c.r(3))); })
+STAFF_CONTRACTS_ROUTINE(0x1037fa80, R3, [](Cpu& c) { apply_review_conditions(c, c.r(3), c.r(4), c.r(5)); })
 STAFF_CONTRACTS_ROUTINE(0x10380270, R3, [](Cpu& c) { name_bonus(c, std::int8_t(c.r(3)), c.r(4)); })
 STAFF_CONTRACTS_ROUTINE(0x10380300, R3, [](Cpu& c) { name_option(c, std::int8_t(c.r(3)), c.r(4)); })
 STAFF_CONTRACTS_ROUTINE(0x103803b0, R3, [](Cpu& c) { c.set(3, supports_bonus(c, c.r(3), std::int8_t(c.r(4)))); })

@@ -51,6 +51,7 @@ void set_release_amount(guest::Cpu&, std::uint32_t contract, std::uint32_t amoun
 void reset_review_state(guest::Cpu&, std::uint32_t contract, std::uint32_t staff, std::uint32_t club);
 bool has_review_trigger(guest::Cpu&, std::uint32_t contract);
 void refresh_review_conditions(guest::Cpu&, std::uint32_t contract, std::uint32_t context);
+void apply_review_conditions(guest::Cpu&, std::uint32_t contract, std::uint32_t conditions, std::uint32_t context);
 void add_review_status_bits(guest::Cpu&, std::uint32_t contract, std::uint32_t bits);
 void clear_review_condition(guest::Cpu&, std::uint32_t contract, std::uint32_t mask);
 void clear_review_conditions(guest::Cpu&, std::uint32_t contract, std::uint32_t refresh);

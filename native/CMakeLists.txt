@@ -53,6 +53,7 @@ set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.
     staff_contracts_expiry_text.cpp staff_contracts_quote.cpp staff_contracts_renewal.cpp
     staff_contracts_terms_valuation.cpp
     staff_contracts_review_refresh.cpp staff_contracts_review_status.cpp staff_contracts_review_trigger.cpp
+    staff_contracts_review_consequences.cpp
     staff_contracts_adapter.cpp)
 target_sources(cm_aot PRIVATE ${CM_STAFF_CONTRACTS_SOURCES})
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
