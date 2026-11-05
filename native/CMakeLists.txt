@@ -4548,6 +4548,10 @@ target_compile_options(cm-hall-of-fame-checks PRIVATE -Wall -Wextra -Werror -Wpe
 add_test(NAME hall_of_fame_equivalence COMMAND cm-hall-of-fame-checks)
 add_test(NAME hall_of_fame_persistence COMMAND cm-hall-of-fame-checks --persistence)
 add_test(NAME hall_of_fame_import COMMAND cm-hall-of-fame-checks --import)
+add_test(NAME hall_of_fame_categories COMMAND cm-hall-of-fame-checks --categories)
+if(CM_ORACLE_DIR)
+    add_test(NAME hall_of_fame_category_fallback COMMAND cm-hall-of-fame-checks --category-fallback "${CM_ORACLE_DIR}")
+endif()
 set_tests_properties(hall_of_fame_persistence PROPERTIES ENVIRONMENT "CM_UTILS_ORIGINAL=1")
 if(Python3_EXECUTABLE)
     add_test(NAME hall_of_fame_audit

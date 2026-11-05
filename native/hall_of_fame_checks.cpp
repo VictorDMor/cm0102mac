@@ -33,6 +33,11 @@ constexpr auto file_contents = fixture + 0x100000;
 constexpr auto record_constructor = fixture + 0xb00, active_table_slot = fixture + 0xb10;
 constexpr auto imported_table = fixture + 0x180000;
 constexpr unsigned file_capacity = table_size + 12;
+constexpr auto category_name = 0x10142a10u, sorted_categories = 0x101430a0u, compare_categories = 0x10143180u;
+constexpr auto category_switch = fixture + 0x2000, category_order = fixture + 0x2100;
+constexpr auto category_descriptor = fixture + 0x2120, characters = fixture + 0x2200;
+constexpr auto category_output = fixture + 0x2600;
+constexpr int category_mode = -0x3953;
 constexpr auto read_item_entry = 0x10775fe0u, write_item_entry = 0x10776360u;
 using Call = std::array<std::uint32_t, 34>;
 std::vector<Call>* call_trace = nullptr;
@@ -50,6 +55,18 @@ std::string text_at(Cpu& c, std::uint32_t from) {
         result.push_back(char(ch));
     }
     throw std::runtime_error("Fixture name is missing its terminator");
+}
+
+std::uint32_t category_label(unsigned id) {
+    if (id == 0) return 0x10142acc;
+    if (id == 1) return 0x10142af8;
+    return 0x10142b28 + (id - 2) * 0x30;
+}
+
+std::string fixture_category_phrase(unsigned offset, bool compact) {
+    // Reverse the compact order and keep the full labels ascending. This
+    // makes changing or losing the format flag observable in the actual sort.
+    return std::to_string(compact ? 9000 - offset : 1000 + offset);
 }
 
 bool dependencies(State& s) {
@@ -148,7 +165,14 @@ bool dependencies(State& s) {
         put_text(c, c.r(3), text_at(c, c.r(4)));
         break;
     case 0x10727890:
-        if (lr == 0x101419d8 || lr == 0x101419e4) {
+        if (lr >= 0x10142ae0 && lr <= 0x10142fd0) {
+            const auto offset = c.r(4) - source;
+            const bool compact = std::int8_t(c.r(6)) != 0;
+            require(offset >= 0x113 && offset <= 0x711 && c.r(3), "category localization arguments");
+            if (compact && offset != 0x113)
+                require(c.r(5) == source + 0x15c && !c.u8(c.r(5)), "compact category marker substitution");
+            put_text(c, c.r(3), fixture_category_phrase(offset, compact));
+        } else if (lr == 0x101419d8 || lr == 0x101419e4) {
             const bool title = lr == 0x101419d8;
             require(c.r(3) == frame + (title ? 0x10c : 0x170) && c.r(4) == source + (title ? 0x5a : 0x6f),
                     "open error formatting");
@@ -173,6 +197,14 @@ bool dependencies(State& s) {
         call_trace->push_back(call);
         return false;
     case 0x10768300: {
+        if (lr == 0x1014315c) {
+            require(c.r(3) == category_order && c.r(4) == 27 && c.r(5) == 1 && c.r(6) == category_descriptor,
+                    "category sort arguments");
+            for (unsigned i = 0; i < 27; ++i)
+                require(c.u8(category_order + i) == i, "category list initialized before sort");
+            call_trace->push_back(call);
+            return false;
+        }
         const auto bucket = c.r(3);
         require(bucket >= table && bucket < table + 27 * bucket_size && c.r(4) == 100 &&
                     c.r(5) == row_size && c.r(6) == rank_descriptor, "ranking sort arguments");
@@ -839,6 +871,113 @@ void check_import() {
     std::cout << comparisons << " Hall of Fame import and ranked merge comparisons with the shared comparator and sorter\n";
 }
 
+void check_categories() {
+    std::mt19937 random(0x4c414245);
+    auto state = score_seed(random);
+    state->memory.map(category_switch, 0x800);
+    Cpu c(*state);
+    c.put32(toc - 0x54dc, category_switch);
+    c.put32(toc - 0x54e0, category_order);
+    c.put32(toc - 0x54e4, category_descriptor);
+    c.put32(toc - 0x3e3c, characters);
+    c.put8(toc - 0x35ac, 1);
+    c.put32(category_descriptor, compare_categories);
+    c.put32(category_descriptor + 4, toc);
+    for (unsigned i = 0; i < 27; ++i) c.put32(category_switch + 4 * i, category_label(i));
+    for (unsigned i = 0; i < 256; ++i)
+        for (unsigned column = 0; column < 3; ++column) c.put8(characters + 3 * i + column, i);
+
+    Model model;
+    unsigned comparisons = 0;
+    const auto check_name = [&](std::uint32_t id, std::uint32_t out, std::uint32_t size, std::uint32_t mode,
+                                bool valid) {
+        put_text(c, category_output, "unchanged");
+        c.set({{3, id}, {4, out}, {5, size}, {6, mode}});
+        state->pc = category_name;
+        auto result = compare_call(*state, Stop::returned);
+        ++comparisons;
+        Cpu after(*result);
+        require(after.r(3) == valid && after.u8(success) == valid &&
+                    after.u32(message) == (valid ? 0u : 0x3d8u), "category label result and assertion");
+        const auto rendered = text_at(after, category_output);
+        if (valid) require(rendered.size() == 4 && rendered != "unchanged", "category label uses formatter output");
+        else require(rendered == "unchanged", "bad label leaves output buffer alone");
+        return rendered;
+    };
+    for (unsigned i = 0; i < 27; ++i)
+        for (unsigned mode : {0x100u, 0x180u})
+            check_name(0xabc00000 | i, category_output, 50, mode, true);
+    require(check_name(0, category_output, 200, 1, true) == fixture_category_phrase(0x113, true) &&
+                check_name(26, category_output, 200, 0, true) == fixture_category_phrase(0x711, false),
+            "boundary category names use the right language key");
+    c.put32(category_switch, category_label(26));
+    require(check_name(0, category_output, 50, 0, true) == fixture_category_phrase(0x711, false),
+            "category selection reads the live jump table");
+    c.put32(category_switch, category_label(0));
+    check_name(0x80, category_output, 50, 0, false);
+    check_name(27, category_output, 50, 0, false);
+    check_name(0, 0, 50, 0, false);
+    check_name(0, category_output, 49, 0, false);
+    check_name(0, category_output, UINT32_MAX, 0, false);
+
+    constexpr unsigned null = 256;
+    struct CompareCase { unsigned left, right; int full, compact; };
+    for (auto test : std::array{
+            CompareCase{null, null, 1, 1}, CompareCase{null, 1, 1, 1}, CompareCase{1, null, -1, -1},
+            CompareCase{0, 1, -1, -1}, CompareCase{1, 0, 1, 1}, CompareCase{0, 0, 0, 0},
+            CompareCase{2, 26, -1, 1}, CompareCase{26, 2, 1, -1}, CompareCase{17, 17, 0, 0}}) {
+        for (unsigned mode : {0u, 1u}) {
+            c.put8(first, test.left);
+            c.put8(second, test.right);
+            c.put8(toc + std::uint32_t(category_mode), mode);
+            c.set({{3, test.left == null ? 0 : first}, {4, test.right == null ? 0 : second}});
+            state->pc = compare_categories;
+            auto result = compare_call(*state, Stop::returned);
+            ++comparisons;
+            require(std::int32_t(Cpu(*result).r(3)) == (mode ? test.compact : test.full),
+                    "category order uses special cases and shared text comparison");
+        }
+    }
+
+    for (unsigned mode : {0x100u, 0x180u}) {
+        c.set(3, mode);
+        state->pc = sorted_categories;
+        auto result = compare_call(*state, Stop::returned);
+        ++comparisons;
+        Cpu after(*result);
+        require(after.r(3) == category_order && after.u8(category_order) == 0 &&
+                    after.u8(toc + std::uint32_t(category_mode)) == (mode & 0xff),
+                "sort returns the category list and keeps the selected format");
+        for (unsigned i = 1; i < 27; ++i)
+            require(after.u8(category_order + i) == ((mode & 0xff) ? 27 - i : i),
+                    "actual sorter uses the selected category names after the fixed first row");
+    }
+    std::cout << comparisons << " Hall of Fame category comparisons with localization arguments and actual sorting\n";
+}
+
+void check_category_fallback(const char* program) {
+    auto state = std::make_unique<State>();
+    load_program(*state, program);
+    state->memory.map(fixture, 0x3000);
+    state->budget = 200000;
+    Cpu c(*state);
+    c.set({{1, stack}, {2, toc}});
+    c.set_lr(done);
+    c.put32(toc - 0x54cc, source);
+    c.put8(toc - 0x35ac, 0xff);
+    put_text(c, source + 0x130, "Aster<%s - COMMENT - menu>");
+    put_text(c, source + 0x15d, "Aster League");
+    for (unsigned mode : {0u, 1u}) {
+        c.set({{3, 1}, {4, category_output}, {5, 200}, {6, mode}});
+        state->pc = category_name;
+        auto result = compare_call(*state, Stop::returned);
+        Cpu after(*result);
+        require(after.r(3) == 1 && text_at(after, category_output) == (mode ? "Aster" : "Aster League"),
+                "shared formatter renders category labels when translations are unavailable");
+    }
+    std::cout << "2 Hall of Fame category comparisons with the actual formatter fallback\n";
+}
+
 }
 
 int main(int argc, char** argv) try {
@@ -848,6 +987,14 @@ int main(int argc, char** argv) try {
     }
     if (argc == 2 && std::string_view(argv[1]) == "--import") {
         check_import();
+        return 0;
+    }
+    if (argc == 2 && std::string_view(argv[1]) == "--categories") {
+        check_categories();
+        return 0;
+    }
+    if (argc == 3 && std::string_view(argv[1]) == "--category-fallback") {
+        check_category_fallback(argv[2]);
         return 0;
     }
     require(argc == 1, "unknown Hall of Fame checker option");

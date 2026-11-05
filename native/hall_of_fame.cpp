@@ -1340,6 +1340,248 @@ void validate_file(Cpu& c) {
     c.finish();
 }
 
+constexpr auto category_name_entry = 0x10142a10u;
+constexpr auto sorted_categories_entry = 0x101430a0u, compare_categories_entry = 0x10143180u;
+constexpr int category_label_mode = -0x3953;
+
+struct CategoryPhrase {
+    unsigned compact, full;
+};
+
+constexpr std::array<CategoryPhrase, 27> category_phrases{{
+    {0x113, 0x11d}, {0x130, 0x15d}, {0x170, 0x19c}, {0x1ae, 0x1d8},
+    {0x1e7, 0x210}, {0x221, 0x24b}, {0x25b, 0x285}, {0x293, 0x2bd},
+    {0x2cc, 0x2f6}, {0x305, 0x32e}, {0x33c, 0x366}, {0x374, 0x39d},
+    {0x3aa, 0x3d4}, {0x3e1, 0x417}, {0x424, 0x44c}, {0x45b, 0x483},
+    {0x493, 0x4c6}, {0x4dc, 0x505}, {0x516, 0x53f}, {0x54d, 0x578},
+    {0x58a, 0x5b3}, {0x5c2, 0x5ed}, {0x5fd, 0x625}, {0x634, 0x65d},
+    {0x66c, 0x695}, {0x6a4, 0x6d4}, {0x6e9, 0x711},
+}};
+
+unsigned category_at_label(std::uint32_t label) {
+    if (label == 0x10142acc) return 0;
+    if (label == 0x10142af8) return 1;
+    const auto offset = label - 0x10142b28;
+    if (offset > 24 * 0x30 || offset % 0x30)
+        throw std::runtime_error("Unrecognized Hall of Fame category label " + hex_address(label));
+    return 2 + offset / 0x30;
+}
+
+void format_category(Cpu& c, unsigned category, std::uint32_t out, std::uint32_t source) {
+    block(c, 0x10142ab0, 2);
+    c.compare_logical(0, category, 26);
+    block(c, 0x10142ab8, 5);
+    const auto table = c.toc(-0x54dc);
+    c.set(3, table);
+    c.set(0, category * 4);
+    const auto label = c.u32(table + category * 4);
+    c.set(3, label);
+    set_ctr(c, label);
+
+    block(c, label, 2);
+    const auto mode = std::int8_t(c.r(6));
+    c.set(0, std::uint32_t(mode));
+    record_compare(c, mode);
+    const auto& phrase = category_phrases[category_at_label(label)];
+    const bool has_marker = label != 0x10142acc;
+    const auto full = label + (has_marker ? 28 : 24);
+    const auto done = full + 12;
+    if (mode) {
+        const unsigned count = has_marker ? 4 : 3;
+        block(c, label + 8, count);
+        c.set({{3, out}, {4, source + phrase.compact}});
+        if (has_marker) c.set(5, source + 0x15c);
+        const auto resume = label + 8 + count * 4;
+        c.call(0x10727890, resume);
+        block(c, resume, 1);
+    } else {
+        block(c, full, 3);
+        c.set({{3, out}, {4, source + phrase.full}});
+        c.call(0x10727890, done);
+    }
+    block(c, done, 2);
+    c.set(3, 1);
+}
+
+void category_name(Cpu& c) {
+    GuestNativeScope scope(c.s, category_name_entry);
+    block(c, category_name_entry, 11);
+    const auto caller = c.sp(), out = c.r(4);
+    const auto category = std::int8_t(c.r(3));
+    const auto capacity = std::int32_t(c.r(5));
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    const auto source = c.toc(-0x54cc);
+    c.set(31, source);
+    c.put32(caller - 8, c.r(30));
+    const auto message = c.toc(-0x7ba8);
+    c.set(30, message);
+    c.put32(caller - 12, c.r(29));
+    const auto success = c.toc(-0x7bac);
+    c.set(29, success);
+    c.put32(caller + 8, c.r(0));
+    c.set(0, std::uint32_t(category));
+    record_compare(c, category);
+    push_frame(c, scope, caller, caller - 0xa0);
+
+    const bool valid = [&] {
+        if (category < 0) return false;
+        block(c, 0x10142a3c, 3);
+        c.compare(0, category, 26);
+        if (category > 26) return false;
+        block(c, 0x10142a48, 2);
+        c.compare_logical(0, out, 0);
+        if (!out) return false;
+        block(c, 0x10142a50, 2);
+        c.compare(0, capacity, 50);
+        return capacity >= 50;
+    }();
+    if (valid) format_category(c, category, out, source);
+    else {
+        report_message(c, 0x10142a58, source, message, 0x68, 0x40, 0x3d8);
+        block(c, 0x10142aa0, 4);
+        c.set({{0, 0}, {3, 0}});
+        c.put8(success, 0);
+    }
+    block(c, 0x1014302c, 7);
+    restore_link(c, caller);
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.set(29, c.u32(caller - 12));
+    c.finish();
+}
+
+void initialize_category_order(Cpu& c, std::uint32_t list) {
+    // The original writes sequentially in groups of eight. Preserve the
+    // register values at each store as well as the final byte sequence.
+    for (unsigned first = 0; ; first += 8) {
+        block(c, 0x1014311c, 3);
+        c.set(0, first);
+        c.compare(0, first, 19);
+        if (first >= 19) break;
+        block(c, 0x101430bc, 24);
+        c.set({{8, first + 5}, {6, first + 1}});
+        c.put8(list + first, first);
+        c.set({{0, first + 1}, {4, first + 2}});
+        c.put8(list + first + 1, first + 1);
+        c.set({{0, first + 2}, {5, first + 3}, {9, first + 4}});
+        c.put8(list + first + 2, first + 2);
+        c.set({{0, first + 3}, {7, first + 5}, {6, first + 6}});
+        c.put8(list + first + 3, first + 3);
+        c.set({{0, first + 4}, {4, first + 7}, {5, first + 6}});
+        c.put8(list + first + 4, first + 4);
+        c.set({{0, first + 7}, {10, first + 8}});
+        for (unsigned i = 5; i < 8; ++i) c.put8(list + first + i, first + i);
+    }
+    block(c, 0x10143128, 1);
+    for (unsigned id = 24; ; ++id) {
+        block(c, 0x10143138, 3);
+        c.set(0, id);
+        c.compare(0, id, 27);
+        if (id == 27) break;
+        block(c, 0x1014312c, 3);
+        c.put8(list + id, id);
+        c.set(10, id + 1);
+    }
+}
+
+void sorted_categories(Cpu& c) {
+    GuestNativeScope scope(c.s, sorted_categories_entry);
+    block(c, sorted_categories_entry, 7);
+    const auto caller = c.sp(), mode = c.r(3);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    const auto list = c.toc(-0x54e0);
+    c.set({{31, list}, {10, 0}});
+    c.put32(caller + 8, c.r(0));
+    push_frame(c, scope, caller, caller - 0x40);
+    initialize_category_order(c, list);
+    block(c, 0x10143144, 6);
+    c.put8(c.r(2) + std::uint32_t(category_label_mode), mode);
+    c.set(3, list);
+    c.set(6, c.toc(-0x54e4));
+    c.set({{4, 27}, {5, 1}});
+    c.call(0x10768300, 0x1014315c);
+    block(c, 0x1014315c, 6);
+    c.set(3, list);
+    restore_link(c, caller);
+    c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
+bool nonzero_category(Cpu& c, std::uint32_t id) {
+    const auto value = std::int8_t(id);
+    c.set(0, std::uint32_t(value));
+    record_compare(c, value);
+    return value != 0;
+}
+
+void compare_category_names(Cpu& c, std::uint32_t right) {
+    const auto frame = c.sp();
+    block(c, 0x101431e8, 4);
+    c.set({{6, c.u8(c.r(2) + std::uint32_t(category_label_mode))}, {4, frame + 0x100}, {5, 200}});
+    call_owned(c, category_name_entry, 0x101431f8, category_name);
+    block(c, 0x101431f8, 5);
+    c.set({{6, c.u8(c.r(2) + std::uint32_t(category_label_mode))},
+           {3, right}, {4, frame + 0x38}, {5, 200}});
+    call_owned(c, category_name_entry, 0x1014320c, category_name);
+    block(c, 0x1014320c, 5);
+    c.set({{3, frame + 0x100}, {4, frame + 0x38}, {5, 1}, {6, 0}});
+    c.call(0x107465f0, 0x10143220);
+}
+
+void compare_category_rows(Cpu& c, std::uint32_t left_at, std::uint32_t right_at) {
+    block(c, 0x101431b0, 4);
+    const auto left = c.u8(left_at);
+    c.set(3, left);
+    const auto right = c.u8(right_at);
+    c.set(31, right);
+    if (!nonzero_category(c, left)) {
+        block(c, 0x101431c0, 2);
+        if (nonzero_category(c, right)) {
+            block(c, 0x101431c8, 2);
+            c.set(3, UINT32_MAX);
+            return;
+        }
+    }
+    block(c, 0x101431d0, 2);
+    if (nonzero_category(c, left)) {
+        block(c, 0x101431d8, 2);
+        if (!nonzero_category(c, right)) {
+            block(c, 0x101431e0, 2);
+            c.set(3, 1);
+            return;
+        }
+    }
+    compare_category_names(c, right);
+}
+
+void compare_categories(Cpu& c) {
+    GuestNativeScope scope(c.s, compare_categories_entry);
+    block(c, compare_categories_entry, 6);
+    const auto caller = c.sp(), left = c.r(3), right = c.r(4);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.compare_logical(0, left, 0);
+    c.put32(caller + 8, c.r(0));
+    push_frame(c, scope, caller, caller - 0x1d0);
+    if (!left) {
+        block(c, 0x10143198, 2);
+        c.set(3, 1);
+    } else {
+        block(c, 0x101431a0, 2);
+        c.compare_logical(0, right, 0);
+        if (!right) {
+            block(c, 0x101431a8, 2);
+            c.set(3, UINT32_MAX);
+        } else compare_category_rows(c, left, right);
+    }
+    block(c, 0x10143220, 5);
+    restore_link(c, caller);
+    c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
 void construct_table(Cpu& c) {
     GuestNativeScope scope(c.s, construct_table_entry);
     block(c, construct_table_entry, 10);
@@ -1382,6 +1624,9 @@ void hall_of_fame_run_rewrite(State& state, std::uint32_t entry) {
     case merge_record_entry: merge_record(c); break;
     case import_file_entry: import_file(c); break;
     case validate_file_entry: validate_file(c); break;
+    case category_name_entry: category_name(c); break;
+    case sorted_categories_entry: sorted_categories(c); break;
+    case compare_categories_entry: compare_categories(c); break;
     case construct_table_entry: construct_table(c); break;
     case read_file_entry: table_file<false>(c); break;
     case write_file_entry: table_file<true>(c); break;

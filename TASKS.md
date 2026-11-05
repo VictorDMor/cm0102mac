@@ -18,7 +18,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **HALL_OF_FAME.CPP reconstruction.** Inventory closed at 20 entries and 2,736 reachable instructions. Fifteen entries are verified locally and selected by default, including file import, ranked merging and file-picker validation. Remaining entries cover localized category labels, sorting and reporting, and the static table initializer currently owned by engine initialization. Private evidence is in `.local/rewrites/hall_of_fame/`.
+- [ ] **HALL_OF_FAME.CPP reconstruction.** Inventory closed at 20 entries and 2,736 reachable instructions. Eighteen entries are verified locally and selected by default, including localized category labels and sorting. Finish the text report and the static table initializer currently owned by engine initialization, then verify the full module. Private evidence is in `.local/rewrites/hall_of_fame/`.
 
 - [ ] **Install the verified Greek rulebook build.** All four rb_greece.cpp entries are complete and published in `a245f3e`. The tracker is verified. The guarded installer found the game running. Retry the verified ARM64 build from `0b26810` with the game closed. It includes the Greek rulebook and checked frame restore. Verify the installed build and update the tracker note.
 
