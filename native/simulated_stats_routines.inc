@@ -1,3 +1,4 @@
+SIMULATED_STATS_ROUTINE(0x1036ff60, initialize_stats)
 SIMULATED_STATS_ROUTINE(0x10370830, sample_stats_range)
 SIMULATED_STATS_ROUTINE(0x10370db0, destroy_stats)
 SIMULATED_STATS_ROUTINE(0x10371d90, count_squad_candidates)

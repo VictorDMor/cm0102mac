@@ -1,6 +1,7 @@
 #include "simulated_stats_adapter.hpp"
 #include "guest_values.hpp"
 #include "guest_range_sampler.hpp"
+#include "simulated_stats_detail.hpp"
 #include "routine_check.hpp"
 
 #include <algorithm>
@@ -12,6 +13,10 @@ namespace {
 using guest::Cpu;
 using guest::compare;
 using guest::compare_logical;
+using simulated_stats_detail::RandomPool;
+using simulated_stats_detail::RangeDraw;
+
+bool declining = std::getenv("CM_SIMULATED_STATS_ORIGINAL") != nullptr;
 
 constexpr std::uint32_t destroy_entry = 0x10370db0, count_entry = 0x10371d90;
 constexpr unsigned stats_rows = 4, staff_profile = 0x14, squad_entries = 0x98, squad_capacity = 50;
@@ -321,6 +326,467 @@ void sample_stats_range(Cpu& c) {
     c.finish();
 }
 
+void call_stats(Cpu& c, std::uint32_t entry, std::uint32_t resume, void (*operation)(Cpu&)) {
+    if (declining || routine_checker) {
+        c.call(entry, resume);
+        return;
+    }
+    c.link(resume);
+    operation(c);
+    if (c.s.pc != resume) run_until(c.s, resume);
+}
+
+void advance_stats_pool(Cpu& c, const RandomPool& pool, std::uint32_t pc) {
+    block(c, pc, 6);
+    const auto current = c.u32(pool.cursor);
+    c.set(3, current);
+    const auto last = c.u32(pool.end);
+    const auto next = current + 2;
+    c.set({{0, last}, {3, next}});
+    const bool wrap = compare_logical(c, next, last) > 0;
+    c.put32(pool.cursor, next);
+    if (!wrap) return;
+    block(c, pc + 24, 2);
+    c.put32(pool.cursor, pool.begin);
+    c.call(0x1077b770, pc + 32);
+    block(c, pc + 32, 2);
+    c.set(0, c.r(3) & 0xffff);
+    c.put32(pool.salt, c.r(0));
+}
+
+constexpr auto initialize_entry = 0x1036ff60u;
+constexpr unsigned initialize_frame_size = 0x3f0;
+
+struct InitialStats {
+    Cpu& c;
+    std::uint32_t object() const { return c.r(31); }
+    std::uint32_t list() const { return c.r(15); }
+    std::uint32_t strings() const { return c.r(29); }
+    std::uint32_t eligible() const { return c.r(16); }
+    RandomPool pool() const { return {c.r(22), c.r(23), c.r(24), c.r(25), c.r(26)}; }
+};
+
+void check_stats_media(InitialStats& stats) {
+    auto& c = stats.c;
+    const auto frame = c.sp();
+    do {
+        block(c, 0x1036ffc4, 15);
+        c.set(20, c.u32(c.r(14)));
+        c.set(3, frame + 0xf5);
+        c.set(12, c.u32(c.r(14) + 4));
+        c.set(4, frame + 0x99);
+        c.set(11, c.u32(c.r(14) + 8));
+        c.set(5, frame + 0x49);
+        c.set(10, c.u32(c.r(14) + 12));
+        c.set(19, 0);
+        c.set(9, c.u8(c.r(14) + 16));
+        c.set(8, c.u32(c.r(15)));
+        c.set(7, c.u32(c.r(15) + 4));
+        c.set(6, c.u32(c.r(15) + 8));
+        c.set(0, c.u32(c.r(15) + 12));
+        c.put32(frame + 0x98, c.r(20));
+        c.put32(frame + 0x9c, c.r(12));
+        block(c, 0x10370000, 8);
+        c.put32(frame + 0xa0, c.r(11));
+        c.put32(frame + 0xa4, c.r(10));
+        c.put8(frame + 0xa8, c.r(9));
+        c.put32(frame + 0x48, c.r(8));
+        c.put32(frame + 0x4c, c.r(7));
+        c.put32(frame + 0x50, c.r(6));
+        c.put32(frame + 0x54, c.r(0));
+        for (;;) {
+            block(c, 0x1037003c, 3);
+            if (!record_value(c, 0, c.i8(c.r(4)))) break;
+            block(c, 0x10370020, 7);
+            c.set(6, c.u8(c.r(4)));
+            c.set(4, c.r(4) + 1);
+            c.set(0, c.u8(c.r(5)));
+            c.set(5, c.r(5) + 1);
+            c.put8(c.r(3), c.r(6));
+            c.put8(c.r(3) + 1, c.r(0));
+            c.set(3, c.r(3) + 2);
+        }
+        block(c, 0x10370048, 9);
+        c.set(7, c.u8(frame + 0x98));
+        c.set(5, frame + 0xf4);
+        c.set(0, c.u8(frame + 0x48));
+        c.set({{6, frame + 0xac}, {3, 0}, {4, 0}, {0, c.r(7) + c.r(0)}});
+        c.put8(frame + 0xf4, c.r(0));
+        c.call(0x1077fee0, 0x1037006c);
+        block(c, 0x1037006c, 3);
+        c.set(2, c.u32(frame + 0x14));
+        if (!record_value(c, 0, std::int16_t(c.r(3)))) {
+            block(c, 0x10370078, 1);
+            c.set(19, 1);
+        }
+        block(c, 0x1037007c, 2);
+        if (!compare(c, std::int32_t(c.r(19)))) {
+            block(c, 0x10370084, 3);
+            c.set({{4, stats.strings()}, {3, frame + 0x2bc}});
+            c.call(0x10727890, 0x10370090);
+            block(c, 0x10370090, 3);
+            c.set({{3, frame + 0x1f4}, {4, stats.strings() + 10}});
+            c.call(0x10727890, 0x1037009c);
+            block(c, 0x1037009c, 4);
+            c.set({{3, frame + 0x2bc}, {4, frame + 0x1f4}, {5, 1}});
+            c.call(0x10769b60, 0x103700ac);
+        }
+        block(c, 0x103700ac, 2);
+    } while (!compare(c, std::int32_t(c.r(19))));
+}
+
+void report_stats_initialization(InitialStats& stats, bool allocation) {
+    auto& c = stats.c;
+    const auto pc = allocation ? 0x103700e4u : 0x10370744u;
+    const auto message = c.sp() + (allocation ? 0x78 : 0x58);
+    const auto detail = c.sp() + (allocation ? 0x40 : 0x38);
+    block(c, pc, 6);
+    c.set({{3, stats.strings() + 0x37}, {6, message}, {7, detail}, {4, 0}, {5, 0}});
+    c.call(0x10739890, pc + 24);
+    block(c, pc + 24, 1);
+    c.link(pc + 28);
+    c.set(3, c.toc(-0x5b20));
+    c.s.charge(2);
+    block(c, pc + 28, 7);
+    c.set({{5, c.r(3)}, {3, c.r(28)}, {4, stats.strings() + 0x4b},
+           {6, message}, {7, detail}, {8, allocation ? 0x49u : 0x95u}});
+    c.call(0x1077b720, pc + 56);
+    block(c, pc + 56, 4);
+    c.set({{4, c.r(28)}, {3, stats.strings() + 0x58}, {5, 0}});
+    c.call(0x10769b60, pc + 72);
+    block(c, pc + 72, allocation ? 4 : 2);
+    c.set(0, 0);
+    if (allocation) c.set(3, UINT32_MAX);
+    c.put8(c.r(27), 0);
+    if (allocation) c.call(0x1076f7d0, 0x1037013c);
+}
+
+bool stats_competition_selected(Cpu& c, std::uint32_t club, std::uint32_t competitions_slot,
+                                unsigned club_field, std::uint32_t pc) {
+    block(c, pc, 3);
+    const auto competition = c.u32(club + club_field);
+    c.set(3, competition);
+    if (!compare_logical(c, competition)) return false;
+    block(c, pc + 12, 6);
+    const auto id = c.u32(competition);
+    c.set(0, id);
+    const auto competitions = c.u32(competitions_slot);
+    c.set({{3, competitions}, {0, id * 4}});
+    const auto selected = c.u32(competitions + id * 4);
+    c.set(0, selected);
+    return compare_logical(c, selected) != 0;
+}
+
+void collect_stats_clubs(InitialStats& stats) {
+    auto& c = stats.c;
+    block(c, 0x1037013c, 4);
+    const auto clubs_slot = c.r(17), count_slot = c.r(21), competitions_slot = c.r(18);
+    // These locals cross guest callbacks, whose stack frames expose the saved
+    // values. Kept retains that boundary while naming the collection algorithm.
+    guest::Kept<20> club(c, c.u32(clubs_slot));
+    guest::Kept<19> index(c, 0);
+    guest::Kept<14> club_offset(c, 0);
+    guest::Kept<13> list_offset(c, c.r(13));
+    for (;;) {
+        block(c, 0x103701d4, 3);
+        c.set(0, c.u32(count_slot));
+        if (compare(c, std::int32_t(std::uint32_t(index)), std::int32_t(c.r(0))) >= 0) break;
+        if (!stats_competition_selected(c, club, competitions_slot, 0x30, 0x10370150)
+                && !stats_competition_selected(c, club, competitions_slot, 0x38, 0x10370174)) {
+            block(c, 0x10370198, 5);
+            const auto service = c.toc(-0x7a64);
+            c.set(3, service);
+            c.set(0, c.u32(clubs_slot));
+            c.set(3, c.u32(service));
+            c.set(4, c.r(0) + club_offset);
+            c.call(0x102b7c00, 0x103701ac);
+            block(c, 0x103701ac, 2);
+            if (!record_value(c, 0, std::int8_t(c.r(3)))) {
+                block(c, 0x103701b4, 5);
+                const auto clubs = c.u32(clubs_slot);
+                c.set({{3, clubs}, {16, stats.eligible() + 1}});
+                const auto id = c.u32(clubs + club_offset);
+                c.set(0, id);
+                c.put32(stats.list() + list_offset, id);
+                list_offset = list_offset + 4;
+            }
+        }
+        block(c, 0x103701c8, 3);
+        club_offset = club_offset + club_stride;
+        index = index + 1;
+        club = club + club_stride;
+    }
+    block(c, 0x103701e0, 9);
+    const auto count = std::int32_t(stats.eligible());
+    const auto sign = stats.eligible() >> 31;
+    const auto rotated = std::rotl((stats.eligible() << 28) - sign, 4);
+    const auto quotient = count / 16;
+    const auto shift = std::uint32_t(count >> 4);
+    const bool carry = count < 0 && (stats.eligible() & 15);
+    c.set({{0, rotated}, {3, sign}, {4, std::uint32_t(quotient)}});
+    c.s.wr<1>(guest::reg::xer_ca, std::uint64_t(shift) + unsigned(carry) > UINT32_MAX);
+    const auto remainder = rotated + sign;
+    const bool partial = record_value(c, 14, std::int32_t(remainder)) != 0;
+    c.put32(stats.object(), std::uint32_t(quotient));
+    if (partial) {
+        block(c, 0x10370204, 3);
+        c.set(3, c.u32(stats.object()));
+        c.set(0, c.r(3) + 1);
+        c.put32(stats.object(), c.r(0));
+    }
+}
+
+void sort_stats_clubs(InitialStats& stats) {
+    auto& c = stats.c;
+    const auto clubs_slot = c.r(17);
+    const auto count = stats.eligible();
+    block(c, 0x10370210, 4);
+    std::uint32_t position = 0, current = stats.list();
+    const auto last = count - 1;
+    c.set({{5, current}, {7, last}, {3, position}});
+    for (;;) {
+        block(c, 0x10370288, 2);
+        if (compare(c, std::int32_t(position), std::int32_t(last)) >= 0) break;
+        block(c, 0x10370220, 7);
+        auto candidate = position + 1;
+        auto displacement = candidate * 4;
+        auto next = stats.list() + displacement;
+        auto remaining = count - candidate;
+        c.set({{4, candidate}, {10, displacement}, {0, remaining}, {6, next}});
+        c.s.wr<4>(guest::reg::ctr, remaining);
+        if (compare(c, std::int32_t(candidate), std::int32_t(count)) < 0) {
+            do {
+                block(c, 0x1037023c, 11);
+                const auto first = c.u32(current);
+                c.set(12, first);
+                const auto second = c.u32(next);
+                c.set({{13, second}, {9, first * club_stride}});
+                const auto clubs = c.u32(clubs_slot);
+                c.set({{11, clubs}, {8, second * club_stride}, {0, first * club_stride + 0x1ec}});
+                const auto first_rating = c.i16(clubs + first * club_stride + 0x1ec);
+                c.set({{9, std::uint32_t(first_rating)}, {0, second * club_stride + 0x1ec}});
+                const auto second_rating = c.i16(clubs + second * club_stride + 0x1ec);
+                c.set(0, std::uint32_t(second_rating));
+                if (compare(c, first_rating, second_rating) < 0) {
+                    block(c, 0x10370268, 2);
+                    c.put32(current, second);
+                    c.put32(next, first);
+                }
+                block(c, 0x10370270, 4);
+                displacement += 4;
+                next += 4;
+                ++candidate;
+                c.set({{10, displacement}, {6, next}, {4, candidate}});
+                c.s.wr<4>(guest::reg::ctr, --remaining);
+            } while (remaining);
+        }
+        block(c, 0x10370280, 2);
+        current += 4;
+        ++position;
+        c.set({{5, current}, {3, position}});
+    }
+}
+
+void shuffle_stats_clubs(InitialStats& stats) {
+    auto& c = stats.c;
+    block(c, 0x10370290, 7);
+    const auto count = stats.eligible();
+    c.set({{3, 0x1b4e81b5}, {0, count >> 31}, {20, 0},
+           {30, std::uint32_t((INT64_C(0x1b4e81b5) * std::int32_t(count)) >> 32)},
+           {13, count + (count >> 31)}});
+    guest::Kept<20> swaps(c, 0);
+    const guest::Kept<19> anchor(c, c.r(19));
+    const guest::Kept<18> forward(c, c.r(18));
+    const guest::Kept<17> backward(c, c.r(17));
+    const guest::Kept<21> distance(c, c.r(21));
+    for (;;) {
+        block(c, 0x103706f0, 3);
+        const auto half_input = std::int32_t(c.r(13));
+        c.s.wr<1>(guest::reg::xer_ca, half_input < 0 && (c.r(13) & 1));
+        c.set(0, std::uint32_t(half_input >> 1));
+        if (compare(c, std::int32_t(std::uint32_t(swaps)), std::int32_t(c.r(0))) >= 0) break;
+        block(c, 0x103702ac, 2);
+        if (!compare(c, std::int32_t(count))) {
+            block(c, 0x103702b4, 2);
+            c.set(19, 0);
+        } else {
+            advance_stats_pool(c, stats.pool(), 0x103702bc);
+            simulated_stats_detail::draw_range(c, stats.pool(), {0x103702e4, 19, 0x394, 0x38c, 0x384}, count);
+        }
+        block(c, 0x10370404, 1);
+        for (;;) {
+            block(c, 0x10370408, 4);
+            const auto scaled = std::int32_t(c.r(30));
+            const auto range = std::uint32_t(scaled / 16);
+            c.s.wr<1>(guest::reg::xer_ca, scaled < 0 && (c.r(30) & 15));
+            c.set({{0, std::uint32_t(scaled >> 4)}, {3, unsigned(scaled < 0)}});
+            if (!record_value(c, 21, std::int32_t(range))) {
+                block(c, 0x10370418, 2);
+                c.set(18, 0);
+            } else {
+                advance_stats_pool(c, stats.pool(), 0x10370420);
+                simulated_stats_detail::draw_range(c, stats.pool(), {0x10370448, 18, 0x384, 0x38c, 0x394}, range);
+            }
+            block(c, 0x10370568, 2);
+            if (!compare(c, std::int32_t(std::uint32_t(distance)))) {
+                block(c, 0x10370570, 2);
+                c.set(17, 0);
+            } else {
+                advance_stats_pool(c, stats.pool(), 0x10370578);
+                simulated_stats_detail::draw_range(c, stats.pool(), {0x103705a0, 17, 0x384, 0x38c, 0x394}, distance);
+            }
+            block(c, 0x103706c0, 3);
+            const auto destination = anchor + forward - backward;
+            if (record_value(c, 0, std::int32_t(destination)) < 0) continue;
+            block(c, 0x103706cc, 2);
+            if (compare(c, std::int32_t(destination), std::int32_t(count)) < 0) break;
+        }
+        block(c, 0x103706d4, 7);
+        const auto from = anchor * 4, to = c.r(0) * 4;
+        c.set({{4, from}, {3, to}});
+        const auto first = c.u32(stats.list() + from);
+        c.set(5, first);
+        swaps = swaps + 1;
+        const auto second = c.u32(stats.list() + to);
+        c.set(0, second);
+        c.put32(stats.list() + from, second);
+        c.put32(stats.list() + to, first);
+    }
+}
+
+void fill_stats_groups(InitialStats& stats) {
+    auto& c = stats.c;
+    block(c, 0x103706fc, 3);
+    c.set(0, c.u32(stats.object()));
+    c.set(3, c.r(0) * row_size);
+    c.call(allocate_rows, 0x10370708);
+    block(c, 0x10370708, 6);
+    guest::Kept<17> row_offset(c, 0);
+    c.put32(stats.object() + stats_rows, c.r(3));
+    guest::Kept<18> input_offset(c, 0);
+    guest::Kept<19> consumed(c, 0);
+    guest::Kept<20> group(c, 0);
+    guest::Kept<21> member(c, c.r(21));
+    guest::Kept<22> input(c, c.r(22));
+    guest::Kept<13> scratch_offset(c, c.r(13));
+    for (;;) {
+        block(c, 0x10370800, 3);
+        c.set(0, c.u32(stats.object()));
+        if (compare(c, std::int32_t(std::uint32_t(group)), std::int32_t(c.r(0))) >= 0) break;
+        block(c, 0x10370720, 7);
+        c.set(3, c.u32(stats.object() + stats_rows));
+        c.set(0, 0);
+        scratch_offset = input_offset;
+        input = stats.list() + input_offset;
+        c.put32(c.r(3) + row_offset, 0);
+        member = 0;
+        for (;;) {
+            block(c, 0x1037073c, 2);
+            if (!compare(c, std::int32_t(std::uint32_t(consumed)), std::int32_t(stats.eligible())))
+                report_stats_initialization(stats, false);
+            block(c, 0x10370794, 17);
+            const auto rows = c.u32(stats.object() + stats_rows);
+            c.set(0, rows);
+            const bool partial = compare(c, std::int32_t(c.r(14))) != 0;
+            const auto club_id = c.u32(input);
+            c.set(4, club_id);
+            scratch_offset = scratch_offset + 4;
+            const auto row = rows + row_offset;
+            c.set(5, row);
+            input = input + 4;
+            const auto count = c.u32(row);
+            c.set(0, count);
+            input_offset = input_offset + 4;
+            consumed = consumed + 1;
+            c.set({{3, count * 4}, {0, count * 4 + 4}});
+            c.put32(row + count * 4 + 4, club_id);
+            // Retain the fresh object-pointer and count reads after the write.
+            const auto live_rows = c.u32(stats.object() + stats_rows);
+            c.set(4, live_rows);
+            const auto live_count = c.u32(live_rows + row_offset);
+            c.set({{3, live_count}, {0, live_count + 1}});
+            c.put32(live_rows + row_offset, live_count + 1);
+            if (partial) {
+                block(c, 0x103707d8, 3);
+                c.set(0, 16 - c.r(14));
+                c.s.wr<1>(guest::reg::xer_ca, c.r(14) <= 16);
+                if (compare(c, std::int32_t(std::uint32_t(group)), std::int32_t(c.r(0))) < 0) {
+                    block(c, 0x103707e4, 2);
+                    if (!compare(c, std::int32_t(std::uint32_t(member)), 14)) break;
+                }
+            }
+            block(c, 0x103707ec, 3);
+            member = member + 1;
+            if (compare(c, std::int32_t(std::uint32_t(member)), 16) >= 0) break;
+        }
+        block(c, 0x103707f8, 2);
+        row_offset = row_offset + row_size;
+        group = group + 1;
+    }
+    block(c, 0x1037080c, 2);
+    c.set(3, stats.list());
+    c.call(free_stats_rows, 0x10370814);
+    block(c, 0x10370814, 1);
+    c.set(3, stats.object());
+}
+
+void initialize_stats(Cpu& c) {
+    GuestNativeScope scope(c.s, initialize_entry);
+    block(c, initialize_entry, 25);
+    const auto stack = c.sp(), frame = stack - initialize_frame_size;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<13>(c, stack);
+    c.set(5, c.toc(-0x745c));
+    c.set(31, c.r(3));
+    c.set(22, c.toc(-0x4dd0));
+    c.set(30, c.r(4));
+    c.set(23, c.toc(-0x7b90));
+    c.set(16, 0);
+    c.set(24, c.toc(-0x7b8c));
+    c.set(13, 0);
+    c.set(25, c.toc(-0x7b88));
+    c.set(26, c.toc(-0x7b84));
+    c.set(18, c.toc(-0x7b5c));
+    c.set(17, c.toc(-0x7be8));
+    c.set(27, c.toc(-0x7bac));
+    c.set(28, c.toc(-0x7ba8));
+    c.set(21, c.toc(-0x7b50));
+    c.set(29, c.toc(-0x4dcc));
+    c.set(15, c.toc(-0x4dc8));
+    c.set(14, c.toc(-0x4dc4));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    InitialStats stats{c};
+    if (!record_value(c, 0, c.i8(c.r(5)))) check_stats_media(stats);
+    block(c, 0x103700b4, 2);
+    if (compare_logical(c, c.r(30))) {
+        block(c, 0x103700bc, 3);
+        c.set({{3, stats.object()}, {4, c.r(30)}});
+        call_stats(c, load_entry, 0x103700c8, load_stats);
+        block(c, 0x103700c8, 2);
+        c.set(3, stats.object());
+    } else {
+        block(c, 0x103700d0, 3);
+        c.set(0, c.u32(c.r(21)));
+        c.set(3, c.r(0) * 4);
+        c.call(allocate_rows, 0x103700dc);
+        block(c, 0x103700dc, 2);
+        if (!record_value(c, 15, std::int32_t(c.r(3)))) report_stats_initialization(stats, true);
+        collect_stats_clubs(stats);
+        sort_stats_clubs(stats);
+        shuffle_stats_clubs(stats);
+        fill_stats_groups(stats);
+    }
+    block(c, 0x10370818, 5);
+    c.set(0, c.u32(frame + initialize_frame_size + 8));
+    c.set(1, stack);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<13, true>(c, stack);
+    c.finish();
+}
+
 struct Routine {
     std::uint32_t entry;
     void (*run)(Cpu&);
@@ -331,14 +797,102 @@ constexpr auto routines = std::to_array<Routine>({
 #undef SIMULATED_STATS_ROUTINE
 });
 
-bool declining = std::getenv("CM_SIMULATED_STATS_ORIGINAL") != nullptr;
-
 const Routine& find_routine(std::uint32_t entry) {
     const auto found = std::ranges::lower_bound(routines, entry, {}, &Routine::entry);
     if (found == routines.end() || found->entry != entry)
         throw std::logic_error("Unknown SIMULATED_STATS.CPP entry " + hex_address(entry));
     return *found;
 }
+}
+
+void simulated_stats_detail::draw_range(Cpu& c, const RandomPool& pool, RangeDraw draw, std::int32_t bound) {
+    block(c, draw.site, 4);
+    c.set({{3, 0x10000}, {0, 65535}});
+    const bool above = compare(c, bound, 65535) > 0;
+    bool wide = above;
+    if (!above) {
+        block(c, draw.site + 16, 4);
+        c.set({{3, 0xffff0000}, {0, std::uint32_t(-65535)}});
+        wide = compare(c, bound, -65535) < 0;
+    }
+    if (!wide) {
+        block(c, draw.site + 0xf4, 10);
+        const auto position = c.u32(pool.cursor);
+        c.set(3, position);
+        const auto sign = compare(c, bound);
+        const auto salt = c.u32(pool.salt);
+        c.set(0, salt);
+        const auto biased = c.u16(position) + salt;
+        c.set(3, biased);
+        const auto divisor = std::uint32_t(bound);
+        const auto quotient = std::uint32_t(divide_signed<4>(biased, divisor));
+        const auto remainder = biased - quotient * divisor;
+        c.set({{0, remainder}, {draw.result, 0u - remainder}});
+        if (sign > 0) {
+            block(c, draw.site + 0x11c, 1);
+            c.set(draw.result, remainder);
+        }
+        return;
+    }
+
+    block(c, draw.site + 0x20, 40);
+    guest::Fpu fp(c);
+    const auto frame = c.sp();
+    c.set({{0, 0x43300000}, {3, std::uint32_t(bound) ^ 0x80000000}});
+    c.put32(frame + draw.bound_scratch + 4, c.r(3));
+    c.set(3, 0x80010000);
+    const auto position = c.u32(pool.cursor);
+    c.set({{7, position}, {4, 0x10000}});
+    c.put32(frame + draw.bound_scratch, 0x43300000);
+    c.set(6, 0x80008001);
+    const auto bias = c.f64(pool.constants + 8);
+    c.set_f(2, bias);
+    const auto expanded = std::uint32_t(bound) * 10;
+    c.set(3, expanded);
+    c.set_f(1, c.f64(frame + draw.bound_scratch));
+    c.set(5, 65535);
+    const auto scale = c.f64(pool.constants);
+    c.set_f(0, scale);
+    c.set_f(1, fp.fsub(c.f(1), bias));
+    const auto product = [](std::uint32_t bits) {
+        return std::uint32_t((std::int64_t(std::int32_t(0x80008001u)) * std::int32_t(bits)) >> 32);
+    };
+    c.set(4, product(expanded));
+    const auto word = c.u16(position);
+    c.set(8, word);
+    const auto salt = c.u32(pool.salt);
+    c.set(7, salt);
+    c.set_f(1, fp.fdiv(c.f(1), scale));
+    c.put32(frame + draw.remainder_scratch, 0x43300000);
+    const auto biased = word + salt;
+    const auto word_sum = std::int32_t(product(biased) + biased);
+    const auto bound_sum = std::int32_t(product(expanded) + expanded);
+    const auto word_sign = unsigned(word_sum < 0);
+    const auto bound_sign = unsigned(bound_sum < 0);
+    const auto quotient = std::int32_t(expanded) / 65535;
+    const auto multiple = std::uint32_t(std::int32_t(biased) / 65535) * 65535;
+    const auto remainder = (biased - multiple) ^ 0x80000000;
+    c.set({{3, std::uint32_t(quotient)}, {4, bound_sign}, {5, multiple}, {6, word_sign}, {0, remainder}});
+    c.s.wr<1>(guest::reg::xer_ca, bound_sum < 0 && (std::uint32_t(bound_sum) & 0x7fff));
+    c.put32(frame + draw.remainder_scratch + 4, remainder);
+    c.set_f(0, c.f64(frame + draw.remainder_scratch));
+    c.set_f(0, fp.fsub(c.f(0), bias));
+    c.set_f(0, fp.fmul(c.f(1), c.f(0)));
+    c.put64(frame + draw.result_scratch, fp.fctiwz(0, c.f(0)));
+    c.set(draw.result, c.u32(frame + draw.result_scratch + 4));
+    call_stats(c, 0x10370830, draw.site + 0xc0, sample_stats_range);
+
+    block(c, draw.site + 0xc0, 11);
+    const auto correction = std::int32_t(c.r(3) + 5);
+    const auto high = (INT64_C(0x66666667) * correction) >> 32;
+    const auto limit = std::uint32_t(bound) - 1;
+    const auto sample = c.r(draw.result) + std::uint32_t(correction / 10);
+    c.set({{0, std::uint32_t(correction / 10)}, {3, unsigned(high < 0)}, {4, limit}, {draw.result, sample}});
+    c.s.wr<1>(guest::reg::xer_ca, high < 0 && (high & 3));
+    if (compare(c, std::int32_t(sample), std::int32_t(limit)) > 0) {
+        block(c, draw.site + 0xec, 2);
+        c.set(draw.result, limit);
+    }
 }
 
 void simulated_stats_run_original(State& s, std::uint32_t entry) {

@@ -455,6 +455,16 @@ The loader returns a success flag, while the saver leaves the last service's
 return value in r3. The squad count scans all 50 slots in order, so a service
 can change a slot before the scan reaches it.
 
+The constructor filters live competition and club-service state, orders clubs
+by signed reputation with the original pairwise swaps, and shuffles through
+three distinct RNG sites. Groups retain the original 15/16-member stopping
+rule. For undersized collections this can exhaust the club list before a row
+ends; the diagnostic clears the shared flag and processing continues. Failure
+to allocate the temporary list exits, while the row allocation is unguarded.
+Supplying a file delegates to the owned loader and returns the object even
+when loading fails. The constructor and sampler are direct C++ calls in
+normal mode and retain independent generated bodies in checker/original mode.
+
 ## STAFF_CONTRACTS.CPP: staff terms and offers
 
 The [module audit](../tools/staff_contracts_audit.py) assigns 47 entries and
