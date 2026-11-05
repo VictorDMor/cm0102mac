@@ -1,4 +1,5 @@
 #include "hall_of_fame_adapter.hpp"
+#include "engine_initialization_adapter.hpp"
 #include "guest_abi.hpp"
 #include "guest_saved_registers.hpp"
 #include "routine_check.hpp"
@@ -1582,6 +1583,125 @@ void compare_categories(Cpu& c) {
     c.finish();
 }
 
+constexpr auto write_report_entry = 0x10141ca0u;
+constexpr auto print_stream = 0x1077b610u;
+
+void print_report_title(const FileFrame& file, std::uint32_t pc) {
+    auto& c = file.cpu;
+    block(c, pc, 4);
+    c.set({{3, file.handle}, {4, file.source + 0xfc}, {5, file.frame() + 0x6c}});
+    c.call(print_stream, pc + 16);
+}
+
+void report_rank(const FileFrame& file, std::uint32_t candidate, unsigned row) {
+    auto& c = file.cpu;
+    const auto frame = file.frame(), date = frame + 0x44, rendered = frame + 0x6c;
+    block(c, 0x10141da4, 4);
+    c.set(0, c.u32(candidate + 0x64));
+    c.set(3, frame + 0x38);
+    c.put32(frame + 0x38, c.r(0));
+    c.call(0x1077f940, 0x10141db4);
+
+    block(c, 0x10141db4, 11);
+    const auto broken_down = c.r(3);
+    c.set({{5, broken_down}, {3, date}});
+    const auto years_since_1900 = c.u32(broken_down + 0x14);
+    c.set({{4, years_since_1900}, {7, UINT32_MAX}});
+    const auto day = c.u32(broken_down + 0xc);
+    c.set(6, day);
+    const auto month = c.u32(broken_down + 0x10);
+    c.set(5, month);
+    const auto year = years_since_1900 + 1900;
+    c.set({{0, year}, {4, std::uint32_t(std::int16_t(day))},
+           {5, std::uint32_t(std::int8_t(month))}, {6, std::uint16_t(year)}});
+    c.call(0x107158a0, 0x10141de0);
+
+    block(c, 0x10141de0, 5);
+    c.set({{3, date}, {4, rendered}, {5, 200}, {6, 0xff}});
+    c.call(0x107164f0, 0x10141df4);
+    block(c, 0x10141df4, 4);
+    c.set({{3, row + 1}, {4, UINT32_MAX}});
+    c.call(0x107467a0, 0x10141e04);
+    block(c, 0x10141e04, 8);
+    const auto score = c.u32(candidate + 0x68);
+    c.set({{9, score}, {5, c.r(3)}, {3, file.handle}, {6, candidate}, {4, file.source + 0x101},
+           {7, candidate + 0x32}, {8, rendered}});
+    c.call(print_stream, 0x10141e24);
+}
+
+void report_categories(const FileFrame& file) {
+    auto& c = file.cpu;
+    block(c, 0x10141d38, 3);
+    c.set({{3, file.frame() + 0x6c}, {4, file.source + 0xef}});
+    c.call(0x10727890, 0x10141d44);
+    print_report_title(file, 0x10141d44);
+    block(c, 0x10141d54, 3);
+    c.set({{26, 0}, {28, 0}});
+    for (unsigned category = 0; ; ++category) {
+        block(c, 0x10141e4c, 3);
+        c.set(0, category);
+        c.compare(0, category, 27);
+        if (category == 27) break;
+        block(c, 0x10141d60, 5);
+        c.set({{3, category}, {4, file.frame() + 0x6c}, {5, 200}, {6, 0}});
+        call_owned(c, category_name_entry, 0x10141d74, category_name);
+        print_report_title(file, 0x10141d74);
+        block(c, 0x10141d84, 3);
+        c.set({{25, 0}, {29, 0}});
+        for (unsigned row = 0; ; ++row) {
+            block(c, 0x10141e2c, 3);
+            c.set(0, row);
+            c.compare(0, row, 100);
+            if (row == 100) break;
+            block(c, 0x10141d90, 5);
+            const auto candidate = file.table + category * category_size + row * record_size;
+            c.set(24, candidate);
+            const auto score = c.u32(candidate + 0x68);
+            c.set(0, score);
+            c.compare_logical(0, score, 0);
+            if (score) report_rank(file, candidate, row);
+            block(c, 0x10141e24, 2);
+            c.set({{29, (row + 1) * record_size}, {25, row + 1}});
+        }
+        block(c, 0x10141e38, 3);
+        c.set({{3, file.handle}, {4, file.source + 0x111}});
+        c.call(print_stream, 0x10141e44);
+        block(c, 0x10141e44, 2);
+        c.set({{28, (category + 1) * category_size}, {26, category + 1}});
+    }
+    close_success(file, 0x10141e58);
+}
+
+void write_report(Cpu& c) {
+    GuestNativeScope scope(c.s, write_report_entry);
+    block(c, write_report_entry, 10);
+    const auto caller = c.sp(), table = c.r(3), path = c.r(4);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<24>(c, caller);
+    const auto message = c.toc(-0x7ba8);
+    c.set({{29, message}, {31, table}});
+    const auto source = c.toc(-0x54cc);
+    c.set({{30, source}, {24, path}});
+    c.put32(caller + 8, c.r(0));
+    push_frame(c, scope, caller, caller - 0x160);
+    c.set(3, c.sp() + 0x44);
+    c.call(0x10715880, 0x10141cc8);
+    block(c, 0x10141cc8, 3);
+    c.set({{3, path}, {4, source + 0xed}});
+    c.call(0x10739de0, 0x10141cd4);
+    block(c, 0x10141cd4, 2);
+    const auto handle = c.r(3);
+    c.set(27, handle);
+    record_compare(c, std::int32_t(handle));
+
+    if (handle) report_categories({c, table, source, 0, message, handle});
+    else report_bad_record(c, 0x10141cdc, source, message, 0x4c, 0x3c, 0x2c8);
+    block(c, 0x10141e64, 5);
+    restore_link(c, caller);
+    guest::transfer_saved_registers<24, true>(c, caller);
+    c.finish();
+}
+
 void construct_table(Cpu& c) {
     GuestNativeScope scope(c.s, construct_table_entry);
     block(c, construct_table_entry, 10);
@@ -1614,13 +1734,59 @@ void construct_table(Cpu& c) {
 
 }
 
+void hall_of_fame_initialize_static_table(State& state, engine_initialization::DependencyDispatch* dependencies) {
+    Cpu c(state);
+    constexpr auto entry = hall_of_fame_static_table_entry;
+    constexpr auto constructor = 0x10773320u, resume = entry + 36;
+    GuestNativeScope scope(state, entry);
+    // The engine's startup observer and finite budget use each ABI checkpoint.
+    state.step(entry);
+    c.set(0, c.lr());
+    state.step(entry + 4);
+    c.set(3, c.toc(-0x54d4));
+    state.step(entry + 8);
+    c.put32(c.sp() + 8, c.r(0));
+    state.step(entry + 12);
+    c.set(5, 0);
+    state.step(entry + 16);
+    c.set(4, c.toc(-0x7404));
+    state.step(entry + 20);
+    c.set(6, record_size);
+    state.step(entry + 24);
+    const auto caller = c.sp();
+    push_frame(c, scope, caller, caller - 0x40);
+    state.step(entry + 28);
+    c.set(7, table_size / record_size);
+    state.step(entry + 32);
+    if (dependencies) {
+        c.link(resume);
+        state.pc = constructor;
+        dependencies->call(state, constructor, resume);
+    } else c.call(constructor, resume);
+    state.step(resume);
+    c.set(0, c.u32(c.sp() + 0x48));
+    state.step(resume + 4);
+    c.set(1, c.sp() + 0x40);
+    state.step(resume + 8);
+    c.set_lr(c.r(0));
+    state.step(resume + 12);
+    c.finish();
+}
+
 void hall_of_fame_run_original(State& state, std::uint32_t entry) {
+    if (entry != hall_of_fame_static_table_entry) return run_original_body(state, entry, declining);
+    auto& original_body = engine_initialization_diagnostics(state).original_body;
+    struct Restore { std::uint32_t& slot; std::uint32_t saved; ~Restore() { slot = saved; } };
+    const Restore restore{original_body, original_body};
+    original_body = entry;
     run_original_body(state, entry, declining);
 }
 
 void hall_of_fame_run_rewrite(State& state, std::uint32_t entry) {
     Cpu c(state);
     switch (entry) {
+    case hall_of_fame_static_table_entry: hall_of_fame_initialize_static_table(state); break;
+    case write_report_entry: write_report(c); break;
     case merge_record_entry: merge_record(c); break;
     case import_file_entry: import_file(c); break;
     case validate_file_entry: validate_file(c); break;
@@ -1643,8 +1809,12 @@ void hall_of_fame_run_rewrite(State& state, std::uint32_t entry) {
     }
 }
 
+bool hall_of_fame_wants_modern(std::uint32_t entry) {
+    return !declining && (!routine_checker || routine_checker->wants(entry));
+}
+
 bool try_modern_hall_of_fame(State& state, std::uint32_t entry) {
-    if (declining || (routine_checker && !routine_checker->wants(entry))) return false;
+    if (!hall_of_fame_wants_modern(entry)) return false;
     if (routine_checker)
         routine_checker->check(state, entry, hall_of_fame_run_original, hall_of_fame_run_rewrite,
                                RoutineChecker::result_r3);

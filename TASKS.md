@@ -18,9 +18,9 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **HALL_OF_FAME.CPP reconstruction.** Inventory closed at 20 entries and 2,736 reachable instructions. Eighteen entries are verified locally and selected by default, including localized category labels and sorting. Finish the text report and the static table initializer currently owned by engine initialization, then verify the full module. Private evidence is in `.local/rewrites/hall_of_fame/`.
+- [ ] **Install the verified Hall of Fame and Greek rulebook build.** The installer found the game running. The verified ARM64 build includes all 20 Hall of Fame routines, all four Greek rulebook routines and the checked frame restore. Retry the guarded installer after the game closes and update both installation notes in the tracker.
 
-- [ ] **Install the verified Greek rulebook build.** All four rb_greece.cpp entries are complete and published in `a245f3e`. The tracker is verified. The guarded installer found the game running. Retry the verified ARM64 build from `0b26810` with the game closed. It includes the Greek rulebook and checked frame restore. Verify the installed build and update the tracker note.
+- [x] **HALL_OF_FAME.CPP reconstruction.** All 20 entries and 2,736 original instructions are accounted for. The default C++23 owners pass 476 focused returned comparisons, a shared file lifecycle, ten focused CTests and four strict calls in the recorded startup. All 82 functions are measured by the owner-only coverage run. Three broader engine initialization tests fail with both the previous and current initializer implementations. Private evidence is in `.local/rewrites/hall_of_fame/`.
 
 - [x] **BRA_NAT_SECOND.CPP reconstruction.** All 13 entries and 1,916 reachable original instructions are covered by handwritten owners. 521 focused returned comparisons and the complete owned competition sequence match the reference. The January replay reaches the recorded state and matches all 28 strict fixture-placement calls. Four focused normal tests pass. Private evidence is in `.local/rewrites/bra_nat_second/`.
   - [x] Single-round Série B for new seasons. The focused checks cover the 27-round calendar, table champion and runner-up, four-club exchange, and rollover from a saved playoff season.

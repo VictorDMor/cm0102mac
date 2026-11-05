@@ -1,5 +1,6 @@
 #include "hall_of_fame_adapter.hpp"
 #include "guest_abi.hpp"
+#include "engine_initialization_adapter.hpp"
 #include "routine_check.hpp"
 #include "localization_format_adapter.hpp"
 #include "semantic_io_checks.hpp"
@@ -38,6 +39,9 @@ constexpr auto category_switch = fixture + 0x2000, category_order = fixture + 0x
 constexpr auto category_descriptor = fixture + 0x2120, characters = fixture + 0x2200;
 constexpr auto category_output = fixture + 0x2600;
 constexpr int category_mode = -0x3953;
+constexpr auto write_report = 0x10141ca0u;
+constexpr auto report_tm = fixture + 0xe00, ordinal_text = fixture + 0xe20;
+constexpr auto fail_print = fixture + 0xe40, corrupt_saved_checksum = fixture + 0xe44;
 constexpr auto read_item_entry = 0x10775fe0u, write_item_entry = 0x10776360u;
 using Call = std::array<std::uint32_t, 34>;
 std::vector<Call>* call_trace = nullptr;
@@ -81,8 +85,9 @@ bool dependencies(State& s) {
         break;
     case 0x10739de0: {
         const auto mode = c.r(4) - source;
-        require(c.r(3) == file_path && (mode == 0x54 || mode == 0x57), "Hall of Fame open arguments");
-        const bool write = mode == 0x57;
+        require(c.r(3) == file_path && (mode == 0x54 || mode == 0x57 || mode == 0xed),
+                "Hall of Fame open arguments");
+        const bool write = mode != 0x54;
         const bool missing = (c.u8(fail_open) & (write ? 2 : 1)) != 0;
         if (!missing) {
             c.put32(file_position, 0);
@@ -104,6 +109,10 @@ bool dependencies(State& s) {
         if (transferred) s.memory.copy_in(to, s.memory.copy_out(from, transferred));
         c.put32(file_position, position + transferred);
         if (write) c.put32(file_size, position + transferred);
+        // A fault-injection case models a successful write followed by
+        // corruption of the caller's saved checksum before restoration.
+        if (write && bytes == 4 && transferred == 4 && c.u8(corrupt_saved_checksum))
+            c.put32(buffer, c.u32(buffer) ^ 1);
         c.set(3, transferred == bytes);
         break;
     }
@@ -112,12 +121,62 @@ bool dependencies(State& s) {
         c.set(3, UINT32_MAX); // The original disregards a close error.
         break;
     case 0x10773320:
-        require(c.r(3) == table && c.r(4) == record_constructor && !c.r(5) && c.r(6) == row_size &&
+        require(c.r(3) == (lr == hall_of_fame_static_table_entry + 36 ? imported_table : table) &&
+                    c.r(4) == record_constructor && !c.r(5) && c.r(6) == row_size &&
                     c.r(7) == table_size / row_size, "Hall of Fame table constructor arguments");
         break;
     case 0x10778300:
         require(c.r(3) == table && !c.r(4) && c.r(5) == table_size, "Hall of Fame table clear arguments");
         s.memory.copy_in(table, std::vector<std::uint8_t>(table_size));
+        break;
+    case 0x1077b610: {
+        require(c.r(3) == file_handle, "report output handle");
+        std::string line;
+        const auto format = c.r(4) - source;
+        if (format == 0xfc) line = "H:" + text_at(c, c.r(5)) + "\n";
+        else if (format == 0x111) line = "\n";
+        else {
+            require(format == 0x101 && c.r(7) == c.r(6) + 0x32 && c.r(8) == frame + 0x6c,
+                    "rank report format arguments");
+            line = text_at(c, c.r(5)) + "|" + text_at(c, c.r(6)) + "|" + text_at(c, c.r(7)) + "|" +
+                   text_at(c, c.r(8)) + "|" + std::to_string(c.r(9)) + "\n";
+        }
+        const auto at = c.u32(file_size);
+        require(at + line.size() < file_capacity, "report output fixture capacity");
+        for (unsigned i = 0; i < line.size(); ++i) c.put8(file_contents + at + i, line[i]);
+        c.put32(file_size, at + unsigned(line.size()));
+        c.set(3, c.u8(fail_print) ? UINT32_MAX : unsigned(line.size()));
+        break;
+    }
+    case 0x1077f940: {
+        require(lr == 0x10141db4 && c.r(3) == frame + 0x38, "report timestamp address");
+        const auto timestamp = c.i32(c.r(3));
+        require(timestamp == 0 || timestamp == -1 || timestamp == 1000, "report timestamp value");
+        c.put32(report_tm + 0xc, timestamp == -1 ? 31 : 1);
+        c.put32(report_tm + 0x10, timestamp == -1 ? 11 : 0);
+        c.put32(report_tm + 0x14, timestamp == -1 ? 69 : 70);
+        c.set(3, report_tm);
+        break;
+    }
+    case 0x107158a0: {
+        require(c.r(3) == frame + 0x44 && c.r(7) == UINT32_MAX &&
+                    ((c.r(4) == 31 && c.r(5) == 11 && c.r(6) == 1969) ||
+                     (c.r(4) == 1 && !c.r(5) && c.r(6) == 1970)), "report date construction");
+        c.put16(c.r(3), c.r(4));
+        c.put8(c.r(3) + 2, c.r(5));
+        c.put16(c.r(3) + 3, c.r(6));
+        break;
+    }
+    case 0x107164f0:
+        require(c.r(3) == frame + 0x44 && c.r(4) == frame + 0x6c &&
+                    c.r(5) == 200 && c.r(6) == 0xff, "report date formatting arguments");
+        put_text(c, c.r(4), std::to_string(c.u16(c.r(3))) + "/" + std::to_string(c.u8(c.r(3) + 2) + 1) +
+                            "/" + std::to_string(c.u16(c.r(3) + 3)));
+        break;
+    case 0x107467a0:
+        require(lr == 0x10141e04 && c.r(3) >= 1 && c.r(3) <= 100 && c.r(4) == UINT32_MAX, "report rank ordinal");
+        put_text(c, ordinal_text, std::to_string(c.r(3)));
+        c.set(3, ordinal_text);
         break;
     case 0x10739890:
         require(c.r(3) == source && !c.r(4) && !c.r(5), "diagnostic filename");
@@ -165,7 +224,10 @@ bool dependencies(State& s) {
         put_text(c, c.r(3), text_at(c, c.r(4)));
         break;
     case 0x10727890:
-        if (lr >= 0x10142ae0 && lr <= 0x10142fd0) {
+        if (lr == 0x10141d44) {
+            require(c.r(3) == frame + 0x6c && c.r(4) == source + 0xef, "report title translation");
+            put_text(c, c.r(3), "Hall of Fame");
+        } else if (lr >= 0x10142ae0 && lr <= 0x10142fd0) {
             const auto offset = c.r(4) - source;
             const bool compact = std::int8_t(c.r(6)) != 0;
             require(offset >= 0x113 && offset <= 0x711 && c.r(3), "category localization arguments");
@@ -251,7 +313,8 @@ std::unique_ptr<State> compare_call(const State& initial, Stop expected, Corrupt
         // so both fixture paths reach the same dependency models.
         if (dispatch_probe) {
             localization_format_diagnostics(s).original_body = 0x10727890;
-            s.time_runtime_original_body = 0x1077f900;
+            s.time_runtime_original_body = initial.pc == write_report ? 0x1077f940 : 0x1077f900;
+            s.formatted_output_original = initial.pc == write_report;
             s.stream_io_original = s.stream_buffer_original = true;
         }
         effects.state = &s;
@@ -668,17 +731,22 @@ void check_persistence() {
                 "load table result, including the clear-on-failure boundary");
     }
 
-    struct WriteCase { unsigned short_position, line; bool missing, null_table; };
+    struct WriteCase {
+        unsigned short_position, line;
+        bool missing, null_table, corrupt_checksum = false;
+    };
     for (const auto test : std::array{
             WriteCase{UINT32_MAX, 0, false, false},
             WriteCase{UINT32_MAX, 0, true, false},
             WriteCase{0, 0x288, false, false},
             WriteCase{UINT32_MAX, 0x290, false, true},
             WriteCase{8, 0x298, false, false},
-            WriteCase{8 + table_size, 0x2a0, false, false}}) {
+            WriteCase{8 + table_size, 0x2a0, false, false},
+            WriteCase{UINT32_MAX, 0x2a8, false, false, true}}) {
         c.put32(file_size, 0);
         c.put32(short_at, test.short_position);
         c.put8(fail_open, test.missing ? 2 : 0);
+        c.put8(corrupt_saved_checksum, test.corrupt_checksum);
         state->memory.copy_in(table, plain);
         c.set(3, test.null_table ? 0 : table);
         state->pc = write_file;
@@ -690,7 +758,7 @@ void check_persistence() {
                     after.u8(success) == !test.line, "save result and diagnostic");
         require(result->memory.copy_out(table, table_size) == (leaves_encoded ? encoded : plain),
                 "save table result, including the encoded short-write state");
-        if (ok)
+        if (ok || test.corrupt_checksum)
             require(after.u32(file_size) == file_capacity && after.u32(file_contents) == 0x003abfb2 &&
                         after.u8(file_contents + 4) == 1 &&
                         result->memory.copy_out(file_contents + 8, table_size) == encoded &&
@@ -699,6 +767,7 @@ void check_persistence() {
 
     c.put32(short_at, UINT32_MAX);
     c.put8(fail_open, 0);
+    c.put8(corrupt_saved_checksum, 0);
     c.set(3, table);
     state->pc = write_file;
     bool rejected = false;
@@ -725,7 +794,7 @@ void check_persistence() {
         require(after.u32(file_contents + 8 + table_size) == (open_mask == 1 ? 0u : checksum),
                 "table construction writes a new empty table only when required");
     }
-    std::cout << "17 Hall of Fame persistence and table construction comparisons with ordered dependencies and file bytes\n";
+    std::cout << "18 Hall of Fame persistence and table construction comparisons with ordered dependencies and file bytes\n";
 }
 
 void check_import() {
@@ -871,11 +940,9 @@ void check_import() {
     std::cout << comparisons << " Hall of Fame import and ranked merge comparisons with the shared comparator and sorter\n";
 }
 
-void check_categories() {
-    std::mt19937 random(0x4c414245);
-    auto state = score_seed(random);
-    state->memory.map(category_switch, 0x800);
-    Cpu c(*state);
+void seed_category_tables(State& state) {
+    state.memory.map(category_switch, 0x800);
+    Cpu c(state);
     c.put32(toc - 0x54dc, category_switch);
     c.put32(toc - 0x54e0, category_order);
     c.put32(toc - 0x54e4, category_descriptor);
@@ -886,6 +953,14 @@ void check_categories() {
     for (unsigned i = 0; i < 27; ++i) c.put32(category_switch + 4 * i, category_label(i));
     for (unsigned i = 0; i < 256; ++i)
         for (unsigned column = 0; column < 3; ++column) c.put8(characters + 3 * i + column, i);
+
+}
+
+void check_categories() {
+    std::mt19937 random(0x4c414245);
+    auto state = score_seed(random);
+    seed_category_tables(*state);
+    Cpu c(*state);
 
     Model model;
     unsigned comparisons = 0;
@@ -978,6 +1053,129 @@ void check_category_fallback(const char* program) {
     std::cout << "2 Hall of Fame category comparisons with the actual formatter fallback\n";
 }
 
+void check_report() {
+    std::mt19937 random(0x52505446);
+    auto state = score_seed(random);
+    state->memory.map(category_switch, 0x800);
+    state->memory.map(file_contents, file_capacity);
+    Cpu c(*state);
+    c.put32(toc - 0x54dc, category_switch);
+    for (unsigned i = 0; i < 27; ++i) c.put32(category_switch + 4 * i, category_label(i));
+    const auto write_row = [&](std::uint32_t address, std::string_view name, std::string_view club,
+                               unsigned score, std::uint32_t time) {
+        put_text(c, address, name);
+        put_text(c, address + 0x32, club);
+        c.put32(address + 0x64, time);
+        c.put32(address + 0x68, score);
+    };
+    write_row(table, "North", "United", 100, 0);
+    write_row(table + 3 * row_size, "South", "City", 0x80000000, UINT32_MAX);
+    write_row(table + 9 * row_size, "No score", "Club", 0, 1000);
+    write_row(table + table_size - row_size, "West", "Athletic", 5, 1000);
+    const auto records = state->memory.copy_out(table, table_size);
+
+    Model model;
+    for (unsigned scenario = 0; scenario < 3; ++scenario) {
+        c.put8(fail_open, scenario == 1 ? 2 : 0);
+        c.put8(fail_print, scenario == 2);
+        c.set({{3, table}, {4, file_path}});
+        state->pc = write_report;
+        auto result = compare_call(*state, Stop::returned);
+        Cpu after(*result);
+        const bool opened = scenario != 1;
+        require(after.r(3) == opened && after.u8(success) == opened &&
+                    after.u32(message) == (opened ? 0u : 0x2c8u),
+                "report completion follows the original open result");
+        require(result->memory.copy_out(table, table_size) == records, "report leaves the ranking table intact");
+        const auto bytes = result->memory.copy_out(file_contents, after.u32(file_size));
+        const std::string output(bytes.begin(), bytes.end());
+        if (opened) {
+            require(output.starts_with("H:Hall of Fame\nH:1285\n1|North|United|1/1/1970|100\n"
+                                       "4|South|City|31/12/1969|2147483648\n\n") &&
+                        output.ends_with("H:2809\n100|West|Athletic|1/1/1970|5\n\n") &&
+                        std::ranges::count(output, '\n') == 58 &&
+                        output.find("No score") == std::string::npos,
+                    "report emits ordered section and row bytes, with gaps and unsigned scores");
+        } else require(output.empty(), "failed open writes no report");
+    }
+    std::cout << "3 Hall of Fame report comparisons with ordered output bytes, UTC date ABI and stream failures\n";
+}
+
+void check_static_table() {
+    std::mt19937 random(0x53544154);
+    auto state = score_seed(random);
+    Cpu c(*state);
+    c.put32(toc - 0x54d4, imported_table);
+    c.put32(toc - 0x7404, record_constructor);
+    state->pc = hall_of_fame_static_table_entry;
+    Model model;
+    auto result = compare_call(*state, Stop::returned);
+    const auto index = engine_initialization::entry_index(hall_of_fame_static_table_entry);
+    const auto& diagnostics = engine_initialization_diagnostics(*result);
+    require(diagnostics.calls[index] == 1 && diagnostics.returns[index] == 1 &&
+                diagnostics.original_calls[index] == 0, "startup adapter routes into the Hall of Fame owner");
+    std::cout << "1 Hall of Fame static-table comparison through the normal startup hook\n";
+}
+
+void check_file_lifecycle() {
+    std::mt19937 random(0x4c494645);
+    auto state = score_seed(random);
+    seed_category_tables(*state);
+    state->memory.map(codec_keys, 480 * 4);
+    state->memory.map(file_contents, file_capacity);
+    state->memory.map(imported_table, table_size);
+    state->budget = 200000000;
+    {
+        Cpu c(*state);
+        c.put32(toc - 0x54d8, codec_keys);
+        c.put32(toc - 0x54d4, imported_table);
+        c.put32(toc - 0x7404, record_constructor);
+        c.put32(toc - 0x7414, active_table_slot);
+        c.put32(active_table_slot, table);
+        c.put32(short_at, UINT32_MAX);
+        for (unsigned i = 0; i < 480; ++i) c.put32(codec_keys + i * 4, random() & 0x7fffffff);
+    }
+    Model model;
+    const auto call = [&](std::uint32_t entry, std::initializer_list<std::pair<unsigned, std::uint32_t>> args,
+                          bool trace = true) {
+        Cpu c(*state);
+        c.set(args);
+        c.set_lr(done);
+        state->pc = entry;
+        state = compare_call(*state, Stop::returned, Corrupt::none, trace);
+        return Cpu(*state).r(3);
+    };
+    call(hall_of_fame_static_table_entry, {});
+    Cpu(*state).put8(fail_open, 1);
+    require(call(construct_table, {{3, table}}, false) == table, "lifecycle creates a missing file");
+    Cpu(*state).put8(fail_open, 0);
+    const auto row = table + 26 * bucket_size;
+    {
+        Cpu c(*state);
+        put_text(c, row, "Cycle");
+        put_text(c, row + 0x32, "Athletic");
+        c.put32(row + 0x64, 1000);
+        c.put32(row + 0x68, 1234);
+    }
+    require(call(write_file, {{3, table}}, false) == 1, "lifecycle saves populated table");
+    require(call(validate_file, {{3, file_path}}, false) == 1, "lifecycle validates the same saved file");
+    state->memory.copy_in(table, std::vector<std::uint8_t>(table_size));
+    require(call(read_file, {{3, table}}, false) == 1 && Cpu(*state).u32(row + 0x68) == 1234,
+            "lifecycle reloads the same binary data");
+    state->memory.copy_in(table, std::vector<std::uint8_t>(table_size));
+    require(call(import_file, {{3, table}, {4, file_path}, {5, 0}}, false) == 1 &&
+                Cpu(*state).u32(row + 0x68) == 1234, "lifecycle imports the same rank through the shared sort");
+    require(call(read_record, {{3, table}, {4, 26}, {5, 0}, {6, second}}) == 1, "lifecycle rank lookup");
+    Cpu record(*state);
+    require(text_at(record, second) == "Cycle", "lifecycle retrieves imported rank");
+    require(call(sorted_categories, {{3, 1}}) == category_order, "lifecycle sorts category view");
+    require(call(write_report, {{3, table}, {4, file_path}}) == 1, "lifecycle exports imported rank as text");
+    const auto output = state->memory.copy_out(file_contents, Cpu(*state).u32(file_size));
+    require(std::string(output.begin(), output.end()).ends_with("H:2809\n1|Cycle|Athletic|1/1/1970|1234\n\n"),
+            "lifecycle report reflects the imported binary record");
+    std::cout << "9 Hall of Fame lifecycle comparisons over one shared file and table state\n";
+}
+
 }
 
 int main(int argc, char** argv) try {
@@ -995,6 +1193,12 @@ int main(int argc, char** argv) try {
     }
     if (argc == 3 && std::string_view(argv[1]) == "--category-fallback") {
         check_category_fallback(argv[2]);
+        return 0;
+    }
+    if (argc == 2 && std::string_view(argv[1]) == "--report") {
+        check_report();
+        check_static_table();
+        check_file_lifecycle();
         return 0;
     }
     require(argc == 1, "unknown Hall of Fame checker option");

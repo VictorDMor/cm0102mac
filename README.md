@@ -67,6 +67,8 @@ news text, response dialog and data file.
 fixtures, result publication and binary records.
 `GER_FIRST.CPP` adds **11 audited routines** for the German First Division's
 calendar, entrants, regional assignment and season transition.
+`HALL_OF_FAME.CPP` adds **20 audited routines** for rankings, localized
+categories, file import, reports and binary storage.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,

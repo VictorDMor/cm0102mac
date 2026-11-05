@@ -4552,8 +4552,19 @@ add_test(NAME hall_of_fame_categories COMMAND cm-hall-of-fame-checks --categorie
 if(CM_ORACLE_DIR)
     add_test(NAME hall_of_fame_category_fallback COMMAND cm-hall-of-fame-checks --category-fallback "${CM_ORACLE_DIR}")
 endif()
-set_tests_properties(hall_of_fame_persistence PROPERTIES ENVIRONMENT "CM_UTILS_ORIGINAL=1")
+add_test(NAME hall_of_fame_report COMMAND cm-hall-of-fame-checks --report)
+set_tests_properties(hall_of_fame_persistence hall_of_fame_report PROPERTIES ENVIRONMENT "CM_UTILS_ORIGINAL=1")
 if(Python3_EXECUTABLE)
     add_test(NAME hall_of_fame_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_hall_of_fame_audit.py")
+endif()
+
+option(CM_HALL_OF_FAME_COVERAGE "Instrument the Hall of Fame checker owner only" OFF)
+if(CM_HALL_OF_FAME_COVERAGE)
+    add_library(cm_hall_of_fame_coverage OBJECT hall_of_fame.cpp)
+    target_link_libraries(cm_hall_of_fame_coverage PRIVATE cm_aot)
+    target_compile_options(cm_hall_of_fame_coverage PRIVATE
+        -fprofile-instr-generate -fcoverage-mapping -ffp-contract=off)
+    target_sources(cm-hall-of-fame-checks PRIVATE $<TARGET_OBJECTS:cm_hall_of_fame_coverage>)
+    target_link_options(cm-hall-of-fame-checks PRIVATE -fprofile-instr-generate)
 endif()

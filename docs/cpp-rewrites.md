@@ -571,6 +571,27 @@ releases its array before selecting the new format. The original competition
 rules remain available with `CM_BRA_NAT_SECOND_RULES_ORIGINAL=1` for differential
 checks.
 
+## HALL_OF_FAME.CPP
+
+The [audit](../tools/hall_of_fame_audit.py) closes 20 entries and 2,736
+reachable instructions. The default C++23 owners cover initialization,
+ranking, imports, binary storage, localized categories and text reports.
+The engine startup adapter delegates the global table initializer to the
+same module owner and retains its existing diagnostics. The independent
+generated reference remains available with `CM_HALL_OF_FAME_ORIGINAL=1`.
+
+The binary format uses an eight-byte header, a 324,000-byte encoded table
+and a four-byte checksum. A short write after encoding can leave the live
+table encoded. A short payload or checksum read clears the primary table.
+Import decodes a scratch table and leaves it intact even on checksum failure.
+Its silent validation mode leaves the live ranking alone.
+
+Import checks all 120 bytes for duplicates in the first 99 rows. The ordered
+field copy leaves the destination's trailing padding in place. The report
+walks the original category and slot order, skips rows with zero scores and
+preserves the slot number across gaps. Shared date, text, sorting and stream
+services remain external.
+
 ## rb_greece.cpp
 
 The [audit](../tools/rb_greece_audit.py) closes four entries and 397 reachable

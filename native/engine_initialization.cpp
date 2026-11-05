@@ -1,4 +1,5 @@
 #include "engine_initialization.hpp"
+#include "hall_of_fame_adapter.hpp"
 #include "guest_context_transfer.hpp"
 #include <algorithm>
 
@@ -109,6 +110,8 @@ unsigned entry_index(std::uint32_t entry) {
 }
 void invoke(State& state, unsigned index, DependencyDispatch* dependencies) {
     if (index >= entries.size()) throw std::runtime_error("Unknown engine initializer index");
+    if (entries[index] == hall_of_fame_static_table_entry)
+        return hall_of_fame_initialize_static_table(state, dependencies);
     InitializerCall call(state, entries[index], dependencies);
     switch (index) {
     case 0:
@@ -127,7 +130,6 @@ void invoke(State& state, unsigned index, DependencyDispatch* dependencies) {
         call.argument(5, 7); call.argument(6, 2001); call.argument(7, UINT32_MAX); call.frame(80); call.stack_object(56);
         call.construct_date(); call.publish_initial_date(); call.restore_link(80); call.restore_owner(); call.return_to_caller(); return;
     case 4: initialize_date_pair(call, -0x7b80, -0x7434); break;
-    case 5: initialize_plain_array(call, -0x54d4, -0x7404, 0x78, 0xa8c); break;
     case 6: initialize_plain_array(call, -0x7b44, -0x64cc, 0x4c, 0x22); break;
     case 7: initialize_registered_array(call, -0x5158, -0x63e8, -0x63ec, 0xfc, 16, -0x5164, -0x5168); break;
     case 8: initialize_date_pair(call, -0x5038, -0x503c); break;

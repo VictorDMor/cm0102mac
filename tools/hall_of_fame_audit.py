@@ -36,8 +36,9 @@ ROUTINES = (
 )
 ENTRIES = tuple(entry for entry, _, _ in ROUTINES)
 HALL_OF_FAME_ENTRIES = (0x10140730, 0x101407a0, 0x101407e0, 0x101409c0, 0x10140a90,
-                        0x10140b80, 0x10140f60, 0x10141190, 0x10141500, 0x10141990, 0x10141e80,
+                        0x10140b80, 0x10140f60, 0x10141190, 0x10141500, 0x10141990, 0x10141ca0, 0x10141e80,
                         0x10142100, 0x10142180, 0x101426c0, 0x10142a10, 0x10143050, 0x101430a0, 0x10143180)
+ENGINE_STARTUP_ENTRY = 0x10143240
 VECTORS = {0x108b8ac4: 0x10143180, 0x108b8acc: 0x10143050,
            0x108b8ad4: 0x10142100, 0x108b8adc: 0x101407a0}
 DIRECT_CALLS = {
@@ -69,6 +70,8 @@ UNALIGNED = {
 def validate_flows(records, incoming):
     if {source: target for source, target, flow in incoming if "CALL" in flow} != DIRECT_CALLS:
         raise ValueError("Changed Hall of Fame call sites")
+    if tuple(sorted((*HALL_OF_FAME_ENTRIES, ENGINE_STARTUP_ENTRY))) != ENTRIES:
+        raise ValueError("Hall of Fame production entries do not match the inventory")
     if set(ENTRIES) != set(VECTORS.values()) | set(DIRECT_CALLS.values()):
         raise ValueError("Hall of Fame roots do not cover the inventory")
 

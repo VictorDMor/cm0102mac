@@ -1,5 +1,6 @@
 #include "engine_initialization_adapter.hpp"
 #include "guest_context_transfer.hpp"
+#include "hall_of_fame_adapter.hpp"
 #include "match_turbo.hpp"
 #include "staff_contracts.hpp"
 #include "staff_contracts_adapter.hpp"
@@ -29,7 +30,9 @@ bool try_modern_engine_initialization(State& s, std::uint32_t entry) {
     s.pc = entry;
     const auto index = engine_initialization::entry_index(entry);
     if (engine_initialization_diagnostics(s).original_body == entry) return false;
-    bool original = engine_initialization_diagnostics(s).original || engine_initialization_diagnostics(s).entry_original[index];
+    const bool hall_of_fame = entry == hall_of_fame_static_table_entry;
+    bool original = engine_initialization_diagnostics(s).original || engine_initialization_diagnostics(s).entry_original[index] ||
+                    (hall_of_fame && !hall_of_fame_wants_modern(entry));
     if (original) ++engine_initialization_diagnostics(s).original_calls[index];
     else if (match_pc_profile_enabled()) { original = true; ++engine_initialization_diagnostics(s).profile_original_calls[index]; }
     else ++engine_initialization_diagnostics(s).calls[index];
@@ -40,6 +43,8 @@ bool try_modern_engine_initialization(State& s, std::uint32_t entry) {
             const auto caller = std::uint32_t(s.r<4>(4128)); OriginalBody selected(s, entry);
             if (!dispatch_page(s)) throw std::runtime_error("Missing original engine-initialization body");
             if (s.pc != caller) run_until(s, caller);
+        } else if (hall_of_fame) {
+            try_modern_hall_of_fame(s, entry);
         } else if (entry == staff_contracts::fixed_date_entry) {
             staff_contracts_run_checked_rewrite(s, entry);
         } else engine_initialization::invoke(s, index);
