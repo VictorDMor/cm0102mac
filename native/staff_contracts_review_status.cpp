@@ -58,7 +58,7 @@ bool needs_followup(Cpu& c, const guest::Kept<29>& draft, const guest::Kept<30>&
 
     block(c, 0x1037f984, 2);
     c.set(3, draft);
-    c.call(0x1037f110, 0x1037f98c);
+    detail::call_owned(c, 0x1037f110, 0x1037f98c, has_review_trigger, std::uint32_t(draft));
     block(c, 0x1037f98c, 2);
     if (!record_nonzero(c, std::int8_t(c.r(3)))) return false;
 

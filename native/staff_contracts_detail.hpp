@@ -26,8 +26,8 @@ void call_owned(Cpu& c, std::uint32_t entry, std::uint32_t resume, Operation ope
 }
 
 // Record forms replace only CR0's low nibble.
-inline bool record_nonzero(Cpu& c, std::int32_t value) {
-    c.set(0, std::uint32_t(value));
+inline bool record_nonzero(Cpu& c, std::int32_t value, unsigned destination = 0) {
+    c.set(destination, std::uint32_t(value));
     const auto upper = c.cr(0) & 0xf0;
     const auto nonzero = guest::nonzero(c, value);
     c.set_cr(0, std::uint8_t(upper | c.cr(0)));

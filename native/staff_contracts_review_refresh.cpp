@@ -51,7 +51,7 @@ bool eligible_for_clearance(Cpu& c, const guest::Kept<28>& draft, const guest::K
 
     block(c, 0x1037f66c, 2);
     c.set(3, draft);
-    c.call(0x1037f110, 0x1037f674);
+    detail::call_owned(c, 0x1037f110, 0x1037f674, has_review_trigger, std::uint32_t(draft));
     block(c, 0x1037f674, 2);
     if (record_nonzero(c, std::int8_t(c.r(3)))) return false;
 
