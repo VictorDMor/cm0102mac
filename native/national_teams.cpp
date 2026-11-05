@@ -5775,6 +5775,151 @@ void release_staff_assignments(Cpu& c) {
     c.finish();
 }
 
+constexpr auto first_club_fixture_flag_entry = 0x102b7830u, second_club_fixture_flag_entry = 0x102b7900u;
+constexpr auto collect_calendar_ids_entry = 0x102b79d0u;
+
+template<bool Second>
+void read_club_fixture_flag(Cpu& c) {
+    constexpr auto entry = Second ? second_club_fixture_flag_entry : first_club_fixture_flag_entry;
+    GuestNativeScope scope(c.s, entry);
+    block(c, entry, 11);
+    const auto caller = c.sp(), frame = caller - 0x50, calendar = c.r(3), club = c.r(4);
+    const auto alternate = c.r(5);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set(31, alternate);
+    c.put32(caller - 8, c.r(30));
+    c.set(30, club);
+    c.put32(caller - 12, c.r(29));
+    c.set({{29, calendar}, {3, club}});
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.call(0x100ce250, entry + 0x2c);
+    block(c, entry + 0x2c, 2);
+    const bool first_national = record_nonzero_byte(c, c.r(3));
+    if (!first_national) {
+        block(c, entry + 0x34, 2);
+        record_nonzero_byte(c, alternate);
+    }
+    unsigned group = 0;
+    if (first_national || std::int8_t(alternate)) {
+        block(c, entry + 0x44, 2);
+        const bool requested_alternate = record_nonzero_byte(c, alternate);
+        block(c, entry + (requested_alternate ? 0x4cu : 0x54u), requested_alternate ? 2 : 1);
+        group = requested_alternate ? 1 : 2;
+    } else {
+        block(c, entry + 0x3c, 2);
+    }
+    c.set(31, group);
+
+    // Both outcomes read the same field. Retain the second classifier call
+    // and its branch accounting, including its stack and register effects.
+    block(c, entry + 0x58, 2);
+    c.set(3, club);
+    c.call(0x100ce250, entry + 0x60);
+    block(c, entry + 0x60, 2);
+    const bool second_national = record_nonzero_byte(c, c.r(3));
+    block(c, entry + (second_national ? 0x68u : 0x90u), second_national ? 10 : 9);
+    c.set(3, c.u32(club + 0x2c));
+    const auto slot = group * selection_slot_size;
+    c.set(0, slot);
+    c.set(4, c.u32(calendar + 4));
+    c.set(3, c.u32(c.r(3) + nation_index_offset));
+    c.set(3, c.r(3) * nation_record_size + c.r(4) + slot);
+    c.set(3, c.u8(c.r(3) + (Second ? 0x49 : 0x48)));
+
+    block(c, entry + 0xb4, 7);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.set(29, c.u32(caller - 12));
+    c.finish();
+}
+
+bool calendar_id_already_present(Cpu& c, std::uint32_t list, std::uint32_t row) {
+    block(c, 0x102b7a1c, 4);
+    c.set(0, c.u32(list + 4));
+    c.set(30, 0);
+    c.put32(list + 12, c.r(0));
+    bool found = false;
+    for (;;) {
+        block(c, 0x102b7a48, 2);
+        c.set(3, list);
+        c.call(0x10738e00, 0x102b7a50);
+        block(c, 0x102b7a50, 2);
+        c.compare_logical(0, c.r(3), 0);
+        if (!c.r(3)) break;
+        block(c, 0x102b7a30, 4);
+        c.set(3, c.u32(c.r(3)));
+        c.set(0, c.u32(row + 4));
+        c.compare(0, c.r(3), c.r(0));
+        if (c.r(3) == c.r(0)) {
+            block(c, 0x102b7a40, 2);
+            c.set(30, 1);
+            found = true;
+            break;
+        }
+    }
+    block(c, 0x102b7a58, 2);
+    return record_nonzero_byte(c, found);
+}
+
+void collect_calendar_ids(Cpu& c) {
+    GuestNativeScope scope(c.s, collect_calendar_ids_entry);
+    block(c, collect_calendar_ids_entry, 10);
+    const auto caller = c.sp(), frame = caller - 0x50, calendar = c.r(3), list = c.r(4);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, caller);
+    c.set({{27, calendar}, {28, list}, {29, 0}});
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto source = c.u32(calendar);
+    c.set(3, source);
+    c.compare_logical(0, source, 0);
+    if (source) {
+        block(c, 0x102b7a00, 2);
+        c.compare_logical(0, list, 0);
+    }
+    if (source && list) {
+        block(c, 0x102b7a10, 3);
+        c.set(0, c.u32(source + 4));
+        c.put32(source + 12, c.r(0));
+        unsigned appended = 0;
+        for (;;) {
+            block(c, 0x102b7a74, 2);
+            c.set(3, c.u32(calendar));
+            c.call(0x10738e00, 0x102b7a7c);
+            block(c, 0x102b7a7c, 2);
+            if (!record_nonzero_pointer(c, 31)) break;
+            const auto row = c.r(3);
+            if (!calendar_id_already_present(c, list, row)) {
+                block(c, 0x102b7a60, 4);
+                c.set({{3, list}, {4, row + 4}, {5, 4}});
+                c.call(0x10738d10, 0x102b7a70);
+                block(c, 0x102b7a70, 1);
+                c.set(29, ++appended);
+            }
+        }
+        block(c, 0x102b7a84, 1);
+        c.set(3, appended);
+    } else {
+        block(c, source ? 0x102b7a08 : 0x102b79f8, 2);
+        c.set(3, 0);
+    }
+    block(c, 0x102b7a88, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, caller);
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -6011,6 +6156,9 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case reconcile_staff_assignments_entry: reconcile_staff_assignments(c); break;
     case assign_staff_entry: assign_staff(c); break;
     case release_staff_assignments_entry: release_staff_assignments(c); break;
+    case first_club_fixture_flag_entry: read_club_fixture_flag<false>(c); break;
+    case second_club_fixture_flag_entry: read_club_fixture_flag<true>(c); break;
+    case collect_calendar_ids_entry: collect_calendar_ids(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;
