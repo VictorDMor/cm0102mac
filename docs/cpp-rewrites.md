@@ -536,6 +536,29 @@ or RNG call. The focused checker compares the combined lifecycle against the
 original with validated scripted external services; existing daily and January
 Continue captures do not reach this competition's lifecycle.
 
+## BRA_NAT_SECOND.CPP
+
+The [audit](../tools/bra_nat_second_audit.py) closes 13 entries and 1,916
+reachable instructions between BRA_NAT_FIRST.CPP and BRA_REG_NORTH.CPP.
+The normal owner covers construction, teardown, both calendars, ordered club
+selection, the season transition, group creation and updates, fixture placement,
+results and announcements. `CM_BRA_NAT_SECOND_ORIGINAL=1` retains the independent
+generated reference for comparisons.
+
+The original calendar writes the optional phase flag and the count/start
+headers before allocation. It rereads the signed year before each date call.
+Playoff seeding reads the live standings in the order first, fourth, second,
+third. The group destructor rereads the inclusive last group index after each
+callback. Construction retains the caller's live object home slot. Owned calls
+stay in C++ with CFM descriptor and TOC semantics, including checker paths and
+the two generated page boundaries.
+
+Base competition persistence, promotion, standings updates, date builders,
+group and fixture services, allocation, diagnostics and result/history services
+remain external. The module owns no serialized format or RNG entry. The checker
+runs the complete owned call graph against the independent reference and
+validates the arguments and effects at modeled external boundaries.
+
 ## SIMULATED_STATS.CPP
 
 The module lies between SHORTLIST_MANAGER.CPP and STAFF_CONTRACTS.CPP.

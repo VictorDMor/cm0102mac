@@ -219,6 +219,7 @@ from simulated_stats_audit import (SIMULATED_STATS_ENTRIES, simulated_stats_hook
 from por_second_audit import POR_SECOND_ENTRIES, por_second_hook, require_por_second_hooks
 from ger_first_audit import GER_FIRST_ENTRIES, ger_first_hook, require_ger_first_hooks
 from african_nations_audit import AFRICAN_NATIONS_ENTRIES, african_nations_hook, require_african_nations_hooks
+from bra_nat_second_audit import BRA_NAT_SECOND_ENTRIES, bra_nat_second_hook, require_bra_nat_second_hooks
 from staff_contracts_audit import (STAFF_CONTRACTS_ENTRIES, staff_contracts_hook, require_staff_contracts_hooks)
 from siprint_audit import SIPRINT_ENTRIES, require_siprint_index, siprint_hook, require_siprint_hooks
 from cup_stage_audit import CUP_STAGE_ENTRIES, require_cup_stage_index, cup_stage_hook, require_cup_stage_hooks
@@ -426,6 +427,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "por_second_adapter") for entry in POR_SECOND_ENTRIES) +
                       tuple((entry, "ger_first_adapter") for entry in GER_FIRST_ENTRIES) +
                       tuple((entry, "african_nations_adapter") for entry in AFRICAN_NATIONS_ENTRIES) +
+                      tuple((entry, "bra_nat_second_adapter") for entry in BRA_NAT_SECOND_ENTRIES) +
                       tuple((entry, "transfer_manager_adapter") for entry in TRANSFER_MANAGER_ENTRIES) +
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES) +
                       tuple((entry, "main_program_adapter") for entry in MAIN_PROGRAM_ENTRIES) +
@@ -1247,7 +1249,7 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
 
 
 def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
-                  direct_owner_calls=None, transfer_manager_hooks=True):
+                  direct_owner_calls=None, transfer_manager_hooks=True, bra_nat_second_hooks=True):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
     cpp_leaves = set()
@@ -1453,6 +1455,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   (frozenset(POR_SECOND_ENTRIES) if por_second_hooks else frozenset()) |
                   (frozenset(GER_FIRST_ENTRIES) if ger_first_hooks else frozenset()) |
                   (frozenset(AFRICAN_NATIONS_ENTRIES) if african_nations_hooks else frozenset()) |
+                  (frozenset(BRA_NAT_SECOND_ENTRIES) if bra_nat_second_hooks else frozenset()) |
                   (SIPRINT_TAKEOVERS if siprint_hooks else frozenset()) |
                   (TRANSFER_MANAGER_TAKEOVERS if transfer_manager_hooks else frozenset()))
     if nontrapping_divisions is None:
@@ -1711,6 +1714,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "ger_first_adapter.hpp"')
     if african_nations_hooks and page_addresses & set(AFRICAN_NATIONS_ENTRIES):
         code.insert(1, '#include "african_nations_adapter.hpp"')
+    if bra_nat_second_hooks and page_addresses & set(BRA_NAT_SECOND_ENTRIES):
+        code.insert(1, '#include "bra_nat_second_adapter.hpp"')
     if staff_contracts_hooks and page_addresses & set(STAFF_CONTRACTS_ENTRIES):
         code.insert(1, '#include "staff_contracts_adapter.hpp"')
     if siprint_hooks and page_addresses & set(SIPRINT_ENTRIES):
@@ -2187,6 +2192,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if african_nations_hooks and a in AFRICAN_NATIONS_ENTRIES:
             code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(african_nations_hook(a))
+        if bra_nat_second_hooks and a in BRA_NAT_SECOND_ENTRIES:
+            code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
+            code.append(bra_nat_second_hook(a))
         if siprint_hooks and a in SIPRINT_ENTRIES:
             code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(siprint_hook(a))
@@ -2518,6 +2526,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_ger_first_hooks(page, instructions, result)
     if african_nations_hooks:
         require_african_nations_hooks(page, instructions, result)
+    if bra_nat_second_hooks:
+        require_bra_nat_second_hooks(page, instructions, result)
     if siprint_hooks:
         require_siprint_hooks(page, instructions, result)
     if cup_stage_hooks:

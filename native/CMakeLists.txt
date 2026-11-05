@@ -61,6 +61,7 @@ target_sources(cm_aot PRIVATE simulated_stats.cpp)
 target_sources(cm_aot PRIVATE por_second.cpp)
 target_sources(cm_aot PRIVATE ger_first.cpp)
 target_sources(cm_aot PRIVATE african_nations.cpp)
+target_sources(cm_aot PRIVATE bra_nat_second.cpp)
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
@@ -4493,4 +4494,29 @@ if(CM_GER_FIRST_COVERAGE)
     target_compile_definitions(cm-ger-first-checks PRIVATE
         CM_GER_FIRST_PROFILE_DIR="${CM_GER_FIRST_PROFILE_DIR}")
     target_link_options(cm-ger-first-checks PRIVATE "-fprofile-instr-generate=${CM_GER_FIRST_PROFILE}")
+endif()
+
+add_executable(cm-bra-nat-second-checks bra_nat_second_checks.cpp)
+target_link_libraries(cm-bra-nat-second-checks PRIVATE cm_aot)
+target_compile_options(cm-bra-nat-second-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME bra_nat_second_equivalence COMMAND cm-bra-nat-second-checks)
+# The playoff group constructor is modeled at its dispatch boundary.
+set_tests_properties(bra_nat_second_equivalence PROPERTIES ENVIRONMENT "CM_CUP_STAGE_ORIGINAL=1")
+if(Python3_EXECUTABLE)
+    add_test(NAME bra_nat_second_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_bra_nat_second_audit.py")
+endif()
+option(CM_BRA_NAT_SECOND_COVERAGE "Instrument the Brazilian Second Division checker owner only" OFF)
+if(CM_BRA_NAT_SECOND_COVERAGE)
+    set(CM_BRA_NAT_SECOND_PROFILE_DIR "${CMAKE_CURRENT_BINARY_DIR}/bra-nat-second-coverage")
+    set(CM_BRA_NAT_SECOND_PROFILE "${CM_BRA_NAT_SECOND_PROFILE_DIR}/check-%p.profraw")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bra-nat-second-coverage")
+    add_library(cm_bra_nat_second_coverage OBJECT bra_nat_second.cpp)
+    target_link_libraries(cm_bra_nat_second_coverage PRIVATE cm_aot)
+    target_compile_options(cm_bra_nat_second_coverage PRIVATE
+        "-fprofile-instr-generate=${CM_BRA_NAT_SECOND_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_sources(cm-bra-nat-second-checks PRIVATE $<TARGET_OBJECTS:cm_bra_nat_second_coverage>)
+    target_compile_definitions(cm-bra-nat-second-checks PRIVATE
+        CM_BRA_NAT_SECOND_PROFILE_DIR="${CM_BRA_NAT_SECOND_PROFILE_DIR}")
+    target_link_options(cm-bra-nat-second-checks PRIVATE "-fprofile-instr-generate=${CM_BRA_NAT_SECOND_PROFILE}")
 endif()
