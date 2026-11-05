@@ -49,6 +49,11 @@ constexpr auto injury_policy = notice_policy + 1, injury_active = notice_policy 
 constexpr auto injury_assert_buffer = fixture + 0x6b00, injury_success = fixture + 0x6c00;
 constexpr auto recipient_club = clubs + 5 * 0x248;
 constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish = 0x102cc140u;
+constexpr auto calendar_availability = 0x102b9e50u;
+constexpr auto calendar_match = fixture + 0x6d00, calendar_headers = fixture + 0x6e00;
+constexpr auto home_events = fixture + 0x7200, away_events = fixture + 0x7800;
+constexpr auto competition_manager = fixture + 0x6f00, competition_slot = fixture + 0x6f10;
+constexpr auto competition_count = fixture + 0x6f14;
 constexpr auto localize = 0x10727890u, dispose_list = 0x10738c20u;
 constexpr unsigned record_size = 0x74, group_size = 0x14, staff_size = 0x6c;
 
@@ -97,6 +102,9 @@ bool observe_dependency(State& s) {
         if (resume != 0x102b81d8 && resume != 0x102b876c) return false;
         break;
     case 0x100c76c0: case 0x100c7860: break;
+    case 0x10494d20:
+        if (resume != 0x102b9f08) return false;
+        break;
     case 0x1014c2e0:
         if (resume != 0x103b19a4 && resume != 0x102b1da8 && resume != 0x102b1de0 &&
             resume != 0x102b878c && resume != 0x102b87bc && resume != 0x102b8bb0) return false;
@@ -203,8 +211,15 @@ bool observe_dependency(State& s) {
         break;
     case 0x10717b20: case 0x10717890: {
         const bool lower = entry == 0x10717b20;
-        require(c.r(3) == frame + (lower ? 0x60 : 0x58) && c.r(4) == date && c.r(5) == 1,
-                "duty date window arguments");
+        const bool availability = resume == 0x102b9eb8 || resume == 0x102b9ee0;
+        require(c.r(3) == frame + (lower ? 0x60 : 0x58) &&
+                    c.r(4) == (availability ? frame + 0x80 : date) && c.r(5) == 1,
+                "calendar window arguments");
+        if (availability) {
+            require(c.u16(frame + 0x80) == c.u16(calendar_match + 0x2a) &&
+                        c.u16(frame + 0x82) == c.u16(calendar_match + 0x28),
+                    "calendar converts and retains the match date");
+        }
         const auto seeded = lower ? first_bound : second_bound;
         fixture_date(c, c.r(3), c.i16(seeded), c.u16(seeded + 2));
         break;
@@ -237,10 +252,19 @@ bool observe_dependency(State& s) {
         break;
     }
     case 0x107156b0:
-        require(c.r(3) == frame + 0x68 && c.r(4) == 90 && c.r(5) == 2000,
-                "all-star calendar base and signed year offset");
-        fixture_date(c, c.r(3), c.i16(cutoff_date), c.u16(cutoff_date + 2));
+        if (resume == 0x102b9e90) {
+            require(c.r(3) == frame + 0x68 && c.r(4) == std::uint32_t(c.i16(calendar_match + 0x2a)) &&
+                        c.r(5) == c.u16(calendar_match + 0x28), "calendar match date argument widths");
+            fixture_date(c, c.r(3), c.i16(calendar_match + 0x2a), c.u16(calendar_match + 0x28));
+        } else {
+            require(c.r(3) == frame + 0x68 && c.r(4) == 90 && c.r(5) == 2000,
+                    "all-star calendar base and signed year offset");
+            fixture_date(c, c.r(3), c.i16(cutoff_date), c.u16(cutoff_date + 2));
+        }
         break;
+    case 0x10494d20:
+        require(c.r(3) == competition_manager && c.r(4) == competition, "calendar competition lookup");
+        return false;
     default:
         return false; // The club classifier and linked-list iterator are real.
     }
@@ -1430,6 +1454,125 @@ unsigned check_roster_faults(std::mt19937& random) {
     return 4;
 }
 
+std::unique_ptr<State> calendar_seed(std::mt19937& random) {
+    auto state = duty_seed(random);
+    Cpu c(*state);
+    c.set({{3, calendar}, {4, calendar_match}});
+    c.put32(toc - 0x7b54, competition_slot);
+    c.put32(toc - 0x7b64, competition_count);
+    c.put32(competition_slot, competition_manager);
+    c.put32(competition_count, 200);
+    c.put32(competition, 0);
+    c.put32(calendar + 0x20, calendar_headers);
+    c.put32(calendar_match + 0x14, competition);
+    c.put32(calendar_match + 0x1c, regular_club);
+    c.put32(calendar_match + 0x20, national_team);
+    c.put32(regular_club, 0);
+    c.put32(national_team, 1);
+    c.put16(calendar_match + 0x28, 0x8001);
+    c.put16(calendar_match + 0x2a, -7);
+    c.put32(calendar_headers, home_events);
+    c.put32(calendar_headers + 8, away_events);
+    fixture_date(c, first_bound, -9, 2000);
+    fixture_date(c, second_bound, 9, 2000);
+    state->pc = calendar_availability;
+    return state;
+}
+
+struct CalendarEvent { int day; unsigned year, weight; };
+
+void calendar_events(Cpu& c, bool away, std::initializer_list<CalendarEvent> events) {
+    auto row = away ? away_events : home_events;
+    c.put8(calendar_headers + (away ? 8 : 0) + 5, events.size());
+    for (const auto& event : events) {
+        fixture_date(c, row, event.day, event.year);
+        c.put8(row + 8, event.weight);
+        row += 12;
+    }
+}
+
+unsigned check_calendar_availability(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (bool away : {false, true}) {
+        for (unsigned scenario = 0; scenario < 17; ++scenario) {
+            auto state = calendar_seed(random);
+            Cpu c(*state);
+            const auto side = calendar_match + (away ? 0x20 : 0x1c);
+            const auto other = calendar_match + (away ? 0x1c : 0x20);
+            const auto header = calendar_headers + (away ? 8 : 0);
+            c.put32(other, 0);
+            switch (scenario) {
+            case 0: c.put32(side, 0); break;
+            case 1: c.put32(c.u32(side), 160); break;
+            case 2: c.put8(header + 5, 0x80); break;
+            case 3: break; // Empty schedule.
+            case 4: calendar_events(c, away, {{-9, 2000, 1}, {9, 2000, 1}}); break;
+            case 5: calendar_events(c, away, {{-9, 2000, 1}, {9, 2000, 2}}); break;
+            case 6: calendar_events(c, away, {{366, 1999, 9}, {-10, 2000, 9}, {0, 2000, 2}, {10, 2000, 9}}); break;
+            case 7: calendar_events(c, away, {{0, 2000, 2}, {1, 2001, 9}}); break;
+            case 8: calendar_events(c, away, {{0, 2000, 127}}); break;
+            case 9: calendar_events(c, away, {{0, 2000, 128}}); break;
+            case 10: calendar_events(c, away, {{0, 2000, 255}, {1, 2000, 4}}); break;
+            case 11: calendar_events(c, away, {{0, 2000, 255}, {1, 2000, 3}}); break;
+            case 12:
+                fixture_date(c, first_bound, 300, 1999);
+                fixture_date(c, second_bound, -9, 2001);
+                calendar_events(c, away, {{0, 2000, 3}});
+                break;
+            case 13:
+                c.put32(competition_manager + 4, competition);
+                c.put32(side, unmapped);
+                break;
+            case 14:
+                calendar_events(c, away, {{0, 2000, 4}, {10, 2000, 252}});
+                break;
+            case 15:
+                calendar_events(c, away, {{-11, 2000, 4}, {-10, 2000, 252}});
+                break;
+            case 16:
+                calendar_events(c, away, {{9, 2000, 2}, {10, 2000, 9}, {8, 2000, 9}});
+                break;
+            }
+            auto result = compare(*state);
+            const auto allowed = scenario != 5 && scenario != 8 && scenario != 10 && scenario != 12 && scenario != 14;
+            require(Cpu(*result).r(3) == unsigned(allowed), "calendar window, ordering and signed weight threshold");
+            ++comparisons;
+        }
+    }
+    for (unsigned home : {0u, 2u, 3u}) {
+        for (unsigned away : {0u, 2u, 3u}) {
+            auto state = calendar_seed(random);
+            Cpu c(*state);
+            calendar_events(c, false, {{0, 2000, home}});
+            calendar_events(c, true, {{0, 2000, away}});
+            auto result = compare(*state);
+            require(Cpu(*result).r(3) == unsigned(home <= 2 && away <= 2), "both club calendars are checked independently");
+            ++comparisons;
+        }
+    }
+    auto real = calendar_seed(random);
+    Cpu c(*real);
+    c.put32(toc - 0x3fb4, fixture + 0x6f20);
+    c.put32(toc - 0x3fac, fixture + 0x6f28);
+    c.put16(calendar_match + 0x28, 2000);
+    c.put16(calendar_match + 0x2a, 90);
+    calendar_events(c, false, {{90, 2000, 3}});
+    auto result = compare(*real, Stop::returned, Corrupt::none, true);
+    require(Cpu(*result).r(3) == 0, "real date helpers find a same-day conflict");
+    ++comparisons;
+    for (bool away : {false, true}) {
+        auto state = calendar_seed(random);
+        Cpu bad(*state);
+        const auto header = calendar_headers + (away ? 8 : 0);
+        bad.put32(header, unmapped);
+        bad.put8(header + 5, 1);
+        compare(*state, Stop::fault);
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    return comparisons;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -1489,6 +1632,8 @@ int main() try {
     const auto injured = check_injured_selection(random);
     const auto replacement = check_replacement_roster(random);
     const auto dispatch = check_replacement_dispatch(random);
+    const auto calendar_cases = check_calendar_availability(random);
+    std::cout << calendar_cases << " NATIONAL_TEAMS calendar comparisons, 2 faults and 2 budget stops\n";
     std::cout << dispatch << " NATIONAL_TEAMS replacement search comparisons, 2 faults and 1 budget stop\n";
     std::cout << replacement << " NATIONAL_TEAMS replacement roster comparisons, 2 faults and 2 budget stops\n";
     std::cout << injured << " NATIONAL_TEAMS injury roster comparisons, 1 fault and 1 budget stop\n";

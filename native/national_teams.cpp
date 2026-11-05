@@ -2292,6 +2292,232 @@ void automatic_replacement(Cpu& c) {
     c.finish();
 }
 
+constexpr auto calendar_availability_entry = 0x102b9e50u;
+
+void calendar_window(Cpu& c, std::uint32_t frame, std::uint32_t fixture) {
+    const auto day = c.u16(fixture + 0x2a);
+    c.set({{0, day}, {3, frame + 0x68}});
+    c.set(5, c.u16(fixture + 0x28));
+    c.set(4, std::uint32_t(std::int16_t(day)));
+    c.call(0x107156b0, 0x102b9e90);
+    for (unsigned edge = 0; edge < 2; ++edge) {
+        const auto pc = edge ? 0x102b9eb8u : 0x102b9e90u;
+        const auto source = frame + (edge ? 0x60 : 0x68);
+        const auto copy = frame + (edge ? 0x78 : 0x80);
+        block(c, pc, 10);
+        c.set({{5, std::uint32_t(c.i16(source))}, {3, frame + (edge ? 0x58 : 0x60)}});
+        c.set({{6, c.u16(source + 2)}, {4, frame + 0x80}});
+        c.set(0, c.u8(source + 4));
+        c.put16(copy, c.r(5));
+        c.set(5, 1);
+        c.put16(copy + 2, c.r(6));
+        c.put8(copy + 4, c.r(0));
+        c.call(edge ? 0x10717890 : 0x10717b20, pc + 40);
+    }
+}
+
+template<bool Away>
+bool calendar_outside_edge(Cpu& c, bool upper, std::uint16_t bound_year, std::uint16_t event_year,
+                           std::uint32_t bound_date, std::uint32_t event) {
+    constexpr unsigned result = Away ? 6 : 8, other = Away ? 8 : 10, half = Away ? 7 : 9;
+    const auto outside = [upper](auto bound, auto value) {
+        return upper ? bound < value : bound > value;
+    };
+    const auto pc = Away ? (upper ? 0x102ba120u : 0x102ba0c4u) : (upper ? 0x102b9fe0u : 0x102b9f84u);
+    if (outside(bound_year, event_year)) {
+        block(c, pc, 2);
+        c.set(result, 1);
+    } else {
+        block(c, pc + 8, 1);
+        if (bound_year != event_year) {
+            block(c, pc + 12, 2);
+            c.set(result, 0);
+        } else {
+            const bool crosses_page = !Away && upper;
+            block(c, pc + 20, crosses_page ? 3 : 8);
+            const auto bound_day = c.i16(bound_date);
+            c.set(upper ? result : other, std::uint32_t(bound_day));
+            const auto event_day = c.i16(event);
+            c.set(upper ? other : result, std::uint32_t(event_day));
+            const auto bits = std::int32_t(bound_day) ^ std::int32_t(event_day);
+            c.set(result, std::uint32_t(bits));
+            if (crosses_page) block(c, 0x102ba000, 7);
+            c.set(half, std::uint32_t(bits >> 1));
+            c.s.wr<1>(guest::reg::xer_ca, bits < 0 && (bits & 1));
+            c.set(result, outside(bound_day, event_day));
+            if (crosses_page) return record_nonzero_byte(c, c.r(result), result);
+        }
+    }
+    block(c, pc + 52, 2);
+    return record_nonzero_byte(c, c.r(result), result);
+}
+
+template<bool Away>
+bool calendar_has_event(Cpu& c, std::uint32_t header, unsigned index) {
+    constexpr unsigned count_reg = Away ? 6 : 4, index_reg = Away ? 7 : 8;
+    const auto count = c.i8(header + 5);
+    c.set({{count_reg, std::uint32_t(count)}, {index_reg, index}});
+    c.compare(0, index, count);
+    return int(index) < count;
+}
+
+template<bool Away>
+bool calendar_team_over_limit(Cpu& c, std::uint32_t frame, std::uint32_t calendar,
+                              std::uint32_t fixture, std::uint32_t clubs, std::uint32_t nations) {
+    constexpr auto pc = Away ? 0x102ba054u : 0x102b9f18u;
+    block(c, pc, 3);
+    const auto club = c.u32(fixture + (Away ? 0x20 : 0x1c));
+    c.set(4, club);
+    c.compare_logical(0, club, 0);
+    if (!club) return false;
+    block(c, pc + 12, 7);
+    const auto national_count = c.u32(nations);
+    c.set(3, national_count);
+    const auto club_count = c.u32(clubs);
+    c.set({{0, club_count}, {3, national_count * 2}});
+    const auto id = c.u32(club);
+    const auto first_national = club_count - national_count * 2;
+    c.set({{4, id}, {0, first_national}});
+    c.compare(0, id, first_national);
+    if (std::int32_t(id) >= std::int32_t(first_national)) return false;
+
+    constexpr unsigned total_reg = Away ? 0 : 6, row_reg = Away ? 10 : 4, weight_reg = Away ? 6 : 4;
+    constexpr auto lower = Away ? 0x40u : 0x50u, upper = Away ? 0x38u : 0x48u;
+    constexpr auto scan = Away ? 0x102ba0a8u : 0x102b9f68u;
+    constexpr auto check = Away ? 0x102ba16cu : 0x102ba02cu;
+    block(c, pc + 40, 10);
+    const auto packed = c.u32(frame + 0x7c);
+    std::uint32_t header;
+    if constexpr (Away) {
+        c.set({{3, packed}, {0, 0}});
+        const auto table = c.u32(calendar + 0x20);
+        c.set({{6, table}, {4, id * 8}});
+        c.put32(frame + lower + 4, packed);
+        c.set(5, 0);
+        c.set(9, c.u32(frame + 0x78));
+        header = table + id * 8;
+        c.set({{3, 0}, {4, header}});
+    } else {
+        c.set({{0, packed}, {3, id * 8}});
+        const auto table = c.u32(calendar + 0x20);
+        c.set({{4, table}, {6, 0}});
+        c.put32(frame + lower + 4, packed);
+        c.set(5, 0);
+        c.set(0, c.u32(frame + 0x78));
+        header = table + id * 8;
+        c.set({{7, header}, {3, 0}});
+    }
+    const auto lower_word = c.r(Away ? 9 : 0);
+    unsigned total = 0, index = 0;
+    block(c, check, 5);
+    while (calendar_has_event<Away>(c, header, index)) {
+        block(c, scan, 7);
+        const auto rows = c.u32(header);
+        c.set(weight_reg, rows);
+        c.put32(frame + lower, lower_word);
+        const auto event = rows + index * 12;
+        c.set(row_reg, event);
+        const auto from_year = c.u16(frame + lower + 2);
+        c.set(Away ? 7 : 9, from_year);
+        const auto event_year = c.u16(event + 2);
+        c.set(Away ? 6 : 8, event_year);
+        c.compare_logical(0, from_year, event_year);
+        const bool before = calendar_outside_edge<Away>(c, false, from_year, event_year, frame + lower, event);
+        if (!before) {
+            block(c, Away ? 0x102ba100 : 0x102b9fc0, 8);
+            c.set(Away ? 7 : 9, c.u32(frame + 0x70));
+            c.set(Away ? 6 : 8, c.u32(frame + 0x74));
+            c.put32(frame + upper, c.r(Away ? 7 : 9));
+            const auto current_year = c.u16(event + 2);
+            c.set(Away ? 7 : 9, current_year);
+            const auto until_year = c.u16(frame + upper + 2);
+            c.set(Away ? 8 : 10, until_year);
+            c.put32(frame + upper + 4, c.r(Away ? 6 : 8));
+            c.compare_logical(0, until_year, current_year);
+            if (calendar_outside_edge<Away>(c, true, until_year, current_year, frame + upper, event)) break;
+        }
+
+        if constexpr (Away) {
+            if (!before) block(c, 0x102ba15c, 2);
+        } else {
+            block(c, before ? 0x102ba024 : 0x102ba01c, before ? 7 : 9);
+        }
+        if (!before) {
+            const auto weight = c.u8(event + 8);
+            c.set(weight_reg, weight);
+            total += weight;
+            c.set(total_reg, total);
+        }
+        if constexpr (Away) block(c, 0x102ba164, 2);
+        ++index;
+        c.set({{3, index * 12}, {5, index}});
+        if constexpr (Away) block(c, check, 5);
+    }
+    block(c, Away ? 0x102ba180 : 0x102ba040, 3);
+    const auto total_byte = std::int8_t(total);
+    c.set(0, std::uint32_t(total_byte));
+    c.compare(0, total_byte, 2);
+    return total_byte > 2;
+}
+
+void calendar_availability(Cpu& c) {
+    GuestNativeScope scope(c.s, calendar_availability_entry);
+    block(c, calendar_availability_entry, 16);
+    const auto caller = c.sp(), frame = caller - 0xa0;
+    const auto calendar = c.r(3), fixture = c.r(4);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    const auto clubs = c.toc(-0x7b50);
+    c.set(31, clubs);
+    c.put32(caller - 8, c.r(30));
+    const auto nations = c.toc(-0x7b04);
+    c.set(30, nations);
+    c.put32(caller - 12, c.r(29));
+    c.set(29, fixture);
+    c.put32(caller - 16, c.r(28));
+    c.set(28, calendar);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+
+    calendar_window(c, frame, fixture);
+    block(c, 0x102b9ee0, 10);
+    c.set(5, std::uint32_t(c.i16(frame + 0x58)));
+    c.set(4, c.u16(frame + 0x5a));
+    c.set(0, c.u8(frame + 0x5c));
+    c.set(3, c.toc(-0x7b54));
+    c.put16(frame + 0x70, c.r(5));
+    c.set(3, c.u32(c.r(3)));
+    c.put16(frame + 0x72, c.r(4));
+    c.set(4, c.u32(fixture + 0x14));
+    c.put8(frame + 0x74, c.r(0));
+    c.call(0x10494d20, 0x102b9f08);
+    block(c, 0x102b9f08, 2);
+    if (record_nonzero_byte(c, c.r(3))) {
+        block(c, 0x102b9f10, 2);
+        c.set(3, 1);
+    } else if (calendar_team_over_limit<false>(c, frame, calendar, fixture, clubs, nations)) {
+        block(c, 0x102ba04c, 2);
+        c.set(3, 0);
+    } else if (calendar_team_over_limit<true>(c, frame, calendar, fixture, clubs, nations)) {
+        block(c, 0x102ba18c, 2);
+        c.set(3, 0);
+    } else {
+        block(c, 0x102ba194, 1);
+        c.set(3, 1);
+    }
+    block(c, 0x102ba198, 8);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.set(29, c.u32(caller - 12));
+    c.set(28, c.u32(caller - 16));
+    c.finish();
+}
+
 }
 
 void national_teams_run_original(State& state, std::uint32_t entry) {
@@ -2322,6 +2548,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case add_replacement_entry: add_replacement_to_roster(c); break;
     case replacement_objection_entry: replacement_objection(c); break;
     case automatic_replacement_entry: automatic_replacement(c); break;
+    case calendar_availability_entry: calendar_availability(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }
