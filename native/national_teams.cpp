@@ -1361,11 +1361,12 @@ bool fixture_conflict(const DutyQuery& q, std::uint32_t national_team) {
     return false;
 }
 
+template<unsigned Scratch = 3>
 void publish_day_order(Cpu& c, std::int16_t earlier, std::int16_t later) {
     // The original's signed-day comparison leaves the xor half and carry
     // live, even though the actual decision is an ordinary signed comparison.
     const auto bits = std::int32_t(earlier) ^ std::int32_t(later);
-    c.set(3, std::uint32_t(bits >> 1));
+    c.set(Scratch, std::uint32_t(bits >> 1));
     c.s.wr<1>(guest::reg::xer_ca, bits < 0 && (bits & 1));
     c.set(0, earlier < later);
 }
@@ -3478,6 +3479,194 @@ void register_domestic_fixture(Cpu& c) {
 }
 
 
+constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
+constexpr auto roster_club_order_entry = 0x102bc270u;
+
+void compare_schedule_dates(Cpu& c) {
+    block(c, schedule_date_order_entry, 10);
+    const auto left = c.r(3), right = c.r(4), sp = c.sp();
+    const auto right_date = c.u32(right);
+    c.set(5, right_date);
+    const auto right_tail = c.u32(right + 4);
+    c.set(0, right_tail);
+    c.put32(sp - 8, right_date);
+    const auto left_year = c.u16(left + 2);
+    c.set(6, left_year);
+    const auto right_year = c.u16(sp - 6);
+    c.set(4, right_year);
+    c.put32(sp - 24, right_date);
+    c.compare_logical(0, right_year, left_year);
+    c.put32(sp - 20, right_tail);
+    c.put32(sp - 4, right_tail);
+
+    if (left_year < right_year) {
+        block(c, 0x102bc1a8, 2);
+        c.set(0, 1);
+    } else {
+        block(c, 0x102bc1b0, 1);
+        if (left_year != right_year) {
+            block(c, 0x102bc1b4, 2);
+            c.set(0, 0);
+        } else {
+            block(c, 0x102bc1bc, 8);
+            const auto right_day = c.i16(sp - 8);
+            c.set(5, std::uint32_t(right_day));
+            const auto left_day = c.i16(left);
+            publish_day_order<4>(c, left_day, right_day);
+        }
+    }
+    block(c, 0x102bc1dc, 2);
+    if (record_nonzero_byte(c, c.r(0))) {
+        block(c, 0x102bc1e4, 2);
+        c.set(3, UINT32_MAX);
+        c.finish();
+        return;
+    }
+
+    // The second direction compares a fresh copy of the right operand.
+    // Keep the original copy and reload order for inputs that alias scratch.
+    block(c, 0x102bc1ec, 7);
+    c.set(4, c.u32(sp - 24));
+    c.set(0, c.u32(sp - 20));
+    c.put32(sp - 16, c.r(4));
+    const auto repeated_year = c.u16(sp - 14);
+    c.set(4, repeated_year);
+    c.put32(sp - 12, c.r(0));
+    c.compare_logical(0, repeated_year, left_year);
+    if (repeated_year < left_year) {
+        block(c, 0x102bc208, 2);
+        c.set(0, 1);
+    } else {
+        block(c, 0x102bc210, 1);
+        if (repeated_year != left_year) {
+            block(c, 0x102bc214, 2);
+            c.set(0, 0);
+        } else {
+            block(c, 0x102bc21c, 8);
+            const auto right_day = c.i16(sp - 16);
+            c.set(0, std::uint32_t(right_day));
+            const auto left_day = c.i16(left);
+            c.set(4, std::uint32_t(left_day));
+            publish_day_order(c, right_day, left_day);
+        }
+    }
+    block(c, 0x102bc23c, 5);
+    const auto after = c.r(0);
+    c.set({{0, 0u - after}, {3, after}});
+    c.finish();
+}
+
+void compare_roster_scores(Cpu& c) {
+    block(c, roster_score_order_entry, 8);
+    const auto left = c.u32(c.r(3));
+    c.set(5, left);
+    const auto right = c.u32(c.r(4));
+    c.set(3, right);
+    const auto left_assessment = c.u32(left + 0x14);
+    c.set(4, left_assessment);
+    const auto right_assessment = c.u32(right + 0x14);
+    c.set(3, right_assessment);
+    const auto left_score = c.i16(left_assessment + 8);
+    c.set(4, std::uint32_t(left_score));
+    const auto right_score = c.i16(right_assessment + 8);
+    c.set({{0, std::uint32_t(right_score)}, {3, std::uint32_t(right_score - left_score)}});
+    c.finish();
+}
+
+void compare_roster_clubs(Cpu& c) {
+    block(c, roster_club_order_entry, 6);
+    const auto left = c.u32(c.r(3));
+    c.set({{3, left}, {5, 0}});
+    const auto right = c.u32(c.r(4));
+    c.set({{4, right}, {6, 0}});
+    c.compare_logical(0, left, 0);
+    std::uint32_t left_club = 0, right_club = 0;
+    if (left) {
+        block(c, 0x102bc288, 1);
+        left_club = c.u32(left + 0x24);
+        c.set(5, left_club);
+    }
+    block(c, 0x102bc28c, 2);
+    c.compare_logical(0, right, 0);
+    if (right) {
+        block(c, 0x102bc294, 1);
+        right_club = c.u32(right + 0x24);
+        c.set(6, right_club);
+    }
+
+    block(c, 0x102bc298, 2);
+    c.compare_logical(0, left_club, 0);
+    if (!left_club) {
+        block(c, 0x102bc2a0, 2);
+        c.compare_logical(0, right_club, 0);
+        if (!right_club) {
+            block(c, 0x102bc2a8, 2);
+            c.set(3, 0);
+            c.finish();
+            return;
+        }
+    }
+    block(c, 0x102bc2b0, 2);
+    c.compare_logical(0, left_club, 0);
+    if (left_club) {
+        block(c, 0x102bc2b8, 2);
+        c.compare_logical(0, right_club, 0);
+        if (!right_club) {
+            block(c, 0x102bc2c0, 2);
+            c.set(3, UINT32_MAX);
+            c.finish();
+            return;
+        }
+    }
+    block(c, 0x102bc2c8, 2);
+    c.compare_logical(0, left_club, 0);
+    if (!left_club) {
+        block(c, 0x102bc2d0, 2);
+        c.compare_logical(0, right_club, 0);
+        block(c, 0x102bc2d8, 2);
+        c.set(3, 1);
+        c.finish();
+        return;
+    }
+
+    block(c, 0x102bc2e0, 2);
+    c.compare_logical(0, left_club, right_club);
+    if (left_club != right_club) {
+        block(c, 0x102bc2e8, 4);
+        const auto right_id = c.u32(right_club);
+        c.set(3, right_id);
+        const auto left_id = c.u32(left_club);
+        c.set({{0, left_id}, {3, left_id - right_id}});
+        c.finish();
+        return;
+    }
+    block(c, 0x102bc2f8, 4);
+    const auto left_flags = c.i8(left + 0x6a);
+    c.set(3, std::uint32_t(left_flags));
+    if (record_nonzero_byte(c, left_flags & 4)) {
+        block(c, 0x102bc308, 3);
+        if (record_nonzero_byte(c, c.u8(right + 0x6a) & 8)) {
+            block(c, 0x102bc314, 2);
+            c.set(3, UINT32_MAX);
+            c.finish();
+            return;
+        }
+    }
+    block(c, 0x102bc31c, 2);
+    if (record_nonzero_byte(c, left_flags & 8)) {
+        block(c, 0x102bc324, 3);
+        if (record_nonzero_byte(c, c.u8(right + 0x6a) & 4)) {
+            block(c, 0x102bc330, 2);
+            c.set(3, 1);
+            c.finish();
+            return;
+        }
+    }
+    block(c, 0x102bc338, 2);
+    c.set(3, 0);
+    c.finish();
+}
+
 }
 
 void national_teams_run_original(State& state, std::uint32_t entry) {
@@ -3513,6 +3702,9 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case calendar_load_entry: calendar_load(c); break;
     case create_schedule_entry: create_domestic_schedule(c); break;
     case register_fixture_entry: register_domestic_fixture(c); break;
+    case schedule_date_order_entry: compare_schedule_dates(c); break;
+    case roster_score_order_entry: compare_roster_scores(c); break;
+    case roster_club_order_entry: compare_roster_clubs(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }

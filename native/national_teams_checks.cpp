@@ -52,6 +52,7 @@ constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish
 constexpr auto calendar_availability = 0x102b9e50u, calendar_save = 0x102b96e0u;
 constexpr auto calendar_load = 0x102b8ec0u;
 constexpr auto create_schedule = 0x102ba1c0u, register_fixture = 0x102ba290u;
+constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
 constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
 constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
 constexpr auto release_limit = fixture + 0xbb40, release_excluded_nation = fixture + 0xbb44;
@@ -437,7 +438,8 @@ struct ObserveCalls {
 };
 
 std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returned,
-                               Corrupt corrupt = Corrupt::none, bool real_dependencies = false) {
+                               Corrupt corrupt = Corrupt::none, bool real_dependencies = false,
+                               std::initializer_list<std::uint32_t> nested_owners = {}) {
     auto original = clone(input), rewrite = clone(input);
     Effects original_effects, rewrite_effects;
     std::vector<DependencyCall> original_calls, rewrite_calls;
@@ -458,13 +460,14 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             return entry == club_notice || entry == nation_notice || entry == replacement_notice || entry == injured_selection ||
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
                 entry == add_replacement || entry == replacement_objection || entry == automatic_replacement ||
-                entry == calendar_save || entry == calendar_load || entry == create_schedule || entry == register_fixture;
+                entry == calendar_save || entry == calendar_load || entry == create_schedule || entry == register_fixture ||
+                entry == date_order || entry == score_order || entry == club_order;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection ||
                                    input.pc == automatic_replacement || input.pc == calendar_save ||
                                    input.pc == calendar_load || input.pc == create_schedule ||
-                                   input.pc == register_fixture))
+                                   input.pc == register_fixture || nested_owners.size()))
             routine_checker = &notice_boundary;
         if (input.pc == duty) {
             utility_object_diagnostics(s).original_body = dispose_list;
@@ -480,6 +483,13 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             error = failure.what();
         }
         s.memory.date_observer = nullptr;
+        if (error.empty()) {
+            for (const auto entry : nested_owners) {
+                const auto& totals = notice_boundary.totals();
+                const bool reached = totals.contains(entry) && totals.at(entry).calls > 0;
+                require(reached == !reference, "nested schedule comparator route " + hex_address(entry));
+            }
+        }
         return error;
     };
     const auto a = run(*original, original_effects, original_calls, true);
@@ -500,7 +510,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                 " / " + b + " at " + hex_address(rewrite->pc));
     if (expected == Stop::returned) {
         require(original->pc == done && rewrite->pc == done, label + " normal continuation");
-        if (input.pc == create_schedule || input.pc == register_fixture)
+        if (input.pc == create_schedule || input.pc == register_fixture ||
+            input.pc == date_order || input.pc == score_order || input.pc == club_order)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
     }
@@ -2126,9 +2137,9 @@ unsigned check_domestic_schedule(std::mt19937& random) {
         c.put8(release_policy + 4, 1);
         c.put32(toc - 0x5148, roster_comparator);
         c.put32(toc - 0x514c, date_comparator);
-        c.put32(roster_comparator, 0x102bc270);
+        c.put32(roster_comparator, club_order);
         c.put32(roster_comparator + 4, toc);
-        c.put32(date_comparator, 0x102bc180);
+        c.put32(date_comparator, date_order);
         c.put32(date_comparator + 4, toc);
         c.put32(release_team + 0x98, release_players + 0x100);
         c.put32(release_team + 0x9c, release_players + 0x180);
@@ -2140,7 +2151,7 @@ unsigned check_domestic_schedule(std::mt19937& random) {
         fixture_date(c, release_rows, 100, 2000);
         c.put8(release_rows + 8, 17);
         c.put16(calendar_match + 0x2a, 90);
-        const auto after = compare(*state);
+        const auto after = compare(*state, Stop::returned, Corrupt::none, false, {club_order, date_order});
         Cpu result(*after);
         require(result.u32(release_team + 0xa0) == release_players + 0x100 &&
                     result.u8(release_headers + 5) == 2 && result.i16(release_rows) == 90 &&
@@ -2155,6 +2166,137 @@ unsigned check_domestic_schedule(std::mt19937& random) {
     for (const auto entry : {create_schedule, register_fixture}) {
         const auto budget = domestic_schedule_seed(random);
         budget->pc = entry;
+        budget->budget = 0;
+        compare(*budget, Stop::budget);
+    }
+    return comparisons;
+}
+
+unsigned check_schedule_comparators(std::mt19937& random) {
+    constexpr auto left = fixture + 0x2000, right = left + 0x20;
+    constexpr auto left_player = fixture + 0x2100, right_player = fixture + 0x2200;
+    constexpr auto left_club = fixture + 0x2300, right_club = fixture + 0x2400;
+    constexpr auto left_assessment = fixture + 0x2500, right_assessment = fixture + 0x2600;
+    unsigned comparisons = 0;
+    const auto prepare = [&](std::uint32_t entry, std::uint32_t a = left, std::uint32_t b = right) {
+        auto state = seed(random);
+        Cpu c(*state);
+        c.set({{3, a}, {4, b}});
+        state->pc = entry;
+        return state;
+    };
+    const auto result_is = [&](State& state, std::int32_t expected) {
+        const auto after = compare(state);
+        require(std::int32_t(Cpu(*after).r(3)) == expected, "national schedule comparator result");
+        ++comparisons;
+    };
+
+    constexpr std::array dates{std::pair{0x7fffu, 32767}, std::pair{0x8000u, -32768},
+                               std::pair{0x8000u, -1}, std::pair{0x8000u, 0},
+                               std::pair{0x8000u, 1}, std::pair{0x8000u, 32767},
+                               std::pair{0xffffu, -32768}};
+    for (const auto& a : dates) {
+        for (const auto& b : dates) {
+            const auto state = prepare(date_order);
+            Cpu c(*state);
+            fixture_date(c, left, a.second, a.first);
+            fixture_date(c, right, b.second, b.first);
+            c.put32(right + 4, random());
+            result_is(*state, (a > b) - (a < b));
+        }
+    }
+    for (const auto& [a, b] : {std::pair{stack - 8, right}, std::pair{stack - 16, right},
+                              std::pair{left, stack - 8}, std::pair{left, left}}) {
+        const auto state = prepare(date_order, a, b);
+        Cpu c(*state);
+        fixture_date(c, a, 30, 2000);
+        fixture_date(c, b, b == stack - 8 ? 40 : 20, 2000);
+        result_is(*state, b == stack - 8 ? -1 : 0);
+    }
+
+    const auto seed_roster = [&](std::uint32_t entry) {
+        auto state = prepare(entry);
+        Cpu c(*state);
+        c.put32(left, left_player);
+        c.put32(right, right_player);
+        c.put32(left_player + 0x24, left_club);
+        c.put32(right_player + 0x24, right_club);
+        c.put32(left_club, UINT32_MAX);
+        c.put32(right_club, 6);
+        c.put32(left_player + 0x14, left_assessment);
+        c.put32(right_player + 0x14, right_assessment);
+        return state;
+    };
+    for (const int a : {-32768, -2, 0, 32767}) {
+        for (const int b : {-32768, -1, 0, 32767}) {
+            const auto state = seed_roster(score_order);
+            Cpu c(*state);
+            c.put16(left_assessment + 8, a);
+            c.put16(right_assessment + 8, b);
+            result_is(*state, b - a);
+        }
+    }
+    for (unsigned a = 0; a < 3; ++a) {
+        for (unsigned b = 0; b < 3; ++b) {
+            const auto state = seed_roster(club_order);
+            Cpu c(*state);
+            if (a == 0) c.put32(left, 0);
+            if (a == 1) c.put32(left_player + 0x24, 0);
+            if (b == 0) c.put32(right, 0);
+            if (b == 1) c.put32(right_player + 0x24, 0);
+            const auto expected = a == 2 && b == 2 ? -7 : int(b == 2) - int(a == 2);
+            result_is(*state, expected);
+        }
+    }
+    for (const unsigned a : {0x80u, 4u, 8u, 12u}) {
+        for (const unsigned b : {0x80u, 4u, 8u, 12u}) {
+            const auto state = seed_roster(club_order);
+            Cpu c(*state);
+            c.put32(right_player + 0x24, left_club);
+            c.put8(left_player + 0x6a, a);
+            c.put8(right_player + 0x6a, b);
+            const auto expected = (a & 4) && (b & 8) ? -1 : (a & 8) && (b & 4) ? 1 : 0;
+            result_is(*state, expected);
+        }
+    }
+    {
+        const auto state = seed_roster(club_order);
+        Cpu(*state).put32(left_club, 6);
+        result_is(*state, 0);
+        Cpu(*state).put32(left_club, 0x80000000);
+        Cpu(*state).put32(right_club, 1);
+        result_is(*state, INT32_MAX);
+    }
+
+    {
+        constexpr auto descriptor = fixture + 0x2700;
+        const auto state = seed_roster(0x10768300);
+        Cpu c(*state);
+        c.put32(left + 4, right_player);
+        c.put32(descriptor, score_order);
+        c.put32(descriptor + 4, toc);
+        c.put16(left_assessment + 8, -32768);
+        c.put16(right_assessment + 8, 32767);
+        c.set({{3, left}, {4, 2}, {5, 4}, {6, descriptor}});
+        const auto after = compare(*state, Stop::returned, Corrupt::none, false, {score_order});
+        Cpu result(*after);
+        require(result.u32(left) == right_player && result.u32(left + 4) == left_player,
+                "real score sort orders signed assessments highest first");
+        ++comparisons;
+    }
+
+    auto fault = prepare(date_order, unmapped, right);
+    compare(*fault, Stop::fault);
+    fault = prepare(date_order, left, fixture + 0x4ffc);
+    compare(*fault, Stop::fault);
+    fault = seed_roster(score_order);
+    Cpu(*fault).put32(right_player + 0x14, unmapped);
+    compare(*fault, Stop::fault);
+    fault = seed_roster(club_order);
+    Cpu(*fault).put32(left_player + 0x24, unmapped);
+    compare(*fault, Stop::fault);
+    for (const auto entry : {date_order, score_order, club_order}) {
+        auto budget = prepare(entry);
         budget->budget = 0;
         compare(*budget, Stop::budget);
     }
@@ -2224,6 +2366,8 @@ int main() try {
     const auto calendar_saves = check_calendar_save(random);
     const auto calendar_loads = check_calendar_load(random);
     const auto schedules = check_domestic_schedule(random);
+    const auto sort_comparisons = check_schedule_comparators(random);
+    std::cout << sort_comparisons << " NATIONAL_TEAMS schedule comparator comparisons, 4 faults and 3 budget stops\n";
     std::cout << schedules << " NATIONAL_TEAMS domestic schedule comparisons, 1 fault and 2 budget stops\n";
     std::cout << calendar_loads << " NATIONAL_TEAMS calendar load comparisons, 2 faults and 1 budget stop\n";
     std::cout << calendar_saves << " NATIONAL_TEAMS calendar save comparisons, 1 fault and 1 budget stop\n";
