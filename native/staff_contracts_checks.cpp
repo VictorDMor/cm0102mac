@@ -1,4 +1,5 @@
 #include "staff_contracts.hpp"
+#include "contract_review_adapter.hpp"
 #include "localization_format_adapter.hpp"
 #include "staff_contracts_adapter.hpp"
 #include "routine_check.hpp"
@@ -44,6 +45,14 @@ constexpr std::uint32_t formatter = 0x10727890, string_copy = 0x1077dbf0;
 constexpr std::uint32_t money_value = 0x10009f20, money_text = 0x1000b410;
 constexpr std::uint32_t label_pool = fixture + 0x1000, output_buffer = fixture + 0x1800;
 
+constexpr std::uint32_t reset_review_entry = 0x1037f050, clear_review_entry = 0x1037f7d0;
+constexpr std::uint32_t clear_all_review_entry = 0x1037f830, refresh_review_entry = 0x1037f590;
+constexpr std::uint32_t reset_status_entry = 0x1037fa60;
+constexpr std::uint32_t clear_staff_conditions = 0x100ddf30, clear_staff_condition = 0x100de090;
+constexpr std::uint32_t review_reputation = 0x103092f0;
+constexpr std::uint32_t review_club = fixture + 0x500, review_league = fixture + 0x200;
+constexpr std::uint32_t review_service_slot = fixture + 0x590;
+
 constexpr std::uint32_t squad_entry = 0x10380c10, summary_entry = 0x10380d50;
 constexpr std::uint32_t diagnostic_parameters = 0x10739890, diagnostic_alert = 0x10769b60;
 constexpr std::uint32_t external_continuation = 0x18000e00;
@@ -80,7 +89,12 @@ struct ExternalInputs {
     std::optional<std::uint32_t> wage_preferences;
     bool transfer_clause = false;
     std::optional<std::uint32_t> change_release_field;
+    std::uint32_t review_reply = 8;
 };
+
+bool review_state_entry(std::uint32_t entry) {
+    return entry == reset_review_entry || entry == clear_review_entry || entry == clear_all_review_entry;
+}
 
 bool release_entry(std::uint32_t entry) {
     return entry == squad_entry || entry == summary_entry;
@@ -121,17 +135,19 @@ struct DependencyTrace {
     std::vector<DependencyCall> calls;
     std::optional<std::uint32_t> adjustment_output;
     bool corrupt = false, text_fixture = false;
-    unsigned dispatched_names = 0;
+    unsigned dispatched_names = 0, dispatched_review_children = 0;
     std::optional<WindowInputs> window;
     bool sample_fixture = false;
     std::optional<std::uint32_t> clause_reply, wage_preferences;
     bool transfer_clause = false;
     std::optional<std::uint32_t> change_release_field;
+    std::optional<std::uint32_t> review_reply;
 };
 DependencyTrace* dependency_trace = nullptr;
 
-bool is_value_service(std::uint32_t entry) {
-    return entry == primary_adjustment || entry == alternate_adjustment || entry == money_value || entry == money_text;
+bool is_fixture_service(std::uint32_t entry) {
+    return entry == primary_adjustment || entry == alternate_adjustment || entry == money_value
+        || entry == money_text || entry == review_reputation;
 }
 
 struct ScopedRoutineChecker {
@@ -154,16 +170,28 @@ bool trace_dependency(State& s) {
     const bool window = trace.window && (s.pc == interval_entry || s.pc == age_entry);
     const bool sample = trace.sample_fixture && s.pc == reseed_entry;
     const bool clause = trace.clause_reply && s.pc == cfm_entry;
-    if (!adjustment && !label && !window && !sample && !clause && s.pc != default_date && s.pc != difference)
+    if (trace.review_reply && (s.pc == clear_all_review_entry || s.pc == reset_status_entry))
+        ++trace.dispatched_review_children;
+    const bool review = trace.review_reply && (s.pc == refresh_review_entry || s.pc == review_reputation
+        || s.pc == clear_staff_condition || s.pc == clear_staff_conditions);
+    if (!adjustment && !label && !window && !sample && !clause && !review && s.pc != default_date && s.pc != difference)
         return false;
     guest::Cpu c(s);
     if (trace.corrupt && s.pc == difference) c.set(4, c.r(4) ^ 0x10000u);
     if (trace.corrupt && s.pc == formatter) c.set(4, c.r(4) + 1);
+    if (trace.corrupt && review) c.set(4, c.r(4) ^ 0x10000u);
     if (trace.corrupt && clause) c.set(12, c.r(12) == first_descriptor ? second_descriptor : first_descriptor);
     DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), c.r(12), {}, std::nullopt};
     for (unsigned n = 0; n < call.arguments.size(); ++n) call.arguments[n] = c.r(n + 3);
     if (adjustment || s.pc == money_value) call.adjustment_input = c.u32(c.r(3));
     trace.calls.push_back(call);
+    if (review) {
+        if (s.pc == review_reputation) c.set(3, *trace.review_reply);
+        else if (s.pc == refresh_review_entry) c.put8(record + 0x45, 9);
+        else c.put32(c.r(3) + 0x34, s.pc == clear_staff_condition ? c.r(4) : 0);
+        c.finish();
+        return true;
+    }
     if (clause) {
         require(c.r(3) == competition && (c.r(12) == first_descriptor || c.r(12) == second_descriptor),
                 "Valid competition callback descriptor and receiver");
@@ -326,6 +354,10 @@ std::unique_ptr<State> expiry_fixture() {
     c.put32(toc - 0x79e8, window_reference);
     c.put32(toc - 0x7be0, staff_slot);
     c.put32(staff_slot, staff_rows);
+    c.put32(toc - 0x7b3c, review_service_slot);
+    c.put32(review_service_slot, 0x1234b3c);
+    c.put32(review_club + 0x2c, review_league);
+    c.put8(review_league + 0x119, 12);
     for (const auto offset : {0x2a, 0x3f, 0x54, 0x69, 0x83, 0x9e, 0xb9, 0xca, 0xf3,
                               0x289, 0x294, 0x2a1, 0x2b3, 0x2c6, 0x2e3, 0x2fe, 0x319, 0x333, 0x34e})
         write_text(c, label_pool + offset, "label" + std::to_string(offset));
@@ -408,8 +440,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const bool window_fixture = input.pc == window_entry;
     const bool sample_fixture = input.pc == sampling_entry;
     const bool clause_fixture = input.pc == clause_entry;
+    const bool review_fixture = review_state_entry(input.pc);
     const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value()
-        || text_fixture || window_fixture || sample_fixture || clause_fixture;
+        || text_fixture || window_fixture || sample_fixture || clause_fixture || review_fixture;
     if (text_fixture) {
         // Decline the in-place formatting owner at the external boundary.
         // The dispatcher probe then supplies the same fixture on both sides.
@@ -417,24 +450,32 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         localization_format_diagnostics(*modern).original_body = formatter;
         original->formatted_output_original = modern->formatted_output_original = true;
     }
+    if (review_fixture) {
+        contract_review_diagnostics(*original).original_body = refresh_review_entry;
+        contract_review_diagnostics(*modern).original_body = refresh_review_entry;
+    }
+    const auto review_reply = review_fixture ? std::optional(inputs.review_reply) : std::nullopt;
     const auto window_inputs = window_fixture ? std::optional(inputs.window) : std::nullopt;
     const auto clause_reply = clause_fixture ? std::optional(inputs.clause_reply) : std::nullopt;
     DependencyTrace old_calls{.calls = {}, .adjustment_output = adjustment, .text_fixture = text_fixture,
                               .window = window_inputs, .sample_fixture = sample_fixture,
                               .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
                               .transfer_clause = inputs.transfer_clause,
-                              .change_release_field = inputs.change_release_field};
+                              .change_release_field = inputs.change_release_field,
+                              .review_reply = review_reply};
     DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
                               .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture,
                                .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
                               .transfer_clause = inputs.transfer_clause,
-                              .change_release_field = inputs.change_release_field};
+                              .change_release_field = inputs.change_release_field,
+                              .review_reply = review_reply};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
-    // The generated caller can enter CASH.CPP in place. Decline just these
-    // two services so both references reach the same external fixture.
-    RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_value_service(entry); }, 0, 0);
+    // Decline the in-place owners for the modeled external dependencies.
+    RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_fixture_service(entry); }, 0, 0);
     const bool amount_description = input.pc == bonus_description && std::int8_t(input.r<4>(28)) != 1;
-    ScopedRoutineChecker checker(adjustment || amount_description || input.pc == wage_entry ? &fixture_filter : nullptr);
+    const bool reputation_call = input.pc == reset_review_entry && input.r<4>(20) != 0;
+    ScopedRoutineChecker checker(adjustment || amount_description || input.pc == wage_entry || reputation_call
+                                    ? &fixture_filter : nullptr);
     const auto old_stop = call(*original, true);
     if (traced) dependency_trace = &new_calls;
     const auto new_stop = call(*modern, false);
@@ -454,8 +495,11 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         return {unsigned(modern->r<4>(12)), unsigned(modern->executed), 0, {}, std::move(actual.log)};
     }
     require(old_calls.calls == new_calls.calls, label + " changed external arguments or call order");
+    if (input.pc == reset_review_entry && !reputation_call && old_stop.empty())
+        require(old_calls.dispatched_review_children == 2 && new_calls.dispatched_review_children == 0,
+                label + " did not take both direct C++ review calls");
     if (traced && !sample_fixture && !clause_fixture && !release_entry(input.pc)
-        && input.pc != wage_entry && old_stop.empty()) {
+        && !review_fixture && input.pc != wage_entry && old_stop.empty()) {
         const unsigned expected_calls = input.pc == bonus_description ? (amount_description ? 4 : 2)
             : input.pc == draft_entry ? 2 : 1;
         require(old_calls.calls.size() == expected_calls || (window_fixture && old_calls.calls.size() == 4),
@@ -724,7 +768,7 @@ void adjustment_sequence() {
     auto original = expiry_fixture();
     auto modern = clone(*original);
     const auto run = [](State& s, bool reference) {
-        RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_value_service(entry); }, 0, 0);
+        RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_fixture_service(entry); }, 0, 0);
         ScopedRoutineChecker checker(&fixture_filter);
         DependencyTrace trace;
         ScopedDependencyProbe probe(&trace);
@@ -1074,6 +1118,53 @@ void release_presentation_cases(Counts& counts) {
     compare_entry(*input, counts, squad_table + 0x20);
 }
 
+void review_state_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    c.put32(record, 1);
+    c.put8(record + 0x60, 0xef);
+    c.put32(record + 0x50, 0x81010001);
+    c.put32(record + 0x48, 0xc0c0babe);
+    input->pc = reset_review_entry;
+    c.set({{4, staff_rows + 0x70}, {5, review_club}});
+    for (auto reply : {0u, 4u, 10u, 11u, 127u, 128u, 255u, 256u, 0xffffffffu}) {
+        ExternalInputs inputs;
+        inputs.review_reply = reply;
+        const auto result = compare_entry(*input, counts, no_hole, false, false, std::nullopt, inputs);
+        const auto grade = std::min(10, int(std::int8_t(reply)));
+        require(result.value == std::uint32_t(grade) && result.dependency_calls == 2,
+                "Signed review grade and ordered staff/league calls");
+    }
+    compare_entry(*input, counts, review_league + 0x119);
+    compare_entry(*input, counts, record + 0x48);
+    c.put32(review_club + 0x2c, 0);
+    require(compare_entry(*input, counts).dependency_calls == 1, "Review reset skips the missing league");
+    c.set(5, 0);
+    require(compare_entry(*input, counts).dependency_calls == 1, "Review reset skips the missing employer");
+    compare_entry(*input, counts, no_hole, false, true);
+
+    input->pc = clear_review_entry;
+    for (auto mask : {0u, 1u, 0x10u, 0x100u, 0x10000u, 0x80000000u, 0xffffffffu}) {
+        c.set(4, mask);
+        const auto result = compare_entry(*input, counts);
+        require(result.dependency_calls == 2, "Condition refresh must precede clearing the staff record");
+        for (unsigned budget = 1; budget < result.steps; ++budget) {
+            input->budget = budget;
+            compare_entry(*input, counts);
+        }
+        input->budget = normal_budget;
+    }
+    compare_entry(*input, counts, record + 0x50);
+
+    input->pc = clear_all_review_entry;
+    for (auto refresh : {0u, 1u, 127u, 128u, 255u, 256u, 0xffffffffu}) {
+        c.set(4, refresh);
+        const auto result = compare_entry(*input, counts);
+        require(result.dependency_calls == (std::int8_t(refresh) ? 2 : 1), "Refresh checks the signed low byte");
+    }
+    compare_entry(*input, counts, staff_slot);
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -1082,7 +1173,7 @@ unsigned generated_hooks() {
 #undef STAFF_CONTRACTS_CONTINUATION
 #undef STAFF_CONTRACTS_ROUTINE
     });
-    RoutineChecker checker([](std::uint32_t entry) { return !is_value_service(entry); }, 1, 1);
+    RoutineChecker checker([](std::uint32_t entry) { return !is_fixture_service(entry); }, 1, 1);
     checker.strict_volatile = true;
     ScopedRoutineChecker scope(&checker);
     for (const auto entry : entries) {
@@ -1108,8 +1199,14 @@ unsigned generated_hooks() {
             else if (release_entry(entry)) c.set({{4, output_buffer}, {5, 20}});
             else c.set({{4, 0}, {5, output_buffer}, {7, 0}});
         }
-        DependencyTrace trace{.calls = {}, .adjustment_output = 0, .text_fixture = text_fixture};
-        ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture ? &trace : nullptr);
+        const bool review_fixture = review_state_entry(entry);
+        if (review_fixture) {
+            contract_review_diagnostics(*s).original_body = refresh_review_entry;
+            s->wr<4>(20, review_club);
+        }
+        DependencyTrace trace{.calls = {}, .adjustment_output = 0, .text_fixture = text_fixture,
+                              .review_reply = review_fixture ? std::optional(8u) : std::nullopt};
+        ScopedDependencyProbe probe(value_adjustment(entry) || text_fixture || review_fixture ? &trace : nullptr);
         const auto before = checker.totals().find(entry);
         const auto prior = before == checker.totals().end() ? 0 : before->second.checked;
         run_until(*s, return_sentinel);
@@ -1145,6 +1242,7 @@ int main() {
         clause_cases(counts);
         wage_and_end_text_cases(counts);
         release_presentation_cases(counts);
+        review_state_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "

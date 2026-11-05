@@ -37,6 +37,9 @@ void adjust_primary_value(guest::Cpu&, std::uint32_t contract);
 void adjust_alternate_value(guest::Cpu&, std::uint32_t contract);
 void set_release_amount(guest::Cpu&, std::uint32_t contract, std::uint32_t amount);
 
+void reset_review_state(guest::Cpu&, std::uint32_t contract, std::uint32_t staff, std::uint32_t club);
+void clear_review_condition(guest::Cpu&, std::uint32_t contract, std::uint32_t mask);
+void clear_review_conditions(guest::Cpu&, std::uint32_t contract, std::uint32_t refresh);
 void clear_status_bits(guest::Cpu&, std::uint32_t contract, std::uint32_t mask);
 void reset_status_bits(guest::Cpu&, std::uint32_t contract);
 std::uint32_t status_bits(guest::Cpu&, std::uint32_t contract);
