@@ -1361,14 +1361,14 @@ bool fixture_conflict(const DutyQuery& q, std::uint32_t national_team) {
     return false;
 }
 
-template<unsigned Scratch = 3>
+template<unsigned Scratch = 3, unsigned Result = 0>
 void publish_day_order(Cpu& c, std::int16_t earlier, std::int16_t later) {
     // The original's signed-day comparison leaves the xor half and carry
     // live, even though the actual decision is an ordinary signed comparison.
     const auto bits = std::int32_t(earlier) ^ std::int32_t(later);
     c.set(Scratch, std::uint32_t(bits >> 1));
     c.s.wr<1>(guest::reg::xer_ca, bits < 0 && (bits & 1));
-    c.set(0, earlier < later);
+    c.set(Result, earlier < later);
 }
 
 bool roster_date_precedes_query(const DutyQuery& q, std::uint32_t roster) {
@@ -3875,6 +3875,231 @@ void mark_domestic_fixtures(Cpu& c) {
     c.finish();
 }
 
+constexpr auto apply_fixture_marks_entry = 0x102baa40u;
+
+void mark_fixture_window(Cpu& c, std::uint32_t calendar, std::uint32_t date) {
+    const auto frame = c.sp();
+    block(c, 0x102baad0, 3);
+    c.set({{3, calendar}, {4, date}});
+    call_national_owner(c, mark_fixtures_entry, 0x102baadc, mark_domestic_fixtures);
+    block(c, 0x102baadc, 4);
+    c.set({{4, date}, {3, frame + 0x50}, {5, 1}});
+    c.call(0x10717b20, 0x102baaec);
+    block(c, 0x102baaec, 9);
+    const auto temporary = frame + 0x68;
+    c.set(6, std::uint32_t(c.i16(frame + 0x50)));
+    c.set(3, calendar);
+    c.set(5, c.u16(frame + 0x52));
+    c.set(4, temporary);
+    c.set(0, c.u8(frame + 0x54));
+    c.put16(temporary, c.r(6));
+    c.put16(temporary + 2, c.r(5));
+    c.put8(temporary + 4, c.r(0));
+    call_national_owner(c, mark_fixtures_entry, 0x102bab10, mark_domestic_fixtures);
+    block(c, 0x102bab10, 4);
+    c.set({{3, frame + 0x48}, {4, temporary}, {5, 2}});
+    c.call(0x10717890, 0x102bab20);
+    block(c, 0x102bab20, 9);
+    c.set(0, c.u8(frame + 0x4c));
+    c.set(3, calendar);
+    c.set(6, c.u16(frame + 0x4a));
+    c.set(4, temporary);
+    c.set(5, std::uint32_t(c.i16(frame + 0x48)));
+    c.put16(temporary + 2, c.r(6));
+    c.put16(temporary, c.r(5));
+    c.put8(temporary + 4, c.r(0));
+    call_national_owner(c, mark_fixtures_entry, 0x102bab44, mark_domestic_fixtures);
+}
+
+bool release_is_before_window(Cpu& c, std::uint32_t row, std::uint32_t tail) {
+    const auto frame = c.sp();
+    c.set(5, row);
+    const auto lower_year = c.u16(frame + 0x42);
+    c.set(9, lower_year);
+    const auto year = c.u16(row + 2);
+    c.set(8, year);
+    c.put32(frame + 0x44, tail);
+    c.compare_logical(0, lower_year, year);
+    if (year < lower_year) {
+        block(c, 0x102baba8, 2);
+        c.set(8, 1);
+    } else {
+        block(c, 0x102babb0, 1);
+        if (year != lower_year) {
+            block(c, 0x102babb4, 2);
+            c.set(8, 0);
+        } else {
+            block(c, 0x102babbc, 8);
+            const auto lower_day = c.i16(frame + 0x40);
+            c.set(10, std::uint32_t(lower_day));
+            const auto day = c.i16(row);
+            publish_day_order<9, 8>(c, day, lower_day);
+        }
+    }
+    block(c, 0x102babdc, 2);
+    return record_nonzero_byte(c, c.r(8), 8);
+}
+
+bool release_is_after_window(Cpu& c, std::uint32_t row) {
+    const auto frame = c.sp();
+    block(c, 0x102babe4, 8);
+    c.set(9, c.u32(frame + 0x70));
+    const auto tail = c.u32(frame + 0x74);
+    c.set(8, tail);
+    c.put32(frame + 0x38, c.r(9));
+    const auto year = c.u16(row + 2);
+    c.set(9, year);
+    const auto upper_year = c.u16(frame + 0x3a);
+    c.set(10, upper_year);
+    c.put32(frame + 0x3c, tail);
+    c.compare_logical(0, upper_year, year);
+    if (year > upper_year) {
+        block(c, 0x102bac04, 2);
+        c.set(8, 1);
+    } else {
+        block(c, 0x102bac0c, 1);
+        if (year != upper_year) {
+            block(c, 0x102bac10, 2);
+            c.set(8, 0);
+        } else {
+            block(c, 0x102bac18, 8);
+            const auto upper_day = c.i16(frame + 0x38);
+            c.set(8, std::uint32_t(upper_day));
+            const auto day = c.i16(row);
+            c.set(10, std::uint32_t(day));
+            publish_day_order<9, 8>(c, upper_day, day);
+        }
+    }
+    block(c, 0x102bac38, 2);
+    return record_nonzero_byte(c, c.r(8), 8);
+}
+
+unsigned count_window_releases(Cpu& c, std::uint32_t calendar, unsigned club) {
+    const auto frame = c.sp();
+    block(c, 0x102bab70, 6);
+    const auto lower = c.u32(frame + 0x78);
+    c.set({{3, lower}, {6, 0}});
+    const auto tail = c.u32(frame + 0x7c);
+    c.set({{0, tail}, {7, 0}, {4, 0}});
+    unsigned releases = 0;
+    for (unsigned index = 0; ; ++index) {
+        block(c, 0x102bac50, 7);
+        const auto headers = c.u32(calendar + schedule_headers_offset);
+        c.set({{5, headers}, {8, index}});
+        const auto header = headers + club * schedule_header_size;
+        c.set(9, header);
+        const auto count = c.i8(header + schedule_size_offset);
+        c.set(5, std::uint32_t(count));
+        c.compare(0, index, count);
+        if (int(index) >= count) return releases;
+        block(c, 0x102bab88, 8);
+        const auto rows = c.u32(header);
+        c.set(5, rows);
+        c.put32(frame + 0x40, lower);
+        const auto row = rows + index * schedule_row_size;
+        if (!release_is_before_window(c, row, tail)) {
+            if (release_is_after_window(c, row)) return releases;
+            block(c, 0x102bac40, 2);
+            const auto weight = c.u8(row + schedule_release_offset);
+            releases += weight;
+            c.set({{5, weight}, {6, releases}});
+        }
+        block(c, 0x102bac48, 2);
+        c.set({{4, (index + 1) * schedule_row_size}, {7, index + 1}});
+    }
+}
+
+void apply_fixture_marks(Cpu& c) {
+    GuestNativeScope scope(c.s, apply_fixture_marks_entry);
+    block(c, apply_fixture_marks_entry, 17);
+    const auto caller = c.sp(), frame = caller - 0xa0, calendar = c.r(3), date = c.r(4);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<24>(c, caller);
+    c.set(24, calendar);
+    c.set(5, c.toc(-0x7b04));
+    c.set({{3, c.toc(-0x7b50)}, {25, date}});
+    const auto clubs = c.toc(-0x7be8);
+    c.set(30, clubs);
+    const auto fixtures = c.toc(-0x7a60);
+    c.set(31, fixtures);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(5, c.u32(c.r(5)));
+    const auto total = c.u32(c.r(3));
+    c.set({{0, total}, {3, frame + 0x60}});
+    const auto national = c.r(5) * 2;
+    const auto domestic = std::int32_t(total - national);
+    c.set({{5, national}, {26, std::uint32_t(domestic)}, {5, 1}});
+    c.call(0x10717b20, 0x102baa84);
+
+    block(c, 0x102baa84, 10);
+    c.set(5, std::uint32_t(c.i16(frame + 0x60)));
+    c.set(4, date);
+    c.set(6, c.u16(frame + 0x62));
+    c.set(3, frame + 0x58);
+    c.set(0, c.u8(frame + 0x64));
+    c.put16(frame + 0x78, c.r(5));
+    c.set(5, 1);
+    c.put16(frame + 0x7a, c.r(6));
+    c.put8(frame + 0x7c, c.r(0));
+    c.call(0x10717890, 0x102baaac);
+    block(c, 0x102baaac, 9);
+    const auto marks = c.u32(calendar + fixture_marks_offset);
+    c.set(0, marks);
+    c.set(4, std::uint32_t(c.i16(frame + 0x58)));
+    c.set(3, c.u16(frame + 0x5a));
+    c.compare_logical(0, marks, 0);
+    c.set(0, c.u8(frame + 0x5c));
+    c.put16(frame + 0x70, c.r(4));
+    c.put16(frame + 0x72, c.r(3));
+    c.put8(frame + 0x74, c.r(0));
+    if (!marks) mark_fixture_window(c, calendar, date);
+
+    block(c, 0x102bab44, 4);
+    c.set({{29, 0}, {27, 0}, {28, 0}});
+    for (int club = 0; ; ++club) {
+        block(c, 0x102bac98, 2);
+        c.compare(0, club, domestic);
+        if (club >= domestic) break;
+        block(c, 0x102bab54, 5);
+        const auto current_marks = c.u32(calendar + fixture_marks_offset);
+        c.set(3, current_marks);
+        const auto mark = c.i8(current_marks + unsigned(club));
+        c.set(0, std::uint32_t(mark));
+        c.compare(0, mark, 1);
+        if (mark != 1) {
+            block(c, 0x102bab68, 2);
+            c.compare(0, mark, 2);
+        }
+        if (mark == 1 || mark == 2) {
+            const auto releases = std::int8_t(count_window_releases(c, calendar, unsigned(club)));
+            block(c, 0x102bac6c, 3);
+            c.set(0, std::uint32_t(releases));
+            c.compare(0, releases, 2);
+            if (releases > 2) {
+                block(c, 0x102bac78, 5);
+                c.set(0, c.u32(clubs));
+                c.set(5, date);
+                c.set(3, c.u32(fixtures));
+                c.set(4, c.r(0) + unsigned(club) * 0x248);
+                c.call(0x1048a020, 0x102bac8c);
+            }
+        }
+        block(c, 0x102bac8c, 3);
+        const auto next = std::uint32_t(club + 1);
+        c.set({{29, next * schedule_header_size}, {28, next * 0x248}, {27, next}});
+    }
+
+    block(c, 0x102baca0, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<24, true>(c, caller);
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -4100,6 +4325,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case register_fixture_entry: register_domestic_fixture(c); break;
     case expire_schedule_entry: expire_domestic_schedule(c); break;
     case mark_fixtures_entry: mark_domestic_fixtures(c); break;
+    case apply_fixture_marks_entry: apply_fixture_marks(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;

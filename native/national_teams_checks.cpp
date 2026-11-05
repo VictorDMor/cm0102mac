@@ -52,7 +52,7 @@ constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish
 constexpr auto calendar_availability = 0x102b9e50u, calendar_save = 0x102b96e0u;
 constexpr auto calendar_load = 0x102b8ec0u;
 constexpr auto create_schedule = 0x102ba1c0u, register_fixture = 0x102ba290u, expire_schedule = 0x102ba610u;
-constexpr auto mark_fixtures = 0x102ba7b0u;
+constexpr auto mark_fixtures = 0x102ba7b0u, apply_marks = 0x102baa40u;
 constexpr auto mark_groups = fixture + 0xc000, mark_lists = fixture + 0xcc00;
 constexpr auto mark_array = fixture + 0xbe20, mark_matches = fixture + 0xbe40;
 constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
@@ -141,6 +141,9 @@ bool observe_dependency(State& s) {
     case 0x107751b0: case 0x10768300:
         if (!domestic_schedule) return false;
         break;
+    case 0x1048a020:
+        if (resume != 0x102bac8c) return false;
+        break;
     case 0x1048d420:
         if (resume != 0x102ba8b8) return false;
         break;
@@ -165,12 +168,24 @@ bool observe_dependency(State& s) {
         require(c.r(3) == release_team, "domestic fixture team classifier");
         c.set(3, c.u8(release_policy + 1));
         break;
-    case 0x1048d420:
-        require(c.r(3) == competition_manager && c.r(4) == date && c.r(5) <= 2 &&
-                    (c.r(6) == 5 || c.r(6) == 7), "fixture marking lookup group, date and slot");
-        c.put8(release_policy + 6, c.u8(release_policy + 6) + 1);
+    case 0x1048a020: {
+        const auto index = c.u8(release_policy + 0x24);
+        require(index < 3 && c.r(3) == competition_manager && c.r(5) == date,
+                "fixture reschedule arguments");
+        c.put32(release_policy + 0x28 + index * 4, c.r(4));
+        c.put8(release_policy + 0x24, index + 1);
+        break;
+    }
+    case 0x1048d420: {
+        const bool nested = c.u8(release_policy + 0x20);
+        require(c.r(3) == competition_manager && (c.r(4) == date || (nested && c.r(4) == stack - 0x38)) &&
+                    c.r(5) <= 2 && (c.r(6) == 5 || c.r(6) == 7), "fixture marking lookup group, date and slot");
+        const auto count = c.u8(release_policy + 6);
+        if (nested && c.r(5) == 0) c.put32(release_policy + 0x34 + (count / 3) * 4, c.u32(c.r(4)));
+        c.put8(release_policy + 6, count + 1);
         c.set(3, c.u32(mark_lists + (c.r(6) == 7 ? 12 : 0) + c.r(5) * 4));
         break;
+    }
     case 0x10775170: {
         const auto index = c.u32(release_policy + 8);
         require(index < 3 && (c.r(3) == release_rows || c.r(3) == away_events || c.r(3) == grown_rows),
@@ -387,6 +402,8 @@ bool observe_dependency(State& s) {
         break;
     case 0x10717b20: case 0x10717890: {
         const bool lower = entry == 0x10717b20;
+        if (resume == 0x102baa84 || resume == 0x102baaac || resume == 0x102baaec || resume == 0x102bab20)
+            return false; // Use the real date services in fixture application.
         if (resume == 0x102ba35c) {
             require(lower && c.r(3) == frame + 0x40 && c.r(4) == frame + 0x58 && c.r(5) == 1,
                     "domestic fixture shifts the release date by one");
@@ -489,7 +506,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             // The original caller can enter the allocator without dispatching.
             // Decline that direct route so the fixture sees both calls.
             if (input.pc == calendar_load || input.pc == create_schedule || input.pc == register_fixture ||
-                input.pc == expire_schedule || input.pc == mark_fixtures)
+                input.pc == expire_schedule || input.pc == mark_fixtures || input.pc == apply_marks)
                 s.allocator_original = true;
         }
         struct RestoreChecker {
@@ -501,7 +518,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
                 entry == add_replacement || entry == replacement_objection || entry == automatic_replacement ||
                 entry == calendar_save || entry == calendar_load || entry == create_schedule || entry == register_fixture ||
-                entry == date_order || entry == score_order || entry == club_order;
+                entry == date_order || entry == score_order || entry == club_order || entry == mark_fixtures || entry == apply_marks;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection ||
@@ -527,7 +544,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             for (const auto entry : nested_owners) {
                 const auto& totals = notice_boundary.totals();
                 const bool reached = totals.contains(entry) && totals.at(entry).calls > 0;
-                require(reached == !reference, "nested schedule comparator route " + hex_address(entry));
+                require(reached == !reference, "nested NATIONAL_TEAMS owner route " + hex_address(entry));
             }
         }
         return error;
@@ -551,7 +568,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
     if (expected == Stop::returned) {
         require(original->pc == done && rewrite->pc == done, label + " normal continuation");
         if (input.pc == create_schedule || input.pc == register_fixture || input.pc == expire_schedule ||
-            input.pc == date_order || input.pc == score_order || input.pc == club_order || input.pc == mark_fixtures)
+            input.pc == date_order || input.pc == score_order || input.pc == club_order ||
+            input.pc == mark_fixtures || input.pc == apply_marks)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
     }
@@ -2472,30 +2490,31 @@ unsigned check_schedule_expiry(std::mt19937& random) {
     return comparisons;
 }
 
+std::unique_ptr<State> fixture_marking_seed(std::mt19937& random) {
+    auto state = domestic_schedule_seed(random);
+    state->memory.map(mark_groups, 0x1000);
+    Cpu c(*state);
+    c.put32(toc - 0x7b44, mark_groups);
+    c.put32(toc - 0x7b54, competition_slot);
+    c.put32(competition_slot, competition_manager);
+    c.put32(fixture_slot, competition_manager);
+    c.put32(calendar + 0x24, mark_array);
+    for (unsigned i = 2; i < 34; ++i) c.put32(mark_groups + i * 0x4c, team_nation);
+    c.put32(mark_groups + 2 * 0x4c, 0);
+    c.put8(mark_groups + 2 * 0x4c + 0x14, 5);
+    c.put32(mark_groups + 3 * 0x4c, release_nation);
+    c.put8(mark_groups + 3 * 0x4c + 0x14, 7);
+    c.put8(mark_array - 1, 0x71);
+    c.put8(mark_array, 0x72);
+    c.put8(mark_array + 1, 0x73);
+    c.put8(mark_array + 2, 0x74);
+    c.put8(mark_array + 3, 0x75);
+    c.set({{3, calendar}, {4, date}});
+    state->pc = mark_fixtures;
+    return state;
+}
+
 unsigned check_fixture_marking(std::mt19937& random) {
-    const auto prepare = [&] {
-        auto state = domestic_schedule_seed(random);
-        state->memory.map(mark_groups, 0x1000);
-        Cpu c(*state);
-        c.put32(toc - 0x7b44, mark_groups);
-        c.put32(toc - 0x7b54, competition_slot);
-        c.put32(competition_slot, competition_manager);
-        c.put32(fixture_slot, competition_manager);
-        c.put32(calendar + 0x24, mark_array);
-        for (unsigned i = 2; i < 34; ++i) c.put32(mark_groups + i * 0x4c, team_nation);
-        c.put32(mark_groups + 2 * 0x4c, 0);
-        c.put8(mark_groups + 2 * 0x4c + 0x14, 5);
-        c.put32(mark_groups + 3 * 0x4c, release_nation);
-        c.put8(mark_groups + 3 * 0x4c + 0x14, 7);
-        c.put8(mark_array - 1, 0x71);
-        c.put8(mark_array, 0x72);
-        c.put8(mark_array + 1, 0x73);
-        c.put8(mark_array + 2, 0x74);
-        c.put8(mark_array + 3, 0x75);
-        c.set({{3, calendar}, {4, date}});
-        state->pc = mark_fixtures;
-        return state;
-    };
     const auto match = [](Cpu& c, unsigned i, std::uint32_t home, std::uint32_t away,
                           std::uint32_t cup = competition) {
         const auto at = mark_matches + i * 0x40;
@@ -2519,7 +2538,7 @@ unsigned check_fixture_marking(std::mt19937& random) {
     };
     unsigned comparisons = 0;
     for (unsigned scenario = 0; scenario < 16; ++scenario) {
-        const auto state = prepare();
+        const auto state = fixture_marking_seed(random);
         Cpu c(*state);
         const auto home = release_clubs, away = release_clubs + 0x100;
         std::array<unsigned, 4> expected{0x71, 0x72, 0x73, 0x74};
@@ -2609,7 +2628,7 @@ unsigned check_fixture_marking(std::mt19937& random) {
                 "fixture marking allocation, guard bytes and six eligible group queries");
         ++comparisons;
     }
-    auto fault = prepare();
+    auto fault = fixture_marking_seed(random);
     {
         Cpu c(*fault);
         const auto home = release_clubs;
@@ -2617,12 +2636,139 @@ unsigned check_fixture_marking(std::mt19937& random) {
         const auto after = compare(*fault, Stop::fault);
         require(Cpu(*after).u8(mark_array) == 3, "fixture marking preserves earlier writes before a side fault");
     }
-    fault = prepare();
+    fault = fixture_marking_seed(random);
     {
         Cpu c(*fault);
         set_list(c, 3, {match(c, 0, release_clubs, 0)});
     }
     compare(*fault, Stop::fault);
+    const auto budget = fixture_marking_seed(random);
+    budget->budget = 0;
+    compare(*budget, Stop::budget);
+    return comparisons;
+}
+
+unsigned check_fixture_application(std::mt19937& random) {
+    const auto prepare = [&] {
+        auto state = fixture_marking_seed(random);
+        Cpu c(*state);
+        c.put32(toc - 0x3fb4, mark_lists + 0x80);
+        c.put32(toc - 0x3fac, mark_lists + 0x90);
+        c.put8(toc - 0x35bd, 1);
+        c.put8(toc - 0x35bb, 1);
+        c.put8(mark_array, 1);
+        c.put8(mark_array + 1, 2);
+        c.put8(mark_array + 2, 3);
+        c.put8(release_policy + 0x20, 1);
+        fixture_date(c, date, 0, 2000);
+        state->pc = apply_marks;
+        return state;
+    };
+    struct Row { int day; unsigned year, releases; };
+    const auto rows = [](Cpu& c, unsigned club, std::uint32_t base, std::initializer_list<Row> entries) {
+        c.put32(release_headers + 8 * club, base);
+        c.put8(release_headers + 8 * club + 5, entries.size());
+        for (const auto& entry : entries) {
+            fixture_date(c, base, entry.day, entry.year);
+            c.put8(base + 8, entry.releases);
+            base += 12;
+        }
+    };
+    const auto check_requests = [](Cpu& result, std::initializer_list<unsigned> expected) {
+        require(result.u8(release_policy + 0x24) == expected.size(), "domestic fixture reschedule count");
+        unsigned index = 0;
+        for (const auto club : expected) {
+            require(result.u32(release_policy + 0x28 + index * 4) == clubs + club * 0x248,
+                    "fixture reschedule order and club address");
+            ++index;
+        }
+    };
+
+    unsigned comparisons = 0;
+    for (unsigned scenario = 0; scenario < 7; ++scenario) {
+        const auto state = prepare();
+        Cpu c(*state);
+        c.put32(release_headers + 16, unmapped);
+        c.put8(release_headers + 21, 1);
+        switch (scenario) {
+        case 0:
+            rows(c, 0, release_rows, {{30, 1998, 90}, {363, 1999, 80}, {364, 1999, 1},
+                                      {1, 2000, 2}, {2, 2000, 100}});
+            rows(c, 1, grown_rows, {{0, 2000, 130}});
+            break;
+        case 1:
+            rows(c, 0, release_rows, {{0, 2000, 2}, {0, 2001, 200}, {1, 2000, 9}});
+            rows(c, 1, grown_rows, {{0, 2000, 255}, {1, 2000, 4}});
+            break;
+        case 2:
+            c.put8(mark_array, 0xff);
+            c.put32(release_headers, unmapped);
+            c.put8(release_headers + 5, 1);
+            c.put32(release_headers + 8, unmapped);
+            c.put8(release_headers + 13, 0xff);
+            break;
+        case 3:
+            c.put32(club_count, 3);
+            c.put32(calendar + 0x24, unmapped);
+            break;
+        case 4:
+            fixture_date(c, date, 90, 2000);
+            rows(c, 0, release_rows, {{-2, 2000, 90}, {-1, 2000, 90}, {89, 2000, 3}});
+            rows(c, 1, grown_rows, {{91, 2000, 3}});
+            break;
+        case 5:
+            rows(c, 0, release_rows, {{0, 2000, 127}});
+            rows(c, 1, grown_rows, {{0, 2000, 128}});
+            break;
+        case 6:
+            rows(c, 0, release_rows, {{364, 1999, 3}});
+            rows(c, 1, grown_rows, {{1, 2000, 1}, {1, 2000, 1}});
+            break;
+        }
+        const auto after = compare(*state);
+        Cpu result(*after);
+        if (scenario == 0 || scenario == 5 || scenario == 6) check_requests(result, {0});
+        else if (scenario == 1) check_requests(result, {1});
+        else if (scenario == 4) check_requests(result, {0, 1});
+        else check_requests(result, {});
+        require(!result.u8(release_policy + 6), "preexisting fixture marks skip the marking window");
+        ++comparisons;
+    }
+    {
+        const auto state = prepare();
+        Cpu c(*state);
+        c.put32(calendar + 0x24, 0);
+        c.put32(mark_groups + 2 * 0x4c, team_nation);
+        c.put32(mark_lists + 12, fixtures_head);
+        c.put32(fixtures_head + 4, fixture_nodes);
+        c.put32(fixture_nodes, mark_matches);
+        c.put32(mark_matches + 0x14, competition);
+        c.put32(mark_matches + 0x1c, release_clubs);
+        c.put32(mark_matches + 0x20, release_clubs + 0x100);
+        c.put32(release_clubs + 0x30, competition);
+        rows(c, 0, release_rows, {{364, 1999, 1}, {1, 2000, 2}});
+        const auto after = compare(*state, Stop::returned, Corrupt::none, false, {mark_fixtures});
+        Cpu result(*after);
+        check_requests(result, {0});
+        require(result.u8(release_policy + 6) == 9 && result.u32(release_policy + 0x34) == 2000 &&
+                    result.u32(release_policy + 0x38) == (364u << 16 | 1999u) &&
+                    result.u32(release_policy + 0x3c) == (1u << 16 | 2000u),
+                "lazy fixture marks use the current, previous and following date in order");
+        ++comparisons;
+    }
+    auto fault = prepare();
+    Cpu(*fault).put32(calendar + 0x20, unmapped);
+    compare(*fault, Stop::fault);
+    fault = prepare();
+    {
+        Cpu c(*fault);
+        c.put32(calendar + 0x24, 0);
+        c.put8(release_policy, 1);
+        const auto after = compare(*fault, Stop::fault);
+        Cpu result(*after);
+        require(!result.u8(injury_success) && result.u32(archive_trace + 0x10) == 0x221c,
+                "failed mark allocation preserves the original assertion before scanning");
+    }
     const auto budget = prepare();
     budget->budget = 0;
     compare(*budget, Stop::budget);
@@ -2695,6 +2841,8 @@ int main() try {
     const auto sort_comparisons = check_schedule_comparators(random);
     const auto expired_schedules = check_schedule_expiry(random);
     const auto marked_fixtures = check_fixture_marking(random);
+    const auto applied_marks = check_fixture_application(random);
+    std::cout << applied_marks << " NATIONAL_TEAMS fixture application comparisons, 2 faults and 1 budget stop\n";
     std::cout << marked_fixtures << " NATIONAL_TEAMS fixture marking comparisons, 2 faults and 1 budget stop\n";
     std::cout << expired_schedules << " NATIONAL_TEAMS schedule expiry comparisons, 2 faults and 1 budget stop\n";
     std::cout << sort_comparisons << " NATIONAL_TEAMS schedule comparator comparisons, 4 faults and 3 budget stops\n";
