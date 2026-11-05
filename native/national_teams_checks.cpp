@@ -17,6 +17,7 @@ constexpr auto done = fixture + 0x20, manager = fixture + 0x100, nation = fixtur
 constexpr auto records = fixture + 0x1800, staff_table = fixture + 0x3000, staff_slot = fixture + 0x4100;
 constexpr auto club_count = fixture + 0x4200, nation_count = fixture + 0x4204;
 constexpr auto club = fixture + 0x4300, unmapped = fixture + 0xa000;
+constexpr auto remove_player = 0x102b8180u, selected_player = 0x102aefb0u;
 constexpr auto international = 0x102b7c00u, duty = 0x102b7c70u;
 constexpr auto player = fixture + 0x5100, date = fixture + 0x5200, national_team = fixture + 0x5300;
 constexpr auto regular_club = fixture + 0x5400, team_nation = fixture + 0x5500;
@@ -75,6 +76,10 @@ bool observe_dependency(State& s) {
     switch (entry) {
     case 0x100ce250: case 0x100c7d00: case 0x10738e00: case 0x10717b20: case 0x10717890:
     case 0x1048b180: case dispose_list: case localize: case 0x107156b0: break;
+    case tier:
+        if (resume != 0x102b81d8) return false;
+        break;
+    case 0x100c76c0: case 0x100c7860: break;
     default: return false;
     }
     DependencyCall call{entry, resume};
@@ -514,6 +519,129 @@ unsigned check_duty(std::mt19937& random) {
     return comparisons;
 }
 
+unsigned check_remove_selection(std::mt19937& random) {
+    constexpr auto profile = fixture + 0x6420, queue = fixture + 0x6600;
+    constexpr auto country_row = records + 2 * record_size;
+    unsigned comparisons = 0;
+    for (unsigned level = 0; level <= 3; ++level) {
+        for (const int delta : {-1, 0, 1}) {
+            for (unsigned scenario = 0; scenario < 10; ++scenario) {
+                auto state = duty_seed(random);
+                Cpu c(*state);
+                c.set({{3, manager}, {4, player}});
+                c.put32(player + 0xc, scenario == 8 ? 0 : nation);
+                c.put32(player + 0x14, scenario == 9 ? 0 : profile);
+                const bool linked = scenario != 6;
+                c.put32(player + 0x20, linked ? national_team : 0);
+                c.put8(player + 0x6a, 0xf9 + scenario % 4);
+                c.put32(nation + 0x68, 2);
+                c.put16(country_row, 100);
+                constexpr std::array first_blocking_score{0u, 1u, 3u, 6u};
+                if (level < 3) c.put8(profile + 0xf + first_blocking_score[level], 15);
+                c.put16(profile + 8, -10);
+                const auto bucket = country_row + level * 4;
+                c.put16(bucket + 0x10, -10 + delta);
+                const auto start = 2u + 3u * level;
+                c.put32(country_row + 8, 2);
+                for (unsigned i = 0; i < level; ++i) c.put8(country_row + 0xf + i * 4, 3);
+                const unsigned length = scenario == 0 ? 0 : scenario == 1 ? 1 : 4;
+                const unsigned position = scenario == 3 ? 1 : scenario == 4 ? 3 : 0;
+                const bool queued = scenario != 0 && scenario != 5;
+                c.put8(bucket + 0xe, length);
+                c.put32(manager + 0xc, queue);
+                for (unsigned i = 0; i < length; ++i)
+                    c.put32(queue + (start + i) * 4, queued && i == position ? player : 0x8100 + i);
+                c.put32(queue + (start + length) * 4, 0xcafebabe);
+                const auto last = length ? c.u32(queue + (start + length - 1) * 4) : 0;
+                const auto prior_slot = c.u32(queue + (start + position) * 4);
+                const auto roster_index = scenario % 2 ? 0u : 49u;
+                const bool roster_has_player = scenario != 7;
+                if (roster_has_player) c.put32(national_team + 0x98 + 4 * roster_index, player);
+                state->pc = remove_player;
+                auto result = compare(*state);
+                Cpu after(*result);
+                const bool eligible = scenario < 8;
+                const bool removed = eligible && delta < 0 && queued;
+                require(after.u8(bucket + 0xe) == length - removed &&
+                            after.u32(queue + (start + position) * 4) == (removed ? last : prior_slot) &&
+                            after.u32(queue + (start + length) * 4) == 0xcafebabe &&
+                            (!length || after.u32(queue + (start + length - 1) * 4) == last),
+                        "selection removal swaps with the last slot and retains its old contents");
+                require(after.u32(player + 0x20) == (eligible || !linked ? 0 : national_team) &&
+                            after.u8(player + 0x6a) == (eligible && linked ? c.u8(player + 0x6a) & 3 : c.u8(player + 0x6a)) &&
+                            after.u32(national_team + 0x98 + 4 * roster_index) ==
+                                (roster_has_player && (!eligible || !linked) ? player : 0),
+                        "selection removal clears the first roster slot, link and duty flags");
+                if (eligible && delta == -1) {
+                    auto direct = clone(*state);
+                    run_until(*direct, done);
+                    Image(*result).compare(*direct, "direct tier call during selection removal");
+                }
+                ++comparisons;
+            }
+        }
+    }
+    return comparisons;
+}
+
+unsigned check_selected_player(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (unsigned mode : {0u, 1u, 2u, 3u, 0x100u, 0x101u, 0x102u, 0x180u, UINT32_MAX}) {
+        for (unsigned link : {0u, 1u, 2u, 3u}) {
+            for (unsigned flags : {0u, 4u, 8u, 0x8cu}) {
+                auto state = duty_seed(random);
+                Cpu c(*state);
+                c.set({{4, player}, {5, nation}, {6, mode}});
+                c.put32(nation + 0x68, 5);
+                c.put32(toc - 0x7b98, calendar_slot);
+                const auto senior = clubs + (200 - 40 + 5) * 0x248;
+                const auto alternate = clubs + (200 - 20 + 5) * 0x248;
+                const auto team = link == 0 ? 0 : link == 1 ? senior : link == 2 ? alternate : national_team;
+                c.put32(player + 0x20, team);
+                c.put8(player + 0x6a, flags);
+                state->pc = selected_player;
+                const auto kind = std::int8_t(mode);
+                const bool expected = (kind == 0 && link == 1 && (flags & 4)) ||
+                    (kind == 1 && link == 1 && (flags & 8)) || (kind == 2 && link == 2 && (flags & 4));
+                auto result = compare(*state);
+                require(Cpu(*result).r(3) == expected, "national-team variant, exact team and selection bit");
+                ++comparisons;
+            }
+        }
+    }
+    return comparisons;
+}
+
+unsigned check_roster_faults(std::mt19937& random) {
+    for (const auto entry : {remove_player, selected_player}) {
+        auto state = duty_seed(random);
+        Cpu(*state).set(4, unmapped);
+        state->pc = entry;
+        compare(*state, Stop::fault);
+        state->budget = 0;
+        compare(*state, Stop::budget);
+    }
+    auto state = duty_seed(random);
+    Cpu c(*state);
+    c.set({{3, manager}, {4, player}});
+    c.put32(player + 0xc, nation);
+    c.put32(player + 0x14, fixture + 0x6400);
+    c.put16(fixture + 0x6408, 1);
+    c.put8(records + 0xe, 1);
+    c.put32(manager + 0xc, fixture + 0x8ffc);
+    c.put32(fixture + 0x8ffc, player);
+    c.put32(records + 8, 1);
+    state->pc = remove_player;
+    compare(*state, Stop::fault);
+    // A match decrements the queue length before reading the replacement.
+    c.put32(records + 8, 0);
+    c.put32(manager + 0xc, fixture + 0x8ffc);
+    c.put8(records + 0xe, 2);
+    // The first entry matches, then the replacement reads the unmapped end.
+    compare(*state, Stop::fault);
+    return 4;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -565,6 +693,9 @@ int main() try {
     const auto queries = check_selection_tiers(random) + check_selection_prefixes(random) +
         check_international_competition(random);
     const auto query_faults = check_selection_query_faults(random);
+    const auto roster = check_remove_selection(random) + check_selected_player(random);
+    const auto roster_faults = check_roster_faults(random);
+    std::cout << roster << " NATIONAL_TEAMS roster comparisons, " << roster_faults << " faults and 2 budget stops\n";
     std::cout << queries << " NATIONAL_TEAMS selection tier, prefix and competition comparisons, "
               << query_faults << " faults and 3 budget stops\n";
     std::cout << eligibility << " NATIONAL_TEAMS club and duty eligibility comparisons\n";

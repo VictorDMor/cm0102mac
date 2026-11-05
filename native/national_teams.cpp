@@ -26,9 +26,9 @@ void block(Cpu& c, std::uint32_t pc, unsigned count) {
     c.s.charge(count - 1);
 }
 
-bool record_nonzero_byte(Cpu& c, std::uint32_t raw) {
+bool record_nonzero_byte(Cpu& c, std::uint32_t raw, unsigned output = 0) {
     const auto value = std::int8_t(raw);
-    c.set(0, std::uint32_t(value));
+    c.set(output, std::uint32_t(value));
     const auto high = c.cr(0) & 0xf0;
     c.compare(0, value, 0);
     c.set_cr(0, high | c.cr(0));
@@ -291,9 +291,12 @@ void assigned_staff(Cpu& c) {
     c.finish();
 }
 constexpr auto international_club_entry = 0x102b7c00u, duty_conflict_entry = 0x102b7c70u;
+constexpr auto remove_selection_entry = 0x102b8180u, selected_for_nation_entry = 0x102aefb0u;
 constexpr auto classify_club = 0x100c7d00u;
 constexpr int first_all_star_id = -0x7208, second_all_star_id = -0x7204;
-constexpr unsigned club_size = 0x248, club_roster = 0x98, player_national_team = 0x20;
+constexpr unsigned club_size = 0x248, club_roster = 0x98, club_roster_size = 50;
+constexpr unsigned player_nation = 0xc, player_assessment = 0x14;
+constexpr unsigned player_national_team = 0x20, player_duty_flags = 0x6a;
 
 void international_club(Cpu& c) {
     GuestNativeScope scope(c.s, international_club_entry);
@@ -332,6 +335,259 @@ void international_club(Cpu& c) {
         c.set(3, reserved);
     }
     block(c, 0x102b7c5c, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
+// The tier query returns at most three, so these inlined prefix scans never
+// reach the original's generic eight-weight batches. Keep the two scans'
+// register effects and accounting at their original boundaries.
+std::uint32_t selection_queue_start(Cpu& c, std::uint32_t nation, unsigned tier,
+                                    std::uint32_t sum, bool second_pass) {
+    const auto entry = second_pass ? 0x102b8340u : 0x102b8280u;
+    const unsigned index_reg = second_pass ? 10 : 8;
+    const unsigned tier_reg = second_pass ? 3 : 5;
+    const unsigned sum_reg = second_pass ? 4 : 9;
+    block(c, entry, 4);
+    c.set({{6, 0}, {tier_reg, tier}, {7, 0}});
+    for (unsigned i = 0; ; ++i) {
+        block(c, entry + 0x24, 3);
+        c.set(6, i);
+        c.compare(0, i, tier);
+        if (i == tier) return sum;
+        block(c, entry + 0x10, 5);
+        const auto weight_offset = 0xf + i * 4;
+        c.set({{6, weight_offset}, {7, (i + 1) * 4}});
+        const auto weight = c.u8(nation + weight_offset);
+        c.set({{6, weight}, {index_reg, i + 1}});
+        sum += weight;
+        c.set(sum_reg, sum);
+    }
+}
+
+void remove_from_selection_queue(Cpu& c, std::uint32_t manager, std::uint32_t player,
+                                  std::uint32_t nation, std::uint32_t bucket, unsigned tier) {
+    block(c, 0x102b81f8, 5);
+    const auto base = c.u32(nation + 8);
+    c.set(4, base);
+    record_nonzero_byte(c, tier, 5);
+    c.set({{8, 0}, {9, base}});
+    auto offset = base;
+    if (tier) {
+        block(c, 0x102b820c, 3);
+        c.compare(0, tier, 8);
+        c.set(5, tier - 8);
+        offset = selection_queue_start(c, nation, tier, base, false);
+    }
+
+    block(c, 0x102b82b0, 6);
+    c.set(5, bucket);
+    record_nonzero_byte(c, tier);
+    const auto length = c.u8(bucket + 0xe);
+    c.set({{0, length}, {10, 0}});
+    const auto end = offset + length;
+    c.set(0, end);
+    auto start = base;
+    if (tier) {
+        block(c, 0x102b82c8, 4);
+        c.set({{6, tier}, {7, tier - 8}});
+        c.compare(0, tier, 8);
+        start = selection_queue_start(c, nation, tier, base, true);
+    }
+
+    block(c, 0x102b8370, 6);
+    auto remaining = end - start;
+    c.set({{3, remaining}, {7, start}, {6, start * 4}});
+    c.s.wr<4>(guest::reg::ctr, remaining);
+    c.compare(0, start, end);
+    if (std::int32_t(start) >= std::int32_t(end)) return;
+    auto index = start;
+    do {
+        block(c, 0x102b8388, 4);
+        auto table = c.u32(manager + 0xc);
+        c.set(3, table);
+        const auto candidate = c.u32(table + index * 4);
+        c.set(3, candidate);
+        c.compare_logical(0, candidate, player);
+        if (candidate == player) {
+            block(c, 0x102b8398, 10);
+            c.set(4, c.u8(bucket + 0xe));
+            c.set({{3, end * 4}, {0, index * 4}, {4, c.r(4) - 1}});
+            c.put8(bucket + 0xe, c.r(4));
+            table = c.u32(manager + 0xc);
+            c.set({{4, table}, {3, table + end * 4}});
+            const auto last_player = c.u32(table + (end - 1) * 4);
+            c.set(3, last_player);
+            c.put32(table + index * 4, last_player);
+            return;
+        }
+        block(c, 0x102b83c0, 3);
+        ++index;
+        c.set({{6, index * 4}, {7, index}});
+        c.s.wr<4>(guest::reg::ctr, --remaining);
+    } while (remaining);
+}
+
+void unlink_national_roster(Cpu& c, std::uint32_t player) {
+    block(c, 0x102b83cc, 3);
+    const auto team = c.u32(player + player_national_team);
+    c.set(5, team);
+    c.compare_logical(0, team, 0);
+    if (!team) return;
+
+    block(c, 0x102b83d8, 3);
+    c.set({{4, 0}, {3, 0}});
+    for (unsigned slot = 0; ; ++slot) {
+        block(c, 0x102b8418, 3);
+        c.set(0, slot);
+        c.compare(0, slot, club_roster_size);
+        if (slot == club_roster_size) break;
+        block(c, 0x102b83e8, 4);
+        const auto offset = slot * 4;
+        c.set(0, club_roster + offset);
+        const auto listed = c.u32(team + club_roster + offset);
+        c.set(0, listed);
+        c.compare_logical(0, listed, player);
+        if (listed == player) {
+            block(c, 0x102b83f8, 6);
+            c.set({{4, 0}, {0, offset}, {3, team + offset}});
+            c.put32(team + club_roster + offset, 0);
+            break;
+        }
+        block(c, 0x102b8410, 2);
+        c.set({{3, offset + 4}, {4, slot + 1}});
+    }
+    block(c, 0x102b8424, 5);
+    const auto retained = c.u8(player + player_duty_flags) & 3u;
+    c.set({{0, 0}, {3, retained}});
+    c.put8(player + player_duty_flags, retained);
+    c.put32(player + player_national_team, 0);
+}
+
+void remove_selection(Cpu& c) {
+    GuestNativeScope scope(c.s, remove_selection_entry);
+    block(c, remove_selection_entry, 11);
+    const auto caller = c.sp(), frame = caller - 0x50;
+    const auto manager = c.r(3), player = c.r(4);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.put32(caller - 8, c.r(30));
+    c.set(30, player);
+    c.put32(caller - 12, c.r(29));
+    c.set(29, manager);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+
+    const auto nation = c.u32(player + player_nation);
+    c.set(5, nation);
+    c.compare_logical(0, nation, 0);
+    if (nation) {
+        block(c, 0x102b81ac, 3);
+        const auto assessment = c.u32(player + player_assessment);
+        c.set(0, assessment);
+        c.compare_logical(0, assessment, 0);
+        if (assessment) {
+            block(c, 0x102b81bc, 7);
+            const auto nation_index = c.u32(nation + nation_index_offset);
+            c.set({{0, nation_index}, {6, 0}});
+            const auto records = c.u32(manager + 4);
+            c.set(5, records);
+            const auto offset = nation_index * nation_record_size;
+            const auto record = records + offset;
+            c.set({{0, offset}, {31, record}, {5, record}});
+            constexpr auto resume = 0x102b81d8;
+            if (declining || routine_checker || dispatch_probe) {
+                c.call(selection_tier_entry, resume);
+            } else {
+                c.link(resume);
+                selection_tier(c);
+            }
+
+            block(c, resume, 8);
+            const auto tier = unsigned(std::int8_t(c.r(3)));
+            c.set(6, tier);
+            const auto profile = c.u32(player + player_assessment);
+            c.set(4, profile);
+            const auto bucket = record + tier * 4;
+            c.set({{0, tier * 4}, {5, bucket}});
+            const auto player_score = c.i16(profile + 8);
+            c.set(4, std::uint32_t(player_score));
+            const auto threshold = c.i16(bucket + 0x10);
+            c.set(5, std::uint32_t(threshold));
+            c.compare(0, threshold, player_score);
+            if (threshold < player_score) remove_from_selection_queue(c, manager, player, record, bucket, tier);
+            unlink_national_roster(c, player);
+        } else {
+            block(c, 0x102b81b8, 1);
+        }
+    }
+
+    block(c, 0x102b8438, 7);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.set(29, c.u32(caller - 12));
+    c.finish();
+}
+
+void selected_for_nation(Cpu& c) {
+    GuestNativeScope scope(c.s, selected_for_nation_entry);
+    block(c, selected_for_nation_entry, 8);
+    const auto caller = c.sp(), frame = caller - 0x40;
+    const auto player = c.r(4), nation = c.r(5), raw_mode = c.r(6);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set(31, player);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto team = c.u32(player + player_national_team);
+    c.set(0, team);
+    c.compare_logical(0, team, 0);
+    if (!team) {
+        block(c, 0x102aefd0, 2);
+        c.set(3, 0);
+    } else {
+        block(c, 0x102aefd8, 2);
+        const auto mode = std::int8_t(raw_mode);
+        if (record_nonzero_byte(c, raw_mode)) {
+            block(c, 0x102af008, 3);
+            c.compare(0, mode, 1);
+            if (mode != 1) {
+                block(c, 0x102af03c, 2);
+                c.compare(0, mode, 2);
+            }
+        }
+        constexpr std::array call_blocks{0x102aefe0u, 0x102af014u, 0x102af044u};
+        bool selected = false;
+        if (mode >= 0 && mode < int(call_blocks.size())) {
+            const auto pc = call_blocks[mode];
+            block(c, pc, 2);
+            c.set(3, nation);
+            c.call(mode == 2 ? 0x100c7860 : 0x100c76c0, pc + 8);
+            block(c, pc + 8, 3);
+            const auto current = c.u32(player + player_national_team);
+            c.set(0, current);
+            c.compare_logical(0, current, c.r(3));
+            if (current == c.r(3)) {
+                block(c, pc + 20, 3);
+                selected = record_nonzero_byte(c, c.u8(player + player_duty_flags) & (mode == 1 ? 8 : 4));
+            }
+            if (selected) block(c, pc + 32, 2);
+        }
+        if (!selected) block(c, 0x102af06c, 1);
+        c.set(3, selected);
+    }
+
+    block(c, 0x102af070, 5);
     c.set(0, c.u32(caller + 8));
     c.set(1, caller);
     c.set_lr(c.r(0));
@@ -821,6 +1077,8 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case selection_tier_entry: selection_tier(c); break;
     case selection_prefix_entry: selection_prefix(c); break;
     case international_competition_entry: international_competition(c); break;
+    case remove_selection_entry: remove_selection(c); break;
+    case selected_for_nation_entry: selected_for_nation(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }
