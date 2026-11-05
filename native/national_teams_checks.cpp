@@ -67,7 +67,8 @@ constexpr auto notice_render_people = fixture + 0xd700, notice_render_cup_slot =
 constexpr auto append_appointment = 0x102b7000u, expire_nation_appointments = 0x102b70a0u;
 constexpr auto expire_pair_appointments = 0x102b7140u, replace_assignment = 0x102b71e0u, reconcile_assignments = 0x102b7280u;
 constexpr auto first_club_fixture_flag = 0x102b7830u, second_club_fixture_flag = 0x102b7900u;
-constexpr auto collect_calendar_ids = 0x102b79d0u;
+constexpr auto collect_calendar_ids = 0x102b79d0u, calendar_status_text = 0x102b7aa0u;
+constexpr auto selection_status_codes = 0x102ae6c0u, player_team_status = 0x102af680u;
 constexpr auto calendar_id_list = fixture + 0xb100, calendar_id_nodes = fixture + 0xb200;
 constexpr auto calendar_id_values = fixture + 0xb400, calendar_id_allocations = fixture + 0xb500;
 constexpr auto direct_assignment = 0x102b7490u, release_assignments = 0x102b7750u;
@@ -79,6 +80,7 @@ constexpr auto assignment_descriptor = assignment_slots + 0x70, assignment_virtu
 constexpr auto assignment_enumerator = assignment_slots + 0x100, assignment_callback_toc = toc + 0x1000;
 constexpr auto assignment_clubs = assignment_nations + 0x400;
 constexpr auto date_order = 0x102bc180u, score_order = 0x102bc250u, club_order = 0x102bc270u;
+constexpr auto shared_score_sort = 0x10768300u;
 constexpr auto release_team = fixture + 0xb000, release_players = fixture + 0xb200;
 constexpr auto release_clubs = fixture + 0xb800, release_nation = fixture + 0xba00;
 constexpr auto release_limit = fixture + 0xbb40, release_excluded_nation = fixture + 0xbb44;
@@ -144,7 +146,11 @@ bool observe_dependency(State& s) {
     const bool fixture_marking = resume >= 0x102ba80c && resume <= 0x102ba9fc;
     const bool calendar_news = resume >= 0x102bad6c && resume <= 0x102bb03c;
     const bool calendar_render = resume >= 0x102bb08c && resume <= 0x102bc164;
-    const bool direct_assertion = resume == 0x102b74f8 || resume == 0x102b7518 || resume == 0x102b7528;
+    const bool assignment_assertion = resume == 0x102b74f8 || resume == 0x102b7518 || resume == 0x102b7528;
+    const bool status_text_assertion = resume == 0x102b7adc || resume == 0x102b7afc || resume == 0x102b7b0c;
+    const bool status_codes_assertion = resume == 0x102ae708 || resume == 0x102ae728 || resume == 0x102ae738;
+    const bool compact_assertion = assignment_assertion || status_text_assertion || status_codes_assertion;
+    const bool status_localization = resume >= 0x102b7b3c && resume <= 0x102b7bdc;
     switch (entry) {
     case assignment_enumerator:
         if (resume != 0x102b7794) return false;
@@ -193,7 +199,7 @@ bool observe_dependency(State& s) {
     case 0x10775170:
         if (resume != 0x102ba774 && resume != 0x102b7814) return false;
         break;
-    case 0x107751b0: case 0x10768300:
+    case 0x107751b0: case shared_score_sort:
         if (!domestic_schedule) return false;
         break;
     case 0x101b5b20:
@@ -379,7 +385,7 @@ bool observe_dependency(State& s) {
         }
         break;
     }
-    case 0x10768300: {
+    case shared_score_sort: {
         const bool real_sort = c.u8(release_policy + 4);
         if (resume == 0x102ba300) {
             require(c.r(3) == release_team + 0x98 && c.r(4) == 50 && c.r(5) == 4 &&
@@ -610,9 +616,10 @@ bool observe_dependency(State& s) {
         break;
     case 0x10739890:
         require(c.r(3) == source + 0x37, "national assertion source");
-        if (direct_assertion) {
-            require(resume == 0x102b74f8 && c.r(6) == frame + 0x40 && c.r(7) == frame + 0x38,
-                    "direct staff assignment assertion frame");
+        if (compact_assertion) {
+            require((resume == 0x102b74f8 || resume == 0x102b7adc || resume == 0x102ae708) &&
+                        c.r(6) == frame + 0x40 && c.r(7) == frame + 0x38,
+                    "national status or assignment assertion frame");
         } else if (!calendar_archive && !domestic_schedule && !fixture_marking) {
             require(resume == 0x102b84b8 && c.r(6) == frame + 0x50 && c.r(7) == frame + 0x48,
                     "injury missing-team assertion frame");
@@ -622,13 +629,13 @@ bool observe_dependency(State& s) {
         break;
     case 0x1077b720:
         require(c.r(3) == injury_assert_buffer, "national assertion output");
-        if (calendar_archive || domestic_schedule || fixture_marking || direct_assertion)
+        if (calendar_archive || domestic_schedule || fixture_marking || compact_assertion)
             c.put32(archive_trace + 0x10, c.r(8));
         else require(resume == 0x102b84d8 && c.r(8) == 0x1df8, "injury missing-team assertion line");
         c.put8(injury_assert_buffer, 13);
         break;
     case 0x10769b60:
-        require((calendar_archive || domestic_schedule || fixture_marking || direct_assertion || resume == 0x102b84e8) &&
+        require((calendar_archive || domestic_schedule || fixture_marking || compact_assertion || resume == 0x102b84e8) &&
                     c.r(3) == source + 0x57 && c.r(4) == injury_assert_buffer, "national assertion dialog");
         break;
     case 0x10717b20: case 0x10717890: {
@@ -679,6 +686,13 @@ bool observe_dependency(State& s) {
         break;
     case localize: {
         const auto key = c.r(4) - source;
+        if (status_localization) {
+            require((c.r(3) == label_out || c.r(3) == unmapped) && key >= 0x7c30 && key <= 0x7c59,
+                    "calendar status phrase destination and key");
+            c.put32(c.r(3), key);
+            c.set(3, 0xc0c0c0c0);
+            break;
+        }
         const auto output = key == 0x7cb7 ? label_shared : label_out;
         require((key == 0x7c62 || key == 0x7c8d || key == 0x7cb7) &&
                     c.r(3) == output && c.r(5) == source + 0x7c8c, "duty label destination and key");
@@ -756,7 +770,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
                 entry == add_replacement || entry == replacement_objection || entry == automatic_replacement ||
                 entry == calendar_save || entry == calendar_load || entry == create_schedule || entry == register_fixture ||
                 entry == date_order || entry == score_order || entry == club_order || entry == mark_fixtures || entry == apply_marks || entry == publish_calendar_notices ||
-                entry == render_calendar_notice;
+                entry == render_calendar_notice || entry == selection_status_codes || entry == international_event;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection ||
@@ -769,7 +783,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             utility_object_diagnostics(s).original_body = 0x10738ca0;
         if (input.pc == duty)
             utility_object_diagnostics(s).original_body = dispose_list;
-        if (input.pc == duty || input.pc == render_calendar_notice)
+        if (input.pc == duty || input.pc == render_calendar_notice || input.pc == calendar_status_text)
             localization_format_diagnostics(s).original_body = localize;
         effects.state = &s;
         s.memory.date_observer = &effects;
@@ -781,12 +795,15 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             error = failure.what();
         }
         s.memory.date_observer = nullptr;
-        if (error.empty()) {
-            for (const auto entry : nested_owners) {
-                const auto& totals = notice_boundary.totals();
+        if (error.empty() && routine_checker == &notice_boundary) {
+            const auto& totals = notice_boundary.totals();
+            const auto check_route = [&](std::uint32_t entry) {
                 const bool reached = totals.contains(entry) && totals.at(entry).calls > 0;
-                require(reached == !reference, "nested NATIONAL_TEAMS owner route " + hex_address(entry));
-            }
+                require(reached == !reference, "NATIONAL_TEAMS owner route " + hex_address(entry));
+            };
+            // The shared sort test starts outside this module and enters it only through its callback.
+            if (input.pc != shared_score_sort) check_route(input.pc);
+            for (const auto entry : nested_owners) check_route(entry);
         }
         return error;
     };
@@ -823,7 +840,8 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
             input.pc == expire_pair_appointments || input.pc == replace_assignment || input.pc == reconcile_assignments ||
             input.pc == direct_assignment || input.pc == release_assignments ||
             input.pc == first_club_fixture_flag || input.pc == second_club_fixture_flag ||
-            input.pc == collect_calendar_ids)
+            input.pc == collect_calendar_ids || input.pc == calendar_status_text ||
+            input.pc == selection_status_codes || input.pc == player_team_status)
             require(original->executed == rewrite->executed, label + " instruction accounting original=" +
                 std::to_string(original->executed) + " rewrite=" + std::to_string(rewrite->executed));
     }
@@ -2582,7 +2600,7 @@ unsigned check_schedule_comparators(std::mt19937& random) {
 
     {
         constexpr auto descriptor = fixture + 0x2700;
-        const auto state = seed_roster(0x10768300);
+        const auto state = seed_roster(shared_score_sort);
         Cpu c(*state);
         c.put32(left + 4, right_player);
         c.put32(descriptor, score_order);
@@ -3803,6 +3821,138 @@ unsigned check_calendar_id_collection(std::mt19937& random) {
     return cases;
 }
 
+unsigned check_calendar_status_text(std::mt19937& random) {
+    const auto prepare = [&](std::uint32_t length, std::uint32_t variant, std::uint32_t status, std::uint32_t flags) {
+        auto state = calendar_save_seed(random, false);
+        Cpu c(*state);
+        c.set({{4, status}, {5, flags}, {6, label_out}, {7, length}, {8, variant}});
+        c.put8(injury_success, 1);
+        c.put32(label_out, 0xabababab);
+        state->pc = calendar_status_text;
+        return state;
+    };
+    constexpr std::array<std::array<unsigned, 4>, 2> expected{{
+        {0x7c4b, 0x7c35, 0x7c59, 0x7c50},
+        {0x7c30, 0x7c35, 0x7c42, 0x7c39},
+    }};
+    unsigned cases = 0;
+    for (const auto length : {20u, 0x7fffffffu}) {
+        for (const auto variant : {0u, 1u, 0x101u, 0x180u}) {
+            for (const auto status : {0u, 0x100u, 1u, 0x101u, 2u, 0x180u}) {
+                for (const auto flags : {0x100u, 0x180u}) {
+                    auto state = prepare(length, variant, status, flags);
+                    const auto after = compare(*state);
+                    Cpu result(*after);
+                    const auto low = std::int8_t(status);
+                    const auto key = expected[std::int8_t(variant) == 1][low == 0 ? 0 : low == 1 ? 1 : 2 + bool(std::int8_t(flags))];
+                    require(result.u32(label_out) == key && result.u8(injury_success) == 1,
+                            "calendar status selects the phrase from low-byte arguments");
+                    ++cases;
+                }
+            }
+        }
+    }
+    for (const auto length : {0u, 19u, UINT32_MAX, 0x80000000u}) {
+        auto state = prepare(length, 1, 2, 1);
+        Cpu(*state).set(6, unmapped);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(archive_trace + 0x10) == 0x1c8b && result.u8(injury_success) == 0 &&
+                    result.u32(label_out) == 0xabababab, "short signed output capacity reports the original assertion");
+        ++cases;
+    }
+    auto state = prepare(20, 1, 2, 1);
+    Cpu(*state).set(6, unmapped);
+    compare(*state, Stop::fault);
+    state->budget = 0;
+    compare(*state, Stop::budget);
+    return cases;
+}
+
+unsigned check_selection_status_codes(std::mt19937& random) {
+    constexpr auto first = label_out, second = label_out + 1;
+    constexpr std::array toc_offsets{-0x7bc0, -0x7a40, -0x6948, -0x694c, -0x6950,
+                                     -0x693c, -0x6a3c, -0x6938, -0x6b00};
+    const auto prepare = [&](unsigned mode, unsigned club_case, bool alias) {
+        auto state = calendar_save_seed(random, false);
+        Cpu c(*state);
+        c.set({{4, club_case ? club : 0}, {5, mode}, {6, first}, {7, alias ? first : second}});
+        c.put32(club + 0x14, club_case >= 2 ? nation : 0);
+        c.put32(nation, club_case == 3 ? 1 : club_case == 4 ? 9 : 40);
+        for (unsigned i = 0; i < toc_offsets.size(); ++i) {
+            c.put32(toc + toc_offsets[i], staff_table + i * 4);
+            c.put32(staff_table + i * 4, i + 1);
+        }
+        c.put8(first, 0xa0);
+        c.put8(second, 0xb0);
+        c.put8(injury_success, 1);
+        state->pc = selection_status_codes;
+        return state;
+    };
+    unsigned cases = 0;
+    for (const auto mode : {0u, 1u, 2u, 0x100u, 0x102u, 0x180u}) {
+        for (unsigned club_case = 0; club_case < 5; ++club_case) {
+            for (bool alias : {false, true}) {
+                auto state = prepare(mode, club_case, alias);
+                const auto after = club_case ? compare(*state, Stop::returned, Corrupt::none, false, {international_event}) :
+                                               compare(*state);
+                Cpu result(*after);
+                const bool international = club_case >= 3;
+                const auto primary = international ? 0x17 : std::int8_t(mode) == 0 || std::int8_t(mode) == 2 ? 0x1a : 0x18;
+                const auto alternate = international ? 0x17 : 0x16;
+                require(result.u8(first) == (alias ? alternate : primary) &&
+                            result.u8(second) == (alias ? 0xb0 : alternate) && result.u8(injury_success) == 1,
+                        "selection status classifies the competition and writes primary before alternate");
+                ++cases;
+            }
+        }
+    }
+    for (auto missing : {6u, 7u}) {
+        auto state = prepare(0, 0, false);
+        Cpu(*state).set(missing, 0);
+        const auto after = compare(*state);
+        Cpu result(*after);
+        require(result.u32(archive_trace + 0x10) == 0x7da && result.u8(injury_success) == 0 &&
+                    result.u8(first) == 0xa0 && result.u8(second) == 0xb0, "missing output reports selection status assertion");
+        ++cases;
+    }
+    auto state = prepare(1, 0, false);
+    Cpu(*state).set(7, unmapped);
+    const auto after = compare(*state, Stop::fault);
+    require(Cpu(*after).u8(first) == 0x18, "selection status preserves the first write when the second faults");
+    state->budget = 0;
+    compare(*state, Stop::budget);
+    return cases;
+}
+
+unsigned check_player_team_status(std::mt19937& random) {
+    unsigned cases = 0;
+    for (auto id : {0u, 179u, 180u, 199u}) {
+        for (auto flags : {0u, 7u, 8u, 0x80u, 0xffu}) {
+            for (bool has_club : {false, true}) {
+                auto state = seed(random);
+                Cpu c(*state);
+                c.set(4, nation);
+                c.put32(nation + 0x20, has_club ? club : 0);
+                c.put8(nation + 0x6a, flags);
+                c.put32(club, id);
+                state->pc = player_team_status;
+                const auto after = compare(*state);
+                require(Cpu(*after).r(3) == (!has_club ? UINT32_MAX : id >= 180 ? 2u : (flags >> 3) & 1),
+                        "player team status uses the current club and only the selected flag");
+                ++cases;
+            }
+        }
+    }
+    auto state = seed(random);
+    Cpu(*state).set(4, unmapped);
+    state->pc = player_team_status;
+    compare(*state, Stop::fault);
+    state->budget = 0;
+    compare(*state, Stop::budget);
+    return cases;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -3877,6 +4027,11 @@ int main() try {
     const auto direct_assignments = check_direct_staff_assignments(random);
     const auto fixture_flags = check_club_fixture_flags(random);
     const auto collected_ids = check_calendar_id_collection(random);
+    const auto calendar_statuses = check_calendar_status_text(random);
+    const auto selection_statuses = check_selection_status_codes(random);
+    const auto team_statuses = check_player_team_status(random);
+    const auto statuses = calendar_statuses + selection_statuses + team_statuses;
+    std::cout << statuses << " NATIONAL_TEAMS calendar and selection status comparisons, 3 faults and 3 budget stops\n";
     std::cout << fixture_flags << " NATIONAL_TEAMS club fixture flag comparisons, 2 faults and 2 budget stops\n";
     std::cout << collected_ids << " NATIONAL_TEAMS calendar ID collection comparisons, 1 fault and 1 budget stop\n";
     std::cout << direct_assignments << " NATIONAL_TEAMS direct assignments and release comparisons, 2 faults and 2 budget stops\n";

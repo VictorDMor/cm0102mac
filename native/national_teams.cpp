@@ -5920,6 +5920,180 @@ void collect_calendar_ids(Cpu& c) {
     c.finish();
 }
 
+constexpr auto calendar_status_text_entry = 0x102b7aa0u;
+constexpr auto selection_status_codes_entry = 0x102ae6c0u, player_team_status_entry = 0x102af680u;
+
+void format_calendar_status(Cpu& c) {
+    GuestNativeScope scope(c.s, calendar_status_text_entry);
+    block(c, calendar_status_text_entry, 9);
+    const auto caller = c.sp(), frame = caller - 0x70;
+    const auto length = std::int32_t(c.r(7));
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.compare(0, length, 20);
+    const auto source = c.toc(-0x513c);
+    c.set(31, source);
+    c.put32(caller - 8, c.r(30));
+    const auto buffer = c.toc(-0x7ba8);
+    c.set(30, buffer);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    if (length < 20) {
+        report_calendar_error(c, 0x102b7ac4, source, buffer, frame + 0x40, frame + 0x38, 0x1c8b);
+        block(c, 0x102b7b0c, 4);
+        c.set(3, c.toc(-0x7bac));
+        c.set(0, 0);
+        c.put8(c.r(3), 0);
+    } else {
+        block(c, 0x102b7b1c, 3);
+        const auto variant = std::int8_t(c.r(8));
+        c.set(0, std::uint32_t(variant));
+        c.compare(0, variant, 1);
+        const bool alternate = variant == 1;
+        const auto classify = alternate ? 0x102b7b28u : 0x102b7b84u;
+        block(c, classify, 2);
+        unsigned phrase;
+        std::uint32_t publish;
+        if (!record_nonzero_byte(c, c.r(4))) {
+            phrase = alternate ? 0x7c30 : 0x7c4b;
+            publish = classify + 8;
+        } else {
+            block(c, classify + 24, 3);
+            const auto status = std::int8_t(c.r(4));
+            c.set(0, std::uint32_t(status));
+            c.compare(0, status, 1);
+            if (status == 1) {
+                phrase = 0x7c35;
+                publish = classify + 36;
+            } else {
+                block(c, classify + 52, 2);
+                const bool eligible = record_nonzero_byte(c, c.r(5));
+                phrase = alternate ? (eligible ? 0x7c39 : 0x7c42) : (eligible ? 0x7c50 : 0x7c59);
+                publish = classify + (eligible ? 60 : 76);
+            }
+        }
+        block(c, publish, 3);
+        c.set({{3, c.r(6)}, {4, source + phrase}});
+        c.call(format_calendar_phrase, publish + 12);
+        if (publish + 12 != 0x102b7bdc) block(c, publish + 12, 1);
+    }
+    block(c, 0x102b7bdc, 6);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.set(30, c.u32(caller - 8));
+    c.finish();
+}
+
+void selection_status_codes(Cpu& c) {
+    GuestNativeScope scope(c.s, selection_status_codes_entry);
+    block(c, selection_status_codes_entry, 10);
+    const auto caller = c.sp(), frame = caller - 0x80;
+    const auto mode = c.r(5), first = c.r(6), second = c.r(7);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, caller);
+    c.set(28, first);
+    const auto flags = c.cr(0) & 0xf0;
+    c.compare(0, first, 0);
+    c.set_cr(0, flags | c.cr(0));
+    const auto buffer = c.toc(-0x7ba8);
+    c.set(30, buffer);
+    const auto source = c.toc(-0x513c);
+    c.set({{31, source}, {27, mode}, {29, second}});
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    if (first) {
+        block(c, 0x102ae6e8, 2);
+        c.compare_logical(0, second, 0);
+    }
+    if (!first || !second) {
+        report_calendar_error(c, 0x102ae6f0, source, buffer, frame + 0x40, frame + 0x38, 0x7da);
+        block(c, 0x102ae738, 4);
+        c.set(3, c.toc(-0x7bac));
+        c.set(0, 0);
+        c.put8(c.r(3), 0);
+    } else {
+        block(c, 0x102ae748, 2);
+        const auto club = c.r(4);
+        c.compare_logical(0, club, 0);
+        bool international = false;
+        if (club) {
+            block(c, 0x102ae750, 2);
+            c.set(4, c.u32(club + 0x14));
+            c.call(international_competition_entry, 0x102ae758);
+            block(c, 0x102ae758, 2);
+            international = record_nonzero_byte(c, c.r(3));
+        }
+        if (international) {
+            block(c, 0x102ae760, 4);
+            c.set(0, 0x17);
+            c.put8(first, c.r(0));
+            c.put8(second, c.r(0));
+        } else {
+            block(c, 0x102ae770, 2);
+            bool standard = !record_nonzero_byte(c, mode);
+            if (!standard) {
+                block(c, 0x102ae778, 3);
+                c.compare(0, std::int8_t(mode), 2);
+                standard = std::int8_t(mode) == 2;
+            }
+            block(c, standard ? 0x102ae784u : 0x102ae798u, standard ? 5 : 4);
+            c.set({{3, standard ? 0x1au : 0x18u}, {0, 0x16}});
+            c.put8(first, c.r(3));
+            c.put8(second, c.r(0));
+        }
+    }
+    block(c, 0x102ae7a8, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, caller);
+    c.finish();
+}
+
+void player_team_status(Cpu& c) {
+    GuestNativeScope scope(c.s, player_team_status_entry);
+    block(c, player_team_status_entry, 8);
+    const auto caller = c.sp(), frame = caller - 0x40, player = c.r(4);
+    c.set(0, c.lr());
+    c.put32(caller - 4, c.r(31));
+    c.set(31, player);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto club = c.u32(player + 0x20);
+    c.set(3, club);
+    c.compare_logical(0, club, 0);
+    if (!club) {
+        block(c, 0x102af6c4, 1);
+        c.set(3, UINT32_MAX);
+    } else {
+        block(c, 0x102af6a0, 1);
+        c.call(0x100ce250, 0x102af6a4);
+        block(c, 0x102af6a4, 2);
+        if (record_nonzero_byte(c, c.r(3))) {
+            block(c, 0x102af6ac, 2);
+            c.set(3, 2);
+        } else {
+            block(c, 0x102af6b4, 4);
+            const auto selected = (c.u8(player + 0x6a) >> 3) & 1;
+            c.set({{0, std::uint32_t(selected)}, {3, std::uint32_t(selected)}});
+        }
+    }
+    block(c, 0x102af6c8, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    c.set(31, c.u32(caller - 4));
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -6159,6 +6333,9 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case first_club_fixture_flag_entry: read_club_fixture_flag<false>(c); break;
     case second_club_fixture_flag_entry: read_club_fixture_flag<true>(c); break;
     case collect_calendar_ids_entry: collect_calendar_ids(c); break;
+    case calendar_status_text_entry: format_calendar_status(c); break;
+    case selection_status_codes_entry: selection_status_codes(c); break;
+    case player_team_status_entry: player_team_status(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;
