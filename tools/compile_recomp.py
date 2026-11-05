@@ -2600,7 +2600,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if contract_draft_hooks:
         require_contract_draft_hooks(page, instructions, result, taken_over)
     if contract_display_hooks:
-        require_contract_display_hooks(page, instructions, result)
+        require_contract_display_hooks(page, instructions, result, taken_over)
     if money_value_hooks:
         require_money_value_hooks(page, instructions, result, taken_over)
     if money_text_hooks:

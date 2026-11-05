@@ -44,6 +44,14 @@ constexpr std::uint32_t formatter = 0x10727890, string_copy = 0x1077dbf0;
 constexpr std::uint32_t money_value = 0x10009f20, money_text = 0x1000b410;
 constexpr std::uint32_t label_pool = fixture + 0x1000, output_buffer = fixture + 0x1800;
 
+constexpr std::uint32_t wage_entry = 0x10372590, end_text_entry = 0x10372730;
+constexpr std::uint32_t clause_entry = 0x10380400, cfm_entry = 0x10781320;
+constexpr std::uint32_t plain_format = 0x1077b720, date_format = 0x10715e00;
+constexpr std::uint32_t fixture_club = fixture + 0xb00, competition_index = fixture + 0xb80;
+constexpr std::uint32_t competition_slot = fixture + 0xb90, competition_table = fixture + 0xba0;
+constexpr std::uint32_t competition = fixture + 0xc00, competition_vtable = fixture + 0xd00;
+constexpr std::uint32_t first_descriptor = fixture + 0xe00, second_descriptor = fixture + 0xe08;
+
 constexpr std::uint32_t window_entry = 0x10380f20, interval_entry = 0x10717dd0, age_entry = 0x100c6a10;
 constexpr std::uint32_t window_flag = fixture + 0x700, window_reference = fixture + 0x710;
 constexpr std::uint32_t staff_slot = fixture + 0x720, staff_rows = fixture + 0x730;
@@ -60,8 +68,16 @@ struct WindowInputs {
     std::int16_t days = 0;
 };
 
+struct ExternalInputs {
+    WindowInputs window;
+    std::uint32_t clause_reply = 1;
+    std::optional<std::uint32_t> wage_preferences;
+    bool transfer_clause = false;
+};
+
 bool label_entry(std::uint32_t entry) {
-    return entry == bonus_name || entry == option_name || entry == bonus_description || entry == option_description;
+    return entry == bonus_name || entry == option_name || entry == bonus_description || entry == option_description
+        || entry == wage_entry || entry == end_text_entry;
 }
 
 void write_text(guest::Cpu& c, std::uint32_t destination, std::string_view value) {
@@ -84,7 +100,7 @@ bool value_adjustment(std::uint32_t entry) {
 }
 
 struct DependencyCall {
-    std::uint32_t entry, return_address, frame, toc, saved_draft;
+    std::uint32_t entry, return_address, frame, toc, saved_draft, descriptor;
     std::array<std::uint32_t, 8> arguments;
     std::optional<std::uint32_t> adjustment_input;
     bool operator==(const DependencyCall&) const = default;
@@ -97,6 +113,8 @@ struct DependencyTrace {
     unsigned dispatched_names = 0;
     std::optional<WindowInputs> window;
     bool sample_fixture = false;
+    std::optional<std::uint32_t> clause_reply, wage_preferences;
+    bool transfer_clause = false;
 };
 DependencyTrace* dependency_trace = nullptr;
 
@@ -117,17 +135,33 @@ bool trace_dependency(State& s) {
     auto& trace = *dependency_trace;
     if (trace.text_fixture && (s.pc == bonus_name || s.pc == option_name)) ++trace.dispatched_names;
     const bool label = trace.text_fixture && (s.pc == formatter || s.pc == string_copy
-                                               || s.pc == money_value || s.pc == money_text);
+                                               || s.pc == money_value || s.pc == money_text
+                                               || s.pc == plain_format || s.pc == date_format);
     const bool window = trace.window && (s.pc == interval_entry || s.pc == age_entry);
     const bool sample = trace.sample_fixture && s.pc == reseed_entry;
-    if (!adjustment && !label && !window && !sample && s.pc != default_date && s.pc != difference) return false;
+    const bool clause = trace.clause_reply && s.pc == cfm_entry;
+    if (!adjustment && !label && !window && !sample && !clause && s.pc != default_date && s.pc != difference)
+        return false;
     guest::Cpu c(s);
     if (trace.corrupt && s.pc == difference) c.set(4, c.r(4) ^ 0x10000u);
     if (trace.corrupt && s.pc == formatter) c.set(4, c.r(4) + 1);
-    DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), {}, std::nullopt};
+    if (trace.corrupt && clause) c.set(12, c.r(12) == first_descriptor ? second_descriptor : first_descriptor);
+    DependencyCall call{s.pc, c.lr(), c.sp(), c.r(2), c.r(31), c.r(12), {}, std::nullopt};
     for (unsigned n = 0; n < call.arguments.size(); ++n) call.arguments[n] = c.r(n + 3);
-    if (adjustment) call.adjustment_input = c.u32(c.r(3));
+    if (adjustment || s.pc == money_value) call.adjustment_input = c.u32(c.r(3));
     trace.calls.push_back(call);
+    if (clause) {
+        require(c.r(3) == competition && (c.r(12) == first_descriptor || c.r(12) == second_descriptor),
+                "Valid competition callback descriptor and receiver");
+        c.put32(c.sp() + 0x14, c.r(2));
+        c.set({{2, 0x12345678}, {3, *trace.clause_reply}});
+        if (trace.transfer_clause) {
+            s.pc = 0x18000e00;
+            throw GuestContextTransfer{&s, nullptr};
+        }
+        c.finish();
+        return true;
+    }
     if (sample) {
         c.set(3, 0xaabb1233u + std::uint32_t(trace.calls.size()));
         c.finish();
@@ -159,11 +193,21 @@ bool trace_dependency(State& s) {
         case string_copy:
             write_text(c, c.r(3), read_text(c, c.r(4)));
             break;
+        case plain_format:
+            write_text(c, c.r(3), read_text(c, c.r(5)));
+            break;
+        case date_format: {
+            const auto day = c.i16(c.r(3));
+            const auto year = c.u16(c.r(3) + 2);
+            write_text(c, c.r(4), std::to_string(year) + "/" + std::to_string(day));
+            break;
+        }
         case money_value:
-            c.set({{3, c.u32(c.r(3)) ^ 0x11220000u}, {4, 0x33445566}});
+            c.set({{3, *call.adjustment_input ^ 0x11220000u}, {4, 0x33445566}});
             break;
         case money_text:
             write_text(c, c.r(3), "amount");
+            if (trace.wage_preferences) c.put32(preferences + 4, *trace.wage_preferences);
             break;
         }
         c.finish();
@@ -216,6 +260,14 @@ std::unique_ptr<State> expiry_fixture() {
     c.put32(toc - 0x4dac, sampling_constants);
     c.put_f64(sampling_constants, 65535.0);
     c.put64(sampling_constants + 0xc0, UINT64_C(0x4330000080000000));
+    c.put32(toc - 0x7b5c, competition_slot);
+    c.put32(competition_slot, competition_table);
+    c.put32(competition_table + 4, competition);
+    c.put32(competition_index, 1);
+    c.put32(fixture_club + 0x30, competition_index);
+    c.put32(competition, competition_vtable);
+    c.put32(competition_vtable + 0xa0, first_descriptor);
+    c.put32(competition_vtable + 0xa4, second_descriptor);
     c.put32(toc - 0x7b90, rng_salt);
     c.put32(toc - 0x7b8c, random_words);
     c.put32(toc - 0x7b88, rng_end);
@@ -228,7 +280,8 @@ std::unique_ptr<State> expiry_fixture() {
     c.put32(toc - 0x79e8, window_reference);
     c.put32(toc - 0x7be0, staff_slot);
     c.put32(staff_slot, staff_rows);
-    for (const auto offset : {0x289, 0x294, 0x2a1, 0x2b3, 0x2c6, 0x2e3, 0x2fe, 0x319, 0x333, 0x34e})
+    for (const auto offset : {0x2a, 0x3f, 0x54, 0x69, 0x83, 0x9e, 0xb9, 0xca, 0xf3,
+                              0x289, 0x294, 0x2a1, 0x2b3, 0x2c6, 0x2e3, 0x2fe, 0x319, 0x333, 0x34e})
         write_text(c, label_pool + offset, "label" + std::to_string(offset));
     c.put32(toc - 0x7ac8, preferences_slot);
     c.put32(preferences_slot, preferences);
@@ -280,12 +333,12 @@ struct Result {
     std::uint32_t cursor = 0, salt = 0;
 };
 struct Counts {
-    unsigned returned = 0, budgets = 0, faults = 0, negatives = 0;
+    unsigned returned = 0, budgets = 0, faults = 0, negatives = 0, transfers = 0;
 };
 
 Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no_hole,
                       bool negative = false, bool call_negative = false,
-                      std::optional<std::uint32_t> adjustment = std::nullopt, WindowInputs window = {}) {
+                      std::optional<std::uint32_t> adjustment = std::nullopt, const ExternalInputs& inputs = {}) {
     auto original = state_with_hole(input, hole);
     auto modern = state_with_hole(input, hole);
     Effects expected, actual;
@@ -298,6 +351,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
             if (reference) staff_contracts_run_original(s, s.pc);
             else run_until(s, return_sentinel);
             return std::string{};
+        } catch (const GuestContextTransfer& transfer) {
+            require(transfer.state == &s && transfer.destination == nullptr, "Unexpected fixture transfer destination");
+            return std::string("Competition callback transfer");
         } catch (const std::runtime_error& error) {
             return std::string(error.what());
         }
@@ -305,43 +361,52 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     const bool text_fixture = label_entry(input.pc);
     const bool window_fixture = input.pc == window_entry;
     const bool sample_fixture = input.pc == sampling_entry;
+    const bool clause_fixture = input.pc == clause_entry;
     const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value()
-        || text_fixture || window_fixture || sample_fixture;
+        || text_fixture || window_fixture || sample_fixture || clause_fixture;
     if (text_fixture) {
         // Decline the in-place formatting owner at the external boundary.
         // The dispatcher probe then supplies the same fixture on both sides.
         localization_format_diagnostics(*original).original_body = formatter;
         localization_format_diagnostics(*modern).original_body = formatter;
+        original->formatted_output_original = modern->formatted_output_original = true;
     }
-    const auto window_inputs = window_fixture ? std::optional(window) : std::nullopt;
+    const auto window_inputs = window_fixture ? std::optional(inputs.window) : std::nullopt;
+    const auto clause_reply = clause_fixture ? std::optional(inputs.clause_reply) : std::nullopt;
     DependencyTrace old_calls{.calls = {}, .adjustment_output = adjustment, .text_fixture = text_fixture,
-                              .window = window_inputs, .sample_fixture = sample_fixture};
+                              .window = window_inputs, .sample_fixture = sample_fixture,
+                              .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
+                              .transfer_clause = inputs.transfer_clause};
     DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
-                              .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture};
+                              .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture,
+                               .clause_reply = clause_reply, .wage_preferences = inputs.wage_preferences,
+                              .transfer_clause = inputs.transfer_clause};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
     // The generated caller can enter CASH.CPP in place. Decline just these
     // two services so both references reach the same external fixture.
     RoutineChecker fixture_filter([](std::uint32_t entry) { return !is_value_service(entry); }, 0, 0);
     const bool amount_description = input.pc == bonus_description && std::int8_t(input.r<4>(28)) != 1;
-    ScopedRoutineChecker checker(adjustment || amount_description ? &fixture_filter : nullptr);
+    ScopedRoutineChecker checker(adjustment || amount_description || input.pc == wage_entry ? &fixture_filter : nullptr);
     const auto old_stop = call(*original, true);
     if (traced) dependency_trace = &new_calls;
     const auto new_stop = call(*modern, false);
     original->memory.date_observer = modern->memory.date_observer = nullptr;
-    const auto test_case = counts.returned + counts.budgets + counts.faults + counts.negatives;
+    const auto test_case = counts.returned + counts.budgets + counts.faults + counts.negatives + counts.transfers;
     const auto label = "Staff contract " + hex_address(input.pc) + " comparison " + std::to_string(test_case);
     require(old_stop == new_stop, label + " original=" + old_stop + " C++=" + new_stop);
     if (call_negative) {
         require(old_stop.empty() && old_calls.calls.size() == 1, label + " missed the call mutation");
         auto changed = old_calls.calls;
-        if (text_fixture) ++changed.front().arguments[1];
+        if (clause_fixture)
+            changed.front().descriptor = changed.front().descriptor == first_descriptor ? second_descriptor : first_descriptor;
+        else if (text_fixture) ++changed.front().arguments[1];
         else changed.front().arguments[1] ^= 0x10000u;
         require(new_calls.calls == changed, label + " did not isolate the changed external argument");
         ++counts.negatives;
         return {unsigned(modern->r<4>(12)), unsigned(modern->executed), 0, {}, std::move(actual.log)};
     }
     require(old_calls.calls == new_calls.calls, label + " changed external arguments or call order");
-    if (traced && !sample_fixture && old_stop.empty()) {
+    if (traced && !sample_fixture && !clause_fixture && input.pc != wage_entry && old_stop.empty()) {
         const unsigned expected_calls = input.pc == bonus_description ? (amount_description ? 4 : 2)
             : input.pc == draft_entry ? 2 : 1;
         require(old_calls.calls.size() == expected_calls || (window_fixture && old_calls.calls.size() == 4),
@@ -351,7 +416,11 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
                     label + " did not take the direct C++ label call");
         }
     }
-    if (hole != no_hole) {
+    if (inputs.transfer_clause) {
+        require(old_stop == "Competition callback transfer" && modern->pc == 0x18000e00,
+                label + " lost nonlocal transfer");
+        ++counts.transfers;
+    } else if (hole != no_hole) {
         require(old_stop.starts_with("Unmapped data access at "), label + " did not fault at the removed byte");
         ++counts.faults;
     } else if (old_stop == "Native instruction budget exhausted") {
@@ -381,6 +450,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     guest::Cpu cpu(*modern);
     const auto text = text_fixture && old_stop.empty() ? read_text(cpu, output_buffer) : std::string{};
     Result result{band, unsigned(modern->executed), contract_value, text, std::move(actual.log)};
+    result.dependency_calls = old_calls.calls.size();
     if (window_fixture && old_stop.empty()) {
         result.boundary = cpu.u8(boundary_out);
         result.threshold = cpu.u8(threshold_out);
@@ -696,7 +766,7 @@ void window_cases(Counts& counts) {
     c.put16(window_reference + 2, dates_year);
 
     const auto run = [&](WindowInputs data = {}) {
-        return compare_entry(*input, counts, no_hole, false, false, std::nullopt, data);
+        return compare_entry(*input, counts, no_hole, false, false, std::nullopt, {.window = data});
     };
     const auto disabled = run();
     require(disabled.value == 1 && disabled.boundary == 0 && disabled.threshold == 0x5a
@@ -789,6 +859,99 @@ void sampling_cases(Counts& counts) {
     compare_entry(*input, counts, no_hole, true);
 }
 
+void clause_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    input->pc = clause_entry;
+    c.set(4, fixture_club);
+    for (unsigned lookup = 0; lookup < 3; ++lookup) {
+        c.put32(fixture_club + 0x30, lookup ? competition_index : 0);
+        c.put32(competition_table + 4, lookup == 2 ? competition : 0);
+        c.put16(record + 0x5c, 32);
+        for (unsigned raw = 0; raw < 256; ++raw) {
+            c.set(5, 0x12340000 | raw);
+            const bool callback = lookup == 2 && (raw == 0 || raw == 3);
+            const auto result = compare_entry(*input, counts);
+            require(result.value == unsigned(raw == 1 || raw == 4 || callback)
+                        && result.dependency_calls == unsigned(callback),
+                    "Competition and clause eligibility");
+        }
+    }
+    c.set(5, 4);
+    for (unsigned raw = 0; raw < 256; ++raw) {
+        c.put16(record + 0x5c, 0x1200 | raw);
+        require(compare_entry(*input, counts).value == unsigned(std::int8_t(raw) > 31), "Signed clause age");
+    }
+    for (auto selected : {0u, 3u}) {
+        c.set(5, selected);
+        for (auto reply : {0u, 1u, 127u, 128u, 255u, 256u, UINT32_MAX}) {
+            const auto result = compare_entry(*input, counts, no_hole, false, false, std::nullopt,
+                                              {.clause_reply = reply});
+            require(result.value == unsigned(std::int8_t(reply) != 0) && result.dependency_calls == 1,
+                    "Signed competition reply");
+        }
+    }
+    c.set(5, 3);
+    const auto full = compare_entry(*input, counts);
+    for (const auto cut : {0u, 1u, full.steps / 2, full.steps - 1}) {
+        input->budget = cut;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+    compare_entry(*input, counts, competition_vtable + 0xa4);
+    compare_entry(*input, counts, no_hole, false, true);
+    compare_entry(*input, counts, no_hole, false, false, std::nullopt, {.transfer_clause = true});
+}
+
+void wage_and_end_text_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    input->pc = wage_entry;
+    c.set(4, output_buffer);
+    c.put32(record + 12, 0x7fffffff);
+    write_text(c, output_buffer, "unchanged");
+    for (auto flags : {0u, 0x200000u, 0x400000u, 0x800000u, UINT32_MAX}) {
+        c.put32(preferences + 4, flags);
+        for (auto style : {0u, 1u, 2u, 255u}) {
+            c.set({{5, style}, {6, 0xa5a50080u | style}});
+            const auto expected_offset = flags & 0x200000 ? (style == 2 ? 0x2a : 0x69)
+                : flags & 0x400000 ? (style == 2 ? 0x3f : 0x83)
+                : flags & 0x800000 ? (style == 2 ? 0x54 : 0x9e) : 0;
+            const auto expected = !style ? "amount" : expected_offset ? "label" + std::to_string(expected_offset)
+                : "unchanged";
+            const auto result = compare_entry(*input, counts);
+            require(result.text == expected && result.dependency_calls == (style && !expected_offset ? 2u : 3u),
+                    "Wage period precedence and text");
+        }
+    }
+    c.set(5, 2);
+    c.put32(preferences + 4, 0x200000);
+    const auto after = compare_entry(*input, counts, no_hole, false, false, std::nullopt,
+                                     {.wage_preferences = 0x800000});
+    require(after.text == "label84" && after.dependency_calls == 3, "Reread the live wage period after formatting");
+    for (const auto cut : {0u, 1u, after.steps / 2, after.steps - 1}) {
+        input->budget = cut;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+    compare_entry(*input, counts, output_buffer);
+
+    input->pc = end_text_entry;
+    for (unsigned packed = 0; packed < 256; ++packed) {
+        c.put8(record + 0x38, packed);
+        const auto kind = std::int8_t(packed) >> 2;
+        const auto expected = kind == 1 ? "label243" : kind == 3 ? "label185" : kind == 4 ? "label202" : "2001/150";
+        require(compare_entry(*input, counts).text == expected, "Packed contract end label");
+    }
+    const auto full = compare_entry(*input, counts);
+    for (const auto cut : {0u, 1u, full.steps / 2, full.steps - 1}) {
+        input->budget = cut;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+    compare_entry(*input, counts, output_buffer);
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -803,6 +966,10 @@ unsigned generated_hooks() {
         s->pc = entry;
         s->wr<4>(16, 1);
         if (entry == sampling_entry) s->wr<4>(12, 17);
+        if (entry == clause_entry) {
+            s->wr<4>(16, fixture_club);
+            s->wr<4>(20, 1);
+        }
         if (entry == window_entry) {
             s->wr<4>(20, boundary_out);
             s->wr<4>(24, threshold_out);
@@ -810,8 +977,10 @@ unsigned generated_hooks() {
         const bool text_fixture = label_entry(entry);
         if (text_fixture) {
             localization_format_diagnostics(*s).original_body = formatter;
+            s->formatted_output_original = true;
             guest::Cpu c(*s);
             if (entry == bonus_name || entry == option_name) c.set({{3, 0}, {4, output_buffer}});
+            else if (entry == wage_entry || entry == end_text_entry) c.set({{4, output_buffer}, {5, 0}, {6, 0}});
             else c.set({{4, 0}, {5, output_buffer}, {7, 0}});
         }
         DependencyTrace trace{.calls = {}, .adjustment_output = 0, .text_fixture = text_fixture};
@@ -848,10 +1017,12 @@ int main() {
         label_cases(counts);
         window_cases(counts);
         sampling_cases(counts);
+        clause_cases(counts);
+        wage_and_end_text_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "
-                  << counts.negatives << " rejected mutations, " << hooks << " production hook comparisons\n";
+                  << counts.negatives << " rejected mutations, " << counts.transfers << " nonlocal transfers, " << hooks << " production hook comparisons\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

@@ -11,6 +11,11 @@ void initialize_draft(guest::Cpu&, std::uint32_t contract);
 std::int16_t end_date_delta(guest::Cpu&, std::uint32_t contract);
 bool supports_bonus(guest::Cpu&, std::uint32_t person, std::int8_t bonus);
 
+bool supports_option(guest::Cpu&, std::uint32_t staff, std::uint32_t club, std::int8_t option);
+void format_wage_text(guest::Cpu&, std::uint32_t contract, std::uint32_t destination,
+                      std::uint32_t style, std::int8_t format_flags);
+void format_contract_end(guest::Cpu&, std::uint32_t contract, std::uint32_t destination);
+
 void name_bonus(guest::Cpu&, std::int8_t index, std::uint32_t destination);
 void name_option(guest::Cpu&, std::int8_t index, std::uint32_t destination);
 void describe_bonus(guest::Cpu&, std::uint32_t contract, std::uint32_t index, std::uint32_t destination,
