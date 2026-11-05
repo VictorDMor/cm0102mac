@@ -45,7 +45,7 @@ constexpr auto contract_scratch = news_slot + 12, notice_policy = news_slot + 16
 constexpr auto news_system = fixture + 0x6700, injury_system = fixture + 0x6740, contract_system = fixture + 0x6780;
 constexpr auto notice_contract = fixture + 0x6800, notice_injury = fixture + 0x6840, injury_types = fixture + 0x6880;
 constexpr auto contract_answers = fixture + 0x6900, notice_language = fixture + 0x6940;
-constexpr auto injury_policy = notice_policy + 1, injury_active = notice_policy + 2;
+constexpr auto injury_policy = notice_policy + 1, injury_active = notice_policy + 2, search_policy = notice_policy + 3;
 constexpr auto injury_assert_buffer = fixture + 0x6b00, injury_success = fixture + 0x6c00;
 constexpr auto recipient_club = clubs + 5 * 0x248;
 constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish = 0x102cc140u;
@@ -99,10 +99,10 @@ bool observe_dependency(State& s) {
     case 0x100c76c0: case 0x100c7860: break;
     case 0x1014c2e0:
         if (resume != 0x103b19a4 && resume != 0x102b1da8 && resume != 0x102b1de0 &&
-            resume != 0x102b878c && resume != 0x102b87bc) return false;
+            resume != 0x102b878c && resume != 0x102b87bc && resume != 0x102b8bb0) return false;
         break;
     case news_create: case news_field: case news_publish: case 0x102cdbf0: case 0x1018c340:
-    case 0x10082f20: case 0x100c9070: case 0x101484b0: case 0x10187680: case 0x100e7920:
+    case 0x10082f20: case 0x100c9070: case 0x101484b0: case 0x10187680: case 0x100e7920: case 0x102de3c0:
     case 0x10739890: case 0x1077b720: case 0x10769b60: break;
     default: return false;
     }
@@ -160,7 +160,9 @@ bool observe_dependency(State& s) {
             break;
         }
         require(c.r(4) == 0 && c.r(5) == 1 && !c.r(6) && !c.r(7), "roster notice managed-team query");
-        if (resume == 0x102b878c || resume == 0x102b87bc) {
+        if (resume == 0x102b8bb0) {
+            c.set(3, (c.u8(search_policy) & 8) != 0);
+        } else if (resume == 0x102b878c || resume == 0x102b87bc) {
             c.set(3, (c.u8(injury_policy) & (resume == 0x102b878c ? 1u : 2u)) != 0);
         } else {
             c.set(3, (c.u8(notice_policy) & (resume == 0x102b1da8 ? 1u : 2u)) != 0);
@@ -173,12 +175,16 @@ bool observe_dependency(State& s) {
     case 0x10187680:
         require(resume == 0x102b89f4 && c.r(3) == injury_system && c.r(4) == replacement_candidate,
                 "automatic replacement candidate injury check");
-        c.set(3, 0);
+        c.set(3, (c.u8(search_policy) & 1) != 0);
+        break;
+    case 0x102de3c0:
+        require(resume == 0x102b8a10 && c.r(4) == replacement_candidate, "replacement availability check");
+        c.set(3, (c.u8(search_policy) & 2) != 0);
         break;
     case 0x100e7920:
         require(resume == 0x102b8aa4 && c.r(4) == replacement_candidate && c.r(6) == 1 && !c.r(7),
                 "automatic replacement candidate eligibility");
-        c.set(3, 0);
+        c.set(3, (c.u8(search_policy) & 4) != 0);
         break;
     case 0x10739890:
         require(resume == 0x102b84b8 && c.r(3) == source + 0x37 &&
@@ -269,7 +275,7 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
         RoutineChecker notice_boundary([](std::uint32_t entry) {
             return entry == club_notice || entry == nation_notice || entry == replacement_notice || entry == injured_selection ||
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
-                entry == add_replacement || entry == replacement_objection;
+                entry == add_replacement || entry == replacement_objection || entry == automatic_replacement;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
                                    input.pc == replacement_notice || input.pc == injured_selection || input.pc == automatic_replacement))
@@ -292,7 +298,11 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
     };
     const auto a = run(*original, original_effects, original_calls, true);
     const auto b = run(*rewrite, rewrite_effects, rewrite_calls, false);
-    const auto label = "NATIONAL_TEAMS " + hex_address(input.pc);
+    auto label = "NATIONAL_TEAMS " + hex_address(input.pc);
+    if (input.pc == automatic_replacement) {
+        label += " mode=" + hex_address(std::uint32_t(input.r<4>(guest::reg::gpr(5)))) +
+                 " tier=" + hex_address(std::uint32_t(input.r<4>(guest::reg::gpr(6))));
+    }
     require(a == b && (expected == Stop::fault ? a.starts_with("Unmapped data access at ") :
                       expected == Stop::budget ? a == "Native instruction budget exhausted" : a.empty()),
             label + " outcome " + a + " at " + hex_address(original->pc) +
@@ -1092,56 +1102,188 @@ unsigned check_replacement_roster(std::mt19937& random) {
     return comparisons;
 }
 
+constexpr auto search_queue = fixture + 0x6d00, search_assessment = fixture + 0x6d40;
+constexpr auto search_objection = fixture + 0x6d80, search_globals = fixture + 0x6dc0;
+constexpr auto search_row = records + fixture_nation_id * record_size;
+
+std::unique_ptr<State> replacement_search_seed(std::mt19937& random, unsigned mode, unsigned tier,
+                                               unsigned first = 0) {
+    auto state = notice_seed(random, mode, 1, automatic_replacement);
+    Cpu c(*state);
+    c.set({{3, manager}, {4, nation}, {5, mode}, {6, tier}, {7, player}});
+    c.put32(toc - 0x7aa4, contracts_slot);
+    c.put32(toc - 0x7b28, search_globals);
+    c.put32(toc - 0x7bc0, search_globals + 4);
+    c.put32(toc - 0x7b9c, search_globals + 8);
+    c.put32(search_globals + 8, fixture + 0x2000);
+    c.put32(manager + 0xc, search_queue);
+    c.put32(manager + 0x10, search_queue);
+    const auto group = search_row + (std::int8_t(mode) == 2 ? 0x18 : 0);
+    const auto counter = search_row + std::uint32_t(std::int8_t(mode)) * 0x14 + 0x4b;
+    c.put32(group + 8, first);
+    c.put8(group + std::uint32_t(std::int8_t(tier)) * 4 + 0xe, 2);
+    // A signed tier of -1 places its count byte inside the base word.
+    auto index = c.u32(group + 8);
+    for (int i = 0; i < std::int8_t(tier); ++i) {
+        const auto address = group + 0xf + i * 4;
+        const unsigned weight = address == counter ? 4 : 1 + i % 3;
+        c.put8(address, weight);
+        index += weight;
+    }
+    c.put32(search_queue + index * 4, player);
+    c.put32(search_queue + (index + 1) * 4, replacement_candidate);
+    c.put8(counter, 4);
+    c.put32(player + 0x14, search_assessment);
+    c.put8(search_assessment + 0xf, 15);
+    c.put32(replacement_candidate, 73);
+    c.put32(replacement_candidate + 0xc, nation);
+    c.put32(replacement_candidate + 0x14, search_assessment);
+    c.put32(replacement_candidate + 0x24, recipient_club);
+    for (unsigned i = 1; i <= 3; ++i)
+        c.put32(replacement_candidate + 0x24 + i * 4, c.u32(player + 0x24 + i * 4));
+    c.put32(contract_answers, notice_contract);
+    return state;
+}
+
+void expect_search_outcome(Cpu& c, unsigned mode, bool accepted, std::uint32_t linked_team) {
+    const auto counter = search_row + std::uint32_t(std::int8_t(mode)) * 0x14 + 0x4b;
+    require(c.u32(replacement_candidate + 0x20) == linked_team &&
+                c.u8(counter) == (accepted ? 3 : 0) && c.u32(notice_events) == unsigned(accepted),
+            "replacement outcome, remaining count and delivered news");
+    if (!accepted) return;
+    const auto news = stack - 0x90 - 0x140 + 0x38;
+    require(c.u32(news) == 0x21 && c.u32(news + 8) == 73 && c.u32(notice_events + 4) == recipient_club,
+            "replacement notice carries the chosen candidate");
+}
+
 unsigned check_replacement_dispatch(std::mt19937& random) {
-    constexpr auto queue = fixture + 0x6d00, assessment = fixture + 0x6d40, objection = fixture + 0x6d80;
-    constexpr auto unused_global = fixture + 0x6dc0, row = records + fixture_nation_id * record_size;
     unsigned comparisons = 0;
-    for (unsigned mode = 0; mode < 3; ++mode) {
-        for (unsigned scenario = 0; scenario < 3; ++scenario) {
-            auto state = notice_seed(random, mode, 1, automatic_replacement);
-            Cpu c(*state);
-            c.set({{3, manager}, {4, nation}, {5, mode}, {6, 0}, {7, player}});
-            c.put32(toc - 0x7aa4, contracts_slot);
-            c.put32(toc - 0x7b28, unused_global);
-            c.put32(toc - 0x7bc0, unused_global);
-            c.put32(manager + 0xc, queue);
-            c.put32(manager + 0x10, queue);
-            c.put32(queue, player);
-            c.put32(queue + 4, replacement_candidate);
-            c.put8(row + (mode == 2 ? 0x18 : 0) + 0xe, 2);
-            const auto counter = row + mode * 0x14 + 0x4b;
-            c.put8(counter, 4);
-            c.put32(player + 0x14, assessment);
-            c.put8(assessment + 0xf, 15);
-            c.put32(replacement_candidate, 73);
-            c.put32(replacement_candidate + 0xc, nation);
-            c.put32(replacement_candidate + 0x14, assessment);
-            c.put32(replacement_candidate + 0x18, scenario == 1 ? objection : 0);
-            c.put32(objection + 0x10, senior_team);
-            c.put32(replacement_candidate + 0x24, recipient_club);
-            for (unsigned i = 1; i <= 3; ++i)
-                c.put32(replacement_candidate + 0x24 + i * 4, c.u32(player + 0x24 + i * 4));
-            c.put32(contract_answers, notice_contract);
-            const auto team = mode == 2 ? alternate_team : senior_team;
-            if (scenario == 2) {
-                for (unsigned i = 0; i < 50; ++i)
-                    c.put32(team + national_roster_offset + 4 * i, player);
-            }
+    for (unsigned mode : {0u, 1u, 2u, 0x102u, UINT32_MAX}) {
+        for (unsigned tier : {0u, 1u, 8u, 9u, 15u, 16u, 17u, 127u, 128u, 255u, 0x109u}) {
+            const auto state = replacement_search_seed(random, mode, tier, 192);
             auto result = compare(*state);
             Cpu after(*result);
-            require(after.u32(replacement_candidate + 0x20) == (scenario == 0 ? team : 0) &&
-                        after.u8(counter) == (scenario == 1 ? 0 : 3) &&
-                        after.u32(notice_events) == unsigned(scenario != 1),
-                    "generated search with native candidate rejection, roster update and notice");
-            if (scenario != 1) {
-                const auto news = stack - 0x90 - 0x140 + 0x38;
-                require(after.u32(news) == 0x21 && after.u32(news + 8) == 73 &&
-                            after.u32(notice_events + 4) == recipient_club,
-                        "replacement notice carries the chosen candidate");
-            }
+            const auto kind = std::int8_t(mode);
+            expect_search_outcome(after, mode, true, kind == 0 || kind == 1 ? senior_team : alternate_team);
             ++comparisons;
         }
     }
+
+    enum class Filter { objection, full, profile, injured, availability_clear, availability_hit,
+                        foreign_team, dual, dual_restricted, dual_flag, dual_mismatch, reference, position };
+    using enum Filter;
+    for (unsigned mode = 0; mode < 3; ++mode) {
+        for (const auto filter : {objection, full, profile, injured, availability_clear, availability_hit,
+                                  foreign_team, dual, dual_restricted, dual_flag, dual_mismatch, reference, position}) {
+            auto state = replacement_search_seed(random, mode, 0);
+            Cpu c(*state);
+            const auto team = mode == 2 ? alternate_team : senior_team;
+            if (filter == objection) {
+                c.put32(replacement_candidate + 0x18, search_objection);
+                c.put32(search_objection + 0x10, senior_team);
+            }
+            if (filter == full) {
+                for (unsigned slot = 0; slot < 50; ++slot)
+                    c.put32(team + national_roster_offset + slot * 4, player);
+            }
+            if (filter == profile) c.put32(replacement_candidate + 0x14, 0);
+            if (filter == injured) c.put8(search_policy, 1);
+            if (filter == availability_clear || filter == availability_hit) {
+                c.put32(search_globals, injury_system);
+                c.put8(search_policy, filter == availability_hit ? 2 : 0);
+            }
+            if (filter == foreign_team) c.put32(replacement_candidate + 0x20, regular_club);
+            if (filter == dual || filter == dual_restricted || filter == dual_flag || filter == dual_mismatch) {
+                c.put32(replacement_candidate + 0xc, team_nation);
+                c.put32(replacement_candidate + 0x10, filter == dual_mismatch ? team_nation : nation);
+                if (filter == dual_restricted) c.put8(replacement_candidate + 0x5e, 1);
+                if (filter == dual_flag) c.put8(fixture + 0x2000 + 73 * 0x64 + 0xd, 0x40);
+            }
+            if (filter == reference) c.put8(search_policy, 4);
+            if (filter == position) {
+                c.put32(replacement_candidate + 0x14, search_assessment + 0x20);
+                c.put8(search_assessment + 0x30, 15);
+            }
+            const bool accepted = filter == full || filter == availability_clear || filter == dual ||
+                (filter == availability_hit && mode == 0);
+            auto result = compare(*state);
+            Cpu after(*result);
+            const auto linked = filter == foreign_team ? regular_club : accepted && filter != full ? team : 0;
+            expect_search_outcome(after, mode, accepted, linked);
+            ++comparisons;
+        }
+    }
+
+    enum class Prior { inactive, same, dual, earlier_year, later_year, earlier_day, equal_day, later_day, managed };
+    for (unsigned mode = 0; mode < 3; ++mode) {
+        for (const auto prior : {Prior::inactive, Prior::same, Prior::dual, Prior::earlier_year, Prior::later_year,
+                                 Prior::earlier_day, Prior::equal_day, Prior::later_day, Prior::managed}) {
+            if (mode == 0 && prior == Prior::managed) continue;
+            auto state = replacement_search_seed(random, mode, 0);
+            Cpu c(*state);
+            const auto old_mode = prior == Prior::same ? mode : prior == Prior::managed ? 0 : (mode + 1) % 3;
+            const auto old_team = old_mode == 2 ? alternate_team : senior_team;
+            const auto team = mode == 2 ? alternate_team : senior_team;
+            c.put32(senior_team, 1);
+            c.put32(alternate_team, 181);
+            c.put32(old_team + 0x2c, nation);
+            c.put32(old_team + national_roster_offset + 49 * 4, replacement_candidate);
+            c.put32(replacement_candidate + 0x20, old_team);
+            c.put8(replacement_candidate + 0x60, prior == Prior::inactive ? 0xc : 0xb);
+            c.put8(replacement_candidate + 0x6a, old_mode == 1 ? 8 : 4);
+            if (prior == Prior::dual) c.put32(replacement_candidate + 0xc, team_nation);
+            c.put8(search_policy, prior == Prior::managed ? 8 : 0);
+            fixture_date(c, search_row + old_mode * 0x14 + 0x40,
+                         prior == Prior::equal_day ? 90 : prior == Prior::later_day ? 91 : -2,
+                         prior == Prior::earlier_year ? 1999 : prior == Prior::later_year ? 2001 : 2000);
+            c.put32(toc - 0x7a6c, tactics_slot);
+            c.put32(tactics_slot, tactics_state);
+            c.put32(toc - 0x7be4, staff_count);
+            c.put32(staff_count, 80);
+            c.put8(injury_active, 1);
+            c.put32(tactics_state + tactics::field::teams, tactics_teams);
+            const auto tactical_team = tactics_teams + c.u32(old_team) * tactics::team_size;
+            if (old_mode == 2) state->memory.map(tactical_team, tactics::team_size);
+            for (unsigned offset = tactics::field::squad; offset < tactics::field::lineup; offset += 4)
+                c.put32(tactical_team + offset, UINT32_MAX);
+            c.put32(tactical_team + tactics::field::squad, 73);
+            const bool accepted = prior == Prior::earlier_year || prior == Prior::earlier_day;
+            auto result = compare(*state);
+            Cpu after(*result);
+            expect_search_outcome(after, mode, accepted, accepted ? team : old_team);
+            require(after.u32(old_team + national_roster_offset + 49 * 4) == (accepted ? 0 : replacement_candidate) &&
+                        after.u32(tactical_team + tactics::field::squad) == (accepted ? UINT32_MAX : 73),
+                    "expired selection releases the previous roster and tactics before inserting the replacement");
+            ++comparisons;
+        }
+    }
+
+    auto direct = replacement_search_seed(random, 0, 9, 192);
+    Cpu unprobed(*direct);
+    unprobed.put32(replacement_candidate + 0x18, search_objection);
+    unprobed.put32(search_objection + 0x10, senior_team);
+    auto result = compare(*direct, Stop::returned, Corrupt::none, true);
+    Cpu after(*result);
+    expect_search_outcome(after, 0, false, 0);
+    ++comparisons;
+
+    auto state = replacement_search_seed(random, 0, 0);
+    Cpu c(*state);
+    c.set(4, unmapped);
+    compare(*state, Stop::fault);
+    state->budget = 0;
+    compare(*state, Stop::budget);
+
+    auto partial = replacement_search_seed(random, 0, 9, 192);
+    Cpu prefix(*partial);
+    const auto row = fixture + 0x9000 - 24;
+    prefix.put32(manager + 4, row - fixture_nation_id * record_size);
+    prefix.put32(row + 8, 17);
+    prefix.put8(row + 0xf, 3);
+    prefix.put8(row + 0x13, 7);
+    prefix.put8(row + 0x17, 11);
+    auto stopped = compare(*partial, Stop::fault);
+    require(Cpu(*stopped).r(4) == 27, "batch fault preserves the two weights added before the failing read");
     return comparisons;
 }
 
@@ -1347,7 +1489,7 @@ int main() try {
     const auto injured = check_injured_selection(random);
     const auto replacement = check_replacement_roster(random);
     const auto dispatch = check_replacement_dispatch(random);
-    std::cout << dispatch << " NATIONAL_TEAMS nonempty replacement search comparisons\n";
+    std::cout << dispatch << " NATIONAL_TEAMS replacement search comparisons, 2 faults and 1 budget stop\n";
     std::cout << replacement << " NATIONAL_TEAMS replacement roster comparisons, 2 faults and 2 budget stops\n";
     std::cout << injured << " NATIONAL_TEAMS injury roster comparisons, 1 fault and 1 budget stop\n";
     std::cout << notices << " NATIONAL_TEAMS roster news comparisons, 3 faults and 3 budget stops\n";

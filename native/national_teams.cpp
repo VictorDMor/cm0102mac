@@ -126,6 +126,24 @@ void selection_tier(Cpu& c) {
     c.finish();
 }
 
+std::uint32_t sum_selection_weight_batch(Cpu& c, std::uint32_t weights, std::uint32_t total,
+                                         unsigned sum_reg, unsigned first_reg, unsigned second_reg) {
+    // Each next load precedes the addition of the previous weight. Keep the
+    // running sum and both loaded values observable if a read faults.
+    auto previous = c.u8(weights);
+    c.set(first_reg, previous);
+    for (unsigned i = 1; i < 8; ++i) {
+        const auto next = c.u8(weights + i * 4);
+        c.set(i % 2 ? second_reg : first_reg, next);
+        total += previous;
+        c.set(sum_reg, total);
+        previous = next;
+    }
+    total += previous;
+    c.set(sum_reg, total);
+    return total;
+}
+
 void selection_prefix(Cpu& c) {
     block(c, selection_prefix_entry, 7);
     const auto records = c.r(4), raw_count = c.r(6);
@@ -163,17 +181,7 @@ void selection_prefix(Cpu& c) {
             const auto weights = row + offset + first_weight;
             used += batch_size;
             c.set({{5, group_offset + offset}, {8, used * stride}, {10, weights}, {11, used}});
-            auto previous = c.u8(weights);
-            c.set(7, previous);
-            for (unsigned j = 1; j < batch_size; ++j) {
-                const auto next = c.u8(weights + j * stride);
-                c.set(j % 2 ? 5 : 7, next);
-                total += previous;
-                c.set(3, total);
-                previous = next;
-            }
-            total += previous;
-            c.set(3, total);
+            total = sum_selection_weight_batch(c, weights, total, 3, 7, 5);
         }
     }
     block(c, 0x102aebd8, 4);
@@ -1654,7 +1662,8 @@ void duty_conflict(Cpu& c) {
     c.finish();
 }
 
-constexpr auto injured_selection_entry = 0x102b8460u;
+constexpr auto injured_selection_entry = 0x102b8460u, automatic_replacement_entry = 0x102b8850u;
+void automatic_replacement(Cpu& c);
 
 struct InjuredSelection {
     std::uint32_t frame, manager, player, team, nation, record, today, tactics;
@@ -1860,7 +1869,7 @@ void replace_injured_selection(Cpu& c, const InjuredSelection& n, std::uint32_t 
     } else {
         block(c, 0x102b880c, 6);
         c.set({{3, n.manager}, {4, n.nation}, {5, n.mode}, {6, tier}, {7, n.player}});
-        c.call(0x102b8850, 0x102b8824);
+        call_national_owner(c, automatic_replacement_entry, 0x102b8824, automatic_replacement);
         block(c, 0x102b8824, 3);
         c.set({{3, n.manager}, {4, n.nation}});
         call_national_owner(c, deduplicate_rosters_entry, 0x102b8830, deduplicate_rosters);
@@ -1950,6 +1959,339 @@ void injured_selection(Cpu& c) {
     c.finish();
 }
 
+struct ReplacementSearch {
+    std::uint32_t frame, manager, nation, injured, raw_tier;
+    std::uint32_t people, eligibility, availability, injuries, reference_person, nation_flags, today;
+    std::int8_t mode;
+    std::uint32_t record = 0, injured_positions = 0;
+};
+
+std::uint32_t replacement_queue_start(Cpu& c, const ReplacementSearch& q, unsigned group,
+                                     std::uint32_t total, int tier) {
+    if (tier <= 0) return total;
+    block(c, 0x102b88d8, 4);
+    c.set({{5, std::uint32_t(tier)}, {7, q.raw_tier - 8}});
+    c.compare(0, tier, 8);
+    unsigned used = 0;
+    const auto count = unsigned(tier);
+    if (count > 8) {
+        block(c, 0x102b88e8, 3);
+        const auto limit = count - 8;
+        c.set({{5, 0}, {7, limit}});
+        for (;;) {
+            block(c, 0x102b8948, 3);
+            c.set(8, used);
+            c.compare(0, used, limit);
+            if (used >= limit) break;
+            block(c, 0x102b88f4, 21);
+            const auto offset = group + used * 4;
+            const auto weights = q.record + offset + 0xf;
+            used += 8;
+            c.set({{8, offset}, {5, used * 4}, {10, weights}, {3, used}});
+            total = sum_selection_weight_batch(c, weights, total, 4, 9, 8);
+        }
+    }
+    block(c, 0x102b8954, 4);
+    c.set({{7, used}, {5, count}, {8, used * 4}});
+    for (;;) {
+        block(c, 0x102b897c, 3);
+        c.set(7, used);
+        c.compare(0, used, count);
+        if (used >= count) return total;
+        block(c, 0x102b8964, 6);
+        const auto offset = group + used * 4 + 0xf;
+        ++used;
+        c.set({{7, offset}, {8, used * 4}, {3, used}});
+        const auto weight = c.u8(q.record + offset);
+        c.set(7, weight);
+        total += weight;
+        c.set(4, total);
+    }
+}
+
+bool eligible_replacement_nation(Cpu& c, const ReplacementSearch& q, std::uint32_t player) {
+    block(c, 0x102b8a20, 3);
+    const auto current = c.u32(player + player_national_team);
+    c.set(3, current);
+    c.compare_logical(0, current, 0);
+    if (current) {
+        block(c, 0x102b8a2c, 3);
+        const auto nation = c.u32(current + 0x2c);
+        c.set(0, nation);
+        c.compare_logical(0, nation, q.nation);
+        if (nation != q.nation) return false;
+    }
+    block(c, 0x102b8a38, 3);
+    const auto nation = c.u32(player + player_nation);
+    c.set(0, nation);
+    c.compare_logical(0, nation, q.nation);
+    if (nation == q.nation) return true;
+    block(c, 0x102b8a44, 2);
+    c.compare_logical(0, current, 0);
+    if (current) return false;
+    block(c, 0x102b8a4c, 3);
+    const auto restricted = c.u8(player + 0x5e);
+    c.set(0, restricted);
+    c.compare_logical(0, restricted, 0);
+    if (restricted) return false;
+    block(c, 0x102b8a58, 7);
+    const auto id = c.u32(player);
+    c.set(0, id);
+    const auto table = c.u32(q.nation_flags);
+    c.set({{4, table}, {3, id * 0x64}, {0, id * 0x64 + 0xd}});
+    if (record_nonzero_byte(c, (c.u8(table + c.r(0)) >> 6) & 1u)) return false;
+    block(c, 0x102b8a74, 3);
+    const auto second_nation = c.u32(player + 0x10);
+    c.set(0, second_nation);
+    c.compare_logical(0, second_nation, q.nation);
+    return second_nation == q.nation;
+}
+
+bool eligible_replacement(Cpu& c, const ReplacementSearch& q, std::uint32_t player) {
+    block(c, 0x102b89c8, 3);
+    const auto profile = c.u32(player + player_assessment);
+    c.set(0, profile);
+    c.compare_logical(0, profile, 0);
+    if (!profile) return false;
+    block(c, 0x102b89d4, 3);
+    c.set({{3, q.manager}, {4, player}});
+    call_national_owner(c, replacement_objection_entry, 0x102b89e0, replacement_objection);
+    block(c, 0x102b89e0, 2);
+    if (record_nonzero_byte(c, c.r(3))) return false;
+    block(c, 0x102b89e8, 3);
+    c.set({{3, c.u32(q.injuries)}, {4, player}});
+    c.call(0x10187680, 0x102b89f4);
+    block(c, 0x102b89f4, 2);
+    if (record_nonzero_byte(c, c.r(3))) return false;
+    block(c, 0x102b89fc, 3);
+    const auto availability = c.u32(q.availability);
+    c.set(3, availability);
+    c.compare_logical(0, availability, 0);
+    if (availability) {
+        block(c, 0x102b8a08, 2);
+        c.set(4, player);
+        c.call(0x102de3c0, 0x102b8a10);
+        block(c, 0x102b8a10, 2);
+        if (record_nonzero_byte(c, c.r(3))) {
+            block(c, 0x102b8a18, 2);
+            if (record_nonzero_byte(c, q.mode)) return false;
+        }
+    }
+    if (!eligible_replacement_nation(c, q, player)) return false;
+
+    block(c, 0x102b8a80, 9);
+    const auto reference = c.u32(q.reference_person);
+    c.set({{0, reference}, {4, player}});
+    const auto people = c.u32(q.people);
+    c.set({{5, people}, {6, 1}, {0, reference * staff_record_size}});
+    c.set(3, c.u32(q.eligibility));
+    c.set({{7, 0}, {5, people + reference * staff_record_size}});
+    c.call(0x100e7920, 0x102b8aa4);
+    block(c, 0x102b8aa4, 2);
+    if (record_nonzero_byte(c, c.r(3))) return false;
+    block(c, 0x102b8aac, 2);
+    c.set(3, c.u32(player + player_assessment));
+    c.call(0x10117490, 0x102b8ab4);
+    block(c, 0x102b8ab4, 5);
+    const auto positions = std::int16_t(c.r(3));
+    c.set(3, std::uint32_t(positions));
+    return record_nonzero_byte(c, (std::uint32_t(positions) & q.injured_positions) & 0x7fu);
+}
+
+unsigned candidate_team_mode(Cpu& c, std::uint32_t player, std::uint32_t team) {
+    block(c, 0x102b8ae0, 2);
+    c.compare_logical(0, team, 0);
+    block(c, 0x102b8ae8, 1);
+    c.call(0x100ce250, 0x102b8aec);
+    block(c, 0x102b8aec, 2);
+    if (record_nonzero_byte(c, c.r(3))) {
+        block(c, 0x102b8af4, 2);
+        c.set(14, 2);
+        return 2;
+    }
+    block(c, 0x102b8afc, 3);
+    const bool reserve = record_nonzero_byte(c, c.u8(player + player_duty_flags) & 8u);
+    block(c, reserve ? 0x102b8b08 : 0x102b8b10, 2);
+    c.set(14, reserve);
+    return reserve;
+}
+
+bool former_selection_expired(Cpu& c, const ReplacementSearch& q, std::uint32_t slot) {
+    block(c, 0x102b8b2c, 10);
+    c.set(0, slot - q.record);
+    c.set(4, c.u32(q.today));
+    c.set(3, c.u32(q.today + 4));
+    c.put32(q.frame + 0x38, c.r(4));
+    c.set(5, slot);
+    const auto today_year = c.u16(q.frame + 0x3a);
+    c.set(4, today_year);
+    const auto deadline_year = c.u16(slot + 0x42);
+    c.set(0, deadline_year);
+    c.put32(q.frame + 0x3c, c.r(3));
+    c.compare_logical(0, today_year, deadline_year);
+    if (today_year > deadline_year) {
+        block(c, 0x102b8b54, 2);
+        c.set(0, 1);
+    } else {
+        block(c, 0x102b8b5c, 1);
+        if (today_year < deadline_year) {
+            block(c, 0x102b8b60, 2);
+            c.set(0, 0);
+        } else {
+            block(c, 0x102b8b68, 8);
+            const auto today = c.i16(q.frame + 0x38);
+            c.set(4, std::uint32_t(today));
+            const auto deadline = c.i16(slot + 0x40);
+            c.set(0, std::uint32_t(deadline));
+            publish_day_order(c, deadline, today);
+        }
+    }
+    block(c, 0x102b8b88, 2);
+    return record_nonzero_byte(c, c.r(0));
+}
+
+bool release_replacement(Cpu& c, const ReplacementSearch& q, std::uint32_t player) {
+    block(c, 0x102b8ac8, 3);
+    const auto team = c.u32(player + player_national_team);
+    c.set(3, team);
+    c.compare_logical(0, team, 0);
+    if (!team) return true;
+    block(c, 0x102b8ad4, 3);
+    const auto status = c.u8(player + player_call_up_status);
+    c.set(0, status);
+    c.compare(0, status, 0xb);
+    if (status != 0xb) return false;
+
+    const auto old_mode = candidate_team_mode(c, player, team);
+    block(c, 0x102b8b1c, 4);
+    c.set({{3, std::uint32_t(q.mode)}, {0, old_mode}});
+    c.compare(0, q.mode, old_mode);
+    if (q.mode == int(old_mode) || !former_selection_expired(c, q, q.record + old_mode * selection_slot_size))
+        return false;
+
+    block(c, 0x102b8b90, 2);
+    if (!record_nonzero_byte(c, old_mode)) {
+        block(c, 0x102b8b98, 6);
+        c.set({{3, c.u32(player + player_national_team)}, {4, 0}, {5, 1}, {6, 0}, {7, 0}});
+        c.call(0x1014c2e0, 0x102b8bb0);
+        block(c, 0x102b8bb0, 2);
+        if (record_nonzero_byte(c, c.r(3))) return false;
+    }
+    block(c, 0x102b8bb8, 5);
+    c.set({{3, q.manager}, {4, q.nation}, {5, old_mode}, {6, player}});
+    call_national_owner(c, drop_roster_player_entry, 0x102b8bcc, drop_roster_player);
+    return true;
+}
+
+void accept_replacement(Cpu& c, const ReplacementSearch& q, std::uint32_t player) {
+    block(c, 0x102b8bcc, 5);
+    c.set({{3, q.manager}, {4, q.nation}, {5, c.r(30)}, {6, player}});
+    call_national_owner(c, add_replacement_entry, 0x102b8be0, add_replacement_to_roster);
+    block(c, 0x102b8be0, 11);
+    const auto offset = std::uint32_t(q.mode) * selection_slot_size;
+    const auto bucket = q.record + offset;
+    c.set({{0, offset}, {3, q.manager}, {4, player}, {5, q.nation}, {6, c.r(30)}, {8, bucket}});
+    const auto count = c.u8(bucket + 0x4b);
+    c.set({{7, count}, {0, count - 1u}});
+    c.put8(bucket + 0x4b, c.r(0));
+    call_national_owner(c, replacement_notice_entry, 0x102b8c0c, replacement_notice);
+    block(c, 0x102b8c0c, 1);
+}
+
+void search_replacement_queue(Cpu& c, const ReplacementSearch& q, unsigned alternate, int tier, std::uint32_t first) {
+    block(c, 0x102b8988, 13);
+    c.set({{5, std::uint32_t(tier)}, {6, q.record + alternate * 0x18}, {0, first * 4}});
+    const auto group = q.manager + alternate * 4;
+    const auto bucket = q.record + alternate * 0x18 + std::uint32_t(tier) * 4;
+    c.set({{3, group}, {5, bucket}});
+    const auto queue = c.u32(group + 0xc);
+    c.set(3, queue);
+    const auto count = c.u8(bucket + 0xe);
+    c.set(5, count);
+    const auto end = first + count;
+    auto index = first, next = queue + first * 4;
+    c.set({{19, index}, {18, next}, {20, end}});
+    for (;;) {
+        block(c, 0x102b8c18, 2);
+        c.compare(0, index, end);
+        if (std::int32_t(index) >= std::int32_t(end)) break;
+        block(c, 0x102b89bc, 3);
+        const auto player = c.u32(next);
+        c.set(17, player);
+        c.compare_logical(0, q.injured, player);
+        if (player != q.injured && eligible_replacement(c, q, player) && release_replacement(c, q, player)) {
+            accept_replacement(c, q, player);
+            return;
+        }
+        block(c, 0x102b8c10, 2);
+        c.set({{19, ++index}, {18, next += 4}});
+    }
+    block(c, 0x102b8c20, 5);
+    const auto offset = std::uint32_t(q.mode) * selection_slot_size;
+    c.set({{0, offset}, {4, 0}, {3, q.record + offset}});
+    c.put8(q.record + offset + 0x4b, 0);
+}
+
+void automatic_replacement(Cpu& c) {
+    GuestNativeScope scope(c.s, automatic_replacement_entry);
+    block(c, automatic_replacement_entry, 18);
+    const auto caller = c.sp(), frame = caller - 0x90;
+    const auto manager = c.r(3), nation = c.r(4), raw_mode = c.r(5), raw_tier = c.r(6), injured = c.r(7);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<14>(c, caller);
+    c.set(28, manager);
+    const auto people = c.toc(-0x7bbc);
+    c.set(21, people);
+    const auto eligibility = c.toc(-0x7aa4);
+    c.set({{22, eligibility}, {31, injured}});
+    const auto availability = c.toc(-0x7b28);
+    c.set({{23, availability}, {29, nation}});
+    const auto injuries = c.toc(-0x7ba0);
+    c.set({{24, injuries}, {30, raw_mode}});
+    const auto reference = c.toc(-0x7bc0);
+    c.set({{25, reference}, {17, raw_tier}});
+    const auto flags = c.toc(-0x7b9c);
+    c.set(15, flags);
+    const auto today = c.toc(-0x7b80);
+    c.set(26, today);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+
+    c.set(3, c.u32(injured + player_assessment));
+    c.call(0x10117490, 0x102b8898);
+    block(c, 0x102b8898, 16);
+    const auto mode = std::int8_t(raw_mode), tier = std::int8_t(raw_tier);
+    const auto positions = c.r(3);
+    c.set(0, std::uint32_t(mode));
+    const auto nation_index = c.u32(nation + nation_index_offset);
+    c.set(4, nation_index);
+    const auto delta = 2u - std::uint32_t(mode);
+    c.set(0, delta);
+    c.s.wr<1>(guest::reg::xer_ca, std::uint32_t(mode) <= 2);
+    const auto records = c.u32(manager + 4);
+    c.set(5, records);
+    record_nonzero_byte(c, raw_tier);
+    const unsigned alternate = mode == 2;
+    const auto group = alternate * 0x18;
+    const auto record = records + nation_index * nation_record_size;
+    c.set({{0, alternate}, {27, positions}, {3, 0}, {6, group}, {16, record}, {4, record + group}});
+    const auto base = c.u32(record + group + 8);
+    c.set(4, base);
+    const ReplacementSearch q{frame, manager, nation, injured, raw_tier, people, eligibility, availability,
+                              injuries, reference, flags, today, mode, record, positions};
+    const auto first = replacement_queue_start(c, q, group, base, tier);
+    search_replacement_queue(c, q, alternate, tier, first);
+
+    block(c, 0x102b8c34, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<14, true>(c, caller);
+    c.finish();
+}
+
 }
 
 void national_teams_run_original(State& state, std::uint32_t entry) {
@@ -1979,6 +2321,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case replacement_notice_entry: replacement_notice(c); break;
     case add_replacement_entry: add_replacement_to_roster(c); break;
     case replacement_objection_entry: replacement_objection(c); break;
+    case automatic_replacement_entry: automatic_replacement(c); break;
     case assigned_staff_entry: assigned_staff(c); break;
     default: throw std::logic_error("Unknown NATIONAL_TEAMS entry " + hex_address(entry));
     }
