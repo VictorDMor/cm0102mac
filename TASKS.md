@@ -18,7 +18,9 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **Install the verified Greek rulebook build.** All four rb_greece.cpp entries are complete and published in `a245f3e`. The tracker is verified. The guarded installer found the game running. Retry with the game closed, then verify the installed build and update the tracker note.
+- [ ] **HALL_OF_FAME.CPP reconstruction.** Inventory closed at 20 entries and 2,736 reachable instructions. Two entries are verified locally (record initialization and ranking comparison). Close the remaining 18 entries in the lifecycle, scoring, list and persistence blocks. Private evidence is in `.local/rewrites/hall_of_fame/`.
+
+- [ ] **Install the verified Greek rulebook build.** All four rb_greece.cpp entries are complete and published in `a245f3e`. The tracker is verified. The guarded installer found the game running. Retry the verified ARM64 build from `0b26810` with the game closed. It includes the Greek rulebook and checked frame restore. Verify the installed build and update the tracker note.
 
 - [x] **BRA_NAT_SECOND.CPP reconstruction.** All 13 entries and 1,916 reachable original instructions are covered by handwritten owners. 521 focused returned comparisons and the complete owned competition sequence match the reference. The January replay reaches the recorded state and matches all 28 strict fixture-placement calls. Four focused normal tests pass. Private evidence is in `.local/rewrites/bra_nat_second/`.
   - [x] Single-round Série B for new seasons. The focused checks cover the 27-round calendar, table champion and runner-up, four-club exchange, and rollover from a saved playoff season.
