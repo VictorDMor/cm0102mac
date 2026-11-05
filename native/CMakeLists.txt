@@ -47,7 +47,7 @@ target_sources(cm_aot PRIVATE contract_queries.cpp contract_query_adapter.cpp co
 target_sources(cm_aot PRIVATE contract_terms.cpp contract_terms_sampling.cpp contract_terms_presentation.cpp
     contract_terms_expiry.cpp contract_terms_adapter.cpp)
 target_sources(cm_aot PRIVATE staff_contracts_expiry.cpp staff_contracts_terms.cpp staff_contracts_dates.cpp
-    staff_contracts_value.cpp staff_contracts_labels.cpp staff_contracts_adapter.cpp)
+    staff_contracts_value.cpp staff_contracts_labels.cpp staff_contracts_window.cpp staff_contracts_adapter.cpp)
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp

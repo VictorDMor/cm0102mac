@@ -32,6 +32,8 @@ void clear_status_bits(guest::Cpu&, std::uint32_t contract, std::uint32_t mask);
 void reset_status_bits(guest::Cpu&, std::uint32_t contract);
 std::uint32_t status_bits(guest::Cpu&, std::uint32_t contract);
 
+bool query_start_date_window(guest::Cpu&, std::uint32_t contract, std::uint32_t exact_boundary,
+                             std::uint32_t age_threshold);
 std::uint8_t classify_expiry(guest::Cpu&, std::uint32_t contract);
 
 }
