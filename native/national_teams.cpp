@@ -3639,6 +3639,242 @@ void expire_domestic_schedule(Cpu& c) {
     c.finish();
 }
 
+constexpr auto mark_fixtures_entry = 0x102ba7b0u;
+constexpr unsigned fixture_marks_offset = 0x24, fixture_groups_offset = 0x98, fixture_group_size = 0x4c;
+
+bool record_fixture_pointer(Cpu& c, unsigned reg) {
+    const auto pointer = c.r(3);
+    c.set(reg, pointer);
+    const auto high = c.cr(0) & 0xf0;
+    c.compare(0, std::int32_t(pointer), 0);
+    c.set_cr(0, high | c.cr(0));
+    return pointer != 0;
+}
+
+void mark_fixture_side_by_nation(Cpu& c, std::uint32_t calendar, std::uint32_t match,
+                                 std::int32_t domestic, bool away) {
+    const auto pc = away ? 0x102ba92cu : 0x102ba8f0u;
+    block(c, pc, 3);
+    const auto club = c.u32(match + (away ? 0x20 : 0x1c));
+    c.set(3, club);
+    c.compare_logical(0, club, 0);
+    if (!club) return;
+    block(c, pc + 12, 3);
+    const auto nation = c.u32(club + 0x2c);
+    c.set(4, nation);
+    c.compare_logical(0, nation, 0);
+    if (!nation) return;
+    block(c, pc + 24, 3);
+    if (!record_nonzero_byte(c, c.u8(nation + 0x120))) return;
+    block(c, pc + 36, 3);
+    const auto club_id = c.i32(club);
+    c.set(4, std::uint32_t(club_id));
+    c.compare(0, club_id, domestic);
+    if (club_id >= domestic) return;
+    block(c, pc + 48, away ? 4 : 3);
+    const auto marks = c.u32(calendar + fixture_marks_offset);
+    c.set({{3, marks}, {0, 3}});
+    c.put8(marks + std::uint32_t(club_id), 3);
+}
+
+unsigned domestic_fixture_mark(Cpu& c, std::uint32_t match, std::uint32_t home) {
+    if (home) {
+        block(c, 0x102ba98c, 4);
+        const auto home_competition = c.u32(home + 0x30);
+        c.set(0, home_competition);
+        const auto competition = c.u32(match + 0x14);
+        c.set(5, competition);
+        c.compare_logical(0, home_competition, competition);
+        if (home_competition == competition) {
+            block(c, 0x102ba9ac, 2);
+            c.set(5, 1);
+            return 1;
+        }
+        block(c, 0x102ba99c, 4);
+        const auto away = c.u32(match + 0x20);
+        c.set(3, away);
+        const auto away_competition = c.u32(away + 0x38);
+        c.set(0, away_competition);
+        c.compare_logical(0, away_competition, competition);
+        if (away_competition == competition) {
+            block(c, 0x102ba9ac, 2);
+            c.set(5, 1);
+            return 1;
+        }
+    }
+    block(c, 0x102ba9b4, 1);
+    c.set(5, 2);
+    return 2;
+}
+
+void mark_domestic_fixture_side(Cpu& c, std::uint32_t calendar, std::uint32_t club,
+                                std::int32_t domestic, unsigned mark, std::uint32_t pc) {
+    c.compare_logical(0, club, 0);
+    if (!club) return;
+    block(c, pc + 8, 3);
+    const auto club_id = c.i32(club);
+    c.set(0, std::uint32_t(club_id));
+    c.compare(0, club_id, domestic);
+    if (club_id >= domestic) return;
+    block(c, pc + 20, 2);
+    const auto marks = c.u32(calendar + fixture_marks_offset);
+    c.set(3, marks);
+    c.put8(marks + std::uint32_t(club_id), mark);
+}
+
+void mark_calendar_match(Cpu& c, std::uint32_t calendar, std::uint32_t group, std::uint32_t match,
+                          std::uint32_t competitions, std::int32_t domestic) {
+    block(c, 0x102ba8d0, 3);
+    const auto group_nation = c.u32(group);
+    c.set(0, group_nation);
+    c.compare_logical(0, group_nation, 0);
+    const auto gate = group_nation ? 0x102ba96cu : 0x102ba8dcu;
+    block(c, gate, 3);
+    c.set(3, c.u32(competitions));
+    c.set(4, c.u32(match + 0x14));
+    c.call(0x10494d20, gate + 12);
+    block(c, gate + 12, 2);
+    if (record_nonzero_byte(c, c.r(3))) return;
+
+    if (!group_nation) {
+        mark_fixture_side_by_nation(c, calendar, match, domestic, false);
+        mark_fixture_side_by_nation(c, calendar, match, domestic, true);
+        return;
+    }
+    block(c, 0x102ba980, 3);
+    const auto home = c.u32(match + 0x1c);
+    c.set(4, home);
+    c.compare_logical(0, home, 0);
+    const auto mark = domestic_fixture_mark(c, match, home);
+    block(c, 0x102ba9b8, 2);
+    mark_domestic_fixture_side(c, calendar, home, domestic, mark, 0x102ba9b8);
+    block(c, 0x102ba9d4, 3);
+    const auto away = c.u32(match + 0x20);
+    c.set(3, away);
+    mark_domestic_fixture_side(c, calendar, away, domestic, mark, 0x102ba9d8);
+}
+
+void mark_fixture_group(Cpu& c, std::uint32_t calendar, std::uint32_t group, std::uint32_t date,
+                         std::uint32_t fixtures, std::uint32_t competitions, std::int32_t domestic) {
+    block(c, 0x102ba89c, 2);
+    c.set(25, 0);
+    for (unsigned slot = 0; ; ++slot) {
+        block(c, 0x102baa08, 3);
+        c.set(0, slot);
+        c.compare(0, slot, 2);
+        if (slot > 2) return;
+        block(c, 0x102ba8a4, 5);
+        c.set(3, c.u32(fixtures));
+        c.set(4, date);
+        c.set(6, c.u8(group + 0x14));
+        c.set(5, slot);
+        c.call(0x1048d420, 0x102ba8b8);
+        block(c, 0x102ba8b8, 2);
+        if (record_fixture_pointer(c, 23)) {
+            const auto list = c.r(23);
+            block(c, 0x102ba8c0, 3);
+            c.set(0, c.u32(list + 4));
+            c.put32(list + 12, c.r(0));
+            for (;;) {
+                block(c, 0x102ba9f4, 2);
+                c.set(3, list);
+                c.call(0x10738e00, 0x102ba9fc);
+                block(c, 0x102ba9fc, 2);
+                if (!record_fixture_pointer(c, 20)) break;
+                mark_calendar_match(c, calendar, group, c.r(20), competitions, domestic);
+            }
+        }
+        block(c, 0x102baa04, 1);
+        c.set(25, slot + 1);
+    }
+}
+
+void mark_domestic_fixtures(Cpu& c) {
+    GuestNativeScope scope(c.s, mark_fixtures_entry);
+    block(c, mark_fixtures_entry, 20);
+    const auto caller = c.sp(), frame = caller - 0x90, calendar = c.r(3), date = c.r(4);
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<20>(c, caller);
+    c.set(21, calendar);
+    c.set(5, c.toc(-0x7b04));
+    c.set(3, c.toc(-0x7b50));
+    c.set(22, date);
+    const auto groups = c.toc(-0x7b44);
+    c.set(29, groups);
+    const auto competitions = c.toc(-0x7b54);
+    c.set(30, competitions);
+    const auto fixtures = c.toc(-0x7a60);
+    c.set(31, fixtures);
+    const auto buffer = c.toc(-0x7ba8);
+    c.set(23, buffer);
+    const auto source = c.toc(-0x513c);
+    c.set(20, source);
+    c.put32(caller + 8, c.r(0));
+    c.put32(frame, caller);
+    c.set(1, frame);
+    scope.frame(frame);
+    const auto existing = c.u32(calendar + fixture_marks_offset);
+    c.set(0, existing);
+    const auto nations = c.u32(c.r(5));
+    c.set(4, nations);
+    c.compare_logical(0, existing, 0);
+    const auto clubs = c.u32(c.r(3));
+    c.set({{0, clubs}, {3, nations * 2}});
+    const auto domestic = std::int32_t(clubs - nations * 2);
+    c.set(24, std::uint32_t(domestic));
+
+    bool ready = existing != 0;
+    if (!ready) {
+        block(c, 0x102ba800, 3);
+        c.set({{3, std::uint32_t(domestic)}, {4, 1}});
+        c.call(0x10775200, 0x102ba80c);
+        block(c, 0x102ba80c, 4);
+        c.put32(calendar + fixture_marks_offset, c.r(3));
+        const auto marks = c.u32(calendar + fixture_marks_offset);
+        c.set(0, marks);
+        c.compare_logical(0, marks, 0);
+        ready = marks != 0;
+        if (!ready) {
+            report_calendar_error(c, 0x102ba81c, source, buffer, frame + 0x40, frame + 0x38, 0x221c);
+            block(c, 0x102ba864, 4);
+            c.set({{3, c.toc(-0x7bac)}, {0, 0}});
+            c.put8(c.r(3), 0);
+        }
+    }
+
+    if (ready) {
+        block(c, 0x102ba874, 3);
+        c.set({{26, 2}, {28, fixture_groups_offset}});
+        for (unsigned index = 2; ; ++index) {
+            block(c, 0x102baa1c, 3);
+            c.set(0, index);
+            c.compare(0, index, 34);
+            if (index == 34) break;
+            block(c, 0x102ba880, 4);
+            const auto offset = index * fixture_group_size, group = groups + offset;
+            c.set(27, group);
+            const auto nation = c.u32(group);
+            c.set(3, nation);
+            c.compare_logical(0, nation, 0);
+            bool eligible = true;
+            if (nation) {
+                block(c, 0x102ba890, 3);
+                eligible = record_nonzero_byte(c, c.u8(nation + 0x120));
+            }
+            if (eligible) mark_fixture_group(c, calendar, group, date, fixtures, competitions, domestic);
+            block(c, 0x102baa14, 2);
+            c.set({{28, offset + fixture_group_size}, {26, index + 1}});
+        }
+    }
+
+    block(c, 0x102baa28, 5);
+    c.set(0, c.u32(caller + 8));
+    c.set(1, caller);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<20, true>(c, caller);
+    c.finish();
+}
+
 constexpr auto schedule_date_order_entry = 0x102bc180u, roster_score_order_entry = 0x102bc250u;
 constexpr auto roster_club_order_entry = 0x102bc270u;
 
@@ -3863,6 +4099,7 @@ void national_teams_run_rewrite(State& state, std::uint32_t entry) {
     case create_schedule_entry: create_domestic_schedule(c); break;
     case register_fixture_entry: register_domestic_fixture(c); break;
     case expire_schedule_entry: expire_domestic_schedule(c); break;
+    case mark_fixtures_entry: mark_domestic_fixtures(c); break;
     case schedule_date_order_entry: compare_schedule_dates(c); break;
     case roster_score_order_entry: compare_roster_scores(c); break;
     case roster_club_order_entry: compare_roster_clubs(c); break;
