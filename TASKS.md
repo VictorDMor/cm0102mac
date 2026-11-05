@@ -18,7 +18,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now
 
-- [ ] **NATIONAL_TEAMS.CPP reconstruction.** Inventory closed at 73 entries and 17,621 reachable instructions. Twenty-three selection, competition, duty, news and calendar entries are handwritten, selected by default and verified locally. Calendar availability matches 44 controlled cases and all 128 reached January calls, with the recorded final state preserved. Continue with calendar persistence and its related routines. Private evidence is in `.local/rewrites/national_teams/`.
+- [ ] **NATIONAL_TEAMS.CPP reconstruction.** Inventory closed at 73 entries and 17,621 reachable instructions. Twenty-four selection, competition, duty, news and calendar entries are handwritten, selected by default and verified locally. Calendar save matches 15 controlled cases and the reached January save, preserving archive bytes and early-failure side effects. Continue with the calendar loader and its legacy tail handling. Private evidence is in `.local/rewrites/national_teams/`.
 
 - [x] **HALL_OF_FAME.CPP reconstruction.** All 20 entries and 2,736 original instructions are accounted for. The default C++23 owners pass 476 focused returned comparisons, a shared file lifecycle, ten focused CTests and four strict calls in the recorded startup. All 82 functions are measured by the owner-only coverage run. Three broader engine initialization tests fail with both the previous and current initializer implementations. Private evidence is in `.local/rewrites/hall_of_fame/`.
 

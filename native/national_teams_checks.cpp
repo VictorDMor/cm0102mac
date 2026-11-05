@@ -49,7 +49,14 @@ constexpr auto injury_policy = notice_policy + 1, injury_active = notice_policy 
 constexpr auto injury_assert_buffer = fixture + 0x6b00, injury_success = fixture + 0x6c00;
 constexpr auto recipient_club = clubs + 5 * 0x248;
 constexpr auto news_create = 0x102bdf90u, news_field = 0x102cb4b0u, news_publish = 0x102cc140u;
-constexpr auto calendar_availability = 0x102b9e50u;
+constexpr auto calendar_availability = 0x102b9e50u, calendar_save = 0x102b96e0u;
+constexpr auto archive_path = fixture + 0x6c80, archive_companion = fixture + 0x6ca0;
+constexpr auto archive_primary = fixture + 0x6d00, archive_secondary = fixture + 0x6d20;
+constexpr auto archive_years = fixture + 0x6d40, archive_flags = fixture + 0x6d50;
+constexpr auto archive_trace = fixture + 0x8000, archive_bytes = fixture + 0x8200;
+constexpr auto archive_stream = 0x51515151u;
+constexpr std::array archive_error_lines{0x2039u, 0x2041u, 0x2048u, 0x2061u, 0x2079u, 0x2092u,
+                                         0x20b2u, 0x20c0u, 0x20c0u, 0x20c9u, 0x20d6u, 0x20dfu, 0x20e6u};
 constexpr auto calendar_match = fixture + 0x6d00, calendar_headers = fixture + 0x6e00;
 constexpr auto home_events = fixture + 0x7200, away_events = fixture + 0x7800;
 constexpr auto competition_manager = fixture + 0x6f00, competition_slot = fixture + 0x6f10;
@@ -95,6 +102,7 @@ void fixture_date(Cpu& c, std::uint32_t to, int day, unsigned year) {
 bool observe_dependency(State& s) {
     Cpu c(s);
     const auto entry = s.pc, resume = c.lr(), frame = c.sp();
+    const bool calendar_archive = resume >= 0x102b9740 && resume <= 0x102b9e34;
     switch (entry) {
     case 0x100ce250: case 0x100c7d00: case 0x10738e00: case 0x10717b20: case 0x10717890:
     case 0x1048b180: case dispose_list: case localize: case 0x107156b0: break;
@@ -102,6 +110,9 @@ bool observe_dependency(State& s) {
         if (resume != 0x102b81d8 && resume != 0x102b876c) return false;
         break;
     case 0x100c76c0: case 0x100c7860: break;
+    case 0x107475b0: case 0x10747cc0: case 0x10747900: case 0x10487640:
+        if (!calendar_archive) return false;
+        break;
     case 0x10494d20:
         if (resume != 0x102b9f08) return false;
         break;
@@ -118,6 +129,38 @@ bool observe_dependency(State& s) {
     for (unsigned i = 0; i < 32; ++i) call[i + 2] = c.r(i);
     dependencies->push_back(call);
     switch (entry) {
+    case 0x107475b0:
+        require(c.r(3) == archive_path && c.r(4) == source + 0x7cda && c.r(5) == 1 &&
+                    c.r(6) == 0x16 && c.r(7) == 4, "calendar archive open ABI");
+        c.set(3, c.u8(archive_trace) == 0xff ? 0 : archive_stream);
+        break;
+    case 0x10747cc0: {
+        require(c.r(6) == archive_stream && c.r(4) <= 0x74, "calendar archive write ABI");
+        const auto call = c.u32(archive_trace + 4) + 1;
+        const auto offset = c.u32(archive_trace + 8);
+        const auto requested = c.r(5);
+        const auto actual = requested > 64 ? 0u : c.u8(archive_trace) == call && requested ? requested - 1 : requested;
+        const auto size = actual * c.r(4);
+        require(offset + size < 0x1000 - 0x200, "calendar archive buffer capacity");
+        const auto bytes = s.memory.copy_out(c.r(3), size);
+        if (!bytes.empty()) s.memory.copy_in(archive_bytes + offset, bytes);
+        c.put32(archive_trace + 4, call);
+        c.put32(archive_trace + 8, offset + size);
+        c.set(3, actual);
+        break;
+    }
+    case 0x10747900:
+        require(c.r(3) == frame + 0x3c && c.u32(c.r(3)) == archive_stream, "calendar archive close ABI");
+        c.put32(c.r(3), 0);
+        c.put8(archive_trace + 0xc, 1);
+        c.set(3, 0);
+        break;
+    case 0x10487640:
+        require(c.r(3) == archive_companion && c.r(4) == archive_path && c.u8(archive_trace + 0xc),
+                "calendar companion save after stream close");
+        c.put8(archive_trace + 0xd, 1);
+        c.set(3, 0x456789ab);
+        break;
     case news_create: case news_field:
         require(c.r(3) == frame + 0x38, "roster notice message frame");
         if (entry == news_create) {
@@ -195,19 +238,23 @@ bool observe_dependency(State& s) {
         c.set(3, (c.u8(search_policy) & 4) != 0);
         break;
     case 0x10739890:
-        require(resume == 0x102b84b8 && c.r(3) == source + 0x37 &&
-                    c.r(6) == frame + 0x50 && c.r(7) == frame + 0x48, "injury missing-team assertion source");
+        require(c.r(3) == source + 0x37, "national assertion source");
+        if (!calendar_archive) {
+            require(resume == 0x102b84b8 && c.r(6) == frame + 0x50 && c.r(7) == frame + 0x48,
+                    "injury missing-team assertion frame");
+        }
         c.put8(c.r(6), 7);
         c.put8(c.r(7), 9);
         break;
     case 0x1077b720:
-        require(resume == 0x102b84d8 && c.r(3) == injury_assert_buffer && c.r(8) == 0x1df8,
-                "injury missing-team assertion line");
+        require(c.r(3) == injury_assert_buffer, "national assertion output");
+        if (calendar_archive) c.put32(archive_trace + 0x10, c.r(8));
+        else require(resume == 0x102b84d8 && c.r(8) == 0x1df8, "injury missing-team assertion line");
         c.put8(injury_assert_buffer, 13);
         break;
     case 0x10769b60:
-        require(resume == 0x102b84e8 && c.r(3) == source + 0x57 && c.r(4) == injury_assert_buffer,
-                "injury missing-team assertion dialog");
+        require((calendar_archive || resume == 0x102b84e8) &&
+                    c.r(3) == source + 0x57 && c.r(4) == injury_assert_buffer, "national assertion dialog");
         break;
     case 0x10717b20: case 0x10717890: {
         const bool lower = entry == 0x10717b20;
@@ -299,10 +346,11 @@ std::unique_ptr<State> compare(const State& input, Stop expected = Stop::returne
         RoutineChecker notice_boundary([](std::uint32_t entry) {
             return entry == club_notice || entry == nation_notice || entry == replacement_notice || entry == injured_selection ||
                 entry == tier || entry == drop_roster || entry == dedup_rosters ||
-                entry == add_replacement || entry == replacement_objection || entry == automatic_replacement;
+                entry == add_replacement || entry == replacement_objection || entry == automatic_replacement || entry == calendar_save;
         }, 0, 0);
         if (!real_dependencies && (input.pc == club_notice || input.pc == nation_notice ||
-                                   input.pc == replacement_notice || input.pc == injured_selection || input.pc == automatic_replacement))
+                                   input.pc == replacement_notice || input.pc == injured_selection ||
+                                   input.pc == automatic_replacement || input.pc == calendar_save))
             routine_checker = &notice_boundary;
         if (input.pc == duty) {
             utility_object_diagnostics(s).original_body = dispose_list;
@@ -1573,6 +1621,117 @@ unsigned check_calendar_availability(std::mt19937& random) {
     return comparisons;
 }
 
+std::unique_ptr<State> calendar_save_seed(std::mt19937& random, bool empty) {
+    auto state = duty_seed(random);
+    Cpu c(*state);
+    c.set({{3, calendar}, {4, archive_path}});
+    c.put32(toc - 0x7be0, staff_slot);
+    c.put32(toc - 0x7bac, injury_success);
+    c.put32(toc - 0x7ba8, injury_assert_buffer);
+    c.put32(toc - 0x5b20, source + 0x80);
+    c.put8(injury_success, 1);
+    c.put32(nation_count, empty ? 0 : 2);
+    c.put32(club_count, empty ? 0 : 6);
+    c.put32(calendar + 4, records);
+    c.put32(calendar + 8, archive_years);
+    c.put32(calendar + 0xc, archive_primary);
+    c.put32(calendar + 0x10, archive_secondary);
+    c.put32(calendar + 0x14, empty ? 0 : 3);
+    c.put32(calendar + 0x18, empty ? 0 : 2);
+    c.put32(calendar + 0x1c, archive_companion);
+    c.put32(calendar + 0x20, calendar_headers);
+    c.put32(calendar + 0x38, archive_flags);
+    c.put32(calendar, empty ? 0 : roster_list);
+    c.put16(roster_list, 2);
+    c.put32(roster_list + 4, roster_nodes);
+    link_two(c, roster_nodes, roster_rows);
+    c.put32(staff_table, 0);
+    c.put32(staff_table + 0x70, 1);
+    c.put32(staff_table + 0xe0, 2);
+    c.put32(archive_primary, staff_table + 0xe0);
+    c.put32(archive_primary + 4, 0);
+    c.put32(archive_primary + 8, staff_table);
+    c.put32(archive_secondary, 0);
+    c.put32(archive_secondary + 4, staff_table + 0x70);
+    c.put32(calendar_headers, home_events);
+    c.put8(calendar_headers + 5, 2);
+    c.put32(calendar_headers + 8, away_events);
+    c.put32(archive_years, 0x10203040);
+    c.put32(archive_years + 4, 0x50607080);
+    c.put16(archive_flags, 0x4281);
+    for (unsigned i = 0; i < 2 * record_size; ++i) c.put8(records + i, random());
+    for (unsigned i = 0; i < 2 * 0x14; ++i) c.put8(roster_rows + i + (i >= 0x14 ? 12 : 0), random());
+    for (unsigned i = 0; i < 24; ++i) c.put8(home_events + i, random());
+    state->pc = calendar_save;
+    return state;
+}
+
+unsigned check_calendar_save(std::mt19937& random) {
+    unsigned comparisons = 0;
+    for (const bool empty : {false, true}) {
+        const unsigned cases = empty ? 1 : 14;
+        for (unsigned scenario = 0; scenario < cases; ++scenario) {
+            auto state = calendar_save_seed(random, empty);
+            Cpu c(*state);
+            const bool open_failure = scenario == 13;
+            const unsigned failure = open_failure ? 0xff : scenario;
+            c.put8(archive_trace, failure);
+            using Bytes = std::vector<std::uint8_t>;
+            struct Write { Bytes bytes; unsigned width; };
+            std::vector<Write> writes;
+            const auto raw = [&](std::uint32_t address, unsigned width, unsigned count) {
+                writes.push_back({state->memory.copy_out(address, width * count), width});
+            };
+            raw(records, record_size, empty ? 0 : 2);
+            raw(calendar + 0x14, 4, 1);
+            writes.push_back({empty ? Bytes{} : Bytes{0,0,0,2, 255,255,255,255, 0,0,0,0}, 4});
+            raw(calendar + 0x18, 4, 1);
+            writes.push_back({empty ? Bytes{} : Bytes{255,255,255,255, 0,0,0,1}, 4});
+            writes.push_back({{0, std::uint8_t(empty ? 0 : 2)}, 2});
+            if (!empty) {
+                raw(roster_rows, 0x14, 1);
+                raw(roster_rows + 0x20, 0x14, 1);
+            }
+            raw(calendar_headers, 8, empty ? 0 : 2);
+            if (!empty) raw(home_events, 12, 2);
+            raw(archive_years, 4, empty ? 0 : 2);
+            raw(archive_flags, 1, empty ? 0 : 2);
+            Bytes expected;
+            const auto reached = open_failure ? 0 : failure ? failure : writes.size();
+            for (unsigned i = 0; i < reached; ++i) {
+                const auto& write = writes[i];
+                const auto last = failure == i + 1 ? write.bytes.end() - write.width : write.bytes.end();
+                expected.insert(expected.end(), write.bytes.begin(), last);
+            }
+            auto result = compare(*state);
+            Cpu after(*result);
+            require(after.u32(archive_trace + 4) == reached && after.u32(archive_trace + 8) == expected.size() &&
+                        result->memory.copy_out(archive_bytes, expected.size()) == expected,
+                    "calendar archive byte order and completed prefix");
+            require(after.u8(injury_success) == unsigned(!failure) &&
+                        after.u8(archive_trace + 0xc) == unsigned(!failure) &&
+                        after.u8(archive_trace + 0xd) == unsigned(!failure) &&
+                        after.u32(archive_trace + 0x10) ==
+                            (open_failure ? archive_error_lines.front() : failure ? archive_error_lines[failure] : 0),
+                    "calendar archive failure line, close and companion ordering");
+            require(after.u32(archive_primary) == (failure == 3 ? 2 : staff_table + 0xe0) &&
+                        after.u32(archive_primary + 4) == (failure == 3 ? UINT32_MAX : 0) &&
+                        after.u32(archive_secondary + 4) == (failure == 5 ? 1 : staff_table + 0x70),
+                    "calendar archive keeps packed IDs only for a failed queue write");
+            ++comparisons;
+        }
+    }
+    auto state = calendar_save_seed(random, false);
+    Cpu c(*state);
+    c.put32(archive_primary + 4, unmapped);
+    auto fault = compare(*state, Stop::fault);
+    require(Cpu(*fault).u32(archive_primary) == 2 && Cpu(*fault).u32(archive_primary + 4) == unmapped,
+            "calendar archive leaves only the preceding ID converted on a pointer fault");
+    state->budget = 0;
+    compare(*state, Stop::budget);
+    return comparisons;
+}
+
 void check_controls(std::mt19937& random) {
     for (const auto entry : {context, read_flag, clear_flag, read_value, get_slot, get_staff}) {
         auto s = seed(random);
@@ -1633,6 +1792,8 @@ int main() try {
     const auto replacement = check_replacement_roster(random);
     const auto dispatch = check_replacement_dispatch(random);
     const auto calendar_cases = check_calendar_availability(random);
+    const auto calendar_saves = check_calendar_save(random);
+    std::cout << calendar_saves << " NATIONAL_TEAMS calendar save comparisons, 1 fault and 1 budget stop\n";
     std::cout << calendar_cases << " NATIONAL_TEAMS calendar comparisons, 2 faults and 2 budget stops\n";
     std::cout << dispatch << " NATIONAL_TEAMS replacement search comparisons, 2 faults and 1 budget stop\n";
     std::cout << replacement << " NATIONAL_TEAMS replacement roster comparisons, 2 faults and 2 budget stops\n";
