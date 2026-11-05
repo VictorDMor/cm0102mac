@@ -4458,6 +4458,9 @@ add_executable(cm-african-nations-checks african_nations_checks.cpp)
 target_link_libraries(cm-african-nations-checks PRIVATE cm_aot)
 target_compile_options(cm-african-nations-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_test(NAME african_nations_equivalence COMMAND cm-african-nations-checks)
+# The external CUP_STAGE constructor is modeled at its dispatch boundary.
+# Its generated in-place owner call must decline on both comparison routes.
+set_tests_properties(african_nations_equivalence PROPERTIES ENVIRONMENT "CM_CUP_STAGE_ORIGINAL=1")
 if(Python3_EXECUTABLE)
     add_test(NAME african_nations_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_african_nations_audit.py")

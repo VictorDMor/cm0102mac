@@ -22,7 +22,10 @@ constexpr auto calendar_entry = 0x104f4ff0u;
 constexpr auto configure_entry = 0x104f5c80u;
 constexpr auto create_entry = 0x104f4c80u;
 constexpr auto next_season_entry = 0x104f5f40u;
+constexpr auto group_entry = 0x104f6140u;
+constexpr auto knockout_entry = 0x104f63a0u, advance_entry = 0x104f6080u;
 void call_virtual(Cpu&, std::uint32_t resume);
+void call_owned(Cpu&, std::uint32_t entry, std::uint32_t resume);
 
 void block(Cpu& c, std::uint32_t pc, unsigned instructions) {
     c.s.step(pc);
@@ -529,6 +532,195 @@ void start_next_season(Cpu& c) {
     c.finish();
 }
 
+void create_group(Cpu& c) {
+    GuestNativeScope scope(c.s, group_entry);
+    block(c, group_entry, 11);
+    const auto stack = c.sp(), frame = stack - 0x100;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<21>(c, stack);
+    const guest::Kept<25> competition(c, c.r(3));
+    const guest::Kept<29> success(c, c.toc(-0x7bac));
+    const guest::Kept<30> message(c, c.toc(-0x7ba8));
+    const guest::Kept<26> group(c, c.r(4));
+    const guest::Kept<31> file(c, c.toc(-0x45ac));
+    c.set(3, 16); c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.call(0x10775130, 0x104f616c);
+    block(c, 0x104f616c, 2);
+    const guest::Kept<28> entrants(c, c.r(3));
+    if (!record_compare(c, std::int32_t(std::uint32_t(entrants)))) {
+        report_failure(c, 0x104f6174, file, message, 0xac, 0x84, 0x2dc);
+        block(c, 0x104f61bc, 4);
+        c.set({{0, 0}, {3, 0}}); c.put8(success, 0);
+    } else {
+        // Reload the entrant table between rows: its pointer is live to
+        // memory observers, even though the selected offsets are invariant.
+        block(c, 0x104f61cc, 29);
+        c.set(4, group + 1); c.set(5, c.u32(competition + 0xec));
+        c.set(0, c.r(4) * 16); c.set(3, competition);
+        c.set(0, c.u32(c.r(5) + c.r(0)));
+        c.set(7, c.r(4) * 4); c.set(6, c.r(7) + 1);
+        c.set(4, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(group)))));
+        c.put32(entrants, c.r(0));
+        c.set(5, c.r(7) + 2); c.set(0, c.r(7) + 3);
+        c.set(6, c.r(6) * 4); c.set(7, c.u32(competition + 0xec));
+        c.set(8, c.r(5) * 4); c.set(0, c.r(0) * 4);
+        c.set(5, frame + 0x7a); c.set(9, c.u32(c.r(7) + c.r(6)));
+        c.set({{6, frame + 0x78}, {7, 0}}); c.put32(entrants + 4, c.r(9));
+        c.set(9, c.u32(competition + 0xec)); c.set(8, c.u32(c.r(9) + c.r(8)));
+        c.put32(entrants + 8, c.r(8));
+        c.set(8, c.u32(competition + 0xec)); c.set(0, c.u32(c.r(8) + c.r(0)));
+        c.put32(entrants + 12, c.r(0));
+        c.set(12, c.u32(competition)); c.set(12, c.u32(c.r(12) + 0x44));
+        call_virtual(c, 0x104f6240);
+        block(c, 0x104f6240, 5);
+        c.set(2, c.u32(frame + 0x14)); c.set(0, c.r(3)); c.set(3, 0xec);
+        const guest::Kept<27> calendar(c, c.r(0));
+        c.call(0x10773520, 0x104f6254);
+        block(c, 0x104f6254, 2);
+        const guest::Kept<24> stage(c, c.r(3));
+        guest::Kept<21> stage_offset(c, c.r(21));
+        if (record_compare(c, std::int32_t(std::uint32_t(stage)))) {
+            block(c, 0x104f625c, 37);
+            c.set(0, c.u8(competition + 0xc4));
+            c.set(22, competition + 0xc7); c.set(23, competition + 0xc0);
+            c.set(12, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(group)))));
+            c.put32(frame + 0x38, c.r(0));
+            c.set({{10, 4}, {11, 0}, {8, UINT32_MAX}});
+            c.set(5, c.u8(competition + 0xc5)); c.set(0, 2);
+            c.set({{4, competition}, {6, entrants}}); c.put32(frame + 0x3c, c.r(5));
+            c.set({{9, calendar}, {5, 4}, {7, 1}});
+            stage_offset = c.u8(competition + 0xc6); c.put32(frame + 0x40, stage_offset);
+            c.put32(frame + 0x44, c.r(22)); c.put32(frame + 0x48, c.r(23));
+            c.set(23, std::uint32_t(c.i16(competition + 0x40))); c.put32(frame + 0x4c, c.r(23));
+            c.put32(frame + 0x50, c.r(12));
+            c.set(12, std::uint32_t(c.i16(frame + 0x78))); c.put32(frame + 0x54, c.r(12));
+            c.set(12, c.u8(competition + 0x4b)); c.put32(frame + 0x58, c.r(12));
+            c.put32(frame + 0x5c, c.r(10)); c.put32(frame + 0x60, c.r(11));
+            c.set(10, std::uint32_t(c.i16(competition + 0xdc))); c.put32(frame + 0x64, c.r(10));
+            c.put32(frame + 0x68, c.r(8)); c.put32(frame + 0x6c, c.r(11)); c.put32(frame + 0x70, c.r(0));
+            c.set(8, c.u32(competition + 4)); c.set(10, std::uint32_t(c.i16(frame + 0x7a)));
+            c.call(0x1056dc60, 0x104f62f0);
+        }
+        block(c, 0x104f62f0, 5);
+        c.set(4, c.u32(competition + 0xc)); stage_offset = group * 4;
+        c.set(3, entrants); c.put32(c.r(4) + stage_offset, stage);
+        c.call(0x10775170, 0x104f6304);
+        block(c, 0x104f6304, 2); c.set(3, calendar);
+        c.call(0x10775170, 0x104f630c);
+        block(c, 0x104f630c, 4);
+        c.set(3, c.u32(competition + 0xc)); c.set(0, c.u32(c.r(3) + stage_offset));
+        if (!compare_logical(c, c.r(0))) {
+            report_failure(c, 0x104f631c, file, message, 0x8c, 0x7c, 0x2f2);
+            block(c, 0x104f6364, 4);
+            c.set({{0, 0}, {3, 0}}); c.put8(success, 0);
+        } else {
+            block(c, 0x104f6374, 4);
+            c.put32(competition + 0x30, group);
+            c.set(3, c.u32(competition + 0xc)); c.set(3, c.u32(c.r(3) + stage_offset));
+            c.call(0x104a0e40, 0x104f6384);
+            block(c, 0x104f6384, 1); c.set(3, 1);
+        }
+    }
+    block(c, 0x104f6388, 5);
+    c.set(0, c.u32(frame + 0x108)); c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<21, true>(c, stack); c.finish();
+}
+
+void standing_row(Cpu& c, std::uint32_t resume) {
+    // The reference inlines this four-instruction row lookup. Keep its live
+    // table read and ABI effects without introducing a dispatcher boundary.
+    c.link(resume); c.set(0, c.r(4) * 0x44);
+    c.set(3, c.u32(c.r(3) + 0xb0)); c.set(3, c.r(3) + c.r(0)); c.s.charge(4);
+}
+
+void create_knockout(Cpu& c) {
+    GuestNativeScope scope(c.s, knockout_entry);
+    block(c, knockout_entry, 10);
+    const auto stack = c.sp(), frame = stack - 0xd0;
+    c.set(0, c.lr()); guest::transfer_saved_registers<25>(c, stack);
+    const guest::Kept<27> competition(c, c.r(3));
+    const guest::Kept<29> success(c, c.toc(-0x7bac));
+    const guest::Kept<30> message(c, c.toc(-0x7ba8));
+    c.set(3, 32); const guest::Kept<31> file(c, c.toc(-0x45ac));
+    c.put32(stack + 8, c.r(0)); c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.call(0x10775130, 0x104f63c8);
+    block(c, 0x104f63c8, 2);
+    const guest::Kept<28> entrants(c, c.r(3));
+    if (!record_compare(c, std::int32_t(std::uint32_t(entrants)))) {
+        report_failure(c, 0x104f63d0, file, message, 0x8c, 0x64, 0x311);
+        block(c, 0x104f6418, 3); c.set(0, 0); c.put8(success, 0);
+    } else {
+        block(c, 0x104f6424, 3); c.set({{3, competition}, {4, 0}}); standing_row(c, 0x104f6430);
+        // Preserve the source's qualification order, including rereading the
+        // live stage array around each shared standings lookup.
+        constexpr std::array<unsigned, 6> next_places{1, 0, 1, 1, 0, 0};
+        constexpr std::array<unsigned, 6> stages{0, 1, 2, 1, 2, 0};
+        for (unsigned i = 0; i < stages.size(); ++i) {
+            const auto pc = 0x104f6430 + i * 24;
+            block(c, pc, 6); c.set(0, c.u32(c.r(3))); c.set(4, next_places[i]);
+            c.put32(entrants + i * 4, c.r(0));
+            c.set(3, c.u32(competition + 0xc)); c.set(3, c.u32(c.r(3) + stages[i] * 4));
+            standing_row(c, pc + 24);
+        }
+        block(c, 0x104f64c0, 5); c.set(0, c.u32(c.r(3)));
+        c.set({{3, competition}, {4, 1}}); c.put32(entrants + 24, c.r(0)); standing_row(c, 0x104f64d4);
+        block(c, 0x104f64d4, 10); c.set(0, c.u32(c.r(3)));
+        c.set({{3, competition}, {5, frame + 0x5a}, {6, frame + 0x58}});
+        c.put32(entrants + 28, c.r(0)); c.set({{4, 3}, {7, 0}});
+        c.set(12, c.u32(competition)); c.set(12, c.u32(c.r(12) + 0x44));
+        call_virtual(c, 0x104f64fc);
+        block(c, 0x104f64fc, 5); c.set(2, c.u32(frame + 0x14)); c.set(0, c.r(3)); c.set(3, 0xb4);
+        const guest::Kept<26> calendar(c, c.r(0)); c.call(0x10773520, 0x104f6510);
+        block(c, 0x104f6510, 2); const guest::Kept<25> stage(c, c.r(3));
+        if (record_compare(c, std::int32_t(std::uint32_t(stage)))) {
+            block(c, 0x104f6518, 21); c.set({{0, 3}, {5, 4}}); c.put32(frame + 0x38, c.r(0));
+            c.set({{7, 20}, {0, 0}, {4, competition}}); c.put32(frame + 0x3c, c.r(5));
+            c.set({{6, entrants}, {9, calendar}, {5, 8}}); c.set(8, std::uint32_t(c.i16(frame + 0x58)));
+            c.put32(frame + 0x40, c.r(8)); c.put32(frame + 0x44, c.r(7));
+            for (unsigned off = 0x48; off <= 0x54; off += 4) c.put32(frame + off, c.r(0));
+            c.set(7, std::uint32_t(c.i16(frame + 0x5a))); c.set(8, c.u32(competition + 4));
+            c.set(10, std::uint32_t(c.i16(competition + 0x40))); c.call(0x104bc3c0, 0x104f656c);
+        }
+        block(c, 0x104f656c, 4); c.set(4, c.u32(competition + 0xc)); c.set(3, entrants);
+        c.put32(c.r(4) + 12, stage); c.call(0x10775170, 0x104f657c);
+        block(c, 0x104f657c, 2); c.set(3, calendar); c.call(0x10775170, 0x104f6584);
+        block(c, 0x104f6584, 4); c.set(3, c.u32(competition + 0xc)); c.set(3, c.u32(c.r(3) + 12));
+        if (!compare_logical(c, c.r(3))) {
+            report_failure(c, 0x104f6594, file, message, 0x6c, 0x5c, 0x32c);
+            block(c, 0x104f65dc, 3); c.set(0, 0); c.put8(success, 0);
+        } else {
+            block(c, 0x104f65e8, 2); c.set(4, 0); c.call(0x1047ef50, 0x104f65f0);
+            block(c, 0x104f65f0, 2); c.set(0, 3); c.put32(competition + 0x30, c.r(0));
+        }
+    }
+    block(c, 0x104f65f8, 5); c.set(0, c.u32(frame + 0xd8)); c.set(1, stack);
+    c.set_lr(c.r(0)); guest::transfer_saved_registers<25, true>(c, stack); c.finish();
+}
+
+void advance_stage(Cpu& c) {
+    GuestNativeScope scope(c.s, advance_entry);
+    block(c, advance_entry, 12);
+    const auto stack = c.sp(), frame = stack - 0x70;
+    c.set(0, c.lr()); c.put32(stack - 4, c.r(31));
+    const guest::Kept<31> file(c, c.toc(-0x45ac)); c.put32(stack - 8, c.r(30));
+    const guest::Kept<30> message(c, c.toc(-0x7ba8)); c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.set(4, c.u32(c.r(3) + 0x2c)); c.set(5, c.u32(c.r(3) + 0x30)); c.set(0, c.r(4) - 1);
+    if (compare(c, std::int32_t(c.r(5)), std::int32_t(c.r(0))) < 0) {
+        block(c, 0x104f6108, 5); c.set(0, c.r(5) + 1); c.put32(c.r(3) + 0x30, c.r(0));
+        c.set(0, c.u32(c.r(3) + 0x30));
+        if (!compare(c, std::int32_t(c.r(0)), 3)) {
+            block(c, 0x104f6120, 1); call_owned(c, knockout_entry, 0x104f6124);
+        } else block(c, 0x104f611c, 1);
+    } else {
+        report_failure(c, 0x104f60b0, file, message, 0x40, 0x38, 0x2ba);
+        block(c, 0x104f60f8, 4); c.set(3, c.toc(-0x7bac)); c.set(0, 0); c.put8(c.r(3), 0);
+    }
+    block(c, 0x104f6124, 6); c.set(0, c.u32(frame + 0x78)); c.set(1, stack); c.set_lr(c.r(0));
+    c.set(31, c.u32(stack - 4)); c.set(30, c.u32(stack - 8)); c.finish();
+}
+
 void destroy_competition(Cpu& c) {
     GuestNativeScope scope(c.s, destroy_entry);
     block(c, destroy_entry, 10);
@@ -880,24 +1072,30 @@ const Routine& find_routine(std::uint32_t entry) {
     return *found;
 }
 
+void call_owned(Cpu& c, std::uint32_t entry, std::uint32_t resume) {
+    if (routine_checker || c.s.import_descriptor_observer || c.s.scalar_capture || dispatch_probe) { c.call(entry, resume); return; }
+    const auto stack = c.sp(); c.link(resume); c.s.pc = entry;
+    find_routine(entry).run(c);
+    if (c.s.pc != resume || c.sp() != stack)
+        throw std::logic_error("African Nations owned call violated its return boundary");
+}
+
 void call_virtual(Cpu& c, std::uint32_t resume) {
-    if (routine_checker || c.s.import_descriptor_observer || c.s.scalar_capture) {
+    if (routine_checker || c.s.import_descriptor_observer || c.s.scalar_capture || dispatch_probe) {
         c.call(0x10781320, resume); return;
     }
     const auto stack = c.sp();
     c.link(resume);
     c.s.pc = 0x10781320;
-    // Keep diagnostic probes at both dispatch boundaries while calling known
-    // owned destinations directly. External and excluded destinations retain
-    // the ordinary dispatcher and original descriptor-body controls.
-    if (!dispatch_probe || !dispatch_probe(c.s)) {
-        if (!try_modern_import_descriptor(c.s, 0x10781320) && !dispatch_page(c.s))
-            throw std::logic_error("Missing African Nations virtual descriptor body");
-        const auto target = std::ranges::lower_bound(routines, c.s.pc, {}, &Routine::entry);
-        if (target != routines.end() && target->entry == c.s.pc
-                && (!dispatch_probe || !dispatch_probe(c.s))) target->run(c);
-    }
-    if (c.s.pc != resume) run_until(c.s, resume);
+    // Diagnostics use the ordinary dispatcher above. The normal route calls
+    // known owners directly, retaining original descriptor-body controls.
+    if (!try_modern_import_descriptor(c.s, 0x10781320) && !dispatch_page(c.s))
+        throw std::logic_error("Missing African Nations virtual descriptor body");
+    const auto target = std::ranges::lower_bound(routines, c.s.pc, {}, &Routine::entry);
+    if (target != routines.end() && target->entry == c.s.pc) {
+        target->run(c);
+        if (c.s.pc != resume) throw std::logic_error("African Nations virtual owner did not return to its caller");
+    } else run_until(c.s, resume);
     if (c.sp() != stack) throw std::logic_error("African Nations virtual call returned on a different stack");
 }
 }

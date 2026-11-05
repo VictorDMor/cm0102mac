@@ -938,6 +938,12 @@ call-site budget boundary rather than adding another dispatch.
 Season rollover keeps the shared standings object and child-pointer array,
 rereads the last-child index after each destructor, advances the stored year
 by two and rebuilds the calendar through the live configuration slot.
+Group creation skips the first four entrant slots, then copies four per group
+through live table-pointer reads. Both phase builders retain the raw allocated
+stage independently of its constructor's return value, and continue after a
+null calendar. They free the temporary entrants and calendar before rereading
+the stored child pointer. The knockout bracket preserves the original ordered
+first/second-place reads; it does not sort the eight qualifiers again.
 
 ## OCEANIA_NATIONS.CPP
 
