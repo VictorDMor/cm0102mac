@@ -49,6 +49,7 @@ target_sources(cm_aot PRIVATE contract_terms.cpp contract_terms_sampling.cpp con
 set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.cpp staff_contracts_dates.cpp
     staff_contracts_value.cpp staff_contracts_labels.cpp staff_contracts_window.cpp
     staff_contracts_sampling.cpp staff_contracts_display.cpp staff_contracts_clause.cpp
+    staff_contracts_release.cpp
     staff_contracts_adapter.cpp)
 target_sources(cm_aot PRIVATE ${CM_STAFF_CONTRACTS_SOURCES})
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp

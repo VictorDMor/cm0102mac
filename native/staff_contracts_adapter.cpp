@@ -15,10 +15,18 @@ struct Routine {
     unsigned results;
     void (*run)(Cpu&);
 };
-#define STAFF_CONTRACTS_ROUTINE(entry, results, ...) Routine{entry, results, __VA_ARGS__},
+template<auto Run>
+void return_through_lr(Cpu& c) {
+    Run(c);
+    c.finish();
+}
+
+#define STAFF_CONTRACTS_ROUTINE(entry, results, ...) Routine{entry, results, return_through_lr<__VA_ARGS__>},
+#define STAFF_CONTRACTS_CONTINUATION(entry, results, ...) Routine{entry, results, __VA_ARGS__},
 constexpr auto routines = std::to_array<Routine>({
 #include "staff_contracts_routines.inc"
 });
+#undef STAFF_CONTRACTS_CONTINUATION
 #undef STAFF_CONTRACTS_ROUTINE
 
 bool declining = std::getenv("CM_STAFF_CONTRACTS_ORIGINAL") != nullptr;
@@ -33,7 +41,6 @@ const Routine& find_routine(std::uint32_t entry) {
 void run_routine(State& s, const Routine& routine) {
     Cpu cpu(s);
     routine.run(cpu);
-    cpu.finish();
 }
 }
 

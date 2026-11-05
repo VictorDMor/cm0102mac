@@ -77,7 +77,7 @@ ENTRIES = tuple(entry for entry, _, _ in ROUTINES)
 def production_entries():
     registry = ROOT / "native/staff_contracts_routines.inc"
     entries = tuple(int(entry, 16) for entry in re.findall(
-        r"^STAFF_CONTRACTS_ROUTINE\((0x[0-9a-f]+),", registry.read_text(), re.MULTILINE))
+        r"^STAFF_CONTRACTS_(?:ROUTINE|CONTINUATION)\((0x[0-9a-f]+),", registry.read_text(), re.MULTILINE))
     if tuple(sorted(set(entries))) != entries or not set(entries) <= set(ENTRIES):
         raise ValueError("Invalid STAFF_CONTRACTS.CPP production registry")
     return entries

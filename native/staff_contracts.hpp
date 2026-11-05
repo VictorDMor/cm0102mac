@@ -16,6 +16,9 @@ void format_wage_text(guest::Cpu&, std::uint32_t contract, std::uint32_t destina
                       std::uint32_t style, std::int8_t format_flags);
 void format_contract_end(guest::Cpu&, std::uint32_t contract, std::uint32_t destination);
 
+void describe_squad_status(guest::Cpu&, std::uint32_t contract, std::int32_t capacity);
+void describe_release_summary(guest::Cpu&, std::uint32_t contract, std::int32_t capacity);
+
 void name_bonus(guest::Cpu&, std::int8_t index, std::uint32_t destination);
 void name_option(guest::Cpu&, std::int8_t index, std::uint32_t destination);
 void describe_bonus(guest::Cpu&, std::uint32_t contract, std::uint32_t index, std::uint32_t destination,
