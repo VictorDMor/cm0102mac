@@ -559,6 +559,18 @@ remain external. The module owns no serialized format or RNG entry. The checker
 runs the complete owned call graph against the independent reference and
 validates the arguments and effects at modeled external boundaries.
 
+New Série B seasons use the existing 27-round, single-leg calendar and four
+automatic promotion places. The saved group capacity is zero, so the base
+league's completion gate never creates a playoff stage. The end-of-season
+callback uses the base league finalizer, whose existing history record stores
+the first and second rows as champion and runner-up. The shared league
+classification marks the first row as champion and the season exchange moves
+the top four to the first division. An active legacy season keeps its saved
+group capacity. Rollover tears down any legacy group and
+releases its array before selecting the new format. The original competition
+rules remain available with `CM_BRA_NAT_SECOND_RULES_ORIGINAL=1` for differential
+checks.
+
 ## SIMULATED_STATS.CPP
 
 The module lies between SHORTLIST_MANAGER.CPP and STAFF_CONTRACTS.CPP.

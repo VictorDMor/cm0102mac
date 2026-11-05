@@ -49,6 +49,13 @@ constexpr auto home_definition = fixture + 0x7000, standings = fixture + 0x8000;
 constexpr auto groups_storage = fixture + 0x9000, other_group = fixture + 0x9100;
 constexpr auto seeds = fixture + 0x9300, history_manager = fixture + 0x9400;
 constexpr auto news_item = fixture + 0x9500, news_text = fixture + 0x9600;
+constexpr auto base_qualification_query = fixture + 0x10a;
+constexpr auto classify_table = 0x104a1c30u, exchange_clubs = 0x104a9210u;
+constexpr auto block_move = fixture + 0x10c, classification_flags = fixture + 0x9800;
+constexpr auto classification_news = 0x104a44f0u, continental_qualification = 0x104646d0u;
+constexpr auto foreign_player_rule = 0x104ae570u;
+constexpr auto notify_non_promoted = 0x1007fd00u, notify_division_change = 0x1007fe90u;
+constexpr auto notify_squad_rule_change = 0x1007ffb0u;
 constexpr auto playoff_group_init = 0x104bc3c0u, playoff_group_start = 0x1047ef50u;
 constexpr auto standing_lookup = 0x104aa560u, league_award = 0x103822e0u;
 constexpr auto relegation_history = 0x10382e50u, winner_history = 0x10381b70u;
@@ -75,7 +82,9 @@ bool service(State& s) {
     case object_delete: case configure_external: case reset_fixtures: case finish_season: case notify_season:
     case playoff_group_init: case playoff_group_start: case standing_lookup: case league_award:
     case relegation_history: case winner_history: case generic_news: case format_news:
-    case set_news_text: case news_link: break;
+    case set_news_text: case news_link: case base_qualification_query:
+    case block_move: case classification_news: case continental_qualification: case foreign_player_rule:
+    case notify_non_promoted: case notify_division_change: case notify_squad_rule_change: break;
     default: return false;
     }
     Cpu c(s);
@@ -84,7 +93,9 @@ bool service(State& s) {
     if (bad_argument) ++call[5];
     calls->push_back(call);
     if (s.pc == lookup) {
-        require(c.r(3) == fixtures && c.r(2) == toc && c.lr() == 0x10519574 && c.sp() == stack - 0x50,
+        const bool nested = c.sp() == stack - 0xa0 - 0x50 && c.u32(stack - 0xa0) == stack && c.u32(stack + 8) == done;
+        require(c.r(3) == fixtures && c.r(2) == toc && c.lr() == 0x10519574 &&
+                    (c.sp() == stack - 0x50 || nested),
                 "fixture lookup arguments");
         c.set(3, match);
     } else if (s.pc == callback) {
@@ -95,10 +106,11 @@ bool service(State& s) {
         c.set(3, c.r(4) ^ c.r(5));
     } else if (s.pc == allocate) {
         const auto size = c.r(3);
-        require(size == 4 || size == 16 || size == 0x804 || size == 0xf0 || size == 28 * 0x44, "allocation size");
+        require(size == 4 || size == 16 || size == 28 || size == 0x804 || size == 0xf0 || size == 28 * 0x44, "allocation size");
         const auto mode = c.u8(lifecycle_mode);
         if (size == 4) c.set(3, mode == fail_group_array ? 0 : groups_storage);
         else if (size == 16) c.set(3, mode == fail_seeds ? 0 : seeds);
+        else if (size == 28) c.set(3, classification_flags);
         else if (size == 28 * 0x44) c.set(3, c.u8(alloc_failure) || mode == fail_standings ? 0 : standings);
         else c.set(3, c.u8(alloc_failure) || mode == fail_calendar ? 0 : rows);
     } else if (s.pc == insert_club) {
@@ -130,6 +142,23 @@ bool service(State& s) {
     } else {
         const auto mode = c.u8(lifecycle_mode);
         switch (s.pc) {
+        case block_move:
+            require(c.r(3) == division + 0xc0 && c.r(4) == c.sp() + 0x3c &&
+                        c.r(5) == 4, "classification settings copy");
+            c.put32(c.r(4), c.u32(c.r(3)));
+            break;
+        case classification_news:
+        case continental_qualification:
+        case foreign_player_rule:
+            c.set(3, 0);
+            break;
+        case notify_non_promoted: case notify_division_change: case notify_squad_rule_change:
+            // Movement notifications are external to the division exchange.
+            break;
+        case base_qualification_query:
+            require(c.r(3) == division && c.r(2) == toc, "base table qualification arguments");
+            c.set(3, 0);
+            break;
         case league_init:
             require(c.r(3) == division && c.lr() == 0x105177e0, "base constructor arguments");
             c.put32(division + 0x8, 0);
@@ -190,7 +219,8 @@ bool service(State& s) {
             c.put32(fixtures + 8, 0);
             break;
         case release:
-            require(!c.r(3) || c.r(3) == rows || c.r(3) == groups_storage || c.r(3) == seeds, "release arguments");
+            require(!c.r(3) || c.r(3) == rows || c.r(3) == groups_storage ||
+                        c.r(3) == seeds || c.r(3) == classification_flags, "release arguments");
             if (c.r(3)) c.put8(c.r(3), 0);
             break;
         case object_delete:
@@ -655,6 +685,180 @@ void check_complete_competition_sequence(std::mt19937& random) {
     std::cout << "BRA_NAT_SECOND combined competition: all 13 owned entries, final state and ordered effects match\n";
 }
 
+void check_single_round_rules() {
+    std::mt19937 random(0x42524142);
+    auto state = result_seed(construct_entry, random, lifecycle_success, 0, 0, 0);
+    std::vector<Call> trace;
+    Services services(trace, false);
+    state->allocator_original = true;
+    Cpu c(*state);
+    const auto invoke = [&](std::uint32_t entry, std::initializer_list<std::pair<unsigned, std::uint32_t>> args) {
+        trace.clear();
+        c.set_lr(done);
+        c.set(3, division);
+        c.set(args);
+        state->pc = entry;
+        state->budget = state->executed + 50000;
+        try {
+            run_until(*state, done);
+        } catch (const std::exception& error) {
+            throw std::runtime_error(hex_address(entry) + " at " + hex_address(state->pc) +
+                                     " (LR " + hex_address(c.lr()) + "): " + error.what());
+        }
+        require(c.r(2) == toc && c.sp() == stack, "single-round call boundary");
+    };
+    const auto allocations_of = [&](unsigned size) {
+        return std::ranges::count_if(trace, [=](const Call& call) { return call[0] == allocate && call[4] == size; });
+    };
+    const auto check_format = [&] {
+        require(c.u16(division + 0x3e) == 28 && c.u16(division + 0xa6) == 27 &&
+                    c.u16(division + 0x3c) == 1 && c.u8(division + 0xc0) == 4 &&
+                    c.u8(division + 0xc1) == 0 && c.u16(division + 0xdc) == 3 &&
+                    c.u32(division + 0x2c) == 0 &&
+                    c.u32(division + 0x30) == UINT32_MAX && c.u32(division + 0xc) == 0,
+                "single round, four automatic promotions, and no knockout groups");
+        require(allocations_of(4) == 0 && allocations_of(0xf0) == 0 &&
+                    std::ranges::count(trace, regular_date, [](const Call& call) { return call[0]; }) == 27,
+                "regular calendar only");
+    };
+
+    invoke(construct_entry, {{4, 2001}, {5, home_definition}});
+    check_format();
+    constexpr auto count_out = fixture + 0x9700, start_out = count_out + 2, regular_flag = count_out + 4;
+    c.put16(count_out, 0x1234); c.put16(start_out, 0x5678); c.put8(regular_flag, 0x9a);
+    invoke(calendar_entry, {{4, 0}, {5, count_out}, {6, start_out}, {7, regular_flag}});
+    require(!c.r(3) && trace.empty() && c.u16(count_out) == 0x1234 &&
+                c.u16(start_out) == 0x5678 && c.u8(regular_flag) == 0x9a,
+            "single-round knockout calendar request declines without side effects");
+    invoke(times_entry, {{4, 0}, {5, UINT32_MAX}, {6, 1}, {7, 2}, {8, 3}});
+    require(c.u8(match + 0x76) == 1 && c.u8(match + 0x77) == 2 && c.u8(match + 0x78) == 3,
+            "table standings are not remapped to playoff seeds");
+
+    // Run the real base finalizer and history writer, using a standings
+    // order that is deliberately different from the club database order.
+    constexpr auto owners = fixture + 0x9720, table_slot = fixture + 0x9730;
+    constexpr auto history_count = fixture + 0x9740, history_rows = fixture + 0x9748;
+    constexpr auto year_slot = fixture + 0x9750, winners = fixture + 0x9780;
+    constexpr auto qualifier_descriptor = descriptor + 48;
+    const auto winner = clubs + 2 * clubs_stride, runner_up = clubs, third = clubs + clubs_stride;
+    c.put32(standings, winner);
+    c.put32(standings + 0x44, runner_up);
+    c.put32(standings + 0x88, third);
+    c.put32(winner + 0x30, second_division);
+    c.put32(home_definition, 0);
+    c.put32(toc - 0x7b5c, table_slot);
+    c.put32(table_slot, owners);
+    c.put32(owners, division);
+    c.put32(vtable + 0x90, qualifier_descriptor);
+    c.put32(qualifier_descriptor, base_qualification_query);
+    c.put32(qualifier_descriptor + 4, toc);
+    c.put32(toc - 0x7a38, history_count);
+    c.put32(toc - 0x7a34, history_rows);
+    c.put32(toc - 0x7b80, year_slot);
+    c.put32(history_count, 2);
+    c.put32(history_rows, winners);
+    c.put16(year_slot + 2, 2001);
+    c.put32(winners + 4, home_definition);
+    invoke(group_entry, {});
+    const auto recorded = winners + 0x1c;
+    require(c.u32(recorded + 4) == home_definition && c.u32(recorded + 8) == winner &&
+                c.u32(recorded + 0xc) == runner_up && c.u32(recorded + 0x10) == third &&
+                c.u16(recorded + 0x18) == 2001,
+            "real history writer records the table champion and vice-champion");
+    require(std::ranges::none_of(trace, [](const Call& call) { return call[0] == callback; }),
+            "single-round finalization never visits a playoff group");
+    invoke(record_entry, {{4, 2}, {5, 5}, {6, UINT32_MAX}});
+    require(c.u32(history_manager + 4) == 2, "table champion uses the league history event");
+
+    // Loading an existing format preserves the saved stage. The following
+    // season owns the new format and releases the old group's storage.
+    c.put8(lifecycle_mode, load_existing);
+    c.put16(division + 0xdc, 2);
+    c.put32(division + 0x2c, 1);
+    c.put32(division + 0x30, 0);
+    c.put32(division + 0xc, groups_storage);
+    c.put32(groups_storage, group);
+    c.put32(group, vtable);
+    invoke(construct_entry, {{4, 2001}, {5, home_definition}});
+    require(c.u32(division + 0x2c) == 1 && c.u32(division + 0xc) == groups_storage &&
+                c.u32(division + 0x30) == 0 && c.u16(division + 0xdc) == 2,
+            "legacy save keeps its playoff format");
+    invoke(group_entry, {{4, 2}, {5, 0}});
+    require(c.u32(group + 4) == 2, "legacy season still finalizes its playoff group");
+    c.put8(lifecycle_mode, lifecycle_success);
+    c.put32(division + 8, fixtures);
+    invoke(next_season_entry, {{4, 0}});
+    check_format();
+    const auto child = std::ranges::find(trace, child_destroy, [](const Call& call) { return call[0]; });
+    const auto array_release = std::ranges::find_if(trace, [](const Call& call) {
+        return call[0] == release && call[4] == groups_storage;
+    });
+    require(child != trace.end() && array_release != trace.end() && child < array_release &&
+                c.u16(division + 0x40) == 2002, "rollover frees legacy stage before switching format");
+    // Use real shared classification and exchange with a seeded final table.
+    // Standings order differs from the underlying club order.
+    constexpr auto exchange_data = fixture + 0x10000, first_league = exchange_data + 0x8000;
+    constexpr auto first_definition = first_league + 0x200, first_table = first_league + 0x400;
+    constexpr auto movement_slot = first_league + 0x700, nation_slot = first_league + 0x704;
+    constexpr auto copy_descriptor = descriptor + 56, news_descriptor = descriptor + 64;
+    constexpr auto times_descriptor = descriptor + 72;
+    state->memory.map(exchange_data, 0x9000);
+    c.put32(toc - 0x7be8, fixture + 0x6d04);
+    c.put32(fixture + 0x6d04, exchange_data);
+    c.put32(toc - 0x7b7c, movement_slot);
+    c.put32(toc - 0x79f0, nation_slot);
+    c.put32(toc - 0x7a98, nation_slot);
+    c.put32(toc - 0x7e64, copy_descriptor);
+    c.put32(copy_descriptor, block_move);
+    c.put32(copy_descriptor + 4, toc);
+    c.put32(vtable + 0x48, news_descriptor);
+    c.put32(news_descriptor, classification_news);
+    c.put32(news_descriptor + 4, toc);
+    c.put32(vtable + 0x70, times_descriptor);
+    c.put32(times_descriptor, times_entry);
+    c.put32(times_descriptor + 4, toc);
+    c.put32(owners + 4, first_league);
+    c.put32(first_league + 4, first_definition);
+    c.put32(first_league + 0xb0, first_table);
+    c.put16(first_league + 0x3e, 8);
+    c.put32(first_definition, 1);
+    c.put32(division + 0x1c, 1);
+    c.put8(division + 0x44, 0xff);
+    c.put8(division + 0x45, 1);
+    c.put16(division + 0xa4, 27);
+    for (unsigned i = 0; i < 36; ++i) {
+        const bool second_tier = i < 28;
+        const auto club = exchange_data + i * clubs_stride;
+        const auto row = second_tier ? standings + ((i + 3) % 28) * 0x44 : first_table + (i - 28) * 0x44;
+        c.put32(club, i);
+        c.put32(club + 0x30, second_tier ? home_definition : first_definition);
+        c.put32(row, club);
+        c.put8(row + 0x40, i >= 32 ? 3 : 0xff);
+        if (second_tier) {
+            const auto position = (i + 3) % 28 + 1;
+            c.put8(row + 0x42, position);
+            c.put8(row + 0x43, position);
+        }
+    }
+    invoke(classify_table, {});
+    for (unsigned i = 0; i < 28; ++i) {
+        const auto expected = i == 0 ? 5 : i < 4 ? 0 : i >= 24 ? 3 : 255;
+        require(c.u8(standings + i * 0x44 + 0x40) == expected,
+                "real table classification marks the champion and promotion boundary");
+    }
+    // Use the flags from the Brazilian first-tier season exchange.
+    invoke(exchange_clubs, {{3, first_league}, {4, first_league}, {5, division},
+                            {6, 1}, {7, 1}, {8, UINT32_MAX}, {9, UINT32_MAX}});
+    for (unsigned i = 0; i < 36; ++i) {
+        const bool in_first_tier = i < 28 ? (i + 3) % 28 < 4 : i < 32;
+        require(c.u32(exchange_data + i * clubs_stride + 0x30) ==
+                    (in_first_tier ? first_definition : home_definition),
+                "real division exchange promotes exactly the first four standings rows");
+    }
+    std::cout << "BRA_NAT_SECOND single round: 27 rounds, real champion and runner-up history, "
+                 "four-club promotion, legacy rollover\n";
+}
+
 void reject(const State& initial, Corrupt corruption, std::string_view evidence) {
     try {
         compare_case(initial, corruption);
@@ -667,7 +871,12 @@ void reject(const State& initial, Corrupt corruption, std::string_view evidence)
 }
 }
 
-int main() try {
+int main(int argc, char** argv) try {
+    if (argc == 2 && std::string_view(argv[1]) == "--single-round") {
+        check_single_round_rules();
+        return 0;
+    }
+    require(argc == 1, "unknown Brazilian Second checker option");
 #ifdef CM_BRA_NAT_SECOND_PROFILE_DIR
     routine_child_exit = [] {
         const auto name = std::string(CM_BRA_NAT_SECOND_PROFILE_DIR) + "/check-" + std::to_string(getpid()) + ".profraw";

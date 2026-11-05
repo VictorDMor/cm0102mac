@@ -15,6 +15,7 @@ using guest::compare;
 using guest::compare_logical;
 
 bool declining = std::getenv("CM_BRA_NAT_SECOND_ORIGINAL") != nullptr;
+const bool original_rules = std::getenv("CM_BRA_NAT_SECOND_RULES_ORIGINAL") != nullptr;
 constexpr auto construct_entry = 0x105177b0u, destroy_entry = 0x10517af0u;
 constexpr auto advance_groups_entry = 0x10519010u, create_group_entry = 0x105190d0u;
 constexpr auto record_result_entry = 0x105192c0u, announce_result_entry = 0x10519390u;
@@ -28,6 +29,7 @@ constexpr auto fixture_times_entry = 0x10519540u;
 constexpr auto base_result_entry = 0x105195d0u;
 constexpr auto fixture_record_lookup = 0x10459b50u;
 constexpr auto base_result_for_club = 0x104aa430u;
+constexpr auto base_table_finalizer = 0x104a1350u, base_result_history = 0x104a47f0u;
 constexpr auto call_descriptor = 0x10781320u;
 
 struct Division {
@@ -39,6 +41,8 @@ struct Division {
     std::uint32_t fixtures() const { return cpu.u32(address + 8); }
     guest::Field<std::uint32_t> group_storage() const { return {cpu, address + 0xc}; }
     std::uint32_t groups() const { return group_storage(); }
+    guest::Field<std::int32_t> group_capacity() const { return {cpu, address + 0x2c}; }
+    bool table_only() const { return !original_rules && group_capacity() == 0; }
     std::int32_t last_group() const { return cpu.i32(address + 0x30); }
     guest::Field<std::uint32_t> calendar_rows() const { return {cpu, address + 0xbc}; }
 };
@@ -320,7 +324,7 @@ void calendar(Cpu& cpu) {
     scope.frame(frame);
     if (!is_regular) {
         block(cpu, 0x105188fc, 2);
-        if (record_order(cpu, phase) != 0) {
+        if (record_order(cpu, phase) != 0 || league.table_only()) {
             block(cpu, 0x10518af8, 1);
             cpu.set(3, 0);
             return_multiple<27>(cpu, 0x10518afc, 0xb0);
@@ -430,7 +434,8 @@ void configure(Cpu& cpu) {
     cpu.put32(address + 0x1c, cpu.r(9));
     cpu.set(8, cpu.u32(relegation));
     cpu.put32(address + 0x20, cpu.r(8));
-    cpu.put16(address + 0xdc, 2);
+    // The base classification uses bit 0 to declare the table leader champion.
+    cpu.put16(address + 0xdc, Division{cpu, address}.table_only() ? 3 : 2);
     cpu.put8(address + 0x4c, 2);
     cpu.put8(address + 0x46, 7);
     cpu.put8(address + 0x47, 3);
@@ -617,11 +622,12 @@ void construct_competition(Cpu& cpu) {
 
         block(cpu, 0x10517830, 15);
         const auto current = object();
-        cpu.set({{5, 10}, {4, UINT32_MAX}, {0, 1}});
+        const auto capacity = original_rules ? 1u : 0u;
+        cpu.set({{5, 10}, {4, UINT32_MAX}, {0, capacity}});
         cpu.put8(current + 0x4b, 10);
         cpu.put8(object() + 0x44, 0xff);
         cpu.put32(object() + 0x30, UINT32_MAX);
-        cpu.put32(object() + 0x2c, 1);
+        cpu.put32(object() + 0x2c, capacity);
         const auto group_capacity = cpu.i32(object() + 0x2c);
         cpu.set(0, std::uint32_t(group_capacity));
         if (compare(cpu, group_capacity) > 0) {
@@ -730,6 +736,18 @@ void next_season(Cpu& cpu) {
         cpu.call(0x104564a0, 0x10518dcc);
     }
     destroy_groups(cpu, league, 0x10518dcc, 27, 28);
+
+    if (!original_rules) {
+        // The original saves own this array until the last legacy group
+        // has been destroyed. The next season needs no stage storage.
+        const auto groups = league.groups();
+        if (groups) {
+            cpu.set(3, groups);
+            cpu.call(0x10775170, 0x10518e14);
+            league.group_storage() = 0;
+        }
+        league.group_capacity() = 0;
+    }
 
     const auto fail = [&](std::uint32_t pc, unsigned filename, unsigned extension, unsigned line) {
         assertion(cpu, pc, source, message, filename, extension, line);
@@ -948,6 +966,13 @@ void advance_groups(Cpu& cpu) {
 }
 
 void record_result(Cpu& cpu) {
+    if (Division{cpu, cpu.r(3)}.table_only()) {
+        // Use the league history handler, including the table champion event.
+        // Forward without an additional guest frame or change to call arguments.
+        cpu.s.pc = base_result_history;
+        run_until(cpu.s, cpu.lr());
+        return;
+    }
     GuestNativeScope scope(cpu.s, record_result_entry);
     block(cpu, record_result_entry, 13);
     const auto stack = cpu.sp(), frame = stack - 0x50;
@@ -1122,6 +1147,13 @@ void announce_result(Cpu& cpu) {
 }
 
 void update_first_group(Cpu& cpu) {
+    if (Division{cpu, cpu.r(3)}.table_only()) {
+        // The base finalizer writes first, second and third from the sorted
+        // standings to the existing competition history record.
+        cpu.s.pc = base_table_finalizer;
+        run_until(cpu.s, cpu.lr());
+        return;
+    }
     block(cpu, update_group_entry, 8);
     cpu.set(0, cpu.lr());
     {
@@ -1168,7 +1200,7 @@ void fixture_times(Cpu& cpu) {
     cpu.call(fixture_record_lookup, 0x10519574);
     block(cpu, 0x10519574, 3);
     cpu.set(0, std::uint32_t(stage));
-    if (compare(cpu, stage, -1) == 0) {
+    if (compare(cpu, stage, -1) == 0 && !division.table_only()) {
         block(cpu, 0x10519580, 3);
         cpu.set(0, first & 0xff);
         if (compare_logical(cpu, first & 0xff, 5) < 0) {

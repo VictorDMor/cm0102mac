@@ -4501,7 +4501,9 @@ target_link_libraries(cm-bra-nat-second-checks PRIVATE cm_aot)
 target_compile_options(cm-bra-nat-second-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_test(NAME bra_nat_second_equivalence COMMAND cm-bra-nat-second-checks)
 # The playoff group constructor is modeled at its dispatch boundary.
-set_tests_properties(bra_nat_second_equivalence PROPERTIES ENVIRONMENT "CM_CUP_STAGE_ORIGINAL=1")
+set_tests_properties(bra_nat_second_equivalence PROPERTIES
+    ENVIRONMENT "CM_CUP_STAGE_ORIGINAL=1;CM_BRA_NAT_SECOND_RULES_ORIGINAL=1")
+add_test(NAME bra_nat_second_single_round COMMAND cm-bra-nat-second-checks --single-round)
 if(Python3_EXECUTABLE)
     add_test(NAME bra_nat_second_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_bra_nat_second_audit.py")

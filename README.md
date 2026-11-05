@@ -19,7 +19,12 @@ promotion places plus an eight-club, single-leg playoff (4th–11th), with the b
 league finisher hosting before a neutral final; four clubs leave the Premier
 League. Existing seasons retain their saved rules until the next season. See
 [competition rules](docs/native-competition-rules.md) for the original preset and
-backup. Other competitions keep their original 2001/02 rules.
+backup.
+
+New Brazilian Série B seasons play 27 rounds in a single round robin with no
+playoffs. The first four clubs are promoted. The final table's first and second
+clubs are champion and runner-up. Seasons already in progress adopt the format
+at their next rollover.
 
 ## How it works
 
