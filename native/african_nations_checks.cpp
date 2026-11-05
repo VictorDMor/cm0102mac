@@ -2,6 +2,7 @@
 #include "guest_abi.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
+#include "import_descriptor_adapter.hpp"
 
 #include <array>
 #include <random>
@@ -20,9 +21,16 @@ constexpr auto placements = 0x104f7000u, lookup = 0x10459b50u;
 constexpr auto notify = 0x104f5da0u, interpolate = 0x10476780u;
 constexpr auto destroy = 0x104f4ee0u, update = 0x104f5d60u;
 constexpr auto calendar = 0x104f4ff0u, calendar_rows = fixture + 0x3000;
+constexpr auto configure = 0x104f5c80u;
+constexpr auto create = 0x104f4c80u, initial_check = 0x104a6850u;
+constexpr auto create_caller = 0x1034efd4u, create_resume = 0x1034efd8u;
+constexpr auto construction_mode = fixture + 0x60;
+constexpr auto external_configure = fixture + 0x3b80;
 constexpr auto calendar_count = fixture + 0x50, calendar_code = fixture + 0x52, calendar_flag = fixture + 0x54;
 constexpr auto calendar_success = fixture + 0x58, calendar_fail = fixture + 0x59;
 constexpr auto calendar_mutation = fixture + 0x5a;
+constexpr auto descriptor_observation = fixture + 0x5b, scalar_capture = fixture + 0x5c;
+constexpr auto handled_callback = fixture + 0x5d, handled_owned = fixture + 0x5e;
 constexpr auto object = fixture + 0x100, key = fixture + 0x300;
 constexpr auto stage = fixture + 0x1000, rows = fixture + 0x2000;
 constexpr auto manager_slot = fixture + 0x400, manager = fixture + 0x500, alternate_manager = fixture + 0x540;
@@ -38,9 +46,32 @@ struct Call {
     decltype(State::registers) machine;
     bool operator==(const Call&) const = default;
 };
+struct DescriptorEffects final : ImportDescriptorBoundaryObserver {
+    std::vector<Call> entries, exits;
+    bool transfer = false, transferred = false;
+    void enter(const State& s, std::uint32_t entry, bool) override {
+        entries.push_back({entry, std::uint32_t(s.r<4>(guest::reg::lr)), s.registers});
+    }
+    void leave(State& s, std::uint32_t entry, bool, ImportDescriptorOutcome outcome) override {
+        exits.push_back({entry, std::uint32_t(s.r<4>(guest::reg::lr)), s.registers});
+        if (transfer && !transferred && entry == 0x10781320 && outcome == ImportDescriptorOutcome::tailed) {
+            // A supported mutable observer redirects this external callback
+            // to its caller's continuation. It supplies no owned result.
+            transferred = true;
+            s.pc = std::uint32_t(s.r<4>(guest::reg::lr));
+            throw GuestContextTransfer{&s, s.dispatch_scope};
+        }
+    }
+};
 std::vector<Call>* active_trace = nullptr;
 unsigned expected_scale = 0;
 unsigned external_calls = 0;
+bool handling_owned = false;
+struct OwnedProbeScope {
+    bool previous = handling_owned;
+    OwnedProbeScope() { handling_owned = true; }
+    ~OwnedProbeScope() { handling_owned = previous; }
+};
 bool message_service(std::uint32_t entry) {
     return entry == 0x10384500 || entry == 0x10384820 || entry == 0x103846e0
         || entry == 0x10383410 || entry == 0x10383b70 || entry == 0x10384020;
@@ -52,6 +83,10 @@ bool lifecycle_service(std::uint32_t entry) {
 bool calendar_service(std::uint32_t entry) {
     return entry == 0x104a9810 || entry == 0x104a9890 || entry == 0x104854f0
         || entry == 0x10485570 || entry == 0x10485600;
+}
+bool construction_service(std::uint32_t entry) {
+    return entry == 0x1049e4f0 || entry == initial_check || entry == 0x10773520
+        || entry == 0x104533a0 || entry == 0x10461390 || entry == external_configure;
 }
 std::string read_fixture_text(Cpu& c, std::uint32_t address) {
     std::string value;
@@ -69,11 +104,19 @@ void write_fixture_text(Cpu& c, std::uint32_t address, std::string_view text) {
 bool trace_lookup(State& s) {
     Cpu c(s);
     const auto entry = s.pc;
-    if (entry == lookup || entry == interpolate || entry == 0x10781320 || entry == 0x10715880
+    if (entry == lookup || entry == interpolate || entry == 0x10781320 || entry == 0x10715880 || entry == 0x107156f0
+            || (entry == calendar && c.lr() == 0x104f5d34)
             || message_service(entry) || lifecycle_service(entry) || calendar_service(entry) || entry == 0x10775130
-            || entry == 0x10739890 || entry == 0x1077b720 || entry == 0x10769b60) {
+            || construction_service(entry) || entry == 0x10739890 || entry == 0x1077b720 || entry == 0x10769b60) {
         if (entry == lookup) require(c.r(3) == stage && c.r(4) == key && c.lr() == 0x104f7034,
                 "African Nations real record lookup arguments");
+        if (entry == 0x1049e4f0) require(c.r(3) == object && c.lr() == 0x104f4cb0, "African real base constructor argument");
+        if (entry == 0x104533a0) require(c.r(3) == stage && c.r(4) == object && c.lr() == 0x104f4e54,
+                "African real shared table constructor arguments");
+        if (entry == 0x107156f0 && c.lr() == 0x104f5d04)
+            require(c.r(3) == c.sp() + 0x38 && c.r(4) == 5 && c.r(5) == 9
+                        && c.r(6) == std::uint16_t(c.u16(object + 0x40) - 1) && c.r(7) == 5,
+                    "African configuration date constructor consumes prior year and weekday");
         if (entry == interpolate) {
             require(c.r(3) == 40 && c.r(4) == 100 && c.r(6) == 3 && std::int32_t(c.r(5)) >= 0
                         && c.r(5) <= 3, "African Nations real interpolation arguments");
@@ -97,9 +140,55 @@ bool trace_lookup(State& s) {
                 require(c.r(5) == event && c.r(6) == extra, "African Nations forwarded event notification inputs");
         }
         if (active_trace) active_trace->push_back({entry, c.lr(), s.registers});
+        if (entry == initial_check) {
+            require(c.r(3) == object && c.r(4) == 1 && c.u32(object + 4) == definition,
+                    "African external initial file/load check inputs");
+            c.put32(service_log + 0x84, c.u32(c.u32(object + 4)));
+            c.put8(object + 0x49, c.u8(construction_mode) == 1);
+            c.set({{3, unsigned(c.u8(construction_mode) == 1)}, {4, 0xbad0bad0}, {5, 0xfacecafe}, {6, 0xaabbccdd}, {9, 0x11223344}});
+            c.finish();
+            return true;
+        }
+        if (entry == external_configure) {
+            require(c.r(3) == object && c.u32(object + 4) == definition, "African external virtual configuration inputs");
+            c.put32(service_log + 0x88, c.u32(c.r(3) + 4));
+            c.set({{3, 0}, {4, 0xbad0bad0}, {9, 0x12345678}});
+            c.finish();
+            return true;
+        }
+        if (entry == 0x10773520) {
+            require(c.r(3) == 0x634, "African shared table allocation size");
+            c.set(3, c.u8(construction_mode) == 2 ? 0 : stage);
+            c.finish();
+            return true;
+        }
+        if (entry == 0x10461390) {
+            require(c.r(3) == stage && c.u32(stage + 0x5b0) == object, "African real table constructor/database-reset boundary");
+            // The shared table constructor and its row/date initializers run
+            // real code. Only its database-driven reset is an external model.
+            c.put32(service_log + 0x80, c.u32(stage + 0x5b0));
+            c.put32(stage + 0x5cc, 0);
+            c.set(3, 0xbad0bad0);
+            c.finish();
+            return true;
+        }
+        if (entry == 0x10781320 && c.u8(handled_callback)) {
+            const auto resume = c.lr();
+            require(try_modern_import_descriptor(s, entry), "African handled callback descriptor must resolve");
+            run_until(s, resume);
+            return true;
+        }
+        if (entry == calendar && c.lr() == 0x104f5d34 && c.u8(handled_owned) && !handling_owned) {
+            OwnedProbeScope scope;
+            // A handled probe still executes the actual selected owner:
+            // original nested bypass on the reference side, C++ normally.
+            run_until(s, c.lr());
+            return true;
+        }
         if (entry == 0x10775130) {
-            require(c.r(3) == 0xe4 || c.r(3) == 0x1e0, "African calendar allocation size");
-            c.set(3, c.u8(calendar_fail) ? 0 : calendar_rows);
+            require(c.r(3) == 0xe4 || c.r(3) == 0x1e0 || c.r(3) == 16, "African calendar/child-array allocation size");
+            const auto result = c.r(3) == 16 ? c.u8(construction_mode) == 4 ? 0 : child_array : c.u8(calendar_fail) ? 0 : calendar_rows;
+            c.set(3, result);
             c.finish();
             return true;
         }
@@ -120,7 +209,8 @@ bool trace_lookup(State& s) {
         if (entry == 0x1077b720) {
             require(c.r(3) == fixture + 0xe00 && c.r(4) == fixture + 0xf14
                         && read_fixture_text(c, c.r(4)) == "v%s %s.%s %d"
-                        && (c.r(8) == 0x9e || c.r(8) == 0xe0), "African assertion formatter destination/format/line");
+                        && (c.r(8) == 0x9e || c.r(8) == 0xe0 || c.r(8) == 0x58 || c.r(8) == 0x5f),
+                    "African assertion formatter destination/format/line");
             // Formatting's native stream/CFM initialization is outside the
             // fixture. Consume all supplied varargs and write their message;
             // keep the owned allocation-failure decision and ABI independent.
@@ -284,14 +374,21 @@ std::unique_ptr<State> child_fixture(unsigned mode = 0) {
     // Use a different mapped TOC to prove the real CFM adapter switches it,
     // saves the caller's value and lets this owner restore it afterwards.
     c.put32(child_descriptor + 4, toc - 0x100);
+    if (mode == 3 || mode == 4) c.put8(descriptor_observation, mode == 4 ? 2 : 1);
+    if (mode == 5) c.put8(scalar_capture, 1);
+    if (mode == 6) c.put8(handled_callback, 1);
     s->pc = update;
     return s;
 }
 
+std::unique_ptr<State> configuration_fixture(bool fail = false, unsigned year = 2002);
+std::unique_ptr<State> construction_fixture(unsigned mode = 0, unsigned year = 2001);
 std::unique_ptr<State> entry_fixture(std::uint32_t entry) {
     if (entry == notify) return notification_fixture(0, 3);
     if (entry == destroy) return destruction_fixture(1);
     if (entry == update) return child_fixture();
+    if (entry == configure) return configuration_fixture();
+    if (entry == create) return construction_fixture();
     return placement_fixture();
 }
 
@@ -336,6 +433,59 @@ std::unique_ptr<State> calendar_fixture(std::uint32_t phase, bool flag = true, u
     return s;
 }
 
+std::unique_ptr<State> configuration_fixture(bool fail, unsigned year) {
+    auto s = calendar_fixture(UINT32_MAX, false, year, fail);
+    Cpu c(*s);
+    c.put32(object, child_vtable);
+    c.put32(child_vtable + 0x44, child_descriptor);
+    c.put32(child_descriptor, calendar);
+    c.put32(child_descriptor + 4, toc);
+    s->pc = configure;
+    return s;
+}
+
+std::unique_ptr<State> construction_fixture(unsigned mode, unsigned year) {
+    auto s = calendar_fixture(UINT32_MAX);
+    Cpu c(*s);
+    c.set({{4, year}, {5, definition}});
+    c.put32(definition, 42);
+    c.put32(toc - 0x6078, child_vtable);
+    c.put32(toc - 0x619c, 0x108cf608);
+    c.put32(toc - 0x6158, 0x108d796c);
+    c.put32(toc - 0x3778, 1); // An existing shared table keeps its pool initialized.
+    c.put32(toc - 0x4988, fixture + 0x3500);
+    c.put32(fixture + 0x3500, 0xbf800000); // Original table-row missing-value float: -1.
+    for (const auto [slot, offset, target] : std::array<std::array<std::uint32_t,3>,3>{{
+            {0x20,0x20,initial_check}, {0x94,0x28,mode == 3 ? external_configure : configure}, {0x44,0x30,calendar}}}) {
+        c.put32(child_vtable + slot, child_descriptor + offset);
+        c.put32(child_descriptor + offset, target);
+        c.put32(child_descriptor + offset + 4, toc);
+    }
+    for (unsigned i = 0; i < 16; ++i) c.put8(child_array + i, 0xcb);
+    for (unsigned i = 0; i < 0x634; ++i) c.put8(stage + i, 0xcb);
+    c.put8(construction_mode, mode);
+    c.put8(calendar_fail, mode == 5);
+    s->pc = create;
+    return s;
+}
+
+void characterize_original_construction() {
+    auto seed = construction_fixture();
+    std::vector<Call> calls;
+    Services services(&calls);
+    try { african_nations_run_original(*seed, create); }
+    catch (...) {
+        std::cerr << "African original constructor stopPC=" << hex_address(seed->pc) << '\n';
+        for (const auto& call : calls) std::cerr << " dependency=" << hex_address(call.entry) << " LR=" << hex_address(call.continuation) << '\n';
+        throw;
+    }
+    Cpu c(*seed);
+    require(c.r(3) == object && c.u16(object + 0x40) == 2002 && c.u32(object + 8) == stage
+                && c.u32(object + 0xc) == child_array && c.u32(object + 0xbc) == calendar_rows,
+            "African original full construction contract");
+    std::cout << "AFRICAN_NATIONS original-only constructor characterization: complete return (not handwritten equivalence)\n";
+}
+
 void characterize_original_calendar() {
     for (const auto phase : {0xffffffffu, 0u, 1u, 2u, 3u, 4u, 0xffffff80u, 0x100u, 0x103u}) {
         auto seed = calendar_fixture(phase);
@@ -363,8 +513,17 @@ unsigned rejected_results = 0, rejected_arguments = 0;
 Outcome compare_routes(const State& seed, bool observed = true, bool negative = false) {
     auto original = clone(seed), modern = clone(seed);
     original->allocator_original = modern->allocator_original = seed.allocator_original;
+    original->import_descriptor_original = modern->import_descriptor_original = seed.import_descriptor_original;
+    original->import_descriptor_original_body = modern->import_descriptor_original_body = seed.import_descriptor_original_body;
     Effects expected, actual;
     expected.state = original.get(); actual.state = modern.get();
+    DescriptorEffects old_descriptor, new_descriptor;
+    const auto descriptor_mode = Cpu(*original).u8(descriptor_observation);
+    if (descriptor_mode) {
+        old_descriptor.transfer = new_descriptor.transfer = descriptor_mode == 2;
+        original->import_descriptor_observer = &old_descriptor;
+        modern->import_descriptor_observer = &new_descriptor;
+    }
     if (seed.pc == notify && Cpu(*original).u8(mutate)) {
         expected.on_read = actual.on_read = [](State& s, Effects& effects, std::uint32_t address, unsigned) {
             if (effects.mutated || address != stack - 0x48 || effects.log.back().value != 0x104f5e40) return;
@@ -384,6 +543,15 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
             Cpu(s).put16(object + 0x40, 2004);
         };
     }
+    if (seed.pc == create && Cpu(*original).u8(construction_mode) == 6) {
+        expected.on_read = actual.on_read = [](State& s, Effects& effects, std::uint32_t address, unsigned) {
+            if (effects.mutated || address != stack + 0x18) return;
+            Cpu cpu(s);
+            if (cpu.u32(object + 0x2c) != 4) return;
+            effects.mutated = true;
+            cpu.put32(object + 0x2c, 0);
+        };
+    }
     if (observed) {
         original->memory.date_observer = &expected;
         modern->memory.date_observer = &actual;
@@ -391,14 +559,18 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
     std::vector<Call> old_calls, new_calls;
     const auto run = [observed](State& s, bool reference, std::vector<Call>& calls) {
         Services services(observed ? &calls : nullptr);
+        std::unique_ptr<GuestScalarContextCapture> capture;
+        if (Cpu(s).u8(scalar_capture)) capture = std::make_unique<GuestScalarContextCapture>(&s);
+        const auto resume = Cpu(s).lr();
         try {
             if (reference) african_nations_run_original(s, s.pc);
-            else run_until(s, return_sentinel);
+            else run_until(s, resume);
             return std::string{};
         } catch (const std::runtime_error& error) { return std::string(error.what()); }
     };
     const auto old_stop = run(*original, true, old_calls), new_stop = run(*modern, false, new_calls);
     original->memory.date_observer = modern->memory.date_observer = nullptr;
+    original->import_descriptor_observer = modern->import_descriptor_observer = nullptr;
     const auto label = "African " + hex_address(seed.pc) + " budget=" + std::to_string(seed.budget);
     if (seed.pc == calendar && !old_stop.empty() && old_stop != "Native instruction budget exhausted") {
         std::cerr << label << " calendar original stopPC=" << hex_address(original->pc) << '\n';
@@ -437,6 +609,13 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
         }
     }
     require(old_calls == new_calls, label + " dependency call-state mismatch");
+    require(old_descriptor.entries == new_descriptor.entries && old_descriptor.exits == new_descriptor.exits,
+            label + " descriptor observer states");
+    if (descriptor_mode) require(!old_descriptor.entries.empty(), label + " descriptor observer not reached");
+    if (descriptor_mode == 2) {
+        require(old_descriptor.transferred && new_descriptor.transferred && Cpu(*modern).u32(child) == child_vtable,
+                label + " nonlocal descriptor continuation or external callee skip");
+    }
     require(original->executed == modern->executed, label + " instruction accounting="
             + std::to_string(original->executed) + "/" + std::to_string(modern->executed));
     const Image image(*original);
@@ -445,9 +624,12 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
     if (seed.pc == notify && c.u8(mutate)) require(expected.mutated && actual.mutated, "African post-interpolation observer was not reached");
     if (seed.pc == calendar && c.u8(calendar_mutation) && new_stop.empty())
         require(expected.mutated && actual.mutated, "African post-date-builder observer was not reached");
+    if (seed.pc == create && c.u8(construction_mode) == 6 && new_stop.empty())
+        require(expected.mutated && actual.mutated, "African live capacity observer was not reached");
     const auto record = c.r(3);
     if (negative) {
-        const auto corrupt_at = seed.pc == calendar ? calendar_count : seed.pc == notify || seed.pc == destroy ? service_log
+        const auto corrupt_at = seed.pc == calendar ? calendar_count : seed.pc == configure ? object + 0xbc : seed.pc == create ? object + 8
+            : seed.pc == notify || seed.pc == destroy ? service_log
             : seed.pc == update ? child : record + 0x76;
         const auto before = c.u8(corrupt_at);
         c.put8(corrupt_at, before ^ 1);
@@ -459,10 +641,10 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
         ++rejected_results;
         const auto target = std::ranges::find_if(new_calls, [](const Call& call) {
             return call.entry == lookup || message_service(call.entry) || lifecycle_service(call.entry)
-                || calendar_service(call.entry) || call.entry == 0x10715880;
+                || calendar_service(call.entry) || construction_service(call.entry) || call.entry == 0x10715880;
         });
         require(target != new_calls.end(), "African argument control did not reach its call");
-        target->machine[guest::reg::gpr(seed.pc == update ? 3 : 4)] ^= 4;
+        target->machine[guest::reg::gpr(target->entry == 0x10715880 || construction_service(target->entry) ? 3 : 4)] ^= 4;
         require(old_calls != new_calls, "African consumed lookup argument corruption was missed");
         ++rejected_arguments;
     }
@@ -472,13 +654,23 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
         for (unsigned i = 0; i < 3; ++i) { out.fields[i] = c.u8(record + 0x76 + i); out.ids[i] = c.u32(rows + i * 0x7c); }
         out.record_id = c.u32(record);
     }
+    if (new_stop.empty() && seed.pc == create) {
+        out.fields = {c.u16(object + 0x40), c.u32(object + 0x2c), c.u8(calendar_success)};
+        out.ids = {c.u32(object + 8), c.u32(object + 0xc), c.u32(object + 0xbc)};
+    }
     return out;
 }
 
-struct CalendarTotals { unsigned returned, budgets; };
-CalendarTotals compare_calendars() {
+struct ComparisonTotals { unsigned returned, budgets; };
+ComparisonTotals compare_calendars() {
     unsigned returned = 0, budgets = 0;
     const auto previous_results = rejected_results, previous_arguments = rejected_arguments;
+    {
+        auto failed = calendar_fixture(0, true, 2002, true);
+        failed->budget = 31;
+        require(compare_routes(*failed).stop == "Native instruction budget exhausted", "African inline version getter budget boundary");
+        ++budgets;
+    }
     for (const auto phase : {0xffffffffu, 0u, 1u, 2u, 3u, 4u, 0xffffff80u, 0x100u, 0x103u})
         for (const auto flag : {false, true}) for (const auto year : {1900u, 2000u, 2001u, 2002u, 2004u}) {
             require(compare_routes(*calendar_fixture(phase, flag, year)).stop.empty(), "African returned calendar partition");
@@ -497,6 +689,9 @@ CalendarTotals compare_calendars() {
             seed->budget = limit;
             if (compare_routes(*seed).stop == "Native instruction budget exhausted") ++budgets;
         }
+        seed->budget = 4;
+        require(compare_routes(*seed).stop == "Native instruction budget exhausted", "African calendar page-seam partial prologue");
+        ++budgets;
         for (unsigned alias = 0; alias < 3; ++alias) {
             auto shared = calendar_fixture(phase);
             Cpu cpu(*shared);
@@ -527,21 +722,90 @@ CalendarTotals compare_calendars() {
         require(compare_routes(*calendar_fixture(phase, flag, year)).stop.empty(), "African seeded calendar scalar mutation");
         ++returned;
     }
-    for (const auto fail : {false, true}) {
-        auto parent = calendar_fixture(UINT32_MAX, false, 2002, fail);
-        Cpu cpu(*parent);
-        cpu.put32(object, child_vtable);
-        cpu.put32(child_vtable + 0x44, child_descriptor);
+    for (const auto fail : {false, true}) for (const auto year : {1900u, 1901u, 2000u, 2001u, 2002u, 2004u, 2100u, 0xdead07d2u}) {
+        auto parent = configuration_fixture(fail, year);
+        require(compare_routes(*parent, true, !fail && year == 2002).stop.empty(), "African configuration caller/calendar year integration");
+        ++returned;
+    }
+    for (const auto entry : {update, configure}) for (const auto body_only : {false, true}) {
+        auto seed = entry_fixture(entry);
+        seed->import_descriptor_original = !body_only;
+        seed->import_descriptor_original_body = body_only ? 0x10781320 : 0;
+        require(compare_routes(*seed).stop.empty(), "African original descriptor and original-body controls");
+        ++returned;
+    }
+    for (const auto mode : {3u, 4u, 5u, 6u}) {
+        require(compare_routes(*child_fixture(mode)).stop.empty(), "African descriptor observation/continuation/scalar-capture route");
+        ++returned;
+    }
+    {
+        auto seed = configuration_fixture();
+        Cpu(*seed).put8(descriptor_observation, 1);
+        require(compare_routes(*seed).stop.empty(), "African observed virtual owned calendar call");
+        ++returned;
+    }
+    {
+        auto seed = configuration_fixture();
+        Cpu(*seed).put8(handled_owned, 1);
+        require(compare_routes(*seed).stop.empty(), "African handled probe executes the real owned calendar");
+        ++returned;
+    }
+    {
+        auto seed = child_fixture();
+        Cpu cpu(*seed);
+        // A valid descriptor tail to the owned, no-allocation calendar arm
+        // exercises the direct owner boundary with every diagnostic disabled.
         cpu.put32(child_descriptor, calendar);
-        cpu.put32(child_descriptor + 4, toc);
-        parent->pc = 0x104f5c80;
-        // This owner is still generated. Compare its full return through
-        // the real date constructor and virtual calendar callback, with the
-        // nested module-wide original bypass versus normal C++ ownership.
-        require(compare_routes(*parent).stop.empty(), "African real configuration caller/calendar integration");
+        cpu.set(4, 4);
+        require(compare_routes(*seed, false).stop.empty(), "African owned virtual destination without diagnostic probes");
         ++returned;
     }
     std::cout << "AFRICAN_NATIONS calendar: " << returned << " returned comparisons, " << budgets << " budget stops; "
+              << rejected_results - previous_results << " wrong results and " << rejected_arguments - previous_arguments << " wrong arguments detected\n";
+    return {returned, budgets};
+}
+
+ComparisonTotals compare_constructors() {
+    unsigned returned = 0, budgets = 0;
+    const auto previous_results = rejected_results, previous_arguments = rejected_arguments;
+    for (unsigned mode = 0; mode < 7; ++mode)
+        for (const auto year : {0u, 1995u, 1996u, 1999u, 2000u, 2001u, 2002u, 0x7ffeu, 0x7fffu, 0x8000u, 0xffffu, 0xdead07d2u}) {
+            const auto out = compare_routes(*construction_fixture(mode, year), true, mode == 0 && year == 2001);
+            auto expected_year = std::uint16_t(year + 1);
+            if (expected_year & 1) expected_year = std::uint16_t(expected_year + 1);
+            const std::array<unsigned,3> fields{expected_year, mode == 1 || mode == 6 ? 0u : 4u,
+                mode == 2 || mode == 3 || mode == 5 ? 0u : 1u};
+            const std::array<unsigned,3> ids{mode == 1 || mode == 2 || mode == 3 ? 0u : stage,
+                mode == 1 || mode == 4 || mode == 6 ? 0u : child_array,
+                mode == 1 || mode == 3 || mode == 5 ? 0u : calendar_rows};
+            require(out.stop.empty() && out.fields == fields && out.ids == ids,
+                    "African constructor year/mode=" + std::to_string(year) + "/" + std::to_string(mode) + " stop=" + out.stop);
+            ++returned;
+        }
+    std::mt19937 random(0x414652c7);
+    for (unsigned i = 0; i < 12; ++i) {
+        const auto mode = random() % 7, year = 1900 + random() % 301;
+        require(compare_routes(*construction_fixture(mode, year)).stop.empty(), "African seeded constructor scalar mutation");
+        ++returned;
+    }
+    {
+        auto caller = construction_fixture();
+        caller->pc = create_caller;
+        Cpu(*caller).set_lr(create_resume);
+        // Execute the actual manager's generated bl and stop at its return
+        // boundary. Normal mode calls the owner in place; the reference
+        // declines the module and executes its true generated bodies.
+        require(compare_routes(*caller).stop.empty(), "African real generated constructor call site/default ownership");
+        ++returned;
+    }
+    auto seed = construction_fixture();
+    const auto complete = compare_routes(*seed);
+    ++returned;
+    for (unsigned limit = 0; limit < complete.instructions; limit += 13) {
+        seed->budget = limit;
+        if (compare_routes(*seed).stop == "Native instruction budget exhausted") ++budgets;
+    }
+    std::cout << "AFRICAN_NATIONS constructor: " << returned << " returned comparisons, " << budgets << " budget stops; "
               << rejected_results - previous_results << " wrong results and " << rejected_arguments - previous_arguments << " wrong arguments detected\n";
     return {returned, budgets};
 }
@@ -551,6 +815,7 @@ void compare_block_sequence() {
     Cpu c(*seed);
     c.put32(object + 0xc, child_array);
     c.put32(object + 0x30, 2);
+    c.put32(object, child_vtable);
     c.put32(child, child_vtable);
     c.put32(toc - 0x6078, child_vtable);
     c.put32(child_vtable + 8, child_descriptor);
@@ -560,6 +825,9 @@ void compare_block_sequence() {
     c.put32(child_vtable + 0x38, child_descriptor + 8);
     c.put32(child_descriptor + 8, 0x10715880);
     c.put32(child_descriptor + 12, toc - 0x100);
+    c.put32(child_vtable + 0x44, child_descriptor + 16);
+    c.put32(child_descriptor + 16, calendar);
+    c.put32(child_descriptor + 20, toc);
     c.put32(toc - 0x7b48, manager_slot);
     c.put32(manager_slot, manager);
     c.put32(object + 4, definition);
@@ -579,16 +847,14 @@ void compare_block_sequence() {
     const auto run = [](State& state, bool reference, std::vector<Call>& calls) {
         Services services(&calls);
         Cpu cpu(state);
-        for (const auto entry : {update, calendar, notify, placements, destroy}) {
+        for (const auto entry : {update, configure, notify, placements, destroy}) {
             cpu.set({{3, object}, {4, key}, {5, 0}, {6, 3}, {7, 4}, {8, event}, {9, extra}});
             if (entry == placements) cpu.set({{5, 0}, {6, 1}, {7, 3}, {8, 4}});
-            if (entry == calendar) cpu.set({{4, UINT32_MAX}, {5, calendar_count}, {6, calendar_code}, {7, calendar_flag}});
             if (entry == destroy) cpu.set(4, 1);
             cpu.set_lr(return_sentinel);
             state.pc = entry;
             if (reference) african_nations_run_original(state, entry);
             else run_until(state, return_sentinel);
-            if (entry == calendar) cpu.put32(object + 0xbc, cpu.r(3));
             require(state.pc == return_sentinel && cpu.r(2) == toc, "African block sequence return/TOC");
         }
     };
@@ -596,16 +862,16 @@ void compare_block_sequence() {
     run(*modern, false, new_calls);
     original->memory.date_observer = modern->memory.date_observer = nullptr;
     require(old_effects.bytes == new_effects.bytes && old_calls == new_calls,
-            "African five-entry sequence ordered memory/dependency state");
-    require(original->executed == modern->executed, "African five-entry sequence instruction accounting");
-    Image(*original).compare(*modern, "African five-entry sequence final state");
+            "African six-entry sequence ordered memory/dependency state");
+    require(original->executed == modern->executed, "African six-entry sequence instruction accounting");
+    Image(*original).compare(*modern, "African six-entry sequence final state");
     Cpu result(*modern);
     require(result.u16(child) == 40 && result.u16(child + 2) == 1972 && result.u8(child + 4) == 1,
             "African real virtual date constructor persisted through sequence");
     require(result.u32(manager) == result.u32(key) && result.u8(rows + 0x7c + 0x76) == 5
                 && !result.u32(object + 0xc) && !result.u32(object + 0xbc),
             "African sequence consumes notifications, placements and cleanup");
-    std::cout << "AFRICAN_NATIONS controlled update/calendar/notify/placements/destroy sequence: complete final state matches\n";
+    std::cout << "AFRICAN_NATIONS controlled update/configure/calendar/notify/placements/destroy sequence: complete final state matches\n";
 }
 
 void verify() {
@@ -639,7 +905,7 @@ void verify() {
         require(compare_routes(*placement_fixture(0, 1, 3, 4, mode), false).stop.empty(), "African normal route without diagnostics");
         ++returned;
     }
-    for (const auto entry : {placements, notify, destroy, update}) {
+    for (const auto entry : {placements, notify, destroy, update, configure}) {
         auto seed = entry_fixture(entry);
         const auto complete = compare_routes(*seed);
         ++returned;
@@ -699,7 +965,7 @@ void verify() {
         require(compare_routes(*destruction_fixture(mode, last, present, schedule, table)).stop.empty(), "African seeded lifecycle mutation");
         ++returned;
     }
-    for (const auto entry : {placements, notify, destroy, update}) {
+    for (const auto entry : {placements, notify, destroy, update, configure, create}) {
         RoutineChecker checker([entry](std::uint32_t actual) { return actual == entry; }, 1, 1);
         checker.strict_volatile = true;
         routine_checker = &checker;
@@ -727,10 +993,13 @@ void verify() {
     const auto calendars = compare_calendars();
     returned += calendars.returned;
     budgets += calendars.budgets;
+    const auto constructors = compare_constructors();
+    returned += constructors.returned;
+    budgets += constructors.budgets;
     compare_block_sequence();
-    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (40 scalar mutations; seeds0x414652/0x414652ca), "
+    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (52 scalar mutations; seeds0x414652/0x414652ca/0x414652c7), "
               << budgets << " budget stops, " << faults << " partial faults; " << rejected_results << " wrong result and "
-              << rejected_arguments << " wrong consumed argument detected; five distinct checked hooks\n";
+              << rejected_arguments << " wrong consumed argument detected; seven distinct checked hooks\n";
 }
 }
 
@@ -744,6 +1013,8 @@ int main(int argc, char** argv) try {
 #endif
     if (argc == 2 && std::string_view(argv[1]) == "--calendar-reference") characterize_original_calendar();
     else if (argc == 2 && std::string_view(argv[1]) == "--calendar") compare_calendars();
+    else if (argc == 2 && std::string_view(argv[1]) == "--construction-reference") characterize_original_construction();
+    else if (argc == 2 && std::string_view(argv[1]) == "--construction") compare_constructors();
     else if (argc == 1) verify();
-    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar]");
+    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar|--construction-reference|--construction]");
 } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

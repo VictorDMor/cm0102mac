@@ -2,6 +2,7 @@
 #include "guest_values.hpp"
 #include "guest_saved_registers.hpp"
 #include "routine_check.hpp"
+#include "import_descriptor_adapter.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,6 +19,9 @@ constexpr auto notification_entry = 0x104f5da0u;
 constexpr auto destroy_entry = 0x104f4ee0u;
 constexpr auto child_update_entry = 0x104f5d60u;
 constexpr auto calendar_entry = 0x104f4ff0u;
+constexpr auto configure_entry = 0x104f5c80u;
+constexpr auto create_entry = 0x104f4c80u;
+void call_virtual(Cpu&, std::uint32_t resume);
 
 void block(Cpu& c, std::uint32_t pc, unsigned instructions) {
     c.s.step(pc);
@@ -76,32 +80,174 @@ struct KnockoutRound {
     }
 };
 
-void calendar_allocation_failure(Cpu& c, std::uint32_t pc, unsigned name, unsigned extension, unsigned line) {
+void report_failure(Cpu& c, std::uint32_t pc, std::uint32_t file, std::uint32_t message,
+                    unsigned name, unsigned extension, unsigned line) {
     block(c, pc, 6);
-    c.set({{3, c.r(28)}, {6, c.sp() + name}, {7, c.sp() + extension}, {4, 0}, {5, 0}});
+    c.set({{3, file}, {6, c.sp() + name}, {7, c.sp() + extension}, {4, 0}, {5, 0}});
     c.call(0x10739890, pc + 24);
     block(c, pc + 24, 1);
-    c.call(0x10768810, pc + 28);
+    // The reference inlines this two-instruction version getter at its call
+    // site; another dispatcher boundary would change a finite-budget prefix.
+    c.link(pc + 28);
+    c.set(3, c.toc(-0x5b20));
+    c.s.charge(2);
     block(c, pc + 28, 7);
-    c.set({{5, c.r(3)}, {3, c.r(27)}, {4, c.r(28) + 0x14},
+    c.set({{5, c.r(3)}, {3, message}, {4, file + 0x14},
            {6, c.sp() + name}, {7, c.sp() + extension}, {8, line}});
     c.call(0x1077b720, pc + 56);
     block(c, pc + 56, 4);
-    c.set({{4, c.r(27)}, {3, c.r(28) + 0x21}, {5, 0}});
+    c.set({{4, message}, {3, file + 0x21}, {5, 0}});
     c.call(0x10769b60, pc + 72);
+}
+
+void calendar_allocation_failure(Cpu& c, std::uint32_t pc, unsigned name, unsigned extension, unsigned line) {
+    report_failure(c, pc, c.r(28), c.r(27), name, extension, line);
     block(c, pc + 72, 4);
     c.set({{0, 0}, {3, 0}});
     c.put8(c.r(31), 0);
 }
 
+void create_competition(Cpu& c) {
+    GuestNativeScope scope(c.s, create_entry);
+    block(c, create_entry, 12);
+    const auto stack = c.sp(), frame = stack - 0xa0;
+    const auto object_slot = frame + 0xb8;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<27>(c, stack);
+    const guest::Kept<29> success(c, c.toc(-0x7bac));
+    guest::Kept<27> retained(c, c.r(4));
+    const guest::Kept<30> message(c, c.toc(-0x7ba8));
+    const guest::Kept<28> definition(c, c.r(5));
+    const guest::Kept<31> file(c, c.toc(-0x45ac));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.put32(object_slot, c.r(3));
+    // This constructor homes its object above the frame, then reloads it
+    // between record writes and calls. Keep those observable stack reads.
+    const auto object = [&](unsigned argument) {
+        const auto address = c.u32(object_slot);
+        c.set(argument, address);
+        return address;
+    };
+    object(3);
+    c.call(0x1049e4f0, 0x104f4cb0);
+    block(c, 0x104f4cb0, 23);
+    c.set(6, c.toc(-0x6078));
+    c.set(5, 4);
+    auto current = object(3);
+    c.set({{4, UINT32_MAX}, {0, 0}});
+    c.put32(current, c.r(6));
+    current = object(3); c.put16(current + 0x40, retained);
+    current = object(3); c.put32(current + 4, definition);
+    current = object(3); c.put8(current + 0x42, c.r(5));
+    current = object(3); c.put32(current + 0x1c, c.r(4));
+    current = object(3); c.put32(current + 0x20, c.r(4));
+    current = object(3); c.put8(current + 0x4a, c.r(0));
+    current = object(4);
+    c.set(3, std::uint32_t(c.i16(current + 0x40)));
+    c.set(0, c.r(3) + 1);
+    c.put16(current + 0x40, c.r(0));
+    for (;;) {
+        block(c, 0x104f4d18, 8);
+        current = object(5);
+        const auto year = std::int32_t(c.i16(current + 0x40));
+        const auto offset = year - 1996;
+        // Signed remainder replaces the rotate/xor sequence; retain only
+        // its final register and condition effects at the ABI boundary.
+        c.set(3, std::uint32_t(offset) >> 31);
+        c.set(0, std::uint32_t(offset % 2));
+        if (!record_compare(c, std::int32_t(c.r(0)))) break;
+        block(c, 0x104f4d0c, 3);
+        c.set(3, std::uint32_t(c.i16(c.r(5) + 0x40)));
+        c.set(0, c.r(3) + 1);
+        c.put16(c.r(5) + 0x40, c.r(0));
+    }
+    block(c, 0x104f4d38, 7);
+    c.set({{0, 15}, {4, 1}});
+    c.put8(c.r(5) + 0x4b, c.r(0));
+    current = object(3);
+    c.set(12, c.u32(current));
+    c.set(12, c.u32(c.r(12) + 0x20));
+    call_virtual(c, 0x104f4d54);
+    block(c, 0x104f4d54, 3);
+    c.set(2, c.u32(frame + 0x14));
+    if (compare(c, std::int32_t(c.r(3)))) {
+        block(c, 0x104f4d60, 2);
+        object(3);
+    } else {
+        block(c, 0x104f4d68, 18);
+        current = object(3);
+        c.set({{0, 40}, {5, 0}, {4, UINT32_MAX}});
+        c.put16(current + 0xdc, c.r(0));
+        c.set(0, 4);
+        current = object(3); c.put8(current + 0x45, c.r(5));
+        current = object(3); c.put8(current + 0x44, c.r(4));
+        current = object(3); c.put32(current + 0x30, c.r(4));
+        current = object(3); c.put32(current + 0x2c, c.r(0));
+        current = object(3); c.set(0, c.u32(current + 0x2c));
+        if (compare(c, std::int32_t(c.r(0))) > 0) {
+            block(c, 0x104f4db0, 2);
+            c.set(3, c.r(0) * 4);
+            c.call(0x10775130, 0x104f4db8);
+            block(c, 0x104f4db8, 3);
+            current = object(4);
+            c.put32(current + 0xc, c.r(3));
+        } else {
+            block(c, 0x104f4dc4, 1);
+            c.put32(c.r(3) + 0xc, c.r(5));
+        }
+        block(c, 0x104f4dc8, 4);
+        current = object(3);
+        c.set(12, c.u32(current));
+        c.set(12, c.u32(c.r(12) + 0x94));
+        call_virtual(c, 0x104f4dd8);
+        block(c, 0x104f4dd8, 3);
+        c.set(2, c.u32(frame + 0x14));
+        if (!compare(c, std::int32_t(c.r(3)))) {
+            report_failure(c, 0x104f4de4, file, message, 0x68, 0x40, 0x58);
+            block(c, 0x104f4e2c, 4);
+            c.set(0, 0); c.put8(success, 0);
+            object(3);
+        } else {
+            block(c, 0x104f4e3c, 2);
+            c.set(3, 0x634);
+            c.call(0x10773520, 0x104f4e44);
+            block(c, 0x104f4e44, 2);
+            retained = c.r(3);
+            if (record_compare(c, std::int32_t(std::uint32_t(retained)))) {
+                block(c, 0x104f4e4c, 2);
+                object(4);
+                c.call(0x104533a0, 0x104f4e54);
+            }
+            block(c, 0x104f4e54, 6);
+            current = object(3); c.put32(current + 8, retained);
+            current = object(3); c.set(0, c.u32(current + 8));
+            if (!compare_logical(c, c.r(0))) {
+                report_failure(c, 0x104f4e6c, file, message, 0x48, 0x38, 0x5f);
+                block(c, 0x104f4eb4, 3);
+                c.set(0, 0); c.put8(success, 0);
+                object(3);
+            }
+        }
+    }
+    block(c, 0x104f4ec0, 5);
+    c.set(0, c.u32(frame + 0xa8));
+    c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<27, true>(c, stack);
+    c.finish();
+}
+
 void build_calendar(Cpu& c) {
     GuestNativeScope scope(c.s, calendar_entry);
-    block(c, calendar_entry, 11);
+    block(c, calendar_entry, 4);
     const auto stack = c.sp(), frame = stack - 0xb0;
     c.set(0, c.lr());
     guest::transfer_saved_registers<26>(c, stack);
     c.set(31, c.toc(-0x7bac));
     c.set(29, c.r(3));
+    // The generated reference returns to its dispatcher at this page seam.
+    // Preserve its partial prologue when the allowance ends after four ops.
+    block(c, 0x104f5000, 7);
     c.set(27, c.toc(-0x7ba8));
     c.set(28, c.toc(-0x45ac));
     c.put32(stack + 8, c.r(0));
@@ -253,6 +399,60 @@ void build_calendar(Cpu& c) {
     c.finish();
 }
 
+struct TournamentSettings {
+    Cpu& c;
+    std::uint32_t address;
+    guest::Field<std::int16_t> year() const { return {c, address + 0x40}; }
+    void initialize_rules() const {
+        c.put16(address + 0x3c, 1);
+        constexpr std::array<std::pair<unsigned, unsigned>, 13> fields{{
+            {0xc4,3}, {0xc5,1}, {0xc6,10}, {0x43,2}, {0xc7,1}, {0xc8,2}, {0xc9,3},
+            {0xc0,2}, {0xc1,0}, {0xc2,0}, {0xc3,0}, {0x46,7}, {0x47,3}
+        }};
+        for (const auto [offset, value] : fields) c.put8(address + offset, value);
+    }
+};
+
+void configure_competition(Cpu& c) {
+    GuestNativeScope scope(c.s, configure_entry);
+    block(c, configure_entry, 33);
+    const auto stack = c.sp(), frame = stack - 0x50;
+    c.set(0, c.lr());
+    c.put32(stack - 4, c.r(31));
+    c.set({{11,1}, {10,3}});
+    c.put32(stack + 8, c.r(0));
+    const guest::Kept<31> competition(c, c.r(3));
+    c.set({{9,10}, {8,2}});
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.set({{6,0}, {0,7}, {4,5}, {5,9}, {7,5}});
+    const TournamentSettings settings{c, competition};
+    settings.initialize_rules();
+    c.set(3, frame + 0x38);
+    c.set(6, std::uint32_t(std::int32_t(settings.year())));
+    c.set(0, c.r(6) - 1);
+    c.set(6, std::uint16_t(c.r(0)));
+    c.call(0x107156f0, 0x104f5d04);
+    block(c, 0x104f5d04, 12);
+    c.set(4, std::uint32_t(c.i16(frame + 0x38)));
+    c.set(0, UINT32_MAX);
+    c.set(3, competition);
+    c.set(5, competition + 0xa6);
+    c.put16(competition + 0xb6, c.r(4));
+    c.set({{6, competition + 0x3a}, {4, UINT32_MAX}, {7, 0}});
+    c.put16(competition + 0xb8, c.r(0));
+    c.set(12, c.u32(competition));
+    c.set(12, c.u32(c.r(12) + 0x44));
+    call_virtual(c, 0x104f5d34);
+    block(c, 0x104f5d34, 8);
+    c.set(2, c.u32(frame + 0x14));
+    c.put32(competition + 0xbc, c.r(3));
+    c.set(3, 1);
+    c.set(0, c.u32(frame + 0x58));
+    c.set(1, stack); c.set_lr(c.r(0));
+    c.set(31, c.u32(stack - 4));
+    c.finish();
+}
+
 void destroy_competition(Cpu& c) {
     GuestNativeScope scope(c.s, destroy_entry);
     block(c, destroy_entry, 10);
@@ -299,7 +499,7 @@ void destroy_competition(Cpu& c) {
                 c.set(12, c.u32(c.r(3)));
                 c.set(4, 1);
                 c.set(12, c.u32(c.r(12) + 8));
-                c.call(0x10781320, 0x104f4f60);
+                call_virtual(c, 0x104f4f60);
                 block(c, 0x104f4f60, 1);
                 c.set(2, c.u32(frame + 0x14));
             }
@@ -357,7 +557,7 @@ void update_child(Cpu& c) {
     c.set(3, c.u32(c.r(3) + 0xc));
     c.set(12, c.u32(c.r(3)));
     c.set(12, c.u32(c.r(12) + 0x38));
-    c.call(0x10781320, 0x104f5d80);
+    call_virtual(c, 0x104f5d80);
     block(c, 0x104f5d80, 5);
     c.set(2, c.u32(frame + 0x14));
     c.set(0, c.u32(frame + 0x48));
@@ -602,6 +802,27 @@ const Routine& find_routine(std::uint32_t entry) {
     if (found == routines.end() || found->entry != entry)
         throw std::logic_error("Unknown AFRICAN_NATIONS.CPP entry " + hex_address(entry));
     return *found;
+}
+
+void call_virtual(Cpu& c, std::uint32_t resume) {
+    if (routine_checker || c.s.import_descriptor_observer || c.s.scalar_capture) {
+        c.call(0x10781320, resume); return;
+    }
+    const auto stack = c.sp();
+    c.link(resume);
+    c.s.pc = 0x10781320;
+    // Keep diagnostic probes at both dispatch boundaries while calling known
+    // owned destinations directly. External and excluded destinations retain
+    // the ordinary dispatcher and original descriptor-body controls.
+    if (!dispatch_probe || !dispatch_probe(c.s)) {
+        if (!try_modern_import_descriptor(c.s, 0x10781320) && !dispatch_page(c.s))
+            throw std::logic_error("Missing African Nations virtual descriptor body");
+        const auto target = std::ranges::lower_bound(routines, c.s.pc, {}, &Routine::entry);
+        if (target != routines.end() && target->entry == c.s.pc
+                && (!dispatch_probe || !dispatch_probe(c.s))) target->run(c);
+    }
+    if (c.s.pc != resume) run_until(c.s, resume);
+    if (c.sp() != stack) throw std::logic_error("African Nations virtual call returned on a different stack");
 }
 }
 

@@ -927,6 +927,15 @@ mapping. The shared stage lookup prefers its cached record without checking
 the requested key. Notifications reread the event, manager and competition
 definition after the award interpolation call, retaining that call's result.
 
+Construction advances the low signed halfword year to the next even year,
+including wraparound. Its object pointer is homed above the frame and reloaded
+between writes and calls; these live reads cannot be cached across observers.
+Configuration builds its deadline from the previous narrowed year, stores the
+calendar result and returns one even when calendar allocation failed. The
+constructor therefore still attempts the shared standings allocation on that
+path. Assertion version getters are inlined by the reference; preserve their
+call-site budget boundary rather than adding another dispatch.
+
 ## OCEANIA_NATIONS.CPP
 
 The 15 entries at `0x106e9940–0x106ebdd0` implement the Oceania Nations Cup.
