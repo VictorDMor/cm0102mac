@@ -46,8 +46,10 @@ target_sources(cm_aot PRIVATE contract_queries.cpp contract_query_adapter.cpp co
     contract_initializer.cpp contract_initializer_options.cpp contract_initializer_nations.cpp contract_storage_adapter.cpp)
 target_sources(cm_aot PRIVATE contract_terms.cpp contract_terms_sampling.cpp contract_terms_presentation.cpp
     contract_terms_expiry.cpp contract_terms_adapter.cpp)
-target_sources(cm_aot PRIVATE staff_contracts_expiry.cpp staff_contracts_terms.cpp staff_contracts_dates.cpp
-    staff_contracts_value.cpp staff_contracts_labels.cpp staff_contracts_window.cpp staff_contracts_adapter.cpp)
+set(CM_STAFF_CONTRACTS_SOURCES staff_contracts_expiry.cpp staff_contracts_terms.cpp staff_contracts_dates.cpp
+    staff_contracts_value.cpp staff_contracts_labels.cpp staff_contracts_window.cpp
+    staff_contracts_sampling.cpp staff_contracts_adapter.cpp)
+target_sources(cm_aot PRIVATE ${CM_STAFF_CONTRACTS_SOURCES})
 target_sources(cm_aot PRIVATE contract_review.cpp contract_review_scoring.cpp contract_review_consequences.cpp
     contract_review_presentation.cpp contract_review_adapter.cpp)
 target_sources(cm_aot PRIVATE transfer_offer_membership.cpp transfer_offer_policy.cpp transfer_offer_collections.cpp
@@ -3933,14 +3935,6 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME siprint_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_siprint_audit.py")
 endif()
 
-add_executable(cm-staff-contracts-checks staff_contracts_checks.cpp)
-target_link_libraries(cm-staff-contracts-checks PRIVATE cm_aot)
-target_compile_options(cm-staff-contracts-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-add_test(NAME staff_contracts_equivalence COMMAND cm-staff-contracts-checks)
-if(Python3_EXECUTABLE)
-    add_test(NAME staff_contracts_audit
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_staff_contracts_audit.py")
-endif()
 option(CM_SIPRINT_COVERAGE "Instrument SIPRINT.CPP checker only" OFF)
 if(CM_SIPRINT_COVERAGE)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/siprint-coverage")
@@ -3955,6 +3949,29 @@ if(CM_SIPRINT_COVERAGE)
     target_link_options(cm-siprint-checks PRIVATE "-fprofile-instr-generate=${CM_SIPRINT_PROFILE}")
 endif()
 
+
+add_executable(cm-staff-contracts-checks staff_contracts_checks.cpp)
+target_link_libraries(cm-staff-contracts-checks PRIVATE cm_aot)
+target_compile_options(cm-staff-contracts-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_test(NAME staff_contracts_equivalence COMMAND cm-staff-contracts-checks)
+if(Python3_EXECUTABLE)
+    add_test(NAME staff_contracts_audit
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_staff_contracts_audit.py")
+endif()
+option(CM_STAFF_CONTRACTS_COVERAGE "Instrument only the staff-contract checker owners" OFF)
+if(CM_STAFF_CONTRACTS_COVERAGE)
+    set(CM_STAFF_CONTRACTS_PROFILE_DIR "${CMAKE_CURRENT_BINARY_DIR}/staff-contracts-coverage")
+    file(MAKE_DIRECTORY "${CM_STAFF_CONTRACTS_PROFILE_DIR}")
+    set(CM_STAFF_CONTRACTS_PROFILE "${CM_STAFF_CONTRACTS_PROFILE_DIR}/check-%p.profraw")
+    add_library(cm_staff_contracts_coverage OBJECT ${CM_STAFF_CONTRACTS_SOURCES})
+    target_link_libraries(cm_staff_contracts_coverage PRIVATE cm_aot)
+    target_compile_options(cm_staff_contracts_coverage PRIVATE
+        "-fprofile-instr-generate=${CM_STAFF_CONTRACTS_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_sources(cm-staff-contracts-checks PRIVATE $<TARGET_OBJECTS:cm_staff_contracts_coverage>)
+    target_compile_definitions(cm-staff-contracts-checks PRIVATE
+        CM_STAFF_CONTRACTS_PROFILE_DIR="${CM_STAFF_CONTRACTS_PROFILE_DIR}")
+    target_link_options(cm-staff-contracts-checks PRIVATE "-fprofile-instr-generate=${CM_STAFF_CONTRACTS_PROFILE}")
+endif()
 
 file(GLOB CM_EUROPEAN_CUP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/european_cup*.cpp")
 list(FILTER CM_EUROPEAN_CUP_SOURCES EXCLUDE REGEX "_checks\\.cpp$")

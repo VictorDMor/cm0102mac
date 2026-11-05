@@ -8,6 +8,12 @@
 #include <random>
 #include <string_view>
 
+#ifdef CM_STAFF_CONTRACTS_PROFILE_DIR
+#include <unistd.h>
+extern "C" int __llvm_profile_write_file();
+extern "C" void __llvm_profile_set_filename(const char*);
+#endif
+
 namespace {
 using namespace cm::aot;
 using cm::semantic_io_checks::Effects;
@@ -42,6 +48,11 @@ constexpr std::uint32_t window_entry = 0x10380f20, interval_entry = 0x10717dd0, 
 constexpr std::uint32_t window_flag = fixture + 0x700, window_reference = fixture + 0x710;
 constexpr std::uint32_t staff_slot = fixture + 0x720, staff_rows = fixture + 0x730;
 constexpr std::uint32_t boundary_out = fixture + 0x950, threshold_out = fixture + 0x954;
+
+constexpr std::uint32_t sampling_entry = 0x10374570, reseed_entry = 0x1077b770;
+constexpr std::uint32_t random_words = fixture + 0xa00, rng_cursor = fixture + 0xa20;
+constexpr std::uint32_t rng_end = fixture + 0xa24, rng_salt = fixture + 0xa28;
+constexpr std::uint32_t sampling_constants = fixture + 0x2000;
 
 struct WindowInputs {
     std::uint32_t age = 28;
@@ -85,6 +96,7 @@ struct DependencyTrace {
     bool corrupt = false, text_fixture = false;
     unsigned dispatched_names = 0;
     std::optional<WindowInputs> window;
+    bool sample_fixture = false;
 };
 DependencyTrace* dependency_trace = nullptr;
 
@@ -107,7 +119,8 @@ bool trace_dependency(State& s) {
     const bool label = trace.text_fixture && (s.pc == formatter || s.pc == string_copy
                                                || s.pc == money_value || s.pc == money_text);
     const bool window = trace.window && (s.pc == interval_entry || s.pc == age_entry);
-    if (!adjustment && !label && !window && s.pc != default_date && s.pc != difference) return false;
+    const bool sample = trace.sample_fixture && s.pc == reseed_entry;
+    if (!adjustment && !label && !window && !sample && s.pc != default_date && s.pc != difference) return false;
     guest::Cpu c(s);
     if (trace.corrupt && s.pc == difference) c.set(4, c.r(4) ^ 0x10000u);
     if (trace.corrupt && s.pc == formatter) c.set(4, c.r(4) + 1);
@@ -115,6 +128,11 @@ bool trace_dependency(State& s) {
     for (unsigned n = 0; n < call.arguments.size(); ++n) call.arguments[n] = c.r(n + 3);
     if (adjustment) call.adjustment_input = c.u32(c.r(3));
     trace.calls.push_back(call);
+    if (sample) {
+        c.set(3, 0xaabb1233u + std::uint32_t(trace.calls.size()));
+        c.finish();
+        return true;
+    }
     if (window) {
         if (s.pc == age_entry) {
             c.set(3, trace.window->age);
@@ -178,10 +196,13 @@ std::unique_ptr<State> expiry_fixture() {
     auto s = std::make_unique<State>();
     s->registers.fill(0xa5);
     s->unique.fill(0xb7);
+    for (unsigned bit = 1280; bit < 1312; ++bit) s->wr<1>(bit, 0);
     s->memory.map(fixture, 0x1000);
     s->memory.map(stack - 0x500, 0x600);
     s->memory.map(label_pool, 0x1000);
     s->memory.map(toc - 0x4da4, 4);
+    s->memory.map(toc - 0x4dac, 4);
+    s->memory.map(sampling_constants, 0x100);
     s->memory.map(toc - 0x8000, 0x1000);
     s->memory.map(0x108b7ad0, 4);  // Date difference's live scratch pointer.
     s->memory.map(0x108b84d0, 1);  // Date difference's initialization flag.
@@ -192,6 +213,17 @@ std::unique_ptr<State> expiry_fixture() {
     s->budget = normal_budget;
     c.put32(0x108b7ad0, fixture + 0x300);
     c.put32(toc - 0x4da4, label_pool);
+    c.put32(toc - 0x4dac, sampling_constants);
+    c.put_f64(sampling_constants, 65535.0);
+    c.put64(sampling_constants + 0xc0, UINT64_C(0x4330000080000000));
+    c.put32(toc - 0x7b90, rng_salt);
+    c.put32(toc - 0x7b8c, random_words);
+    c.put32(toc - 0x7b88, rng_end);
+    c.put32(toc - 0x7b84, rng_cursor);
+    c.put32(rng_salt, 41);
+    c.put32(rng_end, random_words + 8);
+    c.put32(rng_cursor, random_words + 2);
+    for (unsigned n = 0; n < 8; ++n) c.put16(random_words + n * 2, 12345 + n * 1009);
     c.put32(toc - 0x7a68, window_flag);
     c.put32(toc - 0x79e8, window_reference);
     c.put32(toc - 0x7be0, staff_slot);
@@ -245,6 +277,7 @@ struct Result {
     std::vector<Effects::Access> accesses;
     std::uint8_t boundary = 0, threshold = 0;
     std::size_t dependency_calls = 0;
+    std::uint32_t cursor = 0, salt = 0;
 };
 struct Counts {
     unsigned returned = 0, budgets = 0, faults = 0, negatives = 0;
@@ -271,8 +304,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     };
     const bool text_fixture = label_entry(input.pc);
     const bool window_fixture = input.pc == window_entry;
+    const bool sample_fixture = input.pc == sampling_entry;
     const bool traced = input.pc == draft_entry || input.pc == delta_entry || adjustment.has_value()
-        || text_fixture || window_fixture;
+        || text_fixture || window_fixture || sample_fixture;
     if (text_fixture) {
         // Decline the in-place formatting owner at the external boundary.
         // The dispatcher probe then supplies the same fixture on both sides.
@@ -281,9 +315,9 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
     }
     const auto window_inputs = window_fixture ? std::optional(window) : std::nullopt;
     DependencyTrace old_calls{.calls = {}, .adjustment_output = adjustment, .text_fixture = text_fixture,
-                              .window = window_inputs};
+                              .window = window_inputs, .sample_fixture = sample_fixture};
     DependencyTrace new_calls{.calls = {}, .adjustment_output = adjustment, .corrupt = call_negative,
-                              .text_fixture = text_fixture, .window = window_inputs};
+                              .text_fixture = text_fixture, .window = window_inputs, .sample_fixture = sample_fixture};
     ScopedDependencyProbe probe(traced ? &old_calls : nullptr);
     // The generated caller can enter CASH.CPP in place. Decline just these
     // two services so both references reach the same external fixture.
@@ -307,7 +341,7 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         return {unsigned(modern->r<4>(12)), unsigned(modern->executed), 0, {}, std::move(actual.log)};
     }
     require(old_calls.calls == new_calls.calls, label + " changed external arguments or call order");
-    if (traced && old_stop.empty()) {
+    if (traced && !sample_fixture && old_stop.empty()) {
         const unsigned expected_calls = input.pc == bonus_description ? (amount_description ? 4 : 2)
             : input.pc == draft_entry ? 2 : 1;
         require(old_calls.calls.size() == expected_calls || (window_fixture && old_calls.calls.size() == 4),
@@ -352,6 +386,11 @@ Result compare_entry(const State& input, Counts& counts, std::uint32_t hole = no
         result.threshold = cpu.u8(threshold_out);
         result.dependency_calls = old_calls.calls.size();
     }
+    if (sample_fixture && old_stop.empty()) {
+        result.dependency_calls = old_calls.calls.size();
+        result.cursor = cpu.u32(rng_cursor);
+        result.salt = cpu.u32(rng_salt);
+    }
     return result;
 }
 
@@ -375,6 +414,11 @@ void date_boundaries(Counts& counts) {
         }
         input->budget = normal_budget;
     }
+    for (const auto day : {-32768, -2, -1, 32767}) {
+        c.put16(record + 0x30, std::uint16_t(day));
+        compare_entry(*input, counts);
+    }
+    c.put16(record + 0x30, 181);
     for (unsigned kind = 0; kind < 256; ++kind) {
         c.put8(record + 0x38, kind);
         compare_entry(*input, counts);
@@ -694,6 +738,57 @@ void window_cases(Counts& counts) {
     require(run(exact).boundary == 1, "Aliased optional window outputs");
 }
 
+void sampling_cases(Counts& counts) {
+    auto input = expiry_fixture();
+    guest::Cpu c(*input);
+    input->pc = sampling_entry;
+    c.set(3, 0);
+    const auto zero = compare_entry(*input, counts);
+    require(zero.value == 0 && zero.cursor == random_words + 2 && zero.salt == 41 && zero.dependency_calls == 0,
+            "Zero bound must retain the pool");
+    for (int bound : {1, 17, 65535, -1, -17, -65535}) {
+        c.set(3, std::uint32_t(bound));
+        const int residue = (12345 + 2 * 1009 + 41) % bound;
+        const auto result = compare_entry(*input, counts);
+        require(result.value == std::uint32_t(bound > 0 ? residue : -residue)
+                    && result.cursor == random_words + 4 && result.dependency_calls == 0,
+                "Signed small range must draw once");
+    }
+
+    for (unsigned last : {0u, 2u, 8u}) {
+        c.put32(rng_end, random_words + last);
+        for (unsigned cursor : {0u, 2u, 4u, 6u, 8u}) {
+            if (cursor > last) continue;
+            c.put32(rng_cursor, random_words + cursor);
+            for (auto salt : {0u, 41u, 65535u}) {
+                c.put32(rng_salt, salt);
+                for (const int bound : {INT32_MIN, -100000, -65536, -65535, -1, 1, 65535, 65536, 100000, INT32_MAX}) {
+                    c.set(3, std::uint32_t(bound));
+                    compare_entry(*input, counts);
+                }
+            }
+        }
+    }
+    // Wrapped tenfold product whose negative reciprocal intermediate has
+    // no bits discarded by the shift.
+    c.set(3, std::uint32_t(-566327256));
+    compare_entry(*input, counts);
+    c.put32(rng_end, random_words);
+    c.put32(rng_cursor, random_words);
+    c.set(3, 100000);
+    const auto wrapped = compare_entry(*input, counts);
+    require(wrapped.dependency_calls == 2 && wrapped.cursor == random_words && wrapped.salt == 0x1235,
+            "Both wide draws must reseed in order");
+    for (unsigned cut : {0u, 1u, wrapped.steps / 2, wrapped.steps - 1}) {
+        input->budget = cut;
+        compare_entry(*input, counts);
+    }
+    input->budget = normal_budget;
+    for (const auto address : {rng_cursor, rng_end, rng_salt, random_words, stack - 0x30})
+        compare_entry(*input, counts, address);
+    compare_entry(*input, counts, no_hole, true);
+}
+
 unsigned generated_hooks() {
     constexpr auto entries = std::to_array<std::uint32_t>({
 #define STAFF_CONTRACTS_ROUTINE(entry, ...) entry,
@@ -707,6 +802,7 @@ unsigned generated_hooks() {
         auto s = expiry_fixture();
         s->pc = entry;
         s->wr<4>(16, 1);
+        if (entry == sampling_entry) s->wr<4>(12, 17);
         if (entry == window_entry) {
             s->wr<4>(20, boundary_out);
             s->wr<4>(24, threshold_out);
@@ -734,6 +830,14 @@ unsigned generated_hooks() {
 
 int main() {
     try {
+#ifdef CM_STAFF_CONTRACTS_PROFILE_DIR
+        routine_child_exit = [] {
+            const auto path = std::string(CM_STAFF_CONTRACTS_PROFILE_DIR) + "/check-"
+                + std::to_string(getpid()) + ".profraw";
+            __llvm_profile_set_filename(path.c_str());
+            if (__llvm_profile_write_file() != 0) throw std::runtime_error("Cannot flush child coverage");
+        };
+#endif
         Counts counts;
         date_boundaries(counts);
         faults_and_mutations(counts);
@@ -743,6 +847,7 @@ int main() {
         adjustment_sequence();
         label_cases(counts);
         window_cases(counts);
+        sampling_cases(counts);
         const auto hooks = generated_hooks();
         std::cout << "Staff contracts " << counts.returned << " returns, " << counts.budgets
                   << " budget stops, " << counts.faults << " partial faults, "

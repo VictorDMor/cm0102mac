@@ -9,17 +9,32 @@ namespace cm::aot {
 namespace {
 using guest::Cpu;
 using namespace staff_contracts;
+constexpr unsigned R3 = RoutineChecker::result_r3, F1 = RoutineChecker::result_f1;
 struct Routine {
     std::uint32_t entry;
+    unsigned results;
     void (*run)(Cpu&);
 };
-#define STAFF_CONTRACTS_ROUTINE(entry, ...) Routine{entry, __VA_ARGS__},
+#define STAFF_CONTRACTS_ROUTINE(entry, results, ...) Routine{entry, results, __VA_ARGS__},
 constexpr auto routines = std::to_array<Routine>({
 #include "staff_contracts_routines.inc"
 });
 #undef STAFF_CONTRACTS_ROUTINE
 
 bool declining = std::getenv("CM_STAFF_CONTRACTS_ORIGINAL") != nullptr;
+
+const Routine& find_routine(std::uint32_t entry) {
+    const auto routine = std::ranges::lower_bound(routines, entry, {}, &Routine::entry);
+    if (routine == routines.end() || routine->entry != entry)
+        throw std::logic_error("Unknown STAFF_CONTRACTS.CPP entry " + hex_address(entry));
+    return *routine;
+}
+
+void run_routine(State& s, const Routine& routine) {
+    Cpu cpu(s);
+    routine.run(cpu);
+    cpu.finish();
+}
 }
 
 bool staff_contracts_calls_directly() {
@@ -33,20 +48,16 @@ void staff_contracts_run_original(State& s, std::uint32_t entry) {
 }
 
 void staff_contracts_run_rewrite(State& s, std::uint32_t entry) {
-    const auto routine = std::ranges::lower_bound(routines, entry, {}, &Routine::entry);
-    if (routine == routines.end() || routine->entry != entry)
-        throw std::logic_error("Unknown STAFF_CONTRACTS.CPP entry " + hex_address(entry));
-    Cpu cpu(s);
-    routine->run(cpu);
-    cpu.finish();
+    run_routine(s, find_routine(entry));
 }
 
 bool try_modern_staff_contracts(State& s, std::uint32_t entry) {
     if (declining || (routine_checker && !routine_checker->wants(entry))) return false;
+    const auto& routine = find_routine(entry);
     if (routine_checker)
         routine_checker->check(s, entry, staff_contracts_run_original, staff_contracts_run_rewrite,
-                               RoutineChecker::result_r3);
-    staff_contracts_run_rewrite(s, entry);
+                               routine.results);
+    run_routine(s, routine);
     return true;
 }
 }
