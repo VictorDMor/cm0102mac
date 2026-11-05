@@ -25,6 +25,13 @@ constexpr auto event_output = fixture + 0x3900, event_message = fixture + 0x3980
 constexpr auto final_mode = fixture + 0x6d;
 constexpr auto final_clubs = 0x31000000u, final_descriptor = 0x108b9a34u;
 constexpr auto placement_sort = 0x10768300u, publish_rank = 0x10457490u, compare_reputation = 0x104647e0u;
+constexpr auto draw = 0x104f6610u, draw_flags = fixture + 0x6e;
+constexpr auto draw_result = fixture + 0x1f00, draw_globals = fixture + 0x3d00, draw_hosts = fixture + 0x3e00;
+constexpr auto draw_nations = 0x32000000u, draw_random = draw_nations + 0x5000;
+constexpr auto draw_cursor = draw_globals + 0x14, draw_salt = draw_globals + 0x18;
+constexpr auto daily = 0x104f69d0u, daily_flags = fixture + 0x6f;
+constexpr auto daily_date = fixture + 0x680, daily_standings = fixture + 0x2a00, daily_log = fixture + 0x3f00;
+constexpr auto daily_result = 0x71000200u;
 constexpr auto notify = 0x104f5da0u, interpolate = 0x10476780u;
 constexpr auto destroy = 0x104f4ee0u, update = 0x104f5d60u;
 constexpr auto calendar = 0x104f4ff0u, calendar_rows = fixture + 0x3000;
@@ -109,6 +116,19 @@ bool final_service(std::uint32_t entry, std::uint32_t resume) {
         || (entry == publish_rank && resume >= 0x104f6e74 && resume <= 0x104f6fdc)
         || entry == compare_reputation;
 }
+bool draw_service(std::uint32_t entry, std::uint32_t resume) {
+    return (entry == 0x1049d1c0 && resume == 0x104f66f4)
+        || (entry == 0x100c76c0 && (resume == 0x104f671c || resume == 0x104f67c8))
+        || (entry == placement_sort && resume == 0x104f6820)
+        || (entry == 0x1077b770 && (resume == 0x104f68c0 || resume == 0x104f6914));
+}
+bool daily_service(std::uint32_t entry, std::uint32_t resume) {
+    return (entry == 0x104a1540 && (resume == 0x104f6a04 || resume == 0x104f6d30))
+        || (entry == 0x104a60e0 && resume == 0x104f6b90)
+        || (entry == 0x104a0e40 && resume == 0x104f6bb0)
+        || (entry == 0x104a00a0 && resume == 0x104f6c1c)
+        || (entry == 0x1049eb30 && resume == 0x104f6c88);
+}
 bool event_text_service(std::uint32_t entry, std::uint32_t resume) {
     return resume > event_text && resume <= 0x104f5c68
         && (entry == 0x10727890 || entry == 0x1074b830 || entry == 0x1074bab0
@@ -137,7 +157,10 @@ bool trace_lookup(State& s) {
     if (entry == lookup || entry == interpolate || entry == 0x10781320 || entry == 0x10715880 || entry == 0x107156f0
             || (entry == calendar && c.lr() == 0x104f5d34)
             || (entry == knockout_stage && c.lr() == 0x104f6124)
+            || (entry == group_stage && c.lr() == 0x104f6cf8)
             || final_service(entry, c.lr())
+            || draw_service(entry, c.lr())
+            || daily_service(entry, c.lr())
             || event_text_service(entry, c.lr())
             || message_service(entry) || lifecycle_service(entry) || calendar_service(entry) || entry == 0x10775130
             || construction_service(entry) || stage_service(entry) || entry == 0x10739890 || entry == 0x1077b720 || entry == 0x10769b60) {
@@ -149,6 +172,14 @@ bool trace_lookup(State& s) {
         if (entry == publish_rank)
             require(c.r(3) == stage && c.r(4) >= final_clubs && c.r(4) < final_clubs + 17 * 0x248,
                     "African final publication uses a sorted entrant and its live standings");
+        if (entry == 0x1049d1c0 && c.lr() == 0x104f66f4)
+            require(c.r(3) == draw_globals + 0x20 && c.r(4) == 42 && c.r(5) == c.u16(object + 0x40)
+                        && c.r(6) == c.sp() + 0x40 && c.r(7) == c.sp() + 0x44 && c.r(8) == 1,
+                    "African real qualifier query arguments");
+        if (entry == 0x100c76c0 && draw_service(entry, c.lr()))
+            require(c.r(3) >= draw_nations && (c.r(3) - draw_nations) % 0x128 == 0
+                        && (c.r(3) - draw_nations) / 0x128 < c.u32(draw_globals + 4),
+                    "African real national team lookup receiver");
         if (entry == 0x1049e4f0) require(c.r(3) == object && c.lr() == 0x104f4cb0, "African real base constructor argument");
         if (entry == 0x104533a0) require(c.r(3) == stage && c.r(4) == object && c.lr() == 0x104f4e54,
                 "African real shared table constructor arguments");
@@ -179,6 +210,41 @@ bool trace_lookup(State& s) {
                 require(c.r(5) == event && c.r(6) == extra, "African Nations forwarded event notification inputs");
         }
         if (active_trace) active_trace->push_back({entry, c.lr(), s.registers});
+        if (entry == group_stage && c.lr() == 0x104f6cf8) {
+            require(c.r(3) == object && c.r(4) < 3, "African daily group creation arguments");
+            c.put32(stage_index, c.r(4));
+            c.put8(stage_flags, (c.u8(daily_flags) & 8) && c.r(4) == 1);
+        }
+        if (daily_service(entry, c.lr())) {
+            require(c.r(3) == object, "African shared daily service receiver");
+            const auto flags = c.u8(daily_flags);
+            unsigned result = 1;
+            if (entry == 0x104a1540) {
+                require(c.r(4) == daily_date, "African shared daily date argument");
+                c.put32(daily_log, c.u32(c.r(4)));
+                c.put32(daily_log + 4, c.u32(c.r(4) + 4));
+                c.put32(daily_log + 8, c.r(5));
+                result = daily_result | (c.r(5) & 255);
+            } else if (entry == 0x104a60e0) {
+                const auto index = c.r(4);
+                require(index < c.u16(object + 0x3e) && c.r(5) == c.u32(draw_result + index * 4)
+                            && c.r(6) == 0 && c.r(7) == 0 && c.u32(object + 0xb0) == daily_standings,
+                        "African parent standing row consumes a drawn entrant");
+                c.put32(daily_standings + index * 0x44, c.r(5));
+            } else if (entry == 0x104a0e40) {
+                require(c.u32(object + 0xb0) == daily_standings, "African parent initializer consumes its standings");
+                c.put32(daily_log + 12, c.u32(daily_standings));
+            } else if (entry == 0x104a00a0) {
+                c.put32(daily_log + 16, c.u32(object + 0xb0));
+                result = unsigned(!(flags & 2));
+            } else {
+                require(c.r(4) == 0, "African daily table initialization mode");
+                c.put32(daily_log + 20, c.u32(object + 8));
+                result = unsigned(!(flags & 4));
+            }
+            c.set({{3, result}, {4, 0xbad0bad0}, {9, 0xfeedefee}});
+            c.finish(); return true;
+        }
         if (event_text_service(entry, c.lr())) {
             // These localization and output services require the game's
             // text database. Capture their consumed data in guest memory.
@@ -299,6 +365,18 @@ bool trace_lookup(State& s) {
             return true;
         }
         if (entry == 0x10775130) {
+            if (c.lr() == 0x104f6b08) {
+                require(c.r(3) == 4 * 0x44, "African parent standings allocation size");
+                c.set(3, c.u8(daily_flags) & 1 ? 0u : daily_standings);
+                c.finish(); return true;
+            }
+            if (c.lr() == 0x104f6664 || c.lr() == 0x104f6828) {
+                const bool pool = c.lr() == 0x104f6664;
+                require(c.r(3) == (pool ? 200u : 64u), "African draw allocation size");
+                const bool failed = c.u8(draw_flags) & (pool ? 1 : 2);
+                c.set(3, failed ? 0 : pool ? entrant_pool : draw_result);
+                c.finish(); return true;
+            }
             if (c.lr() == 0x104f6ddc) {
                 require(c.r(3) == std::uint32_t(c.i16(object + 0xf0)) * 4, "African final allocation size");
                 const auto mode = c.u8(final_mode);
@@ -334,7 +412,8 @@ bool trace_lookup(State& s) {
                         && read_fixture_text(c, c.r(4)) == "v%s %s.%s %d"
                         && (c.r(8) == 0x9e || c.r(8) == 0xe0 || c.r(8) == 0x58 || c.r(8) == 0x5f || c.r(8) == 0x2a8
                             || c.r(8) == 0x2dc || c.r(8) == 0x2f2 || c.r(8) == 0x311 || c.r(8) == 0x32c || c.r(8) == 0x2ba
-                            || c.r(8) == 0x3f4 || c.r(8) == 0x3fc),
+                            || c.r(8) == 0x3f4 || c.r(8) == 0x3fc || c.r(8) == 0x349 || c.r(8) == 0x380
+                            || c.r(8) == 0x1f1 || c.r(8) == 0x3c2 || c.r(8) == 0x3c8 || c.r(8) == 0x3cf),
                     "African assertion formatter destination/format/line");
             // Formatting's native stream/CFM initialization is outside the
             // fixture. Consume all supplied varargs and write their message;
@@ -361,7 +440,9 @@ bool trace_lookup(State& s) {
             if (entry == 0x10775170)
                 require(pointer == extra || pointer == child_array || pointer == calendar_rows
                             || (c.u8(stage_testing) && (pointer == entrant_buffer || !pointer))
-                            || (c.lr() == 0x104f6fe4 && pointer == entrant_buffer), "African owned allocation release argument");
+                            || (c.lr() == 0x104f6fe4 && pointer == entrant_buffer)
+                            || (c.lr() == 0x104f69ac && pointer == entrant_pool)
+                            || (c.lr() == 0x104f6d0c && pointer == draw_result), "African owned allocation release argument");
             if (entry == 0x104536c0) {
                 require(c.r(4) == 1 && (pointer == stage || pointer == child || pointer == child + 0x100
                             || pointer == child + 0x200), "African child/table destructor arguments");
@@ -448,6 +529,15 @@ std::unique_ptr<State> placement_fixture(std::uint32_t phase = 0, std::uint32_t 
 
 std::unique_ptr<State> calendar_fixture(std::uint32_t phase, bool flag, unsigned year, bool fail);
 
+void install_block_move_vector(Cpu& c) {
+    // The game loader installs this mutable CFM vector. Point it at the
+    // actual Carbon bridge so the real copy wrapper and sort can run.
+    constexpr auto vector = child_descriptor + 0x30;
+    c.put32(toc - 0x7e64, vector);
+    c.put32(vector, 280984508); // CarbonLib::BlockMoveData
+    c.put32(vector + 4, toc);
+}
+
 std::unique_ptr<State> event_text_fixture(std::uint32_t phase, std::uint32_t kind, unsigned detail,
                                          unsigned grammar = 0x81) {
     auto s = placement_fixture();
@@ -483,12 +573,7 @@ std::unique_ptr<State> final_placement_fixture(unsigned mode = 0, unsigned rotat
     c.put32(toc - 0x6188, final_descriptor);
     c.put32(final_descriptor, compare_reputation);
     c.put32(final_descriptor + 4, toc);
-    // The game loader installs this mutable CFM vector. Point it at the
-    // actual Carbon bridge so the real copy wrapper and sort can run.
-    constexpr auto block_move_vector = child_descriptor + 0x30;
-    c.put32(toc - 0x7e64, block_move_vector);
-    c.put32(block_move_vector, 280984508); // CarbonLib::BlockMoveData
-    c.put32(block_move_vector + 4, toc);
+    install_block_move_vector(c);
     for (unsigned i = 0; i < 17; ++i) {
         const auto club = final_clubs + i * 0x248;
         c.put32(club, 100 + i);
@@ -664,6 +749,81 @@ std::unique_ptr<State> construction_fixture(unsigned mode, unsigned year) {
     return s;
 }
 
+std::unique_ptr<State> draw_fixture(unsigned count, unsigned hosts, unsigned flags, unsigned rotation = 0) {
+    auto s = calendar_fixture(0);
+    s->memory.map(draw_nations, 56 * 0x128);
+    s->memory.map(final_clubs, 56 * 0x248);
+    s->memory.map(draw_random, 0x100);
+    Cpu c(*s);
+    c.put8(draw_flags, flags);
+    c.put32(toc - 0x7b98, draw_globals); c.put32(draw_globals, draw_nations);
+    c.put32(toc - 0x7b04, draw_globals + 4); c.put32(draw_globals + 4, count);
+    c.put32(toc - 0x7be8, draw_globals + 8); c.put32(draw_globals + 8, final_clubs);
+    c.put32(toc - 0x7b50, draw_globals + 12); c.put32(draw_globals + 12, count * 2);
+    c.put32(toc - 0x7974, draw_globals + 16); c.put32(draw_globals + 16, 5);
+    c.put32(toc - 0x7b84, draw_cursor); c.put32(toc - 0x7b90, draw_salt);
+    c.put32(toc - 0x7b8c, draw_random); c.put32(toc - 0x7b88, draw_globals + 0x1c);
+    const auto end = draw_random + (flags & 4 ? 6 : 254);
+    c.put32(draw_globals + 0x1c, end); c.put32(draw_cursor, flags & 4 ? end : draw_random);
+    c.put32(draw_salt, rotation & 3); c.put32(toc - 0x34c4, 0x12345678 + rotation);
+    for (unsigned i = 0; i < 128; ++i) c.put16(draw_random + i * 2, (i + rotation) & 3);
+
+    // A real one-row qualifier table and national-team lookup inputs.
+    c.put32(toc - 0x7424, draw_globals + 0x28);
+    c.put32(draw_globals + 0x28, draw_globals + 0x20);
+    c.put32(draw_globals + 0x20, draw_hosts); c.put16(draw_globals + 0x24, 1);
+    c.put32(toc - 0x6950, draw_globals + 0x2c); c.put32(draw_globals + 0x2c, 42);
+    c.put32(draw_hosts, 42); c.put16(draw_hosts + 4, 2002);
+    c.put32(draw_hosts + 8, hosts ? 0 : UINT32_MAX);
+    c.put32(draw_hosts + 12, hosts == 2 ? 1 : UINT32_MAX);
+    c.put8(draw_hosts + 0x20, 0xff);
+    c.put32(draw_globals + 0x38, 5); c.put32(draw_globals + 0x48, 6);
+    for (unsigned i = 0; i < count; ++i) {
+        const auto nation = draw_nations + i * 0x128, club = final_clubs + i * 0x248;
+        c.put32(nation + 0x68, i);
+        auto continent_record = draw_globals + 0x30;
+        if (flags & 8) {
+            if (i && i % 7 == 0) continent_record = 0;
+            else if (i && i % 11 == 0) continent_record = draw_globals + 0x40;
+        }
+        c.put32(nation + 0x74, continent_record);
+        c.put32(club + 0x2c, nation);
+        c.put16(club + 0x1ec, ((i * 31 + 37) % 57) * 100 - 3000);
+    }
+    c.put32(toc - 0x6188, final_descriptor);
+    c.put32(final_descriptor, compare_reputation); c.put32(final_descriptor + 4, toc);
+    s->pc = draw;
+    return s;
+}
+
+std::unique_ptr<State> daily_fixture(int day = 125, unsigned year = 2001, unsigned mode = 1,
+                                     unsigned begun = 0, unsigned failures = 0, unsigned rotation = 0) {
+    auto s = draw_fixture(17, 2, 4, rotation);
+    Cpu c(*s);
+    c.set({{4, daily_date}, {5, mode}});
+    c.put16(daily_date, day); c.put16(daily_date + 2, year); c.put32(daily_date + 4, 0xaabbccdd);
+    c.put16(object + 0xb6, 125); c.put16(object + 0xb8, UINT16_MAX);
+    c.put8(object + 0x45, begun);
+    c.put8(daily_flags, failures); c.put8(final_mode, failures & 16 ? 2 : 0);
+    c.put32(object, child_vtable); c.put32(object + 4, definition);
+    c.put32(object + 0xc, child_array); c.put32(object + 0x30, UINT32_MAX);
+    c.put8(object + 0xc4, 3); c.put8(object + 0xc5, 1); c.put8(object + 0xc6, 10);
+    c.put8(object + 0x4b, 15); c.put16(object + 0xdc, 40);
+    c.put8(stage_testing, 1);
+    c.put32(child_vtable + 0x44, child_descriptor);
+    c.put32(child_descriptor, calendar); c.put32(child_descriptor + 4, toc);
+    c.put32(child_vtable + 0x64, child_descriptor + 8);
+    c.put32(child_descriptor + 8, final_placements); c.put32(child_descriptor + 12, toc);
+    c.put32(stage + 0x14, 17); c.put32(stage + 0x5cc, 0);
+    for (unsigned i = 0; i < 17; ++i) {
+        c.put32(final_clubs + i * 0x248, 100 + i);
+        c.put32(rows + i * 0x7c, 100 + i); c.put8(rows + i * 0x7c + 0x75, 0xcb);
+    }
+    install_block_move_vector(c);
+    s->pc = daily; s->rng_trace = true;
+    return s;
+}
+
 std::unique_ptr<State> rollover_fixture(int last, unsigned present, unsigned year, unsigned mode, bool mutation) {
     auto s = configuration_fixture(mode == 4, year);
     Cpu c(*s);
@@ -761,6 +921,7 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
     original->allocator_original = modern->allocator_original = seed.allocator_original;
     original->import_descriptor_original = modern->import_descriptor_original = seed.import_descriptor_original;
     original->import_descriptor_original_body = modern->import_descriptor_original_body = seed.import_descriptor_original_body;
+    original->rng_trace = modern->rng_trace = seed.pc == draw || seed.rng_trace;
     if (seed.pc == event_text) {
         // Decline the generated in-place formatter edge on both routes so
         // they reach the same localization boundary model in the dispatcher.
@@ -890,6 +1051,8 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
             + std::to_string(original->executed) + "/" + std::to_string(modern->executed));
     const Image image(*original);
     image.compare(*modern, label);
+    require(original->rng_calls == modern->rng_calls && original->rng_ordered_digest == modern->rng_ordered_digest,
+            label + " ordered RNG refill trace");
     Cpu c(*modern);
     if (seed.pc == notify && c.u8(mutate)) require(expected.mutated && actual.mutated, "African post-interpolation observer was not reached");
     if (seed.pc == calendar && c.u8(calendar_mutation) && new_stop.empty())
@@ -908,6 +1071,8 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
         const auto corrupt_at = seed.pc == calendar ? calendar_count : seed.pc == configure ? object + 0xbc : seed.pc == create ? object + 8
             : seed.pc == final_placements ? rows + 0x75
             : seed.pc == event_text ? event_output
+            : seed.pc == draw ? draw_result
+            : seed.pc == daily ? daily_log
             : seed.pc == group_stage || seed.pc == knockout_stage || seed.pc == advance ? object + 0x30
             : seed.pc == notify || seed.pc == destroy || seed.pc == next_season ? service_log
             : seed.pc == update ? child : record + 0x76;
@@ -923,6 +1088,8 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
             return call.entry == lookup || message_service(call.entry) || lifecycle_service(call.entry)
                 || calendar_service(call.entry) || construction_service(call.entry) || stage_service(call.entry)
                 || final_service(call.entry, call.continuation) || event_text_service(call.entry, call.continuation)
+                || draw_service(call.entry, call.continuation)
+                || daily_service(call.entry, call.continuation)
                 || call.entry == 0x10715880;
         });
         require(target != new_calls.end(), "African argument control did not reach its call");
@@ -948,6 +1115,67 @@ Outcome compare_routes(const State& seed, bool observed = true, bool negative = 
     }
     if (new_stop.empty() && seed.pc == event_text) {
         out.fields = {c.u32(event_output), c.u32(event_output + 12), c.u32(event_output + 16)};
+    }
+    if (new_stop.empty() && seed.pc == draw) {
+        const auto count = c.u32(draw_globals + 4);
+        const auto flags = c.u8(draw_flags);
+        std::vector<unsigned> pool;
+        for (unsigned i = 0; i < 2; ++i)
+            if (const auto host = c.u32(draw_hosts + 8 + i * 4); host != UINT32_MAX) pool.push_back(host);
+        const auto hosts = pool.size();
+        for (unsigned i = 0; i < count && pool.size() < 50; ++i) {
+            if ((flags & 8) && i && (i % 7 == 0 || i % 11 == 0)) continue;
+            if (std::find(pool.begin(), pool.begin() + hosts, i) == pool.begin() + hosts) pool.push_back(i);
+        }
+        const bool drawn = pool.size() >= 16 && !(flags & 3);
+        require(c.r(3) == unsigned(drawn) && c.u16(object + 0xf0) == 16
+                    && c.u32(object + 0xec) == (flags & 1 ? 0u : drawn ? draw_result : entrant_pool),
+                "African draw result and allocation ownership");
+        require(c.u8(calendar_success) == unsigned(!(flags & 1) && (!(flags & 2) || pool.size() < 16)),
+                "African draw failure flag");
+        if (drawn) {
+            std::ranges::sort(pool.begin() + hosts, pool.end(), std::greater<>{}, [](unsigned i) { return (i * 31 + 37) % 57; });
+            std::array<bool, 56> seen{};
+            for (unsigned i = 0; i < 16; ++i) {
+                const auto club = c.u32(draw_result + i * 4);
+                require(club >= final_clubs && (club - final_clubs) % 0x248 == 0, "African draw club identity");
+                const auto id = (club - final_clubs) / 0x248;
+                const auto pot = pool.begin() + 4 * (i % 4);
+                require(id < seen.size() && !seen[id] && std::find(pot, pot + 4, id) != pot + 4,
+                        "African draw publishes one unique club from each ranked pot");
+                seen[id] = true;
+            }
+            const auto samples = std::ranges::count_if(actual.log, [](const Effects::Access& effect) {
+                return effect.kind == 4 && effect.address >= draw_random && effect.address < draw_random + 0x100 && effect.size == 2;
+            });
+            require(samples >= 16 && (!(flags & 4) || modern->rng_calls[0] > 0),
+                    "African draw consumes the table and refills on wrap");
+            out.fields = {unsigned(samples), unsigned(modern->rng_calls[0]), unsigned(pool.size())};
+        }
+    }
+    if (new_stop.empty() && seed.pc == daily) {
+        const auto flags = c.u8(daily_flags);
+        const auto formed = c.u32(daily_log + 12) != 0 && c.u8(object + 0x45) == 1;
+        if (formed) {
+            for (unsigned i = 0; i < 3; ++i)
+                require(c.u32(child_array + i * 4) == (i == 1 && (flags & 8) ? 0u : phase_stages + i * 0x100),
+                        "African daily publishes each successful owned group");
+        }
+        std::vector<unsigned> assertions;
+        for (const auto& call : new_calls)
+            if (call.entry == 0x1077b720)
+                assertions.push_back(read_be<4>(call.machine.data() + guest::reg::gpr(8)));
+        std::vector<unsigned> expected_assertions;
+        if (flags & 16) expected_assertions.push_back(0x3fc);
+        if (flags & 1) expected_assertions.insert(expected_assertions.end(), {0x1f1, 0x3c2});
+        else if (flags & 2) expected_assertions.push_back(0x3c8);
+        else if (flags & 4) expected_assertions.push_back(0x3cf);
+        else if (flags & 8) expected_assertions.push_back(0x2dc);
+        require(assertions == expected_assertions, "African daily reports the original assertion sequence");
+        unsigned ranks = 0;
+        for (unsigned i = 0; i < 17; ++i) ranks += c.u8(rows + i * 0x7c + 0x75) != 0xcb;
+        out.fields = {c.r(3), c.u8(object + 0x45), c.u8(calendar_success)};
+        out.ids = {c.u32(object + 0xec), c.u16(object + 0xf0), ranks};
     }
     if (new_stop.empty() && seed.pc == create) {
         out.fields = {c.u16(object + 0x40), c.u32(object + 0x2c), c.u8(calendar_success)};
@@ -1146,6 +1374,139 @@ ComparisonTotals compare_event_text() {
     run_until(*checked, return_sentinel); routine_checker = nullptr;
     require(checker.totals().at(event_text).checked == 1 && !checker.differences(), "African event text strict checked owner");
     std::cout << "AFRICAN_NATIONS event text: " << returned << " returned comparisons, " << budgets << " budget stops\n";
+    return {returned, budgets};
+}
+
+ComparisonTotals compare_draw() {
+    struct Case { unsigned nations, hosts, flags; };
+    constexpr std::array cases{
+        Case{0, 0, 0}, Case{15, 2, 0}, Case{16, 0, 0}, Case{16, 1, 0},
+        Case{17, 2, 4}, Case{20, 2, 8}, Case{55, 2, 0},
+        Case{20, 2, 1}, Case{20, 2, 2},
+    };
+    unsigned returned = 0;
+    for (const auto [nations, hosts, flags] : cases) {
+        const auto out = compare_routes(*draw_fixture(nations, hosts, flags), true, nations == 17);
+        require(out.stop.empty(), "African draw returned for " + std::to_string(nations) + " nations");
+        if (nations == 16) require(out.fields[0] > 16 && out.fields[1] == 0, "African draw retries without RNG refill");
+        if (nations == 55) require(out.fields[2] == 50, "African draw preserves the candidate cap");
+        ++returned;
+    }
+    std::mt19937 random(0x41465266);
+    for (unsigned i = 0; i < 12; ++i) {
+        const auto nations = 16 + random() % 40;
+        const auto hosts = random() % 3;
+        const auto rotation = random() & 0xffff;
+        require(compare_routes(*draw_fixture(nations, hosts, i & 1 ? 4 : 0, rotation)).stop.empty(),
+                "African seeded draw population and RNG mutation");
+        ++returned;
+    }
+    unsigned budgets = 0;
+    auto seed = draw_fixture(16, 2, 4);
+    const auto complete = compare_routes(*seed);
+    for (unsigned limit = 0; limit < complete.instructions; limit += 197) {
+        seed->budget = limit;
+        if (compare_routes(*seed).stop == "Native instruction budget exhausted") ++budgets;
+    }
+    auto failed = draw_fixture(16, 2, 1);
+    const auto failure = compare_routes(*failed);
+    for (unsigned limit = 0; limit < failure.instructions; ++limit) {
+        failed->budget = limit;
+        if (compare_routes(*failed).stop == "Native instruction budget exhausted") ++budgets;
+    }
+    RoutineChecker checker([](std::uint32_t entry) { return entry == draw; }, 1, 1);
+    checker.strict_volatile = true; routine_checker = &checker;
+    std::vector<Call> calls; Services services(&calls); auto checked = draw_fixture(17, 2, 4);
+    run_until(*checked, return_sentinel); routine_checker = nullptr;
+    require(checker.totals().at(draw).checked == 1 && !checker.differences(), "African draw strict checked owner");
+    std::cout << "AFRICAN_NATIONS draw: " << returned << " returned comparisons, " << budgets << " budget stops\n";
+    return {returned, budgets};
+}
+
+void compare_two_daily_updates() {
+    auto seed = daily_fixture();
+    auto original = clone(*seed), modern = clone(*seed);
+    original->allocator_original = modern->allocator_original = true;
+    original->rng_trace = modern->rng_trace = true;
+    Effects expected, actual;
+    expected.state = original.get(); actual.state = modern.get();
+    original->memory.date_observer = &expected; modern->memory.date_observer = &actual;
+    std::vector<Call> old_calls, new_calls;
+    const auto run = [](State& state, bool reference, std::vector<Call>& calls) {
+        Services services(&calls); Cpu cpu(state);
+        std::uint64_t refills = 0;
+        std::uint32_t cursor = 0, salt = 0;
+        for (unsigned pass = 0; pass < 2; ++pass) {
+            // Revisit the actual deadline while the same competition is live.
+            // The second update must retain the groups and consume no draws.
+            cpu.set({{3, object}, {4, daily_date}, {5, 1}});
+            cpu.set_lr(return_sentinel); state.pc = daily;
+            if (reference) african_nations_run_original(state, daily);
+            else run_until(state, return_sentinel);
+            require(cpu.r(3) == (daily_result | 1) && cpu.u8(object + 0x45) == 1
+                        && !cpu.u32(object + 0xec) && !cpu.u16(object + 0xf0),
+                    "African two-day replay start and entrant ownership");
+            if (!pass) {
+                refills = state.rng_calls[0];
+                cursor = cpu.u32(draw_cursor); salt = cpu.u32(draw_salt);
+            } else {
+                require(refills > 0 && state.rng_calls[0] == refills
+                            && cpu.u32(draw_cursor) == cursor && cpu.u32(draw_salt) == salt,
+                        "African second daily update consumes no RNG sample or refill");
+            }
+        }
+    };
+    run(*original, true, old_calls); run(*modern, false, new_calls);
+    original->memory.date_observer = modern->memory.date_observer = nullptr;
+    require(expected.bytes == actual.bytes && old_calls == new_calls && original->executed == modern->executed
+                && original->rng_ordered_digest == modern->rng_ordered_digest, "African two-day replay ordered effects and RNG");
+    Image(*original).compare(*modern, "African two-day replay complete final state");
+    std::cout << "AFRICAN_NATIONS controlled tournament start and repeated daily update: complete final state and RNG match\n";
+}
+
+ComparisonTotals compare_daily() {
+    struct Case { int day; unsigned year, mode, begun, failures; bool delegated, formed; };
+    constexpr std::array cases{
+        Case{124, 2001, 0, 0, 0, true, false}, Case{124, 2001, 0x100, 0, 0, true, false},
+        Case{125, 2000, 1, 0, 0, false, false}, Case{124, 2001, 1, 0, 0, false, false},
+        Case{-32768, 2001, 1, 0, 0, false, false}, Case{126, 2001, 1, 0, 0, true, false},
+        Case{-32767, 2001, 1, 0, 0, false, false},
+        Case{0, 2002, 1, 0, 0, true, false}, Case{125, 2001, 1, 0x80, 0, true, false},
+        Case{125, 2001, 0x180, 0, 0, true, true},
+        Case{125, 2001, 1, 0, 1, false, false}, Case{125, 2001, 1, 0, 2, false, false},
+        Case{125, 2001, 1, 0, 4, false, false}, Case{125, 2001, 1, 0, 8, true, true},
+        Case{125, 2001, 1, 0, 16, true, true},
+    };
+    unsigned returned = 0;
+    for (const auto [day, year, mode, begun, failures, delegated, formed] : cases) {
+        const auto out = compare_routes(*daily_fixture(day, year, mode, begun, failures), true, mode == 0x180);
+        require(out.stop.empty() && out.fields == std::array{delegated ? daily_result | (mode & 255) : 0u,
+                    formed ? 1u : begun, unsigned(failures == 0)}, "African daily date, start or failure result");
+        if (formed) require(out.ids == std::array{0u, 0u, failures & 16 ? 0u : 16u}, "African daily publishes ranks before clearing its draw");
+        ++returned;
+    }
+    require(compare_routes(*daily_fixture(124), false).stop.empty(), "African daily production route without probe");
+    ++returned;
+    std::mt19937 random(0x41465269);
+    for (unsigned i = 0; i < 12; ++i) {
+        const auto out = compare_routes(*daily_fixture(125, 2001, 1, 0, 0, random() & 0xffff));
+        require(out.stop.empty() && out.ids == std::array{0u, 0u, 16u}, "African seeded daily draw and publication");
+        ++returned;
+    }
+    auto seed = daily_fixture();
+    const auto complete = compare_routes(*seed);
+    unsigned budgets = 0;
+    for (unsigned limit = 0; limit < complete.instructions; limit += 997) {
+        seed->budget = limit;
+        if (compare_routes(*seed).stop == "Native instruction budget exhausted") ++budgets;
+    }
+    RoutineChecker checker([](std::uint32_t entry) { return entry == daily; }, 1, 1);
+    checker.strict_volatile = true; routine_checker = &checker;
+    std::vector<Call> calls; Services services(&calls); auto checked = daily_fixture();
+    run_until(*checked, return_sentinel); routine_checker = nullptr;
+    require(checker.totals().at(daily).checked == 1 && !checker.differences(), "African daily strict checked owner");
+    compare_two_daily_updates();
+    std::cout << "AFRICAN_NATIONS daily: " << returned << " returned comparisons, " << budgets << " budget stops\n";
     return {returned, budgets};
 }
 
@@ -1605,14 +1966,14 @@ void verify() {
     const auto phases = compare_phases();
     returned += phases.returned;
     budgets += phases.budgets;
-    for (const auto totals : {compare_event_text(), compare_final_placements()}) {
+    for (const auto totals : {compare_event_text(), compare_final_placements(), compare_draw(), compare_daily()}) {
         returned += totals.returned;
         budgets += totals.budgets;
     }
     compare_block_sequence();
-    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (100 seeded mutations), "
+    std::cout << "AFRICAN_NATIONS " << returned << " returned comparisons (124 seeded mutations), "
               << budgets << " budget stops, " << faults << " partial faults; " << rejected_results << " wrong result and "
-              << rejected_arguments << " wrong consumed argument detected; thirteen distinct checked hooks\n";
+              << rejected_arguments << " wrong consumed argument detected; fifteen distinct checked hooks\n";
 }
 }
 
@@ -1632,6 +1993,8 @@ int main(int argc, char** argv) try {
     else if (argc == 2 && std::string_view(argv[1]) == "--phases") compare_phases();
     else if (argc == 2 && std::string_view(argv[1]) == "--final-placements") compare_final_placements();
     else if (argc == 2 && std::string_view(argv[1]) == "--event-text") compare_event_text();
+    else if (argc == 2 && std::string_view(argv[1]) == "--draw") compare_draw();
+    else if (argc == 2 && std::string_view(argv[1]) == "--daily") compare_daily();
     else if (argc == 1) verify();
-    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar|--construction-reference|--construction|--rollover|--phases|--final-placements|--event-text]");
+    else throw std::runtime_error("Usage: cm-african-nations-checks [--calendar-reference|--calendar|--construction-reference|--construction|--rollover|--phases|--final-placements|--event-text|--draw|--daily]");
 } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

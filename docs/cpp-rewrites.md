@@ -913,6 +913,11 @@ so merged branch outcomes are meaningful while raw execution frequencies are not
 
 ## AFRICAN_NATIONS.CPP: calendar and callback boundaries
 
+All 15 audited entries use handwritten C++23 in the normal application.
+The January week replay checks 28 actual daily updates. The controlled
+tournament-start replay exercises the exact deadline, entrant draws, final
+placement callback, group creation and the repeated update on the same date.
+
 Calendar stages use the signed low byte. Every stage below three allocates
 three group rows; only stages -1, zero, one and two add custom fixture policies.
 Stage three builds four knockout rows, writing the final before the third-place
@@ -954,6 +959,19 @@ in the knockout text path consume the same CR and skip the duplicate body.
 Final placement sorts a temporary entrant copy with the shared signed
 reputation comparator. It publishes exactly sixteen ranks with bands
 1, 2, 3, 4, 5, 9 and 13, and reloads the live standings table for each write.
+
+Entrant selection keeps the seeded qualifiers in place and sorts only the
+remaining eligible nations by signed reputation. The fallback scan caps the
+pool at fifty. Four groups each draw one club from each of four pots. A draw
+of an already selected slot consumes another sample. The cursor advances
+before the table read and a wrap refills the salt from the shared RNG.
+
+The daily update compares an unsigned year and a signed day, with the
+low-byte mode controlling the date check. On the deadline it runs entrant
+selection and publishes final placement through the live virtual slot before
+creating the initial standings and three groups. It retains the original
+failure handling, including proceeding after individual group failures and
+skipping a second draw after the competition has started.
 
 ## OCEANIA_NATIONS.CPP
 

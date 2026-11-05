@@ -26,6 +26,8 @@ constexpr auto create_entry = 0x104f4c80u;
 constexpr auto next_season_entry = 0x104f5f40u;
 constexpr auto group_entry = 0x104f6140u;
 constexpr auto knockout_entry = 0x104f63a0u, advance_entry = 0x104f6080u;
+constexpr auto draw_entry = 0x104f6610u;
+constexpr auto daily_entry = 0x104f69d0u;
 void call_virtual(Cpu&, std::uint32_t resume);
 void call_owned(Cpu&, std::uint32_t entry, std::uint32_t resume);
 
@@ -721,6 +723,339 @@ void advance_stage(Cpu& c) {
     }
     block(c, 0x104f6124, 6); c.set(0, c.u32(frame + 0x78)); c.set(1, stack); c.set_lr(c.r(0));
     c.set(31, c.u32(stack - 4)); c.set(30, c.u32(stack - 8)); c.finish();
+}
+
+void select_and_draw_entrants(Cpu& c) {
+    GuestNativeScope scope(c.s, draw_entry);
+    block(c, draw_entry, 21);
+    const auto stack = c.sp(), frame = stack - 0xe0;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<15>(c, stack);
+    const guest::Kept<20> random_seed(c, c.toc(-0x7b90));
+    const guest::Kept<31> competition(c, c.r(3));
+    const guest::Kept<21> random_start(c, c.toc(-0x7b8c));
+    guest::Kept<17> entrant_count(c, 0);
+    const guest::Kept<22> random_end(c, c.toc(-0x7b88));
+    guest::Kept<15> entrant_offset(c, 0);
+    const guest::Kept<23> random_cursor(c, c.toc(-0x7b84));
+    const guest::Kept<24> nation_count(c, c.toc(-0x7b04));
+    const guest::Kept<25> continent(c, c.toc(-0x7974));
+    const guest::Kept<26> nations(c, c.toc(-0x7b98));
+    const guest::Kept<27> success(c, c.toc(-0x7bac));
+    const guest::Kept<28> message(c, c.toc(-0x7ba8));
+    const guest::Kept<29> file(c, c.toc(-0x45ac));
+    c.put32(stack + 8, c.r(0)); c.set(0, 16);
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+    c.put16(competition + 0xf0, 16);
+    c.set(3, 200); c.call(0x10775130, 0x104f6664);
+    block(c, 0x104f6664, 4);
+    c.put32(competition + 0xec, c.r(3)); c.set(0, c.u32(competition + 0xec));
+    const auto fail = [&](unsigned pc, unsigned name, unsigned extension, unsigned line) {
+        report_failure(c, pc, file, message, name, extension, line);
+        block(c, pc + 72, 4);
+        c.set({{0, 0}, {3, 0}}); c.put8(success, 0);
+    };
+    if (!compare_logical(c, c.r(0))) {
+        fail(0x104f6674, 0x70, 0x48, 0x349);
+    } else {
+        block(c, 0x104f66cc, 10);
+        c.set(3, c.toc(-0x7424)); c.set(6, frame + 0x40);
+        c.set(4, c.toc(-0x6950)); c.set(7, frame + 0x44);
+        c.set(0, guest::extended(c.i16(competition + 0x40))); c.set(8, 1);
+        c.set(3, c.u32(c.r(3))); c.set(4, c.u32(c.r(4))); c.set(5, std::uint16_t(c.r(0)));
+        c.call(0x1049d1c0, 0x104f66f4);
+        block(c, 0x104f66f4, 5);
+        const guest::Kept<30> qualifier_result(c, c.r(3));
+        guest::Kept<16> qualifier_cursor(c, frame + 0x40);
+        const guest::Kept<19> qualifier_count(c, std::uint32_t(std::int32_t(std::int8_t(c.r(3)))));
+        guest::Kept<18> qualifier_index(c, 0);
+        for (;;) {
+            block(c, 0x104f6734, 3);
+            c.set(0, guest::extended(std::int16_t(std::uint32_t(qualifier_index))));
+            if (compare(c, std::int32_t(c.r(0)), std::int32_t(std::uint32_t(qualifier_count))) >= 0) break;
+            block(c, 0x104f6708, 5);
+            c.set(0, c.u32(qualifier_cursor)); c.set(3, c.u32(nations));
+            c.set(0, c.r(0) * 0x128); c.set(3, c.r(3) + c.r(0));
+            c.call(0x100c76c0, 0x104f671c);
+            block(c, 0x104f671c, 6);
+            c.set(4, c.u32(competition + 0xec));
+            qualifier_cursor = qualifier_cursor + 4; qualifier_index = qualifier_index + 1;
+            entrant_count = entrant_count + 1;
+            c.put32(c.r(4) + entrant_offset, c.r(3)); entrant_offset = entrant_offset + 4;
+        }
+        block(c, 0x104f6740, 4);
+        guest::Kept<18> nation(c, c.u32(nations));
+        guest::Kept<16> append_offset(c, entrant_count * 4);
+        guest::Kept<26> nation_index(c, 0);
+        for (;;) {
+            block(c, 0x104f67e0, 4);
+            c.set(0, c.u32(nation_count));
+            c.set(3, guest::extended(std::int16_t(std::uint32_t(nation_index))));
+            if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) >= 0) break;
+            block(c, 0x104f6750, 3);
+            c.set(3, c.u32(nation + 0x74));
+            if (compare_logical(c, c.r(3))) {
+                block(c, 0x104f675c, 4);
+                c.set(3, c.u32(c.r(3) + 8)); c.set(0, c.u32(continent));
+                if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) == 0) {
+                    block(c, 0x104f676c, 2);
+                    if (compare(c, std::int32_t(std::uint32_t(entrant_count)), 50) < 0) {
+                        block(c, 0x104f6774, 5);
+                        c.set(0, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(qualifier_result)))));
+                        c.set({{5, 0}, {6, 0}, {4, 0}});
+                        // Check every seeded qualifier even after a match.
+                        for (;;) {
+                            block(c, 0x104f67ac, 3);
+                            c.set(3, std::uint32_t(std::int32_t(std::int8_t(c.r(6)))));
+                            if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) >= 0) break;
+                            block(c, 0x104f678c, 5);
+                            c.set(3, c.u32(competition + 0xec)); c.set(3, c.u32(c.r(3) + c.r(4)));
+                            c.set(3, c.u32(c.r(3) + 0x2c));
+                            if (compare_logical(c, c.r(3), nation) == 0) {
+                                block(c, 0x104f67a0, 1); c.set(5, 1);
+                            }
+                            block(c, 0x104f67a4, 2);
+                            c.set(4, c.r(4) + 4); c.set(6, c.r(6) + 1);
+                        }
+                        block(c, 0x104f67b8, 2);
+                        c.set(0, std::uint32_t(std::int32_t(std::int8_t(c.r(5)))));
+                        if (!record_compare(c, std::int32_t(c.r(0)))) {
+                            block(c, 0x104f67c0, 2);
+                            c.set(3, nation); c.call(0x100c76c0, 0x104f67c8);
+                            block(c, 0x104f67c8, 4);
+                            c.set(4, c.u32(competition + 0xec)); entrant_count = entrant_count + 1;
+                            c.put32(c.r(4) + append_offset, c.r(3)); append_offset = append_offset + 4;
+                        }
+                    }
+                }
+            }
+            block(c, 0x104f67d8, 2); nation_index = nation_index + 1; nation = nation + 0x128;
+        }
+        block(c, 0x104f67f0, 2);
+        if (compare(c, std::int32_t(std::uint32_t(entrant_count)), 16) < 0) {
+            block(c, 0x104f67f8, 2); c.set(3, 0);
+        } else {
+            block(c, 0x104f6800, 8);
+            c.set(0, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(qualifier_result)))));
+            c.set(3, c.u32(competition + 0xec)); c.set(0, c.r(0) * 4);
+            c.set(6, c.toc(-0x6188)); c.set(3, c.r(3) + c.r(0));
+            c.set({{4, entrant_count - qualifier_count}, {5, 4}});
+            c.call(0x10768300, 0x104f6820);
+            block(c, 0x104f6820, 2); c.set(3, 64); c.call(0x10775130, 0x104f6828);
+            block(c, 0x104f6828, 2);
+            const guest::Kept<30> draw_buffer(c, c.r(3));
+            if (!record_compare(c, std::int32_t(std::uint32_t(draw_buffer)))) {
+                fail(0x104f6830, 0x50, 0x38, 0x380);
+            } else {
+                const auto draw = [&](unsigned pc, bool retry) {
+                    block(c, pc, 6);
+                    c.set(3, c.u32(random_cursor)); c.set(0, c.u32(random_end));
+                    c.set(3, c.r(3) + 2);
+                    const auto beyond_pool = compare_logical(c, c.r(3), c.r(0)) > 0;
+                    c.put32(random_cursor, c.r(3));
+                    if (beyond_pool) {
+                        block(c, pc + 24, 2); c.put32(random_cursor, random_start);
+                        c.call(0x1077b770, pc + 32);
+                        block(c, pc + 32, 2);
+                        c.set(0, std::uint16_t(c.r(3))); c.put32(random_seed, c.r(0));
+                    }
+                    block(c, pc + 40, retry ? 10 : 11);
+                    c.set(3, c.u32(random_cursor)); c.set(0, c.u32(random_seed));
+                    c.set(3, c.u16(c.r(3)));
+                    const auto sample = std::int32_t(c.r(3) + c.r(0));
+                    c.set(3, std::uint32_t(sample) >> 31);
+                    c.set(0, std::uint32_t(sample % 4));
+                };
+                block(c, 0x104f6888, 3);
+                guest::Kept<17> group(c, 0);
+                guest::Kept<25> group_offset(c, 0);
+                for (;;) {
+                    block(c, 0x104f6998, 3);
+                    c.set(0, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(group)))));
+                    if (compare(c, std::int32_t(c.r(0)), 4) >= 0) break;
+                    block(c, 0x104f6894, 3);
+                    guest::Kept<18> pot(c, 0);
+                    guest::Kept<24> pot_base(c, 0);
+                    for (;;) {
+                        block(c, 0x104f6984, 3);
+                        c.set(0, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(pot)))));
+                        if (compare(c, std::int32_t(c.r(0)), 4) >= 0) break;
+                        draw(0x104f68a0, false);
+                        for (;;) {
+                            block(c, 0x104f6944, 7);
+                            c.set(0, guest::extended(std::int16_t(c.r(0)))); c.set(3, c.u32(competition + 0xec));
+                            c.set(0, c.r(0) + pot_base); c.set(5, c.r(0) * 4);
+                            c.set(4, c.u32(c.r(3) + c.r(5)));
+                            if (compare_logical(c, c.r(4))) break;
+                            draw(0x104f68f4, true);
+                        }
+                        block(c, 0x104f6960, 9);
+                        c.set(3, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(pot)))));
+                        c.set(0, 0); c.set(3, c.r(3) + group_offset); pot_base = pot_base + 4;
+                        c.set(3, c.r(3) * 4); pot = pot + 1;
+                        c.put32(draw_buffer + c.r(3), c.r(4));
+                        c.set(3, c.u32(competition + 0xec)); c.put32(c.r(3) + c.r(5), 0);
+                    }
+                    block(c, 0x104f6990, 2); group_offset = group_offset + 4; group = group + 1;
+                }
+                block(c, 0x104f69a4, 2);
+                c.set(3, c.u32(competition + 0xec)); c.call(0x10775170, 0x104f69ac);
+                block(c, 0x104f69ac, 2); c.put32(competition + 0xec, draw_buffer); c.set(3, 1);
+            }
+        }
+    }
+    block(c, 0x104f69b4, 5);
+    c.set(0, c.u32(frame + 0xe8)); c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<15, true>(c, stack); c.finish();
+}
+
+void update_daily(Cpu& c) {
+    GuestNativeScope scope(c.s, daily_entry);
+    block(c, daily_entry, 12);
+    const auto stack = c.sp(), frame = stack - 0x120;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<24>(c, stack);
+    const guest::Kept<28> mode(c, c.r(5));
+    const guest::Kept<29> success(c, c.toc(-0x7bac));
+    const guest::Kept<30> message(c, c.toc(-0x7ba8));
+    const guest::Kept<26> competition(c, c.r(3));
+    const guest::Kept<31> file(c, c.toc(-0x45ac));
+    const guest::Kept<27> date(c, c.r(4));
+    c.put32(stack + 8, c.r(0));
+    c.set(0, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(mode)))));
+    const auto needs_calendar = record_compare(c, std::int32_t(c.r(0))) != 0;
+    c.put32(frame, stack); c.set(1, frame); scope.frame(frame);
+
+    const auto fail = [&](unsigned pc, unsigned name, unsigned extension, unsigned line) {
+        report_failure(c, pc, file, message, name, extension, line);
+        block(c, pc + 72, 4); c.set({{0, 0}, {3, 0}}); c.put8(success, 0);
+        return false;
+    };
+    const auto start_tournament = [&] {
+        block(c, 0x104f6ad8, 2); c.set(3, competition);
+        call_owned(c, draw_entry, 0x104f6ae0);
+        block(c, 0x104f6ae0, 4); c.set(3, competition);
+        c.set(12, c.u32(competition)); c.set(12, c.u32(c.r(12) + 0x64));
+        call_virtual(c, 0x104f6af0);
+        block(c, 0x104f6af0, 6);
+        c.set(2, c.u32(frame + 0x14)); c.set(0, 4); c.put16(competition + 0x3e, 4);
+        c.set(0, guest::extended(c.i16(competition + 0x3e)));
+        c.set(3, c.r(0) * 0x44); c.call(0x10775130, 0x104f6b08);
+        block(c, 0x104f6b08, 3);
+        const auto allocated = compare_logical(c, c.r(3)) != 0;
+        c.put32(competition + 0xb0, c.r(3));
+        if (!allocated) {
+            report_failure(c, 0x104f6b14, file, message, 0x78, 0x40, 0x1f1);
+            block(c, 0x104f6b5c, 3); c.set(0, 0); c.put8(success, 0);
+        } else {
+            block(c, 0x104f6b68, 3);
+            guest::Kept<25> index(c, 0);
+            guest::Kept<24> offset(c, 0);
+            for (;;) {
+                block(c, 0x104f6b98, 4);
+                c.set(0, guest::extended(c.i16(competition + 0x3e)));
+                c.set(3, std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(index)))));
+                if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) >= 0) break;
+                block(c, 0x104f6b74, 7);
+                c.set(5, c.u32(competition + 0xec)); c.set({{3, competition}, {4, index}, {6, 0}});
+                c.set(5, c.u32(c.r(5) + offset)); c.set(7, 0);
+                c.call(0x104a60e0, 0x104f6b90);
+                block(c, 0x104f6b90, 2); offset = offset + 4; index = index + 1;
+            }
+            block(c, 0x104f6ba8, 2); c.set(3, competition); c.call(0x104a0e40, 0x104f6bb0);
+            block(c, 0x104f6bb0, 1); c.set(0, 1);
+        }
+        block(c, 0x104f6bb4, 2);
+        if (compare(c, std::int32_t(c.r(0))) == 0) return fail(0x104f6bbc, 0xd8, 0x68, 0x3c2);
+
+        block(c, 0x104f6c14, 2); c.set(3, competition); c.call(0x104a00a0, 0x104f6c1c);
+        block(c, 0x104f6c1c, 2);
+        if (compare(c, std::int32_t(c.r(3))) == 0) return fail(0x104f6c24, 0xb8, 0x60, 0x3c8);
+        block(c, 0x104f6c7c, 3); c.set({{3, competition}, {4, 0}});
+        c.call(0x1049eb30, 0x104f6c88);
+        block(c, 0x104f6c88, 2);
+        if (compare(c, std::int32_t(c.r(3))) == 0) return fail(0x104f6c90, 0x98, 0x58, 0x3cf);
+
+        block(c, 0x104f6ce8, 1);
+        guest::Kept<24> group(c, 0);
+        do {
+            block(c, 0x104f6cec, 3); c.set({{3, competition}, {4, group}});
+            call_owned(c, group_entry, 0x104f6cf8);
+            block(c, 0x104f6cf8, 3); group = group + 1;
+        } while (compare(c, std::int32_t(std::uint32_t(group)), 3) < 0);
+        block(c, 0x104f6d04, 2); c.set(3, c.u32(competition + 0xec));
+        c.call(0x10775170, 0x104f6d0c);
+        block(c, 0x104f6d0c, 5); c.set({{3, 0}, {0, 1}});
+        c.put32(competition + 0xec, 0); c.put16(competition + 0xf0, 0);
+        c.put8(competition + 0x45, 1);
+        return true;
+    };
+
+    if (!needs_calendar) {
+        block(c, 0x104f6a00, 1); c.call(0x104a1540, 0x104f6a04);
+        block(c, 0x104f6a04, 1);
+    } else {
+        block(c, 0x104f6a08, 7);
+        c.set(5, guest::extended(c.i16(competition + 0xb8))); c.set(3, frame + 0x70);
+        c.set(0, guest::extended(c.i16(competition + 0x40)));
+        c.set(4, guest::extended(c.i16(competition + 0xb6)));
+        c.set(0, c.r(5) + c.r(0)); c.set(5, std::uint16_t(c.r(0)));
+        c.call(0x107156b0, 0x104f6a24);
+        block(c, 0x104f6a24, 10);
+        c.set(3, c.u32(date)); c.set(0, c.u32(date + 4)); c.put32(frame + 0x50, c.r(3));
+        c.set(5, c.u16(frame + 0x72)); c.set(4, c.u16(frame + 0x52)); c.put32(frame + 0x38, c.r(3));
+        const auto year_order = compare_logical(c, c.r(4), c.r(5));
+        c.put32(frame + 0x3c, c.r(0)); c.put32(frame + 0x54, c.r(0));
+        if (year_order < 0) {
+            block(c, 0x104f6a4c, 2); c.set(0, 1);
+        } else {
+            block(c, 0x104f6a54, 1);
+            if (year_order > 0) {
+                block(c, 0x104f6a58, 2); c.set(0, 0);
+            } else {
+                block(c, 0x104f6a60, 8);
+                const auto today = c.i16(frame + 0x50);
+                c.set(0, guest::extended(today));
+                const auto deadline = c.i16(frame + 0x70);
+                c.set(4, guest::extended(deadline));
+                const auto day_bits = std::int32_t(c.r(0) ^ c.r(4));
+                // Keep the shift's carry and scratch result at the ABI boundary.
+                c.s.wr<1>(guest::reg::xer_ca, day_bits < 0 && (day_bits & 1));
+                c.set(3, std::uint32_t(day_bits >> 1));
+                c.set(0, today < deadline);
+            }
+        }
+        block(c, 0x104f6a80, 2);
+        if (record_compare(c, std::int32_t(c.r(0))) != 0) {
+            block(c, 0x104f6a88, 2); c.set(3, 0);
+        } else {
+            block(c, 0x104f6a90, 8);
+            c.set(0, c.u32(frame + 0x38)); c.set(4, 0); c.set(3, c.u32(frame + 0x3c));
+            c.put32(frame + 0x48, c.r(0)); c.set(0, c.u16(frame + 0x4a)); c.put32(frame + 0x4c, c.r(3));
+            if (compare_logical(c, c.r(0), c.r(5)) == 0) {
+                block(c, 0x104f6ab0, 4);
+                c.set(3, guest::extended(c.i16(frame + 0x48)));
+                c.set(0, guest::extended(c.i16(frame + 0x70)));
+                if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) == 0) {
+                    block(c, 0x104f6ac0, 1); c.set(4, 1);
+                }
+            }
+            block(c, 0x104f6ac4, 2);
+            bool proceed = true;
+            if (compare(c, std::int32_t(c.r(4))) != 0) {
+                block(c, 0x104f6acc, 3);
+                c.set(0, guest::extended(c.i8(competition + 0x45)));
+                if (record_compare(c, std::int32_t(c.r(0))) == 0) proceed = start_tournament();
+            }
+            if (proceed) {
+                block(c, 0x104f6d20, 4); c.set({{3, competition}, {4, date}, {5, mode}});
+                c.call(0x104a1540, 0x104f6d30);
+            }
+        }
+    }
+    block(c, 0x104f6d30, 5);
+    c.set(0, c.u32(frame + 0x128)); c.set(1, stack); c.set_lr(c.r(0));
+    guest::transfer_saved_registers<24, true>(c, stack); c.finish();
 }
 
 void destroy_competition(Cpu& c) {
