@@ -22,6 +22,7 @@ constexpr auto prize = 0x1049f540u, payment = 0x1049f6d0u;
 constexpr auto calendar = 0x10537120u, configure = 0x105397b0u;
 constexpr auto create = 0x10536d50u, destroy = 0x10537080u;
 constexpr auto link_divisions = 0x10539bb0u, promote = 0x10539d20u;
+constexpr auto fill = 0x10539f30u, reserves = 0x1053a900u;
 constexpr auto object = fixture + 0x100, standings = fixture + 0x400;
 constexpr auto strings = fixture + 0xc00, buffer = fixture + 0xd00;
 constexpr auto save_ok = fixture + 0xe00, mode = save_ok + 4;
@@ -41,6 +42,10 @@ constexpr auto second_object = fixture + 0x60000, regional_object = fixture + 0x
 constexpr auto regional_child = fixture + 0x62000, division_table = fixture + 0x63000;
 constexpr auto second_rows = fixture + 0x64000, temporary = fixture + 0x69000;
 constexpr auto external_sort = fixture + 0x1830, partner = fixture + 0x1840;
+constexpr auto missing_id = fixture + 0x16a0, country_id = fixture + 0x16a4;
+constexpr auto regional_rows = fixture + 0x65000, child_rows = fixture + 0x66000;
+constexpr auto large_clubs = fixture + 0x100000, other_country = fixture + 0x1900;
+constexpr auto alternate_rows = fixture + 0x67000, mutation_marker = fixture + 0x16a8;
 constexpr auto size = 0x44u, club_stride = 0x248u, definition_size = 0x6cu;
 
 struct Call {
@@ -61,11 +66,18 @@ constexpr auto diagnostics = std::to_array<Diagnostic>({
     {0x10536f04, 0xa0, 0x48, 0x55}, {0x10536f70, 0x80, 0x40, 0x5e},
     {0x10536ff8, 0x60, 0x38, 0x65},
     {0x10539d78, 0x44, 0x3c, 0x354},
+    {0x1053a138, 0x44, 0x3c, 0x3d8}, {0x1053aa00, 0x44, 0x3c, 0x4d2},
 });
+
+bool valid_club(std::uint32_t club) {
+    return (club >= clubs && club < clubs + 32 * club_stride && (club - clubs) % club_stride == 0)
+           || (club >= large_clubs && club < large_clubs + 256 * club_stride && (club - large_clubs) % club_stride == 0);
+}
 
 bool dependency(State& s) {
     Cpu c(s);
     const auto target = s.pc, arg = c.r(3);
+    bool passthrough = false;
     switch (target) {
         case external_sort:
             require((arg == object || arg == second_object || arg == regional_object || arg == regional_child)
@@ -79,18 +91,29 @@ bool dependency(State& s) {
                     "German division relationship arguments");
             break;
         case 0x100ce320:
-            require(arg >= clubs && arg < clubs + 32 * club_stride && (arg - clubs) % club_stride == 0
+            require(valid_club(arg)
                         && c.r(4) == c.sp() + 0x38 && c.r(5) == 1, "German reserve-team lookup arguments");
             break;
+        case 0x104aa560:
+            require((arg == regional_object || arg == regional_child) && valid_club(c.r(4)) && c.r(5) == 0,
+                    "German real reserve standing lookup arguments");
+            passthrough = true;
+            break;
+        case 0x10452a60:
+            require(arg == regional_object && c.r(4) == common_definition && valid_club(c.r(5))
+                        && valid_club(c.r(6)) && c.r(7) == 1, "German reserve status notification arguments");
+            break;
         case 0x104635b0:
-            require(arg == temporary && c.r(4) > 0 && c.r(4) <= 32 && c.r(5) == 4 && c.lr() == 0x10539e78,
+            require((arg == temporary && c.r(4) > 0 && c.r(4) <= 32 && c.r(5) == 4 && c.lr() == 0x10539e78)
+                        || (arg == c.sp() + 0x64 && c.r(4) <= 200 && c.lr() == 0x1053a1a0),
                     "German ordered selection service arguments");
             break;
         case 0x1049f780:
         case 0x1049f8e0:
-            require(arg == object && c.r(4) >= clubs && c.r(4) < clubs + 32 * club_stride
-                        && (c.r(4) - clubs) % club_stride == 0 && c.r(6) == 1
-                        && c.r(5) == definitions + c.u32(target == 0x1049f780 ? other_division : target_id) * definition_size,
+            require(arg == object && valid_club(c.r(4)) && c.r(6) == 1
+                        && c.r(5) == definitions + c.u32(target == 0x1049f780
+                            ? (c.lr() == 0x1053a1d0 ? target_id : other_division)
+                            : (c.lr() == 0x1053a0d0 ? missing_id : target_id)) * definition_size,
                     "German promotion/relegation arguments");
             break;
         case initial_check:
@@ -184,6 +207,7 @@ bool dependency(State& s) {
         if (active_trace->corrupted_target == target) call.arguments[active_trace->corrupt_argument] ^= 4;
         active_trace->calls.push_back(call);
     }
+    if (passthrough) return false; // Execute the true external lookup on both routes.
     if (target == allocate) {
         if (c.u8(mode) == 6) c.put16(object + 0x40, c.i16(object + 0x40) + 1);
         const auto failed = c.u8(mode) == 1 || (c.u8(mode) == 17 && arg == 0xa18)
@@ -202,29 +226,38 @@ bool dependency(State& s) {
         c.put8(c.r(4), c.u32(arg + 0x10));
         c.set(3, c.u32(arg + 0x14));
     }
+    if (target == 0x10452a60) {
+        c.put32(regional_object + 0x28, c.r(6));
+        if (c.u8(mode) == 42) {
+            c.put16(second_object + 0x3e, 0);
+            c.put32(mutation_marker, c.u32(mutation_marker) + 1);
+        }
+        c.set(3, 0x93);
+    }
     if (target == 0x104635b0) {
         // A deterministic external-service fixture consumes every candidate
         // and models an ordered random selection; it is not a game RNG claim.
         const auto count = c.r(4);
+        const auto list = arg;
         for (unsigned i = 0; i < count; ++i)
-            require(c.u32(temporary + i * 4) >= clubs && c.u32(temporary + i * 4) < clubs + 32 * club_stride,
-                    "German selected candidate pointer");
-        if (count < c.r(5)) {
+            require(valid_club(c.u32(list + i * 4)), "German selected candidate pointer");
+        const auto quota = std::int16_t(c.r(5));
+        if (std::int32_t(count) < quota) {
             // The external original reports this condition and returns with
             // its input list intact. Its caller still consumes four slots.
             c.put8(save_ok, 0);
             c.set(3, save_ok);
         } else {
             auto seed = c.u32(rng_state);
-            for (unsigned i = 0; i < c.r(5); ++i) {
+            for (unsigned i = 0; quota > 0 && i < unsigned(quota); ++i) {
                 seed = seed * 1664525u + 1013904223u;
                 const auto j = i + seed % (count - i);
-                const auto left = c.u32(temporary + i * 4), right = c.u32(temporary + j * 4);
-                c.put32(temporary + i * 4, right);
-                c.put32(temporary + j * 4, left);
+                const auto left = c.u32(list + i * 4), right = c.u32(list + j * 4);
+                c.put32(list + i * 4, right);
+                c.put32(list + j * 4, left);
             }
             c.put32(rng_state, seed);
-            c.set(3, temporary);
+            c.set(3, list);
         }
     }
     if (target == 0x1049f780 || target == 0x1049f8e0) {
@@ -233,6 +266,17 @@ bool dependency(State& s) {
         c.put32(club + 0x30, destination);
         if (c.u8(mode) == 21 && target == 0x1049f780) c.put32(other_division, 19);
         if (c.u8(mode) == 22 && target == 0x1049f8e0) c.put16(second_object + 0x3e, 0);
+        if (target == 0x1049f8e0 && c.lr() == 0x1053a0d0) {
+            if (c.u8(mode) == 43) {
+                require(c.r(18) == regional_object || c.r(18) == regional_child, "German current regional competition");
+                c.put16(c.r(18) + 0x3e, 0);
+                c.put32(mutation_marker, c.u32(mutation_marker) + 1);
+            }
+            if (c.u8(mode) == 44 && c.r(18) == regional_object) {
+                c.put32(regional_object + 0xb0, alternate_rows);
+                c.put32(mutation_marker, c.u32(mutation_marker) + 1);
+            }
+        }
         c.set(3, 0x92);
     }
     if (target == initial_check) c.set(3, c.u8(mode) == 10 ? 1 : 0);
@@ -442,6 +486,103 @@ std::unique_ptr<State> promotion_fixture(unsigned count = 18, unsigned candidate
     return s;
 }
 
+std::unique_ptr<State> regional_fixture(unsigned candidates = 12, unsigned regional_count = 4,
+                                      unsigned child_count = 4, unsigned marked = 2,
+                                      bool filters = false, unsigned mode_value = 0) {
+    auto s = relationships_fixture(fill, true, mode_value);
+    s->memory.map(large_clubs, 0x40000);
+    s->memory.map(stack - 0x1000, 0xb00);
+    Cpu c(*s);
+    const auto count = candidates + regional_count + child_count + 12;
+    require(count <= 240, "Regional fixture capacity");
+    c.put32(clubs_slot, large_clubs);
+    c.put32(total, count);
+    c.put32(toc - 0x7a0c, missing_id);
+    c.put32(toc - 0x7af4, country_id);
+    c.put32(missing_id, 99);
+    c.put32(country_id, 42);
+    c.put32(common_definition + 0x68, 42);
+    c.put32(other_country + 0x68, 43);
+    c.put32(regional_object + 0xb0, regional_rows);
+    c.put32(regional_child + 0xb0, child_rows);
+    c.put16(regional_object + 0x3e, regional_count);
+    c.put16(regional_child + 0x3e, child_count);
+    for (unsigned i = 0; i < 256; ++i) {
+        const auto club = large_clubs + i * club_stride;
+        c.put32(club, i);
+        c.put32(club + 0x2c, common_definition);
+        c.put32(club + 0x30, i < candidates ? (i % 2 ? 0 : definitions + 99 * definition_size)
+                                           : definitions + c.u32(division) * definition_size);
+        c.put32(club + 0x38, definitions + 10 * definition_size);
+        c.put32(club + 0x10, 0);
+        c.put32(club + 0x14, 0);
+    }
+    unsigned start = candidates;
+    for (const auto& [rows, rows_count] : std::array<std::pair<std::uint32_t, unsigned>, 2>{{
+            {regional_rows, regional_count}, {child_rows, child_count}}}) {
+        for (unsigned i = 0; i < rows_count; ++i) {
+            const auto club = large_clubs + (start + i) * club_stride;
+            c.put32(rows + i * size, club);
+            c.put8(rows + i * size + 0x40, i < marked ? 3 : 0);
+            c.put32(club + 0x30, definitions + c.u32(target_id) * definition_size);
+        }
+        start += rows_count;
+    }
+    for (unsigned i = 0; i < 4; ++i) {
+        const auto club = large_clubs + (start + i) * club_stride;
+        c.put32(alternate_rows + i * size, club);
+        c.put8(alternate_rows + i * size + 0x40, 0);
+    }
+    if (filters) {
+        require(candidates >= 12, "Regional filter fixture capacity");
+        for (unsigned i = 1; i < 8; ++i) {
+            const auto linked = large_clubs + (240 + i) * club_stride;
+            c.put32(large_clubs + i * club_stride + 0x14, linked);
+            c.put32(large_clubs + i * club_stride + 0x10, i == 1 ? 0x180 : i == 6 ? 0x100 : i == 7 ? 0x101 : 0);
+            c.put32(linked + 0x30, i == 2 ? 0 : definitions + (i == 3 ? 5 : i == 4 ? 99 : 77) * definition_size);
+        }
+        c.put32(large_clubs + 8 * club_stride + 0x2c, 0);
+        c.put32(large_clubs + 9 * club_stride + 0x2c, other_country);
+        c.put32(large_clubs + 10 * club_stride + 0x30, definitions + 77 * definition_size);
+    }
+    return s;
+}
+
+std::unique_ptr<State> reserves_fixture(unsigned variant = 0, unsigned mode_value = 0) {
+    auto s = regional_fixture(0, 2, 2, 0, false, mode_value);
+    Cpu c(*s);
+    s->pc = reserves;
+    c.set(19, 0);
+    c.put32(second_object + 4, common_definition);
+    c.put16(second_object + 0x3e, 4);
+    for (unsigned i = 0; i < 4; ++i) {
+        const auto source = large_clubs + i * club_stride, linked = large_clubs + (32 + i) * club_stride;
+        c.put32(second_rows + i * size, source);
+        c.put8(second_rows + i * size + 0x40, i == 2 ? 0xff : 3);
+        c.put32(source + 0x10, 1);
+        c.put32(source + 0x14, linked);
+        c.put32(linked + 0x30, definitions + c.u32(target_id) * definition_size);
+        c.put32(linked + 0x38, definitions + c.u32(foreign_ids + (i % 2 ? 3 : 2) * 4) * definition_size);
+        const auto row = (i % 2 ? child_rows : regional_rows) + (i / 2) * size;
+        c.put32(row, linked);
+        c.put8(row + 0x40, i == 1 ? 3 : i == 3 ? 0xff : 0);
+    }
+    const auto first_partner = large_clubs + 32 * club_stride;
+    if (variant == 1) c.put32(regional_rows, large_clubs + 40 * club_stride);
+    if (variant == 2) c.put32(large_clubs + 0x14, 0);
+    if (variant == 3) c.put32(large_clubs + 0x10, 0x100);
+    if (variant == 4) c.put32(first_partner + 0x30, 0);
+    if (variant == 5) c.put32(first_partner + 0x30, definitions + 77 * definition_size);
+    if (variant == 6 || variant == 7 || variant == 9) c.put32(first_partner + 0x38, definitions + 10 * definition_size);
+    if (variant == 7) {
+        c.set(19, regional_rows + 2 * size);
+        c.put8(regional_rows + 2 * size + 0x40, 0);
+    }
+    if (variant == 8) c.put32(large_clubs + 33 * club_stride + 0x38, definitions + 10 * definition_size);
+    if (variant == 9) c.set(19, 0xdeadbeef);
+    return s;
+}
+
 struct Outcome {
     std::uint32_t result;
     unsigned instructions, inserted;
@@ -449,6 +590,7 @@ struct Outcome {
     std::array<std::uint32_t, 32> current, previous;
     unsigned save_success;
     unsigned promoted = 0, relegated = 0, relationships = 0;
+    unsigned selected_count = 0, selection_quota = 0, notifications = 0, lookups = 0, mutations = 0;
 };
 unsigned rejected_results = 0, rejected_traces = 0;
 
@@ -469,11 +611,13 @@ Outcome compare_routes(const State& seed, bool negative_result = false, bool neg
     Trace old_calls, new_calls;
     const auto negative_target = seed.pc == collect || seed.pc == create ? insert
                                 : seed.pc == destroy ? 0x104a6660u
-                                : seed.pc == promote ? 0x1049f780u
+                                : seed.pc == promote || seed.pc == fill ? 0x1049f780u
+                                : seed.pc == reserves ? 0x10452a60u
                                 : seed.pc == link_divisions ? 0x104a9210u : 0x104a9810u;
     new_calls.corrupted_target = negative_trace ? negative_target : 0;
     new_calls.corrupt_argument = seed.pc == destroy ? 0 : 2;
-    if (seed.pc == promote) new_calls.corrupt_argument = 1;
+    if (seed.pc == promote || seed.pc == fill) new_calls.corrupt_argument = 1;
+    if (seed.pc == reserves) new_calls.corrupt_argument = 3;
     const auto execute = [lifecycle](State& s, Trace& trace, bool reference) {
         RoutineChecker no_hooks([](std::uint32_t) { return false; }, 0, 0);
         Services services(&trace, reference ? &no_hooks : nullptr);
@@ -518,7 +662,8 @@ Outcome compare_routes(const State& seed, bool negative_result = false, bool neg
             + std::to_string(actual.log.size()) + " PCs " + hex_address(original->pc) + "/" + hex_address(modern->pc)
             + " expected tail" + last(expected) + " actual tail" + last(actual));
     }
-    require(original->executed == modern->executed, label + " changed budget accounting");
+    require(original->executed == modern->executed, label + " changed budget accounting "
+            + std::to_string(original->executed) + "/" + std::to_string(modern->executed));
     if (observer_capacity) require(expected.mutated && actual.mutated, "German capacity observer not reached");
     if (negative_trace) {
         require(old_calls.calls != new_calls.calls && std::ranges::any_of(old_calls.calls,
@@ -560,6 +705,13 @@ Outcome compare_routes(const State& seed, bool negative_result = false, bool neg
     out.promoted = count_calls(0x1049f780);
     out.relegated = count_calls(0x1049f8e0);
     out.relationships = count_calls(0x104a9210);
+    out.notifications = count_calls(0x10452a60);
+    out.lookups = count_calls(0x104aa560);
+    out.mutations = c.u32(mutation_marker);
+    for (const auto& call : new_calls.calls) if (call.target == 0x104635b0) {
+        out.selected_count = call.arguments[1];
+        out.selection_quota = call.arguments[2];
+    }
     for (unsigned i = 0; i < 32; ++i) {
         out.current[i] = c.u32(clubs + i * club_stride + 0x30);
         out.previous[i] = c.u32(clubs + i * club_stride + 0x38);
@@ -568,7 +720,7 @@ Outcome compare_routes(const State& seed, bool negative_result = false, bool neg
 }
 
 void verify() {
-    unsigned returned = 0, budgets = 0;
+    unsigned returned = 0, budgets = 0, faults = 0;
     for (unsigned count : {0u, 1u, 17u, 18u, 20u, 32u}) {
         auto s = league_fixture(count);
         const auto out = compare_routes(*s);
@@ -625,6 +777,7 @@ void verify() {
     s = league_fixture();
     Cpu(*s).set(3, fixture + 0x3000);
     require(compare_routes(*s).stop.starts_with("Unmapped data access at "), "German partial object fault");
+    ++faults;
     for (const auto format : {UINT32_MAX, 0xffu, 0x1234ffu, 0u, 1u, 0xffffff80u}) {
         auto s = calendar_fixture(calendar, 2001, format);
         const auto out = compare_routes(*s);
@@ -757,14 +910,99 @@ void verify() {
             if (compare_routes(*s).stop == "Native instruction budget exhausted") ++budgets;
         }
     }
-    for (const auto entry : {create, destroy, collect, calendar, configure, link_divisions, promote}) {
+    struct RegionalCase { unsigned candidates, regional, child, marked, promoted, relegated; bool success; };
+    for (const auto& test : std::to_array<RegionalCase>({
+            {0, 0, 0, 0, 0, 0, true}, {0, 4, 4, 0, 0, 0, true},
+            {0, 4, 4, 2, 0, 4, false}, {3, 4, 4, 2, 0, 4, false},
+            {4, 4, 4, 2, 4, 4, true}, {12, 4, 4, 2, 4, 4, true},
+            {2, 19, 0, 0, 2, 0, true}, {4, 19, 0, 1, 0, 1, true},
+            {4, 19, 0, 2, 1, 2, true}})) {
+        auto s = regional_fixture(test.candidates, test.regional, test.child, test.marked);
+        const auto out = compare_routes(*s);
+        require(out.stop.empty() && out.promoted == test.promoted && out.relegated == test.relegated
+                    && out.save_success == unsigned(test.success), "German regional vacancy partitions");
+        if (test.regional == 19 && test.marked == 0)
+            require(std::int16_t(out.selection_quota) == -1, "German signed negative vacancy preserved");
+        ++returned;
+    }
+    {
+        auto s = regional_fixture(12, 4, 4, 2, true);
+        const auto out = compare_routes(*s, true, true);
+        require(out.stop.empty() && out.selected_count == 6 && out.promoted == 4 && out.relegated == 4,
+                "German regional country/division/reserve filters");
+        ++returned;
+    }
+    for (const auto mode_value : {43u, 44u}) {
+        auto s = regional_fixture(12, 4, 4, 2, false, mode_value);
+        const auto out = compare_routes(*s);
+        require(out.stop.empty() && out.relegated == (mode_value == 43 ? 2u : 3u)
+                    && out.promoted == out.relegated && out.mutations == (mode_value == 43 ? 2u : 1u),
+                "German live regional counts and replaced standing-array base");
+        ++returned;
+    }
+    {
+        auto s = regional_fixture(200, 0, 0, 0);
+        Cpu(*s).put32(large_clubs + 200 * club_stride + 0x2c, 0xdeadbeef);
+        const auto out = compare_routes(*s);
+        require(out.stop.empty() && out.selected_count == 200 && out.promoted == 0,
+                "German candidate cap avoids the unexamined poisoned suffix");
+        ++returned;
+        for (unsigned limit = out.instructions - 30; limit < out.instructions; ++limit) {
+            s->budget = limit;
+            if (compare_routes(*s).stop == "Native instruction budget exhausted") ++budgets;
+        }
+    }
+    for (unsigned variant = 0; variant <= 8; ++variant) {
+        auto s = reserves_fixture(variant);
+        const auto out = compare_routes(*s, variant == 0, variant == 0);
+        const auto expected_notifications = variant == 1 || (variant >= 2 && variant <= 6) ? 1u : 2u;
+        require(out.stop.empty() && out.notifications == expected_notifications
+                    && out.save_success == unsigned(variant != 1 && variant != 6),
+                "German reserve lookup/flags/previous-row variant " + std::to_string(variant));
+        if (variant == 8) require(out.lookups == 3, "German old destination row reused after a previous lookup");
+        ++returned;
+    }
+    {
+        auto s = reserves_fixture(9);
+        require(compare_routes(*s).stop.starts_with("Unmapped data access at "),
+                "German incoming destination residue fault remains partial");
+        ++faults;
+    }
+    {
+        auto s = reserves_fixture(0, 42);
+        const auto out = compare_routes(*s);
+        require(out.stop.empty() && out.notifications == 1 && out.lookups == 1 && out.mutations == 1,
+                "German reserve notification changes the live source count");
+        ++returned;
+    }
+    for (const auto count : {0, -1}) {
+        auto s = reserves_fixture();
+        Cpu c(*s);
+        c.put16(second_object + 0x3e, count);
+        c.set(3, 0xdeadbeef); // This entry obtains its objects from the live globals.
+        const auto out = compare_routes(*s);
+        require(out.stop.empty() && out.lookups == 0 && out.notifications == 0, "German empty/signed reserve source count");
+        ++returned;
+    }
+    for (const auto entry : {fill, reserves}) {
+        auto s = entry == fill ? regional_fixture(12, 4, 4, 2, true) : reserves_fixture();
+        const auto out = compare_routes(*s);
+        ++returned;
+        for (unsigned limit = 0; limit < out.instructions; limit += 17) {
+            s->budget = limit;
+            if (compare_routes(*s).stop == "Native instruction budget exhausted") ++budgets;
+        }
+    }
+    for (const auto entry : {create, destroy, collect, calendar, configure, link_divisions, promote, fill, reserves}) {
         RoutineChecker checker([entry](std::uint32_t actual) { return actual == entry; }, 1, 1);
         checker.strict_volatile = true;
         Services services(nullptr, &checker);
         auto s = entry == collect ? league_fixture(32, 1, 2001, 2, true)
                  : entry == calendar || entry == configure ? calendar_fixture(entry)
                  : entry == link_divisions ? relationships_fixture(entry)
-                 : entry == promote ? promotion_fixture() : lifecycle_fixture(entry, 0, 0);
+                 : entry == promote ? promotion_fixture()
+                 : entry == fill ? regional_fixture()
+                 : entry == reserves ? reserves_fixture() : lifecycle_fixture(entry, 0, 0);
         run_until(*s, return_sentinel);
         const auto found = checker.totals().find(entry);
         require(found != checker.totals().end() && found->second.checked == 1 && !found->second.differences,
@@ -789,9 +1027,9 @@ void verify() {
         require(rejected, "German unknown owner entry");
     }
     std::cout << "GER_FIRST " << returned << " returned comparisons (8 scalar mutations; seed 0x474552), "
-              << budgets << " budget boundaries, one partial fault, " << rejected_results << " wrong result and "
-              << rejected_traces << " wrong trace detected; seven checked production hooks\n";
-    std::cout << "Controlled create->destroy replay matched with all seven owned routines enabled\n";
+              << budgets << " budget boundaries, " << faults << " partial faults, " << rejected_results << " wrong result and "
+              << rejected_traces << " wrong trace detected; nine checked production hooks\n";
+    std::cout << "Controlled create->destroy replay matched with all nine owned routines enabled\n";
 }
 }
 

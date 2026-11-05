@@ -19,6 +19,7 @@ constexpr auto collect_entry = 0x10539590u;
 constexpr auto create_entry = 0x10536d50u, destroy_entry = 0x10537080u;
 constexpr auto calendar_entry = 0x10537120u, configure_entry = 0x105397b0u;
 constexpr auto link_entry = 0x10539bb0u, promote_entry = 0x10539d20u;
+constexpr auto fill_entry = 0x10539f30u, reserves_entry = 0x1053a900u;
 constexpr unsigned club_stride = 0x248, standing_size = 0x44, definition_size = 0x6c;
 void call_virtual(Cpu&, std::uint32_t resume);
 
@@ -873,6 +874,343 @@ void promote_four(Cpu& c) {
     c.set(1, stack);
     c.set_lr(c.r(0));
     guest::transfer_saved_registers<22, true>(c, stack);
+    c.finish();
+}
+
+void fill_regional_slots(Cpu& c) {
+    GuestNativeScope scope(c.s, fill_entry);
+    block(c, fill_entry, 20);
+    const auto stack = c.sp(), frame = stack - 0x3d0;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<17>(c, stack);
+    c.set(4, c.toc(-0x7be8));
+    const guest::Kept<31> object(c, c.r(3));
+    const guest::Kept<22> missing_id(c, c.toc(-0x7a0c));
+    guest::Kept<20> vacancies(c, 0);
+    const guest::Kept<23> country_id(c, c.toc(-0x7af4));
+    guest::Kept<19> selected(c, 0);
+    const guest::Kept<24> divisions(c, c.toc(-0x7b5c));
+    guest::Kept<21> index(c, 0);
+    c.set(25, c.toc(-0x7b04));
+    c.set(30, c.toc(-0x7b50));
+    const guest::Kept<26> regional_id(c, c.toc(-0x6750));
+    const guest::Kept<27> definitions(c, c.toc(-0x7bbc));
+    const guest::Kept<28> buffer(c, c.toc(-0x7ba8));
+    const guest::Kept<29> pool(c, c.toc(-0x44f8));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    guest::Kept<18> club(c, c.u32(c.r(4)));
+    bool first_scan = true;
+    for (;;) {
+        // The reference joins the loop increment and next bound check in one
+        // budget block; the initial cross-page branch enters its suffix.
+        if (first_scan) block(c, 0x1053a02c, 6);
+        first_scan = false;
+        c.set(3, c.u32(c.r(25)));
+        c.set(0, c.u32(c.r(30)));
+        c.set(3, c.r(3) << 1);
+        c.set(0, c.r(0) - c.r(3));
+        if (compare(c, std::int32_t(std::uint32_t(index)), std::int32_t(c.r(0))) >= 0) break;
+        block(c, 0x10539f80, 3);
+        c.set(3, c.u32(club + 0x2c));
+        bool eligible = compare_logical(c, c.r(3)) != 0;
+        if (eligible) {
+            block(c, 0x10539f8c, 4);
+            c.set(3, c.u32(c.r(3) + 0x68));
+            c.set(0, c.u32(country_id));
+            eligible = compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) == 0;
+        }
+        if (eligible) {
+            block(c, 0x10539f9c, 3);
+            c.set(3, c.u32(club + 0x30));
+            if (compare_logical(c, c.r(3))) {
+                block(c, 0x10539fa8, 4);
+                c.set(3, c.u32(c.r(3)));
+                c.set(0, c.u32(missing_id));
+                eligible = compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) == 0;
+            }
+        }
+        if (eligible) {
+            block(c, 0x10539fb8, 4);
+            c.set({{3, club}, {4, frame + 0x38}, {5, 1}});
+            c.call(0x100ce320, 0x10539fc8);
+            block(c, 0x10539fc8, 2);
+            if (compare_logical(c, c.r(3))) {
+                block(c, 0x10539fd0, 3);
+                c.set(0, c.u8(frame + 0x38));
+                if (!record_value(c, 0, std::int8_t(c.r(0)))) {
+                    block(c, 0x10539fdc, 3);
+                    c.set(3, c.u32(c.r(3) + 0x30));
+                    eligible = compare_logical(c, c.r(3)) != 0;
+                    if (eligible) {
+                        block(c, 0x10539fe8, 4);
+                        c.set(3, c.u32(c.r(3)));
+                        c.set(0, c.u32(regional_id));
+                        eligible = compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) != 0;
+                        if (eligible) {
+                            block(c, 0x10539ff8, 2);
+                            c.set(0, c.u32(missing_id));
+                            eligible = compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) != 0;
+                            block(c, 0x1053a000, 1);
+                        }
+                    }
+                }
+            }
+        }
+        if (eligible) {
+            block(c, 0x1053a004, 8);
+            c.set(4, std::uint32_t(std::int16_t(std::uint32_t(selected))));
+            selected = selected + 1;
+            c.set(0, std::uint32_t(std::int16_t(std::uint32_t(selected))));
+            c.set(3, frame + 0x64);
+            c.set(4, c.r(4) * 4);
+            const auto full = compare(c, std::int32_t(c.r(0)), 200) == 0;
+            c.put32(c.r(3) + c.r(4), club);
+            if (full) break;
+        }
+        block(c, 0x1053a024, 8);
+        index = index + 1;
+        club = club + club_stride;
+    }
+    block(c, 0x1053a044, 3);
+    guest::Kept<17> group(c, UINT32_MAX);
+    guest::Kept<25> child_offset(c, std::uint32_t(-4));
+    for (;;) {
+        block(c, 0x1053a0fc, 3);
+        c.set(0, std::uint32_t(std::int8_t(std::uint32_t(group))));
+        if (compare(c, std::int32_t(c.r(0)), 1) >= 0) break;
+        block(c, 0x1053a050, 3);
+        c.set(0, std::uint32_t(std::int8_t(std::uint32_t(group))));
+        if (!compare(c, std::int32_t(c.r(0)), -1)) {
+            block(c, 0x1053a05c, 5);
+            c.set(0, c.u32(regional_id));
+            c.set(3, c.u32(divisions));
+            c.set(0, c.r(0) * 4);
+            c.set(18, c.u32(c.r(3) + c.r(0)));
+        } else {
+            block(c, 0x1053a070, 6);
+            c.set(0, c.u32(regional_id));
+            c.set(3, c.u32(divisions));
+            c.set(0, c.r(0) * 4);
+            c.set(3, c.u32(c.r(3) + c.r(0)));
+            c.set(3, c.u32(c.r(3) + 0xc));
+            c.set(18, c.u32(c.r(3) + child_offset));
+        }
+        const guest::Kept<18> competition(c, c.r(18));
+        block(c, 0x1053a088, 4);
+        index = 0;
+        guest::Kept<23> row_offset(c, index);
+        const guest::Kept<30> zero(c, index);
+        for (;;) {
+            block(c, 0x1053a0e8, 3);
+            c.set(0, std::uint32_t(c.i16(competition + 0x3e)));
+            if (compare(c, std::int32_t(std::uint32_t(index)), std::int32_t(c.r(0))) >= 0) break;
+            block(c, 0x1053a09c, 5);
+            c.set(0, c.u32(competition + 0xb0));
+            c.set(4, c.r(0) + row_offset);
+            c.set(0, c.u8(c.r(4) + 0x40));
+            if (!compare(c, std::int32_t(c.r(0)), 3)) {
+                block(c, 0x1053a0b0, 8);
+                c.set(0, c.u32(missing_id));
+                c.set(3, object);
+                c.set(5, c.u32(definitions));
+                c.set(6, 1);
+                c.set(0, c.r(0) * definition_size);
+                c.set(4, c.u32(c.r(4)));
+                c.set(5, c.r(5) + c.r(0));
+                c.call(0x1049f8e0, 0x1053a0d0);
+                block(c, 0x1053a0d0, 4);
+                c.set(3, c.u32(competition + 0xb0));
+                vacancies = vacancies + 1;
+                c.set(3, c.u32(c.r(3) + row_offset));
+                c.put32(c.r(3) + 0x38, zero);
+            }
+            block(c, 0x1053a0e0, 2);
+            row_offset = row_offset + standing_size;
+            index = index + 1;
+        }
+        block(c, 0x1053a0f4, 2);
+        child_offset = child_offset + 4;
+        group = group + 1;
+    }
+    block(c, 0x1053a108, 7);
+    c.set(0, c.u32(regional_id));
+    c.set(3, c.u32(divisions));
+    c.set(0, c.r(0) * 4);
+    c.set(3, c.u32(c.r(3) + c.r(0)));
+    c.set(0, std::uint32_t(c.i16(c.r(3) + 0x3e)));
+    if (!compare(c, std::int32_t(c.r(0)), 19)) {
+        block(c, 0x1053a124, 1);
+        vacancies = vacancies - 1;
+    }
+    block(c, 0x1053a128, 4);
+    c.set(3, std::uint32_t(std::int16_t(std::uint32_t(selected))));
+    c.set(0, std::uint32_t(std::int16_t(std::uint32_t(vacancies))));
+    if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) < 0) {
+        report_failure(c, 0x1053a138, pool, buffer, 0x44, 0x3c, 0x3d8);
+        block(c, 0x1053a180, 4);
+        c.set(3, c.toc(-0x7bac));
+        c.set(0, 0);
+        c.put8(c.r(3), 0);
+    } else {
+        block(c, 0x1053a190, 4);
+        c.set({{4, selected}, {5, vacancies}, {3, frame + 0x64}});
+        c.call(0x104635b0, 0x1053a1a0);
+        block(c, 0x1053a1a0, 4);
+        const guest::Kept<18> count(c, std::uint32_t(std::int16_t(std::uint32_t(selected))));
+        guest::Kept<17> cursor(c, frame + 0x64);
+        selected = 0;
+        for (;;) {
+            block(c, 0x1053a1dc, 2);
+            if (compare(c, std::int32_t(std::uint32_t(selected)), std::int32_t(std::uint32_t(count))) >= 0) break;
+            block(c, 0x1053a1e4, 2);
+            if (!record_value(c, 0, std::int16_t(std::uint32_t(vacancies)))) break;
+            block(c, 0x1053a1b0, 8);
+            c.set(0, c.u32(regional_id));
+            c.set(3, object);
+            c.set(5, c.u32(definitions));
+            c.set(6, 1);
+            c.set(0, c.r(0) * definition_size);
+            c.set(4, c.u32(cursor));
+            c.set(5, c.r(5) + c.r(0));
+            c.call(0x1049f780, 0x1053a1d0);
+            block(c, 0x1053a1d0, 3);
+            vacancies = vacancies - 1;
+            cursor = cursor + 4;
+            selected = selected + 1;
+        }
+    }
+    block(c, 0x1053a1ec, 5);
+    c.set(0, c.u32(frame + 0x3d8));
+    c.set(1, stack);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<17, true>(c, stack);
+    c.finish();
+}
+
+void coordinate_reserves(Cpu& c) {
+    GuestNativeScope scope(c.s, reserves_entry);
+    block(c, reserves_entry, 25);
+    const auto stack = c.sp(), frame = stack - 0xa0;
+    c.set(0, c.lr());
+    guest::transfer_saved_registers<19>(c, stack);
+    const guest::Kept<26> regional_id(c, c.toc(-0x6750));
+    guest::Kept<24> index(c, 0);
+    c.set(3, c.toc(-0x7b5c));
+    guest::Kept<25> offset(c, 0);
+    const guest::Kept<27> south_id(c, c.toc(-0x674c));
+    const guest::Kept<28> north_id(c, c.toc(-0x6748));
+    const guest::Kept<29> failure_flag(c, c.toc(-0x7bac));
+    const guest::Kept<30> buffer(c, c.toc(-0x7ba8));
+    const guest::Kept<31> pool(c, c.toc(-0x44f8));
+    c.put32(stack + 8, c.r(0));
+    c.put32(frame, stack);
+    c.set(1, frame);
+    scope.frame(frame);
+    c.set(0, c.u32(regional_id));
+    c.set(4, c.u32(c.r(3)));
+    c.set(0, c.r(0) * 4);
+    c.set(3, c.toc(-0x673c));
+    c.set(5, c.u32(c.r(4) + c.r(0)));
+    c.set(0, c.u32(c.r(3)));
+    c.set(3, c.u32(c.r(5) + 0xc));
+    const guest::Kept<22> regional(c, c.r(5));
+    c.set(0, c.r(0) * 4);
+    const guest::Kept<23> second(c, c.u32(c.r(4) + c.r(0)));
+    const guest::Kept<21> child(c, c.u32(c.r(3)));
+    // An unrecognized previous division leaves the incoming/prior row in r19.
+    // Preserve that original residue rather than inventing a null default.
+    guest::Kept<19> destination(c, c.r(19));
+    for (;;) {
+        block(c, 0x1053aaa4, 4);
+        c.set(0, std::uint32_t(c.i16(second + 0x3e)));
+        c.set(3, std::uint32_t(std::int16_t(std::uint32_t(index))));
+        if (compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) >= 0) break;
+        block(c, 0x1053a968, 5);
+        c.set(3, c.u32(second + 0xb0));
+        c.set({{4, frame + 0x38}, {5, 1}});
+        c.set(3, c.u32(c.r(3) + offset));
+        c.call(0x100ce320, 0x1053a97c);
+        block(c, 0x1053a97c, 2);
+        const auto found = record_value(c, 20, std::int32_t(c.r(3)));
+        const guest::Kept<20> partner(c, c.r(20));
+        bool eligible = found != 0;
+        if (eligible) {
+            block(c, 0x1053a984, 3);
+            c.set(0, c.u8(frame + 0x38));
+            eligible = record_value(c, 0, std::int8_t(c.r(0))) != 0;
+        }
+        if (eligible) {
+            block(c, 0x1053a990, 3);
+            c.set(3, c.u32(partner + 0x30));
+            eligible = compare_logical(c, c.r(3)) != 0;
+        }
+        if (eligible) {
+            block(c, 0x1053a99c, 4);
+            c.set(3, c.u32(c.r(3)));
+            c.set(0, c.u32(regional_id));
+            eligible = compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0))) == 0;
+        }
+        if (eligible) {
+            block(c, 0x1053a9ac, 5);
+            c.set(3, c.u32(partner + 0x38));
+            c.set(0, c.u32(north_id));
+            c.set(3, c.u32(c.r(3)));
+            if (!compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0)))) {
+                block(c, 0x1053a9c0, 4);
+                c.set({{3, regional}, {4, partner}, {5, 0}});
+                c.call(0x104aa560, 0x1053a9d0);
+                block(c, 0x1053a9d0, 2);
+                destination = c.r(3);
+            } else {
+                block(c, 0x1053a9d8, 3);
+                c.set(0, c.u32(south_id));
+                if (!compare(c, std::int32_t(c.r(3)), std::int32_t(c.r(0)))) {
+                    block(c, 0x1053a9e4, 4);
+                    c.set({{3, child}, {4, partner}, {5, 0}});
+                    c.call(0x104aa560, 0x1053a9f4);
+                    block(c, 0x1053a9f4, 1);
+                    destination = c.r(3);
+                }
+            }
+            block(c, 0x1053a9f8, 2);
+            if (!compare_logical(c, destination)) {
+                report_failure(c, 0x1053aa00, pool, buffer, 0x44, 0x3c, 0x4d2);
+                block(c, 0x1053aa48, 3);
+                c.set(0, 0);
+                c.put8(failure_flag, 0);
+            } else {
+                block(c, 0x1053aa54, 6);
+                c.set(3, c.u32(second + 0xb0));
+                c.set(0, offset + 0x40);
+                c.set(0, std::uint32_t(c.i8(c.r(3) + c.r(0))));
+                if (!compare(c, std::int32_t(c.r(0)), 3)) {
+                    block(c, 0x1053aa6c, 3);
+                    c.set(0, c.u8(destination + 0x40));
+                    if (compare(c, std::int32_t(c.r(0)), 3)) {
+                        block(c, 0x1053aa78, 9);
+                        c.set({{0, 3}, {3, regional}});
+                        c.put8(destination + 0x40, 3);
+                        c.set({{5, partner}, {7, 1}});
+                        c.set(6, c.u32(second + 0xb0));
+                        c.set(4, c.u32(second + 4));
+                        c.set(6, c.u32(c.r(6) + offset));
+                        c.call(0x10452a60, 0x1053aa9c);
+                    }
+                }
+            }
+        }
+        block(c, 0x1053aa9c, 2);
+        offset = offset + standing_size;
+        index = index + 1;
+    }
+    block(c, 0x1053aab4, 5);
+    c.set(0, c.u32(frame + 0xa8));
+    c.set(1, stack);
+    c.set_lr(c.r(0));
+    guest::transfer_saved_registers<19, true>(c, stack);
     c.finish();
 }
 

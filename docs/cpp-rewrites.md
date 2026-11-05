@@ -444,8 +444,9 @@ through the live app and performance are not retested by this delivery.
 The [audit](../tools/ger_first_audit.py) closes 11 entries and 3,916
 structurally reachable instructions between FRA_THIRD.CPP and GER_SECOND.CPP.
 Construction/destruction, calendar generation, club collection, configuration,
-division relationships and four-slot promotion currently use C++23;
-the remaining four entries still use their generated bodies.
+division relationships, four-slot promotion, regional-slot filling and reserve
+coordination currently use C++23; the remaining two entries still use their
+generated bodies.
 `CM_GER_FIRST_ORIGINAL=1` keeps the independent original route.
 
 Collection performs its 2001 regional reassignment before allocating the
@@ -475,6 +476,16 @@ the selector reports an error but this caller continues into retained list
 contents. Empty scans skip relegation as well. Flagged relegation rows are
 looked up again before moving the club; both inline getter reads and their
 read-before-budget-charge boundary match the generated reference.
+
+Regional-slot filling caps candidates at 200 before advancing the scan. It
+rereads the live standings after relegation callbacks before clearing a club's
+previous division. A 19-club regional table subtracts one vacancy even when the
+result is negative; that signed quota reaches selection unchanged and the
+subsequent loop consumes candidates while the remaining vacancy is nonzero.
+Reserve coordination retains the incoming or previous destination row when
+neither previous regional ID matches. Its real external standing lookup runs
+on both comparison routes; notification callbacks can change the live source
+count. These quirks preserve the original behavior rather than add defaults.
 
 ## POR_SECOND.CPP
 
