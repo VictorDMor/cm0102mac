@@ -24,14 +24,6 @@ public:
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;
     std::vector<float> render_audio_offline(std::uint32_t frames);
     void observe_drawing(State&, std::uint32_t pc);
-    void debug_attribute_load_begin(State&);
-    void debug_attribute_load_end(State&);
-    bool debug_attribute_save_may_enter(const State&) const;
-    bool debug_attribute_save_begin(State&);
-    void debug_attribute_save_mode(State&);
-    void debug_attribute_save_renamed(State&);
-    void debug_attribute_save_end(State&);
-    void debug_attribute_save_abort() noexcept;
     void quick_save_load_begin(State&);
     void quick_save_load_end(State&);
     bool quick_save_write_begin(State&);
@@ -39,7 +31,6 @@ public:
     void quick_save_write_renamed(State&);
     void quick_save_write_end(State&);
     bool quick_save_busy() const;
-    bool debug_attribute_change_available() const;
     bool quick_save_available() const;
     bool quick_save_request(State&);
     void quick_save_note_boundary(const State&);

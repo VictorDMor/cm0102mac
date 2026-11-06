@@ -108,7 +108,7 @@ public:
             dispatch_probe || routine_checker || match_eng_call_observer || match_eng_declining ||
             &s == match_eng_original_state || guest_profiler::running() || match_pc_profile_enabled() ||
             !match_pl_route_allowed(0x10289560) || !match_pl_route_allowed(0x1022e760) ||
-            memory.date_observer || memory.read_trace || memory.debug_attribute_metadata_required() ||
+            memory.date_observer || memory.read_trace ||
             (observer && (!dynamic_cast<const NativeDrawingObserver*>(observer) ||
                           observer->observes_write(sp - 0x80, 0x8c)))) return;
         if (aliases_stack(match + players_at, 2 * side_size)) return;

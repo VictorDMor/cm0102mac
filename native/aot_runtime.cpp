@@ -1,5 +1,4 @@
 #include "aot_runtime.hpp"
-#include "debug_attribute_lock.hpp"
 #include "allocator_adapter.hpp"
 #include "import_bridge.hpp"
 #include "stream_buffer_adapter.hpp"
@@ -38,55 +37,6 @@ Memory::Memory() {
     data_ = static_cast<std::uint8_t*>(p);
 }
 Memory::~Memory() { munmap(data_, UINT64_C(1) << 32); }
-bool Memory::apply_debug_attribute_lock(std::uint32_t address, std::size_t size) {
-    return debug_attribute_lock_->apply(address, data_ + address, size);
-}
-void Memory::lock_debug_player_attributes(std::uint32_t staff, std::uint32_t player,
-        const std::vector<std::uint8_t>* original) {
-    // Reject incomplete records before applying any guest writes.
-    check(staff, 0x70);
-    check(player, 0x48);
-    if (original && !original->empty() && original->size() != debug_player_attributes::snapshot_size)
-        throw std::runtime_error("Invalid original player attributes");
-    // Repeated maximization must never replace the pre-cheat snapshot.
-    if (debug_attribute_lock_ && debug_attribute_lock_->contains(staff, player)) return;
-    std::vector<std::uint8_t> snapshot;
-    if (original) snapshot = *original;
-    else debug_player_attributes::for_each(staff, player, [&](auto address, auto) {
-        snapshot.push_back(std::uint8_t(read<1>(address)));
-    });
-    if (!debug_attribute_lock_) debug_attribute_lock_ = std::make_unique<DebugAttributeLock>();
-    debug_attribute_lock_->add(staff, player, snapshot);
-    debug_attribute_lock_used_ = true;
-    debug_player_attributes::for_each(staff, player, [&](auto address, auto value) { write<1>(address, value); });
-}
-std::vector<std::uint8_t> Memory::original_debug_player_attributes(std::uint32_t staff, std::uint32_t player) const {
-    return debug_attribute_lock_ ? debug_attribute_lock_->original(staff, player) : std::vector<std::uint8_t>{};
-}
-bool Memory::restore_debug_player_attributes(std::uint32_t staff, std::uint32_t player) {
-    const auto original = original_debug_player_attributes(staff, player);
-    if (original.empty()) return false;
-    check(staff, 0x70);
-    check(player, 0x48);
-    unlock_debug_player_attributes(staff);
-    std::size_t index = 0;
-    debug_player_attributes::for_each(staff, player, [&](auto address, auto) { write<1>(address, original[index++]); });
-    return true;
-}
-void Memory::unlock_debug_player_attributes(std::uint32_t staff) {
-    if (!debug_attribute_lock_) return;
-    debug_attribute_lock_->remove(staff);
-    if (debug_attribute_lock_->empty()) debug_attribute_lock_.reset();
-}
-void Memory::unlock_debug_player_record(std::uint32_t player) {
-    if (!debug_attribute_lock_) return;
-    debug_attribute_lock_->remove_player(player);
-    if (debug_attribute_lock_->empty()) debug_attribute_lock_.reset();
-}
-void Memory::clear_debug_player_attributes() { debug_attribute_lock_.reset(); debug_attribute_lock_used_ = false; }
-std::vector<std::pair<std::uint32_t, std::uint32_t>> Memory::debug_locked_players() const {
-    return debug_attribute_lock_ ? debug_attribute_lock_->players() : std::vector<std::pair<std::uint32_t, std::uint32_t>>{};
-}
 void Memory::map(std::uint32_t start, std::uint64_t size) {
     if (!size || size > (UINT64_C(1) << 32) - start)
         throw std::runtime_error("Invalid data mapping");
@@ -193,7 +143,7 @@ template <> void Memory::write<4>(std::uint64_t address, std::uint64_t value) {
     if (address >= (UINT64_C(1) << 32) || address + 4 > (*page_ends_)[address >> 16])
         return write_word_slow(address, value);
     write_be<4>(data_ + address, value);
-    if (debug_attribute_lock_ || observer || date_observer) report_word_write(address);
+    if (observer || date_observer) report_word_write(address);
 }
 void Memory::write_word_slow(std::uint64_t address, std::uint64_t value) {
     check_scalar<4>(address);
@@ -202,7 +152,6 @@ void Memory::write_word_slow(std::uint64_t address, std::uint64_t value) {
 }
 void Memory::report_word_write(std::uint64_t address) {
     const auto start = std::uint32_t(address);
-    if (debug_attribute_lock_) [[unlikely]] apply_debug_attribute_lock(start, 4);
     if (observer && observer->observes_write(address, 4)) observer->written(start, data_ + address, 4);
     if (date_observer) date_observer->written(start, data_ + address, 4);
 }
@@ -216,20 +165,14 @@ void Memory::load(std::uint32_t start, const std::filesystem::path& file, std::u
 void Memory::copy_in(std::uint32_t start, const std::vector<std::uint8_t>& bytes) {
     check(start, bytes.size());
     std::memcpy(data_ + start, bytes.data(), bytes.size());
-    if (debug_attribute_lock_) apply_debug_attribute_lock(start, bytes.size());
     if (observer) observer->written(start, data_ + start, bytes.size());
     if (date_observer) date_observer->written(start, data_ + start, bytes.size());
 }
 void Memory::clear(std::uint32_t start, std::uint64_t size) {
     check(start, size);
     std::memset(data_ + start, 0, size);
-    if (debug_attribute_lock_ && apply_debug_attribute_lock(start, std::size_t(size))) {
-        if (observer) observer->written(start, data_ + start, std::size_t(size));
-        if (date_observer) date_observer->written(start, data_ + start, std::size_t(size));
-    } else {
-        if (observer) observer->cleared(start, size);
-        if (date_observer) date_observer->cleared(start, size);
-    }
+    if (observer) observer->cleared(start, size);
+    if (date_observer) date_observer->cleared(start, size);
 }
 std::vector<std::uint8_t> Memory::copy_out(std::uint32_t start, std::size_t size) const {
     check(start, size);

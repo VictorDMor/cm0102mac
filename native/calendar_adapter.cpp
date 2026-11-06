@@ -182,7 +182,7 @@ void execute_ordering(State& s, bool before = false) {
 }
 bool try_candidate_cutoff(State& s, CandidateCutoff& cutoff) {
     if (s.calendar_original || s.calendar_original_resume || audit ||
-        s.memory.date_observer || s.memory.read_trace || s.memory.debug_attribute_metadata_required() ||
+        s.memory.date_observer || s.memory.read_trace ||
         s.executed >= s.budget || s.budget - s.executed < 4 || !can_batch_date_leap(s))
         return false;
     // A drawing observer may be active during Continue. Its notifications

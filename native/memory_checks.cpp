@@ -174,13 +174,13 @@ void word_write_order_checks() {
     struct Observer final : MemoryObserver {
         std::vector<unsigned>& events;
         const unsigned id;
+        std::uint32_t expected = 0;
         bool fail = false;
         Observer(std::vector<unsigned>& values, unsigned tag) : events(values), id(tag) {}
         void mapped(std::uint32_t, std::uint64_t) override {}
         void cleared(std::uint32_t, std::uint64_t) override {}
         void written(std::uint32_t, const std::uint8_t* bytes, std::size_t size) override {
-            require(size == 4 && read_be<4>(bytes) == 0x64640164,
-                    "Word observers must see the final locked attributes");
+            require(size == 4 && read_be<4>(bytes) == expected, "Word observers must see the stored word");
             events.push_back(id);
             if (fail) throw std::runtime_error("Word observer fault");
         }
@@ -190,21 +190,21 @@ void word_write_order_checks() {
     for (const auto base : {0x37000000u, 0x37020100u}) {
         Memory memory;
         memory.map(base, 0x200);
-        const auto player = base + 0x100;
-        memory.lock_debug_player_attributes(base, player);
+        const auto address = base + 0x123;
         std::vector<unsigned> order;
         Observer general(order, 1), date(order, 2);
         memory.observer = &general;
         memory.date_observer = &date;
-        memory.write<4>(player + 0x23, 0xabcdef01);
+        general.expected = date.expected = 0xabcdef01;
+        memory.write<4>(address, 0xabcdef01);
         require(order == std::vector<unsigned>{1, 2}, "Word notification ordering changed");
         order.clear();
         general.fail = true;
+        general.expected = date.expected = 0;
         bool faulted = false;
-        try { memory.write<4>(player + 0x23, 0); }
+        try { memory.write<4>(address, 0); }
         catch (const std::runtime_error& error) { faulted = std::string(error.what()) == "Word observer fault"; }
-        require(faulted && order == std::vector<unsigned>{1} &&
-                    memory.read<4>(player + 0x23) == 0x64640164,
+        require(faulted && order == std::vector<unsigned>{1} && memory.read<4>(address) == 0,
                 "Faulting word observer changed write or notification semantics");
     }
 }

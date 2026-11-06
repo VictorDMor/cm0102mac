@@ -78,7 +78,7 @@ bool can_reuse_scores(Cpu& c, std::uint32_t match, unsigned count) {
         overlaps(match, unsigned(match_end - match), sp - sort_depth, stack_end) ||
         overlaps(actor_descriptor, 8, sp - sort_depth, stack_end) ||
         overlaps(actor_descriptor, 8, match + queue_at, match_end) ||
-        memory.date_observer || memory.read_trace || memory.debug_attribute_metadata_required() ||
+        memory.date_observer || memory.read_trace ||
         s.budget != UINT64_MAX || routine_checker || dispatch_probe || match_eng_call_observer ||
         match_eng_declining || &s == match_eng_original_state || match_pc_profile_enabled() ||
         s.import_descriptor_observer || guest_profiler::running())

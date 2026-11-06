@@ -96,7 +96,7 @@ struct Player {
     // Bytes the stories nudge (inferred from the stories that move them; 20 is the top of the scale).
     Field<std::int8_t> aggression() const { return {c, at + 0x1c}; }   // a dirty-play story raises it
     Field<std::int8_t> consistency() const { return {c, at + 0x21}; }  // rises together with morale after a good story
-    Field<std::int8_t> dirtiness() const { return {c, at + 0x25}; }    // (as debug_player_attributes.hpp)
+    Field<std::int8_t> dirtiness() const { return {c, at + 0x25}; }    // a negative attribute, like injury proneness at +0x2d
     Field<std::int8_t> influence() const { return {c, at + 0x2f}; }    // 50 points of reputation each in a dressing-room comparison
     Field<std::int8_t> versatility() const { return {c, at + 0x45}; }  // (as shortlist_manager_records.hpp)
 };

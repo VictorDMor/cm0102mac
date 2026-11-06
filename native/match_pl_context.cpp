@@ -38,7 +38,7 @@ std::optional<std::uint32_t> native_role(Cpu& c, std::uint32_t player, std::uint
         dispatch_probe || routine_checker || match_eng_call_observer ||
         match_eng_declining || &s == match_eng_original_state || !match_pl_route_allowed(entry) ||
         guest_profiler::running() || match_pc_profile_enabled() ||
-        memory.date_observer || memory.read_trace || memory.debug_attribute_metadata_required())
+        memory.date_observer || memory.read_trace)
         return std::nullopt;
     if (const auto* observer = memory.observer;
         observer && (observer->observes_write(sp - 0x80, 0x8c) ||
