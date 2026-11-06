@@ -12,11 +12,15 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [ ] **Review rounds on checker-only follow-ups** (found 2026-10-31, delivery timing): review waits are the largest measured cost (128.7 of 409.8 min), and 80.6 of those are FILE_SCREENS.CPP's 8 rounds. 7 of the 8 came after the delivery commit, and the follow-up commits touched only checkers, CMake, docs and this file. Skipping them would remove a review pass, so nothing changed; decide if you want a lighter rule for diffs that don't reach production code.
 
+- [ ] **Re-record `season-day`** (found 2026-11-06). The 10-22 capture can't be a reference any more, for two reasons. (1) The Inter-American Cup retirement (`f543e57`) changes the day on purpose. (2) The capture recorded a non-equivalent rewrite: the 10-12 `player_decision` C++ for `0x102836a0` drew differently from the generated original in a nested call (draw 2,031,292). `a64ca26` replaced it with the MATCH_PL reconstruction, which matches the original. Turning that old rewrite off on `366b5e2` reproduces today's behaviour exactly. Every build since 10-29 therefore stops at `HGetVol` from `0x10778ab4` with 648 recorded RNG writes pending. That's the capture's fault, not a regression. A new day capture is yours to record; the stack-audit contract table also needs it.
+
 - [x] **Uninitialised stack decides results** (found 2026-10-23). Decided by Victor 2026-10-23: option A, keep exact results and the full stack image. Replaced by Victor 2026-11-06 with the per-reader contract (CLAUDE.md): results stay exact, but a rewrite only leaves the stack bytes an audited reader reads, and calls a callee at the original stack pointer where a reader reads that callee's residue.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
 ## Now
+
+- [ ] **Season replay checks draw counts, not draw sites** (found 2026-11-06). Each recorded RNG event is a cursor step, so the strict replay only proves how many draws happen between two OS calls. A match makes almost no OS calls, so a divergence can run for ~600,000 draws before it shows. Proposed tooling change: commit the import-order detail (expected event, pending RNG writes, matched count, caller) and an opt-in `CM_SEASON_RNG_TRACE=from:to` that prints each draw's guest call chain. The patch is in the session scratchpad. It has to be reviewed before it goes into `native/season_reference.cpp`.
 
 - [ ] **Install the verified Hall of Fame and Greek rulebook build.** The installer found the game running. The verified ARM64 build includes all 20 Hall of Fame routines, all four Greek rulebook routines and the checked frame restore. Retry the guarded installer after the game closes and update both installation notes in the tracker.
 
