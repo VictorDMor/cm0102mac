@@ -1,8 +1,11 @@
 """Production pages call C++ owners in place and continue at the return address."""
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
-from compile_recomp import DirectOwnerCalls, direct_owner_entries, generate_page, owners_counting_declines, plain_direct_call
+from compile_recomp import (DirectOwnerCalls, direct_owner_entries, generate_page, owners_counting_declines,
+                            plain_direct_call, render_direct_owners, direct_owner_table, require_watched_in_place,
+                            CPP_IN_PLACE_WATCHED)
 
 PAGE = 0x10001
 
@@ -67,6 +70,46 @@ class InPlaceOwnerCalls(unittest.TestCase):
         calls.entry_hooks[self.callee].append('if (try_modern_other(s, 0x1)) return true;')
         with self.assertRaises(ValueError):
             calls.require_standard()
+
+    def test_cpp_callers_get_only_entries_with_the_single_standard_hook(self):
+        standard = lambda entry, family: [f'if (try_modern_{family}(s, 0x{entry:x})) return true;']
+        plain = lambda page: ''.join(f'case 0x{entry:x}: goto i_{entry:x};\n' for entry in range(page << 12, (page + 1) << 12, 0x100))
+        with mock.patch('compile_recomp.owners_counting_declines', return_value=frozenset({'counted'})):
+            owners, charged = direct_owner_table({0x10002000: standard(0x10002000, 'alpha'),
+                                                  0x10003000: standard(0x10003000, 'beta') + ['if (try_modern_x(s, 0x1)) return true;'],
+                                                  0x10005000: standard(0x10006000, 'delta'),
+                                                  0x10007000: [],
+                                                  0x10008000: standard(0x10008000, 'counted')}, plain)
+        self.assertEqual((owners, charged), ({0x10002000: 'alpha'}, []))
+        table = render_direct_owners(owners)
+        self.assertIn('case 0x10002000: return try_modern_alpha(s, 0x10002000);', table)
+        self.assertIn('#include "alpha_adapter.hpp"', table)
+        self.assertIn('default: return false;', table)
+
+    def test_an_owner_entered_through_a_charged_case_stays_off_the_table(self):
+        hooks = {self.callee: [f'if (try_modern_{self.family}(s, 0x{self.callee:x})) return true;']}
+        plain = f'case 0x{self.callee:x}: goto i_{self.callee:x};'
+        self.assertEqual(direct_owner_table(hooks, lambda page: plain), ({self.callee: self.family}, []))
+        charged = f'case 0x{self.callee:x}: s.step(0x{self.callee:x}); s.charge(2); goto i_{self.callee:x};'
+        self.assertEqual(direct_owner_table(hooks, lambda page: charged), ({}, [self.callee]))
+
+    def test_the_watched_contract_queries_follow_their_rules(self):
+        table = {entry: 'contract_manager' for entry in CPP_IN_PLACE_WATCHED}
+        require_watched_in_place(table, table, frozenset())
+        require_watched_in_place({}, {}, frozenset())  # a bounded run that generated neither
+        first = min(CPP_IN_PLACE_WATCHED)
+        with self.assertRaisesRegex(ValueError, 'lost a watched entry'):
+            require_watched_in_place({}, {first: []}, frozenset())
+        with self.assertRaisesRegex(ValueError, 'Host code compares the PC'):
+            require_watched_in_place(table, table, frozenset({first}) | set())
+        with mock.patch('compile_recomp.SPECIAL_LOWERINGS', {first: None}):
+            import compile_recomp
+            compile_recomp.owner_entries_in_place.cache_clear()
+            try:
+                with self.assertRaisesRegex(ValueError, 'break an in-place owner rule'):
+                    require_watched_in_place(table, table, frozenset())
+            finally:
+                compile_recomp.owner_entries_in_place.cache_clear()
 
     def test_owners_that_count_before_declining_keep_the_dispatcher(self):
         with tempfile.TemporaryDirectory() as directory:

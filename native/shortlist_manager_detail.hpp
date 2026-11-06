@@ -177,7 +177,11 @@ public:
     std::uint32_t call(std::uint32_t entry, std::uint32_t back, std::initializer_list<std::uint32_t> arguments = {}) {
         unsigned n = 3;
         for (const auto value : arguments) c.set(n++, value);
-        if (!call_rewritten(c, entry, back)) c.call(entry, back);
+        if (call_rewritten(c, entry, back)) return c.r(3);
+        // Other modules' C++ owners run without dispatching their page,
+        // except under a check tool's call hook, which sees guest calls.
+        if (shortlist_manager_call_hook) [[unlikely]] c.call(entry, back);
+        else c.call_in_place(entry, back);
         return c.r(3);
     }
     // A call the C++ reproduces in place (`reproduce()`, which returns r3):

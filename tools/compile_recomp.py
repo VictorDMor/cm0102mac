@@ -879,17 +879,89 @@ def owners_counting_declines(native=Path(__file__).resolve().parent.parent / "na
 @functools.cache
 def direct_owner_entries():
     """Owner entry -> family, for owners generated code may call in place."""
+    return owner_entries_in_place(frozenset(observed_instructions(checks=True)))
+
+
+@functools.cache
+def owner_entries_in_place(watched=frozenset()):
+    """Owner entry -> family for every standard owner outside `watched` and
+    the special entries below: direct_owner_entries excludes what checks
+    watch; CPP_IN_PLACE_WATCHED must pass with only host-watched PCs excluded."""
     counts = defaultdict(int)
     for entry, _ in OWNER_REPLACEMENTS:
         counts[entry] += 1
     other = (set(SPECIAL_LOWERINGS) | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
              set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) |
-             set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} |
-             set(observed_instructions(checks=True)))
+             set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} | set(watched))
     return {entry: module.removesuffix("_adapter") for entry, module in OWNER_REPLACEMENTS
             if module.endswith("_adapter") and module not in NONSTANDARD_OWNER_MODULES and counts[entry] == 1
             and entry not in other and entry >> 12 not in TURBO_PAGES
             and module.removesuffix("_adapter") not in owners_counting_declines()}
+
+
+# Owners kept off direct_owner_entries only because checks compare the PC with
+# them. C++ callers may still enter them in place (run_owner_in_place) when no
+# check instrumentation is active: a C++ caller's guest call already runs in a
+# nested dispatcher that stops only at its own return address, so a check
+# stopping at the PC never saw these calls. Production pages keep the
+# dispatcher for them. Host code must not watch them (generation fails).
+CPP_IN_PLACE_WATCHED = frozenset({0x10082f20, 0x10082f90})  # CONTRACT_MANAGER's primary and club contract queries
+
+
+def records_owner_hooks(address):
+    return address in direct_owner_entries() or address in CPP_IN_PLACE_WATCHED
+
+
+def standard_owner_hook(entry, family):
+    return f"if (try_modern_{family}(s, 0x{entry:x})) return true;"
+
+
+def direct_owner_table(entry_hooks, page_text):
+    """Entry -> family for run_owner_in_place (native/owner_in_place.hpp): the
+    owners production pages call in place, plus CPP_IN_PLACE_WATCHED, whose
+    generated entry holds exactly the standard hook and which the dispatch
+    switch enters with a plain goto, so C++ that runs the hook directly does
+    what the entry's page would do before its first instruction. Block
+    accounting charges a step on the case line of an instruction that starts
+    no run; such entries are returned separately, left out of the table.
+    Leaves may be listed: run_owner_until tries run_leaf first, as run_until
+    does, so a leaf run_leaf takes still runs its generated body; C++ leaves it
+    leaves alone reach their hook, as on the page."""
+    owners, charged, pages = {}, [], {}
+    for entry, hooks in entry_hooks.items():
+        match = OWNER_HOOK.fullmatch(hooks[0]) if len(hooks) == 1 else None
+        if not match or hooks[0] != standard_owner_hook(entry, match.group(1)):
+            continue
+        if match.group(1) in owners_counting_declines():  # asked twice when it declines
+            continue
+        if entry >> 12 not in pages:
+            pages[entry >> 12] = page_text(entry >> 12)
+        if f"case 0x{entry:x}: goto i_{entry:x};" in pages[entry >> 12]:
+            owners[entry] = match.group(1)
+        else:
+            charged.append(entry)
+    return owners, charged
+
+
+def require_watched_in_place(in_place, generated, host_watched):
+    """CPP_IN_PLACE_WATCHED's rules: each entry meets every in-place owner rule
+    except the check-watched exclusion, host code never compares the PC with
+    it, and each one this run generated (`generated`) is in the table."""
+    if watched_by_host := CPP_IN_PLACE_WATCHED & set(host_watched):
+        raise ValueError(f"Host code compares the PC with in-place C++ owner entries: {sorted(hex(a) for a in watched_by_host)}")
+    if unqualified := CPP_IN_PLACE_WATCHED - set(owner_entries_in_place(frozenset(host_watched))):
+        raise ValueError(f"In-place C++ owner entries break an in-place owner rule: {sorted(hex(a) for a in unqualified)}")
+    if lost := (CPP_IN_PLACE_WATCHED & set(generated)) - set(in_place):
+        raise ValueError(f"In-place C++ owner calls lost a watched entry: {sorted(hex(a) for a in lost)}")
+
+
+def render_direct_owners(owners):
+    code = ['#include "owner_in_place.hpp"']
+    code += [f'#include "{family}_adapter.hpp"' for family in sorted(set(owners.values()))]
+    code += ["namespace cm::aot {", "bool run_owner_in_place(State& s, std::uint32_t entry) {", "switch (entry) {"]
+    code += [f"case 0x{entry:x}: return try_modern_{family}(s, 0x{entry:x});" for entry, family in sorted(owners.items())]
+    code += ["default: return false;", "}", "}", "}", ""]
+    return "\n".join(code)
 
 
 def plain_direct_call(item):
@@ -912,7 +984,7 @@ class DirectOwnerCalls:
     def require_standard(self):
         """Fails if a callee's entry lost its single standard hook."""
         for callee, family in sorted(self.called.items()):
-            if self.entry_hooks.get(callee) != [f"if (try_modern_{family}(s, 0x{callee:x})) return true;"]:
+            if self.entry_hooks.get(callee) != [standard_owner_hook(callee, family)]:
                 raise ValueError(f"In-place owner call to {callee:x} needs exactly the standard {family} hook there")
 
 
@@ -2378,7 +2450,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code[hooks_start:] = [bound_turbo_hook(a, line) for line in code[hooks_start:]]
             if any(line.startswith("if (try_") for line in code[hooks_start:]):
                 raise ValueError(f"Semantic hook at {a:x} bypasses the Turbo instruction counter")
-        if direct_owner_calls is not None and a in direct_owner_entries():
+        if direct_owner_calls is not None and records_owner_hooks(a):
             direct_owner_calls.entry_hooks[a] = code[hooks_start:]
         code.append(f"{'counter' if match_hot_page else 's'}.step(0x{a:x});")
         if register_context_hooks and a in CAPTURE_OBSERVATIONS:
@@ -3186,6 +3258,11 @@ def main():
     outputs["leaves.cpp"] = render_leaves(inlining.leaves, metadata['userops'])
     outputs["divisions.cpp"] = render_divisions(divisions)
     outputs["watched_routines.cpp"] = render_watched_routines(call_targets)
+    in_place, charged = direct_owner_table(direct_calls.entry_hooks, lambda page: outputs.get(f"page_{page:x}.cpp") or
+                                           (args.output / f"page_{page:x}.cpp").read_text())
+    require_watched_in_place(in_place, direct_calls.entry_hooks, observed_instructions(checks=False))
+    print(f"Owners C++ calls in place: {len(in_place)} ({len(charged)} left out: entered through a charged case)", flush=True)
+    outputs["direct_owners.cpp"] = render_direct_owners(in_place)
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
             native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops'],

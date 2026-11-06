@@ -14,6 +14,7 @@
 // callee's prologue saves those into the stack image too.
 #include "aot_runtime.hpp"
 #include "guest_context_transfer.hpp"
+#include "owner_in_place.hpp"
 #include <bit>
 #include <exception>
 #include <initializer_list>
@@ -81,15 +82,11 @@ public:
     // `return_address`: runs the callee (generated code or another owner) and
     // returns when it does. The caller sets the arguments and the
     // non-volatile registers first.
-    void call(std::uint32_t target, std::uint32_t return_address) {
-        s.wr<4>(reg::r2_save, r(2));
-        set_lr(return_address);
-        s.pc = target;
-        const auto stack = sp();
-        run_until(s, return_address);
-        // A rewrite never declines, so its original body (where the return
-        // address lies) runs nowhere else; a mismatch is a wiring error.
-        if (sp() != stack) throw std::logic_error("Guest call returned on a different stack: " + hex_address(target));
+    void call(std::uint32_t target, std::uint32_t return_address) { guest_call(target, return_address, run_until); }
+    // The same, except that another module's C++ owner at `target` runs in
+    // place of its page (owner_in_place.hpp); for callers without check hooks.
+    void call_in_place(std::uint32_t target, std::uint32_t return_address) {
+        guest_call(target, return_address, run_owner_until);
     }
     // `bl` to a routine rewritten in C++, called directly: only the link
     // register, which the callee's prologue saves.
@@ -99,6 +96,18 @@ public:
     }
     // `blr`: the hook's caller continues at the link register.
     void finish() { s.pc = lr(); }
+
+private:
+    void guest_call(std::uint32_t target, std::uint32_t return_address, void (*run)(State&, std::uint32_t)) {
+        s.wr<4>(reg::r2_save, r(2));
+        set_lr(return_address);
+        s.pc = target;
+        const auto stack = sp();
+        run(s, return_address);
+        // A rewrite never declines, so its original body (where the return
+        // address lies) runs nowhere else; a mismatch is a wiring error.
+        if (sp() != stack) throw std::logic_error("Guest call returned on a different stack: " + hex_address(target));
+    }
 };
 
 // The stack image of a CodeWarrior prologue and the state its epilogue

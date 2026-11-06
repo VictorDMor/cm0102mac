@@ -14,6 +14,7 @@
 #include "match_turbo.hpp"
 #include "season_reference.hpp"
 #include "routine_check.hpp"
+#include "owner_in_place.hpp"
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -190,8 +191,11 @@ extern const std::uint32_t import_stubs_begin, import_stubs_end;
 namespace {
 // The dispatcher loop. Check tools (dispatch_probe) get a copy that asks the
 // probe before each page; testing the probe on every iteration cost the
-// day replay 2-4%.
-template <bool Probe> void dispatch_until(State& s, std::uint32_t return_pc, bool quick_save_boundary = false) {
+// day replay 2-4%. With `owner_first`, the first instruction's page is not
+// dispatched when its entry has a C++ owner that runs in place
+// (run_owner_in_place); the page would only ask that owner's hook.
+template <bool Probe> void dispatch_until(State& s, std::uint32_t return_pc, bool quick_save_boundary = false,
+                                          bool owner_first = false) {
     GuestDispatchScope dispatch(s, return_pc);
     struct QuickSaveBoundary {
         bool enabled;
@@ -207,6 +211,12 @@ template <bool Probe> void dispatch_until(State& s, std::uint32_t return_pc, boo
     static const bool trace = std::getenv("CM_AOT_TRACE_IMPORTS") != nullptr;
     for (;;) {
     try {
+    if (owner_first) {
+        owner_first = false;
+        // A decline (or no such owner) leaves the state untouched: the loop
+        // then dispatches the page, whose hook is asked again.
+        if (s.pc != return_pc) run_owner_in_place(s, s.pc);
+    }
     while (s.pc != return_pc) {
         if (const char* name = s.pc - import_stubs_begin < import_stubs_end - import_stubs_begin ? import_name(s.pc) : nullptr) {
             if (season_replay_import(s, name)) { ++s.native_calls; continue; }
@@ -258,14 +268,20 @@ template <bool Probe> void dispatch_until(State& s, std::uint32_t return_pc, boo
     }
     }
 }
-}
-void run_until(State& s, std::uint32_t return_pc) {
-    // A call into a leaf routine (getters and other short straight-line
-    // bodies) needs no dispatcher scope: it cannot call or transfer.
-    if (s.pc != return_pc && run_leaf(s) && s.pc == return_pc) return;
+// A call into a leaf routine (getters and other short straight-line bodies)
+// needs no dispatcher scope: it cannot call or transfer.
+[[gnu::always_inline]] inline void run_until_from(State& s, std::uint32_t return_pc, bool owner_first) {
+    if (s.pc != return_pc && run_leaf(s)) {
+        if (s.pc == return_pc) return;
+        owner_first = false;  // the call's entry has run; s.pc is elsewhere
+    }
     if (dispatch_probe) [[unlikely]] dispatch_until<true>(s, return_pc);
-    else dispatch_until<false>(s, return_pc);
+    else dispatch_until<false>(s, return_pc, false, owner_first);
 }
+}
+void run_until(State& s, std::uint32_t return_pc) { run_until_from(s, return_pc, false); }
+// Check tools (a probe or a routine checker) keep the page dispatch they observe.
+void run_owner_until(State& s, std::uint32_t return_pc) { run_until_from(s, return_pc, !routine_checker); }
 void run_quick_save_until(State& s, std::uint32_t return_pc) {
     if (dispatch_probe) [[unlikely]] dispatch_until<true>(s, return_pc, true);
     else dispatch_until<false>(s, return_pc, true);
