@@ -33,6 +33,9 @@ bool select_debug_best_xi(State&, std::uint32_t club, unsigned managed,
                          std::uint32_t formation, std::uint32_t fixture);
 // Recover every player in the club roster, including unselected reserves.
 bool recover_debug_squad(State&, std::uint32_t club);
+// Set every roster player's primary-contract wage to zero (one euro if the
+// original store refuses zero) and clear clauses, bonuses and the release amount.
+bool free_debug_squad(State&, std::uint32_t club);
 
 // Shared validation for the live UI and focused original-engine checks.
 bool eligible_debug_goal(const State&, std::uint32_t match, unsigned player);

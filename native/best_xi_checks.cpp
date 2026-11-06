@@ -315,6 +315,87 @@ void check_recovery(State& s, std::uint32_t club, std::uint32_t opponent,
     std::cout << "Recovery: " << players.size() << " actual roster players, " << suspended.size()
               << " suspension categories, medical history, queues, 100% readouts, opponent isolation and gating passed\n";
 }
+void check_free_squad(State& s, std::uint32_t club, std::uint32_t opponent) {
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto manager = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b7c)));
+    const auto staff_count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7be4)));
+    require(manager && staff_count, "Missing original contract manager");
+    const auto contract_for = [&](std::uint32_t staff, std::uint32_t employer) {
+        auto contract = invoke(s, 0x10082f20, {manager, staff});
+        if (!contract) {
+            const auto value = invoke(s, 0x10084be0, {manager, staff, employer, 1, 0xffffffff, 0});
+            invoke(s, 0x10078e70, {manager, staff, value});
+            contract = invoke(s, 0x10082f20, {manager, staff});
+        }
+        require(contract && s.memory.read<4>(contract + 4) == s.memory.read<4>(employer),
+                "Original primary contract setup failed");
+        return contract;
+    };
+    std::vector<std::uint32_t> roster;
+    for (unsigned i = 0; i < 50; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
+        if (!staff || !s.memory.read<4>(staff + 0x14)) continue;
+        const auto id = signed_value<4>(s.memory.read<4>(staff));
+        if (id < 0 || std::uint32_t(id) >= staff_count ||
+            std::find(roster.begin(), roster.end(), staff) != roster.end()) continue;
+        roster.push_back(staff);
+    }
+    require(roster.size() >= 2, "Need at least two actual contracts");
+    std::uint32_t outsider = 0;
+    for (unsigned i = 0; i < 50 && !outsider; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(opponent + 0x98 + i * 4));
+        if (!staff || !s.memory.read<4>(staff + 0x14)) continue;
+        const auto id = signed_value<4>(s.memory.read<4>(staff));
+        if (id >= 0 && std::uint32_t(id) < staff_count && std::find(roster.begin(), roster.end(), staff) == roster.end())
+            outsider = staff;
+    }
+    require(outsider, "Need an opponent with an actual contract");
+    const auto managed = std::array{contract_for(roster[0], club), contract_for(roster[1], club)};
+    const auto foreign = contract_for(outsider, opponent);
+    const auto seed = [&](std::uint32_t contract, std::uint32_t wage, std::uint32_t base) {
+        s.memory.write<4>(contract + 0x0c, wage);
+        for (unsigned i = 0; i < 5; ++i) s.memory.write<1>(contract + 0x1c + i, 1);
+        for (unsigned i = 0; i < 3; ++i) s.memory.write<4>(contract + 0x10 + i * 4, base + i);
+        invoke(s, 0x10380700, {contract, base * 10});
+    };
+    seed(managed[0], 54000, 11); seed(managed[1], 12345, 21); seed(foreign, 7777, 31);
+    const auto before = std::array{s.memory.copy_out(managed[0], 100), s.memory.copy_out(managed[1], 100)};
+    const auto foreign_before = s.memory.copy_out(foreign, 100);
+    const auto verify = [&](std::uint32_t contract, const std::vector<std::uint8_t>& original) {
+        require(!s.memory.read<4>(contract + 0x0c), "Free-squad wage is not zero");
+        for (unsigned i = 0; i < 5; ++i)
+            require(!s.memory.read<1>(contract + 0x1c + i), "Free-squad clause survived");
+        for (unsigned i = 0; i < 3; ++i)
+            require(s.memory.read<4>(contract + 0x10 + i * 4) == 0xffffffff, "Free-squad bonus survived");
+        require(!s.memory.read<4>(contract + 0x24), "Free-squad release amount survived");
+        // Only wage, bonuses, clauses and release amount may change.
+        for (unsigned offset = 0; offset < 0x30; ++offset) {
+            const bool expected = (offset >= 0x0c && offset < 0x10) || (offset >= 0x10 && offset < 0x1c) ||
+                                  (offset >= 0x1c && offset < 0x21) || (offset >= 0x24 && offset < 0x28);
+            if (!expected)
+                require(s.memory.read<1>(contract + offset) == original[offset],
+                        "Free-squad changed an unrelated contract byte");
+        }
+    };
+    select_native_debugging(false);
+    const auto executed = s.executed;
+    require(!free_debug_squad(s, club) && s.executed == executed &&
+            s.memory.copy_out(managed[0], 100) == before[0] &&
+            s.memory.copy_out(managed[1], 100) == before[1], "Disabled free squad changed state");
+    select_native_debugging(true);
+    const auto registers = s.registers;
+    const auto unique = s.unique;
+    const auto pc = s.pc;
+    require(free_debug_squad(s, club), "Free squad rejected the actual contracts");
+    require(s.registers == registers && s.unique == unique && s.pc == pc, "Free squad clobbered caller");
+    verify(managed[0], before[0]); verify(managed[1], before[1]);
+    require(s.memory.copy_out(foreign, 100) == foreign_before, "Free squad changed the opponent contract");
+    require(!free_debug_squad(s, 0), "Free squad accepted an invalid club");
+    require(free_debug_squad(s, club), "Repeated free squad failed");
+    verify(managed[0], before[0]); verify(managed[1], before[1]);
+    std::cout << "Free squad: " << managed.size() << " actual contracts zeroed, clauses/bonuses/release cleared, "
+              << "unrelated terms and opponent isolation, disabled/invalid/repeat guards passed\n";
+}
 }
 int main(int argc, char** argv) {
     try {
@@ -325,7 +406,7 @@ int main(int argc, char** argv) {
         require(debug_text(9, DebugText::add_goal) == "Adicionar Gol" && debug_text(0, DebugText::add_goal) == "Add Goal" &&
                 debug_text(9, DebugText::goal) == "Gol" && debug_text(0, DebugText::goal) == "Goal", "Goal labels");
         for (unsigned language = 0; language < 11; ++language)
-            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale, DebugText::remove_sale_clause})
+            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::debugging, DebugText::recover_players, DebugText::play_for_free})
                 require(!debug_text(language, key).empty(), "Missing supported-language label");
         require(debug_text(255, DebugText::best_xi) == "Best XI", "Unknown language fallback");
         require(debug_text(9, DebugText::recover_squad) == "Recuperar" &&
@@ -340,6 +421,15 @@ int main(int argc, char** argv) {
         require(debug_text(9, DebugText::remove_sale_clause) == "Remover Cl\xe1usula de Venda" &&
                 debug_text(0, DebugText::remove_sale_clause) == "Remove Release Clause" &&
                 debug_text(255, DebugText::remove_sale_clause) == "Remove Release Clause", "Sale clause localization/fallback");
+        require(debug_text(9, DebugText::debugging) == "Debugging" &&
+                debug_text(0, DebugText::debugging) == "Debugging" &&
+                debug_text(255, DebugText::debugging) == "Debugging", "Debugging menu localization/fallback");
+        require(debug_text(9, DebugText::recover_players) == "Recuperar jogadores" &&
+                debug_text(0, DebugText::recover_players) == "Recover Players" &&
+                debug_text(255, DebugText::recover_players) == "Recover Players", "Recover Players localization/fallback");
+        require(debug_text(9, DebugText::play_for_free) == "Jogar de Gra\xe7" "a" &&
+                debug_text(0, DebugText::play_for_free) == "Play for Free" &&
+                debug_text(255, DebugText::play_for_free) == "Play for Free", "Play for Free localization/fallback");
         const auto root = std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         auto live = create_match({argv[1], argv[2], root}, {677, 5677, 12345, 2001, 194});
         auto& s = *live.state;
@@ -408,6 +498,7 @@ int main(int argc, char** argv) {
         s.memory.copy_in(club + 0x98, roster);
         const auto opponent = std::uint32_t(s.memory.read<4>(live.match + 0x7aac + 0xd8 + 0x34));
         check_recovery(s, club, opponent, tactics, formation);
+        check_free_squad(s, club, opponent);
         select_native_debugging(false);
         std::cout << "Best XI: live selection, availability, unique players, formation, bench limits, depleted pool, gating and 11 languages passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

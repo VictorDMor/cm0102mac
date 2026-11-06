@@ -19,6 +19,8 @@ constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 3
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
+constexpr unsigned free_squad_action = 30017;
+static_assert(free_squad_action > shortcut_last);
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
@@ -542,11 +544,25 @@ void append_best_xi_control(State& s) {
     const auto best_label = debug_text(s, DebugText::best_xi);
     call.args({paper, call.text(best_label), best_xi_action, 0});
     call.call(0x107444e0, {ui, grid, 0, 0, 0x30, ink, 12, 1});
+    // The second cell owns the original drop-down popup instead of acting
+    // directly, matching the View/Sort toolbar control.
     call.args({0, 1, 0, 0xffffffffu});
-    const auto recovery_grid = call.call(0x107198c0, {page, 446, top, 556, top + 20, 1, 0, 1});
-    const auto recovery_label = debug_text(s, DebugText::recover_squad);
-    call.args({paper, call.text(recovery_label), recover_squad_action, 0});
-    call.call(0x107444e0, {ui, recovery_grid, 0, 0, 0x30, ink, 12, 1});
+    const auto debugging_grid = call.call(0x107198c0, {page, 446, top, 556, top + 20, 1, 0, 1});
+    call.args({paper, call.text(debug_text(s, DebugText::debugging)), 0, 0});
+    const auto debugging_cell = call.call(0x107444e0, {ui, debugging_grid, 0, 0, 0x30, ink, 12, 1});
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto menu_paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bcc)));
+    const auto menu_ink = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bd0)));
+    const auto menu_selected = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bd4)));
+    call.args({0, 0x130, menu_paper, debugging_cell});
+    const auto menu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
+    const auto item = [&](DebugText text, unsigned action) {
+        call.args({0x10, menu_paper, menu_ink, 1, 1, menu_selected,
+                   call.text(debug_text(s, text)), 0, action, 0, menu});
+        call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, 0});
+    };
+    item(DebugText::recover_players, recover_squad_action);
+    item(DebugText::play_for_free, free_squad_action);
 }
 
 bool dispatch_best_xi_control(State& s) {
@@ -554,7 +570,7 @@ bool dispatch_best_xi_control(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != best_xi_action && action != recover_squad_action) return false;
+    if (action != best_xi_action && action != recover_squad_action && action != free_squad_action) return false;
     bool accepted = false;
     if (native_debugging_enabled() && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
@@ -564,6 +580,7 @@ bool dispatch_best_xi_control(State& s) {
         const auto columns = call.call(0x1073ef70, {ui, 7});
         if (view == 1 && !(columns & 0x800) && call.call(0x1014c490, {club, 0, 1})) {
             if (action == recover_squad_action) accepted = recover_debug_squad(s, club);
+            else if (action == free_squad_action) accepted = free_debug_squad(s, club);
             else {
                 const auto humans = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a54)));
                 const auto formation = call.call(0x101466c0, {humans, 0});
@@ -612,6 +629,34 @@ std::uint32_t debug_primary_contract(State& s, GuestCall& call, std::uint32_t st
     const auto manager = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b7c)));
     return manager ? call.call(0x10082f20, {manager, staff}) : 0;
 }
+}
+
+bool free_debug_squad(State& s, std::uint32_t club) {
+    if (!native_debugging_enabled() || !club) return false;
+    const auto staff_count = signed_value<4>(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7be4)));
+    GuestCall call(s);
+    std::vector<std::uint32_t> players;
+    bool processed = false;
+    for (unsigned i = 0; i < 50; ++i) {
+        const auto staff = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
+        if (!staff || !s.memory.read<4>(staff + 0x14)) continue;
+        const auto id = signed_value<4>(s.memory.read<4>(staff));
+        if (id < 0 || id >= staff_count || std::find(players.begin(), players.end(), staff) != players.end()) continue;
+        players.push_back(staff);
+        const auto contract = debug_primary_contract(s, call, staff);
+        if (!contract) continue;
+        // Zero is the requested wage. The read-back also covers worlds whose
+        // contract store rejects a zero word; one euro remains the fallback.
+        s.memory.write<4>(contract + 0x0c, 0);
+        if (s.memory.read<4>(contract + 0x0c)) s.memory.write<4>(contract + 0x0c, 1);
+        for (unsigned option = 0; option < 5; ++option)
+            call.call(0x10374b60, {contract, option});
+        for (unsigned bonus = 0; bonus < 3; ++bonus)
+            call.call(0x10374b80, {contract, bonus});
+        call.call(0x10380700, {contract, 0});
+        processed = true;
+    }
+    return processed;
 }
 
 namespace {
