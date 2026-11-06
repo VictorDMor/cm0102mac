@@ -18,6 +18,59 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: native-first rewrites (decided 2026-11-06)
+
+Approved by Victor on 2026-11-06. The rewrites so far still speak the PowerPC ABI inside: guest addresses, register copies, stack frames, and calls through the dispatcher. That is why SHORTLIST_MANAGER gained 2.9% and CONTRACT_MANAGER 0.8% at delivery. From now on:
+
+- **Code.** Native C++ inside, guest ABI only at the edge with generated code. Rewritten routines call each other directly in C++, across modules too, with native parameters and locals. No frames or register copies except where `--stack-audit-all` shows a reader (the per-reader contract in `CLAUDE.md`). Data stays in guest memory behind named views and remains the only truth.
+- **Data, one record type at a time.** Once every writer of a record type is C++, the type may move to native structs behind the same views. Saving and loading still produce and read the original format. Victor's own career saves may be discarded; the reference save and the benchmark careers stay.
+- **Derived native indexes for hot paths are allowed.** For this case this replaces the "no host-owned shadow world" line in the skill's fidelity guide. Guest memory stays the source of truth. The index must stay correct when generated code writes its inputs. The game's writes, RNG draws, iteration order and allocations stay identical. Check with a paired replay: identical end state and RNG.
+
+Evidence is in `.local/performance/2026-11-06-day-modules/host-modules/`: native samples of the full production day and week, the module split (`host_modules.py`), and SHORTLIST call paths (`shortlist_paths.py`, `shortlist_callees.py`, `sl_targets.txt`).
+
+- **The production day.** Native sample of the 26-country `season-day`. Where the time goes, day / week:
+
+  | Bucket | Day | Week |
+  | --- | ---: | ---: |
+  | C++ rewrites | 54% | 50% |
+  | Generated code | 31% | 29% |
+  | Dispatcher | 6.1% | 4.1% |
+  | Replay overhead | 9.2% | 16.7% |
+
+- **SHORTLIST_MANAGER is on the stack for 68.9% of the day.**
+  - Its own C++ is 11.0%, and helpers it calls directly (`Memory::write`, `Frame`) another ~5.5%.
+  - 52.4% is in calls through `Program::call` → `Cpu::call` → dispatcher: generated code 20.9%, other modules' C++ 20.7%, the native list search `0x101b1620` 5.0%, the dispatcher itself 5.2%.
+  - It is entered in place from GAME.CPP's day loop (`page_10119`) for 41.7%, and through `Cpu::call` from CONTRACT_MANAGER's daily review for 20.8%.
+- **What its C++ calls.** 119 distinct targets: 20 inside the module, called directly, and 99 outside, through the dispatcher (57 with C++ owners, 42 generated). The hottest, by checked-mode census counting all callers:
+
+  | Target | Module | Calls/day |
+  | --- | --- | ---: |
+  | `0x10082f20` | CONTRACT_MANAGER (C++) | 15.3M |
+  | `0x100cab10` | DATABASE (generated) | 9.0M |
+  | `0x1014c2e0` | HUMAN_MANAGER (generated) | 5.4M |
+  | `0x10082f90` | CONTRACT_MANAGER (C++) | 4.6M |
+  | `0x103ecef0` | TRANSFER_MANAGER (C++) | 4.1M |
+  | `0x103f43b0` | TRANSFER_MANAGER (C++) | 3.7M |
+
+- **What imitating the PowerPC costs, as known so far** (share of the production day):
+
+  | Cost | Share | Source |
+  | --- | ---: | --- |
+  | Registers in the byte array | ~1% | 2026-10-22 experiment |
+  | CFM glue pass | ~1% | item below |
+  | Dispatcher | ~6% | native sample |
+  | Frames | ~2% | native sample |
+  | `Memory::write<4u>` (self) | 10.5% | native sample |
+  | `check_scalar<4u>` (self) | 4.1% | native sample |
+
+  How much of the last two is the format and how much the stores themselves is unknown.
+
+Steps:
+
+- [ ] **Measure the software bounds check.** Make a throwaway build where `Memory::check_scalar` doesn't check. It is in a header, so ~1,900 pages recompile. Run at least 5 alternating `--timing` pairs on `season-day` and the week capture, with an identical end state. Then revert and record the numbers here.
+- [ ] **Recruitment pilot, native-first.** The candidate scan and interest registration (`scan_candidates`, `register_club_interest`, `distribute_staff_interest`), and their calls into CONTRACT_MANAGER, STAFF_CONTRACTS, TRANSFER_MANAGER and DATE, become direct C++ calls. Drop the frames and register copies the stack audit doesn't require. Then add a derived index if the volume justifies it (see the recruitment item under Now: 1.76M registrations a day, 76% stop at an inactive entry). One measured, reviewed commit per step.
+- [ ] **Rewrite the `recompile-module` skill** and its fidelity guide for native-first rewrites, from the results above.
+
 ## Now
 
 - [ ] **Route the generic CFM glue in place** (measured 2026-11-06). Generated `bl 0x10781320` sites return to the dispatcher, which then dispatches the glue page. The glue is left out of in-place owner calls only because 12 checker files compare the PC with 0x10781320 (`observed_instructions`). A throwaway variant without that exclusion (468 pages regenerated, then restored) removed that pass: 29.5 million per production `season-day`, out of 290 million page dispatches. Over nine alternating `--timing` pairs, it was 0.97% faster (median 0.149 s of 15.32 s, MAD 0.36 pp, faster in 9/9). The strict replay reached the recorded end state with the same 12,247,499,814 instructions. To ship it, those checkers must watch the import-descriptor observer instead of the PC, and the change needs the usual review. The passes to the destination and back to the caller remain, as for any cross-page call. Evidence: `.local/performance/2026-11-06-day-modules/glue/`.
