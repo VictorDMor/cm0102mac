@@ -8,6 +8,12 @@ stack. A routine's self share counts samples whose PC lies in it; its
 inclusive share counts samples with it anywhere on the stack. Routine starts
 are the export's direct call targets; routines with a C++ owner are labelled
 with the owner's family from the generated hooks.
+
+The guest PC doesn't move while native C++ runs. Self shares of C++-owned code
+are unreliable, and so are inclusive shares of callees that keep no guest frame.
+On the 2026-11-06 day and week captures, 28% and 36% of samples sat on the
+generic CFM glue 0x10781320. Host sampling (`sample`) put the glue's own code
+at 1.4% and 0.9%. Use host sampling for native time.
 """
 import argparse
 import bisect
