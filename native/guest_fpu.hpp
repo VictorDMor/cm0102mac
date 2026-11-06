@@ -64,8 +64,8 @@ public:
     static double single(double value) { return double(float(value)); }
 
 private:
-    static constexpr std::size_t fx = 1280, fex = 1281, vx = 1282, ox = 1283, ux = 1284, zx = 1285, xx = 1286,
-                                 vxsnan = 1287, vxzdz = 1290, fi = 1294, fl = 1296, fg = 1297, fe = 1298, fu = 1299;
+    static constexpr std::size_t fx = 1280, fex = 1281, vx = 1282, ox = 1283, zx = 1285, xx = 1286,
+                                 vxsnan = 1287, vxzdz = 1290, fi = 1294, fl = 1296, fg = 1297, fe = 1298;
     std::uint8_t get(std::size_t bit) const { return std::uint8_t(s.r<1>(bit)); }
     void set(std::size_t bit, std::uint32_t value) { s.wr<1>(bit, value & 1); }
     double divided(double r, double a, double b) {
@@ -87,19 +87,19 @@ private:
         return r;
     }
     void result_class(double r) {
-        set(fl, r < 0);
-        set(fg, 0 < r);
-        set(fe, r == 0);
-        set(fu, std::isnan(r));
+        // FL, FG, FE and FU are four consecutive big-endian bytes.
+        s.wr<4>(fl, std::uint32_t(r < 0) << 24 | std::uint32_t(0 < r) << 16 |
+                    std::uint32_t(r == 0) << 8 | std::uint32_t(std::isnan(r)));
     }
     void summaries() {
-        std::uint8_t invalid = 0;
-        for (const std::size_t bit : {1287u, 1288u, 1289u, 1290u, 1291u, 1292u, 1301u, 1302u, 1303u}) invalid |= get(bit);
-        set(vx, invalid);
-        set(fx, get(fx) | get(ox) | get(ux) | get(zx) | get(xx));
-        std::uint8_t enabled = 0;
-        for (const std::size_t bit : {vx, ox, ux, zx, xx}) enabled ^= get(bit) & get(bit + 22);
-        set(fex, enabled);
+        // Invalid detail bits occupy bytes 1287–1292 and 1301–1303.
+        const auto invalid = (s.r<8>(vxsnan) & 0x0101010101010000ULL) | (s.r<4>(1300) & 0x00010101u);
+        set(vx, invalid != 0);
+        // FX is sticky. FEX uses the export's XOR across VX through XX and
+        // their enable bytes. The masks select only the low bit of each byte.
+        set(fx, get(fx) | ((s.r<4>(ox) & 0x01010101u) != 0));
+        const auto enabled = s.r<8>(vx) & s.r<8>(vx + 22) & 0x0101010101000000ULL;
+        set(fex, std::popcount(enabled) & 1);
     }
     State& s;
 };

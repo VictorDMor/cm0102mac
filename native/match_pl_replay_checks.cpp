@@ -1,5 +1,6 @@
 // A bounded detailed-match interval with MATCH_PL original/default routing.
 #include "match_pl_adapter.hpp"
+#include "match_pl_shot_event.hpp"
 #include "actor_construction_adapter.hpp"
 #include "match_eng_adapter.hpp"
 #include "match_replay.hpp"
@@ -20,6 +21,7 @@ namespace {
 std::uint32_t match_address = 0;
 constexpr unsigned advances = 600;
 bool timed = false, construction = false, response = false, obstruction = false, goal_line = false, pressure = false;
+bool shot_event = false;
 unsigned pair_index = 0;
 struct Inputs final : CodeFragmentBoundaryObserver {
     unsigned clocks = 0;
@@ -37,7 +39,7 @@ struct ShotCalls final : MemoryObserver {
     State& s;
     MemoryObserver* previous;
     unsigned calls = 0, balance_calls = 0, construction_calls = 0, influence_calls = 0, obstruction_calls = 0;
-    unsigned opposite_goal_calls = 0, own_goal_calls = 0, pressure_calls = 0;
+    unsigned opposite_goal_calls = 0, own_goal_calls = 0, pressure_calls = 0, shot_event_calls = 0;
     explicit ShotCalls(State& state) : s(state), previous(s.memory.date_observer) { if (!timed) s.memory.date_observer = this; }
     ~ShotCalls() { if (!timed) s.memory.date_observer = previous; }
     void mapped(std::uint32_t at, std::uint64_t size) override { if (previous) previous->mapped(at, size); }
@@ -59,6 +61,11 @@ struct ShotCalls final : MemoryObserver {
         case 0x101dad40: case 0x101db1b4: case 0x102586ac:
         case 0x102787d4: case 0x10278b94: case 0x10279980: case 0x1028166c: case 0x102816a8:
             ++calls; break;
+        case 0x101dad70: case 0x101db1d8: case 0x102816dc:
+        case 0x10278854: case 0x10278878: case 0x10278c14: case 0x10278c38:
+        case 0x102586cc: case 0x1025c234: case 0x1025d240: case 0x102651b8:
+        case 0x10267f9c: case 0x102686f0: case 0x1026a184:
+            ++shot_event_calls; break;
         case 0x101d93ec: case 0x101d942c: ++balance_calls; break;
         case 0x1020e9e0: ++construction_calls; break;
         case 0x101f0b70: ++obstruction_calls; break;
@@ -132,6 +139,13 @@ void interval(State& s, bool original) {
         if (!shots.pressure_calls)
             throw std::runtime_error("Actual-match interval did not exercise the occupant pressure verdict");
     }
+    if (shot_event) {
+        c.put32(0x61000020, shots.shot_event_calls);
+        std::cerr << (match_pl::shot_event_uses_cpp(s) ? "cpp" : "original")
+                  << " shot-event calls=" << shots.shot_event_calls << '\n';
+        if (!shots.shot_event_calls)
+            throw std::runtime_error("Actual-match interval did not exercise shot execution");
+    }
     if (!timed && !shots.balance_calls) throw std::runtime_error("Actual-match interval did not exercise periodic balance");
     if (!timed && !shots.calls) throw std::runtime_error("Actual-match interval did not exercise shot selection");
     if (!timed) std::cerr << (original ? "original" : "cpp") << " shot-selection calls=" << shots.calls << " periodic-balance calls=" << shots.balance_calls << " construction calls=" << shots.construction_calls << '\n';
@@ -146,6 +160,11 @@ void measured_interval(State& s, bool original) {
                          << " milliseconds=" << std::fixed << std::setprecision(6) << milliseconds << '\n';
 }
 void original(State& s, std::uint32_t) {
+    if (shot_event) {
+        match_pl::OriginalShotEventScope scope(s);
+        measured_interval(s, false);
+        return;
+    }
     // The whole State runs the original bodies: MATCH_ENG.CPP's hook declines for it, as MATCH_PL's does.
     match_eng_original_state = &s;
     struct Restore { ~Restore() { match_eng_original_state = nullptr; } } restore;
@@ -165,6 +184,7 @@ int main(int argc, char** argv) {
             else if (option == "--obstruction") obstruction = true;
             else if (option == "--goal-line") goal_line = true;
             else if (option == "--pressure") pressure = true;
+            else if (option == "--shot-event") shot_event = true;
             else if (option == "--spatial-equivalence") spatial_equivalence = true;
             else {
                 if (!option.starts_with("--timing-pairs=")) throw std::runtime_error("Unknown MATCH_PL replay option");

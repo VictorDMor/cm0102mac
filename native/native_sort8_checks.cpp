@@ -5,6 +5,7 @@
 #include "shortlist_category_adapter.hpp"
 #include "match_speed.hpp"
 #include "match_turbo.hpp"
+#include "routine_check.hpp"
 #include <random>
 
 namespace {
@@ -109,7 +110,7 @@ void compare(const State& input, bool must_return = false) {
 
 void equivalence() {
     std::mt19937 random(0x18f3);
-    for (const auto comparator : {0x103663b0u, 0x10366410u}) {
+    for (const auto comparator : {0x10309a00u, 0x103663b0u, 0x10366410u}) {
         for (unsigned seed = 0; seed < 8; ++seed) {
             for (const unsigned count : {2u, 3u, 7u, 16u, 65u}) {
                 for (unsigned kind = 0; kind < 15; ++kind)
@@ -181,6 +182,15 @@ void fallbacks_and_drawing(bool profile) {
         d.original_body = body; decline("Original comparator body");
     }
     d.original_body = 0;
+    s->memory.write<4>(base + 0x8000, 0x10309a00);
+    dispatch_probe = [](State&) { return false; };
+    decline("Relation comparator dispatch probe");
+    dispatch_probe = nullptr;
+    RoutineChecker checker([](std::uint32_t) { return true; }, 1, 1);
+    routine_checker = &checker;
+    decline("Relation comparator routine checker");
+    routine_checker = nullptr;
+    s->memory.write<4>(base + 0x8000, 0x10366410);
     auto a = clone(*s), b = clone(*s);
     NativeDrawingObserver x, y;
     x.register_surface(*a, base + 0x1000, 8, 8, 16, 16);

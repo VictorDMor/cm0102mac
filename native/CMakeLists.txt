@@ -2967,9 +2967,9 @@ add_executable(cm-native-sort8-checks native_sort8_checks.cpp)
 target_link_libraries(cm-native-sort8-checks PRIVATE cm_aot)
 target_compile_options(cm-native-sort8-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME native_sort8_equivalence COMMAND cm-native-sort8-checks)
-# The reference side runs the comparators (0x103663b0, 0x10366410) as generated
-# code, as the fused path's accounting assumes; SHORTLIST_MANAGER.CPP runs them as C++.
-set_tests_properties(native_sort8_equivalence PROPERTIES ENVIRONMENT "CM_SHORTLIST_MANAGER_ORIGINAL=1")
+# Compare the fused path's accounting with the original generated comparators
+# normally owned by SHORTLIST_MANAGER.CPP and PLAYER_STATS.CPP.
+set_tests_properties(native_sort8_equivalence PROPERTIES ENVIRONMENT "CM_SHORTLIST_MANAGER_ORIGINAL=1;CM_PLAYER_STATS_ORIGINAL=1")
 add_test(NAME original_sort8_profile COMMAND "${CMAKE_COMMAND}" -E env
     CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-native-sort8-checks> --profile)
 add_executable(cm-shutdown-checks shutdown_checks.cpp)
@@ -3538,6 +3538,8 @@ endif()
 if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262/initial.snapshot")
     add_test(NAME match_pl_match_replay COMMAND cm-match-pl-replay-checks
         "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262")
+    add_test(NAME match_pl_shot_event_replay COMMAND cm-match-pl-replay-checks
+        "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --shot-event)
     add_test(NAME match_pl_construction_replay COMMAND cm-match-pl-replay-checks
         "${CMAKE_SOURCE_DIR}/../.local/benchmarks/match/2262" --construction)
 endif()
@@ -4165,6 +4167,44 @@ if(CM_BRA_REG_PARANA_COVERAGE)
     target_compile_definitions(cm-bra-reg-parana-checks PRIVATE CM_BRA_REG_PARANA_COVERAGE=1
         CM_BRA_REG_PARANA_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/bra-reg-parana-coverage")
     target_link_options(cm-bra-reg-parana-checks PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_PARANA_PROFILE}")
+endif()
+
+
+file(GLOB CM_BRA_REG_GAUCHO_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bra_reg_gaucho*.cpp")
+list(FILTER CM_BRA_REG_GAUCHO_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_BRA_REG_GAUCHO_SOURCES})
+add_executable(cm-bra-reg-gaucho-checks bra_reg_gaucho_checks.cpp)
+target_link_libraries(cm-bra-reg-gaucho-checks PRIVATE cm_aot)
+target_compile_options(cm-bra-reg-gaucho-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_BRA_REG_GAUCHO_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/bra_reg_gaucho_reference.cpp")
+    add_custom_command(OUTPUT "${CM_BRA_REG_GAUCHO_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_bra_reg_gaucho_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_BRA_REG_GAUCHO_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_bra_reg_gaucho_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/bra_reg_gaucho_audit.py"
+            "${CMAKE_SOURCE_DIR}/bra_reg_gaucho_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-bra-reg-gaucho-checks PRIVATE "${CM_BRA_REG_GAUCHO_REFERENCE}")
+    add_test(NAME bra_reg_gaucho_equivalence COMMAND cm-bra-reg-gaucho-checks "${CM_ORACLE_DIR}")
+    add_test(NAME bra_reg_gaucho_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_bra_reg_gaucho_audit.py")
+endif()
+option(CM_BRA_REG_GAUCHO_COVERAGE "Instrument bra_reg_gaucho.cpp checker only" OFF)
+add_library(cm_bra_reg_gaucho_checks OBJECT ${CM_BRA_REG_GAUCHO_SOURCES})
+target_link_libraries(cm_bra_reg_gaucho_checks PRIVATE cm_aot)
+target_compile_options(cm_bra_reg_gaucho_checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+target_compile_definitions(cm_bra_reg_gaucho_checks PRIVATE CM_BRA_REG_GAUCHO_CHECKS=1)
+target_sources(cm-bra-reg-gaucho-checks PRIVATE $<TARGET_OBJECTS:cm_bra_reg_gaucho_checks>)
+target_compile_definitions(cm-bra-reg-gaucho-checks PRIVATE CM_BRA_REG_GAUCHO_CHECKS=1)
+if(CM_BRA_REG_GAUCHO_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bra-reg-gaucho-coverage")
+    set(CM_BRA_REG_GAUCHO_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/bra-reg-gaucho-coverage/check-%p.profraw")
+    target_compile_options(cm_bra_reg_gaucho_checks PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_GAUCHO_PROFILE}" -fcoverage-mapping)
+    target_compile_definitions(cm-bra-reg-gaucho-checks PRIVATE CM_BRA_REG_GAUCHO_COVERAGE=1
+        CM_BRA_REG_GAUCHO_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/bra-reg-gaucho-coverage")
+    target_link_options(cm-bra-reg-gaucho-checks PRIVATE "-fprofile-instr-generate=${CM_BRA_REG_GAUCHO_PROFILE}")
 endif()
 
 

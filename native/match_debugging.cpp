@@ -227,7 +227,7 @@ void award_debug_goal(State& s, std::uint32_t match, unsigned player) {
     const auto scorer = s.memory.read<1>(actor + 0xc), clock = s.memory.read<2>(match + 0x7948);
     {
         GuestCall caller(s);
-        match_debugger::apply_original_awarded_goal(s, match, actor, player / 20);
+        match_debugger::apply_awarded_goal(s, match, actor, player / 20);
     }
     if (s.memory.read<1>(match + 0xe03d) != home + (player < 20) ||
         s.memory.read<1>(match + 0xe073) != away + (player >= 20) ||

@@ -31,20 +31,26 @@ class ScopeTests(unittest.TestCase):
                          'bf8519e9fb7ff93e6741076af5a6d27074007dfe67a4d22ebac6c95c0b244822')
         self.assertEqual(manifest[677:678], [{'entry': '0x1023cd20', 'module': 'ball_action_adapter'}])
         self.assertEqual(len({row['entry'] for row in manifest}), 963)
-        for source in (ROOT / 'native').glob('ball_action*.cpp'):
+        native = ROOT / 'native'
+        sources = list(native.glob('ball_action*.cpp')) + list(native.glob('match_pl_execute_ball_action*.cpp'))
+        for source in sources:
             if 'checks' in source.name or source.name == 'ball_action_adapter.cpp':
                 continue
             for forbidden in ('_reference(', 'dispatch_page', 'pcode', 'i_102'):
                 self.assertNotIn(forbidden, source.read_text(), source.name)
 
     def test_coordinator_and_adapter_own_the_complete_root(self):
-        source = (ROOT / 'native/ball_action_coordinator.cpp').read_text()
-        self.assertIn('GuestNativeScope scope(state,entry)', source)
-        self.assertIn('scope.frame(std::uint32_t(state.r<4>(4)))', source)
-        self.assertIn('while(state.pc!=caller)', source)
-        self.assertIn('return_action_frame(state,dependencies,observer)', source)
+        source = (ROOT / 'native/match_pl_execute_ball_action.cpp').read_text()
+        self.assertIn('GuestNativeScope scope(c.s, ball_action::entry)', source)
+        self.assertIn('prepare(c, scope)', source)
+        self.assertIn('while (c.s.pc != caller)', source)
+        self.assertIn('case return_phase: return return_action;', source)
+        opening = (ROOT / 'native/match_pl_execute_ball_action_opening.cpp').read_text()
+        self.assertIn('scope.frame(stack)', opening)
         adapter = (ROOT / 'native/ball_action_adapter.cpp').read_text()
-        self.assertIn('ball_action::act(s, nullptr, d.observer)', adapter)
+        self.assertIn('try_modern_match_pl(s, entry)', adapter)
+        self.assertNotIn('ball_action::act(', adapter)
+        self.assertIn('match_pl_route_allowed(entry)', adapter)
         self.assertIn('d.original_body == entry', adapter)
         self.assertIn('match_pc_profile_enabled()', adapter)
         for address in (ENTRY + 4, END - 4):

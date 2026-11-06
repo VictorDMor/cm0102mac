@@ -190,6 +190,7 @@ public:
         if (date_observer) date_observer->written(std::uint32_t(address), data_ + address, N);
     }
 private:
+    friend struct GuestRegisterFrame;
     [[gnu::noinline]] void write_word_slow(std::uint64_t address, std::uint64_t value);
     [[gnu::noinline]] void report_word_write(std::uint64_t address);
     // Keep diagnostic vector growth and virtual callbacks outside ordinary

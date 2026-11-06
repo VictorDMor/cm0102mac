@@ -65,7 +65,7 @@ void describe_release_summary(State& s,SemanticDependencyDispatch* d,SemanticGue
     a.at(0x10380f00);a.pop(112);a.restore(31);a.restore(30);a.restore(29);a.finish();
 }
 void query_start_date_window(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o) {
-    Call a(s,query_start_date_window_entry,d,o);a.link();a.multiple(27);a.load(31,2,-0x7b80);a.move(28,3);a.move(29,5);a.move(30,6);a.save_link();a.frame(112);a.offset(3,1,0x50);a.call(0x10715880);a.compare(29,0,false);if(!a.equal()){a.value(0,0);a.store<1>(29,0,0);}
+    Call a(s,query_start_date_window_entry,d,o);a.link();a.multiple<27>();a.load(31,2,-0x7b80);a.move(28,3);a.move(29,5);a.move(30,6);a.save_link();a.frame(112);a.offset(3,1,0x50);a.call(0x10715880);a.compare(29,0,false);if(!a.equal()){a.value(0,0);a.store<1>(29,0,0);}
     a.at(0x10380f58);a.load(3,2,-0x7a68);a.load<1>(0,3,0);a.compare(0,1);if(!a.equal()){a.value(3,1);a.jump(0x103810bc);}
     else if(reference_after_start(a)){a.value(3,1);a.jump(0x103810bc);}
     else{
@@ -75,6 +75,6 @@ void query_start_date_window(State& s,SemanticDependencyDispatch* d,SemanticGues
             a.at(0x103810b8);a.value(3,0);
         }
     }
-    a.at(0x103810bc);a.pop(112);a.multiple(27,true);a.finish();
+    a.at(0x103810bc);a.pop(112);a.multiple<27,true>();a.finish();
 }
 }

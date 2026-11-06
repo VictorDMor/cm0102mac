@@ -9,6 +9,8 @@ inline constexpr std::array<std::uint32_t,26> date_subsystem_entries{
     0x107184d0,0x10718570,0x10718650,0x10718700,0x107187d0,
     0x107188a0,0x107189d0,0x10718af0};
 bool try_modern_date_subsystem(State&,std::uint32_t entry);
+inline constexpr std::uint32_t default_date_entry = 0x10715880;
+bool try_call_default_date(State&);
 constexpr auto leap_date_index = 17;
 static_assert(date_subsystem_entries[leap_date_index] == 0x10718440);
 bool can_batch_date_leap(const State&);

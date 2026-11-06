@@ -1,5 +1,9 @@
 #include "shortlist_manager_candidates_scan.hpp"
 #include "routine_check.hpp"
+#include "guest_register_frame.hpp"
+#include "guest_frame_observation.hpp"
+#include "match_turbo.hpp"
+#include "utility_object_adapter.hpp"
 
 // The candidate scan's filters (0x1035f2e4-0x1035fbb0): which listed persons
 // the club looks at. Each refusal moves on to the next entry; the registers
@@ -7,6 +11,68 @@
 // entry's leftovers reach the scan's return.
 namespace cm::aot::shortlist_manager::candidates {
 
+namespace {
+// The flag-clear path of 0x103f43b0 only constructs and destroys a local
+// empty list. Publish both guest frames and the exact return state.
+bool try_empty_transfer_filter(Cpu& c, std::uint32_t transfers, std::uint32_t person) {
+    constexpr unsigned outer_frame = 0x60, inner_frame = 0x50, depth = outer_frame + inner_frame;
+    constexpr auto returned = 0x1035f884u, destructor_return = 0x103f4408u;
+    constexpr unsigned instructions = 61, destructor_index = 3;
+    static_assert(utility_object::entries[destructor_index] == 0x10738c20);
+    auto& s = c.s;
+    const auto sp = c.sp();
+    const auto& memory = s.memory;
+    if (!s.runtime_diagnostics || shortlist_manager_call_hook || dispatch_probe || routine_checker ||
+        match_pc_profile_enabled() ||
+        memory.date_observer || memory.read_trace ||
+        sp < depth || std::uint64_t(sp) + 12 > (UINT64_C(1) << 32) ||
+        s.executed > s.budget || s.budget - s.executed < instructions ||
+        guest::stack_frame_writes_observed(memory, sp, depth)) return false;
+    const auto frame = sp - outer_frame;
+    const auto inner = sp - depth;
+    if (!GuestRegisterFrame::mapped_span(memory, inner, depth + 12)) return false;
+    auto& diagnostics = utility_object_diagnostics(s);
+    if (diagnostics.observer || diagnostics.original || diagnostics.entry_original[destructor_index] ||
+        diagnostics.original_body == utility_object::entries[destructor_index]) return false;
+    const auto disjoint = [inner, sp](std::uint32_t address, unsigned size) {
+        return std::uint64_t(address) + size <= inner || std::uint64_t(address) >= std::uint64_t(sp) + 12;
+    };
+    const auto flag_table = transfers + 0x9a0;
+    if (!disjoint(person, 4) || !disjoint(flag_table, 4)) return false;
+    try {
+        const auto flag = c.u32(flag_table) + c.u32(person) * 10;
+        if (!disjoint(flag, 1) || (c.u8(flag) & 0x10)) return false;
+    } catch (const std::runtime_error&) {
+        return false;
+    }
+
+    // The stack proof and observer guard allow neighboring saved words to share a store.
+    c.put64(sp - 16, (std::uint64_t(c.r(28)) << 32) | c.r(29));
+    c.put64(sp - 8, (std::uint64_t(c.r(30)) << 32) | c.r(31));
+    c.put32(sp + 8, returned);
+    c.put32(frame, sp);
+    const auto list = frame + 0x38;
+    c.put64(list + 4, 0);
+    c.put32(list + 12, 0);
+    c.put16(list, 0);
+    ++diagnostics.calls[destructor_index];
+    c.put64(frame - 12, std::uint64_t(person) << 32);
+    c.put32(frame - 4, UINT32_MAX);
+    c.put32(frame + 8, destructor_return);
+    c.put32(inner, frame);
+    ++diagnostics.returns[destructor_index];
+
+    c.link(returned);
+    c.set(0, returned);
+    c.set(3, 0);
+    c.set(4, UINT32_MAX);
+    c.set(5, 0);
+    c.set_cr(0, 8 | (s.r<1>(guest::reg::xer_so) & 1));
+    s.charge(instructions);
+    s.pc = returned;
+    return true;
+}
+}
 void Scan::consider(std::uint32_t entry_address) {
     if (eligible(entry_address)) value();
 }
@@ -159,8 +225,10 @@ bool Scan::common_checks() {
             if (!nonzero(c, std::int32_t(c.u8(contract + 0x5c) & 2))) return false;
         }
     }
-    if (nonzero(c, std::int8_t(program.call(0x103f43b0, 0x1035f884, {c.u32(c.toc(slot::transfers)), person, 0}))))
-        return false;
+    const auto transfers = c.u32(c.toc(slot::transfers));
+    const auto status = try_empty_transfer_filter(c, transfers, person) ? 0 :
+        std::int8_t(program.call(0x103f43b0, 0x1035f884, {transfers, person, 0}));
+    if (nonzero(c, status)) return false;
     if (nonzero(c, std::int8_t(c.u8(at(local::human_talks))))) return true;
     return sampled();
 }

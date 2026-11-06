@@ -1,5 +1,7 @@
 #include "aot_runtime.hpp"
 #include "guest_abi.hpp"
+#include "guest_frame_observation.hpp"
+#include "guest_register_frame.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -264,11 +266,88 @@ void frame_restore_checks() {
             "Frame observer mutation or partial fault effects changed");
 }
 
+void register_frame_checks() {
+    constexpr unsigned first = 13;
+    constexpr unsigned size = (32 - first) * 4;
+    constexpr std::uint32_t base = 0x37ffffd0, high = std::uint32_t(0u - size);
+    State state;
+    auto& memory = state.memory;
+    memory.map(base - 1, size + 2);
+    memory.map(high, size);
+    memory.map(0, size);
+    memory.write<1>(base - 1, 0x47);
+    memory.write<1>(base + size, 0x91);
+    for (auto address : {base, high}) {
+        for (unsigned n = first; n < 32; ++n) state.wr<4>(n * 4, 0x0102fcfdu + n * 0x1020304u);
+        const auto expected = state.registers;
+        require(GuestRegisterFrame::try_transfer<first, false>(state, address), "Mapped frame spill declined");
+        for (unsigned n = first; n < 32; ++n) {
+            require(memory.read<4>(address + (n - first) * 4) == state.r<4>(n * 4), "Frame bytes differ");
+            state.wr<4>(n * 4, 0);
+        }
+        require(GuestRegisterFrame::try_transfer<first, true>(state, address), "Mapped frame reload declined");
+        require(std::equal(expected.begin(), expected.begin() + 128, state.registers.begin()), "Frame registers differ");
+        require(state.r<4>(2432) == std::uint32_t(address + size), "Frame scratch address differs");
+    }
+    require(memory.read<1>(base - 1) == 0x47 && memory.read<1>(base + size) == 0x91, "Frame spill crossed its span");
+    const auto registers = state.registers;
+    constexpr std::uint32_t hole = 0x38000200;
+    memory.map(hole, 4);
+    memory.map(hole + 8, size - 8);
+    require(!GuestRegisterFrame::try_transfer<first, false>(state, hole) &&
+            !GuestRegisterFrame::try_transfer<first, true>(state, hole), "Frame transfer crossed an unmapped word");
+    require(!GuestRegisterFrame::try_transfer<first, false>(state, high + 4) &&
+            !GuestRegisterFrame::try_transfer<first, true>(state, high + 4), "Wrapping frame transfer did not fall back");
+    require(state.registers == registers && memory.read<4>(hole) == 0, "Declined frame transfer changed state");
+
+    WriteObserver writes;
+    memory.observer = &writes;
+    require(!GuestRegisterFrame::try_transfer<first, false>(state, base) && writes.calls == 0, "Observed frame spill did not fall back");
+    writes.interval(base + size - 1, base + size);
+    require(!GuestRegisterFrame::try_transfer<first, false>(state, base) && writes.calls == 0, "Overlap with last spill byte did not fall back");
+    writes.interval(base + size, base + size + 1);
+    require(GuestRegisterFrame::try_transfer<first, false>(state, base) && writes.calls == 0, "Disjoint surface observer blocked frame spill");
+    memory.observer = nullptr;
+    std::vector<std::pair<std::uint32_t, unsigned>> trace;
+    memory.read_trace = &trace;
+    require(!GuestRegisterFrame::try_transfer<first, true>(state, base) && trace.empty(), "Traced frame reload did not fall back");
+    memory.read_trace = nullptr;
+    ReadObserver reads(memory);
+    memory.date_observer = &reads;
+    require(!GuestRegisterFrame::try_transfer<first, false>(state, base) &&
+            !GuestRegisterFrame::try_transfer<first, true>(state, base), "Date-observed frame transfer did not fall back");
+    memory.date_observer = nullptr;
+    std::cout << "Register frame bytes, endpoints, holes, wrap and diagnostic fallbacks passed\n";
+}
+
+void frame_observation_checks() {
+    constexpr std::uint32_t stack = 0x70000000, depth = 0x80;
+    Memory memory;
+    const auto observed = [&] { return guest::stack_frame_writes_observed(memory, stack, depth); };
+    require(!observed(), "Unobserved stack frame blocked the direct route");
+    WriteObserver writes;
+    memory.observer = &writes;
+    require(observed(), "Unrestricted observer missed stack frame");
+    writes.interval(stack + 12, stack + 16);
+    require(!observed(), "Disjoint write above the saved link blocked the direct route");
+    writes.interval(stack + 11, stack + 12);
+    require(observed(), "Observer missed the final saved-link byte");
+    writes.interval(stack - depth - 1, stack - depth);
+    require(!observed(), "Disjoint write below the back chain blocked the direct route");
+    writes.interval(stack - depth, stack - depth + 1);
+    require(observed(), "Observer missed the nested back chain");
+    require(guest::stack_frame_writes_observed(memory, depth - 1, depth) &&
+            guest::stack_frame_writes_observed(memory, UINT32_MAX - 10, depth), "Wrapped stack writes bypassed observer routing");
+    require(!guest::stack_frame_writes_observed(memory, UINT32_MAX - 11, depth), "Nonwrapping final link byte rejected");
+}
+
 void checks() {
     read_notification_checks();
     frame_restore_checks();
     write_notification_checks();
     word_write_order_checks();
+    register_frame_checks();
+    frame_observation_checks();
     constexpr std::uint32_t base = 0x32000000;
     constexpr std::size_t span = 2048;
     Memory memory;

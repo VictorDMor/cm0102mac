@@ -1140,6 +1140,16 @@ comparisons; an explicit `cror EQ,LT,EQ` has different NaN behavior.
 Legacy original/profile switches must also decline the new module's hooks;
 otherwise a takeover silently turns a reference run into another C++ run.
 
+The recursive shot event at `0x102576e0` owns a 432-byte frame, all seven
+child call sites and their continuations, and the common return. Both the
+ordinary caller and the awarded-goal debugger use the same C++ phases. The
+debugger observes the setup halfword and statistics word at their original
+guest PCs, runs commentary to its exclusive stop, and resumes at score
+publication. The module-wide original override and guest PC sampling still
+select the generated shot body. The paired shot replay holds all other
+routes constant and requires the original and C++ to consume the same number
+of shot activations.
+
 Primary action selection owns a guest linked list of player copies. The original
 population query appends at most two candidates; normal destruction releases
 payloads and nodes, clears the head, and retains count, tail and cursor fields.
@@ -1379,6 +1389,14 @@ it scripts club history, the fixture builder, the saved-competition load and the
 season route because they stop at file or dialog imports, so those calls have
 their arguments compared but not their effects. Fixture slots and base-class news
 are covered by fixtures only.
+
+## BRA_REG_GAUCHO.CPP: league and knockout
+
+The 14 entries build a 17-club league followed by a four-club knockout. The
+semifinal seeds use league rows 0, 3, 1, 2. The season rollover destroys the
+old knockout and reuses the stage pointer array. Both third and fourth
+positions receive seed 3 in the fixture list. Calendar stage -1 supplies the
+league schedule and stage 0 supplies the semifinal and final.
 
 ## BRA_REG_PARANA.CPP: two turns and an optional final
 

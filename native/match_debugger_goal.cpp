@@ -1,4 +1,5 @@
 #include "match_debugger_goal.hpp"
+#include "match_pl_shot_event.hpp"
 #include <stdexcept>
 
 namespace cm::aot::match_debugger {
@@ -21,8 +22,7 @@ public:
     void cleared(std::uint32_t address, std::uint64_t length) override {
         if (previous_) previous_->cleared(address, length);
     }
-    // Each watched instruction runs alone in generated code, so the PC is
-    // exactly theirs here (tools/compile_recomp.py scans for these).
+    // Both routes publish the guest PC at each watched write.
     void written(std::uint32_t address, const std::uint8_t* bytes, std::size_t length) override {
         if (previous_) previous_->written(address, bytes, length);
         if (stage == Stage::setup && state_.pc == 0x102578d8 && address == match_ + 0x77c2 && length == 2)
@@ -33,9 +33,9 @@ public:
 };
 }
 
-void apply_original_awarded_goal(State& state, std::uint32_t match, std::uint32_t actor, unsigned team) {
+void apply_awarded_goal(State& state, std::uint32_t match, std::uint32_t actor, unsigned team) {
     const auto parent = std::uint32_t(state.r<4>(4));
-    if (parent < 0x300) throw std::runtime_error("Invalid original goal caller stack");
+    if (parent < 0x300) throw std::runtime_error("Invalid awarded-goal caller stack");
     const auto caller = parent - 0x80, context = caller + 0x50;
     for (unsigned offset = 0; offset < 16; offset += 4) state.memory.write<4>(context + offset, 0);
     state.wr<4>(4, caller);
@@ -45,9 +45,9 @@ void apply_original_awarded_goal(State& state, std::uint32_t match, std::uint32_
     state.pc = 0x102576e0;
     Boundaries boundaries(state, match);
     bool ready = false;
-    try { run_until(state, return_sentinel); } catch (const GoalSetupReady&) { ready = true; }
+    try { match_pl::run_shot_event_until(state, return_sentinel); } catch (const GoalSetupReady&) { ready = true; }
     if (!ready || state.r<4>(4) != caller - 0x1b0 || state.r<4>(60) != actor)
-        throw std::runtime_error("Original goal setup did not reach its reserved live frame");
+        throw std::runtime_error("Awarded-goal setup did not reach its reserved live frame");
 
     // Resolve the actual opposing goalkeeper through the original selector.
     // The normal action's movement, chance and rejection decisions are outside
@@ -57,25 +57,25 @@ void apply_original_awarded_goal(State& state, std::uint32_t match, std::uint32_
     run_until(state, return_sentinel);
     const auto keeper = state.r<4>(12);
     if (!keeper || state.r<4>(4) != caller - 0x1b0)
-        throw std::runtime_error("Original goal operation could not resolve its live goalkeeper");
+        throw std::runtime_error("Awarded-goal operation could not resolve its live goalkeeper");
     state.wr<4>(96, keeper);
     boundaries.stage = Boundaries::Stage::statistics;
     state.pc = 0x102626bc;
     ready = false;
-    try { run_until(state, return_sentinel); } catch (const GoalStatisticsReady&) { ready = true; }
+    try { match_pl::run_shot_event_until(state, return_sentinel); } catch (const GoalStatisticsReady&) { ready = true; }
     if (!ready || state.r<4>(4) != caller - 0x1b0)
-        throw std::runtime_error("Original awarded-goal statistics did not reach their boundary");
+        throw std::runtime_error("Awarded-goal statistics did not reach their boundary");
 
     boundaries.stage = Boundaries::Stage::confirmation;
     // The shot/statistics event alone is not a scorer-list entry. Execute the
     // original ordinary-goal announcement as well: the report builder consumes
     // its player, side and minute from the original commentary history.
     state.pc = 0x102636d8;
-    run_until(state, 0x10263700);
+    match_pl::run_shot_event_until(state, 0x10263700);
     state.pc = 0x10267154;
-    run_until(state, return_sentinel);
+    match_pl::run_shot_event_until(state, return_sentinel);
     if (state.pc != return_sentinel || state.r<4>(4) != caller)
-        throw std::runtime_error("Original awarded goal did not return through its own epilogue");
+        throw std::runtime_error("Awarded goal did not return through its own epilogue");
     state.wr<4>(4, parent);
 }
 }

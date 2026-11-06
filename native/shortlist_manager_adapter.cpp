@@ -33,9 +33,24 @@ constexpr auto sorted_routines() {
 constexpr auto routines = sorted_routines();
 static_assert(std::ranges::adjacent_find(routines, {}, &Routine::entry) == routines.end(), "a routine is listed twice");
 
+// The export aligns routine entries on 16-byte boundaries. Index the sparse
+// slots directly; Program::call also asks about entries outside this module.
+constexpr auto first_entry = routines.front().entry;
+constexpr auto last_entry = routines.back().entry;
+static_assert(std::ranges::all_of(routines, [](const auto& routine) { return routine.entry % 16 == 0; }));
+constexpr auto slots = [] {
+    std::array<std::int16_t, (last_entry - first_entry) / 16 + 1> table{};
+    table.fill(-1);
+    for (std::size_t i = 0; i < routines.size(); ++i)
+        table[(routines[i].entry - first_entry) / 16] = std::int16_t(i);
+    return table;
+}();
+
 const Routine* listed(std::uint32_t entry) {
-    const auto found = std::ranges::lower_bound(routines, entry, {}, &Routine::entry);
-    return found != routines.end() && found->entry == entry ? &*found : nullptr;
+    const auto offset = entry - first_entry;
+    if (offset > last_entry - first_entry || offset % 16) return nullptr;
+    const auto slot = slots[offset / 16];
+    return slot < 0 ? nullptr : &routines[std::size_t(slot)];
 }
 void run_rewrite(State& s, std::uint32_t entry) {
     Cpu c(s);

@@ -1,4 +1,4 @@
-"""Fuse an audited 8-byte heapsort with its descriptor and two pair comparators.
+"""Fuse an audited 8-byte heapsort with its descriptor and three comparators.
 
 Keep every original instruction, memory effect, callback order and diagnostic
 charge. Unsupported policies/destinations retain ordinary generated execution.
@@ -8,9 +8,11 @@ import json
 from native_record_fields import fingerprint, _promote
 
 ENTRY = 0x10768660
+RELATION_COMPARATOR = 0x10309a00
 CONTRACTS = {
     ENTRY: (0x10768804, 106, 'bba70d1d94677f1331b639619e407a41b59cf26a7d1f3e44e2defdc505e8767f'),
     0x10781320: (0x10781330, 5, 'fe433621488023321344e62909bba23658510017d7f5041c05f32f79ccf0858e'),
+    RELATION_COMPARATOR: (0x10309a64, 26, '44cfce885022bc9623b8c0d62070a93e5fbacd6786df451c675345f656841426'),
     0x103663b0: (0x1036640c, 24, '13d83e403273c3feceec7e5b862f4f2fd3dd6cdd18fa2324fe1c028b5c5beabd'),
     0x10366410: (0x1036646c, 24, '04bca74890225e21fce36329fe835f1d14624aca01ae0b3cb527a966c34219ae'),
 }
@@ -34,6 +36,10 @@ def load_sort8(db, selected=None):
         return []
     result = []
     for first, (last, _, _) in CONTRACTS.items():
+        # A bounded build can include the original pair-sort closure without
+        # reaching the relation comparator. That build retains pair fusion.
+        if first == RELATION_COMPARATOR and selected is not None and first not in selected:
+            continue
         rows = [json.loads(row[0]) for row in db.execute(
             'SELECT body FROM instructions WHERE address BETWEEN ? AND ? ORDER BY address', (first, last))]
         require_fragment(first, rows, selected if selected is not None else {r['address'] for r in rows})
@@ -47,10 +53,12 @@ def replace_once(text, old, new):
     return text.replace(old, new, 1)
 
 
-FUSED_TARGETS = (0x103663b0, 0x10366410, 0x10768774, 0x10768798)
+CATEGORY_COMPARATORS = {0x103663b0: 3, 0x10366410: 4}
+FUSED_TARGETS = (*CATEGORY_COMPARATORS, 0x10768774, 0x10768798)
 
 
-def fuse_returns(raw, records):
+def fuse_returns(raw, records, relation):
+    relation_tail = 'if constexpr (FuseRelation) if(s.pc==0x10309a00)goto i_10309a00;\n' if relation else ''
     for item in records:
         address = item['address']
         start = raw.index(f'i_{address:x}:')
@@ -63,10 +71,12 @@ def fuse_returns(raw, records):
 frame.descriptor_tail();
 if(s.pc==0x103663b0)goto i_103663b0;
 if(s.pc==0x10366410)goto i_10366410;
-return true;''')
+''' + relation_tail + 'return true;')
         elif item['assembly'] == 'blr' and address < 0x10400000:
-            index = 3 if address < 0x10366410 else 4
-            block = replace_once(block, 's.pc = std::uint32_t(s.r<4>(4128)); return true;', f'''s.pc = std::uint32_t(s.r<4>(4128)); frame.category_return({index});
+            category_return = ''.join(f' frame.category_return({index});'
+                                      for first, index in CATEGORY_COMPARATORS.items()
+                                      if first <= address <= CONTRACTS[first][0])
+            block = replace_once(block, 's.pc = std::uint32_t(s.r<4>(4128)); return true;', f'''s.pc = std::uint32_t(s.r<4>(4128));{category_return}
 if(s.pc==0x10768774)goto i_10768774;
 if(s.pc==0x10768798)goto i_10768798;
 return true;''')
@@ -81,7 +91,8 @@ s.step(0x10781320);''')
         raw = raw[:start] + block + raw[end:]
     # The added gotos bypass the switch, so each must land on a run start that
     # charges itself (block accounting).
-    for target in FUSED_TARGETS:
+    targets = (RELATION_COMPARATOR, *FUSED_TARGETS) if relation else FUSED_TARGETS
+    for target in targets:
         label = f'i_{target:x}:'
         if label not in raw or f's.step(0x{target:x});' not in raw.split(label, 1)[1].split('\ni_', 1)[0]:
             raise ValueError(f'Fused sort jumps into the middle of a run at {target:x}')
@@ -105,22 +116,28 @@ void fault(bool budget){
 def generate_sort8(records, render):
     code = ['#include "native_sort8.hpp"', '#include "aot_runtime.hpp"', '#include "native_drawing.hpp"',
             '#include "match_turbo.hpp"', '#include "shortlist_category_adapter.hpp"',
-            '#include "import_descriptor.hpp"', '#include "performance_trace.hpp"',
+            '#include "import_descriptor.hpp"', '#include "performance_trace.hpp"', '#include "routine_check.hpp"',
             '#include <atomic>', '#include <string_view>', 'namespace cm::aot {',
             'namespace { std::atomic<std::uint64_t> eligible_calls{0}; }',
             'std::uint64_t native_sort8_calls(){return eligible_calls.load(std::memory_order_relaxed);}']
     if not records:
         return '\n'.join(code + ['bool try_native_sort8(State&){return false;}', '}']) + '\n'
     chosen = {r['address'] for r in records}
-    expected = {address for first, (last, _, _) in CONTRACTS.items()
+    relation = RELATION_COMPARATOR in chosen
+    contracts = {first: value for first, value in CONTRACTS.items() if relation or first != RELATION_COMPARATOR}
+    expected = {address for first, (last, _, _) in contracts.items()
                 for address in range(first, last + 1, 4)}
     if chosen != expected:
         raise ValueError('Unexpected native sort instruction closure')
-    for first, (last, _, _) in CONTRACTS.items():
+    for first, (last, _, _) in contracts.items():
         require_fragment(first, [r for r in records if first <= r['address'] <= last], chosen)
-    raw = fuse_returns(render(ENTRY >> 12, records, chosen), records)
+    raw = fuse_returns(render(ENTRY >> 12, records, chosen), records, relation)
     frame = _promote(ENTRY, raw, extra_slots={1027: 1, 2432: 4, 2440: 4, 4132: 4}, methods=FRAME_METHODS.rstrip())
     frame = frame.replace('RecordFieldFrame_10768660', 'Sort8Frame').replace('native_record_fields_10768660', 'native_sort8_body')
+    # Specialize the dispatch so the two pair comparators keep their hot
+    # callback loop even when the build also includes relations.
+    if relation:
+        frame = replace_once(frame, 'static bool native_sort8_body', 'template<bool FuseRelation> static bool native_sort8_body')
     frame = replace_once(frame, 'Sort8Frame frame(s);', 'Sort8Frame frame(s); try{')
     end = frame.rfind('\n}')
     frame = frame[:end] + '''
@@ -128,6 +145,16 @@ def generate_sort8(records, render):
 catch(...){frame.fault(false);throw;}
 ''' + frame[end:]
     code.append(frame)
+    target_flag = ''
+    selection = 'if(target!=0x103663b0 && target!=0x10366410)return false;'
+    invocation = 'native_sort8_body(s)'
+    if relation:
+        target_flag = ' bool fuse_relation=false;\n'
+        selection = '''if(target==0x10309a00){
+   if(routine_checker || dispatch_probe)return false;
+   fuse_relation=true;
+  }else ''' + selection
+        invocation = 'fuse_relation ? native_sort8_body<true>(s) : native_sort8_body<false>(s)'
     code.append('''bool try_native_sort8(State& s){
  if(s.budget!=UINT64_MAX || s.memory.date_observer || s.memory.read_trace || match_pc_profile_enabled() ||
     (s.memory.observer && !dynamic_cast<NativeDrawingObserver*>(s.memory.observer)))return false;
@@ -139,11 +166,14 @@ catch(...){frame.fault(false);throw;}
     d.original_body==0x103663b0 || d.original_body==0x10366410)return false;
  // Reads during selection have no active diagnostic observer and do not
  // modify state. An invalid descriptor retains the original fault prefix.
- try{const auto target=s.memory.read<4>(s.r<4>(24));if(target!=0x103663b0 && target!=0x10366410)return false;}
+''' + target_flag + ''' try{
+  const auto target=s.memory.read<4>(s.r<4>(24));
+  ''' + selection + '''
+ }
  catch(const std::runtime_error&){return false;}
  const auto calls=eligible_calls.fetch_add(1,std::memory_order_relaxed);
  const auto records=std::uint32_t(s.r<4>(16));
- const bool result=native_sort8_body(s);
+ const bool result=''' + invocation + ''';
  if(calls==0){static const PerformanceTrace trace;trace.mark("native-sort8-return",s,records);}
  return result;
 }''')

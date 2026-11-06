@@ -1,5 +1,8 @@
 #include "date_subsystem_audit.hpp"
 #include "date_subsystem_adapter.hpp"
+#include "guest_context_transfer.hpp"
+#include "native_drawing.hpp"
+#include "routine_check.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -107,6 +110,19 @@ bool can_batch_date_leap(const State& s) {
     static const bool sample = std::getenv("CM_AOT_VALIDATION_EVENT_POINTER") != nullptr;
     return !stream && !sample && !s.date_subsystem_original && !s.date_entry_original[leap_date_index] &&
            !s.date_original_resume;
+}
+bool try_call_default_date(State& s) {
+    constexpr unsigned index = 2;
+    static_assert(date_subsystem_entries[index] == default_date_entry);
+    const auto* scope = s.dispatch_scope;
+    const auto& memory = s.memory;
+    // The constructor only publishes its three stores. Keep diagnostic and
+    // original routes in the dispatcher, including a stop at its entry.
+    if (!scope || scope->return_pc() == default_date_entry || dispatch_probe || routine_checker ||
+        s.calendar_original || s.date_subsystem_original || s.date_entry_original[index] ||
+        s.date_original_resume || stream || memory.date_observer || memory.read_trace ||
+        (memory.observer && !dynamic_cast<const NativeDrawingObserver*>(memory.observer))) return false;
+    return try_modern_date_subsystem(s, default_date_entry);
 }
 bool try_modern_date_subsystem(State& s,std::uint32_t entry) {
     // A same-page goto can reach this destination while the dispatcher's PC

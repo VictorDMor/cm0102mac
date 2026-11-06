@@ -5,7 +5,21 @@ namespace cm::aot::match_pl {
 using namespace guest;
 namespace {
 std::int8_t absolute(Cpu& c, std::int32_t value, std::uint32_t back) {
-    c.set(3, std::uint32_t(value)); c.call(0x10775540, back);
+    const auto bits = std::uint32_t(value);
+    c.set(3, bits);
+    // 0x10775540 is a memory-free leaf. Keep both budget blocks and the
+    // original return registers, including the carry from srawi.
+    c.link(back);
+    c.s.step(0x10775540);
+    const auto sign = std::uint32_t(value >> 31);
+    c.s.wr<1>(reg::xer_ca, sign != 0 && (bits & 0x7fffffffu) != 0);
+    c.set(4, sign);
+    c.s.step(0x10775544);
+    c.s.charge(2);
+    const auto complemented = bits ^ sign;
+    c.set(0, complemented);
+    c.set(3, complemented - sign);
+    c.finish();
     return std::int8_t(c.r(3));
 }
 std::uint32_t distance_offset(std::int8_t columns, std::int8_t rows) {

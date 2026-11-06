@@ -205,6 +205,7 @@ class MatchPlAuditTests(unittest.TestCase):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, MATCH_PL_TAKEOVERS
         audit.require_match_pl_owners(audit.rewritten(), OWNER_REPLACEMENTS)
         self.assertEqual(tuple(a for a, _, _ in audit.rewritten()), audit.MATCH_PL_ENTRIES)
+        self.assertEqual(set(audit.MATCH_PL_ENTRIES), self.entries)
         self.assertEqual(MATCH_PL_TAKEOVERS, frozenset(
             a for a, _ in SEMANTIC_REPLACEMENTS if a in audit.MATCH_PL_GENERATOR_ENTRIES))
 
@@ -277,22 +278,31 @@ class MatchPlAuditTests(unittest.TestCase):
                             userops=self.program["userops"], **disabled)
                         self.assertNotIn("try_modern_", reference)
 
-    def test_movement_keeps_one_dedicated_hook_and_explicit_transfer_sites(self):
+    def test_framed_roots_keep_one_dedicated_hook_and_explicit_transfer_sites(self):
         import compile_recomp as compiler
-        from player_movement_audit import ENTRY, player_movement_hook
+        from ball_action_audit import ENTRY as ball_action, ball_action_hook
+        from player_movement_audit import ENTRY as movement, player_movement_hook
 
-        self.assertIn(ENTRY, audit.MATCH_PL_ENTRIES)
-        self.assertNotIn(ENTRY, audit.MATCH_PL_GENERATOR_ENTRIES)
-        self.assertTrue({0x1022e83c, 0x10234e40} <= compiler.HOST_OBSERVED_INSTRUCTIONS)
-        page = ENTRY >> 12
-        rows = [row for address, row in self.records.items() if address >> 12 == page]
         disabled = {name: False for name in inspect.signature(compiler.generate_page).parameters
                     if name.endswith("_hooks") or name == "guest_context_transfers"}
-        code = compiler.generate_page(page, rows, {row["address"] for row in rows},
-            userops=self.program["userops"],
-            **dict(disabled, player_movement_hooks=True, match_pl_hooks=True))
-        self.assertEqual(code.count(player_movement_hook(ENTRY)), 1)
-        self.assertNotIn(audit.match_pl_hook(ENTRY), code)
+        cases = (
+            (movement, "player_movement", player_movement_hook, {0x1022e83c, 0x10234e40}),
+            (ball_action, "ball_action", ball_action_hook, {0x1023cd94, 0x1023d184}),
+        )
+        for entry, family, hook, transfer_sites in cases:
+            with self.subTest(family=family):
+                self.assertIn(entry, audit.MATCH_PL_ENTRIES)
+                self.assertNotIn(entry, audit.MATCH_PL_GENERATOR_ENTRIES)
+                self.assertNotIn(family, compiler.GENERATED_FASTER_FAMILIES)
+                self.assertTrue(transfer_sites <= compiler.HOST_OBSERVED_INSTRUCTIONS)
+                page = entry >> 12
+                rows = [row for address, row in self.records.items() if address >> 12 == page]
+                options = dict(disabled, match_pl_hooks=True)
+                options[family + "_hooks"] = True
+                code = compiler.generate_page(page, rows, {row["address"] for row in rows},
+                    userops=self.program["userops"], **options)
+                self.assertEqual(code.count(hook(entry)), 1)
+                self.assertNotIn(audit.match_pl_hook(entry), code)
 
     def test_missing_duplicate_and_wrong_production_owner_are_rejected(self):
         entry, end, _, pinned = audit.CONTRACTS[0]

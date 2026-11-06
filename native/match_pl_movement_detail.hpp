@@ -1,6 +1,7 @@
 #pragma once
 #include "match_pl_detail.hpp"
 #include "guest_fpu.hpp"
+#include "guest_register_frame.hpp"
 
 namespace cm::aot::match_pl {
 
@@ -13,8 +14,10 @@ public:
         c.set(0, c.lr());
         c.put64(caller - 8, c.s.r<8>(guest::reg::fpr(31)));
         c.put64(caller - 0x10, c.s.r<8>(guest::reg::fpr(30)));
-        for (unsigned n = 13; n < 32; ++n) c.put32(saved(n), c.r(n));
-        c.s.wr<4>(2432, saved(32));
+        if (!GuestRegisterFrame::try_transfer<13, false>(c.s, saved(13))) {
+            for (unsigned n = 13; n < 32; ++n) c.put32(saved(n), c.r(n));
+            c.s.wr<4>(2432, saved(32));
+        }
     }
 
     void enter() {
@@ -32,8 +35,10 @@ public:
         c.s.wr<8>(guest::reg::fpr(31), c.u64(caller - 8));
         c.s.wr<8>(guest::reg::fpr(30), c.u64(caller - 0x10));
         c.set_lr(c.r(0));
-        for (unsigned n = 13; n < 32; ++n) c.set(n, c.u32(saved(n)));
-        c.s.wr<4>(2432, saved(32));
+        if (!GuestRegisterFrame::try_transfer<13, true>(c.s, saved(13))) {
+            for (unsigned n = 13; n < 32; ++n) c.set(n, c.u32(saved(n)));
+            c.s.wr<4>(2432, saved(32));
+        }
     }
 
     std::uint32_t at(std::int32_t offset) const { return caller - 0x180 + std::uint32_t(offset); }

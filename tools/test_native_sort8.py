@@ -6,7 +6,7 @@ import sqlite3
 import sys
 import unittest
 
-from native_sort8 import CONTRACTS, ENTRY, generate_sort8, load_sort8, require_fragment
+from native_sort8 import CONTRACTS, ENTRY, RELATION_COMPARATOR, generate_sort8, load_sort8, require_fragment
 
 
 class NativeSortAudit(unittest.TestCase):
@@ -53,6 +53,8 @@ class NativeSortAudit(unittest.TestCase):
         self.assertIn('if(count++==UINT64_MAX)', result)
         self.assertIn('frame.category_enter(3)', result)
         self.assertIn('frame.category_enter(4)', result)
+        self.assertIn('if constexpr (FuseRelation) if(frame.pc==0x10309a00)goto i_10309a00;', result)
+        self.assertIn('if(routine_checker || dispatch_probe)return false;', result)
         self.assertIn('if(frame.pc==0x10768774)goto', result)
         self.assertIn('s.budget!=UINT64_MAX', result)
         self.assertIn('d.entry_original[3]', result)
@@ -75,6 +77,15 @@ class NativeSortAudit(unittest.TestCase):
     def test_empty_bounded_build_is_a_declining_stub(self):
         self.assertIn('bool try_native_sort8(State&){return false;}', generate_sort8([], self.render))
 
+    def test_pair_only_build_keeps_its_closure(self):
+        last = CONTRACTS[RELATION_COMPARATOR][0]
+        pairs = [row for row in self.records if not RELATION_COMPARATOR <= row['address'] <= last]
+        result = generate_sort8(pairs, self.render)
+        self.assertNotIn('i_10309a00', result)
+        self.assertIn('if(frame.pc==0x103663b0)goto i_103663b0;', result)
+        with self.assertRaises(ValueError):
+            generate_sort8(pairs + [row for row in self.records if row['address'] == RELATION_COMPARATOR], self.render)
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
@@ -82,6 +93,9 @@ if __name__ == '__main__':
     database = Path(sys.argv.pop()).resolve().as_uri() + '?mode=ro'
     with sqlite3.connect(database, uri=True) as connection:
         NativeSortAudit.records = load_sort8(connection)
+        relation_last = CONTRACTS[RELATION_COMPARATOR][0]
+        pair_only = [row for row in NativeSortAudit.records if not RELATION_COMPARATOR <= row['address'] <= relation_last]
+        assert load_sort8(connection, {row['address'] for row in pair_only}) == pair_only
         assert load_sort8(connection, {0}) == []
         try:
             load_sort8(connection, {ENTRY})

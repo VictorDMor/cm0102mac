@@ -539,7 +539,7 @@ GoalRecord Session::add_goal(unsigned team, unsigned actor) {
     try {
         StepBudget budget(state, step_instruction_limit_);
         MatchEventsCapture events(state, engine_.match, true, [&](MatchEvent value) { observe_event(value); });
-        apply_original_awarded_goal(state, engine_.match, address, team);
+        apply_awarded_goal(state, engine_.match, address, team);
         record.instructions = state.executed - instructions;
         record.scorer_goals_after = std::uint8_t(state.memory.read<1>(address + 0xc));
         record.after = inspect();

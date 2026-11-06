@@ -2,6 +2,7 @@
 #include "aot_runtime.hpp"
 #include "semantic_dependency_dispatch.hpp"
 #include "guest_context_transfer.hpp"
+#include "guest_register_frame.hpp"
 #include "floating_point.hpp"
 #include "fused_multiply_add.hpp"
 #include "match_turbo.hpp"
@@ -63,6 +64,16 @@ public:
             else state.memory.write<4>(state.r<4>(2432), r(n));
             state.wr<4>(2432, state.r<4>(2432) + 4);
         }
+    }
+    template <unsigned First, bool Restore = false>
+    void multiple() {
+        // Batched steps only advance local accounting. Keep the original
+        // step and partial access order when the transfer cannot be copied.
+        if (batched && GuestRegisterFrame::try_transfer<First, Restore>(state, r(1) - (32 - First) * 4)) {
+            step();
+            return;
+        }
+        multiple(First, Restore);
     }
     void move(unsigned destination, unsigned source, bool record = false) {
         step(); const auto value = r(source); state.wr<4>(destination * 4, value);

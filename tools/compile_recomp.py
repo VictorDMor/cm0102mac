@@ -24,7 +24,7 @@ from unsigned_division_audit import require_unsigned_division_routine
 from match_presentation_audit import require_match_presentation_context
 from match_speed_audit import require_match_speed_context, MATCH_SPEED_PAGES
 from local_temporaries import LocalTemporaries
-from native_record_fields import CONTRACTS as NATIVE_RECORD_FIELDS, load_leaves, generate_native_record_fields
+from native_record_fields import CONTRACTS as NATIVE_RECORD_FIELDS, fingerprint as instruction_fingerprint, load_leaves, generate_native_record_fields
 from native_sort8 import ENTRY as NATIVE_SORT8_ENTRY, load_sort8, require_sort8_page, generate_sort8
 from vector_context_lowering import lower_vector_intrinsic
 from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
@@ -242,6 +242,7 @@ from eng_conf_audit import ENG_CONF_ENTRIES, require_eng_conf_index, eng_conf_ho
 from eng_first_audit import ENG_FIRST_ENTRIES, require_eng_first_index, eng_first_hook, require_eng_first_hooks
 from bra_reg_central_audit import BRA_REG_CENTRAL_ENTRIES, require_bra_reg_central_index, bra_reg_central_hook, require_bra_reg_central_hooks
 from bra_reg_parana_audit import BRA_REG_PARANA_ENTRIES, require_bra_reg_parana_index, bra_reg_parana_hook, require_bra_reg_parana_hooks
+from bra_reg_gaucho_audit import BRA_REG_GAUCHO_ENTRIES, require_bra_reg_gaucho_index, bra_reg_gaucho_hook, require_bra_reg_gaucho_hooks
 from european_cup_audit import EUROPEAN_CUP_ENTRIES, require_european_cup_index, european_cup_hook, require_european_cup_hooks
 from media_audit import MEDIA_ENTRIES, require_media_index, media_hook, require_media_hooks
 from utils_audit import UTILS_HOOKED_ENTRIES, require_utils_index, utils_hook, require_utils_hooks
@@ -446,6 +447,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "eng_first_adapter") for entry in ENG_FIRST_ENTRIES) +
                       tuple((entry, "bra_reg_central_adapter") for entry in BRA_REG_CENTRAL_ENTRIES) +
                       tuple((entry, "bra_reg_parana_adapter") for entry in BRA_REG_PARANA_ENTRIES) +
+                      tuple((entry, "bra_reg_gaucho_adapter") for entry in BRA_REG_GAUCHO_ENTRIES) +
                       tuple((entry, "european_cup_adapter") for entry in EUROPEAN_CUP_ENTRIES) +
                       tuple((entry, "media_adapter") for entry in MEDIA_ENTRIES) +
                       tuple((entry, "utils_adapter") for entry in UTILS_HOOKED_ENTRIES) +
@@ -592,7 +594,8 @@ def fused_multiply_add_ops(item):
     return ops
 
 
-def operation(op, address, index, page, selected, op_count, read_node=read, write_node=write, userops=None):
+def operation(op, address, index, page, selected, op_count, read_node=read, write_node=write, userops=None,
+              expiry_stack_offset=None):
     name, output, *inputs = op
     if name == "CALLOTHER":
         vector = lower_vector_intrinsic(op, userops, read_node, write_node)
@@ -627,10 +630,18 @@ def operation(op, address, index, page, selected, op_count, read_node=read, writ
         if name == "LOAD":
             if output[2] == 16:
                 return write_node(output, f's.memory.read_vector({read_node(inputs[1])})')
-            return write_node(output, f"s.memory.read<{output[2]}>({read_node(inputs[1])})")
+            size = output[2]
+            value = f"s.memory.read<{size}>({read_node(inputs[1])})"
+            if expiry_stack_offset is not None:
+                value = f"(expiry_scratch ? read_be<{size}>(expiry_scratch + {expiry_stack_offset}) : {value})"
+            return write_node(output, value)
         if inputs[2][2] == 16:
             return f's.memory.write_vector({read_node(inputs[1])}, {read_node(inputs[2])});'
-        return f"s.memory.write<{inputs[2][2]}>({read_node(inputs[1])}, {read_node(inputs[2])});"
+        size, value = inputs[2][2], read_node(inputs[2])
+        store = f"s.memory.write<{size}>({read_node(inputs[1])}, {value});"
+        if expiry_stack_offset is not None:
+            store = f"if (expiry_scratch) write_be<{size}>(expiry_scratch + {expiry_stack_offset}, {value}); else {store}"
+        return store
 
     args = [read_node(n) for n in inputs]
     a = args[0] if args else None
@@ -918,7 +929,7 @@ GENERATED_FASTER_FAMILIES = (
     # Match play, measured on the 26-country week (2026-10-23): the actor
     # families 255 -> 247 s, the others 255 -> 238 s in original mode.
     "actor_action", "actor_construction", "actor_effects", "actor_encounter", "actor_flags", "actor_motion",
-    "actor_order", "actor_policy", "ball_action", "ball_contact", "marking_pressure", "match_actor",
+    "actor_order", "actor_policy", "ball_contact", "marking_pressure", "match_actor",
     "match_discipline", "match_event", "match_random", "match_selection", "match_selection_support",
     "match_target", "movement_choice", "pitch_distance", "target_acceptance", "team_line", "team_spatial")
 
@@ -1017,6 +1028,7 @@ def ends_run(item):
 OBSERVED_INSTRUCTION_TABLES = {0x101355d4, 0x10135614, 0x1024773c, 0x10247768, 0x10247948,
     0x101ccdf0, 0x101cd5ec, 0x101d3f78,
     0x1022e83c, 0x10234e40,
+    0x1023cd94, 0x1023d184,
     0x101d3b50, 0x101d5680, 0x101d5690, 0x101d56c0, 0x101d5730, 0x101d5744, 0x101d7db0,
     0x101e3dc4, 0x101e3e54, 0x101e3ee4, 0x101e3f00, 0x101f189c, 0x101f1930, 0x101f1940,
     0x101f196c, 0x101f1dcc, 0x101f1df4, 0x101f1e2c, 0x101f21c0, 0x10289550, 0x10289570, 0x102895b0, 0x102895f0,
@@ -1058,6 +1070,7 @@ INLINE_OWNER_MODULES = frozenset({
 # entries to the dispatcher, whose page hook runs the same C++.
 INLINE_LEAF_LIMIT = 6
 LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CALLIND", "RETURN")
+DEFAULT_DATE_CALLS = frozenset({0x103faca4, 0x103fb020})
 
 
 # Instructions generate_page lowers specially (beyond owner hooks and
@@ -1065,7 +1078,7 @@ LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CAL
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
     0x10713a9c, 0x10713aec, 0x10713b3c, 0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768})
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | DEFAULT_DATE_CALLS
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -1252,8 +1265,89 @@ def account_blocks(code, instructions, counter, forced, isolated=frozenset()):
     return result
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
-                  direct_owner_calls=None, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True):
+REGISTER_FRAME_ACCESSES = {
+    # These hashes pin every P-code operation, including the last address
+    # written to the Ghidra register used by stmw and lmw.
+    0x100ce324: ("stmw r13,-0x4c(r1)", "f9d8b73252a32662459cf85862a235b5149d03016ddb3bdc6d4349ab24179b6e"),
+    0x100d0530: ("lmw r13,-0x4c(r1)", "4f4dc039a0c0a8c22f8070b439583b699b60f7549a3c42673e88fc5878cd4898"),
+    0x10187a44: ("stmw r13,-0x4c(r1)", "f9d8b73252a32662459cf85862a235b5149d03016ddb3bdc6d4349ab24179b6e"),
+    0x10188480: ("lmw r13,-0x4c(r1)", "4f4dc039a0c0a8c22f8070b439583b699b60f7549a3c42673e88fc5878cd4898"),
+    0x101ad084: ("stmw r21,-0x2c(r1)", "dfd0ec60527b7577bc7892d2f7ccd5ddc00f543745eceb6a3e2449b26165ea26"),
+    0x101b0018: ("lmw r21,-0x2c(r1)", "906f3aceff62e8ace1b92b8c6970451777c2561554cd235257df254426ff5d56"),
+    0x10211e78: ("stmw r13,-0x5c(r1)", "8012cd1a2a4f34faf6c39fd9fa7ab2eb3b02c06834ac3c9c86b381d30a00dd0c"),
+    0x10216824: ("lmw r13,-0x5c(r1)", "62e8080d7e901596a7dcc90ca5e26314d413972c8371acdb9e99223326aa6c23"),
+    0x10216838: ("stmw r13,-0x5c(r1)", "8012cd1a2a4f34faf6c39fd9fa7ab2eb3b02c06834ac3c9c86b381d30a00dd0c"),
+    0x10219e2c: ("lmw r13,-0x5c(r1)", "62e8080d7e901596a7dcc90ca5e26314d413972c8371acdb9e99223326aa6c23"),
+    0x10219e4c: ("stmw r23,-0x34(r1)", "915161f6bcfb39b9b6ec31a1f11c3754e74663f287c8741ee2a75598820df126"),
+    0x1021a22c: ("lmw r23,-0x34(r1)", "f902b094ad70d02dad7dd6bee3b024b736d349977e98c598047ed06985ce657f"),
+}
+
+
+STAFF_SCORE_BLOCK = range(0x101af000, 0x101af4a8, 4)
+STAFF_SCORE_BLOCK_DIGEST = "ec39100e2301e777a40942c75022576a42c831a9f10f98165cf9f64342406bff"
+EXPIRY_BAND = range(0x10380710, 0x10380c04, 4)
+EXPIRY_BAND_DIGEST = "bfa9bcfe1eb067b0ec08d93678562962f34096064a3e05ba7251215265773984"
+EXPIRY_STACK_SIZE = 0xa0
+
+
+def expiry_stack_accesses(instructions):
+    body = [item for item in instructions if item["address"] in EXPIRY_BAND]
+    if [item["address"] for item in body] != list(EXPIRY_BAND):
+        return {}
+    # Pin the entire leaf: no calls, changes to r1 or continuation into
+    # another routine. Only the audited r1-relative accesses use the span.
+    if instruction_fingerprint(body) != EXPIRY_BAND_DIGEST:
+        raise ValueError("The audited contract expiry band changed")
+    accesses = {}
+    for item in body:
+        slot = re.fullmatch(r"(stw|lwz|lhz|lha) r\d+,(-0x[0-9a-f]+)\(r1\)", item["assembly"])
+        if not slot:
+            continue
+        mnemonic, displacement = slot.groups()
+        offset = EXPIRY_STACK_SIZE + int(displacement, 16)
+        size = 4 if mnemonic in ("stw", "lwz") else 2
+        if not 0 <= offset <= EXPIRY_STACK_SIZE - size:
+            raise ValueError("Contract expiry access outside the audited stack span")
+        accesses[item["address"]] = offset
+    return accesses
+
+
+def staff_score_forwarded_loads(instructions):
+    """Find stack words that still equal their source register in this block."""
+    block = [item for item in instructions if item["address"] in STAFF_SCORE_BLOCK]
+    if [item["address"] for item in block] != list(STAFF_SCORE_BLOCK):
+        return {}  # Bounded generation may select only part of the block.
+    records = [(item["address"], item["assembly"], item["ops"]) for item in block]
+    fingerprint = hashlib.sha256(json.dumps(records, separators=(",", ":")).encode()).hexdigest()
+    if fingerprint != STAFF_SCORE_BLOCK_DIGEST:
+        raise ValueError("The audited staff scoring block changed")
+
+    # The fingerprint pins a call-free block with a fixed r1 and only stack
+    # stores. Once a source register changes, its words must be read normally.
+    live_words, forwarded = {}, {}
+    for address, assembly, ops in records:
+        stack = re.fullmatch(r"(stw|stfd|lwz|lfd) ([rf])(\d+),(0x[0-9a-f]+)\(r1\)", assembly)
+        if stack:
+            mnemonic, kind, number, offset = stack.groups()
+            register = 16384 + int(number) * 16 if kind == "f" else int(number) * 4
+            size = 8 if kind == "f" else 4
+            words = range(int(offset, 16), int(offset, 16) + size, 4)
+            if mnemonic.startswith("st"):
+                for part, word in enumerate(words):
+                    live_words[word] = register + part * 4
+            elif all(word in live_words for word in words):
+                forwarded[address] = register, size, tuple(live_words[word] for word in words)
+        for _, output, *_ in ops:
+            if not output or output[0] != "register":
+                continue
+            start, size = int(output[1]), output[2]
+            live_words = {word: reg for word, reg in live_words.items()
+                          if reg + 4 <= start or reg >= start + size}
+    return forwarded
+
+
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, bra_reg_gaucho_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
+                  direct_owner_calls=None, register_frame_lowering=False, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
     cpp_leaves = set()
@@ -1444,6 +1538,12 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     # Audit only when its commentary call/load is included; once included,
     # require the same complete context and fingerprint as the full export.
     page_addresses = {item["address"] for item in instructions}
+    frame_accesses = page_addresses & REGISTER_FRAME_ACCESSES.keys() if register_frame_lowering and local_temporaries else set()
+    expiry_accesses = (expiry_stack_accesses(instructions)
+                       if page == EXPIRY_BAND.start >> 12 and local_temporaries and
+                       not contract_terms_hooks and not native_leaf_lowering else {})
+    staff_forwards = (staff_score_forwarded_loads(instructions)
+                      if page == 0x101af and local_temporaries and not native_leaf_lowering else {})
     taken_over = ((TACTICS_TAKEOVERS if tactics_hooks else frozenset()) |
                   (MAIN_PROGRAM_TAKEOVERS if main_program_hooks else frozenset()) |
                   (PLAYER_STATS_TAKEOVERS if player_stats_hooks else frozenset()) |
@@ -1495,6 +1595,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.insert(1, '#include "native_sort8.hpp"')
     if native_record_field_hooks and page_addresses & NATIVE_RECORD_FIELDS.keys():
         code.insert(1, '#include "native_record_fields.hpp"')
+    if frame_accesses or expiry_accesses:
+        code.insert(1, '#include "guest_register_frame.hpp"')
     if transfer_hooks:
         code.insert(1, '#include "guest_context_transfer.hpp"')
     if register_context_hooks and page_addresses & set(REGISTER_CONTEXT_ENTRIES):
@@ -1676,6 +1778,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "calendar_adapter.hpp"')
     if page in (0x10715, 0x10716, 0x10717, 0x10718):
         code.insert(1, '#include "date_subsystem_audit.hpp"')
+    default_date_calls = {site for site in page_addresses & DEFAULT_DATE_CALLS
+                          if direct_owner_calls is not None and site + 4 in selected}
+    if default_date_calls:
+        code.insert(1, '#include "date_subsystem_audit.hpp"')
     if page in (0x10747, 0x1077b):
         code.insert(1, '#include "rng_core_adapter.hpp"')
     if page in (0x10712, 0x10713):
@@ -1762,6 +1868,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "bra_reg_central_adapter.hpp"')
     if bra_reg_parana_hooks and page_addresses & set(BRA_REG_PARANA_ENTRIES):
         code.insert(1, '#include "bra_reg_parana_adapter.hpp"')
+    if bra_reg_gaucho_hooks and page_addresses & set(BRA_REG_GAUCHO_ENTRIES):
+        code.insert(1, '#include "bra_reg_gaucho_adapter.hpp"')
     if european_cup_hooks and page_addresses & set(EUROPEAN_CUP_ENTRIES):
         code.insert(1, '#include "european_cup_adapter.hpp"')
     if media_hooks and page_addresses & set(MEDIA_ENTRIES):
@@ -1816,6 +1924,15 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
         code.insert(1, '#include "native_drawing.hpp"')
+    if staff_forwards:
+        code.insert(1, '#include "staff_score_stack.hpp"')
+        code.append("bool staff_stack_forwarding = can_forward_staff_score_stack(s);")
+    if expiry_accesses:
+        size = EXPIRY_STACK_SIZE
+        code.append("const auto expiry_sp = std::uint32_t(s.r<4>(4));")
+        code.append(f"auto* const expiry_scratch = s.pc == 0x{EXPIRY_BAND.start:x} && "
+                    f"s.budget == UINT64_MAX && expiry_sp >= {size}"
+                    f" ? GuestRegisterFrame::unobserved_scratch(s.memory, expiry_sp - {size}, {size}) : nullptr;")
     code.append("switch (s.pc) {")
     if any(item["assembly"].startswith("fctiwz ") for item in instructions):
         code.insert(1, '#include "floating_point.hpp"')
@@ -2214,6 +2331,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(bra_reg_central_hook(a))
         if bra_reg_parana_hooks and a in BRA_REG_PARANA_ENTRIES:
             code.append(bra_reg_parana_hook(a))
+        if bra_reg_gaucho_hooks and a in BRA_REG_GAUCHO_ENTRIES:
+            code.append(bra_reg_gaucho_hook(a))
         if european_cup_hooks and a in EUROPEAN_CUP_ENTRIES:
             code.append(european_cup_hook(a))
         if media_hooks and a in MEDIA_ENTRIES:
@@ -2384,6 +2503,16 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.extend(["if (s.r<4>(12) == 0) {", "s.wr<4>(2440, s.r<4>(8));",
                          f"s.wr<4>(4128, 0x{continuation:x});",
                          transfer(continuation, transfer_page, selected), "}"])
+        if a in default_date_calls:
+            if plain_direct_call(item) != 0x10715880:
+                raise ValueError(f"Unexpected transfer date constructor call at {a:x}")
+            for op in item["ops"][:2]:
+                code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
+            code.append("s.pc = default_date_entry;")
+            code.append(f"if (try_call_default_date(s) && continues_after_owner(s, 0x{a+4:x})) goto i_{a+4:x};")
+            code.append("return true;")
+            special.add(a)
+            continue
         leaves = inlining.leaves if inlining else {}
         target = item["flows"][0] if leaves and item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows") else None
         if target in leaves:
@@ -2432,6 +2561,26 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"original_fctiwz(s, {destination}, {source});")
             code.append(transfer(a + item["size"], transfer_page, selected))
             continue
+        if a in frame_accesses:
+            assembly, fingerprint = REGISTER_FRAME_ACCESSES[a]
+            actual = hashlib.sha256(json.dumps(item["ops"], separators=(",", ":")).encode()).hexdigest()
+            frame = re.fullmatch(r"(stmw|lmw) r(\d+),-(0x[0-9a-f]+)\(r1\)", assembly)
+            if not frame or item["assembly"] != assembly or item["size"] != 4 or actual != fingerprint:
+                raise ValueError(f"Register frame no longer matches the audited instruction at {a:x}")
+            mnemonic, first, offset = frame.groups()
+            restore = "true" if mnemonic == "lmw" else "false"
+            resume = transfer(a + 4, transfer_page, selected)
+            code.append(f"if (GuestRegisterFrame::try_transfer<{first}, {restore}>("
+                        f"s, std::uint32_t(s.r<4>(4) - {offset}u))) {{ {resume} }}")
+            special.add(a)
+        if staff_forwards and a == STAFF_SCORE_BLOCK.stop:
+            code.append("staff_stack_forwarding = false;")
+        if a in staff_forwards:
+            destination, size, words = staff_forwards[a]
+            value = (f"s.r<4>({words[0]})" if size == 4 else
+                     f"s.r<4>({words[0]}) << 32 | s.r<4>({words[1]})")
+            resume = transfer(a + item["size"], transfer_page, selected)
+            code.append(f"if (staff_stack_forwarding) {{ s.wr<{size}>({destination}, {value}); {resume} }}")
         ops = fused_multiply_add_ops(item)
         labels = set()
         for i, op in enumerate(ops):
@@ -2448,7 +2597,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             lowered = operation(op, a, i, transfer_page, selected, len(ops),
                                 read_node=local.read if local else read,
                                 write_node=local.write if local else write,
-                                userops=userops)
+                                userops=userops, expiry_stack_offset=expiry_accesses.get(a))
             if transfer_hooks and a == 0x10772774 and op[0] == 'RETURN':
                 if lowered.count('return true;') != 1:
                     raise ValueError('Missing original context-return boundary')
@@ -2494,7 +2643,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, f'#include "{family}_adapter.hpp"')
     for family in sorted(cpp_leaves):
         code.insert(1, f'#include "{family}_leaves.hpp"')
-    if called_families:
+    if called_families or default_date_calls:
         code.insert(1, '#include "direct_owner_call.hpp"')
     result = "\n".join(code) + "\n"
     if eng_first_hooks:
@@ -2523,6 +2672,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_bra_reg_central_hooks(page, instructions, result)
     if bra_reg_parana_hooks:
         require_bra_reg_parana_hooks(page, instructions, result)
+    if bra_reg_gaucho_hooks:
+        require_bra_reg_gaucho_hooks(page, instructions, result)
     if european_cup_hooks:
         require_european_cup_hooks(page, instructions, result)
     if media_hooks:
@@ -2756,7 +2907,7 @@ SELECTABLE_INDEX_AUDITS = (
 INDEX_AUDITS = (
     require_list_search, require_tactics_index, require_main_program_index, require_club_history_index,
     require_club_records_index, require_match_pl_index, require_match_eng_index, require_eng_prm_index,
-    require_eng_conf_index, require_eng_first_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
+    require_eng_conf_index, require_eng_first_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_bra_reg_gaucho_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
     require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
     require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index, require_cup_stage_index,
     require_transfer_manager_index, require_db_files_index, require_international_awards_index, require_nation_awards_index,
@@ -2960,7 +3111,8 @@ def main():
         with closing(sqlite3.connect(f"file:{args.export / 'instructions.sqlite'}?mode=ro", uri=True)) as db:
             page_ids = [row[0] for row in db.execute("SELECT DISTINCT address >> 12 FROM instructions ORDER BY address")]
         generation = (args.output, dict(local_temporaries=not args.legacy_unique_storage, userops=metadata['userops'],
-                                        nontrapping_divisions=divisions, **production_hooks))
+                                        nontrapping_divisions=divisions, register_frame_lowering=True,
+                                        **production_hooks))
         direct_owner_entries()  # Cached here, so workers don't each read the sources again.
         with generator_pool(args.jobs, args.export, None, inlining.leaves, generation) as pool:
             for page, result in zip(page_ids, pool.map(generate_indexed_page, page_ids)):

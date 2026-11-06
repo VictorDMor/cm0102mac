@@ -1,4 +1,5 @@
 #include "contract_terms.hpp"
+#include "guest_register_frame.hpp"
 #include "semantic_io_checks.hpp"
 #include <set>
 
@@ -141,6 +142,86 @@ void alias_and_continuation_cases(){
     {auto s=seed(11);s->wr<4>(20,1);s->memory.copy_in(globals+0x800,s->memory.copy_out(tables+0x2000,48));s->memory.write<4>(toc-0x4db0,globals+0x800);boundaries(*s);}
 }
 
+void production_expiry_stack_cases() {
+    constexpr auto entry = terms::expiry_band_entry;
+    constexpr unsigned scratch_size = 0xa0;
+    const auto run_production = [](State& state) {
+        try { run_until(state, return_sentinel); }
+        catch (const std::runtime_error& error) { return std::string(error.what()); }
+        return std::string{};
+    };
+    const auto check = [&](const State& input, const char* label, bool expect_fault = false) {
+        auto checked = clone(input), candidate = clone(input);
+        checked->budget = UINT64_MAX - 1;
+        candidate->budget = UINT64_MAX;
+        const auto expected = run_production(*checked);
+        require(expected.empty() != expect_fault, std::string(label) + " fixture fault reachability");
+        require(run_production(*candidate) == expected, std::string(label) + " fault mismatch");
+        Image(*checked).compare(*candidate, label);
+        require(checked->executed == candidate->executed, std::string(label) + " accounting mismatch");
+    };
+
+    for (const auto kind : {0u, 1u, 2u, 5u, 63u}) {
+        for (const auto day : {59u, 60u, 80u, 100u, 120u, 140u, 160u, 180u, 181u}) {
+            auto s = seed(20);
+            s->memory.write<1>(record + 0x38, kind << 2);
+            s->memory.write<2>(record + 0x30, day);
+            check(*s, "Production expiry bands");
+        }
+    }
+
+    auto aliased = seed(20);
+    constexpr auto aliased_record = stack - 0xa8;
+    aliased->memory.copy_in(aliased_record, aliased->memory.copy_out(record, 100));
+    aliased->wr<4>(12, aliased_record);
+    aliased->memory.write<4>(toc + slots[2], stack - 8);
+    check(*aliased, "Expiry dates and record alias scratch");
+
+    auto partial = seed(20);
+    constexpr auto partial_sp = 0x31000023;
+    partial->memory.map(partial_sp - 0x20, 0x20);
+    partial->wr<4>(4, partial_sp);
+    check(*partial, "Expiry stack fault after initial stores", true);
+    partial->memory.map(partial_sp - 0xa0, 0x80);
+    check(*partial, "Mapped unaligned expiry stack");
+
+    auto interior = seed(20);
+    interior->budget = UINT64_MAX;
+    interior->pc = entry;
+    run_until(*interior, return_sentinel);
+    interior->pc = 0x10380730;
+    interior->wr<4>(12, record);
+    check(*interior, "Expiry interior dispatch");
+
+    auto observed = seed(20);
+    auto scalar = clone(*observed);
+    const auto attach = [](State& state, Effects& effects) {
+        effects.state = &state;
+        effects.on_read = [](State& s, Effects& e, std::uint32_t address, unsigned) {
+            if (address == stack - 6 && !e.mutated) {
+                e.mutated = true;
+                s.memory.write<2>(address, 2002);
+            }
+        };
+        state.memory.date_observer = &effects;
+    };
+    Effects before, after;
+    attach(*scalar, before);
+    attach(*observed, after);
+    scalar->budget = UINT64_MAX - 1;
+    observed->budget = UINT64_MAX;
+    require(run_production(*scalar).empty() && run_production(*observed).empty(), "Observed expiry failed");
+    require(before.mutated && after.mutated && before.bytes == after.bytes, "Expiry observer order changed");
+    scalar->memory.date_observer = nullptr;
+    observed->memory.date_observer = nullptr;
+    Image(*scalar).compare(*observed, "Observed production expiry");
+
+    auto guarded = seed(20);
+    require(GuestRegisterFrame::unobserved_scratch(guarded->memory, stack - scratch_size, scratch_size),
+            "Mapped expiry scratch was declined");
+    std::cout << "Production expiry stack: 50 comparisons and scratch guard passed\n";
+}
+
 }
 namespace cm::aot {void contract_terms_step_seen(State& s,std::uint32_t pc){if(original_trace)original_trace->before_step(s,pc);}}
-int main(){try{basic_cases();sampler_cases();state_and_eligibility_cases();expiry_cases();more_boundaries_and_negatives();independent_expectations();alias_and_continuation_cases();for(unsigned n=0;n<terms::entries.size();++n)for(auto pc=terms::entries[n];pc<ends[n];pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered terms "<<hex_address(pc)<<std::endl;require(sites.size()==1203,"Complete 21-operation contract terms source coverage");std::cout<<"Terms comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/1203"<<std::endl;}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}
+int main(){try{basic_cases();sampler_cases();state_and_eligibility_cases();expiry_cases();more_boundaries_and_negatives();independent_expectations();alias_and_continuation_cases();production_expiry_stack_cases();for(unsigned n=0;n<terms::entries.size();++n)for(auto pc=terms::entries[n];pc<ends[n];pc+=4)if(!sites.contains(pc))std::cerr<<"Uncovered terms "<<hex_address(pc)<<std::endl;require(sites.size()==1203,"Complete 21-operation contract terms source coverage");std::cout<<"Terms comparisons="<<cases<<" completions="<<completed<<" interruptions="<<interrupted<<" negatives="<<negatives<<" structural="<<structural<<" sites="<<sites.size()<<"/1203"<<std::endl;}catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}}

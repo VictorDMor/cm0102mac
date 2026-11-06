@@ -1,6 +1,8 @@
 #include "calendar.hpp"
 #include "aot_runtime.hpp"
 #include "date_subsystem_adapter.hpp"
+#include "date_subsystem_audit.hpp"
+#include "guest_context_transfer.hpp"
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -46,6 +48,36 @@ void initialize(State& s, std::uint32_t entry, unsigned index) {
 void put_date(State& s,std::uint32_t address,unsigned year,int day,unsigned flag) {
     s.memory.write<2>(address,day); s.memory.write<2>(address+2,year); s.memory.write<1>(address+4,flag);
 }
+void check_direct_default_date(State& dispatched, State& direct) {
+    for (auto* state : {&dispatched, &direct}) {
+        initialize(*state, default_date_entry, 0);
+        state->calendar_original = false;
+        state->wr<4>(12, fixture + 31);
+    }
+    require(!try_call_default_date(direct), "Date constructor bypassed an unscoped dispatch");
+    {
+        GuestDispatchScope stop_at_entry(direct, default_date_entry);
+        require(!try_call_default_date(direct), "Date constructor bypassed a stop at its entry");
+    }
+    {
+        GuestDispatchScope scope(direct);
+        Effects observer;
+        direct.memory.observer = &observer;
+        require(!try_call_default_date(direct) && observer.events.empty(), "Date constructor bypassed a write observer");
+        direct.memory.observer = nullptr;
+        direct.calendar_original = true;
+        require(!try_call_default_date(direct), "Date constructor bypassed the original route");
+        direct.calendar_original = false;
+        require(direct.pc == default_date_entry && direct.executed == 0, "Declined date call changed execution");
+        require(try_call_default_date(direct), "Direct date constructor declined an ordinary call");
+    }
+    run(dispatched);
+    require(direct.registers == dispatched.registers && direct.unique == dispatched.unique &&
+            direct.pc == dispatched.pc && direct.executed == dispatched.executed &&
+            direct.date_subsystem_calls == dispatched.date_subsystem_calls &&
+            direct.memory.copy_out(fixture, 512) == dispatched.memory.copy_out(fixture, 512),
+            "Direct and dispatched date constructors left different state");
+}
 }
 int main(int argc,char** argv) {
     if(argc!=3 && argc!=4) return 2;
@@ -56,6 +88,7 @@ int main(int argc,char** argv) {
         std::ofstream evidence(argv[2],std::ios::binary);
         require(bool(evidence),"Cannot open private construction characterization");
         const bool composed=argc==4&&std::string_view(argv[3])=="--composed";
+        if (composed) check_direct_default_date(*s, *semantic);
         unsigned cases=0;
         auto check=[&](std::uint32_t entry,auto setup,auto oracle) {
             initialize(*s,entry,cases); setup(*s);

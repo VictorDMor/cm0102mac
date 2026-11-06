@@ -185,7 +185,10 @@ def require_match_pl_index(db):
             raise ValueError(f"MATCH_PL.CPP promoted digest changed at {entry:x}")
 
 
-MATCH_PL_DEDICATED_OWNERS = {0x1022e7e0: "player_movement_adapter"}
+MATCH_PL_DEDICATED_OWNERS = {
+    0x1022e7e0: "player_movement_adapter",
+    0x1023cd20: "ball_action_adapter",
+}
 
 
 def require_match_pl_owners(routines, owners):

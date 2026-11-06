@@ -1,5 +1,6 @@
 #include "aot_runtime.hpp"
 #include "floating_point.hpp"
+#include "guest_fpu.hpp"
 #include <iostream>
 
 using namespace cm::aot;
@@ -33,6 +34,33 @@ struct Case {
     std::uint32_t output;
     bool invalid = false, inexact = false, signaling = false;
 };
+
+void check_fpscr_summaries(State& s) {
+    guest::Cpu cpu(s);
+    guest::Fpu fpu(cpu);
+    constexpr unsigned invalid_detail[] = {1287, 1288, 1289, 1290, 1291, 1292, 1301, 1302, 1303};
+    for (unsigned status = 0; status < 32; ++status) {
+        for (unsigned enables = 0; enables < 32; ++enables) {
+            // Ignore the high bits in the flag bytes and preserve every
+            // unrelated register byte.
+            s.registers.fill(0xaa);
+            const auto previous_fx = (status ^ enables) & 1;
+            s.wr<1>(1280, 0xaa | previous_fx);
+            for (unsigned bit = 1; bit < 5; ++bit) s.wr<1>(1282 + bit, 0xaa | (status >> bit & 1));
+            for (unsigned bit = 0; bit < 5; ++bit) s.wr<1>(1304 + bit, 0xaa | (enables >> bit & 1));
+            s.wr<1>(invalid_detail[(status + enables) % std::size(invalid_detail)], 0xaa | (status & 1));
+
+            auto expected = s.registers;
+            expected[1280] = previous_fx || (status & 0x1e);
+            expected[1281] = std::popcount(status & enables) & 1;
+            expected[1282] = status & 1;
+            expected[1287] &= 1;
+            expected[1296] = 1;
+            expected[1297] = expected[1298] = expected[1299] = 0;
+            require(fpu.fsub(-5.0, -3.0) == -2.0 && s.registers == expected, "Packed FPSCR summary mismatch");
+        }
+    }
+}
 }
 int main() {
     try {
@@ -130,6 +158,8 @@ int main() {
         original_fctiwz(s, source, source);
         require(std::uint32_t(s.r<8>(source)) == 0xfffffffbu && s.r<1>(1294), "Aliased source/destination");
         std::cout << checked << " original fctiwz cases and sticky/enabled/alias checks passed\n";
+        check_fpscr_summaries(s);
+        std::cout << "1024 FPSCR summary and neighboring register checks passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

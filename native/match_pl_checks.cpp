@@ -25,6 +25,8 @@
 #include "match_pl_goal_line.hpp"
 #include "match_pl_pressure.hpp"
 #include "match_pl_obstruction.hpp"
+#include "match_pl_shot_event.hpp"
+#include "ball_action.hpp"
 #include "player_decision_adapter.hpp"
 #include "routine_check.hpp"
 #include "semantic_io_checks.hpp"
@@ -2905,6 +2907,8 @@ std::uint64_t external_budget(std::uint32_t entry) {
     // two-instruction diagnostic-context leaf at 0x10768810 after both abs calls.
     // Shot action 51 executes four original abs leaves for its geometry.
     if (entry == 0x1022e7e0) return 1;
+    if (entry == 0x10227460 || entry == 0x1022ba10) return 512;
+    if (entry == obstruction_entry) return 64;
     return shot_entry(entry) ? 16 : entry == 0x10278220 ? 128 : entry == 0x10245870 ? 32 : entry == 0x10281780 ? 12 : rating_entry(entry) ? 10 : entry == 0x10247030 || entry == 0x10245220 || entry == 0x1022e760 || entry == 0x10245160 || entry == 0x10270ba0 || keeper_entry(entry) ? 8 :
         entry == 0x1028ac50 || entry == 0x10245050 || entry == 0x10244c60 || entry == 0x10237420 ? 4 : 0;
 }
@@ -2918,21 +2922,71 @@ Case route_case(std::uint32_t entry) {
     return test;
 }
 
+int check_goal_line_production(const State& base, std::uint32_t selected = 0);
+int check_pressure_gaps(const State& base, std::string_view mode);
+
 void require_production_routes(const State& base, std::uint32_t selected = 0) {
     reference_mode = false;
     for (const auto entry : production_entries) {
         if (selected && selected != entry) continue;
+        if (entry == match_pl::shot_event_entry || entry == ball_action::entry) {
+            // These roots require an active match, its clocks and its live
+            // actor records. Their production checks use captured matches.
+            const auto check = entry == match_pl::shot_event_entry ? "match_pl_shot_event_replay" : "ball_action_actual_production";
+            const auto message = hex_address(entry) + " requires " + check;
+            if (selected) throw std::runtime_error(message);
+            std::cout << message << '\n';
+            continue;
+        }
+        if (goal_line_entry(entry) || entry == pressure_entry) continue;
         active = route_case(entry);
-        auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_case(c);
-        if (action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220 || entry == 0x10237b50 || entry == 0x10223ac0 || entry == 0x1022e7e0) {
-            auto original_state = cm::semantic_io_checks::clone(base); Cpu original_cpu(*original_state); initialize_case(original_cpu);
+        const bool response = entry == 0x1022ba10;
+        const bool influence_fixture = entry == 0x10227460 || response;
+        struct RestoreFixture {
+            bool prefix = influence_prefix, returned = influence_returned;
+            bool response_position = player_response_position, response_returned = player_response_returned;
+            ~RestoreFixture() {
+                influence_prefix = prefix;
+                influence_returned = returned;
+                player_response_position = response_position;
+                player_response_returned = response_returned;
+            }
+        } restore_fixture;
+        influence_prefix = influence_returned = influence_fixture;
+        player_response_position = player_response_returned = response;
+        if (influence_fixture) {
+            influence = {};
+            active.side = response ? 1 : 0;
+            active.first_role = response ? 4 : 1;
+            active.second_role = response ? 0x140 : influence.other_role;
+            if (response) active.strategy_high = active.strategy_low = 0;
+        }
+        const auto initialize_route = [&](Cpu& cpu) {
+            initialize_case(cpu);
+            if (influence_fixture) initialize_influence(cpu);
+            if (response) {
+                cpu.set(4, 1);
+                cpu.put_f32(player + 0x50, 50);
+            }
+        };
+        auto state = cm::semantic_io_checks::clone(base); Cpu c(*state); initialize_route(c);
+        if (influence_fixture || action_entry(entry) || core_entry(entry) || keeper_entry(entry) || rating_entry(entry) || shot_entry(entry) || entry == 0x10278220 || entry == 0x10237b50 || entry == 0x10223ac0 || entry == 0x1022e7e0) {
+            auto original_state = cm::semantic_io_checks::clone(base); Cpu original_cpu(*original_state); initialize_route(original_cpu);
             original_state->budget = external_budget(entry); original_state->pc = entry; bool exhausted = false;
             // The original body runs its callees as the original too: MATCH_ENG.CPP's hook declines for this State.
             match_eng_original_state = original_state.get();
             struct Restore { ~Restore() { match_eng_original_state = nullptr; } } restore_original_state;
-            try { match_pl_run_original(*original_state, entry); }
+            try {
+                if (influence_fixture) {
+                    reference_mode = true;
+                    struct RestoreReference { ~RestoreReference() { reference_mode = false; } } restore_reference;
+                    run_until(*original_state, sentinel);
+                } else match_pl_run_original(*original_state, entry);
+            }
             catch (const std::runtime_error& error) {
-                if (std::string_view(error.what()) != "Native instruction budget exhausted") throw;
+                if (std::string_view(error.what()) != "Native instruction budget exhausted")
+                    throw std::runtime_error(std::string(error.what()) + " in original route " + hex_address(entry) +
+                        " pc=" + hex_address(original_state->pc) + " lr=" + hex_address(original_cpu.lr()));
                 exhausted = true;
             }
             cm::semantic_io_checks::require(exhausted, "Original action body fits the C++ route's external budget");
@@ -2956,6 +3010,10 @@ void require_production_routes(const State& base, std::uint32_t selected = 0) {
         require_return(*state);
         std::cout << "ok production C++ route " << hex_address(entry) << '\n';
     }
+    if (!selected || goal_line_entry(selected))
+        cm::semantic_io_checks::require(check_goal_line_production(base, selected) == 0, "Goal-line production routes");
+    if (!selected || selected == pressure_entry)
+        cm::semantic_io_checks::require(check_pressure_gaps(base, "--pressure-production") == 0, "Pressure production route");
     // Legacy original/profile switches must still reach original instructions
     // after a family loses its production hook to MATCH_PL.
     const auto check_legacy = [&](const auto& entries, auto run) {

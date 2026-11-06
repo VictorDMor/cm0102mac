@@ -4,6 +4,13 @@
 #include <cstdlib>
 
 namespace cm::aot {
+namespace {
+bool trace_exceptional_conversion() {
+    static const bool enabled = std::getenv("CM_AOT_TRACE_FLOAT") != nullptr;
+    return enabled;
+}
+}
+
 void original_fctiwz(State& s, unsigned destination, unsigned source) {
     // PowerPC Programming Environments, Rev. 1, section D.4.2:
     // https://www.nxp.com/docs/en/user-guide/MPCFPE_AD_R1.pdf
@@ -42,7 +49,7 @@ void original_fctiwz(State& s, unsigned destination, unsigned source) {
     // The upper word and FPRF are architecturally undefined. Preserve the
     // export's sign-extension convention and leave FPRF unchanged.
     s.wr<8>(destination, std::uint64_t(signed_value<4>(result)));
-    if (invalid && std::getenv("CM_AOT_TRACE_FLOAT"))
+    if (invalid && trace_exceptional_conversion())
         std::fprintf(stderr, "Native fctiwz exceptional conversion: pc=%08x input=%016llx result=%08x\n",
             s.pc, static_cast<unsigned long long>(bits), result);
     if (inexact && s.r<1>(1308))

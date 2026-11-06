@@ -1,6 +1,11 @@
 // MATCH_ENG.CPP, team_a: scoring every player of the side in possession as the receiver of a pass.
 #include "match_eng_space.hpp"
 #include "match_eng_team_a.hpp"
+#include "guest_frame_observation.hpp"
+#include "match_pl.hpp"
+#include "match_pl_adapter.hpp"
+#include "match_turbo.hpp"
+#include "routine_check.hpp"
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -49,17 +54,32 @@ private:
     void other_routine(std::uint32_t entry, std::uint32_t back) {
         call(c, entry, back);
     }
+    template<std::uint32_t Entry, auto Query>
+    void player_query(std::uint32_t player, std::uint32_t back) {
+        c.set(3, player);
+        const auto& memory = c.s.memory;
+        // Only the strategy query writes a frame. Its nested table lookup is a leaf.
+        if (!dispatch_probe && !routine_checker && !memory.date_observer &&
+            !memory.read_trace && !match_pc_profile_enabled() && match_pl_route_allowed(Entry) &&
+            (Entry != player_flags || !stack_frame_writes_observed(memory, c.sp(), 0x40))) {
+            c.link(back);
+            c.s.pc = Entry;
+            Query(c, player);
+            c.finish();
+        } else {
+            call_to(Entry, back);
+        }
+    }
     // A 64-bit trait word test after the call returning at `back`.
     bool has_flag(std::uint32_t player, std::uint32_t back, std::uint32_t hi_mask, std::uint32_t lo_mask) {
-        c.set(3, player);
-        call_to(player_flags, back);
+        player_query<player_flags, match_pl::alternate_strategy_flags>(player, back);
         trait_low = c.r(4);
         return compare(c, std::int32_t((c.r(3) & hi_mask) | (c.r(4) & lo_mask))) != 0;
     }
     // `bl entry; extsb; cmpwi 0` on a routine of another module.
-    bool byte_flag(std::uint32_t entry, std::uint32_t player, std::uint32_t back) {
-        c.set(3, player);
-        call_to(entry, back);
+    template<std::uint32_t Entry, auto Query>
+    bool byte_flag(std::uint32_t player, std::uint32_t back) {
+        player_query<Entry, Query>(player, back);
         return compare(c, s8(c.r(3))) != 0;
     }
     std::int16_t position_value_of(std::uint32_t player, std::uint32_t back) {
@@ -173,7 +193,7 @@ bool Receiver::start() {
     c.set(4, out_score_pointer());
     c.put32(out_score_pointer(), c.r(3));
 
-    if (!byte_flag(0x102721a0, pending(), 0x101e8b58)) {
+    if (!byte_flag<0x102721a0, match_pl::in_own_half>(pending(), 0x101e8b58)) {
         c.set({{3, match}, {4, pending()}});
         other_routine(0x101ee770, 0x101e8b74);
         c.set(14, c.r(3));
@@ -256,9 +276,9 @@ void Receiver::special_traits() {
         c.set_f(1, f1);
         r19 = truncate(0x7c, fpu.multiply_add(0x101e8db8, f2, f0, f1));
     }
-    if (byte_flag(0x10272100, cand, 0x101e8dd0)) {
+    if (byte_flag<0x10272100, match_pl::in_attacking_third>(cand, 0x101e8dd0)) {
         bump(r19, -0x5dc);
-    } else if (byte_flag(0x102721a0, cand, 0x101e8df0)) {
+    } else if (byte_flag<0x102721a0, match_pl::in_own_half>(cand, 0x101e8df0)) {
         const auto col = column(c, cand);
         c.set(5, col);
         c.set(15, u(side()));
@@ -354,7 +374,7 @@ void Receiver::team_scores() {
         }
     }
     // Tactical flags of the pending player and of the team.
-    if (!byte_flag(0x10272100, pending(), 0x101e921c)) {
+    if (!byte_flag<0x10272100, match_pl::in_attacking_third>(pending(), 0x101e921c)) {
         const auto team_flags = [&] {
             c.set(3, team_of_side());
             return tactical_flags(c, team_of_side());
@@ -580,12 +600,12 @@ bool Receiver::kind_bonuses() {
     }
     if (compare(c, slot_s16(slot::position_value), 1) == 0) {
         c.set(5, match + 0x10000);  // addis r5,r30,1 of the pending player's address
-        const bool pending_flag = byte_flag(0x102721a0, pending(), 0x101e9b3c);
+        const bool pending_flag = byte_flag<0x102721a0, match_pl::in_own_half>(pending(), 0x101e9b3c);
         c.set(6, u(s8(c.r(3))));  // extsb r6,r4 of the result
         if (!pending_flag) {
             if (compare(c, std::int32_t(rnd(0x20000 - 0x7960, 0x101e9b58))) != 0) return false;
         }
-        if (!byte_flag(0x10272050, pending(), 0x101e9b70)) {
+        if (!byte_flag<0x10272050, match_pl::in_defensive_third>(pending(), 0x101e9b70)) {
             const double f1 = widen(0x64, s8(adjustment_byte(c, pending())) * 0x3e8, false);
             c.set_f(1, f1);
             double f0 = D(0x1c0);
@@ -602,7 +622,8 @@ bool Receiver::kind_bonuses() {
         if (less(c.f(31), D(0x98))) {
             c.set(3, pending());
             call_to(0x10289560, 0x101e9c68);
-            if (compare(c, std::int32_t(std::int16_t(c.r(3))), 1) == 0 && byte_flag(0x102721a0, cand, 0x101e9c80)) bump(r27, -0x7d0);
+            if (compare(c, std::int32_t(std::int16_t(c.r(3))), 1) == 0 &&
+                byte_flag<0x102721a0, match_pl::in_own_half>(cand, 0x101e9c80)) bump(r27, -0x7d0);
         }
         if (compare(c, slot_s8(slot::end_own)) != 0) {
             const auto gift = s8(adjustment_byte(c, pending()));
@@ -713,7 +734,7 @@ void Receiver::trait_scores() {
         if (extra) bump(r27, 0x3e8);
     }
     if (has_flag(pending(), 0x101ea038, 0, 0x80)) {
-        const bool flagged = byte_flag(0x102720d0, cand, 0x101ea070);
+        const bool flagged = byte_flag<0x102720d0, match_pl::in_wide_column>(cand, 0x101ea070);
         c.set(4, c.r(3));
         c.set(3, u(s8(c.r(4))));
         if (!flagged) {
@@ -791,7 +812,7 @@ void Receiver::distance_adjustments() {
             }
         }
     }
-    if (no_progress() && byte_flag(0x102721a0, cand, 0x101ea244)) {
+    if (no_progress() && byte_flag<0x102721a0, match_pl::in_own_half>(cand, 0x101ea244)) {
         bump(r23, -0x1388);
         bump(r20, -0xbb8);
         bump(r16, -0xbb8);
@@ -824,7 +845,7 @@ void Receiver::distance_adjustments() {
             enter(c, 0x101ea3b4, {match, r17});
             const auto central = outside_central_rows(c, r17);
             if (compare(c, s8(central)) != 0) {
-                if (!byte_flag(0x102721a0, cand, 0x101ea3cc) && has_flag(cand, 0x101ea3e0, 4, 0x0)) {
+                if (!byte_flag<0x102721a0, match_pl::in_own_half>(cand, 0x101ea3cc) && has_flag(cand, 0x101ea3e0, 4, 0x0)) {
                     const double f0 = fpu.multiply_add(0x101ea418, D(0x1b8), c.f(31), D(0x58));
                     c.set_f(1, D(0x1b8));
                     c.set_f(31, fpu.frsp(f0));
@@ -876,7 +897,7 @@ void Receiver::lane_scores() {
                     if (second && side() == 0) c.set(14, cost);
                     r27 = r27 - cost;
                 };
-                if (byte_flag(0x10272050, cand, 0x101ea544)) {
+                if (byte_flag<0x10272050, match_pl::in_defensive_third>(cand, 0x101ea544)) {
                     const double f0 = fpu.multiply_add(0x101ea55c, F(0xf8), c.f(31), F(0xf4));
                     c.set_f(1, F(0xf8));
                     c.put16(frame.at(slot::half), truncate(0x64, f0));
@@ -893,7 +914,7 @@ void Receiver::lane_scores() {
     if (!handled) {
         bool penalised = false;
         if (less(c.f(31), F(0x18))) {
-            penalised = byte_flag(0x102721a0, cand, 0x101ea660);
+            penalised = byte_flag<0x102721a0, match_pl::in_own_half>(cand, 0x101ea660);
             c.set(14, u(s8(c.r(3))));
         }
         if (penalised) {
@@ -919,7 +940,7 @@ void Receiver::lane_scores() {
                     other_routine(0x101d8d70, 0x101ea730);
                     if (compare(c, s8(c.r(3))) != 0) bump(r27, (gift() + 10) * 0x32);
                 }
-            } else if (!byte_flag(0x102721a0, cand, 0x101ea768)) {
+            } else if (!byte_flag<0x102721a0, match_pl::in_own_half>(cand, 0x101ea768)) {
                 c.set({{3, match}, {4, cand}});
                 other_routine(0x101eecb0, 0x101ea780);
                 c.set(15, c.r(3));

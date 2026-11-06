@@ -357,7 +357,7 @@ int check_goal_line_gaps(const State& base) {
     return failed != 0;
 }
 
-int check_goal_line_production(const State& base) {
+int check_goal_line_production(const State& base, std::uint32_t selected) {
     constexpr unsigned results = RoutineChecker::result_r3 | RoutineChecker::result_f1;
     const auto production = +[](State& s, std::uint32_t entry) {
         reference_mode = false;
@@ -376,6 +376,7 @@ int check_goal_line_production(const State& base) {
         require_return(s);
     };
     for (const auto entry : {opposite_goal_line, own_goal_line}) {
+        if (selected && selected != entry) continue;
         for (const auto path : {GoalLinePath::miss, GoalLinePath::goal}) {
             const bool goal = path == GoalLinePath::goal;
             active = {entry, 1, 4, goal ? 0 : 4};
@@ -397,7 +398,7 @@ int check_goal_line_production(const State& base) {
             }
         }
     }
-    std::cout << "4 goal-line production cases match; both publication corruption controls detected\n";
+    std::cout << (selected ? 2 : 4) << " goal-line production cases match; publication corruption detected\n";
     return 0;
 }
 }
