@@ -255,7 +255,11 @@ the RNG stream (write 4,845,515). With only some readers scrambled
 struct, keeps the garbage bits, and copies the byte into heap records
 (8 vs 10). So the original's results depend on its call history through
 the stack. Results stay identical only if every rewrite leaves the
-original's stack image wherever later code reads leftovers.
+original's stack image wherever later code reads leftovers. Since 2026-11-06
+that is the rule (CLAUDE.md, per-reader contract): only the bytes a listed
+reader reads must stay. The audit makes C++ owners take their observed paths,
+so it finds readers and writers in original mode; a native path is checked by
+paired replays.
 
 ## Driving the game (2026-10-21)
 

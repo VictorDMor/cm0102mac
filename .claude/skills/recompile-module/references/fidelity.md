@@ -39,15 +39,22 @@ No framework, host-owned shadow world, new dependency or unrelated redesign.
 
 ## Stack, registers and calls
 
-Keep the stack image exact (Victor's decision, 2026-10-23): the original reads
-bytes it never wrote, and those reads can change RNG and records. Every byte the
-original leaves below the stack pointer stays, including what its callees leave.
-Giving that up needs proof that nothing reads it, from the audit plus replays:
-`cm-world-replay --stack-audit` lists uninitialized reads, and `--scramble-stack`
-shows whether they matter. A bounded callee scan is not enough when a reader lies
-beyond the bound. `CLAUDE.md` calls leftover stack scratch a diagnostic, in a line
-from 2026-10-20 that predates this finding. Read it as covering only bytes shown
-to be unread: until that is shown, they are memory the game reads.
+Leftover stack follows the per-reader contract in `CLAUDE.md` (Victor's
+decision, 2026-11-06, replacing the exact stack image of 2026-10-23). The
+original reads bytes it never wrote, and those reads can change RNG and records.
+To find the module's contract, run `cm-world-replay <capture> --stack-audit-all`
+on the world captures that reach it (`tools/replay_sweep.py census`). The match
+replays have no stack audit yet (`TASKS.md`); until they do, a match module
+keeps the full stack image. Each reader site is listed with
+the PCs that left the bytes it reads. Wherever one of those PCs belongs to the
+module, or to a callee the module would stop calling, the rewrite must leave
+those bytes. Wherever a reader reads what a callee left, the module must call
+that callee at the original stack pointer. Every other stack byte is free: use
+native locals and skip spills and frame filling. The audit makes C++ owners take
+their observed paths, so it finds the contract but cannot check a native path.
+The check is the paired replay: identical end state and RNG with the rewrite in
+production. A bounded callee scan is not enough when a reader lies beyond the
+bound. Name the captures that established the contract in the commit.
 
 Instruction counts and r0, r11, r12, XER and CTR are diagnostics (the last group
 only with `--strict-volatile`), so don't rebuild instruction-by-instruction

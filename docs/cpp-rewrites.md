@@ -14,11 +14,14 @@ can observe exactly as the original does (CLAUDE.md):
   observers see each write). Order of writes does not matter at a return, where
   final values do; a fault on both sides compares memory where each one stopped, so
   writes before a load that can fault stay before it.
-- **The stack image.** The original reads stack bytes it never wrote
-  (docs/aot-port.md, "Uninitialised stack reads"), so every byte the original
-  leaves below the stack pointer must be left too: its prologue's saved
-  registers, LR and back chain (`guest::Frame`), its stack locals, and
-  everything its callees leave.
+- **Stack leftovers that a reader reads.** The original reads stack bytes it
+  never wrote (docs/aot-port.md, "Uninitialised stack reads"). Under the
+  per-reader contract (CLAUDE.md, 2026-11-06), a rewrite leaves the bytes that
+  a reader listed by `--stack-audit` reads: saved registers, LR, back chain,
+  locals or callee residue. Where a reader reads a callee's residue, the
+  rewrite calls that callee at the original stack pointer. Any other byte
+  below the stack pointer is free. Routines written before 2026-11-06 still
+  leave the full image; that is allowed, but no longer required.
 - **Registers that reach memory later**: r1, r2, r13-r31, f14-f31 and the
   results (r3, f1), and also r4-r10 and every CR field as the original leaves
   them at return: a caller's next varargs call (`sprintf`) stores r3-r10 into

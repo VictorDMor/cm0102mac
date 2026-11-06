@@ -28,7 +28,9 @@ public:
     MemoryObserver* observer();
     // Sites by original PC (run start in generated code), most reads first,
     // with the PCs that left the bytes they read (0: before the run).
-    void report(std::ostream&, unsigned limit = 60) const;
+    // Complete lists every site, offset and writer: a rewrite's leftover
+    // contract (CLAUDE.md) needs all of them, not the most frequent.
+    void report(std::ostream&, bool complete = false) const;
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;

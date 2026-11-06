@@ -61,9 +61,10 @@ Guest stack bytes and registers matter when the game later reads them.
 Original code can read leftover stack and spill apparently unused registers
 through varargs, `mfcr`, callbacks or exception context saves. Reproduce those
 effects, including red-zone stores and callee stack residue, or prove they cannot
-be observed along the affected paths. `docs/cpp-rewrites.md` records the exact
-stack-image contract; `--stack-audit` and `--scramble-stack` can help investigate
-uninitialized reads on existing captures. Do not ignore
+be observed along the affected paths. Since 2026-11-06 stack bytes follow the
+per-reader contract in `CLAUDE.md`: only bytes that a reader listed by
+`--stack-audit` reads must be reproduced (see `docs/cpp-rewrites.md`);
+`--scramble-stack` shows whether a leftover matters. Do not ignore
 a mismatch simply because a register is ABI-volatile. Conversely, current
 `CLAUDE.md` makes instruction counts and unobserved scratch diagnostic; do not
 rebuild instruction-by-instruction execution solely to match them. A bounded

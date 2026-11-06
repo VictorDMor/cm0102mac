@@ -102,23 +102,24 @@ StackAudit::StackAudit(State& s) : impl(std::make_unique<Impl>(s)) {
 }
 StackAudit::~StackAudit() { block_move_reads = nullptr; bulk_reader = nullptr; bulk_state = nullptr; }
 MemoryObserver* StackAudit::observer() { return impl.get(); }
-void StackAudit::report(std::ostream& out, unsigned limit) const {
+void StackAudit::report(std::ostream& out, bool complete) const {
+    const std::size_t limit = complete ? SIZE_MAX : 60, per_site = complete ? SIZE_MAX : 6;
     std::vector<std::pair<std::uint32_t, const Impl::Site*>> ranked;
     for (const auto& [pc, site] : impl->sites) ranked.emplace_back(pc, &site);
     std::sort(ranked.begin(), ranked.end(), [](auto a, auto b) { return a.second->reads > b.second->reads; });
     if (impl->scramble) out << "scrambled " << impl->scrambled << " stale stack bytes as they were read\n";
     out << "stale stack reads: " << ranked.size() << " sites\n";
-    for (unsigned i = 0; i < ranked.size() && i < limit; ++i) {
+    for (std::size_t i = 0; i < ranked.size() && i < limit; ++i) {
         out << "  " << hex_address(ranked[i].first) << " reads " << ranked[i].second->reads << " at sp+";
-        unsigned shown = 0;
+        std::size_t shown = 0;
         for (const auto& [offset, count] : ranked[i].second->offsets) {
-            if (shown++ == 6) { out << " ..."; break; }
+            if (shown++ == per_site) { out << " ..."; break; }
             out << ' ' << offset << "(x" << count << ')';
         }
         out << " left by";
         shown = 0;
         for (const auto& [pc, count] : ranked[i].second->writers) {
-            if (shown++ == 6) { out << " ..."; break; }
+            if (shown++ == per_site) { out << " ..."; break; }
             out << ' ' << hex_address(pc) << "(x" << count << ')';
         }
         out << '\n';

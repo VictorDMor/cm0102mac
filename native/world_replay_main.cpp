@@ -65,6 +65,8 @@
 //   --stack-audit     list the original's reads of stack it left uninitialised
 //                     (values earlier calls left behind; see stack_audit.hpp);
 //                     owners take their observed paths, so the run is slower
+//   --stack-audit-all as --stack-audit, listing every site, offset and writer
+//                     (the per-reader leftover contract needs all of them)
 #include "match_replay.hpp"
 #include "match_speed.hpp"
 #include "match_turbo.hpp"
@@ -182,7 +184,7 @@ int main(int argc, char** argv) {
         std::optional<std::filesystem::path> write_expected;
         std::optional<std::uint32_t> flip;
         std::optional<std::filesystem::path> profile;
-        bool timing = false, stack_audit = false, club_control_check = false, club_control_shifted = false;
+        bool timing = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
         std::optional<std::uint64_t> scramble;
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
@@ -198,6 +200,7 @@ int main(int argc, char** argv) {
             else if (option == "--profile" && i + 1 < argc) profile = argv[++i];
             else if (option == "--timing") timing = true;
             else if (option == "--stack-audit") stack_audit = true;
+            else if (option == "--stack-audit-all") stack_audit = stack_audit_all = true;
             else if (option == "--scramble-stack" && i + 1 < argc) { scramble = std::stoull(argv[++i], nullptr, 0); stack_audit = true; }
             else if (option == "--check-club-control") club_control_check = true;
             else if (option == "--check-club-control-shifted") club_control_check = club_control_shifted = true;
@@ -380,7 +383,7 @@ int main(int argc, char** argv) {
             const auto cpu_seconds = double(std::clock() - cpu) / CLOCKS_PER_SEC;
             if (transcript) { require_season_replay_eof(); close_season_replay(); }
             state->memory.observer = nullptr;
-            if (audit) { state->memory.date_observer = nullptr; audit->report(std::cerr); }
+            if (audit) { state->memory.date_observer = nullptr; audit->report(std::cerr, stack_audit_all); }
             // The flipped byte itself is excluded; only its effects on the run count.
             if (flip) state->memory.write<1>(*flip, expected->memory.read<1>(*flip));
             if (scramble) {
