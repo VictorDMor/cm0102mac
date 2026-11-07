@@ -3953,6 +3953,10 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
         VERBATIM)
     target_sources(cm-database-checks PRIVATE "${CM_DATABASE_REFERENCE}")
     add_test(NAME database_equivalence COMMAND cm-database-checks "${CM_ORACLE_DIR}")
+    # Reference pages call other modules' C++ owners in place, past the
+    # fixtures' stubs; UTILS, DB_FILES and SCREEN_MANAGER decline so their
+    # calls reach the stubs on both sides.
+    set_tests_properties(database_equivalence PROPERTIES ENVIRONMENT "CM_UTILS_ORIGINAL=1;CM_DB_FILES_ORIGINAL=1;CM_SCREEN_MANAGER_ORIGINAL=1")
     add_test(NAME database_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_database_audit.py")
 endif()
 

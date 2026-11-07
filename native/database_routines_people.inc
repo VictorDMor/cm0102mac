@@ -1,1 +1,13 @@
 // DATABASE.CPP people block (database_routines.inc).
+DATABASE_ROUTINE(0x100b3650, 0x100b3704, NONE, "be44d035a8e8d690", [](Cpu& c) { database::generate_names(c); })
+DATABASE_ROUTINE(0x100b2b50, 0x100b2b7c, NONE, "c603e6b700dee056", [](Cpu& c) { database::generate_people(c); })
+DATABASE_ROUTINE(0x100a3db0, 0x100a4bf8, R3, "d560fc690c7c204f", [](Cpu& c) { database::generate_extra_staff(c); })
+DATABASE_ROUTINE(0x100b44c0, 0x100b604c, NONE, "a3210f49239312f9", [](Cpu& c) { database::replace_pointers_with_ids(c); })
+DATABASE_ROUTINE(0x100dc4d0, 0x100dc9fc, R3|F1, "01e50d0521f42fd9", [](Cpu& c) { database::best_staff_candidate(c, c.r(3), c.r(4)); })
+DATABASE_ROUTINE(0x100dbc20, 0x100dc4c8, R3|F1, "c714e59affa88092", [](Cpu& c) { database::no_better_staff_candidate(c, c.r(3), c.r(4), c.r(5)); })
+DATABASE_ROUTINE(0x100b3710, 0x100b3c64, NONE, "a24fe5c8f2eb20c2", [](Cpu& c) { database::swap_player_attributes_within_clubs(c); })
+DATABASE_ROUTINE(0x100b3c70, 0x100b44b8, NONE, "02c8594883b573f9", [](Cpu& c) { database::settle_person_counters(c); })
+DATABASE_ROUTINE(0x100c2800, 0x100c2ca4, NONE, "7b9f5127080b8b08", [](Cpu& c) { database::settle_player_attributes(c, c.r(3)); })
+DATABASE_ROUTINE(0x100c2cb0, 0x100c3868, NONE, "9da01c11c321e452", [](Cpu& c) { database::settle_player_attributes_weighted(c, c.r(3)); })
+DATABASE_ROUTINE(0x100c2520, 0x100c2800, NONE, "a87bd4867d6a94d7", [](Cpu& c) { database::rescale_people_attributes(c); })
+DATABASE_ROUTINE(0x100b2b80, 0x100b3650, NONE, "dbceec457a0ba970", [](Cpu& c) { database::shuffle_person_rows(c); })
