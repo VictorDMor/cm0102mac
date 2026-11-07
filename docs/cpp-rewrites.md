@@ -1617,3 +1617,11 @@ leaves run through `run_leaf` before any probe). Four attribute copies (0x100c5a
 were also register-promoted leaves (`native_record_fields`), whose hook ran first: a DATABASE.CPP owner now supersedes
 that lowering, and the audit requires the owner's hook to be the first at its entry. Fixture stubs that compare `s.pc`
 with a literal give that address a run of its own at generation, so pages change around them.
+
+All 189 routines are C++ and hooked (2026-11-07). The whole-file loader 0x100a55a0, the saver 0x100abfb0, the index
+resolver 0x100af8a0, the language loader 0x100b6050 and player initialisation 0x100b8cf0 have no capture that replays
+through them except world/database (load and resolution): their evidence is the fixtures. The saver writes 0x1cc bytes
+of stack it never wrote into index.dat (a stale-stack reader: keep the stack image before it). Quirks kept: the
+virtual-staff "clamp" at 0x1009fd98 sets the count to count + 0x52d + kept rather than clamping; two resolve clears hit
+the neighbouring field; the attribute-settling loops hang when fewer than twelve slots qualify. Checker runs need
+CM_UTILS/DB_FILES/SCREEN_MANAGER/SHORTLIST_MANAGER_ORIGINAL (set by the ctest).

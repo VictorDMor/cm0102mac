@@ -39,13 +39,8 @@ Victor asked for the next step toward the complete port and the removal of the g
   - Generated time on the day (self samples of 7,146; generated code 2,038): DATABASE.CPP 663, MANAGER_MANAGER.CPP 363, MATCH_MAN.CPP 236 (week: 307 of 4,797, the most), qsort4x.c 134, HUMAN_MANAGER.CPP 116, FINANCE.CPP 99, DISPLAY.CPP 98. The rest of the day is C++ and the OS: 1,884 samples sit on import stubs.
   - Not established: what a C++ owner calls is judged by the original's calls; owners that decline in some states run their generated body, which this static view can't see; ownership counts include older builder-style replacements.
 - Decided by Victor 2026-11-06: (1) rewrite by routine layer and day weight instead of a random module, starting with DATABASE.CPP; (2) the original font engine is rewritten in C++, not replaced (read as the equivalence-preserving choice; Core Text drawing would change guest-surface pixels and needs his explicit approval).
-- [ ] **DATABASE.CPP, layer 0 first.**
-  - [x] Inventory closed (2026-11-06): 189 routines, 64,495 instructions, 0x1009efc0-0x100de410 (`tools/database_audit.py`, test re-derives it from the export). 81 routines (10,273 instructions) are at layer 0.
-  - [x] Block 1: nine hot leaves (six preference lists, three attribute ratings), checked and hooked.
-  - [x] Block 2: the three contract-flag queries and the position mask, checked and hooked.
-  - [ ] **Paused 2026-11-07 (usage limit), uncommitted in the tree:** lookups (39), records (35), text (22), generation (21), search (21) are written, reviewed and promoted to DATABASE_ROUTINE; people (12) and loading helpers (15) are verified DATABASE_DRAFT. Integration not finished: rebuild, run cm-database-checks over all ROUTINE entries, replay_sweep pair CM_DATABASE_ORIGINAL, then commit. Generator fix in tools/compile_recomp.py (DATABASE owners drop the native_record_fields hook) and database_audit (owner hook must be first) also uncommitted. Not started: 0x100b6050, 0x100a2da0, 0x100a34e0, 0x100ab5d0, 0x1009efc0, 0x100a1950, 0x100af8a0, 0x100a55a0, 0x100abfb0, 0x100b8cf0, initializer 0x100de3b0 takeover. Agent brief: .local/rewrites/database/brief.md.
-  - [ ] Rest of layer 0: 68 routines. Next by day weight: 0x100ca800 and 0x100ca6a0 (compare ids with 23 and 9 TOC globals whose meaning has to be found first), 0x100c4cf0 (RNG); the four small ones whose meaning isn't clear yet (0x100c7a00, 0x100c7a20, 0x100ca7d0, 0x100ce200).
-  - Note (block 2 review): every module names the TOC slots it uses in its own `*_detail.hpp` (-0x7be8 clubs appears in nine); a shared header for the game's globals would remove the copies, but touches every module.
+- [x] **DATABASE.CPP complete (2026-11-07):** all 189 routines in C++ and hooked; inventory in tools/database_audit.py; agent brief in .local/rewrites/database/brief.md.
+  - Open for Victor: the saver writes uninitialised stack into index.dat (see docs/cpp-rewrites.md); fixture-only evidence for the load/save/new-game routines.
 
 ## Now: native-first rewrites (decided 2026-11-06)
 

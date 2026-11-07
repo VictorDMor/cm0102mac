@@ -69,6 +69,9 @@ fixtures, result publication and binary records.
 calendar, entrants, regional assignment and season transition.
 `HALL_OF_FAME.CPP` adds **20 audited routines** for rankings, localized
 categories, file import, reports and binary storage.
+`DATABASE.CPP` adds **189 audited routines** for the game database: loading,
+index resolution, saving, language files, new-game player and staff generation,
+record lookups, names and searches.
 Routine-owner counts in older
 integration reports are not whole-game completion percentages. Much of the
 simulation still uses generated code. Native performance is the current priority,
