@@ -20,6 +20,25 @@ TABLE_BASE = re.compile(r"lwz r\d+,(-?0x[0-9a-f]+|-?\d+)\(r2\)")
 BOUND = re.compile(r"cmplwi (?:cr\d,)?r\d+,(0x[0-9a-f]+|\d+)")
 
 
+def table_cases(assembly, word, address):
+    """The case targets of the switch whose `bctr` is at `address`, in case
+    order (None for an unreadable word). None when the `bctr` is not a table
+    dispatch (no mtspr CTR / lwzx before it); [] when it is one whose table or
+    bound the pattern can't find."""
+    before = [assembly.get(address - 4 * k, "") for k in range(1, 12)]
+    if not (before[0].startswith("mtspr CTR") and before[1].startswith("lwzx")):
+        return None
+    table = bound = None
+    for line in before[2:]:
+        if table is None and (match := TABLE_BASE.match(line)):
+            table = word((TOC + int(match.group(1), 0)) & 0xFFFFFFFF)
+        if bound is None and (match := BOUND.match(line)):
+            bound = int(match.group(1), 0)
+    if table is None or bound is None:
+        return []
+    return [word(table + 4 * case) for case in range(bound + 1)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("export", type=Path)
@@ -43,21 +62,14 @@ def main():
     for address, text in assembly.items():
         if text != "bctr":
             continue
-        before = [assembly.get(address - 4 * k, "") for k in range(1, 12)]
-        if not (before[0].startswith("mtspr CTR") and before[1].startswith("lwzx")):
+        cases = table_cases(assembly, word, address)
+        if cases is None:
             continue
-        table = bound = None
-        for line in before[2:]:
-            if table is None and (match := TABLE_BASE.match(line)):
-                table = word((TOC + int(match.group(1), 0)) & 0xFFFFFFFF)
-            if bound is None and (match := BOUND.match(line)):
-                bound = int(match.group(1), 0)
-        if table is None or bound is None:
+        if not cases:
             unresolved += 1
             continue
         resolved += 1
-        for case in range(bound + 1):
-            target = word(table + 4 * case)
+        for case, target in enumerate(cases):
             targets += 1
             if target is None or target not in assembly:
                 missing.append((address, case, target))

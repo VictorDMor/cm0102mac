@@ -6,6 +6,10 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
+- [ ] **Rewrite order: routine layers instead of a random module?** (found 2026-11-06, inventory below) Modules can't be ordered: nearly all call each other. Routines can: 1,591 generated routines (108,978 instructions) call no generated code and can be rewritten now, and each finished layer frees the next. A module rewritten at random still has generated code under it, so its interior can't drop the guest ABI: every completed module reaches at least the 154 routines of the error-message path (all CASH.CPP and SIPRINT.CPP reach), and up to 915 (MAIN.CPP). Proposal: pick by layer and day weight (DATABASE.CPP first: the most generated time of the day, 663 of 7,146 samples, 62 routines ready). Nothing changed.
+
+- [ ] **The original font engine: rewrite or replace?** (found 2026-11-06, inventory below) The error-message path (`0x10769b60`, 1,933 generated callers) reaches the T2K TrueType rasterizer (T2K*.C, AUTOGRID.C, TRUETYPE.C, GHINTS.C, GLYPH.C, HSTRAT97.C, TSIMEM.C: 154 routines, 22,259 instructions with their `graph_carbon.cpp`/FONT.CPP callers), which still rasterizes original pixels under the Quartz layer (`docs/native-presentation-and-direct-commands.md`). Removing the PowerPC means rewriting it in C++, or deciding that guest-surface pixels drawn by text are not part of the equivalence target and letting Core Text draw. With that path in C++, the deepest layer drops from 34 to 22 and the ready routines rise from 1,591 to 1,955. Nothing changed.
+
 - [ ] **Replace the software bounds check?** (found 2026-11-06) It costs 11.4-11.5% of the day and the week (7 alternating pairs each, identical end state). Removing it needs a hardware-fault path that keeps the byte-exact fault semantics the checks compare; the trade-off is under "Measure the software bounds check" below. Nothing changed.
 
 - [ ] **Host process id on the guest's stack** (found 2026-10-31, FILE_SCREENS.CPP): `native/file_reference_bridge.cpp` copies native FSRefs into guest memory, and +0xc holds the host's process id, so it varies per launch and reaches the stack in production. Whether the game ever reads it isn't confirmed. Masking it there and restoring `getpid()` on the way back would remove the variation, but it changes stack bytes the game could read, so it waits for your decision. Nothing depends on it; `cm-file-screens-checks` handles it with a marker.
@@ -19,6 +23,26 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] **Uninitialised stack decides results** (found 2026-10-23). Decided by Victor 2026-10-23: option A, keep exact results and the full stack image. Replaced by Victor 2026-11-06 with the per-reader contract (CLAUDE.md): results stay exact, but a rewrite only leaves the stack bytes an audited reader reads, and calls a callee at the original stack pointer where a reader reads that callee's residue.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
+
+## Now: removing the PowerPC (inventory 2026-11-06)
+
+Victor asked for the next step toward the complete port and the removal of the generated PowerPC code; the answer was a whole-game inventory, which he approved. `tools/game_inventory.py` (tests: `tools/test_game_inventory.py`) writes `.local/inventory/<date>/inventory.json` and `report.md`; the run below used the 2026-11-06 day and week profiles (`.local/performance/2026-11-06-day-modules/{day,week}.prof`).
+
+- [x] **Inventory** (2026-11-06). Routine bodies follow control flow from each entry, through jump tables; glue (250 entries) is left out.
+
+  | Routines | Count | Instructions |
+  | --- | ---: | ---: |
+  | All | 7,742 | 1,951,899 |
+  | C++ owner (any style; 230 of them outside the audited modules, mostly older builder work) | 2,203 | 600,825 |
+  | Generated | 5,539 | 1,351,074 |
+
+  - Boundaries check out against the audits: all 1,678 routines that 46 audits list are found, each derived body inside its audited extent; the only extra entries were 16 discovery roots that are cases of jump tables the pattern can't read (MAIN.CPP's event loop, MANAGER_MANAGER), now folded into their routine. 141 orphan instructions are the cases of the 3 unresolvable tables (`0x10210944`, `0x102272cc`, `0x104318a4`).
+  - No dead code: Ghidra exports only what entries and pointers reach, and every exported routine is reached from `main`, a function pointer or a root. So everything generated has to be rewritten (or replaced).
+  - Modules: audited ranges 1,922 routines; source-name evidence 2,393 and filling between two routines of one unit 1,727 (both agree with all 1,742 audited routines they name); call-graph votes 477 (77 of 87 right on the audited modules); 1,223 routines (16%) stay unnamed at module boundaries.
+  - Order: layer 0 (calls no generated code) 1,591 routines, 108,978 instructions; deepest layer 34; only 5 recursive groups (20 routines). The jump from 8 routines at layer 12 to 565 at layer 13 is the error-message path over the font engine (Blocked on Victor).
+  - Generated time on the day (self samples of 7,146; generated code 2,038): DATABASE.CPP 663, MANAGER_MANAGER.CPP 363, MATCH_MAN.CPP 236 (week: 307 of 4,797, the most), qsort4x.c 134, HUMAN_MANAGER.CPP 116, FINANCE.CPP 99, DISPLAY.CPP 98. The rest of the day is C++ and the OS: 1,884 samples sit on import stubs.
+  - Not established: what a C++ owner calls is judged by the original's calls; owners that decline in some states run their generated body, which this static view can't see; ownership counts include older builder-style replacements.
+- [ ] Next, after Victor's two decisions above: rewrite by layer, native-first, starting where layer 0 and day weight meet.
 
 ## Now: native-first rewrites (decided 2026-11-06)
 
