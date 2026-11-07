@@ -54,6 +54,7 @@ std::vector<Fixture> lookup_fixtures();     // database_checks_lookups.cpp
 std::vector<Fixture> record_fixtures();     // database_checks_records.cpp
 std::vector<Fixture> text_fixtures();       // database_checks_text.cpp
 std::vector<Fixture> generation_fixtures(); // database_checks_generation.cpp
+std::vector<Fixture> people_fixtures();     // database_checks_people.cpp
 std::vector<Fixture> search_fixtures();     // database_checks_search.cpp
 std::vector<Fixture> loading_fixtures();    // database_checks_loading.cpp
 }

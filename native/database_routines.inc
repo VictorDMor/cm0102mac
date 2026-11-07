@@ -18,5 +18,6 @@ DATABASE_ROUTINE(0x100db1b0, 0x100db404, R3, "f6e1662be75555b1", [](Cpu& c) { da
 #include "database_routines_records.inc"
 #include "database_routines_text.inc"
 #include "database_routines_generation.inc"
+#include "database_routines_people.inc"
 #include "database_routines_search.inc"
 #include "database_routines_loading.inc"

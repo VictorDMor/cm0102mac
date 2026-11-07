@@ -5,5 +5,6 @@
 #include "database_records.hpp"
 #include "database_text.hpp"
 #include "database_generation.hpp"
+#include "database_people.hpp"
 #include "database_search.hpp"
 #include "database_loading.hpp"
