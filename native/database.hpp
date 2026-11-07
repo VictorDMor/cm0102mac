@@ -35,4 +35,23 @@ bool favours_club(Cpu&, std::uint32_t person, std::uint32_t club);       // 0x10
 std::int32_t attribute_rating(Cpu&, std::uint32_t record, std::int8_t value);       // 0x100d2f50
 std::int32_t attribute_rating_04(Cpu&, std::uint32_t record, std::int8_t value);    // 0x100d2e60
 std::int32_t attribute_rating_tenth(Cpu&, std::uint32_t record, std::int8_t value); // 0x100d2d70
+
+// Whether a person's contract with a club has flag bits set in byte +0x5c
+// (0x100d3150 tests bit 0 then bit 3, so any of 0x9). With no club, the club
+// of the person's primary contract; that lookup's answer, the primary
+// contract's address or null, is stored in the shared "last primary
+// contract" word (TOC -0x7b78) first. A null person, a null primary
+// contract, a club address that comes out 0 or no club contract answers
+// false.
+bool contract_flag_09(Cpu&, std::uint32_t person, std::uint32_t club);   // 0x100d3150
+bool contract_flag_02(Cpu&, std::uint32_t person, std::uint32_t club);   // 0x100d3230
+bool contract_flag_08(Cpu&, std::uint32_t person, std::uint32_t club);   // 0x100d3300
+
+// The positions a person's player plays naturally (rating 20), as a mask (a
+// natural goalkeeper is 0x1 alone). When none is natural, only the first
+// outfield position rated 15 or more, from the sweeper to the attacker, and
+// 0x10 when none is. 0 for a null person or a person without a player
+// record. Bit meanings are not established beyond the ratings they come
+// from (database_detail.hpp, player).
+std::uint32_t position_mask(Cpu&, std::uint32_t person);                  // 0x100db1b0
 }

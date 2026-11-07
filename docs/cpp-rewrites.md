@@ -1600,3 +1600,11 @@ with XER[SO]. The ratings add 0.5 again after each compare instead of reusing it
 duplicate, null record and logical extreme of the lists, with `strict_volatile` and, in process, the whole register
 file (f0-f31, r0, XER, CR, LR, CTR) and FPSCR, then runs every case through the production page with no instruction
 budget. A C++ variant without the leftovers waits for the first C++ caller.
+
+Block 2 adds four routines. The contract-flag queries 0x100d3150, 0x100d3230 and 0x100d3300 share one body: with no
+club they ask CONTRACT_MANAGER for the primary contract and store its answer, null included, in the shared "last
+primary contract" word (TOC -0x7b78) that SHORTLIST_MANAGER reads too, then derive the club from the table (index x
+0x248, 32-bit wrap); they call CONTRACT_MANAGER's C++ in place, at the original return addresses, with r0 holding the
+caller's LR as `mfspr` leaves it. The checker scripts both lookups and records every call's registers in guest memory.
+0x100db1b0 builds a position mask from the player's ratings: "natural" tests compare the unsigned byte with 20, the
+"above 10" and "at least 15" tests the sign-extended byte, and the last test of the second pass loads into r3.

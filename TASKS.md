@@ -42,7 +42,9 @@ Victor asked for the next step toward the complete port and the removal of the g
 - [ ] **DATABASE.CPP, layer 0 first.**
   - [x] Inventory closed (2026-11-06): 189 routines, 64,495 instructions, 0x1009efc0-0x100de410 (`tools/database_audit.py`, test re-derives it from the export). 81 routines (10,273 instructions) are at layer 0.
   - [x] Block 1: nine hot leaves (six preference lists, three attribute ratings), checked and hooked.
-  - [ ] Rest of layer 0: 72 routines. Next by day weight: the contract queries 0x100d3150/0x100d3230/0x100d3300 (call CONTRACT_MANAGER), 0x100db1b0, 0x100ca800, 0x100ca6a0, 0x100c4cf0; the four small ones whose meaning isn't clear yet (0x100c7a00, 0x100c7a20, 0x100ca7d0, 0x100ce200).
+  - [x] Block 2: the three contract-flag queries and the position mask, checked and hooked.
+  - [ ] Rest of layer 0: 68 routines. Next by day weight: 0x100ca800 and 0x100ca6a0 (compare ids with 23 and 9 TOC globals whose meaning has to be found first), 0x100c4cf0 (RNG); the four small ones whose meaning isn't clear yet (0x100c7a00, 0x100c7a20, 0x100ca7d0, 0x100ce200).
+  - Note (block 2 review): every module names the TOC slots it uses in its own `*_detail.hpp` (-0x7be8 clubs appears in nine); a shared header for the game's globals would remove the copies, but touches every module.
 
 ## Now: native-first rewrites (decided 2026-11-06)
 

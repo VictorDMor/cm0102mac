@@ -10,3 +10,7 @@ DATABASE_ROUTINE(0x100d9520, 0x100d957c, R3, "fccec09107ab1bb6", [](Cpu& c) { da
 DATABASE_ROUTINE(0x100d9580, 0x100d95dc, R3, "29afb71dfc9817be", [](Cpu& c) { database::dislikes_person(c, c.r(3), c.r(4)); })
 DATABASE_ROUTINE(0x100da050, 0x100da0ac, R3, "128f6e0798f4c745", [](Cpu& c) { database::dislikes_club(c, c.r(3), c.r(4)); })
 DATABASE_ROUTINE(0x100da0b0, 0x100da10c, R3, "058df4843f653432", [](Cpu& c) { database::favours_club(c, c.r(3), c.r(4)); })
+DATABASE_ROUTINE(0x100d3150, 0x100d3228, R3, "459b7587b0c6bcec", [](Cpu& c) { database::contract_flag_09(c, c.r(3), c.r(4)); })
+DATABASE_ROUTINE(0x100d3230, 0x100d32fc, R3, "1f529d4f42765d2f", [](Cpu& c) { database::contract_flag_02(c, c.r(3), c.r(4)); })
+DATABASE_ROUTINE(0x100d3300, 0x100d33cc, R3, "ec3dcf0b224aaa72", [](Cpu& c) { database::contract_flag_08(c, c.r(3), c.r(4)); })
+DATABASE_ROUTINE(0x100db1b0, 0x100db404, R3, "f6e1662be75555b1", [](Cpu& c) { database::position_mask(c, c.r(3)); })
