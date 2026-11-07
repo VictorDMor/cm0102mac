@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
         load_program(*program, argv[1]);
         dispatch_probe = probe;
         std::vector<Fixture> all;
-        for (const auto provider : {first_fixtures, lookup_fixtures, text_fixtures, generation_fixtures,
+        for (const auto provider : {first_fixtures, lookup_fixtures, record_fixtures, text_fixtures, generation_fixtures,
                                     search_fixtures, loading_fixtures})
             for (auto& f : provider())
                 if (only.empty() || only.contains(f.entry)) all.push_back(std::move(f));

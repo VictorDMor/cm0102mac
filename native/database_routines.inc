@@ -15,6 +15,7 @@ DATABASE_ROUTINE(0x100d3230, 0x100d32fc, R3, "1f529d4f42765d2f", [](Cpu& c) { da
 DATABASE_ROUTINE(0x100d3300, 0x100d33cc, R3, "ec3dcf0b224aaa72", [](Cpu& c) { database::contract_flag_08(c, c.r(3), c.r(4)); })
 DATABASE_ROUTINE(0x100db1b0, 0x100db404, R3, "f6e1662be75555b1", [](Cpu& c) { database::position_mask(c, c.r(3)); })
 #include "database_routines_lookups.inc"
+#include "database_routines_records.inc"
 #include "database_routines_text.inc"
 #include "database_routines_generation.inc"
 #include "database_routines_search.inc"

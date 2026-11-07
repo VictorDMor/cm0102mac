@@ -51,6 +51,7 @@ void record_call(Cpu& c);
 // The blocks' fixtures.
 std::vector<Fixture> first_fixtures();      // blocks 1-2 (database_checks_first.cpp)
 std::vector<Fixture> lookup_fixtures();     // database_checks_lookups.cpp
+std::vector<Fixture> record_fixtures();     // database_checks_records.cpp
 std::vector<Fixture> text_fixtures();       // database_checks_text.cpp
 std::vector<Fixture> generation_fixtures(); // database_checks_generation.cpp
 std::vector<Fixture> search_fixtures();     // database_checks_search.cpp
