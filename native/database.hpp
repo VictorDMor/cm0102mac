@@ -54,4 +54,8 @@ bool contract_flag_08(Cpu&, std::uint32_t person, std::uint32_t club);   // 0x10
 // record. Bit meanings are not established beyond the ratings they come
 // from (database_detail.hpp, player).
 std::uint32_t position_mask(Cpu&, std::uint32_t person);                  // 0x100db1b0
+
+// The module's static initializer: the date word at TOC -0x79e8 becomes
+// 31/07/2001 (taken over from engine_initialization).
+void initialize_season_date(Cpu&);                                         // 0x100de3b0
 }

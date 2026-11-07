@@ -228,6 +228,21 @@ std::vector<Case> cases() {
 
 std::vector<Fixture> first_fixtures() {
     std::vector<Fixture> found;
+    // The static initializer 0x100de3b0: the real date constructor runs on
+    // both sides; the date word points at a fixture buffer whose old
+    // contents vary.
+    for (unsigned variant = 0; variant < 4; ++variant) {
+        Fixture f;
+        f.entry = 0x100de3b0;
+        f.description = "season date, variant " + std::to_string(variant);
+        f.summary_overflow = variant & 1;
+        f.setup = [variant](Cpu& c) {
+            const std::uint32_t date = data + 0xc00 + variant * 0x10;
+            c.put32(c.r(2) - 0x79e8, date);
+            for (unsigned i = 0; i < 8; ++i) c.put8(date + i, variant & 2 ? 0xff : i);
+        };
+        found.push_back(std::move(f));
+    }
     for (const auto& t : cases()) {
         Fixture f;
         f.entry = t.entry;

@@ -14,4 +14,4 @@ DATABASE_ROUTINE(0x100d5450, 0x100d5534, R3, "c1799f8cffaf7919", [](Cpu& c) { da
 DATABASE_ROUTINE(0x100d5540, 0x100d5cdc, R3, "f30ffb8d6576404b", [](Cpu& c) { database::language_class(c, std::int32_t(c.r(3)), std::int32_t(c.r(4))); })
 DATABASE_ROUTINE(0x100b8b80, 0x100b8cec, R3, "e616d60e84705c55", [](Cpu& c) { database::language_file_exists(c, std::int32_t(c.r(3))); })
 DATABASE_ROUTINE(0x100a4e50, 0x100a55a0, NONE, "f4f0590ad8fc8e2f", [](Cpu& c) { database::release_all_tables(c); })
-DATABASE_DRAFT(0x100b6050, 0x100b8b70, NONE, "4b139170ff3679c1", [](Cpu& c) { database::load_language_file(c, std::int32_t(c.r(3)), std::int32_t(c.r(4))); })
+DATABASE_ROUTINE(0x100b6050, 0x100b8b70, NONE, "4b139170ff3679c1", [](Cpu& c) { database::load_language_file(c, std::int32_t(c.r(3)), std::int32_t(c.r(4))); })
