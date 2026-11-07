@@ -22,7 +22,7 @@ Stop and ask only when you can't continue without me, or before anything destruc
 - Before committing a change to the generator, the runtime, a semantic replacement, or file/save handling, run a review pass on the diff (the code-review skill) and fix what it finds.
 - Mark anything you couldn't confirm, and say where you looked.
 - Talk to me in the language I write in. Code, comments, docs and commit messages are in English.
-- End every run with three headings: **Blocked on me**, **Changed**, **Found**. Under Changed, say how each change was verified and what wasn't.
+- End every run with four headings: **Blocked on me**, **Changed**, **Found**, **Next step**. Under Changed, say how each change was verified and what wasn't. Under Next step, name the one concrete thing that comes next and whether it waits on me.
 
 ## Rules that don't bend
 

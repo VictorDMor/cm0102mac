@@ -246,6 +246,6 @@ are not reasons to escalate.
 
 ## Ending the run
 
-Finish with **Blocked on me**, **Changed** and **Found**. Under Changed give the
+Finish with **Blocked on me**, **Changed**, **Found** and **Next step**. Under Changed give the
 exact implementation and production counts, which tests passed, what wasn't
 verified and whether all four dimensions closed. Don't write separate reports.
