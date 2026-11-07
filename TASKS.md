@@ -41,6 +41,12 @@ Victor asked for the next step toward the complete port and the removal of the g
 - Decided by Victor 2026-11-06: (1) rewrite by routine layer and day weight instead of a random module, starting with DATABASE.CPP; (2) the original font engine is rewritten in C++, not replaced (read as the equivalence-preserving choice; Core Text drawing would change guest-surface pixels and needs his explicit approval).
 - [x] **DATABASE.CPP complete (2026-11-07):** all 189 routines in C++ and hooked; inventory in tools/database_audit.py; agent brief in .local/rewrites/database/brief.md.
   - Open for Victor: the saver writes uninitialised stack into index.dat (see docs/cpp-rewrites.md); fixture-only evidence for the load/save/new-game routines.
+- [ ] **Next by day weight: MATCH_MAN.CPP** (inventory rerun 2026-11-07, `.local/inventory/2026-11-07`, profiles in `.local/performance/2026-11-07-after-database`).
+  - 5,351 routines (1,286,601 instructions) still generated; 1,610 at layer 0.
+  - Host sampling with `--timing` (generated pages charged to the module that owns most of the page): generated code is 13.9% of the day and 15.0% of the week. MATCH_MAN.CPP 4.1% of the day and 9.2% of the week; then MANAGER_MANAGER 1.6% and 1.5%, HUMAN_MANAGER 1.3% and 0.5%, graph_carbon 1.0% and 0.9%, FINANCE 1.0%, DISPLAY 1.0%.
+  - MATCH_MAN.CPP: 22 routines, 21 generated (20,966 instructions), 6 at layer 0. Its module bounds are inferred (10 of 22 routines by graph votes only), so the audit has to close the inventory first. It is on the match path, so the full stack image applies until match replays get a stack audit.
+  - Measuring: guest-PC self samples count native time at the entry of a native lowering whose PC doesn't move: `try_native_list_search` (0x101b1620, MANAGER_MANAGER) and 0x1014c2e0 (HUMAN_MANAGER). That made MANAGER_MANAGER look second on 2026-11-06. Without `--timing` the replay installs an RNG observer, which turns off `try_native_sort8` and other fast paths: profile and time with `--timing`.
+  - DATABASE.CPP timing (5 alternating pairs, season-day, `--timing`): 15.96 s C++ against 15.87 s original (+0.6%, 2/5 faster) with 19% fewer instructions (8.36G against 10.32G). Neutral.
 
 ## Now: native-first rewrites (decided 2026-11-06)
 
