@@ -51,6 +51,11 @@ bool run(State& s, const Routine& routine) {
 }
 
 bool database_lists(std::uint32_t entry) { return listed(entry) != nullptr; }
+std::vector<std::uint32_t> database_entries() {
+    std::vector<std::uint32_t> entries;
+    for (const auto& routine : routines) entries.push_back(routine.entry);
+    return entries;
+}
 
 bool database_dispatch_probe(State& s) {
     if (declining) return false;

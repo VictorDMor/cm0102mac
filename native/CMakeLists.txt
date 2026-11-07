@@ -3932,9 +3932,11 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
 endif()
 
 file(GLOB CM_DATABASE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/database*.cpp")
-list(FILTER CM_DATABASE_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+list(FILTER CM_DATABASE_SOURCES EXCLUDE REGEX "_checks(_[a-z_]+)?\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_DATABASE_SOURCES})
-add_executable(cm-database-checks database_checks.cpp)
+file(GLOB CM_DATABASE_ROUTINE_LISTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/database_routines*.inc")
+file(GLOB CM_DATABASE_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/database_checks*.cpp")
+add_executable(cm-database-checks ${CM_DATABASE_CHECK_SOURCES})
 target_link_libraries(cm-database-checks PRIVATE cm_aot)
 target_compile_options(cm-database-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
@@ -3945,7 +3947,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
         DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_database_reference.py"
             "${CMAKE_SOURCE_DIR}/../tools/database_audit.py"
             "${CMAKE_SOURCE_DIR}/../tools/tactics_audit.py"
-            "${CMAKE_SOURCE_DIR}/database_routines.inc"
+            ${CM_DATABASE_ROUTINE_LISTS}
             "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
