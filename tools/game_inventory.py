@@ -56,6 +56,7 @@ glue's samples are C++ time and are left out.
 import argparse
 import bisect
 import collections
+from contextlib import closing
 import json
 import re
 import sqlite3
@@ -87,7 +88,7 @@ class Export:
         self.segments = [(s["address"], (directory / s["file"]).read_bytes()) for s in self.meta["segments"]
                          if s.get("initialized") and "file" in s and (directory / s["file"]).exists()]
         self.flow, self.target, self.next, self.assembly = {}, {}, {}, {}
-        with sqlite3.connect(f"file:{directory / 'instructions.sqlite'}?mode=ro", uri=True) as db:
+        with closing(sqlite3.connect(f"file:{directory / 'instructions.sqlite'}?mode=ro", uri=True)) as db:
             rows = db.execute("SELECT address, json_extract(body, '$.flow'), json_extract(body, '$.flows'), "
                               "json_extract(body, '$.fallthrough'), json_extract(body, '$.assembly') "
                               "FROM instructions")

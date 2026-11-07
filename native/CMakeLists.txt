@@ -3931,6 +3931,29 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     endif()
 endif()
 
+file(GLOB CM_DATABASE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/database*.cpp")
+list(FILTER CM_DATABASE_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_DATABASE_SOURCES})
+add_executable(cm-database-checks database_checks.cpp)
+target_link_libraries(cm-database-checks PRIVATE cm_aot)
+target_compile_options(cm-database-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_DATABASE_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/database_reference.cpp")
+    add_custom_command(OUTPUT "${CM_DATABASE_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_database_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_DATABASE_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_database_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/database_audit.py"
+            "${CMAKE_SOURCE_DIR}/../tools/tactics_audit.py"
+            "${CMAKE_SOURCE_DIR}/database_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-database-checks PRIVATE "${CM_DATABASE_REFERENCE}")
+    add_test(NAME database_equivalence COMMAND cm-database-checks "${CM_ORACLE_DIR}")
+    add_test(NAME database_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_database_audit.py")
+endif()
+
 file(GLOB CM_SIPRINT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/siprint*.cpp")
 list(FILTER CM_SIPRINT_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_SIPRINT_SOURCES})

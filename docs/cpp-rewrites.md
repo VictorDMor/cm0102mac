@@ -1579,3 +1579,24 @@ French "d'" format, on the name's signed first byte; `news_command` recomputes t
 addressing through r4 until the last test of each chain, which uses r3; with nothing selected the screen picks the last
 listed item that is unread or has an action (the item's priority byte only counts with a null filter, which play never
 produces); the send-to-all loop walks the sixteen human managers, the last people in the table.
+
+## DATABASE.CPP: records, lookups and queries (rewritten by layer)
+
+`DATABASE.CPP` is 189 routines / 64,495 instructions in 0x1009efc0-0x100de410 (`tools/database_audit.py`; the test
+re-derives every entry and body from the export). It is the first module rewritten by routine layer rather than whole
+(Victor, 2026-11-06): `tools/game_inventory.py` lists the routines that call no generated code, and those go first. The
+22 routines after the last DATABASE.CPP source-name load have no evidence of their own; the unit's static initializer
+0x100de3b0 (already C++ under engine_initialization) closes it, as initializers close CONTRACT_MANAGER.CPP and
+HALL_OF_FAME.CPP.
+
+The first block is nine leaves: six three-slot preference lists (a club's two lists at +0x5c/+0x68; a person's
+preferences record at +0x18 with lists at +0x4, +0x10, +0x1c, +0x28; the meanings are inferred from the callers' score)
+and three attribute ratings that turn a signed byte into 1-20 through a 16-bit value of the same record. Called from
+generated code, a leaf leaves what the original leaves: the ratings store the int-to-double words and the `fctiwz`
+result below r1, set f1-f7 and the FPSCR through `guest::Fpu`, and leave cr0 from whichever `fcmpo` ran last; the lists
+leave the record pointer in the register each slot reload used (r5, then r4 or r3) and cr0 from the last compare,
+with XER[SO]. The ratings add 0.5 again after each compare instead of reusing it, so the FPSCR sees each add.
+`cm-database-checks` compares every byte value with 17 values of the 16-bit field, and every hit position, miss,
+duplicate, null record and logical extreme of the lists, with `strict_volatile` and, in process, the whole register
+file (f0-f31, r0, XER, CR, LR, CTR) and FPSCR, then runs every case through the production page with no instruction
+budget. A C++ variant without the leftovers waits for the first C++ caller.
