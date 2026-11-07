@@ -1669,7 +1669,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_sort8_page(page, instructions, selected)
         if NATIVE_SORT8_ENTRY in page_addresses:
             code.insert(1, '#include "native_sort8.hpp"')
-    if native_record_field_hooks and page_addresses & NATIVE_RECORD_FIELDS.keys():
+    if native_record_field_hooks and page_addresses & (NATIVE_RECORD_FIELDS.keys() - (set(DATABASE_ENTRIES) if database_hooks else set())):
         code.insert(1, '#include "native_record_fields.hpp"')
     if frame_accesses or expiry_accesses:
         code.insert(1, '#include "guest_register_frame.hpp"')
@@ -2083,7 +2083,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             isolated.add(a)
         if native_sort8_hooks and a == NATIVE_SORT8_ENTRY:
             code.append("if (try_native_sort8(s)) return true;")
-        if native_record_field_hooks and a in NATIVE_RECORD_FIELDS:
+        # A DATABASE.CPP owner supersedes the register-promoted lowering of
+        # the same leaf: its hook alone routes the entry (the lowering stays
+        # generated for native_record_fields' own checks).
+        if native_record_field_hooks and a in NATIVE_RECORD_FIELDS and not (database_hooks and a in DATABASE_ENTRIES):
             code.append(f"if (try_native_record_fields(s, 0x{a:x})) return true;")
         if a in (0x1028d04c, 0x1028d0cc):
             if item["assembly"] != "bl 0x10719740":
@@ -3276,7 +3279,7 @@ def main():
     outputs["direct_owners.cpp"] = render_direct_owners(in_place)
     outputs["native_record_fields.cpp"] = generate_native_record_fields(native_leaves,
         lambda page, records, chosen: generate_page(page, records, chosen,
-            native_record_field_hooks=False, native_leaf_lowering=True, userops=metadata['userops'],
+            native_record_field_hooks=False, database_hooks=False, native_leaf_lowering=True, userops=metadata['userops'],
             block_accounting=True, nontrapping_divisions=divisions))
     sort_hooks = {name: False for name in inspect.signature(generate_page).parameters if name.endswith('_hooks')}
     outputs["native_sort8.cpp"] = generate_sort8(native_sort,

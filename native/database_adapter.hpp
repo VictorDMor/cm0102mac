@@ -13,6 +13,8 @@ bool try_modern_database(State& s, std::uint32_t entry);
 // reached through the dispatcher, hooked by the generator or not yet.
 bool database_dispatch_probe(State& s);
 bool database_lists(std::uint32_t entry);
+// Listed as DATABASE_ROUTINE: the generator hooks its entry in production.
+bool database_hooked(std::uint32_t entry);
 // Every routine database_routines.inc lists (drafts too), for check tools.
 std::vector<std::uint32_t> database_entries();
 // For synthetic calls (routine_check.hpp): run one routine's original body or

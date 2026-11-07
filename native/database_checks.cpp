@@ -40,10 +40,13 @@ const Fixture* active = nullptr;
 bool in_module(std::uint32_t pc) { return pc >= module_start && pc < module_end; }
 
 bool probe(State& s) {
-    if (ownership_mode) {
-        // No budget while DATABASE.CPP's code runs; other modules' code may.
-        s.budget = in_module(s.pc) ? s.executed : std::numeric_limits<std::uint64_t>::max();
-    }
+    // On the production route DATABASE.CPP's code may be entered only at an
+    // entry the generator hooks: a draft, an unlisted routine or a return
+    // into generated module code would run original instructions. (Other
+    // modules' leaves run through run_leaf before any probe, so an
+    // instruction budget can't tell them apart.)
+    if (ownership_mode && in_module(s.pc) && !database_hooked(s.pc))
+        throw std::runtime_error("generated DATABASE.CPP code entered at " + hex_address(s.pc));
     if (active && active->stub && active->stub(s)) return true;
     if (!database_lists(s.pc)) return false;
     if (original_mode) return database_reference(s);
@@ -136,7 +139,7 @@ int main(int argc, char** argv) {
         dispatch_probe = probe;
         std::vector<Fixture> all;
         for (const auto provider : {first_fixtures, lookup_fixtures, record_fixtures, text_fixtures, generation_fixtures, people_fixtures,
-                                    search_fixtures, loading_fixtures})
+                                    search_fixtures, loading_fixtures, tables_fixtures, resolve_fixtures, load_fixtures, save_fixtures, init_fixtures, languages_fixtures})
             for (auto& f : provider())
                 if (only.empty() || only.contains(f.entry)) all.push_back(std::move(f));
         unsigned completed = 0, failures = 0;
@@ -207,7 +210,6 @@ int main(int argc, char** argv) {
             auto s = cm::semantic_io_checks::clone(*program);
             Cpu c(*s);
             base(c, f);
-            s->budget = s->executed;
             try {
                 rewrite(*s, f.entry);
                 ++owned_calls;
@@ -215,7 +217,9 @@ int main(int argc, char** argv) {
             } catch (const std::exception& e) {
                 owned[f.entry] = false;
                 if (++failures <= 6)
-                    std::cout << "FAIL production ownership " << hex_address(f.entry) << ": " << e.what() << '\n';
+                    std::cout << "FAIL production ownership " << hex_address(f.entry) << " at " << hex_address(s->pc)
+                              << " (LR " << hex_address(std::uint32_t(s->r<4>(4128))) << "): " << e.what() << " -- "
+                              << f.description << '\n';
             }
         }
         production_mode = ownership_mode = false;

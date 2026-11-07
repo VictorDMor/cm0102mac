@@ -1608,3 +1608,12 @@ primary contract" word (TOC -0x7b78) that SHORTLIST_MANAGER reads too, then deri
 caller's LR as `mfspr` leaves it. The checker scripts both lookups and records every call's registers in guest memory.
 0x100db1b0 builds a position mask from the player's ratings: "natural" tests compare the unsigned byte with 20, the
 "above 10" and "at least 15" tests the sign-extended byte, and the last test of the second pass loads into r3.
+
+The rest of the module is written in parallel blocks (lookups, records, text, generation, search, people, the loading
+parts), each owning `database_<block>*.{hpp,cpp}`, `database_routines_<block>.inc` and
+`database_checks_<block>.cpp`; `cm-database-checks --only` runs one block. Its ownership pass fails when the production
+route enters DATABASE.CPP's code anywhere but at a hooked entry (an instruction budget can't be used: other modules'
+leaves run through `run_leaf` before any probe). Four attribute copies (0x100c5ab0, 0x100c6150, 0x100c63c0, 0x100c65d0)
+were also register-promoted leaves (`native_record_fields`), whose hook ran first: a DATABASE.CPP owner now supersedes
+that lowering, and the audit requires the owner's hook to be the first at its entry. Fixture stubs that compare `s.pc`
+with a literal give that address a run of its own at generation, so pages change around them.

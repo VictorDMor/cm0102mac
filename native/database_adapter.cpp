@@ -16,9 +16,10 @@ struct Routine {
     std::uint32_t entry;
     unsigned results;
     void (*hook)(Cpu&);
+    bool hooked;  // DATABASE_ROUTINE: generation hooks it; DATABASE_DRAFT: check tools only
 };
-#define DATABASE_ROUTINE(entry, end, results, digest, ...) Routine{entry, results, __VA_ARGS__},
-#define DATABASE_DRAFT DATABASE_ROUTINE
+#define DATABASE_ROUTINE(entry, end, results, digest, ...) Routine{entry, results, __VA_ARGS__, true},
+#define DATABASE_DRAFT(entry, end, results, digest, ...) Routine{entry, results, __VA_ARGS__, false},
 constexpr auto sorted_routines() {
     auto table = std::to_array<Routine>({
 #include "database_routines.inc"
@@ -51,6 +52,10 @@ bool run(State& s, const Routine& routine) {
 }
 
 bool database_lists(std::uint32_t entry) { return listed(entry) != nullptr; }
+bool database_hooked(std::uint32_t entry) {
+    const auto* routine = listed(entry);
+    return routine && routine->hooked;
+}
 std::vector<std::uint32_t> database_entries() {
     std::vector<std::uint32_t> entries;
     for (const auto& routine : routines) entries.push_back(routine.entry);

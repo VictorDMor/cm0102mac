@@ -155,6 +155,10 @@ def require_database_hooks(page, instructions, code):
         fragment = code.split(f"i_{entry:x}:", 1)[-1].split(f"i_{entry + 4:x}:", 1)[0]
         if code.count(hook) != 1 or hook not in fragment or step not in fragment or fragment.index(hook) > fragment.index(step):
             raise ValueError(f"Missing or misplaced DATABASE hook at {entry:x}")
+        # The owner must be the first hook at its entry: an earlier one (an
+        # older lowering, another family) would run instead of the C++.
+        if fragment.find("if (try_") != fragment.index(hook):
+            raise ValueError(f"Another hook precedes the DATABASE hook at {entry:x}")
 
 
 def main():

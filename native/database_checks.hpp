@@ -9,9 +9,9 @@
 // - then both again in process, comparing the whole register file;
 // - each on the C++ route and on the production route (the generated page
 //   and its hook);
-// - then the production route with no instruction budget whenever control is
-//   in DATABASE.CPP's code (other modules' code may run), so no generated
-//   instruction of the module runs.
+// - then the production route again, failing if control enters DATABASE.CPP's
+//   code anywhere but at an entry the generator hooks (a draft, an unlisted
+//   routine, a return into generated module code).
 #include "aot_runtime.hpp"
 #include "guest_abi.hpp"
 #include <functional>
@@ -57,4 +57,10 @@ std::vector<Fixture> generation_fixtures(); // database_checks_generation.cpp
 std::vector<Fixture> people_fixtures();     // database_checks_people.cpp
 std::vector<Fixture> search_fixtures();     // database_checks_search.cpp
 std::vector<Fixture> loading_fixtures();    // database_checks_loading.cpp
+std::vector<Fixture> tables_fixtures();
+std::vector<Fixture> resolve_fixtures();
+std::vector<Fixture> load_fixtures();
+std::vector<Fixture> save_fixtures();
+std::vector<Fixture> init_fixtures();
+std::vector<Fixture> languages_fixtures();
 }
