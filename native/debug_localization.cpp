@@ -4,6 +4,16 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::extend_all_contracts) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "Extend All Contracts by 1 Year", "Extend All Contracts by 1 Year",
+            "Prolonger tous les contrats d'un an", "Alle Vertr\344ge um 1 Jahr verl\344ngern",
+            "Rinnova tutti i contratti di 1 anno", "Renovar todos los contratos por 1 a\361o",
+            "Forl\346ng alle kontrakter med 1 \345r", "Alle contracten met 1 jaar verlengen",
+            "Forny alle kontrakter med 1 \345r", "Renovar Todos os Contratos por 1 Ano",
+            "F\366rl\344ng alla kontrakt med 1 \345r"};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text == DebugText::options_sidebar) {
         static constexpr std::array<std::string_view, 11> sidebar{
             "Debugging\nOptions", "Debugging\nOptions", "Options de\nd\351bogage", "Debugging-\nOptionen",

@@ -12,7 +12,7 @@ bool native_debugging_enabled();
 void initialize_native_debugging(bool enabled = false);
 void select_native_debugging(bool enabled);
 enum class DebugFeature : unsigned { recover_players, play_for_free, extend_contract, cancel_sale,
-    remove_sale_clause, underdogs, underdogs_max, add_goal, repeat_goal, red_cards, injuries, count };
+    remove_sale_clause, underdogs, underdogs_max, add_goal, repeat_goal, red_cards, injuries, extend_all_contracts, count };
 constexpr unsigned debug_feature_count = unsigned(DebugFeature::count);
 constexpr std::uint32_t all_debug_features = (1u << debug_feature_count) - 1;
 std::uint32_t native_debugging_features();
@@ -36,6 +36,8 @@ bool dispatch_best_xi_control(State&);
 void append_debug_contract_action(State&);
 bool dispatch_debug_contract_action(State&);
 bool extend_debug_contract(State&, std::uint32_t staff);
+// Extend primary contracts owned by the club, including non-playing staff and loans out.
+bool extend_debug_club_contracts(State&, std::uint32_t club);
 bool cancel_scheduled_sale(State&, std::uint32_t staff);
 bool remove_debug_sale_clause(State&, std::uint32_t staff);
 // Select the match squad by decoded attributes, positions, condition and current

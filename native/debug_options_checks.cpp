@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
                 for (unsigned j = 0; j < 200 && c.u8(item + 0x78 + j); ++j) text += char(c.u8(item + 0x78 + j));
                 if (text == label && c.u32(item + 12) == flags) return i;
             }
-            throw std::runtime_error("Missing styled label");
+            throw std::runtime_error("Missing styled label: " + std::string(label) + " flags=" + std::to_string(flags));
         };
         const auto style = [&](unsigned index) {
             const auto item = item_address(index);
@@ -147,8 +147,38 @@ int main(int argc, char** argv) {
         require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Options changed RNG");
         for (unsigned language = 0; language < 11; ++language)
             for (auto text : {DebugText::options, DebugText::underdogs, DebugText::underdogs_max,
-                             DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries})
+                             DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts})
                 require(!debug_text(language, text).empty(), "Missing translation");
+        require(debug_text(9, DebugText::extend_all_contracts) == "Renovar Todos os Contratos por 1 Ano" &&
+                debug_text(255, DebugText::extend_all_contracts) == "Extend All Contracts by 1 Year", "Collective renewal labels");
+        std::uint32_t managed_club = 0;
+        for (unsigned i = 0; i < c.u32(c.toc(-0x7b50)) && !managed_club; ++i) {
+            const auto club = c.u32(c.toc(-0x7be8)) + i * 0x248;
+            invoke(0x1014c490, {club, 0, 1});
+            if (c.r(3)) managed_club = club;
+        }
+        require(managed_club, "Expected a managed club in career snapshot");
+        invoke(0x1073f1e0, {ui, 7, 0, 0});
+        const auto build_squad_controls = [&] {
+            invoke(0x10719560, {page()});
+            c.set(25, managed_club); c.set(31, ui); c.set(14, 195);
+            append_best_xi_control(s);
+        };
+        select_native_debugging_features(1u << unsigned(DebugFeature::extend_all_contracts));
+        build_squad_controls();
+        const auto collective = control(30021, 0);
+        require(label_control("     " + std::string(debug_text(s, DebugText::extend_all_contracts)), 2) == collective,
+                "Collective renewal missing from squad popup");
+        // A control retained from an older frame cannot bypass a disabled toggle.
+        select_native_debugging_features(0);
+        c.set(3, collective);
+        const auto executed = s.executed;
+        require(dispatch_best_xi_control(s) && c.r(3) == 0 && s.executed == executed,
+                "Stale collective control bypassed its toggle");
+        build_squad_controls();
+        control(30004, 0); // Best XI remains available with all debugging disabled.
+        for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
+            require(c.u32(item_address(i) + 8) != 30021, "Disabled collective action remained visible");
         std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

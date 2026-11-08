@@ -31,6 +31,98 @@ std::vector<std::uint8_t> random_state(const State& s) {
     result.insert(result.end(), samples.begin(), samples.end());
     return result;
 }
+void check_collective_renewal(State& s, std::uint32_t club, std::uint32_t opponent) {
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto manager = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b7c)));
+    const auto count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7be4)));
+    const auto people = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7be0)));
+    std::uint32_t coach = 0, outsider = 0;
+    std::vector<std::uint32_t> players;
+    for (unsigned i = 0; i < count; ++i) {
+        const auto person = people + i * 0x70;
+        if (s.memory.read<4>(person + 0x24) == club) {
+            if (s.memory.read<4>(person + 0x14)) players.push_back(person);
+            else if (!coach && s.memory.read<4>(person + 0x1c)) coach = person;
+        } else if (!outsider && s.memory.read<4>(person + 0x24) == opponent && s.memory.read<4>(person + 0x14))
+            outsider = person;
+    }
+    require(coach && outsider && players.size() >= 3, "Need actual club staff, players and an outsider");
+    const auto ensure_contract = [&](std::uint32_t person) {
+        if (!invoke(s, 0x10082f20, {manager, person})) invoke(s, 0x10078e70, {manager, person, 10000});
+        require(invoke(s, 0x10082f20, {manager, person}) != 0, "Primary contract construction failed");
+    };
+    for (const auto person : {coach, players[0], players[1], players[2], outsider}) ensure_contract(person);
+    // Resolve addresses after all allocations, since the original store may grow.
+    for (const auto person : {coach, players[0], players[1], players[2], outsider}) {
+        const auto contract = invoke(s, 0x10082f20, {manager, person});
+        s.memory.write<4>(contract + 4, s.memory.read<4>(person == outsider ? opponent : club));
+        for (auto date : {contract + 0x30, person + 0x54}) {
+            s.memory.write<2>(date, 59); s.memory.write<2>(date + 2, 2004); s.memory.write<1>(date + 4, 1);
+        }
+    }
+    // Loaned-out ownership survives a different current club and absent roster
+    // entry. A borrowed player in the roster must retain the parent's contract.
+    s.memory.write<4>(players[1] + 0x24, opponent);
+    for (unsigned i = 0; i < 50; ++i)
+        if (s.memory.read<4>(club + 0x98 + i * 4) == players[1]) s.memory.write<4>(club + 0x98 + i * 4, 0);
+    s.memory.write<4>(club + 0x98 + 49 * 4, outsider);
+    s.memory.write<4>(outsider + 0x24, club);
+    const auto zero_contract = invoke(s, 0x10082f20, {manager, players[0]});
+    s.memory.write<4>(zero_contract + 12, 0);
+    const auto invalid = invoke(s, 0x10082f20, {manager, players[2]});
+    s.memory.write<2>(invalid + 0x32, 0); s.memory.write<2>(players[2] + 0x56, 0);
+    struct Before {
+        std::uint32_t person, contract;
+        std::vector<std::uint8_t> terms, record;
+        std::optional<cm::calendar::Date> next;
+    };
+    std::vector<Before> before;
+    unsigned eligible_players = 0, eligible_staff = 0;
+    for (unsigned i = 0; i < count; ++i) {
+        const auto person = people + i * 0x70;
+        const auto contract = invoke(s, 0x10082f20, {manager, person});
+        if (!contract) continue;
+        std::optional<cm::calendar::Date> next;
+        if (s.memory.read<4>(contract + 4) == s.memory.read<4>(club)) {
+            const auto expiry = [&](unsigned at) {
+                return extend_contract_date({std::int16_t(s.memory.read<2>(at)), std::uint16_t(s.memory.read<2>(at + 2))});
+            };
+            next = expiry(contract + 0x30);
+            if (!next) next = expiry(person + 0x54);
+            if (next) (s.memory.read<4>(person + 0x14) ? eligible_players : eligible_staff)++;
+        }
+        before.push_back({person, contract, s.memory.copy_out(contract, 100), s.memory.copy_out(person, 0x70), next});
+    }
+    require(eligible_players >= 2 && eligible_staff >= 1, "Collective fixture must cover both players and staff");
+    select_native_debugging_features(1u << unsigned(DebugFeature::extend_contract));
+    const auto executed = s.executed;
+    require(!extend_debug_club_contracts(s, club) && s.executed == executed, "Collective toggle must be independent");
+    select_native_debugging_features(1u << unsigned(DebugFeature::extend_all_contracts));
+    require(!extend_debug_contract(s, players[0]), "Collective toggle enabled individual renewal");
+    require(!extend_debug_club_contracts(s, 0), "Missing club accepted");
+    const auto rng = random_state(s);
+    const auto registers = s.registers;
+    const auto unique = s.unique;
+    const auto pc = s.pc;
+    require(extend_debug_club_contracts(s, club), "Collective renewal failed");
+    require(s.registers == registers && s.unique == unique && s.pc == pc, "Collective renewal clobbered caller");
+    for (const auto& item : before) {
+        auto terms = item.terms, record = item.record;
+        if (item.next) {
+            const auto date = *item.next;
+            const std::array<std::uint8_t, 5> bytes{std::uint8_t(unsigned(date.day) >> 8), std::uint8_t(date.day),
+                std::uint8_t(date.year >> 8), std::uint8_t(date.year), std::uint8_t(cm::calendar::is_leap(date.year))};
+            std::copy(bytes.begin(), bytes.end(), terms.begin() + 0x30);
+            std::copy(bytes.begin(), bytes.end(), record.begin() + 0x54);
+        }
+        require(s.memory.copy_out(item.contract, 100) == terms, "Collective renewal changed wrong contract or terms");
+        require(s.memory.copy_out(item.person, 0x70) == record, "Collective renewal changed wrong person or date");
+    }
+    require(s.memory.read<4>(zero_contract + 12) == 0 && random_state(s) == rng, "Collective renewal changed wage or RNG");
+    std::cout << "Collective renewal: " << eligible_players << " players, " << eligible_staff
+              << " staff; loans, invalid dates, zero wages, independent toggle and unchanged terms/RNG passed\n";
+}
+
 }
 
 int main(int argc, char** argv) {
@@ -291,6 +383,7 @@ int main(int argc, char** argv) {
         require(extend_debug_contract(s, staff) && s.memory.read<2>(contract + 0x32) == 2007 &&
                 s.memory.copy_out(contract + 0x30, 5) == s.memory.copy_out(staff + 0x54, 5) &&
                 s.memory.read<4>(contract + 12) == 0, "Zero-wage renewal did not repair stale cached expiry");
+        check_collective_renewal(s, club, buyers[1]);
         std::cout << "Contract extension and sale cancellation: scheduled paid sale, exchange, deferred contracts, loan, unrelated offers and current terms passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

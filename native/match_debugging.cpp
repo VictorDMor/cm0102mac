@@ -20,7 +20,7 @@ constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 3
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
-constexpr unsigned free_squad_action = 30017;
+constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
 static_assert(free_squad_action > shortcut_last);
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
@@ -268,7 +268,7 @@ constexpr std::array feature_labels{
     DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
     DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
-    DebugText::red_cards, DebugText::injuries};
+    DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts};
 static_assert(feature_labels.size() == debug_feature_count);
 bool debug_options_screen(State& s) {
     GuestCall call(s);
@@ -278,6 +278,7 @@ bool action_enabled(unsigned action) {
     switch (action) {
         case recover_squad_action: return native_debugging_feature(DebugFeature::recover_players);
         case free_squad_action: return native_debugging_feature(DebugFeature::play_for_free);
+        case extend_all_contracts_action: return native_debugging_feature(DebugFeature::extend_all_contracts);
         case extend_contract_action: return native_debugging_feature(DebugFeature::extend_contract);
         case cancel_sale_action: return native_debugging_feature(DebugFeature::cancel_sale);
         case remove_sale_clause_action: return native_debugging_feature(DebugFeature::remove_sale_clause);
@@ -774,7 +775,8 @@ void append_best_xi_control(State& s) {
     const auto ink = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc4)));
     const auto paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc8)));
     call.args({0, 1, 0, 0xffffffffu});
-    const bool debug_squad = action_enabled(recover_squad_action) || action_enabled(free_squad_action);
+    const bool debug_squad = action_enabled(recover_squad_action) || action_enabled(free_squad_action) ||
+                             action_enabled(extend_all_contracts_action);
     const auto grid = call.call(0x107198c0, {page, 334, top, debug_squad ? 444u : 556u, top + 20, 1, 0, 1});
     const auto best_label = debug_text(s, DebugText::best_xi);
     call.args({paper, call.text(best_label), best_xi_action, 0});
@@ -799,13 +801,15 @@ void append_best_xi_control(State& s) {
     };
     if (action_enabled(recover_squad_action)) item(DebugText::recover_players, recover_squad_action);
     if (action_enabled(free_squad_action)) item(DebugText::play_for_free, free_squad_action);
+    if (action_enabled(extend_all_contracts_action)) item(DebugText::extend_all_contracts, extend_all_contracts_action);
 }
 
 bool dispatch_best_xi_control(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != best_xi_action && action != recover_squad_action && action != free_squad_action) return false;
+    if (action != best_xi_action && action != recover_squad_action && action != free_squad_action &&
+        action != extend_all_contracts_action) return false;
     bool accepted = false;
     if ((action == best_xi_action || action_enabled(action)) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
@@ -816,6 +820,7 @@ bool dispatch_best_xi_control(State& s) {
         if (view == 1 && !(columns & 0x800) && call.call(0x1014c490, {club, 0, 1})) {
             if (action == recover_squad_action) accepted = recover_debug_squad(s, club);
             else if (action == free_squad_action) accepted = free_debug_squad(s, club);
+            else if (action == extend_all_contracts_action) accepted = extend_debug_club_contracts(s, club);
             else {
                 const auto humans = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a54)));
                 const auto formation = call.call(0x101466c0, {humans, 0});
@@ -855,9 +860,9 @@ std::vector<std::uint32_t> contract_rows(State& s, GuestCall& call, std::uint32_
     return rows;
 }
 
-std::uint32_t debug_primary_contract(State& s, GuestCall& call, std::uint32_t staff) {
+std::uint32_t debug_primary_contract(State& s, GuestCall& call, std::uint32_t staff, bool player_only = true) {
     const auto toc = std::uint32_t(s.r<4>(8));
-    if (!staff || !s.memory.read<4>(staff + 0x14)) return 0;
+    if (!staff || (player_only && !s.memory.read<4>(staff + 0x14))) return 0;
     const auto id = std::uint32_t(s.memory.read<4>(staff));
     const auto count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7be4)));
     if (id >= count) return 0;
@@ -1026,11 +1031,9 @@ bool remove_debug_sale_clause(State& s, std::uint32_t staff) {
     return true;
 }
 
-bool extend_debug_contract(State& s, std::uint32_t staff) {
-    if (!native_debugging_feature(DebugFeature::extend_contract)) return false;
+namespace {
+bool extend_primary_debug_contract(State& s, std::uint32_t staff, std::uint32_t contract) {
     GuestCall call(s);
-    const auto contract = debug_primary_contract(s, call, staff);
-    if (!contract) return false;
     const auto toc = std::uint32_t(s.r<4>(8));
     const auto manager = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b7c)));
     const auto transfers = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b40)));
@@ -1161,6 +1164,36 @@ bool extend_debug_contract(State& s, std::uint32_t staff) {
         s.memory.write<1>(target + 4, cm::calendar::is_leap(next->year));
     }
     return true;
+}
+
+} // namespace
+
+bool extend_debug_contract(State& s, std::uint32_t staff) {
+    if (!native_debugging_feature(DebugFeature::extend_contract)) return false;
+    GuestCall call(s);
+    const auto contract = debug_primary_contract(s, call, staff);
+    return contract && extend_primary_debug_contract(s, staff, contract);
+}
+
+bool extend_debug_club_contracts(State& s, std::uint32_t club) {
+    if (!native_debugging_feature(DebugFeature::extend_all_contracts) || !club) return false;
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7be4)));
+    const auto people = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7be0)));
+    const auto employer = s.memory.read<4>(club);
+    if (!people || employer >= s.memory.read<4>(s.memory.read<4>(toc - 0x7b50))) return false;
+    GuestCall call(s);
+    bool processed = false;
+    // The roster excludes non-playing staff and players loaned out. Primary
+    // contract ownership includes both and leaves borrowed players' deals alone.
+    // Visit each person once, including player/coaches with both record types.
+    for (std::uint32_t i = 0; i < count; ++i) {
+        const auto person = people + i * 0x70;
+        const auto contract = debug_primary_contract(s, call, person, false);
+        if (contract && s.memory.read<4>(contract + 4) == employer)
+            processed = extend_primary_debug_contract(s, person, contract) || processed;
+    }
+    return processed;
 }
 
 void append_debug_contract_action(State& s) {
