@@ -508,8 +508,13 @@ void check_input(const Input& input, const State& s, const char* import = nullpt
         throw std::runtime_error("First divergence: execution or native-call order at " + hex_address(s.pc));
     const auto& registers = record_registers;
     if (registers == s.registers) return;
+    // Ghidra's `tea` (2432-2435), the running address of stmw/lmw, is always
+    // written before it is read: no game code observes it, and rewrites that
+    // save or restore registers without a multiword move leave it elsewhere.
+    constexpr std::size_t tea = 2432;
     for (std::size_t byte = 0; byte < s.registers.size(); ++byte) {
-        if (registers[byte] == s.registers[byte] || (masked && !observed_by_import(byte, contract))) continue;
+        if (registers[byte] == s.registers[byte] || (masked && !observed_by_import(byte, contract)) ||
+            (byte >= tea && byte < tea + 4)) continue;
         throw std::runtime_error("First divergence: native input register byte " + std::to_string(byte) +
             " (" + register_name(byte) + ") at " + hex_address(s.pc) + (import ? std::string(" calling ") + import : ""));
     }

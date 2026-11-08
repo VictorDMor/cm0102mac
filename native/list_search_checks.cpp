@@ -1,12 +1,15 @@
 #include "list_search.hpp"
+#include "manager_manager_adapter.hpp"
 #include "semantic_io_checks.hpp"
 #include <functional>
 #include <optional>
 
 // Runs the list search 0x101b1620 from synthetic lists twice: once through
-// the original (a do-nothing memory observer makes the C++ version step
-// aside) and once through the C++ version, and compares every register,
-// generated temporary, mapped byte and the instruction count.
+// the generated original (MANAGER_MANAGER.CPP's owner declining) and once
+// through the owner, whose fast path is the native search here; compares every
+// register, generated temporary and mapped byte, and the instruction count
+// where the fast path ran (it charges the original's; the owner's slow path,
+// taken where the fast path steps aside, charges none).
 namespace {
 using namespace cm::semantic_io_checks;
 constexpr std::uint32_t entry = 0x101b1620, sentinel = 0x7fff1000;
@@ -61,13 +64,16 @@ std::string compare(const State& program, const Case& c, bool expect_native) {
     Silent silent;
     original->memory.observer = &silent;
     const auto before = native_list_search_completions();
-    const auto expected = execute(*original), actual = execute(*modern);
+    cm::aot::manager_manager_declining = true;
+    const auto expected = execute(*original);
+    cm::aot::manager_manager_declining = false;
+    const auto actual = execute(*modern);
     original->memory.observer = nullptr;
     require(expected == actual, c.label + " outcome original=" + expected + " modern=" + actual);
     require((native_list_search_completions() > before) == expect_native, c.label + " took the wrong path");
     Image(*original).compare(*modern, c.label, !expected.empty());
-    require(original->executed == modern->executed, c.label + " instruction count " + std::to_string(original->executed) +
-        " vs " + std::to_string(modern->executed));
+    require(!expect_native || original->executed == modern->executed, c.label + " instruction count " +
+        std::to_string(original->executed) + " vs " + std::to_string(modern->executed));
     return actual;
 }
 }
@@ -115,11 +121,12 @@ int main(int argc, char** argv) {
                 for (unsigned i = 0; i < 0x10; i += 4) s.memory.write<4>(moved + i, s.memory.read<4>(list + i));
                 s.memory.write<4>(container + 8, moved);
             }}, false);
-        // A budget too small for the whole search, and a fault, are the original's.
-        compare(*program, {"small budget", 3, {1, 2, 3}, 3, -1, -1, {}, 30}, false);
+        // A fault is the original's. (A budget too small for the search no longer
+        // stops it: the fast path steps aside to MANAGER_MANAGER.CPP's C++, which,
+        // like every owner, takes no instruction budget.)
         compare(*program, {"unmapped list", 3, {1, 2, 3}, 3, -1, -1,
             [](State& s) { s.memory.write<4>(container + 8, 0x50000000); }}, false);
-        cases += 7;
+        cases += 6;
         // The comparison must catch a wrong answer: a different key changes r3
         // and the instruction count.
         bool caught = false;

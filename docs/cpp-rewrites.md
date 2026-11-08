@@ -1651,3 +1651,18 @@ The game's random draws (halfword + seed word) are divided signed (mulhw), so re
 Quirks kept: 0x10209d10's second and third levels and its self-call are unreachable (the second bound is 10n/65535 of a
 32-bit n); 0x102102d0 rolls the staff pointer itself as a number; 0x10210c50 doesn't reset the best score between places and
 rates the occupant with the candidate's side record; 0x1020d7d0 copies the lineup record piecewise around padding bytes.
+
+## MANAGER_MANAGER.CPP: manager records, jobs and the result tables
+
+`MANAGER_MANAGER.CPP` is 105 routines / 49,690 instructions in 0x10193630-0x101c42f0 (`tools/manager_manager_audit.py`;
+the test re-derives every body). KEY_NATION.CPP closes before it with its static initializer 0x101935b0 and the
+destructor 0x101935f0, which sits in KEY_NATION.CPP's transition-vector group (each unit's group runs in descending
+address order); MANAGER_SCREENS.CPP opens at 0x101c42f0, whose unit slots adjoin its pool -0x5310. The module's slots are
+-0x5360..-0x5420, its source pool -0x5368. Nine jump-table cases of 0x101b3c90 and 0x101b83f0 are also discovery roots;
+the audit folds them into those routines.
+
+The list search 0x101b1620 (2.8 million calls on season-day) keeps the native lowering `list_search.cpp` as its fast
+path, which skips the cursor's intermediate writes; where that steps aside (observers, aliasing writes, a null element)
+the owner follows the original, `list_next` 0x10738e00 inline. Written as plain C++ without the fast path, it cost 2%
+of the day (5 pairs). An epilogue's `lmw` leaves Ghidra's `tea` temporary past the restored words (`lmw_leaves`); the
+season replay no longer compares `tea` at day boundaries, since no game code reads it before writing it.
