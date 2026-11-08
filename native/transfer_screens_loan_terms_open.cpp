@@ -6,7 +6,8 @@ namespace {
 std::uint32_t loan_percentage(Cpu& c,std::uint32_t numerator,std::uint32_t salary) {
     // Unlike the accepted-offer opener, these screens narrow the quotient
     // to a signed byte before truncating to a multiple of ten, without bias.
-    const auto ratio=std::int8_t(divide_signed<4>(numerator,salary));
+    // A zero-wage contract has no wage contribution to express as a ratio.
+    const auto ratio=salary ? std::int8_t(divide_signed<4>(numerator,salary)) : 0;
     const auto high=std::int32_t((std::int64_t(ratio)*0x66666667LL)>>32);
     c.s.wr<1>(reg::xer_ca,high<0 && (std::uint32_t(high)&3u)!=0);
     return std::uint32_t(std::int32_t(std::int8_t((int(ratio)/10)*10)));

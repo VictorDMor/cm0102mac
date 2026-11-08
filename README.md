@@ -44,6 +44,9 @@ news, season archives and binary persistence. `EURO_CHAMP_QUAL.CPP` adds
 **31 audited routines** for European qualifying calendars, draws, progression
 and binary records. `TRANSFER_SCREENS.CPP` adds **75 audited routines** for
 transfer offers, player status, transfer history, loans and related confirmations.
+Loan replies and wage-term edits handle zero-wage contracts (including **Play
+for Free**) with a zero contribution instead of dividing by zero; nonzero-wage
+percentage arithmetic is unchanged.
 `INTERNATIONAL_AWARDS.CPP` adds **3 audited routines** for constructing six
 international prizes and dispatching their dated publications.
 `AWARD_MANAGER.CPP` adds **21 audited routines** for award groups, histories,

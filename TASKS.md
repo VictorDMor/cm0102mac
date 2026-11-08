@@ -20,6 +20,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: loan-offer reply crash (2026-11-08)
+
+- [x] Diagnose the reported Reply failure: both recent app logs stop in `open_offer_contract_terms` with a zero salary divisor (original division at `0x1042c7ec`).
+- [x] Handle zero-wage loan percentages in the reply/open/edit paths, retaining existing arithmetic for nonzero wages.
+- [x] Verified 20 zero-wage regression cases (the generated reference still reproduces the crash), 4,206 focused original/rewrite comparisons and the module audit; reviewed the diff, built and installed the app.
+
 ## Now: removing the PowerPC (inventory 2026-11-06)
 
 Victor asked for the next step toward the complete port and the removal of the generated PowerPC code; the answer was a whole-game inventory, which he approved. `tools/game_inventory.py` (tests: `tools/test_game_inventory.py`) writes `.local/inventory/<date>/inventory.json` and `report.md`; the run below used the 2026-11-06 day and week profiles (`.local/performance/2026-11-06-day-modules/{day,week}.prof`).

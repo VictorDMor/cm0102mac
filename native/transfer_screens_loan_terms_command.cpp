@@ -67,7 +67,8 @@ std::uint32_t loan_offer_terms_command(Cpu& c,std::uint32_t control_value) {
             if(compare(c,feedback_command_or_salary,board)<0)c.set(3,feedback_command_or_salary);
             feedback_screen_or_value=c.r(3);
         }
-        const auto quotient=divide_signed<4>(std::uint32_t(feedback_screen_or_value)*100u,feedback_command_or_salary);
+        const auto quotient=feedback_command_or_salary
+            ? divide_signed<4>(std::uint32_t(feedback_screen_or_value)*100u,feedback_command_or_salary) : 0;
         p.history(0x1042e620,screens,11,std::uint32_t(std::int32_t(std::int8_t(quotient))));return std::uint32_t(-11);
     }
     if(compare(c,control_action(c,screens,control),8)==0) {

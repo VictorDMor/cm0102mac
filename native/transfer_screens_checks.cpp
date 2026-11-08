@@ -1111,7 +1111,7 @@ void returned(State& s) {
             const auto selected=std::int16_t(active.control)==-1 ? 0 : active.selected_value;
             const auto wage=std::min(selected,std::min(active.current_salary,active.board_limit));
             const auto product=std::int32_t(std::uint32_t(wage)*100u);
-            const auto percent=std::int8_t(std::int64_t(product)/active.current_salary);
+            const auto percent=active.current_salary ? std::int8_t(std::int64_t(product)/active.current_salary) : 0;
             if(c.u32(history+44)!=std::uint32_t(std::int32_t(percent)))throw std::runtime_error("Loan payload percentage width mismatch");
         }
         if(action==13 || action==14) {
@@ -1202,7 +1202,7 @@ void returned(State& s) {
             const auto wage=std::uint32_t(active.current_salary)+(active.history_terms_mutation ? 7u : 0u);
             const bool proposed=active.proposed_present && (std::int8_t(active.proposed_type)>>2)==6;
             const auto product=std::int32_t(std::uint32_t(active.offered_salary)*100u);
-            const auto quotient=proposed ? std::int8_t(std::int64_t(product)/std::int32_t(wage)) : 0;
+            const auto quotient=proposed && wage ? std::int8_t(std::int64_t(product)/std::int32_t(wage)) : 0;
             const auto percentage=std::uint32_t(std::int32_t(std::int8_t((int(quotient)/10)*10)));
             if (c.u32(history+44)!=percentage) throw std::runtime_error("Loan percentage byte-before-tens mismatch");
         }
@@ -1326,12 +1326,60 @@ struct ObservedWrites final : MemoryObserver {
     void written(std::uint32_t, const std::uint8_t*, std::size_t) override { ++count; }
     void cleared(std::uint32_t, std::uint64_t) override { ++count; }
 };
+
+void check_zero_wage_loans(const State& base) {
+    // The generated reference throws for this formerly unhandled UI input.
+    // Keep that failure as a control, then check the intentional repair through
+    // both the direct adapter and production dispatch, including news Reply.
+    unsigned completed = 0;
+    for (auto entry : {0x1042c6d0u, 0x10421ee0u, 0x1042bf70u, 0x1042c2c0u, 0x1042e110u}) {
+        for (int offered : {0, 500}) for (bool production : {false, true}) {
+            active = Case{entry}; active.current_salary = 0;
+            active.offered_salary = offered; active.action = 7;
+            const auto prepared = [&] {
+                auto state = cm::semantic_io_checks::clone(base); Cpu c(*state);
+                call_count = 0; initialize(c, active); return state;
+            };
+            auto reference = prepared(); bool divided_by_zero = false;
+            try { original(*reference, entry); }
+            catch (const std::runtime_error& error) {
+                if (std::string_view(error.what()).find("Signed division by zero") == std::string_view::npos) throw;
+                divided_by_zero = true;
+            }
+            if (!divided_by_zero) throw std::runtime_error("Zero-wage crash control did not fail");
+            auto repaired = prepared(); Cpu c(*repaired);
+            const auto contract_before = repaired->memory.copy_out(contract, 0x64);
+            const auto proposed_before = repaired->memory.copy_out(data + 0x4500, 0x54);
+            production_mode = production; rewrite(*repaired, entry);
+            if (c.u32(history + 44) != 0 || c.u32(history + 4) != 0)
+                throw std::runtime_error("Zero-wage loan did not retain zero salary/contribution");
+            if (entry != 0x1042e110) {
+                const unsigned snapshot = entry == 0x1042bf70 ? 21 : 16;
+                for (unsigned i = 0; i < 5; ++i)
+                    if (c.u32(history + (11 + i) * 4) != c.u32(history + (snapshot + i) * 4))
+                        throw std::runtime_error("Zero-wage loan reset terms mismatch");
+                if (c.u32(history + 52) != unsigned(active.expiry_year) ||
+                    c.u32(history + 56) != std::uint32_t(std::int32_t(std::int8_t(active.cup_option))) ||
+                    c.u32(history + 60) != std::uint32_t(std::int32_t(std::int8_t(active.parent_option))))
+                    throw std::runtime_error("Zero-wage loan lost non-wage terms");
+            }
+            if (contract_before != repaired->memory.copy_out(contract, 0x64) ||
+                proposed_before != repaired->memory.copy_out(data + 0x4500, 0x54))
+                throw std::runtime_error("Opening/editing zero-wage loan changed contract records");
+            ++completed;
+        }
+    }
+    production_mode = false;
+    std::cout << "Zero-wage loans: " << completed << " regression cases passed\n";
+}
 }
 
 int main(int argc, char** argv) {
     if (argc != 2) { std::cerr << "Usage: cm-transfer-screens-checks <original-segments>\n"; return 2; }
     try {
         auto base = std::make_unique<State>(); load_program(*base, argv[1]); dispatch_probe = probe;
+        check_zero_wage_loans(*base);
+        if (std::getenv("CM_TRANSFER_SCREENS_ZERO_WAGE_ONLY")) return 0;
         std::vector<Case> cases;
         for (auto entry : entries) cases.push_back({entry});
         for (auto entry : {entries[0], entries[1]}) {

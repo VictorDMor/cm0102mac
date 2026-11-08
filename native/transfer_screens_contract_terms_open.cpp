@@ -27,7 +27,10 @@ void open_offer_contract_terms(Cpu& c,std::uint32_t offer_address) {
     // arithmetic. Round the resulting ratio to a multiple of ten, truncating
     // the biased quotient toward zero (also for negative inputs).
     const auto numerator=c.u32(proposed_contract+12)*100u;
-    error_buffer_or_percentage=divide_signed<4>(numerator,c.u32(existing_contract+12));
+    // Zero-wage contracts (including Play for Free) have no wage to share.
+    // Keep this UI repair local; the runtime still diagnoses invalid divisions.
+    const auto salary=c.u32(existing_contract+12);
+    error_buffer_or_percentage=salary ? divide_signed<4>(numerator,salary) : 0;
     const auto biased=std::int32_t(std::uint32_t(error_buffer_or_percentage)+5u);
     const auto high=std::int32_t((std::int64_t(biased)*0x66666667LL)>>32);
     c.s.wr<1>(reg::xer_ca,high<0 && (std::uint32_t(high)&3u)!=0);
