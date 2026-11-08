@@ -3,3 +3,4 @@
 // for a verified routine the generator hooks, MANAGER_MANAGER_DRAFT for one only
 // check tools run.
 #include "manager_manager_routines_lists.inc"
+#include "manager_manager_routines_assessment.inc"

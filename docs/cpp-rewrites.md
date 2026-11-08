@@ -1666,3 +1666,9 @@ path, which skips the cursor's intermediate writes; where that steps aside (obse
 the owner follows the original, `list_next` 0x10738e00 inline. Written as plain C++ without the fast path, it cost 2%
 of the day (5 pairs). An epilogue's `lmw` leaves Ghidra's `tea` temporary past the restored words (`lmw_leaves`); the
 season replay no longer compares `tea` at day boundaries, since no game code reads it before writing it.
+
+The job assessment 0x101ad080 (`manager_manager_assessment.cpp`) keeps its whole 0x1f0 frame: the stack audit finds
+later readers of its int-to-double and `fctiwz` slots. Quirks it reproduces: one conversion (0x101af7cc) is `fsubs`, so
+that rule rounds the score to single before its `fmuls`; a path with a null person+0xc reads the caller's r26, never
+written there; the three later null tests of the staff record (+0x1c) are dead, since the entry already rejects it
+with -10000 and nothing in between writes it.
