@@ -35,11 +35,6 @@ constexpr std::uint32_t signal_1 = 0x1c, signal_2 = 0x44, signal_3 = 0x58, signa
 namespace league {
 constexpr std::uint32_t form_low = 0xc0, form_high = 0xc1, vtable_method = 0xa0, owner = 0x8;
 }
-// The module's draw table (TOC slots): the cell with the base, the table's first entry, the cell with its
-// last entry and the cell with the cursor.
-namespace table_slots {
-constexpr std::int32_t base = -0x7b90, first = -0x7b8c, last = -0x7b88, cursor = -0x7b84;
-}
 // The int-to-double idiom's high word: the compiler builds a double from
 // 0x43300000 | (value ^ 0x80000000) on the stack and subtracts the bias (pool +0x38).
 constexpr std::uint32_t conversion_high = 0x43300000;

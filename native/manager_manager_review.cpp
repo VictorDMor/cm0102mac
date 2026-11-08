@@ -25,7 +25,6 @@ using namespace review_detail;
 namespace {
 namespace callee {
 constexpr std::uint32_t calendar = 0x10718130,      // days between two dates (r3, r4, r5)
-    redraw = 0x1077b770,                            // the base for the draw table
     list_next = 0x10738e00, list_remove = 0x10738e60, list_append = 0x10738d10,
     league_results = 0x10459b50,                    // the club's results record
     manager_flag = 0x102de3c0, club_flag = 0x100c7d00, club_state = 0x1014c2e0,
@@ -39,12 +38,6 @@ constexpr std::int32_t pool = -0x536c, date = -0x7b80, leagues = -0x7b5c, scale_
 std::uint32_t extended_byte(std::uint32_t value) { return std::uint32_t(std::int32_t(std::int8_t(value))); }
 // The compiler's mulhw: the high word of the signed product.
 std::int32_t mulhw(std::uint32_t a, std::int32_t b) { return std::int32_t((std::int64_t(std::int32_t(a)) * b) >> 32); }
-// `divw` as the generated code does it: the quotient of the sign-extended words, truncated.
-std::int32_t divide(std::int32_t a, std::int32_t b) { return std::int32_t(std::int64_t(a) / b); }
-// The remainder after a divw, mullw and subf (the divisor is not zero where it is used).
-std::int32_t remainder(std::int32_t a, std::int32_t b) {
-    return std::int32_t(std::uint32_t(a) - std::uint32_t(divide(a, b)) * std::uint32_t(b));
-}
 // A draw's remainder step: the result takes the divisor's sign, as `neg` and the conditional move do.
 std::int32_t signed_remainder(std::int32_t x, std::int32_t bound) {
     const auto rest = remainder(x, bound);
@@ -55,32 +48,8 @@ std::int32_t signed_remainder(std::int32_t x, std::int32_t bound) {
 // the dividend's.
 std::uint32_t sign_of(std::int32_t value) { return value < 0 ? 1 : 0; }
 
-// The module's draw table: the cell with its base (a value redrawn at each wrap), its first entry,
-// the cell with its last entry and the cell with the cursor (a pointer to the next halfword).
-struct Table {
-    std::uint32_t base_cell, first, last_cell, cursor_cell;
-};
-Table table_of(const Cpu& c) {
-    return {c.toc(table_slots::base), c.toc(table_slots::first), c.toc(table_slots::last), c.toc(table_slots::cursor)};
-}
-// The cursor advances by two halfwords; past the last entry it returns to the first and the base
-// is redrawn (0x1077b770 answers it). `back` is the address after the original's `bl`. The caller
-// passes the cursor it holds (r3 in the original).
-void step_from(Cpu& c, const Table& t, std::uint32_t cursor, std::uint32_t back) {
-    const auto last = c.u32(t.last_cell);
-    cursor += 2;
-    c.set(3, cursor);
-    c.put32(t.cursor_cell, cursor);
-    compare_logical(c, cursor, last);
-    if (cursor > last) {
-        c.put32(t.cursor_cell, t.first);
-        c.call(callee::redraw, back);
-        c.put32(t.base_cell, c.r(3) & 0xffff);
-    }
-}
-void step(Cpu& c, const Table& t, std::uint32_t back) { step_from(c, t, c.u32(t.cursor_cell), back); }
 // The table's current number: the halfword at the cursor plus the base (left in r3).
-std::uint32_t table_value(Cpu& c, const Table& t) {
+std::uint32_t table_value(Cpu& c, const draw_table::Table& t) {
     const auto cursor = c.u32(t.cursor_cell);
     c.set(3, cursor);
     const auto base = c.u32(t.base_cell);
@@ -89,7 +58,7 @@ std::uint32_t table_value(Cpu& c, const Table& t) {
     return x;
 }
 // The draw's small-bound path (|bound| <= 0xffff, bound not 0): the table's number modulo the bound.
-std::int32_t small_bound(Cpu& c, const Table& t, std::int32_t bound) {
+std::int32_t small_bound(Cpu& c, const draw_table::Table& t, std::int32_t bound) {
     const auto cursor = c.u32(t.cursor_cell);
     c.set(3, cursor);
     compare(c, bound);  // cmpwi bound,0
@@ -109,7 +78,7 @@ struct Stage {
 // The draw's floating-point stage for a bound beyond +-0xffff: the bound as a double over the unit
 // (pool +0x40) times the table's number modulo 0xffff, truncated by fctiwz. The original keeps the
 // cursor and the sign bits of its divisions in r3-r9.
-Stage float_stage(Cpu& c, Fpu& fpu, const Frame& frame, const Table& t, std::int32_t bound) {
+Stage float_stage(Cpu& c, Fpu& fpu, const Frame& frame, const draw_table::Table& t, std::int32_t bound) {
     const auto pool = c.r(29);
     c.set(9, conversion_high);
     c.put32(frame.at(stage_in + 4), std::uint32_t(bound) ^ 0x80000000u);
@@ -247,7 +216,7 @@ bool departure(Cpu& c, std::uint32_t object, std::uint32_t club) {
 std::int32_t draw(Cpu& c, std::int32_t bound) {
     c.set(0, c.lr());
     Frame frame(c, 0x10195e10, 0x80, {.first_gpr = 20});
-    const auto table = table_of(c);
+    const auto table = draw_table::cells(c);
     guest::keep(c, {{25, table.base_cell}, {26, table.first}, {27, table.last_cell}, {28, table.cursor_cell},
                     {29, c.toc(toc::pool)}, {30, std::uint32_t(bound)}});
     compare(c, bound);  // or. r30,r3,r3
@@ -255,7 +224,7 @@ std::int32_t draw(Cpu& c, std::int32_t bound) {
     if (bound == 0) {
         c.set(3, 0);
     } else {
-        step(c, table, 0x10195e64);
+        draw_table::step(c, table, 0x10195e64);
         if (bound <= 0xffff && bound >= -0xffff) {
             result = small_bound(c, table, bound);
             c.set(3, std::uint32_t(result));
@@ -268,7 +237,7 @@ std::int32_t draw(Cpu& c, std::int32_t bound) {
             if (stage.next == 0) {
                 c.set(24, 0);
             } else {
-                step_from(c, table, c.r(3), 0x10195f50);
+                draw_table::step_from(c, table, c.r(3), 0x10195f50);
                 inner = small_bound(c, table, stage.next);
                 c.set(24, std::uint32_t(inner));
             }
@@ -301,7 +270,7 @@ namespace {
 class Review {
 public:
     Review(Cpu& c, Frame& frame, std::uint32_t object, std::uint32_t club)
-        : c(c), frame(frame), fpu(c), table(table_of(c)), object(object), club(club), date(c.toc(toc::date)),
+        : c(c), frame(frame), fpu(c), table(draw_table::cells(c)), object(object), club(club), date(c.toc(toc::date)),
           pool(c.toc(toc::pool)), threshold(c, c.r(19)), roll(c, c.r(20)), aux(c, c.toc(toc::leagues)),
           subject(c, c.r(22)) {
         c.set(6, c.toc(toc::stamp));
@@ -439,7 +408,7 @@ private:
     // A draw the original inlines: the table's step, then the remainder of the table's number by the
     // bound (never 0).
     std::int32_t inline_draw(std::int32_t bound, std::uint32_t back) {
-        step(c, table, back);
+        draw_table::step(c, table, back);
         return small_bound(c, table, bound);
     }
 
@@ -482,7 +451,7 @@ private:
             compare(c, std::int32_t(std::uint32_t(roll)));
             if (std::uint32_t(roll) == 0) return false;
         } else {
-            step(c, table, 0x101a8de8);
+            draw_table::step(c, table, 0x101a8de8);
             if (table_remainder(10, 0x66666667u, 2) == 0) return false;
         }
         cap_row_value();
@@ -701,7 +670,7 @@ private:
             compare(c, std::int32_t(std::uint32_t(roll)), limit);
             return std::int32_t(std::uint32_t(roll)) > limit;
         }
-        step(c, table, 0x101a938c);
+        draw_table::step(c, table, 0x101a938c);
         const auto cursor = c.u32(table.cursor_cell);
         c.set(5, cursor);
         const auto base = c.u32(table.base_cell);
@@ -735,7 +704,7 @@ private:
                 c.call(callee::pressure, 0x101a955c);
             }
         } else {
-            step(c, table, 0x101a9588);
+            draw_table::step(c, table, 0x101a9588);
             asks = table_remainder(11, 0x2e8ba2e9u, 1) == 0;
             if (asks) {
                 c.set({{3, object}, {4, club}});
@@ -772,7 +741,7 @@ private:
         roll = bound == 0 ? 0 : std::uint32_t(inline_draw(bound, 0x101a9650));
         compare(c, std::int32_t(std::uint32_t(roll)));
         if (std::uint32_t(roll) != 0) return false;
-        step(c, table, 0x101a97a0);
+        draw_table::step(c, table, 0x101a97a0);
         const auto x = table_value(c, table);
         // x % 4 as the compiler's rotate sequence takes it (the sign bit enters twice).
         const auto sign = x >> 31;
@@ -919,7 +888,7 @@ private:
         roll = bound == 0 ? 0 : std::uint32_t(inline_draw(bound, 0x101a9890));
         compare(c, std::int32_t(std::uint32_t(roll)), 5);
         if (std::int32_t(std::uint32_t(roll)) >= 5) return quiet_notice();
-        step(c, table, 0x101a99e0);
+        draw_table::step(c, table, 0x101a99e0);
         if (table_remainder(20, 0x66666667u, 3) == 0) return quiet_notice();
         if (sentence(0x101a9a48, 0x101a9a64, 0x101a9afc, 0x101a9b14)) return;
         lower_morale(0x5dc);
@@ -934,7 +903,7 @@ private:
             compare_logical(c, league_record);
             if (!league_record) return dismissal();
         }
-        step(c, table, 0x101a9be4);
+        draw_table::step(c, table, 0x101a9be4);
         if (table_remainder(3, 0x55555556u, 0) != 0) return dismissal();
         if (sentence(0x101a9c48, 0x101a9c64, 0x101a9cfc, 0x101a9d14)) return;
         dismissal();
@@ -947,7 +916,7 @@ private:
     Cpu& c;
     Frame& frame;
     Fpu fpu;
-    Table table;
+    draw_table::Table table;
     std::uint32_t object, club, date, pool;
     Kept<19> threshold;
     Kept<20> roll;

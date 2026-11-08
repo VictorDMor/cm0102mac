@@ -5,3 +5,4 @@
 #include "manager_manager_routines_lists.inc"
 #include "manager_manager_routines_assessment.inc"
 #include "manager_manager_routines_review.inc"
+#include "manager_manager_routines_update.inc"

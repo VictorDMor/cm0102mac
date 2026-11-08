@@ -3,6 +3,7 @@
 // original's; meanings come from the callers and are named as far as the code
 // shows them.
 #include "guest_abi.hpp"
+#include "guest_values.hpp"
 #include <cstdint>
 
 namespace cm::aot::manager_manager {
@@ -20,6 +21,39 @@ constexpr std::uint32_t count = 0x0, head = 0x4, cursor = 0xc;  // count: int16
 }
 namespace list_node {
 constexpr std::uint32_t data = 0x0, next = 0x8;
+}
+// The module's draw table: TOC slots of the cell with its base (a value redrawn at each wrap),
+// its first entry, the cell with its last entry and the cell with the cursor (a pointer to the
+// next halfword). The draw 0x10195e10 and its inlined copies in the review and the post-match
+// update step it the same way.
+namespace draw_table {
+constexpr std::int32_t base = -0x7b90, first = -0x7b8c, last = -0x7b88, cursor = -0x7b84;
+constexpr std::uint32_t redraw = 0x1077b770;  // the new base, at each wrap
+struct Table {
+    std::uint32_t base_cell, first, last_cell, cursor_cell;
+};
+inline Table cells(const guest::Cpu& c) { return {c.toc(base), c.toc(first), c.toc(last), c.toc(cursor)}; }
+// The cursor (the one the caller holds) advances by two halfwords, left in r3; past the last
+// entry it returns to the first and the base is redrawn. `back` is the address after the `bl`.
+inline void step_from(guest::Cpu& c, const Table& t, std::uint32_t cursor, std::uint32_t back) {
+    const auto end = c.u32(t.last_cell);
+    cursor += 2;
+    c.set(3, cursor);
+    c.put32(t.cursor_cell, cursor);
+    guest::compare_logical(c, cursor, end);
+    if (cursor > end) {
+        c.put32(t.cursor_cell, t.first);
+        c.call(redraw, back);
+        c.put32(t.base_cell, c.r(3) & 0xffff);
+    }
+}
+inline void step(guest::Cpu& c, const Table& t, std::uint32_t back) { step_from(c, t, c.u32(t.cursor_cell), back); }
+}
+// `divw` as the generated code does it: the quotient of the sign-extended words, truncated (the
+// callers never divide by 0 or 0x80000000 by -1), and the remainder of a divw, mullw, subf.
+inline std::int32_t divide(std::int32_t a, std::int32_t b) { return std::int32_t(std::int64_t(a) / b); }
+inline std::int32_t remainder(std::int32_t a, std::int32_t b) {
+    return std::int32_t(std::uint32_t(a) - std::uint32_t(divide(a, b)) * std::uint32_t(b));
 }
 // An epilogue's `lmw rN,-k(r1)` leaves Ghidra's effective-address temporary
 // (register byte 2432, compared at imports) one word past r31's slot: the

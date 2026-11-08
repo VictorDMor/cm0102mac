@@ -1681,3 +1681,9 @@ the product wraps to 32 bits, so the next bound is within ±32768: the original'
 recursive call (0x101961ec) never run. The review inlines the same draw only with byte-sized bounds, so its inlined
 floating-point paths are dead too. The review reads club+0x90's record unchecked (0x101a8bc4), so callers' clubs always
 have a manager; its later null tests of +0x90 are compared with `--null-page` cases.
+
+The post-match update (0x1019e8f0, its per-club 0x1019e990 and 0x101c15f0; `manager_manager_update.cpp`) is the
+module's hook in the post-match broadcast 0x101cd880. Its own inlined draw has a signed byte plus one as its bound, so
+its floating-point branch (0x1019f404..0x1019f4d4, with the call of 0x10195e10) never runs. Its cases use real fixtures
+found in the season-day world; where they let the review run to its end they empty the people table, since the offer
+value (0x101abda0) then scans every person through nested job assessments, past the call trace's limit.
