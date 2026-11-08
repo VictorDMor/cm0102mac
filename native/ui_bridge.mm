@@ -22,7 +22,8 @@ bool match_turbo = false;
 bool native_speed_enabled = false;
 std::uint16_t selected_match_speed = cm::aot::turbo_match_speed;
 std::filesystem::path match_speed_preference;
-bool debugging_available = false, debugging_enabled = false;
+bool debugging_available = false;
+std::uint32_t debugging_features = 0;
 std::filesystem::path debugging_preference;
 bool repeated_key_event(NSEvent* event) {
     // isARepeat is undefined for mouse/accessibility menu events and AppKit
@@ -404,13 +405,19 @@ bool match_turbo_enabled() { return match_turbo; }
 void set_match_turbo_enabled(bool enabled) { match_turbo = enabled; }
 bool native_match_speed_enabled() { return native_speed_enabled; }
 bool native_debugging_available() { return debugging_available; }
-bool native_debugging_enabled() { return debugging_available && debugging_enabled; }
-void initialize_native_debugging(bool enabled) { debugging_available = true; debugging_enabled = enabled; }
-void select_native_debugging(bool enabled) {
-    if (!debugging_available || enabled == debugging_enabled) return;
+bool native_debugging_enabled() { return native_debugging_features() != 0; }
+std::uint32_t native_debugging_features() { return debugging_available ? debugging_features : 0; }
+bool native_debugging_feature(DebugFeature feature) {
+    return unsigned(feature) < debug_feature_count && (native_debugging_features() & (1u << unsigned(feature)));
+}
+void initialize_native_debugging(bool enabled) { debugging_available = true; debugging_features = enabled ? all_debug_features : 0; }
+void select_native_debugging(bool enabled) { select_native_debugging_features(enabled ? all_debug_features : 0); }
+void select_native_debugging_features(std::uint32_t features) {
+    features &= all_debug_features;
+    if (!debugging_available || features == debugging_features) return;
     if (!debugging_preference.empty()) {
         @autoreleasepool {
-            NSData* data = [NSPropertyListSerialization dataWithPropertyList:@{@"Version": @1, @"Debugging": @(enabled)}
+            NSData* data = [NSPropertyListSerialization dataWithPropertyList:@{@"Version": @2, @"Features": @(features)}
                 format:NSPropertyListXMLFormat_v1_0 options:0 error:nil];
             std::error_code error;
             std::filesystem::create_directories(debugging_preference.parent_path(), error);
@@ -418,7 +425,7 @@ void select_native_debugging(bool enabled) {
                 options:NSDataWritingAtomic error:nil]) throw std::runtime_error("Cannot save Debugging preference");
         }
     }
-    debugging_enabled = enabled;
+    debugging_features = features;
 }
 std::uint16_t native_match_speed() { return selected_match_speed; }
 void initialize_native_match_speed(std::uint16_t value) {
@@ -681,7 +688,10 @@ struct NativeUI::Impl {
                     options:NSPropertyListImmutable format:nullptr error:nil] : nil;
                 if ([value isKindOfClass:NSDictionary.class] && [value[@"Version"] isEqual:@1] &&
                     [value[@"Debugging"] isKindOfClass:NSNumber.class] && [value[@"Debugging"] isEqual:@YES])
-                    debugging_enabled = true;
+                    debugging_features = all_debug_features;
+                if ([value isKindOfClass:NSDictionary.class] && [value[@"Version"] isEqual:@2] &&
+                    [value[@"Features"] isKindOfClass:NSNumber.class])
+                    debugging_features = [value[@"Features"] unsignedIntValue] & all_debug_features;
             }
         }
         match_speed_preference = preference.empty() ? std::filesystem::path{} :

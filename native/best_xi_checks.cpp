@@ -275,7 +275,7 @@ void check_recovery(State& s, std::uint32_t club, std::uint32_t opponent,
     const auto lineup = squad(s, tactics, club);
     const auto original_tactics = s.memory.copy_out(formation, 0x18e0);
     const auto roster = s.memory.copy_out(club + 0x98, 200);
-    select_native_debugging(false);
+    select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::recover_players)));
     const auto before = s.memory.copy_out(condition(players.front()), 0x24);
     const auto executed = s.executed;
     require(!recover_debug_squad(s, club) && s.executed == executed &&
@@ -377,7 +377,7 @@ void check_free_squad(State& s, std::uint32_t club, std::uint32_t opponent) {
                         "Free-squad changed an unrelated contract byte");
         }
     };
-    select_native_debugging(false);
+    select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::play_for_free)));
     const auto executed = s.executed;
     require(!free_debug_squad(s, club) && s.executed == executed &&
             s.memory.copy_out(managed[0], 100) == before[0] &&
@@ -406,7 +406,7 @@ int main(int argc, char** argv) {
         require(debug_text(9, DebugText::add_goal) == "Adicionar Gol" && debug_text(0, DebugText::add_goal) == "Add Goal" &&
                 debug_text(9, DebugText::goal) == "Gol" && debug_text(0, DebugText::goal) == "Goal", "Goal labels");
         for (unsigned language = 0; language < 11; ++language)
-            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::debugging, DebugText::recover_players, DebugText::play_for_free})
+            for (auto key : {DebugText::best_xi, DebugText::add_goal, DebugText::goal, DebugText::on, DebugText::off, DebugText::recover_squad, DebugText::extend_contract, DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::debugging, DebugText::recover_players, DebugText::play_for_free, DebugText::underdogs, DebugText::underdogs_max, DebugText::options, DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries})
                 require(!debug_text(language, key).empty(), "Missing supported-language label");
         require(debug_text(255, DebugText::best_xi) == "Best XI", "Unknown language fallback");
         require(debug_text(9, DebugText::recover_squad) == "Recuperar" &&
@@ -449,18 +449,13 @@ int main(int argc, char** argv) {
         const auto formation = std::uint32_t(s.memory.read<4>(live.match + 0x7aac + 0x30));
         const auto tactics = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a6c)));
         require(club && formation && tactics, "Missing original selection context");
-        const auto before = squad(s, tactics, club);
         initialize_native_debugging(false);
-        const auto executed = s.executed;
-        require(!select_debug_best_xi(s, club, 0, formation, 0) && s.executed == executed && squad(s, tactics, club) == before,
-                "Disabled Best XI changed selection");
-        select_native_debugging(true);
         std::cout << "Selecting actual squad\n" << std::flush;
         const auto original_formation = s.memory.copy_out(formation, 0x18e0);
         const auto registers = s.registers;
         const auto unique = s.unique;
         const auto pc = s.pc;
-        require(select_debug_best_xi(s, club, 0, formation, 0), "Best XI failed on an actual club");
+        require(select_debug_best_xi(s, club, 0, formation, 0), "Best XI must work with every debugging feature disabled");
         require(s.registers == registers && s.unique == unique && s.pc == pc, "Best XI clobbered caller");
         require(s.memory.copy_out(formation, 0x18e0) == original_formation, "Best XI changed chosen tactics");
         const auto first = squad(s, tactics, club);

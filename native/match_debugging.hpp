@@ -11,6 +11,16 @@ bool native_debugging_available();
 bool native_debugging_enabled();
 void initialize_native_debugging(bool enabled = false);
 void select_native_debugging(bool enabled);
+enum class DebugFeature : unsigned { recover_players, play_for_free, extend_contract, cancel_sale,
+    remove_sale_clause, underdogs, underdogs_max, add_goal, repeat_goal, red_cards, injuries, count };
+constexpr unsigned debug_feature_count = unsigned(DebugFeature::count);
+constexpr std::uint32_t all_debug_features = (1u << debug_feature_count) - 1;
+std::uint32_t native_debugging_features();
+bool native_debugging_feature(DebugFeature);
+void select_native_debugging_features(std::uint32_t);
+void append_debugging_sidebar(State&);
+bool dispatch_debugging_sidebar(State&);
+bool build_debugging_options_screen(State&);
 
 void append_debugging_option(State&);
 void begin_debugging_options();

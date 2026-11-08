@@ -4,8 +4,21 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
-    if (text == DebugText::underdogs) return language == 9 ? "Zebras Vencem" : "Underdogs Win";
-    if (text == DebugText::underdogs_max) return language == 9 ? "Zebras Vencem MAX" : "Underdogs Win MAX";
+    static constexpr std::array<std::array<std::string_view, 6>, 11> extra{{
+        {"Underdogs Win", "Underdogs Win MAX", "Debugging Options", "Repeat Goal", "Red Cards (3/4)", "Injuries (5/6)"},
+        {"Underdogs Win", "Underdogs Win MAX", "Debugging Options", "Repeat Goal", "Red Cards (3/4)", "Injuries (5/6)"},
+        {"Les outsiders gagnent", "Outsiders gagnent MAX", "Options de d\351bogage", "R\351p\351ter le but", "Cartons rouges (3/4)", "Blessures (5/6)"},
+        {"Au\337enseiter gewinnen", "Au\337enseiter gewinnen MAX", "Debugging-Optionen", "Tor wiederholen", "Rote Karten (3/4)", "Verletzungen (5/6)"},
+        {"Vincono gli sfavoriti", "Sfavoriti vincono MAX", "Opzioni di debug", "Ripeti gol", "Espulsioni (3/4)", "Infortuni (5/6)"},
+        {"Ganan los modestos", "Ganan los modestos MAX", "Opciones de depuraci\363n", "Repetir gol", "Tarjetas rojas (3/4)", "Lesiones (5/6)"},
+        {"Underdogs vinder", "Underdogs vinder MAX", "Fejlfindingsindstillinger", "Gentag m\345l", "R\370de kort (3/4)", "Skader (5/6)"},
+        {"Underdogs winnen", "Underdogs winnen MAX", "Foutopsporingsopties", "Doelpunt herhalen", "Rode kaarten (3/4)", "Blessures (5/6)"},
+        {"Underdoger vinner", "Underdoger vinner MAX", "Feils\370kingsvalg", "Gjenta m\345l", "R\370de kort (3/4)", "Skader (5/6)"},
+        {"Zebras Vencem", "Zebras Vencem MAX", "Op\347\365es de Debugging", "Repetir Gol", "Expuls\365es (3/4)", "Les\365es (5/6)"},
+        {"Underdogs vinner", "Underdogs vinner MAX", "Fels\366kningsalternativ", "Upprepa m\345l", "R\366da kort (3/4)", "Skador (5/6)"},
+    }};
+    if (text >= DebugText::underdogs)
+        return extra[language < extra.size() ? language : 0][unsigned(text) - unsigned(DebugText::underdogs)];
     // English, US English, French, German, Italian, Spanish, Danish,
     // Dutch, Norwegian, Portuguese and Swedish, as in the original language menu.
     static constexpr std::array<std::array<std::string_view, 12>, 11> labels{{

@@ -149,9 +149,12 @@ int main(int argc, char** argv) {
         append_debug_contract_action(s);
         require(!dispatch_debug_contract_action(s) && s.registers == disabled_registers &&
                 s.unique == disabled_unique && s.pc == disabled_pc, "Disabled debugging exposed player actions");
+        select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::extend_contract)));
         require(!extend_debug_contract(s, staff) && s.memory.copy_out(contract, 100) == before, "Disabled debugging changed contract");
+        select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::remove_sale_clause)));
         require(!remove_debug_sale_clause(s, staff) && s.memory.copy_out(contract, 100) == before,
                 "Disabled debugging removed the sale clause");
+        select_native_debugging_features(all_debug_features & ~(1u << unsigned(DebugFeature::cancel_sale)));
         require(!cancel_scheduled_sale(s, staff) && s.memory.read<4>(transfer + 0xa58) == 3,
                 "Disabled debugging cancelled a scheduled sale");
         select_native_debugging(true);

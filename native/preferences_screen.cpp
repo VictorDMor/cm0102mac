@@ -105,6 +105,7 @@ void return_to_caller(Call& a){
 
 namespace cm::aot::preferences_screen {
 void build_screen(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
+    if (build_debugging_options_screen(s)) return;
     SemanticGuestCall a(s,build_screen_entry,d,o);
     detail::initialize_resources(a);
     detail::capture_session(a);

@@ -43,7 +43,7 @@ std::uint8_t encoded(const State& s, std::uint32_t player, Attribute attribute, 
 }
 
 bool arm_debug_underdogs(State& s, std::span<const std::uint32_t> fixtures, UnderdogMode mode) {
-    if (!native_debugging_enabled()) return false;
+    if (!native_debugging_feature(mode == UnderdogMode::normal ? DebugFeature::underdogs : DebugFeature::underdogs_max)) return false;
     auto& plans = underdog_debugging(s).fixtures;
     bool accepted = false;
     for (auto fixture : fixtures) {

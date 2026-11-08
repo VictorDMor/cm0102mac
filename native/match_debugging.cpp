@@ -24,7 +24,9 @@ constexpr unsigned free_squad_action = 30017;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
 static_assert(free_squad_action > shortcut_last);
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
+bool action_enabled(unsigned action);
 std::optional<bool> pending_option;
+bool pending_option_changed = false;
 struct RecentScorer { const State* state; std::uint32_t match, staff; unsigned player; };
 std::optional<RecentScorer> recent;
 
@@ -165,7 +167,7 @@ std::optional<unsigned> random_debug_player(const State& s, std::uint32_t match,
 }
 
 void award_debug_red_card(State& s, std::uint32_t match, unsigned player) {
-    if (!native_debugging_enabled() || !debug_player_weight(s, match, player, DebugMatchEvent::red_card))
+    if (!native_debugging_feature(DebugFeature::red_cards) || !debug_player_weight(s, match, player, DebugMatchEvent::red_card))
         throw std::invalid_argument("Debug red card requires an enabled, active match and an on-pitch player");
     const auto actor = actor_address(match, player), opponent = opposing_player(s, match, player);
     const auto home = s.memory.read<1>(match + 0xe03d), away = s.memory.read<1>(match + 0xe073);
@@ -186,7 +188,7 @@ unsigned random_debug_injury() {
 }
 
 void award_debug_injury(State& s, std::uint32_t match, unsigned player, unsigned injury) {
-    if (!native_debugging_enabled() || injury >= 77 ||
+    if (!native_debugging_feature(DebugFeature::injuries) || injury >= 77 ||
         !debug_player_weight(s, match, player, DebugMatchEvent::injury))
         throw std::invalid_argument("Debug injury requires an enabled, active match, an on-pitch player and an injury type");
     const auto actor = actor_address(match, player);
@@ -222,7 +224,7 @@ void award_debug_injury(State& s, std::uint32_t match, unsigned player, unsigned
 }
 
 void award_debug_goal(State& s, std::uint32_t match, unsigned player) {
-    if (!native_debugging_enabled() || !eligible_debug_goal(s, match, player))
+    if ((!native_debugging_feature(DebugFeature::add_goal) && !native_debugging_feature(DebugFeature::repeat_goal)) || !eligible_debug_goal(s, match, player))
         throw std::invalid_argument("Debug goal requires an enabled, active match and an on-pitch player");
     const auto actor = actor_address(match, player);
     const auto home = s.memory.read<1>(match + 0xe03d), away = s.memory.read<1>(match + 0xe073);
@@ -242,7 +244,7 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
     if (event.modifiers & 0x1900) return false; // Command, Option, Control.
     const auto character = event.message & 0xff;
     const bool toggle = character == 'z' || character == 'Z';
-    if (!toggle && (character < '1' || character > '6' || !native_debugging_enabled())) return false;
+    if (!toggle && (character < '1' || character > '6' || !action_enabled(shortcut_first + character - '1'))) return false;
     const auto current = original_command_context(s, 0xffff);
     if (!current.ready || current.handler != 0x1028dc80 || current != expected) return false;
     // Both number rows arrive with the same character and different hardware
@@ -259,8 +261,125 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
     return true;
 }
 
+namespace {
+constexpr unsigned debug_options_action = 30020, feature_action = 30100;
+std::optional<std::uint32_t> pending_features;
+constexpr std::array feature_labels{
+    DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
+    DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
+    DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
+    DebugText::red_cards, DebugText::injuries};
+static_assert(feature_labels.size() == debug_feature_count);
+bool debug_options_screen(State& s) {
+    GuestCall call(s);
+    return call.call(0x1073ef70, {root(s), 1}) == 4;
+}
+bool action_enabled(unsigned action) {
+    switch (action) {
+        case recover_squad_action: return native_debugging_feature(DebugFeature::recover_players);
+        case free_squad_action: return native_debugging_feature(DebugFeature::play_for_free);
+        case extend_contract_action: return native_debugging_feature(DebugFeature::extend_contract);
+        case cancel_sale_action: return native_debugging_feature(DebugFeature::cancel_sale);
+        case remove_sale_clause_action: return native_debugging_feature(DebugFeature::remove_sale_clause);
+        case underdogs_action: return native_debugging_feature(DebugFeature::underdogs);
+        case underdogs_max_action: return native_debugging_feature(DebugFeature::underdogs_max);
+        case repeat_action: return native_debugging_feature(DebugFeature::repeat_goal);
+        case goal_action: return native_debugging_feature(DebugFeature::add_goal);
+        default:
+            if (action >= shortcut_first && action <= shortcut_last)
+                return native_debugging_feature(action < shortcut_first + 2 ? DebugFeature::add_goal :
+                    action < shortcut_first + 4 ? DebugFeature::red_cards : DebugFeature::injuries);
+            return false;
+    }
+}
+}
+
+void append_debugging_sidebar(State& s) {
+    if (!native_debugging_available()) return;
+    // MAIN_MENU's Game Options popup is complete. Insert a normal sidebar
+    // row after its parent, using the same row counter, group, colors and font.
+    const auto ui = std::uint32_t(s.r<4>(29 * 4)), page = screen(s, ui);
+    const auto stack = std::uint32_t(s.r<4>(4));
+    const auto row = std::uint32_t(s.memory.read<4>(stack + 0x70)) + 1;
+    const auto color = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bd8)));
+    GuestCall call(s);
+    call.args({0x1021, 0, 0, 12, 1, color, call.text(debug_text(s, DebugText::options)),
+        0, debug_options_action, 0, std::uint32_t(s.r<4>(22 * 4))});
+    call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, row});
+    s.memory.write<4>(stack + 0x70, row);
+}
+
+bool dispatch_debugging_sidebar(State& s) {
+    if (!native_debugging_available()) return false;
+    const auto control = selected_control(s);
+    if (!control || s.memory.read<4>(control + 8) != debug_options_action) return false;
+    if (s.memory.read<4>(control + 12) & 2) {
+        GuestCall call(s);
+        // Original options owns the modal's lifetime and temporary settings.
+        // Mode 4 selects only our body; Cancel/OK still close it normally.
+        call.call(0x1033ce70, {4});
+        pending_features = native_debugging_features();
+    }
+    s.wr<4>(12, std::uint32_t(-11)); s.pc = s.r<4>(4128);
+    return true;
+}
+
+bool build_debugging_options_screen(State& s) {
+    if (!native_debugging_available() || !debug_options_screen(s)) return false;
+    if (!pending_features) pending_features = native_debugging_features();
+    {
+        GuestCall call(s);
+        const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
+        const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
+        call.call(0x10712e60, {0});
+        // Same full-screen backing, inset panel and heading as Game Options.
+        call.args({0, 2, 0, 0xffffffffu});
+        call.call(0x107198c0, {page, 0, 0, 799, 599, 1, 0, 1});
+        const auto panel_color = call.call(0x1076bb20, {0, 0x30, 0, 0});
+        call.args({0, 0x30, panel_color, 0xffffffffu});
+        call.call(0x107198c0, {page, 145, 50, 744, 549, 1, 0, 1});
+        const auto label = [&](std::uint32_t left, std::uint32_t top, std::uint32_t right,
+                               std::uint32_t bottom, std::string_view text, bool heading) {
+            call.args({heading ? 4u : 1u, color(heading ? 0x7bc8 : 0x7b10), call.text(text)});
+            call.call(0x10744390, {ui, left, top, right, bottom, heading ? 0x30u : 1u,
+                heading ? color(0x7bd4) : 0u, heading ? 12u : 1u});
+        };
+        label(155, 60, 734, 105, debug_text(s, DebugText::options), true);
+        const auto normal = call.call(0x1076bb20, {0, 0xc0, 0, 0});
+        for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
+            const auto top = 145 + feature * 29;
+            label(170, top, 540, top + 24, debug_text(s, feature_labels[feature]), false);
+            for (unsigned value = 0; value < 2; ++value) {
+                const bool active = bool(*pending_features & (1u << feature)) == bool(value);
+                const auto ink = active ? color(0x7bd0) : normal;
+                call.args({2, ink, call.text(debug_text(s, value ? DebugText::on : DebugText::off)),
+                    feature_action + feature, value});
+                call.call(0x10744430, {ui, 550 + value * 85, top, 630 + value * 85, top + 24,
+                    active ? 0x221u : 1u, active ? ink : 0u, 12});
+            }
+        }
+        // Reuse the game's own localized Cancel/OK/Reset strings.
+        const auto pool = std::uint32_t(s.memory.read<4>(toc - 0x4e18));
+        const auto buffer = std::uint32_t(s.memory.read<4>(toc - 0x7bb8));
+        const auto button = [&](unsigned left, unsigned right, unsigned action, unsigned offset, unsigned top) {
+            call.call(0x10727890, {buffer, pool + offset});
+            call.args({3, color(0x7bc8), buffer, action, 0});
+            call.call(0x10744430, {ui, left, top, right, top + 30, 0x30, color(0x7bc4), 12});
+        };
+        button(155, 440, 40, 0x544, 509);
+        button(445, 734, 41, 0x785, 509);
+        button(609, 734, 39, 0x8a8, 112);
+    }
+    s.pc = s.r<4>(4128);
+    return true;
+}
+
 void reset_match_debugging() { recent.reset(); }
-void begin_debugging_options() { pending_option = native_debugging_enabled(); }
+void begin_debugging_options() {
+    pending_option = native_debugging_enabled();
+    pending_option_changed = false;
+    pending_features.reset();
+}
 
 void append_debugging_option(State& s) {
     if (!native_debugging_available()) return;
@@ -273,7 +392,7 @@ void append_debugging_option(State& s) {
     const auto selected = s.memory.read<2>(s.r<4>(27 * 4));
     const auto title = s.memory.read<2>(s.memory.read<4>(s.r<4>(2 * 4) - 0x7b10));
     GuestCall call(s);
-    call.args({std::uint32_t(title), call.text(" Debugging")});
+    call.args({std::uint32_t(title), call.text(" " + std::string(debug_text(s, DebugText::debugging)))});
     call.call(0x107445a0, {ui, grid, 0, row, 1, 0, 1, 3});
     for (unsigned value = 0; value != 2; ++value) {
         const bool active = *pending_option == bool(value);
@@ -288,14 +407,43 @@ bool dispatch_debugging_option(State& s) {
     const auto control = selected_control(s);
     auto action = control ? s.memory.read<4>(control + 8) : 0;
     if (!action) action = s.memory.read<2>(root(s) + 0x25819e);
-    if (action == option_action && control && (s.memory.read<4>(control + 12) & 2)) {
-        pending_option = s.memory.read<4>(control + 0x48) != 0;
+    if (debug_options_screen(s)) {
+        if (!pending_features) pending_features = native_debugging_features();
+        if (control && action >= feature_action && action < feature_action + debug_feature_count &&
+            (s.memory.read<4>(control + 12) & 2)) {
+            const auto bit = 1u << (action - feature_action);
+            if (s.memory.read<4>(control + 0x48)) *pending_features |= bit;
+            else *pending_features &= ~bit;
+        } else if (action == 39) pending_features = 0;
+        else if (action == 40 || action == 41) {
+            if (action == 41) select_native_debugging_features(*pending_features);
+            pending_features.reset();
+            pending_option.reset();
+            {
+                GuestCall call(s);
+                const auto preferences = call.call(0x1073ef70, {root(s), 0});
+                call.call(0x1013f4d0, {preferences, 1});
+            }
+            // Match the original close result, without rewriting unrelated
+            // game preferences: this modal saves only host debug settings.
+            s.wr<4>(12, std::uint32_t(-9)); s.pc = s.r<4>(4128);
+            return true;
+        } else return false;
         s.wr<4>(12, std::uint32_t(-11)); s.pc = s.r<4>(4128);
         return true;
     }
-    if (action == 41) { select_native_debugging(pending_option.value_or(native_debugging_enabled())); pending_option.reset(); }
+    if (action == option_action && control && (s.memory.read<4>(control + 12) & 2)) {
+        pending_option = s.memory.read<4>(control + 0x48) != 0;
+        pending_option_changed = true;
+        s.wr<4>(12, std::uint32_t(-11)); s.pc = s.r<4>(4128);
+        return true;
+    }
+    if (action == 41) {
+        if (pending_option_changed && pending_option) select_native_debugging(*pending_option);
+        pending_option.reset();
+    }
     if (action == 40) pending_option.reset();
-    if (action == 39) pending_option = false;
+    if (action == 39) { pending_option = false; pending_option_changed = true; }
     return false;
 }
 
@@ -321,7 +469,7 @@ std::vector<std::uint32_t> displayed_fixtures(State& s, GuestCall& call) {
 }
 
 void append_fixture_debugging_controls(State& s) {
-    if (!native_debugging_enabled()) return;
+    if (!action_enabled(underdogs_action) && !action_enabled(underdogs_max_action)) return;
     const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
     const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
     GuestCall call(s);
@@ -333,11 +481,12 @@ void append_fixture_debugging_controls(State& s) {
     // immediately to its left, preserving the original Competition button.
     call.args({0, 1, 0, 0xffffffffu});
     const auto grid = call.call(0x107198c0, {page, 528, 145, 653, 165, 1, 0, 1});
-    call.args({color(0x7bc8), call.text("Debugging"), 0, 0});
+    call.args({color(0x7bc8), call.text(debug_text(s, DebugText::debugging)), 0, 0});
     const auto cell = call.call(0x107444e0, {ui, grid, 0, 0, 0x30, color(0x7bc4), 12, 1});
     call.args({0, 0x130, color(0x7bcc), cell});
     const auto menu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
     for (const auto action : {underdogs_action, underdogs_max_action}) {
+        if (!action_enabled(action)) continue;
         const auto mode = action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum;
         const auto& plans = underdog_debugging(static_cast<const State&>(s)).fixtures;
         const bool selected = std::ranges::any_of(plans, [&](const auto& p) {
@@ -357,7 +506,7 @@ bool dispatch_fixture_debugging_control(State& s) {
     const auto action = s.memory.read<4>(control + 8);
     if (action != underdogs_action && action != underdogs_max_action) return false;
     bool accepted = false;
-    if (native_debugging_enabled() && (s.memory.read<4>(control + 12) & 2)) {
+    if (action_enabled(action) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
         const auto fixtures = displayed_fixtures(s, call);
         accepted = arm_debug_underdogs(s, fixtures,
@@ -368,7 +517,7 @@ bool dispatch_fixture_debugging_control(State& s) {
 }
 
 void append_match_debugging_controls(State& s) {
-    if (!native_debugging_enabled()) return;
+    if (!action_enabled(goal_action) && !action_enabled(repeat_action)) return;
     // 1028ce80: the original sidebar grid is still r22, before the speed menu.
     const auto fixture = std::uint32_t(s.r<4>(31 * 4));
     const auto match = std::uint32_t(s.memory.read<4>(fixture + 0x58));
@@ -379,18 +528,21 @@ void append_match_debugging_controls(State& s) {
     bool active = false;
     for (unsigned player = 0; player < 40; ++player) active |= eligible_debug_goal(s, match, player);
     GuestCall call(s);
-    call.args({0x1021, 0, 0, 12, 1, color, call.text(debug_text(s, DebugText::add_goal)), 0, 0, 0, sidebar});
-    const auto menu = call.call(0x10719740, {page, active ? 0x82u : 0x80u, 0, 0, 0, 0, 0, 6});
-    call.args({0, 0x30, background, menu});
-    const auto group = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
-    for (unsigned player = 0; player < 40; ++player) {
-        if (!eligible_debug_goal(s, match, player)) continue;
-        const auto staff = std::uint32_t(s.memory.read<4>(actor_address(match, player) + 0x6c));
-        const auto club = std::uint32_t(s.memory.read<4>(fixture + (player < 20 ? 0x20 : 0x24)));
-        const auto label = original_text(s, club + 0x221) + " - " + player_name(s, staff, false);
-        call.args({0x10, background, 0, 1, 1, color, call.text(label), 0, goal_action, player, group});
-        call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, 0});
+    if (action_enabled(goal_action)) {
+        call.args({0x1021, 0, 0, 12, 1, color, call.text(debug_text(s, DebugText::add_goal)), 0, 0, 0, sidebar});
+        const auto menu = call.call(0x10719740, {page, active ? 0x82u : 0x80u, 0, 0, 0, 0, 0, 6});
+        call.args({0, 0x30, background, menu});
+        const auto group = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
+        for (unsigned player = 0; player < 40; ++player) {
+            if (!eligible_debug_goal(s, match, player)) continue;
+            const auto staff = std::uint32_t(s.memory.read<4>(actor_address(match, player) + 0x6c));
+            const auto club = std::uint32_t(s.memory.read<4>(fixture + (player < 20 ? 0x20 : 0x24)));
+            const auto label = original_text(s, club + 0x221) + " - " + player_name(s, staff, false);
+            call.args({0x10, background, 0, 1, 1, color, call.text(label), 0, goal_action, player, group});
+            call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, 0});
+        }
     }
+    if (!action_enabled(repeat_action)) return;
     const bool repeat = recent_valid(s, match);
     const auto goal = std::string(debug_text(s, DebugText::goal));
     const auto label = recent && recent->state == &s && recent->match == match ?
@@ -406,7 +558,7 @@ bool dispatch_match_debugging_control(State& s) {
     const auto action = shortcut ? mailbox : control ? s.memory.read<4>(control + 8) : 0;
     if (!shortcut && action != goal_action && action != repeat_action) return false;
     if (shortcut) s.memory.write<2>(root(s) + 0x25819e, 0);
-    if (!native_debugging_enabled()) {
+    if (!action_enabled(action)) {
         s.wr<4>(12, 0); s.pc = s.r<4>(4128);
         return true;
     }
@@ -450,7 +602,7 @@ bool dispatch_match_debugging_control(State& s) {
 
 bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
                          std::uint32_t formation, std::uint32_t fixture) {
-    if (!native_debugging_enabled() || !club || !formation || managed > 1) return false;
+    if (!club || !formation || managed > 1) return false;
     GuestCall call(s);
     const auto bench = fixture ? std::min<unsigned>(s.memory.read<1>(fixture + 0x4e) >> 4, 9) : 9;
     std::vector<std::uint32_t> available;
@@ -535,7 +687,7 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
 }
 
 bool recover_debug_squad(State& s, std::uint32_t club) {
-    if (!native_debugging_enabled() || !club) return false;
+    if (!native_debugging_feature(DebugFeature::recover_players) || !club) return false;
     const auto medical = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
     const auto discipline = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7aa4)));
     if (!medical || !discipline) return false;
@@ -587,9 +739,9 @@ bool recover_debug_squad(State& s, std::uint32_t club) {
 }
 
 void append_best_xi_control(State& s) {
-    if (!native_debugging_enabled()) return;
     // Squad builder 1001f6a0, after its column heading advanced r14 by 25.
-    // Six equal 110-pixel controls with two-pixel gaps on the original row.
+    // Preserve the original toolbar spacing, sharing the center with Debugging
+    // only when at least one squad debugging action is enabled.
     const auto club = std::uint32_t(s.r<4>(25 * 4));
     const auto ui = std::uint32_t(s.r<4>(31 * 4));
     const auto top = std::uint32_t(s.r<4>(14 * 4)) - 25;
@@ -610,10 +762,12 @@ void append_best_xi_control(State& s) {
     const auto ink = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc4)));
     const auto paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bc8)));
     call.args({0, 1, 0, 0xffffffffu});
-    const auto grid = call.call(0x107198c0, {page, 334, top, 444, top + 20, 1, 0, 1});
+    const bool debug_squad = action_enabled(recover_squad_action) || action_enabled(free_squad_action);
+    const auto grid = call.call(0x107198c0, {page, 334, top, debug_squad ? 444u : 556u, top + 20, 1, 0, 1});
     const auto best_label = debug_text(s, DebugText::best_xi);
     call.args({paper, call.text(best_label), best_xi_action, 0});
     call.call(0x107444e0, {ui, grid, 0, 0, 0x30, ink, 12, 1});
+    if (!debug_squad) return;
     // The second cell owns the original drop-down popup instead of acting
     // directly, matching the View/Sort toolbar control.
     call.args({0, 1, 0, 0xffffffffu});
@@ -631,18 +785,17 @@ void append_best_xi_control(State& s) {
                    call.text(debug_text(s, text)), 0, action, 0, menu});
         call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, 0});
     };
-    item(DebugText::recover_players, recover_squad_action);
-    item(DebugText::play_for_free, free_squad_action);
+    if (action_enabled(recover_squad_action)) item(DebugText::recover_players, recover_squad_action);
+    if (action_enabled(free_squad_action)) item(DebugText::play_for_free, free_squad_action);
 }
 
 bool dispatch_best_xi_control(State& s) {
-    if (!native_debugging_enabled()) return false;
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
     if (action != best_xi_action && action != recover_squad_action && action != free_squad_action) return false;
     bool accepted = false;
-    if (native_debugging_enabled() && (s.memory.read<4>(control + 12) & 2)) {
+    if ((action == best_xi_action || action_enabled(action)) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
         const auto ui = root(s), club = call.call(0x1073ef70, {ui, 0});
         const auto managed = call.call(0x1073ef70, {ui, 1});
@@ -702,7 +855,7 @@ std::uint32_t debug_primary_contract(State& s, GuestCall& call, std::uint32_t st
 }
 
 bool free_debug_squad(State& s, std::uint32_t club) {
-    if (!native_debugging_enabled() || !club) return false;
+    if (!native_debugging_feature(DebugFeature::play_for_free) || !club) return false;
     const auto staff_count = signed_value<4>(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7be4)));
     GuestCall call(s);
     std::vector<std::uint32_t> players;
@@ -849,11 +1002,11 @@ bool current_managed_employer(State& s, GuestCall& call, std::uint32_t staff) {
 }
 
 bool cancel_scheduled_sale(State& s, std::uint32_t staff) {
-    return native_debugging_enabled() && scheduled_sale(s, staff, true);
+    return native_debugging_feature(DebugFeature::cancel_sale) && scheduled_sale(s, staff, true);
 }
 
 bool remove_debug_sale_clause(State& s, std::uint32_t staff) {
-    if (!native_debugging_enabled()) return false;
+    if (!native_debugging_feature(DebugFeature::remove_sale_clause)) return false;
     GuestCall call(s);
     const auto contract = debug_primary_contract(s, call, staff);
     if (!contract || !s.memory.read<1>(contract + 0x1d)) return false;
@@ -862,7 +1015,7 @@ bool remove_debug_sale_clause(State& s, std::uint32_t staff) {
 }
 
 bool extend_debug_contract(State& s, std::uint32_t staff) {
-    if (!native_debugging_enabled()) return false;
+    if (!native_debugging_feature(DebugFeature::extend_contract)) return false;
     GuestCall call(s);
     const auto contract = debug_primary_contract(s, call, staff);
     if (!contract) return false;
@@ -993,7 +1146,8 @@ bool extend_debug_contract(State& s, std::uint32_t staff) {
 }
 
 void append_debug_contract_action(State& s) {
-    if (!native_debugging_enabled()) return;
+    if (!action_enabled(extend_contract_action) && !action_enabled(remove_sale_clause_action) &&
+        !action_enabled(cancel_sale_action)) return;
     const auto staff = std::uint32_t(s.r<4>(23 * 4));
     const auto original_stack = std::uint32_t(s.r<4>(4));
     GuestCall call(s);
@@ -1001,6 +1155,10 @@ void append_debug_contract_action(State& s) {
     // one, leave out the submenu rather than show it empty.
     const auto contract = debug_primary_contract(s, call, staff);
     if (!contract) return;
+    const bool clause = action_enabled(remove_sale_clause_action) && s.memory.read<1>(contract + 0x1d);
+    const bool sale = action_enabled(cancel_sale_action) && current_managed_employer(s, call, staff) &&
+        scheduled_sale(s, staff, false);
+    if (!action_enabled(extend_contract_action) && !clause && !sale) return;
     // Build the same parent control and child menu used by the original
     // player comparison menu, then add the debugging actions to that child.
     const auto ui = root(s), page = screen(s, ui);
@@ -1008,7 +1166,7 @@ void append_debug_contract_action(State& s) {
     const auto width = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bcc)));
     const auto heading = call.call(0x103abf20, {original_stack + 0x6c,
         std::uint32_t(s.memory.read<2>(original_stack + 0x70)),
-        std::uint32_t(s.memory.read<2>(original_stack + 0x6e)), call.text("Debugging"), 0, 0});
+        std::uint32_t(s.memory.read<2>(original_stack + 0x6e)), call.text(debug_text(s, DebugText::debugging)), 0, 0});
     call.args({0, 0x30, width, heading});
     const auto submenu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
     s.memory.write<2>(call.stack + 0xd0, submenu);
@@ -1018,10 +1176,9 @@ void append_debug_contract_action(State& s) {
             std::uint32_t(s.memory.read<2>(original_stack + 0x6e)),
             call.text(debug_text(s, text)), action, 0});
     };
-    append(DebugText::extend_contract, extend_contract_action);
-    if (s.memory.read<1>(contract + 0x1d)) append(DebugText::remove_sale_clause, remove_sale_clause_action);
-    if (current_managed_employer(s, call, staff) && scheduled_sale(s, staff, false))
-        append(DebugText::cancel_sale, cancel_sale_action);
+    if (action_enabled(extend_contract_action)) append(DebugText::extend_contract, extend_contract_action);
+    if (clause) append(DebugText::remove_sale_clause, remove_sale_clause_action);
+    if (sale) append(DebugText::cancel_sale, cancel_sale_action);
 }
 
 bool dispatch_debug_contract_action(State& s) {
