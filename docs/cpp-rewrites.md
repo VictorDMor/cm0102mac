@@ -1672,3 +1672,12 @@ later readers of its int-to-double and `fctiwz` slots. Quirks it reproduces: one
 that rule rounds the score to single before its `fmuls`; a path with a null person+0xc reads the caller's r26, never
 written there; the three later null tests of the staff record (+0x1c) are dead, since the entry already rejects it
 with -10000 and nothing in between writes it.
+
+The manager review 0x101a8ad0, its departure check 0x101c1690 and the module's draw 0x10195e10
+(`manager_manager_review.cpp`) also keep their full frames: this module's checker compares every stack byte a call
+writes. The draw walks a halfword table (cursor `*TOC[-0x7b84]`, wrapping at `*TOC[-0x7b88]` with a new base from
+0x1077b770). A bound beyond ±0xffff splits through floating point into a share and a next bound `bound*10/0xffff`, but
+the product wraps to 32 bits, so the next bound is within ±32768: the original's third and fourth stages and its
+recursive call (0x101961ec) never run. The review inlines the same draw only with byte-sized bounds, so its inlined
+floating-point paths are dead too. The review reads club+0x90's record unchecked (0x101a8bc4), so callers' clubs always
+have a manager; its later null tests of +0x90 are compared with `--null-page` cases.
