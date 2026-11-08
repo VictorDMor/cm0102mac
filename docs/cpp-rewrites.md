@@ -1625,3 +1625,29 @@ of stack it never wrote into index.dat (a stale-stack reader: keep the stack ima
 virtual-staff "clamp" at 0x1009fd98 sets the count to count + 0x52d + kept rather than clamping; two resolve clears hit
 the neighbouring field; the attribute-settling loops hang when fewer than twelve slots qualify. Checker runs need
 CM_UTILS/DB_FILES/SCREEN_MANAGER/SHORTLIST_MANAGER_ORIGINAL (set by the ctest).
+
+## MATCH_MAN.CPP: lineups, player ratings, team selection
+
+`MATCH_MAN.CPP` is 23 routines / 21,056 instructions in 0x102065e0-0x1021b010 (`tools/match_man_audit.py`; the test
+re-derives every entry, body and switch table from the export). Ten routines had no source-name evidence; the bounds come
+from the unit's TOC slots (-0x5294..-0x5274, between MATCH_EVENTS.CPP's pool and MATCH_OFFICIAL.CPP's slots), the
+function-pointer vectors (each unit's group in unit order puts the lone `blr` 0x102065e0 in this unit) and MATCH_OFFICIAL.CPP
+opening with its referee constructors 0x1021b010/0x1021b020. One switch (bctr 0x10210944) keeps its bound 13 instructions
+back, out of `check_jump_tables.py`'s reach, so the audit pins it; the other three tables list their cases in reverse address
+order (case 0 is the last label). 0x1020e8f0 was actor_construction's builder; the MATCH_MAN.CPP hook replaces it and the
+audit requires it to be the only owner hook at that entry.
+
+The module straddles the day and the match, so its rewrites keep the full stack image. The hottest are the judged ability
+0x10219e40 (about 2 million calls on same-save-continue) and the two player appraisals 0x10216830 / 0x10211e70, which share
+their date window helpers (`match_man_rating_b_parts.hpp`). `cm-match-man-checks` runs cases on the season-day career
+(`--world`) and the 2262 match (`--match`, with live advances), mutations, the call trace with argument masks, and the
+production proof; it fills r13-r31 and f14-f31 with distinct values before each case, because snapshot registers of 0 hid
+a rewrite that cleared f28-f31 on entry. A trace that reaches its 2,000,000-call limit is still paired call by call, but its
+counts are not compared. Answers only reach routines the original dispatches: generated pages call other modules' C++
+owners in place, so answering one gives a false difference. A routine under check is never answered either, so the cases that answer
+the classifier, the arranger or the pick run under `--only 0x10206ea0,0x102104d0` (`match_man_equivalence_answered`).
+The game's random draws (halfword + seed word) are divided signed (mulhw), so remainders are taken on the int32 value.
+
+Quirks kept: 0x10209d10's second and third levels and its self-call are unreachable (the second bound is 10n/65535 of a
+32-bit n); 0x102102d0 rolls the staff pointer itself as a number; 0x10210c50 doesn't reset the best score between places and
+rates the occupant with the candidate's side record; 0x1020d7d0 copies the lineup record piecewise around padding bytes.
