@@ -1,5 +1,6 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugging.hpp"
+#include "debug_contract_date.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -57,6 +58,27 @@ int main(int argc, char** argv) {
         if (!invoke(s, 0x10082f20, {manager, staff})) invoke(s, 0x10078e70, {manager, staff, value});
         const auto contract = invoke(s, 0x10082f20, {manager, staff});
         require(contract && s.memory.read<4>(contract + 4) == s.memory.read<4>(club), "Original primary contract setup");
+        initialize_native_debugging(true);
+        const auto visible_expiry = cm::calendar::Date{std::int16_t(s.memory.read<2>(staff + 0x54)),
+                                                       std::uint16_t(s.memory.read<2>(staff + 0x56))};
+        const auto expected_free_expiry = extend_contract_date(visible_expiry);
+        require(expected_free_expiry.has_value(), "Actual player's expiry must be valid");
+        const auto original_wage = s.memory.read<4>(contract + 12);
+        const auto raw_dates = s.memory.copy_out(contract + 0x28, 16);
+        require(free_debug_squad(s, club), "Free wages setup failed");
+        require(s.memory.read<4>(contract + 12) == 0 && s.memory.copy_out(contract + 0x28, 16) == raw_dates,
+                "Free wages must be zero and leave dates unchanged");
+        const auto free_terms = s.memory.copy_out(contract, 100);
+        const auto free_rng = random_state(s);
+        require(extend_debug_contract(s, staff), "Zero-wage actual contract extension failed");
+        require(s.memory.read<2>(contract + 0x30) == unsigned(expected_free_expiry->day) &&
+                s.memory.read<2>(contract + 0x32) == expected_free_expiry->year &&
+                s.memory.copy_out(contract + 0x30, 5) == s.memory.copy_out(staff + 0x54, 5),
+                "Free contract did not extend the displayed date by one year");
+        for (unsigned n = 0; n < 100; ++n) if (n < 0x30 || n > 0x34)
+            require(s.memory.read<1>(contract + n) == free_terms[n], "Free renewal changed another contract term");
+        require(random_state(s) == free_rng, "Free renewal changed RNG");
+        s.memory.write<4>(contract + 12, original_wage);
         for (auto date : {contract + 0x30, staff + 0x54}) {
             s.memory.write<2>(date, 150); s.memory.write<2>(date + 2, 2004); s.memory.write<1>(date + 4, 1);
         }
@@ -169,9 +191,11 @@ int main(int argc, char** argv) {
         require(!remove_debug_sale_clause(s, staff) && !remove_debug_sale_clause(s, 0), "Missing clause or player accepted");
         require(!extend_debug_contract(s, 0), "Missing player accepted");
         s.memory.write<2>(contract + 0x32, 0);
+        s.memory.write<2>(staff + 0x56, 0);
         require(!extend_debug_contract(s, staff) && s.memory.read<4>(s.memory.read<4>(transfer) + direct.index * 4) == direct.address,
                 "Invalid date changed a proposal");
         s.memory.write<2>(contract + 0x32, 2004);
+        s.memory.write<2>(staff + 0x56, 2004);
         const auto registers = s.registers; const auto unique = s.unique; const auto pc = s.pc;
         require(extend_debug_contract(s, staff), "Contract extension failed");
         require(s.registers == registers && s.unique == unique && s.pc == pc, "Contract extension clobbered caller");
@@ -261,6 +285,12 @@ int main(int argc, char** argv) {
         require(!slot(exchange) && s.memory.read<4>(transfer + 0xa58) == 1 &&
                 s.memory.copy_out(contract, 100) == main_before && s.memory.copy_out(other_contract, 100) == other_before,
                 "Terminal sale collection changed the scheduled loan or current contracts");
+        s.memory.write<4>(contract + 12, 0);
+        s.memory.write<2>(staff + 0x56, 1999);
+        s.memory.write<1>(contract + 0x34, 0xff);
+        require(extend_debug_contract(s, staff) && s.memory.read<2>(contract + 0x32) == 2007 &&
+                s.memory.copy_out(contract + 0x30, 5) == s.memory.copy_out(staff + 0x54, 5) &&
+                s.memory.read<4>(contract + 12) == 0, "Zero-wage renewal did not repair stale cached expiry");
         std::cout << "Contract extension and sale cancellation: scheduled paid sale, exchange, deferred contracts, loan, unrelated offers and current terms passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

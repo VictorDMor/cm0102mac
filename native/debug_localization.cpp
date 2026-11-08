@@ -4,6 +4,13 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::options_sidebar) {
+        static constexpr std::array<std::string_view, 11> sidebar{
+            "Debugging\nOptions", "Debugging\nOptions", "Options de\nd\351bogage", "Debugging-\nOptionen",
+            "Opzioni\ndi debug", "Opciones de\ndepuraci\363n", "Fejlfindings-\nindstillinger",
+            "Foutopsporings-\nopties", "Feils\370kings-\nvalg", "Op\347\365es\nde Debugging", "Fels\366knings-\nalternativ"};
+        return sidebar[language < sidebar.size() ? language : 0];
+    }
     static constexpr std::array<std::array<std::string_view, 6>, 11> extra{{
         {"Underdogs Win", "Underdogs Win MAX", "Debugging Options", "Repeat Goal", "Red Cards (3/4)", "Injuries (5/6)"},
         {"Underdogs Win", "Underdogs Win MAX", "Debugging Options", "Repeat Goal", "Red Cards (3/4)", "Injuries (5/6)"},

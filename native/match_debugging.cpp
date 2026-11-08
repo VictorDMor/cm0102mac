@@ -303,7 +303,7 @@ void append_debugging_sidebar(State& s) {
     const auto row = std::uint32_t(s.memory.read<4>(stack + 0x70)) + 1;
     const auto color = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bd8)));
     GuestCall call(s);
-    call.args({0x1021, 0, 0, 12, 1, color, call.text(debug_text(s, DebugText::options)),
+    call.args({0x1021, 0, 0, 12, 1, color, call.text(debug_text(s, DebugText::options_sidebar)),
         0, debug_options_action, 0, std::uint32_t(s.r<4>(22 * 4))});
     call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, row});
     s.memory.write<4>(stack + 0x70, row);
@@ -335,40 +335,52 @@ bool build_debugging_options_screen(State& s) {
         // Same full-screen backing, inset panel and heading as Game Options.
         call.args({0, 2, 0, 0xffffffffu});
         call.call(0x107198c0, {page, 0, 0, 799, 599, 1, 0, 1});
-        const auto panel_color = call.call(0x1076bb20, {0, 0x30, 0, 0});
+        const auto panel_color = call.call(0x1076bb20, {0, 0x38, 0, 0});
         call.args({0, 0x30, panel_color, 0xffffffffu});
         call.call(0x107198c0, {page, 145, 50, 744, 549, 1, 0, 1});
-        const auto label = [&](std::uint32_t left, std::uint32_t top, std::uint32_t right,
-                               std::uint32_t bottom, std::string_view text, bool heading) {
-            call.args({heading ? 4u : 1u, color(heading ? 0x7bc8 : 0x7b10), call.text(text)});
-            call.call(0x10744390, {ui, left, top, right, bottom, heading ? 0x30u : 1u,
-                heading ? color(0x7bd4) : 0u, heading ? 12u : 1u});
-        };
-        label(155, 60, 734, 105, debug_text(s, DebugText::options), true);
+        call.args({4, color(0x7bc8), call.text(debug_text(s, DebugText::options))});
+        call.call(0x10744390, {ui, 155, 60, 734, 105, 0x30, color(0x7bd4), 12});
+
+        // Original 75/25 footer: wide Cancel, compact OK, same relief and type.
+        s.memory.write<2>(call.stack + 0xc0, s.memory.read<2>(toc - 0x3894));
+        call.args({0, 1, 0, 0xffffffffu});
+        const auto footer = call.call(0x107198c0, {page, 155, 509, 734, 539, 2, call.stack + 0xc0, 1});
+        const auto pool = std::uint32_t(s.memory.read<4>(toc - 0x4e18));
+        const auto buffer = std::uint32_t(s.memory.read<4>(toc - 0x7bb8));
+        for (unsigned col = 0; col < 2; ++col) {
+            call.call(0x10727890, {buffer, pool + (col ? 0x785u : 0x544u)});
+            call.args({color(0x7bc8), buffer, col ? 41u : 40u, 0});
+            call.call(0x107444e0, {ui, footer, col, 0, 0x30, color(0x7bc4), 12, 3});
+        }
+        call.call(0x10727890, {buffer, pool + 0x8a8});
+        call.args({1, color(0x7bc8), buffer, 39, 0});
+        call.call(0x10744430, {ui, 609, 115, 734, 135, 0x30, color(0x7bc4), 12});
+
+        // Draw the same striped pitch underneath the settings grid. The
+        // original pitch routine writes its four inset bounds to scratch.
+        s.wr<8>(0x4010, float_bits<8>(float_value<4>(s.memory.read<4>(s.memory.read<4>(toc - 0x4ec4)))));
+        call.args({1, footer});
+        call.call(0x103cbb30, {165, 145, 724, 489, call.stack + 0xd0,
+            call.stack + 0xd4, call.stack + 0xd8, call.stack + 0xdc});
+        s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{64, 18, 18});
+        call.args({0, 1, 0, 0xffffffffu});
+        const auto grid = call.call(0x107198c0, {page, 170, 150, 719, 484, 3,
+            call.stack + 0xc0, debug_feature_count});
         const auto normal = call.call(0x1076bb20, {0, 0xc0, 0, 0});
         for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
-            const auto top = 145 + feature * 29;
-            label(170, top, 540, top + 24, debug_text(s, feature_labels[feature]), false);
+            call.args({color(0x7b10), call.text(debug_text(s, feature_labels[feature]))});
+            call.call(0x107445a0, {ui, grid, 0, feature, 1, 0, 1, 3});
             for (unsigned value = 0; value < 2; ++value) {
                 const bool active = bool(*pending_features & (1u << feature)) == bool(value);
                 const auto ink = active ? color(0x7bd0) : normal;
-                call.args({2, ink, call.text(debug_text(s, value ? DebugText::on : DebugText::off)),
+                call.args({ink, call.text(debug_text(s, value ? DebugText::on : DebugText::off)),
                     feature_action + feature, value});
-                call.call(0x10744430, {ui, 550 + value * 85, top, 630 + value * 85, top + 24,
-                    active ? 0x221u : 1u, active ? ink : 0u, 12});
+                // Selected cells use the original yellow frame/text; only the
+                // other choice is a button, exactly as in Game Settings.
+                call.call(active ? 0x107445a0 : 0x107444e0,
+                    {ui, grid, value + 1, feature, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
             }
         }
-        // Reuse the game's own localized Cancel/OK/Reset strings.
-        const auto pool = std::uint32_t(s.memory.read<4>(toc - 0x4e18));
-        const auto buffer = std::uint32_t(s.memory.read<4>(toc - 0x7bb8));
-        const auto button = [&](unsigned left, unsigned right, unsigned action, unsigned offset, unsigned top) {
-            call.call(0x10727890, {buffer, pool + offset});
-            call.args({3, color(0x7bc8), buffer, action, 0});
-            call.call(0x10744430, {ui, left, top, right, top + 30, 0x30, color(0x7bc4), 12});
-        };
-        button(155, 440, 40, 0x544, 509);
-        button(445, 734, 41, 0x785, 509);
-        button(609, 734, 39, 0x8a8, 112);
     }
     s.pc = s.r<4>(4128);
     return true;
@@ -1027,11 +1039,17 @@ bool extend_debug_contract(State& s, std::uint32_t staff) {
     const auto employer = std::uint32_t(s.memory.read<4>(contract + 4));
     const auto club_count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(toc - 0x7b50)));
     if (employer >= club_count) return false;
-    const cm::calendar::Date expiry{std::int16_t(s.memory.read<2>(contract + 0x30)),
-                                    std::uint16_t(s.memory.read<2>(contract + 0x32))};
-    const auto next = extend_contract_date(expiry);
-    if (!next || s.memory.copy_out(contract + 0x30, 5) != s.memory.copy_out(staff + 0x54, 5) ||
-        s.memory.read<1>(contract + 0x34) != cm::calendar::is_leap(expiry.year)) return false;
+    const auto read_expiry = [&](std::uint32_t address) {
+        return cm::calendar::Date{std::int16_t(s.memory.read<2>(address)),
+                                 std::uint16_t(s.memory.read<2>(address + 2))};
+    };
+    // The contract is authoritative when its date is valid. Legacy/generated
+    // contracts can have an invalid date while the staff's displayed expiry
+    // remains valid. Extend that date instead, then synchronize both copies.
+    // Neither a zero wage nor a stale cache/leap byte invalidates an expiry.
+    auto next = extend_contract_date(read_expiry(contract + 0x30));
+    if (!next) next = extend_contract_date(read_expiry(staff + 0x54));
+    if (!next) return false;
 
     const auto pending = std::uint32_t(s.memory.read<4>(manager + 0x34));
     const auto deferred = std::uint32_t(s.memory.read<4>(manager + 0x38));

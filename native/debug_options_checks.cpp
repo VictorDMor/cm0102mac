@@ -36,6 +36,12 @@ int main(int argc, char** argv) {
         c.put16(ui + 0x2c58, 0);
         s.budget = s.executed + 100000000;
         const auto invoke = [&](unsigned entry, std::initializer_list<unsigned> args) {
+            if (entry == 0x1033d030) {
+                // As in the real screen monitor, discard the previous controls
+                // before rebuilding the callback (including pitch shapes).
+                c.set(3, c.u32(ui + 0x24 + c.i16(ui + 0x2c58) * 0x2c0));
+                c.call(0x10719560, 0xfffffff0);
+            }
             unsigned reg = 3;
             for (auto value : args) c.set(reg++, value);
             try { c.call(entry, 0xfffffff0); }
@@ -52,6 +58,21 @@ int main(int argc, char** argv) {
                 if (c.u32(item + 8) == action && c.u32(item + 0x48) == value) return i;
             }
             throw std::runtime_error("Missing control " + std::to_string(action));
+        };
+        const auto item_address = [&](unsigned index) { return page() + 0xba864 + index * 0x17c; };
+        const auto label_control = [&](std::string_view label, unsigned flags) {
+            for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i) {
+                const auto item = item_address(i);
+                std::string text;
+                for (unsigned j = 0; j < 200 && c.u8(item + 0x78 + j); ++j) text += char(c.u8(item + 0x78 + j));
+                if (text == label && c.u32(item + 12) == flags) return i;
+            }
+            throw std::runtime_error("Missing styled label");
+        };
+        const auto style = [&](unsigned index) {
+            const auto item = item_address(index);
+            return std::array<unsigned, 7>{c.u32(item + 12), c.u32(item + 0x38), c.u32(item + 0x3c),
+                c.u16(item + 0x6a), c.u16(item + 0x6c), c.u16(item + 0x6e), c.u16(item + 0x70)};
         };
         const auto close_modal = [&] {
             // The production monitor consumes -9 after the action returns.
@@ -71,9 +92,17 @@ int main(int argc, char** argv) {
         // Build the actual career menu, including the generated integration hook.
         invoke(0x102a1070, {4, 0});
         const auto sidebar = control(30020, 0);
+        require(label_control(debug_text(s, DebugText::options_sidebar), 2) == sidebar,
+                "Sidebar must retain its localized line break");
+        require(debug_text(9, DebugText::options_sidebar) == "Op\347\365es\nde Debugging", "Portuguese sidebar wrapping");
         invoke(0x102a54b0, {sidebar});
         invoke(0x1033d030, {});
         require(native_debugging_features() == 0, "Opening options changed preferences");
+        const auto active_style = style(label_control(debug_text(s, DebugText::off), 1));
+        const auto inactive_style = style(control(30100, 1));
+        const auto footer_style = style(control(40, 0));
+        const auto cancel_grid = page() + 4 + c.u16(item_address(control(40, 0)) + 0x72) * 0xbf0;
+        require(c.u8(cancel_grid + 0xbb0) == 2, "Footer must use the original two-column grid");
         for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
             const auto index = control(30100 + feature, 1);
             invoke(0x1033f840, {index});
@@ -93,6 +122,9 @@ int main(int argc, char** argv) {
         // Ordinary Game Options must not turn a partial selection into all-on.
         invoke(0x1033ce70, {1});
         invoke(0x1033d030, {});
+        require(style(label_control(debug_text(s, DebugText::on), 1)) == active_style &&
+                style(control(30001, 0)) == inactive_style && style(control(40, 0)) == footer_style,
+                "Debugging modal must use Game Settings cell, selection and footer styles");
         c.set(3, control(41, 0));
         require(!dispatch_debugging_option(s), "Ordinary preferences must retain their original handler");
         require(native_debugging_features() == (1u << unsigned(DebugFeature::remove_sale_clause)), "Game Options flattened selection");
