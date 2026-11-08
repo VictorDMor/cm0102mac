@@ -1,5 +1,6 @@
 // MATCH_ENG.CPP, match setup: preparing a fixture's match object (0x101d1760).
 #include "match_eng_setup.hpp"
+#include "debug_underdogs.hpp"
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -1170,6 +1171,7 @@ std::uint32_t SetUp::run(std::uint32_t inactive, std::uint32_t target, std::uint
 
 std::uint32_t set_up_match(Cpu& c, std::uint32_t match, std::uint32_t fixture, std::uint32_t inactive,
                            std::uint32_t target, std::uint32_t silent) {
+    DebugUnderdogScope debugging(c.s, fixture);
     SetUp setup(c, match, fixture);
     const auto done = setup.run(inactive, target, silent);
     if (done) c.set(3, 1);

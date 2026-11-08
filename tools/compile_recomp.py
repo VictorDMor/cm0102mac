@@ -1848,7 +1848,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if page in (0x100ac, 0x100ad, 0x100ae, 0x100af,
                 0x102a5, 0x10346, 0x1034b, 0x1034c, 0x1034d):
         code.insert(1, '#include "platform.hpp"')
-    if page in (0x1028c, 0x1028d, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
+    if page in (0x1028b, 0x1028c, 0x1028d, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
         code.insert(1, '#include "match_debugging.hpp"')
     if page in (0x10331, 0x10715, 0x10717, 0x10718):
         code.insert(1, '#include "calendar_adapter.hpp"')
@@ -2094,6 +2094,12 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("insert_turbo_match_speed(s);")
         if a == 0x1028d558:
             code.append("if (finish_turbo_match_speed_menu(s)) return true;")
+        if a == 0x1028b75c:
+            if item["assembly"] != "li r13,0xaa":
+                raise ValueError("Fixture Competition button boundary changed")
+            code.append("append_fixture_debugging_controls(s);")
+        if a == 0x1028bc90:
+            code.append("if (dispatch_fixture_debugging_control(s)) return true;")
         if a == 0x1028ce80:
             code.append("append_match_debugging_controls(s);")
         if a == 0x1028dc80:

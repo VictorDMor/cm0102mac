@@ -8,6 +8,7 @@
 #include "record_query_adapter.hpp"
 #include "record_history_adapter.hpp"
 #include "match_engine_adapter.hpp"
+#include "debug_underdogs.hpp"
 #include "match_actor_adapter.hpp"
 #include "actor_construction_adapter.hpp"
 #include "spatial_role_adapter.hpp"
@@ -87,6 +88,7 @@ struct RuntimeDiagnostics {
     RecordQueryDiagnostics record_query;
     RecordHistoryDiagnostics record_history;
     MatchEngineDiagnostics match_engine;
+    UnderdogDebugging underdogs;
     MatchActorDiagnostics match_actor;
     ActorConstructionDiagnostics actor_construction;
     SpatialRoleDiagnostics spatial_role;
@@ -437,6 +439,15 @@ RecordHistoryDiagnostics& record_history_diagnostics(State& state) {
 const RecordHistoryDiagnostics& record_history_diagnostics(const State& state) {
     static const RecordHistoryDiagnostics empty;
     return state.runtime_diagnostics ? state.runtime_diagnostics->record_history : empty;
+}
+
+UnderdogDebugging& underdog_debugging(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->underdogs;
+}
+const UnderdogDebugging& underdog_debugging(const State& state) {
+    static const UnderdogDebugging empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->underdogs : empty;
 }
 
 MatchEngineDiagnostics& match_engine_diagnostics(State& state) {

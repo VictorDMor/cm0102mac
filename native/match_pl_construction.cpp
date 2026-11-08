@@ -1,4 +1,5 @@
 #include "match_pl_construction.hpp"
+#include "debug_underdogs.hpp"
 
 namespace cm::aot::match_pl {
 using namespace guest;
@@ -14,6 +15,7 @@ int arithmetic_shift(Cpu& c, int value, unsigned bits) {
 
 std::uint32_t construct_player(Cpu& c, std::uint32_t player, std::uint32_t match,
     std::uint32_t staff, std::uint32_t side, std::uint32_t initial, std::uint32_t slot) {
+    DebugUnderdogScope debugging(c.s, debug_underdog_fixture(c.s, match));
     PlayerConstruction activation(c, player, match, staff, side, initial, slot);
     activation.run();
     return c.r(3);

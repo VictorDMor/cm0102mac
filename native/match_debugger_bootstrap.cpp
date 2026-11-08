@@ -85,8 +85,18 @@ DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
         }
         // SIPRINT's C++ owns this one, past these counters.
         if (engine_initialization::entries[entry] == 0x1074d340) continue;
+        // DATABASE.CPP now owns its initializer directly. Check the date it
+        // publishes (31 August 2001; month 7 is zero-based), rather than the superseded adapter count.
+        if (engine_initialization::entries[entry] == 0x100de3b0) {
+            const auto date = state.memory.read<4>(state.r<4>(8) - 0x79e8);
+            if (state.memory.read<2>(date) != 242 || state.memory.read<2>(date + 2) != 2001)
+                throw std::runtime_error("Independent bootstrap database season date: day=" + std::to_string(state.memory.read<2>(date)) +
+                    " year=" + std::to_string(state.memory.read<2>(date + 2)) + " at " + hex_address(date));
+            continue;
+        }
         if (initialization.calls[entry] != 1 || initialization.returns[entry] != 1)
-            throw std::runtime_error("Independent bootstrap did not compose all original global initializers");
+            throw std::runtime_error("Independent bootstrap did not complete global initializer " + hex_address(engine_initialization::entries[entry]) +
+                " (calls=" + std::to_string(initialization.calls[entry]) + ", returns=" + std::to_string(initialization.returns[entry]) + ")");
     }
     if (call(state, 0x10118ef0, {0}) != 1)
         throw std::runtime_error("Original application objects did not initialize");

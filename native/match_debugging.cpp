@@ -6,6 +6,7 @@
 #include "ui_bridge.hpp"
 #include "debug_localization.hpp"
 #include "debug_contract_date.hpp"
+#include "debug_underdogs.hpp"
 #include "best_xi_selection.hpp"
 #include <array>
 #include <algorithm>
@@ -20,6 +21,7 @@ constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017;
+constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
 static_assert(free_squad_action > shortcut_last);
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 std::optional<bool> pending_option;
@@ -295,6 +297,74 @@ bool dispatch_debugging_option(State& s) {
     if (action == 40) pending_option.reset();
     if (action == 39) pending_option = false;
     return false;
+}
+
+namespace {
+std::vector<std::uint32_t> displayed_fixtures(State& s, GuestCall& call) {
+    // MATCH_SCREENS 1028ae80: parameter 1 selects an inclusive range of
+    // 0x6c-byte queue entries. Each entry's first word is the core fixture.
+    const auto group = call.call(0x1073ef70, {root(s), 1});
+    const auto queue = s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7420));
+    if (!group || !queue) return {};
+    const auto first = std::int32_t(s.memory.read<4>(group + 4));
+    const auto last = std::int32_t(s.memory.read<4>(group + 8));
+    if (first < 0 || last < first || last - first > 10000) return {};
+    const auto entries = s.memory.read<4>(queue + 0x1c);
+    if (!entries) return {};
+    std::vector<std::uint32_t> fixtures;
+    for (auto n = first; n <= last; ++n) {
+        const auto fixture = std::uint32_t(s.memory.read<4>(entries + std::uint32_t(n) * 0x6c));
+        if (fixture) fixtures.push_back(fixture);
+    }
+    return fixtures;
+}
+}
+
+void append_fixture_debugging_controls(State& s) {
+    if (!native_debugging_enabled()) return;
+    const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
+    const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
+    GuestCall call(s);
+    const auto fixtures = displayed_fixtures(s, call);
+    const bool enabled = std::ranges::any_of(fixtures, [&](auto fixture) {
+        return std::int8_t(s.memory.read<1>(fixture + 0x43)) == -1;
+    });
+    // Competition occupies x=655..780, y=145..165. Use the same row,
+    // immediately to its left, preserving the original Competition button.
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto grid = call.call(0x107198c0, {page, 528, 145, 653, 165, 1, 0, 1});
+    call.args({color(0x7bc8), call.text("Debugging"), 0, 0});
+    const auto cell = call.call(0x107444e0, {ui, grid, 0, 0, 0x30, color(0x7bc4), 12, 1});
+    call.args({0, 0x130, color(0x7bcc), cell});
+    const auto menu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
+    for (const auto action : {underdogs_action, underdogs_max_action}) {
+        const auto mode = action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum;
+        const auto& plans = underdog_debugging(static_cast<const State&>(s)).fixtures;
+        const bool selected = std::ranges::any_of(plans, [&](const auto& p) {
+            return p.mode == mode && std::ranges::find(fixtures, p.fixture) != fixtures.end();
+        });
+        const auto text = debug_text(s, action == underdogs_action ? DebugText::underdogs : DebugText::underdogs_max);
+        const auto label = std::string(selected ? "* " : "") + std::string(text);
+        call.args({0x10, color(0x7bcc), color(0x7bd0), 1, 1, color(0x7bd4),
+                   call.text(label), 0, action, 0, menu});
+        call.call(0x10719740, {page, enabled ? 2u : 0u, 0, 0, 0, 0, 0, 0});
+    }
+}
+
+bool dispatch_fixture_debugging_control(State& s) {
+    const auto control = selected_control(s);
+    if (!control) return false;
+    const auto action = s.memory.read<4>(control + 8);
+    if (action != underdogs_action && action != underdogs_max_action) return false;
+    bool accepted = false;
+    if (native_debugging_enabled() && (s.memory.read<4>(control + 12) & 2)) {
+        GuestCall call(s);
+        const auto fixtures = displayed_fixtures(s, call);
+        accepted = arm_debug_underdogs(s, fixtures,
+            action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum);
+    }
+    s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
+    return true;
 }
 
 void append_match_debugging_controls(State& s) {

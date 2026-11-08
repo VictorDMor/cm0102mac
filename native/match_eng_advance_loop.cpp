@@ -1,5 +1,6 @@
 // MATCH_ENG.CPP, match advancement: the loop that plays a match forward tick by tick.
 #include "match_eng_advance.hpp"
+#include "debug_underdogs.hpp"
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -32,7 +33,7 @@ constexpr ReportBacks report_backs(Reports r) {
 }
 }  // namespace
 
-std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
+static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t count) {
     Frame frame(c, 0x101d3f60, 0xd0, {.first_gpr = 15});
     Fpu fpu(c);
     Kept<31> r_match(c, match);
@@ -785,5 +786,15 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         const auto outcome = pass();
         if (outcome >= 0) return result(c, std::uint32_t(outcome));
     }
+}
+std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
+    const auto fixture = debug_underdog_fixture(c.s, match);
+    std::uint32_t outcome;
+    {
+        DebugUnderdogScope debugging(c.s, fixture);
+        outcome = advance_impl(c, match, count);
+    }
+    if (fixture && outcome == 2) finish_debug_underdogs(c.s, fixture);
+    return outcome;
 }
 }  // namespace cm::aot::match_eng

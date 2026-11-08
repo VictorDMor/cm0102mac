@@ -4,6 +4,8 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::underdogs) return language == 9 ? "Zebras Vencem" : "Underdogs Win";
+    if (text == DebugText::underdogs_max) return language == 9 ? "Zebras Vencem MAX" : "Underdogs Win MAX";
     // English, US English, French, German, Italian, Spanish, Danish,
     // Dutch, Norwegian, Portuguese and Swedish, as in the original language menu.
     static constexpr std::array<std::array<std::string_view, 12>, 11> labels{{

@@ -15,6 +15,8 @@ void select_native_debugging(bool enabled);
 void append_debugging_option(State&);
 void begin_debugging_options();
 bool dispatch_debugging_option(State&);
+void append_fixture_debugging_controls(State&);
+bool dispatch_fixture_debugging_control(State&);
 void append_match_debugging_controls(State&);
 bool dispatch_match_debugging_control(State&);
 bool deliver_match_shortcut(State&, const CommandContext&, const UIEvent&);
