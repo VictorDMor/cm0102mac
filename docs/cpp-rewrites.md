@@ -1687,3 +1687,10 @@ module's hook in the post-match broadcast 0x101cd880. Its own inlined draw has a
 its floating-point branch (0x1019f404..0x1019f4d4, with the call of 0x10195e10) never runs. Its cases use real fixtures
 found in the season-day world; where they let the review run to its end they empty the people table, since the offer
 value (0x101abda0) then scans every person through nested job assessments, past the call trace's limit.
+
+The manager news text 0x101b9b50 and its comment 0x101bfd10 (`manager_manager_news.cpp`) build the item in text
+buffers of a 0xd70 frame through 105 formatter calls; the event-code dispatch is a table of 46 rules (code pairs, format
+offsets, argument layout). Dead in the original: compose's paths at 0x101bb558 and 0x101bb598..0x101bb664 (they need
+the actual score above the expected after it was found at most expected - 4) and the comment's cases for 2 and 3
+(0x101bfe2c, 0x101bfe84, 0x101bff68, 0x101bffc4; those values are only ever 0 or 1). With its flag set, the comment
+always ends with an empty text.
