@@ -21,15 +21,19 @@ extern void (*block_move_reads)(State&, std::uint32_t address, std::uint32_t len
 class StackAudit {
 public:
     explicit StackAudit(State&);
-    // Also overwrites every freed frame with pseudo-random bytes, so a run
-    // shows whether the game's results depend on what it leaves on the stack.
+    // Also replaces each stale byte with a pseudo-random one as the game reads
+    // it, so a run shows whether the game's results depend on what it leaves on
+    // the stack. CM_STACK_SCRAMBLE_ZERO=1 uses zero instead (a canonical stack),
+    // and CM_STACK_SCRAMBLE_PCS=lo-hi limits it to reads whose PC is in [lo, hi).
     StackAudit(State&, std::uint64_t scramble_seed);
     ~StackAudit();
     MemoryObserver* observer();
     // Sites by original PC (run start in generated code), most reads first,
     // with the PCs that left the bytes they read (0: before the run).
     // Complete lists every site, offset and writer: a rewrite's leftover
-    // contract (CLAUDE.md) needs all of them, not the most frequent.
+    // contract (CLAUDE.md) needs all of them, not the most frequent. Each site
+    // also shows how many of its reads saw a stale byte that was not zero and,
+    // in the complete list, the first 12 distinct values its scalar reads saw.
     void report(std::ostream&, bool complete = false) const;
 private:
     struct Impl;
