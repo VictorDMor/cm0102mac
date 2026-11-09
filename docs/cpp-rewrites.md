@@ -1694,3 +1694,9 @@ offsets, argument layout). Dead in the original: compose's paths at 0x101bb558 a
 the actual score above the expected after it was found at most expected - 4) and the comment's cases for 2 and 3
 (0x101bfe2c, 0x101bfe84, 0x101bff68, 0x101bffc4; those values are only ever 0 or 1). With its flag set, the comment
 always ends with an empty text.
+
+The board's reaction 0x101a2eb0 and its judgement 0x101a05c0 (`manager_manager_board.cpp`): the judgement fills two
+halfword flag sets in the caller's frame from the person's standing against the club's reputation (single-precision
+`fsubs`/`fdivs`), and the reaction moves the club's board row by a table of flag bit → steps. The judgement's first
+`lfs` fallback (0x101a0794) is dead: the valuation is forced to at least 1 at 0x101a06fc. The stack audit lists a reader
+(0x10bf7bbc) of bytes the judgement leaves, so its frame is kept whole.

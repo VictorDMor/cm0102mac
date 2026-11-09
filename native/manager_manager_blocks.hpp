@@ -5,3 +5,4 @@
 #include "manager_manager_review.hpp"
 #include "manager_manager_update.hpp"
 #include "manager_manager_news.hpp"
+#include "manager_manager_board.hpp"

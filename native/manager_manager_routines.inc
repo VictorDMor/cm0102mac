@@ -7,3 +7,4 @@
 #include "manager_manager_routines_review.inc"
 #include "manager_manager_routines_update.inc"
 #include "manager_manager_routines_news.inc"
+#include "manager_manager_routines_board.inc"
