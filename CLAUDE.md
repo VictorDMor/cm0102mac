@@ -88,9 +88,10 @@ captures and controlled fixtures supply the evidence for module delivery.
 
 ## Rewriting the game
 
-- Rewrite one coherent subsystem per block: routines that call each other and share data. Victor picks the module, currently at random (decided 2026-10-30). Whole-module reconstructions follow the `recompile-module` skill.
+- Rewrite one coherent subsystem per block: routines that call each other and share data. Victor names the module, or it is the next one by routine layer and day weight (`tools/game_inventory.py`; decided 2026-11-06, replacing the random pick of 2026-10-30). Whole-module reconstructions follow the `recompile-module` skill.
 - Write real C++: named types for game records, plain control flow, direct calls to other rewritten routines rather than through the dispatcher. The instruction-level builder (`SemanticGuestCall`) is a stepping stone, not the target.
 - Check each block against the generated reference: run both from the same captured states (real match and daily-update captures plus edge cases from the code) and compare what the game can observe. Include one case that shows the check fails when it should.
+- Coverage follows who can see the error (decided 2026-11-09). Every outcome that reaches simulation, RNG, records or saves needs a check or a proof that the original can't reach it; until then the block stays a draft and the game runs the original. For screens, texts, dialogs and printing, compare what existing captures and fixtures reach, write the rest from the listing, review it and route it; list the unexercised paths in the commit. Victor finds those errors in play.
 - Then hook it in the generator, regenerate, run the area's tests, and run one paired replay with identical final state.
 - Independent subsystems can be worked in parallel by subagents. Each block still lands as its own reviewed commit.
 
@@ -100,6 +101,8 @@ captures and controlled fixtures supply the evidence for module delivery.
   [recompilation progress spreadsheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit)
   as part of the same delivery. Record verified routine counts, production
   status, checks and remaining limits, and verify the affected summary totals.
+  Edit it through the Google Sheets connector (confirmed 2026-11-09); in a session
+  without a tool that writes cells, give the row's values in the final report.
 - The commit message is the record: what changed, why, how it was verified, and what wasn't verified. Don't write separate delivery reports.
 - Commit each verified change to `main`. Push normally once the required focused checks pass. Never force-push or rewrite history.
 - After delivering a rewrite, delete its bulky evidence so the disk doesn't fill (`.claude/skills/recompile-module/scripts/clean_evidence.py`; decided 2026-10-30).

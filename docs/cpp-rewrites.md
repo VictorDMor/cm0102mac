@@ -72,6 +72,10 @@ and simulation changes a reference to compare against.
 
 ## Writing one
 
+Since 2026-11-06 a rewrite is native C++ inside: frames and the registers at
+calls matter only where the per-reader contract above names a reader. The pieces
+below are for those places, and for the ABI adapter at the edge.
+
 `native/guest_abi.hpp` has the pieces:
 
 - `Frame frame(c, entry, size, {.first_gpr = 29})` writes the prologue's image

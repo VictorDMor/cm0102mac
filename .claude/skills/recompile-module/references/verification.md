@@ -70,9 +70,11 @@ Raw profiles reach 1.5 GB each. Merge them with `llvm-profdata` as soon as a run
 ends and delete the raw files, keeping just the merged result for that code state.
 Check `df -h .` before a coverage run, and clean first if under 10 GB is free.
 
-Each reachable outcome gets a check or a specific proof that the original can't
-reach it (dominating test, immutable table, gate). Compiler-only branches need the
-mapping stated, not an invented test.
+Each reachable outcome that touches simulation, RNG, records or saves gets a check
+or a specific proof that the original can't reach it (dominating test, immutable
+table, gate). Compiler-only branches need the mapping stated, not an invented test.
+Outcomes of screens, texts, dialogs and printing that nothing exercises are listed
+in the ledger and the commit instead (the skill's step 3, decided 2026-11-09).
 
 ## Ledger
 

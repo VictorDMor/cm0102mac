@@ -18,6 +18,16 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: lighter rules (2026-11-09)
+
+Victor asked what could be relaxed to make the reconstruction faster, and approved three things.
+
+- [x] Review: `medium` where a checker compares every changed entry, `high` otherwise, none for diffs outside production (`CLAUDE.md`, the skill).
+- [x] Coverage by risk: strict for simulation, RNG, records and saves (an open outcome keeps the block a draft); screens, texts, dialogs and printing are routed with their unexercised paths listed (`CLAUDE.md`, the skill's step 3).
+  - [ ] A first-run log for unexercised screen paths does not exist yet. Add it with the first screens block that ships such paths: it would say that an uncompared path ran, not that its result was right.
+- [x] The skill and `CLAUDE.md` brought in line with earlier decisions: module pick by layer and day weight (2026-11-06), native-first shape (2026-11-06), ask before a costly block (2026-11-09), the sheet edited through the Sheets connector (2026-11-09), `generator_workers` in the test table.
+- [ ] **Canonical stack pilot** (approved 2026-11-09; the rule in `CLAUDE.md` is unchanged until Victor decides on its result). Question: if every stale stack read returned zero, in the generator and the rewrites, could the per-reader contract go? Finish line: the count of reader sites zero changes on the day and week captures, which of them reach RNG or records, whether the replays still run, and what a generated-code implementation would cost.
+
 ## Now: Match Results by right-click (2026-11-09)
 
 - [x] Replace the Match Results modal with right-clicks on the fixture list (Victor's request): home name = home win, "v" = draw, away name = away win; the same cell again clears, another switches; the chosen name is drawn light green, a draw shows the localized word in place of "v". Right-only invisible controls over the three cells (the original's pattern from 0x103b5ab8), added by a new hook at 0x1028bb08 after the rows are built; the press is consumed so a held button doesn't toggle again. Modal, menu item and their tests removed. Verified by `debugging_options` (`check_fixture_results`: real fixtures screen, original mouse-down/hit-test/dispatch) and the debugging tests.

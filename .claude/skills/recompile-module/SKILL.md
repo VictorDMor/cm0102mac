@@ -1,6 +1,6 @@
 ---
 name: recompile-module
-description: Reconstruct a whole original CM 01/02 module (X.CPP) as handwritten C++23 in this repo, from a closed routine inventory through production routing, original-versus-rewrite checks, delivery and evidence cleanup. Use whenever Victor asks to recompile, rewrite, reconstruct, port, finish or resume a module, names a .CPP module from the progress sheet, or asks to pick the next or a random module, including in Portuguese ("recompila o NEWS.CPP", "reconstrói esse módulo", "pega um módulo", "próximo módulo"). Not for one-off bug fixes, isolated performance tuning or gameplay features.
+description: Reconstruct a whole original CM 01/02 module (X.CPP) as handwritten C++23 in this repo, from a closed routine inventory through production routing, original-versus-rewrite checks, delivery and evidence cleanup. Use whenever Victor asks to recompile, rewrite, reconstruct, port, finish or resume a module, names a .CPP module from the progress sheet, or asks to pick the next module, including in Portuguese ("recompila o NEWS.CPP", "reconstrói esse módulo", "pega um módulo", "próximo módulo"). Not for one-off bug fixes, isolated performance tuning or gameplay features.
 ---
 
 # Reconstructing a module
@@ -14,13 +14,14 @@ plus the sections of any subsystem this module touches.
 
 ## Pick the target
 
-Victor chooses modules, currently at random (decided 2026-10-30). Use the module
-he names. If he asks you to pick, or names none, read the
-[progress sheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit)
-with the Google Drive connector and draw with `python3 -c "import random; print(random.choice([...]))"`
-from the `Módulos C++` rows whose status is not `Concluído`. Skip modules with
-uncommitted work (`git status --short -- 'native/<module>*'`) and say which one
-you drew. Don't rank by cost or profile candidates first; that isn't the criterion now.
+Use the module Victor names. If he asks you to pick, or names none, take the next
+one by routine layer and day weight (decided 2026-11-06, replacing the random draw
+of 2026-10-30). `TASKS.md` names the current pick. After a delivery, rerun
+`tools/game_inventory.py` with fresh day and week profiles (its docstring lists the
+inputs) and read `report.md`: modules are sorted by generated self samples, then
+by generated instructions, and "Ready" counts the routines at layer 0, which call
+nothing generated. Skip modules with uncommitted work
+(`git status --short -- 'native/<module>*'`) and say which one you picked and why.
 
 State the module and finish line in one sentence, then start.
 
@@ -46,7 +47,8 @@ Report these four separately, with exact counts once the inventory is closed:
 - **Verification:** each entry and its reachable behaviors have valid evidence.
 
 Say "100% complete" only when all four close. An unchecked reachable path or a
-failing focused check prevents it. Completion describes this audited scope and
+failing focused check prevents it; the one exception is an unexercised screen or
+text path under step 3's rule, which you report instead. Completion describes this audited scope and
 evidence, not a proof over every possible execution.
 
 Before you touch anything, note the current `git status`. The tree often holds
@@ -76,19 +78,34 @@ Read [fidelity.md](references/fidelity.md) before the first block. Group routine
 that call each other and share records; keep per-entry characterization inside
 the block, and the work list in `TASKS.md`.
 
-Use named record views, typed functions, plain control flow and direct calls
-between rewritten routines, with a narrow ABI adapter at the edge. A builder
-transcription or a register-array algorithm does not count, and neither does a
-call to a generated routine this module owns. Calls to other modules' generated
-routines are fine; keep them on an explicit dependency list.
+Write native C++ inside and keep the guest ABI at the edge with generated code
+(decided 2026-11-06): named record views, typed functions with native parameters
+and locals, plain control flow, and a narrow ABI adapter per entry. Call rewritten
+routines directly in C++, in other modules too, through their typed headers; use
+`c.call` only for a routine that is still generated, and keep those on an explicit
+dependency list. Write a frame or set a register at a call only where the stack
+audit shows a reader (fidelity.md). A builder transcription or a register-array
+algorithm does not count, and neither does a call to a generated routine this
+module owns.
 
 ## 3. Check each block against the original
 
 Read [verification.md](references/verification.md) when preparing the first
 checks. Run original and C++ from identical states, including at least one
 deliberate wrong result the checker must catch. Once a block's comparisons pass,
-run a coverage build to find the behaviors they missed, and close those before
-calling the block verified.
+run a coverage build to find the behaviors they missed.
+
+How much of that you must close depends on who can see the error (decided 2026-11-09):
+
+- **Simulation, RNG, records and saves.** A wrong result here looks plausible in
+  play, so each outcome needs a check or a proof that the original can't reach it.
+  A block with one still open stays a draft: committed and checked, with the game
+  still running the original (`<MODULE>_DRAFT` lines in the `.inc`).
+- **Screens, texts, dialogs and printing.** Victor sees these errors in play.
+  Compare what existing captures and fixtures reach, write the rest from the
+  listing, review it and route it. List the paths nothing exercised in the ledger
+  and the commit; they don't hold the block back. An outcome of a screen routine
+  that draws RNG or writes records or saves belongs to the first group.
 
 When a check differs, reduce it to the earliest observable difference and read
 the reference, the implementation and the fixture's preconditions before editing.
@@ -133,6 +150,7 @@ Run the module's audit and equivalence tests plus whatever your diff can affect:
 | The diff touched | Add |
 | --- | --- |
 | Generated pages, or code watching an exact PC | `generated_block_accounting` |
+| A new module hook or index audit in the generator | `generator_workers` |
 | Direct calls between owners | `generated_direct_owner_calls` |
 | Another module's files | that module's tests |
 | The engine or a runtime hot path | `-R match_engine` |
@@ -162,14 +180,16 @@ In this order:
 3. **Install.** `tools/dev.sh install`. The installer signs and verifies the
    bundle, so don't add your own signature checks. If the game is running it
    refuses: leave that under **Blocked on me** and never stop his session.
-4. **Progress sheet.** Load `anthropic-skills:google-workspace` before editing the
-   [sheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit).
+4. **Progress sheet.** Edit the
+   [sheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit)
+   through the Google Sheets connector (Victor confirmed on 2026-11-09 that you may);
+   load `anthropic-skills:google-workspace` first.
    In `Módulos C++`, fill the module's row as the `CASH.CPP` row is filled: status
    `Concluído`, new routines, audited total, reliability and a short note in
    Portuguese. In `Resumo`, update the date and note. Read it back: formulas and
    neighboring rows unchanged, completed modules up by one, routines up by this
-   module's count. If you can't write to it, put that under **Blocked on me** and
-   finish the rest.
+   module's count. If the session has no tool that writes cells, give the row's
+   values in the final report for him to paste, and finish the rest.
 5. **Docs.** A few lines in `docs/cpp-rewrites.md` for each quirk or contract
    worth knowing; `README.md` only if user-visible status changes.
 6. **Commit and push.** Stage owned changes only. Where a shared file also holds
@@ -207,7 +227,8 @@ Machine time is free, tokens aren't, so prefer a long local run to an agent:
 
 - **Say the cost first.** A block costs about 80-200k tokens per 1,000 instructions,
   and a `high` review 350-500k for about 15 files. For a module over 20,000
-  instructions, state the estimate and go on unless he objects.
+  instructions, or a block you expect to pass about 500k tokens, state the
+  estimate and wait for his answer (2026-11-09). Below that, state it and go on.
 - **Fix the checker before fanning out.** Start from `native/media_checks.cpp` and
   `tools/call_arguments.py`, the strongest checker so far: a gap found after the blocks
   are written means rerunning them all. Pilot one or two blocks and read their code
@@ -232,7 +253,8 @@ Machine time is free, tokens aren't, so prefer a long local run to an agent:
 
 If he says usage is tight, stop the agents and validate what they left with local
 runs. Then commit what passes, list the rest in `TASKS.md` and don't call the module
-complete. Production can be right with verification still open, and the report says so.
+complete. A draft block stays out of production until its open outcomes close, and
+the report says which blocks are routed and which are drafts.
 
 ## Using subagents
 

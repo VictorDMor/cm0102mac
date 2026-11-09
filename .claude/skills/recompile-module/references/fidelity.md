@@ -20,7 +20,11 @@ talk about clubs, players and decisions: renaming `r3` while the algorithm still
 lives in the register bank is not a reconstruction. Keep required register writes
 next to the calls that expose them. A routine may still take `guest::Cpu&`.
 
-No framework, host-owned shadow world, new dependency or unrelated redesign.
+No framework, new dependency or unrelated redesign. Guest memory stays the only
+truth. A derived native index on a hot path is allowed (decided 2026-11-06) when
+it stays correct while generated code writes its inputs, and the game's writes,
+RNG draws, iteration order and allocations stay identical; a paired replay with
+identical end state and RNG is the check.
 
 ## Guest memory
 
