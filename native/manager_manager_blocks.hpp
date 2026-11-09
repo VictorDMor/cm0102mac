@@ -6,3 +6,4 @@
 #include "manager_manager_update.hpp"
 #include "manager_manager_news.hpp"
 #include "manager_manager_board.hpp"
+#include "manager_manager_deal.hpp"

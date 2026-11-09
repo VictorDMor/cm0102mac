@@ -1700,3 +1700,11 @@ halfword flag sets in the caller's frame from the person's standing against the 
 `fsubs`/`fdivs`), and the reaction moves the club's board row by a table of flag bit → steps. The judgement's first
 `lfs` fallback (0x101a0794) is dead: the valuation is forced to at least 1 at 0x101a06fc. The stack audit lists a reader
 (0x10bf7bbc) of bytes the judgement leaves, so its frame is kept whole.
+
+The board's verdict on a transfer deal 0x101a0f50 (`manager_manager_deal.cpp`, called from another module): its six
+inlined draws take bounds made of sign-extended bytes or a halfword, so their floating-point stages (the calls of
+0x10195e10 at 0x101a111c, 0x101a131c, 0x101a1478, 0x101a161c, 0x101a19dc, 0x101a1b98) never run; only the glue number's
+draw (0x101a184c) can be wide. The flag argument is stored at 0xfb(r1), in the caller's parameter area, and reloaded
+before the price; the rewrite branches on the reloaded byte too. `ble`/`bge` after `fcmpo` branch when GT/LT is clear,
+so an unordered compare takes them: testing only GT or LT is exact (a review suggested otherwise twice; the checker
+proved the suggestion wrong).
