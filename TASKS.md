@@ -20,6 +20,10 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: Match Results modal styling (2026-11-09)
+
+- [x] Match the original Game Settings panel, pitch background, label typography and compact OK footer; preserve independent immediate choices and pagination. Selected choices use compact 21px frames; two-line club labels fall back to the smaller original font when necessary. The focused UI test compares actual original modal bounds/styles and checks caption fit, choices, pagination, close and unchanged RNG. Original-renderer previews of populated, second-page and empty states were visually verified; app built and installed.
+
 ## Now: individual fixture outcomes (2026-11-08)
 
 - [x] Fix selected outcomes being ignored for unobserved matches that the original assigns to detailed simulation. Route only selected, unstarted background fixtures through the controlled quick engine at all three original background call sites. Include occasional 4–0 and 4–1 wins while keeping narrow scores more common. Verified two home wins and home/draw through both scheduler branches with original report publication and cleanup, the immediate caller boundary, watched exclusions and unmarked state/RNG equivalence. All 12 focused tests and 6,391 returned original/rewrite comparisons plus 9 matching faults pass; source/caller review completed and app installed.

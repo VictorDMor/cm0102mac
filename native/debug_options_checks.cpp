@@ -61,6 +61,12 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Missing control " + std::to_string(action));
         };
         const auto item_address = [&](unsigned index) { return page() + 0xba864 + index * 0x17c; };
+        const auto grid_address = [&](unsigned index) { return page() + 4 + index * 0xbf0; };
+        const auto control_grid = [&](unsigned index) { return grid_address(c.u16(item_address(index) + 0x72)); };
+        const auto grid_bounds = [&](std::uint32_t grid) {
+            return std::array{c.u32(grid), c.u32(grid + 4), c.u32(grid + 8), c.u32(grid + 12)};
+        };
+        const auto control_bounds = [&](unsigned index) { return grid_bounds(item_address(index) + 0x10); };
         const auto label_control = [&](std::string_view label, unsigned flags) {
             for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i) {
                 const auto item = item_address(i);
@@ -102,7 +108,7 @@ int main(int argc, char** argv) {
         const auto active_style = style(label_control(debug_text(s, DebugText::off), 1));
         const auto inactive_style = style(control(30100, 1));
         const auto footer_style = style(control(40, 0));
-        const auto cancel_grid = page() + 4 + c.u16(item_address(control(40, 0)) + 0x72) * 0xbf0;
+        const auto cancel_grid = control_grid(control(40, 0));
         require(c.u8(cancel_grid + 0xbb0) == 2, "Footer must use the original two-column grid");
         for (unsigned feature = 0; feature < debug_feature_count; ++feature) {
             const auto index = control(30100 + feature, 1);
@@ -126,6 +132,9 @@ int main(int argc, char** argv) {
         require(style(label_control(debug_text(s, DebugText::on), 1)) == active_style &&
                 style(control(30001, 0)) == inactive_style && style(control(40, 0)) == footer_style,
                 "Debugging modal must use Game Settings cell, selection and footer styles");
+        const auto settings_panel = grid_bounds(grid_address(1));
+        const auto settings_grid = grid_bounds(control_grid(control(30001, 0)));
+        const auto settings_footer = grid_bounds(control_grid(control(41, 0)));
         c.set(3, control(41, 0));
         require(!dispatch_debugging_option(s), "Ordinary preferences must retain their original handler");
         require(native_debugging_features() == (1u << unsigned(DebugFeature::remove_sale_clause)), "Game Options flattened selection");
@@ -232,7 +241,32 @@ int main(int argc, char** argv) {
         const auto home_fixture = fixtures.front();
         const auto draw_fixture = fixtures[8];
         invoke(0x1033d030, {});
-        invoke(0x1033f840, {control(30201, home_fixture)});
+        const auto normal = label_control("Normal", 1);
+        const auto home_win = control(30201, home_fixture);
+        const auto result_grid = control_grid(label_control("Team A\nvs Team B", 1));
+        const auto result_footer = control_grid(control(41, 0));
+        require(grid_bounds(grid_address(1)) == settings_panel &&
+                grid_bounds(result_grid) == settings_grid &&
+                grid_bounds(result_footer) == settings_footer,
+                "Match Results must use Game Settings panel, inset and footer bounds");
+        require(style(normal) == active_style && style(home_win) == inactive_style &&
+                style(control(41, 0)) == footer_style,
+                "Match Results must use Game Settings choice, selection and footer styles");
+        require(c.u8(result_footer + 0xbb0) == 3 && c.u8(result_footer + 0xbb4) == 25,
+                "Pagination must leave the original right quarter for OK");
+        const std::array choice_controls{normal, home_win, control(30202, home_fixture), control(30203, home_fixture)};
+        auto previous_right = settings_grid[0];
+        const auto first_row_end = settings_grid[1] + (settings_grid[3] - settings_grid[1] + 1) / 8;
+        for (unsigned i = 0; i < choice_controls.size(); ++i) {
+            const auto [left, top, right, bottom] = control_bounds(choice_controls[i]);
+            require(left > previous_right && right <= settings_grid[2] &&
+                    top > settings_grid[1] && bottom < first_row_end &&
+                    bottom - top + 1 == 21, "Result choices must be compact and fit within the first fixture row");
+            previous_right = right;
+            invoke(0x1076d1e0, {2, item_address(choice_controls[i]) + 0x78});
+            require(c.r(3) > 0 && c.r(3) + 12 <= right - left + 1, "Result caption must fit its original font and cell");
+        }
+        invoke(0x1033f840, {home_win});
         require(debug_match_result(s, home_fixture) == ForcedMatchResult::home_win, "Home choice did not arm fixture");
         invoke(0x1033d030, {});
         label_control("Home win", 1);

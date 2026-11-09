@@ -354,50 +354,76 @@ void build_match_results_modal(State& s) {
     const auto current = std::min(pages - 1, call.call(0x1073ef70, {ui, result_page_slot}));
     const auto title = std::string(debug_text(s, DebugText::match_results)) + " (" +
         std::to_string(current + 1) + "/" + std::to_string(pages) + ")";
-    draw_debugging_panel(call, ui, page, 115, 785, color(0x7bd4), color(0x7bc8), title);
+    draw_debugging_panel(call, ui, page, 145, 744, color(0x7bd4), color(0x7bc8), title);
 
     const auto description = fixtures.empty() ? "No eligible unplayed matches." :
         "Changes apply immediately. Normal clears a selection.";
-    call.args({4, color(0x7bc8), call.text(description)});
-    call.call(0x10744390, {ui, 125, 110, 775, 135, 1, 0, 12});
+    call.args({1, color(0x7b10), call.text(description)});
+    call.call(0x10744390, {ui, 155, 115, 734, 135, 1, 0, 1});
 
-    s.memory.copy_in(call.stack + 0xc0, {52, 12, 12, 12, 12});
+    // Keep the Game Settings footer's compact OK on the right. Pagination
+    // occupies its wide left section; choices continue to apply immediately.
+    s.memory.copy_in(call.stack + 0xc0, {37, 38, 25});
     call.args({0, 1, 0, 0xffffffffu});
-    const auto grid = call.call(0x107198c0, {page, 125, 145, 775, 484, 5, call.stack + 0xc0, results_per_page});
-    const auto first = current * results_per_page;
-    const auto end = std::min(unsigned(fixtures.size()), first + results_per_page);
-    const auto normal_ink = call.call(0x1076bb20, {0, 0xc0, 0, 0});
-    for (unsigned i = first; i < end; ++i) {
-        const auto fixture = fixtures[i];
-        const auto home = std::uint32_t(s.memory.read<4>(fixture + 0x1c));
-        const auto away = std::uint32_t(s.memory.read<4>(fixture + 0x20));
-        const auto date = call.stack + 0x200;
-        // Same short names and date formatter as the original fixture list.
-        call.call(0x10476f40, {std::uint32_t(signed_value<2>(s.memory.read<2>(fixture + 0x32))),
-            std::uint32_t(signed_value<2>(s.memory.read<2>(fixture + 0x30))), date, 0x7d0, 0});
-        const auto name = original_text(s, home + 0x221) + " vs " + original_text(s, away + 0x221) +
-            "\n" + original_text(s, date);
-        call.args({color(0x7b10), call.text(name)});
-        call.call(0x107445a0, {ui, grid, 0, i - first, 1, 0, 12, 3});
-        const auto result = debug_match_result(s, fixture);
-        for (unsigned choice = 0; choice < result_choices.size(); ++choice) {
-            const auto [value, label] = result_choices[choice];
-            const bool active = result == value;
-            const auto ink = active ? color(0x7bd0) : normal_ink;
-            call.args({ink, call.text(label), result_first_action + choice, fixture});
-            call.call(active ? 0x107445a0 : 0x107444e0,
-                {ui, grid, choice + 1, i - first, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
-        }
-    }
-    call.args({0, 1, 0, 0xffffffffu});
-    const auto footer = call.call(0x107198c0, {page, 125, 509, 775, 539, 3, 0, 1});
+    const auto footer = call.call(0x107198c0, {page, 155, 509, 734, 539, 3, call.stack + 0xc0, 1});
     const auto button = [&](unsigned column, std::string_view label, unsigned action) {
         call.args({color(0x7bc8), call.text(label), action, 0});
         call.call(0x107444e0, {ui, footer, column, 0, 0x30, color(0x7bc4), 12, 3});
     };
     if (current) button(0, "Previous", result_previous_action);
-    button(1, "Done", 41);
-    if (current + 1 < pages) button(2, "Next", result_next_action);
+    if (current + 1 < pages) button(1, "Next", result_next_action);
+    const auto pool = std::uint32_t(s.memory.read<4>(toc - 0x4e18));
+    const auto buffer = std::uint32_t(s.memory.read<4>(toc - 0x7bb8));
+    call.call(0x10727890, {buffer, pool + 0x785});
+    button(2, original_text(s, buffer), 41);
+
+    // Use the original settings pitch, inset bounds and label font instead
+    // of placing the fixture grid directly on the plain modal background.
+    s.wr<8>(0x4010, float_bits<8>(float_value<4>(s.memory.read<4>(s.memory.read<4>(toc - 0x4ec4)))));
+    call.args({1, footer});
+    call.call(0x103cbb30, {165, 145, 724, 489, call.stack + 0xd0,
+        call.stack + 0xd4, call.stack + 0xd8, call.stack + 0xdc});
+    s.memory.copy_in(call.stack + 0xc0, {44, 14, 14, 14, 14});
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto grid = call.call(0x107198c0, {page, 170, 150, 719, 484, 5, call.stack + 0xc0, results_per_page});
+    const auto first = current * results_per_page;
+    const auto end = std::min(unsigned(fixtures.size()), first + results_per_page);
+    const auto normal_ink = call.call(0x1076bb20, {0, 0xc0, 0, 0});
+    const auto text_width = [&](unsigned font, std::string_view text) {
+        return call.call(0x1076d1e0, {font, call.text(text)});
+    };
+    for (unsigned i = first; i < end; ++i) {
+        const auto fixture = fixtures[i];
+        const auto home = std::uint32_t(s.memory.read<4>(fixture + 0x1c));
+        const auto away = std::uint32_t(s.memory.read<4>(fixture + 0x20));
+        // Short club names on separate lines fit the original settings label
+        // column. The fixture-list group already supplies the match context.
+        auto home_name = original_text(s, home + 0x221);
+        auto away_name = "vs " + original_text(s, away + 0x221);
+        const unsigned font = text_width(3, home_name) <= 230 && text_width(3, away_name) <= 230 ? 3 : 2;
+        const auto fit = [&](std::string text) {
+            if (text_width(font, text) <= 230) return text;
+            while (!text.empty() && text_width(font, text + "...") > 230) text.pop_back();
+            return text + "...";
+        };
+        const auto name = fit(home_name) + "\n" + fit(away_name);
+        call.args({color(0x7b10), call.text(name)});
+        call.call(0x107445a0, {ui, grid, 0, i - first, 1, 0, 1, font});
+        const auto result = debug_match_result(s, fixture);
+        for (unsigned choice = 0; choice < result_choices.size(); ++choice) {
+            const auto [value, label] = result_choices[choice];
+            const bool active = result == value;
+            const auto ink = active ? color(0x7bd0) : normal_ink;
+            // Match the original settings' compact selection frame, centered
+            // beside each two-line fixture instead of stretching over both lines.
+            const auto left = 170 + 550 * (44 + 14 * choice) / 100;
+            const auto right = 170 + 550 * (44 + 14 * (choice + 1)) / 100 - 1;
+            const auto top = 150 + 335 * (i - first) / results_per_page + 10;
+            call.args({2, ink, call.text(label), result_first_action + choice, fixture});
+            call.call(active ? 0x10744390 : 0x10744430,
+                {ui, left, top, right, top + 20, active ? 0x221u : 1u, active ? ink : 0u, 12});
+        }
+    }
 }
 
 void close_debugging_modal(State& s) {
