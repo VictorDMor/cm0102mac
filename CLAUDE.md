@@ -97,12 +97,13 @@ captures and controlled fixtures supply the evidence for module delivery.
 
 ## Recording work
 
-- Whenever a module's C++23 reconstruction is completed, update the existing
-  [recompilation progress spreadsheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit)
-  as part of the same delivery. Record verified routine counts, production
-  status, checks and remaining limits, and verify the affected summary totals.
-  Edit it through the Google Sheets connector (confirmed 2026-11-09); in a session
-  without a tool that writes cells, give the row's values in the final report.
+- Whenever a module's C++23 reconstruction is completed, update the progress
+  workbook `docs/recompilation-progress.xlsx` as part of the same delivery. It is
+  a local copy of the
+  [Google Sheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit)
+  and the record since 2026-11-09; the Google Sheet is Victor's to refresh from it.
+  Record verified routine counts, production status, checks and remaining limits,
+  then run `python3 tools/progress_sheet.py refresh` and check the totals it prints.
 - The commit message is the record: what changed, why, how it was verified, and what wasn't verified. Don't write separate delivery reports.
 - Commit each verified change to `main`. Push normally once the required focused checks pass. Never force-push or rewrite history.
 - After delivering a rewrite, delete its bulky evidence so the disk doesn't fill (`.claude/skills/recompile-module/scripts/clean_evidence.py`; decided 2026-10-30).

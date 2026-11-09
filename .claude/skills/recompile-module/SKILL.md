@@ -180,16 +180,15 @@ In this order:
 3. **Install.** `tools/dev.sh install`. The installer signs and verifies the
    bundle, so don't add your own signature checks. If the game is running it
    refuses: leave that under **Blocked on me** and never stop his session.
-4. **Progress sheet.** Edit the
-   [sheet](https://docs.google.com/spreadsheets/d/1nAl1ojgAi6lJlIAllCFNSPQ-I-HfGgG155MeNJ85Fd4/edit)
-   through the Google Sheets connector (Victor confirmed on 2026-11-09 that you may);
-   load `anthropic-skills:google-workspace` first.
+4. **Progress workbook.** Edit `docs/recompilation-progress.xlsx` with openpyxl
+   (load `anthropic-skills:xlsx` first). It is the local copy of Victor's Google
+   Sheet and the record since 2026-11-09; he refreshes the Google Sheet from it.
    In `Módulos C++`, fill the module's row as the `CASH.CPP` row is filled: status
    `Concluído`, new routines, audited total, reliability and a short note in
    Portuguese. In `Resumo`, update the date and note. Read it back: formulas and
-   neighboring rows unchanged, completed modules up by one, routines up by this
-   module's count. If the session has no tool that writes cells, give the row's
-   values in the final report for him to paste, and finish the rest.
+   neighboring rows unchanged. Then run `python3 tools/progress_sheet.py refresh`,
+   which rebuilds the `Visão Geral` tab and prints the totals: completed modules
+   up by one, routines up by this module's count.
 5. **Docs.** A few lines in `docs/cpp-rewrites.md` for each quirk or contract
    worth knowing; `README.md` only if user-visible status changes.
 6. **Commit and push.** Stage owned changes only. Where a shared file also holds
