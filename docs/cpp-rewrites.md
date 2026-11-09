@@ -1708,3 +1708,6 @@ draw (0x101a184c) can be wide. The flag argument is stored at 0xfb(r1), in the c
 before the price; the rewrite branches on the reloaded byte too. `ble`/`bge` after `fcmpo` branch when GT/LT is clear,
 so an unordered compare takes them: testing only GT or LT is exact (a review suggested otherwise twice; the checker
 proved the suggestion wrong).
+
+The daily update 0x10196390 reads a stack slot it never writes (sp+0xb4 at 0x101964fc, left by its caller's earlier
+callee 0x10371b2c; the stack audit lists it), so its rewrite reads that slot from guest memory in the original's frame.
