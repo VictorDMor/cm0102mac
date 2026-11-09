@@ -27,6 +27,8 @@ void append_debugging_option(State&);
 void begin_debugging_options();
 bool dispatch_debugging_option(State&);
 void append_fixture_debugging_controls(State&);
+// After 1028ae80 builds its rows: right-click result cells and their marks.
+void append_fixture_result_controls(State&);
 bool dispatch_fixture_debugging_control(State&);
 void append_match_debugging_controls(State&);
 bool dispatch_match_debugging_control(State&);

@@ -2122,6 +2122,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             if item["assembly"] != "li r13,0xaa":
                 raise ValueError("Fixture Competition button boundary changed")
             code.append("append_fixture_debugging_controls(s);")
+        if a == 0x1028bb08:
+            if item["assembly"] != "or r3,r30,r30":
+                raise ValueError("Fixture row loop boundary changed")
+            code.append("append_fixture_result_controls(s);")
         if a == 0x1028bc90:
             code.append("if (dispatch_fixture_debugging_control(s)) return true;")
         if a == 0x1028ce80:

@@ -5,6 +5,12 @@
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
     if (text == DebugText::match_results) return "Match Results";
+    if (text == DebugText::draw) {
+        // Shown in place of the fixture list's "v"; kept short for that column.
+        static constexpr std::array<std::string_view, 11> draw{
+            "Draw", "Draw", "Nul", "Remis", "Pari", "Empate", "Uafgjort", "Gelijk", "Uavgjort", "Empate", "Oavgjort"};
+        return draw[language < draw.size() ? language : 0];
+    }
     if (text == DebugText::extend_all_contracts) {
         static constexpr std::array<std::string_view, 11> labels{
             "Extend All Contracts by 1 Year", "Extend All Contracts by 1 Year",

@@ -20,9 +20,10 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
-## Now: Match Results modal styling (2026-11-09)
+## Now: Match Results by right-click (2026-11-09)
 
-- [x] Match the original Game Settings panel, pitch background, label typography and compact OK footer; preserve independent immediate choices and pagination. Selected choices use compact 21px frames; two-line club labels fall back to the smaller original font when necessary. The focused UI test compares actual original modal bounds/styles and checks caption fit, choices, pagination, close and unchanged RNG. Original-renderer previews of populated, second-page and empty states were visually verified; app built and installed.
+- [x] Replace the Match Results modal with right-clicks on the fixture list (Victor's request): home name = home win, "v" = draw, away name = away win; the same cell again clears, another switches; the chosen name is drawn light green, a draw shows the localized word in place of "v". Right-only invisible controls over the three cells (the original's pattern from 0x103b5ab8), added by a new hook at 0x1028bb08 after the rows are built; the press is consumed so a held button doesn't toggle again. Modal, menu item and their tests removed. Verified by `debugging_options` (`check_fixture_results`: real fixtures screen, original mouse-down/hit-test/dispatch) and the debugging tests.
+- [ ] Victor checks in play: the colours and the draw word, a physical right-click, the list keeping its scroll position, and that the invisible controls don't paint over the names. Known limit: rows past the control table's reserve (0x4af controls, on a very long list) get no right-click cells.
 
 ## Now: individual fixture outcomes (2026-11-08)
 

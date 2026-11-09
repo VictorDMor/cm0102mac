@@ -24,6 +24,8 @@ constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, r
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
 constexpr unsigned match_results_action = 30022;
+// Right-click overlays on a fixture row's home name, "v" and away name.
+constexpr unsigned result_home_action = 30230, result_draw_action = 30231, result_away_action = 30232;
 static_assert(free_squad_action > shortcut_last);
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 bool action_enabled(unsigned action);
@@ -265,16 +267,7 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
 
 namespace {
 constexpr unsigned debug_options_action = 30020, feature_action = 30100;
-constexpr unsigned debug_options_mode = 4, match_results_mode = 5;
-constexpr unsigned result_group_slot = 2, result_page_slot = 3;
-constexpr unsigned result_first_action = 30200, result_previous_action = 30204, result_next_action = 30205;
-constexpr unsigned results_per_page = 8;
-constexpr std::array result_choices{
-    std::pair{ForcedMatchResult::normal, "Normal"},
-    std::pair{ForcedMatchResult::home_win, "Home win"},
-    std::pair{ForcedMatchResult::draw, "Draw"},
-    std::pair{ForcedMatchResult::away_win, "Away win"},
-};
+constexpr unsigned debug_options_mode = 4;
 std::optional<std::uint32_t> pending_features;
 constexpr std::array feature_labels{
     DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
@@ -325,13 +318,6 @@ std::vector<std::uint32_t> displayed_fixtures(const State& s, std::uint32_t grou
     return fixtures;
 }
 
-std::vector<std::uint32_t> eligible_result_fixtures(State& s, GuestCall& call) {
-    if (!action_enabled(match_results_action)) return {};
-    auto fixtures = displayed_fixtures(s, call.call(0x1073ef70, {root(s), result_group_slot}));
-    std::erase_if(fixtures, [&](auto fixture) { return !debug_match_result_eligible(s, fixture); });
-    return fixtures;
-}
-
 void draw_debugging_panel(GuestCall& call, std::uint32_t ui, std::uint32_t page,
                           std::uint32_t left, std::uint32_t right, std::uint32_t title_color,
                           std::uint32_t title_ink, std::string_view title) {
@@ -345,122 +331,12 @@ void draw_debugging_panel(GuestCall& call, std::uint32_t ui, std::uint32_t page,
     call.call(0x10744390, {ui, left + 10, 60, right - 10, 105, 0x30, title_color, 12});
 }
 
-void build_match_results_modal(State& s) {
-    const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
-    const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
-    GuestCall call(s);
-    const auto fixtures = eligible_result_fixtures(s, call);
-    const auto pages = std::max(1u, (unsigned(fixtures.size()) + results_per_page - 1) / results_per_page);
-    const auto current = std::min(pages - 1, call.call(0x1073ef70, {ui, result_page_slot}));
-    const auto title = std::string(debug_text(s, DebugText::match_results)) + " (" +
-        std::to_string(current + 1) + "/" + std::to_string(pages) + ")";
-    draw_debugging_panel(call, ui, page, 145, 744, color(0x7bd4), color(0x7bc8), title);
-
-    const auto description = fixtures.empty() ? "No eligible unplayed matches." :
-        "Changes apply immediately. Normal clears a selection.";
-    call.args({1, color(0x7b10), call.text(description)});
-    call.call(0x10744390, {ui, 155, 115, 734, 135, 1, 0, 1});
-
-    // Keep the Game Settings footer's compact OK on the right. Pagination
-    // occupies its wide left section; choices continue to apply immediately.
-    s.memory.copy_in(call.stack + 0xc0, {37, 38, 25});
-    call.args({0, 1, 0, 0xffffffffu});
-    const auto footer = call.call(0x107198c0, {page, 155, 509, 734, 539, 3, call.stack + 0xc0, 1});
-    const auto button = [&](unsigned column, std::string_view label, unsigned action) {
-        call.args({color(0x7bc8), call.text(label), action, 0});
-        call.call(0x107444e0, {ui, footer, column, 0, 0x30, color(0x7bc4), 12, 3});
-    };
-    if (current) button(0, "Previous", result_previous_action);
-    if (current + 1 < pages) button(1, "Next", result_next_action);
-    const auto pool = std::uint32_t(s.memory.read<4>(toc - 0x4e18));
-    const auto buffer = std::uint32_t(s.memory.read<4>(toc - 0x7bb8));
-    call.call(0x10727890, {buffer, pool + 0x785});
-    button(2, original_text(s, buffer), 41);
-
-    // Use the original settings pitch, inset bounds and label font instead
-    // of placing the fixture grid directly on the plain modal background.
-    s.wr<8>(0x4010, float_bits<8>(float_value<4>(s.memory.read<4>(s.memory.read<4>(toc - 0x4ec4)))));
-    call.args({1, footer});
-    call.call(0x103cbb30, {165, 145, 724, 489, call.stack + 0xd0,
-        call.stack + 0xd4, call.stack + 0xd8, call.stack + 0xdc});
-    s.memory.copy_in(call.stack + 0xc0, {44, 14, 14, 14, 14});
-    call.args({0, 1, 0, 0xffffffffu});
-    const auto grid = call.call(0x107198c0, {page, 170, 150, 719, 484, 5, call.stack + 0xc0, results_per_page});
-    const auto first = current * results_per_page;
-    const auto end = std::min(unsigned(fixtures.size()), first + results_per_page);
-    const auto normal_ink = call.call(0x1076bb20, {0, 0xc0, 0, 0});
-    const auto text_width = [&](unsigned font, std::string_view text) {
-        return call.call(0x1076d1e0, {font, call.text(text)});
-    };
-    for (unsigned i = first; i < end; ++i) {
-        const auto fixture = fixtures[i];
-        const auto home = std::uint32_t(s.memory.read<4>(fixture + 0x1c));
-        const auto away = std::uint32_t(s.memory.read<4>(fixture + 0x20));
-        // Short club names on separate lines fit the original settings label
-        // column. The fixture-list group already supplies the match context.
-        auto home_name = original_text(s, home + 0x221);
-        auto away_name = "vs " + original_text(s, away + 0x221);
-        const unsigned font = text_width(3, home_name) <= 230 && text_width(3, away_name) <= 230 ? 3 : 2;
-        const auto fit = [&](std::string text) {
-            if (text_width(font, text) <= 230) return text;
-            while (!text.empty() && text_width(font, text + "...") > 230) text.pop_back();
-            return text + "...";
-        };
-        const auto name = fit(home_name) + "\n" + fit(away_name);
-        call.args({color(0x7b10), call.text(name)});
-        call.call(0x107445a0, {ui, grid, 0, i - first, 1, 0, 1, font});
-        const auto result = debug_match_result(s, fixture);
-        for (unsigned choice = 0; choice < result_choices.size(); ++choice) {
-            const auto [value, label] = result_choices[choice];
-            const bool active = result == value;
-            const auto ink = active ? color(0x7bd0) : normal_ink;
-            // Match the original settings' compact selection frame, centered
-            // beside each two-line fixture instead of stretching over both lines.
-            const auto left = 170 + 550 * (44 + 14 * choice) / 100;
-            const auto right = 170 + 550 * (44 + 14 * (choice + 1)) / 100 - 1;
-            const auto top = 150 + 335 * (i - first) / results_per_page + 10;
-            call.args({2, ink, call.text(label), result_first_action + choice, fixture});
-            call.call(active ? 0x10744390 : 0x10744430,
-                {ui, left, top, right, top + 20, active ? 0x221u : 1u, active ? ink : 0u, 12});
-        }
-    }
-}
-
 void close_debugging_modal(State& s) {
     GuestCall call(s);
     const auto preferences = call.call(0x1073ef70, {root(s), 0});
     call.call(0x1013f4d0, {preferences, 1});
 }
 
-bool dispatch_match_results_modal(State& s, std::uint32_t control, unsigned action) {
-    int result = 0;
-    if (action == 40 || action == 41) {
-        close_debugging_modal(s);
-        result = -9;
-    } else if (control && (s.memory.read<4>(control + 12) & 2) && action_enabled(match_results_action)) {
-        GuestCall call(s);
-        const auto ui = root(s);
-        const auto fixtures = eligible_result_fixtures(s, call);
-        if (action >= result_first_action && action < result_first_action + result_choices.size()) {
-            const auto fixture = std::uint32_t(s.memory.read<4>(control + 0x48));
-            if (std::ranges::find(fixtures, fixture) != fixtures.end() &&
-                set_debug_match_result(s, fixture, result_choices[action - result_first_action].first))
-                result = -11;
-        } else if (action == result_previous_action || action == result_next_action) {
-            const auto pages = std::max(1u, (unsigned(fixtures.size()) + results_per_page - 1) / results_per_page);
-            const auto current = std::min(pages - 1, call.call(0x1073ef70, {ui, result_page_slot}));
-            if ((action == result_previous_action && current) ||
-                (action == result_next_action && current + 1 < pages)) {
-                const auto next = action == result_previous_action ? current - 1 : current + 1;
-                call.call(0x1073f1e0, {ui, result_page_slot, next, 0});
-                result = -11;
-            }
-        }
-    }
-    s.wr<4>(12, std::uint32_t(result));
-    s.pc = s.r<4>(4128);
-    return true;
-}
 }
 
 void append_debugging_sidebar(State& s) {
@@ -495,13 +371,7 @@ bool dispatch_debugging_sidebar(State& s) {
 
 bool build_debugging_options_screen(State& s) {
     if (!native_debugging_available()) return false;
-    const auto mode = debugging_modal_mode(s);
-    if (mode == match_results_mode) {
-        build_match_results_modal(s);
-        s.pc = s.r<4>(4128);
-        return true;
-    }
-    if (mode != debug_options_mode) return false;
+    if (debugging_modal_mode(s) != debug_options_mode) return false;
     if (!pending_features) pending_features = native_debugging_features();
     {
         GuestCall call(s);
@@ -588,9 +458,7 @@ bool dispatch_debugging_option(State& s) {
     const auto control = selected_control(s);
     auto action = control ? s.memory.read<4>(control + 8) : 0;
     if (!action) action = s.memory.read<2>(root(s) + 0x25819e);
-    const auto mode = debugging_modal_mode(s);
-    if (mode == match_results_mode) return dispatch_match_results_modal(s, control, action);
-    if (mode == debug_options_mode) {
+    if (debugging_modal_mode(s) == debug_options_mode) {
         if (!pending_features) pending_features = native_debugging_features();
         if (control && action >= feature_action && action < feature_action + debug_feature_count &&
             (s.memory.read<4>(control + 12) & 2)) {
@@ -627,8 +495,7 @@ bool dispatch_debugging_option(State& s) {
 }
 
 void append_fixture_debugging_controls(State& s) {
-    if (!action_enabled(underdogs_action) && !action_enabled(underdogs_max_action) &&
-        !action_enabled(match_results_action)) return;
+    if (!action_enabled(underdogs_action) && !action_enabled(underdogs_max_action)) return;
     const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
     const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
     GuestCall call(s);
@@ -660,13 +527,77 @@ void append_fixture_debugging_controls(State& s) {
         const auto label = std::string(selected ? "* " : "") + std::string(text);
         item(action, label, enabled);
     }
-    if (action_enabled(match_results_action)) {
-        const auto eligible = [&](auto fixture) { return debug_match_result_eligible(s, fixture); };
-        const bool selected = std::ranges::any_of(fixtures, [&](auto fixture) {
-            return eligible(fixture) && debug_match_result(s, fixture) != ForcedMatchResult::normal;
-        });
-        const auto label = std::string(selected ? "* " : "") + std::string(debug_text(s, DebugText::match_results));
-        item(match_results_action, label, std::ranges::any_of(fixtures, eligible));
+}
+
+namespace {
+// Cells of one fixture row made by 10076450: column 2 is the home name and 6
+// the away name (data: the club), column 4 the "v" of an unplayed fixture
+// (action 0x7d2, data: the core fixture). Rows are unique within the grid.
+struct FixtureRowCells { std::uint32_t fixture; std::array<std::uint32_t, 3> cells; };
+constexpr std::array<unsigned, 3> result_columns{2, 4, 6};
+constexpr std::array result_actions{result_home_action, result_draw_action, result_away_action};
+constexpr std::array result_values{ForcedMatchResult::home_win, ForcedMatchResult::draw, ForcedMatchResult::away_win};
+constexpr unsigned control_limit = 0x4af, control_reserve = 32;
+
+std::vector<FixtureRowCells> fixture_result_rows(const State& s, std::uint32_t page, std::int16_t grid) {
+    const auto count = unsigned(signed_value<2>(s.memory.read<2>(page + 0x129da6)));
+    const auto item = [&](unsigned i) { return page + control_table + i * control_stride; };
+    const auto in_grid = [&](std::uint32_t c) { return signed_value<2>(s.memory.read<2>(c + 0x72)) == grid; };
+    std::vector<FixtureRowCells> rows;
+    for (unsigned i = 0; i < count && i < control_limit; ++i) {
+        const auto versus = item(i);
+        if (!in_grid(versus) || s.memory.read<4>(versus + 8) != 0x7d2 ||
+            s.memory.read<4>(versus + 0x20) != result_columns[1]) continue;
+        const auto fixture = std::uint32_t(s.memory.read<4>(versus + 0x48));
+        const auto row = s.memory.read<4>(versus + 0x24);
+        FixtureRowCells found{fixture, {0, versus, 0}};
+        for (unsigned j = 0; j < count && j < control_limit; ++j) {
+            const auto cell = item(j);
+            if (!in_grid(cell) || s.memory.read<4>(cell + 0x24) != row) continue;
+            const auto column = s.memory.read<4>(cell + 0x20);
+            const auto club = s.memory.read<4>(cell + 0x48);
+            if (column == result_columns[0] && club == s.memory.read<4>(fixture + 0x1c)) found.cells[0] = cell;
+            if (column == result_columns[2] && club == s.memory.read<4>(fixture + 0x20)) found.cells[2] = cell;
+        }
+        if (found.cells[0] && found.cells[2]) rows.push_back(found);
+    }
+    return rows;
+}
+}
+
+void append_fixture_result_controls(State& s) {
+    if (!action_enabled(match_results_action)) return;
+    // 1028ae80 after its row loop: r13 is the fixture grid, r30 the UI root.
+    const auto ui = std::uint32_t(s.r<4>(30 * 4)), page = screen(s, ui);
+    const auto grid = std::int16_t(s.r<4>(13 * 4));
+    if (ui != root(s) || grid < 0) return;
+    auto rows = fixture_result_rows(s, page, grid);
+    std::erase_if(rows, [&](const auto& row) { return !debug_match_result_eligible(s, row.fixture); });
+    if (rows.empty()) return;
+    GuestCall call(s);
+    const auto light_green = call.call(0x1076bb20, {0x90, 0xee, 0x90, 0});
+    for (const auto& row : rows) {
+        // Show the choice as the original row would draw it: the winner's
+        // name in light green, or the draw word in place of the "v".
+        switch (debug_match_result(s, row.fixture)) {
+            case ForcedMatchResult::home_win: s.memory.write<2>(row.cells[0] + 0x70, light_green); break;
+            case ForcedMatchResult::away_win: s.memory.write<2>(row.cells[2] + 0x70, light_green); break;
+            case ForcedMatchResult::draw: {
+                const auto word = debug_text(s, DebugText::draw);
+                std::vector<std::uint8_t> text(word.begin(), word.end()); text.push_back(0);
+                s.memory.copy_in(row.cells[1] + 0x78, text);
+                break;
+            }
+            case ForcedMatchResult::normal: break;
+        }
+        // Invisible right-click-only cells over the three, as the original
+        // makes its own (103b5ab8): flags 0x102, plain style, no text.
+        if (signed_value<2>(s.memory.read<2>(page + 0x129da6)) + 3 > int(control_limit - control_reserve)) continue;
+        const auto row_index = std::uint32_t(s.memory.read<4>(row.cells[1] + 0x24));
+        for (unsigned k = 0; k < 3; ++k) {
+            call.args({1, 0, 0, 12, 1, 0, 0, 0, result_actions[k], row.fixture, std::uint32_t(grid)});
+            call.call(0x10719740, {page, 0x102, 0, 0, 0, 0, result_columns[k], row_index});
+        }
     }
 }
 
@@ -674,26 +605,44 @@ bool dispatch_fixture_debugging_control(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != underdogs_action && action != underdogs_max_action && action != match_results_action) return false;
+    const auto result = std::ranges::find(result_actions, action);
+    if (result != result_actions.end()) {
+        // Consume the press, accepted or refused: the hit test selects a control on every
+        // loop pass while its button byte is set, and only mouse-up clears the right byte,
+        // so a held button would toggle the choice again after the rebuild. The original
+        // dispatcher clears its left byte the same way (0x1028bdb8).
+        const auto toc = std::uint32_t(s.r<4>(8));
+        for (const std::uint32_t slot : {0x5c0cu, 0x7bacu})
+            s.memory.write<1>(std::uint32_t(s.memory.read<4>(toc - slot)), 0);
+        bool accepted = false;
+        const auto fixture = std::uint32_t(s.memory.read<4>(control + 0x48));
+        if (action_enabled(match_results_action) && (s.memory.read<4>(control + 12) & 2)) {
+            GuestCall call(s);
+            const auto ui = root(s);
+            const auto fixtures = displayed_fixtures(s, call.call(0x1073ef70, {ui, 1}));
+            if (std::ranges::find(fixtures, fixture) != fixtures.end() && debug_match_result_eligible(s, fixture)) {
+                const auto chosen = result_values[std::size_t(result - result_actions.begin())];
+                // The chosen cell again clears; another cell switches.
+                const auto next = debug_match_result(s, fixture) == chosen ? ForcedMatchResult::normal : chosen;
+                accepted = set_debug_match_result(s, fixture, next);
+                if (accepted) {
+                    // Keep the list's scroll for the rebuild, as 1028bc90
+                    // itself does before handling any selected control.
+                    const auto list = std::int16_t(call.call(0x1073ef70, {ui, 3}));
+                    call.call(0x1073f1e0, {ui, 2, call.call(0x10743510, {ui, std::uint32_t(std::int32_t(list))}), 0});
+                }
+            }
+        }
+        s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
+        return true;
+    }
+    if (action != underdogs_action && action != underdogs_max_action) return false;
     bool accepted = false;
     if (action_enabled(action) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
-        const auto ui = root(s);
-        const auto group = call.call(0x1073ef70, {ui, 1});
-        const auto fixtures = displayed_fixtures(s, group);
-        if (action == match_results_action) {
-            if (std::ranges::any_of(fixtures, [&](auto fixture) { return debug_match_result_eligible(s, fixture); })) {
-                call.call(0x1033ce70, {match_results_mode});
-                accepted = call.call(0x1073ef70, {ui, 1}) == match_results_mode;
-                if (accepted) {
-                    call.call(0x1073f1e0, {ui, result_group_slot, group, 0});
-                    call.call(0x1073f1e0, {ui, result_page_slot, 0, 0});
-                }
-            }
-        } else {
-            accepted = arm_debug_underdogs(s, fixtures,
-                action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum);
-        }
+        const auto fixtures = displayed_fixtures(s, call.call(0x1073ef70, {root(s), 1}));
+        accepted = arm_debug_underdogs(s, fixtures,
+            action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum);
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
     return true;

@@ -4,9 +4,14 @@
 #include "guest_abi.hpp"
 #include "code_fragment_adapter.hpp"
 #include "match_replay.hpp"
+#include <algorithm>
+#include <array>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <string>
+#include <tuple>
+#include <vector>
 using namespace cm::aot;
 namespace {
 void require(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
@@ -22,10 +27,242 @@ struct Clock final : CodeFragmentBoundaryObserver {
         return true;
     }
 };
+
+// The real fixture list (MATCH_SCREENS 1028ae80) built from a match-day queue,
+// clicked through the original mouse-down handler, hit test and dispatcher.
+void check_fixture_results(const char* path) {
+    auto state = std::make_unique<State>();
+    load_match_snapshot(*state, path);
+    auto& s = *state;
+    Clock clock;
+    s.code_fragment_observer = &clock;
+    guest::Cpu c(s);
+    c.set(2, c.u32(c.sp() + 0x14));
+    const auto ui = c.toc(-0x7bb0);
+    c.put16(ui + 0x2c58, 0);
+    const auto invoke = [&](unsigned entry, std::initializer_list<unsigned> args) {
+        s.budget = s.executed + 400000000;
+        unsigned reg = 3;
+        for (auto value : args) c.set(reg++, value);
+        try { c.call(entry, 0xfffffff0); }
+        catch (const std::exception& error) { throw std::runtime_error(hex_address(entry) + ": " + error.what()); }
+        require(s.pc == 0xfffffff0, "UI operation failed to return");
+        return c.r(3);
+    };
+    const auto page = [&] { return c.u32(ui + 0x24 + c.i16(ui + 0x2c58) * 0x2c0); };
+    const auto count = [&] { return unsigned(c.u16(page() + 0x129da6)); };
+    const auto item = [&](unsigned i) { return page() + 0xba864 + i * 0x17c; };
+    const auto text = [&](unsigned i) {
+        std::string result;
+        for (unsigned j = 0; j < 200 && c.u8(item(i) + 0x78 + j); ++j) result += char(c.u8(item(i) + 0x78 + j));
+        return result;
+    };
+    const auto ink = [&](unsigned i) { return c.u16(item(i) + 0x70); };
+    const auto table = [&] {
+        // Without the save-under pixel buffer each drawn control allocates.
+        auto bytes = s.memory.copy_out(item(0), count() * 0x17c);
+        for (unsigned i = 0; i < count(); ++i) std::fill_n(bytes.begin() + i * 0x17c + 0x4c, 4, 0);
+        return bytes;
+    };
+    const auto find = [&](unsigned action, std::uint32_t data) {
+        for (unsigned i = 0; i < count(); ++i)
+            if (c.u32(item(i) + 8) == action && c.u32(item(i) + 0x48) == data) return int(i);
+        return -1;
+    };
+    const auto rng = s.memory.copy_out(c.toc(-0x7b90), 0x10);
+    const auto queue = c.u32(c.toc(-0x7420));
+    require(queue && c.u32(queue + 0x10) && c.u32(queue + 0x1c), "Match-day snapshot has no fixture queue");
+    const auto fixture_at = [&](unsigned entry) { return c.u32(c.u32(queue + 0x1c) + entry * 0x6c); };
+    // Competition lists: one with two selectable fixtures, one holding a
+    // human manager's unplayed fixture (never selectable).
+    std::uint32_t list = 0, human_list = 0, human = 0;
+    std::vector<std::uint32_t> eligible;
+    for (unsigned g = 0; g < c.u32(queue + 0xc); ++g) {
+        const auto group = c.u32(queue + 4) + g * 0x18;
+        for (auto n = c.u32(group + 4); n <= c.u32(group + 8); ++n) {
+            const auto sub = c.u32(queue + 0x10) + n * 0x20;
+            std::vector<std::uint32_t> found;
+            for (auto e = c.u32(sub + 4); e <= c.u32(sub + 8); ++e) {
+                const auto fixture = fixture_at(e);
+                if (debug_match_result_eligible(s, fixture)) found.push_back(fixture);
+                else if (fixture && c.i8(fixture + 0x43) == -1 && !human) { human = fixture; human_list = sub; }
+            }
+            if (!list && found.size() >= 2) { list = sub; eligible = found; }
+        }
+    }
+    require(list && human, "Match-day snapshot lacks a selectable list or a human fixture");
+    const auto build = [&](std::uint32_t sub) {
+        invoke(0x1073f1e0, {ui, 1, sub, 0});
+        invoke(0x10719560, {page()});
+        invoke(0x1028ae80, {});
+        // Grid cells get their rectangles when the grid lays out its columns
+        // and rows (10714630) and draws (10714110), as the page draw does.
+        const auto grid = std::int16_t(invoke(0x1073ef70, {ui, 3}));
+        require(grid >= 0, "Fixture list grid missing");
+        invoke(0x10714630, {page() + 4 + unsigned(grid) * 0xbf0});
+        invoke(0x10714110, {page() + 4 + unsigned(grid) * 0xbf0, 0});
+    };
+    invoke(0x10773520, {16});
+    const auto record = c.r(3);
+    const auto press = [&](unsigned button) {
+        // Mouse-down through the original handler 10770570, which records
+        // the native button (2 right/Control-click) as the left/right bytes.
+        s.memory.copy_in(record, std::vector<std::uint8_t>(16));
+        c.put16(record, 1);
+        c.put16(c.toc(-0x5ae0), button);
+        if (button == 2) c.put16(record + 0xe, c.u32(c.toc(-0x5ad0)));
+        invoke(0x10770570, {record});
+        require(c.u8(c.toc(-0x5c0c)) == (button == 2) && c.u8(c.toc(-0x7bac)) == (button != 2),
+                "Original mouse-down handler did not record the button");
+    };
+    const auto hit = [&](int cell, unsigned button) {
+        require(cell >= 0, "Missing fixture cell");
+        const auto at = item(unsigned(cell));
+        c.put32(c.toc(-0x5c10), (c.u32(at + 0x10) + c.u32(at + 0x18)) / 2);
+        c.put32(c.toc(-0x5c14), (c.u32(at + 0x14) + c.u32(at + 0x1c)) / 2);
+        press(button);
+        return int(std::int16_t(invoke(0x1071a280, {page()})));
+    };
+    const auto right_click = [&](int cell) {
+        const auto selected = hit(cell, 2);
+        const auto rebuild = std::int32_t(invoke(0x1028bc90, {std::uint32_t(selected)}));
+        // The press is consumed: a held button must not select the cell again on the next pass.
+        require(c.u8(c.toc(-0x5c0c)) == 0 && c.u8(c.toc(-0x7bac)) == 0, "Right-click on a result cell was not consumed");
+        require(std::int16_t(invoke(0x1071a280, {page()})) < 0 || selected < 0, "A held right button selects a result cell again");
+        return std::pair{selected, rebuild};
+    };
+    struct Row { std::uint32_t fixture; int home, versus, away; };
+    const auto row = [&](std::uint32_t fixture) {
+        const auto versus = find(0x7d2, fixture);
+        require(versus >= 0, "Unplayed fixture has no v cell");
+        Row r{fixture, -1, versus, -1};
+        for (unsigned i = 0; i < count(); ++i) {
+            if (c.u16(item(i) + 0x72) != c.u16(item(unsigned(versus)) + 0x72) ||
+                c.u32(item(i) + 0x24) != c.u32(item(unsigned(versus)) + 0x24)) continue;
+            if (c.u32(item(i) + 0x20) == 2 && c.u32(item(i) + 0x48) == c.u32(fixture + 0x1c)) r.home = int(i);
+            if (c.u32(item(i) + 0x20) == 6 && c.u32(item(i) + 0x48) == c.u32(fixture + 0x20)) r.away = int(i);
+        }
+        require(r.home >= 0 && r.away >= 0, "Fixture row names not found by column and club");
+        return r;
+    };
+    const auto result_feature = 1u << unsigned(DebugFeature::match_result);
+    initialize_native_debugging(false);
+    build(list);
+    const auto off = table();
+    const auto off_count = count();
+    const auto a = row(eligible[0]), b = row(eligible[1]);
+    const auto normal_home = ink(unsigned(a.home)), normal_away = ink(unsigned(a.away));
+    const auto versus_text = text(unsigned(a.versus));
+    require(find(30230, a.fixture) < 0 && find(30231, a.fixture) < 0, "Disabled feature added right-click cells");
+    // Today's left click and a right click without the feature.
+    const auto left = hit(a.home, 1);
+    require(left == a.home && c.u32(item(unsigned(left)) + 0x48) == c.u32(a.fixture + 0x1c),
+            "Left click no longer selects the home name");
+    c.set(3, unsigned(left));
+    require(!dispatch_fixture_debugging_control(s), "Left click on a name must keep the original club action");
+    require(hit(a.home, 2) == -1, "Disabled feature reacted to a right click");
+
+    select_native_debugging_features(result_feature);
+    build(list);
+    for (unsigned i = 0; i < count(); ++i) require(c.u32(item(i) + 8) != 30022, "Match Results menu item remains");
+    // Only invisible overlays are added: every original control is unchanged
+    // apart from its table index.
+    unsigned first_overlay = 0;
+    while (first_overlay < count() && (c.u32(item(first_overlay) + 8) < 30230 || c.u32(item(first_overlay) + 8) > 30232))
+        ++first_overlay;
+    const auto added = count() - off_count;
+    require(added == 3 * eligible.size(), "Expected three right-click cells per selectable fixture");
+    const auto on = table();
+    for (unsigned i = 0; i < off_count; ++i) {
+        const auto j = i < first_overlay ? i : i + added;
+        auto original = std::vector<std::uint8_t>(off.begin() + i * 0x17c, off.begin() + (i + 1) * 0x17c);
+        auto current = std::vector<std::uint8_t>(on.begin() + j * 0x17c, on.begin() + (j + 1) * 0x17c);
+        original[0x68] = current[0x68] = original[0x69] = current[0x69] = 0;
+        require(original == current, "Enabled feature changed an original fixture-list control");
+    }
+    const auto overlays = [&](const Row& r) {
+        std::array<int, 3> cells{find(30230, r.fixture), find(30231, r.fixture), find(30232, r.fixture)};
+        const std::array<int, 3> under{r.home, r.versus, r.away};
+        for (unsigned k = 0; k < 3; ++k) {
+            require(cells[k] >= 0, "Missing right-click cell");
+            const auto o = item(unsigned(cells[k])), u = item(unsigned(under[k]));
+            require(c.u32(o + 12) == 0x102 && text(unsigned(cells[k])).empty() && c.u32(o + 0x38) == 1 &&
+                    c.u16(o + 0x72) == c.u16(u + 0x72) && s.memory.copy_out(o + 0x10, 16) == s.memory.copy_out(u + 0x10, 16),
+                    "Right-click cell must be an invisible right-only control over its name");
+        }
+        return cells;
+    };
+    overlays(a); overlays(b);
+    require(find(30230, human) < 0, "Human fixture got right-click cells");
+    require(text(unsigned(a.versus)) == versus_text && ink(unsigned(a.home)) == normal_home, "No choice changed a row");
+
+    const auto green = std::uint16_t(invoke(0x1076bb20, {0x90, 0xee, 0x90, 0}));
+    require(green != normal_home && green != normal_away, "Light green must differ from the original inks");
+    const auto expect = [&](const Row& r, ForcedMatchResult result) {
+        require(debug_match_result(s, r.fixture) == result, "Right click selected the wrong result");
+        const auto now = row(r.fixture);
+        require(ink(unsigned(now.home)) == (result == ForcedMatchResult::home_win ? green : normal_home) &&
+                ink(unsigned(now.away)) == (result == ForcedMatchResult::away_win ? green : normal_away) &&
+                text(unsigned(now.versus)) == (result == ForcedMatchResult::draw ?
+                    std::string(debug_text(s, DebugText::draw)) : versus_text),
+                "Fixture row does not show its selected result");
+        return now;
+    };
+    // Home name: home win; same cell again clears; "v": draw; away switches.
+    auto [selected, rebuild] = right_click(overlays(a)[0]);
+    require(selected == find(30230, a.fixture) && rebuild == -11, "Right click on the home name did not rebuild");
+    build(list);
+    expect(a, ForcedMatchResult::home_win);
+    expect(b, ForcedMatchResult::normal);
+    std::tie(selected, rebuild) = right_click(overlays(a)[0]);
+    require(rebuild == -11, "Clearing right click did not rebuild");
+    build(list);
+    expect(a, ForcedMatchResult::normal);
+    require(table() == on, "Cleared choice left the fixture list changed");
+    right_click(overlays(a)[1]);
+    build(list);
+    const auto draw_row = expect(a, ForcedMatchResult::draw);
+    {
+        const auto v = item(unsigned(draw_row.versus));
+        const auto width = c.u32(v + 0x18) - c.u32(v + 0x10) + 1;
+        for (unsigned language = 0; language < 11; ++language) {
+            const auto word = std::string(debug_text(language, DebugText::draw));
+            const auto scratch = record;
+            s.memory.copy_in(scratch, std::vector<std::uint8_t>(word.begin(), word.begin() + std::min<std::size_t>(word.size(), 15)));
+            c.put8(scratch + std::min<std::size_t>(word.size(), 15), 0);
+            require(word.size() < 16 && invoke(0x1076d1e0, {c.u32(v + 0x3c), scratch}) <= width,
+                    "Localized draw word does not fit the v column");
+        }
+    }
+    right_click(overlays(a)[2]);
+    build(list);
+    expect(a, ForcedMatchResult::away_win);
+    right_click(overlays(b)[0]);
+    build(list);
+    expect(a, ForcedMatchResult::away_win);
+    expect(b, ForcedMatchResult::home_win);
+
+    // Stale or forged cells: an ineligible fixture and a disabled feature.
+    const auto forged = unsigned(overlays(a)[1]);
+    c.put32(item(forged) + 0x48, human);
+    require(std::int32_t(invoke(0x1028bc90, {forged})) == 0 && debug_match_result(s, human) == ForcedMatchResult::normal,
+            "Ineligible fixture accepted a right click");
+    build(list);
+    select_native_debugging_features(0);
+    require(std::int32_t(invoke(0x1028bc90, {unsigned(overlays(a)[1])})) == 0 &&
+            debug_match_result(s, a.fixture) == ForcedMatchResult::away_win, "Disabled feature accepted a stale right click");
+    build(list);
+    require(table() == off, "Disabled feature changed the fixture list");
+    select_native_debugging_features(result_feature);
+    build(human_list);
+    const auto h = row(human);
+    require(find(30230, human) < 0 && hit(h.home, 2) == -1, "Human fixture reacted to a right click");
+    require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Fixture-list results changed RNG");
+}
 }
 int main(int argc, char** argv) {
     try {
-        require(argc == 2, "Expected a private UI snapshot");
+        require(argc == 2 || argc == 3, "Expected a private UI snapshot and optionally a match-day snapshot");
         auto state = std::make_unique<State>();
         load_match_snapshot(*state, argv[1]);
         auto& s = *state;
@@ -63,10 +300,6 @@ int main(int argc, char** argv) {
         const auto item_address = [&](unsigned index) { return page() + 0xba864 + index * 0x17c; };
         const auto grid_address = [&](unsigned index) { return page() + 4 + index * 0xbf0; };
         const auto control_grid = [&](unsigned index) { return grid_address(c.u16(item_address(index) + 0x72)); };
-        const auto grid_bounds = [&](std::uint32_t grid) {
-            return std::array{c.u32(grid), c.u32(grid + 4), c.u32(grid + 8), c.u32(grid + 12)};
-        };
-        const auto control_bounds = [&](unsigned index) { return grid_bounds(item_address(index) + 0x10); };
         const auto label_control = [&](std::string_view label, unsigned flags) {
             for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i) {
                 const auto item = item_address(i);
@@ -132,9 +365,6 @@ int main(int argc, char** argv) {
         require(style(label_control(debug_text(s, DebugText::on), 1)) == active_style &&
                 style(control(30001, 0)) == inactive_style && style(control(40, 0)) == footer_style,
                 "Debugging modal must use Game Settings cell, selection and footer styles");
-        const auto settings_panel = grid_bounds(grid_address(1));
-        const auto settings_grid = grid_bounds(control_grid(control(30001, 0)));
-        const auto settings_footer = grid_bounds(control_grid(control(41, 0)));
         c.set(3, control(41, 0));
         require(!dispatch_debugging_option(s), "Ordinary preferences must retain their original handler");
         require(native_debugging_features() == (1u << unsigned(DebugFeature::remove_sale_clause)), "Game Options flattened selection");
@@ -190,122 +420,9 @@ int main(int argc, char** argv) {
         for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
             require(c.u32(item_address(i) + 8) != 30021, "Disabled collective action remained visible");
 
-        // Exercise the new options page through the real fixture command and
-        // preferences callbacks. Separate pages must retain independent plans.
-        const auto allocate_zeroed = [&](unsigned size) {
-            invoke(0x10773520, {size});
-            const auto address = c.r(3);
-            require(address != 0, "Fixture control setup allocation failed");
-            s.memory.copy_in(address, std::vector<std::uint8_t>(size));
-            return address;
-        };
-        std::array<std::uint32_t, 4> clubs{};
-        for (unsigned i = 0; i < clubs.size(); ++i) {
-            clubs[i] = allocate_zeroed(0x248);
-            s.memory.copy_in(clubs[i] + 0x221, {'T', 'e', 'a', 'm', ' ', std::uint8_t('A' + i), 0});
-        }
-        std::array<std::uint32_t, 10> fixtures{};
-        const auto queue = allocate_zeroed(0x60);
-        const auto entries = allocate_zeroed(unsigned(fixtures.size()) * 0x6c);
-        const auto group = allocate_zeroed(0x18);
-        c.put32(queue + 0x1c, entries);
-        c.put32(group + 8, unsigned(fixtures.size()) - 1);
-        for (unsigned i = 0; i < fixtures.size(); ++i) {
-            const auto fixture = fixtures[i] = allocate_zeroed(0x54);
-            c.put32(entries + i * 0x6c, fixture);
-            const unsigned home = i == 8 ? 2 : 0;
-            c.put32(fixture + 0x1c, clubs[home]);
-            c.put32(fixture + 0x20, clubs[home + 1]);
-            c.put16(fixture + 0x28, 100 + i);
-            c.put16(fixture + 0x2a, 2002);
-            c.put16(fixture + 0x30, 100 + i);
-            c.put16(fixture + 0x32, 2002);
-            c.put8(fixture + 0x43, i + 1 < fixtures.size() ? 0xff : 1);
-        }
-        const auto queue_slot = c.toc(-0x7420);
-        const auto original_queue = c.u32(queue_slot);
-        c.put32(queue_slot, queue);
-        invoke(0x1073f1e0, {ui, 1, group, 0});
-        const auto result_feature = 1u << unsigned(DebugFeature::match_result);
-        select_native_debugging_features(result_feature);
-        invoke(0x10719560, {page()});
-        append_fixture_debugging_controls(s);
-        const auto match_results = control(30022, 0);
-        require(c.u32(item_address(match_results) + 12) & 2, "Eligible matches did not enable Match Results");
-        select_native_debugging_features(0);
-        invoke(0x1028bc90, {match_results});
-        require(c.r(3) == 0, "Disabled Match Results opened from stale menu");
-        select_native_debugging_features(result_feature);
-        invoke(0x1028bc90, {match_results});
-        require(std::int32_t(c.r(3)) == -11, "Match Results menu did not open its modal");
-        const auto home_fixture = fixtures.front();
-        const auto draw_fixture = fixtures[8];
-        invoke(0x1033d030, {});
-        const auto normal = label_control("Normal", 1);
-        const auto home_win = control(30201, home_fixture);
-        const auto result_grid = control_grid(label_control("Team A\nvs Team B", 1));
-        const auto result_footer = control_grid(control(41, 0));
-        require(grid_bounds(grid_address(1)) == settings_panel &&
-                grid_bounds(result_grid) == settings_grid &&
-                grid_bounds(result_footer) == settings_footer,
-                "Match Results must use Game Settings panel, inset and footer bounds");
-        require(style(normal) == active_style && style(home_win) == inactive_style &&
-                style(control(41, 0)) == footer_style,
-                "Match Results must use Game Settings choice, selection and footer styles");
-        require(c.u8(result_footer + 0xbb0) == 3 && c.u8(result_footer + 0xbb4) == 25,
-                "Pagination must leave the original right quarter for OK");
-        const std::array choice_controls{normal, home_win, control(30202, home_fixture), control(30203, home_fixture)};
-        auto previous_right = settings_grid[0];
-        const auto first_row_end = settings_grid[1] + (settings_grid[3] - settings_grid[1] + 1) / 8;
-        for (unsigned i = 0; i < choice_controls.size(); ++i) {
-            const auto [left, top, right, bottom] = control_bounds(choice_controls[i]);
-            require(left > previous_right && right <= settings_grid[2] &&
-                    top > settings_grid[1] && bottom < first_row_end &&
-                    bottom - top + 1 == 21, "Result choices must be compact and fit within the first fixture row");
-            previous_right = right;
-            invoke(0x1076d1e0, {2, item_address(choice_controls[i]) + 0x78});
-            require(c.r(3) > 0 && c.r(3) + 12 <= right - left + 1, "Result caption must fit its original font and cell");
-        }
-        invoke(0x1033f840, {home_win});
-        require(debug_match_result(s, home_fixture) == ForcedMatchResult::home_win, "Home choice did not arm fixture");
-        invoke(0x1033d030, {});
-        label_control("Home win", 1);
-        invoke(0x1033f840, {control(30205, 0)});
-        invoke(0x1033d030, {});
-        const auto draw_button = control(30202, draw_fixture);
-        select_native_debugging_features(0);
-        invoke(0x1033f840, {draw_button});
-        require(c.r(3) == 0 && debug_match_result(s, draw_fixture) == ForcedMatchResult::normal,
-                "Disabled Match Results accepted a stale choice");
-        select_native_debugging_features(result_feature);
-        invoke(0x1033f840, {draw_button});
-        require(debug_match_result(s, home_fixture) == ForcedMatchResult::home_win &&
-                debug_match_result(s, draw_fixture) == ForcedMatchResult::draw,
-                "Different results did not coexist across fixtures");
-        invoke(0x1033d030, {});
-        label_control("Draw", 1);
-        const auto away_button = control(30203, draw_fixture);
-        c.put32(item_address(away_button) + 0x48, fixtures.back());
-        invoke(0x1033f840, {away_button});
-        require(c.r(3) == 0 && debug_match_result(s, fixtures.back()) == ForcedMatchResult::normal,
-                "Played fixture accepted a stale choice");
-        invoke(0x1033f840, {control(30204, 0)});
-        invoke(0x1033d030, {});
-        invoke(0x1033f840, {control(30203, home_fixture)});
-        require(debug_match_result(s, home_fixture) == ForcedMatchResult::away_win, "Away choice did not replace home win");
-        invoke(0x1033d030, {});
-        label_control("Away win", 1);
-        invoke(0x1033f840, {control(30200, home_fixture)});
-        require(debug_match_result(s, home_fixture) == ForcedMatchResult::normal &&
-                debug_match_result(s, draw_fixture) == ForcedMatchResult::draw,
-                "Normal cleared an unrelated fixture");
-        invoke(0x1033d030, {});
-        invoke(0x1033f840, {control(41, 0)});
-        close_modal();
-        require(debug_match_result(s, draw_fixture) == ForcedMatchResult::draw, "Done discarded the selected result");
-        c.put32(queue_slot, original_queue);
-        require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Match Results changed RNG before simulation");
-        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization; "
-                     "independent match results, pagination, highlighting, stale clicks and clearing\n";
+        require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Collective renewal changed RNG");
+        if (argc == 3) check_fixture_results(argv[2]);
+        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization"
+                  << (argc == 3 ? "; fixture-list right-click match results" : "") << '\n';
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

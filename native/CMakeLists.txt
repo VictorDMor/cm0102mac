@@ -2217,7 +2217,11 @@ add_executable(cm-match-debugging-injury-checks match_debugging_injury_checks.cp
 add_executable(cm-debug-options-checks debug_options_checks.cpp)
 target_link_libraries(cm-debug-options-checks PRIVATE cm_aot)
 target_compile_options(cm-debug-options-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-if(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
+if(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot" AND EXISTS "${CM_BENCHMARK_DIR}/ui/match-tactics/initial.snapshot")
+    # The match-day snapshot supplies a real fixture queue for the fixture list.
+    add_test(NAME debugging_options COMMAND cm-debug-options-checks "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot"
+        "${CM_BENCHMARK_DIR}/ui/match-tactics/initial.snapshot")
+elseif(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
     add_test(NAME debugging_options COMMAND cm-debug-options-checks "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
 endif()
 add_executable(cm-best-xi-checks best_xi_checks.cpp)
