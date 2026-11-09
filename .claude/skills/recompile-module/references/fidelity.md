@@ -46,10 +46,13 @@ identical end state and RNG is the check.
 Leftover stack follows the per-reader contract in `CLAUDE.md` (Victor's
 decision, 2026-11-06, replacing the exact stack image of 2026-10-23). The
 original reads bytes it never wrote, and those reads can change RNG and records.
-To find the module's contract, run `cm-world-replay <capture> --stack-audit-all`
-on the world captures that reach it (`tools/replay_sweep.py census`). The match
-replays have no stack audit yet (`TASKS.md`); until they do, a match module
-keeps the full stack image. Each reader site is listed with
+To find the module's contract, run `python3 tools/stack_contract.py module
+<MODULE.CPP>`: it reads the table built from every capture's audit and lists the
+routines of the module that leave bytes for a reader, and the leftovers the
+module reads. Run `tools/stack_contract.py build` again after new captures; for
+one capture, `cm-world-replay <capture> --stack-audit-all` prints the same
+facts. The match replays have no stack audit yet (`TASKS.md`); until they do,
+a match module keeps the full stack image. Each reader site is listed with
 the PCs that left the bytes it reads. Wherever one of those PCs belongs to the
 module, or to a callee the module would stop calling, the rewrite must leave
 those bytes. Wherever a reader reads what a callee left, the module must call

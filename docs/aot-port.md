@@ -259,7 +259,22 @@ original's stack image wherever later code reads leftovers. Since 2026-11-06
 that is the rule (CLAUDE.md, per-reader contract): only the bytes a listed
 reader reads must stay. The audit makes C++ owners take their observed paths,
 so it finds readers and writers in original mode; a native path is checked by
-paired replays.
+paired replays. `tools/stack_contract.py` keeps the readers and the routines
+that leave their bytes as a table, built from every capture's audit.
+
+A canonical stack (every stale read returns zero, so that no rewrite has to
+leave bytes) was tried and shelved on 2026-11-09. Zeroing cannot follow the
+stack pointer. Epilogues pop the frame first and reload the saved registers
+from below the stack pointer afterwards, so zeroing at the pop stops the day
+after 32 instructions; zeroing the dead area at the next `bl` still wiped a
+saved register in use, 850 million instructions in. It would need each
+prologue's layout from the generator. Zero is not neutral either. On the day
+and week captures about 150 sites read leftovers, and 23 change the end state
+when they alone read zero (`CM_STACK_SCRAMBLE_ZERO`). Three always read the
+same leftover, so zero would change their outcome for good: MATCH_ENG
+`0x101de39c` reads 0x1097, WEATHER `0x1043355c` 0x8288 and MATCH_STATS
+`0x1029fa38` 0x10be or 0x8288. The other readers still carry leftovers into
+live memory: with noise on them alone, 100-200 bytes of the end state differ.
 
 ## Driving the game (2026-10-21)
 
