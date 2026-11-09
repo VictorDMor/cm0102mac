@@ -200,8 +200,8 @@ Victor pays for this from a weekly limit (his request, 2026-11-02). media.cpp to
 
 **Not negotiable, whatever the usage:** original/C++ comparison of every entry, one
 run of all entries together, mutated inputs, the call trace with arguments, a negative
-control, a review before commit, and a report that says what wasn't verified. If
-something has to give, land less and say so. Don't weaken a check to finish.
+control, a review before a production commit, and a report that says what wasn't
+verified. If something has to give, land less and say so. Don't weaken a check to finish.
 
 Machine time is free, tokens aren't, so prefer a long local run to an agent:
 

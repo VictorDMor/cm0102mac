@@ -89,6 +89,9 @@ def main():
     total = 0
     for module in modules:
         if not re.fullmatch(r"[a-z0-9_]+", module):
+            if args.all:  # Other directories under .local/rewrites are not modules.
+                print(f"{module}: skipped, not a module directory name")
+                continue
             parser.error(f"not a module directory name: {module}")
         reason = refusal(module)
         if reason:
