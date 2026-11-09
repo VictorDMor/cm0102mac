@@ -21,5 +21,7 @@ bool debug_match_result_eligible(const State&, std::uint32_t fixture);
 bool set_debug_match_result(State&, std::uint32_t fixture, ForcedMatchResult);
 ForcedMatchResult debug_match_result(const State&, std::uint32_t fixture);
 std::optional<std::array<unsigned, 2>> debug_match_score(const State&, std::uint32_t match);
+// Called at shared advancement; recognizes the original background callers.
+void prepare_debug_match_result(State&, std::uint32_t match);
 void finish_debug_match_result(State&, std::uint32_t fixture);
 }

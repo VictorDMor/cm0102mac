@@ -3,6 +3,7 @@
 #include "match_debugger_factory.hpp"
 #include "match_debugging.hpp"
 #include "match_eng_fields.hpp"
+#include "match_engine.hpp"
 #include "platform.hpp"
 #include "routine_check.hpp"
 #include <algorithm>
@@ -176,7 +177,7 @@ void check_played(const State& state, const Fixture& fixture, ForcedMatchResult 
     const auto actual = home == away ? ForcedMatchResult::draw : home > away ? ForcedMatchResult::home_win : ForcedMatchResult::away_win;
     std::cout << "Quick match " << home << '-' << away << " (choice " << unsigned(expected) << ")\n";
     require(actual == expected, "Quick match result disagrees with the selected outcome");
-    require(home <= 3 && away <= 3, "Quick match produced an implausible score");
+    require(home <= 4 && away <= 4 && home + away <= 5, "Quick match produced an implausible score");
     require(player_total(state, fixture, 0, 0xc) == home && player_total(state, fixture, 1, 0xc) == away,
         "Scorer goals do not add up to the published score");
     require(player_total(state, fixture, 0, 0xf) == away && player_total(state, fixture, 1, 0xf) == home,
@@ -198,23 +199,220 @@ void check_round(const Checkpoint& initial, const Fixture& a, const Fixture& b) 
     check_played(*state, b, ForcedMatchResult::draw);
 }
 
+struct BackgroundRound {
+    std::uint32_t queue;
+    std::array<Fixture, 2> fixtures;
+};
+
+BackgroundRound prepare_background_round(State& state, Fixture a, Fixture b) {
+    constexpr unsigned entry_size = 0x6c;
+    const auto queue = allocate(state, 0x60, true);
+    const auto entries = allocate(state, 2 * entry_size, true);
+    require(queue && entries, "Could not allocate the background round");
+    state.memory.write<4>(queue + 0x1c, entries);
+    std::array fixtures{a, b};
+    for (unsigned i = 0; i < fixtures.size(); ++i) {
+        auto& fixture = fixtures[i];
+        const auto entry = entries + i * entry_size;
+        state.memory.copy_in(entry, state.memory.copy_out(fixture.queue_entry, entry_size));
+        fixture.queue_entry = entry;
+        fixture.queued = entry + 4;
+        state.memory.write<4>(entry + 0x58, fixture.engine);
+        state.memory.write<4>(fixture.engine + fixture_at, fixture.queued);
+    }
+    // Disable the original wall-clock throttles so a single-tick call will
+    // enter the actual engine. Its detail byte and clocks are factory values.
+    const auto settings_slot = toc(state, -0x7ac8);
+    auto settings = std::uint32_t(state.memory.read<4>(settings_slot));
+    if (!settings) {
+        settings = allocate(state, 8, true);
+        require(settings != 0, "Could not allocate background rate settings");
+        state.memory.write<4>(settings_slot, settings);
+    }
+    state.memory.write<4>(settings + 4, state.memory.read<4>(settings + 4) & ~0xc0000u);
+    return {queue, fixtures};
+}
+
+void prepare_background_reports(State& state) {
+    // The standalone factory omits the career's statistics archive and its
+    // temporary-player manager. Use the original archive constructor and
+    // an empty manager for fixtures with no temporary players.
+    const auto archive_slot = toc(state, -0x7b4c);
+    if (!state.memory.read<4>(archive_slot)) {
+        const auto archive = invoke(state, 0x10773520, {0x20});
+        require(archive != 0, "Could not allocate the original statistics archive");
+        invoke(state, 0x1029e610, {archive, 0, 4});
+        require(state.memory.read<4>(archive + 0x1c) == 4, "Original archive did not initialize");
+        state.memory.write<4>(archive_slot, archive);
+    }
+    const auto temporary_slot = toc(state, -0x7b20);
+    if (!state.memory.read<4>(temporary_slot)) {
+        const auto manager = allocate(state, 0x6c, true);
+        require(manager != 0, "Could not allocate the empty temporary-player manager");
+        state.memory.write<4>(temporary_slot, manager);
+    }
+}
+
+struct BackgroundTrace {
+    inline static BackgroundTrace* active = nullptr;
+    const Fixture& fixture;
+    const ForcedMatchResult expected;
+    const bool fast;
+    bool (*previous)(State&) = dispatch_probe;
+    unsigned advances = 0, cleanups = 0;
+
+    BackgroundTrace(const Fixture& match, ForcedMatchResult result, bool loop) : fixture(match), expected(result), fast(loop) {
+        require(active == nullptr, "Nested background trace");
+        active = this;
+        dispatch_probe = observe;
+    }
+    ~BackgroundTrace() { dispatch_probe = previous; active = nullptr; }
+
+    static bool observe(State& state) {
+        const auto& fixture = active->fixture;
+        const auto back = state.r<4>(4128);
+        if (state.pc == quick_advance_entry && (back == 0x101cd748 || back == 0x101cd6fc)) {
+            ++active->advances;
+            require(back == (active->fast ? 0x101cd6fc : 0x101cd748) && state.r<4>(12) == fixture.engine,
+                "Background caller advanced the wrong entry or branch");
+            require(state.memory.read<1>(fixture.engine) == 0, "Fixture did not enter shared advance in detailed mode");
+        }
+        if (state.pc == 0x101d3e50 && back == 0x101cd838) {
+            ++active->cleanups;
+            require(state.r<4>(12) == fixture.engine && state.memory.read<1>(fixture.engine) == 1,
+                "Background caller did not complete a marked fixture in quick mode");
+            check_played(state, fixture, active->expected);
+        }
+        return false;
+    }
+};
+
+void check_background_round(const Checkpoint& initial, const Fixture& a, const Fixture& b,
+    ForcedMatchResult second_choice, bool first_fast) {
+    auto state = initial.restore();
+    const auto round = prepare_background_round(*state, a, b);
+    prepare_background_reports(*state);
+    const std::array choices{ForcedMatchResult::home_win, second_choice};
+    for (unsigned i = 0; i < round.fixtures.size(); ++i)
+        require(set_debug_match_result(*state, round.fixtures[i].original, choices[i]), "Could not mark the background fixture");
+
+    for (unsigned i = 0; i < round.fixtures.size(); ++i) {
+        const auto& fixture = round.fixtures[i];
+        require(debug_match_result(*state, fixture.original) == choices[i], "Other background match consumed the choice");
+        require(state->memory.read<1>(fixture.engine) == 0 && state->memory.read<2>(fixture.engine + clock_at) == 0,
+            "Background regression must start with a detailed unplayed engine");
+        const bool fast = i == 0 ? first_fast : !first_fast;
+        state->memory.write<4>(round.queue + 0x30, i);
+        BackgroundTrace trace(fixture, choices[i], fast);
+        require(invoke(*state, match_engine::entries[1], {round.queue, unsigned(fast)}) == 1,
+            "Marked background fixture did not publish a result");
+        require(trace.advances == 1 && trace.cleanups == 1 && state->memory.read<1>(fixture.queue_entry + 0x68) == 2 &&
+            state->memory.read<4>(fixture.queue_entry + 0x58) == 0 && state->memory.read<4>(round.queue + 0x28) == i + 1,
+            "Background fixture did not complete, detach and count exactly once");
+        const auto report = std::uint32_t(state->memory.read<4>(fixture.queue_entry + 0x60));
+        const auto [home, away] = score(*state, fixture);
+        require(report && state->memory.read<1>(report + 0x120) == home && state->memory.read<1>(report + 0x784) == away,
+            "Original published report lost the background fixture score");
+    }
+}
+
+void check_background_watcher(const Checkpoint& initial, const Fixture& a, const Fixture& b) {
+    auto state = initial.restore();
+    const auto round = prepare_background_round(*state, a, b);
+    const auto& fixture = round.fixtures.front();
+    require(set_debug_match_result(*state, fixture.original, ForcedMatchResult::draw), "Could not mark the pre-watch fixture");
+    const auto display = allocate(*state, 0x56, true);
+    require(display != 0, "Could not allocate the original watch marker");
+    state->memory.write<4>(fixture.queue_entry + 0x5c, display);
+    state->memory.write<1>(display + 0x4b, 1);
+    BackgroundTrace trace(fixture, ForcedMatchResult::normal, false);
+    require(invoke(*state, match_engine::entries[1], {round.queue, 0}) == 0 && trace.advances == 1 &&
+        trace.cleanups == 0 && state->memory.read<4>(fixture.queue_entry + 0x58) == fixture.engine &&
+        state->memory.read<1>(fixture.engine) == 0 && debug_match_result(*state, fixture.original) == ForcedMatchResult::draw,
+        "A newly watched fixture was switched out of detailed play");
+}
+
+constexpr std::uint32_t direct_background_return = 0x101cc284;
+
+std::uint32_t advance_direct_background(State& state, const Fixture& fixture, std::uint32_t ticks) {
+    state.wr<4>(18 * 4, fixture.queue_entry);
+    state.wr<4>(12, fixture.engine);
+    state.wr<4>(16, ticks);
+    state.wr<4>(4128, direct_background_return);
+    state.pc = quick_advance_entry;
+    state.budget = state.executed + fresh_match_step_limit;
+    run_until(state, direct_background_return);
+    return std::uint32_t(state.r<4>(12));
+}
+
+void check_direct_background_boundary(const Checkpoint& initial, const Fixture& a, const Fixture& b) {
+    auto state = initial.restore();
+    const auto round = prepare_background_round(*state, a, b);
+    const auto& fixture = round.fixtures.front();
+    require(set_debug_match_result(*state, fixture.original, ForcedMatchResult::home_win), "Could not mark direct background fixture");
+    // The original queue has a third, direct call of shared advance. Recreate
+    // the 0x101cc280 call boundary while retaining the actual initialized
+    // detailed engine, queue entry, and original return address.
+    state->wr<4>(18 * 4, fixture.queue_entry);
+    state->wr<4>(4128, direct_background_return);
+    const auto must_stay_detailed = [&] {
+        prepare_debug_match_result(*state, fixture.engine);
+        require(state->memory.read<1>(fixture.engine) == 0, "Ineligible boundary changed the engine mode");
+    };
+    for (auto clock : {clock_at, 0x794au}) {
+        state->memory.write<2>(fixture.engine + clock, 1);
+        must_stay_detailed();
+        state->memory.write<2>(fixture.engine + clock, 0);
+    }
+    state->wr<4>(18 * 4, round.fixtures.back().queue_entry);
+    must_stay_detailed();
+    state->wr<4>(18 * 4, fixture.queue_entry);
+    state->wr<4>(4128, 0x101ccf1c);
+    must_stay_detailed();
+
+    require(advance_direct_background(*state, fixture, 0xffffffff) == 2 && state->memory.read<1>(fixture.engine) == 1,
+        "Direct background caller did not complete a marked detailed fixture");
+    check_played(*state, fixture, ForcedMatchResult::home_win);
+}
+
 void check_seeds(const Checkpoint& initial, const Fixture& a) {
-    bool goalless_draw = false, five_goals = false;
-    for (const auto [seed, day] : {std::pair{193u, 194u}, std::pair{9029u, 201u}, std::pair{65521u, 203u}}) {
+    // Find dates that exercise the empty schedule and both five-goal score
+    // shapes. This lookup is independent of the production background tests.
+    auto lookup = initial.restore();
+    lookup->memory.write<1>(a.engine, 1);
+    std::array<unsigned, 3> days{};
+    for (unsigned day = 1; day < 365; ++day) {
+        lookup->memory.write<2>(a.original + 0x28, day);
+        lookup->memory.write<2>(a.queued + 0x28, day);
+        require(set_debug_match_result(*lookup, a.original, ForcedMatchResult::home_win), "Score lookup failed to select a win");
+        const auto win = debug_match_score(*lookup, a.engine);
+        if (win == std::array{3u, 2u} && !days[0]) days[0] = day;
+        if (win == std::array{4u, 1u} && !days[1]) days[1] = day;
+        require(set_debug_match_result(*lookup, a.original, ForcedMatchResult::draw), "Score lookup failed to select a draw");
+        if (debug_match_score(*lookup, a.engine) == std::array{0u, 0u} && !days[2]) days[2] = day;
+        require(set_debug_match_result(*lookup, a.original, ForcedMatchResult::normal), "Score lookup failed to clear a choice");
+        if (days[0] && days[1] && days[2]) break;
+    }
+    require(days[0] && days[1] && days[2], "Fixture dates do not exercise all goal-schedule boundaries");
+    constexpr std::array seeds{193u, 9029u, 65521u};
+    for (unsigned i = 0; i < seeds.size(); ++i) {
         for (auto choice : {ForcedMatchResult::home_win, ForcedMatchResult::draw, ForcedMatchResult::away_win}) {
             auto state = initial.restore();
-            state->memory.write<4>(toc(*state, -0x7b90), seed);
-            state->memory.write<2>(a.original + 0x28, day);
-            state->memory.write<2>(a.queued + 0x28, day);
+            state->memory.write<4>(toc(*state, -0x7b90), seeds[i]);
+            state->memory.write<2>(a.original + 0x28, days[i]);
+            state->memory.write<2>(a.queued + 0x28, days[i]);
             require(set_debug_match_result(*state, a.original, choice), "Could not arm the fixture for the selected seed");
             play_quick(*state, a);
             check_played(*state, a, choice);
-            const auto [home, away] = score(*state, a);
-            goalless_draw |= choice == ForcedMatchResult::draw && home == 0 && away == 0;
-            five_goals |= home + away == 5;
+            if (i == 2 && choice == ForcedMatchResult::draw)
+                require(score(*state, a) == std::pair{0u, 0u}, "Goalless draw added a goal");
+            if (i < 2 && choice != ForcedMatchResult::draw) {
+                auto expected = i == 0 ? std::pair{3u, 2u} : std::pair{4u, 1u};
+                if (choice == ForcedMatchResult::away_win) std::swap(expected.first, expected.second);
+                require(score(*state, a) == expected, "Five-goal match did not reach the selected plausible score");
+            }
         }
     }
-    require(goalless_draw && five_goals, "Selected fixture dates did not exercise both goal-schedule boundaries");
 }
 
 void check_cup(const Checkpoint& initial, const Fixture& a) {
@@ -374,13 +572,13 @@ void check_official_forfeit(const Checkpoint& initial, const Fixture& fixture) {
         "Official forfeit left the completed choice armed");
 }
 
-enum class InactivePlan { other_fixture, cleared, disabled, watched, detailed };
+enum class InactivePlan { other_fixture, cleared, disabled, watched, detailed, other_background };
 
 void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& b, InactivePlan kind) {
     auto expected = initial.restore();
     auto actual = initial.restore();
     select_native_debugging_features(result_feature);
-    const auto planned = kind == InactivePlan::other_fixture ? b.original : a.original;
+    const auto planned = (kind == InactivePlan::other_fixture || kind == InactivePlan::other_background) ? b.original : a.original;
     require(set_debug_match_result(*actual, planned, ForcedMatchResult::away_win), "Could not prepare inactive choice");
     if (kind == InactivePlan::cleared)
         require(set_debug_match_result(*actual, planned, ForcedMatchResult::normal), "Could not clear inactive choice");
@@ -398,6 +596,10 @@ void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& 
             // an explicit negative control for the simulation's mode gate.
             require(state->memory.read<1>(a.engine) == 0, "Detailed mode precondition");
             invoke(*state, quick_events_entry, {a.engine});
+        } else if (kind == InactivePlan::other_background) {
+            state->memory.write<4>(a.queue_entry + 0x58, a.engine);
+            require(advance_direct_background(*state, a, 1) == 1 && state->memory.read<1>(a.engine) == 0,
+                "Other fixture choice changed a detailed background tick");
         } else play_quick(*state, a);
         state->memory.observer = nullptr;
     }
@@ -416,15 +618,20 @@ int main(int argc, char** argv) {
         const Checkpoint initial(*world.state);
         check_choices(initial, world.first, world.second);
         check_round(initial, world.first, world.second);
+        check_background_round(initial, world.first, world.second, ForcedMatchResult::home_win, false);
+        check_background_round(initial, world.first, world.second, ForcedMatchResult::draw, true);
+        check_background_watcher(initial, world.first, world.second);
+        check_direct_background_boundary(initial, world.first, world.second);
         check_seeds(initial, world.first);
         check_cup(initial, world.first);
         check_load_boundary(initial, world.first, world.second);
         check_missing_scorer(initial, world.first);
         check_official_forfeit(initial, world.first);
         for (auto kind : {InactivePlan::other_fixture, InactivePlan::cleared, InactivePlan::disabled,
-                          InactivePlan::watched, InactivePlan::detailed})
+                          InactivePlan::watched, InactivePlan::detailed, InactivePlan::other_background})
             check_inactive(initial, world.first, world.second, kind);
-        std::cout << "PASS: independent queued fixture results, three choices across seeds, cup extra time and penalties, "
+        std::cout << "PASS: independent queued fixture results, detailed background matches across three caller boundaries, "
+                     "three choices across seeds, cup extra time and penalties, "
                      "scorer and keeper accounting, load reset, scorer fallback, official forfeit, "
                      "and inactive guest state and ordered RNG equivalence\n";
     } catch (const std::exception& error) {

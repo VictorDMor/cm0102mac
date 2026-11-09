@@ -789,6 +789,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
     }
 }
 std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
+    prepare_debug_match_result(c.s, match);
     const auto fixture = debug_underdog_fixture(c.s, match);
     std::uint32_t outcome;
     {

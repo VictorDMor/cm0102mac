@@ -22,6 +22,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now: individual fixture outcomes (2026-11-08)
 
+- [x] Fix selected outcomes being ignored for unobserved matches that the original assigns to detailed simulation. Route only selected, unstarted background fixtures through the controlled quick engine at all three original background call sites. Include occasional 4–0 and 4–1 wins while keeping narrow scores more common. Verified two home wins and home/draw through both scheduler branches with original report publication and cleanup, the immediate caller boundary, watched exclusions and unmarked state/RNG equivalence. All 12 focused tests and 6,391 returned original/rewrite comparisons plus 9 matching faults pass; source/caller review completed and app installed.
 - [x] Add an independent Normal / Home win / Draw / Away win selection for each upcoming unobserved fixture.
 - [x] Generate plausible goals through the quick simulation's normal goal bookkeeping; preserve ordinary matches and cup qualification rules. Session-only choices clear on load; official forfeits retain original rules.
 - [x] Verified independent selections through the real UI callbacks and production simulation, clearing, eligibility, scorer/keeper totals, load cleanup and rare scorer/forfeit paths. Final checks: 12 focused tests and 6,391 returned original/rewrite comparisons plus 9 matching fault cases, no timeouts; reviewed the diff and installed the app.
