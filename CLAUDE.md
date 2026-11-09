@@ -19,7 +19,7 @@ Stop and ask only when you can't continue without me, or before anything destruc
 - If a task has no finish line, state the one you'll use in one line, then start.
 - On a run with several steps, keep the work list in `TASKS.md`: tick items when done, add what you find, and move decisions you need from me to its top section.
 - Split audits and broad reviews across subagents, and check each subagent's evidence before you accept it.
-- Before committing a change to the generator, the runtime, a semantic replacement, or file/save handling, run a review pass on the diff (the code-review skill) and fix what it finds.
+- Before committing a change to the generator, the runtime, a semantic replacement, or file/save handling, run a review pass on the diff (the code-review skill) and fix what it finds. Use `medium` where a checker compares every changed entry with the original, and `high` otherwise. A diff that doesn't reach production code (checkers, test wiring in CMake, docs, `TASKS.md`) needs no review (decided 2026-11-09).
 - Mark anything you couldn't confirm, and say where you looked.
 - Talk to me in the language I write in. Code, comments, docs and commit messages are in English.
 - End every run with four headings: **Blocked on me**, **Changed**, **Found**, **Next step**. Under Changed, say how each change was verified and what wasn't. Under Next step, name the one concrete thing that comes next and whether it waits on me.

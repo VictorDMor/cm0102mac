@@ -152,10 +152,13 @@ In this order:
 
 1. **Normal build.** Reconfigure with the coverage option you added OFF, then build
    and rerun the selected tests. A leftover coverage build must not reach production.
-2. **Review.** Run the `code-review` skill at `high` on the owned paths, not the
-   whole tree, and ask it to compare with the generated reference. Fix what it
-   finds and rerun what those fixes affect. Past module reviews caught real ABI
-   and return-state defects, so this is worth its cost.
+2. **Review.** Run the `code-review` skill on the owned paths, not the whole tree,
+   and ask it to compare with the generated reference: at `medium` where the checker
+   compares every entry with the original, at `high` for entries it doesn't. Later
+   commits that touch only checkers, CMake test wiring, docs or `TASKS.md` need no
+   review (decided 2026-11-09). Fix what it finds and rerun what those fixes
+   affect. Past module reviews caught real ABI and return-state defects, so this
+   is worth its cost.
 3. **Install.** `tools/dev.sh install`. The installer signs and verifies the
    bundle, so don't add your own signature checks. If the game is running it
    refuses: leave that under **Blocked on me** and never stop his session.
