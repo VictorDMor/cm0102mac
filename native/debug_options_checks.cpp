@@ -1,5 +1,6 @@
 #include "match_debugging.hpp"
 #include "debug_localization.hpp"
+#include "debug_match_results.hpp"
 #include "guest_abi.hpp"
 #include "code_fragment_adapter.hpp"
 #include "match_replay.hpp"
@@ -179,6 +180,98 @@ int main(int argc, char** argv) {
         control(30004, 0); // Best XI remains available with all debugging disabled.
         for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
             require(c.u32(item_address(i) + 8) != 30021, "Disabled collective action remained visible");
-        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization\n";
+
+        // Exercise the new options page through the real fixture command and
+        // preferences callbacks. Separate pages must retain independent plans.
+        const auto allocate_zeroed = [&](unsigned size) {
+            invoke(0x10773520, {size});
+            const auto address = c.r(3);
+            require(address != 0, "Fixture control setup allocation failed");
+            s.memory.copy_in(address, std::vector<std::uint8_t>(size));
+            return address;
+        };
+        std::array<std::uint32_t, 4> clubs{};
+        for (unsigned i = 0; i < clubs.size(); ++i) {
+            clubs[i] = allocate_zeroed(0x248);
+            s.memory.copy_in(clubs[i] + 0x221, {'T', 'e', 'a', 'm', ' ', std::uint8_t('A' + i), 0});
+        }
+        std::array<std::uint32_t, 10> fixtures{};
+        const auto queue = allocate_zeroed(0x60);
+        const auto entries = allocate_zeroed(unsigned(fixtures.size()) * 0x6c);
+        const auto group = allocate_zeroed(0x18);
+        c.put32(queue + 0x1c, entries);
+        c.put32(group + 8, unsigned(fixtures.size()) - 1);
+        for (unsigned i = 0; i < fixtures.size(); ++i) {
+            const auto fixture = fixtures[i] = allocate_zeroed(0x54);
+            c.put32(entries + i * 0x6c, fixture);
+            const unsigned home = i == 8 ? 2 : 0;
+            c.put32(fixture + 0x1c, clubs[home]);
+            c.put32(fixture + 0x20, clubs[home + 1]);
+            c.put16(fixture + 0x28, 100 + i);
+            c.put16(fixture + 0x2a, 2002);
+            c.put16(fixture + 0x30, 100 + i);
+            c.put16(fixture + 0x32, 2002);
+            c.put8(fixture + 0x43, i + 1 < fixtures.size() ? 0xff : 1);
+        }
+        const auto queue_slot = c.toc(-0x7420);
+        const auto original_queue = c.u32(queue_slot);
+        c.put32(queue_slot, queue);
+        invoke(0x1073f1e0, {ui, 1, group, 0});
+        const auto result_feature = 1u << unsigned(DebugFeature::match_result);
+        select_native_debugging_features(result_feature);
+        invoke(0x10719560, {page()});
+        append_fixture_debugging_controls(s);
+        const auto match_results = control(30022, 0);
+        require(c.u32(item_address(match_results) + 12) & 2, "Eligible matches did not enable Match Results");
+        select_native_debugging_features(0);
+        invoke(0x1028bc90, {match_results});
+        require(c.r(3) == 0, "Disabled Match Results opened from stale menu");
+        select_native_debugging_features(result_feature);
+        invoke(0x1028bc90, {match_results});
+        require(std::int32_t(c.r(3)) == -11, "Match Results menu did not open its modal");
+        const auto home_fixture = fixtures.front();
+        const auto draw_fixture = fixtures[8];
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30201, home_fixture)});
+        require(debug_match_result(s, home_fixture) == ForcedMatchResult::home_win, "Home choice did not arm fixture");
+        invoke(0x1033d030, {});
+        label_control("Home win", 1);
+        invoke(0x1033f840, {control(30205, 0)});
+        invoke(0x1033d030, {});
+        const auto draw_button = control(30202, draw_fixture);
+        select_native_debugging_features(0);
+        invoke(0x1033f840, {draw_button});
+        require(c.r(3) == 0 && debug_match_result(s, draw_fixture) == ForcedMatchResult::normal,
+                "Disabled Match Results accepted a stale choice");
+        select_native_debugging_features(result_feature);
+        invoke(0x1033f840, {draw_button});
+        require(debug_match_result(s, home_fixture) == ForcedMatchResult::home_win &&
+                debug_match_result(s, draw_fixture) == ForcedMatchResult::draw,
+                "Different results did not coexist across fixtures");
+        invoke(0x1033d030, {});
+        label_control("Draw", 1);
+        const auto away_button = control(30203, draw_fixture);
+        c.put32(item_address(away_button) + 0x48, fixtures.back());
+        invoke(0x1033f840, {away_button});
+        require(c.r(3) == 0 && debug_match_result(s, fixtures.back()) == ForcedMatchResult::normal,
+                "Played fixture accepted a stale choice");
+        invoke(0x1033f840, {control(30204, 0)});
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30203, home_fixture)});
+        require(debug_match_result(s, home_fixture) == ForcedMatchResult::away_win, "Away choice did not replace home win");
+        invoke(0x1033d030, {});
+        label_control("Away win", 1);
+        invoke(0x1033f840, {control(30200, home_fixture)});
+        require(debug_match_result(s, home_fixture) == ForcedMatchResult::normal &&
+                debug_match_result(s, draw_fixture) == ForcedMatchResult::draw,
+                "Normal cleared an unrelated fixture");
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(41, 0)});
+        close_modal();
+        require(debug_match_result(s, draw_fixture) == ForcedMatchResult::draw, "Done discarded the selected result");
+        c.put32(queue_slot, original_queue);
+        require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Match Results changed RNG before simulation");
+        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization; "
+                     "independent match results, pagination, highlighting, stale clicks and clearing\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

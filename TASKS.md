@@ -20,6 +20,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: individual fixture outcomes (2026-11-08)
+
+- [x] Add an independent Normal / Home win / Draw / Away win selection for each upcoming unobserved fixture.
+- [x] Generate plausible goals through the quick simulation's normal goal bookkeeping; preserve ordinary matches and cup qualification rules. Session-only choices clear on load; official forfeits retain original rules.
+- [x] Verified independent selections through the real UI callbacks and production simulation, clearing, eligibility, scorer/keeper totals, load cleanup and rare scorer/forfeit paths. Final checks: 12 focused tests and 6,391 returned original/rewrite comparisons plus 9 matching fault cases, no timeouts; reviewed the diff and installed the app.
+
 ## Now: loan-offer reply crash (2026-11-08)
 
 - [x] Diagnose the reported Reply failure: both recent app logs stop in `open_offer_contract_terms` with a zero salary divisor (original division at `0x1042c7ec`).

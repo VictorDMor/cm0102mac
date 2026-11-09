@@ -25,7 +25,7 @@ add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arra
 target_sources(cm_aot PRIVATE vector_context.cpp)
 target_sources(cm_aot PRIVATE quick_save_transaction.cpp)
 target_sources(cm_aot PRIVATE match_speed.cpp)
-target_sources(cm_aot PRIVATE match_debugging.cpp debug_underdogs.cpp)
+target_sources(cm_aot PRIVATE match_debugging.cpp debug_underdogs.cpp debug_match_results.cpp)
 target_sources(cm_aot PRIVATE debug_localization.cpp)
 target_sources(cm_aot PRIVATE guest_context_transfer.cpp)
 target_sources(cm_aot PRIVATE exception_runtime_adapter.cpp exception_runtime_context.cpp exception_runtime_frames.cpp exception_runtime_cleanup.cpp exception_runtime_matching.cpp exception_runtime_search.cpp exception_runtime_capture.cpp exception_runtime_handlers.cpp exception_runtime_unexpected.cpp)
@@ -2224,6 +2224,9 @@ add_executable(cm-best-xi-checks best_xi_checks.cpp)
 add_executable(cm-debug-underdogs-checks debug_underdogs_checks.cpp)
 target_link_libraries(cm-debug-underdogs-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-debug-underdogs-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+add_executable(cm-debug-match-results-checks debug_match_results_checks.cpp)
+target_link_libraries(cm-debug-match-results-checks PRIVATE cm_match_debugger_factory)
+target_compile_options(cm-debug-match-results-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-debug-contract-checks debug_contract_checks.cpp)
 add_executable(cm-debug-contract-date-checks debug_contract_date_checks.cpp)
 target_compile_options(cm-debug-contract-date-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
@@ -2348,6 +2351,9 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     add_test(NAME debugging_underdogs COMMAND cm-debug-underdogs-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debug-underdogs-checks")
     set_tests_properties(debugging_underdogs PROPERTIES TIMEOUT 360)
+    add_test(NAME debugging_match_results COMMAND cm-debug-match-results-checks
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debug-match-results-checks")
+    set_tests_properties(debugging_match_results PROPERTIES TIMEOUT 360)
     add_test(NAME debugging_best_xi COMMAND cm-best-xi-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/best-xi-checks")
     set_tests_properties(debugging_best_xi PROPERTIES TIMEOUT 360)

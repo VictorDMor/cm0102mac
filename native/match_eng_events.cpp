@@ -1,5 +1,6 @@
 // MATCH_ENG.CPP, events: the match played minute by minute without the pitch view (0x101db340).
 #include "match_eng_events.hpp"
+#include "debug_match_results.hpp"
 #include <bit>
 
 namespace cm::aot::match_eng {
@@ -27,7 +28,8 @@ constexpr std::uint32_t stat_base = 0x10000;
 class Simulation {
 public:
     Simulation(Cpu& cpu, std::uint32_t match_object)
-        : c(cpu), frame(cpu, entry_point, 0xe0, {.first_gpr = 14, .first_fpr = 30}), fp(cpu), match(match_object) {}
+        : c(cpu), frame(cpu, entry_point, 0xe0, {.first_gpr = 14, .first_fpr = 30}), fp(cpu), match(match_object),
+          forced_score(debug_match_score(cpu.s, match_object)) {}
     void run();
 
 private:
@@ -35,6 +37,7 @@ private:
     Frame frame;
     Fpu fp;
     const std::uint32_t match;
+    const std::optional<std::array<unsigned, 2>> forced_score;
     // Registers the original keeps across its calls.
     Held<14> t14{c};
     Held<15> t15{c};
@@ -127,6 +130,7 @@ private:
     void rate_chances();
     bool scoring();
     bool scored();
+    void scheduled_goals();
     void missed();
     void advance_clock();
     void tail();
@@ -220,7 +224,34 @@ void Simulation::minute() {
         t14 = lb(l_round);
         sb(l_round, lb(l_round) + 1u);
     }
+    if (forced_score) scheduled_goals();
     advance_clock();
+}
+
+void Simulation::scheduled_goals() {
+    // The selected result controls goal opportunities, not the final records.
+    // Use the engine's scorer, goal event, keeper, rating and score bookkeeping.
+    // Distribute up to five goals through normal time, keeping extra time and
+    // shoot-out qualification to the competition's existing rules.
+    if (s8(lb(l_ended))) return;
+    const auto total = (*forced_score)[0] + (*forced_score)[1];
+    unsigned remaining[]{(*forced_score)[0], (*forced_score)[1]};
+    unsigned selected = 0;
+    for (unsigned n = 0; n < total; ++n) {
+        if (!remaining[selected]) selected = 1 - selected;
+        --remaining[selected];
+        const auto minute = 8u + (n + 1) * 72u / (total + 1);
+        if (c.u16(match + clock_at) == minute) {
+            const auto previous_side = std::uint32_t(side);
+            side = selected;
+            overtime = 0;
+            counter_chance = 0;
+            sb(l_49, u(-1)); // Do not credit a stale passer from the last chance.
+            scored();
+            side = previous_side;
+        }
+        selected = 1 - selected;
+    }
 }
 
 // The side order of the minute, three attempts at the opposition, the contests that follow and the scoring.
@@ -557,7 +588,7 @@ bool Simulation::scoring() {
     else with_side(adjust_d_at, side, u(contribution_value), 0x101dc9cc);
     const auto weight = c.i16(match + 0x200 + u(opposing) * 2) * (7 - 3 * s8(overtime));
     const auto roll = draw(weight, 0x101dc9f8);
-    if (compare(c, contribution_value + 0x2d, roll) > 0) return scored();
+    if (compare(c, contribution_value + 0x2d, roll) > 0 && !forced_score) return scored();
     missed();
     return false;
 }
@@ -566,6 +597,26 @@ bool Simulation::scoring() {
 bool Simulation::scored() {
     const auto opposing = other();
     scorer = pick(weighted_at, side, overtime, 0x101dca18);
+    if (forced_score && (s8(scorer) < 0 || s8(scorer) >= 20)) {
+        // The original weighted picker can find nobody. A scheduled chance
+        // must never turn its -1 sentinel into a write before the roster.
+        scorer = u(-1);
+        for (unsigned slot = 0; slot < 20; ++slot) {
+            if (s8(usable(player(own(), slot), 0x101dca18)) >= 0) {
+                scorer = slot;
+                break;
+            }
+        }
+        if (s8(scorer) < 0) {
+            sb(l_ended, 1); // No players: retain the original termination rule.
+            return false;
+        }
+    }
+    if (forced_score) {
+        // Only count the scheduled shot after finding a valid participant.
+        bump8(stat(own(), 0x1fc2));
+        bump8(stat(own(), 0x1fc1));
+    }
     const auto taker = player(own(), s8(scorer));
     bump8(taker + 0xc);
     add16(taker + 0x36, 0x1db);
@@ -828,7 +879,7 @@ void Simulation::tail() {
             set_fb(0x4c, fb(0x4c) + fb(0x44));
         }
     }
-    cup_upset();
+    if (!forced_score) cup_upset();
     player_events();
     ratings();
     final_counts();

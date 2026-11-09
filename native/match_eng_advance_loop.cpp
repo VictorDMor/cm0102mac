@@ -1,6 +1,7 @@
 // MATCH_ENG.CPP, match advancement: the loop that plays a match forward tick by tick.
 #include "match_eng_advance.hpp"
 #include "debug_underdogs.hpp"
+#include "debug_match_results.hpp"
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -795,6 +796,8 @@ std::uint32_t advance(Cpu& c, std::uint32_t match, std::uint32_t count) {
         outcome = advance_impl(c, match, count);
     }
     if (fixture && outcome == 2) finish_debug_underdogs(c.s, fixture);
+    if (outcome == 2 && !match_result_debugging(static_cast<const State&>(c.s)).fixtures.empty())
+        finish_debug_match_result(c.s, c.u32(match + 0x3118));
     return outcome;
 }
 }  // namespace cm::aot::match_eng

@@ -70,7 +70,9 @@ void controls(State& s, std::uint32_t fixture) {
     initialize_native_debugging(false);
     append_fixture_debugging_controls(s);
     require(s.memory.read<2>(page + 0x129da6) == 1, "Off mode added fixture controls");
-    select_native_debugging(true);
+    const auto underdog_features = (1u << unsigned(DebugFeature::underdogs)) |
+        (1u << unsigned(DebugFeature::underdogs_max));
+    select_native_debugging_features(underdog_features);
     const auto registers = s.registers;
     const auto unique = s.unique;
     const auto pc = s.pc;
@@ -88,7 +90,7 @@ void controls(State& s, std::uint32_t fixture) {
         select_native_debugging(false);
         require(invoke(s, 0x1028bc90, {index}) == 0, "Off mode accepted a stale menu action");
         require(underdog_debugging(s).fixtures.empty(), "Off mode armed a fixture");
-        select_native_debugging(true);
+        select_native_debugging_features(underdog_features);
         require(invoke(s, 0x1028bc90, {index}) == std::uint32_t(-11), "Fixture action did not rebuild screen");
         require(underdog_debugging(s).fixtures.size() == 1, "Menu did not arm the displayed fixture");
         require(underdog_debugging(s).fixtures[0].mode == (action == 30018 ? UnderdogMode::normal : UnderdogMode::maximum),

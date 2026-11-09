@@ -11,6 +11,7 @@
 #include "quick_save_runtime.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_debugging.hpp"
+#include "debug_match_results.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
 #include "directory_catalog.hpp"
@@ -1545,6 +1546,10 @@ void NativePlatform::set_quick_save_alert_observer(std::function<void(const std:
     impl_->quick_save_alert_observer = std::move(observer);
 }
 void NativePlatform::quick_save_load_begin(State& s) {
+    // Match-result choices belong to the current career session, not a world
+    // subsequently loaded into the same runtime (even at identical addresses).
+    if (!match_result_debugging(static_cast<const State&>(s)).fixtures.empty())
+        match_result_debugging(s).fixtures.clear();
     if (impl_->event_mode == EventMode::interactive) {
         // The first load of a session: not the constructor, which check tools
         // and replays also run on folders a game may be using.

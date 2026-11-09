@@ -7,6 +7,7 @@
 #include "debug_localization.hpp"
 #include "debug_contract_date.hpp"
 #include "debug_underdogs.hpp"
+#include "debug_match_results.hpp"
 #include "best_xi_selection.hpp"
 #include <array>
 #include <algorithm>
@@ -22,6 +23,7 @@ constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
+constexpr unsigned match_results_action = 30022;
 static_assert(free_squad_action > shortcut_last);
 constexpr std::uint32_t control_table = 0xba864, control_stride = 0x17c;
 bool action_enabled(unsigned action);
@@ -263,16 +265,26 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
 
 namespace {
 constexpr unsigned debug_options_action = 30020, feature_action = 30100;
+constexpr unsigned debug_options_mode = 4, match_results_mode = 5;
+constexpr unsigned result_group_slot = 2, result_page_slot = 3;
+constexpr unsigned result_first_action = 30200, result_previous_action = 30204, result_next_action = 30205;
+constexpr unsigned results_per_page = 8;
+constexpr std::array result_choices{
+    std::pair{ForcedMatchResult::normal, "Normal"},
+    std::pair{ForcedMatchResult::home_win, "Home win"},
+    std::pair{ForcedMatchResult::draw, "Draw"},
+    std::pair{ForcedMatchResult::away_win, "Away win"},
+};
 std::optional<std::uint32_t> pending_features;
 constexpr std::array feature_labels{
     DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
     DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
-    DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts};
+    DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results};
 static_assert(feature_labels.size() == debug_feature_count);
-bool debug_options_screen(State& s) {
+std::uint32_t debugging_modal_mode(State& s) {
     GuestCall call(s);
-    return call.call(0x1073ef70, {root(s), 1}) == 4;
+    return call.call(0x1073ef70, {root(s), 1});
 }
 bool action_enabled(unsigned action) {
     switch (action) {
@@ -284,6 +296,7 @@ bool action_enabled(unsigned action) {
         case remove_sale_clause_action: return native_debugging_feature(DebugFeature::remove_sale_clause);
         case underdogs_action: return native_debugging_feature(DebugFeature::underdogs);
         case underdogs_max_action: return native_debugging_feature(DebugFeature::underdogs_max);
+        case match_results_action: return native_debugging_feature(DebugFeature::match_result);
         case repeat_action: return native_debugging_feature(DebugFeature::repeat_goal);
         case goal_action: return native_debugging_feature(DebugFeature::add_goal);
         default:
@@ -292,6 +305,135 @@ bool action_enabled(unsigned action) {
                     action < shortcut_first + 4 ? DebugFeature::red_cards : DebugFeature::injuries);
             return false;
     }
+}
+
+std::vector<std::uint32_t> displayed_fixtures(const State& s, std::uint32_t group) {
+    // MATCH_SCREENS 1028ae80: parameter 1 selects an inclusive range of
+    // 0x6c-byte queue entries. Each entry's first word is the core fixture.
+    const auto queue = s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7420));
+    if (!group || !queue) return {};
+    const auto first = std::int32_t(s.memory.read<4>(group + 4));
+    const auto last = std::int32_t(s.memory.read<4>(group + 8));
+    if (first < 0 || last < first || last - first > 10000) return {};
+    const auto entries = s.memory.read<4>(queue + 0x1c);
+    if (!entries) return {};
+    std::vector<std::uint32_t> fixtures;
+    for (auto n = first; n <= last; ++n) {
+        const auto fixture = std::uint32_t(s.memory.read<4>(entries + std::uint32_t(n) * 0x6c));
+        if (fixture) fixtures.push_back(fixture);
+    }
+    return fixtures;
+}
+
+std::vector<std::uint32_t> eligible_result_fixtures(State& s, GuestCall& call) {
+    if (!action_enabled(match_results_action)) return {};
+    auto fixtures = displayed_fixtures(s, call.call(0x1073ef70, {root(s), result_group_slot}));
+    std::erase_if(fixtures, [&](auto fixture) { return !debug_match_result_eligible(s, fixture); });
+    return fixtures;
+}
+
+void draw_debugging_panel(GuestCall& call, std::uint32_t ui, std::uint32_t page,
+                          std::uint32_t left, std::uint32_t right, std::uint32_t title_color,
+                          std::uint32_t title_ink, std::string_view title) {
+    call.call(0x10712e60, {0});
+    call.args({0, 2, 0, 0xffffffffu});
+    call.call(0x107198c0, {page, 0, 0, 799, 599, 1, 0, 1});
+    const auto panel_color = call.call(0x1076bb20, {0, 0x38, 0, 0});
+    call.args({0, 0x30, panel_color, 0xffffffffu});
+    call.call(0x107198c0, {page, left, 50, right, 549, 1, 0, 1});
+    call.args({4, title_ink, call.text(title)});
+    call.call(0x10744390, {ui, left + 10, 60, right - 10, 105, 0x30, title_color, 12});
+}
+
+void build_match_results_modal(State& s) {
+    const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
+    const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
+    GuestCall call(s);
+    const auto fixtures = eligible_result_fixtures(s, call);
+    const auto pages = std::max(1u, (unsigned(fixtures.size()) + results_per_page - 1) / results_per_page);
+    const auto current = std::min(pages - 1, call.call(0x1073ef70, {ui, result_page_slot}));
+    const auto title = std::string(debug_text(s, DebugText::match_results)) + " (" +
+        std::to_string(current + 1) + "/" + std::to_string(pages) + ")";
+    draw_debugging_panel(call, ui, page, 115, 785, color(0x7bd4), color(0x7bc8), title);
+
+    const auto description = fixtures.empty() ? "No eligible unplayed matches." :
+        "Changes apply immediately. Normal clears a selection.";
+    call.args({4, color(0x7bc8), call.text(description)});
+    call.call(0x10744390, {ui, 125, 110, 775, 135, 1, 0, 12});
+
+    s.memory.copy_in(call.stack + 0xc0, {52, 12, 12, 12, 12});
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto grid = call.call(0x107198c0, {page, 125, 145, 775, 484, 5, call.stack + 0xc0, results_per_page});
+    const auto first = current * results_per_page;
+    const auto end = std::min(unsigned(fixtures.size()), first + results_per_page);
+    const auto normal_ink = call.call(0x1076bb20, {0, 0xc0, 0, 0});
+    for (unsigned i = first; i < end; ++i) {
+        const auto fixture = fixtures[i];
+        const auto home = std::uint32_t(s.memory.read<4>(fixture + 0x1c));
+        const auto away = std::uint32_t(s.memory.read<4>(fixture + 0x20));
+        const auto date = call.stack + 0x200;
+        // Same short names and date formatter as the original fixture list.
+        call.call(0x10476f40, {std::uint32_t(signed_value<2>(s.memory.read<2>(fixture + 0x32))),
+            std::uint32_t(signed_value<2>(s.memory.read<2>(fixture + 0x30))), date, 0x7d0, 0});
+        const auto name = original_text(s, home + 0x221) + " vs " + original_text(s, away + 0x221) +
+            "\n" + original_text(s, date);
+        call.args({color(0x7b10), call.text(name)});
+        call.call(0x107445a0, {ui, grid, 0, i - first, 1, 0, 12, 3});
+        const auto result = debug_match_result(s, fixture);
+        for (unsigned choice = 0; choice < result_choices.size(); ++choice) {
+            const auto [value, label] = result_choices[choice];
+            const bool active = result == value;
+            const auto ink = active ? color(0x7bd0) : normal_ink;
+            call.args({ink, call.text(label), result_first_action + choice, fixture});
+            call.call(active ? 0x107445a0 : 0x107444e0,
+                {ui, grid, choice + 1, i - first, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
+        }
+    }
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto footer = call.call(0x107198c0, {page, 125, 509, 775, 539, 3, 0, 1});
+    const auto button = [&](unsigned column, std::string_view label, unsigned action) {
+        call.args({color(0x7bc8), call.text(label), action, 0});
+        call.call(0x107444e0, {ui, footer, column, 0, 0x30, color(0x7bc4), 12, 3});
+    };
+    if (current) button(0, "Previous", result_previous_action);
+    button(1, "Done", 41);
+    if (current + 1 < pages) button(2, "Next", result_next_action);
+}
+
+void close_debugging_modal(State& s) {
+    GuestCall call(s);
+    const auto preferences = call.call(0x1073ef70, {root(s), 0});
+    call.call(0x1013f4d0, {preferences, 1});
+}
+
+bool dispatch_match_results_modal(State& s, std::uint32_t control, unsigned action) {
+    int result = 0;
+    if (action == 40 || action == 41) {
+        close_debugging_modal(s);
+        result = -9;
+    } else if (control && (s.memory.read<4>(control + 12) & 2) && action_enabled(match_results_action)) {
+        GuestCall call(s);
+        const auto ui = root(s);
+        const auto fixtures = eligible_result_fixtures(s, call);
+        if (action >= result_first_action && action < result_first_action + result_choices.size()) {
+            const auto fixture = std::uint32_t(s.memory.read<4>(control + 0x48));
+            if (std::ranges::find(fixtures, fixture) != fixtures.end() &&
+                set_debug_match_result(s, fixture, result_choices[action - result_first_action].first))
+                result = -11;
+        } else if (action == result_previous_action || action == result_next_action) {
+            const auto pages = std::max(1u, (unsigned(fixtures.size()) + results_per_page - 1) / results_per_page);
+            const auto current = std::min(pages - 1, call.call(0x1073ef70, {ui, result_page_slot}));
+            if ((action == result_previous_action && current) ||
+                (action == result_next_action && current + 1 < pages)) {
+                const auto next = action == result_previous_action ? current - 1 : current + 1;
+                call.call(0x1073f1e0, {ui, result_page_slot, next, 0});
+                result = -11;
+            }
+        }
+    }
+    s.wr<4>(12, std::uint32_t(result));
+    s.pc = s.r<4>(4128);
+    return true;
 }
 }
 
@@ -318,7 +460,7 @@ bool dispatch_debugging_sidebar(State& s) {
         GuestCall call(s);
         // Original options owns the modal's lifetime and temporary settings.
         // Mode 4 selects only our body; Cancel/OK still close it normally.
-        call.call(0x1033ce70, {4});
+        call.call(0x1033ce70, {debug_options_mode});
         pending_features = native_debugging_features();
     }
     s.wr<4>(12, std::uint32_t(-11)); s.pc = s.r<4>(4128);
@@ -326,21 +468,21 @@ bool dispatch_debugging_sidebar(State& s) {
 }
 
 bool build_debugging_options_screen(State& s) {
-    if (!native_debugging_available() || !debug_options_screen(s)) return false;
+    if (!native_debugging_available()) return false;
+    const auto mode = debugging_modal_mode(s);
+    if (mode == match_results_mode) {
+        build_match_results_modal(s);
+        s.pc = s.r<4>(4128);
+        return true;
+    }
+    if (mode != debug_options_mode) return false;
     if (!pending_features) pending_features = native_debugging_features();
     {
         GuestCall call(s);
         const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
         const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
-        call.call(0x10712e60, {0});
-        // Same full-screen backing, inset panel and heading as Game Options.
-        call.args({0, 2, 0, 0xffffffffu});
-        call.call(0x107198c0, {page, 0, 0, 799, 599, 1, 0, 1});
-        const auto panel_color = call.call(0x1076bb20, {0, 0x38, 0, 0});
-        call.args({0, 0x30, panel_color, 0xffffffffu});
-        call.call(0x107198c0, {page, 145, 50, 744, 549, 1, 0, 1});
-        call.args({4, color(0x7bc8), call.text(debug_text(s, DebugText::options))});
-        call.call(0x10744390, {ui, 155, 60, 734, 105, 0x30, color(0x7bd4), 12});
+        draw_debugging_panel(call, ui, page, 145, 744, color(0x7bd4), color(0x7bc8),
+            debug_text(s, DebugText::options));
 
         // Original 75/25 footer: wide Cancel, compact OK, same relief and type.
         s.memory.write<2>(call.stack + 0xc0, s.memory.read<2>(toc - 0x3894));
@@ -420,7 +562,9 @@ bool dispatch_debugging_option(State& s) {
     const auto control = selected_control(s);
     auto action = control ? s.memory.read<4>(control + 8) : 0;
     if (!action) action = s.memory.read<2>(root(s) + 0x25819e);
-    if (debug_options_screen(s)) {
+    const auto mode = debugging_modal_mode(s);
+    if (mode == match_results_mode) return dispatch_match_results_modal(s, control, action);
+    if (mode == debug_options_mode) {
         if (!pending_features) pending_features = native_debugging_features();
         if (control && action >= feature_action && action < feature_action + debug_feature_count &&
             (s.memory.read<4>(control + 12) & 2)) {
@@ -432,11 +576,7 @@ bool dispatch_debugging_option(State& s) {
             if (action == 41) select_native_debugging_features(*pending_features);
             pending_features.reset();
             pending_option.reset();
-            {
-                GuestCall call(s);
-                const auto preferences = call.call(0x1073ef70, {root(s), 0});
-                call.call(0x1013f4d0, {preferences, 1});
-            }
+            close_debugging_modal(s);
             // Match the original close result, without rewriting unrelated
             // game preferences: this modal saves only host debug settings.
             s.wr<4>(12, std::uint32_t(-9)); s.pc = s.r<4>(4128);
@@ -460,33 +600,13 @@ bool dispatch_debugging_option(State& s) {
     return false;
 }
 
-namespace {
-std::vector<std::uint32_t> displayed_fixtures(State& s, GuestCall& call) {
-    // MATCH_SCREENS 1028ae80: parameter 1 selects an inclusive range of
-    // 0x6c-byte queue entries. Each entry's first word is the core fixture.
-    const auto group = call.call(0x1073ef70, {root(s), 1});
-    const auto queue = s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7420));
-    if (!group || !queue) return {};
-    const auto first = std::int32_t(s.memory.read<4>(group + 4));
-    const auto last = std::int32_t(s.memory.read<4>(group + 8));
-    if (first < 0 || last < first || last - first > 10000) return {};
-    const auto entries = s.memory.read<4>(queue + 0x1c);
-    if (!entries) return {};
-    std::vector<std::uint32_t> fixtures;
-    for (auto n = first; n <= last; ++n) {
-        const auto fixture = std::uint32_t(s.memory.read<4>(entries + std::uint32_t(n) * 0x6c));
-        if (fixture) fixtures.push_back(fixture);
-    }
-    return fixtures;
-}
-}
-
 void append_fixture_debugging_controls(State& s) {
-    if (!action_enabled(underdogs_action) && !action_enabled(underdogs_max_action)) return;
+    if (!action_enabled(underdogs_action) && !action_enabled(underdogs_max_action) &&
+        !action_enabled(match_results_action)) return;
     const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
     const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
     GuestCall call(s);
-    const auto fixtures = displayed_fixtures(s, call);
+    const auto fixtures = displayed_fixtures(s, call.call(0x1073ef70, {ui, 1}));
     const bool enabled = std::ranges::any_of(fixtures, [&](auto fixture) {
         return std::int8_t(s.memory.read<1>(fixture + 0x43)) == -1;
     });
@@ -498,6 +618,11 @@ void append_fixture_debugging_controls(State& s) {
     const auto cell = call.call(0x107444e0, {ui, grid, 0, 0, 0x30, color(0x7bc4), 12, 1});
     call.args({0, 0x130, color(0x7bcc), cell});
     const auto menu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
+    const auto item = [&](unsigned action, std::string_view label, bool active) {
+        call.args({0x10, color(0x7bcc), color(0x7bd0), 1, 1, color(0x7bd4),
+                   call.text(label), 0, action, 0, menu});
+        call.call(0x10719740, {page, active ? 2u : 0u, 0, 0, 0, 0, 0, 0});
+    };
     for (const auto action : {underdogs_action, underdogs_max_action}) {
         if (!action_enabled(action)) continue;
         const auto mode = action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum;
@@ -507,9 +632,15 @@ void append_fixture_debugging_controls(State& s) {
         });
         const auto text = debug_text(s, action == underdogs_action ? DebugText::underdogs : DebugText::underdogs_max);
         const auto label = std::string(selected ? "* " : "") + std::string(text);
-        call.args({0x10, color(0x7bcc), color(0x7bd0), 1, 1, color(0x7bd4),
-                   call.text(label), 0, action, 0, menu});
-        call.call(0x10719740, {page, enabled ? 2u : 0u, 0, 0, 0, 0, 0, 0});
+        item(action, label, enabled);
+    }
+    if (action_enabled(match_results_action)) {
+        const auto eligible = [&](auto fixture) { return debug_match_result_eligible(s, fixture); };
+        const bool selected = std::ranges::any_of(fixtures, [&](auto fixture) {
+            return eligible(fixture) && debug_match_result(s, fixture) != ForcedMatchResult::normal;
+        });
+        const auto label = std::string(selected ? "* " : "") + std::string(debug_text(s, DebugText::match_results));
+        item(match_results_action, label, std::ranges::any_of(fixtures, eligible));
     }
 }
 
@@ -517,13 +648,26 @@ bool dispatch_fixture_debugging_control(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != underdogs_action && action != underdogs_max_action) return false;
+    if (action != underdogs_action && action != underdogs_max_action && action != match_results_action) return false;
     bool accepted = false;
     if (action_enabled(action) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
-        const auto fixtures = displayed_fixtures(s, call);
-        accepted = arm_debug_underdogs(s, fixtures,
-            action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum);
+        const auto ui = root(s);
+        const auto group = call.call(0x1073ef70, {ui, 1});
+        const auto fixtures = displayed_fixtures(s, group);
+        if (action == match_results_action) {
+            if (std::ranges::any_of(fixtures, [&](auto fixture) { return debug_match_result_eligible(s, fixture); })) {
+                call.call(0x1033ce70, {match_results_mode});
+                accepted = call.call(0x1073ef70, {ui, 1}) == match_results_mode;
+                if (accepted) {
+                    call.call(0x1073f1e0, {ui, result_group_slot, group, 0});
+                    call.call(0x1073f1e0, {ui, result_page_slot, 0, 0});
+                }
+            }
+        } else {
+            accepted = arm_debug_underdogs(s, fixtures,
+                action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum);
+        }
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
     return true;
