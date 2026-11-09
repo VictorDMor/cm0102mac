@@ -70,7 +70,19 @@ struct StackAudit::Impl final : MemoryObserver {
             char* end = nullptr; const auto lo = std::strtoul(v, &end, 16);
             return std::pair<std::uint32_t, std::uint32_t>{std::uint32_t(lo), std::uint32_t(std::strtoul(end + 1, nullptr, 16))};
         }();
-        if (scramble && (s.pc < pcs.first || s.pc >= pcs.second)) {
+        // CM_STACK_SCRAMBLE_SKIP=pc,pc,... leaves the reads at those PCs alone.
+        static const std::vector<std::uint32_t> skipped = [] {
+            std::vector<std::uint32_t> result;
+            const char* v = std::getenv("CM_STACK_SCRAMBLE_SKIP");
+            while (v && *v) {
+                char* end = nullptr;
+                result.push_back(std::uint32_t(std::strtoul(v, &end, 16)));
+                v = *end ? end + 1 : end;
+            }
+            std::sort(result.begin(), result.end());
+            return result;
+        }();
+        if (scramble && (s.pc < pcs.first || s.pc >= pcs.second || std::binary_search(skipped.begin(), skipped.end(), s.pc))) {
             for (auto address = std::uint64_t(start); address < high; ++address) stale[address - stack_low] = 0;
             return;
         }

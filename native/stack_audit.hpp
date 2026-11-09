@@ -24,7 +24,8 @@ public:
     // Also replaces each stale byte with a pseudo-random one as the game reads
     // it, so a run shows whether the game's results depend on what it leaves on
     // the stack. CM_STACK_SCRAMBLE_ZERO=1 uses zero instead (a canonical stack),
-    // and CM_STACK_SCRAMBLE_PCS=lo-hi limits it to reads whose PC is in [lo, hi).
+    // CM_STACK_SCRAMBLE_PCS=lo-hi limits it to reads whose PC is in [lo, hi), and
+    // CM_STACK_SCRAMBLE_SKIP=pc,pc,... leaves the reads at those PCs alone.
     StackAudit(State&, std::uint64_t scramble_seed);
     ~StackAudit();
     MemoryObserver* observer();
