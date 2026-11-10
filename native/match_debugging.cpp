@@ -739,10 +739,15 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
     GuestCall call(s);
     const auto bench = fixture ? std::min<unsigned>(s.memory.read<1>(fixture + 0x4e) >> 4, 9) : 9;
     std::vector<std::uint32_t> available;
+    // The game's stand-ins for a short squad (the grey rows of the squad list) are the people
+    // numbered past the staff table's count: the original status operation tells them apart the
+    // same way (10060d28, where they skip the contract lookup). They are never selected.
+    const auto staff_count = signed_value<4>(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7be4)));
     for (unsigned i = 0; i < 50; ++i) {
         const auto staff = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
         if (!staff || !s.memory.read<4>(staff + 0x14) ||
             std::find(available.begin(), available.end(), staff) != available.end()) continue;
+        if (signed_value<4>(s.memory.read<4>(staff)) >= staff_count) continue;
         // The same eligibility/status operation used by the squad screen:
         // ineligible, unregistered, international duty, suspended, injured,
         // recovering and absent players cannot be picked.
@@ -769,7 +774,7 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
         best_xi::teamwork, best_xi::technique, best_xi::work_rate};
     constexpr std::array<unsigned, 10> position_offsets{0xf,0x10,0x11,0x12,0x13,0x14,0x15,0x17,0x18,0x19};
     const auto medical = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7ba0)));
-    std::vector<best_xi::Player> players;
+    std::vector<best_xi::Player> players, older;
     for (const auto staff : available) {
         const auto record = std::uint32_t(s.memory.read<4>(staff + 0x14));
         best_xi::Player player;
@@ -781,7 +786,7 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
         for (unsigned i = 0; i < position_offsets.size(); ++i)
             player.positions[i] = std::clamp(int(signed_value<1>(s.memory.read<1>(record + position_offsets[i]))), 0, 20);
         player.condition = unsigned(std::clamp(int(signed_value<2>(call.call(0x101878d0, {medical, staff, 0}))), 0, 10000));
-        // Age in whole years on the game date: the original age operation takes
+        // Age in whole years on the game date (Best U23 means 23 or less): the original age operation takes
         // a result slot, today's date and the person's birth date (+34, +38).
         // It stores days at +0 and years at +2 of the slot.
         if (mode == LineupMode::under_23) {
@@ -789,7 +794,7 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
             call.call(0x10717dd0, {slot, std::uint32_t(s.memory.read<4>(s.r<4>(8) - 0x7b80)),
                                    std::uint32_t(s.memory.read<4>(staff + 0x34)),
                                    std::uint32_t(s.memory.read<4>(staff + 0x38))});
-            if (s.memory.read<2>(slot + 2) >= 23) continue;
+            if (s.memory.read<2>(slot + 2) > 23) { older.push_back(player); continue; }
         }
         players.push_back(player);
     }
@@ -799,26 +804,54 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
                     unsigned(s.memory.read<2>(formation + 0x150 + i * 2)),
                     s.memory.read<8>(formation + 0x1888 + i * 8),
                     unsigned(s.memory.read<4>(formation + 0x588))};
-    auto starters = best_xi::select(players, roles);
-    if (mode == LineupMode::b_team) {
-        // The second team: the same selection over everyone the Best XI left out.
-        std::erase_if(players, [&](const auto& player) {
-            return std::find(starters.begin(), starters.end(), player.staff) != starters.end();
-        });
+    // Fill the empty places of `out` (indexes into `roles`) from `pool`, optionally
+    // only with compatible pairs; the chosen players leave the pool.
+    const auto fill = [](std::vector<best_xi::Player>& pool, std::span<const best_xi::Role> roles,
+                         std::span<std::uint32_t> out, bool compatible_only) {
+        std::vector<unsigned> open;
+        std::vector<best_xi::Role> jobs;
+        for (unsigned i = 0; i < out.size(); ++i) if (!out[i]) { open.push_back(i); jobs.push_back(roles[i]); }
+        if (open.empty() || pool.empty()) return;
+        const auto chosen = best_xi::select(pool, jobs, compatible_only ? best_xi::Allowed(best_xi::compatible) : best_xi::Allowed());
+        for (unsigned k = 0; k < open.size(); ++k) {
+            if (!chosen[k]) continue;
+            out[open[k]] = chosen[k];
+            std::erase_if(pool, [&](const auto& player) { return player.staff == chosen[k]; });
+        }
+    };
+    std::array<std::uint32_t, 11> starters{};
+    if (mode == LineupMode::under_23) {
+        // Players of 23 or less first, if compatible; then compatible older players;
+        // then whoever is left by plain best fit, young before old.
+        fill(players, roles, starters, true);
+        fill(older, roles, starters, true);
+        fill(players, roles, starters, false);
+        fill(older, roles, starters, false);
+    } else {
         starters = best_xi::select(players, roles);
+        if (mode == LineupMode::b_team) {
+            // The second team: the same selection over everyone the Best XI left out.
+            std::erase_if(players, [&](const auto& player) {
+                return std::find(starters.begin(), starters.end(), player.staff) != starters.end();
+            });
+            starters = best_xi::select(players, roles);
+        }
     }
     std::array<std::uint32_t, 20> selected{};
     std::copy(starters.begin(), starters.end(), selected.begin());
-    std::erase_if(players, [&](const auto& player) {
-        return std::find(starters.begin(), starters.end(), player.staff) != starters.end();
-    });
+    for (auto* pool : {&players, &older})
+        std::erase_if(*pool, [&](const auto& player) {
+            return std::find(starters.begin(), starters.end(), player.staff) != starters.end();
+        });
     // Fill the fixture's bench from the remaining pool, retaining goalkeeper,
     // defensive, midfield and attacking coverage without spending a starter.
     constexpr std::array<unsigned, 9> reserve_roles{1, 4, 16, 64, 16, 4, 64, 16, 4};
     std::array<best_xi::Role, 9> reserves{};
     for (unsigned i = 0; i < bench; ++i) reserves[i] = {reserve_roles[i], reserve_roles[i], 0, 0};
-    const auto substitutes = best_xi::select(players, std::span(reserves).first(bench));
-    std::copy_n(substitutes.begin(), bench, selected.begin() + 11);
+    // Best U23: players of 23 or less first, then older players for the free places.
+    const auto places = std::span(selected).subspan(11, bench);
+    fill(players, reserves, places, false);
+    fill(older, reserves, places, false);
     for (unsigned i = 0; i < 11 + bench; ++i) {
         const auto staff = selected[i];
         if (!staff) continue;

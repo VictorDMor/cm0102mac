@@ -3,6 +3,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <span>
 #include <stdexcept>
@@ -133,10 +134,31 @@ inline int score(const Player& player, const Role& role) {
     return attributes * int(std::min(player.condition, 10000u)) / 10000 - fit;
 }
 
+// Whether a player can be given the role without an emergency assignment: no
+// keeper/outfield specialist mismatch (the 5000 penalty case above) and a rating
+// of at least 10 of 20 for the role's line, without and with the ball. The side
+// does not disqualify; it already costs score.
+inline int line_rating(const Player& player, unsigned code) {
+    int line = 0;
+    for (unsigned i = 0; i < 7; ++i)
+        if (code & (1u << i)) line = std::max(line, player.positions[i]);
+    return line;
+}
+inline bool compatible(const Player& player, const Role& role) {
+    const auto outfield = *std::max_element(player.positions.begin() + 1, player.positions.begin() + 7);
+    if (((role.without_ball & 1) && player.positions[0] < 10) ||
+        (!(role.without_ball & 1) && player.positions[0] >= 15 && outfield < 10)) return false;
+    const auto attacking_code = role.with_ball & 0x7f ? role.with_ball : role.without_ball;
+    return line_rating(player, role.without_ball) >= 10 && line_rating(player, attacking_code) >= 10;
+}
+// Optional per-player/role test: a pair it rejects is never assigned.
+using Allowed = std::function<bool(const Player&, const Role&)>;
+
 // Exact maximum-weight assignment for at most eleven roles and fifty players.
 // Each transition consumes one player, so a versatile player cannot be reused.
 // Cardinality wins first, then combined suitability; ties use stable staff IDs.
-inline std::array<std::uint32_t, 11> select(std::span<const Player> players, std::span<const Role> roles) {
+inline std::array<std::uint32_t, 11> select(std::span<const Player> players, std::span<const Role> roles,
+                                                const Allowed& allowed = {}) {
     if (roles.size() > 11 || players.size() > 50) throw std::invalid_argument("Invalid Best XI pool");
     std::vector<const Player*> ordered;
     for (const auto& player : players) ordered.push_back(&player);
@@ -148,10 +170,14 @@ inline std::array<std::uint32_t, 11> select(std::span<const Player> players, std
     paths[0].value = 0;
     for (const auto* player : ordered) {
         std::array<int, 11> scores{};
-        for (unsigned role = 0; role < roles.size(); ++role) scores[role] = score(*player, roles[role]);
+        std::array<bool, 11> usable{};
+        for (unsigned role = 0; role < roles.size(); ++role) {
+            usable[role] = !allowed || allowed(*player, roles[role]);
+            if (usable[role]) scores[role] = score(*player, roles[role]);
+        }
         for (unsigned mask = states - 1; mask > 0; --mask) {
             for (unsigned role = 0; role < roles.size(); ++role) {
-                if (!(mask & (1u << role))) continue;
+                if (!(mask & (1u << role)) || !usable[role]) continue;
                 const auto& previous = paths[mask ^ (1u << role)];
                 if (previous.value == absent) continue;
                 const auto value = previous.value + scores[role];

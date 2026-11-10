@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <tuple>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -444,59 +445,124 @@ void check_lineups(State& s, std::uint32_t club, std::uint32_t tactics, std::uin
     require(best == squad(s, tactics, club) && select_debug_best_xi(s, club, 0, formation, 0) &&
             squad(s, tactics, club) == best, "Default mode differs from Best XI");
     members_of(best);
-    // Age boundary on a four-player pool: 22y exactly, 22y364d, 23y exactly, 40 (players the Best XI picked, so all available).
+    const auto set_all = [&](auto age_of) {
+        for (unsigned i = 0; i < staff.size(); ++i) set_birth(staff[i], today_day, today_year - age_of(i));
+    };
+    const auto restore_births = [&] { for (auto member : staff) s.memory.copy_in(member + 0x34, births[member]); };
+    const auto in_lineup = [](const std::array<std::uint32_t, 20>& lineup, std::uint32_t member, unsigned from, unsigned to) {
+        return std::find(lineup.begin() + from, lineup.begin() + to, member) != lineup.begin() + to;
+    };
+    const auto is_keeper = [&](std::uint32_t member) { return s.memory.read<1>(s.memory.read<4>(member + 0x14) + 0xf) >= 15; };
+    // The game's stand-ins (people numbered at or past the staff table's count) are never
+    // selected, in any mode, as starters or on the bench. Number half of the roster past the
+    // count, as stand-ins are; then everyone.
     {
-        set_birth(best[0], today_day, today_year - 22);
-        set_birth(best[1], today_day + 1, today_year - 23);
-        set_birth(best[2], today_day, today_year - 23);
-        set_birth(best[3], today_day, today_year - 40);
-        set_roster({best[0], best[1], best[2], best[3]});
-        const auto lineup = run(LineupMode::under_23);
-        require(members_of(lineup) == std::set{best[0], best[1]}, "Under-23 boundary: 22 in, 23 out");
-        require(run(LineupMode::best_xi) != lineup && members_of(run(LineupMode::best_xi)).size() == 4,
-                "Best XI did not keep every age");
-        for (auto member : staff) s.memory.copy_in(member + 0x34, births[member]);
+        const auto count = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7be4)));
+        std::map<std::uint32_t, std::uint32_t> numbers;
+        for (auto member : staff) {
+            numbers[member] = std::uint32_t(s.memory.read<4>(member));
+            require(numbers[member] < count, "The check's roster must hold real people only");
+        }
+        const auto stand_in = [&](unsigned from) {
+            for (unsigned i = 0; i < staff.size(); ++i)
+                s.memory.write<4>(staff[i], i >= from && (from == 0 || i % 2) ? count + i : numbers[staff[i]]);
+        };
+        for (auto mode : {LineupMode::best_xi, LineupMode::under_23, LineupMode::b_team}) {
+            set_roster(staff);
+            stand_in(1);  // every second roster entry
+            const auto lineup = run(mode);
+            unsigned chosen = 0;
+            for (auto member : members_of(lineup)) {
+                require(std::uint32_t(s.memory.read<4>(member)) < count, "A stand-in was selected");
+                ++chosen;
+            }
+            // Half the roster is left: Best XI and Best U23 still fill the eleven from real players,
+            // B Team takes what the Best XI left.
+            require(chosen >= (mode == LineupMode::b_team ? 1u : 11u) && chosen <= (staff.size() + 1) / 2,
+                    "Real players must fill the places stand-ins lose");
+            stand_in(0);  // everyone
+            for (auto member : run(mode)) require(!member, "Only stand-ins left: the selection must be empty");
+            for (auto member : staff) s.memory.write<4>(member, numbers[member]);
+        }
+        set_roster(staff);
+        require(run(LineupMode::best_xi) == best, "Restoring the numbers restores the Best XI");
     }
-    // All starters but one are old; the young pool is the nine bench players and
-    // that starter: ten in all, so one slot stays empty.
+    // Age boundary: the one young candidate is a defender the Best XI did not start.
+    // Up to 23 years 364 days he takes a slot as the only compatible young player;
+    // from 24 he is just another older player and the Best XI's players are kept.
+    {
+        const auto candidate = best[12];
+        require(!in_lineup(best, candidate, 0, 11), "Boundary candidate must be a reserve");
+        for (auto [day, years, young] : {std::tuple{0, 23, true}, std::tuple{1, 24, true}, std::tuple{0, 24, false},
+                                         std::tuple{-1, 24, false}, std::tuple{0, 40, false}}) {
+            set_all([](unsigned) { return 40; });
+            set_birth(candidate, today_day + day, today_year - years);
+            set_roster(staff);
+            const auto lineup = run(LineupMode::under_23);
+            members_of(lineup);
+            require(in_lineup(lineup, candidate, 0, 11) == young,
+                    "Best U23 age boundary: 23 years 364 days in, 24 out");
+        }
+        restore_births();
+    }
+    // No keeper of 23 or less: an older keeper takes the goal, the outfield stays young.
+    {
+        set_all([&](unsigned i) { return is_keeper(staff[i]) ? 31 : 20; });
+        set_roster(staff);
+        const auto lineup = run(LineupMode::under_23);
+        members_of(lineup);
+        require(lineup[0] && is_keeper(lineup[0]), "An older keeper must take the goal");
+        for (unsigned i = 1; i < 11; ++i)
+            require(lineup[i] && !is_keeper(lineup[i]), "The outfield must stay under 24");
+        restore_births();
+    }
+    // Too few young players: ten (the bench and one starter), completed by older ones.
     {
         std::vector<std::uint32_t> young;
         for (unsigned i = 0; i < 20; ++i) if (i >= 11 || i == 5) young.push_back(best[i]);
-        for (auto member : staff) {
-            const bool is_young = std::find(young.begin(), young.end(), member) != young.end();
-            set_birth(member, today_day, today_year - (is_young ? 20 : 30));
-        }
+        set_all([&](unsigned i) { return std::find(young.begin(), young.end(), staff[i]) != young.end() ? 20 : 30; });
         set_roster(staff);
         const auto lineup = run(LineupMode::under_23);
         const auto chosen = members_of(lineup);
-        require(chosen.size() == young.size() && std::set(young.begin(), young.end()) == chosen,
-                "Best U23 took an older player or lost a young one");
-        require(std::count(lineup.begin(), lineup.begin() + 11, 0u) == 1, "Too few young players must leave slots empty");
-        require(!chosen.contains(best[0]), "An older, better keeper was chosen");
-        set_roster(young);
-        require(run(LineupMode::best_xi) == lineup, "Best U23 differs from the selector on the young pool");
+        require(chosen.size() == 20 && std::count(lineup.begin(), lineup.end(), 0u) == 0,
+                "Short young pool must be completed to a full XI and bench");
+        for (auto member : young) require(chosen.contains(member), "A young player was left out");
+        for (unsigned i = 0; i < 11; ++i) require(lineup[i], "Empty starter slot with older players left");
+        // The only older player available for the last slot is incompatible everywhere.
+        std::vector<std::uint32_t> pool = young;
+        const auto stranger = best[0];
+        pool.erase(std::remove(pool.begin(), pool.end(), stranger), pool.end());
+        const auto record = std::uint32_t(s.memory.read<4>(stranger + 0x14));
+        const auto saved_record = s.memory.copy_out(record, 0x48);
+        for (unsigned offset = 0xf; offset <= 0x19; ++offset) s.memory.write<1>(record + offset, 1);
+        pool.push_back(stranger);
+        set_roster(pool);
+        const auto thin = run(LineupMode::under_23);
+        require(members_of(thin) == std::set(pool.begin(), pool.end()), "A slot went empty with a real player left");
+        require(in_lineup(thin, stranger, 0, 11), "The incompatible older player must still take the empty slot");
+        s.memory.copy_in(record, saved_record);
+        restore_births();
     }
-    // Half the roster is young: full XI and bench, equal to the selector on that pool.
+    // Plenty of young players: starters and bench come from them first.
     {
         std::vector<std::uint32_t> young;
-        for (unsigned i = 0; i < staff.size(); ++i) {
-            set_birth(staff[i], today_day, today_year - (i % 2 ? 19 : 31));
-            if (i % 2) young.push_back(staff[i]);
-        }
+        set_all([&](unsigned i) { if (i % 2) young.push_back(staff[i]); return i % 2 ? 19 : 31; });
         set_roster(staff);
         const auto lineup = run(LineupMode::under_23);
         const auto chosen = members_of(lineup);
-        for (auto member : chosen)
-            require(std::find(young.begin(), young.end(), member) != young.end(), "Best U23 chose a player of 23 or more");
-        require(lineup[10] && lineup[11] && !chosen.empty(), "A large young pool must fill the XI and bench");
-        set_roster(young);
-        require(run(LineupMode::best_xi) == lineup, "Best U23 differs from the selector on the young pool");
-        // Nobody under 23: the selection is emptied.
-        for (auto member : staff) set_birth(member, today_day, today_year - 30);
-        set_roster(staff);
-        require(run(LineupMode::under_23) == std::array<std::uint32_t, 20>{}, "No young players must clear the selection");
+        require(chosen.size() == 20, "A large pool must fill the XI and bench");
+        for (unsigned i = 11; i < 20; ++i)
+            require(std::find(young.begin(), young.end(), lineup[i]) != young.end(), "Bench must be young first");
+        require(std::count_if(lineup.begin(), lineup.begin() + 11, [&](auto member) {
+                    return std::find(young.begin(), young.end(), member) != young.end(); }) >= 9,
+                "Starters must be young where compatible");
+        // Nobody of 23 or less: the older players fill everything, by best fit.
+        set_all([](unsigned) { return 30; });
+        require(members_of(run(LineupMode::under_23)).size() == 20, "Only older players must still fill the lineup");
+        set_roster({});
+        require(run(LineupMode::under_23) == std::array<std::uint32_t, 20>{}, "Empty pool must clear Best U23");
+        restore_births();
     }
-    for (auto member : staff) s.memory.copy_in(member + 0x34, births[member]);
     // B Team: no Best XI starter, and the best of the rest.
     {
         set_roster(staff);
@@ -527,7 +593,7 @@ void check_lineups(State& s, std::uint32_t club, std::uint32_t tactics, std::uin
     for (auto member : staff) s.memory.copy_in(member + 0x34, births[member]);
     s.memory.copy_in(club + 0x98, roster);
     s.memory.copy_in(today, saved_today);
-    std::cout << "Lineups: under-23 boundary, older players excluded, empty slots, B Team without Best XI starters, "
+    std::cout << "Lineups: age boundary, older keeper, completion by older players, B Team without Best XI starters, "
                  "equality with the selector on the reduced pools, RNG and caller state passed\n";
 }
 }

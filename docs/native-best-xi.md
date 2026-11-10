@@ -7,11 +7,25 @@ replacing the match selection immediately for the currently selected formation
 (none changes the formation or its player instructions):
 
 - **Best XI** (**Melhor 11**): the selection described below, over every available player.
-- **Best U23** (**Melhor Sub-23**): the same selection over players under 23 on the
-  game date only, bench included. Age is whole years from the original age
+- **Best U23** (**Melhor Sub-23**): players aged 23 or less on the game date (23 years
+  364 days is in, 24 is out) first. Age is whole years from the original age
   operation (`10717dd0`: result slot, today's date at TOC `-0x7b80`, birth date
-  at person `+34` day, `+36` year, `+38`). With too few such players the
-  slots stay empty, as for a depleted pool.
+  at person `+34` day, `+36` year, `+38`). A young player takes a slot only if
+  `best_xi::compatible` holds: no keeper/outfield specialist mismatch (the 5000
+  penalty case) and a rating of at least 10 of 20 for the role's line, without
+  and with the ball. Slots still empty go to the best compatible older players
+  (same assignment, restricted to compatible pairs); slots still empty then go
+  to whoever real is left by plain best fit, young before older. The bench is
+  young first by the usual bench logic, then older players for the free places.
+  A slot stays empty only when no player is left.
+
+None of the three selections ever takes one of the game's stand-ins for a short
+squad (the grey rows of the squad list), as a starter or on the bench. They are
+the people numbered at or past the staff table's count (TOC `-7be4`): the
+original status operation tells them apart the same way (`10060d28`, where they
+skip the contract lookup), and the existing Recover Players and Play for Free
+actions already skip them by that test. Their places go to real players by the
+usual best fit; a slot stays empty only when no real player is left.
 - **B Team** (**Time B**): the Best XI's eleven starters are computed as above and
   removed from the pool; the best eleven of the rest are selected, and the bench
   comes from the players left after both elevens.
@@ -97,8 +111,9 @@ decoded technical attributes, live crossing instructions (including the high wor
 unchanged player records and RNG pool/seed/cursor, disabled gating, caller
 preservation, formation changes, bench limits, availability, unique players,
 depleted/empty squads and the localization catalog. Lineup modes are checked on the same
-world: the under-23 boundary (22 years in, 23 out), an older better keeper left out, empty
-slots with a short young pool, and B Team sharing no starter with the Best XI; each is compared
+world: the age boundary (23 years 364 days in, 24 out), an older keeper in goal with an
+all-young outfield, a short young pool completed by older players (also an incompatible one
+when it is the only one left), and B Team sharing no starter with the Best XI; each is compared
 with the plain selector run on the pool the mode is defined over. `cm-debug-options-checks`
 checks the drop-down's cell, its three items, their order, actions and geometry.
 The match factory's date slot holds year then day, the reverse of the career layout, so the
