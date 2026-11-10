@@ -314,7 +314,10 @@ int main(int argc,char** argv) {
         auto state=std::make_unique<State>();load_program(*state,argv[1]);Cpu c(*state);
         dispatch_probe=probe;setup(c);
         invoke(c,0x10528e50,{first});invoke(c,0x1052bd60,{premier});
-        require(c.u8(first+0xc0)==3 && c.u8(first+0xc1)==8 && c.u8(premier+0xc3)==4,"new season rules");
+        require(c.u8(first+0xc0)==2 && c.u8(first+0xc1)==4 && c.u8(premier+0xc3)==3,"new seasons take the original's First Division and Premier League rules");
+        // The withdrawn preset (three automatic places, an eight-club playoff, four down): a career's
+        // season saved with it still ends by it, so the check goes on with the bytes such a save loads.
+        c.put8(first+0xc0,3);c.put8(first+0xc1,8);c.put8(premier+0xc3,4);
         invoke(c,0x10529280,{first});const auto stage=c.u32(c.u32(first+0xc));
         check_draw(c,stage);
         // Save and load the actual stage serializer with eight seeded entrants.
@@ -372,16 +375,18 @@ int main(int argc,char** argv) {
             relegated+=i>=24 && division==c.u32(first+4);
         }
         require(promoted==4 && relegated==4 && top==20 && second==24,"balanced four-club division exchange");
-        // Loaded legacy seasons still generate their four-club/two-round format.
+        // A season of the original's rules generates its four-club/two-round format.
         c.put8(first+0xc0,2);c.put8(first+0xc1,4);
         c.put8(premier+0xc3,3);
         invoke(c,0x10526c00,{first,0,data+0x9000,data+0x9002,0});
-        require(c.u16(data+0x9000)==2 && c.u8(c.r(3)+0x23)==2,"legacy season retained");
-        require(c.u8(first+0xc0)==2 && c.u8(first+0xc1)==4 && c.u8(premier+0xc3)==3,"legacy fields not migrated by calendar");
+        require(c.u16(data+0x9000)==2 && c.u8(c.r(3)+0x23)==2,"original format retained");
+        require(c.u8(first+0xc0)==2 && c.u8(first+0xc1)==4 && c.u8(premier+0xc3)==3,"rule fields not changed by the calendar");
+        // A season of the withdrawn preset gives way to the original's rules at the next configuration.
+        c.put8(first+0xc0,3);c.put8(first+0xc1,8);c.put8(premier+0xc3,4);
         c.put16(first+0x40,2002);c.put16(premier+0x40,2002);
         invoke(c,0x1052bd60,{premier});invoke(c,0x10528e50,{first});
-        require(c.u8(first+0xc0)==3 && c.u8(first+0xc1)==8 && c.u8(premier+0xc3)==4,"next-season configuration adopts preset");
-        std::cout<<"English rules: calendar, draw, 16 quarterfinal/64 final combinations, stage persistence, classification, four-club exchange, legacy season and negative control passed\n";
+        require(c.u8(first+0xc0)==2 && c.u8(first+0xc1)==4 && c.u8(premier+0xc3)==3,"withdrawn preset not carried to the next season");
+        std::cout<<"English rules (withdrawn First Division preset, for seasons saved with it): calendar, draw, 16 quarterfinal/64 final combinations, stage persistence, classification, four-club exchange, the original format and negative control passed\n";
         dispatch_probe=nullptr;return 0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}
 }

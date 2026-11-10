@@ -14,10 +14,9 @@ The Inter-American Cup is retired after its final 1998 edition. New careers
 omit it. Existing careers retain its history, hide it from the Competitions
 sidebar menu and remove future unplayed games on load.
 
-New English seasons use three automatic First Division
-promotion places plus an eight-club, single-leg playoff (4th–11th), with the better
-league finisher hosting before a neutral final; four clubs leave the Premier
-League. Three clubs go down from the Third Division and three come up from the
+New English seasons use the original's rules between the Premier League and the
+First Division (two automatic promotion places, a four-club playoff, three clubs
+down). Three clubs go down from the Third Division and three come up from the
 Conference. Existing seasons retain their saved rules until the next season. See
 [competition rules](docs/native-competition-rules.md) for the original preset and
 backup.
