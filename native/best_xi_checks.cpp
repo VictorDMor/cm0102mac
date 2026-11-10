@@ -410,11 +410,12 @@ void check_lineups(State& s, std::uint32_t club, std::uint32_t tactics, std::uin
     }
     require(staff.size() >= 30, "Need a full roster for the lineup modes");
     const auto today = std::uint32_t(s.memory.read<4>(s.r<4>(8) - 0x7b80));
-    // The original date layout is day at +0 and year at +2, as the birth date has
-    // (the match factory stores its two numbers the other way round). Set it explicitly.
+    // The original date layout is day at +0 and year at +2, as the birth date has; the
+    // match factory leaves its world on day 194 of 2001.
     const auto saved_today = s.memory.copy_out(today, 8);
     const int today_day = 194, today_year = 2001;
-    s.memory.write<2>(today, today_day); s.memory.write<2>(today + 2, today_year);
+    require(s.memory.read<2>(today) == today_day && s.memory.read<2>(today + 2) == today_year,
+            "The factory's world must be on its real date (day at +0, year at +2)");
     // The birth date is read at +34 (day, year) and +38 by the original age operation.
     std::map<std::uint32_t, std::vector<std::uint8_t>> births;
     for (auto member : staff) {

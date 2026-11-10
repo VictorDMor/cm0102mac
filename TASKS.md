@@ -29,7 +29,7 @@ Decided with Victor on 2026-11-09 and now in `CLAUDE.md` and the skill: lighter 
 
 - [x] The squad screen's Best XI button is a **Lineup** drop-down (Victor's request): Best XI, Best U23 (players under 23 on the game date, by the original age routine 0x10717dd0) and B Team (the best eleven once the Best XI's starters are removed). `docs/native-best-xi.md`.
 - [ ] Victor checks in play: the label, the popup and the three selections.
-- [ ] Found while writing its check, not looked into: the match-debugger world factory calls the date setter 0x107156b0 with (year, day), while the career layout and the age routine expect the day at +0 and the year at +2, so "today" is swapped in that test world. The lineup check writes the date itself and restores it.
+- [x] The match-debugger world factory called the date constructor 0x107156b0 with (year, day) instead of (day, year), so "today" and the start date were swapped in every factory world (fixed 2026-11-10 at Victor's request). The swap also hid a cost: with the real start date the player-statistics service's new-game seeding (0x10301540) does not finish within 100 times the factory's budget, so the factory still builds its records and services under the swapped numbers and sets the real dates right after. Match Debugger and tactic-lab worlds now run on day 194 of 2001 with real ages: results there may differ from runs before this change.
 
 ## Now: Match Results by right-click (2026-11-09)
 

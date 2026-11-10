@@ -171,12 +171,19 @@ MatchPreparation prepare_match(const MatchInputs& inputs, const MatchSetup& setu
     if (state.executed > std::numeric_limits<std::uint64_t>::max() - 4000000000ULL)
         throw std::runtime_error("Match creation instruction counter would overflow");
     state.budget = state.executed + 4000000000ULL;
-    (void)invoke(state, 0x107156b0, {slot(state, -0x7b80), setup.year, setup.ordinal_day});
-    (void)invoke(state, 0x107156b0, {slot(state, -0x7a9c), setup.year, setup.ordinal_day});
+    // The original date constructor 107156b0 takes (out, ordinal day, year): the day is stored at +0 and
+    // the year at +2. The records and services below are built with the two numbers the other way round
+    // (a start "year" of 194), as this factory always built them: the player-statistics service's new-game
+    // seeding (10301540) then finds nobody with years at a club abroad and skips those relations. With the
+    // real start date that seeding did not finish within 100 times this budget (it sorts the relation list
+    // for each person it adds), and a match sandbox does not need it.
+    for (auto date : {-0x7b80, -0x7a9c}) (void)invoke(state, 0x107156b0, {slot(state, date), setup.year, setup.ordinal_day});
     report("Preparing original player condition records");
     initialize_staff_records(state);
     report("Preparing original match services");
     initialize_match_services(state);
+    // From here on the world has its real dates: today (-7b80) and the game's start date (-7a9c).
+    for (auto date : {-0x7b80, -0x7a9c}) (void)invoke(state, 0x107156b0, {slot(state, date), setup.ordinal_day, setup.year});
     for (auto id : {setup.home_club, setup.away_club}) (void)world.roster(id);
     report("Selecting actual match lineups");
     state.memory.write<1>(slot(state, -0x642c), 1);
