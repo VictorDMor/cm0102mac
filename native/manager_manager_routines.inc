@@ -11,3 +11,4 @@
 #include "manager_manager_routines_deal.inc"
 #include "manager_manager_routines_daily.inc"
 #include "manager_manager_routines_texts.inc"
+#include "manager_manager_routines_people_text.inc"

@@ -9,3 +9,4 @@
 #include "manager_manager_deal.hpp"
 #include "manager_manager_daily.hpp"
 #include "manager_manager_texts.hpp"
+#include "manager_manager_people_text.hpp"

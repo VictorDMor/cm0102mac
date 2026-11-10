@@ -1715,3 +1715,10 @@ proved the suggestion wrong).
 
 The daily update 0x10196390 reads a stack slot it never writes (sp+0xb4 at 0x101964fc, left by its caller's earlier
 callee 0x10371b2c; the stack audit lists it), so its rewrite reads that slot from guest memory in the original's frame.
+
+The text about a club 0x101980a0 (`manager_manager_people_text.cpp`; helpers 0x10197e00, 0x10197e80, 0x10197f00) picks
+one sentence by the days (under 30, under 60, more), the relation 0x100f55b0 gives, two bands of the club's row
+(halfwords +6 and +0x12, seven bands each) and the kind of the club's next dated league entry: 25 jump tables of 7
+cases, 336 sentences, kept as tables read from the listing. Its fallbacks for a band outside 0..6 are dead (the
+helpers return 0..6). It is a leftover-stack reader that no capture reaches: for a club 0x100c7d00 flags whose
+nation record (+0x2c) is null it formats sp+0x3c as a name without having written it (0x1019c28c on).
