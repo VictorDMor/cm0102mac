@@ -29,7 +29,14 @@ original's code. The generated ENG_PRM reference (`CM_ENG_PRM_ORIGINAL=1`) knows
 one place only: a paired replay across the end of a three-place season cannot
 match. The ground test (0x100f7cf0 with r7 = 1) is the original's, side effects
 included, now run for each candidate; the news item for a refused club is the
-original's text, written for the champion.
+original's text, written for the champion. That test is the automatic ground
+expansion seen in play: a ground short of the division's capacity or seats is
+enlarged, the club is charged and the expansion news (0x10103380) is posted, and
+the club goes up. It refuses only a club without a ground record, one in the
+range 0x100c7d00 tests, a ground already above 120,000, or a club whose balance
+does not cover the cost while the cost is at least 500,000 times the byte at
++0x40 of its club+0x80 record's +0x1c record (each refusal raises that byte by
+one, up to 20). Refusal is therefore rare.
 
 `native/english_competition_rules.hpp` holds the preset and seeding policy.
 `CM_ENGLISH_RULES_ORIGINAL=1` selects the original rules for newly configured
