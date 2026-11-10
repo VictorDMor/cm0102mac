@@ -4519,6 +4519,41 @@ if(CM_ENG_FIRST_COVERAGE)
     target_link_options(cm-eng-first-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_FIRST_PROFILE}")
 endif()
 
+# ENG_THIRD.CPP: handwritten English Third Division implementation.
+file(GLOB CM_ENG_THIRD_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/eng_third*.cpp")
+list(FILTER CM_ENG_THIRD_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_ENG_THIRD_SOURCES})
+add_executable(cm-eng-third-checks eng_third_checks.cpp)
+target_link_libraries(cm-eng-third-checks PRIVATE cm_aot)
+target_compile_options(cm-eng-third-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_ENG_THIRD_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/eng_third_reference.cpp")
+    add_custom_command(OUTPUT "${CM_ENG_THIRD_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_eng_third_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_ENG_THIRD_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_eng_third_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/eng_third_audit.py"
+            "${CMAKE_SOURCE_DIR}/eng_third_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-eng-third-checks PRIVATE "${CM_ENG_THIRD_REFERENCE}")
+    add_test(NAME eng_third_equivalence COMMAND cm-eng-third-checks "${CM_ORACLE_DIR}")
+    add_test(NAME eng_third_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_ENG_THIRD_ORIGINAL=1
+        $<TARGET_FILE:cm-eng-third-checks> "${CM_ORACLE_DIR}" --original-routing)
+    add_test(NAME eng_third_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_third_audit.py")
+endif()
+option(CM_ENG_THIRD_COVERAGE "Instrument ENG_THIRD.CPP checker only" OFF)
+if(CM_ENG_THIRD_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/eng-third-coverage")
+    set(CM_ENG_THIRD_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/eng-third-coverage/check-%p.profraw")
+    target_sources(cm-eng-third-checks PRIVATE ${CM_ENG_THIRD_SOURCES})
+    target_compile_options(cm-eng-third-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_THIRD_PROFILE}" -fcoverage-mapping)
+    target_compile_definitions(cm-eng-third-checks PRIVATE CM_ENG_THIRD_COVERAGE=1
+        CM_ENG_THIRD_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/eng-third-coverage")
+    target_link_options(cm-eng-third-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_THIRD_PROFILE}")
+endif()
+
 # Authorized English promotion/playoff preset, separate from equivalence tests.
 add_executable(cm-english-rules-checks english_rules_checks.cpp)
 target_link_libraries(cm-english-rules-checks PRIVATE cm_aot)
