@@ -5,7 +5,9 @@
 // of job offers, people and clubs, cut the list after a few offers and write, over the records
 // those offers point at, the values the rules read (dates around today's, posts, statuses, flags,
 // reputations, slots), undone afterwards; a fixed seed. Half of them also answer the other modules'
-// routines (their results steer the rules the real records rarely reach). The statics the day
+// routines (their results steer the rules the real records rarely reach). Forced cases follow for the
+// outcomes those draws miss; some write a record while another module's routine is dispatched
+// (`Case::pokes`), for the tests the original repeats after a call. The statics the day
 // keeps beside the table of contents (its month check) take every combination, and the slot at
 // sp+0xb4 of the day's frame, which the day reads before it ever writes a word there, takes values
 // of its own. The helpers get direct cases over the same kinds of records.
@@ -182,9 +184,10 @@ void write_career(Draft& d, const World& w, Rng& rng, std::uint32_t who) {
 void sink_answer(Draft& d) { d.answer(other::news_sink, 0); d.answer(other::log_open, 0); d.answer(other::log_write, 0); }
 
 // The answers a case gives for the other modules' routines (all calls of one routine answer alike).
-// Only the routines the original reaches through the dispatcher can be answered: the others (the
-// database, news, contract manager, shortlist, tactics and transfer owners, which the generated
-// pages call in place) run for real, steered through the records they read.
+// A routine can be answered (or poked) when both sides reach it through the dispatcher. Other
+// modules' owners decline under this checker, so they do; the tactics owners, which run in place
+// whatever the checker says, and leaves run in place do not. The ones not answered here run for
+// real, steered through the records they read.
 void write_answers(Draft& d, Rng& rng) {
     sink_answer(d);
     d.answer(other::days_between, rng.pick<std::uint32_t>({0, 0x59, 0x5a, 0x5b, 0xffffffffu, 1000}));
@@ -350,6 +353,199 @@ MANAGER_MANAGER_CASES("daily") {
         d.put(1, person_at + 0x60, status);
         d.put(4, person_at + 0x14, rng.chance(60) ? w.any(w.careers, rng) : 0);
         d.put(4, person_at + 0x1c, rng.chance(70) ? w.any(w.staffs, rng) : 0);
+        cases.push_back(std::move(d.item));
+    }
+}
+
+// Forced cases for the outcomes the draws above do not reach. The first offer is due, its person is
+// an ordinary one, and the gates before the move are open: the staff gate (the person's row has no
+// club), the row's bits (unless `bits`), the board gate (the transfer table's byte).
+namespace {
+constexpr std::uint32_t make_date = 0x107156f0, retire_old = 0x101b5b20, bad_run = 0x100d3c40, staff_gate = 0x10083110,
+                        club_gate = 0x100c96e0;
+constexpr std::int32_t people_count_slot = -0x7be4;
+struct Forced {
+    bool flagged_offer = false;    // the offer's club is flagged: the side post's rules
+    std::uint32_t status = 5;      // the status byte of the post the rules look at
+    bool career = true;            // the person has a career record
+    bool staff_gone = false;       // the staff record goes while the offer's row is stamped
+    bool posts_move = false;       // the person's posts change while the old club lets him go
+    bool side_elsewhere = false;   // flagged offer: the side post is an ordinary club
+    bool no_places = false;        // none of the person's three places
+    bool no_region = false;        // the offer's club has no region
+    bool full_applicants = false;  // the club's applicant slots are all taken, by records the club's count leaves out
+    bool no_side = false;          // he has no side post
+    bool club_post_counts = false; // flagged offer: his club post is the employer too, and the club's reputation lets it count
+    unsigned flagged_index = ~0u;  // which flagged club (the club gate lets few through)
+    bool hire = false;             // the figures that let the club take him as an applicant
+    bool count_shrinks = false;    // the people count drops below his id while the row is stamped
+    bool staff_gone_early = false; // the staff record goes during the staff gate, right after the first test of it
+    bool count_shrinks_early = false;  // the people count drops during the club gate, before the employer is chosen
+    unsigned bits = 0;             // bits 2-3 of the row byte
+};
+Case forced_daily(const World& w, Rng& rng, const Forced& f, const std::string& label) {
+    auto d = base_daily(w, rng, label);
+    write_statics(d, w, rng, 2);
+    sink_answer(d);
+    const auto job = w.nodes[0].second;
+    write_offer(d, w, rng, job, 100);
+    const auto& pair = w.pairs[rng.below(unsigned(w.pairs.size()))];
+    const auto person_at = w.sc.person(pair.first);
+    const auto club = !f.flagged_offer ? w.normal_club(rng)
+                    : f.flagged_index == ~0u ? w.flagged_club(rng) : w.sc.club(w.limit + f.flagged_index % (w.clubs - w.limit));
+    auto employer = club;
+    for (unsigned tries = 0; employer == club && tries < 50; ++tries)
+        employer = f.flagged_offer && !f.side_elsewhere ? w.flagged_club(rng) : w.normal_club(rng);
+    d.put(1, job + 0, 1);
+    d.put(4, job + 8, w.id_of(person_at));
+    d.put(4, job + 0x10, w.id_of(club));
+    d.put(2, job + 0x18, (w.today_day - 3) & 0xffff);
+    d.put(2, job + 0x1a, w.today_year);
+    write_club(d, w, rng, club, person_at);
+    d.put(4, club + 0x90, 0);
+    // The old employer holds his posts. Where the posts must move, he is also its manager, so the
+    // bad-run test (answered) has him let go (0x101b5b20) before the posts are looked at.
+    d.put(4, person_at + 0x24, f.flagged_offer && !f.club_post_counts ? 0 : employer);
+    if (f.club_post_counts) d.put(2, club + 0x1ec, 0x2000);
+    d.put(4, person_at + 0x20, f.no_side ? 0 : employer);
+    d.put(4, employer + 0x90, f.posts_move ? person_at : 0);
+    d.answer(bad_run, 1);
+    d.put(1, person_at + 0x60, f.status);
+    d.put(1, person_at + 0x62, f.status);
+    d.put(1, person_at + 0x6b, 0);
+    const auto career = w.any(w.careers, rng);
+    d.put(4, person_at + 0x14, f.career ? career : 0);
+    d.put(4, person_at + 0x1c, w.any(w.staffs, rng));
+    if (f.no_places) for (const std::uint32_t at : {0x28u, 0x2cu, 0x30u}) d.put(4, person_at + at, 0);
+    const auto row = w.sc.global(-0x7b9c) + w.id_of(person_at) * 0x64;
+    d.put(4, row + 4, 0xffffffffu);
+    d.put(1, row + 0xc, f.bits << 2);
+    d.put(1, w.sc.r32(w.sc.global(-0x7b40) + 0x9a0) + w.id_of(person_at) * 10, 0);
+    if (f.hire || f.no_region || f.full_applicants) {
+        // His career figure beats the club's reputation; the club's region is not the games' own.
+        if (f.career) d.put(2, career + 0xa, 0x7000);
+        d.put(2, club + 0x1ec, 0);
+        const auto region = w.any(w.regions, rng);
+        d.put(4, club + 0x2c, f.no_region ? 0 : region);
+        if (region) d.put(4, w.scope_cell, w.sc.r32(region + 0x68) + 1);
+        // A full list of applicants the club's own count (0x100c9070) leaves out: records whose
+        // first word is not below the people count.
+        const auto outsider = scratch_base + 0x2000;
+        d.put(4, outsider, 0x7fffffff);
+        for (unsigned k = 0; k < 50; ++k) d.put(4, club + 0x98 + 4 * k, f.full_applicants ? outsider : k < 3 ? w.normal_person(rng) : 0);
+    }
+    Case::Poke stamped{make_date, {}}, retired{retire_old, {}};
+    if (f.staff_gone) stamped.writes.push_back({4, person_at + 0x1c, 0});
+    if (f.count_shrinks) stamped.writes.push_back({4, w.sc.toc(people_count_slot), w.id_of(person_at)});
+    if (f.posts_move) {
+        retired.writes.push_back({4, person_at + 0x24, f.flagged_offer ? 0 : club});
+        if (f.flagged_offer) retired.writes.push_back({4, person_at + 0x20, 0});
+    }
+    if (!stamped.writes.empty()) d.item.pokes.push_back(std::move(stamped));
+    if (f.staff_gone_early) d.item.pokes.push_back({staff_gate, {{4, person_at + 0x1c, 0}}});
+    if (f.count_shrinks_early) d.item.pokes.push_back({club_gate, {{4, w.sc.toc(people_count_slot), w.id_of(person_at)}}});
+    // With no old employer he then counts as a human manager with none, which the two routines
+    // for those do not survive: they are answered, and their arguments compared. The count is back
+    // as the first of them is called, for the routines that close the day.
+    if (f.count_shrinks_early && f.status == 11) {
+        for (const auto entry : {other::human_a, other::human_b}) d.answer(entry, 0);
+        d.item.pokes.push_back({other::human_a, {{4, w.sc.toc(people_count_slot), w.sc.r32(w.sc.toc(people_count_slot))}}});
+    }
+    if (!retired.writes.empty()) d.item.pokes.push_back(std::move(retired));
+    return std::move(d.item);
+}
+}  // namespace
+
+MANAGER_MANAGER_CASES("daily forced") {
+    if (scenario.match) return;
+    const World w(scenario);
+    if (!w.clubs || !w.object || w.nodes.empty() || w.limit >= w.clubs || w.limit < 2) return;  // flagged and ordinary clubs both
+    Rng rng{0x666f72636564ULL};
+    const std::uint32_t statuses[] = {5, 6, 8, 11, 12, 15, 0, 9, 0x80};  // each switch case, and defaults
+    const auto name = [](const Forced& f, const char* what) {
+        return std::string("daily forced ") + what + (f.flagged_offer ? " flagged" : " club") + " status " + std::to_string(f.status) +
+               (f.career ? "" : " no career") + (f.staff_gone ? " staff gone" : "") + (f.posts_move ? " posts move" : "");
+    };
+    // Every status of the three switches, with and without the career record, the staff record
+    // going, and the posts moving (which is what sends an ordinary club to the side post's rules).
+    for (const auto status : statuses)
+        for (unsigned mask = 0; mask < 16; ++mask) {
+            Forced f{.flagged_offer = (mask & 1) != 0, .status = status, .career = (mask & 2) == 0,
+                     .staff_gone = (mask & 4) != 0, .posts_move = (mask & 8) != 0};
+            cases.push_back(forced_daily(w, rng, f, name(f, "switch")));
+        }
+    for (unsigned n = 0; n < 6; ++n) {
+        Forced f;
+        // The row's bits send away a person without a career record.
+        f = {.career = false, .bits = 1 + n % 3};
+        cases.push_back(forced_daily(w, rng, f, name(f, "bits")));
+        // A flagged club for a person whose side post is an ordinary club: no event is posted.
+        f = {.flagged_offer = true, .status = n % 2 ? 6u : 8u, .side_elsewhere = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "side elsewhere")));
+        // The event with none of his places.
+        f = {.status = 6, .no_places = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "no places")));
+        // The applicant rule: taken, no region, no free slot.
+        f = {.status = 6, .hire = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "hire")));
+        f = {.status = 6, .no_region = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "no region")));
+        f = {.status = 6, .full_applicants = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "full applicants")));
+        // The people count drops under his id after the first test of it.
+        f = {.flagged_offer = n % 2 == 1, .status = 6, .count_shrinks = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "count shrinks")));
+        f = {.status = 6, .posts_move = true, .count_shrinks = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "count shrinks")));
+        // The same two, earlier: the staff record goes during the staff gate, before the row's bits
+        // are looked at; the count drops during the club gate, before the employer is chosen.
+        f = {.staff_gone_early = true, .bits = 1 + n % 3};
+        cases.push_back(forced_daily(w, rng, f, name(f, "staff gone early")));
+        f = {.flagged_offer = n % 2 == 1, .status = 6, .count_shrinks_early = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "count shrinks early")));
+        // The posts move and he has no side post: neither post is the old employer's.
+        f = {.status = 6, .posts_move = true, .no_side = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "no side")));
+    }
+    // The flagged clubs in turn, since the club gate (0x100c96e0) lets few of them through: the
+    // statuses whose rule needs the career or the staff record, and a side post at an ordinary club.
+    for (unsigned n = 0; n < 60; ++n) {
+        Forced f;
+        // Status 11 is not an employer by the side post: the club post is, for a club of reputation.
+        f = {.flagged_offer = true, .status = 11, .career = n % 2 == 0, .flagged_index = n, .club_post_counts = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "flagged turn club post")));
+        f = {.flagged_offer = true, .status = 5, .flagged_index = n};
+        cases.push_back(forced_daily(w, rng, f, name(f, "flagged turn")));
+        f = {.flagged_offer = true, .status = 8, .side_elsewhere = true, .flagged_index = n};
+        cases.push_back(forced_daily(w, rng, f, name(f, "flagged turn side elsewhere")));
+        // The people count drops to his id during the club gate, and the side post is not an
+        // employer (status 11): the rule for his club post finds him outside the count.
+        f = {.flagged_offer = true, .status = 11, .flagged_index = n, .count_shrinks_early = true};
+        cases.push_back(forced_daily(w, rng, f, name(f, "flagged turn count shrinks early")));
+    }
+    // The message for a club of modest reputation whose region goes while the bad-run test runs
+    // (the helper, directly): the region is read before and after it.
+    for (unsigned n = 0; n < 24; ++n) {
+        Draft d;
+        const auto& pair = w.pairs[rng.below(unsigned(w.pairs.size()))];
+        const auto person_at = w.sc.person(pair.first), club = w.normal_club(rng);
+        write_person(d, w, rng, person_at, club, w.normal_club(rng), 60, 85, false);
+        write_club(d, w, rng, club, person_at);
+        // Reported: an open region and a league with an entry in the leagues table; the gate's
+        // date is past; an ordinary person.
+        const auto region = w.any(w.regions, rng), league = w.any(w.leagues, rng);
+        d.put(4, club + 0x2c, region);
+        if (region) d.put(1, region + 0x120, 1);
+        d.put(4, club + 0x30, league);
+        if (league) d.put(4, w.sc.global(leagues_slot) + (w.sc.r32(league) << 2), 1);
+        d.put(2, club + 0x1ec, 0x100);
+        put_date(d, w.sc.toc(gate_slot), {(w.today_day - 5) & 0xffff, w.today_year}, 0);
+        sink_answer(d);
+        d.answer(bad_run, 1);
+        d.item.pokes.push_back({bad_run, {{4, club + 0x2c, 0}}});
+        d.item.entry = announce;
+        d.item.registers = {{3, w.object}, {4, person_at}, {5, n % 3 ? w.normal_club(rng) : 0}, {6, club}, {7, std::uint32_t(n % 5)}};
+        d.item.label = "announce forced region goes " + std::to_string(n);
         cases.push_back(std::move(d.item));
     }
 }

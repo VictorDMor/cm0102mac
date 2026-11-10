@@ -28,6 +28,14 @@ struct Case {
     // Another module's routines answered on both sides (entry, r3) when dispatched, with no
     // body run: for paths that depend on what the snapshot can't produce.
     std::vector<std::pair<std::uint32_t, std::uint32_t>> answers = {};
+    // Memory written on both sides each time a routine the checked one calls is dispatched, before
+    // it runs (or is answered): for outcomes that need a record to change in the middle of a call,
+    // which no starting state produces. The comparison is of the two bodies from that same event.
+    // The routine must reach the dispatcher on both sides (not a routine under check, a leaf run in
+    // place or a tactics owner); with --call-trace a poke that fires on one side more than on the
+    // other is a finding, and the ones that fire on neither are counted (pokes_unfired).
+    struct Poke { std::uint32_t entry; std::vector<Write> writes; };
+    std::vector<Poke> pokes = {};
 };
 struct Scenario {
     State& s;

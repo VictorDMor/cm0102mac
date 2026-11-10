@@ -194,6 +194,12 @@ std::uint64_t replacement(const Read& read, std::uint64_t before, std::mt19937& 
 
 std::string_view current_label;
 const std::vector<std::pair<std::uint32_t, std::uint32_t>>* case_answers = nullptr;
+const std::vector<Case::Poke>* case_pokes = nullptr;
+void store(State& s, const Write& write, std::uint32_t value) {
+    if (write.size == 1) s.memory.write<1>(write.address, value & 0xff);
+    else if (write.size == 2) s.memory.write<2>(write.address, value & 0xffff);
+    else s.memory.write<4>(write.address, value);
+}
 struct Comparison { bool returned = false, faulted = false, timed_out = false; std::vector<std::string> differences; };
 Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool strict = false) {
     Comparison outcome;
@@ -305,9 +311,10 @@ std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner r
     return calls;
 }
 struct TraceFinding { std::uint64_t count = 0; std::uint64_t original = 0, rewrite = 0; };
-constexpr unsigned wrong_return = 200, wrong_count = 201, wrong_order = 202;
+constexpr unsigned wrong_return = 200, wrong_count = 201, wrong_order = 202, poke_missed = 203;
 bool trace_corrupted = false, arguments_corrupted = false;
 std::map<std::tuple<std::uint32_t, std::uint32_t, unsigned>, TraceFinding> trace_findings;
+std::uint64_t pokes_fired = 0, pokes_unfired = 0;
 std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint64_t> traced_sites;
 std::uint64_t traced_pairs = 0;
 void compare_traces(State& s, std::uint32_t entry) {
@@ -343,6 +350,19 @@ void compare_traces(State& s, std::uint32_t entry) {
     // calls each site made and the order of the rest are unknown.
     const bool truncated = original.size() >= trace_limit || rewrite.size() >= trace_limit;
     truncated_traces += truncated;
+    // A case's poke must fire as often on each side: on one side only, the two bodies ran from
+    // different states. One that fires on neither (the path ended before its call) is counted and
+    // printed: that case passes without testing what its label says. Only the calls the routine
+    // makes itself are traced, which is where a poke belongs.
+    if (case_pokes && !truncated) for (const auto& poke : *case_pokes) {
+        const auto fired = [&](const std::vector<TracedCall>& calls) {
+            return std::uint64_t(std::ranges::count(calls, poke.entry, &TracedCall::target));
+        };
+        const auto left = fired(original), right = fired(rewrite);
+        if (left != right) record({0, poke.entry}, poke_missed, left, right);
+        else if (left == 0) ++pokes_unfired;
+        else ++pokes_fired;
+    }
     for (const auto& [site, calls] : sites) {
         if (truncated) break;
         const auto seen = original_calls.find(site);
@@ -397,11 +417,14 @@ void compare_traces(State& s, std::uint32_t entry) {
 void print_trace_findings() {
     std::cout << "call_trace_pairs=" << traced_pairs << " sites=" << traced_sites.size() << " findings=" << trace_findings.size()
               << " truncated_traces=" << truncated_traces << '\n';
+    if (pokes_fired || pokes_unfired)
+        std::cout << "pokes_fired=" << pokes_fired << " pokes_unfired=" << pokes_unfired << " (unfired: the case's path ended before the poked call)\n";
     for (const auto& [key, finding] : trace_findings) {
         const auto& [back, target, reg] = key;
         if (reg >= wrong_return) {
             std::cout << "call " << hex_address(back - 4) << " -> " << hex_address(target)
-                      << (reg == wrong_return ? " returns where no bl of the original does" : reg == wrong_count ? " count" : " out of order")
+                      << (reg == wrong_return ? " returns where no bl of the original does" : reg == wrong_count ? " count"
+                          : reg == poke_missed ? " a case's poke did not fire alike on both sides: times fired" : " out of order")
                       << " x" << finding.count << " original " << std::hex << finding.original << " rewrite " << finding.rewrite << std::dec << '\n';
             continue;
         }
@@ -554,7 +577,18 @@ unsigned results_of(std::uint32_t) { return RoutineChecker::result_r3 | RoutineC
 void run_cases(State& s, std::uint32_t match, std::mt19937& random) {
     Scenario scenario{s, match};
     std::vector<Case> cases;
-    for (const auto& [name, list] : blocks()) list(scenario, cases);
+    // While writing cases: CM_MANAGER_MANAGER_BLOCK=name runs one block of them, and
+    // CM_MANAGER_MANAGER_LABEL=text keeps the cases whose label contains it. A filtered run says
+    // so, and one that selects nothing is an error: it would read as a pass.
+    const char* only_block = std::getenv("CM_MANAGER_MANAGER_BLOCK");
+    const char* only_label = std::getenv("CM_MANAGER_MANAGER_LABEL");
+    for (const auto& [name, list] : blocks())
+        if (!only_block || std::string_view(only_block) == name) list(scenario, cases);
+    if (only_label) std::erase_if(cases, [&](const Case& item) { return item.label.find(only_label) == std::string::npos; });
+    if (only_block || only_label) {
+        std::cerr << "FILTERED RUN: " << cases.size() << " cases (CM_MANAGER_MANAGER_BLOCK/LABEL); not a full check\n";
+        if (cases.empty()) throw std::runtime_error("The case filter selects no case");
+    }
     guest::Cpu c(s);
     const auto saved = s.registers;
     const auto saved_observer = s.memory.observer;
@@ -574,28 +608,28 @@ void run_cases(State& s, std::uint32_t match, std::mt19937& random) {
         for (const auto& write : item.memory) {
             const auto before = write.size == 1 ? s.memory.read<1>(write.address) : write.size == 2 ? s.memory.read<2>(write.address) : s.memory.read<4>(write.address);
             undo.emplace_back(write, std::uint32_t(before));
-            if (write.size == 1) s.memory.write<1>(write.address, write.value & 0xff);
-            else if (write.size == 2) s.memory.write<2>(write.address, write.value & 0xffff);
-            else s.memory.write<4>(write.address, write.value);
+            store(s, write, write.value);
         }
         s.memory.observer = saved_observer;
         current_label = item.label;
         case_answers = &item.answers;
+        case_pokes = &item.pokes;
         const auto outcome = compare_call(s, item.entry, results_of(item.entry), options.strict);
         auto& tally = case_tally[item.entry];
         ++tally.calls; tally.returned += outcome.returned; tally.faulted += outcome.faulted; tally.timed_out += outcome.timed_out;
         if (!outcome.differences.empty()) report_difference(item.entry, "Case", outcome.differences, item.label);
-        if (options.call_trace && (tally.calls <= options.mutated_calls * 8 || tally.calls % 64 == 0)) compare_traces(s, item.entry);
+        // Every case with a poke is traced: the trace is what shows that the poke fired.
+        if (options.call_trace && (tally.calls <= options.mutated_calls * 8 || tally.calls % 64 == 0 || !item.pokes.empty()))
+            compare_traces(s, item.entry);
         // One routine can have thousands of cases; a few of them seed its mutations.
         if (tally.calls <= options.mutated_calls * 8 || tally.calls % 64 == 0) mutate_call(s, item.entry, results_of(item.entry), random);
         s.memory.observer = nullptr;
         for (auto w = undo.rbegin(); w != undo.rend(); ++w) {
-            if (w->first.size == 1) s.memory.write<1>(w->first.address, w->second & 0xff);
-            else if (w->first.size == 2) s.memory.write<2>(w->first.address, w->second & 0xffff);
-            else s.memory.write<4>(w->first.address, w->second);
+            store(s, w->first, w->second);
         }
         s.memory.observer = saved_observer;
         case_answers = nullptr;
+        case_pokes = nullptr;
     }
     s.registers = saved;
 }
@@ -678,6 +712,9 @@ int main(int argc, char** argv) {
             // A case's answers for another module's routine, given on both sides. A routine
             // under check is never answered: its C++ doesn't come through here, so only the
             // original would get the answer.
+            if (case_pokes) for (const auto& poke : *case_pokes)
+                if (target.pc == poke.entry && !(routine_checker && routine_checker->wants(poke.entry)))
+                    for (const auto& write : poke.writes) store(target, write, write.value);
             if (case_answers) for (const auto& [entry, answer] : *case_answers)
                 if (target.pc == entry && !(routine_checker && routine_checker->wants(entry))) {
                     guest::Cpu(target).set(3, answer);

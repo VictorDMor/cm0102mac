@@ -1012,12 +1012,16 @@ void announce(Cpu& c, std::uint32_t, std::uint32_t person_at, std::uint32_t empl
         // Whether the club's region and league mark it as one that is reported.
         bool reported = false;
         const auto region_at = c.u32(club_at + club::region);
+        c.set(3, region_at);  // 0x101b5130
         if (nonzero_logical(c, region_at)) {
             const auto open = sbyte(c.u8(region_at + region::open_flag));
             if (nonzero(c, open)) {
                 const auto league = c.u32(club_at + club::league);
+                c.set(4, league);  // 0x101b5148
                 if (nonzero_logical(c, league)) {
-                    const auto entry = c.u32(c.u32(c.toc(toc::leagues)) + (c.u32(league) << 2));
+                    const auto table = c.u32(c.toc(toc::leagues));
+                    c.set(3, table);  // 0x101b5154..0x101b515c
+                    const auto entry = c.u32(table + (c.u32(league) << 2));
                     reported = nonzero_logical(c, entry);
                 }
             }
