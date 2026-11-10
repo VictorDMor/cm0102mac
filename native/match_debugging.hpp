@@ -46,8 +46,13 @@ bool remove_debug_sale_clause(State&, std::uint32_t staff);
 // Select the match squad by decoded attributes, positions, condition and current
 // tactical instructions, optimizing the eleven roles together. Fixture may be
 // zero between fixtures; then the original UI's full nine-place bench is used.
+// best_xi: everyone available. under_23: only players under 23 on the game date
+// (original age operation 10717dd0), bench included. b_team: the best eleven of
+// those left once the Best XI's starters are removed; the bench comes from the rest.
+enum class LineupMode { best_xi, under_23, b_team };
 bool select_debug_best_xi(State&, std::uint32_t club, unsigned managed,
-                         std::uint32_t formation, std::uint32_t fixture);
+                         std::uint32_t formation, std::uint32_t fixture,
+                         LineupMode mode = LineupMode::best_xi);
 // Recover every player in the club roster, including unselected reserves.
 bool recover_debug_squad(State&, std::uint32_t club);
 // Set every roster player's primary-contract wage to zero (one euro if the

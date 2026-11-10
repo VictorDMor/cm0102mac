@@ -409,6 +409,49 @@ int main(int argc, char** argv) {
         const auto collective = control(30021, 0);
         require(label_control("     " + std::string(debug_text(s, DebugText::extend_all_contracts)), 2) == collective,
                 "Collective renewal missing from squad popup");
+        // The Lineup cell owns a popup with Best XI, Best U23 and B Team, in that order,
+        // beside the Debugging cell; the actions are unique and the items share one menu.
+        const auto text_of = [&](unsigned index) {
+            std::string text;
+            for (unsigned j = 0; j < 200 && c.u8(item_address(index) + 0x78 + j); ++j) text += char(c.u8(item_address(index) + 0x78 + j));
+            return text;
+        };
+        const auto check_lineup_menu = [&](bool debugging_cell) {
+            std::vector<unsigned> cells;
+            for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
+                if (text_of(i) == debug_text(s, DebugText::lineup) && c.u32(item_address(i) + 8) == 0) cells.push_back(i);
+            require(cells.size() == 1, "Expected one Lineup drop-down cell");
+            const auto best = control(30004, 0), u23 = control(30023, 0), b_team = control(30024, 0);
+            require(best > cells[0] && u23 == best + 1 && b_team == u23 + 1, "Lineup items are out of order");
+            require(text_of(best) == "     " + std::string(debug_text(s, DebugText::best_xi)) &&
+                    text_of(u23) == "     " + std::string(debug_text(s, DebugText::best_u23)) &&
+                    text_of(b_team) == "     " + std::string(debug_text(s, DebugText::b_team)), "Lineup item labels");
+            for (auto index : {best, u23, b_team})
+                require(c.u32(item_address(index) + 12) == 2, "Lineup item flags");
+            require(control_grid(best) == control_grid(u23) && control_grid(u23) == control_grid(b_team) &&
+                    control_grid(best) != control_grid(cells[0]), "Lineup items must share their own menu");
+            unsigned best_count = 0;
+            for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i) best_count += c.u32(item_address(i) + 8) == 30004;
+            require(best_count == 1, "Best XI must only be a menu item");
+            const auto lineup_grid = control_grid(cells[0]);
+            require(c.u32(lineup_grid) == 334 && c.u32(lineup_grid + 8) == (debugging_cell ? 444u : 556u),
+                    "Lineup cell geometry");
+            if (debugging_cell) {
+                const auto debugging = label_control(debug_text(s, DebugText::debugging), c.u32(item_address(cells[0]) + 12));
+                require(c.u32(control_grid(debugging)) == 446 && c.u32(control_grid(debugging) + 8) == 556,
+                        "Debugging cell geometry");
+            }
+        };
+        check_lineup_menu(true);
+        for (auto action : {30004u, 30023u, 30024u}) {
+            // Menu items run the selection only when the original click flag is set.
+            c.set(3, control(action, 0));
+            const auto executed_before = s.executed;
+            c.put32(item_address(c.r(3)) + 12, 0);
+            require(dispatch_best_xi_control(s) && c.r(3) == 0 && s.executed == executed_before,
+                    "Unclicked lineup item changed state");
+            c.put32(item_address(control(action, 0)) + 12, 2);
+        }
         // A control retained from an older frame cannot bypass a disabled toggle.
         select_native_debugging_features(0);
         c.set(3, collective);
@@ -417,6 +460,7 @@ int main(int argc, char** argv) {
                 "Stale collective control bypassed its toggle");
         build_squad_controls();
         control(30004, 0); // Best XI remains available with all debugging disabled.
+        check_lineup_menu(false);
         for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
             require(c.u32(item_address(i) + 8) != 30021, "Disabled collective action remained visible");
 

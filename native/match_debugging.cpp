@@ -20,6 +20,7 @@ namespace {
 constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 30003;
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
+constexpr unsigned best_u23_action = 30023, b_team_action = 30024;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
@@ -733,7 +734,7 @@ bool dispatch_match_debugging_control(State& s) {
 }
 
 bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
-                         std::uint32_t formation, std::uint32_t fixture) {
+                         std::uint32_t formation, std::uint32_t fixture, LineupMode mode) {
     if (!club || !formation || managed > 1) return false;
     GuestCall call(s);
     const auto bench = fixture ? std::min<unsigned>(s.memory.read<1>(fixture + 0x4e) >> 4, 9) : 9;
@@ -780,6 +781,16 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
         for (unsigned i = 0; i < position_offsets.size(); ++i)
             player.positions[i] = std::clamp(int(signed_value<1>(s.memory.read<1>(record + position_offsets[i]))), 0, 20);
         player.condition = unsigned(std::clamp(int(signed_value<2>(call.call(0x101878d0, {medical, staff, 0}))), 0, 10000));
+        // Age in whole years on the game date: the original age operation takes
+        // a result slot, today's date and the person's birth date (+34, +38).
+        // It stores days at +0 and years at +2 of the slot.
+        if (mode == LineupMode::under_23) {
+            const auto slot = call.stack + 0x300;
+            call.call(0x10717dd0, {slot, std::uint32_t(s.memory.read<4>(s.r<4>(8) - 0x7b80)),
+                                   std::uint32_t(s.memory.read<4>(staff + 0x34)),
+                                   std::uint32_t(s.memory.read<4>(staff + 0x38))});
+            if (s.memory.read<2>(slot + 2) >= 23) continue;
+        }
         players.push_back(player);
     }
     std::array<best_xi::Role, 11> roles{};
@@ -788,7 +799,14 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
                     unsigned(s.memory.read<2>(formation + 0x150 + i * 2)),
                     s.memory.read<8>(formation + 0x1888 + i * 8),
                     unsigned(s.memory.read<4>(formation + 0x588))};
-    const auto starters = best_xi::select(players, roles);
+    auto starters = best_xi::select(players, roles);
+    if (mode == LineupMode::b_team) {
+        // The second team: the same selection over everyone the Best XI left out.
+        std::erase_if(players, [&](const auto& player) {
+            return std::find(starters.begin(), starters.end(), player.staff) != starters.end();
+        });
+        starters = best_xi::select(players, roles);
+    }
     std::array<std::uint32_t, 20> selected{};
     std::copy(starters.begin(), starters.end(), selected.begin());
     std::erase_if(players, [&](const auto& player) {
@@ -896,41 +914,45 @@ void append_best_xi_control(State& s) {
     call.args({0, 1, 0, 0xffffffffu});
     const bool debug_squad = action_enabled(recover_squad_action) || action_enabled(free_squad_action) ||
                              action_enabled(extend_all_contracts_action);
-    const auto grid = call.call(0x107198c0, {page, 334, top, debug_squad ? 444u : 556u, top + 20, 1, 0, 1});
-    const auto best_label = debug_text(s, DebugText::best_xi);
-    call.args({paper, call.text(best_label), best_xi_action, 0});
-    call.call(0x107444e0, {ui, grid, 0, 0, 0x30, ink, 12, 1});
-    if (!debug_squad) return;
-    // The second cell owns the original drop-down popup instead of acting
-    // directly, matching the View/Sort toolbar control.
-    call.args({0, 1, 0, 0xffffffffu});
-    const auto debugging_grid = call.call(0x107198c0, {page, 446, top, 556, top + 20, 1, 0, 1});
-    call.args({paper, call.text(debug_text(s, DebugText::debugging)), 0, 0});
-    const auto debugging_cell = call.call(0x107444e0, {ui, debugging_grid, 0, 0, 0x30, ink, 12, 1});
     const auto toc = std::uint32_t(s.r<4>(8));
     const auto menu_paper = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bcc)));
     const auto menu_ink = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bd0)));
     const auto menu_selected = std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - 0x7bd4)));
-    call.args({0, 0x130, menu_paper, debugging_cell});
-    const auto menu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
-    const auto item = [&](DebugText text, unsigned action) {
+    // Each cell owns the original drop-down popup instead of acting directly,
+    // matching the View/Sort toolbar control.
+    const auto dropdown = [&](std::uint32_t left, std::uint32_t right, DebugText label) {
+        call.args({0, 1, 0, 0xffffffffu});
+        const auto cell_grid = call.call(0x107198c0, {page, left, top, right, top + 20, 1, 0, 1});
+        call.args({paper, call.text(debug_text(s, label)), 0, 0});
+        const auto cell = call.call(0x107444e0, {ui, cell_grid, 0, 0, 0x30, ink, 12, 1});
+        call.args({0, 0x130, menu_paper, cell});
+        return call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
+    };
+    const auto item = [&](std::uint32_t menu, DebugText text, unsigned action) {
         call.args({0x10, menu_paper, menu_ink, 1, 1, menu_selected,
                    call.text(debug_text(s, text)), 0, action, 0, menu});
         call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, 0});
     };
-    if (action_enabled(recover_squad_action)) item(DebugText::recover_players, recover_squad_action);
-    if (action_enabled(free_squad_action)) item(DebugText::play_for_free, free_squad_action);
-    if (action_enabled(extend_all_contracts_action)) item(DebugText::extend_all_contracts, extend_all_contracts_action);
+    const auto lineup = dropdown(334, debug_squad ? 444u : 556u, DebugText::lineup);
+    item(lineup, DebugText::best_xi, best_xi_action);
+    item(lineup, DebugText::best_u23, best_u23_action);
+    item(lineup, DebugText::b_team, b_team_action);
+    if (!debug_squad) return;
+    const auto menu = dropdown(446, 556, DebugText::debugging);
+    if (action_enabled(recover_squad_action)) item(menu, DebugText::recover_players, recover_squad_action);
+    if (action_enabled(free_squad_action)) item(menu, DebugText::play_for_free, free_squad_action);
+    if (action_enabled(extend_all_contracts_action)) item(menu, DebugText::extend_all_contracts, extend_all_contracts_action);
 }
 
 bool dispatch_best_xi_control(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != best_xi_action && action != recover_squad_action && action != free_squad_action &&
+    const bool lineup_action = action == best_xi_action || action == best_u23_action || action == b_team_action;
+    if (!lineup_action && action != recover_squad_action && action != free_squad_action &&
         action != extend_all_contracts_action) return false;
     bool accepted = false;
-    if ((action == best_xi_action || action_enabled(action)) && (s.memory.read<4>(control + 12) & 2)) {
+    if ((lineup_action || action_enabled(action)) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
         const auto ui = root(s), club = call.call(0x1073ef70, {ui, 0});
         const auto managed = call.call(0x1073ef70, {ui, 1});
@@ -944,7 +966,9 @@ bool dispatch_best_xi_control(State& s) {
                 const auto humans = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7a54)));
                 const auto formation = call.call(0x101466c0, {humans, 0});
                 const auto fixture = call.call(0x1073ef70, {ui, 3});
-                accepted = select_debug_best_xi(s, club, managed, formation, fixture);
+                accepted = select_debug_best_xi(s, club, managed, formation, fixture,
+                    action == best_u23_action ? LineupMode::under_23 :
+                    action == b_team_action ? LineupMode::b_team : LineupMode::best_xi);
             }
         }
     }

@@ -25,6 +25,12 @@ Decided with Victor on 2026-11-09 and now in `CLAUDE.md` and the skill: lighter 
 - [ ] A first-run log for unexercised screen paths does not exist yet. Add it with the first screens block that ships such paths: it would say that an uncompared path ran, not that its result was right.
 - [ ] **56 of the 76 existing captures no longer replay** on the current build (found 2026-11-09 while building the stack contract table; the list with each first divergence is in `.local/stack-contract/report.md`). Most are UI session captures that diverge in a register passed to an import (`SetRect`, `HGetVol`, `Microseconds`); `ui/game-save2` (recorded 2026-10-23) fails the same way without the audit and with `CM_MANAGER_MANAGER_ORIGINAL=1`, so it is neither the audit nor that rewrite; UI and host features added since are the likely cause. Not looked into: which change, capture by capture. A stale capture never counts as a pass, so the UI rewrites have little replay evidence until these are re-recorded (Victor's to record).
 
+## Now: Lineup drop-down (2026-11-10)
+
+- [x] The squad screen's Best XI button is a **Lineup** drop-down (Victor's request): Best XI, Best U23 (players under 23 on the game date, by the original age routine 0x10717dd0) and B Team (the best eleven once the Best XI's starters are removed). `docs/native-best-xi.md`.
+- [ ] Victor checks in play: the label, the popup and the three selections.
+- [ ] Found while writing its check, not looked into: the match-debugger world factory calls the date setter 0x107156b0 with (year, day), while the career layout and the age routine expect the day at +0 and the year at +2, so "today" is swapped in that test world. The lineup check writes the date itself and restores it.
+
 ## Now: Match Results by right-click (2026-11-09)
 
 - [x] Replace the Match Results modal with right-clicks on the fixture list (Victor's request): home name = home win, "v" = draw, away name = away win; the same cell again clears, another switches; the chosen name is drawn light green, a draw shows the localized word in place of "v". Right-only invisible controls over the three cells (the original's pattern from 0x103b5ab8), added by a new hook at 0x1028bb08 after the rows are built; the press is consumed so a held button doesn't toggle again. Modal, menu item and their tests removed. Verified by `debugging_options` (`check_fixture_results`: real fixtures screen, original mouse-down/hit-test/dispatch) and the debugging tests.

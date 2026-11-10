@@ -1,9 +1,22 @@
 # Debugging: Best XI
 
-With Debugging enabled, the managed club's squad screen has a **Best XI** button
-between Sort and Clear Team. It replaces the match selection immediately, using
-the currently selected formation. It does not change the formation or its player
-instructions. The player-priority view and other clubs do not offer this action.
+With Debugging enabled, the managed club's squad screen has a **Lineup**
+(**Escalação**) drop-down between Sort and Clear Team. It is built like the Debugging
+drop-down: a cell that owns an original popup menu, with three items, each
+replacing the match selection immediately for the currently selected formation
+(none changes the formation or its player instructions):
+
+- **Best XI** (**Melhor 11**): the selection described below, over every available player.
+- **Best U23** (**Melhor Sub-23**): the same selection over players under 23 on the
+  game date only, bench included. Age is whole years from the original age
+  operation (`10717dd0`: result slot, today's date at TOC `-0x7b80`, birth date
+  at person `+34` day, `+36` year, `+38`). With too few such players the
+  slots stay empty, as for a depleted pool.
+- **B Team** (**Time B**): the Best XI's eleven starters are computed as above and
+  removed from the pool; the best eleven of the rest are selected, and the bench
+  comes from the players left after both elevens.
+
+The player-priority view and other clubs do not offer these actions.
 
 The original squad status operation (`10060c00`) excludes ineligible,
 unregistered, absent, injured, recovering, suspended and internationally absent
@@ -43,7 +56,7 @@ then the original handler's redraw result refreshes the screen. Both constructio
 and dispatch are gated by the host Debugging preference. No new career fields or
 original resource edits are needed.
 
-The same screen offers a **Debugging** drop-down beside Best XI, only for a
+The same screen offers a **Debugging** drop-down beside Lineup, only for a
 managed club with Debugging enabled. It contains **Recover Players**
 (**Recuperar jogadores** in Portuguese) and **Play for Free**
 (**Jogar de Graça**). The six toolbar controls have equal widths and spacing
@@ -72,7 +85,7 @@ every other contract term stay unchanged. Players without a primary contract and
 the opponent club are not visited. Both actions are host-gated and need no new
 save fields.
 
-Best XI, the Debugging drop-down, Recover Players, Play for Free, Add Goal, the
+Lineup and its items, the Debugging drop-down, Recover Players, Play for Free, Add Goal, the
 repeat-goal prefix and the Debugging On/Off values follow the live original
 language byte. The eleven original language IDs are supported; unknown IDs fall
 back to English. Labels use the original single-byte text encoding, including
@@ -83,7 +96,13 @@ exercises the selector on an original database world: competing fullbacks, swapp
 decoded technical attributes, live crossing instructions (including the high word),
 unchanged player records and RNG pool/seed/cursor, disabled gating, caller
 preservation, formation changes, bench limits, availability, unique players,
-depleted/empty squads and the localization catalog.
+depleted/empty squads and the localization catalog. Lineup modes are checked on the same
+world: the under-23 boundary (22 years in, 23 out), an older better keeper left out, empty
+slots with a short young pool, and B Team sharing no starter with the Best XI; each is compared
+with the plain selector run on the pool the mode is defined over. `cm-debug-options-checks`
+checks the drop-down's cell, its three items, their order, actions and geometry.
+The match factory's date slot holds year then day, the reverse of the career layout, so the
+lineup check writes day/year itself.
 It also prepares original medical injuries, recovery status, condition updates,
 match-count/time suspensions and deferred bans; recovery is checked through the
 original medical/discipline queries across the full roster. Checks cover disabled

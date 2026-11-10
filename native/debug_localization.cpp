@@ -11,6 +11,22 @@ std::string_view debug_text(unsigned language, DebugText text) {
             "Draw", "Draw", "Nul", "Remis", "Pari", "Empate", "Uafgjort", "Gelijk", "Uavgjort", "Empate", "Oavgjort"};
         return draw[language < draw.size() ? language : 0];
     }
+    if (text == DebugText::lineup || text == DebugText::best_u23 || text == DebugText::b_team) {
+        static constexpr std::array<std::array<std::string_view, 3>, 11> lineup{{
+            {"Lineup", "Best U23", "B Team"},
+            {"Lineup", "Best U23", "B Team"},
+            {"Composition", "Meilleur U23", "\311quipe B"},
+            {"Aufstellung", "Beste U23", "B-Team"},
+            {"Formazione", "Migliori U23", "Squadra B"},
+            {"Alineaci\363n", "Mejor sub-23", "Equipo B"},
+            {"Opstilling", "Bedste U23", "B-hold"},
+            {"Opstelling", "Beste U23", "B-team"},
+            {"Laguttak", "Beste U23", "B-lag"},
+            {"Escala\347\343o", "Melhor Sub-23", "Time B"},
+            {"Laguppst\344llning", "B\344sta U23", "B-lag"}}};
+        const unsigned column = unsigned(text) - unsigned(DebugText::lineup);
+        return lineup[language < lineup.size() ? language : 0][column];
+    }
     if (text == DebugText::extend_all_contracts) {
         static constexpr std::array<std::string_view, 11> labels{
             "Extend All Contracts by 1 Year", "Extend All Contracts by 1 Year",
