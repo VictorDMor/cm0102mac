@@ -1722,3 +1722,14 @@ one sentence by the days (under 30, under 60, more), the relation 0x100f55b0 giv
 cases, 336 sentences, kept as tables read from the listing. Its fallbacks for a band outside 0..6 are dead (the
 helpers return 0..6). It is a leftover-stack reader that no capture reaches: for a club 0x100c7d00 flags whose
 nation record (+0x2c) is null it formats sp+0x3c as a name without having written it (0x1019c28c on).
+
+The weekly pass 0x101a3350 (`manager_manager_weekly.cpp` and its part files; called by the daily update every seventh
+day) walks every club: the board row's value moves toward its target, and events, hires and the club's standing with
+its manager are decided by up to 78 draws per club. Two frame bytes (sp+0xdc, sp+0xdd) are cleared once by the
+prologue and set by a club's hire, so they stop the same rules for every later club of that pass. r13 (a level byte)
+is read at 0x101a3f1c, 0x101a4508 and 0x101a4658 on paths where the club has not set it: it holds what an earlier club
+left, or the caller's r13 for the first club to get there, and the rewrite keeps the register for that. The
+floating-point stages of six inlined draws (0x101a38c0; 0x101a6a64 and four copies) are dead: their bounds are a
+squared byte over 100 plus one, or a sign-extended byte; the rewrite throws if one were ever needed. It was written
+in parts by handing the rest of the call to the original: a hook may set the PC to any instruction address of its
+routine and run the dispatcher until the routine returns, so a long routine can be checked section by section.
