@@ -1,7 +1,60 @@
 #include "eng_prm_detail.hpp"
+#include "english_competition_rules.hpp"
+#include <algorithm>
+#include <vector>
 
 namespace cm::aot::eng_prm {
 using namespace detail;
+
+// The exchange between the Third Division and the Conference with more than one place each way
+// (english_competition_rules.hpp). The original has one: the Conference champion goes up if his
+// ground passes the Third Division's test, and otherwise nobody moves. Here every candidate takes
+// that test; one who fails stays, with the original's news item, and the best placed club in the
+// Third Division's relegation places stays for him. The season's own rule bytes choose: a season
+// with one place each way runs the original code below, whatever build configured it.
+namespace {
+constexpr std::uint8_t promoted = 0, champion = 5, relegated = 3, stays = 0xff, reprieved = 0xfe;
+// The standings rows, in table order, whose status is one of two values.
+std::vector<unsigned> rows_with(Cpu& c, std::uint32_t league, std::uint8_t status, std::uint8_t other) {
+    std::vector<unsigned> rows;
+    const auto standings = c.u32(league + 0xb0);
+    for (int row = 0; row < c.i16(league + 0x3e); ++row) {
+        const auto value = c.u8(standings + unsigned(row) * 0x44 + 0x40);
+        if (value == status || value == other) rows.push_back(unsigned(row));
+    }
+    return rows;
+}
+struct ThirdDivisionPlaces {
+    Cpu& c;
+    Program p;
+    std::uint32_t third;
+    std::vector<unsigned> zone = rows_with(c, third, relegated, relegated);
+    std::size_t kept = 0;
+    // The best placed club still in a relegation place stays in the division.
+    void reprieve(std::uint32_t back) {
+        const auto row = p.call(0x1049ea00, back, {third, zone[kept++]});
+        c.put8(row + 0x40, reprieved);
+    }
+    // As many clubs go down as come up: the rest of the relegation places stay.
+    void limit_to(std::size_t places, std::uint32_t back) {
+        while (zone.size() - kept > places) reprieve(back);
+    }
+    // The ground test of 0x1052c8fc..0x1052c924 (and 0x1052c310..0x1052c334): the club's ground
+    // against the division's two requirements.
+    bool ground_accepted(std::uint32_t club, std::uint32_t ground_back, std::uint32_t test_back) {
+        c.set({{5, c.toc(-0x7ab8)}, {4, club}});
+        p.call(0x10103510, ground_back, {c.u32(c.r(5))});
+        c.set({{6, c.u32(third + 4)}, {7, 1},
+               {4, extended(c.i16(third + 0xe4))}, {5, extended(c.i16(third + 0xe2))}});
+        c.set(6, c.u32(c.r(6)));
+        p.call(0x100f7cf0, test_back);
+        return byte_nonzero(c, c.r(3));
+    }
+    void refused_news(std::uint32_t club, std::uint32_t back) {
+        p.call(0x10452a60, back, {third, p.record(slot::conference), club, 0, 2});
+    }
+};
+}
 
 void next_season(Cpu& c, std::uint32_t address) {
     Frame f(c, 0x1052be10, 0x100, {.first_gpr = 25});
@@ -92,6 +145,28 @@ void promote_without_conference(Cpu& c, std::uint32_t address) {
         assertion(c, f, 0x1052c2bc, 0x48, 0x38, 0x2be); return;
     }
     p.call(0x104635b0, 0x1052c30c, {selected, count, 1});
+    if (english_rules::several_places(c, third, 0)) {
+        ThirdDivisionPlaces places{c, p, third};
+        // The Conference is not in the game: its best clubs, in the list's order, are the candidates.
+        const auto candidates = std::min(places.zone.size(), std::size_t(std::uint16_t(std::uint32_t(count))));
+        places.limit_to(candidates, 0x1052c350);
+        for (std::size_t i = 0; i < candidates; ++i) {
+            const auto club = c.u32(std::uint32_t(selected) + std::uint32_t(i) * 4);
+            if (places.ground_accepted(club, 0x1052c31c, 0x1052c334))
+                p.call(0x1049f780, 0x1052c39c, {object, club, p.record(slot::third), 1});
+            else {
+                places.reprieve(0x1052c350);
+                places.refused_news(club, 0x1052c378);
+            }
+        }
+        for (int row = 0; row < c.i16(std::uint32_t(third) + 0x3e); ++row) {
+            const auto entry = p.call(0x1049ea00, 0x1052c3b4, {third, std::uint32_t(row)});
+            if (c.u8(entry + 0x40) == relegated)
+                p.call(0x1049f8e0, 0x1052c3f0, {object, c.u32(entry), p.record(slot::conference), 1});
+        }
+        p.call(0x10775170, 0x1052c408, {selected});
+        return;
+    }
     c.set({{3, c.toc(-0x7ab8)}, {4, c.u32(selected)}});
     p.call(0x10103510, 0x1052c31c, {c.u32(c.r(3))});
     c.set({{6, c.u32(std::uint32_t(third) + 4)}, {7, 1},
@@ -249,6 +324,27 @@ void link_divisions(Cpu& c, std::uint32_t address, std::uint32_t mode) {
            {object, p.division(slot::second), p.division(slot::third), 1, link_mode, missing, missing});
     if (compare_logical(c, conference) == 0) return;
     c.set(3, p.division(slot::conference)); p.virtual_call(c.r(3), 0xac, 0x1052c8ec);
+    if (english_rules::several_places(c, third, conference)) {
+        const auto candidates = rows_with(c, conference, promoted, champion);
+        ThirdDivisionPlaces places{c, p, third};
+        const auto wanted = std::min(candidates.size(), places.zone.size());
+        places.limit_to(wanted, 0x1052c940);
+        unsigned accepted = 0;
+        for (std::size_t i = 0; i < candidates.size(); ++i) {
+            const auto row = p.call(0x1049ea00, 0x1052c8fc, {conference, candidates[i]});
+            const auto club = c.u32(row);
+            // More candidates than relegation places: the lowest placed stay, untested.
+            if (i < wanted && places.ground_accepted(club, 0x1052c90c, 0x1052c924)) { ++accepted; continue; }
+            c.put8(row + 0x40, stays);
+            if (i >= wanted) continue;
+            places.reprieve(0x1052c940);
+            places.refused_news(club, 0x1052c97c);
+        }
+        if (accepted)
+            p.call(0x104a9210, 0x1052c9b4,
+                   {object, p.division(slot::third), p.division(slot::conference), 1, link_mode, missing, missing});
+        return;
+    }
     p.call(0x1049ea00, 0x1052c8fc, {conference, 0});
     c.set({{5, c.toc(-0x7ab8)}, {4, c.u32(c.r(3))}});
     p.call(0x10103510, 0x1052c90c, {c.u32(c.r(5))});

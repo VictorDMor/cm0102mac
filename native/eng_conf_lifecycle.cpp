@@ -1,4 +1,5 @@
 #include "eng_conf_detail.hpp"
+#include "english_competition_rules.hpp"
 
 namespace cm::aot::eng_conf {
 using namespace detail;
@@ -136,6 +137,7 @@ std::uint32_t configure(Cpu& c, std::uint32_t address) {
     for (const auto [offset, value] : {std::pair{0xc4u, 3u}, {0xc5, 1}, {0xc6, 2},
              {0x42, 1}, {0xc7, 1}, {0xc8, 2}, {0xc9, 3}, {0xc0, 1}, {0xc1, 0}, {0xc2, 0}, {0xc3, 3}})
         c.put8(address + offset, value);
+    c.put8(address + 0xc0, english_rules::new_season().conference_promoted);
     c.set(9, c.u32(c.r(9)));
     c.put32(address + 0x1c, c.r(9)); c.put32(address + 0x20, missing);
     c.put8(address + 0x46, 5); c.put8(address + 0x47, 3); c.put8(address + 0xc7, 1);

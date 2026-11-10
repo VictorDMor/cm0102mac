@@ -1,4 +1,5 @@
 #include "eng_third_detail.hpp"
+#include "english_competition_rules.hpp"
 
 namespace cm::aot::eng_third {
 using namespace detail;
@@ -134,6 +135,7 @@ std::uint32_t configure(Cpu& c, std::uint32_t address) {
     for (const auto [offset, value] : {std::pair{0xc4u, 3u}, {0xc5, 1}, {0xc6, 2},
              {0x42, 1}, {0xc7, 1}, {0xc8, 2}, {0xc9, 3}, {0xc0, 3}, {0xc1, 4}, {0xc2, 0}, {0xc3, 1}})
         c.put8(address + offset, value);
+    c.put8(address + 0xc3, english_rules::new_season().third_relegated);
     c.set(3, c.toc(slot::second_rules)); c.put32(address + 0x1c, c.u32(c.r(3)));
     // Bit 4 of the definition's flags selects whether the second limit comes
     // from the shared rules table or stays -1.

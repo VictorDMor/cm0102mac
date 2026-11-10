@@ -3239,11 +3239,13 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
         VERBATIM)
     target_sources(cm-eng-conf-checks PRIVATE "${CM_ENG_CONF_REFERENCE}")
     add_test(NAME eng_conf_equivalence COMMAND cm-eng-conf-checks "${CM_ORACLE_DIR}")
+    set_tests_properties(eng_conf_equivalence PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
     add_test(NAME eng_conf_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_conf_audit.py")
     if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
         add_test(NAME eng_conf_career_state COMMAND cm-eng-conf-checks "${CM_ORACLE_DIR}"
             "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        set_tests_properties(eng_conf_career_state PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
     endif()
 endif()
 
@@ -4541,6 +4543,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME eng_third_equivalence COMMAND cm-eng-third-checks "${CM_ORACLE_DIR}")
     add_test(NAME eng_third_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_ENG_THIRD_ORIGINAL=1
         $<TARGET_FILE:cm-eng-third-checks> "${CM_ORACLE_DIR}" --original-routing)
+    set_tests_properties(eng_third_equivalence eng_third_original_override PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
     add_test(NAME eng_third_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_eng_third_audit.py")
 endif()
 option(CM_ENG_THIRD_COVERAGE "Instrument ENG_THIRD.CPP checker only" OFF)

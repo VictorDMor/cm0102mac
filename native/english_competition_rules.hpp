@@ -9,15 +9,23 @@ namespace cm::aot::english_rules {
 // career never changes its promotion places or an already-created playoff.
 struct PromotionRules {
     unsigned automatic, playoff_clubs, premier_relegated;
+    // Between the Third Division and the Conference: no playoff, the same number each way.
+    unsigned conference_promoted, third_relegated;
 };
-inline constexpr PromotionRules original{2, 4, 3};
-inline constexpr PromotionRules expanded{3, 8, 4};
-inline PromotionRules new_season() {
-    return std::getenv("CM_ENGLISH_RULES_ORIGINAL") ? original : expanded;
-}
+inline constexpr PromotionRules original{2, 4, 3, 1, 1};
+inline constexpr PromotionRules expanded{3, 8, 4, 3, 3};
+// CM_ENGLISH_RULES_ORIGINAL keeps the original game's rules and code paths
+// (the equivalence checks run with it).
+inline bool original_forced() { return std::getenv("CM_ENGLISH_RULES_ORIGINAL") != nullptr; }
+inline PromotionRules new_season() { return original_forced() ? original : expanded; }
 inline bool expanded_season(const guest::Cpu& c, std::uint32_t league) {
     return c.u8(league + 0xc0) == expanded.automatic &&
            c.u8(league + 0xc1) == expanded.playoff_clubs;
+}
+// The season in these two leagues was configured with more than one place between the Third
+// Division and the Conference (`conference` is 0 when that league is not in the game).
+inline bool several_places(const guest::Cpu& c, std::uint32_t third, std::uint32_t conference) {
+    return c.u8(third + 0xc3) > 1 || (conference && c.u8(conference + 0xc0) > 1);
 }
 // Adjacent matches feed each semifinal: 4/11 vs 7/8, 5/10 vs 6/9.
 inline constexpr std::array<unsigned, 8> playoff_places{4, 11, 7, 8, 5, 10, 6, 9};

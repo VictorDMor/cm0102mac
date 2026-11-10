@@ -21,8 +21,33 @@ std::uint32_t allocation=data+0x30000;
 std::vector<std::uint8_t> file;
 std::size_t position=0;
 bool classify=false;
+// The Third Division and Conference exchange: the divisions, the fixture's vtable for every league
+// (each slot is a routine the probe answers), and what the probe saw.
+constexpr std::uint32_t second=data+0x1400, third=data+0x1600, conference=data+0x1800,
+    fake_vtable=data+0x2a00, third_rows=data+0xa000, conference_rows=data+0xa800;
+constexpr unsigned third_clubs=24, conference_clubs=22, third_first=44, conference_first=68, all_clubs=90;
+bool lower=false;
+std::set<std::uint32_t> refused;
+std::vector<std::uint32_t> news;
+unsigned ground_tests=0, exchanges=0;
 bool probe(State& s) {
     Cpu c(s); const auto entry=s.pc;
+    if(lower && entry==0x104a9210 && c.r(4)==third) { ++exchanges; return false; }
+    if(lower) {
+        bool handled=true;
+        if(entry==0x104a9210) {}                                    // The other pairs of divisions.
+        else if(entry==0x10103510) c.set(3,c.r(4));                 // The club stands for its ground.
+        else if(entry==0x100f7cf0) {
+            // The season routine's own tests are counted; the promotion body repeats one for its club.
+            ground_tests+=c.lr()>>12==0x1052c; c.set(3,refused.count(c.r(3))?0:1);
+        }
+        else if(entry==0x101aaa90 || entry==0x101aa680) {}          // The managers' side of a club's move.
+        else if(entry==0x10452a60) news.push_back(c.r(5));
+        else if(entry==0x104635b0) {}                               // The candidates stay in club order.
+        else if(entry==0x1014c2e0) c.set(3,0);
+        else handled=false;
+        if(handled) { s.pc=c.lr(); return true; }
+    }
     if(entry==0x10775130 || entry==0x10773520 || entry==0x10775200) {
         const auto bytes=c.r(3)*(entry==0x10775200?c.r(4):1);
         require(bytes<0x10000,"unexpected allocation");
@@ -64,6 +89,9 @@ void invoke(Cpu& c,std::uint32_t entry,std::initializer_list<std::uint32_t> args
     require(c.sp()==stack,"guest stack balance");
 }
 void setup(Cpu& c) {
+    // The fixture's blocks are the probe's, so the guest allocator's entries must reach it: the
+    // C++ allocator would otherwise run in place and free a block it never made.
+    c.s.allocator_original=true;
     c.s.memory.map(data,0x200000);c.s.memory.map(0x71000000,0x20000);
     c.set(1,stack);c.set(2,0x108bba90);c.set_lr(stop);
     const auto variable=[&](int slot,unsigned offset,std::uint32_t value) {
@@ -147,10 +175,142 @@ void check_draw(Cpu& c,std::uint32_t stage) {
         }
     }
 }
+// Three places each way between the Third Division and the Conference: configuration,
+// classification, and the exchange with every combination of refused grounds, in both link modes,
+// with and without the Conference in the game; a season saved with one place keeps the original's
+// exchange.
+void lower_divisions(const char* oracle) {
+    auto state=std::make_unique<State>();load_program(*state,oracle);Cpu c(*state);
+    setup(c);
+    const auto variable=[&](int slot,unsigned offset,std::uint32_t value) {
+        c.put32(c.r(2)+std::uint32_t(slot),data+offset);c.put32(data+offset,value);
+    };
+    variable(-0x67ac,0x124,3);variable(-0x6874,0x128,4);variable(-0x7b50,0x12c,all_clubs);
+    variable(-0x7ab8,0x130,data+0x2c00);
+    for(unsigned i=0;i<5;++i) { c.put32(definitions+i*0x6c,i);c.put32(definitions+i*0x6c+8,data+0x2d00); }
+    // Every virtual routine of every league is one the probe answers (0x1007ffb0).
+    c.put32(fake_vtable+0x200,0x1007ffb0);c.put32(fake_vtable+0x204,c.r(2));
+    for(unsigned slot=0;slot<0x200;slot+=4)c.put32(fake_vtable+slot,fake_vtable+0x200);
+    const std::uint32_t leagues[]={premier,first,second,third,conference};
+    for(unsigned id=0;id<5;++id) {
+        const auto league=leagues[id];
+        c.put32(data+0x2000+id*4,league);c.put32(league+4,definitions+id*0x6c);
+        if(id<2)continue;
+        c.put16(league+0x40,2001);c.put8(league+0x45,1);
+        c.put16(league+0x3e,league==conference?conference_clubs:third_clubs);
+        c.put32(league+0xb0,league==conference?conference_rows:league==third?third_rows:data+0xb000);
+        c.put32(league+0xc,data+0x2800);c.put32(league+0x30,0xffffffff);c.put32(league+0x2c,1);
+        c.put16(league+0xdc,3);c.put16(league+0xa4,league==conference?42:46);c.put8(league+0x44,0xff);
+        c.put16(league+0xe2,0x1770);c.put16(league+0xe4,0x3e8);
+    }
+    const auto third_definition=c.u32(third+4), conference_definition=c.u32(conference+4);
+    const auto club_at=[&](unsigned index) { return clubs+index*0x248; };
+    const auto row=[&](std::uint32_t league,unsigned place) { return c.u32(league+0xb0)+place*0x44; };
+    const auto division=[&](unsigned index) { return c.u32(club_at(index)+0x30); };
+    // The two tables as a finished season leaves them, with `places` clubs in each zone.
+    const auto season=[&](unsigned places,bool classified) {
+        for(unsigned i=0;i<third_clubs+conference_clubs;++i) {
+            const bool upper=i<third_clubs;
+            const auto place=upper?i:i-third_clubs, club=club_at(third_first+i);
+            c.put32(club,third_first+i);c.put32(club+0x30,upper?third_definition:conference_definition);c.put32(club+0x34,0);
+            const auto at=row(upper?third:conference,place);
+            c.put32(at,club);c.put8(at+0x42,place+1);c.put8(at+0x43,place+1);
+            const auto status=!classified?0xffu:upper?(place>=third_clubs-places?3u:0xffu):place==0?5u:place<places?0u:0xffu;
+            c.put8(at+0x40,status);
+        }
+        c.put8(third+0xc3,places);c.put8(conference+0xc0,places);
+        refused.clear();news.clear();ground_tests=0;exchanges=0;
+    };
+    const auto members=[&](std::uint32_t definition) {
+        unsigned count=0;
+        for(unsigned i=third_first;i<all_clubs;++i)count+=division(i)==definition;
+        return count;
+    };
+    lower=true;
+    for(const auto league:leagues)c.put32(league,fake_vtable);
+    // New seasons take three places each way; the Third Division's own promotion is as before.
+    invoke(c,0x10531260,{third});invoke(c,0x10526460,{conference});
+    require(c.u8(third+0xc0)==3 && c.u8(third+0xc1)==4 && c.u8(third+0xc2)==0 && c.u8(third+0xc3)==3,"Third Division season rules");
+    require(c.u8(conference+0xc0)==3 && c.u8(conference+0xc1)==0 && c.u8(conference+0xc3)==3,"Conference season rules");
+    // The fixture's vtable builds no schedule: the field holds whatever the answered call left.
+    c.put32(third+0xbc,0);c.put32(conference+0xbc,0);
+    // The original classification marks the zones from those fields.
+    season(3,false);classify=true;
+    invoke(c,0x104a1c30,{third});invoke(c,0x104a1c30,{conference});
+    classify=false;
+    for(unsigned i=0;i<third_clubs;++i)
+        require(c.u8(row(third,i)+0x40)==(i==0?5:i<3?0:i<7?1:i>=21?3:255),"Third Division promotion, playoff and relegation places");
+    for(unsigned i=0;i<conference_clubs;++i)
+        require(c.u8(row(conference,i)+0x40)==(i==0?5:i<3?0:i>=19?3:255),"Conference promotion and relegation places");
+    // Every combination of refused grounds: a refused club stays with the news item, and the best
+    // placed clubs of the relegation zone stay for them.
+    const auto check=[&](unsigned refusals,bool with_conference,unsigned mode) {
+        season(3,true);
+        c.put32(data+0x2000+4*4,with_conference?conference:0);
+        std::vector<std::uint32_t> expected_news;
+        for(unsigned i=0;i<3;++i)if(refusals>>i&1) {
+            refused.insert(club_at(conference_first+i));expected_news.push_back(club_at(conference_first+i));
+        }
+        if(with_conference)invoke(c,0x1052c770,{premier,mode});
+        else invoke(c,0x1052c190,{premier});
+        const auto stay=unsigned(expected_news.size());
+        require(ground_tests==3 && news==expected_news,"each candidate's ground tested, each refusal reported");
+        for(unsigned i=0;i<3;++i)
+            require(division(conference_first+i)==(refusals>>i&1?conference_definition:third_definition),"accepted candidates go up, refused ones stay");
+        for(unsigned i=3;i<conference_clubs;++i)require(division(conference_first+i)==conference_definition,"the rest of the Conference stays");
+        for(unsigned i=0;i<third_clubs;++i) {
+            const bool down=i>=third_clubs-3+stay;
+            require(division(third_first+i)==(down?conference_definition:third_definition),"as many go down as come up, from the bottom");
+            if(i>=third_clubs-3 && !down)require(c.u8(row(third,i)+0x40)==0xfe,"reprieved club marked");
+        }
+        require(members(third_definition)==third_clubs && members(conference_definition)==conference_clubs,"division sizes kept");
+        if(with_conference)require(exchanges==(stay<3?1u:0u),"no exchange when nobody is accepted");
+    };
+    for(unsigned refusals=0;refusals<8;++refusals) {
+        check(refusals,true,1);check(refusals,true,0);check(refusals,false,0);
+    }
+    c.put32(data+0x2000+4*4,conference);
+    // A season saved with one place each way ends as the original ends it.
+    for(const bool accepted:{true,false}) {
+        season(1,true);
+        if(!accepted)refused.insert(club_at(conference_first));
+        invoke(c,0x1052c770,{premier,1});
+        require(ground_tests==1 && news.size()==(accepted?0u:1u),"one-place season: the champion's ground only");
+        require(division(conference_first)==(accepted?third_definition:conference_definition) &&
+                division(third_first+third_clubs-1)==(accepted?conference_definition:third_definition),"one-place season exchange");
+        require(members(third_definition)==third_clubs && members(conference_definition)==conference_clubs,"one-place season sizes");
+        if(!accepted)require(c.u8(row(third,third_clubs-1)+0x40)==0xfe,"one-place season reprieve");
+    }
+    // Zones of different sizes (inconsistent rule bytes in a save): only as many move as both allow.
+    season(3,true);
+    c.put8(row(conference,1)+0x40,0xff);c.put8(row(conference,2)+0x40,0xff);
+    invoke(c,0x1052c770,{premier,1});
+    require(division(conference_first)==third_definition && division(third_first+third_clubs-1)==conference_definition &&
+            members(third_definition)==third_clubs && members(conference_definition)==conference_clubs &&
+            c.u8(row(third,third_clubs-3)+0x40)==0xfe && c.u8(row(third,third_clubs-2)+0x40)==0xfe,"one candidate for three relegation places");
+    season(1,true);c.put8(conference+0xc0,3);
+    c.put8(row(conference,1)+0x40,0);c.put8(row(conference,2)+0x40,0);
+    invoke(c,0x1052c770,{premier,1});
+    require(division(conference_first)==third_definition && division(conference_first+1)==conference_definition &&
+            division(conference_first+2)==conference_definition && ground_tests==1 &&
+            members(third_definition)==third_clubs && members(conference_definition)==conference_clubs,"three candidates for one relegation place");
+    // A candidate wrongly promoted against a refused ground must be caught by this contract.
+    bool rejected=false;
+    try {
+        season(3,true);refused.insert(club_at(conference_first+1));
+        invoke(c,0x1052c770,{premier,1});
+        c.put32(club_at(conference_first+1)+0x30,third_definition);
+        require(division(conference_first+1)==conference_definition,"accepted candidates go up, refused ones stay");
+    } catch(const std::runtime_error& e) { rejected=std::string(e.what())=="accepted candidates go up, refused ones stay"; }
+    require(rejected,"refused-ground negative control");
+    lower=false;
+    std::cout<<"English rules: Third Division and Conference three-place exchange, 24 ground combinations, uneven zones, one-place season and negative control passed\n";
+}
 }
 int main(int argc,char** argv) {
     if(argc!=2)return 2;
     try {
+        dispatch_probe=probe;lower_divisions(argv[1]);
         auto state=std::make_unique<State>();load_program(*state,argv[1]);Cpu c(*state);
         dispatch_probe=probe;setup(c);
         invoke(c,0x10528e50,{first});invoke(c,0x1052bd60,{premier});

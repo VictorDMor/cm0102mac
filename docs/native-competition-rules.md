@@ -12,6 +12,25 @@ extra time and penalties, with no replays. May dates use the original calendar's
 weekday adjustment: quarterfinals around May 12, semifinals around May 19 and
 final around May 28.
 
+Three clubs are relegated from the Third Division and three promoted from the
+Conference, without a playoff (the original has one each way; added 2026-11-10).
+The original promotes the Conference champion only if his ground passes the
+Third Division's test, and otherwise nobody moves. With three places each of the
+three Conference clubs takes that test. One who fails stays in the Conference,
+with the original's news item, and the best placed club in the Third Division's
+relegation places stays up for him, so both divisions keep their sizes; if all
+three fail nobody moves. When the Conference is not in the game the candidates
+are the first three clubs of the original's own list of Conference clubs. The
+Conference's own relegation (three clubs) and the Third Division's promotion
+(three clubs and a four-club playoff) are unchanged. The exchange is in
+`native/eng_prm_season.cpp`; the season's own rule bytes choose, so a season with
+one place each way, as an existing career's current season is, ends through the
+original's code. The generated ENG_PRM reference (`CM_ENG_PRM_ORIGINAL=1`) knows
+one place only: a paired replay across the end of a three-place season cannot
+match. The ground test (0x100f7cf0 with r7 = 1) is the original's, side effects
+included, now run for each candidate; the news item for a refused club is the
+original's text, written for the champion.
+
 `native/english_competition_rules.hpp` holds the preset and seeding policy.
 `CM_ENGLISH_RULES_ORIGINAL=1` selects the original rules for newly configured
 seasons and for the existing equivalence checks. The default is the expanded
