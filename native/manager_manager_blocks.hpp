@@ -11,3 +11,4 @@
 #include "manager_manager_texts.hpp"
 #include "manager_manager_weekly.hpp"
 #include "manager_manager_people_text.hpp"
+#include "manager_manager_standing.hpp"

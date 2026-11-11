@@ -22,6 +22,19 @@ status and call or import arguments and order. Know what the checker compares:
 tell an unobservable scratch difference from a real dependency with evidence, not
 a blanket ignore list.
 
+A routine written native-first is compared under the native contract
+(`routine_check_native_contract` in `native/routine_check.hpp`): the results its
+line declares, the non-volatile registers, FPSCR, the heap and every byte outside
+the dead stack below its entry stack pointer; not r4-r10, the volatile condition
+fields or that dead stack. A family turns it on per entry
+(`native/manager_manager_native.inc` and the module's adapter show how), and its
+call trace then compares the arguments each callee reads, the order and the
+counts, not the non-volatile registers. A routine compared this way that still
+writes every register passes too, so the flag is safe to set early; a native
+routine without the flag fails on its first case. The negative control must
+spoil something this contract compares (a memory byte for a routine with no
+result).
+
 ## Reaching paths no capture reaches
 
 No new gameplay captures unless Victor asks. Use:

@@ -13,3 +13,4 @@
 #include "manager_manager_routines_texts.inc"
 #include "manager_manager_routines_weekly.inc"
 #include "manager_manager_routines_people_text.inc"
+#include "manager_manager_routines_standing.inc"

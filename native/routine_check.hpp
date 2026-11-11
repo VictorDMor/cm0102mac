@@ -101,6 +101,16 @@ std::vector<std::string> compare_routine_call(State& s, std::uint32_t entry, Rou
 // True in a checker child; families then run nested calls of their own
 // routines without checking them again.
 bool routine_check_child();
+// Set by a family around the check of a routine written native-first (CLAUDE.md's per-reader
+// contract: native locals inside, the guest ABI at the edge). The comparison then leaves out what
+// such a routine is free to leave differently: at its return r4-r10 and the volatile condition
+// fields (cr0, cr1, cr5-cr7), and in memory the stack below its entry stack pointer (its own and
+// its callees' dead frames) with the two linkage words and the eight parameter words of its
+// caller's frame, which a callee may use as its own. Everything else is compared as before: the
+// results, the non-volatile registers, FPSCR, the heap and every other byte, including buffers in
+// the callers' frames. A reader of leftover stack or registers must be kept by the rewrite
+// (tools/stack_contract.py, tools/register_contract.py); this flag does not look for one.
+extern bool routine_check_native_contract;
 
 // Coverage builds of a checker only: runs in each child before it leaves
 // through _exit, past the runtime's own flush at exit.

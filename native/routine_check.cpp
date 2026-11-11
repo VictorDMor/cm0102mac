@@ -315,7 +315,8 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
         const auto word = [](const Report& r, std::size_t offset) { return read_be<4>(r.registers.data() + offset); };
         // r4-r10 too: a caller's next varargs call (sprintf) stores r3-r10
         // into the stack image, so leftovers there reach memory.
-        std::vector<unsigned> gprs{1, 2, 4, 5, 6, 7, 8, 9, 10};
+        std::vector<unsigned> gprs{1, 2};
+        if (!routine_check_native_contract) gprs.insert(gprs.end(), {4, 5, 6, 7, 8, 9, 10});
         if (results & result_r3) gprs.push_back(3);
         for (unsigned n = 13; n < 32; ++n) gprs.push_back(n);
         for (const auto n : gprs)
@@ -329,7 +330,8 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
         // Every CR field: a later callee that saves cr2-cr4 stores the
         // whole CR (mfcr), volatile fields included.
         for (unsigned field = 0; field < 8 && !stopped; ++field)
-            if (expected.registers[2304 + field] != actual.registers[2304 + field])
+            if ((!routine_check_native_contract || (field >= 2 && field <= 4)) &&
+                expected.registers[2304 + field] != actual.registers[2304 + field])
                 found.push_back("cr" + std::to_string(field) + " " + std::to_string(expected.registers[2304 + field]) +
                                 " vs " + std::to_string(actual.registers[2304 + field]));
         // The rest of the volatile state rarely reaches memory; compared
@@ -364,9 +366,14 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
         if (want == got) continue;
         for (std::uint32_t i = 0; i < page_size; ++i) {
             if (want[i] == got[i]) continue;
+            const auto at = std::uint32_t(address + i);
+            // Native-first: the dead stack below the entry stack pointer and the callee's part of
+            // the caller's frame (linkage words, parameter words) are free.
+            if (routine_check_native_contract &&
+                ((at < stack && stack - at <= 0x100000) || (at >= stack + 4 && at < stack + 12) ||
+                 (at >= stack + 0x18 && at < stack + 0x38))) continue;
             ++differing;
             if (listed++ >= 24) continue;
-            const auto at = std::uint32_t(address + i);
             std::string where;
             if (at < stack + 0x100 && at + 0x10000 > stack) {
                 const auto offset = std::int64_t(at) - std::int64_t(stack);
@@ -382,6 +389,7 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
 }
 
 bool routine_check_child() { return in_child; }
+bool routine_check_native_contract = false;
 
 RoutineChecker::RoutineChecker(std::function<bool(std::uint32_t)> wanted, std::uint64_t all, std::uint64_t every)
     : wanted_(std::move(wanted)), all_(all), every_(every) {}

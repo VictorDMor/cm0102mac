@@ -46,6 +46,20 @@ constexpr auto slots = [] {
     return table;
 }();
 
+// The entries compared under the native contract (manager_manager_native.inc).
+#define MANAGER_MANAGER_NATIVE(entry) entry,
+constexpr std::uint32_t native_entries[] = {
+#include "manager_manager_native.inc"
+    0};
+#undef MANAGER_MANAGER_NATIVE
+bool native(std::uint32_t entry) { return entry && std::ranges::find(native_entries, entry) != std::end(native_entries); }
+// Sets the checker's comparison for one routine's check and puts it back.
+struct NativeContract {
+    bool before = routine_check_native_contract;
+    explicit NativeContract(std::uint32_t entry) { routine_check_native_contract = native(entry); }
+    ~NativeContract() { routine_check_native_contract = before; }
+};
+
 const Routine* listed(std::uint32_t entry) {
     const auto offset = entry - first;
     if (offset >= last - first || offset % 16) return nullptr;
@@ -61,6 +75,7 @@ void run_original(State& s, std::uint32_t entry) { run_original_body(s, entry, m
 bool run(State& s, const Routine& routine) {
     if (routine_checker) [[unlikely]] {
         if (manager_manager_call_observer && !routine_check_child()) manager_manager_call_observer(s, routine.entry, routine.results);
+        const NativeContract contract(routine.entry);
         routine_checker->check(s, routine.entry, run_original, run_rewrite, routine.results);
     }
     Cpu c(s);
@@ -71,6 +86,11 @@ bool run(State& s, const Routine& routine) {
 }
 
 bool manager_manager_lists(std::uint32_t entry) { return listed(entry) != nullptr; }
+bool manager_manager_native(std::uint32_t entry) { return native(entry); }
+unsigned manager_manager_results(std::uint32_t entry) {
+    const auto* routine = listed(entry);
+    return routine ? routine->results : 0;
+}
 std::vector<std::uint32_t> manager_manager_production_entries() {
     std::vector<std::uint32_t> entries;
     for (const auto& routine : routines) if (routine.production) entries.push_back(routine.entry);

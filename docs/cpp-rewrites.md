@@ -1733,3 +1733,12 @@ floating-point stages of six inlined draws (0x101a38c0; 0x101a6a64 and four copi
 squared byte over 100 plus one, or a sign-extended byte; the rewrite throws if one were ever needed. It was written
 in parts by handing the rest of the call to the original: a hook may set the PC to any instruction address of its
 routine and run the dispatcher until the routine returns, so a long routine can be checked section by section.
+
+The board's reply to a manager's request (`manager_manager_standing.cpp`: 0x101bb9f0 decides one of six request kinds
+from the club's row, the manager's and owner's records, the employer's funds, a date window and draws; 0x101bd320
+files the 0x1786 message; 0x101bd460 writes its text) is the module's first native-first block: native locals, one
+`guest::Frame` per entry, registers only as the arguments of calls out of the block. The floating-point stage of its
+four inlined byte draws is dead (each bound is an `extsb` byte). 0x100f5770 returns a second word in r4, which
+0x101bb9f0 adds. The text routine is the one place that sets non-argument registers: 0x1074bab0 appends a 0xd0-byte
+row built in its own frame, and the bytes after the name's terminator are the save area (`stmw r22`) of the
+previous callee, so r22-r31 hold the original's values at the formatter calls before it.

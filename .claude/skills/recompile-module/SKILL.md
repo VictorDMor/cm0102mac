@@ -236,6 +236,16 @@ Machine time is free, tokens aren't, so prefer a long local run to an agent:
   listing, and a data table may replace them, as long as what lands reads as source
   (`native/media_text_b_*`: 6,228 instructions, about 1,100 lines, 339k tokens).
   Agents read a routine in parts, once.
+- **Agents read Ghidra's decompiled C, with the listing as the reference**
+  (2026-11-11). `tools/DecompileSelected.java` writes one `.c` per routine (run it
+  as `tools/dev.sh export` runs `analyzeHeadless`, with `-readOnly -noanalysis`); a
+  1,610-instruction routine is about 700 lines of structured C. It gets wrong or
+  hides: registers a callee leaves besides r3 (`extraout_r4`), implicit arguments,
+  jump tables, single against double precision, the sense of 64-bit compares. The
+  brief sends the agent to the listing for those, and gives it the call sites with
+  their return addresses. `.local/rewrites/manager_manager/brief-native.md` is the
+  template. The first block written this way cost 135 tokens per instruction;
+  the register-by-register blocks before it about 240.
 - **One agent per block, `sonnet` by default.** No more than about six at once, none
   waiting on timers or monitors, and stop finished ones that keep notifying.
 - **Get the design right in the brief.** Names, shared helpers and record views cost

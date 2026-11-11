@@ -14,6 +14,11 @@ bool try_modern_manager_manager(State& s, std::uint32_t entry);
 // reached through the dispatcher, hooked by the generator or not yet.
 bool manager_manager_dispatch_probe(State& s);
 bool manager_manager_lists(std::uint32_t entry);
+// Whether the entry is written native-first and compared under the native contract
+// (manager_manager_native.inc; routine_check.hpp).
+bool manager_manager_native(std::uint32_t entry);
+// The result registers the entry's line declares (RoutineChecker::result_r3 / result_f1).
+unsigned manager_manager_results(std::uint32_t entry);
 // Listed as MANAGER_MANAGER_ROUTINE: the generator hooks its entry in production.
 std::vector<std::uint32_t> manager_manager_production_entries();
 // Every routine manager_manager_routines.inc lists (drafts too).

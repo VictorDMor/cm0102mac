@@ -89,7 +89,12 @@ void bounded_rewrite(State& s, std::uint32_t entry) {
     alarm(60);
     s.budget = s.executed + 4'000'000'000ULL;
     manager_manager_run_rewrite(s, entry);
-    if (options.corrupt) { guest::Cpu c(s); c.set(3, c.r(3) ^ 1); }
+    if (options.corrupt) {
+        guest::Cpu c(s);
+        c.set(3, c.r(3) ^ 1);
+        // A native-first routine without a result is not compared on r3: spoil a byte of memory.
+        if (manager_manager_native(entry)) s.memory.write<1>(scratch_base, std::uint8_t(s.memory.read<1>(scratch_base) ^ 1));
+    }
 }
 
 struct Read { std::uint32_t address; unsigned size; };
@@ -205,6 +210,7 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
     Comparison outcome;
     const auto stop_rewrite = "the rewrite stopped: ", stop_original = "the original stopped: ";
     std::vector<std::string> found;
+    routine_check_native_contract = manager_manager_native(entry);
     try {
         found = compare_routine_call(s, entry, bounded_original, bounded_rewrite, results, false, strict);
     } catch (const std::runtime_error& error) {
@@ -404,6 +410,10 @@ void compare_traces(State& s, std::uint32_t entry) {
                 auto& finding = trace_findings[{call.back, call.target, 3 + n}];
                 if (!finding.count++) { finding.original = call.arguments[n]; finding.rewrite = other.arguments[n]; }
             }
+        // A native-first routine leaves the non-volatile registers as its caller had them, so
+        // they are not the original's at its calls (tools/register_contract.py lists a callee
+        // that reads one; none of this module's native entries calls such a routine so far).
+        if (manager_manager_native(entry)) continue;
         for (unsigned n = 0; n < 19; ++n) if (call.gprs[n] != other.gprs[n]) {
             auto& finding = trace_findings[{call.back, call.target, 13 + n}];
             if (!finding.count++) { finding.original = call.gprs[n]; finding.rewrite = other.gprs[n]; }
@@ -572,7 +582,13 @@ void advance(State& s, unsigned count) {
     }
 }
 
-unsigned results_of(std::uint32_t) { return RoutineChecker::result_r3 | RoutineChecker::result_f1; }
+// The fixture cases compare r3 and f1 for every routine written to the full image (each path
+// leaves them as the original does). A native-first routine leaves only the results its line
+// declares; `tools/register_contract.py --after ENTRY` shows what its callers read.
+unsigned results_of(std::uint32_t entry) {
+    if (manager_manager_native(entry)) return manager_manager_results(entry);
+    return RoutineChecker::result_r3 | RoutineChecker::result_f1;
+}
 
 void run_cases(State& s, std::uint32_t match, std::mt19937& random) {
     Scenario scenario{s, match};

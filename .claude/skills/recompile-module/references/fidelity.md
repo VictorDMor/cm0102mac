@@ -69,6 +69,19 @@ execution to match them. The registers that do reach memory later are listed in
 `docs/cpp-rewrites.md`, because varargs calls and `mfcr` spill "unused" ones.
 `tools/call_registers.py ENTRY` shows what each register holds at every call.
 
+Registers follow the same idea as the stack. A native rewrite leaves the
+non-volatile registers as its caller had them and the volatile ones as its last
+callee left them, which differs from the original wherever somebody reads one:
+`tools/register_contract.py ENTRY...` lists the registers a routine (or what it
+calls) reads before writing, and `--after ENTRY` what its callers read after the
+call besides the result (0x100f5770 returns a second word in r4; the weekly pass
+0x101a3350 reads its caller's r13). Its lists are places to look, not findings.
+A callee that copies its own stack into game memory is a reader too: 0x1074bab0
+appends a 0xd0-byte row whose bytes after the name's terminator are the register
+save area of the caller's previous callee, so a native caller sets those
+registers before its formatter calls (`original_registers` in
+`native/manager_manager_standing.cpp`).
+
 Check transition vectors, comparator contracts, indirect calls, interior entries
 and `setjmp`/`longjmp` resumes: production resumption must not quietly enter an
 owned generated body. Host exceptions and destructors must not alter the original
