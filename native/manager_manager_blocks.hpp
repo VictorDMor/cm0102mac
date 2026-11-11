@@ -13,4 +13,6 @@
 #include "manager_manager_people_text.hpp"
 #include "manager_manager_standing.hpp"
 #include "manager_manager_assess.hpp"
+#include "manager_manager_rematch.hpp"
 #include "manager_manager_tail.hpp"
+#include "manager_manager_vacancy.hpp"

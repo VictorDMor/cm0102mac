@@ -1,0 +1,11 @@
+// MANAGER_MANAGER.CPP rematch block (manager_manager_routines.inc).
+MANAGER_MANAGER_DRAFT(0x101aa510, 0x101aa648, NONE, "fb1d7cb144582ca1", [](Cpu& c) { manager_manager::settle_queue(c, c.r(3)); })
+MANAGER_MANAGER_DRAFT(0x101aa650, 0x101aa674, NONE, "82fdb1999c8a64bd", [](Cpu& c) { manager_manager::forward_to_c8a80(c, c.r(4)); })
+MANAGER_MANAGER_DRAFT(0x101aa680, 0x101aaa90, NONE, "203e0c7fbd6b4e2c", [](Cpu& c) { manager_manager::end_tenure(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
+MANAGER_MANAGER_DRAFT(0x101aaa90, 0x101abda0, NONE, "03b62874a51bf3cd", [](Cpu& c) { manager_manager::plan_vacancy(c, c.r(3), c.r(4), c.r(5)); })
+MANAGER_MANAGER_DRAFT(0x101abda0, 0x101abf88, R3, "31e794982830ff9b", [](Cpu& c) { c.set(3, std::uint32_t(manager_manager::best_candidate_score(c, c.r(3), c.r(4), c.r(5)))); })
+MANAGER_MANAGER_DRAFT(0x101ac280, 0x101acefc, NONE, "9b87baa64b9fe00b", [](Cpu& c) { manager_manager::approach_candidate(c, c.r(3), c.r(4), c.r(5)); })
+MANAGER_MANAGER_DRAFT(0x101acf00, 0x101ad080, NONE, "d2bac2be7de4aecb", [](Cpu& c) { manager_manager::plan_all_vacancies(c, c.r(3)); })
+MANAGER_MANAGER_DRAFT(0x101b0f90, 0x101b1618, R3, "2d48ee83f3cfe5e7", [](Cpu& c) { c.set(3, manager_manager::candidate_willing(c, c.f(1), c.r(4), c.r(5)) ? 1 : 0); })
+MANAGER_MANAGER_DRAFT(0x101b2030, 0x101b2188, NONE, "7a6b27818bffd2ab", [](Cpu& c) { manager_manager::post_approach_news(c, c.r(4), c.r(5)); })
+MANAGER_MANAGER_DRAFT(0x101b39f0, 0x101b3c88, NONE, "6057e98cc9b104b0", [](Cpu& c) { manager_manager::post_move_news(c, c.r(4), c.r(5), c.r(6), c.r(7), c.r(8)); })

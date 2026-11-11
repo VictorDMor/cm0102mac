@@ -15,4 +15,6 @@
 #include "manager_manager_routines_people_text.inc"
 #include "manager_manager_routines_standing.inc"
 #include "manager_manager_routines_assess.inc"
+#include "manager_manager_routines_rematch.inc"
 #include "manager_manager_routines_tail.inc"
+#include "manager_manager_routines_vacancy.inc"
