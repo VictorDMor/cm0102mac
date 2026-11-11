@@ -242,6 +242,73 @@ void willing_cases(const Scenario& sc, std::vector<Case>& cases) {
         cases.push_back(std::move(item));
     }
 }
+
+// The ends of 0x101b0f90 the random scenes seldom reach: no staff record or no club, the deal's last two tests, a staff
+// record that vanishes while the flag is asked, a reputation that changes while the deal is looked up, and a person
+// with a second club that passes every earlier test.
+void willing_edge_cases(const Scenario& sc, std::vector<Case>& cases) {
+    const auto people = staff_people(sc, 12);
+    if (people.size() < 12) return;
+    unsigned n = 0;
+    const auto name = [&](const char* what) { return std::string("rematch willing edge ") + what + " " + std::to_string(n++); };
+    {
+        auto item = willing_case(sc, people[0], 5, Scene{}, name("no staff"));
+        item.memory.push_back({4, sc.person(people[0]) + 0x1c, 0});
+        cases.push_back(std::move(item));
+        item = willing_case(sc, people[1], 6, Scene{}, name("no club"));
+        item.registers[2] = {5, 0};
+        cases.push_back(std::move(item));
+    }
+    // the deal of a person whose post is rated high at a club of a lower reputation (status 0xb)
+    for (const auto home_mode : {0u, 1u, 2u, 3u})
+        for (const auto owner_mode : {0u, 1u, 2u})
+            for (const auto kind : {0u, 4u})
+                for (const auto poked : {false, true}) {
+                    Scene s;
+                    s.status = 0xb;
+                    s.region_mode = 1;
+                    s.home_mode = home_mode;
+                    s.owner_mode = owner_mode;
+                    s.post_a_mode = 1;
+                    s.post_a_rating = 0x1300;
+                    s.reputation = 0x1000;
+                    s.deal_present = 1;
+                    s.deal_kind = kind;
+                    s.outlook = 0x40;
+                    s.bar = kind ? 1.0 : -1.0;
+                    const auto club_k = 7 + n % 5, person_k = people[2 + n % 8];
+                    auto item = willing_case(sc, person_k, club_k, s, name("deal"));
+                    // the reputation read again after the deal routine answers (0x101b10dc): it rose past 0x1c52
+                    if (poked) item.pokes.push_back({routine::deal, {{2, sc.club(club_k) + 0x1ec, 0x1d00}}});
+                    cases.push_back(std::move(item));
+                }
+    // the staff record is gone when the club's flag has been asked (0x101b105c)
+    for (const auto reputation : {0x500, 0x8c9}) {
+        Scene s;
+        s.reputation = std::int16_t(reputation);
+        s.region_mode = 1;
+        s.home_mode = 3;
+        auto item = willing_case(sc, people[4], 9, s, name("staff vanishes"));
+        item.pokes.push_back({routine::flag, {{4, sc.person(people[4]) + 0x1c, 0}}});
+        cases.push_back(std::move(item));
+    }
+    // a second club that is not a loan (status 5): a small club at the person's own region
+    for (const auto post_a : {0u, 1u})
+        for (const auto bar : {-1.0, 1.0}) {
+            Scene s;
+            s.reputation = 0x900;
+            s.region_mode = 1;
+            s.home_mode = 3;
+            s.staff_a = 0x500;
+            s.staff_b = 0x1000;
+            s.side_club = sc.club(3);
+            s.side_status = 0;
+            s.status = 0;
+            s.post_a_mode = post_a;
+            s.bar = bar;
+            cases.push_back(willing_case(sc, people[5], 10, s, name("second club")));
+        }
+}
 }
 
 MANAGER_MANAGER_CASES("rematch") {
@@ -252,5 +319,6 @@ MANAGER_MANAGER_CASES("rematch") {
     }
     dates(scenario, cases);
     willing_cases(scenario, cases);
+    willing_edge_cases(scenario, cases);
 }
 }

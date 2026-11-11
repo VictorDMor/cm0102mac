@@ -247,7 +247,11 @@ private:
         std::uint32_t row_offset = 0;
         for (std::int32_t index = 0; index < people_count(c); ++index, row_offset += 100) {
             const auto n = people_count(c);
-            const std::int32_t pick = n == 0 ? 0 : draw.below(n, 0x101ab370, 0x101ab438);
+            // 0x101ab340 tests the count for 0 (the original then skips the draw), but the count in r20 is the
+            // one the loop test read at 0x101ab570 (cmpw r18,r20; blt: signed, index >= 0) with no call between,
+            // so it is at least 1 here: that branch (0x101ab348) cannot run.
+            if (n == 0) throw std::logic_error("rematch: a zero count inside the second walk (0x101ab340)");
+            const std::int32_t pick = draw.below(n, 0x101ab370, 0x101ab438);
             const auto candidate = person_at(c, pick);
             if (c.u32(candidate + person::staff) == 0) continue;
             if (leaving == candidate) continue;

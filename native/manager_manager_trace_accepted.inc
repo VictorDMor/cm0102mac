@@ -11,3 +11,5 @@ MANAGER_MANAGER_TRACE_ACCEPTED(0x101c0108, 0x10773320, 8, "array constructor: sa
 MANAGER_MANAGER_TRACE_ACCEPTED(0x101c0108, 0x10773320, 9, "same")
 MANAGER_MANAGER_TRACE_ACCEPTED(0x101c0108, 0x10773320, 10, "same")
 MANAGER_MANAGER_TRACE_ACCEPTED(0x101bf548, 0x10727890, 10, "the referee's dismissal text (pool + 0x2044b) has three <%s> fields, r7-r9 after the two sizes in r5/r6: r10 is not read")
+MANAGER_MANAGER_TRACE_ACCEPTED(0x101aa604, 0x1077b720, 9, "assertion report: format 'v%s %s.%s %d' reads r5-r8 (guest::report_assertion)")
+MANAGER_MANAGER_TRACE_ACCEPTED(0x101b16a0, 0x1077b720, 9, "list_contains's assertion report, same format: r9 is the native caller's leftover")

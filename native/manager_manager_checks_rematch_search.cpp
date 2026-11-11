@@ -295,7 +295,276 @@ Case object_case(const Scenario& sc, Rng& r, std::uint32_t entry, unsigned flavo
     }
     return item;
 }
+// ---- the outcomes the random scenes do not reach (coverage of the rematch block) ----
+void answer(Case& item, std::uint32_t entry, std::uint32_t value) {
+    for (auto& a : item.answers)
+        if (a.first == entry) { a.second = value; return; }
+    item.answers.push_back({entry, value});
 }
+std::vector<std::uint32_t> offer_data(const Scenario& sc) {
+    std::vector<std::uint32_t> data;
+    const auto list = sc.r32(sc.global(-0x79f0) + 8);
+    for (auto node = sc.r32(list + 4); node && data.size() < 60; node = sc.r32(node + 8)) data.push_back(sc.r32(node));
+    return data;
+}
+// The offers' chosen-person words (what the list search compares with a person's id): entry k holds ids[k % size].
+void list_chosen(const Scenario& sc, Case& item, const std::function<std::uint32_t(unsigned)>& id) {
+    Put put{item};
+    unsigned k = 0;
+    for (const auto data : offer_data(sc)) put(4, data + 8, id(k++));
+}
+constexpr std::uint32_t flag_routine = 0x100c7d00;
+// A club that no offer names (a real club far from the offers').
+unsigned unoffered_club(const Scenario& sc) {
+    const auto ids = offered_clubs(sc);
+    for (unsigned k = 3999;; --k)
+        if (std::find(ids.begin(), ids.end(), sc.r32(sc.club(k))) == ids.end()) return k;
+}
+
+// 0x101abda0 and 0x101aaa90: persons that are already in the offer list.
+void listed_cases(const Scenario& sc, Rng& r, std::vector<Case>& cases) {
+    for (unsigned n = 0; n < 30; ++n) {
+        auto item = walker_case(sc, r, best_score, n, "rematch edge best listed " + std::to_string(n));
+        const auto people = score_counts[n % (sizeof score_counts / sizeof *score_counts)];
+        list_chosen(sc, item, [&](unsigned k) { return (k * 7 + n) % (people + 10); });
+        cases.push_back(std::move(item));
+    }
+    for (unsigned n = 0; n < 60; ++n) {
+        auto item = walker_case(sc, r, plan, n, "rematch edge plan listed " + std::to_string(n));
+        const auto people = counts[n % (sizeof counts / sizeof *counts)];
+        list_chosen(sc, item, [&](unsigned k) { return (k * 3 + n) % (people + 6); });
+        cases.push_back(std::move(item));
+    }
+}
+
+// 0x101aaa90's walk back from the end (the second half of the choice): the first walk finds nobody (the club has no
+// region, or no person has a home), the club is the AI's with no slots, and the person at count-0x11 is built by hand.
+void second_pass_cases(const Scenario& sc, Rng& r, std::vector<Case>& cases) {
+    const auto leagues = sc.global(-0x7b5c);
+    const auto owner = sc.club(5);
+    unsigned serial = 0;
+    const auto build = [&](bool null_region, std::uint32_t region_120, bool rival, bool listed, std::int16_t reputation, std::uint32_t status, bool owner_without_region = false) {
+        auto item = walker_case(sc, r, plan, 2 + 11 * serial, "rematch edge second pass " + std::to_string(serial));
+        ++serial;
+        Put put{item};
+        const auto club = item.registers[1].second;
+        const auto people = counts[2];
+        answer(item, flag_routine, 0);
+        answer(item, routine::deals, 0);
+        answer(item, routine::pending, 0);
+        answer(item, routine::dispatch_a, 0);
+        list_chosen(sc, item, [](unsigned k) { return 0x70000000u + k; });
+        put(4, club + 0x2c, null_region ? 0 : scratch::region_a);
+        put(4, club + 0x30, scratch::rival_b);
+        put(2, club + 0x1ec, 0x1000);
+        put(4, club + 0x94, 0);
+        put(4, club + 0x160, 0);
+        for (unsigned i = 0; i < people; ++i)
+            if (!null_region || i == people - 0x11) put(4, sc.person(i) + 0xc, null_region ? scratch::region_b : 0);
+        const auto candidate = sc.person(people - 0x11);
+        const auto staff = sc.r32(sc.person(staff_people(sc, 1)[0]) + 0x1c);
+        put(4, candidate + 0x1c, staff);
+        put(1, sc.r32(sc.toc(-0x7b9c)) + (people - 0x11) * 100 + 0xc, 0);
+        put(1, candidate + 0x62, status);
+        put(4, candidate + 0x20, 0);
+        put(4, candidate + 0x24, owner);
+        put(4, owner + 0x2c, owner_without_region ? 0 : scratch::region_a);
+        put(1, scratch::region_a + 0x120, region_120);
+        put(4, owner + 0x30, rival ? scratch::rival_a : 0);
+        put(4, scratch::rival_a, 3);
+        put(4, leagues + 12, listed ? 1 : 0);
+        put(2, owner + 0x1ec, std::uint16_t(reputation));
+        cases.push_back(std::move(item));
+    };
+    for (const auto null_region : {true, false})
+        for (const auto status : {5u, 0u}) build(null_region, 1, true, false, 0x1000, status);
+    for (const auto status : {5u, 0u}) build(false, 1, true, false, 0x1000, status, true);
+    for (const auto region_120 : {0u, 1u})
+        for (const auto rival : {false, true})
+            for (const auto listed : {false, true})
+                for (const auto reputation : {0x1964, 0x1965})
+                    for (const auto status : {5u, 0u}) build(false, region_120, rival, listed, std::int16_t(reputation), status);
+}
+
+// The count of people past 0xffff (the world's own): the draws of the second walk go through the floating-point split.
+void split_cases(const Scenario& sc, Rng& r, std::vector<Case>& cases) {
+    for (unsigned n = 0; n < 5; ++n) {
+        Case item{.entry = plan, .label = "rematch edge split " + std::to_string(n)};
+        Put put{item};
+        // 105000 people (the world's table holds 101016; its end is zeroed): the bound of the draw is 16 and the
+        // split's two parts can pass the last person
+        if (n >= 3) {
+            put(4, sc.toc(-0x7be4), 105000 + n);
+            for (unsigned k = sc.people(); k < 105000 + n; ++k) put(4, sc.person(k) + 0x1c, 0);
+        }
+        const auto club = sc.club(60 + n);
+        const auto first = sc.toc(-0x7b8c);
+        put(2, club + 0x1ec, 0x2000);
+        put(4, sc.toc(-0x7b84), first);
+        put(4, sc.toc(-0x7b90), 0);
+        // the split's first draw is its remainder part, the module's draw the second: the extremes of both
+        for (unsigned k = 0; k < 160; ++k)
+            put(2, first + 2 * (k + 1), n == 0 ? 0xfffe : n == 1 ? 0xffff : n == 3 ? (k % 2 ? 0xffff : 0xfffe) : n == 4 ? (k % 2 ? 0xfffe : 0xffff) : r.below(0x10000));
+        answer(item, flag_routine, 0);
+        item.registers = {{3, sc.global(-0x79f0)}, {4, club}, {5, 0}};
+        cases.push_back(std::move(item));
+    }
+}
+
+// 0x101ac280: the queued offer of the club, the deals' list and the person's own club.
+void approach_edge_cases(const Scenario& sc, Rng& r, std::vector<Case>& cases) {
+    const auto object = sc.global(-0x79f0);
+    const auto ids = offered_clubs(sc);
+    const auto list = sc.r32(object + 8);
+    unsigned serial = 0;
+    const auto base = [&](unsigned person_k, const std::string& what, unsigned club_index) {
+        auto item = walker_case(sc, r, approach, 3 + 8 * serial, "rematch edge approach " + what + " " + std::to_string(serial));
+        ++serial;
+        item.registers = {{3, object}, {4, sc.club(club_index)}, {5, sc.person(person_k)}};
+        return item;
+    };
+    if (ids.empty() || sc.r32(sc.club(ids[0])) != ids[0]) return;
+    // The offer of the club names the person; the deals' list (0x10386be0, answered) is the offer list itself, a real
+    // list of the heap that the real 0x10738c20 may free: its last entry (the first the backward walk reads) is set
+    // to each outcome of the walk.
+    struct Deals { bool listed; std::uint32_t kind, days; int id; };
+    const Deals deals_modes[] = {{false, 0, 0x100, 0},   // no deals list (0x10386be0 answers 0)
+                                 {true, 0x96, 0x100, 0}, // an entry of 0xb4 days or more
+                                 {true, 0x95, 0x50, 0},  // an entry of another kind
+                                 {true, 0x96, 0x50, 1},  // an entry of another person
+                                 {true, 0x96, 0x50, 0}}; // the match
+    for (const auto person_k : {1u, 2u, 7u, 0u}) {
+        for (const auto& d : deals_modes) {
+            auto item = base(person_k, "deals", ids[0]);
+            Put put{item};
+            const auto person = sc.person(person_k);
+            const auto entries = offer_data(sc);
+            const auto entry = entries.front(), last = entries.back();
+            put(4, entry + 0xc, sc.r32(person));
+            put(4, entry + 0x14, 0x80000001u);
+            put(4, entry + 8, r.pick<std::uint32_t>({1, 5, 0}));
+            put(4, person + 0x1c, sc.r32(sc.person(staff_people(sc, 1)[0]) + 0x1c));
+            answer(item, flag_routine, 0);
+            answer(item, routine::days, d.days);
+            answer(item, 0x10386be0, d.listed ? list : 0);
+            if (d.listed) {
+                put(1, last + 8, d.kind);
+                put(4, last + 0xc, sc.r32(person) + std::uint32_t(d.id));
+            }
+            cases.push_back(std::move(item));
+        }
+    }
+    // the person's club is told (the draw decides): a level of -5 makes the second draw's bound 0
+    for (unsigned n = 0; n < 12; ++n) {
+        auto item = base(1 + n % 3, "level", unoffered_club(sc));
+        Put put{item};
+        const auto person = sc.person(1 + n % 3);
+        put(1, person + 0x65, n < 8 ? 0xfb : 0xfa);
+        put(4, person + 0x24, sc.club(8 + n));
+        put(4, person + 0x1c, sc.r32(sc.person(staff_people(sc, 1)[0]) + 0x1c));
+        answer(item, flag_routine, 0);
+        answer(item, routine::days, 0x100);
+        cases.push_back(std::move(item));
+    }
+    // a person whose club vanishes while the flag is asked
+    for (unsigned n = 0; n < 4; ++n) {
+        auto item = base(1 + n, "club vanishes", unoffered_club(sc));
+        Put put{item};
+        const auto person = sc.person(1 + n);
+        put(4, person + 0x24, sc.club(8 + n));
+        put(4, person + 0x1c, sc.r32(sc.person(staff_people(sc, 1)[0]) + 0x1c));
+        answer(item, flag_routine, 0);
+        answer(item, routine::days, n % 2 ? 0x100 : 0x50);
+        item.pokes.push_back({flag_routine, {{4, person + 0x24, 0}}});
+        cases.push_back(std::move(item));
+    }
+    // the offer list shorter than its count: the first walk ends the routine; and after the vacancy's own routine
+    // (which asks the flag first, with nothing filed) the second walk does
+    for (unsigned n = 0; n < 2; ++n) {
+        auto item = base(1, n ? "second walk ends" : "first walk ends", unoffered_club(sc));
+        Put put{item};
+        const auto person = sc.person(1);
+        put(4, person + 0x1c, 0);
+        put(4, person + 0x24, 0);
+        answer(item, flag_routine, 0);
+        put(4, item.registers[1].second + 0x30, 0);
+        put(2, item.registers[1].second + 0x1ec, 0x1000);
+        if (n == 0) put(2, list, 60);
+        else item.pokes.push_back({flag_routine, {{2, list, 70}}});
+        cases.push_back(std::move(item));
+    }
+}
+
+// 0x101acf00, 0x101aa510 and 0x101aa680 at their edges.
+void object_edge_cases(const Scenario& sc, Rng& r, std::vector<Case>& cases) {
+    const auto object = sc.global(-0x79f0);
+    const auto list = sc.r32(object + 8);
+    const auto sp = std::uint32_t(sc.s.r<4>(4));
+    // 0x101acf00: the club's answered byte set by the callee; the offer list shorter than its count
+    for (unsigned n = 0; n < 6; ++n) {
+        auto item = object_case(sc, r, plan_all, 2 + n, "rematch edge plan all " + std::to_string(n));
+        Put put{item};
+        answer(item, routine::pending, 0);
+        answer(item, routine::manager_flag, 1);
+        answer(item, routine::answered, n % 2);
+        for (unsigned k = 0; k < 4; ++k) put(4, sc.club(k), 0x7000 + k);
+        if (n < 2) put(2, list, 60);
+        if (n >= 2) item.pokes.push_back({routine::answered, {{1, sp - 0x90 + 0x38, 1 + n % 2}}});
+        cases.push_back(std::move(item));
+    }
+    // 0x101aa510: no queue; a queue shorter than its count
+    {
+        auto item = object_case(sc, r, settle, 1, "rematch edge settle no queue");
+        Put put{item};
+        put(4, object + 4, 0);
+        cases.push_back(std::move(item));
+    }
+    for (unsigned n = 0; n < 6; ++n) {
+        auto item = object_case(sc, r, settle, n, "rematch edge settle short " + std::to_string(n));
+        Put put{item};
+        const unsigned queued = 1 + n % 3;
+        auto node = sc.r32(list + 4);
+        for (unsigned k = 1; k < queued && node; ++k) node = sc.r32(node + 8);
+        put(4, node + 8, 0);
+        put(4, list + 8, node);  // the list's end is the last queued node
+        put(2, list, 2 * queued + 2);  // each processed node leaves the list (the count drops): two reads find no node
+        cases.push_back(std::move(item));
+    }
+    // 0x101aa680: a manager of another club; a human club; a holder without a post
+    for (unsigned n = 0; n < 30; ++n) {
+        auto item = object_case(sc, r, end_tenure, n, "rematch edge end tenure " + std::to_string(n));
+        Put put{item};
+        const auto club = item.registers[1].second;
+        const auto manager = sc.r32(club + 0x90);
+        if (n % 3 == 0 && manager) {
+            // neither of his two clubs is this one (n % 6 == 0), or only the second is (the side status is read)
+            put(4, manager + 0x24, n % 6 == 0 ? 0 : sc.club(1));
+            put(4, manager + 0x20, n % 6 == 0 ? 0 : club);
+        } else if (n % 3 == 1) {
+            answer(item, flag_routine, 1);
+        } else {
+            const auto holder = [&] {
+                for (unsigned k = 0; k < 4000; ++k)
+                    if (!sc.r32(sc.person(k) + 0x14) && sc.r32(sc.person(k) + 0x1c)) return sc.person(k);
+                return std::uint32_t(0);
+            }();
+            for (unsigned slot = 0; slot < 6; ++slot) put(4, club + 0x98 + slot * 4, slot % 2 ? holder : 0);
+        }
+        cases.push_back(std::move(item));
+    }
+}
+}
+
+MANAGER_MANAGER_CASES("rematch_edge") {
+    if (scenario.match) return;
+    Rng r{0xed9e};
+    listed_cases(scenario, r, cases);
+    second_pass_cases(scenario, r, cases);
+    split_cases(scenario, r, cases);
+    approach_edge_cases(scenario, r, cases);
+    object_edge_cases(scenario, r, cases);
+}
+
 
 MANAGER_MANAGER_CASES("rematch_walk") {
     if (scenario.match) return;
