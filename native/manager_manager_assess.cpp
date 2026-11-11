@@ -165,6 +165,8 @@ void assess_manager(Cpu& c, std::uint32_t list, std::uint32_t person, std::uint3
         }
         post_assessment_message(c, person, club, kind, 1, urgent ? 2 : 1, 0);
     }
+    // The original clears the verdict byte (0x101c3480) before the call; every path of the verdict writes it, so the
+    // store is left out.
     const auto verdict = assess_verdict(c, list, frame.at(record_local), club, person);
     post_assessment_message(c, person, club, std::int8_t(c.u8(frame.at(record_local + 8))), 3, verdict, interested ? 1 : 0);
     if (verdict == 2) {

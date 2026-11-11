@@ -24,7 +24,9 @@ constexpr std::uint32_t id = 0, tier = 0x2c, board = 0x3c, owner = 0x80, manager
 namespace person_at { constexpr std::uint32_t profile = 0x1c, date_a = 0x4c, date_b = 0x50; }  // profile: +0x2a int16
 namespace owner_at { constexpr std::uint32_t profile = 0x1c, temper = 0x63; }                    // +0x2f, +0x3d: int8
 constexpr std::uint32_t frame_size = 0x110, date_local = 0x38, tail_local = 0x3c;
-constexpr std::int8_t verdict_refuse = 2, verdict_busy = 3, verdict_wait = 4, verdict_accept = 1;
+// The verdict byte by what 0x101c3220 does with it: 1 nothing; 2 posts a record to the list and flags the row;
+// 3 lowers the club's row rating by 1250, 4 by 500. What each means in the game is not established.
+constexpr std::int8_t verdict_none = 1, verdict_post = 2, verdict_lower_more = 3, verdict_lower_less = 4;
 
 class Verdict {
 public:
@@ -34,7 +36,7 @@ public:
 
     std::int8_t run(const guest::Frame& frame) {
         employer = employer_of();
-        if (!employer) { set(verdict_busy); return result(); }
+        if (!employer) { set(verdict_lower_more); return result(); }
         // The row's last date is replaced by today's; the old one is scored (the original passes it to the
         // scorer as two words read back from its stack: the byte after the date's fifth is a leftover).
         const auto last = row() + row_at::since;
@@ -64,7 +66,7 @@ public:
             const auto last_date = c.toc(toc_cell::last_date);
             const bool recent = person_value() >= 0x1482 &&
                                 score(c.u32(last_date), c.u32(last_date + 4), 0x101c20f8) >= 0xb4;
-            set(recent ? verdict_busy : verdict_wait);
+            set(recent ? verdict_lower_more : verdict_lower_less);
             return result();
         }
         switch (std::int8_t(c.u8(record + 8))) {
@@ -120,9 +122,9 @@ private:
     // ---- kind 1 (0x101c2140) ----
     void kind_one() {
         const std::int32_t value = person_value();
-        if (value < 0x109a) return set(verdict_refuse);
+        if (value < 0x109a) return set(verdict_post);
         const std::int32_t rated = rating();
-        if (rated < 0x109a && value < reputation() + adjust + 0x2ee) return set(verdict_refuse);
+        if (rated < 0x109a && value < reputation() + adjust + 0x2ee) return set(verdict_post);
         const std::int32_t rep = reputation();
         const std::int8_t tier = tier_class();
         std::int32_t limit;
@@ -132,22 +134,22 @@ private:
         else if (tier > 8) limit = rep * 2 + 0x9c4;
         else limit = rep * 2 + 0x4e2;
         if (c.u8(club + club_at::kind) == 3) limit = scaled(pool_scale_c, limit);
-        if (budget() < limit && reputation() > 0x1676 && standing() >= 0 && rated > 0x1c52) return set(verdict_accept);
+        if (budget() < limit && reputation() > 0x1676 && standing() >= 0 && rated > 0x1c52) return set(verdict_none);
         if (standing() > 2 || (value > 0x1482 && value > reputation() + adjust + 0x2ee)) {
             const auto drawn = draws.modulo(0x1d4c, 0x101c22ec);
-            set(rating() > half(std::uint32_t(drawn) + 0x9c4u) ? verdict_busy : verdict_refuse);
+            set(rating() > half(std::uint32_t(drawn) + 0x9c4u) ? verdict_lower_more : verdict_post);
             return;
         }
-        set(verdict_refuse);
+        set(verdict_post);
     }
 
     // ---- kind 2 (0x101c2360) ----
     void kind_two() {
         const std::int32_t value = person_value();
         const std::int32_t floor = 0x109a - adjust;
-        if (value < floor) return set(verdict_refuse);
+        if (value < floor) return set(verdict_post);
         const std::int32_t rated = rating();
-        if (rated < floor && value < reputation() + 0x2ee - adjust) return set(verdict_refuse);
+        if (rated < floor && value < reputation() + 0x2ee - adjust) return set(verdict_post);
         const std::int8_t tier = tier_class();
         std::int32_t limit;  // a halfword (the scale below keeps a word, read back as a halfword)
         if (tier > 0xe) limit = reputation() > 0x186a ? 0x14 : reputation() > 0x109a ? 0xf : reputation() > 0xcb2 ? 0xa : 7;
@@ -156,13 +158,13 @@ private:
         if (c.u8(club + club_at::kind) == 3) limit = scaled(pool_scale_c, std::int32_t(half(std::uint32_t(limit))));
         if (c.i8(club + club_at::standing) < std::int32_t(half(std::uint32_t(limit))) && reputation() > 0x1676 &&
             standing() >= 0 && rated > 0x1c52 - adjust)
-            return set(verdict_accept);
+            return set(verdict_none);
         if (standing() > 2 || (value > 0x1482 - adjust && value > reputation() - 0x2ee - adjust)) {
             const auto drawn = draws.modulo(0x1482, 0x101c2554);
-            set(rating() > half(std::uint32_t(drawn) + 0x9c4u) ? verdict_busy : verdict_refuse);
+            set(rating() > half(std::uint32_t(drawn) + 0x9c4u) ? verdict_lower_more : verdict_post);
             return;
         }
-        set(verdict_refuse);
+        set(verdict_post);
     }
 
     // ---- kind 3 (0x101c25c8): a request for money ----
@@ -183,33 +185,33 @@ private:
         const std::int32_t want = scaled(tier > 4 ? 0x28 : tier < 0 ? pool_scale_a : pool_scale_b, base);
         const std::int32_t value = person_value();
         const std::int32_t floor = 0x109a - adjust;
-        if (value < floor) return set(verdict_refuse);
-        if (std::int32_t(c.i16(at + row_at::rating)) < floor && value < rep + 0x2ee - adjust) return set(verdict_refuse);
+        if (value < floor) return set(verdict_post);
+        if (std::int32_t(c.i16(at + row_at::rating)) < floor && value < rep + 0x2ee - adjust) return set(verdict_post);
         if (held > want) {
-            if (!greater(earnings, c.f64(at + row_at::high))) return set(verdict_refuse);
-            if (tier > 2) return set(verdict_busy);
+            if (!greater(earnings, c.f64(at + row_at::high))) return set(verdict_post);
+            if (tier > 2) return set(verdict_lower_more);
             const auto manager = manager_value();
-            set(manager > 0x1676 && manager > rep - 0x2ee - adjust ? verdict_busy : verdict_refuse);
+            set(manager > 0x1676 && manager > rep - 0x2ee - adjust ? verdict_lower_more : verdict_post);
             return;
         }
         if (c.u32(at + row_at::amount) != 0) {
-            set(verdict_busy);
+            set(verdict_lower_more);
         } else if (greater(earnings, c.f64(at + row_at::high))) {
             if (tier > 2) {
-                set(verdict_busy);
+                set(verdict_lower_more);
             } else {
                 const auto manager = manager_value();
-                if (manager > 0x1676 && manager > rep - 0x2ee - adjust) set(verdict_busy);
+                if (manager > 0x1676 && manager > rep - 0x2ee - adjust) set(verdict_lower_more);
             }
         }
         // The owner's chance: a draw below the byte at +0x63 of his record (none when it is 0) must come up.
         if (const auto owner = c.u32(club + club_at::owner); owner) {
             const std::int8_t temper = c.i8(owner + owner_at::temper);
             const std::int32_t chance = temper == 0 ? 0 : draws.below(temper, 0x101c285c);
-            if (chance == 0) return set(verdict_busy);
+            if (chance == 0) return set(verdict_lower_more);
         }
-        if (c.u32(club + club_at::owner) == 0 && draws.modulo(5, 0x101c29c4) == 0) return set(verdict_busy);
-        set(verdict_accept);
+        if (c.u32(club + club_at::owner) == 0 && draws.modulo(5, 0x101c29c4) == 0) return set(verdict_lower_more);
+        set(verdict_none);
         // The amount asked: by the club's reputation.
         const std::int32_t rep2 = reputation();
         std::int32_t asked;
@@ -221,11 +223,11 @@ private:
         if (counter < std::int64_t(asked)) {
             const auto owner = c.u32(club + club_at::owner);
             if (!owner || !c.u32(owner + owner_at::profile)) {
-                if (draws.modulo(5, 0x101c2c2c) != 0) return set(verdict_busy);
+                if (draws.modulo(5, 0x101c2c2c) != 0) return set(verdict_lower_more);
             } else {
                 const std::int8_t trait = c.i8(c.u32(owner + owner_at::profile) + 0x2f);
                 const std::int32_t chance = trait == 0 ? 0 : draws.below(trait, 0x101c2ad0);
-                if (chance > 1) return set(verdict_busy);
+                if (chance > 1) return set(verdict_lower_more);
             }
         }
         c.put32(row() + row_at::amount, std::uint32_t(asked));
@@ -251,17 +253,17 @@ private:
         const std::int8_t bound = std::int8_t(scaled(tier > 4 ? 0x28 : tier > 0 ? pool_scale_b : pool_scale_a, mood));
         const std::int32_t value = manager_value();
         const std::int32_t rep = reputation();
-        if (value < 0x1388 || value < rep - 0x5dc - adjust) return set(verdict_refuse);
+        if (value < 0x1388 || value < rep - 0x5dc - adjust) return set(verdict_post);
         const auto at = row();
         const bool rival = c.i8(at + row_at::spare) != 0;
         if (rival) {
-            if (!greater(c.f64(at + row_at::low), c.f64(at + row_at::high))) return set(verdict_refuse);
-            set(tier > 2 || (value > 0x1676 && value > rep - 0x4e2 - adjust) ? verdict_busy : verdict_refuse);
+            if (!greater(c.f64(at + row_at::low), c.f64(at + row_at::high))) return set(verdict_post);
+            set(tier > 2 || (value > 0x1676 && value > rep - 0x4e2 - adjust) ? verdict_lower_more : verdict_post);
             return;
         }
         if (c.i32(employer + 0x14) > 0x15f90) {
-            if (!greater(c.f64(at + row_at::low), c.f64(at + row_at::high))) return set(verdict_refuse);
-            set(tier > 2 || (value > 0x1676 - adjust && value > rep - 0x4e2 - adjust) ? verdict_busy : verdict_refuse);
+            if (!greater(c.f64(at + row_at::low), c.f64(at + row_at::high))) return set(verdict_post);
+            set(tier > 2 || (value > 0x1676 - adjust && value > rep - 0x4e2 - adjust) ? verdict_lower_more : verdict_post);
             return;
         }
         const std::int32_t chance = bound == 0 ? 0 : draws.below(bound, 0x101c2f08);
@@ -276,13 +278,13 @@ private:
             }
             c.set({{3, employer}, {4, c.u8(row() + row_at::spare)}});
             c.call(callee::set_rating, 0x101c317c);
-            return set(verdict_accept);
+            return set(verdict_none);
         }
         const auto later = row();
-        if (!greater(c.f64(later + row_at::low), c.f64(later + row_at::high))) return set(verdict_refuse);
-        if (standing() > 2) return set(verdict_busy);
+        if (!greater(c.f64(later + row_at::low), c.f64(later + row_at::high))) return set(verdict_post);
+        if (standing() > 2) return set(verdict_lower_more);
         const auto manager = manager_value();
-        set(manager > 0x1676 - adjust && manager > reputation() - 0x4e2 - adjust ? verdict_busy : verdict_refuse);
+        set(manager > 0x1676 - adjust && manager > reputation() - 0x4e2 - adjust ? verdict_lower_more : verdict_post);
     }
 };
 }

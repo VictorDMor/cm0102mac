@@ -153,9 +153,9 @@ std::uint32_t announce_move(Cpu& c, std::uint32_t list, std::uint32_t club) {
 }
 
 namespace {
-// The original's order test of the move's date against today's: the year halfwords compare unsigned, equal
+// Whether the move's date is after today's (the node waits), by the original's order test: the year halfwords compare unsigned, equal
 // ones go through a bit trick on the two sign-extended day halfwords whose result is its sign bit.
-bool before_today(Cpu& c, std::uint32_t node, std::uint32_t date) {
+bool after_today(Cpu& c, std::uint32_t node, std::uint32_t date) {
     const std::uint32_t today_year = c.u16(date + 2), node_year = c.u16(node + move_at::year);
     if (today_year < node_year) return true;
     if (today_year > node_year) return false;
@@ -180,7 +180,7 @@ void process_due_moves(Cpu& c, std::uint32_t list) {
             assess::report_assertion(c, frame, assert_high, assert_low, 0x57e4, {0x101c1020, 0x101c1024, 0x101c1040, 0x101c1050});
             return;
         }
-        if (before_today(c, node, date)) continue;
+        if (after_today(c, node, date)) continue;
         const auto person = c.u32(c.toc(toc_cell::people)) + c.u32(node + move_at::person) * 0x70;
         if (c.i8(node + move_at::kind) != 0) {
             for (std::uint32_t k = 0; k < 4; ++k) {

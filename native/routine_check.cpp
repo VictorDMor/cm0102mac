@@ -372,6 +372,7 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
             if (routine_check_native_contract &&
                 ((at < stack && stack - at <= 0x100000) || (at >= stack + 4 && at < stack + 12) ||
                  (at >= stack + 0x18 && at < stack + 0x38))) continue;
+            if (routine_check_dead_stack_free && at < stack && stack - at <= 0x100000) continue;
             ++differing;
             if (listed++ >= 24) continue;
             std::string where;
@@ -390,6 +391,7 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
 
 bool routine_check_child() { return in_child; }
 bool routine_check_native_contract = false;
+bool routine_check_dead_stack_free = false;
 
 RoutineChecker::RoutineChecker(std::function<bool(std::uint32_t)> wanted, std::uint64_t all, std::uint64_t every)
     : wanted_(std::move(wanted)), all_(all), every_(every) {}

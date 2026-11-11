@@ -211,6 +211,7 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
     const auto stop_rewrite = "the rewrite stopped: ", stop_original = "the original stopped: ";
     std::vector<std::string> found;
     routine_check_native_contract = manager_manager_native(entry);
+    routine_check_dead_stack_free = manager_manager_dead_stack_free(entry);
     try {
         found = compare_routine_call(s, entry, bounded_original, bounded_rewrite, results, false, strict);
     } catch (const std::runtime_error& error) {
@@ -221,6 +222,13 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
     for (const auto& line : found) {
         if (line.starts_with(stop_rewrite)) rewrite_stop = line.substr(std::string_view(stop_rewrite).size());
         if (line.starts_with(stop_original)) original_stop = line.substr(std::string_view(stop_original).size());
+    }
+    // The instruction budget counts generated instructions only: a native-first routine's own loops are not
+    // charged, so a mutated input that keeps the original looping until the budget runs out may let the native
+    // side finish. Neither side's result is known then: count it with the timeouts, not as a difference.
+    if (manager_manager_native(entry) && original_stop.starts_with("Native instruction budget exhausted")) {
+        outcome.timed_out = true;
+        return outcome;
     }
     if (!rewrite_stop.empty() && rewrite_stop == original_stop) {
         outcome.faulted = true;
@@ -317,6 +325,19 @@ std::vector<TracedCall> trace_run(State& s, std::uint32_t entry, RoutineRunner r
     return calls;
 }
 struct TraceFinding { std::uint64_t count = 0; std::uint64_t original = 0, rewrite = 0; };
+// Argument findings accepted with evidence for native-first entries (manager_manager_trace_accepted.inc).
+struct AcceptedFinding { std::uint32_t back, target; unsigned reg; const char* reason; };  // back: the bl's address
+#define MANAGER_MANAGER_TRACE_ACCEPTED(back, target, reg, reason) AcceptedFinding{back, target, reg, reason},
+constexpr AcceptedFinding accepted_findings[] = {
+#include "manager_manager_trace_accepted.inc"
+};
+#undef MANAGER_MANAGER_TRACE_ACCEPTED
+bool accepted_finding(std::uint32_t back, std::uint32_t target, unsigned reg) {
+    return std::ranges::any_of(accepted_findings, [&](const AcceptedFinding& a) {
+        return a.back == back - 4 && a.target == target && a.reg == reg;
+    });
+}
+std::uint64_t accepted_seen = 0;
 constexpr unsigned wrong_return = 200, wrong_count = 201, wrong_order = 202, poke_missed = 203;
 bool trace_corrupted = false, arguments_corrupted = false;
 std::map<std::tuple<std::uint32_t, std::uint32_t, unsigned>, TraceFinding> trace_findings;
@@ -383,7 +404,9 @@ void compare_traces(State& s, std::uint32_t entry) {
         return at < calls.size();
     };
     const auto both = [&](Site site) { return sites.count(site) != 0 && original_calls.count(site) != 0; };
-    for (std::size_t a = 0, b = 0; next_shown(original, a, both) && next_shown(rewrite, b, both); ++a, ++b)
+    // A truncated trace's order past the shared calls is unknown too (a native routine's direct calls are not
+    // traced, so the two prefixes cover different stretches of the run).
+    for (std::size_t a = 0, b = 0; !truncated && next_shown(original, a, both) && next_shown(rewrite, b, both); ++a, ++b)
         if (original[a].back != rewrite[b].back || original[a].target != rewrite[b].target) {
             record({original[a].back, original[a].target}, wrong_order, rewrite[b].back, rewrite[b].target);
             break;
@@ -407,13 +430,15 @@ void compare_traces(State& s, std::uint32_t entry) {
         ++traced_pairs; ++traced_sites[key];
         if (read_by_target != argument_masks.end()) for (unsigned n = 0; n < 8; ++n)
             if ((read_by_target->second >> n & 1) && call.arguments[n] != other.arguments[n]) {
+                if ((manager_manager_native(entry) || manager_manager_native_code(call.back - 4)) &&
+                    accepted_finding(call.back, call.target, 3 + n)) { ++accepted_seen; continue; }
                 auto& finding = trace_findings[{call.back, call.target, 3 + n}];
                 if (!finding.count++) { finding.original = call.arguments[n]; finding.rewrite = other.arguments[n]; }
             }
         // A native-first routine leaves the non-volatile registers as its caller had them, so
         // they are not the original's at its calls (tools/register_contract.py lists a callee
         // that reads one; none of this module's native entries calls such a routine so far).
-        if (manager_manager_native(entry)) continue;
+        if (manager_manager_native(entry) || manager_manager_native_code(call.back - 4)) continue;
         for (unsigned n = 0; n < 19; ++n) if (call.gprs[n] != other.gprs[n]) {
             auto& finding = trace_findings[{call.back, call.target, 13 + n}];
             if (!finding.count++) { finding.original = call.gprs[n]; finding.rewrite = other.gprs[n]; }
@@ -426,7 +451,7 @@ void compare_traces(State& s, std::uint32_t entry) {
 }
 void print_trace_findings() {
     std::cout << "call_trace_pairs=" << traced_pairs << " sites=" << traced_sites.size() << " findings=" << trace_findings.size()
-              << " truncated_traces=" << truncated_traces << '\n';
+              << " truncated_traces=" << truncated_traces << " accepted_argument_differences=" << accepted_seen << '\n';
     if (pokes_fired || pokes_unfired)
         std::cout << "pokes_fired=" << pokes_fired << " pokes_unfired=" << pokes_unfired << " (unfired: the case's path ended before the poked call)\n";
     for (const auto& [key, finding] : trace_findings) {
@@ -582,12 +607,15 @@ void advance(State& s, unsigned count) {
     }
 }
 
-// The fixture cases compare r3 and f1 for every routine written to the full image (each path
-// leaves them as the original does). A native-first routine leaves only the results its line
-// declares; `tools/register_contract.py --after ENTRY` shows what its callers read.
+// A native-first routine leaves only the results its line declares; `tools/register_contract.py
+// --after ENTRY` shows what its callers read. A routine written to the full image leaves f1 as the
+// original does on every path, and r3 too unless its line declares no result: there r3 is what its
+// last callee left, and once that callee is native-first it differs (the daily update 0x10196390
+// ends with a call of 0x101c0fc0). r3 is never spilled as a leftover: every call sets it.
 unsigned results_of(std::uint32_t entry) {
-    if (manager_manager_native(entry)) return manager_manager_results(entry);
-    return RoutineChecker::result_r3 | RoutineChecker::result_f1;
+    const auto declared = manager_manager_results(entry);
+    if (manager_manager_native(entry)) return declared;
+    return (declared & RoutineChecker::result_r3) | RoutineChecker::result_f1;
 }
 
 void run_cases(State& s, std::uint32_t match, std::mt19937& random) {

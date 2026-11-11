@@ -15,13 +15,13 @@ namespace {
 using guest::Cpu;
 [[maybe_unused]] constexpr unsigned NONE = 0, R3 = RoutineChecker::result_r3, F1 = RoutineChecker::result_f1;
 struct Routine {
-    std::uint32_t entry;
+    std::uint32_t entry, end;
     unsigned results;
     void (*hook)(Cpu&);
     bool production;  // MANAGER_MANAGER_ROUTINE: generation hooks it; MANAGER_MANAGER_DRAFT: check tools only
 };
-#define MANAGER_MANAGER_ROUTINE(entry, end, results, digest, ...) Routine{entry, results, __VA_ARGS__, true},
-#define MANAGER_MANAGER_DRAFT(entry, end, results, digest, ...) Routine{entry, results, __VA_ARGS__, false},
+#define MANAGER_MANAGER_ROUTINE(entry, end, results, digest, ...) Routine{entry, end, results, __VA_ARGS__, true},
+#define MANAGER_MANAGER_DRAFT(entry, end, results, digest, ...) Routine{entry, end, results, __VA_ARGS__, false},
 constexpr auto sorted_routines() {
     auto table = std::to_array<Routine>({
 #include "manager_manager_routines.inc"
@@ -53,11 +53,18 @@ constexpr std::uint32_t native_entries[] = {
     0};
 #undef MANAGER_MANAGER_NATIVE
 bool native(std::uint32_t entry) { return entry && std::ranges::find(native_entries, entry) != std::end(native_entries); }
+// The module's routines whose leftover stack a later reader reads (tools/stack_contract.py module
+// MANAGER_MANAGER.CPP, 2026-11-11): their dead stack stays compared; for every other routine it is free.
+constexpr std::uint32_t leave_readers[] = {0x10196390, 0x1019d320, 0x101a2eb0, 0x101ad080, 0x101b1620};
+bool dead_stack_free(std::uint32_t entry) { return std::ranges::find(leave_readers, entry) == std::end(leave_readers); }
 // Sets the checker's comparison for one routine's check and puts it back.
 struct NativeContract {
-    bool before = routine_check_native_contract;
-    explicit NativeContract(std::uint32_t entry) { routine_check_native_contract = native(entry); }
-    ~NativeContract() { routine_check_native_contract = before; }
+    bool before = routine_check_native_contract, before_stack = routine_check_dead_stack_free;
+    explicit NativeContract(std::uint32_t entry) {
+        routine_check_native_contract = native(entry);
+        routine_check_dead_stack_free = dead_stack_free(entry);
+    }
+    ~NativeContract() { routine_check_native_contract = before; routine_check_dead_stack_free = before_stack; }
 };
 
 const Routine* listed(std::uint32_t entry) {
@@ -87,6 +94,12 @@ bool run(State& s, const Routine& routine) {
 
 bool manager_manager_lists(std::uint32_t entry) { return listed(entry) != nullptr; }
 bool manager_manager_native(std::uint32_t entry) { return native(entry); }
+bool manager_manager_dead_stack_free(std::uint32_t entry) { return dead_stack_free(entry); }
+bool manager_manager_native_code(std::uint32_t address) {
+    for (const auto& routine : routines)
+        if (address >= routine.entry && address < routine.end) return native(routine.entry);
+    return false;
+}
 unsigned manager_manager_results(std::uint32_t entry) {
     const auto* routine = listed(entry);
     return routine ? routine->results : 0;

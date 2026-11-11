@@ -96,7 +96,9 @@ public:
             const auto byte = c.u8(at_row);
             c.put8(at_row, (byte & 0xe0u) | (std::uint32_t(level_of(byte) + 1) & 0x1f));
         }
-        const std::int32_t sum = std::int32_t(c.i16(club + club_at::reputation)) + c.i16(manager_profile + profile_at::value);
+        // The original reads the manager's profile again here (0x101c0910), after the reaction calls and the draws.
+        const auto profile_now = c.u32(manager + 0x1c);
+        const std::int32_t sum = std::int32_t(c.i16(club + club_at::reputation)) + c.i16(profile_now + profile_at::value);
         const auto person_profile = c.u32(person + person_at::profile);
         const std::int32_t talent = c.i8(person_profile + profile_at::talent), form = c.i8(person_profile + profile_at::form);
         std::int32_t second = std::int32_t(std::uint32_t(talent + form) - std::uint32_t(std::int32_t(c.i8(person + person_at::trait))));

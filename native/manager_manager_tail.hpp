@@ -19,11 +19,11 @@ void post_move_news(guest::Cpu& c, std::uint32_t person, std::int8_t first, std:
 // today's, hands the person over (up to four effects through 0x100e0410), posts the news (post_move_news) and
 // removes the node.
 void process_due_moves(guest::Cpu& c, std::uint32_t list);
-// 0x101c1830 (r3 = list, r4 = person record): finds in the search 0x1048b180 the person's pending move to another
-// club and files the news message 0x178d about it (post_rival_news), then queues the person's index in list[4].
-// Returns 1 when it found one, otherwise 0.
-std::uint32_t announce_move(guest::Cpu& c, std::uint32_t list, std::uint32_t person);
-// 0x101c1a10 (r4 = person, r5 and r6 = the two other participants' records): files the news message 0x178d.
+// 0x101c1830 (r3 = list, r4 = a club record): finds in the search 0x1048b180 the club's pending move and files the
+// news message 0x178d about it (post_rival_news), then queues the club's index in list[4]. Returns 1 when it found
+// one, otherwise 0.
+std::uint32_t announce_move(guest::Cpu& c, std::uint32_t list, std::uint32_t club);
+// 0x101c1a10 (r4 = a club record, r5 and r6 = the two other participants' records): files the news message 0x178d.
 void post_rival_news(guest::Cpu& c, std::uint32_t person, std::uint32_t other_a, std::uint32_t other_b);
 
 // 0x101c0230: a club weighs the application of the manager record `person` (r3 = list, r4 = person, r5 = flag,

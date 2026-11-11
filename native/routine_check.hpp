@@ -111,6 +111,11 @@ bool routine_check_child();
 // the callers' frames. A reader of leftover stack or registers must be kept by the rewrite
 // (tools/stack_contract.py, tools/register_contract.py); this flag does not look for one.
 extern bool routine_check_native_contract;
+// The stack part of that contract alone, for a routine written to the full image: the stack below its entry
+// stack pointer is left out (its callees may now be native and leave their dead frames differently). A family
+// keeps it off for a routine the stack audit lists as leaving bytes that a later reader reads
+// (tools/stack_contract.py module MODULE.CPP).
+extern bool routine_check_dead_stack_free;
 
 // Coverage builds of a checker only: runs in each child before it leaves
 // through _exit, past the runtime's own flush at exit.

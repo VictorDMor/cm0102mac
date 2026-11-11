@@ -20,7 +20,7 @@ void post_assessment_message(guest::Cpu& c, std::uint32_t person, std::uint32_t 
 std::int8_t assess_verdict(guest::Cpu& c, std::uint32_t list, std::uint32_t record, std::uint32_t club,
                            std::uint32_t person);
 // 0x101c3220: a club's assessment of the manager `person` for the club record `club`, `kind` a byte. Files the
-// reports of its stages (0x101c3860), takes the verdict of 0x101c1e20 and acts on it: refusals lower the club's
-// row rating, an acceptance posts a record to the list at +4 and flags the row.
+// reports of its stages (0x101c3860), takes the verdict of 0x101c1e20 and acts on it: 2 posts a record to the list
+// at +4 and flags the row, 3 and 4 lower the club's row rating (by 1250 and 500), 1 does nothing more.
 void assess_manager(guest::Cpu& c, std::uint32_t list, std::uint32_t person, std::uint32_t club, std::uint32_t kind);
 }

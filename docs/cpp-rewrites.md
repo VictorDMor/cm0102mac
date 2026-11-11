@@ -1742,3 +1742,12 @@ four inlined byte draws is dead (each bound is an `extsb` byte). 0x100f5770 retu
 0x101bb9f0 adds. The text routine is the one place that sets non-argument registers: 0x1074bab0 appends a 0xd0-byte
 row built in its own frame, and the bytes after the name's terminator are the save area (`stmw r22`) of the
 previous callee, so r22-r31 hold the original's values at the formatter calls before it.
+
+The assessment of a manager offered to a club (0x101c3220 with its verdict 0x101c1e20 and its report 0x101c3860;
+`manager_manager_assess*.cpp`) and the module's tail (`manager_manager_tail*.cpp`: the application a club weighs
+0x101c0230, the queue of due moves 0x101c0fc0 and their news and texts) are native-first too. 0x101c0230 takes four of
+its arguments from the caller's parameter area (sp+0x3b, +0x3e, +0x43, +0x44) and re-reads the person's word +0x1c after
+a call at 0x101c0910 rather than reusing the earlier load; the rewrite does the same. Under the native contract this
+module's checker leaves the dead stack below the entry free for every routine except the five whose leftovers the stack
+audit lists readers for (0x10196390, 0x1019d320, 0x101a2eb0, 0x101ad080, 0x101b1620), and does not compare
+non-volatile registers at calls made from native code, whichever routine is being checked.

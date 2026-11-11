@@ -17,6 +17,11 @@ bool manager_manager_lists(std::uint32_t entry);
 // Whether the entry is written native-first and compared under the native contract
 // (manager_manager_native.inc; routine_check.hpp).
 bool manager_manager_native(std::uint32_t entry);
+// Whether the checker leaves the entry's dead stack out (every entry but the ones the stack audit lists as
+// leaving bytes for a later reader).
+bool manager_manager_dead_stack_free(std::uint32_t entry);
+// Whether the address lies in the body of a routine written native-first (a call site's return address).
+bool manager_manager_native_code(std::uint32_t address);
 // The result registers the entry's line declares (RoutineChecker::result_r3 / result_f1).
 unsigned manager_manager_results(std::uint32_t entry);
 // Listed as MANAGER_MANAGER_ROUTINE: the generator hooks its entry in production.
