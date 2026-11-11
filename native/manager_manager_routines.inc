@@ -14,3 +14,5 @@
 #include "manager_manager_routines_weekly.inc"
 #include "manager_manager_routines_people_text.inc"
 #include "manager_manager_routines_standing.inc"
+#include "manager_manager_routines_assess.inc"
+#include "manager_manager_routines_tail.inc"

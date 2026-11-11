@@ -1,0 +1,10 @@
+// MANAGER_MANAGER.CPP tail block (manager_manager_routines.inc).
+MANAGER_MANAGER_DRAFT(0x101c42c0, 0x101c42e8, R3, "377bda509f8b38df", [](Cpu& c) { c.set(3, manager_manager::standing_allows(c, c.r(4), std::int8_t(c.r(5)))); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c1180, 0x101c12a0, NONE, "2b0ef7c0d7fac036", [](Cpu& c) { manager_manager::post_move_news(c, c.r(4), std::int8_t(c.r(5)), std::int8_t(c.r(6)), std::int16_t(c.r(7)), std::int8_t(c.r(8))); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c0fc0, 0x101c1174, NONE, "5c2ff2dce7a2868f", [](Cpu& c) { manager_manager::process_due_moves(c, c.r(3)); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c1a10, 0x101c1c14, NONE, "5fc939129fc48589", [](Cpu& c) { manager_manager::post_rival_news(c, c.r(4), c.r(5), c.r(6)); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c1830, 0x101c1a0c, R3, "87a7b59af62e3be4", [](Cpu& c) { const auto found = manager_manager::announce_move(c, c.r(3), c.r(4)); c.set(3, found); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c0230, 0x101c0fc0, NONE, "a0f5ce825b5b8ffa", [](Cpu& c) { const auto application = manager_manager::read_application(c); manager_manager::weigh_application(c, c.r(3), c.r(4), std::int8_t(c.r(5)), application); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c12a0, 0x101c15e8, NONE, "d20a35b7dfa754cf", [](Cpu& c) { manager_manager::move_news_text(c, c.r(4), c.r(5), c.r(6)); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c1c20, 0x101c1e20, NONE, "d3d72bf855107e4f", [](Cpu& c) { manager_manager::rival_news_text(c, c.r(4), c.r(5), c.r(6)); c.finish(); })
+MANAGER_MANAGER_DRAFT(0x101c3b10, 0x101c42bc, NONE, "c3ea6db715ed98f6", [](Cpu& c) { manager_manager::assessment_news_text(c, c.r(4), c.r(5), c.r(6)); c.finish(); })

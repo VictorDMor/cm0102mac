@@ -12,3 +12,5 @@
 #include "manager_manager_weekly.hpp"
 #include "manager_manager_people_text.hpp"
 #include "manager_manager_standing.hpp"
+#include "manager_manager_assess.hpp"
+#include "manager_manager_tail.hpp"
