@@ -1671,6 +1671,19 @@ the owner follows the original, `list_next` 0x10738e00 inline. Written as plain 
 of the day (5 pairs). An epilogue's `lmw` leaves Ghidra's `tea` temporary past the restored words (`lmw_leaves`); the
 season replay no longer compares `tea` at day boundaries, since no game code reads it before writing it.
 
+Every search of a day comes from SHORTLIST's candidate filter (0x1035f368), always on the same 53-element list, and
+finds almost nothing (season-day: 2.84 million searches, 150 million steps, 1,990 found). The fast path answers from
+a derived index (`list_search_index.hpp`): each key's first node and position, and the last node for an absent key,
+so registers, the condition field and the charged instructions stay the walk's. That list is MANAGER_MANAGER's object
+(`*TOC[-0x79f0]`) +8, its 0x28-byte offer records keyed by person id at +8. Its writers: the object's constructor
+0x10193630 and destructor 0x10193a20, the load 0x10193b10 (appends), the daily update 0x10196390 (removes; it also
+writes byte +1, not the key), 0x101aaa90 and 0x101ac280 (append, and remove then append to change a record); the cell
+itself is set at 0x103463c8 and 0x1034b0f4 and cleared at 0x1034df8c. Nothing writes a linked record's key. Every
+append and removal runs the utility-object node routines, which note a mutation on the State; the index is rebuilt
+after one, or when the container, header, count or head differ (4,593 rebuilds on season-day). It is on in the app and
+`cm-world-replay` only (`set_native_list_search_index`); `CM_LIST_SEARCH_VERIFY=1` checks every answer against the
+walk, `CM_LIST_SEARCH_INDEX=0` turns it off.
+
 The job assessment 0x101ad080 (`manager_manager_assessment.cpp`) keeps its whole 0x1f0 frame: the stack audit finds
 later readers of its int-to-double and `fctiwz` slots. Quirks it reproduces: one conversion (0x101af7cc) is `fsubs`, so
 that rule rounds the score to single before its `fmuls`; a path with a null person+0xc reads the caller's r26, never

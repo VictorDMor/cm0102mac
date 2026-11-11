@@ -83,6 +83,8 @@ int main(int argc, char** argv) {
         auto program = std::make_unique<State>();
         load_program(*program, argv[1]);
         program->memory.map(stack - 0x300, 0x400);
+        // Every case runs on a fresh State, so the C++ side answers from a fresh index (list_search_index.hpp).
+        set_native_list_search_index(true);
         unsigned cases = 0;
         for (std::size_t length = 0; length <= 6; ++length) {
             std::vector<std::int32_t> keys;
@@ -121,6 +123,33 @@ int main(int argc, char** argv) {
                 for (unsigned i = 0; i < 0x10; i += 4) s.memory.write<4>(moved + i, s.memory.read<4>(list + i));
                 s.memory.write<4>(container + 8, moved);
             }}, false);
+        // The index across calls on one State: a key changed behind the same count and head is seen after a node
+        // or list routine ran (note_list_mutation, which the utility-object owners call for each of them); without
+        // that note the index answers from before the change, and the comparison must see it.
+        for (const bool noted : {true, false}) {
+            const Case c{noted ? "index after a list routine" : "stale index (negative control)", 4, {1, 2, 3, 4}, 3};
+            auto original = setup(*program, c), modern = setup(*program, c);
+            cm::aot::manager_manager_declining = true;
+            require(execute(*original).empty(), c.label + ": first search");
+            cm::aot::manager_manager_declining = false;
+            require(execute(*modern).empty(), c.label + ": first search");
+            for (auto* s : {original.get(), modern.get()}) {
+                s->memory.write<4>(elements + 2 * 0x20 + 8, 7);  // key 3 becomes 7: same count, same head
+                s->registers.fill(0xa5);
+                s->wr<4>(4, stack); s->wr<4>(8, toc); s->wr<4>(12, container); s->wr<4>(16, key);
+                s->wr<4>(4128, sentinel);
+                s->pc = entry;
+                s->budget = s->executed + c.budget;
+            }
+            if (noted) note_list_mutation(*modern);
+            cm::aot::manager_manager_declining = true;
+            require(execute(*original).empty(), c.label + ": second search");
+            cm::aot::manager_manager_declining = false;
+            require(execute(*modern).empty(), c.label + ": second search");
+            const bool same = original->r<4>(12) == modern->r<4>(12);
+            require(same == noted, c.label + (noted ? ": the rebuilt index differs from the walk" : ": the stale index was not seen"));
+            ++cases;
+        }
         // A fault is the original's. (A budget too small for the search no longer
         // stops it: the fast path steps aside to MANAGER_MANAGER.CPP's C++, which,
         // like every owner, takes no instruction budget.)

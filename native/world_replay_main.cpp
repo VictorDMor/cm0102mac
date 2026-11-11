@@ -67,6 +67,7 @@
 //                     owners take their observed paths, so the run is slower
 //   --stack-audit-all as --stack-audit, listing every site, offset and writer
 //                     (the per-reader leftover contract needs all of them)
+#include "list_search.hpp"
 #include "match_replay.hpp"
 #include "match_speed.hpp"
 #include "match_turbo.hpp"
@@ -351,6 +352,7 @@ int main(int argc, char** argv) {
             };
         }
         initialize_native_match_speed();
+        set_native_list_search_index(true);
         set_match_turbo_enabled(true);
         auto initial = std::make_unique<State>(), expected = std::make_unique<State>();
         load_match_snapshot(*initial, capture / "initial.snapshot");

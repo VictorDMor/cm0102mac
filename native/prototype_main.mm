@@ -1,4 +1,5 @@
 #include "probe_host.hpp"
+#include "list_search.hpp"
 #import <AppKit/AppKit.h>
 #include <filesystem>
 #include <array>
@@ -8,6 +9,7 @@
 #include <unistd.h>
 
 int main() {
+    cm::aot::set_native_list_search_index(true);
     @autoreleasepool {
         std::filesystem::path run_directory;
         int result = 1;

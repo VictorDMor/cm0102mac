@@ -1,6 +1,7 @@
 #include "utility_object_adapter.hpp"
 #include "application_exit.hpp"
 #include "guest_context_transfer.hpp"
+#include "list_search.hpp"
 #include "match_turbo.hpp"
 #include <sstream>
 #include <string_view>
@@ -31,6 +32,9 @@ bool try_modern_utility_object(State& s, std::uint32_t entry) {
     const auto index = utility_object::entry_index(entry);
     auto& d = utility_object_diagnostics(s);
     if (d.original_body == entry) return false;
+    // The node and list routines (node constructor and destructor, list destructor and clear; the list
+    // constructor is inlined by the generated code) change lists the search index may hold, whichever body runs.
+    if (index <= 4) note_list_mutation(s);
     bool original = d.original || d.entry_original[index];
     if (original) ++d.original_calls[index];
     else if (match_pc_profile_enabled()) { original = true; ++d.profile_original_calls[index]; }

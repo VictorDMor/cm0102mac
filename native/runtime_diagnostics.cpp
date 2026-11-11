@@ -74,6 +74,8 @@
 #include "actor_order_adapter.hpp"
 #include "movement_choice_adapter.hpp"
 #include "team_line_adapter.hpp"
+#include "list_search.hpp"
+#include "list_search_index.hpp"
 
 namespace cm::aot {
 // Owned process-local metadata. Extending this private definition does not
@@ -155,7 +157,13 @@ struct RuntimeDiagnostics {
     ActorOrderDiagnostics actor_order;
     MovementChoiceDiagnostics movement_choice;
     TeamLineDiagnostics team_line;
+    ListSearchIndex list_search;
 };
+ListSearchIndex& list_search_index(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->list_search;
+}
+void note_list_mutation(State& state) { ++list_search_index(state).mutations; }
 TeamLineDiagnostics& team_line_diagnostics(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->team_line;

@@ -1,6 +1,11 @@
 #include "list_search.hpp"
+#include "list_search_index.hpp"
 #include "aot_runtime.hpp"
 #include "match_turbo.hpp"
+#include "routine_check.hpp"
+#include <cstdlib>
+#include <cstdio>
+#include <algorithm>
 #include <atomic>
 #include <initializer_list>
 
@@ -18,6 +23,7 @@ struct Outcome {
     std::uint32_t list = 0, saved = 0, data = 0, node = 0;
     std::int16_t count = 0;
     std::int32_t last_key = 0, wanted = 0;
+    bool operator==(const Outcome&) const = default;
 };
 // Whether [address, address + size) overlaps [start, start + length).
 bool overlaps(std::uint32_t address, unsigned size, std::uint32_t start, unsigned length) {
@@ -60,7 +66,92 @@ std::optional<Outcome> trace(const State& s, std::uint32_t at, std::uint32_t key
     }
     return o;
 }
-std::atomic<std::uint64_t> completions{0};
+std::atomic<std::uint64_t> completions{0}, index_answers{0};
+// CM_LIST_SEARCH_VERIFY=1: every index answer is checked against the walk (trace), and a difference aborts.
+const bool verify_index = [] { const char* v = std::getenv("CM_LIST_SEARCH_VERIFY"); return v && *v == '1'; }();
+// CM_LIST_SEARCH_INDEX=0: the walk only (for paired timing).
+const bool index_allowed = [] { const char* v = std::getenv("CM_LIST_SEARCH_INDEX"); return !(v && *v == '0'); }();
+std::atomic<bool> index_enabled{false};
+
+// Builds the index from the list as the walk reads it; `usable` stays false where the walk would step aside for
+// a reason that does not depend on the call (a null node or element before the count, or the cursor field
+// overlapping something the walk reads).
+void build(const State& s, ListSearchIndex& index, std::uint32_t at, std::uint32_t list_at, std::uint32_t head,
+           std::int16_t count) {
+    const auto word = [&](std::uint32_t address) { return std::uint32_t(s.memory.read<4>(address)); };
+    index.built = true;
+    index.usable = false;
+    index.built_at = index.mutations;
+    index.container = at;
+    index.list = list_at;
+    index.head = head;
+    index.count = count;
+    index.first.clear();
+    index.last_node = index.last_data = 0;
+    const auto cursor_field = list_at + list::cursor;
+    std::uint64_t low = std::min<std::uint64_t>(std::uint64_t(at) + container::list, list_at);
+    std::uint64_t high = std::max<std::uint64_t>(std::uint64_t(at) + container::list + 4, std::uint64_t(list_at) + 0x10);
+    const auto read = [&](std::uint32_t address, unsigned size) {
+        low = std::min<std::uint64_t>(low, address);
+        high = std::max<std::uint64_t>(high, std::uint64_t(address) + size);
+        return !overlaps(address, size, cursor_field, 4);
+    };
+    if (overlaps(at + container::list, 4, cursor_field, 4)) return;
+    auto node = head;
+    for (std::int32_t position = 0; position < count; ++position) {
+        if (!node || !read(node + node::data, 4) || !read(node + node::next, 4)) return;
+        const auto data = word(node + node::data);
+        const auto next = word(node + node::next);
+        if (!data || !read(data + element::key, 4)) return;
+        index.first.try_emplace(std::int32_t(word(data + element::key)),
+                                ListSearchIndex::Hit{std::uint32_t(position + 1), node, data});
+        index.last_node = node;
+        index.last_data = data;
+        node = next;
+    }
+    if (high > (UINT64_C(1) << 32)) return;
+    index.low = low;
+    index.high = high;
+    index.usable = true;
+}
+// The walk's outcome from the index, or nothing where the call itself rules it out: the frame the original
+// writes, or the cursor it moves, would alias something the walk reads.
+std::optional<Outcome> lookup(State& s, std::uint32_t at, std::uint32_t key, std::uint32_t sp) {
+    if (!index_enabled.load(std::memory_order_relaxed) || !index_allowed || routine_checker) return std::nullopt;
+    const auto word = [&](std::uint32_t address) { return std::uint32_t(s.memory.read<4>(address)); };
+    if (sp < 0x80 || std::uint64_t(sp) + 12 > (UINT64_C(1) << 32)) return std::nullopt;
+    const std::uint64_t frame_low = sp - 0x80, frame_high = std::uint64_t(sp) + 12;
+    if (overlaps(at + container::list, 4, std::uint32_t(frame_low), 0x8c)) return std::nullopt;
+    const auto list_at = word(at + container::list);
+    const auto count = std::int16_t(s.memory.read<2>(list_at + list::count));
+    const auto head = word(list_at + list::head);
+    auto& index = list_search_index(s);
+    if (!index.built || index.built_at != index.mutations || index.container != at || index.list != list_at ||
+        index.head != head || index.count != count)
+        build(s, index, at, list_at, head, count);
+    if (!index.usable) return std::nullopt;
+    if (index.low < frame_high && frame_low < index.high) return std::nullopt;
+    if (overlaps(key, 4, std::uint32_t(frame_low), 0x8c) || overlaps(key, 4, list_at + list::cursor, 4)) return std::nullopt;
+    Outcome o;
+    o.list = list_at;
+    o.saved = word(list_at + list::cursor);
+    o.count = count;
+    if (count <= 0) return o;  // the walk reads neither the key nor a node
+    o.wanted = std::int32_t(word(key));
+    if (const auto hit = index.first.find(o.wanted); hit != index.first.end()) {
+        o.found = true;
+        o.iterations = hit->second.position;
+        o.node = hit->second.node;
+        o.data = hit->second.data;
+        o.last_key = o.wanted;
+    } else {
+        o.iterations = std::uint32_t(count);
+        o.node = index.last_node;
+        o.data = index.last_data;
+        o.last_key = std::int32_t(word(o.data + element::key));
+    }
+    return o;
+}
 void condition(State& s, std::int64_t a, std::int64_t b) {
     s.wr<1>(2304, (a < b ? 8 : a > b ? 4 : 2) | (s.r<1>(1024) & 1));
 }
@@ -80,7 +171,19 @@ bool try_native_list_search(State& s) {
             s.memory.read<4>(slot);
         // The two TOC loads of the prologue (used only by the error report).
         s.memory.read<4>(r(2) - 0x7ba8); s.memory.read<4>(r(2) - 0x5368);
-        outcome = trace(s, at, key, sp);
+        outcome = lookup(s, at, key, sp);
+        if (outcome) {
+            index_answers.fetch_add(1, std::memory_order_relaxed);
+            if (verify_index) {
+                const auto walked = trace(s, at, key, sp);
+                if (!walked || *walked != *outcome) {
+                    std::fprintf(stderr, "list search index differs from the walk: container %08x key %08x\n", at, key);
+                    std::abort();
+                }
+            }
+        } else {
+            outcome = trace(s, at, key, sp);
+        }
     } catch (const std::runtime_error&) { return false; }
     if (!outcome) return false;
     const auto& o = *outcome;
@@ -116,4 +219,6 @@ bool try_native_list_search(State& s) {
     return true;
 }
 std::uint64_t native_list_search_completions() { return completions.load(std::memory_order_relaxed); }
+std::uint64_t native_list_search_index_answers() { return index_answers.load(std::memory_order_relaxed); }
+void set_native_list_search_index(bool enabled) { index_enabled.store(enabled, std::memory_order_relaxed); }
 }
