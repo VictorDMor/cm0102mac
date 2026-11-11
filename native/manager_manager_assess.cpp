@@ -8,7 +8,7 @@ using guest::Cpu;
 using namespace assess;
 namespace {
 namespace callee {
-constexpr std::uint32_t clear_message = 0x102bdf90, set_field = 0x102cb4b0, file_message = 0x102cc140;
+constexpr std::uint32_t clear_message = 0x102bdf90, file_message = 0x102cc140;
 }
 constexpr std::uint32_t frame_size = 0x180, buffer_offset = 0x60, high_offset = 0x40, low_offset = 0x38;
 constexpr std::uint32_t message_kind = 0x178f, assert_line = 0x5cc1;
@@ -17,11 +17,6 @@ namespace club_at {
 constexpr std::uint32_t id = 0, tier = 0x2c, board = 0x3c, reputation = 0x1ec, kind = 0x23d, standing = 0x240;
 }
 
-void set_field(Cpu& c, std::uint32_t buffer, std::uint32_t index, std::uint32_t value, std::uint32_t back) {
-    c.set({{3, buffer}, {4, index}, {5, value}});
-    c.call(callee::set_field, back);
-}
-std::uint32_t byte_value(std::int8_t value) { return std::uint32_t(std::int32_t(value)); }  // extsb
 }
 
 namespace assess {
@@ -55,10 +50,10 @@ void post_assessment_message(Cpu& c, std::uint32_t person, std::uint32_t club, s
     set_field(c, buffer, 2, c.u32(c.u32(person + person_at::club_b) + 0x20), 0x101c393c);
     set_field(c, buffer, 3, c.u32(c.u32(person + person_at::club_c) + 0x20), 0x101c3950);
     set_field(c, buffer, 4, c.u32(club + club_at::id), 0x101c3960);
-    set_field(c, buffer, 5, byte_value(first), 0x101c3970);
-    set_field(c, buffer, 6, byte_value(second), 0x101c3980);
-    set_field(c, buffer, 7, byte_value(third), 0x101c3990);
-    set_field(c, buffer, 8, byte_value(fourth), 0x101c39a0);
+    set_field(c, buffer, 5, sext8(first), 0x101c3970);
+    set_field(c, buffer, 6, sext8(second), 0x101c3980);
+    set_field(c, buffer, 7, sext8(third), 0x101c3990);
+    set_field(c, buffer, 8, sext8(fourth), 0x101c39a0);
 
     // The limit for the budget: by the club's tier (a signed byte) two to three times its reputation (a
     // halfword; each step wraps to 16 bits) plus a base; below the reputation 0x109a it is held to 5000.

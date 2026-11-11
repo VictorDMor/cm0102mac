@@ -1751,3 +1751,10 @@ a call at 0x101c0910 rather than reusing the earlier load; the rewrite does the 
 module's checker leaves the dead stack below the entry free for every routine except the five whose leftovers the stack
 audit lists readers for (0x10196390, 0x1019d320, 0x101a2eb0, 0x101ad080, 0x101b1620), and does not compare
 non-volatile registers at calls made from native code, whichever routine is being checked.
+
+The vacancy block (`manager_manager_vacancy*.cpp`: the board's answer to a manager's request 0x101bdf80, the news it
+files and their texts, and the vacancy event 0x101b9130) is native-first. The original reads the interest table's base
+(TOC -0x7ab4) and the person's index again after every call rather than keeping them; the rewrite does the same. Three
+of its calls leave argument registers the original sets but the callee never reads (a format with fewer `%s` than
+registers, an array constructor that reads r3-r7): `manager_manager_trace_accepted.inc` lists them with the reason.
+The module's message helpers (`start_message`, `set_field`, `sext8`) live in `manager_manager_detail.hpp`.

@@ -5,7 +5,6 @@
 #include "manager_manager_vacancy.hpp"
 #include "manager_manager_vacancy_detail.hpp"
 #include <array>
-#include <stdexcept>
 
 namespace cm::aot::manager_manager {
 using guest::Cpu;
@@ -139,15 +138,20 @@ void file_vacancy_event(Cpu& c, std::uint32_t table, std::uint32_t person, std::
     constexpr std::uint32_t counter = 0x48, buffer = 0x80, object = 0x5c, ids = 0x50, flag = 0x4e, bytes = 0x49;
     for (std::uint32_t k = 0; k < 6; ++k) c.put8(frame.at(bytes + k), 0);
     if (!person || !second || !move || !c.u32(move + 0x14)) return;
-    clear_message(c, frame.at(buffer), 0x138c, 0x101b91bc);
+    start_message(c, frame.at(buffer), 0x138c, 0x101b91bc);
     c.put8(frame.at(counter), 0);
     c.set(3, frame.at(object));
     c.call(0x10715880, 0x101b91cc);
     for (std::uint32_t k = 0; k < 3; ++k) c.put32(frame.at(ids + 4 * k), 0xffffffff);
-    const std::uint32_t backs[8] = {0x101b91f4, 0x101b920c, 0x101b9224, 0x101b923c, 0x101b9254, 0x101b926c, 0x101b9284, 0x101b929c};
-    const std::uint32_t values[8] = {std::uint32_t(std::int32_t(half)), c.u32(person), c.u32(second), a, b, d, extra, c.u32(move + 8)};
-    std::uint32_t index = 0;
-    for (; index < 8; ++index) set_field(c, frame.at(buffer), index, values[index], backs[index]);
+    // Each record word is read just before its field is set, as the original does.
+    set_field(c, frame.at(buffer), 0, std::uint32_t(std::int32_t(half)), 0x101b91f4);
+    set_field(c, frame.at(buffer), 1, c.u32(person), 0x101b920c);
+    set_field(c, frame.at(buffer), 2, c.u32(second), 0x101b9224);
+    set_field(c, frame.at(buffer), 3, a, 0x101b923c);
+    set_field(c, frame.at(buffer), 4, b, 0x101b9254);
+    set_field(c, frame.at(buffer), 5, d, 0x101b926c);
+    set_field(c, frame.at(buffer), 6, extra, 0x101b9284);
+    set_field(c, frame.at(buffer), 7, c.u32(move + 8), 0x101b929c);
     const bool stronger = std::int32_t(a) > std::int32_t(b);
     c.put8(frame.at(flag), stronger ? 1 : 0);
     gather_candidates(c, {table, move, person, frame.at(ids), c.u32(move + 8), frame.at(flag), frame.at(flag - 1),
@@ -159,7 +163,7 @@ void file_vacancy_event(Cpu& c, std::uint32_t table, std::uint32_t person, std::
     set_field(c, frame.at(buffer), 11, std::uint32_t(draws.modulo(4, 0x101b93a0)), 0x101b93e0);
     const std::uint32_t backs_bytes[6] = {0x101b93fc, 0x101b9418, 0x101b9434, 0x101b9450, 0x101b946c, 0x101b9488};
     for (std::uint32_t k = 0; k < 6; ++k)
-        set_field(c, frame.at(buffer), 12 + k, sext(c.i8(frame.at(flag - k))), backs_bytes[k]);
+        set_field(c, frame.at(buffer), 12 + k, sext8(c.i8(frame.at(flag - k))), backs_bytes[k]);
     c.put8(frame.at(counter), 18);
     c.set({{3, move}, {4, person}, {5, frame.at(object)}});
     c.call(call::message_a, 0x101b9498);

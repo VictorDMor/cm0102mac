@@ -22,7 +22,6 @@ constexpr std::uint32_t text_pool_base = 0x20000;  // the formats are at pool + 
 constexpr std::uint32_t person_stride = 0x70, club_stride = 0x248;
 namespace club_at { constexpr std::uint32_t name = 0x1ee, standing = 0x242, region = 0x23b, nickname = 0x221; }
 constexpr std::uint32_t name_tag = 0x7d5, person_tag = 0x7da;
-std::uint32_t sext(std::int8_t value) { return std::uint32_t(std::int32_t(value)); }
 
 // What the three texts share: the message record's fields, the formatter, and the original's registers.
 class News {
@@ -83,7 +82,7 @@ void move_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word, std:
     const std::int8_t has_club = std::int8_t(g[4]);
     const std::int32_t six = std::int32_t(g[6]), seven = std::int32_t(g[7]);
     // The registers the original holds from here on (0x1074bab0's row copies the save area of the callees below it).
-    c.set({{18, row}, {19, message}, {20, flag_word}, {21, g[6]}, {22, sext(has_club)}, {23, g[3]}, {24, g[2]},
+    c.set({{18, row}, {19, message}, {20, flag_word}, {21, g[6]}, {22, sext8(has_club)}, {23, g[3]}, {24, g[2]},
            {25, g[1]}, {26, n.text}, {27, c.toc(toc_cell::people)}, {28, n.pool}, {29, g[0] * person_stride},
            {30, g[7]}, {31, out}});
     n.person_name(person, frame.at(name_buffer), 0x101c138c);
@@ -91,7 +90,7 @@ void move_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word, std:
     if (std::int8_t(flag_word) != 0) {
         c.set({{3, row}, {4, frame.at(row_buffer)}, {5, 0x78}, {6, 9}});
         c.call(callee::row_name, 0x101c13ac);
-        const auto standing = sext(c.i8(row + row_standing));
+        const auto standing = sext8(c.i8(row + row_standing));
         auto say = [&](std::uint32_t bl, std::uint32_t offset) {
             n.say(bl, offset, {{5, standing}, {6, standing}, {7, 100}, {8, frame.at(row_buffer)}, {9, frame.at(name_buffer)}});
         };
@@ -136,8 +135,8 @@ void rival_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word, std
     c.set({{7, c.u32(c.toc(toc_cell::competitions))}, {8, g[5] * club_stride}, {9, c.u32(c.toc(toc_cell::clubs))}});
     n.person_name(person, frame.at(name_buffer), 0x101c1d14);
     if (std::int8_t(flag_word) != 0) {
-        const auto standing_a = sext(c.i8(club_a + club_at::standing)), standing_b = sext(c.i8(club_b + club_at::standing));
-        const auto competition_byte = sext(c.i8(competition_at + 0x67));
+        const auto standing_a = sext8(c.i8(club_a + club_at::standing)), standing_b = sext8(c.i8(club_b + club_at::standing));
+        const auto competition_byte = sext8(c.i8(competition_at + 0x67));
         c.put32(frame.at(0x38), club_a + club_at::name);
         c.put32(frame.at(0x3c), frame.at(name_buffer));
         c.put32(frame.at(0x40), club_b + club_at::name);
@@ -149,7 +148,7 @@ void rival_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word, std
         n.name_to_object(club_a + club_at::name, name_tag, club_a, 0x101c1dc4);
         n.name_to_object(club_b + club_at::name, name_tag, club_b, 0x101c1dd8);
     } else {
-        const auto region = sext(c.i8(club_a + club_at::region));
+        const auto region = sext8(c.i8(club_a + club_at::region));
         n.say(0x101c1dfc, 0x131a, {{5, region}, {6, region}, {7, club_a + club_at::nickname}});
         n.to_object(0x101c1e08);
     }
@@ -171,7 +170,7 @@ void assessment_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word
            {26, g[3]}, {27, person}, {28, out}, {29, n.pool}, {30, n.text}, {31, club}});
     c.set(7, c.u32(c.toc(toc_cell::clubs)));  // left in r7 by the original; 0x100caeb0 spills it into its frame
     n.person_name(person, frame.at(name_buffer), 0x101c3c1c);
-    const auto standing = sext(c.i8(club + club_at::standing));
+    const auto standing = sext8(c.i8(club + club_at::standing));
     const auto name = club + club_at::name;
     const auto buffer = frame.at(name_buffer);
     // The common shape of the texts of the body: the club's standing twice, 100 twice, the club's name and the
@@ -201,7 +200,7 @@ void assessment_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word
                 if (g[9] == 0) {
                     // The board's byte at +0x4b, and four stack words (the club's name, the name text twice, the board +0x18).
                     const auto board = c.u32(club + 0x3c);
-                    const auto board_byte = sext(c.i8(board + 0x4b));
+                    const auto board_byte = sext8(c.i8(board + 0x4b));
                     c.put32(frame.at(0x38), name);
                     c.put32(frame.at(0x3c), buffer);
                     c.put32(frame.at(0x40), buffer);
@@ -233,7 +232,7 @@ void assessment_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word
         n.name_to_object(name, name_tag, club, 0x101c4164);
     } else {
         if (kind == 1) {
-            n.say(0x101c41a4, 0x3244, {{5, sext(c.i8(club + club_at::region))}, {6, sext(c.i8(club + club_at::region))},
+            n.say(0x101c41a4, 0x3244, {{5, sext8(c.i8(club + club_at::region))}, {6, sext8(c.i8(club + club_at::region))},
                                        {7, club + club_at::nickname}});
         } else if (stage == 2 || stage == 3 || stage == 4) {
             const std::uint32_t bl[4] = {0x101c41ec, 0x101c4200, 0x101c4214, 0x101c4228};

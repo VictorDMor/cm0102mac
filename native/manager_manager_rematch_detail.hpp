@@ -61,16 +61,6 @@ inline std::uint32_t out(Cpu& c, std::uint32_t target, std::uint32_t back, std::
     c.call(target, back);
     return c.r(3);
 }
-// The shared message record (0x102bdf90 starts it, 0x102cb4b0 sets a field).
-inline void start_message(Cpu& c, std::uint32_t buffer, std::uint32_t kind, std::uint32_t back) {
-    c.set({{3, buffer}, {4, kind}, {5, 0}});
-    c.call(0x102bdf90, back);
-}
-inline void set_field(Cpu& c, std::uint32_t buffer, std::uint32_t index, std::uint32_t value, std::uint32_t back) {
-    c.set({{3, buffer}, {4, index}, {5, value}});
-    c.call(0x102cb4b0, back);
-}
-inline std::uint32_t sext8(std::uint32_t byte) { return std::uint32_t(std::int32_t(std::int8_t(byte))); }
 
 // The event date (cell::event_date) against today's, the way the original tests it: the halfword at +2
 // unsigned first, then, when they are equal, the one at +0 by the xor/shift sequence (a signed "greater").

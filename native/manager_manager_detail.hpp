@@ -58,5 +58,17 @@ inline std::int32_t remainder(std::int32_t a, std::int32_t b) {
 // An epilogue's `lmw rN,-k(r1)` leaves Ghidra's effective-address temporary
 // (register byte 2432, compared at imports) one word past r31's slot: the
 // caller's stack pointer for the usual save area right below it.
+// extsb: a byte sign-extended to a word.
+inline std::uint32_t sext8(std::uint32_t byte) { return std::uint32_t(std::int32_t(std::int8_t(byte))); }
+// The news message record: 0x102bdf90 starts one of `kind` in `buffer`, 0x102cb4b0 sets its field `index`; `back` is
+// the address after the original's `bl`.
+inline void start_message(guest::Cpu& c, std::uint32_t buffer, std::uint32_t kind, std::uint32_t back) {
+    c.set({{3, buffer}, {4, kind}, {5, 0}});
+    c.call(0x102bdf90, back);
+}
+inline void set_field(guest::Cpu& c, std::uint32_t buffer, std::uint32_t index, std::uint32_t value, std::uint32_t back) {
+    c.set({{3, buffer}, {4, index}, {5, value}});
+    c.call(0x102cb4b0, back);
+}
 inline void lmw_leaves(guest::Cpu& c, std::uint32_t caller_sp) { c.s.wr<4>(2432, caller_sp); }
 }

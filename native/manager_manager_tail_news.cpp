@@ -12,7 +12,7 @@ namespace toc_cell {
 constexpr std::int32_t date = -0x7b80, people = -0x7be0, news_desk = -0x7bf0, effects = -0x7aa4, search = -0x7a60;
 }
 namespace callee {
-constexpr std::uint32_t clear_message = 0x102bdf90, set_field = 0x102cb4b0, file_message = 0x102cc140,
+constexpr std::uint32_t clear_message = 0x102bdf90, file_message = 0x102cc140,
                         file_message_b = 0x102cc280, file_message_c = 0x102cc400, apply_effect = 0x100e0410,
                         next_node = 0x10738e00, remove_node = 0x10738e60, append_record = 0x10738d10,
                         init_list = 0x10738c00, release_list = 0x10738c20, announce_prepare = 0x10191fd0,
@@ -33,11 +33,6 @@ constexpr std::uint32_t person = 0, kind = 4, day = 8, year = 0xa, codes = 0x10,
 }
 constexpr std::uint32_t list_queue = 0x14;
 
-void set_field(Cpu& c, std::uint32_t buffer, std::uint32_t index, std::uint32_t value, std::uint32_t back) {
-    c.set({{3, buffer}, {4, index}, {5, value}});
-    c.call(callee::set_field, back);
-}
-std::uint32_t byte_value(std::int8_t value) { return std::uint32_t(std::int32_t(value)); }  // extsb
 }
 
 std::uint32_t standing_allows(Cpu& c, std::uint32_t record, std::int8_t kind) {
@@ -57,11 +52,11 @@ void post_move_news(Cpu& c, std::uint32_t person, std::int8_t first, std::int8_t
     set_field(c, buffer, 1, c.u32(c.u32(person + person_at::link_a) + 0x20), 0x101c11f8);
     set_field(c, buffer, 2, c.u32(c.u32(person + person_at::link_b) + 0x20), 0x101c120c);
     set_field(c, buffer, 3, c.u32(c.u32(person + person_at::link_c) + 0x20), 0x101c1220);
-    set_field(c, buffer, 4, byte_value(first), 0x101c1230);
+    set_field(c, buffer, 4, sext8(first), 0x101c1230);
     set_field(c, buffer, 5, c.u32(c.u32(club + club_at::region) + 0x68), 0x101c1248);
-    set_field(c, buffer, 6, byte_value(second), 0x101c1258);
+    set_field(c, buffer, 6, sext8(second), 0x101c1258);
     set_field(c, buffer, 7, std::uint32_t(std::int32_t(third)), 0x101c1268);
-    set_field(c, buffer, 8, byte_value(fourth), 0x101c1278);
+    set_field(c, buffer, 8, sext8(fourth), 0x101c1278);
     c.set({{3, c.u32(c.toc(toc_cell::news_desk))}, {4, buffer}, {5, c.u32(person + person_at::club)}});
     c.call(callee::file_message, 0x101c128c);
 }

@@ -67,7 +67,7 @@ void vacancy_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word, s
     }
     const auto a = n.field(0, 0x101bee60), b = n.field(1, 0x101bee70);
     n.field(2, 0x101bee80);
-    const auto row_index = sext(std::int8_t(n.field(4, 0x101bee8c)));
+    const auto row_index = sext8(std::int8_t(n.field(4, 0x101bee8c)));
     n.field(5, 0x101bee9c);
     const auto rows = c.u32(c.toc(toc_cell::rows));
     const auto row = rows + row_index * row_stride;
@@ -76,7 +76,7 @@ void vacancy_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word, s
            {30, n.text}, {31, n.clubs_cell()}});
     n.row_name(row, frame.at(row_buffer), 0x101beeb4);
     const auto club_a = n.club_record(a), club_b = n.club_record(b);
-    const auto standing_a = sext(c.i8(club_a + club_standing)), standing_b = sext(c.i8(club_b + club_standing));
+    const auto standing_a = sext8(c.i8(club_a + club_standing)), standing_b = sext8(c.i8(club_b + club_standing));
     c.set({{24, a * club_stride}, {28, b * club_stride}});
     c.put32(frame.at(0x38), frame.at(row_buffer));
     c.put32(frame.at(0x3c), club_a + club_name);
@@ -114,7 +114,7 @@ void answer_news_text(Cpu& c, std::uint32_t message, std::uint32_t flag_word, st
     const auto number = std::int32_t(n.field(4, 0x101bf0e8));
     n.row_name(c.u32(c.toc(toc_cell::rows)) + row_index * row_stride, frame.at(row_buffer), 0x101bf108);
     // The registers the original holds from here on (see vacancy_news_text).
-    c.set({{23, message}, {24, sext(second)}, {25, sext(first)}, {26, n.text}, {27, clubs}, {28, n.pool}, {29, person},
+    c.set({{23, message}, {24, sext8(second)}, {25, sext8(first)}, {26, n.text}, {27, clubs}, {28, n.pool}, {29, person},
            {30, std::uint32_t(number)}, {31, out}});
     const auto buffer = frame.at(row_buffer);
     auto say = [&](std::uint32_t bl, std::uint32_t offset) { n.say(bl, offset, {{5, 100}, {6, 100}, {7, buffer}}); };

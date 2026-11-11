@@ -5,7 +5,6 @@
 #include "manager_manager_review.hpp"
 #include "manager_manager_vacancy.hpp"
 #include "manager_manager_vacancy_detail.hpp"
-#include <stdexcept>
 
 namespace cm::aot::manager_manager {
 using guest::Cpu;
@@ -60,12 +59,12 @@ public:
         const auto count = [&] { return std::int8_t(c.u8(row + row_count)); };
         if (kind == 1) {
             if (limit == count() && std::int8_t(c.u8(c.u32(c.toc(cell::board)) + id * 8 + 4)) < -1) {
-                event(0, 4, 0xffffffff, 0xffffffff, 0xffffffff, 0x101be114);
+                event(4, 0xffffffff, 0xffffffff, 0xffffffff, 0x101be114);
                 return release(0x101be120);
             }
             if (limit < count()) {
                 club_state(0x101be14c);
-                if (std::int8_t(c.r(3)) != 0 || limit + 1 == std::int32_t(count())) return accepted(id, limit);
+                if (std::int8_t(c.r(3)) != 0 || limit + 1 == std::int32_t(count())) return accepted(limit);
             }
         }
         if (limit == count() && kind != 5) {
@@ -74,7 +73,8 @@ public:
         }
         if (limit < count() && kind != 5) {
             answer(5, 0);
-            c.put16(row + row_reputation, std::uint16_t(c.u16(row + row_reputation) - 100));
+            const auto again = row_of(c.u32(person));  // read again after the news (0x101be364)
+            c.put16(again + row_reputation, std::uint16_t(c.u16(again + row_reputation) - 100));
             return release(0x101be38c);
         }
         club_state(0x101be3a8);
@@ -100,7 +100,7 @@ private:
         c.call(call::list_free, back);
     }
     void answer(std::int8_t a, std::int8_t b) { file_answer_news(c, person, std::int8_t(kind_word), a, b); }
-    void event(std::uint32_t, std::uint32_t code, std::uint32_t a, std::uint32_t b, std::uint32_t d, std::uint32_t back) {
+    void event(std::uint32_t code, std::uint32_t a, std::uint32_t b, std::uint32_t d, std::uint32_t back) {
         c.set({{3, c.u32(c.toc(cell::events))}, {4, person}, {5, c.u32(person + 0x90)}, {6, code}, {7, a}, {8, b}, {9, d}});
         c.call(call::event, back);
     }
@@ -133,9 +133,9 @@ private:
 
     // The club answers with an event (the 0x1014c2e0 test passed in the first block): a draw, the scout's note and
     // the row's reputation.
-    void accepted(std::uint32_t id, std::int8_t limit) {
+    void accepted(std::int8_t limit) {
         const auto d = draws.draw(0x101be198);
-        event(0, 5, 0xffffffff, 0xffffffff, sext(std::int8_t(d % 3 + 1)), 0x101be1f4);
+        event(5, 0xffffffff, 0xffffffff, sext8(std::int8_t(d % 3 + 1)), 0x101be1f4);
         c.set({{3, c.u32(c.toc(cell::scout))}, {4, person}});
         c.call(call::scout_note, 0x101be204);
         if (const auto note = c.r(3)) {
@@ -143,8 +143,9 @@ private:
             c.call(call::scout_flag, 0x101be214);
         }
         std::int16_t delta = 0xfa;
+        const auto id = c.u32(person);  // read again after the calls (0x101be21c)
         if (std::int8_t(c.u8(c.u32(c.toc(cell::board)) + id * 8 + 4)) < 0)
-            delta = std::int16_t(std::uint32_t(std::int32_t(limit)) * 0xfa - sext(std::int8_t(c.u8(row_of(id)))));
+            delta = std::int16_t(std::uint32_t(std::int32_t(limit)) * 0xfa - sext8(std::int8_t(c.u8(row_of(id)))));
         // The person record is known to be non-null (0x101be000), so the original's null test at 0x101be25c never
         // fails.
         auto entry = c.u32(standing_object()) + id * row_stride;
@@ -176,47 +177,53 @@ private:
             }
         }
         if (!found) return release(0x101bec60);
-        const auto rec = interest_record(slot);
-        c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec}});
+        // The original reads the table's base (cell::clubs_rows) again after every call: the record's address too.
+        const auto rec = [&] { return interest_record(slot); };
+        c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec()}});
         c.call(call::interest, 0x101be4b4);
         fpu.fcmp(0, c.f(1), c.f64(c.toc(cell::constants) + 0x2d0));
         bool refuse = (c.cr(0) & 8) == 0;  // bge: taken unless less than (an unordered compare takes it)
         if (!refuse) {
-            c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec}});
+            c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec()}});
             c.call(call::interest_byte, 0x101be4d8);
             refuse = std::int8_t(c.r(3)) >= 7;
         }
         if (refuse) {
-            c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec}});
+            c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec()}});
             c.call(call::interest_byte, 0x101be844);
             answer(1, std::int8_t(c.r(3)));
             return release(0x101bec60);
         }
         if (remainder(draws.draw(0x101be504), 200) != 0) {
-            c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec}});
+            c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec()}});
             c.call(call::interest_byte, 0x101be554);
             answer(1, std::int8_t(c.r(3)));
             return release(0x101bec60);
         }
-        const auto before = c.u32(c.u32(rec + 8) + 0x20);
-        c.set(3, c.u32(rec + 0xc));
+        const auto before = c.u32(c.u32(rec() + 8) + 0x20);
+        c.set(3, c.u32(rec() + 0xc));
         c.call(call::club_field_a, 0x101be588);
-        c.put32(rec + 4, c.r(3));
-        c.set(3, c.u32(rec + 0xc));
+        c.put32(rec() + 4, c.r(3));
+        c.set(3, c.u32(rec() + 0xc));
         c.call(call::club_field_b, 0x101be5a4);
-        c.put32(rec + 8, c.r(3));
+        c.put32(rec() + 8, c.r(3));
+        // Each value is drawn before the record's address is read again (the draws are calls too).
+        std::uint32_t spirit;
         if (remainder(draws.draw(0x101be5d0), 10) == 0) {
             const auto a = remainder(draws.draw(0x101be680), 11);
             const auto b = remainder(draws.draw(0x101be6d4), 11);
-            c.put8(rec + 0x25, std::uint32_t(a + b));
+            spirit = std::uint32_t(a + b);
         } else {
-            c.put8(rec + 0x25, std::uint32_t(draws.draw(0x101be628) & 15) + 5);
+            spirit = std::uint32_t(draws.draw(0x101be628) & 15) + 5;
         }
-        c.put16(rec + 0x1e, std::uint16_t(c.u16(date + 2) + std::uint32_t(remainder(draws.draw(0x101be73c), 5)) - 0x1b));
-        c.put16(rec + 0x1c, std::uint16_t(remainder(draws.draw(0x101be7ac), 0x154)));
-        c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec}});
+        c.put8(rec() + 0x25, spirit);
+        const auto year_offset = std::uint32_t(remainder(draws.draw(0x101be73c), 5));
+        c.put16(rec() + 0x1e, std::uint16_t(c.u16(date + 2) + year_offset - 0x1b));
+        const auto stamp = std::uint16_t(remainder(draws.draw(0x101be7ac), 0x154));
+        c.put16(rec() + 0x1c, stamp);
+        c.set({{3, c.u32(c.toc(cell::interest))}, {4, rec()}});
         c.call(call::interest_update, 0x101be808);
-        file_offer_news(c, c.u32(person + 0x90), c.u32(person + 0x2c), before, c.u32(c.u32(rec + 8) + 0x20));
+        file_offer_news(c, c.u32(person + 0x90), c.u32(person + 0x2c), before, c.u32(c.u32(rec() + 8) + 0x20));
         release(0x101bec60);
     }
 

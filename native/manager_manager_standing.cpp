@@ -12,17 +12,12 @@ using guest::Cpu;
 namespace {
 namespace toc_slot { constexpr std::int32_t employer = -0x7ab8, news_desk = -0x7bf0; }
 namespace callee {
-constexpr std::uint32_t employer_record = 0x10103510, clear_message = 0x102bdf90, set_field = 0x102cb4b0,
+constexpr std::uint32_t employer_record = 0x10103510, clear_message = 0x102bdf90,
                         relation = 0x100f55b0, file_message = 0x102cc140;
 }
 constexpr std::uint32_t frame_size = 0x140, buffer_offset = 0x38, message_kind = 0x1786, row_size = 0x4c,
                         row_rating = 6;
 constexpr std::uint32_t counter_limit = 1000000;
-
-void set_field(Cpu& c, std::uint32_t buffer, std::uint32_t index, std::uint32_t value, std::uint32_t back) {
-    c.set({{3, buffer}, {4, index}, {5, value}});
-    c.call(callee::set_field, back);
-}
 }
 
 void post_club_message(Cpu& c, std::uint32_t table, std::uint32_t entry_index, std::int8_t first, std::int8_t second) {
