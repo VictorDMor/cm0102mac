@@ -7,3 +7,5 @@
 #include "discipline_routines_upkeep.inc"
 #include "discipline_routines_review.inc"
 #include "discipline_routines_lifecycle.inc"
+#include "discipline_routines_news_b.inc"
+#include "discipline_routines_news.inc"

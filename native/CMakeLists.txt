@@ -4064,9 +4064,9 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME discipline_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_discipline_audit.py")
     if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
         set(CM_DISCIPLINE_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
-        # --require-all (every routine compared and in production) returns when the last block lands.
-        add_test(NAME discipline_equivalence COMMAND cm-discipline-checks ${CM_DISCIPLINE_INPUTS} --mutate 4 --call-trace)
-        add_test(NAME discipline_production COMMAND cm-discipline-checks ${CM_DISCIPLINE_INPUTS} --production)
+        # Every routine compared and in production.
+        add_test(NAME discipline_equivalence COMMAND cm-discipline-checks ${CM_DISCIPLINE_INPUTS} --no-live --mutate 4 --call-trace --require-all)
+        add_test(NAME discipline_production COMMAND cm-discipline-checks ${CM_DISCIPLINE_INPUTS} --production --require-all)
     endif()
 endif()
 option(CM_DISCIPLINE_COVERAGE "Instrument DISCIPLINE.CPP checker only" OFF)

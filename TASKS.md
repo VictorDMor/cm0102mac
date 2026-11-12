@@ -6,8 +6,6 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] **DISCIPLINE.CPP news-text block: go ahead?** (2026-11-12) 0x100e0b70 and 0x100e59b0 (6,343 instructions, 220 text-format calls) render the ban news. Estimated 350-600k tokens with a data-table approach, so it waits for your answer; the other 35 routines go on meanwhile.
-
 - [ ] **Replace the software bounds check?** (found 2026-11-06) It costs 11.4-11.5% of the day and the week (7 alternating pairs each, identical end state). Removing it needs a hardware-fault path that keeps the byte-exact fault semantics the checks compare; the trade-off is under "Measure the software bounds check" below. Nothing changed.
 
 - [ ] **Host process id on the guest's stack** (found 2026-10-31, FILE_SCREENS.CPP): `native/file_reference_bridge.cpp` copies native FSRefs into guest memory, and +0xc holds the host's process id, so it varies per launch and reaches the stack in production. Whether the game ever reads it isn't confirmed. Masking it there and restoring `getpid()` on the way back would remove the variation, but it changes stack bytes the game could read, so it waits for your decision. Nothing depends on it; `cm-file-screens-checks` handles it with a marker.
@@ -20,13 +18,6 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
-
-## Now: DISCIPLINE.CPP (started 2026-11-12)
-
-Bans, suspensions, the history file and their news; 37 routines, 11,122 instructions, 0x100de410-0x100e92d0 (`tools/discipline_audit.py`, `cm-discipline-checks`). Victor named it. 35 routines are C++ in production (commit of 2026-11-12).
-
-- [ ] Block F, the two ban-news renderers 0x100e0b70 and 0x100e59b0 (6,343 instructions): waits on Victor's answer (top of this file). Material in `.local/rewrites/discipline/` (brief, listings, decompiled C, masks).
-- [ ] After F: coverage of F, review, routing, pairs, workbook row to Concluído, clean the evidence.
 
 ## Now: the sort family (delivered 2026-11-12)
 

@@ -1802,8 +1802,7 @@ directly from the heapsort would replace that fusion; nothing does that yet.
 37 entries / 11,122 instructions at 0x100de410..0x100e92d0 (`tools/discipline_audit.py`). The unit has no source
 name in its own last routines: its TOC slots are -0x5610..-0x5600, and the conversion constants at -0x5610 close its
 literal data, which places 0x100e8780, 0x100e8d10 and the comparator 0x100e9290 here; 0x100e92d0 on belongs to the
-unnamed scout and transfer-rumour unit. 35 entries are native-first C++ (`native/discipline_*`); the two news-text
-renderers 0x100e0b70 and 0x100e59b0 still run their generated bodies.
+unnamed scout and transfer-rumour unit. All 37 entries are native-first C++ (`native/discipline_*`).
 
 The manager (TOC -0x7aa4) holds a *pointer to* the array of 42 ruling bodies at +0, a 0x2c-byte row per person at
 +0x14 (five 8-byte slots of a body index and a word, the history position at +0x20/+0x24, a pending count at +0x28),
@@ -1823,3 +1822,12 @@ season-day and same-save-continue do, and found it.
 arm and self-call are dead (as in NEWS.CPP). 0x100df500 copies frame bytes it never writes into pending items: the
 C++ keeps the original's frame and calls so they are the same leftovers. The temp-folder name 0x100de410 interleaves
 from 17- and 16-byte frame copies; with the game's two constant strings (16 and 15 characters) it never reads past them.
+
+The ban-news renderers (NEWS types 2002 and 2003: 0x100e0b70, 0x100e59b0) choose among about 160 formats; the C++
+keeps them as tables of (pool offset, return address) per decision. Their link rows (0x1074bab0) copy the renderer's
+own stack, so they and 0x100e7490, which they call, keep the original's r13-r31 and the formatter's spilled r5-r10 at
+every call. 0x100e59b0 reads its caller's r28 as a format argument for a ban by date (the call that would set it,
+0x100e67f8, is on a dead path); its only caller, NEWS 0x102be040, always holds the TOC cell address -0x7be8 there
+(0x102be070), and NEWS is C++, so the rewrite takes that constant. 0x100e0b70 reads frame words it never writes when a
+message has no fixture or an unknown kind; the C++ reads the same slots, so those texts depend on leftovers as in the
+original.
