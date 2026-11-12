@@ -1796,3 +1796,30 @@ moving whole units and leaving the remainder of each row where it was. The entry
 The fused 8-byte sort (`tools/native_sort8.py`) stays the first hook at 0x10768660 and answers for the three comparators
 it inlines; the entry's C++ calls the pair sort through its page so that it still does. A typed C++ comparator called
 directly from the heapsort would replace that fusion; nothing does that yet.
+
+## DISCIPLINE.CPP: bans, suspensions and their history
+
+37 entries / 11,122 instructions at 0x100de410..0x100e92d0 (`tools/discipline_audit.py`). The unit has no source
+name in its own last routines: its TOC slots are -0x5610..-0x5600, and the conversion constants at -0x5610 close its
+literal data, which places 0x100e8780, 0x100e8d10 and the comparator 0x100e9290 here; 0x100e92d0 on belongs to the
+unnamed scout and transfer-rumour unit. 35 entries are native-first C++ (`native/discipline_*`); the two news-text
+renderers 0x100e0b70 and 0x100e59b0 still run their generated bodies.
+
+The manager (TOC -0x7aa4) holds a *pointer to* the array of 42 ruling bodies at +0, a 0x2c-byte row per person at
++0x14 (five 8-byte slots of a body index and a word, the history position at +0x20/+0x24, a pending count at +0x28),
+the history file at +0x18 and the pending list at +0x1c. 0x100e7040, the slot lookup, takes most of the module's day
+time.
+
+The one contract that reaches records: the ruling bodies build a 0x18-byte ban struct in their frames without writing
+bytes +0xd..+0xf and part of +0x14, and 0x100dfb30 copies it into a ban record that goes into discipline.dat (the
+BlockMoveData reader 0x10bf7bbc). Those bytes are the register save areas of earlier generated callees at that depth
+(0x105bc2b0, bsearch 0x10775600, 0x10717890, the history file), so the routines on that path (0x100dfb30, 0x100e0090,
+0x100e0250, 0x100e0410, 0x100e05c0, 0x100e0700, 0x100e8780) keep the original's r13-r31 at every call; the file
+routines 0x100de760 and 0x100deda0 do too, as the strict replay compares them at the file imports. The case checker
+cannot see this (the native contract leaves the dead stack free); the live check and the paired replays of
+season-day and same-save-continue do, and found it.
+
+0x100e8d10 is this unit's copy of the range sampler; every bound it gets is a sum of two signed bytes, so its wide
+arm and self-call are dead (as in NEWS.CPP). 0x100df500 copies frame bytes it never writes into pending items: the
+C++ keeps the original's frame and calls so they are the same leftovers. The temp-folder name 0x100de410 interleaves
+from 17- and 16-byte frame copies; with the game's two constant strings (16 and 15 characters) it never reads past them.
