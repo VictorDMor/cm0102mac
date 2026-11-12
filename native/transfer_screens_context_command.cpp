@@ -1,4 +1,6 @@
 #include "transfer_screens_detail.hpp"
+#include "debug_force_purchase.hpp"
+#include "match_debugging.hpp"
 
 namespace cm::aot::transfer_screens {
 using namespace detail;
@@ -48,7 +50,21 @@ std::uint32_t offer_context_command(Cpu& c, std::uint32_t control_value) {
             dispose_draft(0x1041f54c); return std::uint32_t(-10);
         }
         if (compare(c,reason_or_owner,1)==0) {
-            p.call(0x103e25d0,0x1041f574,{c.u32(transfers),c.u32(draft_link),0});
+            const auto draft = c.u32(draft_link);
+            const auto manager = c.u32(transfers);
+            std::uint32_t seller = 0, revision = 0;
+            if (native_debugging_feature(DebugFeature::force_purchase)) {
+                const auto selected = p.call(0x1073ef70, 0x1041f574, {screens, forced_confirmation_seller_slot});
+                if (selected && !c.u8(draft + 0x24) &&
+                    c.u32(draft + 8) == c.u32(manager_club_or_person)) {
+                    const auto player = indirect(c, slot::people) + c.u32(draft + 12) * 0x70;
+                    seller = forced_purchase_seller(c.s, player);
+                    if (seller && c.u32(seller) + 1 != selected) seller = 0;
+                    if (seller) revision = c.u32(manager + 0x98c);
+                }
+            }
+            p.call(0x103e25d0,0x1041f574,{manager,draft,0});
+            if (seller) record_forced_purchase(c.s, manager, draft, revision, seller);
             dispose_draft(0x1041f590); return std::uint32_t(-10);
         }
         if (compare(c,reason_or_owner,27)==0) {

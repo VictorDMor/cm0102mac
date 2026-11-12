@@ -1,4 +1,5 @@
 #include "contract_manager_random.hpp"
+#include "debug_force_purchase.hpp"
 
 namespace cm::aot::contract_manager {
 using namespace detail;
@@ -36,6 +37,7 @@ void review_pending_contracts(Cpu& c,std::uint32_t manager_address,std::uint32_t
     Kept<30> today(c,c.toc(-0x7b80));Kept<31> pool(c,c.toc(slot::pool));
     Kept<19> fallback(c,c.r(19));Kept<13> refused(c,c.r(13));Kept<17> decision(c,c.r(17));
     Kept<18> current_or_node(c,c.r(18));Kept<21> squad_role(c,c.r(21));Program p(c);guest::Fpu fp(c);
+    std::uint32_t forced_best = 0;
     c.set_f(31,c.f64(constants+0x140));
     p.call(0x103721f0,0x10081c2c,{frame.at(0x124)});p.call(0x10715880,0x10081c34,{frame.at(0x18c)});
     fallback=0;p.call(0x10738c00,0x10081c40,{frame.at(0x90)});p.call(0x10738c00,0x10081c48,{frame.at(0x80)});
@@ -81,6 +83,13 @@ void review_pending_contracts(Cpu& c,std::uint32_t manager_address,std::uint32_t
             }
             const auto current=c.u32(frame.at(0x44));c.set(3,current);const auto state=c.i8(current+0x64);c.set(4,c.u8(current+0x64));c.set(0,std::uint32_t(std::int32_t(state)));
             if(nonzero(c,state)){c.set(0,std::uint32_t(std::int32_t(state)));if(compare(c,state,2)==0)decision=1;continue;}
+            if (forced_purchase_contract(c.s, current)) {
+                forced_best = current;
+                c.put_f64(frame.at(0x68), 0);
+                p.call(0x10738d10, 0x1008224c, {frame.at(0x90), frame.at(0x44), 4});
+                p.call(0x10738d10, 0x1008225c, {frame.at(0x80), frame.at(0x68), 8});
+                continue;
+            }
             const auto role=pending_role(c,current);
             const auto target_club=[&] {return c.u32(clubs)+c.u32(c.u32(frame.at(0x44))+4)*0x248;};
             if(compare(c,role,5)==0||compare(c,role,6)==0) {
@@ -163,6 +172,7 @@ void review_pending_contracts(Cpu& c,std::uint32_t manager_address,std::uint32_t
     c.set(0,std::uint32_t(std::int32_t(std::int8_t(std::uint32_t(decision)))));
     if(nonzero(c,std::int8_t(std::uint32_t(decision))))best=0;
     else {const auto profile=c.u32(person+0x1c);c.set(0,profile);if(nonzero_logical(c,profile)&&review_byte(c,p.call(0x101b1620,0x1008234c,{c.u32(c.toc(-0x79f0)),person})))best=0;}
+    if (forced_best) { best = forced_best; decision = 0; }
     c.set(3,c.u32(frame.at(0x94)));c.set(0,c.u32(frame.at(0x84)));c.put32(frame.at(0x9c),c.r(3));c.put32(frame.at(0x8c),c.r(0));
     for(;;) {
         current_or_node=p.call(0x10738e00,0x10082428,{frame.at(0x90)});if(!nonzero(c,std::int32_t(std::uint32_t(current_or_node))))break;
@@ -191,7 +201,7 @@ void review_pending_contracts(Cpu& c,std::uint32_t manager_address,std::uint32_t
         bool consider=compare(c,role,5)!=0;
         if(consider)consider=compare(c,role,6)!=0;
         if(consider){const auto threshold=c.f64(constants+0xc8);c.set_f(0,threshold);fp.fcmp(0,c.f(31),threshold);consider=c.f(31)>threshold;}
-        if(consider) {
+        if(consider && !forced_best) {
             const auto upper=c.f64(constants+0x190),maximum=c.f64(constants+0x188);c.set_f(0,upper);c.set_f(28,maximum);
             const auto difference=fp.fsub(upper,c.f(31));c.set_f(0,difference);fp.fcmp(0,maximum,difference);if(!(maximum>difference))c.set_f(28,difference);
             const auto zero=c.f64(constants+0x60);c.set_f(0,zero);fp.fcmp(0,c.f(28),zero);

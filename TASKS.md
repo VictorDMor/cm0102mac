@@ -18,6 +18,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: Force Purchase (2026-11-11)
+
+- [x] Add an independent debugging toggle and open the standard bid screen from a CPU club's player profile.
+- [x] Carry the selected bid through the original club response, contract review and transfer confirmation.
+- [x] Verified the independent toggle, a zero-fee bid, a zero-wage contract and the completed move on a career fixture. Transfer screens and contract review also pass original-equivalence checks.
+
 ## Now: lighter rules (2026-11-09)
 
 Decided with Victor on 2026-11-09 and now in `CLAUDE.md` and the skill: lighter reviews, coverage by risk, the local progress workbook. The canonical stack was tried and shelved (`docs/aot-port.md`, "Uninitialised stack reads").

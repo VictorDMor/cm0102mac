@@ -1,9 +1,10 @@
 #include "transfer_screens_detail.hpp"
+#include "debug_force_purchase.hpp"
 
 namespace cm::aot::transfer_screens {
 using namespace detail;
 
-void open_player_offer(Cpu& c, std::uint32_t player, std::uint32_t offer_link) {
+bool open_player_offer(Cpu& c, std::uint32_t player, std::uint32_t offer_link, std::uint32_t forced_seller) {
     Frame f(c, 0x10417590, 0x50, {.first_gpr = 27});
     Kept<30> link(c, offer_link);
     compare(c, link);
@@ -16,7 +17,7 @@ void open_player_offer(Cpu& c, std::uint32_t player, std::uint32_t offer_link) {
         c.set(3, c.u32(link)); revision_or_manager = Offer{c, c.r(3)}.revision();
     }
     if (!byte_result(c, p.call(0x1073e4b0, 0x104175e8,
-        {screens, c.toc(-0x4abc), c.toc(-0x4ac0), 1, c.toc(-0x4ac4), 0}))) return;
+        {screens, c.toc(-0x4abc), c.toc(-0x4ac0), 1, c.toc(-0x4ac4), 0}))) return false;
     p.history(0x10417604, screens, 0, c.u32(person));
     p.history(0x10417618, screens, 1, link);
     p.history(0x1041762c, screens, 2, 0);
@@ -55,6 +56,8 @@ void open_player_offer(Cpu& c, std::uint32_t player, std::uint32_t offer_link) {
     // Each history slot has its own original call boundary, observable by callees.
     for (unsigned index = 15; index <= 22; ++index)
         p.history(0x104177e0 + (index - 15) * 20, screens, index, missing);
+    if (forced_seller) p.history(0x1041787c, screens, forced_proposal_seller_slot, forced_seller);
+    return true;
 }
 
 void open_existing_offer(Cpu& c, std::uint32_t offer_link, std::uint32_t create_screen) {
@@ -101,7 +104,8 @@ void open_existing_offer(Cpu& c, std::uint32_t offer_link, std::uint32_t create_
 
 void idle_callback(Cpu&) {}
 
-void open_offer_context(Cpu& c, std::uint32_t first, std::uint32_t second, std::uint32_t third) {
+void open_offer_context(Cpu& c, std::uint32_t first, std::uint32_t second, std::uint32_t third,
+                        std::uint32_t forced_seller) {
     Frame f(c, 0x1041ea60, 0x50, {.first_gpr = 28});
     Kept<31> screens(c, c.toc(slot::screens));
     Kept<30> context(c, third); Kept<29> other(c, second); Kept<28> primary(c, first);
@@ -111,6 +115,7 @@ void open_offer_context(Cpu& c, std::uint32_t first, std::uint32_t second, std::
     p.history(0x1041eac4, screens, 0, primary);
     p.history(0x1041ead8, screens, 1, other);
     p.history(0x1041eaec, screens, 2, context);
+    if (forced_seller) p.history(0x1041eb04, screens, forced_confirmation_seller_slot, forced_seller);
 }
 
 void open_previous_offer(Cpu& c, std::uint32_t offer, std::uint32_t revision) {

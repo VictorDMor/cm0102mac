@@ -8,7 +8,9 @@
 #include "debug_contract_date.hpp"
 #include "debug_underdogs.hpp"
 #include "debug_match_results.hpp"
+#include "debug_force_purchase.hpp"
 #include "best_xi_selection.hpp"
+#include "transfer_screens.hpp"
 #include <array>
 #include <algorithm>
 #include <cstdlib>
@@ -21,6 +23,7 @@ constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 3
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned best_u23_action = 30023, b_team_action = 30024;
+constexpr unsigned force_purchase_action = 30025;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
@@ -274,7 +277,8 @@ constexpr std::array feature_labels{
     DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
     DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
-    DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results};
+    DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results,
+    DebugText::force_purchase};
 static_assert(feature_labels.size() == debug_feature_count);
 std::uint32_t debugging_modal_mode(State& s) {
     GuestCall call(s);
@@ -288,6 +292,7 @@ bool action_enabled(unsigned action) {
         case extend_contract_action: return native_debugging_feature(DebugFeature::extend_contract);
         case cancel_sale_action: return native_debugging_feature(DebugFeature::cancel_sale);
         case remove_sale_clause_action: return native_debugging_feature(DebugFeature::remove_sale_clause);
+        case force_purchase_action: return native_debugging_feature(DebugFeature::force_purchase);
         case underdogs_action: return native_debugging_feature(DebugFeature::underdogs);
         case underdogs_max_action: return native_debugging_feature(DebugFeature::underdogs_max);
         case match_results_action: return native_debugging_feature(DebugFeature::match_result);
@@ -1372,9 +1377,86 @@ bool extend_debug_club_contracts(State& s, std::uint32_t club) {
     return processed;
 }
 
+namespace {
+std::uint32_t eligible_purchase_seller(State& s, GuestCall& call, std::uint32_t contract) {
+    if (!contract || (std::int8_t(s.memory.read<1>(contract + 0x38)) >> 2) == 5) return 0;
+    const guest::Cpu c(s);
+    const auto id = c.u32(contract + 4), clubs = c.u32(c.toc(-0x7be8));
+    if (!clubs || id >= c.u32(c.toc(-0x7b50))) return 0;
+    const auto ui = root(s);
+    const auto manager = c.u32(ui + std::uint32_t(c.i16(ui + 0x2c58)) * 0x2c0 + 4);
+    if (!manager) return 0;
+    const auto buyer = c.u32(manager + 0x24), seller = clubs + id * 0x248;
+    // Use the transfer scheduler's test for a human-controlled club.
+    if (!buyer || buyer == seller || call.call(0x1014c2e0, {seller, 0, 1, 0, 0})) return 0;
+    return seller;
+}
+
+std::uint32_t purchase_offer_at(const guest::Cpu& c, std::uint32_t transfers, std::uint32_t index) {
+    if (!transfers || index >= c.u32(transfers + 4)) return 0;
+    const auto slots = c.u32(transfers);
+    return slots ? c.u32(slots + index * 4) : 0;
+}
+
+const ForcedPurchase* find_forced_purchase(const guest::Cpu& c, std::uint32_t offer) {
+    const auto& marked = forced_purchases(static_cast<const State&>(c.s)).offers;
+    if (marked.empty() || !offer || c.u8(offer + 0x24) != 0) return nullptr;
+    const auto found = marked.find(c.u32(offer + 0x28));
+    if (found == marked.end()) return nullptr;
+    const auto& purchase = found->second;
+    if (purchase.revision != c.u32(offer + 0x2c) || purchase.player != c.u32(offer + 12) ||
+        purchase.buyer != c.u32(offer + 8)) return nullptr;
+    return &purchase;
+}
+}
+
+std::uint32_t forced_purchase_seller(State& s, std::uint32_t player) {
+    if (!action_enabled(force_purchase_action)) return 0;
+    GuestCall call(s);
+    return eligible_purchase_seller(s, call, debug_primary_contract(s, call, player));
+}
+
+void record_forced_purchase(State& s, std::uint32_t transfers, std::uint32_t draft,
+                            std::uint32_t expected_revision, std::uint32_t seller) {
+    const guest::Cpu c(s);
+    const auto index = c.u32(draft + 0x28);
+    const auto offer = purchase_offer_at(c, transfers, index);
+    if (!offer || c.u32(draft + 0x2c) != expected_revision || c.u32(offer + 0x2c) != expected_revision ||
+        c.u32(offer + 0x28) != index || c.u8(offer + 0x24) != 0 ||
+        c.u32(offer + 8) != c.u32(draft + 8) || c.u32(offer + 12) != c.u32(draft + 12)) return;
+    forced_purchases(s).offers.insert_or_assign(index,
+        ForcedPurchase{offer, expected_revision, c.u32(offer + 12), c.u32(offer + 8), seller});
+}
+
+bool forced_purchase_for_seller(State& s, std::uint32_t offer, std::uint32_t seller) {
+    const guest::Cpu c(s);
+    const auto purchase = find_forced_purchase(c, offer);
+    if (!purchase || purchase->seller != seller) return false;
+    if (purchase->offer == offer) return true;
+    // The transfer-completion screen validates its own copy of the live offer.
+    const auto live = purchase_offer_at(c, c.u32(c.toc(-0x7b40)), c.u32(offer + 0x28));
+    return live == purchase->offer && find_forced_purchase(c, live) == purchase;
+}
+
+bool forced_purchase_contract(State& s, std::uint32_t contract) {
+    const auto& marked = forced_purchases(static_cast<const State&>(s)).offers;
+    if (marked.empty()) return false;
+    const guest::Cpu c(s);
+    const auto index = c.u32(contract + 0x70);
+    const auto found = marked.find(index);
+    if (found == marked.end()) return false;
+    const auto& purchase = found->second;
+    if (purchase.revision != c.u32(contract + 0x74) || purchase.player != c.u32(contract) ||
+        purchase.buyer != c.u32(contract + 4)) return false;
+    const auto live = purchase_offer_at(c, c.u32(c.toc(-0x7b40)), index);
+    if (live != purchase.offer || find_forced_purchase(c, live) != &purchase) return false;
+    const auto status = c.u8(live + 0x34);
+    return status == 7 || status == 8;
+}
+
 void append_debug_contract_action(State& s) {
     if (!action_enabled(extend_contract_action) && !action_enabled(remove_sale_clause_action) &&
-        !action_enabled(cancel_sale_action)) return;
+        !action_enabled(cancel_sale_action) && !action_enabled(force_purchase_action)) return;
     const auto staff = std::uint32_t(s.r<4>(23 * 4));
     const auto original_stack = std::uint32_t(s.r<4>(4));
     GuestCall call(s);
@@ -1385,7 +1467,8 @@ void append_debug_contract_action(State& s) {
     const bool clause = action_enabled(remove_sale_clause_action) && s.memory.read<1>(contract + 0x1d);
     const bool sale = action_enabled(cancel_sale_action) && current_managed_employer(s, call, staff) &&
         scheduled_sale(s, staff, false);
-    if (!action_enabled(extend_contract_action) && !clause && !sale) return;
+    const bool purchase = action_enabled(force_purchase_action) && eligible_purchase_seller(s, call, contract);
+    if (!action_enabled(extend_contract_action) && !clause && !sale && !purchase) return;
     // Build the same parent control and child menu used by the original
     // player comparison menu, then add the debugging actions to that child.
     const auto ui = root(s), page = screen(s, ui);
@@ -1406,6 +1489,7 @@ void append_debug_contract_action(State& s) {
     if (action_enabled(extend_contract_action)) append(DebugText::extend_contract, extend_contract_action);
     if (clause) append(DebugText::remove_sale_clause, remove_sale_clause_action);
     if (sale) append(DebugText::cancel_sale, cancel_sale_action);
+    if (purchase) append(DebugText::force_purchase, force_purchase_action);
 }
 
 bool dispatch_debug_contract_action(State& s) {
@@ -1413,18 +1497,33 @@ bool dispatch_debug_contract_action(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
-    if (action != extend_contract_action && action != cancel_sale_action && action != remove_sale_clause_action) return false;
+    if (action != extend_contract_action && action != cancel_sale_action &&
+        action != remove_sale_clause_action && action != force_purchase_action) return false;
     bool accepted = false;
+    std::int32_t result = 0;
     if (s.memory.read<4>(control + 12) & 2) {
         GuestCall call(s);
         const auto staff = call.call(0x1073ef70, {root(s), 0});
-        if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
+        if (action == force_purchase_action && action_enabled(action)) {
+            const auto seller = eligible_purchase_seller(s, call, debug_primary_contract(s, call, staff));
+            if (seller) {
+                guest::Cpu cpu(s);
+                cpu.set_lr(return_sentinel);
+                s.pc = 0x10417590;
+                if (transfer_screens::open_player_offer(cpu, staff, 0, cpu.u32(seller) + 1))
+                    result = -4;
+            }
+        } else if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
         else if (action == remove_sale_clause_action) accepted = remove_debug_sale_clause(s, staff);
-        else if (current_managed_employer(s, call, staff)) accepted = cancel_scheduled_sale(s, staff);
+        else if (action == cancel_sale_action && current_managed_employer(s, call, staff))
+            accepted = cancel_scheduled_sale(s, staff);
         // Refresh the player page after changing a contract or a transfer.
-        if (accepted) call.call(0x103ab9e0, {});
+        if (accepted) {
+            call.call(0x103ab9e0, {});
+            result = -11;
+        }
     }
-    s.wr<4>(12, std::uint32_t(accepted ? -11 : 0));
+    s.wr<4>(12, std::uint32_t(result));
     s.pc = s.r<4>(4128);
     return true;
 }

@@ -1,16 +1,20 @@
 #include "match_debugging.hpp"
 #include "debug_localization.hpp"
 #include "debug_match_results.hpp"
+#include "debug_force_purchase.hpp"
 #include "guest_abi.hpp"
 #include "code_fragment_adapter.hpp"
 #include "match_replay.hpp"
+#include "platform.hpp"
 #include <algorithm>
 #include <array>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <unistd.h>
 #include <vector>
 using namespace cm::aot;
 namespace {
@@ -21,10 +25,24 @@ struct Clock final : CodeFragmentBoundaryObserver {
     bool import_fixture(State& s, const char* name) override {
         if (std::string_view(name) == "CarbonLib::GetDateTime") s.memory.write<4>(s.r<4>(12), 3000000000u);
         else if (std::string_view(name) == "CarbonLib::Microseconds") s.memory.write<8>(s.r<4>(12), 1000000000ULL);
-        else if (std::string_view(name) == "CarbonLib::FSMakeFSSpec") s.wr<4>(12, std::uint32_t(-43));
+        else if (!s.platform && std::string_view(name) == "CarbonLib::FSMakeFSSpec") s.wr<4>(12, std::uint32_t(-43));
         else return false;
         s.pc = s.r<4>(4128);
         return true;
+    }
+};
+
+struct TransferFiles {
+    std::filesystem::path path;
+    TransferFiles() {
+        auto pattern = (std::filesystem::temp_directory_path() / "cm-debug-purchase-XXXXXX").string();
+        const auto directory = mkdtemp(pattern.data());
+        require(directory != nullptr, "Could not create the transfer fixture directory");
+        path = directory;
+    }
+    ~TransferFiles() {
+        std::error_code error;
+        std::filesystem::remove_all(path, error);
     }
 };
 
@@ -356,9 +374,13 @@ int main(int argc, char** argv) {
         invoke(0x1033d030, {});
         invoke(0x1033f840, {control(30100 + unsigned(DebugFeature::remove_sale_clause), 1)});
         invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30100 + unsigned(DebugFeature::force_purchase), 1)});
+        invoke(0x1033d030, {});
         invoke(0x1033f840, {control(41, 0)});
         close_modal();
-        require(native_debugging_features() == (1u << unsigned(DebugFeature::remove_sale_clause)), "OK lost independent option");
+        const auto selected_features = (1u << unsigned(DebugFeature::remove_sale_clause)) |
+                                       (1u << unsigned(DebugFeature::force_purchase));
+        require(native_debugging_features() == selected_features, "OK lost independent options");
         // Ordinary Game Options must not turn a partial selection into all-on.
         invoke(0x1033ce70, {1});
         invoke(0x1033d030, {});
@@ -367,7 +389,7 @@ int main(int argc, char** argv) {
                 "Debugging modal must use Game Settings cell, selection and footer styles");
         c.set(3, control(41, 0));
         require(!dispatch_debugging_option(s), "Ordinary preferences must retain their original handler");
-        require(native_debugging_features() == (1u << unsigned(DebugFeature::remove_sale_clause)), "Game Options flattened selection");
+        require(native_debugging_features() == selected_features, "Game Options flattened selection");
         invoke(0x1073ef70, {ui, 0});
         invoke(0x1013f4d0, {c.r(3), 1});
         c.set(3, std::uint32_t(-9));
@@ -387,10 +409,12 @@ int main(int argc, char** argv) {
         require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Options changed RNG");
         for (unsigned language = 0; language < 11; ++language)
             for (auto text : {DebugText::options, DebugText::underdogs, DebugText::underdogs_max,
-                             DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts})
+                             DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries,
+                             DebugText::extend_all_contracts, DebugText::force_purchase})
                 require(!debug_text(language, text).empty(), "Missing translation");
         require(debug_text(9, DebugText::extend_all_contracts) == "Renovar Todos os Contratos por 1 Ano" &&
                 debug_text(255, DebugText::extend_all_contracts) == "Extend All Contracts by 1 Year", "Collective renewal labels");
+        require(debug_text(9, DebugText::force_purchase) == "For\347ar Compra", "Portuguese purchase label");
         std::uint32_t managed_club = 0;
         for (unsigned i = 0; i < c.u32(c.toc(-0x7b50)) && !managed_club; ++i) {
             const auto club = c.u32(c.toc(-0x7be8)) + i * 0x248;
@@ -465,8 +489,106 @@ int main(int argc, char** argv) {
             require(c.u32(item_address(i) + 8) != 30021, "Disabled collective action remained visible");
 
         require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Collective renewal changed RNG");
+
+        // Exercise the original proposal callbacks and transfer ledger on the
+        // fixture. Advance the offer directly through its scheduled decisions.
+        select_native_debugging_features(1u << unsigned(DebugFeature::force_purchase));
+        const auto ledger = c.u32(c.toc(-0x7b7c)), transfers = c.u32(c.toc(-0x7b40));
+        const auto active_manager = c.u32(ui + 4);
+        require(active_manager && c.u32(active_manager + 0x24) == managed_club && ledger && transfers,
+                "Missing transfer fixture context");
+        const auto clubs = c.u32(c.toc(-0x7be8));
+        std::uint32_t target = 0, seller = 0;
+        for (unsigned i = 0; i < c.u32(c.toc(-0x7b50)) && !target; ++i) {
+            const auto club = clubs + i * 0x248;
+            if (club == managed_club || c.u32(club + 0x30) != c.u32(managed_club + 0x30)) continue;
+            for (unsigned row = 0; row < 50 && !target; ++row) {
+                const auto player = c.u32(club + 0x98 + row * 4);
+                if (player && forced_purchase_seller(s, player) == club) {
+                    target = player;
+                    seller = club;
+                }
+            }
+        }
+        require(target && seller && !forced_purchase_seller(s, c.u32(managed_club + 0x98)),
+                "Forced purchase must target an AI club's contracted player");
+        const auto command = [&](unsigned handler, unsigned action) {
+            invoke(0x10719560, {page()});
+            c.put16(page() + 0x129da6, 1);
+            c.put32(item_address(0) + 8, action);
+            c.put32(item_address(0) + 12, 2);
+            invoke(handler, {0});
+            return std::int32_t(c.r(3));
+        };
+        invoke(0x1073f1e0, {ui, 0, target, 0});
+        require(command(0x103a72c0, 30025) == -4, "Force Purchase did not open the original proposal screen");
+        invoke(0x1073ef70, {ui, forced_proposal_seller_slot});
+        require(c.r(3) == c.u32(seller) + 1, "Proposal did not retain its original seller");
+        invoke(0x10719560, {page()});
+        invoke(0x10417b60, {});
+        invoke(0x10148930, {c.u32(c.toc(-0x7a54)), 0});
+        const auto draft = c.u32(c.r(3));
+        require(draft && c.u32(draft + 12) == c.u32(target), "Original proposal did not create a draft");
+        c.put32(draft + 0x20, 0);
+        require(command(0x1041b600, 1) == -4, "Proposal did not open normal confirmation");
+        invoke(0x1073ef70, {ui, forced_confirmation_seller_slot});
+        require(c.r(3) == c.u32(seller) + 1, "Confirmation lost the force flag");
+        const auto revision = c.u32(transfers + 0x98c);
+        require(command(0x1041f3a0, 3) == -10, "Confirmation did not submit the original proposal");
+        const auto& marked = forced_purchases(static_cast<const State&>(s)).offers;
+        require(marked.size() == 1, "Expected only the selected proposal to be forced");
+        const auto& [id, purchase] = *marked.begin();
+        const auto offer = purchase.offer;
+        require(purchase.revision == revision && c.u32(offer + 0x20) == 0 && !c.u8(offer + 0x34),
+                "Submitted bid must keep its zero fee and original pending state");
+        invoke(0x103eb440, {transfers, id});
+        const auto link = c.r(3);
+        invoke(0x103eb650, {transfers, link});
+        require(c.u8(offer + 0x34) == 5, "CPU seller did not approve the zero-fee bid");
+
+        invoke(0x100965c0, {link, target, 1, 11, 1});
+        invoke(0x10719560, {page()});
+        invoke(0x10096c60, {});
+        invoke(0x101487d0, {c.u32(c.toc(-0x7a54)), 0});
+        const auto terms = c.r(3);
+        require(c.u32(terms) == c.u32(target) && c.u32(terms + 4) == c.u32(managed_club),
+                "Negotiation did not draft a contract for the buyer");
+        c.put32(terms + 8, 0);
+        c.put32(terms + 12, 0);
+        require(command(0x10097b70, 1) == -4 && command(0x1009e290, 0x14) == -10,
+                "Original negotiation did not submit the contract");
+        invoke(0x1007f720, {ledger, c.u32(target), c.u32(managed_club)});
+        const auto pending = c.r(3);
+        require(pending && forced_purchase_contract(s, pending), "Contract did not link to the forced bid");
+        c.put32(pending + 0x74, revision + 1);
+        require(!forced_purchase_contract(s, pending), "Another revision matched the forced bid");
+        c.put32(pending + 0x74, revision);
+        invoke(0x10081bd0, {ledger, target});
+        require(c.u8(offer + 0x10) == 2 && c.u8(pending + 0x64) == 2 && c.u32(pending + 8) == 0,
+                "Player did not accept the submitted zero-wage terms");
+        require(c.u8(offer + 0x34) == 12, "Seller did not give final approval");
+        invoke(0x103e80e0, {transfers, offer, managed_club});
+        require(c.u8(offer + 0x34) == 14, "Buyer did not confirm the transfer");
+        TransferFiles files;
+        std::filesystem::create_directories(files.path / "game");
+        std::filesystem::create_directories(files.path / "working/Files");
+        const auto history_file = files.path / "working/Files/staff history.tmp";
+        std::ofstream(history_file, std::ios::binary).close();
+        // The captured ledger refers to pre-existing statistics offsets.
+        std::filesystem::resize_file(history_file, 2 * 1024 * 1024);
+        const auto player_archive = files.path / "working/Files/player stats history.tmp";
+        std::ofstream(player_archive, std::ios::binary).close();
+        std::filesystem::resize_file(player_archive, 2 * 1024 * 1024);
+        s.platform = std::make_shared<NativePlatform>(files.path / "game", files.path / "working",
+                                                     AudioMode::offline, EventMode::isolated);
+        invoke(0x103eb650, {transfers, link});
+        s.platform.reset();
+        require(c.u32(target + 0x24) == managed_club, "Confirmed player did not join the buyer");
+        clear_forced_purchases(s);
+        require(marked.empty() && !forced_purchase_for_seller(s, offer, seller), "Reset retained a forced purchase");
+
         if (argc == 3) check_fixture_results(argv[2]);
-        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization"
+        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization; forced purchase"
                   << (argc == 3 ? "; fixture-list right-click match results" : "") << '\n';
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

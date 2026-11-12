@@ -1862,6 +1862,15 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "platform.hpp"')
     if page in (0x1028b, 0x1028c, 0x1028d, 0x102a1, 0x102a3, 0x102a5, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
         code.insert(1, '#include "match_debugging.hpp"')
+    forced_purchase_branches = {
+        # The CPU seller's decision, the player's willingness to negotiate,
+        # and the seller's board review during completion.
+        0x103ee4c0: ("lwz r4,0x0(r16)", 0x103ee4e4, "forced_purchase_for_seller(s, s.r<4>(88), s.r<4>(112))"),
+        0x103e4910: ("bge 0x103e49fc", 0x103e49fc, "forced_purchase_for_seller(s, s.r<4>(116), s.r<4>(80))"),
+        0x103f9f20: ("or r3,r21,r21", 0x103f9f88, "forced_purchase_for_seller(s, s.r<4>(88), s.r<4>(120))"),
+    }
+    if page_addresses & (forced_purchase_branches.keys() | {0x10345bb0, 0x10346bc0}):
+        code.insert(1, '#include "debug_force_purchase.hpp"')
     if page in (0x10331, 0x10715, 0x10717, 0x10718):
         code.insert(1, '#include "calendar_adapter.hpp"')
     if page in (0x10715, 0x10716, 0x10717, 0x10718):
@@ -2146,6 +2155,13 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("if (dispatch_debug_contract_action(s)) return true;")
         if a == 0x101cca40:
             code.append("reset_match_debugging();")
+        if a in (0x10345bb0, 0x10346bc0):
+            code.append("clear_forced_purchases(s);")
+        if a in forced_purchase_branches:
+            expected, target, predicate = forced_purchase_branches[a]
+            if item["assembly"] != expected or target not in page_addresses:
+                raise ValueError(f"Forced purchase branch changed at {a:x}")
+            code.append(f"if ({predicate}) goto i_{target:x};")
         if a in CALENDAR_ADAPTER_ENTRIES:
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
         if a in DATE_SUBSYSTEM_ENTRIES:

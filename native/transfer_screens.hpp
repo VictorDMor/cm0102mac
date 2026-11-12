@@ -3,7 +3,7 @@
 
 namespace cm::aot::transfer_screens {
 using guest::Cpu;
-void open_player_offer(Cpu&, std::uint32_t player, std::uint32_t offer_link);
+bool open_player_offer(Cpu&, std::uint32_t player, std::uint32_t offer_link, std::uint32_t forced_seller = 0);
 void open_existing_offer(Cpu&, std::uint32_t offer_link, std::uint32_t create_screen);
 void idle_callback(Cpu&);
 void render_proposal(Cpu&);
@@ -23,7 +23,7 @@ void open_offer_terms_from_news(Cpu&, std::uint32_t manager, std::uint32_t item)
 void render_withdraw_bid(Cpu&);
 void update_proposal_total(Cpu&, std::uint32_t draft_offer, std::uint32_t offer_link);
 std::uint32_t proposal_command(Cpu&, std::uint32_t selected_control);
-void open_offer_context(Cpu&, std::uint32_t, std::uint32_t, std::uint32_t);
+void open_offer_context(Cpu&, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t forced_seller = 0);
 void open_previous_offer(Cpu&, std::uint32_t offer, std::uint32_t revision);
 void open_existing_from_news(Cpu&, std::uint32_t manager, std::uint32_t item);
 void open_player_from_news(Cpu&, std::uint32_t manager, std::uint32_t item);

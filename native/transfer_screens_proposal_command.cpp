@@ -1,4 +1,6 @@
 #include "transfer_screens_detail.hpp"
+#include "debug_force_purchase.hpp"
+#include "match_debugging.hpp"
 #include "guest_fpu.hpp"
 
 namespace cm::aot::transfer_screens {
@@ -337,7 +339,9 @@ std::uint32_t ProposalCommand::run() {
         return result(c, std::uint32_t(-4));
     }
     if (is_action(1)) {
-        enter(c, 0x1041bc64, {draft_slot, 1, 0}); open_offer_context(c, draft_slot, 1, 0);
+        const auto seller = native_debugging_feature(DebugFeature::force_purchase)
+            ? history(0x1041bc64, forced_proposal_seller_slot) : 0;
+        enter(c, 0x1041bc64, {draft_slot, 1, 0}); open_offer_context(c, draft_slot, 1, 0, seller);
         return result(c, std::uint32_t(-4));
     }
     if (is_action(27)) {

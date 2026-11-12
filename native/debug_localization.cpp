@@ -4,6 +4,13 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::force_purchase) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "Force Purchase", "Force Purchase", "Forcer l'achat", "Kauf erzwingen",
+            "Forza acquisto", "Forzar compra", "Gennemtving k\370b", "Aankoop afdwingen",
+            "Tving kj\370p", "For\347ar Compra", "Tvinga k\366p"};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text == DebugText::match_results) return "Match Results";
     if (text == DebugText::draw) {
         // Shown in place of the fixture list's "v"; kept short for that column.
