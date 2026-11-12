@@ -210,6 +210,8 @@ void fallbacks_and_drawing(bool profile) {
 int main(int argc, char** argv) {
     try {
         initialize_native_match_speed();
+        // The reference of every comparison here is the generated pair sort, instruction counts included.
+        require(std::getenv("CM_QSORT4X_ORIGINAL") != nullptr, "Run with CM_QSORT4X_ORIGINAL=1: the reference is the original sort");
         const bool profile = argc == 2 && std::string(argv[1]) == "--profile";
         require((argc == 1 || profile) && profile == match_pc_profile_enabled(), "Unexpected sort profile policy");
         if (!profile) equivalence();

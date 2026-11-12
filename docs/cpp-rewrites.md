@@ -1771,3 +1771,28 @@ files and their texts, and the vacancy event 0x101b9130) is native-first. The or
 of its calls leave argument registers the original sets but the callee never reads (a format with fewer `%s` than
 registers, an array constructor that reads r3-r7): `manager_manager_trace_accepted.inc` lists them with the reason.
 The module's message helpers (`start_message`, `set_field`, `sext8`) live in `manager_manager_detail.hpp`.
+
+## The sort family: qsort4x.c, qsort8x.c, the byte sort and their entry
+
+Every sort in the game goes through 0x10768300, which picks one of three heapsorts by the row width: pairs of words
+(0x10768660, qsort8x.c) for a multiple of 8, words (0x107684c0, qsort4x.c) for a multiple of 4, bytes (0x10768340)
+otherwise. Nothing else calls the three, and no data word points at any of them (`tools/test_qsort4x_audit.py`). All
+four are C++ in `native/qsort4x.cpp`: one heapsort over the three swaps.
+
+What its callers observe besides the rows, and so what the rewrite keeps:
+
+- The order of comparator calls and swaps. Comparators are game routines with frames of their own, and the heapsort is
+  not stable, so ties end where the original's do only with the same sequence.
+- The prologue image (saved r21-r31, LR, back chain). The stack contract lists fifteen readers of what 0x107684c0
+  leaves, five of which change results when they read zero instead (0x101de39c in the match engine, 0x1029fa38,
+  0x1043355c, 0x1076b760, the import bridge 0x10bf7bbc). Sorting changes a later leftover-stack read, so a sort cannot
+  be replaced by a host sort even where the rows would come out the same.
+- r21-r31 at each comparator call (a comparator's prologue saves them below that image), and r3-r8, cr0 and the carry
+  as the last swap leaves them. The fixture checker compares these with `strict_volatile`, at every comparator call.
+
+The word and pair sorts assert that the width is a multiple of their unit (0x107755c0, line 120) and then sort anyway,
+moving whole units and leaving the remainder of each row where it was. The entry never sends them such a width.
+
+The fused 8-byte sort (`tools/native_sort8.py`) stays the first hook at 0x10768660 and answers for the three comparators
+it inlines; the entry's C++ calls the pair sort through its page so that it still does. A typed C++ comparator called
+directly from the heapsort would replace that fusion; nothing does that yet.

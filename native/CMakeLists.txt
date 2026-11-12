@@ -2991,9 +2991,11 @@ target_compile_options(cm-native-sort8-checks PRIVATE -Wall -Wextra -Werror -Wpe
 add_test(NAME native_sort8_equivalence COMMAND cm-native-sort8-checks)
 # Compare the fused path's accounting with the original generated comparators
 # normally owned by SHORTLIST_MANAGER.CPP and PLAYER_STATS.CPP.
-set_tests_properties(native_sort8_equivalence PROPERTIES ENVIRONMENT "CM_SHORTLIST_MANAGER_ORIGINAL=1;CM_PLAYER_STATS_ORIGINAL=1")
+# The fused sort is compared with the generated pair sort, instruction counts included,
+# so the sort family runs its original here too.
+set_tests_properties(native_sort8_equivalence PROPERTIES ENVIRONMENT "CM_SHORTLIST_MANAGER_ORIGINAL=1;CM_PLAYER_STATS_ORIGINAL=1;CM_QSORT4X_ORIGINAL=1")
 add_test(NAME original_sort8_profile COMMAND "${CMAKE_COMMAND}" -E env
-    CM_AOT_MATCH_PC_PROFILE=1 $<TARGET_FILE:cm-native-sort8-checks> --profile)
+    CM_AOT_MATCH_PC_PROFILE=1 CM_QSORT4X_ORIGINAL=1 $<TARGET_FILE:cm-native-sort8-checks> --profile)
 add_executable(cm-shutdown-checks shutdown_checks.cpp)
 target_link_libraries(cm-shutdown-checks PRIVATE cm_probe_host)
 target_compile_options(cm-shutdown-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
@@ -4555,6 +4557,31 @@ if(CM_ENG_THIRD_COVERAGE)
     target_compile_definitions(cm-eng-third-checks PRIVATE CM_ENG_THIRD_COVERAGE=1
         CM_ENG_THIRD_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/eng-third-coverage")
     target_link_options(cm-eng-third-checks PRIVATE "-fprofile-instr-generate=${CM_ENG_THIRD_PROFILE}")
+endif()
+
+# The sort family (qsort4x.c, qsort8x.c, the byte sort and their entry) in C++.
+file(GLOB CM_QSORT4X_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/qsort4x*.cpp")
+list(FILTER CM_QSORT4X_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_QSORT4X_SOURCES})
+add_executable(cm-qsort4x-checks qsort4x_checks.cpp)
+target_link_libraries(cm-qsort4x-checks PRIVATE cm_aot)
+target_compile_options(cm-qsort4x-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_QSORT4X_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/qsort4x_reference.cpp")
+    add_custom_command(OUTPUT "${CM_QSORT4X_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_qsort4x_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_QSORT4X_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_qsort4x_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/qsort4x_audit.py"
+            "${CMAKE_SOURCE_DIR}/qsort4x_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-qsort4x-checks PRIVATE "${CM_QSORT4X_REFERENCE}")
+    add_test(NAME qsort4x_equivalence COMMAND cm-qsort4x-checks "${CM_ORACLE_DIR}")
+    add_test(NAME qsort4x_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_QSORT4X_ORIGINAL=1
+        $<TARGET_FILE:cm-qsort4x-checks> "${CM_ORACLE_DIR}" --original-routing)
+    add_test(NAME qsort4x_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_qsort4x_audit.py")
 endif()
 
 # Authorized English promotion/playoff preset, separate from equivalence tests.

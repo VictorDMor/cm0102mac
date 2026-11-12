@@ -18,6 +18,14 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: the sort family (delivered 2026-11-12)
+
+The game's sort (0x10768300 and its three heapsorts: `qsort4x.c`, `qsort8x.c` and the byte sort; 4 routines, 314 instructions) is C++ and routed (`native/qsort4x.cpp`, `tools/qsort4x_audit.py`, `cm-qsort4x-checks`). Victor chose it as the quickest next step, by day weight.
+
+- MANAGER_MANAGER.CPP is paused at 51 of 105, not dropped: its 44 generated routines have no day weight (section "removing the PowerPC" below).
+- [ ] Typed comparators (idea, not started): the heapsort still reaches each comparator through the glue and the dispatcher, and the fused 8-byte sort (`tools/native_sort8.py`) stays the first hook at 0x10768660 for the three comparators it inlines. Calling C++ comparators directly from `qsort4x.cpp` would replace that fusion and is where the rest of the sort's time is: the day gained 1.28% and the week nothing, although the strict replay runs 2.46 billion fewer generated instructions on the day.
+- [ ] Next module: rerun `tools/game_inventory.py` with fresh day and week profiles, then choose between HUMAN_MANAGER.CPP (0x1014c2e0, 120 day samples on 2026-11-07) and MANAGER_MANAGER's remaining blocks.
+
 ## Now: award screens crash (2026-11-12)
 
 - [x] Diagnose: runs `app.NmZYDm` and `app.WoO0fN` stop at `0x100d50e0` reading address 0, from the award screens (0x10000180 / 0x100026d0) through the background selector 0x10713400, which passes a null object to the category-4 wrapper (0x10713514). Same class as the FIFA rankings fix of 2026-10-30; the category-2 wrapper (null from 0x1071367c, match/tactics screens) had the same gap.
@@ -957,6 +965,7 @@ All kept as the original has them; recommendation so far is to change none. Read
 ## Known test state
 
 - `tools/dev.sh test`: 94/95 runnable tests pass (2026-10-23, Best XI/localization build); `debugging_best_xi`, actual goals and injury shortcuts pass. `match_debugger_actual_lineup` failed from ed7749e to 2026-10-25: it required the `match_actor` owner's call count, and production pages run that family's generated code. It now requires each lineup edit's effects to be non-empty and equal to the original setter's on the control, whichever implementation runs. `match_engine_live_equivalence` and most others lack a built binary or inputs.
+- Stale UI captures (2026-11-12): 56 tests that replay `ui/` and tactics captures fail with the same replay divergence whether the sort runs as C++ or with `CM_QSORT4X_ORIGINAL=1` (`SetRect` r20, `HGetVol` r23): every `contract_manager_*` synthetic, capture and real-callee test listed by `ctest -R contract_manager_` except the component and equivalence ones, `player_stats_ps_profile`, `_ps_profile2`, `_ps_newgame`, `_detect_difference`, the `shortlist_manager_*` capture tests and `ui_replay_contract_offer`. Re-recording those captures is Victor's.
 - Python audits: every `tools/test_*.py` passes against `.local/current/export`; `test_generated_temporaries.py` (needs a build dir) not run.
 
 ## Euro symbol (2026-10-23)

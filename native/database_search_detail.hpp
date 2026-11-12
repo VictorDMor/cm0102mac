@@ -7,7 +7,7 @@
 
 namespace cm::aot::database::search {
 using guest::Cpu;
-constexpr std::uint32_t qsort = 0x10768300;  // generated: qsort4x.c
+constexpr std::uint32_t qsort = 0x10768300;  // the sort family (qsort4x.cpp)
 
 // PowerPC integer helpers shared by the routines of this block.
 // extsb / extsh as a register value.
