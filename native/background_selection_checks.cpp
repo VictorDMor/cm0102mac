@@ -316,7 +316,9 @@ int main(int argc, char** argv) {
                 require(b->memory.read<4>(cursor) == pool + (key == missing_descriptor ? 0 : 2), "Descriptor miss consumed RNG");
             }
             for (auto wrapper : {0x10713ad0u,0x10713b20u}) {
-                a = setup(argv[1], 3, cases); a->pc = wrapper; a->wr<4>(12, 0); a->wr<4>(16, alternate); b = clone(*a);
+                a = setup(argv[1], 3, cases); a->pc = wrapper; a->wr<4>(12, 0); a->wr<4>(16, alternate);
+                // A loaded language object, as in play: without one the guard leaves the getter to create it.
+                a->memory.write<4>(toc - 0x39e4, fixture + 0x50000); b = clone(*a);
                 compare_pair(*a, *b, "generated club/competition null wrapper");
                 require(b->r<4>(12) == picture(1, alternate, 2) && b->background_calls[3] != 0,
                     "Generated null-object wrapper did not dispatch semantic selection");

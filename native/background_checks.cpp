@@ -1,5 +1,6 @@
 #include "aot_runtime.hpp"
 #include <iostream>
+#include <vector>
 
 using namespace cm::aot;
 namespace {
@@ -13,12 +14,16 @@ constexpr std::uint32_t random_seed = fixture + 0xa08, random_bytes = fixture + 
 constexpr std::uint32_t data_mode = fixture + 0xc00, mapping = fixture + 0xc10;
 constexpr std::uint32_t mapping_table = fixture + 0xc20, cache = fixture + 0xd00;
 struct BackgroundCase {
-    std::uint32_t category_id, wrapper, getter_return, getter, null_fault, null_address;
+    std::uint32_t category_id, wrapper, getter_return, getter, null_address;
 };
+// Nation, club, competition, award-screen (null from 10713514) and match/tactics-screen (null from 1071367c)
+// wrappers. The getters are DATABASE.CPP's C++ owners, which report a fault at their entry.
 constexpr BackgroundCase cases[] = {
-    {0, 0x10713a80, 0x10713aa0, 0x100d4df0, 0x100d4ea0, 0x68},
-    {1, 0x10713ad0, 0x10713af0, 0x100d5310, 0x100d53d8, 0},
-    {3, 0x10713b20, 0x10713b40, 0x100d4fd0, 0x100d5084, 0},
+    {0, 0x10713a80, 0x10713aa0, 0x100d4df0, 0x68},
+    {1, 0x10713ad0, 0x10713af0, 0x100d5310, 0},
+    {3, 0x10713b20, 0x10713b40, 0x100d4fd0, 0},
+    {4, 0x10713b70, 0x10713b90, 0x100d50e0, 0},
+    {2, 0x10713bc0, 0x10713be0, 0x100d5450, 0},
 };
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -64,6 +69,8 @@ std::unique_ptr<State> setup(const char* program, const BackgroundCase& type) {
     s->memory.write<4>(cache + 44, descriptor); // Nation name cache (nation index at +0x68 is zero).
     s->memory.write<4>(cache + 20, 1); // One regular competition.
     s->memory.write<4>(cache + 56, descriptor); // Competition name cache.
+    s->memory.write<4>(cache + 52, descriptor); // Category 2 rows (0x34 bytes each).
+    s->memory.write<4>(cache + 60, descriptor); // Category 4 rows (0x4f bytes each).
     for (unsigned r = 14; r < 32; ++r) s->wr<4>(r * 4, 0xcafe0000u + r);
     s->budget = 10000;
     return s;
@@ -133,6 +140,31 @@ int main(int argc, char** argv) {
                 preserved(*s);
                 require(!s->r<4>(12), "Empty object-specific tree returned a picture");
             }
+            {
+                // The guarded null path (loaded language object, mode 2) must leave the stack, registers and
+                // picture of the original getter actually running: mode 0 with no language object returns
+                // object+offset at once, without reading through the null object or creating anything.
+                constexpr std::uint32_t window = 0x700ffe00, window_size = 0x120;
+                std::vector<std::uint8_t> fill(window_size);
+                for (std::uint32_t i = 0; i < window_size; ++i) fill[i] = std::uint8_t(0xa5 ^ i);
+                auto guarded = setup(argv[1], type);
+                auto original = setup(argv[1], type);
+                original->memory.write<1>(data_mode, 0);
+                original->memory.write<4>(0x108b80ac, 0);
+                for (auto* state : {guarded.get(), original.get()}) {
+                    state->memory.copy_in(window, fill);
+                    run_wrapper(*state, type, 0, false);
+                }
+                require(guarded->r<4>(12) == original->r<4>(12) && guarded->r<4>(12) == primary_image,
+                        "Guarded null wrapper chose a different picture from the original getter's path");
+                if (guarded->memory.copy_out(window, window_size) != original->memory.copy_out(window, window_size)) {
+                    const auto a = guarded->memory.copy_out(window, window_size), b = original->memory.copy_out(window, window_size);
+                    std::uint32_t at = 0;
+                    while (a[at] == b[at]) ++at;
+                    throw std::runtime_error("Guarded null wrapper " + hex_address(type.wrapper) +
+                        " left different stack bytes from the original getter, first at " + hex_address(window + at));
+                }
+            }
             auto s = setup(argv[1], type);
             s->memory.write<1>(0x108b84bc, 0);
             run_wrapper(*s, type, 0, false);
@@ -151,11 +183,11 @@ int main(int argc, char** argv) {
                 fault = error.what();
                 stopped = std::string(error.what()) == "Unmapped data access at " + hex_address(type.null_address);
             }
-            if (!stopped || s->pc != type.null_fault)
+            if (!stopped || s->pc != type.getter)
                 throw std::runtime_error("Direct null getter " + hex_address(type.getter) + " stopped at " +
                     hex_address(s->pc) + ": " + fault);
         }
-        std::cout << "Original nation/club/competition/default background selection, RNG state, and null-access checks passed\n";
+        std::cout << "Original nation/club/competition/award/screen default background selection, RNG state, and null-access checks passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

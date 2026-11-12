@@ -18,6 +18,13 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: award screens crash (2026-11-12)
+
+- [x] Diagnose: runs `app.NmZYDm` and `app.WoO0fN` stop at `0x100d50e0` reading address 0, from the award screens (0x10000180 / 0x100026d0) through the background selector 0x10713400, which passes a null object to the category-4 wrapper (0x10713514). Same class as the FIFA rankings fix of 2026-10-30; the category-2 wrapper (null from 0x1071367c, match/tactics screens) had the same gap.
+- [x] Extend the generator's null-object guard to 0x10713b8c and 0x10713bdc; checker, audit test, doc.
+- [x] `original_background_selection` had gone stale when DATABASE.CPP's getters became C++ owners (fault reported at the getter's entry); updated in the same change.
+- [ ] Victor checks in play: FIFA World Player / South American Player of the Year screens, and a match or tactics screen with a default background.
+
 ## Now: Force Purchase (2026-11-11)
 
 - [x] Add an independent debugging toggle and open the standard bid screen from a CPU club's player profile.

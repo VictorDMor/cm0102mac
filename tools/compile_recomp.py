@@ -1158,12 +1158,26 @@ LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CAL
 DEFAULT_DATE_CALLS = frozenset({0x103faca4, 0x103fb020})
 
 
+# Background wrappers whose callers (nation 10713004, club 10713218,
+# competition 107133b8, award screens 10713514, match/tactics screens
+# 10713680) deliberately pass a null object. Call site -> (name getter, its
+# frame size, its first saved GPR, manifest purpose); each getter's prologue
+# saves r<first>..r31 below the stack pointer, LR at +8, and the back chain.
+NULL_BACKGROUND_GETTER_CALLS = {
+    0x10713a9c: (0x100d4df0, 0x40, 30, "nation"),
+    0x10713aec: (0x100d5310, 0x50, 29, "club"),
+    0x10713b3c: (0x100d4fd0, 0x40, 30, "competition"),
+    0x10713b8c: (0x100d50e0, 0x40, 30, "award-screen"),
+    0x10713bdc: (0x100d5450, 0x40, 30, "match/tactics-screen"),
+}
+LANGUAGE_OBJECT_TOC = -0x39e4  # The getters' lazily created language object.
+
 # Instructions generate_page lowers specially (beyond owner hooks and
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
-    0x10713a9c, 0x10713aec, 0x10713b3c, 0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | DEFAULT_DATE_CALLS
+    0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | DEFAULT_DATE_CALLS | set(NULL_BACKGROUND_GETTER_CALLS)
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -2637,18 +2651,28 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             _, quotient, _, divisor = item["ops"][0]
             code.extend([f"if (s.r<4>({divisor[1]}) == 0) {{", f"s.wr<4>({quotient[1]}, 0);",
                          transfer(a + 4, transfer_page, selected), "}"])
-        if a in (0x10713a9c, 0x10713aec, 0x10713b3c):
-            # Nation/club/competition fallbacks (10713004/10713214/107133b8)
-            # deliberately pass a null object. The shared selector 107139c0
-            # ignores its descriptor in that case. Avoid only these audited
-            # eager getter calls; nonnull lookup and other accesses are intact.
-            getter = {0x10713a9c: 0x100d4df0, 0x10713aec: 0x100d5310,
-                      0x10713b3c: 0x100d4fd0}[a]
+        if a in NULL_BACKGROUND_GETTER_CALLS:
+            # The fallback callers deliberately pass a null object. The shared
+            # selector 107139c0 ignores its descriptor in that case, while the
+            # eager name getter reads through the null object (page zero, which
+            # the original machine could read). With a null object and an
+            # existing language object, skip the getter but leave the stack
+            # bytes its prologue writes. Without a language object the getter
+            # still runs, since it creates that object first. Nonnull lookup
+            # and other accesses are intact.
+            getter, frame, first_gpr, _ = NULL_BACKGROUND_GETTER_CALLS[a]
             continuation = a + 4
             if item["assembly"] != f"bl 0x{getter:x}" or plain_direct_call(item) != getter:
                 raise ValueError("Background call site no longer matches the audited release")
-            code.extend(["if (s.r<4>(12) == 0) {", "s.wr<4>(2440, s.r<4>(8));",
-                         f"s.wr<4>(4128, 0x{continuation:x});",
+            sp = "std::uint64_t(std::uint32_t(s.r<4>(4) + UINT64_C({})))"
+            code.append("if (s.r<4>(12) == 0 && s.memory.read<4>(std::uint64_t(std::uint32_t("
+                        f"s.r<4>(8) + UINT64_C({LANGUAGE_OBJECT_TOC & 0xffffffff})))) != 0) {{")
+            for register in range(31, first_gpr - 1, -1):
+                offset = -4 * (32 - register)
+                code.append(f"s.memory.write<4>({sp.format(offset & 0xffffffff)}, s.r<4>({register * 4}));")
+            code.extend([f"s.memory.write<4>({sp.format(8)}, 0x{continuation:x});",
+                         f"s.memory.write<4>({sp.format(-frame & 0xffffffff)}, s.r<4>(4));",
+                         "s.wr<4>(2440, s.r<4>(8));", f"s.wr<4>(4128, 0x{continuation:x});",
                          transfer(continuation, transfer_page, selected), "}"])
         if a in default_date_calls:
             if plain_direct_call(item) != 0x10715880:
@@ -3373,9 +3397,8 @@ def main():
                 "sourceFixups": [
                     {"address": f"0x{address:x}", "purpose": purpose}
                     for address, purpose in (
-                        (0x10713a9c, "Skip unused null-nation descriptor lookup for default background"),
-                        (0x10713aec, "Skip unused null-club descriptor lookup for default background"),
-                        (0x10713b3c, "Skip unused null-competition descriptor lookup for default background"),
+                        *((site, f"Skip unused null-{label} descriptor lookup for default background")
+                          for site, (_, _, _, label) in NULL_BACKGROUND_GETTER_CALLS.items()),
                         (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"),
                         (0x1034f1f8, "Exclude the retired Inter-American Cup from ruling-body counts after 1998"),
                         (0x1034f318, "Skip creating the retired Inter-American Cup after 1998"),

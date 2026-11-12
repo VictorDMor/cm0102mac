@@ -12,7 +12,8 @@ from background_selection_audit import (
 from calendar_audit import DATE_SUBSYSTEM_ENTRIES
 from collection_lookup_audit import COLLECTION_LOOKUP_ENTRIES
 from compile_recomp import (CALENDAR_ADAPTER_ENTRIES, SEMANTIC_REPLACEMENTS,
-                            HOST_OBSERVED_INSTRUCTIONS, generate_page, operation)
+                            HOST_OBSERVED_INSTRUCTIONS, NULL_BACKGROUND_GETTER_CALLS,
+                            generate_page, operation)
 from rng_core_audit import RNG_CORE_ENTRIES
 
 INDEX = Path(__file__).resolve().parent.parent / '.local/current/export/instructions.sqlite'
@@ -131,12 +132,25 @@ class BackgroundAuditTests(unittest.TestCase):
         records = self.records(0x10713)
         wrapper_code = generate_page(0x10713, records, {r['address'] for r in records})
         self.assertIn('s.pc = 0x1074df90; return true;', wrapper_code)
-        for address in (0x10713a80, 0x10713ae0, 0x10713b30, 0x10713c10):
+        for address in (0x10713a80, 0x10713ad0, 0x10713b20, 0x10713b70, 0x10713bc0, 0x10713c10):
             self.assertNotIn(f'try_modern_background_selection(s, 0x{address:x})', wrapper_code)
-        for address, getter in ((0x10713a9c, 0x100d4df0), (0x10713aec, 0x100d5310),
-                                (0x10713b3c, 0x100d4fd0)):
+        self.assertEqual(set(NULL_BACKGROUND_GETTER_CALLS),
+                         {0x10713a9c, 0x10713aec, 0x10713b3c, 0x10713b8c, 0x10713bdc})
+        for address, (getter, frame, first_gpr, _) in NULL_BACKGROUND_GETTER_CALLS.items():
+            # Each entry matches the getter's own prologue in the export.
+            prologue = [r['assembly'] for r in self.records(getter >> 12)
+                        if getter <= r['address'] < getter + 0x24]
+            saved = {f'stw r{n},-0x{4 * (32 - n):x}(r1)' for n in range(first_gpr, 32)}
+            self.assertTrue(saved <= set(prologue), hex(getter))
+            self.assertIn(f'stwu r1,-0x{frame:x}(r1)', prologue)
+            self.assertIn('stw r0,0x8(r1)', prologue)
+            self.assertFalse(any(f'stw r{n},' in line for n in range(14, first_gpr) for line in prologue))
             fragment = wrapper_code.split(f'i_{address:x}:', 1)[1].split(f'i_{address + 4:x}:', 1)[0]
-            self.assertIn('if (s.r<4>(12) == 0) {', fragment)
+            self.assertIn('if (s.r<4>(12) == 0 && s.memory.read<4>(std::uint64_t(std::uint32_t('
+                          's.r<4>(8) + UINT64_C(4294952476)))) != 0) {', fragment)
+            self.assertEqual(fragment.count('s.memory.write<4>('), 32 - first_gpr + 2)
+            self.assertIn(f'UINT64_C({-frame & 0xffffffff}))), s.r<4>(4));', fragment)
+            self.assertIn(f'UINT64_C(8))), 0x{address + 4:x});', fragment)
             self.assertIn('s.wr<4>(2440, s.r<4>(8));', fragment)
             self.assertIn(f's.wr<4>(4128, 0x{address + 4:x});', fragment)
             self.assertIn(f'goto i_{address + 4:x};', fragment)

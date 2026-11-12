@@ -349,6 +349,21 @@ The background audit also pins all 59 adapter memory-access PCs for block
 accounting, so table-driven fault checks retain the exact access instruction
 rather than reporting the start of its straight-line run.
 
+Two more wrappers have the same fallback. The award screens' selector `0x10713400`
+calls the category-4 wrapper `0x10713b70` with a null object at `0x10713514` (world
+and continental awards, such as the FIFA World Player of the Year), and `0x10713560`
+(match and tactics screens) calls the category-2 wrapper `0x10713bc0` with null at
+`0x10713680`. Their getters `0x100d50e0` and `0x100d5450` read the index word through
+the null object whenever the language mode byte is neither 0 nor 1 (it was in the
+reported careers; with 0 or 1 they return object+0x30/+0x18 without a read).
+All five guarded sites are `NULL_BACKGROUND_GETTER_CALLS` in the generator. The
+guard skips a getter only when the language object (TOC-0x39e4) exists, since the
+getters create it lazily, and it writes the bytes the getter's prologue would have
+left (saved registers, LR, back chain). `cm-background-checks` compares that stack
+image with the getter's own early return. Since DATABASE.CPP's getters are C++
+owners, a direct null call faults at the getter's entry; the original load
+instruction is no longer what the fixture checks.
+
 Runs `app.rCcF8C` and `app.tCEQVP` passed team selection. The user confirmed
 assuming control, and the retained `app.rCcF8C` frame shows the original Cruzeiro
 squad screen. Both runs then stopped when opening a player, at the missing
