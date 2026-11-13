@@ -383,6 +383,24 @@ null one and an unmapped one. Not established: what makes the event empty when
 the screen draws, and what page zero held on the original machine (so delay 0
 is a choice, not the original's value).
 
+FIND_SCREENS.CPP's two club-list builders, `0x10104b90` and `0x101050f0` (cases
+of `0x10103850`), take a nation from a value of their screen's history record
+(10 and 13) and list the clubs whose nation (+0x2c) it is; the first keeps
+clubs with a division, the second those without. Neither checks the nation. A
+null one passes the two routines it is handed to (`0x102a9420`, the nation
+name `0x10168a00`), but the title's byte nation+0x115 is read through it
+(`0x10104ce4`, `0x10105220`), and so is every row the filter keeps, since a
+kept club's own nation is then null. One run (2026-11-12) stopped at the first
+title read. The generator's `FIND_LIST_BUILDERS` asks `find_list_without_nation`
+(`native/find_screens_fixups.hpp`, said once per run in the log) at the title
+read and at the filter (`0x10104dd4`, `0x10105310`): without a nation the byte
+is 0 and no club is kept, so the list is empty. With a nation both builders run
+as they are. `cm-find-screens-checks` runs the four instructions with a nation,
+without one and with unmapped ones. Not established: which navigation opens a
+list without a nation (the diff review read the screen as the friendly-team
+picker's League and Non-League tabs, from its title strings; not confirmed
+here), whether any club has a null nation, and what the original showed.
+
 Runs `app.rCcF8C` and `app.tCEQVP` passed team selection. The user confirmed
 assuming control, and the retained `app.rCcF8C` frame shows the original Cruzeiro
 squad screen. Both runs then stopped when opening a player, at the missing

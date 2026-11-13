@@ -1177,12 +1177,35 @@ COMMENTARY_SOUND_READ = 0x10203580
 COMMENTARY_PACE_READ = 0x102036bc
 COMMENTARY_LINE_READS = {COMMENTARY_SOUND_READ: 0x10203678, COMMENTARY_PACE_READ: 0x102036c0}
 
+# FIND_SCREENS.CPP's two club-list builders (10104b90 and 101050f0, cases of
+# 10103850) list the clubs of the nation in a value of their screen's history
+# record, kept in r20, and never check it. Per builder: the title read
+# `lbz r5,0x115(r20)`, the filter `cmplw r0,r20` on each club's nation, where
+# a club that does not match continues, and the instructions that pin how r20
+# is used around them.
+FIND_LIST_BUILDERS = (
+    (0x10104ce4, 0x10104dd4, 0x10104e0c, {
+        0x10104bf0: "bl 0x1073ef70", 0x10104bf4: "or r0,r3,r3", 0x10104bfc: "or r20,r0,r0",
+        0x10104cac: "or r5,r20,r20", 0x10104cc0: "or r3,r20,r20", 0x10104ce0: "bl 0x10168a00",
+        0x10104ce4: "lbz r5,0x115(r20)", 0x10104cf4: "extsb r5,r5", 0x10104cf8: "or r6,r5,r5",
+        0x10104dd0: "lwz r0,0x2c(r16)", 0x10104dd4: "cmplw r0,r20", 0x10104dd8: "bne 0x10104e0c",
+        0x10104e0c: "addi r22,r22,0x248", 0x10104ea0: "or r20,r19,r19"}),
+    (0x10105220, 0x10105310, 0x10105348, {
+        0x1010514c: "bl 0x1073ef70", 0x10105150: "or r0,r3,r3", 0x10105158: "or r20,r0,r0",
+        0x10105200: "or r5,r20,r20", 0x1010520c: "or r3,r20,r20", 0x1010521c: "bl 0x10168a00",
+        0x10105220: "lbz r5,0x115(r20)",
+        0x1010530c: "lwz r0,0x2c(r16)", 0x10105310: "cmplw r0,r20", 0x10105314: "bne 0x10105348",
+        0x10105348: "addi r23,r23,0x248", 0x10105400: "or r20,r19,r19"}),
+)
+FIND_LIST_TITLE_READS = {title: pinned for title, _, _, pinned in FIND_LIST_BUILDERS}
+FIND_LIST_FILTERS = {filter_: (skip, pinned) for _, filter_, skip, pinned in FIND_LIST_BUILDERS}
+
 # Instructions generate_page lowers specially (beyond owner hooks and
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS)
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS)
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -1863,6 +1886,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.append("MatchPageCounter<Turbo, Finite> counter(s);")
     if page == 0x10203:
         code.insert(1, '#include "match_presentation.hpp"')
+    if page_addresses & (set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS)):
+        code.insert(1, '#include "find_screens_fixups.hpp"')
     if page in MATCH_SPEED_PAGES:
         code.insert(1, '#include "match_speed.hpp"')
     if page in (0x100ac, 0x100ad, 0x100ae, 0x100af,
@@ -2645,6 +2670,24 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.extend(["s.wr<4>(100, next_pool_attempt(s.r<4>(100), divide_unsigned(s.r<4>(16), s.r<4>(0))));",
                          transfer(a + 4, transfer_page, selected)])
             continue
+        if a in FIND_LIST_TITLE_READS or a in FIND_LIST_FILTERS:
+            # The club-list builders take a nation from their screen's history
+            # record and can get none. A null nation passes the two callees
+            # before the title read, but the title's byte, and then every row
+            # the filter keeps (a club whose own nation is null), are read
+            # through it: page zero on the original machine. Without a nation
+            # the title byte is 0 and the filter keeps no club, so the list is
+            # empty. With a nation both builders run as they are.
+            skip, pinned = FIND_LIST_FILTERS.get(a, (a + 4, FIND_LIST_TITLE_READS.get(a)))
+            by_address = {record["address"]: record for record in instructions}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in pinned.items()):
+                raise ValueError("Club-list builder no longer matches the audited release")
+            code.append("if (find_list_without_nation(s)) {")
+            if a in FIND_LIST_TITLE_READS:
+                code.append("s.wr<4>(20, 0);")
+            code.extend([transfer(skip, transfer_page, selected), "}"])
+            isolated.add(a)
         if a in COMMENTARY_LINE_READS:
             # The commentary routine 102021e0 takes its event's table row from
             # the event code minus 8000, and checks the row's range and its
@@ -3420,6 +3463,10 @@ def main():
                     for address, purpose in (
                         *((site, f"Skip unused null-{label} descriptor lookup for default background")
                           for site, (_, _, _, label) in NULL_BACKGROUND_GETTER_CALLS.items()),
+                        *((site, "Title value 0 for a club list opened without a nation")
+                          for site in FIND_LIST_TITLE_READS),
+                        *((site, "No club in a club list opened without a nation")
+                          for site in FIND_LIST_FILTERS),
                         (COMMENTARY_SOUND_READ, "No sound for a commentary event without lines"),
                         (COMMENTARY_PACE_READ, "Pace 0 for a commentary event without lines"),
                         (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"),
