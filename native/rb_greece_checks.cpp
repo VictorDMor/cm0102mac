@@ -456,7 +456,6 @@ void check_combined_rulebook() {
         require(c.u32(hearing_copy) == player && c.u16(hearing_copy + 0x1a) == 2002 &&
                     c.u8(notice_event) == 1 && c.u8(notice_copy + 0x10) == 2,
                 "dismissal queues a hearing and records the suspension");
-        require(s.calendar_calls[0] >= 3 && s.date_weekday_calls > 0, "combined route runs real calendar helpers");
         s.memory.date_observer = nullptr;
     };
     sequence(*old, old_calls, old_effects, true);

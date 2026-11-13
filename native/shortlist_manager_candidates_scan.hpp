@@ -5,7 +5,6 @@
 // registers, as the original does: every routine it calls saves them into
 // the stack image, so they are written where the original writes them.
 #include "shortlist_manager_candidates.hpp"
-#include "calendar_adapter.hpp"
 #include "shortlist_manager_detail.hpp"
 #include "shortlist_manager_random.hpp"
 #include <bit>
@@ -165,7 +164,6 @@ struct Scan {
     FloatLocal<31> f31;  // the club's reputation scale, at least 1
     Row row;
     Club club;
-    CandidateCutoff joined_cutoff;
 
     std::uint32_t at(std::int32_t offset) const { return frame.at(offset); }
     Person candidate() const { return {c, person}; }

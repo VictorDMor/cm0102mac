@@ -27,7 +27,7 @@ from local_temporaries import LocalTemporaries
 from native_record_fields import CONTRACTS as NATIVE_RECORD_FIELDS, fingerprint as instruction_fingerprint, load_leaves, generate_native_record_fields
 from native_sort8 import ENTRY as NATIVE_SORT8_ENTRY, load_sort8, require_sort8_page, generate_sort8
 from vector_context_lowering import lower_vector_intrinsic
-from calendar_audit import require_calendar_contract, DATE_SUBSYSTEM_ENTRIES
+from calendar_audit import require_calendar_contract
 from rng_core_audit import require_rng_core_contract, RNG_CORE_ENTRIES
 from background_selection_audit import (require_background_selection_contract, BACKGROUND_SELECTION_ENTRIES,
                                         BACKGROUND_SELECTION_ACCESS_INSTRUCTIONS)
@@ -115,9 +115,8 @@ from player_decision_audit import (require_player_decision_contract, require_pla
 from actor_motion_audit import (require_actor_motion_contract, require_actor_motion_index,
                                 require_actor_motion_hooks, actor_motion_hook, ACTOR_MOTION_ENTRIES)
 
-CALENDAR_ADAPTER_ENTRIES = (
-    0x103317f0, 0x10331860, 0x10715b20, 0x10717890,
-    0x10717b20, 0x10718130, 0x107182f0, 0x10718360)
+# DATE.CPP itself is C++ (date_audit.py); these two date comparisons live in another unit.
+CALENDAR_ADAPTER_ENTRIES = (0x103317f0, 0x10331860)
 from player_movement_audit import (require_player_movement_contract, require_player_movement_index,
                                    require_player_movement_hooks, player_movement_hook, PLAYER_MOVEMENT_ENTRIES)
 
@@ -246,6 +245,7 @@ from eng_conf_audit import ENG_CONF_ENTRIES, require_eng_conf_index, eng_conf_ho
 from eng_first_audit import ENG_FIRST_ENTRIES, require_eng_first_index, eng_first_hook, require_eng_first_hooks
 from eng_third_audit import ENG_THIRD_ENTRIES, require_eng_third_index, eng_third_hook, require_eng_third_hooks
 from qsort4x_audit import QSORT4X_ENTRIES, require_qsort4x_index, qsort4x_hook, require_qsort4x_hooks
+from date_audit import DATE_ENTRIES, require_date_index, date_hook, require_date_hooks
 from bra_reg_central_audit import BRA_REG_CENTRAL_ENTRIES, require_bra_reg_central_index, bra_reg_central_hook, require_bra_reg_central_hooks
 from bra_reg_parana_audit import BRA_REG_PARANA_ENTRIES, require_bra_reg_parana_index, bra_reg_parana_hook, require_bra_reg_parana_hooks
 from bra_reg_gaucho_audit import BRA_REG_GAUCHO_ENTRIES, require_bra_reg_gaucho_index, bra_reg_gaucho_hook, require_bra_reg_gaucho_hooks
@@ -305,7 +305,6 @@ from turbo_pages import TURBO_PAGES, bound_turbo_hook
 
 SEMANTIC_REPLACEMENTS = (
     tuple((entry, "calendar_adapter") for entry in CALENDAR_ADAPTER_ENTRIES) +
-    tuple((entry, "date_subsystem_adapter") for entry in DATE_SUBSYSTEM_ENTRIES) +
     tuple((entry, "rng_core_adapter") for entry in RNG_CORE_ENTRIES) +
     tuple((entry, "background_selection_adapter") for entry in BACKGROUND_SELECTION_ENTRIES) +
     tuple((entry, "collection_lookup_adapter") for entry in COLLECTION_LOOKUP_ENTRIES) +
@@ -455,6 +454,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "eng_first_adapter") for entry in ENG_FIRST_ENTRIES) +
                       tuple((entry, "eng_third_adapter") for entry in ENG_THIRD_ENTRIES) +
                       tuple((entry, "qsort4x_adapter") for entry in QSORT4X_ENTRIES) +
+                      tuple((entry, "date_adapter") for entry in DATE_ENTRIES) +
                       tuple((entry, "bra_reg_central_adapter") for entry in BRA_REG_CENTRAL_ENTRIES) +
                       tuple((entry, "bra_reg_parana_adapter") for entry in BRA_REG_PARANA_ENTRIES) +
                       tuple((entry, "bra_reg_gaucho_adapter") for entry in BRA_REG_GAUCHO_ENTRIES) +
@@ -910,7 +910,7 @@ def owner_entries_in_place(watched=frozenset()):
     for entry, _ in OWNER_REPLACEMENTS:
         counts[entry] += 1
     other = (set(SPECIAL_LOWERINGS) | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
-             set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) |
+             set(CALENDAR_ADAPTER_ENTRIES) | set(RNG_CORE_ENTRIES) |
              set(CAPTURE_OBSERVATIONS) | {LIST_SEARCH_ENTRY, 0x101195e8, 0x10779ed8, 0x1071a828} | set(watched))
     return {entry: module.removesuffix("_adapter") for entry, module in OWNER_REPLACEMENTS
             if module.endswith("_adapter") and module not in NONSTANDARD_OWNER_MODULES and counts[entry] == 1
@@ -1161,7 +1161,6 @@ INLINE_OWNER_MODULES = frozenset({
 # entries to the dispatcher, whose page hook runs the same C++.
 INLINE_LEAF_LIMIT = 6
 LEAF_EXCLUDED_OPS = ("CALLOTHER", "BRANCH", "CBRANCH", "CALL", "BRANCHIND", "CALLIND", "RETURN")
-DEFAULT_DATE_CALLS = frozenset({0x103faca4, 0x103fb020})
 
 
 # Background wrappers whose callers (nation 10713004, club 10713218,
@@ -1183,7 +1182,7 @@ LANGUAGE_OBJECT_TOC = -0x39e4  # The getters' lazily created language object.
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | DEFAULT_DATE_CALLS | set(NULL_BACKGROUND_GETTER_CALLS)
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS)
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -1197,7 +1196,7 @@ def inline_leaves(db, divisions=frozenset()):
     owners = SEMANTIC_OWNERS
     host_observed = observed_instructions(checks=False)
     special = (SPECIAL_LOWERINGS | divisions | set(NATIVE_RECORD_FIELDS) | {NATIVE_SORT8_ENTRY} | set(NATIVE_DRAWING_BOUNDARIES) |
-               set(CALENDAR_ADAPTER_ENTRIES) | set(DATE_SUBSYSTEM_ENTRIES) | set(RNG_CORE_ENTRIES) | set(CAPTURE_OBSERVATIONS))
+               set(CALENDAR_ADAPTER_ENTRIES) | set(RNG_CORE_ENTRIES) | set(CAPTURE_OBSERVATIONS))
     targets = set()
     for (body,) in db.execute("SELECT body FROM instructions WHERE body LIKE '%UNCONDITIONAL_CALL%'"):
         item = json.loads(body)
@@ -1451,7 +1450,7 @@ def staff_score_forwarded_loads(instructions):
     return forwarded
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, eng_third_hooks=True, qsort4x_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, bra_reg_gaucho_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, database_hooks=True, match_man_hooks=True, manager_manager_hooks=True, discipline_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_record_hooks=True, transfer_valuation_hooks=True, transfer_synthesis_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, preferences_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, eng_third_hooks=True, qsort4x_hooks=True, date_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, bra_reg_gaucho_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, database_hooks=True, match_man_hooks=True, manager_manager_hooks=True, discipline_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
                   direct_owner_calls=None, register_frame_lowering=False, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
@@ -1894,14 +1893,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     }
     if page_addresses & (forced_purchase_branches.keys() | {0x10345bb0, 0x10346bc0}):
         code.insert(1, '#include "debug_force_purchase.hpp"')
-    if page in (0x10331, 0x10715, 0x10717, 0x10718):
+    if page == 0x10331:
         code.insert(1, '#include "calendar_adapter.hpp"')
-    if page in (0x10715, 0x10716, 0x10717, 0x10718):
-        code.insert(1, '#include "date_subsystem_audit.hpp"')
-    default_date_calls = {site for site in page_addresses & DEFAULT_DATE_CALLS
-                          if direct_owner_calls is not None and site + 4 in selected}
-    if default_date_calls:
-        code.insert(1, '#include "date_subsystem_audit.hpp"')
     if page in (0x10747, 0x1077b):
         code.insert(1, '#include "rng_core_adapter.hpp"')
     if page in (0x10712, 0x10713):
@@ -1994,6 +1987,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "eng_third_adapter.hpp"')
     if qsort4x_hooks and page_addresses & set(QSORT4X_ENTRIES):
         code.insert(1, '#include "qsort4x_adapter.hpp"')
+    if date_hooks and page_addresses & set(DATE_ENTRIES):
+        code.insert(1, '#include "date_adapter.hpp"')
     if eng_conf_hooks and page_addresses & set(ENG_CONF_ENTRIES):
         code.insert(1, '#include "eng_conf_adapter.hpp"')
     if bra_reg_central_hooks and page_addresses & set(BRA_REG_CENTRAL_ENTRIES):
@@ -2197,8 +2192,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(f"if ({predicate}) goto i_{target:x};")
         if a in CALENDAR_ADAPTER_ENTRIES:
             code.append(f"if (try_modern_calendar(s, 0x{a:x})) return true;")
-        if a in DATE_SUBSYSTEM_ENTRIES:
-            code.append(f"if (try_modern_date_subsystem(s, 0x{a:x})) return true;")
+        if date_hooks and a in DATE_ENTRIES:
+            code.append(date_hook(a))
         if a in NATIVE_DRAWING_BOUNDARIES:
             code.append(f"native_drawing_boundary(s, 0x{a:x});")
         if rng_core_hooks and a in RNG_CORE_ENTRIES:
@@ -2698,16 +2693,6 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                          f"s.memory.write<4>({sp.format(-frame & 0xffffffff)}, s.r<4>(4));",
                          "s.wr<4>(2440, s.r<4>(8));", f"s.wr<4>(4128, 0x{continuation:x});",
                          transfer(continuation, transfer_page, selected), "}"])
-        if a in default_date_calls:
-            if plain_direct_call(item) != 0x10715880:
-                raise ValueError(f"Unexpected transfer date constructor call at {a:x}")
-            for op in item["ops"][:2]:
-                code.append(operation(op, a, 0, transfer_page, selected, 3, userops=userops))
-            code.append("s.pc = default_date_entry;")
-            code.append(f"if (try_call_default_date(s) && continues_after_owner(s, 0x{a+4:x})) goto i_{a+4:x};")
-            code.append("return true;")
-            special.add(a)
-            continue
         leaves = inlining.leaves if inlining else {}
         target = item["flows"][0] if leaves and item.get("flow") == "UNCONDITIONAL_CALL" and item.get("flows") else None
         if target in leaves:
@@ -2838,7 +2823,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, f'#include "{family}_adapter.hpp"')
     for family in sorted(cpp_leaves):
         code.insert(1, f'#include "{family}_leaves.hpp"')
-    if called_families or default_date_calls:
+    if called_families:
         code.insert(1, '#include "direct_owner_call.hpp"')
     result = "\n".join(code) + "\n"
     if eng_first_hooks:
@@ -2847,6 +2832,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_eng_third_hooks(page, instructions, result)
     if qsort4x_hooks:
         require_qsort4x_hooks(page, instructions, result)
+    if date_hooks:
+        require_date_hooks(page, instructions, result)
     if staff_contracts_hooks:
         require_staff_contracts_hooks(page, instructions, result)
     if simulated_stats_hooks:
@@ -3114,7 +3101,7 @@ SELECTABLE_INDEX_AUDITS = (
 INDEX_AUDITS = (
     require_list_search, require_tactics_index, require_main_program_index, require_club_history_index,
     require_club_records_index, require_match_pl_index, require_match_eng_index, require_eng_prm_index,
-    require_eng_conf_index, require_eng_first_index, require_eng_third_index, require_qsort4x_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_bra_reg_gaucho_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
+    require_eng_conf_index, require_eng_first_index, require_eng_third_index, require_qsort4x_index, require_date_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_bra_reg_gaucho_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
     require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
     require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index, require_database_index, require_match_man_index, require_manager_manager_index, require_discipline_index, require_cup_stage_index,
     require_transfer_manager_index, require_db_files_index, require_international_awards_index, require_nation_awards_index,

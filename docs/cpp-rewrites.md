@@ -1831,3 +1831,40 @@ every call. 0x100e59b0 reads its caller's r28 as a format argument for a ban by 
 (0x102be070), and NEWS is C++, so the rewrite takes that constant. 0x100e0b70 reads frame words it never writes when a
 message has no fixture or an unknown kind; the C++ reads the same slots, so those texts depend on leftovers as in the
 original.
+
+## DATE.CPP: dates, their arithmetic and their texts
+
+32 entries / 3,320 instructions at 0x107156b0..0x10718b38 (`tools/date_audit.py`): the unit's 31 routines and
+0x10718af0, an 18-instruction leaf between it and DISPLAY.CPP that has no data of its own. The bounds are the unit's
+data: its pool (TOC -0x3fa0, "DATE.CPP"), month starts, static dates, text buffers and jump tables (-0x3fe8..-0x3fa0)
+and the guard bytes of the static dates (r2-0x35c0..-0x35bb) are used by these routines and by nothing else. All are
+C++ in `native/date.cpp` (building, moving and measuring dates) and `native/date_text.cpp` (nine formatters and the
+names they use); they replace the register-level owners of the earlier process (`date_subsystem_adapter`,
+`calendar_adapter`), which nothing in the game calls any more for these entries.
+
+A date is a day of the year from 0, the year, and a leap byte. Nearly every unit calls these routines (2,472 call
+sites), and what they leave is read afterwards: 104 reader sites of leftover stack in the captures, among them the
+import bridge copying it into game memory, and callers that go on to a varargs call with r4-r10 as a date routine
+left them. So this unit is not written to the native contract: every routine leaves its prologue image, the
+registers at each of its calls and every register at its return as the original does, and `cm-date-checks` compares
+with `strict_volatile` (r0, r11, r12, XER and CTR too) over all of memory. The logic is plain C++; the registers are
+set where a call or the return exposes them.
+
+- Each routine that moves or measures a date works on a function-local static date, built as 1972 day 40 on first
+  use and flagged by a guard byte. The static dates are game memory and are written as the original writes them.
+- Adding a negative count of days calls the subtraction with the magnitude and the other way round; -32768 is its
+  own magnitude, so the original recurses until the stack ends. Nothing passes it.
+- The count of days between two dates steps over whole years with the length of the year *before* the one it
+  leaves, in both directions, so it is neither Gregorian nor antisymmetric across years.
+- The interval routine (0x10717dd0) borrows a year when the day count is negative; from the later date's side it
+  takes that year's length from the register its first compare left the date's year in (0x107180b0 calls the leap
+  test without loading an argument). Its branch at 0x10717f18..0x10717ffc needs each date to be later than the
+  other, from the same two values: dead, and the C++ throws there.
+- A calendar date with a day outside 1..31 or a month outside 0..11 is reported by the assert macro and then built
+  with day 1 or month 0.
+- The formatters find the month by a search that leaves the month register as the caller had it when the day is
+  before every month start; the C++ leaves it alone as well, so such a date prints from the caller's register.
+- Weekday 0 is Monday. The name routines switch through tables of code addresses in game memory; the C++ reads the
+  table and finds the case by its address (`tools/test_date_audit.py` pins the tables).
+- The 200-day cutoff cache that the shortlist scan had for 0x10717b20 went with the old owner: the scan calls the
+  C++ routine directly (`date::call`).

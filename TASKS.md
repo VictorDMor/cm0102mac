@@ -30,8 +30,17 @@ the scrollback. Remove ticked items once their commit is pushed.
   - The second club-page builder 0x1003b7f0 calls the same header routine and has no Force Results hook; which navigation reaches it is not established.
   - The `.forced-results` companion sits in the save folder; whether the game's load list filters strictly on `.sav` was not found in the listing.
   - Each successful Add pushes a new list page, so Back walks through older copies; the removal question is Portuguese/English only.
-- [ ] Install: the game was running (2026-11-13), so the installer was not run.
+- [x] Installed 2026-11-13 (commit e7e9b692).
 
+
+## Now: DATE.CPP (delivered 2026-11-13)
+
+All 32 entries (3,320 instructions, 0x107156b0..0x10718b38: the unit's 31 routines and the leaf 0x10718af0) are C++ and routed (`native/date.cpp`, `native/date_text.cpp`, `tools/date_audit.py`, `cm-date-checks`). Victor chose it as the quickest module to close: every routine already had a register-level owner from the earlier process. Contract and quirks: `docs/cpp-rewrites.md`.
+
+- [ ] The old owners are still compiled, and nothing in the game calls them for these entries: `native/date_subsystem_adapter.cpp`, `date_subsystem_audit.cpp`, the DATE part of `calendar_adapter.cpp` (it keeps 0x103317f0 and 0x10331860, which belong to another unit), the cutoff cache API, and their `State` fields in `aot_runtime.hpp`. Removing them edits `aot_runtime.hpp` (about 1,900 pages recompile), so it waits for a change that touches that header anyway.
+- [ ] Tools built on the old owners' switches no longer do what they say (found by the review, 2026-11-13; none is built here): `State::calendar_original`, `date_subsystem_original` and `date_entry_original[]` are ignored for these 32 entries, so `cm-season-reference` (`season_reference_main.cpp`), `aot_probe.cpp`'s date audit and `engine_initialization_production_checks` mode 1 would compare C++ with C++ or fail on the `calendar_calls` counters, which stay 0. `CM_DATE_ORIGINAL=1` is the switch now. `tools/test_background_selection_audit.py` and `tools/test_contract_display_audit.py` (neither is a CTest) still expect the old owner names, and `tools/calendar_audit.py` still pins a second set of digests for the DATE bodies; nothing asserts the `try_modern_calendar` hooks of 0x103317f0 and 0x10331860 since `tools/test_calendar_audit.py` went.
+- [ ] `rb_greece_equivalence` fails (found 2026-11-13; its binary is not normally built, so the 2026-11-11 baseline has it under "did not run"): its fixture answers other units' routines from the dispatch probe, and pages call C++ owners in place, past the probe. With `CM_DATE_ORIGINAL=1` it stops in DISCIPLINE's 0x100dfb30 (in place since 2026-11-12); with the date C++ it stops earlier, at 0x10717890, where the fixture has no static date. Any fixture check that stubs a routine by dispatch has this once that routine becomes an in-place owner; no adapter declines for a dispatch probe. Not fixed.
+- The shortlist scan's 200-day cutoff cache went with the old owner (`native/shortlist_manager_candidates_filter.cpp` calls the C++ routine). Timing on the new build, three processes of 12 runs each, not paired with the old build: season-day 14.96 s (about 15.20 s on 2026-11-12), same-save-continue 9.38 s (about 9.51 s).
 
 ## Now: the sort family (delivered 2026-11-12)
 

@@ -1,6 +1,7 @@
 #include "contract_review_adapter.hpp"
 #include "application_exit.hpp"
-#include "date_subsystem_audit.hpp"
+#include "date_adapter.hpp"
+#include "routine_check.hpp"
 #include "guest_context_transfer.hpp"
 #include "match_turbo.hpp"
 #include <algorithm>
@@ -10,7 +11,10 @@ namespace cm::aot {
 namespace {
 struct ContractReviewDispatch final : SemanticDependencyDispatch {
     void call(State& state, std::uint32_t target, std::uint32_t continuation) override {
-        if (target == default_date_entry && try_call_default_date(state) && state.pc == continuation) return;
+        // The default date's C++ in place of a dispatch, except where a check tool watches dispatches.
+        constexpr std::uint32_t default_date = 0x10715880;
+        if (target == default_date && !dispatch_probe && !routine_checker && try_modern_date(state, default_date) &&
+            state.pc == continuation) return;
         run_until(state, continuation);
     }
 };

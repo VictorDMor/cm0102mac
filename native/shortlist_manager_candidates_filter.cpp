@@ -4,6 +4,7 @@
 #include "guest_frame_observation.hpp"
 #include "match_turbo.hpp"
 #include "utility_object_adapter.hpp"
+#include "date.hpp"
 
 // The candidate scan's filters (0x1035f2e4-0x1035fbb0): which listed persons
 // the club looks at. Each refusal moves on to the next entry; the registers
@@ -185,7 +186,7 @@ bool Scan::common_checks() {
             program.call(0x10717b20, back, {destination, today, 200});
         } else {
             guest::enter(c, back, {destination, today, 200});
-            if (!try_candidate_cutoff(c.s, joined_cutoff)) c.call(0x10717b20, back);
+            date::call(c, date::entry::subtract_days, back);
         }
         c.put32(at(local::joined_cutoff), c.u32(at(local::joined_cutoff_result)));
         c.put32(at(local::joined_cutoff) + 4, c.u32(at(local::joined_cutoff_result) + 4));
