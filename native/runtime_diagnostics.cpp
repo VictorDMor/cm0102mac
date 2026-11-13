@@ -471,6 +471,10 @@ const MatchResultDebugging& match_result_debugging(const State& state) {
     return state.runtime_diagnostics ? state.runtime_diagnostics->match_results : empty;
 }
 
+void clear_match_result_debugging(State& state) {
+    if (state.runtime_diagnostics) state.runtime_diagnostics->match_results = {};
+}
+
 ForcedPurchases& forced_purchases(State& state) {
     if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
     return state.runtime_diagnostics->purchases;

@@ -34,6 +34,7 @@ void append_match_debugging_controls(State&);
 bool dispatch_match_debugging_control(State&);
 bool deliver_match_shortcut(State&, const CommandContext&, const UIEvent&);
 void reset_match_debugging();
+bool append_forced_club_control(State&);
 void append_best_xi_control(State&);
 bool dispatch_best_xi_control(State&);
 void append_debug_contract_action(State&);

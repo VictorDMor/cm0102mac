@@ -18,7 +18,7 @@ if [[ -f "$current/env" ]]; then
     done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$current/env")
 fi
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
-jobs="$(sysctl -n hw.ncpu)"
+jobs="${CM_BUILD_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 
 # The app plus test binaries that exist already. Building every test target
 # links ~140 more 170 MB executables, so build others only when needed.

@@ -272,6 +272,11 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
 namespace {
 constexpr unsigned debug_options_action = 30020, feature_action = 30100;
 constexpr unsigned debug_options_mode = 4;
+constexpr unsigned club_results_action = 30026, add_club_action = 30027, remove_club_action = 30028;
+constexpr unsigned force_club_action = 30029, club_result_action = 30300, club_row_action = 30303;
+constexpr unsigned club_yes_action = 30304, club_no_action = 30305, club_prev_action = 30306;
+constexpr unsigned club_next_action = 30307, club_back_action = 30308, club_results_mode = 5;
+constexpr unsigned clubs_per_page = 14;
 std::optional<std::uint32_t> pending_features;
 constexpr std::array feature_labels{
     DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
@@ -343,6 +348,132 @@ void close_debugging_modal(State& s) {
     call.call(0x1013f4d0, {preferences, 1});
 }
 
+void open_club_results(State& s) {
+    GuestCall call(s);
+    const auto ui = root(s), toc = std::uint32_t(s.r<4>(8));
+    // Reuse the options callbacks, but use an ordinary navigable history page:
+    // no preferences object, modal lock or original settings writes.
+    if (call.call(0x1073e4b0, {ui, std::uint32_t(s.memory.read<4>(toc - 0x4eb4)),
+            std::uint32_t(s.memory.read<4>(toc - 0x4eb8)), 0, 0, 0})) {
+        call.call(0x1073f1e0, {ui, 0, 0, 0});
+        call.call(0x1073f1e0, {ui, 1, club_results_mode, 0});
+        call.call(0x1073ede0, {ui, call.text(debug_text(s, DebugText::forced_clubs))});
+    }
+}
+
+std::string result_club_name(State& s, GuestCall& call, std::uint32_t club) {
+    // Original club-name formatter handles database/language naming variants.
+    call.call(0x100d0940, {club, 0, call.stack + 0x200, 200, 1, 0});
+    return original_text(s, call.stack + 0x200);
+}
+
+void build_club_results(State& s) {
+    auto& choices = match_result_debugging(s);
+    choices.choosing_club = false;
+    GuestCall call(s);
+    const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
+    const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
+    draw_debugging_panel(call, ui, page, 110, 789, color(0x7bd4), color(0x7bc8),
+        debug_text(s, DebugText::forced_clubs));
+    call.call(0x1073ede0, {ui, call.text(debug_text(s, DebugText::forced_clubs))});
+    const auto button = [&](unsigned left, unsigned top, unsigned right, DebugText label,
+                            unsigned action, unsigned value = 0, bool selected = false) {
+        const auto ink = color(selected ? 0x7bd0 : 0x7bc8);
+        call.args({1, ink, call.text(debug_text(s, label)), action, value});
+        call.call(0x10744430, {ui, left, top, right, top + 24, selected ? 0x221u : 0x30u,
+            color(selected ? 0x7bd0 : 0x7bc4), 12});
+    };
+    if (choices.confirm_removal) {
+        const auto name = result_club_name(s, call, *choices.confirm_removal);
+        const bool portuguese = s.memory.read<1>(toc - 0x35ac) == 9;
+        const auto question = portuguese
+            ? "Tem certeza que quer remover " + name + " dos clubes com resultados for\347ados?"
+            : "Remove " + name + " from the teams with forced results?";
+        call.args({4, color(0x7bc8), call.text(question)});
+        call.call(0x10744390, {ui, 135, 200, 764, 310, 1, 0, 12});
+        button(245, 350, 435, DebugText::yes, club_yes_action);
+        button(465, 350, 655, DebugText::no, club_no_action);
+        return;
+    }
+    call.call(0x102a1070, {4, 0});
+    button(125, 115, 275, DebugText::add, add_club_action);
+    if (!choices.clubs.empty())
+        button(285, 115, 435, DebugText::remove, remove_club_action, 0, choices.removing_club);
+    else choices.removing_club = false;
+    const unsigned pages = std::max(1u, (unsigned(choices.clubs.size()) + clubs_per_page - 1) / clubs_per_page);
+    choices.club_page = std::min(choices.club_page, pages - 1);
+    s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{49, 17, 17, 17});
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto grid = call.call(0x107198c0, {page, 125, 157, 774, 493, 4, call.stack + 0xc0, clubs_per_page});
+    const unsigned begin = choices.club_page * clubs_per_page;
+    for (unsigned i = begin; i < choices.clubs.size() && i < begin + clubs_per_page; ++i) {
+        const auto& rule = choices.clubs[i];
+        const auto row = i - begin;
+        call.args({color(0x7bc8), call.text(result_club_name(s, call, rule.club)), club_row_action, rule.club});
+        call.call(0x107444e0, {ui, grid, 0, row, 1, 0, 12, 3});
+        constexpr std::array labels{DebugText::win, DebugText::draw, DebugText::loss};
+        for (unsigned value = 0; value < labels.size(); ++value) {
+            const bool active = unsigned(rule.result) == value;
+            const auto ink = color(active ? 0x7bd0 : 0x7bc8);
+            call.args({ink, call.text(debug_text(s, labels[value])), club_result_action + value, rule.club});
+            call.call(active ? 0x107445a0 : 0x107444e0,
+                {ui, grid, value + 1, row, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
+        }
+    }
+    button(125, 509, 275, DebugText::back, club_back_action);
+    if (choices.club_page) button(465, 509, 610, DebugText::previous, club_prev_action);
+    if (choices.club_page + 1 < pages) button(620, 509, 774, DebugText::next, club_next_action);
+}
+
+bool dispatch_club_results(State& s, std::uint32_t control, unsigned action) {
+    auto& choices = match_result_debugging(s);
+    int result = -11;
+    if (!control || !(s.memory.read<4>(control + 12) & 2)) {
+        // Escape cancels a confirmation, or goes back from the list.
+        if (action == 40) {
+            if (choices.confirm_removal) choices.confirm_removal.reset();
+            else {
+                choices.choosing_club = false;
+                result = -2; // The original monitor moves to the previous history page.
+            }
+        } else result = 0;
+    } else if (choices.confirm_removal) {
+        if (action == club_yes_action) {
+            remove_debug_result_club(s, *choices.confirm_removal);
+            choices.confirm_removal.reset();
+            choices.removing_club = false;
+        } else if (action == club_no_action) choices.confirm_removal.reset();
+    } else if (action == add_club_action) {
+        choices.choosing_club = true;
+        choices.removing_club = false;
+        GuestCall call(s);
+        // Same Nations browser as the career sidebar's Nations & Clubs menu.
+        const auto context = call.call(0x101922e0, {});
+        call.call(0x10103600, {1, context, 0, 0});
+        result = -4;
+    } else if (action == remove_club_action) {
+        choices.removing_club = !choices.removing_club;
+    } else if (action == club_row_action) {
+        const auto club = std::uint32_t(s.memory.read<4>(control + 0x48));
+        if (choices.removing_club && std::ranges::find(choices.clubs, club, &ClubResultRule::club) != choices.clubs.end())
+            choices.confirm_removal = club;
+    } else if (action >= club_result_action && action < club_result_action + 3) {
+        set_debug_club_result(s, s.memory.read<4>(control + 0x48), ForcedClubResult(action - club_result_action));
+    } else if (action == club_prev_action && choices.club_page) --choices.club_page;
+    else if (action == club_next_action) ++choices.club_page;
+    else if (action == club_back_action) {
+        choices.choosing_club = false;
+        result = -2;
+    } else {
+        GuestCall call(s);
+        result = std::int32_t(call.call(0x102a54b0, {std::uint32_t(s.r<4>(12))}));
+    }
+    // This page has no original preferences object. Never fall through to
+    // the original options handler for unrelated keys or sidebar controls.
+    s.wr<4>(12, std::uint32_t(result)); s.pc = s.r<4>(4128);
+    return true;
+}
+
 }
 
 void append_debugging_sidebar(State& s) {
@@ -355,21 +486,40 @@ void append_debugging_sidebar(State& s) {
     const auto color = std::uint32_t(s.memory.read<2>(s.memory.read<4>(s.r<4>(8) - 0x7bd8)));
     GuestCall call(s);
     call.args({0x1021, 0, 0, 12, 1, color, call.text(debug_text(s, DebugText::options_sidebar)),
-        0, debug_options_action, 0, std::uint32_t(s.r<4>(22 * 4))});
-    call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, row});
+        0, 0, 0, std::uint32_t(s.r<4>(22 * 4))});
+    const auto parent = call.call(0x10719740, {page, 0x82, 0, 0, 0, 0, 0, row});
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto theme = [&](unsigned at) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - at))); };
+    call.args({0, 0x30, theme(0x7bcc), parent});
+    const auto menu = call.call(0x107198c0, {page, 0, 0, 0, 0, 0, 0, 0});
+    for (const auto& [label, action] : {std::pair{DebugText::toggle_options, debug_options_action},
+                                       std::pair{DebugText::forced_clubs, club_results_action}}) {
+        call.args({0x10, theme(0x7bcc), theme(0x7bd0), 1, 1, theme(0x7bd4),
+            call.text(debug_text(s, label)), 0, action, 0, menu});
+        call.call(0x10719740, {page, 2, 0, 0, 0, 0, 0, 0});
+    }
     s.memory.write<4>(stack + 0x70, row);
 }
 
 bool dispatch_debugging_sidebar(State& s) {
     if (!native_debugging_available()) return false;
     const auto control = selected_control(s);
-    if (!control || s.memory.read<4>(control + 8) != debug_options_action) return false;
+    if (!control) return false;
+    const auto action = s.memory.read<4>(control + 8);
+    if (action != debug_options_action && action != club_results_action) return false;
     if (s.memory.read<4>(control + 12) & 2) {
-        GuestCall call(s);
-        // Original options owns the modal's lifetime and temporary settings.
-        // Mode 4 selects only our body; Cancel/OK still close it normally.
-        call.call(0x1033ce70, {debug_options_mode});
-        pending_features = native_debugging_features();
+        if (action == club_results_action) {
+            auto& choices = match_result_debugging(s);
+            choices.choosing_club = choices.removing_club = false;
+            choices.confirm_removal.reset();
+            open_club_results(s);
+        } else {
+            GuestCall call(s);
+            // Original options owns the modal's lifetime and temporary settings.
+            // Mode 4 selects only our body; Cancel/OK still close it normally.
+            call.call(0x1033ce70, {debug_options_mode});
+            pending_features = native_debugging_features();
+        }
     }
     s.wr<4>(12, std::uint32_t(-11)); s.pc = s.r<4>(4128);
     return true;
@@ -377,7 +527,13 @@ bool dispatch_debugging_sidebar(State& s) {
 
 bool build_debugging_options_screen(State& s) {
     if (!native_debugging_available()) return false;
-    if (debugging_modal_mode(s) != debug_options_mode) return false;
+    const auto mode = debugging_modal_mode(s);
+    if (mode == club_results_mode) {
+        build_club_results(s);
+        s.pc = s.r<4>(4128);
+        return true;
+    }
+    if (mode != debug_options_mode) return false;
     if (!pending_features) pending_features = native_debugging_features();
     {
         GuestCall call(s);
@@ -464,7 +620,9 @@ bool dispatch_debugging_option(State& s) {
     const auto control = selected_control(s);
     auto action = control ? s.memory.read<4>(control + 8) : 0;
     if (!action) action = s.memory.read<2>(root(s) + 0x25819e);
-    if (debugging_modal_mode(s) == debug_options_mode) {
+    const auto mode = debugging_modal_mode(s);
+    if (mode == club_results_mode) return dispatch_club_results(s, control, action);
+    if (mode == debug_options_mode) {
         if (!pending_features) pending_features = native_debugging_features();
         if (control && action >= feature_action && action < feature_action + debug_feature_count &&
             (s.memory.read<4>(control + 12) & 2)) {
@@ -926,6 +1084,19 @@ bool recover_debug_squad(State& s, std::uint32_t club) {
     return true;
 }
 
+bool append_forced_club_control(State& s) {
+    // Club screen, before the original Apply for Job / Print header controls.
+    const auto club = std::uint32_t(s.r<4>(31 * 4));
+    if (!native_debugging_available() || !match_result_debugging(static_cast<const State&>(s)).choosing_club ||
+        !valid_debug_result_club(s, club)) return false;
+    GuestCall call(s);
+    const auto ui = std::uint32_t(s.r<4>(26 * 4)), toc = std::uint32_t(s.r<4>(8));
+    const auto color = [&](unsigned at) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - at))); };
+    call.args({1, color(0x7bc8), call.text(debug_text(s, DebugText::force_results)), force_club_action, club});
+    call.call(0x10744430, {ui, 620, 15, 785, 35, 0x30, color(0x7bc4), 12});
+    return true;
+}
+
 void append_best_xi_control(State& s) {
     // Squad builder 1001f6a0, after its column heading advanced r14 by 25.
     // Preserve the original toolbar spacing, sharing the center with Debugging
@@ -986,6 +1157,23 @@ bool dispatch_best_xi_control(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
+    if (action == force_club_action) {
+        bool accepted = false;
+        auto& choices = match_result_debugging(s);
+        if (native_debugging_available() && choices.choosing_club && (s.memory.read<4>(control + 12) & 2)) {
+            GuestCall call(s);
+            const auto club = call.call(0x1073ef70, {root(s), 0});
+            if (s.memory.read<4>(control + 0x48) == club) accepted = add_debug_result_club(s, club);
+            if (accepted) {
+                choices.choosing_club = false;
+                choices.club_page = unsigned(std::ranges::find(choices.clubs, club, &ClubResultRule::club) -
+                    choices.clubs.begin()) / clubs_per_page;
+                open_club_results(s);
+            }
+        }
+        s.wr<4>(12, std::uint32_t(accepted ? -4 : 0)); s.pc = s.r<4>(4128);
+        return true;
+    }
     const bool lineup_action = action == best_xi_action || action == best_u23_action || action == b_team_action;
     if (!lineup_action && action != recover_squad_action && action != free_squad_action &&
         action != extend_all_contracts_action) return false;

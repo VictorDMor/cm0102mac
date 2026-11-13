@@ -4,12 +4,14 @@
 #include "match_debugging.hpp"
 #include "match_eng_fields.hpp"
 #include "match_engine.hpp"
+#include "match_replay.hpp"
 #include "platform.hpp"
 #include "routine_check.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -52,7 +54,8 @@ std::uint32_t toc(const State& state, std::int32_t displacement) {
 std::uint32_t club_at(const State& state, std::uint32_t id) {
     const auto clubs = std::uint32_t(state.memory.read<4>(toc(state, -0x7be8)));
     const auto address = clubs + id * 0x248;
-    require(state.memory.read<4>(address) == id, "Second fixture club identity mismatch");
+    require(state.memory.read<4>(address) == id, "Fixture club identity mismatch: wanted=" + std::to_string(id) +
+        " actual=" + std::to_string(state.memory.read<4>(address)) + " base=" + hex_address(clubs));
     return address;
 }
 
@@ -102,8 +105,35 @@ struct World {
     Fixture first, second;
 };
 
-World prepare_round(const MatchInputs& inputs) {
-    auto prepared = prepare_match(inputs, {677, 5677, 12345, 2001, 194});
+MatchPreparation prepare_captured_world(const MatchInputs& inputs, const char* snapshot) {
+    if (!snapshot) return prepare_match(inputs, {677, 5677, 12345, 2001, 194});
+    auto owned = std::make_unique<State>();
+    load_match_snapshot(*owned, snapshot);
+    auto& state = *owned;
+    if (!state.r<4>(8)) state.wr<4>(8, state.memory.read<4>(state.r<4>(4) + 0x14));
+    std::filesystem::create_directories(inputs.new_private_directory);
+    state.platform = std::make_shared<NativePlatform>(inputs.original_game, inputs.new_private_directory,
+        AudioMode::offline, EventMode::isolated);
+    // Reuse an existing initialized world to avoid WindowServer database bootstrap.
+    // New match objects still pass through the original lineup/setup and engines.
+    for (unsigned i = 0; i < 16; ++i) state.memory.write<4>(0x109806f0 + i * 0xfc + 0xec, 0);
+    invoke(state, 0x107474a0, {12345});
+    state.memory.write<1>(toc(state, -0x642c), 1);
+    const auto engine = invoke(state, 0x10773520, {0xe0bc});
+    invoke(state, 0x101d16a0, {engine});
+    const auto fixture = allocate(state, 0x54, true);
+    const auto home = club_at(state, 677), away = club_at(state, 5677);
+    state.memory.write<4>(fixture, 0xfffffffe);
+    state.memory.write<4>(fixture + 0x1c, home);
+    state.memory.write<4>(fixture + 0x20, away);
+    state.memory.write<4>(fixture + 0x24, state.memory.read<4>(home + 0x40));
+    state.memory.write<4>(fixture + 0x28, state.memory.read<4>(toc(state, -0x7b80)));
+    auto rosters = std::array{roster(state, home), roster(state, away)};
+    return {std::move(owned), engine, fixture, std::move(rosters)};
+}
+
+World prepare_round(const MatchInputs& inputs, const char* snapshot) {
+    auto prepared = prepare_captured_world(inputs, snapshot);
     auto& state = *prepared.state;
     const auto second_engine = invoke(state, 0x10773520, {0xe0bc});
     require(second_engine != 0, "Could not allocate the second match engine");
@@ -147,6 +177,7 @@ void check_choices(const Checkpoint& initial, const Fixture& a, const Fixture& b
         !set_debug_match_result(s, a.original, ForcedMatchResult::draw), "Completed fixture accepted a choice");
     s.memory.write<1>(a.original + 0x43, 0xff);
     s.memory.write<4>(first_human_pending, a.queue_entry);
+    require(add_debug_result_club(s, s.memory.read<4>(a.original + 0x1c)), "Could not arm watched club");
     require(!debug_match_result_eligible(s, a.original) && !debug_match_result_eligible(s, a.queued),
         "Watched fixture was eligible");
     require(!set_debug_match_result(s, a.original, ForcedMatchResult::draw) &&
@@ -197,6 +228,103 @@ void check_round(const Checkpoint& initial, const Fixture& a, const Fixture& b) 
     require(debug_match_result(*state, b.original) == ForcedMatchResult::draw, "First result consumed the second fixture's choice");
     play_quick(*state, b);
     check_played(*state, b, ForcedMatchResult::draw);
+}
+
+void check_club_rules(const Checkpoint& initial, const Fixture& fixture, const std::filesystem::path& directory) {
+    auto state = initial.restore();
+    auto& s = *state;
+    const auto home = std::uint32_t(s.memory.read<4>(fixture.original + 0x1c));
+    const auto away = std::uint32_t(s.memory.read<4>(fixture.original + 0x20));
+    require(match_result_debugging(s).clubs.empty(), "Club rules must default to empty");
+    require(!add_debug_result_club(s, 0) && !add_debug_result_club(s, home + 1), "Invalid club accepted");
+    require(add_debug_result_club(s, home) && add_debug_result_club(s, home) &&
+        match_result_debugging(s).clubs.size() == 1, "Adding a club was not idempotent");
+    require(effective_debug_match_result(s, fixture.original) == ForcedMatchResult::home_win, "Default club rule was not victory");
+    const auto later = copy_fixture(s, fixture.original);
+    s.memory.write<4>(later + 0x28, s.memory.read<4>(later + 0x28) + 5);
+    for (auto result : {ForcedClubResult::win, ForcedClubResult::draw, ForcedClubResult::loss}) {
+        require(set_debug_club_result(s, home, result), "Could not change the club rule");
+        const auto expected = result == ForcedClubResult::win ? ForcedMatchResult::home_win :
+            result == ForcedClubResult::loss ? ForcedMatchResult::away_win : ForcedMatchResult::draw;
+        require(effective_debug_match_result(s, later) == expected, "Club rule did not reach future fixtures");
+        require(add_debug_result_club(s, away), "Could not add opposing club");
+        require(set_debug_club_result(s, away, ForcedClubResult::loss), "Could not set opposing rule");
+        require(effective_debug_match_result(s, later) == ForcedMatchResult::normal,
+            "Two listed clubs must use normal simulation, including compatible rules");
+        require(set_debug_match_result(s, later, ForcedMatchResult::away_win) &&
+            effective_debug_match_result(s, later) == ForcedMatchResult::away_win, "Manual choice did not override two club rules");
+        require(set_debug_match_result(s, later, ForcedMatchResult::normal) &&
+            effective_debug_match_result(s, later) == ForcedMatchResult::normal, "Clearing manual choice did not restore the two-club exception");
+        require(remove_debug_result_club(s, away), "Could not remove opponent");
+        require(set_debug_match_result(s, later, ForcedMatchResult::draw) &&
+            effective_debug_match_result(s, later) == ForcedMatchResult::draw, "Manual choice did not override one club rule");
+        require(set_debug_match_result(s, later, ForcedMatchResult::normal), "Could not clear manual choice");
+    }
+    finish_debug_match_result(s, fixture.original);
+    require(match_result_debugging(s).clubs.size() == 1 &&
+        effective_debug_match_result(s, later) == ForcedMatchResult::away_win, "Finishing a match consumed a club rule");
+    require(remove_debug_result_club(s, home) && add_debug_result_club(s, away), "Could not select away club");
+    require(effective_debug_match_result(s, later) == ForcedMatchResult::away_win, "Away win direction was reversed");
+    require(set_debug_club_result(s, away, ForcedClubResult::loss) &&
+        effective_debug_match_result(s, later) == ForcedMatchResult::home_win, "Away loss direction was reversed");
+
+    const auto save = directory / "rules-test.sav";
+    { std::ofstream output(save); output << "original career bytes"; }
+    save_debug_club_results(s, save);
+    load_debug_club_results(s, save);
+    require(match_result_debugging(s).clubs.size() == 1 &&
+        effective_debug_match_result(s, later) == ForcedMatchResult::home_win, "Club rules did not round-trip");
+    { std::ifstream input(save); std::string bytes((std::istreambuf_iterator<char>(input)), {});
+      require(bytes == "original career bytes", "Debug persistence changed original save bytes"); }
+    const auto read_file = [](const std::filesystem::path& path) {
+        std::ifstream input(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(input)), {});
+    };
+    const auto companion = std::filesystem::path(save.string() + ".forced-results");
+    const auto valid_bytes = read_file(companion);
+    const auto save_as = directory / "rules-save-as.sav";
+    save_debug_club_results(s, save_as);
+    require(read_file(save_as.string() + ".forced-results") == valid_bytes, "Save As lost the club rules");
+    require(remove_debug_result_club(s, away), "Could not remove last persisted club");
+    save_debug_club_results(s, save);
+    require(add_debug_result_club(s, home), "Could not seed rules before empty reload");
+    load_debug_club_results(s, save);
+    require(match_result_debugging(s).clubs.empty(), "Last removal was not persisted");
+    load_debug_club_results(s, save_as);
+    require(match_result_debugging(s).clubs.size() == 1, "Save As was changed by saving the original career");
+    load_debug_club_results(s, directory / "another-career.sav");
+    require(match_result_debugging(s).clubs.empty(), "Another career inherited rules");
+    const std::string first_row = valid_bytes.substr(valid_bytes.find('\n', valid_bytes.find('\n') + 1) + 1);
+    for (const auto& invalid : {
+            std::string("CM_FORCED_CLUB_RESULTS 99\n0\n"),
+            std::string("CM_FORCED_CLUB_RESULTS 1\n2\n") + first_row + first_row,
+            std::string("CM_FORCED_CLUB_RESULTS 1\n1\n") + std::to_string(s.memory.read<4>(away)) + " 3 \"bad\"\n",
+            std::string("CM_FORCED_CLUB_RESULTS 1\n1\n") + std::to_string(s.memory.read<4>(away)) + " 0 \"wrong career\"\n",
+            valid_bytes + "trailing data", valid_bytes.substr(0, valid_bytes.size() - 3)}) {
+        { std::ofstream output(companion); output << invalid; }
+        require(add_debug_result_club(s, home), "Could not seed rules before invalid reload");
+        bool refused = false;
+        try { load_debug_club_results(s, save); } catch (const std::runtime_error&) { refused = true; }
+        require(refused && match_result_debugging(s).clubs.empty(), "Malformed companion retained or partially applied rules");
+    }
+    // A serialization error must preserve the existing complete companion.
+    { std::ofstream output(companion); output << valid_bytes; }
+    match_result_debugging(s).clubs.push_back({home + 1, ForcedClubResult::win});
+    bool refused = false;
+    try { save_debug_club_results(s, save); } catch (const std::runtime_error&) { refused = true; }
+    require(refused && read_file(companion) == valid_bytes, "Failed serialization damaged existing club rules");
+    match_result_debugging(s) = {};
+
+    // Recurring rules alone run the real quick engine; no one-off choice exists.
+    for (auto result : {ForcedClubResult::win, ForcedClubResult::draw, ForcedClubResult::loss}) {
+        auto played = initial.restore();
+        require(add_debug_result_club(*played, home) && set_debug_club_result(*played, home, result), "Could not arm recurring result");
+        const auto expected = result == ForcedClubResult::win ? ForcedMatchResult::home_win :
+            result == ForcedClubResult::loss ? ForcedMatchResult::away_win : ForcedMatchResult::draw;
+        play_quick(*played, fixture);
+        check_played(*played, fixture, expected);
+        require(match_result_debugging(*played).clubs.size() == 1, "Simulation consumed recurring rule");
+    }
 }
 
 struct BackgroundRound {
@@ -288,17 +416,24 @@ struct BackgroundTrace {
 };
 
 void check_background_round(const Checkpoint& initial, const Fixture& a, const Fixture& b,
-    ForcedMatchResult second_choice, bool first_fast) {
+    ForcedMatchResult second_choice, bool first_fast, bool recurring = false) {
     auto state = initial.restore();
     const auto round = prepare_background_round(*state, a, b);
     prepare_background_reports(*state);
     const std::array choices{ForcedMatchResult::home_win, second_choice};
-    for (unsigned i = 0; i < round.fixtures.size(); ++i)
-        require(set_debug_match_result(*state, round.fixtures[i].original, choices[i]), "Could not mark the background fixture");
+    for (unsigned i = 0; i < round.fixtures.size(); ++i) {
+        if (recurring) {
+            const auto club = state->memory.read<4>(round.fixtures[i].original + 0x1c);
+            const auto rule = choices[i] == ForcedMatchResult::home_win ? ForcedClubResult::win :
+                choices[i] == ForcedMatchResult::draw ? ForcedClubResult::draw : ForcedClubResult::loss;
+            require(add_debug_result_club(*state, club) && set_debug_club_result(*state, club, rule),
+                "Could not arm recurring background fixture");
+        } else require(set_debug_match_result(*state, round.fixtures[i].original, choices[i]), "Could not mark the background fixture");
+    }
 
     for (unsigned i = 0; i < round.fixtures.size(); ++i) {
         const auto& fixture = round.fixtures[i];
-        require(debug_match_result(*state, fixture.original) == choices[i], "Other background match consumed the choice");
+        require(effective_debug_match_result(*state, fixture.original) == choices[i], "Other background match consumed the choice");
         require(state->memory.read<1>(fixture.engine) == 0 && state->memory.read<2>(fixture.engine + clock_at) == 0,
             "Background regression must start with a detailed unplayed engine");
         const bool fast = i == 0 ? first_fast : !first_fast;
@@ -323,6 +458,7 @@ void check_background_watcher(const Checkpoint& initial, const Fixture& a, const
     require(set_debug_match_result(*state, fixture.original, ForcedMatchResult::draw), "Could not mark the pre-watch fixture");
     const auto display = allocate(*state, 0x56, true);
     require(display != 0, "Could not allocate the original watch marker");
+    require(add_debug_result_club(*state, state->memory.read<4>(fixture.original + 0x1c)), "Could not arm watched club");
     state->memory.write<4>(fixture.queue_entry + 0x5c, display);
     state->memory.write<1>(display + 0x4b, 1);
     BackgroundTrace trace(fixture, ForcedMatchResult::normal, false);
@@ -461,15 +597,53 @@ void check_load_boundary(const Checkpoint& initial, const Fixture& a, const Fixt
     auto state = initial.restore();
     require(set_debug_match_result(*state, a.original, ForcedMatchResult::home_win) &&
         set_debug_match_result(*state, b.original, ForcedMatchResult::draw), "Could not arm fixtures before loading");
+    require(add_debug_result_club(*state, state->memory.read<4>(a.original + 0x1c)), "Could not arm club before loading");
+    match_result_debugging(*state).choosing_club = true;
     require(bool(state->platform), "Isolated fixture lacks the original load bridge");
     MatchRngWrites rng(*state);
     state->memory.observer = &rng;
     state->platform->quick_save_load_begin(*state);
     state->memory.observer = nullptr;
     require(debug_match_result(*state, a.original) == ForcedMatchResult::normal &&
-        debug_match_result(*state, b.original) == ForcedMatchResult::normal, "Load boundary retained old career choices");
+        debug_match_result(*state, b.original) == ForcedMatchResult::normal &&
+        match_result_debugging(*state).clubs.empty() && !match_result_debugging(*state).choosing_club,
+        "Load boundary retained old career choices");
     require(rng.writes.empty(), "Clearing choices at load consumed match RNG");
     same_guest_result(*initial.restore(), *state, "Clearing choices at load");
+}
+
+void check_new_career_boundary(const Checkpoint& initial, const Fixture& fixture) {
+    auto expected = initial.restore();
+    auto actual = initial.restore();
+    const auto club = actual->memory.read<4>(fixture.original + 0x1c);
+    require(add_debug_result_club(*actual, club) &&
+        set_debug_match_result(*actual, fixture.original, ForcedMatchResult::draw), "Could not arm new-career reset fixture");
+    auto& choices = match_result_debugging(*actual);
+    choices.choosing_club = choices.removing_club = true;
+    choices.confirm_removal = club;
+    choices.club_page = 4;
+    MatchRngWrites expected_rng(*expected), actual_rng(*actual);
+    expected->memory.observer = &expected_rng;
+    actual->memory.observer = &actual_rng;
+    for (auto* state : {expected.get(), actual.get()}) {
+        // Stop immediately after the host reset, before the first original
+        // instruction at this boundary. This does not start a new career.
+        state->pc = 0x10345bb0;
+        state->budget = state->executed;
+        bool stopped = false;
+        try { dispatch_page(*state); }
+        catch (const std::runtime_error& error) {
+            if (std::string_view(error.what()) != "Native instruction budget exhausted") throw;
+            stopped = true;
+        }
+        state->memory.observer = nullptr;
+        require(stopped && state->pc == 0x10345bb0, "New-career reset crossed its instruction boundary");
+    }
+    require(choices.fixtures.empty() && choices.clubs.empty() && !choices.choosing_club &&
+        !choices.removing_club && !choices.confirm_removal && choices.club_page == 0,
+        "New-career boundary inherited recurring club state");
+    require(expected_rng.writes.empty() && actual_rng.writes.empty(), "New-career reset consumed match RNG");
+    same_guest_result(*expected, *actual, "New-career debugging reset");
 }
 
 // Route nested match calls through their normal dispatcher, with no
@@ -572,18 +746,27 @@ void check_official_forfeit(const Checkpoint& initial, const Fixture& fixture) {
         "Official forfeit left the completed choice armed");
 }
 
-enum class InactivePlan { other_fixture, cleared, disabled, watched, detailed, other_background };
+enum class InactivePlan { other_fixture, cleared, disabled, watched, detailed, other_background, both_clubs, recurring_watched, recurring_detailed, other_club };
 
 void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& b, InactivePlan kind) {
     auto expected = initial.restore();
     auto actual = initial.restore();
     select_native_debugging_features(result_feature);
     const auto planned = (kind == InactivePlan::other_fixture || kind == InactivePlan::other_background) ? b.original : a.original;
-    require(set_debug_match_result(*actual, planned, ForcedMatchResult::away_win), "Could not prepare inactive choice");
+    const bool recurring = kind >= InactivePlan::both_clubs;
+    if (recurring) {
+        const auto club_fixture = kind == InactivePlan::other_club ? b.original : a.original;
+        require(add_debug_result_club(*actual, actual->memory.read<4>(club_fixture + 0x1c)), "Could not arm inactive club rule");
+        if (kind == InactivePlan::both_clubs) {
+            const auto away = actual->memory.read<4>(a.original + 0x20);
+            require(add_debug_result_club(*actual, away) && set_debug_club_result(*actual, away, ForcedClubResult::loss),
+                "Could not arm compatible opposing rule");
+        }
+    } else require(set_debug_match_result(*actual, planned, ForcedMatchResult::away_win), "Could not prepare inactive choice");
     if (kind == InactivePlan::cleared)
         require(set_debug_match_result(*actual, planned, ForcedMatchResult::normal), "Could not clear inactive choice");
     if (kind == InactivePlan::disabled) select_native_debugging_features(0);
-    if (kind == InactivePlan::watched) {
+    if (kind == InactivePlan::watched || kind == InactivePlan::recurring_watched) {
         expected->memory.write<4>(first_human_pending, a.queue_entry);
         actual->memory.write<4>(first_human_pending, a.queue_entry);
     }
@@ -591,7 +774,7 @@ void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& 
     expected->memory.observer = &expected_rng;
     actual->memory.observer = &actual_rng;
     for (auto* state : {expected.get(), actual.get()}) {
-        if (kind == InactivePlan::detailed) {
+        if (kind == InactivePlan::detailed || kind == InactivePlan::recurring_detailed) {
             // Exercise the quick events routine with a detailed match byte as
             // an explicit negative control for the simulation's mode gate.
             require(state->memory.read<1>(a.engine) == 0, "Detailed mode precondition");
@@ -612,27 +795,31 @@ void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& 
 
 int main(int argc, char** argv) {
     try {
-        require(argc == 4, "Expected original program, read-only game and private check root");
+        require(argc == 4 || argc == 5, "Expected original program, read-only game, private check root and optional existing initialized match snapshot");
         Cleanup cleanup{std::filesystem::path(argv[3]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())};
-        const auto world = prepare_round({argv[1], argv[2], cleanup.root});
+        const auto world = prepare_round({argv[1], argv[2], cleanup.root}, argc == 5 ? argv[4] : nullptr);
         const Checkpoint initial(*world.state);
         check_choices(initial, world.first, world.second);
         check_round(initial, world.first, world.second);
+        check_club_rules(initial, world.first, cleanup.root);
         check_background_round(initial, world.first, world.second, ForcedMatchResult::home_win, false);
         check_background_round(initial, world.first, world.second, ForcedMatchResult::draw, true);
+        check_background_round(initial, world.first, world.second, ForcedMatchResult::draw, false, true);
         check_background_watcher(initial, world.first, world.second);
         check_direct_background_boundary(initial, world.first, world.second);
         check_seeds(initial, world.first);
         check_cup(initial, world.first);
         check_load_boundary(initial, world.first, world.second);
+        check_new_career_boundary(initial, world.first);
         check_missing_scorer(initial, world.first);
         check_official_forfeit(initial, world.first);
         for (auto kind : {InactivePlan::other_fixture, InactivePlan::cleared, InactivePlan::disabled,
-                          InactivePlan::watched, InactivePlan::detailed, InactivePlan::other_background})
+                          InactivePlan::watched, InactivePlan::detailed, InactivePlan::other_background,
+                          InactivePlan::both_clubs, InactivePlan::recurring_watched, InactivePlan::recurring_detailed, InactivePlan::other_club})
             check_inactive(initial, world.first, world.second, kind);
         std::cout << "PASS: independent queued fixture results, detailed background matches across three caller boundaries, "
                      "three choices across seeds, cup extra time and penalties, "
-                     "scorer and keeper accounting, load reset, scorer fallback, official forfeit, "
+                     "scorer and keeper accounting, recurring clubs and persistence, load/new-career reset, scorer fallback, official forfeit, "
                      "and inactive guest state and ordered RNG equivalence\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

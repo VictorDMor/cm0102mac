@@ -18,6 +18,20 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: recurring club results (2026-11-12)
+
+- [x] Add the Debugging Options submenu and club list, browser selection, outcome cells and confirmed removal.
+- [x] Apply recurring win/draw/loss rules to simulated matches only, persisted per career. Explicit fixture choices override rules; two listed clubs use normal simulation unless manually overridden (Victor's decision).
+- [x] Verify focused UI/state, simulation and persistence paths; review and build. `debugging_options`, `debugging_club_results_fixture`, `native_filesystem` and `generated_block_accounting` pass. Existing match capture avoids WindowServer-only bootstrap; no new gameplay capture. Reviews corrected history navigation/title and new-career reset.
+- [x] Review (high, 2026-11-13) fixed before the commit: resetting the choices at a load or a new career no longer creates runtime diagnostics in a state that has none (it would have moved replays and check tools onto the rewritten empty-transfer-filter path); the first-advance test of a background match now runs before the rule lookup; the options modal reads its mode once.
+- [ ] Open from that review, for Victor in play (not fixed, not confirmed):
+  - Add is a sticky mode: leaving the Nations browser through the sidebar instead of going back keeps Force Results on every club screen in place of Apply for Job and the header menu, until the list is opened again. Clearing it at the squad builder would be the fix if a club never opens on its squad view during the Add flow; I could not establish that from the listing.
+  - A fixture forced only by a club rule shows no marker on the fixture list, and a manual choice cannot set such a fixture back to normal (clearing it returns to the rule).
+  - The second club-page builder 0x1003b7f0 calls the same header routine and has no Force Results hook; which navigation reaches it is not established.
+  - The `.forced-results` companion sits in the save folder; whether the game's load list filters strictly on `.sav` was not found in the listing.
+  - Each successful Add pushes a new list page, so Back walks through older copies; the removal question is Portuguese/English only.
+- [ ] Install: the game was running (2026-11-13), so the installer was not run.
+
 
 ## Now: the sort family (delivered 2026-11-12)
 

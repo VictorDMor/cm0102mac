@@ -1548,8 +1548,7 @@ void NativePlatform::set_quick_save_alert_observer(std::function<void(const std:
 void NativePlatform::quick_save_load_begin(State& s) {
     // Match-result choices belong to the current career session, not a world
     // subsequently loaded into the same runtime (even at identical addresses).
-    if (!match_result_debugging(static_cast<const State&>(s)).fixtures.empty())
-        match_result_debugging(s).fixtures.clear();
+    clear_match_result_debugging(s);
     if (impl_->event_mode == EventMode::interactive) {
         // The first load of a session: not the constructor, which check tools
         // and replays also run on folders a game may be using.
@@ -1578,6 +1577,13 @@ void NativePlatform::quick_save_load_end(State& s) {
     }
     impl_->quick_save_load_target.reset();
     impl_->quick_save_loading = false;
+    if (success && impl_->quick_save_last_target) {
+        try { load_debug_club_results(s, *impl_->quick_save_last_target); }
+        catch (const std::exception& error) {
+            impl_->command_status = "Forced club results could not be loaded";
+            std::fprintf(stderr, "Forced club results load: %s\n", error.what());
+        }
+    }
     if (!success || !impl_->quick_save_destination.last() || !impl_->quick_save_last_target) impl_->quick_save_queued = false;
 }
 bool NativePlatform::quick_save_write_begin(State& s) {
@@ -1690,6 +1696,14 @@ void NativePlatform::quick_save_write_end(State& s) {
         impl_->quick_save_destination.finish_save(success);
         if (success) impl_->quick_save_last_target = std::move(impl_->quick_save_write_target);
         impl_->quick_save_write_target.reset();
+    }
+    // A failed staged promotion clears r3 even if the original writer succeeded.
+    if (success && impl_->quick_save_last_target && std::int8_t(s.r<4>(12)) != 0) {
+        try { save_debug_club_results(s, *impl_->quick_save_last_target); }
+        catch (const std::exception& error) {
+            impl_->command_status = "Career saved; forced club results could not be saved";
+            std::fprintf(stderr, "Forced club results save: %s\n", error.what());
+        }
     }
     impl_->quick_save_tracking_write = false;
     if (!impl_->quick_save_destination.last() || !impl_->quick_save_last_target) impl_->quick_save_queued = false;

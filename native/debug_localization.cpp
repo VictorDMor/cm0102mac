@@ -4,6 +4,21 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text >= DebugText::toggle_options) {
+        static constexpr std::array<std::array<std::string_view, 12>, 11> labels{{
+            {"Enable/Disable Options", "Teams with Forced Results", "Add", "Remove", "Force Results", "Win", "Loss", "Yes", "No", "Back", "Previous", "Next"},
+            {"Enable/Disable Options", "Teams with Forced Results", "Add", "Remove", "Force Results", "Win", "Loss", "Yes", "No", "Back", "Previous", "Next"},
+            {"Activer/D\351sactiver", "Clubs aux r\351sultats forc\351s", "Ajouter", "Retirer", "Forcer les r\351sultats", "Victoire", "D\351faite", "Oui", "Non", "Retour", "Pr\351c\351dent", "Suivant"},
+            {"Optionen ein/aus", "Teams mit festen Ergebnissen", "Hinzuf\374gen", "Entfernen", "Ergebnisse erzwingen", "Sieg", "Niederlage", "Ja", "Nein", "Zur\374ck", "Vorherige", "N\344chste"},
+            {"Attiva/Disattiva opzioni", "Squadre con risultati forzati", "Aggiungi", "Rimuovi", "Forza risultati", "Vittoria", "Sconfitta", "S\354", "No", "Indietro", "Precedente", "Successivo"},
+            {"Activar/Desactivar opciones", "Equipos con resultados forzados", "A\361adir", "Eliminar", "Forzar resultados", "Victoria", "Derrota", "S\355", "No", "Volver", "Anterior", "Siguiente"},
+            {"Indstillinger til/fra", "Hold med tvungne resultater", "Tilf\370j", "Fjern", "Tving resultater", "Sejr", "Nederlag", "Ja", "Nej", "Tilbage", "Forrige", "N\346ste"},
+            {"Opties aan/uit", "Teams met vaste resultaten", "Toevoegen", "Verwijderen", "Resultaten afdwingen", "Winst", "Verlies", "Ja", "Nee", "Terug", "Vorige", "Volgende"},
+            {"Valg p\345/av", "Lag med tvungne resultater", "Legg til", "Fjern", "Tving resultater", "Seier", "Tap", "Ja", "Nei", "Tilbake", "Forrige", "Neste"},
+            {"Ligar/Desligar Op\347\365es", "Times com Resultados For\347ados", "Adicionar", "Remover", "For\347ar Resultados", "Vit\363ria", "Derrota", "Sim", "N\343o", "Voltar", "Anterior", "Pr\363xima"},
+            {"Alternativ p\345/av", "Lag med tvingade resultat", "L\344gg till", "Ta bort", "Tvinga resultat", "Vinst", "F\366rlust", "Ja", "Nej", "Tillbaka", "F\366reg\345ende", "N\344sta"}}};
+        return labels[language < labels.size() ? language : 0][unsigned(text) - unsigned(DebugText::toggle_options)];
+    }
     if (text == DebugText::force_purchase) {
         static constexpr std::array<std::string_view, 11> labels{
             "Force Purchase", "Force Purchase", "Forcer l'achat", "Kauf erzwingen",

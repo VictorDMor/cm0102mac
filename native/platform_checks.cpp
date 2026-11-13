@@ -4,6 +4,7 @@
 #include "speech_bridge.hpp"
 #include "aot_runtime.hpp"
 #include "filesystem_bridge.hpp"
+#include "debug_match_results.hpp"
 #include <chrono>
 #include "quick_save_transaction.hpp"
 #include <algorithm>
@@ -96,6 +97,36 @@ int main() {
             s.memory.write<4>(toc - 0x63c8, saved_date);
             s.memory.write<4>(toc - 0x63cc, disk_flag);
             s.memory.write<4>(toc - 0x63d0, memory_flag);
+            // Two stable club identities are enough to exercise companion persistence
+            // through the same host hooks as ordinary saves and transactional saves.
+            constexpr auto club_table = world + 0xc000, club_count = world + 0xc004, clubs = world + 0xc100;
+            s.memory.write<4>(toc - 0x7be8, club_table);
+            s.memory.write<4>(club_table, clubs);
+            s.memory.write<4>(toc - 0x7b50, club_count);
+            s.memory.write<4>(club_count, 2);
+            s.memory.write<4>(clubs, 0);
+            s.memory.write<4>(clubs + 0x248, 1);
+            for (const auto& [club, label] : {std::pair{clubs, std::string("Test Arsenal")},
+                                            std::pair{clubs + 0x248, std::string("Test Reading")}}) {
+                std::vector<std::uint8_t> bytes(label.begin(), label.end());
+                bytes.push_back(0);
+                s.memory.copy_in(club + 0x1ee, bytes);
+            }
+            const auto file_bytes = [](const fs::path& file) {
+                std::ifstream input(file, std::ios::binary);
+                require(bool(input), "Expected persistence fixture file is missing");
+                return std::string(std::istreambuf_iterator<char>(input), {});
+            };
+            const auto companion_bytes = [&](std::string_view filename) {
+                return file_bytes(user / (std::string(filename) + ".forced-results"));
+            };
+            const std::string first_rules = "CM_FORCED_CLUB_RESULTS 1\n1\n0 2 \"Test Arsenal\"\n";
+            std::string second_rules = "CM_FORCED_CLUB_RESULTS 1\n1\n1 1 \"Test Reading\"\n";
+            const auto has_rule = [&](std::uint32_t club, ForcedClubResult result) {
+                const auto& choices = match_result_debugging(s);
+                return choices.clubs.size() == 1 && choices.clubs.front().club == club &&
+                    choices.clubs.front().result == result;
+            };
             s.platform->quick_save_note_boundary(s);
             std::vector<std::string> alerts;
             s.platform->set_quick_save_alert_observer([&](const std::string& message) { alerts.push_back(message); });
@@ -132,6 +163,8 @@ int main() {
             s.platform->quick_save_load_begin(s);
             s.wr<4>(12, 1);
             s.platform->quick_save_load_end(s);
+            require(match_result_debugging(s).clubs.empty(), "A career without a companion inherited club rules");
+            match_result_debugging(s).clubs = {{clubs, ForcedClubResult::loss}};
             constexpr std::uint32_t fixture = 0x70009000;
             s.memory.write<4>(0x109806f0 + 0xec, fixture);
             s.memory.write<4>(0x109806f0 + 0xf0, 0x5678);
@@ -161,6 +194,11 @@ int main() {
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
             require(!s.platform->quick_save_busy(), "Quick-save completion must restore host commands");
+            require(companion_bytes("First.sav") == first_rules,
+                    "Successful quick save did not persist club rules beside its destination");
+            require(file_bytes(user / "First.sav") == "staged career", "Club rules changed serialized career bytes");
+            match_result_debugging(s).clubs = {{clubs + 0x248, ForcedClubResult::draw}};
+            std::ofstream(user / "Second.sav", std::ios::binary) << "second career";
             put_path("CM User Data:Second.sav");
             s.wr<4>(16, 0x16);
             s.platform->quick_save_write_begin(s);
@@ -173,6 +211,9 @@ int main() {
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
             require(s.platform->quick_save_pending(s), "Queued save was lost after successful serialization");
+            require(companion_bytes("Second.sav") == second_rules && companion_bytes("First.sav") == first_rules,
+                    "Save As did not isolate the two careers' club rules");
+            require(file_bytes(user / "Second.sav") == "second career", "Save As companion changed original career bytes");
             prepare_staged_save();
             s.wr<4>(12, stack + 0x133c);
             s.wr<4>(16, 0x16);
@@ -183,6 +224,8 @@ int main() {
             s.platform->quick_save_write_renamed(s);
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
+            match_result_debugging(s).clubs = {{clubs, ForcedClubResult::win}};
+            std::ofstream(user / "Failed.sav.forced-results", std::ios::binary) << "old companion";
             put_path("CM User Data:Failed.sav");
             s.wr<4>(16, 0x16);
             s.platform->quick_save_write_begin(s);
@@ -192,6 +235,8 @@ int main() {
             s.platform->quick_save_write_renamed(s);
             s.wr<4>(12, 1); // Original writer reports success even when final rename fails.
             s.platform->quick_save_write_end(s);
+            require(companion_bytes("Failed.sav") == "old companion" && companion_bytes("Second.sav") == second_rules,
+                    "Failed Save As rename changed a companion file");
             require(s.platform->quick_save_request(s), "Quick save unavailable after a failed rename");
             prepare_staged_save();
             require(s.platform->quick_save_busy(), "Quick save must stay available after a failed rename");
@@ -204,6 +249,10 @@ int main() {
             s.platform->quick_save_write_renamed(s);
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
+            second_rules = "CM_FORCED_CLUB_RESULTS 1\n1\n0 0 \"Test Arsenal\"\n";
+            require(companion_bytes("Second.sav") == second_rules && companion_bytes("First.sav") == first_rules,
+                    "Quick save after failed Save As used the wrong companion destination");
+            match_result_debugging(s).clubs = {{clubs + 0x248, ForcedClubResult::loss}};
             s.memory.write<4>(0x109806f0 + 0xec, 0);
 
             // Every condition of the original's dispatcher holds a queued save back.
@@ -254,6 +303,8 @@ int main() {
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
             require(s.r<4>(12) == 0, "A failed promotion must report failure");
+            require(companion_bytes("Second.sav") == second_rules,
+                    "Failed quick-save promotion overwrote prior club rules");
             require(s.memory.read<1>(saved_flag) == 0 && s.memory.read<1>(dirty_flag) == 1 &&
                     s.memory.copy_out(saved_date, 5) == std::vector<std::uint8_t>({1, 2, 3, 4, 5}),
                     "A failed promotion must leave the game marked as unsaved");
@@ -280,6 +331,8 @@ int main() {
             require(s.r<4>(12) == 0 && s.memory.read<1>(saved_flag) == 0 && s.memory.read<1>(dirty_flag) == 1,
                     "A failed rename must leave the game marked as unsaved");
             require(staging_folders() + 1 == folders_before_rename, "Useless output must not stay behind");
+            require(companion_bytes("Second.sav") == second_rules,
+                    "Failed staged rename overwrote prior club rules");
 
             // What will not pass by itself is refused now, not left queued.
             s.memory.write<1>(0x109806f0, 1);
@@ -295,6 +348,7 @@ int main() {
             s.platform->quick_save_load_begin(s);
             s.wr<4>(12, 1);
             s.platform->quick_save_load_end(s);
+            require(match_result_debugging(s).clubs.empty(), "Loading a companion-free career retained another career's rules");
             require(s.platform->quick_save_request(s), "Quick save unavailable after a load from a folder");
             fs::remove_all(user / "Sub");
             alerts.clear();
@@ -306,11 +360,13 @@ int main() {
             s.wr<4>(12, 1);
             s.platform->quick_save_load_end(s);
             require(s.platform->quick_save_available(), "A load must enable quick save");
+            require(has_rule(clubs, ForcedClubResult::loss), "Successful career load did not restore that career's rules");
             put_path("CM User Data:Missing.sav");
             s.platform->quick_save_load_begin(s);
             s.wr<4>(12, 0);
             s.platform->quick_save_load_end(s);
             require(!s.platform->quick_save_available(), "A failed load must disable quick save");
+            require(match_result_debugging(s).clubs.empty(), "Failed career load retained stale club rules");
             put_path("CM User Data:First.sav");
             s.wr<4>(16, 0x16);
             s.platform->quick_save_write_begin(s);
@@ -321,6 +377,33 @@ int main() {
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
             require(s.platform->quick_save_available(), "An ordinary save must enable quick save again");
+            require(companion_bytes("First.sav") == "CM_FORCED_CLUB_RESULTS 1\n0\n",
+                    "Saving an empty list left previously persisted club rules active");
+            put_path("CM User Data:First.sav");
+            s.platform->quick_save_load_begin(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_load_end(s);
+            require(match_result_debugging(s).clubs.empty(), "Removed rules returned after reloading the career");
+            require(file_bytes(user / "First.sav") == "staged career", "Companion updates modified original career bytes");
+
+            put_path("CM User Data:Second.sav");
+            s.platform->quick_save_load_begin(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_load_end(s);
+            require(has_rule(clubs, ForcedClubResult::win), "Save As companion did not load its independent rule");
+            // A partially valid companion is rejected as a whole without failing
+            // the successful original career load or retaining the prior world.
+            std::ofstream(user / "Malformed.sav", std::ios::binary) << "malformed companion career";
+            std::ofstream(user / "Malformed.sav.forced-results", std::ios::binary)
+                << "CM_FORCED_CLUB_RESULTS 1\n2\n0 0 \"Test Arsenal\"\n1 1";
+            put_path("CM User Data:Malformed.sav");
+            s.platform->quick_save_load_begin(s);
+            s.wr<4>(12, 1);
+            s.platform->quick_save_load_end(s);
+            require(match_result_debugging(s).clubs.empty() && s.r<4>(12) == 1 && s.platform->quick_save_available(),
+                    "Malformed companion partially restored rules or invalidated the original career load");
+            require(file_bytes(user / "Malformed.sav") == "malformed companion career",
+                    "Rejected companion modified original career bytes");
 
             // Leftovers: only what this code could have made, keeping the newest save.
             const auto left = user / "left";

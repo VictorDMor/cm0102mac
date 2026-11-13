@@ -1881,8 +1881,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if page in (0x100ac, 0x100ad, 0x100ae, 0x100af,
                 0x102a5, 0x10346, 0x1034b, 0x1034c, 0x1034d):
         code.insert(1, '#include "platform.hpp"')
-    if page in (0x1028b, 0x1028c, 0x1028d, 0x102a1, 0x102a3, 0x102a5, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
+    if page in (0x1001f, 0x1028b, 0x1028c, 0x1028d, 0x102a1, 0x102a3, 0x102a5, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
         code.insert(1, '#include "match_debugging.hpp"')
+    if page == 0x10345:
+        code.insert(1, '#include "debug_match_results.hpp"')
     forced_purchase_branches = {
         # The CPU seller's decision, the player's willingness to negotiate,
         # and the seller's board review during completion.
@@ -2170,6 +2172,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("append_match_debugging_controls(s);")
         if a == 0x1028dc80:
             code.append("if (dispatch_match_debugging_control(s)) return true;")
+        if a == 0x1001f190:
+            if item["assembly"] != "lhz r4,0x6a(r1)" or 0x1001f5c0 not in page_addresses:
+                raise ValueError("Club header action boundary changed")
+            code.append("if (append_forced_club_control(s)) goto i_1001f5c0;")
         if a == 0x100237c4:
             code.append("append_best_xi_control(s);")
         if a == 0x10036f10:
@@ -2180,6 +2186,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("if (dispatch_debug_contract_action(s)) return true;")
         if a == 0x101cca40:
             code.append("reset_match_debugging();")
+        if a == 0x10345bb0:
+            code.append("clear_match_result_debugging(s);")
         if a in (0x10345bb0, 0x10346bc0):
             code.append("clear_forced_purchases(s);")
         if a in forced_purchase_branches:

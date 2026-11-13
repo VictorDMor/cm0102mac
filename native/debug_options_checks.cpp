@@ -325,6 +325,13 @@ int main(int argc, char** argv) {
                 for (unsigned j = 0; j < 200 && c.u8(item + 0x78 + j); ++j) text += char(c.u8(item + 0x78 + j));
                 if (text == label && c.u32(item + 12) == flags) return i;
             }
+            for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i) {
+                const auto item = item_address(i);
+                if (c.u32(item + 8) < 30000) continue;
+                std::string text;
+                for (unsigned j = 0; j < 200 && c.u8(item + 0x78 + j); ++j) text += char(c.u8(item + 0x78 + j));
+                std::cerr << "Control " << c.u32(item + 8) << " flags=" << c.u32(item + 12) << " label=" << text << '\n';
+            }
             throw std::runtime_error("Missing styled label: " + std::string(label) + " flags=" + std::to_string(flags));
         };
         const auto style = [&](unsigned index) {
@@ -350,10 +357,68 @@ int main(int argc, char** argv) {
         // Build the actual career menu, including the generated integration hook.
         invoke(0x102a1070, {4, 0});
         const auto sidebar = control(30020, 0);
-        require(label_control(debug_text(s, DebugText::options_sidebar), 2) == sidebar,
-                "Sidebar must retain its localized line break");
+        label_control(debug_text(s, DebugText::options_sidebar), 0x82);
+        require(label_control("     " + std::string(debug_text(s, DebugText::toggle_options)), 2) == sidebar,
+                "Debugging submenu lacks its options child");
         require(debug_text(9, DebugText::options_sidebar) == "Op\347\365es\nde Debugging", "Portuguese sidebar wrapping");
-        invoke(0x102a54b0, {sidebar});
+        const auto club = c.u32(c.toc(-0x7be8)) + 677 * 0x248;
+        require(valid_debug_result_club(s, club), "Expected fixture club");
+        invoke(0x102a54b0, {control(30026, 0)});
+        invoke(0x1033d030, {});
+        require(match_result_debugging(s).clubs.empty(), "Default club list was not empty");
+        label_control(debug_text(s, DebugText::options_sidebar), 0x82);
+        invoke(0x1073edb0, {ui});
+        const auto history_title = c.r(3);
+        std::string list_title;
+        for (unsigned i = 0; c.u8(history_title + i); ++i) list_title += char(c.u8(history_title + i));
+        require(list_title == debug_text(s, DebugText::forced_clubs), "List cleared its history title");
+        invoke(0x1033f840, {control(30027, 0)});
+        require(match_result_debugging(s).choosing_club, "Add did not arm the club browser");
+        invoke(0x1073ef70, {ui, 0});
+        require(c.r(3) == 1, "Add did not open the original Nations browser");
+        // Browse to a club; selection is host-owned and survives unrelated history.
+        invoke(0x1073f1e0, {ui, 0, club, 0});
+        invoke(0x10719560, {page()});
+        c.set(31, club); c.set(26, ui);
+        require(append_forced_club_control(s), "Club selection header was not built");
+        c.set(3, control(30029, club)); s.wr<4>(4128, return_sentinel);
+        require(dispatch_best_xi_control(s), "Club toolbar did not accept Force Results");
+        require(match_result_debugging(s).clubs.size() == 1 &&
+            match_result_debugging(s).clubs.front().result == ForcedClubResult::win &&
+            !match_result_debugging(s).choosing_club, "Added club did not default to victory or finish selection");
+        invoke(0x1033d030, {});
+        label_control(debug_text(s, DebugText::win), 1);
+        invoke(0x1033f840, {control(30302, club)});
+        require(match_result_debugging(s).clubs.front().result == ForcedClubResult::loss, "Loss cell was ignored");
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30028, 0)});
+        invoke(0x1033d030, {});
+        require(match_result_debugging(s).removing_club, "Remove mode did not stay active");
+        invoke(0x1033f840, {control(30303, club)});
+        invoke(0x1033d030, {});
+        require(match_result_debugging(s).confirm_removal == club, "Remove skipped confirmation");
+        invoke(0x1033f840, {control(30305, 0)});
+        require(match_result_debugging(s).clubs.size() == 1, "No removed the club");
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30303, club)});
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30304, 0)});
+        require(match_result_debugging(s).clubs.empty(), "Yes did not remove the club");
+        invoke(0x1033d030, {});
+        // The native history monitor interprets -2 as Back; -4 only redraws.
+        invoke(0x1033f840, {control(30308, 0)});
+        require(c.r(3) == std::uint32_t(-2), "Back did not request previous history");
+        c.put16(ui + 0x25819e, 40);
+        invoke(0x1033f840, {0xffffffffu});
+        require(c.r(3) == std::uint32_t(-2), "Escape did not request previous history");
+        c.put16(ui + 0x25819e, 41);
+        invoke(0x1033f840, {0xffffffffu});
+        require(c.r(3) == 0, "Unrelated options key reached the original preferences handler");
+        c.put16(ui + 0x25819e, 0);
+        // Reopen the sidebar on a clean screen before testing the existing modal.
+        invoke(0x10719560, {page()});
+        invoke(0x102a1070, {4, 0});
+        invoke(0x102a54b0, {control(30020, 0)});
         invoke(0x1033d030, {});
         require(native_debugging_features() == 0, "Opening options changed preferences");
         const auto active_style = style(label_control(debug_text(s, DebugText::off), 1));

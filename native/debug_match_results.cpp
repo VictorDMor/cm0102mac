@@ -28,6 +28,57 @@ bool human_fixture(const State& s, std::uint32_t fixture) {
 }
 }
 
+bool valid_debug_result_club(const State& s, std::uint32_t club) {
+    if (!club) return false;
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto base = s.memory.read<4>(s.memory.read<4>(toc - 0x7be8));
+    const auto count = s.memory.read<4>(s.memory.read<4>(toc - 0x7b50));
+    return base && club >= base && (club - base) % 0x248 == 0 &&
+        (club - base) / 0x248 < count && s.memory.read<4>(club) == (club - base) / 0x248;
+}
+
+bool add_debug_result_club(State& s, std::uint32_t club) {
+    if (!native_debugging_available() || !valid_debug_result_club(s, club)) return false;
+    auto& rules = match_result_debugging(s).clubs;
+    if (std::ranges::find(rules, club, &ClubResultRule::club) == rules.end())
+        rules.push_back({club, ForcedClubResult::win});
+    return true;
+}
+
+bool set_debug_club_result(State& s, std::uint32_t club, ForcedClubResult result) {
+    if (!native_debugging_available() ||
+        (result != ForcedClubResult::win && result != ForcedClubResult::draw && result != ForcedClubResult::loss)) return false;
+    auto& rules = match_result_debugging(s).clubs;
+    const auto found = std::ranges::find(rules, club, &ClubResultRule::club);
+    if (found == rules.end()) return false;
+    found->result = result;
+    return true;
+}
+
+bool remove_debug_result_club(State& s, std::uint32_t club) {
+    if (!native_debugging_available()) return false;
+    return std::erase_if(match_result_debugging(s).clubs, [&](const auto& rule) { return rule.club == club; }) != 0;
+}
+
+ForcedMatchResult effective_debug_match_result(const State& s, std::uint32_t fixture) {
+    if (!fixture) return ForcedMatchResult::normal;
+    if (native_debugging_feature(DebugFeature::match_result)) {
+        const auto manual = debug_match_result(s, fixture);
+        if (manual != ForcedMatchResult::normal) return manual;
+    }
+    if (!native_debugging_available()) return ForcedMatchResult::normal;
+    const auto& rules = match_result_debugging(s).clubs;
+    if (rules.empty()) return ForcedMatchResult::normal;
+    const auto home = s.memory.read<4>(fixture + 0x1c), away = s.memory.read<4>(fixture + 0x20);
+    const auto h = std::ranges::find(rules, home, &ClubResultRule::club);
+    const auto a = std::ranges::find(rules, away, &ClubResultRule::club);
+    if ((h == rules.end()) == (a == rules.end())) return ForcedMatchResult::normal;
+    const bool home_rule = h != rules.end();
+    const auto result = (home_rule ? h : a)->result;
+    if (result == ForcedClubResult::draw) return ForcedMatchResult::draw;
+    return home_rule == (result == ForcedClubResult::win) ? ForcedMatchResult::home_win : ForcedMatchResult::away_win;
+}
+
 bool debug_match_result_eligible(const State& s, std::uint32_t fixture) {
     if (!fixture || std::int8_t(s.memory.read<1>(fixture + 0x43)) != -1) return false;
     const auto plan = identity(s, fixture, ForcedMatchResult::normal);
@@ -54,13 +105,14 @@ bool set_debug_match_result(State& s, std::uint32_t fixture, ForcedMatchResult r
 }
 
 std::optional<std::array<unsigned, 2>> debug_match_score(const State& s, std::uint32_t match) {
-    if (match_result_debugging(s).fixtures.empty() || !native_debugging_feature(DebugFeature::match_result)) return {};
+    const auto& choices = match_result_debugging(s);
+    if (choices.fixtures.empty() && choices.clubs.empty()) return {};
     // Scores are scheduled by the quick simulation. Background preparation
     // also routes selected, unobserved detailed matches through that engine.
     if (!s.memory.read<1>(match)) return {};
     const auto fixture = std::uint32_t(s.memory.read<4>(match + 0x3118));
     if (!debug_match_result_eligible(s, fixture)) return {};
-    const auto result = debug_match_result(s, fixture);
+    const auto result = effective_debug_match_result(s, fixture);
     if (result == ForcedMatchResult::normal) return {};
     const auto plan = identity(s, fixture, result);
     // Stable variation across fixtures, without consuming the game's RNG just
@@ -87,8 +139,8 @@ std::optional<std::array<unsigned, 2>> debug_match_score(const State& s, std::ui
 }
 
 void prepare_debug_match_result(State& s, std::uint32_t match) {
-    if (match_result_debugging(static_cast<const State&>(s)).fixtures.empty() ||
-        !native_debugging_feature(DebugFeature::match_result)) return;
+    const auto& choices = match_result_debugging(static_cast<const State&>(s));
+    if (choices.fixtures.empty() && choices.clubs.empty()) return;
     // Both background scheduler branches keep their queue entry in r29. The
     // immediate background path keeps it in r18 and bypasses that scheduler.
     // The watched caller and standalone debugger are deliberately excluded.
@@ -102,13 +154,14 @@ void prepare_debug_match_result(State& s, std::uint32_t match) {
     const auto queue_entry = std::uint32_t(s.r<4>(queue_register * 4));
     if (!queue_entry || s.memory.read<4>(queue_entry + 0x58) != match) return;
     if (!match || s.memory.read<1>(match)) return;
-    const auto fixture = std::uint32_t(s.memory.read<4>(match + match_eng::fixture_at));
-    if (!debug_match_result_eligible(s, fixture) ||
-        debug_match_result(s, fixture) == ForcedMatchResult::normal) return;
     // Detail level is not attendance: the original can simulate background
     // games in detail for a league, nation or reputation setting. Switch only
-    // at their first background advance, before any football has been played.
+    // at their first background advance, before any football has been played
+    // (tested first: every later advance of every such match stops here).
     if (s.memory.read<2>(match + match_eng::clock_at) || s.memory.read<2>(match + 0x794a)) return;
+    const auto fixture = std::uint32_t(s.memory.read<4>(match + match_eng::fixture_at));
+    if (!debug_match_result_eligible(s, fixture) ||
+        effective_debug_match_result(s, fixture) == ForcedMatchResult::normal) return;
     const auto display = std::uint32_t(s.memory.read<4>(queue_entry + 0x5c));
     if (display && s.memory.read<1>(display + 0x4b)) return;
     s.memory.write<1>(match, 1);
@@ -119,4 +172,5 @@ void finish_debug_match_result(State& s, std::uint32_t fixture) {
     const auto finished = identity(s, fixture, ForcedMatchResult::normal);
     std::erase_if(match_result_debugging(s).fixtures, [&](const auto& plan) { return matches(plan, finished); });
 }
+
 }

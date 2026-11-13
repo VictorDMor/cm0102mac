@@ -25,7 +25,7 @@ add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arra
 target_sources(cm_aot PRIVATE vector_context.cpp)
 target_sources(cm_aot PRIVATE quick_save_transaction.cpp)
 target_sources(cm_aot PRIVATE match_speed.cpp)
-target_sources(cm_aot PRIVATE match_debugging.cpp debug_underdogs.cpp debug_match_results.cpp)
+target_sources(cm_aot PRIVATE match_debugging.cpp debug_underdogs.cpp debug_match_results.cpp debug_club_results_storage.cpp)
 target_sources(cm_aot PRIVATE debug_localization.cpp)
 target_sources(cm_aot PRIVATE guest_context_transfer.cpp)
 target_sources(cm_aot PRIVATE exception_runtime_adapter.cpp exception_runtime_context.cpp exception_runtime_frames.cpp exception_runtime_cleanup.cpp exception_runtime_matching.cpp exception_runtime_search.cpp exception_runtime_capture.cpp exception_runtime_handlers.cpp exception_runtime_unexpected.cpp)
@@ -2357,6 +2357,12 @@ if(EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam" AND EXISTS "${CM_ORACLE
     set_tests_properties(debugging_underdogs PROPERTIES TIMEOUT 360)
     add_test(NAME debugging_match_results COMMAND cm-debug-match-results-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debug-match-results-checks")
+    if(EXISTS "${CM_BENCHMARK_DIR}/match/677/initial.snapshot")
+        add_test(NAME debugging_club_results_fixture COMMAND cm-debug-match-results-checks
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/debug-club-results-checks"
+            "${CM_BENCHMARK_DIR}/match/677/initial.snapshot")
+        set_tests_properties(debugging_club_results_fixture PROPERTIES TIMEOUT 360)
+    endif()
     set_tests_properties(debugging_match_results PROPERTIES TIMEOUT 360)
     add_test(NAME debugging_best_xi COMMAND cm-best-xi-checks
         "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_BINARY_DIR}/best-xi-checks")
@@ -2865,7 +2871,7 @@ target_link_libraries(cm-resource-checks PRIVATE cm_resources)
 target_compile_options(cm-resource-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME resource_forks COMMAND cm-resource-checks)
 add_executable(cm-platform-checks platform_checks.cpp)
-target_link_libraries(cm-platform-checks PRIVATE cm_aot)
+target_link_libraries(cm-platform-checks PRIVATE cm_aot "-framework Carbon")
 target_compile_options(cm-platform-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME native_filesystem COMMAND cm-platform-checks)
 add_executable(cm-fork-io-checks fork_io_checks.cpp)
