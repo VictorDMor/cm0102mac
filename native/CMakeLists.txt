@@ -1201,48 +1201,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
     add_test(NAME transfer_offer_component_equivalence COMMAND cm-transfer-offer-checks)
     set_tests_properties(transfer_offer_component_equivalence PROPERTIES TIMEOUT 180)
 
-    set(CM_TRANSFER_RECORD_REFERENCE "${CMAKE_BINARY_DIR}/transfer_record_reference.cpp")
-    add_custom_command(OUTPUT "${CM_TRANSFER_RECORD_REFERENCE}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_record_reference.py"
-            "${CM_ORACLE_DIR}" "${CM_TRANSFER_RECORD_REFERENCE}"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_record_reference.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_record_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
-            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
-        VERBATIM)
-    add_executable(cm-transfer-record-checks transfer_record_checks.cpp "${CM_TRANSFER_RECORD_REFERENCE}")
-    target_link_libraries(cm-transfer-record-checks PRIVATE cm_aot)
-    target_compile_options(cm-transfer-record-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-    add_test(NAME transfer_record_component_equivalence COMMAND cm-transfer-record-checks)
-    set_tests_properties(transfer_record_component_equivalence PROPERTIES TIMEOUT 180)
-
-    set(CM_TRANSFER_VALUATION_REFERENCE "${CMAKE_BINARY_DIR}/transfer_valuation_reference.cpp")
-    add_custom_command(OUTPUT "${CM_TRANSFER_VALUATION_REFERENCE}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_valuation_reference.py"
-            "${CM_ORACLE_DIR}" "${CM_TRANSFER_VALUATION_REFERENCE}"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_valuation_reference.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_valuation_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
-            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
-        VERBATIM)
-    add_executable(cm-transfer-valuation-checks transfer_valuation_checks.cpp "${CM_TRANSFER_VALUATION_REFERENCE}")
-    target_link_libraries(cm-transfer-valuation-checks PRIVATE cm_aot)
-    target_compile_options(cm-transfer-valuation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-    add_test(NAME transfer_valuation_component_equivalence COMMAND cm-transfer-valuation-checks)
-    set_tests_properties(transfer_valuation_component_equivalence PROPERTIES TIMEOUT 180)
-
-    set(CM_TRANSFER_SYNTHESIS_REFERENCE "${CMAKE_BINARY_DIR}/transfer_synthesis_reference.cpp")
-    add_custom_command(OUTPUT "${CM_TRANSFER_SYNTHESIS_REFERENCE}"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_synthesis_reference.py"
-            "${CM_ORACLE_DIR}" "${CM_TRANSFER_SYNTHESIS_REFERENCE}"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_transfer_synthesis_reference.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../tools/transfer_synthesis_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
-            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
-        VERBATIM)
-    add_executable(cm-transfer-synthesis-checks transfer_synthesis_checks.cpp "${CM_TRANSFER_SYNTHESIS_REFERENCE}")
-    target_link_libraries(cm-transfer-synthesis-checks PRIVATE cm_aot)
-    target_compile_options(cm-transfer-synthesis-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-    add_test(NAME transfer_synthesis_component_equivalence COMMAND cm-transfer-synthesis-checks)
-    set_tests_properties(transfer_synthesis_component_equivalence PROPERTIES TIMEOUT 180)
-
     set(CM_CLUB_SHORTLIST_STORAGE_REFERENCE "${CMAKE_BINARY_DIR}/club_shortlist_storage_reference.cpp")
     add_custom_command(OUTPUT "${CM_CLUB_SHORTLIST_STORAGE_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_club_shortlist_storage_reference.py"
@@ -3057,14 +3015,6 @@ add_executable(cm-transfer-offer-production-checks transfer_offer_production_che
 target_link_libraries(cm-transfer-offer-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-transfer-offer-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 
-add_executable(cm-transfer-proposal-production-checks transfer_proposal_production_checks.cpp)
-target_link_libraries(cm-transfer-proposal-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-transfer-proposal-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-
-add_executable(cm-transfer-synthesis-production-checks transfer_synthesis_production_checks.cpp)
-target_link_libraries(cm-transfer-synthesis-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-transfer-synthesis-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-
 add_executable(cm-club-shortlist-storage-production-checks club_shortlist_storage_production_checks.cpp)
 target_link_libraries(cm-club-shortlist-storage-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-club-shortlist-storage-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -4565,6 +4515,37 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME qsort4x_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_QSORT4X_ORIGINAL=1
         $<TARGET_FILE:cm-qsort4x-checks> "${CM_ORACLE_DIR}" --original-routing)
     add_test(NAME qsort4x_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_qsort4x_audit.py")
+endif()
+
+# TRANSFER_OFFER.CPP (tools/transfer_offer_unit_audit.py): the transfer offer record, its terms and its value.
+file(GLOB CM_TRANSFER_OFFER_UNIT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/transfer_offer_unit*.cpp")
+list(FILTER CM_TRANSFER_OFFER_UNIT_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_TRANSFER_OFFER_UNIT_SOURCES})
+file(GLOB CM_TRANSFER_OFFER_UNIT_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/transfer_offer_unit_checks*.cpp")
+add_executable(cm-transfer-offer-unit-checks ${CM_TRANSFER_OFFER_UNIT_CHECK_SOURCES})
+target_link_libraries(cm-transfer-offer-unit-checks PRIVATE cm_aot)
+target_compile_options(cm-transfer-offer-unit-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME transfer_offer_unit_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_transfer_offer_unit_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        set(CM_TRANSFER_OFFER_UNIT_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        add_test(NAME transfer_offer_unit_equivalence COMMAND cm-transfer-offer-unit-checks ${CM_TRANSFER_OFFER_UNIT_INPUTS} --mutate 4 --call-trace --require-all)
+        add_test(NAME transfer_offer_unit_production COMMAND cm-transfer-offer-unit-checks ${CM_TRANSFER_OFFER_UNIT_INPUTS} --production --require-all)
+    endif()
+endif()
+option(CM_TRANSFER_OFFER_UNIT_COVERAGE "Instrument TRANSFER_OFFER.CPP checker only" OFF)
+if(CM_TRANSFER_OFFER_UNIT_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/transfer-offer-unit-coverage")
+    set(CM_TRANSFER_OFFER_UNIT_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/transfer-offer-unit-coverage/check-%p.profraw")
+    add_library(cm_transfer_offer_unit_coverage OBJECT ${CM_TRANSFER_OFFER_UNIT_SOURCES})
+    target_link_libraries(cm_transfer_offer_unit_coverage PRIVATE cm_aot)
+    # Undefined behaviour the guest's wrapping arithmetic must never turn into: reported, not fatal.
+    target_compile_options(cm_transfer_offer_unit_coverage PRIVATE "-fprofile-instr-generate=${CM_TRANSFER_OFFER_UNIT_PROFILE}" -fcoverage-mapping -ffp-contract=off
+        -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+    target_compile_definitions(cm_transfer_offer_unit_coverage PRIVATE CM_TRANSFER_OFFER_UNIT_COVERAGE=1)
+    target_sources(cm-transfer-offer-unit-checks PRIVATE $<TARGET_OBJECTS:cm_transfer_offer_unit_coverage>)
+    target_compile_definitions(cm-transfer-offer-unit-checks PRIVATE CM_TRANSFER_OFFER_UNIT_COVERAGE=1)
+    target_link_options(cm-transfer-offer-unit-checks PRIVATE "-fprofile-instr-generate=${CM_TRANSFER_OFFER_UNIT_PROFILE}" -fsanitize=undefined)
 endif()
 
 # GAME_CONFIG.CPP (tools/game_config_audit.py): the preferences record and its file in C++.

@@ -30,7 +30,7 @@ class TransferManagerAudit(unittest.TestCase):
                              ["transfer_manager_adapter"])
         for entry in (0x10411e60, 0x10411ea0, 0x10411f10):
             self.assertNotIn(entry, ENTRIES)
-            self.assertIn((entry, "transfer_record_adapter"), OWNER_REPLACEMENTS)
+            self.assertIn((entry, "transfer_offer_unit_adapter"), OWNER_REPLACEMENTS)
         self.assertTrue(set(TRANSFER_OFFER_ENTRIES) <= set(TRANSFER_MANAGER_ENTRIES))
         self.assertNotIn("transfer_offer_adapter", {name for _, name in OWNER_REPLACEMENTS})
 

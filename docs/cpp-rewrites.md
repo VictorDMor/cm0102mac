@@ -1906,3 +1906,45 @@ scripts every routine outside the unit and traces each call with the arguments i
   coverage does not reach).
 - The exit routine (0x1076f7d0) is called and, were it to return, the code after it runs; the checker's scripted
   exit returns, so those continuations are compared too.
+
+## TRANSFER_OFFER.CPP: the offer record, its terms and its value
+
+17 entries / 5,545 instructions at 0x10411e60..0x10417590 (`tools/transfer_offer_unit_audit.py`). The files are named
+`transfer_offer_unit*` because `native/transfer_offer_*` is an older owner of TRANSFER_MANAGER.CPP routines. The bounds:
+the unit's three pools (TOC -0x4b88 strings starting "TRANSFER_OFFER.CPP", -0x4b8c doubles, -0x4b90 floats) are loaded
+by these routines only, from 0x10411fa0 to 0x104172f0; the three routines before the first load build and destroy the
+record the others work on; TRANSFER_MANAGER.CPP's audit ends where the unit starts and TRANSFER_SCREENS.CPP's starts
+where it ends. 118 outside call sites, all calls of an entry, and one pointer: a transition vector of the destructor
+0x10411f10. They replace the instruction transcriptions of the earlier process (`transfer_record`,
+`transfer_valuation`, `transfer_synthesis`), which no page calls any more.
+
+`native/transfer_offer_unit_record*.cpp` has the record (building, destroying, its form in a saved game, starting an
+offer, its total), `_value*.cpp` what an offer is worth and how a fee is reshaped, and `_build*.cpp` the routine that
+builds a club's offer for a player (0x104126d0, 3,551 instructions).
+
+**Contract.** Native inside, compared under the native contract, with one rule the captures forced: every routine
+keeps the original's frame and holds the original's non-volatile registers (r13-r31, f14-f31) at every call it makes.
+Its callees save those registers in their frames, and code that runs later reads those frames as stale stack: with
+r18-r28 left native in 0x104126d0, or r30/r31 in the destructor, every checked call matched and the replays of
+`season-day` and `same-save-continue` still ended in another state. The routine checker cannot see this (the bytes are
+dead stack at the routine's return), so `cm-transfer-offer-unit-checks` compares r13-r31 and f14-f31 at each call in
+its call trace, and the paired replays are the end-to-end check. 0x104172f0 also writes its int-to-double words to
+its frame as the original does (a reader in TRANSFER_MANAGER, 0x103f88c4).
+
+- The record is 0x54 bytes, written to a saved game whole, followed by a count and the rows of its two lists. The
+  reader's club rows are indices into the manager's offer slots: an offer whose row names an earlier offer shares
+  that offer's club list, and the list it had built is reset and destroyed.
+- 0x104126d0 reads two bytes of the record it is given before writing them (+0x38 and +0x3c keep their low
+  nibbles). The record is usually on the caller's stack and not initialised; the C++ reads the same bytes.
+- On the human buyer's path the 8-byte exchange row appended to the new offer's list includes frame byte sp+0x53,
+  which nothing writes after entry: stale stack ends up in the list and, through the writer, in the row's padding
+  in a saved game. The C++ leaves the byte alone, but what earlier frames left there can differ from the original
+  (this unit's own conversion temporaries are native locals now). No capture reaches the path; open.
+- 0x10415e50 (a draw below a limit) contains a call of itself that cannot run: the inner limit is the limit times
+  ten over 0xffff, at most 32768 in magnitude, so the inner level always takes the small branch. The C++ has no
+  recursion and throws at the dead branch.
+- 0x104172f0 compares twice the fee with a 64-bit result of 0x100f5770 (r3:r4), signed, through a carry chain.
+  When the buyer's contract is above 5000 and the person's profile has been cleared in between, the original reads
+  through the null profile; nothing guards it and the C++ does not either.
+- Two of 0x104170f0's and the reader's paths free or reset a list through routines the pages run in place
+  (0x10738c20, 0x10738ca0); the checker cannot answer those, so they run for real in the cases that reach them.

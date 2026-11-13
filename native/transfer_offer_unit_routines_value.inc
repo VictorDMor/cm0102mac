@@ -1,0 +1,5 @@
+TRANSFER_OFFER_UNIT_ROUTINE(0x10415e50, 0x104163c8, R3, "df703091d299e91b", [](Cpu& c) { c.set(3, std::uint32_t(transfer_offer_unit::draw_below(c, std::int32_t(c.r(3))))); })
+TRANSFER_OFFER_UNIT_ROUTINE(0x10416840, 0x10416d24, R3, "088a1a2f0e3f7ada", [](Cpu& c) { c.set(3, std::uint32_t(transfer_offer_unit::offer_value(c, c.r(3), std::int8_t(c.r(4)), std::int8_t(c.r(5)), std::int8_t(c.r(6)), std::int8_t(c.r(7)), std::int8_t(c.r(8))))); })
+TRANSFER_OFFER_UNIT_ROUTINE(0x10416e10, 0x104170f0, R3, "54cb712004280063", [](Cpu& c) { c.set(3, transfer_offer_unit::same_terms(c, c.r(3), c.r(4))); })
+TRANSFER_OFFER_UNIT_ROUTINE(0x104170f0, 0x10417260, NONE, "ae3843d68f8e9bb8", [](Cpu& c) { transfer_offer_unit::remove_exchange_player(c, c.r(3), c.r(4)); })
+TRANSFER_OFFER_UNIT_ROUTINE(0x104172f0, 0x10417590, NONE, "dccf0dc1d3e9728c", [](Cpu& c) { transfer_offer_unit::reshape_fee(c, c.r(3), c.r(4), c.r(6)); })

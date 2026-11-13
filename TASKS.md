@@ -6,8 +6,6 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] **Install the current build** (2026-11-13): `tools/dev.sh install` refuses while the game runs. The build in `.local/current/build` has GAME_CONFIG.CPP's 12 routines routed, All Draw and the native window frame; run the installer once the game is closed.
-
 - [ ] **Replace the software bounds check?** (found 2026-11-06) It costs 11.4-11.5% of the day and the week (7 alternating pairs each, identical end state). Removing it needs a hardware-fault path that keeps the byte-exact fault semantics the checks compare; the trade-off is under "Measure the software bounds check" below. Nothing changed.
 
 - [ ] **Host process id on the guest's stack** (found 2026-10-31, FILE_SCREENS.CPP): `native/file_reference_bridge.cpp` copies native FSRefs into guest memory, and +0xc holds the host's process id, so it varies per launch and reaches the stack in production. Whether the game ever reads it isn't confirmed. Masking it there and restoring `getpid()` on the way back would remove the variation, but it changes stack bytes the game could read, so it waits for your decision. Nothing depends on it; `cm-file-screens-checks` handles it with a marker.
@@ -20,17 +18,27 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: TRANSFER_OFFER.CPP (delivered 2026-11-13)
+
+All 17 entries (5,545 instructions, 0x10411e60..0x10417590) are C++ and routed (`native/transfer_offer_unit*.cpp`, `tools/transfer_offer_unit_audit.py`, `cm-transfer-offer-unit-checks`). Victor chose it as the quickest module to close. Contract and quirks: `docs/cpp-rewrites.md`.
+
+- [ ] Open risk, no capture reaches it: when a human club repeats an offer with players in exchange, 0x104126d0 appends an 8-byte row whose last byte is frame byte sp+0x53, never written. It reaches the heap list and, through the writer, the row's padding in a saved game. What earlier frames left there can differ from the original now that this unit's conversion temporaries are native locals. A capture of that path (yours to record) would settle it.
+- [ ] No real call in any capture: the save reader 0x10411fa0, 0x10411ea0, 0x10416e10 and 0x104170f0 (cases and mutations only). Not exercised at all: the list allocation failing in the reader and in 0x104126d0 (the original then faults on the null list).
+- [ ] The old owners are still compiled and no page calls them: `native/transfer_record_*`, `transfer_valuation_*`, `transfer_synthesis_*`, their diagnostics in `runtime_diagnostics.cpp` and `tools/transfer_{record,valuation,synthesis}_audit.py` (`tools/test_club_shortlist_storage_audit.py` reads `transfer_valuation_sampling.cpp`). Their own checks, references and audit tests are deleted.
+- [ ] Old production checks that set `transfer_record_diagnostics(s).original` / `transfer_valuation_diagnostics(s).original` to get original bodies now compare C++ with C++ for these 17 routines (review, 2026-11-13; none is built here): `cm-transfer-offer-production-checks`, `cm-contract-production-checks` and the shortlist, club-shortlist-storage, profile-qualification and contract-draft production checks. `CM_TRANSFER_OFFER_ORIGINAL=1` is the switch now.
+- For the native-first pass (review, no effect on results): calls out of the unit go through the dispatcher although most callees have C++ owners; the draw below a limit, `divide`, the int-to-double helpers and the club-of-contract lookup exist once per block under different names; the TOC cells and callees are named three ways across the three blocks; `world_replay_main.cpp` needs four hand edits per module.
+
 ## Now: native game window frame (2026-11-13)
 
 - [x] Give the primary game window native title-bar chrome, dragging, minimization and a close action routed through the original quit flow. Keep guest geometry and source pixels unchanged, reserve room for the title bar when fitting, and move related windows with the game. Review fixed Fit refreshes recentering dragged windows; explicitly choosing Fit still recenters.
 - [x] Build `cm-native-prototype`, presentation/UI/input checkers and pass `native_presentation_geometry`; final read-only review has no findings. Native UI/input checks cannot complete in this session: the presentation fixture rejects 125% on its reported display, and input lacks an active/key window with WindowServer/XPC errors. Separately compiling HEAD's original bridge reproduces both failures before any new assertions. Added chrome/content bounds, Fit movement, child lifetime and close-flow checks remain unexecuted beyond that environment boundary. Existing All Draw and concurrent GAME_CONFIG/world-replay changes preserved.
-- [x] Committed 2026-11-13 after `native_presentation_ui`, `native_input_queue` and `native_presentation_geometry` passed in a session with WindowServer access. Not installed: the game was running (see Blocked on Victor).
+- [x] Committed 2026-11-13 after `native_presentation_ui`, `native_input_queue` and `native_presentation_geometry` passed in a session with WindowServer access. Installed 2026-11-13 with the TRANSFER_OFFER.CPP build.
 
 ## Now: All Draw match-day action (2026-11-13)
 
 - [x] Add an independent All Draw toggle and fixture Debugging action; scope by competition/date, retain individual-result priority, and reuse simulated-match score bookkeeping.
 - [x] Verify menu wiring, independent toggle, scope isolation, cancellation, manual priority, load/new-career reset and actual quick/background simulation. `debugging_options` and `debugging_club_results_fixture` pass, including seven draw-day inactive controls with identical guest state and ordered RNG writes. Read-only production diff review has no findings; `cm-native-prototype` builds. Existing captures only; no new career or visual QA.
-- [x] Committed 2026-11-13 (8c6142eb). Not installed: the game was running (see Blocked on Victor).
+- [x] Committed 2026-11-13 (8c6142eb). Installed 2026-11-13 with the TRANSFER_OFFER.CPP build.
 
 ## Now: recurring club results UI follow-up (2026-11-13)
 
@@ -38,7 +46,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 - [x] Make Add open a populated Nations & Clubs browser and match Force Results to the club header colors. Add now supplies separate original default continent/nation values; the header uses the original Apply for Job colors and vertical bounds.
 - [x] Verify original UI controls/navigation with the existing fixture and review. `debugging_options` passes, including populated browser rows and exact choice/header colors. Preserved concurrent date/shortlist work.
 - [x] Build `cm-debug-options-checks` and `cm-native-prototype`; focused checks pass and the read-only diff review has no findings.
-- [x] Committed (it is in 7cf8754b). Install: see Blocked on Victor.
+- [x] Committed (it is in 7cf8754b). Installed 2026-11-13.
 
 ## Now: recurring club results (2026-11-12)
 

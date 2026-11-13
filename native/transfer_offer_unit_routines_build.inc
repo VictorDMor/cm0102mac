@@ -1,0 +1,1 @@
+TRANSFER_OFFER_UNIT_ROUTINE(0x104126d0, 0x10415e4c, R3, "f5d511c88a4a2a50", [](Cpu& c) { c.set(3, transfer_offer_unit::build_offer(c, c.r(3), c.r(4), c.r(5), c.r(6), std::int32_t(c.r(7)), c.r(8), c.r(9))); })
