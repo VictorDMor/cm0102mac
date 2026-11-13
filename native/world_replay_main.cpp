@@ -89,6 +89,7 @@
 #include "eng_third_adapter.hpp"
 #include "qsort4x_adapter.hpp"
 #include "date_adapter.hpp"
+#include "game_config_adapter.hpp"
 #include "bra_reg_central_adapter.hpp"
 #include "bra_reg_parana_adapter.hpp"
 #include "bra_reg_gaucho_adapter.hpp"
@@ -245,7 +246,7 @@ int main(int argc, char** argv) {
             checker->compare_f1 = compare_f1;
             routine_checker = &*checker;
             dispatch_probe = [](State& s) {
-                return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || game_config_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
             };
             if (!synthetic.empty())
@@ -282,6 +283,7 @@ int main(int argc, char** argv) {
                              : eng_third_lists(entry)         ? eng_third_run_original
                              : qsort4x_lists(entry) ? qsort4x_run_original
                              : date_lists(entry) ? date_run_original
+                             : game_config_lists(entry) ? game_config_run_original
                              : eng_conf_lists(entry)          ? eng_conf_run_original
                              : bra_reg_central_lists(entry)   ? bra_reg_central_run_original
                              : bra_reg_parana_lists(entry)   ? bra_reg_parana_run_original
@@ -330,6 +332,7 @@ int main(int argc, char** argv) {
                              : eng_third_lists(entry)         ? eng_third_run_rewrite
                              : qsort4x_lists(entry) ? qsort4x_run_rewrite
                              : date_lists(entry) ? date_run_rewrite
+                             : game_config_lists(entry) ? game_config_run_rewrite
                              : eng_conf_lists(entry)          ? eng_conf_run_rewrite
                              : bra_reg_central_lists(entry)   ? bra_reg_central_run_rewrite
                              : bra_reg_parana_lists(entry)   ? bra_reg_parana_run_rewrite
@@ -349,7 +352,7 @@ int main(int argc, char** argv) {
                                                               : tactics_run_rewrite)(t, entry);
                         },
                         routine_checker && routine_checker->strict_volatile);
-                    return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                    return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || game_config_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
                 };
         }

@@ -18,9 +18,8 @@ class PreparedScopeTests(unittest.TestCase):
         prefix=[{'entry':hex(e),'module':m}for e,m in SEMANTIC_REPLACEMENTS[:884]]
         self.assertEqual(hashlib.sha256(json.dumps(prefix,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'7a8921cdc98b39bccdab14d402aa2c570b036df8041f4d7b9035762c328ba493')
         from money_configuration_audit import MONEY_CONFIGURATION_ENTRIES
-        from preferences_audit import PREFERENCES_ENTRIES
-        expected=tuple((e,m+'_adapter')for m,es in [('money_configuration',MONEY_CONFIGURATION_ENTRIES),('preferences',PREFERENCES_ENTRIES)]for e in es)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[884:897],expected);require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
+        expected=tuple((e,'money_configuration_adapter')for e in MONEY_CONFIGURATION_ENTRIES)
+        self.assertEqual(SEMANTIC_REPLACEMENTS[884:884+len(expected)],expected);require_unique_semantic_replacements(SEMANTIC_REPLACEMENTS)
         for entry,_ in expected:
             with self.assertRaises(ValueError):require_unique_semantic_replacements((*SEMANTIC_REPLACEMENTS,(entry,'duplicate')))
 

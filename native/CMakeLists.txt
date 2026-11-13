@@ -1428,6 +1428,8 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
         "${CMAKE_BINARY_DIR}/money_configuration_coverage.txt")
     set_tests_properties(money_configuration_component_equivalence PROPERTIES TIMEOUT 180)
 
+    # The register-level owner of GAME_CONFIG.CPP that game_config*.cpp replaced: no page calls it, and
+    # its reference still serves the SETUP.CPP screen checks below.
     set(CM_PREFERENCES_REFERENCE "${CMAKE_BINARY_DIR}/preferences_reference.cpp")
     add_custom_command(OUTPUT "${CM_PREFERENCES_REFERENCE}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/make_preferences_reference.py"
@@ -1436,13 +1438,6 @@ if(EXISTS "${CM_ORACLE_DIR}/instructions.sqlite")
             "${CMAKE_CURRENT_SOURCE_DIR}/../tools/preferences_audit.py" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/compile_recomp.py"
             "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
         VERBATIM)
-    add_executable(cm-preferences-checks preferences_checks.cpp
-        "${CM_PREFERENCES_REFERENCE}" "${CM_MONEY_CONFIGURATION_REFERENCE}")
-    target_link_libraries(cm-preferences-checks PRIVATE cm_aot)
-    target_compile_options(cm-preferences-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-    add_test(NAME preferences_component_equivalence COMMAND cm-preferences-checks
-        "${CMAKE_BINARY_DIR}/preferences_coverage.txt")
-    set_tests_properties(preferences_component_equivalence PROPERTIES TIMEOUT 180)
 
     set(CM_LOCALIZATION_LOOKUP_REFERENCE "${CMAKE_BINARY_DIR}/localization_lookup_reference.cpp")
     add_custom_command(OUTPUT "${CM_LOCALIZATION_LOOKUP_REFERENCE}"
@@ -3110,10 +3105,6 @@ add_executable(cm-money-presentation-production-checks money_presentation_produc
 target_link_libraries(cm-money-presentation-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-money-presentation-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 
-add_executable(cm-preferences-production-checks preferences_production_checks.cpp)
-target_link_libraries(cm-preferences-production-checks PRIVATE cm_match_debugger_factory)
-target_compile_options(cm-preferences-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
-
 add_executable(cm-preferences-ui-production-checks preferences_ui_production_checks.cpp)
 target_link_libraries(cm-preferences-ui-production-checks PRIVATE cm_match_debugger_factory)
 target_compile_options(cm-preferences-ui-production-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
@@ -4574,6 +4565,44 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME qsort4x_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_QSORT4X_ORIGINAL=1
         $<TARGET_FILE:cm-qsort4x-checks> "${CM_ORACLE_DIR}" --original-routing)
     add_test(NAME qsort4x_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_qsort4x_audit.py")
+endif()
+
+# GAME_CONFIG.CPP (tools/game_config_audit.py): the preferences record and its file in C++.
+file(GLOB CM_GAME_CONFIG_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/game_config*.cpp")
+list(FILTER CM_GAME_CONFIG_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_GAME_CONFIG_SOURCES})
+add_executable(cm-game-config-checks game_config_checks.cpp)
+target_link_libraries(cm-game-config-checks PRIVATE cm_aot)
+target_compile_options(cm-game-config-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_GAME_CONFIG_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/game_config_reference.cpp")
+    add_custom_command(OUTPUT "${CM_GAME_CONFIG_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_game_config_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_GAME_CONFIG_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_game_config_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/game_config_audit.py"
+            "${CMAKE_SOURCE_DIR}/game_config_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-game-config-checks PRIVATE "${CM_GAME_CONFIG_REFERENCE}")
+    add_test(NAME game_config_equivalence COMMAND cm-game-config-checks "${CM_ORACLE_DIR}")
+    add_test(NAME game_config_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_GAME_CONFIG_ORIGINAL=1
+        $<TARGET_FILE:cm-game-config-checks> "${CM_ORACLE_DIR}" --original-routing)
+    add_test(NAME game_config_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_game_config_audit.py")
+endif()
+option(CM_GAME_CONFIG_COVERAGE "Instrument the GAME_CONFIG.CPP checker only" OFF)
+if(CM_GAME_CONFIG_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/game-config-coverage")
+    set(CM_GAME_CONFIG_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/game-config-coverage/check-%p.profraw")
+    add_library(cm_game_config_coverage OBJECT ${CM_GAME_CONFIG_SOURCES})
+    target_link_libraries(cm_game_config_coverage PRIVATE cm_aot)
+    target_compile_options(cm_game_config_coverage PRIVATE "-fprofile-instr-generate=${CM_GAME_CONFIG_PROFILE}" -fcoverage-mapping -ffp-contract=off)
+    target_compile_definitions(cm_game_config_coverage PRIVATE CM_GAME_CONFIG_COVERAGE=1)
+    target_sources(cm-game-config-checks PRIVATE $<TARGET_OBJECTS:cm_game_config_coverage>)
+    target_compile_definitions(cm-game-config-checks PRIVATE CM_GAME_CONFIG_COVERAGE=1
+        CM_GAME_CONFIG_PROFILE_DIR="${CMAKE_CURRENT_BINARY_DIR}/game-config-coverage")
+    target_link_options(cm-game-config-checks PRIVATE "-fprofile-instr-generate=${CM_GAME_CONFIG_PROFILE}")
 endif()
 
 # DATE.CPP (tools/date_audit.py): the game's dates in C++.

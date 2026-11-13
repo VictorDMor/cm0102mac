@@ -1868,3 +1868,41 @@ set where a call or the return exposes them.
   table and finds the case by its address (`tools/test_date_audit.py` pins the tables).
 - The 200-day cutoff cache that the shortlist scan had for 0x10717b20 went with the old owner: the scan calls the
   C++ routine directly (`date::call`).
+
+## GAME_CONFIG.CPP: the preferences record and its file
+
+12 entries / 1,444 instructions at 0x1013f030..0x10140724 (`tools/game_config_audit.py`), in `native/game_config.cpp`
+(the record, its options and setters) and `native/game_config_file.cpp` (building the game's record from the file and
+the command line; applying a record). They replace the register-level owner of the earlier process (`preferences_*`),
+which no page calls any more; its sources stay compiled because the old SETUP.CPP screen checks use its reference. The
+bounds: the unit's string pool (TOC -0x54e8, "GAME_CONFIG.CPP") is loaded by these routines only; the static
+initializer 0x1013f000 before it closes GAME.CPP and HALL_OF_FAME.CPP starts at 0x10140730; the last two routines
+(0x101406e0, 0x101406f0) load no pool and belong by the record fields they read and write. 40 outside call sites, all
+calls of an entry; no pointer to the unit.
+
+No capture that replays reaches the unit (it runs at start-up, from the options screens and from the menu bar), so
+`tools/stack_contract.py` has no reader for it and the paired replays say nothing about it. The routines are compared
+under the native contract, and still keep the original's frame and its non-volatile registers at every call: the
+routines below reach file and display imports with them, and that costs a line per routine. `cm-game-config-checks`
+scripts every routine outside the unit and traces each call with the arguments it reads and r13-r31.
+
+- The record is 0x150 bytes: a link to the record a working copy was made from, the options word, language and
+  currency bytes, a number of days (7..365, 30 at first), the save folder, a 0x1f-byte text this unit only copies,
+  a "stored" byte, and the font's identifier and name. The identifier field and its two routines were called "video
+  mode" by the earlier process; the callee that names it (0x10750b60) and the `-defaultfont` switch say font.
+- An option is one bit, and selecting it clears the rest of its group (twelve groups). The original is a tree of
+  equality tests, so a value that is not exactly one listed bit is reported by the assert macro.
+- The file "CM3 Config" starts with the word 0x1553117c. Reading stops at the first short item and what was read by
+  then stays; a file that is short or has another first word is deleted. The stored save folder is read into the
+  frame and dropped: the record keeps the "games" folder of this run. A stored font identifier whose name is no
+  longer the stored name goes back to the default (-2).
+- A stored language that is not installed is skipped; a stored currency outside 0..24 is skipped.
+- Applying a working copy writes its source and applies that. Applying the game's own record opens the display
+  again when the font or the mode changed, and passes the option's bit itself (8 or 0) as the full-screen flag; when
+  that fails it selects the other mode and tries it, and when that fails too it reports and leaves the program.
+- Three sites start the sound player. The one in the constructor does not look at the cell first, and only the one
+  in the option routine plays the intro. After a player that did not start, "sound off" is selected, which frees
+  it; the test for a player still in the cell that follows can never succeed (the only outcome the checker's
+  coverage does not reach).
+- The exit routine (0x1076f7d0) is called and, were it to return, the code after it runs; the checker's scripted
+  exit returns, so those continuations are compared too.

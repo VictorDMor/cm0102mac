@@ -6,6 +6,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
+- [ ] **Install the GAME_CONFIG.CPP build** (2026-11-13): `tools/dev.sh install` refused because the game was running. The build in `.local/current/build` has the 12 routines routed; run the installer once the game is closed.
+
 - [ ] **Replace the software bounds check?** (found 2026-11-06) It costs 11.4-11.5% of the day and the week (7 alternating pairs each, identical end state). Removing it needs a hardware-fault path that keeps the byte-exact fault semantics the checks compare; the trade-off is under "Measure the software bounds check" below. Nothing changed.
 
 - [ ] **Host process id on the guest's stack** (found 2026-10-31, FILE_SCREENS.CPP): `native/file_reference_bridge.cpp` copies native FSRefs into guest memory, and +0xc holds the host's process id, so it varies per launch and reaches the stack in production. Whether the game ever reads it isn't confirmed. Masking it there and restoring `getpid()` on the way back would remove the variation, but it changes stack bytes the game could read, so it waits for your decision. Nothing depends on it; `cm-file-screens-checks` handles it with a marker.
@@ -40,6 +42,15 @@ the scrollback. Remove ticked items once their commit is pushed.
   - Each successful Add pushes a new list page, so Back walks through older copies; the removal question is Portuguese/English only.
 - [x] Installed 2026-11-13 (commit e7e9b692).
 
+
+## Now: GAME_CONFIG.CPP (delivered 2026-11-13)
+
+All 12 entries (1,444 instructions, 0x1013f030..0x10140724) are C++ and routed (`native/game_config.cpp`, `native/game_config_file.cpp`, `tools/game_config_audit.py`, `cm-game-config-checks`). Victor chose it as the quickest module to close: every routine had a register-level owner (`preferences_*`). Contract and quirks: `docs/cpp-rewrites.md`.
+
+- [ ] No capture that replays reaches the unit (census over the 20 that do, and `--check-routines` on `database` and `daily-transition`: 0 calls), so there is no paired replay that counts and no stack contract for it; the evidence is the fixture. A start-up capture that replays would give both. Victor checks in play: the options screens, a changed language, currency, sound and display mode surviving a restart, and the `-windowed`, `-nosound` and `-defaultfont` switches.
+- [ ] The old owner is still compiled, and no page calls it: `native/preferences_{lifecycle,options,setters,apply,adapter}.cpp`, `preferences.hpp`, `tools/preferences_audit.py`, `tools/make_preferences_reference.py` and `PreferencesDiagnostics` in `runtime_diagnostics.cpp`. `cm-preferences-screen-checks` links its reference and calls `preferences::video_mode`; they go when SETUP.CPP is rewritten.
+- [ ] Old checks that no longer do what they say (none is built here): `cm-preferences-ui-production-checks` requires return counters of the old adapter, which stay 0, and the `PreferencesDiagnostics` switches are ignored; `CM_GAME_CONFIG_ORIGINAL=1` is the switch now. `tools/test_money_configuration_audit.py`, `test_preferences_actions_audit.py` and `test_preferences_screen_audit.py` pin positions and a length (963) of `SEMANTIC_REPLACEMENTS` that were already stale after DATE.CPP (931) and are 919 now.
+- [ ] `cm-world-replay` checks a nested call between two routines of the unit only through the outer routine (the adapter has no `call` through the hook, as `date::call` is); the fixture checks every entry on its own.
 
 ## Now: DATE.CPP (delivered 2026-11-13)
 

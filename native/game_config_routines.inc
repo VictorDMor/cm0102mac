@@ -1,0 +1,13 @@
+// GAME_CONFIG.CPP (tools/game_config_audit.py): entry, end, results, digest of the original body, hook.
+GAME_CONFIG_ROUTINE(0x1013f030, 0x1013f404, R3, "3fd3aaa3fb0d2c9c", [](Cpu& c) { c.set(3, game_config::construct(c, c.r(3))); })
+GAME_CONFIG_ROUTINE(0x1013f410, 0x1013f4c4, R3, "d751fdd1dc15c5f8", [](Cpu& c) { c.set(3, game_config::copy(c, c.r(3), c.r(4))); })
+GAME_CONFIG_ROUTINE(0x1013f4d0, 0x1013f564, R3, "f14583780105afdb", [](Cpu& c) { c.set(3, game_config::destroy(c, c.r(3), c.r(4))); })
+GAME_CONFIG_ROUTINE(0x1013f570, 0x1013f67c, R3, "6f8efcc4d4b58a71", [](Cpu& c) { c.set(3, game_config::set_defaults(c, c.r(3))); })
+GAME_CONFIG_ROUTINE(0x1013f680, 0x1013fb58, R3, "81cfdde4046345f5", [](Cpu& c) { c.set(3, game_config::select_option(c, c.r(3), c.r(4))); })
+GAME_CONFIG_ROUTINE(0x1013fb60, 0x1013fc44, R3, "a8adb922ba9e7666", [](Cpu& c) { c.set(3, game_config::set_language(c, c.r(3), c.r(4))); })
+GAME_CONFIG_ROUTINE(0x1013fc50, 0x1013fcfc, R3, "110b2be3b63248f1", [](Cpu& c) { c.set(3, game_config::set_currency(c, c.r(3), c.r(4))); })
+GAME_CONFIG_ROUTINE(0x1013fd00, 0x1013fdf4, R3, "a44f971e429f385e", [](Cpu& c) { c.set(3, game_config::currency_for_language(c, c.r(3))); })
+GAME_CONFIG_ROUTINE(0x1013fe00, 0x1013feac, R3, "4b29baa1449d9eb7", [](Cpu& c) { c.set(3, game_config::set_interval(c, c.r(3), c.r(4))); })
+GAME_CONFIG_ROUTINE(0x1013feb0, 0x101406d4, R3, "3d6c78a790d7cee6", [](Cpu& c) { c.set(3, game_config::apply(c, c.r(3))); })
+GAME_CONFIG_ROUTINE(0x101406e0, 0x101406e8, R3, "6d00413f899a2979", [](Cpu& c) { c.set(3, game_config::font(c, c.r(3))); })
+GAME_CONFIG_ROUTINE(0x101406f0, 0x10140724, NONE, "1ee31f70870136d7", [](Cpu& c) { game_config::set_font(c, c.r(3), c.r(4)); })
