@@ -27,7 +27,7 @@ constexpr unsigned force_purchase_action = 30025;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
-constexpr unsigned match_results_action = 30022;
+constexpr unsigned match_results_action = 30022, all_draws_action = 30030;
 // Right-click overlays on a fixture row's home name, "v" and away name.
 constexpr unsigned result_home_action = 30230, result_draw_action = 30231, result_away_action = 30232;
 static_assert(free_squad_action > shortcut_last);
@@ -283,7 +283,7 @@ constexpr std::array feature_labels{
     DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
     DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results,
-    DebugText::force_purchase};
+    DebugText::force_purchase, DebugText::all_draws};
 static_assert(feature_labels.size() == debug_feature_count);
 std::uint32_t debugging_modal_mode(State& s) {
     GuestCall call(s);
@@ -301,6 +301,7 @@ bool action_enabled(unsigned action) {
         case underdogs_action: return native_debugging_feature(DebugFeature::underdogs);
         case underdogs_max_action: return native_debugging_feature(DebugFeature::underdogs_max);
         case match_results_action: return native_debugging_feature(DebugFeature::match_result);
+        case all_draws_action: return native_debugging_feature(DebugFeature::all_draws);
         case repeat_action: return native_debugging_feature(DebugFeature::repeat_goal);
         case goal_action: return native_debugging_feature(DebugFeature::add_goal);
         default:
@@ -674,7 +675,8 @@ bool dispatch_debugging_option(State& s) {
 }
 
 void append_fixture_debugging_controls(State& s) {
-    if (!action_enabled(underdogs_action) && !action_enabled(underdogs_max_action)) return;
+    if (!action_enabled(underdogs_action) && !action_enabled(underdogs_max_action) &&
+        !action_enabled(all_draws_action)) return;
     const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
     const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
     GuestCall call(s);
@@ -705,6 +707,11 @@ void append_fixture_debugging_controls(State& s) {
         const auto text = debug_text(s, action == underdogs_action ? DebugText::underdogs : DebugText::underdogs_max);
         const auto label = std::string(selected ? "* " : "") + std::string(text);
         item(action, label, enabled);
+    }
+    if (action_enabled(all_draws_action)) {
+        const bool selected = !fixtures.empty() && debug_draw_day(s, fixtures.front());
+        const bool eligible = std::ranges::any_of(fixtures, [&](auto fixture) { return debug_match_result_eligible(s, fixture); });
+        item(all_draws_action, std::string(selected ? "* " : "") + std::string(debug_text(s, DebugText::all_draws)), eligible);
     }
 }
 
@@ -745,7 +752,7 @@ std::vector<FixtureRowCells> fixture_result_rows(const State& s, std::uint32_t p
 }
 
 void append_fixture_result_controls(State& s) {
-    if (!action_enabled(match_results_action)) return;
+    if (!action_enabled(match_results_action) && !action_enabled(all_draws_action)) return;
     // 1028ae80 after its row loop: r13 is the fixture grid, r30 the UI root.
     const auto ui = std::uint32_t(s.r<4>(30 * 4)), page = screen(s, ui);
     const auto grid = std::int16_t(s.r<4>(13 * 4));
@@ -758,7 +765,10 @@ void append_fixture_result_controls(State& s) {
     for (const auto& row : rows) {
         // Show the choice as the original row would draw it: the winner's
         // name in light green, or the draw word in place of the "v".
-        switch (debug_match_result(s, row.fixture)) {
+        auto chosen = action_enabled(match_results_action) ? debug_match_result(s, row.fixture) : ForcedMatchResult::normal;
+        if (chosen == ForcedMatchResult::normal && action_enabled(all_draws_action) && debug_draw_day(s, row.fixture))
+            chosen = ForcedMatchResult::draw;
+        switch (chosen) {
             case ForcedMatchResult::home_win: s.memory.write<2>(row.cells[0] + 0x70, light_green); break;
             case ForcedMatchResult::away_win: s.memory.write<2>(row.cells[2] + 0x70, light_green); break;
             case ForcedMatchResult::draw: {
@@ -771,6 +781,7 @@ void append_fixture_result_controls(State& s) {
         }
         // Invisible right-click-only cells over the three, as the original
         // makes its own (103b5ab8): flags 0x102, plain style, no text.
+        if (!action_enabled(match_results_action)) continue;
         if (signed_value<2>(s.memory.read<2>(page + 0x129da6)) + 3 > int(control_limit - control_reserve)) continue;
         const auto row_index = std::uint32_t(s.memory.read<4>(row.cells[1] + 0x24));
         for (unsigned k = 0; k < 3; ++k) {
@@ -815,12 +826,15 @@ bool dispatch_fixture_debugging_control(State& s) {
         s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);
         return true;
     }
-    if (action != underdogs_action && action != underdogs_max_action) return false;
+    if (action != underdogs_action && action != underdogs_max_action && action != all_draws_action) return false;
     bool accepted = false;
     if (action_enabled(action) && (s.memory.read<4>(control + 12) & 2)) {
         GuestCall call(s);
         const auto fixtures = displayed_fixtures(s, call.call(0x1073ef70, {root(s), 1}));
-        accepted = arm_debug_underdogs(s, fixtures,
+        if (action == all_draws_action) {
+            const auto pending = std::ranges::find_if(fixtures, [&](auto fixture) { return debug_match_result_eligible(s, fixture); });
+            if (pending != fixtures.end()) accepted = set_debug_draw_day(s, *pending, !debug_draw_day(s, *pending));
+        } else accepted = arm_debug_underdogs(s, fixtures,
             action == underdogs_action ? UnderdogMode::normal : UnderdogMode::maximum);
     }
     s.wr<4>(12, std::uint32_t(accepted ? -11 : 0)); s.pc = s.r<4>(4128);

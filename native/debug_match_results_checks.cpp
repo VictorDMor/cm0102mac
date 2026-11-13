@@ -30,6 +30,7 @@ using match_eng::side_size;
 constexpr std::uint32_t fixture_size = 0x54;
 constexpr std::uint32_t first_human_pending = 0x109806f0 + 0xec;
 constexpr unsigned result_feature = 1u << unsigned(DebugFeature::match_result);
+constexpr unsigned draw_feature = 1u << unsigned(DebugFeature::all_draws);
 constexpr std::uint32_t quick_advance_entry = 0x101d3f60;
 constexpr std::uint32_t quick_events_entry = 0x101db340;
 
@@ -230,6 +231,91 @@ void check_round(const Checkpoint& initial, const Fixture& a, const Fixture& b) 
     check_played(*state, b, ForcedMatchResult::draw);
 }
 
+void check_draw_days(const Checkpoint& initial, const Fixture& a, const Fixture& b,
+    const std::filesystem::path& directory) {
+    auto state = initial.restore();
+    auto& s = *state;
+    require(match_result_debugging(s).draw_days.empty() && !debug_draw_day(s, a.original),
+        "Competition draw days must default to empty");
+    select_native_debugging_features(result_feature);
+    require(!set_debug_draw_day(s, a.original, true), "Disabled draw-day feature accepted a selection");
+    select_native_debugging_features(draw_feature);
+    require(!set_debug_draw_day(s, 0, true), "Invalid fixture accepted a draw day");
+    require(set_debug_draw_day(s, a.original, true) && set_debug_draw_day(s, a.queued, true) &&
+        match_result_debugging(s).draw_days.size() == 1, "Selecting a draw day was not idempotent");
+    require(debug_draw_day(s, b.original) && debug_draw_day(s, b.queued) &&
+        effective_debug_match_result(s, b.queued) == ForcedMatchResult::draw,
+        "Draw day did not reach different clubs and queued fixtures without Match Results enabled");
+    const auto other_round = copy_fixture(s, a.original);
+    s.memory.write<4>(other_round + 0x30, s.memory.read<4>(other_round + 0x30) + 1);
+    require(debug_draw_day(s, other_round) && effective_debug_match_result(s, other_round) == ForcedMatchResult::draw,
+        "Draw day incorrectly excluded another round on the same date");
+    const auto other_date = copy_fixture(s, a.original);
+    s.memory.write<4>(other_date + 0x28, s.memory.read<4>(other_date + 0x28) + 1);
+    const auto other_competition = copy_fixture(s, a.original);
+    s.memory.write<4>(other_competition, s.memory.read<4>(other_competition) + 1);
+    for (const auto fixture : {other_date, other_competition})
+        require(!debug_draw_day(s, fixture) && effective_debug_match_result(s, fixture) == ForcedMatchResult::normal,
+            "Draw day leaked into another date or competition");
+    require(set_debug_draw_day(s, other_date, true) && set_debug_draw_day(s, a.original, false) &&
+        !debug_draw_day(s, b.queued) && debug_draw_day(s, other_date),
+        "Cancelling a competition draw day affected a different date");
+    require(set_debug_draw_day(s, a.original, true), "Could not restore the selected draw day");
+
+    select_native_debugging_features(result_feature | draw_feature);
+    const auto home = s.memory.read<4>(a.original + 0x1c), away = s.memory.read<4>(a.original + 0x20);
+    require(add_debug_result_club(s, home) && set_debug_club_result(s, home, ForcedClubResult::loss) &&
+        effective_debug_match_result(s, a.original) == ForcedMatchResult::draw,
+        "Recurring club result overrode the competition draw day");
+    require(add_debug_result_club(s, away) && effective_debug_match_result(s, a.original) == ForcedMatchResult::draw,
+        "Two-club exception suppressed the competition draw day");
+    require(set_debug_match_result(s, a.original, ForcedMatchResult::home_win) &&
+        effective_debug_match_result(s, a.queued) == ForcedMatchResult::home_win &&
+        effective_debug_match_result(s, b.original) == ForcedMatchResult::draw,
+        "Manual result did not override the draw day locally");
+    select_native_debugging_features(draw_feature);
+    require(effective_debug_match_result(s, a.original) == ForcedMatchResult::draw,
+        "Disabled manual result overrode the independently enabled draw day");
+    select_native_debugging_features(result_feature | draw_feature);
+    require(set_debug_match_result(s, a.original, ForcedMatchResult::normal) &&
+        effective_debug_match_result(s, a.original) == ForcedMatchResult::draw,
+        "Clearing the manual result did not restore the draw day");
+    require(remove_debug_result_club(s, away), "Could not remove opposing club rule");
+    select_native_debugging_features(result_feature);
+    require(debug_draw_day(s, a.original) && effective_debug_match_result(s, a.original) == ForcedMatchResult::away_win,
+        "Disabling draw days lost the selection or suppressed the recurring fallback");
+    select_native_debugging_features(result_feature | draw_feature);
+    finish_debug_match_result(s, a.original);
+    require(debug_draw_day(s, b.original), "Finishing one fixture consumed the competition draw day");
+    const auto save = directory / "draw-day-session.sav";
+    save_debug_club_results(s, save);
+    load_debug_club_results(s, save);
+    require(match_result_debugging(s).draw_days.empty() && match_result_debugging(s).clubs.size() == 1,
+        "Reload persisted temporary draw days or lost recurring club rules");
+    s.memory.write<1>(a.original + 0x43, 0);
+    require(!set_debug_draw_day(s, a.original, true), "Completed fixture accepted a draw day");
+    s.memory.write<1>(a.original + 0x43, 0xff);
+    s.memory.write<4>(first_human_pending, a.queue_entry);
+    require(!set_debug_draw_day(s, a.original, true) && set_debug_draw_day(s, b.original, true),
+        "Watched fixture exclusion did not stay local when selecting a draw day");
+
+    for (const bool manual_override : {false, true}) {
+        auto played = initial.restore();
+        select_native_debugging_features(draw_feature | (manual_override ? result_feature : 0));
+        require(set_debug_draw_day(*played, a.original, true), "Could not arm simulated competition draw day");
+        if (manual_override)
+            require(set_debug_match_result(*played, a.original, ForcedMatchResult::away_win),
+                "Could not override the simulated draw day");
+        play_quick(*played, a);
+        check_played(*played, a, manual_override ? ForcedMatchResult::away_win : ForcedMatchResult::draw);
+        require(debug_draw_day(*played, b.original), "First simulated result consumed the remaining draw day");
+        play_quick(*played, b);
+        check_played(*played, b, ForcedMatchResult::draw);
+        require(match_result_debugging(*played).draw_days.size() == 1, "Simulation consumed the draw-day selection");
+    }
+    select_native_debugging_features(result_feature);
+}
+
 void check_club_rules(const Checkpoint& initial, const Fixture& fixture, const std::filesystem::path& directory) {
     auto state = initial.restore();
     auto& s = *state;
@@ -416,12 +502,17 @@ struct BackgroundTrace {
 };
 
 void check_background_round(const Checkpoint& initial, const Fixture& a, const Fixture& b,
-    ForcedMatchResult second_choice, bool first_fast, bool recurring = false) {
+    ForcedMatchResult second_choice, bool first_fast, bool recurring = false, bool day_draw = false) {
     auto state = initial.restore();
     const auto round = prepare_background_round(*state, a, b);
     prepare_background_reports(*state);
-    const std::array choices{ForcedMatchResult::home_win, second_choice};
+    const std::array choices{day_draw ? ForcedMatchResult::draw : ForcedMatchResult::home_win, second_choice};
+    if (day_draw) {
+        select_native_debugging_features(draw_feature);
+        require(set_debug_draw_day(*state, a.original, true), "Could not arm background competition draw day");
+    }
     for (unsigned i = 0; i < round.fixtures.size(); ++i) {
+        if (day_draw) continue;
         if (recurring) {
             const auto club = state->memory.read<4>(round.fixtures[i].original + 0x1c);
             const auto rule = choices[i] == ForcedMatchResult::home_win ? ForcedClubResult::win :
@@ -449,13 +540,19 @@ void check_background_round(const Checkpoint& initial, const Fixture& a, const F
         require(report && state->memory.read<1>(report + 0x120) == home && state->memory.read<1>(report + 0x784) == away,
             "Original published report lost the background fixture score");
     }
+    if (day_draw)
+        require(match_result_debugging(*state).draw_days.size() == 1,
+            "Background publication consumed the competition draw day");
+    select_native_debugging_features(result_feature);
 }
 
 void check_background_watcher(const Checkpoint& initial, const Fixture& a, const Fixture& b) {
     auto state = initial.restore();
+    select_native_debugging_features(result_feature | draw_feature);
     const auto round = prepare_background_round(*state, a, b);
     const auto& fixture = round.fixtures.front();
     require(set_debug_match_result(*state, fixture.original, ForcedMatchResult::draw), "Could not mark the pre-watch fixture");
+    require(set_debug_draw_day(*state, fixture.original, true), "Could not arm pre-watch competition draw day");
     const auto display = allocate(*state, 0x56, true);
     require(display != 0, "Could not allocate the original watch marker");
     require(add_debug_result_club(*state, state->memory.read<4>(fixture.original + 0x1c)), "Could not arm watched club");
@@ -466,6 +563,8 @@ void check_background_watcher(const Checkpoint& initial, const Fixture& a, const
         trace.cleanups == 0 && state->memory.read<4>(fixture.queue_entry + 0x58) == fixture.engine &&
         state->memory.read<1>(fixture.engine) == 0 && debug_match_result(*state, fixture.original) == ForcedMatchResult::draw,
         "A newly watched fixture was switched out of detailed play");
+    require(debug_draw_day(*state, fixture.original), "Watching a fixture consumed the competition draw day");
+    select_native_debugging_features(result_feature);
 }
 
 constexpr std::uint32_t direct_background_return = 0x101cc284;
@@ -595,9 +694,11 @@ void same_guest_result(const State& expected, const State& actual, std::string_v
 
 void check_load_boundary(const Checkpoint& initial, const Fixture& a, const Fixture& b) {
     auto state = initial.restore();
+    select_native_debugging_features(result_feature | draw_feature);
     require(set_debug_match_result(*state, a.original, ForcedMatchResult::home_win) &&
         set_debug_match_result(*state, b.original, ForcedMatchResult::draw), "Could not arm fixtures before loading");
     require(add_debug_result_club(*state, state->memory.read<4>(a.original + 0x1c)), "Could not arm club before loading");
+    require(set_debug_draw_day(*state, a.original, true), "Could not arm draw day before loading");
     match_result_debugging(*state).choosing_club = true;
     require(bool(state->platform), "Isolated fixture lacks the original load bridge");
     MatchRngWrites rng(*state);
@@ -606,18 +707,22 @@ void check_load_boundary(const Checkpoint& initial, const Fixture& a, const Fixt
     state->memory.observer = nullptr;
     require(debug_match_result(*state, a.original) == ForcedMatchResult::normal &&
         debug_match_result(*state, b.original) == ForcedMatchResult::normal &&
-        match_result_debugging(*state).clubs.empty() && !match_result_debugging(*state).choosing_club,
+        match_result_debugging(*state).clubs.empty() && match_result_debugging(*state).draw_days.empty() &&
+        !match_result_debugging(*state).choosing_club,
         "Load boundary retained old career choices");
     require(rng.writes.empty(), "Clearing choices at load consumed match RNG");
     same_guest_result(*initial.restore(), *state, "Clearing choices at load");
+    select_native_debugging_features(result_feature);
 }
 
 void check_new_career_boundary(const Checkpoint& initial, const Fixture& fixture) {
     auto expected = initial.restore();
     auto actual = initial.restore();
+    select_native_debugging_features(result_feature | draw_feature);
     const auto club = actual->memory.read<4>(fixture.original + 0x1c);
     require(add_debug_result_club(*actual, club) &&
         set_debug_match_result(*actual, fixture.original, ForcedMatchResult::draw), "Could not arm new-career reset fixture");
+    require(set_debug_draw_day(*actual, fixture.original, true), "Could not arm new-career draw-day reset");
     auto& choices = match_result_debugging(*actual);
     choices.choosing_club = choices.removing_club = true;
     choices.confirm_removal = club;
@@ -639,11 +744,12 @@ void check_new_career_boundary(const Checkpoint& initial, const Fixture& fixture
         state->memory.observer = nullptr;
         require(stopped && state->pc == 0x10345bb0, "New-career reset crossed its instruction boundary");
     }
-    require(choices.fixtures.empty() && choices.clubs.empty() && !choices.choosing_club &&
+    require(choices.fixtures.empty() && choices.clubs.empty() && choices.draw_days.empty() && !choices.choosing_club &&
         !choices.removing_club && !choices.confirm_removal && choices.club_page == 0,
         "New-career boundary inherited recurring club state");
     require(expected_rng.writes.empty() && actual_rng.writes.empty(), "New-career reset consumed match RNG");
     same_guest_result(*expected, *actual, "New-career debugging reset");
+    select_native_debugging_features(result_feature);
 }
 
 // Route nested match calls through their normal dispatcher, with no
@@ -746,15 +852,35 @@ void check_official_forfeit(const Checkpoint& initial, const Fixture& fixture) {
         "Official forfeit left the completed choice armed");
 }
 
-enum class InactivePlan { other_fixture, cleared, disabled, watched, detailed, other_background, both_clubs, recurring_watched, recurring_detailed, other_club };
+enum class InactivePlan {
+    other_fixture, cleared, disabled, watched, detailed, other_background,
+    both_clubs, recurring_watched, recurring_detailed, other_club,
+    day_other_date, day_other_year, day_other_competition, day_cleared, day_disabled, day_watched, day_detailed
+};
 
 void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& b, InactivePlan kind) {
     auto expected = initial.restore();
     auto actual = initial.restore();
     select_native_debugging_features(result_feature);
     const auto planned = (kind == InactivePlan::other_fixture || kind == InactivePlan::other_background) ? b.original : a.original;
-    const bool recurring = kind >= InactivePlan::both_clubs;
-    if (recurring) {
+    const bool recurring = kind >= InactivePlan::both_clubs && kind <= InactivePlan::other_club;
+    const bool day_draw = kind >= InactivePlan::day_other_date;
+    if (day_draw) {
+        select_native_debugging_features(draw_feature);
+        const bool other = kind == InactivePlan::day_other_date || kind == InactivePlan::day_other_year ||
+            kind == InactivePlan::day_other_competition;
+        const auto fixture = other ? b.original : a.original;
+        if (other) {
+            const auto offset = kind == InactivePlan::day_other_competition ? 0u : 0x28u;
+            const auto delta = kind == InactivePlan::day_other_year ? 0x10000u : 1u;
+            for (auto* state : {expected.get(), actual.get()})
+                state->memory.write<4>(fixture + offset, state->memory.read<4>(fixture + offset) + delta);
+        }
+        require(set_debug_draw_day(*actual, fixture, true), "Could not prepare inactive competition draw day");
+        if (kind == InactivePlan::day_cleared)
+            require(set_debug_draw_day(*actual, fixture, false), "Could not cancel inactive competition draw day");
+        if (kind == InactivePlan::day_disabled) select_native_debugging_features(result_feature);
+    } else if (recurring) {
         const auto club_fixture = kind == InactivePlan::other_club ? b.original : a.original;
         require(add_debug_result_club(*actual, actual->memory.read<4>(club_fixture + 0x1c)), "Could not arm inactive club rule");
         if (kind == InactivePlan::both_clubs) {
@@ -766,7 +892,7 @@ void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& 
     if (kind == InactivePlan::cleared)
         require(set_debug_match_result(*actual, planned, ForcedMatchResult::normal), "Could not clear inactive choice");
     if (kind == InactivePlan::disabled) select_native_debugging_features(0);
-    if (kind == InactivePlan::watched || kind == InactivePlan::recurring_watched) {
+    if (kind == InactivePlan::watched || kind == InactivePlan::recurring_watched || kind == InactivePlan::day_watched) {
         expected->memory.write<4>(first_human_pending, a.queue_entry);
         actual->memory.write<4>(first_human_pending, a.queue_entry);
     }
@@ -774,7 +900,7 @@ void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& 
     expected->memory.observer = &expected_rng;
     actual->memory.observer = &actual_rng;
     for (auto* state : {expected.get(), actual.get()}) {
-        if (kind == InactivePlan::detailed || kind == InactivePlan::recurring_detailed) {
+        if (kind == InactivePlan::detailed || kind == InactivePlan::recurring_detailed || kind == InactivePlan::day_detailed) {
             // Exercise the quick events routine with a detailed match byte as
             // an explicit negative control for the simulation's mode gate.
             require(state->memory.read<1>(a.engine) == 0, "Detailed mode precondition");
@@ -801,10 +927,12 @@ int main(int argc, char** argv) {
         const Checkpoint initial(*world.state);
         check_choices(initial, world.first, world.second);
         check_round(initial, world.first, world.second);
+        check_draw_days(initial, world.first, world.second, cleanup.root);
         check_club_rules(initial, world.first, cleanup.root);
         check_background_round(initial, world.first, world.second, ForcedMatchResult::home_win, false);
         check_background_round(initial, world.first, world.second, ForcedMatchResult::draw, true);
         check_background_round(initial, world.first, world.second, ForcedMatchResult::draw, false, true);
+        check_background_round(initial, world.first, world.second, ForcedMatchResult::draw, false, false, true);
         check_background_watcher(initial, world.first, world.second);
         check_direct_background_boundary(initial, world.first, world.second);
         check_seeds(initial, world.first);
@@ -815,11 +943,14 @@ int main(int argc, char** argv) {
         check_official_forfeit(initial, world.first);
         for (auto kind : {InactivePlan::other_fixture, InactivePlan::cleared, InactivePlan::disabled,
                           InactivePlan::watched, InactivePlan::detailed, InactivePlan::other_background,
-                          InactivePlan::both_clubs, InactivePlan::recurring_watched, InactivePlan::recurring_detailed, InactivePlan::other_club})
+                          InactivePlan::both_clubs, InactivePlan::recurring_watched, InactivePlan::recurring_detailed, InactivePlan::other_club,
+                          InactivePlan::day_other_date, InactivePlan::day_other_year, InactivePlan::day_other_competition,
+                          InactivePlan::day_cleared, InactivePlan::day_disabled, InactivePlan::day_watched, InactivePlan::day_detailed})
             check_inactive(initial, world.first, world.second, kind);
         std::cout << "PASS: independent queued fixture results, detailed background matches across three caller boundaries, "
                      "three choices across seeds, cup extra time and penalties, "
-                     "scorer and keeper accounting, recurring clubs and persistence, load/new-career reset, scorer fallback, official forfeit, "
+                     "scorer and keeper accounting, competition draw days and manual priority, recurring clubs and persistence, "
+                     "load/new-career reset, scorer fallback, official forfeit, "
                      "and inactive guest state and ordered RNG equivalence\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

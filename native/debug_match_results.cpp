@@ -60,12 +60,33 @@ bool remove_debug_result_club(State& s, std::uint32_t club) {
     return std::erase_if(match_result_debugging(s).clubs, [&](const auto& rule) { return rule.club == club; }) != 0;
 }
 
+bool debug_draw_day(const State& s, std::uint32_t fixture) {
+    if (!fixture) return false;
+    const auto& days = match_result_debugging(s).draw_days;
+    if (days.empty()) return false;
+    const CompetitionDrawDay selected{std::uint32_t(s.memory.read<4>(fixture + 0x28)),
+        std::uint32_t(s.memory.read<4>(fixture))};
+    return std::ranges::find(days, selected) != days.end();
+}
+
+bool set_debug_draw_day(State& s, std::uint32_t fixture, bool enabled) {
+    if (!native_debugging_feature(DebugFeature::all_draws) || !debug_match_result_eligible(s, fixture)) return false;
+    const CompetitionDrawDay selected{std::uint32_t(s.memory.read<4>(fixture + 0x28)),
+        std::uint32_t(s.memory.read<4>(fixture))};
+    auto& days = match_result_debugging(s).draw_days;
+    std::erase(days, selected);
+    if (enabled) days.push_back(selected);
+    return true;
+}
+
 ForcedMatchResult effective_debug_match_result(const State& s, std::uint32_t fixture) {
     if (!fixture) return ForcedMatchResult::normal;
     if (native_debugging_feature(DebugFeature::match_result)) {
         const auto manual = debug_match_result(s, fixture);
         if (manual != ForcedMatchResult::normal) return manual;
     }
+    if (native_debugging_feature(DebugFeature::all_draws) && debug_draw_day(s, fixture))
+        return ForcedMatchResult::draw;
     if (!native_debugging_available()) return ForcedMatchResult::normal;
     const auto& rules = match_result_debugging(s).clubs;
     if (rules.empty()) return ForcedMatchResult::normal;
@@ -106,7 +127,7 @@ bool set_debug_match_result(State& s, std::uint32_t fixture, ForcedMatchResult r
 
 std::optional<std::array<unsigned, 2>> debug_match_score(const State& s, std::uint32_t match) {
     const auto& choices = match_result_debugging(s);
-    if (choices.fixtures.empty() && choices.clubs.empty()) return {};
+    if (choices.fixtures.empty() && choices.clubs.empty() && choices.draw_days.empty()) return {};
     // Scores are scheduled by the quick simulation. Background preparation
     // also routes selected, unobserved detailed matches through that engine.
     if (!s.memory.read<1>(match)) return {};
@@ -140,7 +161,7 @@ std::optional<std::array<unsigned, 2>> debug_match_score(const State& s, std::ui
 
 void prepare_debug_match_result(State& s, std::uint32_t match) {
     const auto& choices = match_result_debugging(static_cast<const State&>(s));
-    if (choices.fixtures.empty() && choices.clubs.empty()) return;
+    if (choices.fixtures.empty() && choices.clubs.empty() && choices.draw_days.empty()) return;
     // Both background scheduler branches keep their queue entry in r29. The
     // immediate background path keeps it in r18 and bypasses that scheduler.
     // The watched caller and standalone debugger are deliberately excluded.

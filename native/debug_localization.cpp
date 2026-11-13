@@ -4,6 +4,13 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::all_draws) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "All Draw", "All Draw", "Tous font match nul", "Alle spielen unentschieden",
+            "Tutti pareggiano", "Todos empatan", "Alle spiller uafgjort", "Iedereen speelt gelijk",
+            "Alle spiller uavgjort", "Todos Empatam", "Alla spelar oavgjort"};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text >= DebugText::toggle_options) {
         static constexpr std::array<std::array<std::string_view, 12>, 11> labels{{
             {"Enable/Disable Options", "Teams with Forced Results", "Add", "Remove", "Force Results", "Win", "Loss", "Yes", "No", "Back", "Previous", "Next"},

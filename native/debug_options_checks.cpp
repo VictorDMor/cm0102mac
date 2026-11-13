@@ -275,6 +275,35 @@ void check_fixture_results(const char* path) {
     build(human_list);
     const auto h = row(human);
     require(find(30230, human) < 0 && hit(h.home, 2) == -1, "Human fixture reacted to a right click");
+    // All Draw has its own toggle and marks the selected competition/day,
+    // including when individual Match Results controls are disabled.
+    clear_match_result_debugging(s);
+    const auto all_draws_feature = 1u << unsigned(DebugFeature::all_draws);
+    select_native_debugging_features(all_draws_feature);
+    build(list);
+    require(find(30030, 0) >= 0 && find(30230, a.fixture) < 0, "All Draw alone did not expose its own menu action");
+    require(std::int32_t(invoke(0x1028bc90, {unsigned(find(30030, 0))})) == -11, "All Draw did not rebuild the list");
+    require(debug_draw_day(s, a.fixture) && debug_draw_day(s, b.fixture), "All Draw did not select the whole competition/day");
+    build(list);
+    require(text(unsigned(find(30030, 0))).find("* ") != std::string::npos &&
+            text(unsigned(row(a.fixture).versus)) == debug_text(s, DebugText::draw) &&
+            text(unsigned(row(b.fixture).versus)) == debug_text(s, DebugText::draw), "All Draw selection was not visible");
+    select_native_debugging_features(result_feature | all_draws_feature);
+    build(list);
+    right_click(overlays(row(a.fixture))[0]);
+    build(list);
+    require(effective_debug_match_result(s, a.fixture) == ForcedMatchResult::home_win &&
+            effective_debug_match_result(s, b.fixture) == ForcedMatchResult::draw &&
+            ink(unsigned(row(a.fixture).home)) == green, "Individual choice did not override All Draw");
+    require(std::int32_t(invoke(0x1028bc90, {unsigned(find(30030, 0))})) == -11, "All Draw cancellation did not rebuild");
+    require(!debug_draw_day(s, a.fixture) && !debug_draw_day(s, b.fixture) &&
+            debug_match_result(s, a.fixture) == ForcedMatchResult::home_win, "Canceling All Draw erased an individual choice");
+    build(list);
+    const auto stale_all_draws = unsigned(find(30030, 0));
+    select_native_debugging_features(result_feature);
+    require(std::int32_t(invoke(0x1028bc90, {stale_all_draws})) == 0 && !debug_draw_day(s, a.fixture),
+            "Disabled All Draw accepted a stale action");
+    require(debug_text(9, DebugText::all_draws) == "Todos Empatam", "Portuguese All Draw label differs");
     require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Fixture-list results changed RNG");
 }
 }

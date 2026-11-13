@@ -17,15 +17,20 @@ struct MatchResultPlan {
     std::uint32_t home, away, date, competition, round;
     ForcedMatchResult result;
 };
+struct CompetitionDrawDay {
+    std::uint32_t date, competition;
+    bool operator==(const CompetitionDrawDay&) const = default;
+};
 struct MatchResultDebugging {
     std::vector<MatchResultPlan> fixtures;
     std::vector<ClubResultRule> clubs;
+    std::vector<CompetitionDrawDay> draw_days;
     bool choosing_club = false;
     bool removing_club = false;
     std::optional<std::uint32_t> confirm_removal;
     unsigned club_page = 0;
 };
-// Manual choices last for this session; club rules persist beside each career save.
+// Manual and competition-day choices last for this session; club rules persist beside each career save.
 MatchResultDebugging& match_result_debugging(State&);
 const MatchResultDebugging& match_result_debugging(const State&);
 // Forgets every choice and rule. Unlike assigning through the accessor above, it does not create
@@ -34,7 +39,10 @@ void clear_match_result_debugging(State&);
 bool debug_match_result_eligible(const State&, std::uint32_t fixture);
 bool set_debug_match_result(State&, std::uint32_t fixture, ForcedMatchResult);
 ForcedMatchResult debug_match_result(const State&, std::uint32_t fixture);
-// Manual fixture choices take precedence; two listed clubs cancel both rules.
+// Manual choices override day draws, which override recurring club rules.
+// Two listed clubs cancel their recurring rules only.
+bool debug_draw_day(const State&, std::uint32_t fixture);
+bool set_debug_draw_day(State&, std::uint32_t fixture, bool enabled);
 ForcedMatchResult effective_debug_match_result(const State&, std::uint32_t fixture);
 bool valid_debug_result_club(const State&, std::uint32_t club);
 bool add_debug_result_club(State&, std::uint32_t club);
