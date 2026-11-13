@@ -4,12 +4,6 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
-    if (text == DebugText::call_up) {
-        static constexpr std::array<std::string_view, 11> labels{
-            "Call Up", "Call Up", "Convoquer", "Einberufen", "Convoca", "Convocar",
-            "Udtag", "Oproepen", "Kall inn", "Convocar", "Ta ut"};
-        return labels[language < labels.size() ? language : 0];
-    }
     if (text == DebugText::all_draws) {
         static constexpr std::array<std::string_view, 11> labels{
             "All Draw", "All Draw", "Tous font match nul", "Alle spielen unentschieden",

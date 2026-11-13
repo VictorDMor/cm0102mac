@@ -25,7 +25,7 @@ add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arra
 target_sources(cm_aot PRIVATE vector_context.cpp)
 target_sources(cm_aot PRIVATE quick_save_transaction.cpp)
 target_sources(cm_aot PRIVATE match_speed.cpp)
-target_sources(cm_aot PRIVATE match_debugging.cpp national_callup.cpp debug_underdogs.cpp debug_match_results.cpp debug_club_results_storage.cpp)
+target_sources(cm_aot PRIVATE match_debugging.cpp debug_underdogs.cpp debug_match_results.cpp debug_club_results_storage.cpp)
 target_sources(cm_aot PRIVATE debug_localization.cpp)
 target_sources(cm_aot PRIVATE guest_context_transfer.cpp)
 target_sources(cm_aot PRIVATE exception_runtime_adapter.cpp exception_runtime_context.cpp exception_runtime_frames.cpp exception_runtime_cleanup.cpp exception_runtime_matching.cpp exception_runtime_search.cpp exception_runtime_capture.cpp exception_runtime_handlers.cpp exception_runtime_unexpected.cpp)
