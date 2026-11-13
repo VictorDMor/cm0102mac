@@ -1200,12 +1200,36 @@ FIND_LIST_BUILDERS = (
 FIND_LIST_TITLE_READS = {title: pinned for title, _, _, pinned in FIND_LIST_BUILDERS}
 FIND_LIST_FILTERS = {filter_: (skip, pinned) for _, filter_, skip, pinned in FIND_LIST_BUILDERS}
 
+# STAFF_SCREENS.CPP's player-profile builders 10389ce0 and 103998e0 walk the
+# list of the player's transfer-offer indices that the screen keeps in its
+# value 3 and does not rebuild on a redraw, and read each offer's club (+8)
+# through its slot without testing the slot or the offer in it (the original's
+# other reader, at 1039fd4c..1039fd58, tests both). Site of the offer's load
+# and of the club's -> the register holding the slot or the offer, where the
+# walk continues with the next index, and the instructions of the site's own page that pin both (the list is taken from
+# the screen on earlier pages, at 10389ddc/10389e84 and 10399958).
+PROFILE_OFFER_PINS = ({
+        0x1038aad8: "lwz r4,0x0(r4)", 0x1038aae0: "bl 0x103eb440", 0x1038aae4: "cmplwi r16,0x0",
+        0x1038aae8: "beq 0x1038ab04", 0x1038aaec: "lwz r4,0x0(r3)", 0x1038aaf0: "lwz r0,0x0(r16)",
+        0x1038aaf4: "lwz r4,0x8(r4)", 0x1038aaf8: "cmpw r4,r0", 0x1038aafc: "bne 0x1038ab04",
+        0x1038ab00: "stw r3,0x1990(r1)", 0x1038ab04: "or r3,r13,r13", 0x1038ab08: "bl 0x10738e00",
+        0x1038ab0c: "or. r4,r3,r3", 0x1038ab10: "bne 0x1038aad4"}, {
+        0x1039a4a0: "lwz r4,0x0(r4)", 0x1039a4a8: "bl 0x103eb440", 0x1039a4ac: "or r19,r3,r3",
+        0x1039a4b0: "lwz r4,-0x7be8(r2)", 0x1039a4b4: "lwz r5,0x0(r19)", 0x1039a4b8: "lwz r3,-0x7b7c(r2)",
+        0x1039a4bc: "lwz r0,0x8(r5)", 0x1039a97c: "addi r22,r22,0x1", 0x1039a980: "or r3,r14,r14",
+        0x1039a984: "bl 0x10738e00", 0x1039a988: "or. r4,r3,r3", 0x1039a98c: "beq 0x1039a994",
+        0x1039a990: "b 0x1039a49c"})
+PROFILE_OFFER_READS = {
+    0x1038aaec: (3, 0x1038ab04, PROFILE_OFFER_PINS[0]), 0x1038aaf4: (4, 0x1038ab04, PROFILE_OFFER_PINS[0]),
+    0x1039a4b4: (19, 0x1039a980, PROFILE_OFFER_PINS[1]), 0x1039a4bc: (5, 0x1039a980, PROFILE_OFFER_PINS[1]),
+}
+
 # Instructions generate_page lowers specially (beyond owner hooks and
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS)
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS) | set(PROFILE_OFFER_READS)
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -1888,6 +1912,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_presentation.hpp"')
     if page_addresses & (set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS)):
         code.insert(1, '#include "find_screens_fixups.hpp"')
+    if page_addresses & set(PROFILE_OFFER_READS):
+        code.insert(1, '#include "staff_screens_fixups.hpp"')
     if page in MATCH_SPEED_PAGES:
         code.insert(1, '#include "match_speed.hpp"')
     if page in (0x100ac, 0x100ad, 0x100ae, 0x100af,
@@ -2688,6 +2714,24 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 code.append("s.wr<4>(20, 0);")
             code.extend([transfer(skip, transfer_page, selected), "}"])
             isolated.add(a)
+        if a in PROFILE_OFFER_READS:
+            # The profile builders keep the list of the player's offer indices
+            # across redraws. An offer that ended since the list was built
+            # leaves its slot null (the collector 103eaea0 and the caller at
+            # 1039fd48 test for that; these two walks do not), and the club
+            # is then read from address 8: page zero on the original machine.
+            # An ended offer, or a null slot, is skipped: it is not the user's
+            # club's offer and gets no row. Offers that exist are read as they
+            # are, including one that has since taken an ended offer's slot,
+            # as on the original.
+            register, skip, pinned = PROFILE_OFFER_READS[a]
+            by_address = {record["address"]: record for record in instructions}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in pinned.items()):
+                raise ValueError("Profile offer walk no longer matches the audited release")
+            code.extend([f"if (profile_offer_ended(0x{a:x}, s.r<4>({register * 4}))) {{",
+                         transfer(skip, transfer_page, selected), "}"])
+            isolated.add(a)
         if a in COMMENTARY_LINE_READS:
             # The commentary routine 102021e0 takes its event's table row from
             # the event code minus 8000, and checks the row's range and its
@@ -3467,6 +3511,8 @@ def main():
                           for site in FIND_LIST_TITLE_READS),
                         *((site, "No club in a club list opened without a nation")
                           for site in FIND_LIST_FILTERS),
+                        *((site, "Skip an ended transfer offer in a player profile's kept offer list")
+                          for site in PROFILE_OFFER_READS),
                         (COMMENTARY_SOUND_READ, "No sound for a commentary event without lines"),
                         (COMMENTARY_PACE_READ, "Pace 0 for a commentary event without lines"),
                         (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"),

@@ -401,6 +401,25 @@ list without a nation (the diff review read the screen as the friendly-team
 picker's League and Non-League tabs, from its title strings; not confirmed
 here), whether any club has a null nation, and what the original showed.
 
+STAFF_SCREENS.CPP's player-profile builders `0x10389ce0` and `0x103998e0` keep
+the list of the player's transfer-offer indices in their screen's value 3 and
+do not rebuild it on a redraw (`0x10389e84`). Each walks it, takes the slot from
+`0x103eb440` and reads the offer and the offer's club (+8) without a test; the
+original's other reader (`0x1039fd4c`..`0x1039fd58`) tests both, and the
+collector `0x103eaea0` lists only slots that hold an offer. An offer that ends
+while the profile is open leaves a null slot under a kept index. One run
+(2026-10-28) stopped at `0x1038aaf4` reading address 8, after a click in the
+profile's Action menu. The generator's `PROFILE_OFFER_READS` asks
+`profile_offer_ended` (`native/staff_screens_fixups.hpp`, said once per site in
+the log) at the two loads of each walk (`0x1038aaec`/`0x1038aaf4`,
+`0x1039a4b4`/`0x1039a4bc`): a null slot or offer is skipped, so it is not the
+user's club's offer and gets no row. `cm-staff-screens-fixups-checks` runs the
+four instructions with a value, with null and with unmapped ones. The kept list
+is the original's and stays: a kept index whose slot a later offer has taken is
+read as that offer, as on the original. Not established: which Action item ends
+the offer, whether the second walk is reached that way, and what the original
+drew from page zero.
+
 Runs `app.rCcF8C` and `app.tCEQVP` passed team selection. The user confirmed
 assuming control, and the retained `app.rCcF8C` frame shows the original Cruzeiro
 squad screen. Both runs then stopped when opening a player, at the missing

@@ -4,6 +4,12 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: national Call Up in Lineup (2026-11-13)
+
+- [ ] Add Call Up / Convocar to the normal Lineup menu for managed national teams only; no debugging toggle.
+- [ ] Select up to 23 eligible nationals by current ability, retaining selected incumbents and using original call-up/release operations for changes.
+- [ ] Verify roster/link/tactics consistency, repeat-click idempotence, eligibility, caller/RNG preservation and menu scope; review, build and deliver.
+
 ## Blocked on Victor
 
 - [ ] **Replace the software bounds check?** (found 2026-11-06) It costs 11.4-11.5% of the day and the week (7 alternating pairs each, identical end state). Removing it needs a hardware-fault path that keeps the byte-exact fault semantics the checks compare; the trade-off is under "Measure the software bounds check" below. Nothing changed.
@@ -34,13 +40,16 @@ Found by reading the installed run logs: 10 of the runs since 2026-10-27 stopped
 - [ ] `tools/test_background_selection_audit.py` fails `test_71_entries_preserve_existing_modules`: its pinned first 37 `SEMANTIC_REPLACEMENTS` still list `calendar_adapter` entries that DATE.CPP removed. Stale test, not caused by this change.
 - [ ] `page_10413.cpp` in `.local/current/generated` was older than the committed generator (a plain `tools/dev.sh generate` rewrote it to the same content the committed generator gives). Whether the app installed at b96aab20 was built from the stale page was not checked; this build and install use the fresh one.
 
-## Next: player-profile crash on a removed transfer offer (found 2026-11-13, not fixed)
+## Now: player-profile crash on an ended transfer offer (2026-11-13)
 
-Found by tabulating every installed run log that did not end in a normal exit (31 since 2026-10-20). Seven of the eight stop signatures already have fixes; this one was never listed.
+Found by tabulating every installed run log that did not end in a normal exit (31 since 2026-10-20): seven of the eight stop signatures already had fixes; this one was never listed.
 
-- [ ] Run `app.noCga5` (2026-10-28 13:12) stops reading address 8 at `0x1038aaf4` (reported as run start `0x1038aaec`), in the player-profile builder `0x10389ce0` (STAFF_SCREENS.CPP, generated), right after a click on an item of the Action menu of a player's profile. The builder keeps its list of the player's transfer offers in screen field 3 and does not rebuild it when the screen redraws (`0x10389e84`); for each index it takes the slot from `0x103eb440` and reads offer+8 without testing the slot's pointer. A slot emptied since the list was built is null. The original elsewhere tests it (`0x1039fd48`..`0x1039fd54`), so empty slots are a normal state; on the Mac the read of address 8 hits low memory instead of faulting.
-- Fix (same shape as `FIND_LIST_BUILDERS`): generator guard at `0x1038aaf4`, a null offer is not the user's offer (branch to `0x1038ab04`); a checker case that fails without the guard; review (high). Display only as far as read: the match goes to frame word 0x1990, read at `0x1038b354`..`0x1038bb40` while the screen is built; I did not read those uses.
-- Not established: which Action item it was (the log has only the click), whether the rewritten offer collector `0x103eaea0` of that date played a part, and whether `0x1039a4b4` (same unchecked read after `0x103eb440` in another STAFF_SCREENS routine) is reachable with an empty slot.
+- [x] Diagnose: run `app.noCga5` (2026-10-28) stops reading address 8 at `0x1038aaf4`, in the profile builder `0x10389ce0` (STAFF_SCREENS.CPP, generated), after a click in the profile's Action menu. The screen keeps its list of offer indices across redraws and reads each offer through its slot untested; an offer ended meanwhile leaves the slot null. Text in `docs/aot-port.md`.
+- [x] Generator guard `PROFILE_OFFER_READS` at both loads of that walk and of the same walk in `0x103998e0` (`0x1039a4b4`, `0x1039a4bc`): a null slot or offer is skipped. `cm-staff-screens-fixups-checks` (28 cases). Review (high) added the slot load and the per-site log line.
+- [ ] Not established: which Action item ends the offer (the log has only the click; next time it says `Player profile kept an ended transfer offer: skipped at 0x...`), whether the second walk is ever reached with an ended offer (its skip drops the row; read from the listing only), and what the original drew.
+- [ ] Left as the original has it (review): the kept list is never refreshed while the screen lives, so a kept index whose slot a later offer takes is read as that offer; in the first walk only the club is compared, so the Action menu could then act on another player's offer. Not confirmed that a screen lives long enough. Fixing it would rebuild the list on each redraw, a change beyond the original.
+- [ ] The other 52 callers of `0x103eb440` were not read for the same gap.
+- [ ] `find_screens_checks.cpp` and `staff_screens_fixups_checks.cpp` share a copied one-instruction harness (review); a common header would do.
 - Not checked: the two stops of 2026-10-26 with `Original injury registration did not assign the selected injury` (`native/match_debugging.cpp:224`, a debugging feature); no later run repeats them.
 
 ## Now: TRANSFER_OFFER.CPP (delivered 2026-11-13)
