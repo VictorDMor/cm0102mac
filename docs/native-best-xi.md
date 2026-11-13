@@ -1,6 +1,6 @@
-# Debugging: Best XI
+# Lineup and squad actions
 
-With Debugging enabled, the managed club's squad screen has a **Lineup**
+The managed club's squad screen has a **Lineup**
 (**Escalação**) drop-down between Sort and Clear Team. It is built like the Debugging
 drop-down: a cell that owns an original popup menu, with three items, each
 replacing the match selection immediately for the currently selected formation
@@ -31,6 +31,24 @@ usual best fit; a slot stays empty only when no real player is left.
   comes from the players left after both elevens.
 
 The player-priority view and other clubs do not offer these actions.
+
+Managed national teams additionally offer **Call Up** (**Convocar**) in Lineup,
+independently of Debugging. It selects up to 23 eligible nationals by current
+ability, breaking ties by staff ID. Nationality commitment, international
+retirement/refusal and current injury recovery are respected; under-21 teams use
+the original manual age gate. Free agents are eligible. Retained players are
+untouched; the original manual release/add operations (`102b8d60`, `102b8c50`)
+update the other roster slots, national employment/date/flags and removed
+players' tactical roles. A player moving between the country's senior and youth
+teams is released from the previous team first, subject to the original permission
+to leave that squad. Senior and reserve national sides share a club record: the
+current view selects which side to replace, preserving unselected members of the
+other side. A short pool contributes everyone
+eligible. The action does not select a starting eleven or impose position quotas.
+Fitness reads the original status calculation without advancing daily medical
+updates or consuming RNG. `national_callup` checks the resulting writes against
+the original manual operations, repeat-click idempotence, eligibility and dates;
+`debugging_options` checks normal-menu placement and club exclusion.
 
 The original squad status operation (`10060c00`) excludes ineligible,
 unregistered, absent, injured, recovering, suspended and internationally absent

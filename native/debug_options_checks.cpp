@@ -615,6 +615,44 @@ int main(int argc, char** argv) {
         for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
             require(c.u32(item_address(i) + 8) != 30021, "Disabled collective action remained visible");
 
+        for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
+            require(c.u32(item_address(i) + 8) != 30031, "Call Up appeared for an ordinary club");
+        const auto domestic = managed_club;
+        const auto nations = c.u32(c.toc(-0x7b04)), club_count = c.u32(c.toc(-0x7b50));
+        const auto national = c.u32(c.toc(-0x7be8)) + (club_count - 2 * nations) * 0x248;
+        const auto previous_manager = c.u32(national + 0x90), manager = c.u32(domestic + 0x90);
+        c.put32(national + 0x90, manager);
+        managed_club = national;
+        build_squad_controls();
+        const auto call_up = control(30031, 0);
+        require(text_of(call_up) == "     " + std::string(debug_text(s, DebugText::call_up)) &&
+                control_grid(call_up) == control_grid(control(30004, 0)),
+                "Call Up must belong to Lineup with debugging disabled");
+        invoke(0x1073f1e0, {ui, 0, national, 0});
+        invoke(0x1073f1e0, {ui, 1, 0, 0});
+        invoke(0x1073f1e0, {ui, 4, 1, 0});
+        c.put32(item_address(call_up) + 12, 0); c.set(3, call_up);
+        const auto unclicked = s.executed;
+        require(dispatch_best_xi_control(s) && c.r(3) == 0 && s.executed == unclicked,
+                "Unclicked Call Up changed state");
+        c.put32(item_address(call_up) + 12, 2); c.set(3, call_up);
+        require(dispatch_best_xi_control(s), "Managed-national Call Up did not dispatch");
+        require(c.r(3) == std::uint32_t(-11), "Call Up did not request a squad refresh");
+        const auto national_roster = s.memory.copy_out(national + 0x98, 200);
+        c.put32(national + 0x90, 0); c.set(3, call_up);
+        require(dispatch_best_xi_control(s) && c.r(3) == 0 &&
+                s.memory.copy_out(national + 0x98, 200) == national_roster, "Unmanaged national team accepted Call Up");
+        c.put32(national + 0x90, manager);
+        // A stale national menu action dispatched on a domestic page must be a no-op.
+        invoke(0x1073f1e0, {ui, 0, domestic, 0});
+        invoke(0x1073f1e0, {ui, 4, 1, 0});
+        const auto domestic_roster = s.memory.copy_out(domestic + 0x98, 200);
+        c.set(3, call_up);
+        require(dispatch_best_xi_control(s) && c.r(3) == 0 &&
+                s.memory.copy_out(domestic + 0x98, 200) == domestic_roster, "Stale Call Up changed an ordinary club");
+        c.put32(national + 0x90, previous_manager);
+        managed_club = domestic;
+
         require(s.memory.copy_out(c.toc(-0x7b90), 0x10) == rng, "Collective renewal changed RNG");
 
         // Exercise the original proposal callbacks and transfer ledger on the

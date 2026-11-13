@@ -6,9 +6,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now: national Call Up in Lineup (2026-11-13)
 
-- [ ] Add Call Up / Convocar to the normal Lineup menu for managed national teams only; no debugging toggle.
-- [ ] Select up to 23 eligible nationals by current ability, retaining selected incumbents and using original call-up/release operations for changes.
-- [ ] Verify roster/link/tactics consistency, repeat-click idempotence, eligibility, caller/RNG preservation and menu scope; review, build and deliver.
+- [x] Add Call Up / Convocar to the normal Lineup menu for managed national teams only; no debugging toggle.
+- [x] Select up to 23 eligible nationals by current ability, retaining selected incumbents and using original call-up/release operations for changes. Respect the selected senior/reserve/youth side and the original permission to leave another squad.
+- [x] `national_callup` and `debugging_options` pass: exact original manual mutation bytes, unchanged retained players, repeat-click no-op, eligibility/current ability/ties, short/empty pools, senior/reserve separation, U21 age, locked and exact-deadline sibling permissions, injury-date boundaries, caller/RNG preservation, normal-menu placement, positive dispatch and domestic/unmanaged rejection. Read-only high review has no remaining findings; `cm-native-prototype` builds. Existing snapshot and controlled records only; no gameplay QA or new captures.
+- [x] Committed and pushed 2026-11-13 from a session with repository permissions, after `national_callup` and `debugging_options` passed again on a fresh build (the session that wrote it could not create `.git/index.lock`).
+- [ ] Not installed: the game was running. The installed app holds an earlier state of this feature (as built with 5eb44a37). Run `tools/dev.sh install` once the game is closed.
+- [ ] Victor checks in play: the Call Up item on a managed national team, the 23 chosen, and the senior/reserve/U21 views.
 
 ## Blocked on Victor
 

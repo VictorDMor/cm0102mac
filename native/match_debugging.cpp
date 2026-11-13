@@ -10,6 +10,7 @@
 #include "debug_match_results.hpp"
 #include "debug_force_purchase.hpp"
 #include "best_xi_selection.hpp"
+#include "national_callup.hpp"
 #include "transfer_screens.hpp"
 #include <array>
 #include <algorithm>
@@ -23,6 +24,7 @@ constexpr unsigned option_action = 30001, goal_action = 30002, repeat_action = 3
 constexpr unsigned shortcut_first = 30010, shortcut_last = shortcut_first + 5;
 constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned best_u23_action = 30023, b_team_action = 30024;
+constexpr unsigned call_up_action = 30031;
 constexpr unsigned force_purchase_action = 30025;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
@@ -1179,6 +1181,7 @@ void append_best_xi_control(State& s) {
     item(lineup, DebugText::best_xi, best_xi_action);
     item(lineup, DebugText::best_u23, best_u23_action);
     item(lineup, DebugText::b_team, b_team_action);
+    if (is_national_squad(s, club)) item(lineup, DebugText::call_up, call_up_action);
     if (!debug_squad) return;
     const auto menu = dropdown(446, 556, DebugText::debugging);
     if (action_enabled(recover_squad_action)) item(menu, DebugText::recover_players, recover_squad_action);
@@ -1207,7 +1210,8 @@ bool dispatch_best_xi_control(State& s) {
         s.wr<4>(12, std::uint32_t(accepted ? -4 : 0)); s.pc = s.r<4>(4128);
         return true;
     }
-    const bool lineup_action = action == best_xi_action || action == best_u23_action || action == b_team_action;
+    const bool lineup_action = action == best_xi_action || action == best_u23_action || action == b_team_action ||
+                               action == call_up_action;
     if (!lineup_action && action != recover_squad_action && action != free_squad_action &&
         action != extend_all_contracts_action) return false;
     bool accepted = false;
@@ -1218,7 +1222,8 @@ bool dispatch_best_xi_control(State& s) {
         const auto view = call.call(0x1073ef70, {ui, 4});
         const auto columns = call.call(0x1073ef70, {ui, 7});
         if (view == 1 && !(columns & 0x800) && call.call(0x1014c490, {club, 0, 1})) {
-            if (action == recover_squad_action) accepted = recover_debug_squad(s, club);
+            if (action == call_up_action) accepted = call_up_national_squad(s, club, managed);
+            else if (action == recover_squad_action) accepted = recover_debug_squad(s, club);
             else if (action == free_squad_action) accepted = free_debug_squad(s, club);
             else if (action == extend_all_contracts_action) accepted = extend_debug_club_contracts(s, club);
             else {
