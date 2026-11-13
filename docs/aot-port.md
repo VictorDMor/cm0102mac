@@ -364,6 +364,25 @@ image with the getter's own early return. Since DATABASE.CPP's getters are C++
 owners, a direct null call faults at the getter's entry; the original load
 instruction is no longer what the fixture checks.
 
+The commentary routine `0x102021e0` has reads of the same kind. It takes its
+event's table row from the event code minus 8000 and checks the row's range and
+its line table only on the way to the text. A row out of range, or one flagged as
+textless, goes straight to the routine's end, which reads the line table twice
+more, unchecked: the line's sound flag at `0x102035a0` (speeds above 100) and, at
+`0x102036bc`, the pace that scales the presentation delay at commentary+0x406c.
+A match screen (`0x1028fe50`, from `0x1028c430`) can draw with an empty event,
+code 0: the row is then 8,000 rows before the table, in other globals, its line
+table is null, and both values come from page zero (0x10c per line). Ten runs
+between 2026-10-27 and 2026-11-10 stopped at the pace read. The generator's
+`COMMENTARY_LINE_READS` asks `commentary_event_without_lines`
+(`native/match_presentation.hpp`): a row outside the table, or a null line
+table, has no sound and pace 0, so the delay is 0; it is said once per run in
+the log. Events with lines are read as before. `cm-match-presentation-checks`
+runs both reads with rows inside and outside the table and with a line table, a
+null one and an unmapped one. Not established: what makes the event empty when
+the screen draws, and what page zero held on the original machine (so delay 0
+is a choice, not the original's value).
+
 Runs `app.rCcF8C` and `app.tCEQVP` passed team selection. The user confirmed
 assuming control, and the retained `app.rCcF8C` frame shows the original Cruzeiro
 squad screen. Both runs then stopped when opening a player, at the missing

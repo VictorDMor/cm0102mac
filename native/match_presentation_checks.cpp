@@ -105,6 +105,112 @@ void check_load_copy(bool turbo, unsigned speed, std::uint32_t duration) {
             s.memory.copy_out(fixture, 0x10000) == memory,
             "Presentation lowering changed more than the loaded duration copy");
 }
+
+// The end of the commentary routine 0x102021e0 reads its event's line table
+// twice without a check: the line's sound flag (0x10203580, speeds above 100)
+// and its pace (the tail from 0x10203684, which stores the line's start time
+// and its presentation delay: speed times pace over 100). `row` is the
+// event's table row, kept at sp+0x206c, and `line_table` what that row holds
+// at +8. An empty event (code 0) has row -8000 and, in the reported runs, a
+// null there; the original read both values through page zero.
+enum class Lines { read, none, fault };
+constexpr std::uint32_t line_stack = fixture + 0x9000, line_toc = fixture + 0xe000;
+constexpr std::uint32_t line_rows = fixture + 0xa000, line_event = fixture + 0xd000;
+constexpr std::uint32_t line_records = fixture + 0xd100;
+
+std::unique_ptr<State> line_state(int row, std::uint32_t line_table, int line, unsigned speed) {
+    auto state = std::make_unique<State>();
+    auto& s = *state;
+    s.unique.fill(0xa5);
+    s.memory.map(fixture, 0x10000);
+    s.memory.write<4>(line_toc - 0x5298, line_rows);
+    s.memory.write<2>(line_stack + 0x206c, std::uint16_t(row));
+    s.memory.write<4>(std::uint32_t(line_rows + row * 0x14 + 8), line_table);
+    s.memory.write<2>(line_event + 2, std::uint16_t(line));
+    s.memory.write<1>(commentary + 0x4070, speed);
+    s.wr<4>(4, line_stack); s.wr<4>(8, line_toc);
+    s.wr<4>(92, commentary); s.wr<4>(96, line_event);
+    return state;
+}
+
+bool run_lines(State& s, std::uint32_t from, std::uint32_t to) {
+    s.pc = from;
+    try {
+        for (int steps = 0; steps < 32 && s.pc != to; ++steps) advance(s);
+    } catch (const std::runtime_error&) { return false; }
+    return s.pc == to;
+}
+
+void check_pace(int row, std::uint32_t line_table, int line, unsigned speed, std::int16_t pace, Lines expected) {
+    constexpr std::uint32_t channel = 3, started = 0x00c0ffee, returned = 0x0badc0dc;
+    auto state = line_state(row, line_table, line, speed);
+    auto& s = *state;
+    s.memory.write<2>(line_records + line * 0x10c + 2, std::uint16_t(pace));
+    s.memory.write<4>(commentary + 0x406c, 0xdeadbeef);
+    s.wr<4>(12, started); s.wr<4>(52, channel);
+    // The tail runs on into the routine's return, which is where it is met.
+    s.memory.write<4>(line_stack + 0x20d8, returned);
+    auto memory = s.memory.copy_out(fixture, 0x10000);
+    const auto put = [&](std::uint32_t address, std::uint32_t value) {
+        for (int byte = 0; byte < 4; ++byte) memory[address - fixture + byte] = std::uint8_t(value >> (24 - 8 * byte));
+    };
+    put(commentary + 0x402c + channel * 4, started);
+    if (expected != Lines::fault) {
+        const auto cadence = std::int32_t(match_simulation_speed(speed));
+        put(commentary + 0x406c, std::uint32_t(std::int32_t(std::int16_t(
+            expected == Lines::none ? 0 : cadence * pace / 100))));
+    }
+    const auto finished = run_lines(s, 0x10203684, returned);
+    require(finished == (expected != Lines::fault), expected == Lines::fault
+            ? "A line table outside mapped memory no longer faults in the commentary tail"
+            : "The commentary tail faulted on its line table");
+    require(finished || s.pc == 0x102036bc, "The commentary tail stopped at the wrong instruction");
+    require(s.memory.copy_out(fixture, 0x10000) == memory,
+            "The commentary tail stored a wrong start time or presentation delay");
+}
+
+// With a sound flag of zero the sound path joins the tail at 0x10203678, and
+// that is where an event without lines must arrive too, having stored nothing.
+void check_sound(int row, std::uint32_t line_table, int line, Lines expected) {
+    auto state = line_state(row, line_table, line, 125);
+    auto& s = *state;
+    const auto memory = s.memory.copy_out(fixture, 0x10000);
+    const auto finished = run_lines(s, 0x10203580, 0x10203678);
+    require(finished == (expected != Lines::fault), expected == Lines::fault
+            ? "A line table outside mapped memory no longer faults in the commentary sound path"
+            : "The commentary sound path faulted on its line table");
+    require(s.memory.copy_out(fixture, 0x10000) == memory, "The commentary sound path stored something");
+}
+
+unsigned check_lines() {
+    unsigned cases = 0;
+    for (int line : {0, 11}) {
+        // In the table: a line table is read, a null one has no lines, and any
+        // other bad one still faults. Outside it nothing is read at all.
+        check_sound(3, line_records, line, Lines::read);
+        check_sound(3, 0, line, Lines::none);
+        check_sound(3, 0x10, line, Lines::fault);
+        for (int row : {-8, 0x2a5}) for (std::uint32_t table : {0u, 0x10u, line_records}) {
+            check_sound(row, table, line, Lines::none);
+            ++cases;
+        }
+        cases += 3;
+        for (unsigned speed : {0u, 20u, 55u, 150u, 255u}) {
+            for (std::int16_t pace : {std::int16_t(0), std::int16_t(1), std::int16_t(300),
+                                      std::int16_t(32767), std::int16_t(-300)}) {
+                check_pace(3, line_records, line, speed, pace, Lines::read);
+                check_pace(3, 0, line, speed, pace, Lines::none);
+                check_pace(3, 0x10, line, speed, pace, Lines::fault);
+                for (int row : {-8, 0x2a5}) for (std::uint32_t table : {0u, 0x10u, line_records}) {
+                    check_pace(row, table, line, speed, pace, Lines::none);
+                    ++cases;
+                }
+                cases += 3;
+            }
+        }
+    }
+    return cases;
+}
 }
 
 int main() {
@@ -112,6 +218,7 @@ int main() {
         unsigned cases = 0;
         for (bool native : {false, true}) {
             if (native) initialize_native_match_speed();
+            cases += check_lines();
             for (bool turbo : {false, true}) {
                 for (unsigned speed = 0; speed < 256; ++speed) {
                     for (auto duration : {0u, 19u, 20u, 21u, 100u, UINT32_MAX}) {

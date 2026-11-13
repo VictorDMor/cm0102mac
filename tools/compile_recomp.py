@@ -1170,12 +1170,19 @@ NULL_BACKGROUND_GETTER_CALLS = {
 }
 LANGUAGE_OBJECT_TOC = -0x39e4  # The getters' lazily created language object.
 
+# The commentary routine's two reads through its event's line table that have
+# no check (the text path has one): the sound flag, from the row's reload at
+# 10203580, and the pace word. Site -> where an event without lines continues.
+COMMENTARY_SOUND_READ = 0x10203580
+COMMENTARY_PACE_READ = 0x102036bc
+COMMENTARY_LINE_READS = {COMMENTARY_SOUND_READ: 0x10203678, COMMENTARY_PACE_READ: 0x102036c0}
+
 # Instructions generate_page lowers specially (beyond owner hooks and
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS)
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS)
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -2638,6 +2645,41 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.extend(["s.wr<4>(100, next_pool_attempt(s.r<4>(100), divide_unsigned(s.r<4>(16), s.r<4>(0))));",
                          transfer(a + 4, transfer_page, selected)])
             continue
+        if a in COMMENTARY_LINE_READS:
+            # The commentary routine 102021e0 takes its event's table row from
+            # the event code minus 8000, and checks the row's range and its
+            # line table only on the way to the text. A row out of range, or
+            # one flagged as textless, goes straight to the end of the
+            # routine, which reads the line table twice more, unchecked: the
+            # line's sound flag (speeds above 100) and its pace. A match
+            # screen that draws before the first event passes an empty event
+            # (code 0): the row is 8,000 rows before the table, in other
+            # globals, its line table is null, and both reads come from page
+            # zero, which the original machine could read. An event without
+            # lines (row out of range, or a null line table) has no sound and
+            # pace 0, so the presentation delay stored at +0x406c is 0. Events
+            # with lines are intact.
+            sequence = {0x10203580: "lha r0,0x206c(r1)", 0x10203584: "lha r3,0x2(r24)",
+                        0x10203588: "mulli r7,r0,0x14", 0x1020358c: "lwz r0,-0x5298(r2)",
+                        0x10203590: "add r4,r0,r7", 0x10203594: "lwzu r5,0x8(r4)",
+                        0x10203598: "mulli r0,r3,0x10c", 0x1020359c: "add r3,r5,r0",
+                        0x102035a0: "lbz r0,0x4(r3)", 0x102035a4: "extsb. r0,r0",
+                        0x102035a8: "beq 0x10203678",
+                        0x10203690: "lha r0,0x206c(r1)", 0x1020369c: "mulli r5,r0,0x14",
+                        0x102036a0: "lwz r0,-0x5298(r2)", 0x102036a4: "lha r3,0x2(r24)",
+                        0x102036a8: "add r4,r0,r5", 0x102036ac: "lbz r5,0x4070(r23)",
+                        0x102036b0: "mulli r0,r3,0x10c", 0x102036b4: "lwz r3,0x8(r4)",
+                        0x102036b8: "add r3,r3,r0", 0x102036bc: "lha r0,0x2(r3)",
+                        0x102036c0: "mullw r0,r5,r0"}
+            by_address = {record["address"]: record for record in instructions}
+            if any(by_address.get(address, {}).get("assembly") != assembly
+                   for address, assembly in sequence.items()):
+                raise ValueError("Commentary line reads no longer match the audited release")
+            code.append("if (commentary_event_without_lines(s)) {")
+            if a == COMMENTARY_PACE_READ:
+                code.append("s.wr<4>(0, 0);")
+            code.extend([transfer(COMMENTARY_LINE_READS[a], transfer_page, selected), "}"])
+            isolated.add(a)
         if a in nontrapping_divisions:
             # PowerPC divw does not trap on a zero divisor; its quotient is
             # undefined. zero_divisor_quotient_unused proved this quotient is
@@ -3378,6 +3420,8 @@ def main():
                     for address, purpose in (
                         *((site, f"Skip unused null-{label} descriptor lookup for default background")
                           for site, (_, _, _, label) in NULL_BACKGROUND_GETTER_CALLS.items()),
+                        (COMMENTARY_SOUND_READ, "No sound for a commentary event without lines"),
+                        (COMMENTARY_PACE_READ, "Pace 0 for a commentary event without lines"),
                         (0x10774c24, "Require progress when an optimistic heap hint repeats a failed pool allocation"),
                         (0x1034f1f8, "Exclude the retired Inter-American Cup from ruling-body counts after 1998"),
                         (0x1034f318, "Skip creating the retired Inter-American Cup after 1998"),

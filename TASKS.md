@@ -18,6 +18,19 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+- [ ] **Commentary crash fix: delay 0, and what you click** (2026-11-13). The fix gives an empty commentary event a presentation delay of 0; the original read that value from page zero, which I can't know, so 0 is my choice (display timing only; no RNG, no save). Say if you'd rather keep the previous line's delay. Also: every one of the 10 crash logs has a click near 560,405 in the window right before the stop, during a match at speed Turbo or 20. If you know what you click there, tell me and I trace why the screen draws before an event exists.
+
+## Now: commentary crash on an empty event (2026-11-13)
+
+Found by reading the installed run logs: 10 of the runs since 2026-10-27 stopped at `0x102036b0` reading address 2 (once 0xb86), all on the stack `0x102021e0` <- `0x1028fe50` <- `0x1028c430` <- `0x101cb9d0`, and none was listed here.
+
+- [x] Diagnose: the match screen draws with an empty event (code 0), the commentary routine's tail reads the line table of row -8000 (null) and then the pace word through it. Text in `docs/aot-port.md`.
+- [x] Generator guard at the routine's two unchecked line-table reads (`0x10203580` sound flag, `0x102036bc` pace): an event whose row is outside the table or has a null line table gets no sound and pace 0. `cm-match-presentation-checks` runs both reads and fails on the generator without the guard. Review (high) found the sound read, the guard testing the symptom, and a test loop that never ran the non-native mode; all three fixed.
+- [ ] Not established: what makes the event empty when the screen draws, and so whether a commentary line goes missing there (question in the top section). When it happens again the run log has one line starting `Commentary event without lines`.
+- [ ] One more untracked stop in the logs: `app.4A24Y9` (2026-11-12 21:03), address 0x115 at `0x10104ce4` in FIND_SCREENS.CPP (`0x10104b90` <- `0x10103850`), one occurrence. Not diagnosed.
+- [ ] `tools/test_background_selection_audit.py` fails `test_71_entries_preserve_existing_modules`: its pinned first 37 `SEMANTIC_REPLACEMENTS` still list `calendar_adapter` entries that DATE.CPP removed. Stale test, not caused by this change.
+- [ ] `page_10413.cpp` in `.local/current/generated` was older than the committed generator (a plain `tools/dev.sh generate` rewrote it to the same content the committed generator gives). Whether the app installed at b96aab20 was built from the stale page was not checked; this build and install use the fresh one.
+
 ## Now: TRANSFER_OFFER.CPP (delivered 2026-11-13)
 
 All 17 entries (5,545 instructions, 0x10411e60..0x10417590) are C++ and routed (`native/transfer_offer_unit*.cpp`, `tools/transfer_offer_unit_audit.py`, `cm-transfer-offer-unit-checks`). Victor chose it as the quickest module to close. Contract and quirks: `docs/cpp-rewrites.md`.
