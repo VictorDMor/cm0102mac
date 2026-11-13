@@ -224,6 +224,7 @@ std::uint8_t original_character(NSEvent* event) {
     bool launching;
     bool launchedWithDocuments; // the open-documents event stands for the launch's
     std::function<void()> refreshPresentation;
+    std::function<void(NSWindow*)> movePresentation;
     std::function<void(NSInteger)> selectScale;
     std::function<void(cm::aot::DirectCommand)> selectCommand;
     std::function<void()> selectQuickSave;
@@ -248,10 +249,22 @@ std::uint8_t original_character(NSEvent* event) {
     (void)notification; if (refreshPresentation) refreshPresentation();
 }
 - (void)windowDidChangeScreen:(NSNotification*)notification {
-    (void)notification; if (refreshPresentation) refreshPresentation();
+    if (movePresentation) movePresentation(notification.object);
+    if (refreshPresentation) refreshPresentation();
 }
 - (void)windowDidChangeBackingProperties:(NSNotification*)notification {
     (void)notification; if (refreshPresentation) refreshPresentation();
+}
+- (void)windowDidMove:(NSNotification*)notification {
+    if (movePresentation) movePresentation(notification.object);
+}
+- (BOOL)windowShouldClose:(NSWindow*)window {
+    if (!(window.styleMask & NSWindowStyleMaskTitled)) return YES;
+    if (std::none_of(pending->begin(), pending->end(), [](const auto& event) {
+        return event.kind == cm::aot::UIEvent::Kind::quit;
+    })) pending->push_back({cm::aot::UIEvent::Kind::quit});
+    // Keep the window alive while the original game asks about saving/exiting.
+    return NO;
 }
 - (void)validationPosition:(BOOL)click {
     // A native accessibility action remains usable when a UI driver's pixel
@@ -538,6 +551,7 @@ struct NativeUI::Impl {
     std::uint32_t primary_window = 0;
     InterfaceScale requested_scale = InterfaceScale::original;
     std::optional<PresentationLayout> layout;
+    std::optional<PresentationPoint> moved_center;
     std::filesystem::path preference;
     NSMenu* scale_menu = nil;
     NSMenu* direct_menu = nil;
@@ -626,14 +640,12 @@ struct NativeUI::Impl {
         return NSScreen.mainScreen ? NSScreen.mainScreen : NSScreen.screens.firstObject;
     }
     PresentationRect available() const {
-        const auto area = screen().visibleFrame;
+        // Fit the content inside the desktop after reserving native chrome.
+        const auto area = [windows.at(primary_window) contentRectForFrameRect:screen().visibleFrame];
         const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
         return {area.origin.x, height - NSMaxY(area), area.size.width, area.size.height};
     }
-    void refresh_presentation() {
-        if (applying_layout || !primary_window || !screen()) return;
-        applying_layout = true;
-        layout = presentation_layout(requested_scale, scene(), available(), screen().backingScaleFactor);
+    void apply_window_frames() {
         const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
         for (const auto& [token, window] : windows) {
             if (background(token)) {
@@ -643,9 +655,39 @@ struct NativeUI::Impl {
                 continue;
             }
             const auto host = layout->to_host(rectangle(logical_bounds.at(token)));
-            [window setFrame:NSMakeRect(host.x, height - host.y - host.height, host.width, host.height) display:NO];
+            const auto content = NSMakeRect(host.x, height - host.y - host.height, host.width, host.height);
+            [window setFrame:[window frameRectForContentRect:content] display:NO];
             window.contentView.needsDisplay = YES;
         }
+    }
+    void moved_window(NSWindow* window) {
+        if (applying_layout || !layout || !primary_window || window != windows.at(primary_window)) return;
+        const auto content = [window contentRectForFrameRect:window.frame];
+        const auto expected = layout->to_host(rectangle(logical_bounds.at(primary_window)));
+        const auto top = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID())) - NSMaxY(content);
+        layout->host.x += content.origin.x - expected.x;
+        layout->host.y += top - expected.y;
+        moved_center = PresentationPoint{NSMidX(content), top + content.size.height / 2};
+        // Related panels and continuous mouse polling share the moved inverse.
+        pointer_reading.reset();
+        applying_layout = true;
+        apply_window_frames();
+        applying_layout = false;
+    }
+    void refresh_presentation() {
+        if (applying_layout || !primary_window || !screen()) return;
+        applying_layout = true;
+        const auto area = available();
+        layout = presentation_layout(requested_scale, scene(), area, screen().backingScaleFactor);
+        if (moved_center) {
+            const auto main = layout->to_host(rectangle(logical_bounds.at(primary_window)));
+            layout->host.x = std::clamp(layout->host.x + moved_center->x - main.x - main.width / 2,
+                area.x, area.x + area.width - layout->host.width);
+            layout->host.y = std::clamp(layout->host.y + moved_center->y - main.y - main.height / 2,
+                area.y, area.y + area.height - layout->host.height);
+        }
+        pointer_reading.reset();
+        apply_window_frames();
         for (NSMenuItem* item in scale_menu.itemArray) {
             const auto choice = interface_scales[item.tag];
             item.enabled = scale_fits(choice, scene(), available());
@@ -656,6 +698,7 @@ struct NativeUI::Impl {
     bool choose_scale(InterfaceScale choice) {
         if (primary_window && !scale_fits(choice, scene(), available())) return false;
         requested_scale = choice;
+        if (choice == InterfaceScale::fit) moved_center.reset();
         refresh_presentation();
         if (!preference.empty()) {
             // Tiny host-only preference, never a game resource or save payload.
@@ -721,6 +764,7 @@ struct NativeUI::Impl {
         delegate->launching = true;
         delegate->launchedWithDocuments = false;
         delegate->refreshPresentation = [this] { refresh_presentation(); };
+        delegate->movePresentation = [this](NSWindow* window) { moved_window(window); };
         delegate->selectScale = [this](NSInteger index) {
             if (index < 0 || index >= 5 || !choose_scale(interface_scales[index])) NSBeep();
         };
@@ -759,7 +803,8 @@ struct NativeUI::Impl {
       }
     }
     ~Impl() {
-        delegate->refreshPresentation = {}; delegate->selectScale = {}; delegate->selectCommand = {};
+        delegate->refreshPresentation = {}; delegate->movePresentation = {};
+        delegate->selectScale = {}; delegate->selectCommand = {};
         for (const auto& [token, event] : events) { (void)token; ReleaseEvent(event); }
         for (const auto& [token, window] : windows) { (void)token; [window orderOut:nil]; [window close]; }
         if (NSApp.delegate == delegate) [NSApp setDelegate:nil];
@@ -886,13 +931,17 @@ void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint3
         const auto height = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID()));
         const NSRect rect = NSMakeRect(bounds[1], height - bounds[2], bounds[3] - bounds[1], bounds[2] - bounds[0]);
         const bool no_activate = (attributes & 0x00020000u) != 0;
-        const auto style = NSWindowStyleMaskBorderless | (no_activate ? NSWindowStyleMaskNonactivatingPanel : 0);
+        const bool primary = !impl_->primary_window && !no_activate && rect.size.width == 800 && rect.size.height == 600;
+        const auto style = primary
+            ? NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
+            : NSWindowStyleMaskBorderless | (no_activate ? NSWindowStyleMaskNonactivatingPanel : 0);
         CMNativeWindow* window = [[CMNativeWindow alloc] initWithContentRect:rect styleMask:style
             backing:NSBackingStoreBuffered defer:NO];
         window.acceptsActivation = !no_activate;
         window.floatingPanel = NO;
         window.releasedWhenClosed = NO;
-        window.hasShadow = (attributes & 0x00200000u) == 0;
+        window.hasShadow = primary || (attributes & 0x00200000u) == 0;
+        if (primary) window.title = @"reCM 01-02";
         window.hidesOnDeactivate = (attributes & 0x01000000u) != 0;
         window.becomesKeyOnlyIfNeeded = no_activate;
         window.acceptsMouseMovedEvents = YES;
@@ -907,30 +956,37 @@ void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint3
         window.delegate = impl_->delegate;
         // Carbon accepts the supplied global bounds, including the original
         // background window's intentional extension beyond desktop edges.
-        [window setFrame:rect display:NO];
+        [window setFrame:[window frameRectForContentRect:rect] display:NO];
         impl_->windows.emplace(token, window);
         impl_->logical_bounds.emplace(token, bounds);
         // The original engine creates one activating 800x600 interface, plus a
         // nonactivating desktop and possible overlays. Keep that logical model.
-        if (!impl_->primary_window && !no_activate && bounds[3] - bounds[1] == 800 && bounds[2] - bounds[0] == 600)
-            impl_->primary_window = token;
+        if (primary) impl_->primary_window = token;
         impl_->refresh_presentation();
     }
 }
 void NativeUI::dispose_window(std::uint32_t token) {
     auto window = impl_->windows.at(token);
+    if (window.parentWindow) [window.parentWindow removeChildWindow:window];
+    for (NSWindow* child in window.childWindows) [window removeChildWindow:child];
     [window orderOut:nil]; [window close];
     impl_->windows.erase(token);
     impl_->logical_bounds.erase(token);
-    if (impl_->primary_window == token) { impl_->primary_window = 0; impl_->layout.reset(); }
+    if (impl_->primary_window == token) {
+        impl_->primary_window = 0; impl_->layout.reset(); impl_->moved_center.reset();
+    }
     impl_->refresh_presentation();
     std::erase_if(impl_->pending, [token](const auto& event) { return event.window == token; });
 }
 void NativeUI::show_window(std::uint32_t token, bool activate) {
     auto window = impl_->windows.at(token);
     if (impl_->background(token)) [window orderOut:nil];
-    else if (activate && window.acceptsActivation) [window makeKeyAndOrderFront:nil];
-    else [window orderFront:nil];
+    else {
+        if (impl_->primary_window && token != impl_->primary_window && !window.parentWindow)
+            [impl_->windows.at(impl_->primary_window) addChildWindow:window ordered:NSWindowAbove];
+        if (activate && window.acceptsActivation) [window makeKeyAndOrderFront:nil];
+        else [window orderFront:nil];
+    }
     CMNativeView* view = (CMNativeView*)window.contentView;
     view.needsDisplay = YES;
     // Original ShowWindow invalidates a newly exposed window even when Quartz
@@ -943,7 +999,7 @@ void NativeUI::show_window(std::uint32_t token, bool activate) {
     [window displayIfNeeded];
 }
 LegacyRect NativeUI::window_bounds(std::uint32_t token, bool content) const {
-    (void)content; // Supported class-13 windows are borderless.
+    (void)content; // Native chrome is host-only; guest class-13 bounds stay unchanged.
     return impl_->logical_bounds.at(token);
 }
 std::int32_t NativeUI::window_number(std::uint32_t token) const { return impl_->windows.at(token).windowNumber; }
@@ -955,8 +1011,8 @@ NativeWindowHit NativeUI::find_window(std::int16_t x, std::int16_t y) const {
         if (NSMenu.menuBarVisible && menu_height > 0 && x >= CGRectGetMinX(main) && x < CGRectGetMaxX(main) &&
             y >= 0 && y < menu_height) return {1, 0};
         // Ask AppKit for front-to-back order, including non-key plain windows.
-        // Only class-13 borderless windows are supported by create_window, so
-        // every point in their half-open content rectangle is inContent.
+        // Native chrome is handled by AppKit. Only guest content participates
+        // in the original half-open inContent rectangles.
         for (NSNumber* number in [NSWindow windowNumbersWithOptions:0]) {
             for (const auto& [token, owned] : impl_->windows) {
                 if (number.integerValue != owned.windowNumber || !owned.visible || owned.miniaturized) continue;

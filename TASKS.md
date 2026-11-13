@@ -6,7 +6,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Blocked on Victor
 
-- [ ] **Install the GAME_CONFIG.CPP build** (2026-11-13): `tools/dev.sh install` refused because the game was running. The build in `.local/current/build` has the 12 routines routed; run the installer once the game is closed.
+- [ ] **Install the current build** (2026-11-13): `tools/dev.sh install` refuses while the game runs. The build in `.local/current/build` has GAME_CONFIG.CPP's 12 routines routed, All Draw and the native window frame; run the installer once the game is closed.
 
 - [ ] **Replace the software bounds check?** (found 2026-11-06) It costs 11.4-11.5% of the day and the week (7 alternating pairs each, identical end state). Removing it needs a hardware-fault path that keeps the byte-exact fault semantics the checks compare; the trade-off is under "Measure the software bounds check" below. Nothing changed.
 
@@ -20,13 +20,25 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: native game window frame (2026-11-13)
+
+- [x] Give the primary game window native title-bar chrome, dragging, minimization and a close action routed through the original quit flow. Keep guest geometry and source pixels unchanged, reserve room for the title bar when fitting, and move related windows with the game. Review fixed Fit refreshes recentering dragged windows; explicitly choosing Fit still recenters.
+- [x] Build `cm-native-prototype`, presentation/UI/input checkers and pass `native_presentation_geometry`; final read-only review has no findings. Native UI/input checks cannot complete in this session: the presentation fixture rejects 125% on its reported display, and input lacks an active/key window with WindowServer/XPC errors. Separately compiling HEAD's original bridge reproduces both failures before any new assertions. Added chrome/content bounds, Fit movement, child lifetime and close-flow checks remain unexecuted beyond that environment boundary. Existing All Draw and concurrent GAME_CONFIG/world-replay changes preserved.
+- [x] Committed 2026-11-13 after `native_presentation_ui`, `native_input_queue` and `native_presentation_geometry` passed in a session with WindowServer access. Not installed: the game was running (see Blocked on Victor).
+
+## Now: All Draw match-day action (2026-11-13)
+
+- [x] Add an independent All Draw toggle and fixture Debugging action; scope by competition/date, retain individual-result priority, and reuse simulated-match score bookkeeping.
+- [x] Verify menu wiring, independent toggle, scope isolation, cancellation, manual priority, load/new-career reset and actual quick/background simulation. `debugging_options` and `debugging_club_results_fixture` pass, including seven draw-day inactive controls with identical guest state and ordered RNG writes. Read-only production diff review has no findings; `cm-native-prototype` builds. Existing captures only; no new career or visual QA.
+- [x] Committed 2026-11-13 (8c6142eb). Not installed: the game was running (see Blocked on Victor).
+
 ## Now: recurring club results UI follow-up (2026-11-13)
 
 - [x] Match the tactics-instructions presentation: pitch backdrop, row typography and selected/available outcome colors.
 - [x] Make Add open a populated Nations & Clubs browser and match Force Results to the club header colors. Add now supplies separate original default continent/nation values; the header uses the original Apply for Job colors and vertical bounds.
 - [x] Verify original UI controls/navigation with the existing fixture and review. `debugging_options` passes, including populated browser rows and exact choice/header colors. Preserved concurrent date/shortlist work.
 - [x] Build `cm-debug-options-checks` and `cm-native-prototype`; focused checks pass and the read-only diff review has no findings.
-- [ ] Commit and install the follow-up: this session cannot create `.git/index.lock`; the guarded installer cannot inspect running processes and refuses to continue. No commit/push/install performed.
+- [x] Committed (it is in 7cf8754b). Install: see Blocked on Victor.
 
 ## Now: recurring club results (2026-11-12)
 

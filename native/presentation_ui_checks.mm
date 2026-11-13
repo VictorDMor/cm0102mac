@@ -1,5 +1,6 @@
 #include "ui_bridge.hpp"
 #import <AppKit/AppKit.h>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
@@ -54,6 +55,11 @@ int main() {
                 drain(ui);
                 NSWindow* window = [NSApp windowWithWindowNumber:ui.window_number(11)];
                 require(window != nil, "Missing scaled native window");
+                const auto chrome = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
+                require((window.styleMask & chrome) == chrome && window.hasShadow &&
+                    [window.title isEqualToString:@"reCM 01-02"] &&
+                    [window standardWindowButton:NSWindowCloseButton] &&
+                    [window standardWindowButton:NSWindowMiniaturizeButton], "Primary window lacks native chrome");
                 NSWindow* desktop = [NSApp windowWithWindowNumber:ui.window_number(10)];
                 require(desktop && !desktop.visible, "Original desktop still covers the macOS desktop");
                 ui.show_window(10,false);
@@ -61,13 +67,41 @@ int main() {
                 for (const auto choice : {InterfaceScale::original, InterfaceScale::percent125, InterfaceScale::percent150}) {
                     if (!ui.set_interface_scale(choice)) continue; // A fixed scale may exceed this display.
                     const auto scale = ui.presentation_scale();
-                    require(window.frame.size.width == 800 * scale && window.frame.size.height == 600 * scale &&
-                        window.contentView.bounds.size.width == window.frame.size.width &&
-                        window.contentView.bounds.size.height == window.frame.size.height && !desktop.visible,
-                        "Visible window must match the scaled game content without desktop margins");
+                    require(window.contentView.bounds.size.width == 800 * scale &&
+                        window.contentView.bounds.size.height == 600 * scale &&
+                        window.frame.size.height > window.contentView.bounds.size.height && !desktop.visible,
+                        "Native title bar changed the scaled game content size");
                 }
+                require(ui.set_interface_scale(InterfaceScale::fit), "Could not fit framed window");
+                require(NSContainsRect(window.screen.visibleFrame, window.frame), "Fit left native chrome outside the usable screen");
+                const auto visible = window.screen.visibleFrame;
+                const auto fitted = window.frame;
+                const auto dx = (visible.size.width - fitted.size.width) / 4;
+                const auto dy = (visible.size.height - fitted.size.height) / 4;
+                [window setFrameOrigin:NSMakePoint(fitted.origin.x + dx, fitted.origin.y + dy)];
+                ui.create_window(12,13,0x02220000,{300,300,360,420});
+                ui.dispose_window(12);
+                require(std::abs(window.frame.origin.x - fitted.origin.x - dx) < 1e-6 &&
+                    std::abs(window.frame.origin.y - fitted.origin.y - dy) < 1e-6,
+                    "Opening a panel recentered a dragged Fit window");
                 require(ui.set_interface_scale(InterfaceScale::percent125), "Restore input fixture scale");
                 require(ui.find_window(-10,-10).window == 0, "Hidden desktop backdrop still receives input");
+                // Dragging the host window moves related panels and the input
+                // inverse, without changing the original window rectangles.
+                ui.create_window(12,13,0x02220000,{300,300,360,420});
+                ui.show_window(12,false);
+                NSWindow* overlay = [NSApp windowWithWindowNumber:ui.window_number(12)];
+                require(overlay.parentWindow == window && overlay.styleMask == NSWindowStyleMaskNonactivatingPanel,
+                    "Related panel gained chrome or was not attached to the primary window");
+                const auto overlay_origin = overlay.frame.origin;
+                const auto origin = window.frame.origin;
+                [window setFrameOrigin:NSMakePoint(origin.x + 20, origin.y - 15)];
+                require(overlay.frame.origin.x == overlay_origin.x + 20 && overlay.frame.origin.y == overlay_origin.y - 15,
+                    "Dragging the window displaced its related panel");
+                ui.dispose_window(12);
+                require(window.frame.origin.x == origin.x + 20 && window.frame.origin.y == origin.y - 15,
+                    "Rebuilding presentation discarded the dragged position");
+                drain(ui);
                 auto input = [&](NSEventType type, SEL selector, UIEvent::Kind kind, double x, double y) {
                     NSEvent* native = [NSEvent mouseEventWithType:type location:NSMakePoint(x, window.contentView.bounds.size.height - y)
                         modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:window.windowNumber
@@ -161,7 +195,18 @@ int main() {
                 auto bytes = [](const auto& path) { std::ifstream f(path, std::ios::binary); return std::string(std::istreambuf_iterator<char>(f),{}); };
                 require(first.size()==1 && second.size()==1 && bytes(first[0]) == bytes(second[0]), "Scale changed source bitmap bytes");
                 require(ui.set_interface_scale(InterfaceScale::percent125), "Restore persisted choice");
+                drain(ui);
+                [window performClose:nil];
+                [window performClose:nil];
+                require(window.visible && ui.poll(event,0) && event.kind == UIEvent::Kind::quit && !ui.poll(event,0),
+                    "Native close bypassed the original quit flow or queued it twice");
+                ui.create_window(12,13,0x02220000,{300,300,360,420});
+                ui.show_window(12,false);
+                overlay = [NSApp windowWithWindowNumber:ui.window_number(12)];
                 ui.dispose_window(11);
+                require(!overlay.parentWindow && ui.window_bounds(12,true) == LegacyRect{300,300,360,420},
+                    "Disposing the primary window retained a child link or discarded the guest overlay");
+                ui.dispose_window(12);
                 ui.dispose_window(10);
             }
             { NativeUI reopened(preference); require(reopened.interface_scale() == InterfaceScale::percent125, "Preference did not survive reopening"); }

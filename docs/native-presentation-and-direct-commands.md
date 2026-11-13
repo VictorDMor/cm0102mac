@@ -140,7 +140,18 @@ uniform affine transform; the larger nonactivating desktop background is exclude
 from scene sizing. Native z-order is retained. Drawing ports, regions and
 window_bounds remain in original logical coordinates.
 
-The usable `NSScreen.visibleFrame` excludes the menu bar and Dock. Fit uses the
+The primary panel has a native title bar, close/minimize controls and a shadow.
+Close queues the existing game quit event and leaves the window alive for the
+original save/quit prompts. Native frame rectangles wrap the scaled content;
+the title bar never reduces the engine's 800×600 drawing area. Dragging updates
+the shared input inverse and positions related panels, which attach as child
+windows when shown so they follow minimization. Layout refreshes retain the
+dragged center where the usable display allows it; choosing Fit explicitly
+recenters the window. Window geometry remains
+session-only; resizing continues through View's interface-scale menu.
+
+The usable `NSScreen.visibleFrame` excludes the menu bar and Dock; its native
+content rectangle also reserves the title bar. Fit uses the
 smaller width/height ratio and centers the scene; fixed choices retain the original
 center where possible, constrained to that usable area. Screen/backing notifications
 recompute the layout. Negative screen origins are valid. Alignment snaps inward
