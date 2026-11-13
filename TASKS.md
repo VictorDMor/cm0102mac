@@ -26,6 +26,7 @@ Found by reading the installed run logs: 10 of the runs since 2026-10-27 stopped
 
 - [x] Diagnose: the match screen draws with an empty event (code 0), the commentary routine's tail reads the line table of row -8000 (null) and then the pace word through it. Text in `docs/aot-port.md`.
 - [x] Generator guard at the routine's two unchecked line-table reads (`0x10203580` sound flag, `0x102036bc` pace): an event whose row is outside the table or has a null line table gets no sound and pace 0. `cm-match-presentation-checks` runs both reads and fails on the generator without the guard. Review (high) found the sound read, the guard testing the symptom, and a test loop that never ran the non-native mode; all three fixed.
+- [ ] Install: `tools/dev.sh install` refused at commit fc4ed78a because the game was running. Run it after quitting.
 - [ ] Not established: what makes the event empty when the screen draws, and so whether a commentary line goes missing there (question in the top section). When it happens again the run log has one line starting `Commentary event without lines`.
 - [ ] One more untracked stop in the logs: `app.4A24Y9` (2026-11-12 21:03), address 0x115 at `0x10104ce4` in FIND_SCREENS.CPP (`0x10104b90` <- `0x10103850`), one occurrence. Not diagnosed.
 - [ ] `tools/test_background_selection_audit.py` fails `test_71_entries_preserve_existing_modules`: its pinned first 37 `SEMANTIC_REPLACEMENTS` still list `calendar_adapter` entries that DATE.CPP removed. Stale test, not caused by this change.
