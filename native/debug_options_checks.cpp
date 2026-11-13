@@ -372,22 +372,55 @@ int main(int argc, char** argv) {
         std::string list_title;
         for (unsigned i = 0; c.u8(history_title + i); ++i) list_title += char(c.u8(history_title + i));
         require(list_title == debug_text(s, DebugText::forced_clubs), "List cleared its history title");
+        invoke(0x10192250, {});
+        const auto browser_continent = c.r(3);
+        invoke(0x101922e0, {});
+        const auto browser_nation = c.r(3);
+        require(browser_continent && browser_nation && c.u32(browser_nation + 0x74) == browser_continent,
+                "Career fixture lacks the original default nation/continent");
         invoke(0x1033f840, {control(30027, 0)});
         require(match_result_debugging(s).choosing_club, "Add did not arm the club browser");
         invoke(0x1073ef70, {ui, 0});
         require(c.r(3) == 1, "Add did not open the original Nations browser");
+        invoke(0x1073ef70, {ui, 1});
+        require(c.r(3) == browser_continent, "Add passed a nation as the continent filter");
+        invoke(0x1073ef70, {ui, 10});
+        require(c.r(3) == browser_nation, "Add lost the default nation for the clubs tab");
+        invoke(0x10719560, {page()});
+        invoke(0x10103850, {});
+        unsigned nation_rows = 0;
+        for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i) {
+            const auto item = item_address(i);
+            if (c.u32(item + 8) == 2005 && (c.u32(item + 12) & 2) && c.u32(item + 0x48)) ++nation_rows;
+        }
+        require(nation_rows > 0, "Add opened an empty Nations & Clubs browser");
+        require(match_result_debugging(s).choosing_club, "Rendering the browser canceled club selection");
         // Browse to a club; selection is host-owned and survives unrelated history.
         invoke(0x1073f1e0, {ui, 0, club, 0});
         invoke(0x10719560, {page()});
         c.set(31, club); c.set(26, ui);
+        constexpr unsigned club_ink = 0x7c00, club_paper = 0x03e0;
+        const auto header_colors = s.memory.copy_out(c.sp() + 0x6a, 4);
+        c.put16(c.sp() + 0x6a, club_ink); c.put16(c.sp() + 0x6c, club_paper);
         require(append_forced_club_control(s), "Club selection header was not built");
+        s.memory.copy_in(c.sp() + 0x6a, header_colors);
+        const auto force_style = style(control(30029, club));
+        require(force_style[3] == club_paper && force_style[6] == club_ink,
+                "Force Results did not use the Apply for Job club colors");
         c.set(3, control(30029, club)); s.wr<4>(4128, return_sentinel);
         require(dispatch_best_xi_control(s), "Club toolbar did not accept Force Results");
         require(match_result_debugging(s).clubs.size() == 1 &&
             match_result_debugging(s).clubs.front().result == ForcedClubResult::win &&
             !match_result_debugging(s).choosing_club, "Added club did not default to victory or finish selection");
         invoke(0x1033d030, {});
-        label_control(debug_text(s, DebugText::win), 1);
+        const auto selected_result_style = style(label_control(debug_text(s, DebugText::win), 1));
+        const auto available_result_style = style(control(30302, club));
+        const auto club_name_style = style(control(30303, club));
+        invoke(0x1076bb20, {0, 0xc0, 0, 0});
+        require(available_result_style[6] == c.r(3), "Available result lacks tactics green text");
+        require(selected_result_style[1] == 0x221 && selected_result_style[6] == c.u16(c.toc(-0x7bd0)),
+                "Selected result lacks tactics yellow frame/text");
+        require(club_name_style[6] == c.u16(c.toc(-0x7b10)), "Club name lacks tactics row-label color");
         invoke(0x1033f840, {control(30302, club)});
         require(match_result_debugging(s).clubs.front().result == ForcedClubResult::loss, "Loss cell was ignored");
         invoke(0x1033d030, {});

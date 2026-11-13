@@ -380,7 +380,7 @@ void build_club_results(State& s) {
                             unsigned action, unsigned value = 0, bool selected = false) {
         const auto ink = color(selected ? 0x7bd0 : 0x7bc8);
         call.args({1, ink, call.text(debug_text(s, label)), action, value});
-        call.call(0x10744430, {ui, left, top, right, top + 24, selected ? 0x221u : 0x30u,
+        call.call(0x10744430, {ui, left, top, right, top + 30, selected ? 0x221u : 0x30u,
             color(selected ? 0x7bd0 : 0x7bc4), 12});
     };
     if (choices.confirm_removal) {
@@ -402,27 +402,41 @@ void build_club_results(State& s) {
     else choices.removing_club = false;
     const unsigned pages = std::max(1u, (unsigned(choices.clubs.size()) + clubs_per_page - 1) / clubs_per_page);
     choices.club_page = std::min(choices.club_page, pages - 1);
+    // Use the instructions screen's pitch, typography and choice colors.
+    // The footer grid also owns the pitch shapes, as in the original modal.
+    s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{24, 28, 24, 24});
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto footer = call.call(0x107198c0, {page, 125, 509, 774, 539, 4, call.stack + 0xc0, 1});
+    const auto footer_button = [&](unsigned column, DebugText label, unsigned action) {
+        call.args({color(0x7bc8), call.text(debug_text(s, label)), action, 0});
+        call.call(0x107444e0, {ui, footer, column, 0, 0x30, color(0x7bc4), 12, 3});
+    };
+    footer_button(0, DebugText::back, club_back_action);
+    if (choices.club_page) footer_button(2, DebugText::previous, club_prev_action);
+    if (choices.club_page + 1 < pages) footer_button(3, DebugText::next, club_next_action);
+    s.wr<8>(0x4010, float_bits<8>(float_value<4>(s.memory.read<4>(s.memory.read<4>(toc - 0x4ec4)))));
+    call.args({1, footer});
+    call.call(0x103cbb30, {125, 157, 774, 493, call.stack + 0xd0,
+        call.stack + 0xd4, call.stack + 0xd8, call.stack + 0xdc});
     s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{49, 17, 17, 17});
     call.args({0, 1, 0, 0xffffffffu});
-    const auto grid = call.call(0x107198c0, {page, 125, 157, 774, 493, 4, call.stack + 0xc0, clubs_per_page});
+    const auto grid = call.call(0x107198c0, {page, 130, 162, 769, 488, 4, call.stack + 0xc0, clubs_per_page});
+    const auto available_ink = call.call(0x1076bb20, {0, 0xc0, 0, 0});
     const unsigned begin = choices.club_page * clubs_per_page;
     for (unsigned i = begin; i < choices.clubs.size() && i < begin + clubs_per_page; ++i) {
         const auto& rule = choices.clubs[i];
         const auto row = i - begin;
-        call.args({color(0x7bc8), call.text(result_club_name(s, call, rule.club)), club_row_action, rule.club});
-        call.call(0x107444e0, {ui, grid, 0, row, 1, 0, 12, 3});
+        call.args({color(0x7b10), call.text(result_club_name(s, call, rule.club)), club_row_action, rule.club});
+        call.call(0x107444e0, {ui, grid, 0, row, 1, 0, 1, 3});
         constexpr std::array labels{DebugText::win, DebugText::draw, DebugText::loss};
         for (unsigned value = 0; value < labels.size(); ++value) {
             const bool active = unsigned(rule.result) == value;
-            const auto ink = color(active ? 0x7bd0 : 0x7bc8);
+            const auto ink = active ? color(0x7bd0) : available_ink;
             call.args({ink, call.text(debug_text(s, labels[value])), club_result_action + value, rule.club});
             call.call(active ? 0x107445a0 : 0x107444e0,
                 {ui, grid, value + 1, row, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
         }
     }
-    button(125, 509, 275, DebugText::back, club_back_action);
-    if (choices.club_page) button(465, 509, 610, DebugText::previous, club_prev_action);
-    if (choices.club_page + 1 < pages) button(620, 509, 774, DebugText::next, club_next_action);
 }
 
 bool dispatch_club_results(State& s, std::uint32_t control, unsigned action) {
@@ -448,8 +462,9 @@ bool dispatch_club_results(State& s, std::uint32_t control, unsigned action) {
         choices.removing_club = false;
         GuestCall call(s);
         // Same Nations browser as the career sidebar's Nations & Clubs menu.
-        const auto context = call.call(0x101922e0, {});
-        call.call(0x10103600, {1, context, 0, 0});
+        const auto continent = call.call(0x10192250, {});
+        const auto nation = call.call(0x101922e0, {});
+        call.call(0x10103600, {1, continent, nation, 0});
         result = -4;
     } else if (action == remove_club_action) {
         choices.removing_club = !choices.removing_club;
@@ -1089,11 +1104,15 @@ bool append_forced_club_control(State& s) {
     const auto club = std::uint32_t(s.r<4>(31 * 4));
     if (!native_debugging_available() || !match_result_debugging(static_cast<const State&>(s)).choosing_club ||
         !valid_debug_result_club(s, club)) return false;
+    // The club builder has already resolved the same ink/paper pair passed
+    // to Apply for Job. Read its frame before GuestCall reserves its own.
+    const auto caller_stack = std::uint32_t(s.r<4>(4));
+    const auto ink = std::uint32_t(s.memory.read<2>(caller_stack + 0x6a));
+    const auto paper = std::uint32_t(s.memory.read<2>(caller_stack + 0x6c));
     GuestCall call(s);
-    const auto ui = std::uint32_t(s.r<4>(26 * 4)), toc = std::uint32_t(s.r<4>(8));
-    const auto color = [&](unsigned at) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - at))); };
-    call.args({1, color(0x7bc8), call.text(debug_text(s, DebugText::force_results)), force_club_action, club});
-    call.call(0x10744430, {ui, 620, 15, 785, 35, 0x30, color(0x7bc4), 12});
+    const auto ui = std::uint32_t(s.r<4>(26 * 4));
+    call.args({1, ink, call.text(debug_text(s, DebugText::force_results)), force_club_action, club});
+    call.call(0x10744430, {ui, 620, 4, 785, 24, 0x30, paper, 12});
     return true;
 }
 

@@ -18,6 +18,14 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] In-game check of the file fixes: new save, overwrite and reload work (confirmed by Victor, 2026-10-21).
 
+## Now: recurring club results UI follow-up (2026-11-13)
+
+- [x] Match the tactics-instructions presentation: pitch backdrop, row typography and selected/available outcome colors.
+- [x] Make Add open a populated Nations & Clubs browser and match Force Results to the club header colors. Add now supplies separate original default continent/nation values; the header uses the original Apply for Job colors and vertical bounds.
+- [x] Verify original UI controls/navigation with the existing fixture and review. `debugging_options` passes, including populated browser rows and exact choice/header colors. Preserved concurrent date/shortlist work.
+- [x] Build `cm-debug-options-checks` and `cm-native-prototype`; focused checks pass and the read-only diff review has no findings.
+- [ ] Commit and install the follow-up: this session cannot create `.git/index.lock`; the guarded installer cannot inspect running processes and refuses to continue. No commit/push/install performed.
+
 ## Now: recurring club results (2026-11-12)
 
 - [x] Add the Debugging Options submenu and club list, browser selection, outcome cells and confirmed removal.
