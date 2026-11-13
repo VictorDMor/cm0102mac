@@ -4531,6 +4531,11 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME qsort4x_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_qsort4x_audit.py")
 endif()
 
+# INJURY.CPP (tools/injury_unit_audit.py): inventory closed, C++ not written yet.
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME injury_unit_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_injury_unit_audit.py")
+endif()
+
 # TRANSFER_OFFER.CPP (tools/transfer_offer_unit_audit.py): the transfer offer record, its terms and its value.
 file(GLOB CM_TRANSFER_OFFER_UNIT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/transfer_offer_unit*.cpp")
 list(FILTER CM_TRANSFER_OFFER_UNIT_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
