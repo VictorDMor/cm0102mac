@@ -34,6 +34,15 @@ Found by reading the installed run logs: 10 of the runs since 2026-10-27 stopped
 - [ ] `tools/test_background_selection_audit.py` fails `test_71_entries_preserve_existing_modules`: its pinned first 37 `SEMANTIC_REPLACEMENTS` still list `calendar_adapter` entries that DATE.CPP removed. Stale test, not caused by this change.
 - [ ] `page_10413.cpp` in `.local/current/generated` was older than the committed generator (a plain `tools/dev.sh generate` rewrote it to the same content the committed generator gives). Whether the app installed at b96aab20 was built from the stale page was not checked; this build and install use the fresh one.
 
+## Next: player-profile crash on a removed transfer offer (found 2026-11-13, not fixed)
+
+Found by tabulating every installed run log that did not end in a normal exit (31 since 2026-10-20). Seven of the eight stop signatures already have fixes; this one was never listed.
+
+- [ ] Run `app.noCga5` (2026-10-28 13:12) stops reading address 8 at `0x1038aaf4` (reported as run start `0x1038aaec`), in the player-profile builder `0x10389ce0` (STAFF_SCREENS.CPP, generated), right after a click on an item of the Action menu of a player's profile. The builder keeps its list of the player's transfer offers in screen field 3 and does not rebuild it when the screen redraws (`0x10389e84`); for each index it takes the slot from `0x103eb440` and reads offer+8 without testing the slot's pointer. A slot emptied since the list was built is null. The original elsewhere tests it (`0x1039fd48`..`0x1039fd54`), so empty slots are a normal state; on the Mac the read of address 8 hits low memory instead of faulting.
+- Fix (same shape as `FIND_LIST_BUILDERS`): generator guard at `0x1038aaf4`, a null offer is not the user's offer (branch to `0x1038ab04`); a checker case that fails without the guard; review (high). Display only as far as read: the match goes to frame word 0x1990, read at `0x1038b354`..`0x1038bb40` while the screen is built; I did not read those uses.
+- Not established: which Action item it was (the log has only the click), whether the rewritten offer collector `0x103eaea0` of that date played a part, and whether `0x1039a4b4` (same unchecked read after `0x103eb440` in another STAFF_SCREENS routine) is reachable with an empty slot.
+- Not checked: the two stops of 2026-10-26 with `Original injury registration did not assign the selected injury` (`native/match_debugging.cpp:224`, a debugging feature); no later run repeats them.
+
 ## Now: TRANSFER_OFFER.CPP (delivered 2026-11-13)
 
 All 17 entries (5,545 instructions, 0x10411e60..0x10417590) are C++ and routed (`native/transfer_offer_unit*.cpp`, `tools/transfer_offer_unit_audit.py`, `cm-transfer-offer-unit-checks`). Victor chose it as the quickest module to close. Contract and quirks: `docs/cpp-rewrites.md`.
