@@ -603,19 +603,40 @@ walks the original category and slot order, skips rows with zero scores and
 preserves the slot number across gaps. Shared date, text, sorting and stream
 services remain external.
 
-## rb_greece.cpp
+## The rb_*.cpp rulebooks
 
-The [audit](../tools/rb_greece_audit.py) closes four entries and 397 reachable
-instructions. The default C++23 owners cover rulebook construction, nation
-text, the card-threshold query, and disciplinary reporting. The constructor is
-called directly and the other three entries retain their CFM transition
-vectors. `CM_RB_GREECE_ORIGINAL=1` selects the generated bodies.
+43 units, one per ruling body, each one class over RULING_BODY.CPP's base rulebook. In every unit
+the routines come in this order: constructor, report of a match's cards, nation text, "next card
+bans" query. The class's virtual table names the last three (+0x10, +0x18, +0x1c), the constructor
+that stores that table is called from the rulebook factory (0x100e7xxx-0x100e8xxx), and the nation
+text's assertion names the unit's source file. A unit therefore **ends** at the routine that loads
+its file name; the two routines after it open the next unit.
 
-The threshold query writes its optional outputs before reading the tally.
-Reporting shifts the booking-history bits in place and preserves the signed
-byte comparison in the caution loop. A dismissal can queue a hearing on the
-first Thursday strictly after the current date. The shared calendar, booking
-lookup, hearing queue and suspension publication stay outside this module.
+The delivery of 2026-11-05 took the name the other way round, so `native/rb_greece.cpp`
+([audit](../tools/rb_greece_audit.py)) owns two routines of rb_greece.cpp (text 0x106ab7d0, query
+0x106ab890) and two of rb_ireland.cpp (constructor 0x106ab8f0, report 0x106ab970). Its files keep
+their names; `CM_RB_GREECE_ORIGINAL=1` selects the generated bodies of those four. The Greek query
+bans on every third card; the report it was delivered with is the Irish one (bans at 5, 8, 11 and
+then every third card from 14, a hearing on the first Thursday after a dismissal).
+
+Units written since are one family: `native/ruling_bodies*`, [audit](../tools/ruling_bodies_audit.py),
+`cm-ruling-bodies-checks`, `CM_RULING_BODIES_ORIGINAL=1`. What repeats between units is a function
+with a small description per unit (`NationText`, `Rulebook`); a unit's own rules are its own
+function. In it so far: rb_ireland.cpp's text and query, rb_northern_ireland.cpp's constructor and
+report.
+
+- The queries write their optional outputs before reading the tally, which they may alias.
+- A report builds the 0x18-byte ban record in its frame and never initialises all of it. In the
+  Northern Irish one the flags byte at +0x14 has bit 6 cleared and bit 5 set from the match, and
+  its other six bits, with the bytes +9..+0xb, +0x11 and +0x15..+0x17, stay as an earlier call left
+  those stack bytes. The record goes to the discipline manager (0x100dfb30), which keeps
+  it. The C++ leaves and reads the same stack bytes; what is there now that callers are native can differ from
+  the original (the open risk INJURY.CPP and TRANSFER_OFFER.CPP have).
+- The Northern Irish report counts yellow cards with a signed byte against the unsigned count: 128
+  or more would never end, in the original too.
+- The checker's script must cover the routines' whole ranges, not their entries: the original comes
+  back from each call to an address inside the routine, and from there the production page would
+  run, with its in-place calls to C++ owners, instead of the reference copy.
 
 ## SIMULATED_STATS.CPP
 

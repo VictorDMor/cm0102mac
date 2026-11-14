@@ -4369,6 +4369,30 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
         $<TARGET_FILE:cm-game-config-checks> "${CM_ORACLE_DIR}" --original-routing)
     add_test(NAME game_config_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_game_config_audit.py")
 endif()
+# The rb_*.cpp rulebooks (tools/ruling_bodies_audit.py), one family.
+file(GLOB CM_RULING_BODIES_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ruling_bodies*.cpp")
+list(FILTER CM_RULING_BODIES_SOURCES EXCLUDE REGEX "_checks\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_RULING_BODIES_SOURCES})
+add_executable(cm-ruling-bodies-checks ruling_bodies_checks.cpp)
+target_link_libraries(cm-ruling-bodies-checks PRIVATE cm_aot)
+target_compile_options(cm-ruling-bodies-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    set(CM_RULING_BODIES_REFERENCE "${CMAKE_CURRENT_BINARY_DIR}/ruling_bodies_reference.cpp")
+    add_custom_command(OUTPUT "${CM_RULING_BODIES_REFERENCE}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/make_ruling_bodies_reference.py"
+            "${CM_ORACLE_DIR}" "${CM_RULING_BODIES_REFERENCE}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/../tools/make_ruling_bodies_reference.py"
+            "${CMAKE_SOURCE_DIR}/../tools/ruling_bodies_audit.py"
+            "${CMAKE_SOURCE_DIR}/ruling_bodies_routines.inc"
+            "${CMAKE_SOURCE_DIR}/../tools/compile_recomp.py"
+            "${CM_ORACLE_DIR}/instructions.sqlite" "${CM_ORACLE_DIR}/program.json"
+        VERBATIM)
+    target_sources(cm-ruling-bodies-checks PRIVATE "${CM_RULING_BODIES_REFERENCE}")
+    add_test(NAME ruling_bodies_equivalence COMMAND cm-ruling-bodies-checks "${CM_ORACLE_DIR}")
+    add_test(NAME ruling_bodies_original_override COMMAND "${CMAKE_COMMAND}" -E env CM_RULING_BODIES_ORIGINAL=1
+        $<TARGET_FILE:cm-ruling-bodies-checks> "${CM_ORACLE_DIR}" --original-routing)
+    add_test(NAME ruling_bodies_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_ruling_bodies_audit.py")
+endif()
 option(CM_GAME_CONFIG_COVERAGE "Instrument the GAME_CONFIG.CPP checker only" OFF)
 if(CM_GAME_CONFIG_COVERAGE)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/game-config-coverage")

@@ -4,6 +4,18 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: the rb_*.cpp rulebooks (2026-11-14)
+
+Picked as the cheapest family after NATIONAL_TEAMS: 43 units of one shape (`docs/cpp-rewrites.md`, "The rb_*.cpp rulebooks").
+
+- [x] Found while closing the inventory: a unit is constructor, report, text, query, and ends at the text that names its file. The 2026-11-05 "rb_greece" delivery is half rb_greece.cpp, half rb_ireland.cpp; workbook and doc corrected, file names kept.
+- [x] Family `native/ruling_bodies*` with rb_ireland.cpp's text 0x106abe20 and query 0x106abee0 (rb_ireland.cpp is now 4 of 4 in C++) and rb_northern_ireland.cpp's constructor 0x106abf60 and report 0x106abfe0 (2 of 4). `cm-ruling-bodies-checks`: 11,648 comparisons with a reference copy of the original (half through the production pages), corruption and ownership controls.
+- [ ] No existing capture reaches these four routines (census of 2026-11-14; 20 of 76 captures replay), so the evidence is fixtures only. No coverage build was made; the cases were chosen from the listing's branches.
+- [ ] The report's ban record carries never-initialised stack (six flag bits and seven bytes, see the doc) into the discipline manager. Not established: whether anything reads them back.
+- [ ] From the review (medium; listing compared instruction by instruction, no difference): the three date routines run in the checker unscripted, so the return addresses and r24/r27-r29 held at those calls are checked by reading only; the two DISCIPLINE.CPP routines are called through the dispatcher so the checker can script them (direct typed calls exist); the family is not in `cm-world-replay`'s live check; the audit has no volatile-register check (run by hand: empty) and no "every routine registered" rule; `nation_text` and `construct` could take over the Greek text 0x106ab7d0 and the Irish constructor 0x106ab8f0 from `rb_greece.cpp`; the yellow-card loop with 128 or more cards spins in native code without the budget stop the generated body has.
+- [ ] rb_greece.cpp is 2 of 4: constructor 0x106ab390 and report 0x106ab410 are generated. `rb_greece_equivalence` still fails as listed under "Now: DATE.CPP" (stale fixture), so the two Irish routines it covers rest on the 2026-11-05 run.
+- [ ] Next in the family: rb_northern_ireland.cpp's text 0x106ac220 and query 0x106ac2e0 (and 0x106ac3a0, which its table names at +8), then the 40 other units: one description line each for constructor and text, one function each for report and query. `tools/game_inventory.py` still attributes these routines by the text routine alone.
+
 ## Now: NATIONAL_TEAMS.CPP on main, 49 of 73 (2026-11-14)
 
 Victor asked for the quickest next recompilation step; it was the branch `codex/national-teams-cpp23` (paused 2026-11-05, never merged), now merged.
