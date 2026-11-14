@@ -4,6 +4,14 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: names and paths longer than the original's buffers (2026-11-14)
+
+- [x] Read from the listing, not reproduced in the game: the full-path builder (`0x1076ec60`) reads each ancestor folder's name into the 64 bytes of a spec name on its stack, and its callers copy the built path unchecked into 256-byte stack buffers (`0x10770c20`, `0x10739340`). The bridge handed over names of up to 255 bytes and paths of any length. Listings already hid names over 63 bytes, so the way in was a save opened from the Finder inside such a folder, or a deep enough tree.
+- [x] `native/platform.cpp`: a catalog lookup by directory ID refuses a name over 63 MacRoman bytes before writing anything; listings leave out entries whose whole path passes 255 bytes; a document from the Finder with such a name or path is not opened (one log line). The first version only had the name guard at the last consumer; the review (high) found the path overflow, the block written before the refusal and the comment's wrong call site.
+- [x] `native_filesystem`: folders of 63, 64 and 200 bytes and one of 40 accented letters by ID, block and buffer intact on refusal, a deep tree whose listing keeps only the file that fits. The name check fails without the guard.
+- [ ] Not established: the helper at `0x1076f130` passes a 32-byte buffer when given an empty name, so a folder name of 32 to 63 bytes could still overrun it; whether the game ever calls it that way was not traced. Capping at 31 would break paths that work today.
+- [ ] Not established: after a refusal the resolver at `0x10739324` still registers whatever its path buffer holds (review). The Finder route is not exercised by a check (the rule is shared with the listing, which is). No second review pass on the final version.
+
 ## Now: idle CPU on the career screen (2026-11-14)
 
 - [x] Measured on an isolated copy without automation, career loaded by opening the save, window without focus: about 34% of a core idle on the main career screen (about 5% at the start menu). A probe showed about 22,700 event polls a second, one pass over 200,000 instructions each second, and the idle wait applying to only about 72 polls a second.
@@ -1091,7 +1099,6 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] `native_record_fields` promotion accepts calls that read `State` (latent).
 - [ ] Copy-on-write of an original data file isn't atomic (`native/platform.cpp`, `writable_file`).
 - [ ] The installer writes the Game manifest after moving Game into place.
-- [ ] Names over 31 characters can overflow the game's 64-byte name buffer (`0x1076ec60`).
 - [ ] Run logs accumulate in `Runtime/Runs`; input tracing is on by default.
 - [ ] Mouse-moved events pile up while the game is busy; every small `CopyBits` redraws a full frame.
 - [ ] Three jump tables don't match `check_jump_tables.py`'s pattern; inspect them by hand.

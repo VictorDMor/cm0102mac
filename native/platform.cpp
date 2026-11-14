@@ -221,7 +221,10 @@ struct NativePlatform::Impl {
     bool reachable_document(const fs::path& file) const {
         std::error_code error;
         try {
-            return fs::is_regular_file(allowed(file), error);
+            // Also one whose path fits the original's buffers: a document
+            // comes from the Finder, past the listings that leave those out.
+            const auto size = guest_path_size(file);
+            return fs::is_regular_file(allowed(file), error) && size && *size <= guest_path_limit;
         } catch (const FileError&) { return false; }
     }
     std::uint32_t front_dialog = 0;  // the modal dialog ModalDialog runs
@@ -378,6 +381,33 @@ struct NativePlatform::Impl {
         return under(input, overlay()) ? (game / input.lexically_relative(overlay())).lexically_normal() : input;
     }
     bool volume_root(const fs::path& input) const { return logical_path(input) == game || input == writable; }
+    // The original's limits on a name and on a whole path. A spec name holds
+    // 63 MacRoman bytes, and the full-path builder (0x1076ec60) reads each
+    // folder's name into one on its stack. Its callers copy the built path,
+    // unchecked, into 256-byte buffers on theirs (0x10770c20, 0x10739340).
+    // HFS never gave them more than 31 bytes a name.
+    static constexpr std::size_t spec_name_limit = 63, guest_path_limit = 255;
+    static std::optional<std::size_t> mac_name_size(const std::string& name) {
+        try { return convert(hfs_name(name), kCFStringEncodingUTF8, kCFStringEncodingMacRoman).size(); }
+        catch (const FileError&) { return std::nullopt; }
+    }
+    // Bytes of "Volume:folder:...:name" for a path in the game's folders;
+    // nothing when a name has no MacRoman form or exceeds a spec name.
+    std::optional<std::size_t> guest_path_size(const fs::path& input) const {
+        const auto logical = logical_path(input);
+        const bool original = under(logical, game);
+        std::size_t size = original ? 8 : 12;  // "CM 01-02", "CM User Data"
+        // A permitted path spelled another way than its root: the volume alone.
+        if (!original && !under(input, writable)) return size;
+        for (const auto& component : (original ? logical.lexically_relative(game) : input.lexically_relative(writable))) {
+            const auto part = component.string();
+            if (part.empty() || part == ".") continue;
+            const auto bytes = mac_name_size(part);
+            if (!bytes || *bytes > spec_name_limit) return std::nullopt;
+            size += 1 + *bytes;
+        }
+        return size;
+    }
     mutable NativeDirectoryCatalog catalog;
     std::array<fs::path, 3> catalog_paths(const fs::path& input) const {
         const auto logical = logical_path(input);
@@ -398,14 +428,15 @@ struct NativePlatform::Impl {
     // so one Finder-renamed file would otherwise hide every later save.
     std::vector<fs::path> mac_entries(const fs::path& input) const {
         std::vector<fs::path> result;
+        // An entry whose whole path the original's buffers cannot hold is
+        // left out too, so the game is never handed one by a listing.
+        const auto folder = guest_path_size(input);
+        if (!folder) return result;
         for (const auto& entry : listing(input)) {
             const auto name = entry.path.filename().string();
-            bool fits = name.size() <= 63 && std::ranges::all_of(name, [](unsigned char c) { return c < 0x80; });
-            if (!fits) {
-                try { fits = convert(hfs_name(name), kCFStringEncodingUTF8, kCFStringEncodingMacRoman).size() <= 63; }
-                catch (const FileError&) {}
-            }
-            if (fits) result.push_back(entry.path);
+            const bool ascii = std::ranges::all_of(name, [](unsigned char c) { return c < 0x80; });
+            const auto bytes = ascii ? std::optional<std::size_t>(name.size()) : mac_name_size(name);
+            if (bytes && *bytes <= spec_name_limit && *folder + 1 + *bytes <= guest_path_limit) result.push_back(entry.path);
         }
         return result;
     }
@@ -991,7 +1022,7 @@ struct NativePlatform::Impl {
             // event; with none left, a launch still opens the application.
             std::erase_if(found->files, [&](const fs::path& file) {
                 if (reachable_document(file)) return false;
-                std::fprintf(stderr, "Document not opened (not a file in the game's folders): %s\n", file.c_str());
+                std::fprintf(stderr, "Document not opened (not a file in the game's folders, or its path is longer than the game can hold): %s\n", file.c_str());
                 return true;
             });
             if (found->files.empty()) {
@@ -1324,6 +1355,14 @@ struct NativePlatform::Impl {
         target = allowed(target);
         struct stat info{};
         if (stat(target.c_str(), &info)) throw FileError{file_not_found};
+        // Asked by directory ID, the name goes to the caller's buffer: refuse
+        // one beyond a spec name before anything is written (see
+        // spec_name_limit). Not established: the helper at 0x1076f130 passes
+        // a 32-byte buffer, so a name of 32 to 63 bytes could still overrun it.
+        if (name && index < 0 && !volume_root(target)) {
+            const auto bytes = mac_name_size(target.filename().string());
+            if (!bytes || *bytes > spec_name_limit) throw FileError{bad_name};
+        }
         const bool is_directory = S_ISDIR(info.st_mode);
         s.memory.write<1>(pb + 30, is_directory ? 0x10 : 0);
         s.memory.write<1>(pb + 31, 0);

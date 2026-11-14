@@ -887,6 +887,75 @@ int main() {
         s.memory.write<4>(pb + 48, games_id);
         require(call(s, "CarbonLib::PBGetCatInfoSync", {pb}) == 0 && s.memory.read<4>(pb + 100) == 2 &&
                 s.memory.read<2>(pb + 52) == 1, "Private directory catalog parent and child count");
+        // A folder name beyond an FSSpec's 63 bytes is refused when asked by
+        // directory ID, the way the game's full-path builder asks: its buffer
+        // is the 64 bytes of a spec name on the stack.
+        const std::string accented = [] { std::string text; for (int i = 0; i < 40; ++i) text += "\xc3\xa9"; return text; }();  // 40 e acute: 80 bytes of UTF-8, 40 of MacRoman
+        for (const auto length : {63u, 64u, 200u, 40u}) {
+            const bool roman = length == 40;
+            const std::string folder = roman ? accented : std::string(length, 'n');
+            const std::string guest = roman ? std::string(40, char(0x8e)) : folder;
+            fs::create_directories(user / "Files" / "games" / folder);
+            string(s, name + 300, guest);
+            s.memory.clear(pb, 108);
+            s.memory.write<4>(pb + 18, name + 300);
+            s.memory.write<2>(pb + 22, 0xffff);
+            s.memory.write<4>(pb + 48, games_id);
+            require(call(s, "CarbonLib::PBGetCatInfoSync", {pb}) == 0, "Long folder lookup by name");
+            const auto folder_id = std::uint32_t(s.memory.read<4>(pb + 48));
+            const std::vector<std::uint8_t> guard(260, 0xa5);
+            s.memory.copy_in(name, guard);
+            s.memory.clear(pb, 108);
+            s.memory.write<4>(pb + 18, name);
+            s.memory.write<2>(pb + 22, 0xffff);
+            s.memory.write<2>(pb + 28, 0xffff);
+            s.memory.write<4>(pb + 48, folder_id);
+            const auto asked = s.memory.copy_out(pb, 108);
+            const auto result = call(s, "CarbonLib::PBGetCatInfoSync", {pb});
+            if (length <= 63)
+                require(result == 0 && string(s, name) == guest && s.memory.read<1>(name + 64) == 0xa5,
+                        "A folder name that fits a spec was not returned whole");
+            else {
+                auto answered = s.memory.copy_out(pb, 108);
+                answered[16] = asked[16]; answered[17] = asked[17];  // ioResult
+                require(result == -37 && s.memory.copy_out(name, 260) == guard && answered == asked,
+                        "A folder name beyond a spec's 63 bytes was written into the caller's buffer or block");
+            }
+            fs::remove(user / "Files" / "games" / folder);
+        }
+        // A listing leaves out what the original's 256-byte path buffers
+        // cannot hold: "CM 01-02:games" and four folders of 60 leave room for
+        // a name of 5 bytes ("CM 01-02:games" is 14, each folder 61, 258 with
+        // "/a.sav" would be 264).
+        {
+            auto deep = user / "Files" / "games";
+            for (const char letter : {'p', 'q', 'r', 's'}) deep /= std::string(letter == 's' ? 54 : 60, letter);
+            fs::create_directories(deep);
+            std::ofstream(deep / "abcd.sav") << "x";        // 14 + 3*61 + 55 + 9 = 261
+            std::ofstream(deep / "a") << "x";               // 14 + 3*61 + 55 + 2 = 254
+            auto id = games_id;
+            for (const char letter : {'p', 'q', 'r', 's'}) {
+                string(s, name + 300, std::string(letter == 's' ? 54 : 60, letter));
+                s.memory.clear(pb, 108);
+                s.memory.write<4>(pb + 18, name + 300);
+                s.memory.write<2>(pb + 22, 0xffff);
+                s.memory.write<4>(pb + 48, id);
+                require(call(s, "CarbonLib::PBGetCatInfoSync", {pb}) == 0, "Nested folder lookup");
+                id = std::uint32_t(s.memory.read<4>(pb + 48));
+            }
+            std::vector<std::string> listed;
+            for (unsigned index = 1; index <= 4; ++index) {
+                s.memory.clear(pb, 108);
+                s.memory.write<4>(pb + 18, name);
+                s.memory.write<2>(pb + 22, 0xffff);
+                s.memory.write<2>(pb + 28, index);
+                s.memory.write<4>(pb + 48, id);
+                if (call(s, "CarbonLib::PBGetCatInfoSync", {pb}) != 0) break;
+                listed.push_back(string(s, name));
+            }
+            require(listed == std::vector<std::string>{"a"}, "A listing offered a path longer than the original's buffers");
+            fs::remove_all(user / "Files" / "games" / std::string(60, 'p'));
+        }
         bool enumerated_games = false;
         for (unsigned index = 1; index <= 8; ++index) {
             s.memory.clear(pb, 108);

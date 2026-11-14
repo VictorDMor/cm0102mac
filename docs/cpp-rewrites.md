@@ -225,7 +225,11 @@ Three things it needed:
   AEGetDescData. A launch with documents sends no 'oapp', as the original
   system did. A document outside the game's folders, or one whose name has
   no FSSpec (over 63 MacRoman bytes), is left out with a line in the log; the
-  game still starts. `game_driver.py launch NAME --open DOC` launches that way.
+  game still starts. Since 2026-11-14 the same holds for a document under a
+  folder with such a name or whose whole path passes 255 bytes: the original's
+  full-path builder (`0x1076ec60`) and its callers keep names and paths in
+  64- and 256-byte stack buffers without checking. Listings leave such
+  entries out, and a catalog lookup by directory ID refuses such a name. `game_driver.py launch NAME --open DOC` launches that way.
 - **What no capture can reach.** `debug_menu` handles menu 4, which is only
   in MBAR 2: the program installs one menu bar, MBAR 1 (menus 1-3), and adds
   no menu, so neither MenuSelect nor MenuKey can return it (a ctest checks
