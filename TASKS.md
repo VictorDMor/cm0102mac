@@ -4,6 +4,14 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: idle CPU on the career screen (2026-11-14)
+
+- [x] Measured on an isolated copy without automation, career loaded by opening the save, window without focus: about 34% of a core idle on the main career screen (about 5% at the start menu). A probe showed about 22,700 event polls a second, one pass over 200,000 instructions each second, and the idle wait applying to only about 72 polls a second.
+- [x] `native/platform.cpp`: a heavy pass resets the idle wait only when another came within the previous half second. Idle career screen: about 8%. Installed.
+- [x] Continue not slowed, as far as two runs show: day 354 to 361 in 173 s (194 s once on the earlier build); the other run stopped at day 356 after 39 s, the same pace.
+- [ ] Not verified: the installed app (the isolated copy turns on a performance trace the installed app does not have, so the once-a-second pass may belong to it), a window with focus, match screens, and where the remaining 8% goes. No regression test: the wait sits inside the AppKit event loop.
+- [ ] From the same runs: the same save and the same Continue requests ended on day 356 once and on day 361 once, so these timings are not runs of identical work.
+
 ## Now: Continue behind another application (2026-11-14)
 
 - [x] Measured with `tools/game_driver.py` on an isolated copy, the 26-country career from the same save, day 361 to 364 of 2001: 196 s in front; hidden or without focus 355, 722, 769 s (and 475, 675, 688, 709 s with a first fix that turned out to be a no-op).

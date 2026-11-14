@@ -687,8 +687,9 @@ struct NativePlatform::Impl {
     // zero-sleep poll waits up to 8 ms for input instead (input returns at
     // once). Polls while the game works (not interactive, or heavy work
     // between polls) are never delayed, so processing speed is unaffected.
+    // heavy_at is the last poll that followed heavy work.
     std::uint64_t polled_at = 0;
-    std::chrono::steady_clock::time_point quiet_since{};
+    std::chrono::steady_clock::time_point quiet_since{}, heavy_at{};
     std::string command_status = "Ready";
     bool next_event(State& s, std::uint16_t mask, std::uint32_t address, std::uint32_t sleep, std::uint32_t mouse_region) {
         // An isolated engine has no original game window or input source.
@@ -729,7 +730,15 @@ struct NativePlatform::Impl {
             ~AutomationWait() { if (automation) automation->leave(s.executed); polled_at = s.executed; }
         } automation_wait(automation.get(), s, polled_at);
         const auto poll_start = std::chrono::steady_clock::now();
-        if (!commands.ready || s.executed - polled_at > 200000) quiet_since = poll_start;
+        // One heavy pass on its own is not work: the career screen has one a
+        // second (measured 2026-11-14), and taking it for work kept the game
+        // spinning 250 ms of every second, a third of a core while idle. Work
+        // is two heavy passes within half a second.
+        if (!commands.ready) quiet_since = poll_start;
+        else if (s.executed - polled_at > 200000) {
+            if (poll_start - heavy_at < std::chrono::milliseconds(500)) quiet_since = poll_start;
+            heavy_at = poll_start;
+        }
         const bool quiet = commands.ready && poll_start - quiet_since > std::chrono::milliseconds(250);
         if (commands.ready) {
             if (commands.handler == 0x100ee9d0) command_status = "Original file dialog: awaiting interaction";

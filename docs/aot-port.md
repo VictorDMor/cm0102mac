@@ -304,6 +304,14 @@ interactive context whose loop runs fewer than 2 million instructions
 between event calls for a 250 ms window: about 6,000 when idle, hundreds of
 millions while loading or processing.
 
+The wait that idles a quiet screen (up to 8 ms per poll once the loop has done
+little work for 250 ms) took any pass of more than 200,000 instructions for
+work. The career's main screen has one such pass a second, so the game spun
+for 250 ms of every second: about 22,700 polls a second and a third of a core
+while idle. Since 2026-11-14 a heavy pass counts as work only when another came
+within the half second before it; the idle career screen went from about 34%
+to about 8% of a core (isolated copy, no automation, window without focus).
+
 The game does all its work on the main thread between those event calls, and
 behind another application or hidden, with no sound playing, macOS put it into
 App Nap, which stretches the waits of each AppKit pump: a sample of the hidden
