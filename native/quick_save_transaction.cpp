@@ -175,7 +175,6 @@ QuickSaveTransaction::create(const std::filesystem::path& destination,
 
 const std::filesystem::path& QuickSaveTransaction::staging_directory() const noexcept { return impl_->staging; }
 const std::filesystem::path& QuickSaveTransaction::staged_path() const noexcept { return impl_->staged; }
-const std::filesystem::path& QuickSaveTransaction::destination_path() const noexcept { return impl_->destination; }
 
 QuickSavePromotionResult QuickSaveTransaction::promote() {
     auto& t = *impl_;
@@ -304,7 +303,8 @@ std::expected<void, QuickSaveTransactionError> QuickSaveTransaction::keep_for_re
     return {};
 }
 
-std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent) try {
+std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent, bool keep_newest,
+                                            const std::filesystem::path& except) try {
     Descriptor root(::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
     if (root.value < 0) return 0;
     struct Candidate { std::string name; bool has_save; struct timespec modified; };
@@ -319,6 +319,7 @@ std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent)
         struct stat directory{}, file{};
         if (::fstatat(root.value, name.c_str(), &directory, AT_SYMLINK_NOFOLLOW) || !S_ISDIR(directory.st_mode) ||
             directory.st_uid != ::geteuid() || (directory.st_mode & 0777) != 0700) continue;
+        if (std::error_code same; !except.empty() && std::filesystem::equivalent(entry.path(), except, same)) continue;
         Candidate candidate{name, false, directory.st_mtimespec};
         bool ours = true;
         std::error_code inner;
@@ -336,7 +337,7 @@ std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent)
     };
     std::sort(candidates.begin(), candidates.end(), newer);
     std::size_t removed = 0;
-    bool kept = false;
+    bool kept = !keep_newest;
     for (const auto& candidate : candidates) {
         if (candidate.has_save && !kept) { kept = true; continue; }
         Descriptor directory(::openat(root.value, candidate.name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));

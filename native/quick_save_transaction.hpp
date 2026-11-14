@@ -35,7 +35,8 @@ struct QuickSavePromotionResult {
 //
 // Rename preserves the staged inode, including resource fork/Finder metadata.
 // Existing destinations are exchanged, never first deleted. No files are
-// removed by destruction. An earlier save is retained until explicit discard.
+// removed by destruction. The save a promotion replaced is retained until
+// explicit discard, which the caller does once the promotion is confirmed.
 //
 // Concurrency boundary: descriptor-relative operations and identity snapshots
 // reject observed replacement/modification. macOS has no rename conditional on
@@ -56,7 +57,6 @@ public:
 
     const std::filesystem::path& staging_directory() const noexcept;
     const std::filesystem::path& staged_path() const noexcept;
-    const std::filesystem::path& destination_path() const noexcept;
     QuickSavePromotionResult promote();
 
     // Only available after confirmed promotion of an existing destination.
@@ -84,9 +84,14 @@ private:
 };
 
 // Removes staging directories left in `parent` by earlier sessions or failed
-// saves, keeping the newest one holding a save as a recovery copy. The caller
-// must have no transaction in progress there. Only directories this code could
-// have made are touched: private name, mode and owner, and the writer's two
-// file names inside. Returns how many were removed.
-std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent);
+// saves. With keep_newest the newest one holding a save stays as a recovery
+// copy: a confirmed quick save produces none, so such a folder comes from a
+// failed promotion or an interrupted save. Without it they all go, for after a
+// confirmed quick save, which supersedes them. `except` is never touched (the
+// folder of a career loaded from a leftover). The caller must have no
+// transaction in progress there. Only directories this code could have made
+// are touched: private name, mode and owner, and the writer's two file names
+// inside. Returns how many were removed.
+std::size_t remove_stale_quick_save_staging(const std::filesystem::path& parent, bool keep_newest = true,
+                                            const std::filesystem::path& except = {});
 }

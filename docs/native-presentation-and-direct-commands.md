@@ -117,9 +117,13 @@ Save As can change the basename and an external load can use another folder.
 Only successful load or save completion with a successful final rename establishes
 the destination. A host request invokes the original career serializer using a
 private staged file, followed by an atomic promotion to the selected destination.
-The prior file is retained as a recovery copy; the preceding managed copy may be
-discarded on the next quick-save request when the target and file identities
-still match. Failures not reported by the original serializer are not all
+Once the promotion is confirmed (the new file synced and its identity checked) the
+file it replaced is deleted, as an ordinary save leaves no earlier copy either, and
+folders left by earlier failed or interrupted saves go with it. Until 2026-11-14 the
+replaced file stayed until the next quick save; an ordinary save in between then
+left it for good. A promoted file that another writer changed keeps the replaced
+save. A save that is written without error but is wrong in content therefore has
+no recovery copy. Failures not reported by the original serializer are not all
 observable. The original game's 256-byte path buffers limit guest paths to 255
 bytes. A human manager's linked fixture and live match engine prevent a save
 during match play. The original Save Game dialog remains available separately.

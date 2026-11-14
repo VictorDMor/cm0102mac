@@ -197,6 +197,7 @@ int main() {
             require(companion_bytes("First.sav") == first_rules,
                     "Successful quick save did not persist club rules beside its destination");
             require(file_bytes(user / "First.sav") == "staged career", "Club rules changed serialized career bytes");
+            require(staging_folders() == 0, "A confirmed quick save left its staging folder behind");
             match_result_debugging(s).clubs = {{clubs + 0x248, ForcedClubResult::draw}};
             std::ofstream(user / "Second.sav", std::ios::binary) << "second career";
             put_path("CM User Data:Second.sav");
@@ -224,6 +225,8 @@ int main() {
             s.platform->quick_save_write_renamed(s);
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
+            require(file_bytes(user / "Second.sav") == "staged career" && staging_folders() == 0,
+                    "A confirmed quick save kept the save it replaced");
             match_result_debugging(s).clubs = {{clubs, ForcedClubResult::win}};
             std::ofstream(user / "Failed.sav.forced-results", std::ios::binary) << "old companion";
             put_path("CM User Data:Failed.sav");
@@ -249,6 +252,7 @@ int main() {
             s.platform->quick_save_write_renamed(s);
             s.wr<4>(12, 1);
             s.platform->quick_save_write_end(s);
+            require(staging_folders() == 0, "A quick save over an earlier quick save kept the save it replaced");
             second_rules = "CM_FORCED_CLUB_RESULTS 1\n1\n0 0 \"Test Arsenal\"\n";
             require(companion_bytes("Second.sav") == second_rules && companion_bytes("First.sav") == first_rules,
                     "Quick save after failed Save As used the wrong companion destination");
@@ -429,7 +433,43 @@ int main() {
             require(fs::exists(newest / "save.sav"), "The newest recovery copy must be kept");
             require(fs::exists(foreign / "notes.txt") && fs::exists(other / "save.sav"), "Unknown folders must be left alone");
             require(fs::exists(recovery / "save.sav"), "A folder marked for recovery must be left alone");
+            // After a confirmed quick save nothing older is worth keeping,
+            // except the folder a career was loaded from.
+            const auto loaded = staging('a', {"save.sav"}, 30);
+            require(remove_stale_quick_save_staging(left, false, loaded) == 1 && !fs::exists(newest),
+                    "A confirmed quick save must supersede the kept leftover");
+            require(fs::exists(loaded / "save.sav") && fs::exists(recovery / "save.sav") && fs::exists(foreign / "notes.txt"),
+                    "The full sweep removed an excepted, marked or unknown folder");
+            require(remove_stale_quick_save_staging(left, true, loaded) == 0 && fs::exists(loaded / "save.sav"),
+                    "The excepted folder must survive every sweep");
             fs::remove_all(left);
+
+            // The save a promotion replaced goes only while the promoted file
+            // is still the one promoted.
+            const auto vault = user / "vault";
+            fs::create_directories(vault);
+            const auto promote_over = [&](const char* name) {
+                std::ofstream(vault / name, std::ios::binary) << "old career";
+                auto made = QuickSaveTransaction::create(vault / name, vault);
+                require(made.has_value(), "Could not create a quick-save transaction");
+                std::ofstream((*made)->staged_path(), std::ios::binary) << "new career";
+                const auto result = (*made)->promote();
+                require(result.state == QuickSavePromotionState::promoted && file_bytes(vault / name) == "new career" &&
+                        file_bytes(result.previous_save) == "old career", "Promotion did not exchange the two saves");
+                return std::move(*made);
+            };
+            auto clean = promote_over("Clean.sav");
+            const auto clean_folder = clean->staging_directory();
+            require(clean->discard_previous_save().has_value() && clean->remove_empty_staging_directory().has_value() &&
+                    !fs::exists(clean_folder) && file_bytes(vault / "Clean.sav") == "new career",
+                    "A confirmed promotion did not release the save it replaced");
+            auto changed = promote_over("Changed.sav");
+            std::ofstream(vault / "Changed.sav", std::ios::binary | std::ios::app) << ", then another writer";
+            require(!changed->discard_previous_save().has_value() && !changed->remove_empty_staging_directory().has_value() &&
+                    file_bytes(changed->staging_directory() / "save.sav") == "old career",
+                    "The replaced save was dropped although the promoted file had changed");
+            changed.reset();
+            fs::remove_all(vault);
             s.platform->set_quick_save_alert_observer({});
             s.wr<4>(8, previous_toc);
         }

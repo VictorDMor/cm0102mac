@@ -4,14 +4,15 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
-## Checked: quick save "previous file retained" (2026-11-14)
+## Now: quick save deletes the save it replaced (2026-11-14)
 
-Not a bug; nothing changed. The run logs show `Quick save previous file retained: promoted save changed; retain previous save: Stale NFS file handle` 51 times.
+Asked by Victor after the check below: the kept copies should go.
 
-- Cause: an ordinary save (not a quick save) wrote the same file between two quick saves, so the next quick save finds the file it promoted replaced and, as designed, does not delete the backup it can no longer vouch for. Over every installed run log: all 529 quick saves that discarded their backup had no other save since the previous quick save; 50 of the 51 that kept it had at least one (the other log has no file trace there). In `app.NDHk44` 12 of 13 quick saves discarded normally.
-- Cost: `remove_stale_quick_save_staging` keeps the newest kept backup and removes the rest, so at most two `Runtime/.cm-quicksave-*` folders exist (about 115 MB each on the current career): the kept one and the live one. It does not grow.
-- "Stale NFS file handle" is only the system's text for ESTALE; no network volume is involved.
-- Possible, not done (save handling, low value): drop the quick-save backup when an ordinary save to the same file succeeds.
+- [x] Found first: the log line `Quick save previous file retained: promoted save changed` (51 times) was by design. An ordinary save between two quick saves replaced the promoted file, so the next quick save kept the backup it could not vouch for (529 discards with no save in between, 50 of 51 retentions with one). That backup then stayed as "the newest leftover" for good: two `Runtime/.cm-quicksave-*` folders, about 115 MB each.
+- [x] A confirmed quick save now deletes the file it replaced at once and removes its staging folder, then removes leftovers of earlier failed or interrupted saves (not folders marked for recovery, not the folder a career was loaded from). A promoted file changed by another writer still keeps the replaced save. Review (high) found the leftover that would never rotate out, a discard that fails after its unlink, the missing failure-path check, the stale doc and a dead accessor; all fixed.
+- [x] `native_filesystem`: no staging folder after each of three quick saves (fails on the old code), the full sweep and its exception, a discard refused after the promoted file changed. `native_quick_save_destination` passes.
+- [ ] Cost, accepted with the request: a quick save written without error but wrong in content has no recovery copy, as with an ordinary save.
+- [ ] The two folders already in `Runtime` go at the first quick save with the new build; not observed yet.
 
 ## Now: sound after an output device change (2026-11-14)
 

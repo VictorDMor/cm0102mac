@@ -142,7 +142,6 @@ struct NativePlatform::Impl {
     bool quick_save_needs_rename = false, quick_save_loading = false, quick_save_quiet = false;
     std::optional<fs::path> quick_save_last_target, quick_save_load_target, quick_save_write_target;
     std::unique_ptr<QuickSaveTransaction> quick_save_transaction;
-    std::unique_ptr<QuickSaveTransaction> quick_save_previous_transaction;
     std::uint32_t quick_save_path_address = 0;
     bool quick_save_swept = false;
     // What the writer's successful path overwrites, in case promotion then fails.
@@ -1619,6 +1618,7 @@ void NativePlatform::quick_save_write_end(State& s) {
         bool promotion_started = false;
         bool exchanged = false;  // The destination may already hold the new file.
         bool unconfirmed = false;
+        bool superseded = false;  // A confirmed save with nothing of its own left in staging.
         try {
             // The dispatcher also uses this buffer in its failure dialog.
             // Restore the user's path before returning from the staged writer.
@@ -1638,13 +1638,10 @@ void NativePlatform::quick_save_write_end(State& s) {
                 has_previous_save = !result.previous_save.empty();
                 unconfirmed = result.state == QuickSavePromotionState::promoted_unconfirmed;
                 exchanged = unconfirmed;
-                if (!promoted) {
+                if (!promoted)
                     std::fprintf(stderr, "Quick save promotion: %s: %s; retained: %s\n",
                                  result.error.operation.c_str(), result.error.code.message().c_str(),
                                  result.error.retained_directory.c_str());
-                } else if (!result.previous_save.empty()) {
-                    std::fprintf(stderr, "Quick save retained previous file: %s\n", result.previous_save.c_str());
-                }
             }
         } catch (const std::exception& error) {
             // An exception during promotion can follow the atomic exchange.
@@ -1679,16 +1676,32 @@ void NativePlatform::quick_save_write_end(State& s) {
         }
         impl_->quick_save_saved_markers.reset();
         if (promoted && impl_->quick_save_transaction) {
+            // The new save is synced and its identity confirmed: the file it
+            // replaced goes now, as it does in an ordinary save. Kept until the
+            // next quick save, it outlived every ordinary save in between and
+            // then stayed for good (decided by Victor 2026-11-14).
+            bool discarded = true;
             if (has_previous_save) {
-                // Keep one recovery copy until the next quick-save request.
-                impl_->quick_save_previous_transaction = std::move(impl_->quick_save_transaction);
-            } else {
-                const auto removed = impl_->quick_save_transaction->remove_empty_staging_directory();
-                if (!removed) std::fprintf(stderr, "Quick save staging retained: %s: %s\n",
-                                           removed.error().operation.c_str(), removed.error().code.message().c_str());
+                const auto result = impl_->quick_save_transaction->discard_previous_save();
+                discarded = result.has_value();
+                if (!result) std::fprintf(stderr, "Quick save previous file: %s: %s\n",
+                                          result.error().operation.c_str(), result.error().code.message().c_str());
             }
+            // A discard can fail after its unlink (the directory sync): the
+            // folder is tried either way and refuses while it holds a file.
+            const auto removed = impl_->quick_save_transaction->remove_empty_staging_directory();
+            if (!removed && discarded) std::fprintf(stderr, "Quick save staging retained: %s: %s\n",
+                                                    removed.error().operation.c_str(), removed.error().code.message().c_str());
+            superseded = removed.has_value();
         }
         impl_->quick_save_transaction.reset();
+        if (superseded && impl_->quick_save_last_target) {
+            // Whatever earlier failed or interrupted saves left is older than
+            // the save just confirmed.
+            const auto folder = impl_->quick_save_last_target->parent_path();
+            remove_stale_quick_save_staging(impl_->writable, false, folder);
+            remove_stale_quick_save_staging(folder, false, folder);
+        }
         impl_->quick_save_path_address = 0;
         impl_->quick_save_quiet = false;
         impl_->quick_save_active = false;
@@ -1798,25 +1811,9 @@ bool NativePlatform::quick_save_prepare_path_at(State& s, std::uint32_t path_add
         return false;
     };
     if (!impl_->quick_save_last_target) return fail("no resolved destination");
-    if (impl_->quick_save_previous_transaction) {
-        std::error_code error;
-        const bool same_target = fs::equivalent(*impl_->quick_save_last_target,
-            impl_->quick_save_previous_transaction->destination_path(), error);
-        if (!error && same_target) {
-            const auto discarded = impl_->quick_save_previous_transaction->discard_previous_save();
-            if (discarded) {
-                const auto removed = impl_->quick_save_previous_transaction->remove_empty_staging_directory();
-                if (!removed) std::fprintf(stderr, "Quick save staging retained: %s: %s\n",
-                                           removed.error().operation.c_str(), removed.error().code.message().c_str());
-            } else {
-                std::fprintf(stderr, "Quick save previous file retained: %s: %s\n",
-                             discarded.error().operation.c_str(), discarded.error().code.message().c_str());
-            }
-        }
-        impl_->quick_save_previous_transaction.reset();
-    }
-    remove_stale_quick_save_staging(impl_->writable);
-    remove_stale_quick_save_staging(impl_->quick_save_last_target->parent_path());
+    const auto folder = impl_->quick_save_last_target->parent_path();
+    remove_stale_quick_save_staging(impl_->writable, true, folder);
+    remove_stale_quick_save_staging(folder, true, folder);
     auto transaction = QuickSaveTransaction::create(*impl_->quick_save_last_target, impl_->writable);
     if (!transaction) {
         std::fprintf(stderr, "Quick save staging: %s: %s\n", transaction.error().operation.c_str(),
