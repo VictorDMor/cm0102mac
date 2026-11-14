@@ -1,0 +1,7 @@
+INJURY_UNIT_ROUTINE(0x101840e0, 0x10184308, R3, "e8bdff1f1b8653bc", [](Cpu& c) { c.set(3, injury_unit::construct_manager(c, c.r(3), c.r(4))); })
+INJURY_UNIT_ROUTINE(0x10184310, 0x101843c4, R3, "a01a6d3bc2b42e3f", [](Cpu& c) { c.set(3, injury_unit::destroy_manager(c, c.r(3), c.r(4))); })
+INJURY_UNIT_ROUTINE(0x101843d0, 0x10184528, NONE, "60cde53d6d2239e2", [](Cpu& c) { injury_unit::set_fitness_from_club_dates(c, c.r(3)); })
+INJURY_UNIT_ROUTINE(0x10184530, 0x10184e58, R3, "71b20cfe8566817e", [](Cpu& c) { c.set(3, injury_unit::read_from_save(c, c.r(3), c.r(4)) ? 1 : 0); })
+INJURY_UNIT_ROUTINE(0x10184e60, 0x10185404, NONE, "70fabba08a1eb95f", [](Cpu& c) { injury_unit::write_to_save(c, c.r(3), c.r(4)); })
+INJURY_UNIT_ROUTINE(0x10188490, 0x101885f0, R3, "1ab99e8d48b699f9", [](Cpu& c) { c.set(3, injury_unit::may_start_injured(c, c.r(4))); })
+INJURY_UNIT_ROUTINE(0x101885f0, 0x10188924, NONE, "d6f35286444bfdfc", [](Cpu& c) { injury_unit::give_starting_injuries(c, c.r(3)); })

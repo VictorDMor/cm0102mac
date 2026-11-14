@@ -146,23 +146,7 @@ from ball_contact_audit import (require_ball_contact_contract, require_ball_cont
 from actor_attributes_audit import (require_actor_attributes_contract, require_actor_attributes_index,
                                     require_actor_attributes_hooks, actor_attributes_hook, ACTOR_ATTRIBUTES_ENTRIES)
 
-from injury_record_audit import (require_injury_record_contract, require_injury_record_index,
-                                 require_injury_record_hooks, injury_record_hook, INJURY_RECORD_ENTRIES)
 
-from injury_progression_audit import (require_injury_progression_contract, require_injury_progression_index,
-    require_injury_progression_hooks, injury_progression_hook, INJURY_PROGRESSION_ENTRIES)
-from injury_club_events_audit import (require_injury_club_events_contract, require_injury_club_events_index,
-    require_injury_club_events_hooks, injury_club_events_hook, INJURY_CLUB_EVENTS_ENTRIES)
-from injury_readouts_audit import (require_injury_readouts_contract, require_injury_readouts_index,
-    require_injury_readouts_hooks, injury_readouts_hook, INJURY_READOUTS_ENTRIES)
-from injury_reporting_audit import (require_injury_reporting_contract, require_injury_reporting_index,
-    require_injury_reporting_hooks, injury_reporting_hook, INJURY_REPORTING_ENTRIES)
-from injury_bootstrap_audit import (require_injury_bootstrap_contract, require_injury_bootstrap_index,
-    require_injury_bootstrap_hooks, injury_bootstrap_hook, INJURY_BOOTSTRAP_ENTRIES)
-from injury_persistence_audit import (require_injury_persistence_contract, require_injury_persistence_index,
-    require_injury_persistence_hooks, injury_persistence_hook, INJURY_PERSISTENCE_ENTRIES)
-from injury_daily_audit import (require_injury_daily_contract, require_injury_daily_index,
-    require_injury_daily_hooks, injury_daily_hook, INJURY_DAILY_ENTRIES)
 from awol_records_audit import (require_awol_records_contract, require_awol_records_index,
     require_awol_records_hooks, awol_records_hook, AWOL_RECORDS_ENTRIES)
 from contract_query_audit import (require_contract_query_contract, require_contract_query_index,
@@ -240,6 +224,8 @@ from eng_first_audit import ENG_FIRST_ENTRIES, require_eng_first_index, eng_firs
 from eng_third_audit import ENG_THIRD_ENTRIES, require_eng_third_index, eng_third_hook, require_eng_third_hooks
 from qsort4x_audit import QSORT4X_ENTRIES, require_qsort4x_index, qsort4x_hook, require_qsort4x_hooks
 from date_audit import DATE_ENTRIES, require_date_index, date_hook, require_date_hooks
+from injury_unit_audit import (INJURY_UNIT_ENTRIES, require_injury_unit_index,
+    injury_unit_hook, require_injury_unit_hooks)
 from transfer_offer_unit_audit import (TRANSFER_OFFER_UNIT_ENTRIES, require_transfer_offer_unit_index,
     transfer_offer_unit_hook, require_transfer_offer_unit_hooks)
 from game_config_audit import GAME_CONFIG_ENTRIES, require_game_config_index, game_config_hook, require_game_config_hooks
@@ -349,15 +335,9 @@ SEMANTIC_REPLACEMENTS = (
     tuple((entry, "team_line_adapter") for entry in TEAM_LINE_ENTRIES) +
     tuple((entry, "ball_action_adapter") for entry in BALL_ACTION_ENTRIES) +
     tuple((entry, "ball_contact_adapter") for entry in BALL_CONTACT_ENTRIES) +
-    tuple((entry, "actor_attributes_adapter") for entry in ACTOR_ATTRIBUTES_ENTRIES) +
-    tuple((entry, "injury_record_adapter") for entry in INJURY_RECORD_ENTRIES) +
-    tuple((entry, "injury_progression_adapter") for entry in INJURY_PROGRESSION_ENTRIES) +
-    tuple((entry, "injury_club_events_adapter") for entry in INJURY_CLUB_EVENTS_ENTRIES) +
-    tuple((entry, "injury_readouts_adapter") for entry in INJURY_READOUTS_ENTRIES) +
-    tuple((entry, "injury_reporting_adapter") for entry in INJURY_REPORTING_ENTRIES) +
-    tuple((entry, "injury_bootstrap_adapter") for entry in INJURY_BOOTSTRAP_ENTRIES) +
-    tuple((entry, "injury_persistence_adapter") for entry in INJURY_PERSISTENCE_ENTRIES) +
-    tuple((entry, "injury_daily_adapter") for entry in INJURY_DAILY_ENTRIES) +
+    # 16 of its 22 entries lie inside INJURY.CPP, which injury_unit_adapter owns; the other six stay.
+    tuple((entry, "actor_attributes_adapter") for entry in ACTOR_ATTRIBUTES_ENTRIES
+          if entry not in INJURY_UNIT_ENTRIES) +
     tuple((entry, "awol_records_adapter") for entry in AWOL_RECORDS_ENTRIES) +
     tuple((entry, "contract_query_adapter") for entry in CONTRACT_QUERY_ENTRIES) +
     tuple((entry, "contract_storage_adapter") for entry in CONTRACT_STORAGE_ENTRIES) +
@@ -448,6 +428,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "date_adapter") for entry in DATE_ENTRIES) +
                       tuple((entry, "game_config_adapter") for entry in GAME_CONFIG_ENTRIES) +
                       tuple((entry, "transfer_offer_unit_adapter") for entry in TRANSFER_OFFER_UNIT_ENTRIES) +
+                      tuple((entry, "injury_unit_adapter") for entry in INJURY_UNIT_ENTRIES) +
                       tuple((entry, "bra_reg_central_adapter") for entry in BRA_REG_CENTRAL_ENTRIES) +
                       tuple((entry, "bra_reg_parana_adapter") for entry in BRA_REG_PARANA_ENTRIES) +
                       tuple((entry, "bra_reg_gaucho_adapter") for entry in BRA_REG_GAUCHO_ENTRIES) +
@@ -1497,7 +1478,7 @@ def staff_score_forwarded_loads(instructions):
     return forwarded
 
 
-def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, injury_record_hooks=True, injury_progression_hooks=True, injury_club_events_hooks=True, injury_readouts_hooks=True, injury_reporting_hooks=True, injury_bootstrap_hooks=True, injury_persistence_hooks=True, injury_daily_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_offer_unit_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, game_config_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, eng_third_hooks=True, qsort4x_hooks=True, date_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, bra_reg_gaucho_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, database_hooks=True, match_man_hooks=True, manager_manager_hooks=True, discipline_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
+def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_offer_unit_hooks=True, injury_unit_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, game_config_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, eng_third_hooks=True, qsort4x_hooks=True, date_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, bra_reg_gaucho_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, database_hooks=True, match_man_hooks=True, manager_manager_hooks=True, discipline_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
                   direct_owner_calls=None, register_frame_lowering=False, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
@@ -1551,22 +1532,6 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_match_random_contract(page, instructions, selected)
     if actor_attributes_hooks:
         require_actor_attributes_contract(page, instructions, selected)
-    if injury_record_hooks:
-        require_injury_record_contract(page, instructions, selected)
-    if injury_progression_hooks:
-        require_injury_progression_contract(page, instructions, selected)
-    if injury_club_events_hooks:
-        require_injury_club_events_contract(page, instructions, selected)
-    if injury_readouts_hooks:
-        require_injury_readouts_contract(page, instructions, selected)
-    if injury_reporting_hooks:
-        require_injury_reporting_contract(page, instructions, selected)
-    if injury_bootstrap_hooks:
-        require_injury_bootstrap_contract(page, instructions, selected)
-    if injury_persistence_hooks:
-        require_injury_persistence_contract(page, instructions, selected)
-    if injury_daily_hooks:
-        require_injury_daily_contract(page, instructions, selected)
     if awol_records_hooks:
         require_awol_records_contract(page, instructions, selected)
     if contract_query_hooks:
@@ -1710,7 +1675,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                   (MATCH_MAN_TAKEOVERS if match_man_hooks else frozenset()) |
                   (MANAGER_MANAGER_TAKEOVERS if manager_manager_hooks else frozenset()) |
                   (DISCIPLINE_TAKEOVERS if discipline_hooks else frozenset()) |
-                  (TRANSFER_MANAGER_TAKEOVERS if transfer_manager_hooks else frozenset()))
+                  (TRANSFER_MANAGER_TAKEOVERS if transfer_manager_hooks else frozenset()) |
+                  (frozenset(INJURY_UNIT_ENTRIES) if injury_unit_hooks else frozenset()))
     if nontrapping_divisions is None:
         # Equivalence references compile parts of pages: use the whole-program
         # proof, so they continue exactly where production does; without an
@@ -1771,24 +1737,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "marking_pressure_adapter.hpp"')
     if match_random_hooks and page_addresses & set(MATCH_RANDOM_ENTRIES):
         code.insert(1, '#include "match_random_adapter.hpp"')
-    if actor_attributes_hooks and page_addresses & set(ACTOR_ATTRIBUTES_ENTRIES):
+    if actor_attributes_hooks and page_addresses & (set(ACTOR_ATTRIBUTES_ENTRIES) - taken_over):
         code.insert(1, '#include "actor_attributes_adapter.hpp"')
-    if injury_record_hooks and page_addresses & set(INJURY_RECORD_ENTRIES):
-        code.insert(1, '#include "injury_record_adapter.hpp"')
-    if injury_progression_hooks and page_addresses & set(INJURY_PROGRESSION_ENTRIES):
-        code.insert(1, '#include "injury_progression_adapter.hpp"')
-    if injury_club_events_hooks and page_addresses & set(INJURY_CLUB_EVENTS_ENTRIES):
-        code.insert(1, '#include "injury_club_events_adapter.hpp"')
-    if injury_readouts_hooks and page_addresses & set(INJURY_READOUTS_ENTRIES):
-        code.insert(1, '#include "injury_readouts_adapter.hpp"')
-    if injury_reporting_hooks and page_addresses & set(INJURY_REPORTING_ENTRIES):
-        code.insert(1, '#include "injury_reporting_adapter.hpp"')
-    if injury_bootstrap_hooks and page_addresses & set(INJURY_BOOTSTRAP_ENTRIES):
-        code.insert(1, '#include "injury_bootstrap_adapter.hpp"')
-    if injury_persistence_hooks and page_addresses & set(INJURY_PERSISTENCE_ENTRIES):
-        code.insert(1, '#include "injury_persistence_adapter.hpp"')
-    if injury_daily_hooks and page_addresses & set(INJURY_DAILY_ENTRIES):
-        code.insert(1, '#include "injury_daily_adapter.hpp"')
     if awol_records_hooks and page_addresses & (set(AWOL_RECORDS_ENTRIES) - taken_over):
         code.insert(1, '#include "awol_records_adapter.hpp"')
     if contract_query_hooks and page_addresses & set(CONTRACT_QUERY_ENTRIES):
@@ -1805,6 +1755,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "transfer_offer_adapter.hpp"')
     if transfer_offer_unit_hooks and page_addresses & set(TRANSFER_OFFER_UNIT_ENTRIES):
         code.insert(1, '#include "transfer_offer_unit_adapter.hpp"')
+    if injury_unit_hooks and page_addresses & set(INJURY_UNIT_ENTRIES):
+        code.insert(1, '#include "injury_unit_adapter.hpp"')
     if club_shortlist_storage_hooks and page_addresses & (set(CLUB_SHORTLIST_STORAGE_ENTRIES) - taken_over):
         code.insert(1, '#include "club_shortlist_storage_adapter.hpp"')
     if shortlist_category_hooks and page_addresses & (set(SHORTLIST_CATEGORY_ENTRIES) - taken_over):
@@ -2301,24 +2253,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(marking_pressure_hook(a))
         if match_random_hooks and a in MATCH_RANDOM_ENTRIES:
             code.append(match_random_hook(a))
-        if actor_attributes_hooks and a in ACTOR_ATTRIBUTES_ENTRIES:
+        if actor_attributes_hooks and a in ACTOR_ATTRIBUTES_ENTRIES and a not in taken_over:
             code.append(actor_attributes_hook(a))
-        if injury_record_hooks and a in INJURY_RECORD_ENTRIES:
-            code.append(injury_record_hook(a))
-        if injury_progression_hooks and a in INJURY_PROGRESSION_ENTRIES:
-            code.append(injury_progression_hook(a))
-        if injury_club_events_hooks and a in INJURY_CLUB_EVENTS_ENTRIES:
-            code.append(injury_club_events_hook(a))
-        if injury_readouts_hooks and a in INJURY_READOUTS_ENTRIES:
-            code.append(injury_readouts_hook(a))
-        if injury_reporting_hooks and a in INJURY_REPORTING_ENTRIES:
-            code.append(injury_reporting_hook(a))
-        if injury_bootstrap_hooks and a in INJURY_BOOTSTRAP_ENTRIES:
-            code.append(injury_bootstrap_hook(a))
-        if injury_persistence_hooks and a in INJURY_PERSISTENCE_ENTRIES:
-            code.append(injury_persistence_hook(a))
-        if injury_daily_hooks and a in INJURY_DAILY_ENTRIES:
-            code.append(injury_daily_hook(a))
         if awol_records_hooks and a in AWOL_RECORDS_ENTRIES:
             code.append(awol_records_hook(a))
         if contract_query_hooks and a in CONTRACT_QUERY_ENTRIES:
@@ -2335,6 +2271,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(transfer_offer_hook(a))
         if transfer_offer_unit_hooks and a in TRANSFER_OFFER_UNIT_ENTRIES:
             code.append(transfer_offer_unit_hook(a))
+        if injury_unit_hooks and a in INJURY_UNIT_ENTRIES:
+            code.append(injury_unit_hook(a))
         if club_shortlist_storage_hooks and a in CLUB_SHORTLIST_STORAGE_ENTRIES:
             code.append(club_shortlist_storage_hook(a))
         if shortlist_category_hooks and a in SHORTLIST_CATEGORY_ENTRIES:
@@ -3033,22 +2971,6 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_match_random_hooks(page, instructions, result, taken_over)
     if actor_attributes_hooks:
         require_actor_attributes_hooks(page, instructions, result, taken_over)
-    if injury_record_hooks:
-        require_injury_record_hooks(page, instructions, result)
-    if injury_progression_hooks:
-        require_injury_progression_hooks(page, instructions, result)
-    if injury_club_events_hooks:
-        require_injury_club_events_hooks(page, instructions, result)
-    if injury_readouts_hooks:
-        require_injury_readouts_hooks(page, instructions, result)
-    if injury_reporting_hooks:
-        require_injury_reporting_hooks(page, instructions, result)
-    if injury_bootstrap_hooks:
-        require_injury_bootstrap_hooks(page, instructions, result)
-    if injury_persistence_hooks:
-        require_injury_persistence_hooks(page, instructions, result)
-    if injury_daily_hooks:
-        require_injury_daily_hooks(page, instructions, result)
     if awol_records_hooks:
         require_awol_records_hooks(page, instructions, result, taken_over)
     if contract_query_hooks:
@@ -3065,6 +2987,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_transfer_offer_hooks(page, instructions, result, taken_over)
     if transfer_offer_unit_hooks:
         require_transfer_offer_unit_hooks(page, instructions, result)
+    if injury_unit_hooks:
+        require_injury_unit_hooks(page, instructions, result)
     if club_shortlist_storage_hooks:
         require_club_shortlist_storage_hooks(page, instructions, result, taken_over)
     if shortlist_category_hooks:
@@ -3178,9 +3102,9 @@ SELECTABLE_INDEX_AUDITS = (
     require_record_history_index, require_match_engine_index, require_match_actor_index,
     require_actor_construction_index, require_spatial_role_index, require_marking_pressure_index,
     require_player_decision_index, require_actor_motion_index, require_match_random_index,
-    require_actor_attributes_index, require_injury_record_index, require_injury_progression_index,
-    require_injury_club_events_index, require_injury_readouts_index, require_injury_reporting_index,
-    require_injury_bootstrap_index, require_injury_persistence_index, require_injury_daily_index,
+    require_actor_attributes_index,
+   
+   
     require_awol_records_index, require_contract_query_index, require_contract_storage_index,
     require_contract_terms_index, require_contract_review_index, require_transfer_offer_index,
     require_club_shortlist_storage_index, require_shortlist_category_index, require_shortlist_links_index,
@@ -3202,7 +3126,7 @@ SELECTABLE_INDEX_AUDITS = (
 INDEX_AUDITS = (
     require_list_search, require_tactics_index, require_main_program_index, require_club_history_index,
     require_club_records_index, require_match_pl_index, require_match_eng_index, require_eng_prm_index,
-    require_eng_conf_index, require_eng_first_index, require_eng_third_index, require_qsort4x_index, require_date_index, require_game_config_index, require_transfer_offer_unit_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_bra_reg_gaucho_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
+    require_eng_conf_index, require_eng_first_index, require_eng_third_index, require_qsort4x_index, require_date_index, require_game_config_index, require_transfer_offer_unit_index, require_injury_unit_index, require_bra_reg_central_index, require_bra_reg_parana_index, require_bra_reg_gaucho_index, require_european_cup_index, require_media_index, require_utils_index, require_file_screens_index,
     require_inter_amer_cup_index, require_euro_champ_qual_index, require_pol_cup_index,
     require_fifa_rankings_index, require_cash_index, require_awol_index, require_siprint_index, require_database_index, require_match_man_index, require_manager_manager_index, require_discipline_index, require_cup_stage_index,
     require_transfer_manager_index, require_db_files_index, require_international_awards_index, require_nation_awards_index,
@@ -3300,22 +3224,6 @@ def main():
     if args.all_analyzed:
         from actor_attributes_audit import load_actor_attributes_tables
         load_actor_attributes_tables(args.export)
-        from injury_record_audit import load_injury_record_tables
-        load_injury_record_tables(args.export)
-        from injury_progression_audit import load_injury_progression_tables
-        load_injury_progression_tables(args.export)
-        from injury_club_events_audit import load_injury_club_events_tables
-        load_injury_club_events_tables(args.export)
-        from injury_readouts_audit import load_injury_readouts_tables
-        load_injury_readouts_tables(args.export)
-        from injury_reporting_audit import load_injury_reporting_tables
-        load_injury_reporting_tables(args.export)
-        from injury_bootstrap_audit import load_injury_bootstrap_tables
-        load_injury_bootstrap_tables(args.export)
-        from injury_persistence_audit import load_injury_persistence_tables
-        load_injury_persistence_tables(args.export)
-        from injury_daily_audit import load_injury_daily_tables
-        load_injury_daily_tables(args.export)
         from awol_records_audit import load_awol_records_tables
         load_awol_records_tables(args.export)
         from contract_storage_audit import load_contract_storage_tables

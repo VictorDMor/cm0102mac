@@ -1,8 +1,9 @@
 """Certify INJURY.CPP's 47 entries and the unit's bounds.
 
 The private export is required evidence, rather than a reason to skip tests.
-The C++ of this unit is not written yet: the production owners pinned here are
-the nine older register-level ones, and that test turns over at delivery.
+Every entry carries only the injury_unit hook; the unit's C++ is still being
+written, so the hook declines for routines without a line yet and the generated
+body runs. The nine older register-level owners left the generator.
 """
 from contextlib import closing
 import json
@@ -93,12 +94,6 @@ JUMP_TABLES = {-0x5440: (0x10185e98, 0x10185410), -0x545c: (0x1018b984, 0x1018b6
 # The three pointers to the unit: transition vectors (code address, then the TOC) of the sort
 # comparators, each loaded through its own TOC slot.
 VECTORS = {0x108b8b44: (0x101900b0, -0x5460), 0x108b8b4c: (0x1018ffe0, -0x5458), 0x108b8b54: (0x1018ff10, -0x5454)}
-# The register-level owners of the earlier process, which route every entry until the C++ lands.
-OLD_OWNERS = {'injury_bootstrap_adapter': 6, 'injury_persistence_adapter': 2, 'injury_daily_adapter': 1,
-              'actor_attributes_adapter': 16, 'injury_record_adapter': 3, 'injury_progression_adapter': 4,
-              'injury_club_events_adapter': 3, 'injury_readouts_adapter': 8, 'injury_reporting_adapter': 4}
-
-
 def require_export(path):
     if not (path / 'instructions.sqlite').is_file():
         raise RuntimeError('Private INJURY export unavailable; inventory cannot be certified')
@@ -141,21 +136,63 @@ class InjuryUnitAuditTests(unittest.TestCase):
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_injury_unit_index(db, complete=False)
 
-    def test_production_owners_are_still_the_earlier_register_level_ones(self):
-        # Turns over at delivery: every entry then has `injury_unit_adapter` alone, and
-        # require_injury_unit_index runs with complete=True.
+    def test_production_owner_is_the_unit_alone(self):
+        # Every entry has `injury_unit_adapter` alone, no older semantic owner, and is routed (no draft).
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS
-        owners = {}
         for entry in ENTRIES:
-            found = [owner for at, owner in OWNER_REPLACEMENTS if at == entry]
-            self.assertEqual(len(found), 1)
-            self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at == entry], found)
-            owners[found[0]] = owners.get(found[0], 0) + 1
-        self.assertEqual(owners, OLD_OWNERS)
-        self.assertEqual(audit.rewritten(drafts=True), [])
+            self.assertEqual([owner for at, owner in OWNER_REPLACEMENTS if at == entry], ['injury_unit_adapter'])
+            self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at == entry], [])
+        self.assertTrue(audit.COMPLETE)
+        self.assertEqual(audit.rewritten(), [(a, b, digest) for a, b, _, digest in CONTRACTS])
+        self.assertEqual(audit.rewritten(drafts=True), audit.rewritten())
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
-            with self.assertRaisesRegex(ValueError, 'all 47 complete'):
-                audit.require_injury_unit_index(db, complete=True)
+            audit.require_injury_unit_index(db)
+            audit.require_injury_unit_index(db, complete=True)
+        # A draft among them is refused.
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / 'routines.inc'
+            contents = audit.routine_lines()
+            first = next(line for line in contents.splitlines() if 'INJURY_UNIT_ROUTINE(' in line)
+            candidate.write_text(contents.replace(first, first.replace('INJURY_UNIT_ROUTINE(', 'INJURY_UNIT_DRAFT('), 1))
+            self.assertEqual(len(audit.rewritten(candidate, drafts=True)), 47)
+            with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
+                with self.assertRaisesRegex(ValueError, 'all 47 complete'):
+                    audit.require_injury_unit_index(db, candidate, complete=True)
+
+    def assert_hook(self, code, entry):
+        hook = audit.injury_unit_hook(entry)
+        fragment = code.split(f'i_{entry:x}:', 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        self.assertEqual(code.count(hook), 1)
+        self.assertIn(hook, fragment)
+        step = f's.step(0x{entry:x});'
+        self.assertIn(step, fragment)
+        self.assertLess(fragment.index(hook), fragment.index(step))
+
+    def test_normal_hooks_precede_original_steps_and_detect_missing_or_duplicate_hook(self):
+        from compile_recomp import generate_page
+        selected = set(self.by_address)
+        old = ('try_modern_actor_attributes(', 'try_modern_injury_record(', 'try_modern_injury_progression(',
+               'try_modern_injury_club_events(', 'try_modern_injury_readouts(', 'try_modern_injury_reporting(',
+               'try_modern_injury_bootstrap(', 'try_modern_injury_persistence(', 'try_modern_injury_daily(')
+        for page in sorted({entry >> 12 for entry in ENTRIES}):
+            part = [r for r in self.records if r['address'] >> 12 == page]
+            normal = generate_page(page, part, selected, userops=self.program['userops'])
+            audit.require_injury_unit_hooks(page, part, normal)
+            self.assertIn('#include "injury_unit_adapter.hpp"', normal)
+            for hook in old:
+                self.assertNotIn(hook, normal)
+            for entry in ENTRIES:
+                if entry >> 12 != page:
+                    continue
+                self.assert_hook(normal, entry)
+                hook = audit.injury_unit_hook(entry)
+                step = f's.step(0x{entry:x});'
+                moved = normal.replace(hook, '').replace(step, step + '\n' + hook, 1)
+                for broken in (normal.replace(hook, ''), normal.replace(hook, hook + '\n' + hook), moved):
+                    with self.assertRaises(AssertionError):
+                        self.assert_hook(broken, entry)
+                    with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
+                        audit.require_injury_unit_hooks(page, part, broken)
 
     def test_unit_bounds_are_its_private_toc_slots_and_its_neighbours(self):
         pool = self.word(TOC - 0x5438)

@@ -22,28 +22,17 @@ class ScopeTests(unittest.TestCase):
     def test_complete_block_and_prior_manifest(self):
         self.assertEqual(sum(row[2] for row in CONTRACTS),4405)
         self.assertEqual(sum(row[2] for row in FRAGMENTS),4405)
-        self.assertEqual(len(SEMANTIC_REPLACEMENTS),963)
-        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),963)
-        self.assertEqual(SEMANTIC_REPLACEMENTS[682:704],tuple((entry,'actor_attributes_adapter') for entry in ACTOR_ATTRIBUTES_ENTRIES))
-        prior=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:682]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
-            '0da57a2d0a0463cf13a501936c55b7795da6218e670ef21d37375d7ea75c61d3')
-        prior687=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:687]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior687,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'1ef92c7ae2c54953f333207d90239e4355786e71b0a977d4ef5183e3d5d9ce4a')
-        prior691=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:691]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior691,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'cacde5364e3e7d40066422b10cfb480bc9fc819b32bc8b879c7d2e39cd9c4b47')
-        prior692=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:692]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior692,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'a8145b82266b15272529db082a0f96f520346b2f7c9d7bef724b12ac0c5a98b1')
-        prior696=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:696]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior696,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'0bb334cabf96293432508e541c5ccafdfed007b1110c0f4033c98a646250a551')
-        prior697=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:697]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior697,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'9786cd19cece1bba86b2fe5cbd8c4a978c3ecc2a30f1dc888de980e8f0696b17')
-        prior699=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:699]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior699,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'54583b41fe58d632b4ca976e90548ea2ccdaf26f6f67a82d4620f1b7f240b5c1')
-        prior700=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:700]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior700,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'79d4b26eeb3b8843509bcb537653f65740224620a88ebabf196e517024b7b941')
-        prior701=[{'entry':f'0x{entry:x}','module':module} for entry,module in SEMANTIC_REPLACEMENTS[:701]]
-        self.assertEqual(hashlib.sha256(json.dumps(prior701,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'bdfb7315af8ada28636fe020c67be1e43bd455ced9f020668d339943fec24bcc')
+        # INJURY.CPP's injury_unit_adapter owns 16 of the 22 entries; the audit keeps the bodies and digests of
+        # all 22 and routes the other six, which stay one block of SEMANTIC_REPLACEMENTS.
+        from injury_unit_audit import INJURY_UNIT_ENTRIES
+        self.assertEqual(len({entry for entry,_ in SEMANTIC_REPLACEMENTS}),len(SEMANTIC_REPLACEMENTS))
+        kept=tuple(entry for entry in ACTOR_ATTRIBUTES_ENTRIES if entry not in INJURY_UNIT_ENTRIES)
+        self.assertEqual(kept,(0x10235ea0,0x102373a0,0x10235db0,0x102393c0,0x10239590,0x10239790))
+        self.assertEqual(sum(entry in INJURY_UNIT_ENTRIES for entry in ACTOR_ATTRIBUTES_ENTRIES),16)
+        owned=[(entry,module) for entry,module in SEMANTIC_REPLACEMENTS if module=='actor_attributes_adapter']
+        self.assertEqual(owned,[(entry,'actor_attributes_adapter') for entry in kept])
+        start=SEMANTIC_REPLACEMENTS.index(owned[0])
+        self.assertEqual(SEMANTIC_REPLACEMENTS[start:start+6],tuple(owned))
         self.assertEqual(ACTOR_ATTRIBUTES_ENTRIES,(0x10235ea0,0x102373a0,0x10235db0,0x102393c0,0x10239590,0x10239790,0x10187650,0x10187680,0x101878d0,0x10187a40,0x101877e0,0x10186a20,0x1018b9f0,0x10186ea0,0x101864a0,0x10186cd0,0x10186e10,0x10186fc0,0x10187450,0x10188930,0x1018c180,0x1018c340))
 
     def test_external_interior_edges_fail(self):
@@ -142,5 +131,20 @@ class ContractTests(unittest.TestCase):
                 if entry>>12!=page:continue
                 hook=f'if (try_modern_actor_attributes(s, 0x{entry:x})) return true;'
                 with self.assertRaises(ValueError):require_actor_attributes_hooks(page,rows,code.replace(hook,''))
+
+    def test_production_hooks_none_inside_injury_unit(self):
+        # The six entries outside INJURY.CPP are MATCH_PL.CPP's takeovers in production, so no page carries an
+        # actor_attributes hook; the 16 inside INJURY.CPP carry injury_unit's alone.
+        from compile_recomp import MATCH_PL_TAKEOVERS
+        from injury_unit_audit import INJURY_UNIT_ENTRIES
+        taken=frozenset(INJURY_UNIT_ENTRIES)|MATCH_PL_TAKEOVERS
+        for page in sorted({row[1] for row in FRAGMENTS}):
+            rows=[row for row in self.records if row['address']>>12==page]
+            code=generate_page(page,rows,{row['address'] for row in self.records},userops=self.userops)
+            require_actor_attributes_hooks(page,rows,code,taken)
+            for entry in ACTOR_ATTRIBUTES_ENTRIES:
+                if entry>>12!=page:continue
+                hook=f'if (try_modern_actor_attributes(s, 0x{entry:x})) return true;'
+                self.assertEqual(code.count(hook),0 if entry in taken else 1,hex(entry))
 
 if __name__=='__main__':unittest.main()

@@ -69,11 +69,16 @@ def rewritten(path=INCLUDES, drafts=False):
     return found
 
 
+# Every entry carries the hook; a draft's hook declines outside a checker (the adapter), and so
+# does an entry with no line yet.
 INJURY_UNIT_ENTRIES = tuple(entry for entry, _ in ROUTINES)
+# True since delivery: the generator requires all 47 entries as complete production routines.
+COMPLETE = True
 
 
-def require_injury_unit_index(db, path=INCLUDES, complete=True):
+def require_injury_unit_index(db, path=INCLUDES, complete=None):
     """Every listed routine's original instructions are still the ones its C++ follows."""
+    complete = COMPLETE if complete is None else complete
     registered = rewritten(path, drafts=True)
     if complete and tuple((entry, end) for entry, end, _ in rewritten(path)) != ROUTINES:
         raise ValueError("INJURY.CPP requires all 47 complete production entries")
@@ -90,6 +95,21 @@ def require_injury_unit_index(db, path=INCLUDES, complete=True):
 def volatile_reads(db):
     results = {int(entry, 16): flags for _, entry, _, flags, _ in ROUTINE.findall(routine_lines())}
     return module_volatile_reads(db, ROUTINES, MODULE, results, SCRATCH)
+
+
+def injury_unit_hook(address):
+    return f"if (try_modern_injury_unit(s, 0x{address:x})) return true;"
+
+
+def require_injury_unit_hooks(page, instructions, code):
+    addresses = {r['address'] for r in instructions}
+    for entry, _ in ROUTINES:
+        if entry >> 12 != page or entry not in addresses:
+            continue
+        hook, step = injury_unit_hook(entry), f's.step(0x{entry:x});'
+        fragment = code.split(f'i_{entry:x}:', 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        if code.count(hook) != 1 or hook not in fragment or step not in fragment or fragment.index(hook) > fragment.index(step):
+            raise ValueError(f'Missing or misplaced INJURY hook at {entry:x}')
 
 
 def main():

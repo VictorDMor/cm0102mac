@@ -1,0 +1,7 @@
+INJURY_UNIT_ROUTINE(0x1018b2b0, 0x1018b6e0, NONE, "724b8c29f7718e39", [](Cpu& c) { injury_unit::daily_course_pass(c, c.r(3)); })
+INJURY_UNIT_ROUTINE(0x1018bb50, 0x1018bdd0, NONE, "02a20f5dbf66c542", [](Cpu& c) { injury_unit::queue_club_event(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
+INJURY_UNIT_ROUTINE(0x1018bdd0, 0x1018c180, NONE, "5758104134b0917e", [](Cpu& c) { injury_unit::run_club_events(c, c.r(3)); })
+INJURY_UNIT_ROUTINE(0x1018dcb0, 0x1018f33c, NONE, "b0536a4493a4a701", [](Cpu& c) { injury_unit::injury_course(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8)); })
+INJURY_UNIT_ROUTINE(0x1018ff10, 0x1018ffe0, R3, "63390bac4d057aca", [](Cpu& c) { c.set(3, std::uint32_t(injury_unit::compare_due_dates_b(c, c.r(3), c.r(4)))); })
+INJURY_UNIT_ROUTINE(0x1018ffe0, 0x101900b0, R3, "46dc41c889bbdcf5", [](Cpu& c) { c.set(3, std::uint32_t(injury_unit::compare_due_dates_a(c, c.r(3), c.r(4)))); })
+INJURY_UNIT_ROUTINE(0x101900b0, 0x10190180, R3, "65c5d752b8dd41dd", [](Cpu& c) { c.set(3, std::uint32_t(injury_unit::compare_event_dates(c, c.r(3), c.r(4)))); })

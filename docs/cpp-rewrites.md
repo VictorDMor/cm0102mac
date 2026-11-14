@@ -1948,3 +1948,58 @@ its frame as the original does (a reader in TRANSFER_MANAGER, 0x103f88c4).
   through the null profile; nothing guards it and the C++ does not either.
 - Two of 0x104170f0's and the reader's paths free or reset a list through routines the pages run in place
   (0x10738c20, 0x10738ca0); the checker cannot answer those, so they run for real in the cases that reach them.
+
+## INJURY.CPP: injuries, their daily course, news and file form
+
+47 entries / 12,259 instructions at 0x101840e0..0x10190180 (`tools/injury_unit_audit.py`). The files are named
+`injury_unit*` because `native/injury_*` and `actor_attributes` are the instruction transcriptions of the earlier
+process, which no page calls for these entries any more (`actor_attributes` keeps six entries of another unit). The
+bounds: the unit's private TOC slots, -0x5478..-0x5430 (pools, eight jump tables, three comparator vectors, three
+statics) and -0x64d4/-0x64d0 (the injury tables), which no other code loads; the string pool holds "INJURY.CPP". 302
+outside call sites, all calls of an entry, and three pointers: the transition vectors of the sort comparators
+0x1018ff10, 0x1018ffe0 and 0x101900b0.
+
+`native/injury_unit_status*.cpp` has the questions asked about a person (stage, fitness, sharpness, the current
+injury) and the pending update 0x10187a40 every one of them runs first; `_onset*.cpp` how a person gets an injury
+(0x10188cc0) and the daily pass that hands them out; `_course*.cpp` recovery, relapse and the club's queue of
+injury events; `_file.cpp` the manager's construction, its form in a saved game and a new game's starting
+injuries; `_text.cpp` names, descriptions and news.
+
+**Contract.** TRANSFER_OFFER.CPP's: native inside, the original's frame, and r13-r31/f14-f31 as the original holds
+them at every call (`cm-injury-unit-checks` compares them in its call trace). On top of that, the frame stores the
+stack contract lists for the unit (`tools/stack_contract.py module INJURY.CPP`), and for the eight routines the
+match engine reaches (0x10186cd0, 0x10187650, 0x10187680, 0x101878d0, 0x10187a40, 0x1018c180, 0x1018c270,
+0x1018c340) every store the original makes into its frame, since the match replays have no stack audit. The three
+comparators are frameless and leave copies of the row's date below the stack pointer; the C++ leaves them too.
+Calls between routines of the unit are direct C++ calls, so the 47 entries are routed together: a draft among
+them would still run where a routed one calls it.
+
+- A date is five bytes: a signed day halfword, an unsigned year halfword and a byte. Words read from a date in a
+  frame carry three stale bytes (0x101885b0 in 0x10188490, 0x1018be38 in 0x1018bdd0); they are read from the real
+  frame, and only reach registers that callees save.
+- Every division and remainder in the unit is signed (the listings hold no `divwu` or `mulhwu`). A draw is the
+  sample table's halfword plus the base cell's word, taken signed; three unsigned remainders were found by mutated
+  runs and the review.
+- The "draw below a limit" helper 0x101864a0 has four inlined levels and a call of itself for limits past
+  0xffff. The limit of the next level is the limit times ten over 0xffff with the product wrapping in a word, at
+  most 32768 in magnitude, so no more than two levels run; the C++ throws at the third. The same expansion is
+  inlined in 0x10187a40, 0x10186a20, 0x10188930, 0x10188cc0 and 0x1018dcb0 with limits that fit a halfword, and
+  those throw at the scaled branch. Only the daily pass reaches the scaled draw: its limit is the people count.
+- 0x10187a40 has first-use guards (statics at TOC -0x5448..-0x5450): its first call builds the window dates and
+  clears the cached club. A snapshot taken before any call runs that code on every checker case, so cases that set
+  the windows also set the guards.
+- 0x10186cd0 appends an 8-byte row to the manager's notes list from its frame (+0x38) after writing six of the
+  bytes; the last two are stale stack. The save writer 0x10184e60 writes all eight bytes of each row, so stale
+  stack reaches a saved game as row padding in the original too. The C++ copies the real frame bytes; what earlier
+  frames left there can differ from the original now that callers are native. Open, as TRANSFER_OFFER.CPP's
+  exchange row.
+- 0x10186fc0 passes its caller's r18 to 0x10188930 as the severity when a note's strength is 0x32 or less (it
+  never sets it on that path). One caller holds 0x10000 there (severity 0); the other passes on its own caller's.
+  The C++ reads the register.
+- The save writer writes the capacity words of the event and report tables (+0x18, +0x24) where the reader reads
+  counts (+0x14, +0x20). A saved game without injury records makes the reader's zero-size allocation return null,
+  which it reports as a failure, and the constructor then gives starting injuries as for a new game.
+- When an allocation of the notes list fails (reader, 0x10186cd0), the original goes on and reads through the
+  null list; the C++ does the same.
+- 0x1018fdf0 with no person reports, calls exit, and would report and exit again; nothing guards the read through
+  null that follows.

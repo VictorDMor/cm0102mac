@@ -112,6 +112,7 @@
 #include "match_man_adapter.hpp"
 #include "manager_manager_adapter.hpp"
 #include "transfer_offer_unit_adapter.hpp"
+#include "injury_unit_adapter.hpp"
 #include "discipline_adapter.hpp"
 #include "cup_stage_adapter.hpp"
 #include "db_files_adapter.hpp"
@@ -247,7 +248,7 @@ int main(int argc, char** argv) {
             checker->compare_f1 = compare_f1;
             routine_checker = &*checker;
             dispatch_probe = [](State& s) {
-                return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || transfer_offer_unit_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || game_config_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || transfer_offer_unit_dispatch_probe(s) || injury_unit_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || game_config_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
             };
             if (!synthetic.empty())
@@ -265,6 +266,7 @@ int main(int argc, char** argv) {
                              : match_man_lists(entry) ? match_man_run_original
                              : manager_manager_lists(entry) ? manager_manager_run_original
                              : transfer_offer_unit_lists(entry) ? transfer_offer_unit_run_original
+                             : injury_unit_lists(entry) ? injury_unit_run_original
                              : discipline_lists(entry) ? discipline_run_original
                              : siprint_lists(entry) ? siprint_run_original
                              : cup_stage_lists(entry) ? cup_stage_run_original
@@ -315,6 +317,7 @@ int main(int argc, char** argv) {
                              : match_man_lists(entry) ? match_man_run_rewrite
                              : manager_manager_lists(entry) ? manager_manager_run_rewrite
                              : transfer_offer_unit_lists(entry) ? transfer_offer_unit_run_rewrite
+                             : injury_unit_lists(entry) ? injury_unit_run_rewrite
                              : discipline_lists(entry) ? discipline_run_rewrite
                              : siprint_lists(entry) ? siprint_run_rewrite
                              : cup_stage_lists(entry) ? cup_stage_run_rewrite
@@ -355,7 +358,7 @@ int main(int argc, char** argv) {
                                                               : tactics_run_rewrite)(t, entry);
                         },
                         routine_checker && routine_checker->strict_volatile);
-                    return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || transfer_offer_unit_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || game_config_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
+                    return awol_dispatch_probe(s) || database_dispatch_probe(s) || match_man_dispatch_probe(s) || manager_manager_dispatch_probe(s) || transfer_offer_unit_dispatch_probe(s) || injury_unit_dispatch_probe(s) || discipline_dispatch_probe(s) || bra_reg_central_dispatch_probe(s) || bra_reg_parana_dispatch_probe(s) || bra_reg_gaucho_dispatch_probe(s) || european_cup_dispatch_probe(s) || media_dispatch_probe(s) || utils_dispatch_probe(s) || file_screens_dispatch_probe(s) || siprint_dispatch_probe(s) || cup_stage_dispatch_probe(s) || db_files_dispatch_probe(s) || match_pl_dispatch_probe(s) || match_eng_dispatch_probe(s) || tactics_dispatch_probe(s) || main_program_dispatch_probe(s) || player_stats_dispatch_probe(s) || club_history_dispatch_probe(s) || club_records_dispatch_probe(s) || eng_prm_dispatch_probe(s) || eng_conf_dispatch_probe(s) || eng_first_dispatch_probe(s) || eng_third_dispatch_probe(s) || qsort4x_dispatch_probe(s) || date_dispatch_probe(s) || game_config_dispatch_probe(s) || transfer_screens_dispatch_probe(s) || dispute_dispatch_probe(s) || award_manager_dispatch_probe(s) || award_shortlist_dispatch_probe(s) || international_awards_dispatch_probe(s) || nation_awards_dispatch_probe(s) || cash_dispatch_probe(s) || fifa_rankings_dispatch_probe(s) || news_dispatch_probe(s) || news_screens_dispatch_probe(s) || inter_amer_cup_dispatch_probe(s) || euro_champ_qual_dispatch_probe(s) || pol_cup_dispatch_probe(s) || oceania_nations_dispatch_probe(s) || screen_manager_dispatch_probe(s) || contract_manager_dispatch_probe(s) ||
                        shortlist_manager_dispatch_probe(s);
                 };
         }
