@@ -304,6 +304,17 @@ interactive context whose loop runs fewer than 2 million instructions
 between event calls for a 250 ms window: about 6,000 when idle, hundreds of
 millions while loading or processing.
 
+The game does all its work on the main thread between those event calls, and
+behind another application or hidden, with no sound playing, macOS put it into
+App Nap, which stretches the waits of each AppKit pump: a sample of the hidden
+process had 70% of the main thread blocked under `nextEventMatchingMask`. The
+same three days of the 26-country career (day 361 to 364 of 2001) took 196 s
+in front and 355 to 769 s behind. `NativeUI::poll` now begins a user-initiated
+activity when the application finishes launching (the system may still sleep
+when idle), and behind takes as long as in front. The original's own
+background sleep (30 ticks, set by a suspend event) is not involved: the
+global stays 0, since no suspend event reaches the game.
+
 The app always has a memory observer attached: `NativeDrawingObserver`
 watches writes to the drawing surfaces' address range. C++ fast paths that
 step aside "when anything observes" therefore never ran in the app, only in

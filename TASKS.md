@@ -4,6 +4,13 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: Continue behind another application (2026-11-14)
+
+- [x] Measured with `tools/game_driver.py` on an isolated copy, the 26-country career from the same save, day 361 to 364 of 2001: 196 s in front; hidden or without focus 355, 722, 769 s (and 475, 675, 688, 709 s with a first fix that turned out to be a no-op).
+- [x] Cause: App Nap stretches the waits of the AppKit pump (70% of the hidden main thread blocked under `nextEventMatchingMask`). `NativeUI::poll` begins a user-initiated activity at launch; hidden or without focus then takes 192, 201, 197, 197, 201 s. Text in `docs/aot-port.md`. Installed.
+- [x] Ruled out: the original's 30-tick background sleep. Its global stays 0 (no suspend event reaches the game), so the first fix, which skipped that sleep while working, changed nothing and was dropped.
+- [ ] Only one timing in front without the fix, none in front with it; the order was not alternated pair by pair (three rounds of runs, one build each). Not measured: battery use of an idle game left behind, which no longer naps.
+
 ## Now: Turbo's zero no longer reaches the save (2026-11-14)
 
 - [x] Confirmed from the listing: the setter `0x10147e50` stored Turbo's 0 in the manager record (+0x9a66 of each 0xa65c-byte record) and the career writer `0x1014b0a0` (called from `0x1034c854`) writes that field; the original holds only 20 to 150 there, 125 by default.
@@ -1077,7 +1084,6 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] Copy-on-write of an original data file isn't atomic (`native/platform.cpp`, `writable_file`).
 - [ ] The installer writes the Game manifest after moving Game into place.
 - [ ] Names over 31 characters can overflow the game's 64-byte name buffer (`0x1076ec60`).
-- [ ] No App Nap / idle-sleep assertion during long processing.
 - [ ] Run logs accumulate in `Runtime/Runs`; input tracing is on by default.
 - [ ] Mouse-moved events pile up while the game is busy; every small `CopyBits` redraws a full frame.
 - [ ] Three jump tables don't match `check_jump_tables.py`'s pattern; inspect them by hand.

@@ -1166,6 +1166,16 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds, bool throttled) {
         if (!impl_->finished_launch) {
             impl_->finished_launch = true;
             [NSApp finishLaunching];
+            // Behind another application, or hidden, macOS puts an application
+            // that plays no sound and holds no activity into App Nap, which
+            // stretches the waits of this event pump. The game does all its
+            // work on this thread between pumps, so a Continue left to run in
+            // the background took 2 to 4 times as long (measured 2026-11-14).
+            // The system may still sleep when idle.
+            static id activity = [NSProcessInfo.processInfo
+                beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep
+                reason:@"The game processes on its main thread"];
+            (void)activity;
         }
         const auto now = std::chrono::steady_clock::now();
         if (throttled && timeout_seconds <= 0 && impl_->pending.empty() && now - impl_->pumped_at < std::chrono::milliseconds(2)) return false;
