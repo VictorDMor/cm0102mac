@@ -17,6 +17,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 All 47 entries (12,259 instructions, 0x101840e0..0x10190180) are C++ and routed (`native/injury_unit_*.cpp`, `tools/injury_unit_audit.py`, `cm-injury-unit-checks`). Victor chose it as the next module. The files are named `injury_unit` because `native/injury_*` and `actor_attributes` are the older transcriptions it replaces. Contract and quirks: `docs/cpp-rewrites.md`; what was not compared to a return: `.local/rewrites/injury/ledger.json`.
 
+- [x] Installed 2026-11-14 (commit 394371ee).
 - [ ] Open risk, as TRANSFER_OFFER's exchange row: 0x10186cd0 appends an 8-byte note row from its frame with the last two bytes never written, and the save writer writes all eight, so stale stack reaches a saved game as row padding (in the original too). The C++ copies the real frame bytes, which can differ from the original's now that callers are native. 170 real calls matched; no check compares a saved file.
 - [ ] 0x10186fc0 passes its caller's r18 on as a severity; the caller at 0x101cdc60 passes on its own caller's and that chain was not traced.
 - [ ] Not compared to a return (both sides fault, or the checker cannot build the state): the notes list failing to allocate (reader, 0x10186cd0), the notes list freed in the destructor, the event buffer failing to grow, the allocator-failure report of 0x10188cc0, the second report after exit in 0x1018fdf0.
