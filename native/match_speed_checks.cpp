@@ -14,6 +14,19 @@ void instruction(State& s, std::uint32_t pc) {
         require(std::string_view(e.what()) == "Native instruction budget exhausted", e.what());
     }
 }
+// Runs the loader's instruction after its read of the speed field: `stored`
+// with a neighbour on each side, r0 and r3 as the loader has them.
+std::uint32_t loaded_speed(State& s, std::uint32_t stored) {
+    s.memory.write<2>(fixture + 0x1fe, 0xa5a5);
+    s.memory.write<2>(fixture + 0x200, stored);
+    s.memory.write<2>(fixture + 0x202, 0x5a5a);
+    s.wr<4>(0, fixture);
+    s.wr<4>(12, 0x202);
+    instruction(s, 0x1014a854);
+    require(s.r<4>(12) == fixture + 0x202 && s.memory.read<2>(fixture + 0x1fe) == 0xa5a5 &&
+            s.memory.read<2>(fixture + 0x202) == 0x5a5a, "Career loader's next field or a neighbour changed");
+    return s.memory.read<2>(fixture + 0x200);
+}
 }
 int main() {
     try {
@@ -22,6 +35,11 @@ int main() {
         s.memory.map(fixture, 0x10000);
         require(!native_match_speed_enabled(), "Headless reference unexpectedly enables presentation changes");
         require(match_simulation_speed(0) == 0, "Original zero speed changed outside the native UI");
+        s.wr<4>(12, fixture + 0x659a);
+        s.wr<4>(16, 0);
+        instruction(s, 0x10147e50);
+        require(s.memory.read<2>(fixture) == 0 && loaded_speed(s, 0) == 0,
+                "The record's speed changed outside the native UI");
         initialize_native_match_speed();
         require(native_match_speed() == 0 && match_turbo_enabled(), "Native default is not Turbo");
         for (auto choice : {0u, 20u, 55u, 90u, 125u, 150u}) {
@@ -50,8 +68,14 @@ int main() {
             s.wr<4>(12, fixture + 0x659a);
             s.wr<4>(16, next);
             instruction(s, 0x10147e50);
-            require(s.memory.read<2>(fixture) == next && native_match_speed() == next,
-                    "Original choice did not update the native speed");
+            // Turbo is the preference; the record, which is saved, holds 20.
+            require(s.memory.read<2>(fixture) == (next == 0 ? 20 : next) && native_match_speed() == next,
+                    "Original choice did not update the native speed or put Turbo's zero in the record");
+        }
+        // A career saved with Turbo's zero in the record gets an original
+        // speed when it is loaded; every other value stays as read.
+        for (const auto stored : {0u, 1u, 20u, 55u, 90u, 125u, 150u, 0xffffu}) {
+            require(loaded_speed(s, stored) == (stored == 0 ? 20 : stored), "Career loader left or changed the wrong speed");
         }
         select_native_match_speed(55);
         select_native_match_speed(65535);
@@ -81,7 +105,7 @@ int main() {
         bool fault = false;
         try { dispatch_page(s); } catch (const std::runtime_error&) { fault = true; }
         require(fault && native_match_speed() == 55, "Faulting original setter persisted a choice");
-        std::cout << "PASS: six native choices, Turbo default, original generated getter/setter, "
+        std::cout << "PASS: six native choices, Turbo default, original generated getter/setter, record kept original, "
                      "constructor, cadence, presentation isolation and fault-safe preference\n";
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';

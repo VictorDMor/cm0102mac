@@ -55,7 +55,7 @@ class MatchSpeedAuditTests(unittest.TestCase):
                         self.check(first, changed)
 
     def test_unrelated_partial_export(self):
-        for (first, rows), anchor in zip(self.fixtures.items(), ANCHORS):
+        for (first, rows), anchor in zip(self.fixtures.items(), ANCHORS, strict=True):
             self.check(first, [r for r in rows if r["address"] != anchor])
 
 

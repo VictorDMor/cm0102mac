@@ -10,15 +10,18 @@ CONTRACTS = {
     (0x10203574, 0x10203574): "3f136e42ccecebc40aa543738d42716a9e0f74a4c566eace057235c3f7bc756c",
     (0x102036ac, 0x102036ac): "eb5ec2d8124dc7d7c2edc8dac3214c1d06687ea5199850279749af3dd873b720",
     (0x1028d438, 0x1028d678): "356d1b85dd685da50b6acb764f77fba0c7dca043b376905d31a37c69cf34698b",
+    # The career loader's packed read of a manager's speed field, up to the
+    # next field's address.
+    (0x1014a824, 0x1014a854): "375e3bf589723da6e5715639d78092b0b62b66db87260d5c67ee42fb79e1da31",
 }
 MATCH_SPEED_PAGES = {first >> 12 for first, _ in CONTRACTS}
 ANCHORS = (0x10147cf8, 0x10147e50, 0x101fefc8, 0x101cce50,
-           0x10203574, 0x102036ac, 0x1028d558)
+           0x10203574, 0x102036ac, 0x1028d558, 0x1014a854)
 
 def require_match_speed_context(page, instructions, selected):
     records = {row["address"]: row for row in instructions}
     fields = ("address", "size", "assembly", "flow", "fallthrough", "flows", "ops")
-    for ((first, last), expected), anchor in zip(CONTRACTS.items(), ANCHORS):
+    for ((first, last), expected), anchor in zip(CONTRACTS.items(), ANCHORS, strict=True):
         if first >> 12 != page or (anchor not in records and anchor not in selected):
             continue
         addresses = range(first, last + 1, 4)

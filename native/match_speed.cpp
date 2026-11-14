@@ -30,6 +30,11 @@ void insert_turbo_match_speed(State& s) {
     s.unique = temporaries;
 }
 
+void keep_original_match_speed(State& s, std::uint32_t field) {
+    if (native_match_speed_enabled() && s.memory.read<2>(field) == turbo_match_speed)
+        s.memory.write<2>(field, turbo_simulation_speed);
+}
+
 bool finish_turbo_match_speed_menu(State& s) {
     if (!native_match_speed_enabled()) return false;
     const auto manager = signed_value<2>(s.memory.read<2>(s.r<4>(80)));

@@ -4,6 +4,14 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: Turbo's zero no longer reaches the save (2026-11-14)
+
+- [x] Confirmed from the listing: the setter `0x10147e50` stored Turbo's 0 in the manager record (+0x9a66 of each 0xa65c-byte record) and the career writer `0x1014b0a0` (called from `0x1034c854`) writes that field; the original holds only 20 to 150 there, 125 by default.
+- [x] With the native speed on, the setter leaves 20 in the record for Turbo and the career loader turns a saved 0 into 20 (generator hooks at `0x10147e50` and `0x1014a854`); nothing changes with it off. The writer is untouched. Review (high) rejected my first version, a hook at the writer's field write: it ran in reference mode, changed the record as a side effect of saving and would vanish with the writer's rewrite.
+- [x] `native_match_speed`: setter with all six choices, loader with 0, 1, the five speeds and 0xffff plus neighbours, both off-mode cases; fails with the store removed. Audit contract for the loader range; `generated_block_accounting` passes. Pages changed: 10147 and 1014a.
+- [ ] Not verified: the bytes of a save written by the game, and a real load of a career saved with 0 (God Mode.sav is one if it was saved with Turbo). The redesign after the review had no second review pass.
+- [ ] A capture that loads a career holding 0 with the native speed on would now end with 20; none checked.
+
 ## Now: quick save deletes the save it replaced (2026-11-14)
 
 Asked by Victor after the check below: the kept copies should go.
@@ -1066,7 +1074,6 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] `lfs` quietens signalling NaNs.
 - [ ] Unknown intrinsics compile and throw at runtime; fail generation instead.
 - [ ] `native_record_fields` promotion accepts calls that read `State` (latent).
-- [ ] Turbo stores speed 0 in a manager record; check whether it reaches saves.
 - [ ] Copy-on-write of an original data file isn't atomic (`native/platform.cpp`, `writable_file`).
 - [ ] The installer writes the Game manifest after moving Game into place.
 - [ ] Names over 31 characters can overflow the game's 64-byte name buffer (`0x1076ec60`).

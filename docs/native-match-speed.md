@@ -19,6 +19,13 @@ native presentation preference. Invalid or absent preferences use Turbo. Loading
 an older career retains the selected native speed. Original resources and save
 layouts are unchanged.
 
+The manager record's speed field is saved with the career (the writer
+`0x1014b0a0` writes it, the loader at `0x1014a840` reads it), and the original
+only ever holds 20 to 150 there (125 by default). Until 2026-11-14 choosing Turbo
+left 0 in the record and so in the save. Now, with the native speed on, the
+setter leaves 20 in the record when the choice is Turbo, and the loader turns a
+saved 0 into 20; the Turbo choice itself stays in the preference.
+
 Turbo uses value 0 for presentation and the original value 20 for simulation
 cadence. Its commentary wait is capped at 20 ms. Original game clocks, sound
 completion, match calculations, halftime and user pauses remain in effect.

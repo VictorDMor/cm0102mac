@@ -2839,6 +2839,11 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("if (native_match_speed_enabled()) s.wr<4>(12, native_match_speed());")
         if a == 0x10147e50:
             code.append("select_native_match_speed(std::uint16_t(s.r<4>(16)));")
+            # The record keeps an original speed; see match_speed.hpp.
+            code.append("keep_original_match_speed(s, std::uint32_t(s.r<4>(12)) - 0x659a);")
+        if a == 0x1014a854:
+            # The career loader has read the speed field; r3 is the next field.
+            code.append("keep_original_match_speed(s, std::uint32_t(s.r<4>(12)) - 2);")
         if a in (0x101cce50, 0x10203574, 0x102036ac):
             reg = 20 if a == 0x102036ac else 0
             code.append(f"s.wr<4>({reg}, match_simulation_speed(std::uint32_t(s.r<4>({reg}))));")
