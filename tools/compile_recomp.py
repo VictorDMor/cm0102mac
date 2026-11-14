@@ -196,6 +196,7 @@ from simulated_stats_audit import (SIMULATED_STATS_ENTRIES, simulated_stats_hook
 from por_second_audit import POR_SECOND_ENTRIES, por_second_hook, require_por_second_hooks
 from ger_first_audit import GER_FIRST_ENTRIES, ger_first_hook, require_ger_first_hooks
 from african_nations_audit import AFRICAN_NATIONS_ENTRIES, african_nations_hook, require_african_nations_hooks
+from national_teams_audit import NATIONAL_TEAMS_ENTRIES, national_teams_hook, require_national_teams_hooks
 from hall_of_fame_audit import HALL_OF_FAME_ENTRIES, hall_of_fame_hook, require_hall_of_fame_hooks
 from rb_greece_audit import RB_GREECE_ENTRIES, rb_greece_hook, require_rb_greece_hooks
 from bra_nat_second_audit import BRA_NAT_SECOND_ENTRIES, bra_nat_second_hook, require_bra_nat_second_hooks
@@ -411,6 +412,7 @@ OWNER_REPLACEMENTS = (tuple((entry, module) for entry, module in SEMANTIC_REPLAC
                       tuple((entry, "bra_nat_second_adapter") for entry in BRA_NAT_SECOND_ENTRIES) +
                       tuple((entry, "rb_greece_adapter") for entry in RB_GREECE_ENTRIES) +
                       tuple((entry, "hall_of_fame_adapter") for entry in HALL_OF_FAME_ENTRIES) +
+                      tuple((entry, "national_teams_adapter") for entry in NATIONAL_TEAMS_ENTRIES) +
                       tuple((entry, "transfer_manager_adapter") for entry in TRANSFER_MANAGER_ENTRIES) +
                       tuple((entry, "tactics_adapter") for entry in TACTICS_ENTRIES) +
                       tuple((entry, "main_program_adapter") for entry in MAIN_PROGRAM_ENTRIES) +
@@ -1479,7 +1481,7 @@ def staff_score_forwarded_loads(instructions):
 
 
 def generate_page(page, instructions, selected, local_temporaries=True, userops=None, guest_context_transfers=True, exception_runtime_hooks=True, compiler_arithmetic_hooks=True, register_context_hooks=True, stdlib_core_hooks=True, time_runtime_hooks=True, import_descriptor_hooks=True, native_service_hooks=True, engine_initialization_hooks=True, utility_object_hooks=True, tree_mutation_hooks=True, aggregate_object_hooks=True, record_group_hooks=True, record_query_hooks=True, record_history_hooks=True, match_engine_hooks=True, match_actor_hooks=True, actor_construction_hooks=True, spatial_role_hooks=True, marking_pressure_hooks=True, player_decision_hooks=True, actor_motion_hooks=True, player_movement_hooks=True, match_discipline_hooks=True, match_random_hooks=True, team_spatial_hooks=True, pitch_distance_hooks=True, actor_order_hooks=True, movement_choice_hooks=True, team_line_hooks=True, ball_action_hooks=True, ball_contact_hooks=True, actor_attributes_hooks=True, awol_records_hooks=True, contract_query_hooks=True, contract_storage_hooks=True, contract_terms_hooks=True, contract_review_hooks=True, transfer_offer_hooks=True, transfer_offer_unit_hooks=True, injury_unit_hooks=True, club_shortlist_storage_hooks=True, shortlist_category_hooks=True, shortlist_links_hooks=True, shortlist_recruitment_hooks=True, shortlist_assessment_hooks=True, shortlist_quotation_hooks=True, shortlist_policy_hooks=True, profile_qualification_hooks=True, contract_draft_hooks=True, contract_display_hooks=True, money_value_hooks=True, money_text_hooks=True, money_configuration_hooks=True, game_config_hooks=True, preferences_actions_hooks=True, preferences_screen_hooks=True, localization_lookup_hooks=True, localization_format_hooks=True, localization_catalog_hooks=True, range_sampling_hooks=True, match_target_hooks=True, match_selection_hooks=True, match_selection_support_hooks=True, actor_encounter_hooks=True, match_event_hooks=True, actor_flags_hooks=True, actor_effects_hooks=True, target_acceptance_hooks=True, actor_action_hooks=True, actor_policy_hooks=True, native_record_field_hooks=True, native_sort8_hooks=True, native_leaf_lowering=False, block_accounting=False, inlining=None, nontrapping_divisions=None, list_search_hooks=True, tactics_hooks=True, main_program_hooks=True, player_stats_hooks=True, shortlist_manager_hooks=True, club_history_hooks=True, club_records_hooks=True, match_pl_hooks=True, match_eng_hooks=True, eng_prm_hooks=True, eng_conf_hooks=True, eng_first_hooks=True, eng_third_hooks=True, qsort4x_hooks=True, date_hooks=True, bra_reg_central_hooks=True, bra_reg_parana_hooks=True, bra_reg_gaucho_hooks=True, european_cup_hooks=True, media_hooks=True, utils_hooks=True, file_screens_hooks=True, rng_core_hooks=True, inter_amer_cup_hooks=True, competition_retirement_hooks=True, euro_champ_qual_hooks=True, pol_cup_hooks=True, siprint_hooks=True, database_hooks=True, match_man_hooks=True, manager_manager_hooks=True, discipline_hooks=True, cup_stage_hooks=True, db_files_hooks=True, international_awards_hooks=True, nation_awards_hooks=True, fifa_rankings_hooks=True, cash_hooks=True, awol_hooks=True, dispute_hooks=True, award_manager_hooks=True, award_shortlist_hooks=True, transfer_screens_hooks=True, oceania_nations_hooks=True, news_hooks=True, news_screens_hooks=True, contract_screens_hooks=True, screen_manager_hooks=True, contract_manager_hooks=True, staff_contracts_hooks=True, simulated_stats_hooks=True, por_second_hooks=True, ger_first_hooks=True, african_nations_hooks=True,
-                  direct_owner_calls=None, register_frame_lowering=False, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True):
+                  direct_owner_calls=None, register_frame_lowering=False, transfer_manager_hooks=True, bra_nat_second_hooks=True, rb_greece_hooks=True, hall_of_fame_hooks=True, national_teams_hooks=True):
     enabled_hooks = {name: value for name, value in locals().items() if name.endswith('_hooks')}
     called_families = set()
     cpp_leaves = set()
@@ -1928,6 +1930,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "ger_first_adapter.hpp"')
     if african_nations_hooks and page_addresses & set(AFRICAN_NATIONS_ENTRIES):
         code.insert(1, '#include "african_nations_adapter.hpp"')
+    if national_teams_hooks and page_addresses & set(NATIONAL_TEAMS_ENTRIES):
+        code.insert(1, '#include "national_teams_adapter.hpp"')
     if hall_of_fame_hooks and page_addresses & set(HALL_OF_FAME_ENTRIES):
         code.insert(1, '#include "hall_of_fame_adapter.hpp"')
     if rb_greece_hooks and page_addresses & set(RB_GREECE_ENTRIES):
@@ -2425,6 +2429,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if african_nations_hooks and a in AFRICAN_NATIONS_ENTRIES:
             code[hooks_start:] = [line for line in code[hooks_start:] if not OWNER_HOOK.fullmatch(line)]
             code.append(african_nations_hook(a))
+        if national_teams_hooks and a in NATIONAL_TEAMS_ENTRIES:
+            code.append(national_teams_hook(a))
         if hall_of_fame_hooks and a in HALL_OF_FAME_ENTRIES:
             code.append(hall_of_fame_hook(a))
         if rb_greece_hooks and a in RB_GREECE_ENTRIES:
@@ -2895,6 +2901,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_african_nations_hooks(page, instructions, result)
     if hall_of_fame_hooks:
         require_hall_of_fame_hooks(page, instructions, result)
+    if national_teams_hooks:
+        require_national_teams_hooks(page, instructions, result)
     if rb_greece_hooks:
         require_rb_greece_hooks(page, instructions, result)
     if bra_nat_second_hooks:
