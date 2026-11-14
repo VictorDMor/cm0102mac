@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parent.parent
 # Unit -> its routines in this family (entry, end).
 UNITS = {
     "rb_ireland.cpp": ((0x106abe20, 0x106abed4), (0x106abee0, 0x106abf58)),
-    "rb_northern_ireland.cpp": ((0x106abf60, 0x106abfe0), (0x106abfe0, 0x106ac21c)),
+    "rb_northern_ireland.cpp": ((0x106abf60, 0x106abfe0), (0x106abfe0, 0x106ac21c), (0x106ac220, 0x106ac2d4),
+                                (0x106ac2e0, 0x106ac39c), (0x106ac3a0, 0x106ac3cc)),
 }
 ROUTINES = tuple(sorted(routine for routines in UNITS.values() for routine in routines))
 ROUTINE = re.compile(r'RULING_BODIES_(ROUTINE|DRAFT)\(\s*(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+),\s*([\w|]+),\s*"([0-9a-f]+)"')

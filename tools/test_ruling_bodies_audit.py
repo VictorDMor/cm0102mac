@@ -18,13 +18,17 @@ CONTRACTS = (
     (0x106abee0, 0x106abf58, 30, '83aee9d44c3f7916'),
     (0x106abf60, 0x106abfe0, 32, 'f0c7619aed365abc'),
     (0x106abfe0, 0x106ac21c, 142, 'c948794206216ea9'),
+    (0x106ac220, 0x106ac2d4, 45, '3e5c06f62c735101'),
+    (0x106ac2e0, 0x106ac39c, 47, '70d1c73e4a2c01bd'),
+    (0x106ac3a0, 0x106ac3cc, 11, 'ebc95b45bd8814b0'),
 )
 # Class -> (TOC slot of its virtual table, table, {offset: (transition vector, routine)}).
-# +0x10 is the report, +0x18 the nation text, +0x1c the query.
+# +0x10 is the report, +0x18 the nation text, +0x1c the query; +8 is the base's 0x105bbd40 unless the
+# class has its own (Northern Ireland: the points reset).
 CLASSES = {
     'rb_ireland.cpp': (-0x5ddc, 0x108decec, {0x10: (0x108bc524, 0x106ab970), 0x18: (0x108bc51c, 0x106abe20),
                                             0x1c: (0x108bc514, 0x106abee0)}),
-    'rb_northern_ireland.cpp': (-0x5dd8, 0x108ded14, {0x10: (0x108bc544, 0x106abfe0), 0x18: (0x108bc53c, 0x106ac220),
+    'rb_northern_ireland.cpp': (-0x5dd8, 0x108ded14, {0x08: (0x108bc52c, 0x106ac3a0), 0x10: (0x108bc544, 0x106abfe0), 0x18: (0x108bc53c, 0x106ac220),
                                                      0x1c: (0x108bc534, 0x106ac2e0)}),
 }
 # The constructor that stores each table, and its one caller (the rulebook factory).
@@ -33,7 +37,7 @@ CONSTRUCTORS = {'rb_ireland.cpp': (0x106ab8f0, 0x106ab908, 0x100e80bc),
 # The nation text names its source file: TOC slot of the pool, the name, the one load of the slot.
 SOURCES = {'rb_ireland.cpp': (-0x41d0, 0x106abe2c), 'rb_northern_ireland.cpp': (-0x41cc, 0x106ac22c)}
 PADDING = {0x106abed4: 0, 0x106abed8: 0, 0x106abedc: 0, 0x106abf58: 0, 0x106abf5c: 0, 0x106ac068: 0x60000000,
-           0x106ac21c: 0}
+           0x106ac21c: 0, 0x106ac2d4: 0, 0x106ac2d8: 0, 0x106ac2dc: 0, 0x106ac39c: 0, 0x106ac3cc: 0}
 
 
 class RulingBodiesAudit(unittest.TestCase):

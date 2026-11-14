@@ -42,6 +42,15 @@ bool next_card_bans(guest::Cpu& c, std::uint32_t tally, std::uint32_t matches, s
 }
 
 namespace northern_ireland {
+inline constexpr NationText text{.entry = 0x106ac220, .file = -0x41cc, .format = 0x18, .title = 0x25,
+                                 .nation = -0x7578, .line = 195};
+// 0x106ac2e0: whether the player's next yellow card (4 points) brings a ban, from the points in the
+// booking record: within 4 of 20, 32, 42 or 51. Writes -1 through `dismissal` when given, before
+// reading the points, and the ban's 1, 2, 4 or 6 matches through `matches` when given and a ban is due.
+bool next_card_bans(guest::Cpu& c, std::uint32_t booking, std::uint32_t matches, std::uint32_t dismissal);
+// 0x106ac3a0: every booking record of the rulebook starts its points again. The count (signed) is
+// read again at every record.
+void clear_points(guest::Cpu& c, std::uint32_t self);
 inline constexpr Rulebook rulebook{.entry = 0x106abf60, .table = -0x5dd8, .nation = -0x7578, .group = -0x7a70,
                                    .body = 0x24, .byte_6 = 5};
 // 0x106abfe0: a player's cards in one match, under a points count kept in the player's booking

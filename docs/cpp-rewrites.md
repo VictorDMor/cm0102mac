@@ -622,8 +622,9 @@ then every third card from 14, a hearing on the first Thursday after a dismissal
 Units written since are one family: `native/ruling_bodies*`, [audit](../tools/ruling_bodies_audit.py),
 `cm-ruling-bodies-checks`, `CM_RULING_BODIES_ORIGINAL=1`. What repeats between units is a function
 with a small description per unit (`NationText`, `Rulebook`); a unit's own rules are its own
-function. In it so far: rb_ireland.cpp's text and query, rb_northern_ireland.cpp's constructor and
-report.
+function. In it so far: rb_ireland.cpp's text and query and the whole of rb_northern_ireland.cpp,
+whose class also replaces the base's slot at +8 with a routine that starts every booking record's
+points again.
 
 - The queries write their optional outputs before reading the tally, which they may alias.
 - A report builds the 0x18-byte ban record in its frame and never initialises all of it. In the

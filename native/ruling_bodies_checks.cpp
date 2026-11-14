@@ -26,15 +26,17 @@ constexpr std::uint32_t message = globals, success = globals + 0x400, nations_ce
 constexpr std::pair<std::int32_t, std::uint32_t> toc_cells[] = {
     {-0x7ba8, message}, {-0x7bac, success}, {-0x7b98, nations_cell}, {-0x7574, ireland_cell}, {-0x7578, northern_cell},
     {-0x7a70, group_cell}, {-0x7aa4, bans_cell}, {-0x7b80, today}, {-0x7be0, persons_cell}};
-constexpr std::array entries{0x106abe20u, 0x106abee0u, 0x106abf60u, 0x106abfe0u};
-constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 4> bounds{{{0x106abe20, 0x106abed4}, {0x106abee0, 0x106abf58},
-                                                                         {0x106abf60, 0x106abfe0}, {0x106abfe0, 0x106ac21c}}};
-enum : unsigned { nation_text, next_card, construct, report };
+constexpr std::array entries{0x106abe20u, 0x106abee0u, 0x106abf60u, 0x106abfe0u, 0x106ac220u, 0x106ac2e0u, 0x106ac3a0u};
+constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 7> bounds{{{0x106abe20, 0x106abed4}, {0x106abee0, 0x106abf58},
+                                                                         {0x106abf60, 0x106abfe0}, {0x106abfe0, 0x106ac21c},
+                                                                         {0x106ac220, 0x106ac2d4}, {0x106ac2e0, 0x106ac39c},
+                                                                         {0x106ac3a0, 0x106ac3cc}}};
+enum : unsigned { nation_text, next_card, construct, report, northern_text, northern_next_card, clear_points };
 constexpr std::uint32_t register_ban = 0x100dfb30, post_ban_news = 0x100e0700, nation_record_text = 0x10168a00,
                         base_construct = 0x105bb3e0, booking_record = 0x105bc2b0;
 
 // Which of r3-r10 each scripted routine reads (bit 0 is r3): the declared arguments of the two
-// DISCIPLINE.CPP routines, tools/call_arguments.py 0x106abe20 0x106ac21c for the others.
+// DISCIPLINE.CPP routines, tools/call_arguments.py 0x106abe20 0x106ac3cc for the others.
 struct Mask { std::uint32_t target; unsigned mask; };
 constexpr Mask masks[] = {{register_ban, 0x07}, {post_ban_news, 0x0f}, {nation_record_text, 0x0f}, {base_construct, 0x03},
                           {booking_record, 0x07}, {0x10739890, 0x1f}, {0x10769b60, 0xff}, {0x1077b720, 0xff}};
@@ -46,11 +48,14 @@ struct Case {
     std::uint32_t width = 20, nation_index = 3;
     // The query.
     std::uint8_t tally = 0;
-    unsigned outputs = 0;  // 0..7: which of the two outputs exist and what they alias
+    unsigned outputs = 0;  // 0..9: which of the two outputs exist and what they alias
     // The report.
     std::uint8_t yellows = 1, reds = 0, flag_48 = 0;
     std::uint16_t points = 0, day = 0, year = 2001;
     bool ban_flagged = false;
+    // The points reset: the count word, and whether the first record lies over the count.
+    std::uint32_t records = 0;
+    bool records_alias = false;
     bool clobber = false;
 };
 Case active;
@@ -131,16 +136,26 @@ void initialize(Cpu& c) {
     c.put32(trace_at, 0);
     c.set(3, object);
     switch (active.routine) {
-    case nation_text: c.set(4, text_buffer); c.set(5, active.width); break;
-    case next_card: {
+    case nation_text: case northern_text: c.set(4, text_buffer); c.set(5, active.width); break;
+    case next_card: case northern_next_card: {
         const std::uint32_t tally = match + 0x100, first = tally + 0x40, second = tally + 0x41;
-        constexpr std::array<std::pair<unsigned, unsigned>, 8> shapes{{{0, 0}, {1, 0}, {0, 2}, {1, 2}, {1, 1}, {3, 2}, {1, 3}, {3, 3}}};
-        const auto at = [&](unsigned which) { return which == 0 ? 0 : which == 1 ? first : which == 2 ? second : tally + 4; };
+        constexpr std::array<std::pair<unsigned, unsigned>, 10> shapes{{{0, 0}, {1, 0}, {0, 2}, {1, 2}, {1, 1}, {3, 2}, {1, 3}, {3, 3},
+                                                                        {1, 4}, {4, 2}}};
+        // The fourth place is the byte the query reads: the tally, or the low byte of the points.
+        const auto read = active.routine == next_card ? tally + 4 : tally + 9;
+        // The fifth is the high byte of the points.
+        const auto at = [&](unsigned which) { return which == 0 ? 0 : which == 1 ? first : which == 2 ? second : which == 3 ? read : tally + 8; };
         c.put8(tally + 4, active.tally);
+        if (active.routine == northern_next_card) c.put16(tally + 8, active.points);
         c.set(4, tally); c.set(5, at(shapes[active.outputs].first)); c.set(6, at(shapes[active.outputs].second));
         break;
     }
     case construct: c.set(4, data + 0x7000 + active.seed); break;
+    case clear_points:
+        // With the alias, clearing the first record's points clears the low half of the count.
+        c.put32(object + 0xc, active.records_alias ? object + 0xe : booking);
+        c.put32(object + 0x14, active.records);
+        break;
     default:
         c.put32(match, 0x40 + active.seed % 50);
         c.put8(match + 0x2c, active.yellows); c.put8(match + 0x2d, active.reds); c.put8(match + 0x48, active.flag_48);
@@ -167,6 +182,12 @@ void corrupt(State& s, std::uint32_t entry) {
     Cpu c(s);
     c.put8(booking + 9, c.u8(booking + 9) ^ 1);
 }
+// One record of the points reset left as it was.
+void corrupt_reset(State& s, std::uint32_t entry) {
+    rewrite(s, entry);
+    Cpu c(s);
+    c.put16(booking + 0x18, 0x0101);
+}
 struct Observed final : MemoryObserver {
     void mapped(std::uint32_t, std::uint64_t) override {}
     void written(std::uint32_t, const std::uint8_t*, std::size_t) override {}
@@ -184,6 +205,20 @@ std::vector<Case> cases() {
         for (unsigned outputs = 0; outputs < 8; ++outputs)
             all.push_back({.routine = next_card, .seed = tally * 8 + outputs + 1, .tally = std::uint8_t(tally), .outputs = outputs});
     for (unsigned n = 0; n < 16; ++n) all.push_back({.routine = construct, .seed = std::uint32_t(random())});
+    for (const auto width : {0x80000000u, 0xffffffffu, 0u, 19u, 20u, 21u, 255u, 32767u, 32768u, 0x10013u, 0x10014u, 0x7fffffffu})
+        for (const auto index : {0u, 3u, 0xdcu})
+            all.push_back({.routine = northern_text, .seed = std::uint32_t(random()), .width = width, .nation_index = index});
+    for (unsigned points = 0; points < 0x10000; points = points < 70 ? points + 1 : points * 3 + 1)
+        for (unsigned outputs = 0; outputs < 10; ++outputs)
+            all.push_back({.routine = northern_next_card, .seed = points * 8 + outputs + 1, .outputs = outputs,
+                           .points = std::uint16_t(points)});
+    for (const auto points : {0x100fu, 0x1010u, 0x8013u, 0xff14u, 0xffffu, 0x7fffu, 0x8000u})
+        for (unsigned outputs = 0; outputs < 10; ++outputs)
+            all.push_back({.routine = northern_next_card, .seed = points + outputs, .outputs = outputs, .points = std::uint16_t(points)});
+    for (const auto records : {0u, 1u, 2u, 7u, 60u, 0xffffffffu, 0x80000000u})
+        all.push_back({.routine = clear_points, .seed = std::uint32_t(random()), .records = records});
+    for (const auto records : {1u, 3u, 0x7fffu, 0xffffu})
+        all.push_back({.routine = clear_points, .seed = std::uint32_t(random()), .records = records, .records_alias = true});
     for (const auto yellows : {0u, 1u, 2u, 3u, 5u, 13u, 127u})
         for (const auto reds : {0u, 1u, 2u, 255u})
             for (const auto points : {0u, 3u, 7u, 8u, 12u, 15u, 16u, 19u, 20u, 24u, 27u, 28u, 31u, 32u, 37u, 38u, 41u, 42u, 46u,
@@ -202,7 +237,7 @@ std::string describe(const Case& t, bool production) {
     return hex_address(entries[t.routine]) + " production=" + std::to_string(production) + " seed=" + std::to_string(t.seed) +
            " width=" + hex_address(t.width) + " tally=" + std::to_string(t.tally) + " outputs=" + std::to_string(t.outputs) +
            " yellows=" + std::to_string(t.yellows) + " reds=" + std::to_string(t.reds) + " points=" + std::to_string(t.points) +
-           " day=" + std::to_string(t.day) + "/" + std::to_string(t.year) + " clobber=" + std::to_string(t.clobber);
+           " index=" + std::to_string(t.nation_index) + " records=" + hex_address(t.records) + (t.records_alias ? " aliased" : "") + " day=" + std::to_string(t.day) + "/" + std::to_string(t.year) + " clobber=" + std::to_string(t.clobber);
 }
 }
 
@@ -275,6 +310,13 @@ int main(int argc, char** argv) {
                 ++failures;
                 std::cout << "FAIL corruption control\n";
             } else std::cout << "ok deliberate memory corruption detected\n";
+        }
+        {
+            auto s = fresh({.routine = clear_points, .records = 7});
+            if (compare_routine_call(*s, entries[clear_points], original, corrupt_reset, 0).empty()) {
+                ++failures;
+                std::cout << "FAIL points reset corruption control\n";
+            } else std::cout << "ok a record the reset skipped is detected\n";
         }
         // Production ownership: with no instruction budget of its own, each entry still returns through its
         // hook, and the original body does not. The text case avoids the assertion, whose version getter is

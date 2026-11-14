@@ -72,6 +72,23 @@ bool ireland::next_card_bans(Cpu& c, std::uint32_t tally, std::uint32_t matches,
     return cards >= 4 && cards % 3 == 1;
 }
 
+bool northern_ireland::next_card_bans(Cpu& c, std::uint32_t booking, std::uint32_t matches, std::uint32_t dismissal) {
+    if (dismissal != 0) c.put8(dismissal, 0xff);
+    const unsigned points = c.u16(booking + 8);
+    struct Level { unsigned points, matches; };
+    for (const auto level : {Level{20, 1}, Level{32, 2}, Level{42, 4}, Level{51, 6}}) {
+        if (points < level.points - 4 || points >= level.points) continue;
+        if (matches != 0) c.put8(matches, level.matches);
+        return true;
+    }
+    return false;
+}
+
+void northern_ireland::clear_points(Cpu& c, std::uint32_t self) {
+    auto record = c.u32(self + 0xc);
+    for (std::int32_t n = 0; n < c.i32(self + 0x14); ++n, record += 0x10) c.put16(record + 8, 0);
+}
+
 void northern_ireland::report_cards(Cpu& c, std::uint32_t self, std::uint32_t match, std::uint32_t fixture) {
     Frame frame(c, 0x106abfe0, 0x80, {.first_gpr = 24});
     const MatchCards cards{c, match};
