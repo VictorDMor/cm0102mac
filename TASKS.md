@@ -4,6 +4,14 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: sound after an output device change (2026-11-14)
+
+- [x] A stopped output engine left its sounds unfinished: the channel never drained, an immediate buffer command stopped the game and a blocking channel disposal waited forever (read from `native/audio_bridge.mm` and `native/sound_bridge.cpp`; not seen in a run log). `finished()` restarts the engine; without an output, sounds count as played. Text in `docs/aot-port.md`.
+- [x] `native_audio` covers interruption mid-buffer, no output, and return of the output; it fails without the restart. A one-off device-mode run (silent buffer, engine stopped by hand) resumed and finished on the real output. Installed 2026-11-14.
+- [ ] Victor checks in play: plug or unplug headphones (or switch output) during a match with sound. Not established: that macOS stops the engine on every kind of device switch; if sound still dies, the run log will not have `Native audio output unavailable`.
+- [ ] `cm-sound-checks` (`original_sound_callbacks`, not registered here) fails with `Native completion did not run the actual recompiled original sound callback`, the same with and without this change.
+- Removed the stale "idle at the start menu uses 100% of a core" item: fixed by `d4b29a12`.
+
 ## Now: national Call Up in Lineup (2026-11-13)
 
 - [x] Add Call Up / Convocar to the normal Lineup menu for managed national teams only; no debugging toggle.
@@ -1049,14 +1057,12 @@ From the 2026-10-20 review. Estimates are unmeasured.
 - [ ] Unknown intrinsics compile and throw at runtime; fail generation instead.
 - [ ] `native_record_fields` promotion accepts calls that read `State` (latent).
 - [ ] Turbo stores speed 0 in a manager record; check whether it reaches saves.
-- [ ] An audio output device change stalls sound channels.
 - [ ] Copy-on-write of an original data file isn't atomic (`native/platform.cpp`, `writable_file`).
 - [ ] The installer writes the Game manifest after moving Game into place.
 - [ ] Names over 31 characters can overflow the game's 64-byte name buffer (`0x1076ec60`).
 - [ ] No App Nap / idle-sleep assertion during long processing.
 - [ ] Run logs accumulate in `Runtime/Runs`; input tracing is on by default.
 - [ ] Mouse-moved events pile up while the game is busy; every small `CopyBits` redraws a full frame.
-- [ ] Idle at the start menu the app uses 100% of a core: the original main loop calls `WaitNextEvent` with sleep 0 (~10,000 calls/s; confirmed 2026-10-21 with an import trace). Blocking a millisecond when such a poll finds no event would idle the core; it changes only wall-clock readings.
 - [ ] Three jump tables don't match `check_jump_tables.py`'s pattern; inspect them by hand.
 - [ ] Single-precision multiply-add with non-single operands rounds to double, then single (`native/fused_multiply_add.hpp`); exact would need round-to-odd. Rare.
 - [ ] Builder multiply-adds look up their kind per call (binary search over 1,049 sites); resolve per call site if it ever shows in a profile.

@@ -98,7 +98,34 @@ int main() {
         renderer.request_stop(); renderer.join();
         if (render_error) std::rethrow_exception(render_error);
         audio.dispose(3);
-        std::cout << "Native offline audio: PCM byte order, stereo gains, resampling, mono routing, cancellation, and completion passed\n";
+
+        // A hardware change stops the output in the middle of a clip. The
+        // clip goes on from where it stopped once the output is back.
+        audio.create(4, 0xc5);
+        const AudioSamples held{48000, 2, 2048, std::vector<float>(4096, 0.5f)};
+        audio.play(4, held);
+        (void)audio.render_offline(1024);
+        audio.interrupt_output();
+        require(!audio.finished(4), "An interrupted clip counted as played although the output restarts");
+        rendered = audio.render_offline(2048);
+        for (unsigned i = 0; i < 2048; ++i) near(rendered[i], 0.5f, "Interrupted clip did not resume at its cursor");
+        for (unsigned i = 2048; i < 4096; ++i) near(rendered[i], 0, "Interrupted clip played beyond its last frame");
+        completed(audio, 4);
+        // Without an output a clip counts as played, whether it was playing
+        // or starts then; the game must never wait on it.
+        audio.play(4, held);
+        audio.interrupt_output(false);
+        require(audio.finished(4), "A clip without an output never finishes");
+        audio.play(4, held);
+        require(audio.finished(4), "A clip started without an output never finishes");
+        audio.interrupt_output();
+        audio.play(4, held);
+        require(!audio.finished(4), "Playback did not return with the output");
+        rendered = audio.render_offline(2048);
+        for (unsigned i = 0; i < 4096; ++i) near(rendered[i], 0.5f, "Playback after the output returned");
+        completed(audio, 4);
+        audio.dispose(4);
+        std::cout << "Native offline audio: PCM byte order, stereo gains, resampling, mono routing, cancellation, completion, and output interruption passed\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

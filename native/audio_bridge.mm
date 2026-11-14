@@ -6,6 +6,7 @@
 #include <map>
 #include <stdexcept>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <thread>
 
@@ -82,6 +83,48 @@ struct NativeAudio::Impl {
     AudioMode mode;
     double rate;
     std::map<std::uint32_t, Channel> channels;
+    bool restart_refused = false, silenced = false;
+    // The engine stops itself when the output hardware changes (another
+    // device, another sample rate) and leaves the clips it was rendering
+    // unfinished: a channel would then never drain, and the game waits on
+    // it. Start the engine again; the clips go on from their cursors. Without
+    // an output they count as played, so the game never waits for silence.
+    bool resume_output() {
+        if (engine.running) return true;
+        bool started = false;
+        NSString* reason = nil;
+        @try {
+            if (restart_refused) reason = @"restart refused";
+            else {
+                if (mode == AudioMode::device) {
+                    // Sources keep the rate they were made with; the mixer
+                    // converts to whatever the new hardware runs at.
+                    const double current = [engine.outputNode outputFormatForBus:0].sampleRate;
+                    AVAudioFormat* format = std::isfinite(current) && current > 0 ?
+                        [[AVAudioFormat alloc] initStandardFormatWithSampleRate:current channels:2] : nil;
+                    if (format) [engine connect:engine.mainMixerNode to:engine.outputNode format:format];
+                    else reason = @"the output has no usable sample rate";
+                }
+                if (!reason) {
+                    NSError* error = nil;
+                    started = [engine startAndReturnError:&error];
+                    if (!started) reason = error.localizedDescription ? error.localizedDescription : @"the engine did not start";
+                }
+            }
+        } @catch (NSException* error) { reason = error.reason ? error.reason : error.name; }
+        if (started) {
+            if (silenced) std::fprintf(stderr, "Native audio output is back\n");
+            silenced = false;
+            return true;
+        }
+        if (!silenced) std::fprintf(stderr, "Native audio output unavailable, sounds are skipped: %s\n", reason.UTF8String);
+        silenced = true;
+        for (auto& [token, channel] : channels) {
+            (void)token;
+            if (channel.current) channel.current->completed.store(true, std::memory_order_release);
+        }
+        return false;
+    }
     explicit Impl(AudioMode selected) : mode(selected) {
         engine = [AVAudioEngine new];
         rate = mode == AudioMode::offline ? 48000 : [engine.outputNode outputFormatForBus:0].sampleRate;
@@ -144,7 +187,16 @@ void NativeAudio::volume(std::uint32_t token, std::uint16_t left, std::uint16_t 
 }
 bool NativeAudio::finished(std::uint32_t token) const {
     const auto& clip = impl_->channels.at(token).current;
-    return !clip || clip->completed.load(std::memory_order_acquire);
+    if (!clip || clip->completed.load(std::memory_order_acquire)) return true;
+    // Reads `completed` again: without an output the clip counts as played.
+    (void)impl_->resume_output();
+    return clip->completed.load(std::memory_order_acquire);
+}
+void NativeAudio::interrupt_output(bool restartable) {
+    audio_call([&] {
+        impl_->restart_refused = !restartable;
+        [impl_->engine stop];
+    });
 }
 void NativeAudio::play(std::uint32_t token, const AudioSamples& samples) {
     audio_call([&] {
@@ -174,13 +226,9 @@ void NativeAudio::play(std::uint32_t token, const AudioSamples& samples) {
             for (unsigned side = 0; side < 2; ++side) clip->stereo[std::size_t(frame) * 2 + side] = values[side];
         }
         stop(token);
-        if (!impl_->engine.running) {
-            NSError* error = nil;
-            const auto started = [impl_->engine startAndReturnError:&error];
-            require_audio(started, error, "Cannot start native audio output");
-        }
         channel.current = std::move(clip);
         channel.state->published.store(channel.current.get());
+        (void)impl_->resume_output();
     });
 }
 std::vector<float> NativeAudio::render_offline(std::uint32_t frames) {

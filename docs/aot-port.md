@@ -743,6 +743,14 @@ Event waits periodically poll audio completion rather than blocking callbacks
 until another input event. Callback delivery now occurs at `TickCount` and
 `WaitNextEvent` boundaries, including waits inside the event loop; it does not
 re-enter original game code from unrelated synchronous filesystem/resource calls.
+
+AVAudioEngine stops itself when the output hardware changes (another device or
+sample rate) and leaves the buffers it was rendering unfinished, so their
+completion never came and the channel's queue, and a blocking channel disposal,
+waited forever. The completion query now restarts a stopped engine, reconnecting
+the mixer at the new hardware rate, and the buffers go on from their cursors.
+When no output can start, buffers count as played (one log line), so the game
+never waits on a sound; each later buffer tries the output again.
 This is a cooperative native scheduling policy, not a claim of identical legacy
 interrupt timing. Quiet stops playback while keeping queued commands;
 flush drops queued commands while leaving active playback intact. Immediate

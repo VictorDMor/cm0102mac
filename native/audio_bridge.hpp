@@ -25,7 +25,11 @@ public:
     void volume(std::uint32_t channel, std::uint16_t left, std::uint16_t right);
     void play(std::uint32_t channel, const AudioSamples& samples);
     void stop(std::uint32_t channel);
+    // Also restarts an output that the hardware stopped; see resume_output.
     bool finished(std::uint32_t channel) const;
+    // For checks: stops the output as a hardware change does. With
+    // restartable false it stays stopped until the next call.
+    void interrupt_output(bool restartable = true);
     std::vector<float> render_offline(std::uint32_t frames);
 private:
     struct Impl;
