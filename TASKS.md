@@ -4,6 +4,15 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Checked: quick save "previous file retained" (2026-11-14)
+
+Not a bug; nothing changed. The run logs show `Quick save previous file retained: promoted save changed; retain previous save: Stale NFS file handle` 51 times.
+
+- Cause: an ordinary save (not a quick save) wrote the same file between two quick saves, so the next quick save finds the file it promoted replaced and, as designed, does not delete the backup it can no longer vouch for. Over every installed run log: all 529 quick saves that discarded their backup had no other save since the previous quick save; 50 of the 51 that kept it had at least one (the other log has no file trace there). In `app.NDHk44` 12 of 13 quick saves discarded normally.
+- Cost: `remove_stale_quick_save_staging` keeps the newest kept backup and removes the rest, so at most two `Runtime/.cm-quicksave-*` folders exist (about 115 MB each on the current career): the kept one and the live one. It does not grow.
+- "Stale NFS file handle" is only the system's text for ESTALE; no network volume is involved.
+- Possible, not done (save handling, low value): drop the quick-save backup when an ordinary save to the same file succeeds.
+
 ## Now: sound after an output device change (2026-11-14)
 
 - [x] A stopped output engine left its sounds unfinished: the channel never drained, an immediate buffer command stopped the game and a blocking channel disposal waited forever (read from `native/audio_bridge.mm` and `native/sound_bridge.cpp`; not seen in a run log). `finished()` restarts the engine; without an output, sounds count as played. Text in `docs/aot-port.md`.
