@@ -4,6 +4,16 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: FINANCE.CPP, inventory closed (2026-11-14)
+
+Victor chose it from the 2026-11-13 inventory: the most generated time on the day (109 of 471 self samples) and no routine in C++.
+
+- [x] Inventory: 58 routines, 18,706 instructions, 0x100f1000..0x10103600 (`tools/finance_audit.py`, `finance_audit` in CTest, 8 tests). Two more than the whole-game inventory gave it: 0x100f1000 and 0x100f1010 are the constructor and destructor of the array element 0x100f84e0 allocates, reached only through their vectors. Bounds are the unit's private TOC slots (-0x55d0..-0x5598) and FILE_SCREENS.CPP's audit before it.
+- [x] Census (`.local/rewrites/finance/census.txt`): 20 of 76 captures replay, 8 reach the unit, 23 of 58 entries dispatched (22 on `same-save-continue`, 10 on `season-day`). The hot ones: 0x10103510 (1.3M calls on the day), 0x100f5770 (418k), 0x100f55b0 (106k), 0x100f2680 (6k). 35 entries have no dispatch in any capture (a census misses same-page calls).
+- [ ] Not done: stack audit of the unit's readers, decompiled C, block list, checker, any C++. Production is unchanged.
+- [ ] Cost estimate for the C++ (for Victor): 18,706 instructions at the 135 tokens per instruction of the first native-first block is about 2.5M tokens, and the skill's range (80 to 200k per 1,000) gives 1.5M to 3.7M, plus two or three batched reviews. The largest routines: 0x100fa6e0 (2,612), 0x100f2680 (2,115), 0x100f5770 (1,590), 0x100fd210 (1,290), 0x100f1050 (1,067).
+- [ ] Next: `--stack-audit-all` on `season-day` and `same-save-continue` for this range, decompile the 58 routines (`tools/DecompileSelected.java`), group them into blocks, and pilot the hot leaf 0x10103510 with 0x100f55b0 on the checker before fanning out.
+
 ## Now: the rb_*.cpp rulebooks (2026-11-14)
 
 Picked as the cheapest family after NATIONAL_TEAMS: 43 units of one shape (`docs/cpp-rewrites.md`, "The rb_*.cpp rulebooks").

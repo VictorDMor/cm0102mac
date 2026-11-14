@@ -4283,6 +4283,11 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME qsort4x_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_qsort4x_audit.py")
 endif()
 
+# FINANCE.CPP (tools/finance_audit.py): inventory closed, C++ not written yet.
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME finance_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_finance_audit.py")
+endif()
+
 # INJURY.CPP (tools/injury_unit_audit.py): injuries and illnesses: records, daily course, news and file form.
 file(GLOB CM_INJURY_UNIT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/injury_unit*.cpp")
 list(FILTER CM_INJURY_UNIT_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
