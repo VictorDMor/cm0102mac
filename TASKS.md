@@ -25,7 +25,7 @@ All 62 entries (7,746 instructions, 0x10145af0..0x1014d560) are C++ and routed (
   - [ ] Date intervals: 2004-12-31 / 2005-01-01 gives zero days, 2003-12-31 / 2004-01-01 two (injury thresholds and the national call-up calculation).
   - [ ] Convocar releases a player from its own locked squad when the manual permission denies it; underdog plans survive load-begin and still apply to a matching fixture.
   - [x] Ordinary saves delete before renaming and can report success after a failed rename (Victor chose it 2026-11-15). The bridge holds the writer's delete of the save back and the rename replaces it in one `renamex_np`; a failed replace keeps the old save, returns failure and restores the saved markers. `native_filesystem` (both File Manager paths, failure, another file's delete, name case; fails without the fix), `native_file_references`, `native_quick_save_destination`.
-  - [ ] Not verified: an ordinary save in the real game (Victor's in play); the run log says `Career save:` on any failure. The listing shows nothing between the writer's delete and rename that pumps events, so a nested writer cannot reset the held delete; not tested.
+  - [x] Victor checked it in play (2026-11-15): ordinary save, save under a new name, and a failed save over a locked file (failure dialog, old save kept). Still untested: the case-sensitive volume branch and a nested writer between delete and rename (not reachable per the listing).
   - [ ] Two media loops query one player's injury for every roster member.
   - [ ] Out-of-position assessment uses always-true OR bit tests (the intended replacement is a behaviour decision); staging cleanup is not bound to the career that superseded a recovery file.
 
