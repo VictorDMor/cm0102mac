@@ -3,6 +3,7 @@
 #include "match_turbo.hpp"
 #include "match_speed.hpp"
 #include "match_debugging.hpp"
+#include "new_screens.hpp"
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 #include <deque>
@@ -25,6 +26,9 @@ std::filesystem::path match_speed_preference;
 bool debugging_available = false;
 std::uint32_t debugging_features = 0;
 std::filesystem::path debugging_preference;
+bool screens_available = false;
+bool screens_enabled = cm::aot::default_new_screens;
+std::filesystem::path screens_preference;
 bool repeated_key_event(NSEvent* event) {
     // isARepeat is undefined for mouse/accessibility menu events and AppKit
     // raises NSInternalInconsistencyException if queried for a non-key event.
@@ -225,6 +229,7 @@ std::uint8_t original_character(NSEvent* event) {
     bool launchedWithDocuments; // the open-documents event stands for the launch's
     std::function<void()> refreshPresentation;
     std::function<void(NSWindow*)> movePresentation;
+    std::function<void(NSWindow*)> resizePresentation;
     std::function<void(NSInteger)> selectScale;
     std::function<void(cm::aot::DirectCommand)> selectCommand;
     std::function<void()> selectQuickSave;
@@ -257,6 +262,12 @@ std::uint8_t original_character(NSEvent* event) {
 }
 - (void)windowDidMove:(NSNotification*)notification {
     if (movePresentation) movePresentation(notification.object);
+}
+- (void)windowDidResize:(NSNotification*)notification {
+    if (resizePresentation) resizePresentation(notification.object);
+}
+- (void)windowDidEndLiveResize:(NSNotification*)notification {
+    if (resizePresentation) resizePresentation(notification.object);
 }
 - (BOOL)windowShouldClose:(NSWindow*)window {
     if (!(window.styleMask & NSWindowStyleMaskTitled)) return YES;
@@ -414,6 +425,40 @@ std::uint8_t original_character(NSEvent* event) {
 @end
 
 namespace cm::aot {
+bool new_screens_available() { return screens_available; }
+bool new_screens_enabled() { return screens_available && screens_enabled; }
+void initialize_new_screens(const std::filesystem::path& preference) {
+    screens_available = true;
+    screens_enabled = default_new_screens;
+    screens_preference = preference;
+    if (preference.empty()) return;
+    @autoreleasepool {
+        std::error_code error;
+        const auto size = std::filesystem::file_size(preference, error);
+        if (error || size > 4096) return;
+        NSData* data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:preference.c_str()]];
+        id value = data ? [NSPropertyListSerialization propertyListWithData:data
+            options:NSPropertyListImmutable format:nullptr error:nil] : nil;
+        if ([value isKindOfClass:NSDictionary.class] && [value[@"Version"] isEqual:@1] &&
+            [value[@"NewScreens"] isKindOfClass:NSNumber.class] &&
+            ([value[@"NewScreens"] isEqual:@YES] || [value[@"NewScreens"] isEqual:@NO]))
+            screens_enabled = [value[@"NewScreens"] boolValue];
+    }
+}
+void select_new_screens(bool enabled) {
+    if (!screens_available || enabled == screens_enabled) return;
+    if (!screens_preference.empty()) {
+        @autoreleasepool {
+            NSData* data = [NSPropertyListSerialization dataWithPropertyList:@{@"Version": @1, @"NewScreens": @(enabled)}
+                format:NSPropertyListXMLFormat_v1_0 options:0 error:nil];
+            std::error_code error;
+            std::filesystem::create_directories(screens_preference.parent_path(), error);
+            if (error || !data || ![data writeToFile:[NSString stringWithUTF8String:screens_preference.c_str()]
+                options:NSDataWritingAtomic error:nil]) throw std::runtime_error("Cannot save New Screens preference");
+        }
+    }
+    screens_enabled = enabled;
+}
 bool match_turbo_enabled() { return match_turbo; }
 void set_match_turbo_enabled(bool enabled) { match_turbo = enabled; }
 bool native_match_speed_enabled() { return native_speed_enabled; }
@@ -550,6 +595,8 @@ struct NativeUI::Impl {
     std::map<std::uint32_t, LegacyRect> logical_bounds;
     std::uint32_t primary_window = 0;
     InterfaceScale requested_scale = InterfaceScale::original;
+    bool adaptive = false;
+    std::optional<GuiCanvas> preferred_canvas;
     std::optional<PresentationLayout> layout;
     std::optional<PresentationPoint> moved_center;
     std::filesystem::path preference;
@@ -662,8 +709,13 @@ struct NativeUI::Impl {
     }
     void moved_window(NSWindow* window) {
         if (applying_layout || !layout || !primary_window || window != windows.at(primary_window)) return;
+        if (window.inLiveResize) return;
         const auto content = [window contentRectForFrameRect:window.frame];
         const auto expected = layout->to_host(rectangle(logical_bounds.at(primary_window)));
+        // A zoom or completed edge drag can move the origin before the
+        // settled viewport is rebuilt. Do not snap it back to the old size.
+        if (adaptive && (std::abs(content.size.width - expected.width) > .5 ||
+                         std::abs(content.size.height - expected.height) > .5)) return;
         const auto top = CGRectGetHeight(CGDisplayBounds(CGMainDisplayID())) - NSMaxY(content);
         layout->host.x += content.origin.x - expected.x;
         layout->host.y += top - expected.y;
@@ -678,7 +730,8 @@ struct NativeUI::Impl {
         if (applying_layout || !primary_window || !screen()) return;
         applying_layout = true;
         const auto area = available();
-        layout = presentation_layout(requested_scale, scene(), area, screen().backingScaleFactor);
+        const auto scale = adaptive && requested_scale == InterfaceScale::fit ? InterfaceScale::original : requested_scale;
+        layout = presentation_layout(scale, scene(), area, screen().backingScaleFactor);
         if (moved_center) {
             const auto main = layout->to_host(rectangle(logical_bounds.at(primary_window)));
             layout->host.x = std::clamp(layout->host.x + moved_center->x - main.x - main.width / 2,
@@ -695,9 +748,29 @@ struct NativeUI::Impl {
         }
         applying_layout = false;
     }
+    double adaptive_scale() const {
+        switch (requested_scale) {
+        case InterfaceScale::percent125: return 1.25;
+        case InterfaceScale::percent150: return 1.5;
+        case InterfaceScale::percent200: return 2;
+        default: return 1;
+        }
+    }
+    GuiCanvas maximum_canvas() const {
+        const auto area = available();
+        return bounded_gui_canvas(int(area.width / adaptive_scale()), int(area.height / adaptive_scale()));
+    }
+    void resized_window(NSWindow* window) {
+        if (applying_layout || !adaptive || !primary_window || window != windows.at(primary_window) || window.inLiveResize) return;
+        const auto size = [window contentRectForFrameRect:window.frame].size;
+        preferred_canvas = bounded_gui_canvas(int(std::lround(size.width / adaptive_scale())),
+                                              int(std::lround(size.height / adaptive_scale())));
+        pointer_reading.reset();
+    }
     bool choose_scale(InterfaceScale choice) {
         if (primary_window && !scale_fits(choice, scene(), available())) return false;
         requested_scale = choice;
+        if (adaptive && choice == InterfaceScale::fit) preferred_canvas = maximum_canvas();
         if (choice == InterfaceScale::fit) moved_center.reset();
         refresh_presentation();
         if (!preference.empty()) {
@@ -721,6 +794,7 @@ struct NativeUI::Impl {
         // Existing installations without this preference start in Turbo.
         initialize_native_match_speed();
         initialize_native_debugging();
+        initialize_new_screens(preference.empty() ? std::filesystem::path{} : preference.parent_path() / "Screens.plist");
         debugging_preference = preference.empty() ? std::filesystem::path{} : preference.parent_path() / "Debugging.plist";
         if (!debugging_preference.empty()) {
             std::error_code error;
@@ -765,6 +839,7 @@ struct NativeUI::Impl {
         delegate->launchedWithDocuments = false;
         delegate->refreshPresentation = [this] { refresh_presentation(); };
         delegate->movePresentation = [this](NSWindow* window) { moved_window(window); };
+        delegate->resizePresentation = [this](NSWindow* window) { resized_window(window); };
         delegate->selectScale = [this](NSInteger index) {
             if (index < 0 || index >= 5 || !choose_scale(interface_scales[index])) NSBeep();
         };
@@ -804,6 +879,7 @@ struct NativeUI::Impl {
     }
     ~Impl() {
         delegate->refreshPresentation = {}; delegate->movePresentation = {};
+        delegate->resizePresentation = {};
         delegate->selectScale = {}; delegate->selectCommand = {};
         for (const auto& [token, event] : events) { (void)token; ReleaseEvent(event); }
         for (const auto& [token, window] : windows) { (void)token; [window orderOut:nil]; [window close]; }
@@ -812,6 +888,35 @@ struct NativeUI::Impl {
 };
 NativeUI::NativeUI(std::filesystem::path preference) : impl_(std::make_unique<Impl>(std::move(preference))) {}
 NativeUI::~NativeUI() = default;
+GuiCanvas NativeUI::adaptive_canvas(bool enabled) {
+    if (!impl_->primary_window) return {};
+    auto window = impl_->windows.at(impl_->primary_window);
+    if (enabled != impl_->adaptive) {
+        impl_->applying_layout = true;
+        impl_->adaptive = enabled;
+        if (enabled) window.styleMask |= NSWindowStyleMaskResizable;
+        else window.styleMask &= ~NSWindowStyleMaskResizable;
+        impl_->applying_layout = false;
+    }
+    if (!enabled) return {};
+    const auto maximum = impl_->maximum_canvas();
+    const auto preferred = impl_->preferred_canvas.value_or(maximum);
+    const auto scale = impl_->adaptive_scale();
+    window.contentMinSize = NSMakeSize(800 * scale, 600 * scale);
+    window.contentMaxSize = NSMakeSize(maximum.width * scale, maximum.height * scale);
+    return {std::min(preferred.width, maximum.width), std::min(preferred.height, maximum.height)};
+}
+void NativeUI::commit_canvas(GuiCanvas canvas) {
+    if (!impl_->primary_window) return;
+    auto& bounds = impl_->logical_bounds.at(impl_->primary_window);
+    bounds[2] = bounds[0] + canvas.height;
+    bounds[3] = bounds[1] + canvas.width;
+    auto view = (CMNativeView*)impl_->windows.at(impl_->primary_window).contentView;
+    view->logicalBounds = bounds;
+    impl_->pointer_reading.reset();
+    impl_->delivered_pointer.reset();
+    impl_->refresh_presentation();
+}
 void NativeUI::create_dialog(std::uint32_t token, const DialogDefinition& dialog, const std::vector<DialogItem>& items) {
     @autoreleasepool {
         if (impl_->dialogs.contains(token)) throw std::runtime_error("Duplicate native dialog token");

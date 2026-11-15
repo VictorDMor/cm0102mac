@@ -3,13 +3,23 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
-
 ## Now: HUMAN_MANAGER.CPP (delivered 2026-11-15)
 
 All 62 entries (7,746 instructions, 0x10145af0..0x1014d560) are C++ and routed (`native/human_manager*.cpp`, `tools/human_manager_audit.py`, `cm-human-manager-checks`). Contract and quirks: `docs/cpp-rewrites.md`; open outcomes and proofs: `.local/rewrites/human_manager/ledger.json`.
 
 - [ ] The census sees 10 entries dispatched in captures (plus the four they call); the rest rest on fixtures only.
 - [ ] Text paths: the folder path routine 0x10746300 is answered in every case, so the paths 0x10147150, 0x10147310 and 0x10145af0 build are not compared with real folder output.
+
+## Open after the 2026-11-15 commits (adaptive interface, Debugging features, substitutions, opening)
+
+- [ ] Adaptive interface: the full club-roster page is a separate follow-up; other screens and network sessions keep 800x600.
+- Known failures, not caused by these changes: `ui_replay_tactics_views` stops at import PC `0x10bf7c34` (as on 2026-11-11); `main_program_fixtures` has 99 failures outside the changed bounds-event case (that case and its negative control pass alone).
+- Bug audit of 2026-11-14, findings awaiting Victor's decision (evidence in `.local/audits/2026-11-14/` and `.local/audit-features-20261114/`):
+  - [ ] Date intervals: 2004-12-31 / 2005-01-01 gives zero days, 2003-12-31 / 2004-01-01 two (injury thresholds and the national call-up calculation).
+  - [ ] Convocar releases a player from its own locked squad when the manual permission denies it; underdog plans survive load-begin and still apply to a matching fixture.
+  - [ ] Ordinary saves delete before renaming and can report success after a failed rename.
+  - [ ] Two media loops query one player's injury for every roster member.
+  - [ ] Out-of-position assessment uses always-true OR bit tests (the intended replacement is a behaviour decision); staging cleanup is not bound to the career that superseded a recovery file.
 
 ## Now: FINANCE.CPP (delivered 2026-11-14)
 

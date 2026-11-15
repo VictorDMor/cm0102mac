@@ -1,4 +1,6 @@
 #include "platform.hpp"
+#include "adaptive_gui.hpp"
+#include "gui_guest_scope.hpp"
 #include "aot_runtime.hpp"
 #include "text_bridge.hpp"
 #include "process_bridge.hpp"
@@ -133,6 +135,8 @@ namespace {
 constexpr std::uint32_t game_toc = 0x108bba90;
 }
 struct NativePlatform::Impl {
+    GuiCanvas canvas, pending_canvas;
+    std::optional<GuiCanvas> rejected_canvas;
     // At the last screen boundary, the original's save conditions held. They
     // can only be read there: event waits leave the current row at 16.
     bool quick_save_possible = false;
@@ -212,7 +216,7 @@ struct NativePlatform::Impl {
         std::pair<std::uint32_t, LegacyRect> found{0, {}};
         for (const auto window : windows) {
             const auto bounds = user_interface().window_bounds(window, true);
-            if (bounds[2] - bounds[0] == 600 && bounds[3] - bounds[1] == 800) found = {window, bounds};
+            if (bounds[2] - bounds[0] == canvas.height && bounds[3] - bounds[1] == canvas.width) found = {window, bounds};
         }
         return found;
     }
@@ -1495,6 +1499,92 @@ NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio
     impl_->directories.emplace(3, impl_->writable);
 }
 NativePlatform::~NativePlatform() = default;
+GuiCanvas NativePlatform::gui_canvas_size() const { return impl_->canvas; }
+bool NativePlatform::request_adaptive_screen(std::uint32_t builder) {
+    const auto enabled = adaptive_screen_enabled(builder);
+    impl_->pending_canvas = impl_->ui ? impl_->ui->adaptive_canvas(enabled) : enabled ? impl_->canvas : GuiCanvas{};
+    if (impl_->rejected_canvas == impl_->pending_canvas) {
+        impl_->pending_canvas = impl_->canvas;
+        return false;
+    }
+    impl_->rejected_canvas.reset();
+    return impl_->pending_canvas != impl_->canvas;
+}
+bool NativePlatform::resize_gui_canvas(State& s, GuiCanvas requested) {
+    const auto canvas = bounded_gui_canvas(requested.width, requested.height);
+    if (canvas == impl_->canvas) return true;
+    guest::Cpu c(s);
+    const auto offscreen = c.u32(c.r(2) - 0x355c);
+    if (!impl_->ports.contains(offscreen)) return false;
+    const auto window = c.u32(c.toc(-0x5af8));
+    std::vector<std::uint32_t> tokens{offscreen};
+    if (const auto found = impl_->window_ports.find(window); found != impl_->window_ports.end()) tokens.push_back(found->second);
+    struct Replacement {std::uint32_t token, pixels, stride;};
+    std::vector<Replacement> replacements;
+    // Allocate every surface first, retaining the old coherent viewport if
+    // the guest heap cannot satisfy a larger window.
+    for (const auto token : tokens) {
+        const auto stride = (canvas.width * (impl_->ports.at(token).depth / 8) + 3u) & ~3u;
+        const auto pixels = allocate(s, stride * canvas.height, true);
+        if (!pixels) {
+            for (const auto& r : replacements) deallocate(s, r.pixels);
+            return false;
+        }
+        replacements.push_back({token, pixels, stride});
+    }
+    const LegacyRect bounds{0, 0, std::int16_t(canvas.height), std::int16_t(canvas.width)};
+    for (const auto& r : replacements) {
+        auto& port = impl_->ports.at(r.token);
+        const auto old = port.pixels, map = impl_->handles.at(port.pixel_map).payload;
+        const auto old_stride = port.row_bytes;
+        const auto copy_width = std::min(int(port.bounds[3] - port.bounds[1]), canvas.width);
+        const auto copy_height = std::min(int(port.bounds[2] - port.bounds[0]), canvas.height);
+        port.pixels = r.pixels; port.row_bytes = r.stride; port.bounds = bounds;
+        c.put32(map, r.pixels); c.put16(map + 4, r.stride | 0x8000);
+        for (unsigned i = 0; i < 4; ++i) c.put16(map + 6 + i * 2, bounds[i]);
+        impl_->drawing.register_surface(s, r.pixels, canvas.width, canvas.height, r.stride, port.depth);
+        // Empty-background dialogs capture the preceding screen. Preserve its
+        // pixels and vector glyphs instead of presenting a blank new surface.
+        impl_->drawing.copy_surface(s, old, r.pixels, {0, 0, copy_width, copy_height}, 0, 0);
+        impl_->drawing.copying = true;
+        for (int y = 0; y < copy_height; ++y)
+            s.memory.copy_in(r.pixels + y * r.stride, s.memory.copy_out(old + y * old_stride, copy_width * (port.depth / 8)));
+        impl_->drawing.copying = false;
+        impl_->drawing.remove_surface(old);
+        deallocate(s, old);
+    }
+    const auto& port = impl_->ports.at(offscreen);
+    c.put32(c.r(2) - 0x3564, port.pixels);
+    c.put16(c.r(2) - 0x3566, port.row_bytes);
+    c.put16(c.r(2) - 0x3568, port.row_bytes / 2);
+    c.put32(c.toc(-0x746c), canvas.width); c.put32(c.toc(-0x7470), canvas.height);
+    const auto mouse = c.toc(-0x3bc0);
+    c.put16(mouse, 0); c.put16(mouse + 2, 0);
+    c.put16(mouse + 4, canvas.height); c.put16(mouse + 6, canvas.width);
+    impl_->canvas = canvas;
+    if (impl_->ui) impl_->ui->commit_canvas(canvas);
+    return true;
+}
+void NativePlatform::apply_adaptive_screen(State& s, std::uint32_t display) {
+    if (impl_->pending_canvas == impl_->canvas) return;
+    if (!resize_gui_canvas(s, impl_->pending_canvas)) {
+        impl_->rejected_canvas = impl_->pending_canvas;
+        impl_->pending_canvas = impl_->canvas;
+        if (impl_->ui) impl_->ui->commit_canvas(impl_->canvas);
+        return;
+    }
+    // clear_controls already released the drag image. The background cache
+    // can instead be a full-size capture: discard it before any smaller draw.
+    GuiGuestScope preserve(s);
+    guest::Cpu c(s);
+    const auto background = c.u32(display + 0x12a928);
+    if (background) {
+        c.set(1, c.sp() - 0x400);
+        c.set(3, background); c.call(0x1076b7e0, 0xfffffff0);
+    }
+    c.put32(display + 0x12a928, 0);
+    c.put16(display + 0x12a946, 0xffff);
+}
 const fs::path& NativePlatform::game_directory() const { return impl_->game; }
 const fs::path& NativePlatform::writable_directory() const { return impl_->writable; }
 

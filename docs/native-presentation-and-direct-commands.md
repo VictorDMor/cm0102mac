@@ -24,7 +24,7 @@ which exceeds the current usable screen is disabled. A previously saved choice
 which stops fitting falls back to Fit; 100% is the default when it fits.
 Changing scale preserves the current original screen, career and source bitmap.
 
-The visible macOS game window matches the scaled 800×600 content: 800×600 at
+Legacy screens match the scaled 800×600 content: 800×600 at
 100%, 1000×750 at 125%, 1200×900 at 150% and 1600×1200 at 200%, when that scale
 fits the display. The original nonactivating desktop backdrop remains a logical
 engine window, but its host window is hidden; it no longer covers the desktop
@@ -138,7 +138,7 @@ restores the native scale/command menus.
 
 ## Coordinate and sampling model
 
-The engine retains its original 800×600 bitmap and logical global rectangles.
+Legacy screens retain the original 800×600 bitmap and logical global rectangles.
 The first activating 800×600 panel anchors the scene. Related windows share one
 uniform affine transform; the larger nonactivating desktop background is excluded
 from scene sizing. Native z-order is retained. Drawing ports, regions and
@@ -152,7 +152,52 @@ the shared input inverse and positions related panels, which attach as child
 windows when shown so they follow minimization. Layout refreshes retain the
 dragged center where the usable display allows it; choosing Fit explicitly
 recenters the window. Window geometry remains
-session-only; resizing continues through View's interface-scale menu.
+session-only; legacy screens resize through View's interface-scale menu.
+
+### Adaptive tactics pilot (2026-11-15)
+
+Game Settings → **New Screens** (Portuguese: **Novos Écrãs**) controls the shared
+adaptive-screen registry. It defaults to On; Off restores original tactics
+geometry and prevents any registered screen from adapting. All eleven languages
+have localized labels. Changes are pending until OK; Cancel/Escape discards them,
+and Reset selects the default without applying it early. The host-only
+`Screens.plist` beside `Presentation.plist` persists the choice without extending
+the original preferences record or career format. Future adapted screens must
+register through `adaptive_screen_enabled`, retaining this single gate.
+
+The local tactics builders (`103b3c50` and its `103baec0` wrapper) accept a
+resizable logical canvas, bounded to 800×600–3200×1800. First entry uses the
+available screen at the selected fixed font scale; Fit uses 100% text and more
+canvas. Later edge resizing remembers the preferred dimensions for the session.
+Other screens and network sessions retain the legacy canvas. The full club
+roster page is not converted by this pilot.
+
+The original fonts, palette, localized labels, beveled buttons and pitch drawing
+remain in use. Wider tactics show up to three additional existing player views
+(positions, average rating, goals or form); during matches only the extra
+positions view is eligible. One original translucent backdrop covers the names
+and all added columns, ending at the pitch gutter. The selected View column
+stays functional. Taller windows enlarge the table while the pitch keeps its original 330:400 aspect
+ratio. The Edit menu and editable footer keep their original widths and align
+to the right. Pitch fitting takes precedence over extra columns on tall windows;
+the twenty formation slots remain unchanged.
+Additional position text uses a scratch record because the original formatter
+can repair a position byte; extra Condition queries are deliberately excluded
+because they can update injuries and consume RNG.
+
+AppKit only records a resize request. The local screen manager applies it after
+clearing old controls and before rebuilding: it replaces both pixel buffers,
+updates PixMaps/strides/mouse bounds, invalidates size-dependent background caches
+and rebuilds the original controls. The preceding raster and vector drawing is
+retained for dialogs that capture their backdrop. Original background images
+cover the larger canvas without changing their source dimensions. Failed guest
+allocation retains the old canvas and suppresses identical automatic retries.
+`adaptive_gui_checks` covers grow/shrink, padded strides, allocation failure,
+the 39 audited instruction sites, real tactics controls and RNG/roster preservation.
+Grid construction, popup anchoring and movement have independent canvas clamps:
+updating only individual controls can invert grids beyond x799 or clip a footer
+below y599. The fixture checks positive grid extents and both footer hit targets
+at 800×600, 1200×680, 1280×900 and 1600×1000, then restores the legacy size.
 
 The usable `NSScreen.visibleFrame` excludes the menu bar and Dock; its native
 content rectangle also reserves the title bar. Fit uses the

@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "presentation.hpp"
 
 namespace cm::aot {
 struct State;
@@ -24,6 +25,11 @@ public:
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;
     std::vector<float> render_audio_offline(std::uint32_t frames);
     void observe_drawing(State&, std::uint32_t pc);
+    GuiCanvas gui_canvas_size() const;
+    // Consumed by the local screen manager, never by an AppKit callback.
+    bool request_adaptive_screen(std::uint32_t builder);
+    void apply_adaptive_screen(State&, std::uint32_t display);
+    bool resize_gui_canvas(State&, GuiCanvas);
     void quick_save_load_begin(State&);
     void quick_save_load_end(State&);
     bool quick_save_write_begin(State&);

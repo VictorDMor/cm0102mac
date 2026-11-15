@@ -1,4 +1,5 @@
 #include "main_program_detail.hpp"
+#include "adaptive_gui.hpp"
 #include <array>
 
 namespace cm::aot::main_program {
@@ -309,7 +310,8 @@ std::uint32_t click_event(Cpu& c, std::uint32_t, std::uint32_t event, std::uint3
 
 std::uint32_t bounds_event(Cpu& c, std::uint32_t, std::uint32_t, std::uint32_t) {
     Frame frame(c, 0x10770880, 0x40, {});
-    Program{c}.redraw(0, 0, 799, 599, 0x107708a0);  // the whole 800 x 600 screen
+    const auto canvas = gui_canvas(c.s);
+    Program{c}.redraw(0, 0, canvas.width - 1, canvas.height - 1, 0x107708a0);
     return 0;
 }
 

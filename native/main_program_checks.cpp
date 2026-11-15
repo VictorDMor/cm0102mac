@@ -606,7 +606,7 @@ std::vector<Case> all_cases() {
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 2) throw std::runtime_error("Usage: cm-main-program-checks <a session capture's initial.snapshot>");
+        if (argc < 2 || argc > 3) throw std::runtime_error("Usage: cm-main-program-checks <initial.snapshot> [case name]");
         State base;
         load_match_snapshot(base, argv[1]);
         // The snapshot stops at the end of an import, inside its glue: the
@@ -620,6 +620,8 @@ int main(int argc, char** argv) {
         dispatch_probe = fixture_probe;
         const auto defaults = fakes;
         auto list = all_cases();
+        if (argc == 3) std::erase_if(list, [&](const auto& test) { return test.name != argv[2]; });
+        if (list.empty()) throw std::runtime_error("No matching MAIN fixture");
         for (const auto& test : list) {
             fakes = defaults;
             run_case(base, test);

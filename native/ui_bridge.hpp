@@ -81,6 +81,8 @@ public:
     bool set_interface_scale(InterfaceScale scale);
     InterfaceScale interface_scale() const;
     double presentation_scale() const;
+    GuiCanvas adaptive_canvas(bool enabled);
+    void commit_canvas(GuiCanvas);
     std::vector<NativeDisplay> displays() const;
     std::vector<LegacyRect> desktop_rectangles() const;
     // A modal dialog (Dialog Manager): its items as AppKit controls. As in

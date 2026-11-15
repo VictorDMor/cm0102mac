@@ -66,6 +66,7 @@ from exception_runtime_audit import (require_exception_runtime_contract, require
 from compiler_arithmetic_audit import (require_compiler_arithmetic_contract, require_compiler_arithmetic_index,
                                      require_compiler_arithmetic_hooks, compiler_arithmetic_hook, COMPILER_ARITHMETIC_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
+from adaptive_gui_audit import ADAPTIVE_GUI_INSTRUCTIONS, ADAPTIVE_BACKGROUND_BOUNDARY
 from register_context_audit import (require_register_context_contract, require_register_context_index,
                                    require_register_context_hooks, register_context_hook,
                                    REGISTER_CONTEXT_ENTRIES, CAPTURE_OBSERVATIONS)
@@ -1218,7 +1219,7 @@ PROFILE_OFFER_READS = {
 SPECIAL_LOWERINGS = frozenset({
     0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x10131c00,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
-    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS) | set(PROFILE_OFFER_READS)
+    0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS) | set(PROFILE_OFFER_READS) | set(ADAPTIVE_GUI_INSTRUCTIONS) | {ADAPTIVE_BACKGROUND_BOUNDARY}
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
 
 
@@ -2058,6 +2059,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "season_reference.hpp"')
     if any(a >> 12 == page for a in NATIVE_DRAWING_BOUNDARIES):
         code.insert(1, '#include "native_drawing.hpp"')
+    if any(a >> 12 == page for a in (*ADAPTIVE_GUI_INSTRUCTIONS, ADAPTIVE_BACKGROUND_BOUNDARY)):
+        code.insert(1, '#include "adaptive_gui.hpp"')
     if staff_forwards:
         code.insert(1, '#include "staff_score_stack.hpp"')
         code.append("bool staff_stack_forwarding = can_forward_staff_score_stack(s);")
@@ -2119,6 +2122,16 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
         hooks_start = len(code)
+        if a in ADAPTIVE_GUI_INSTRUCTIONS:
+            if item["assembly"] != ADAPTIVE_GUI_INSTRUCTIONS[a] or a + 4 not in page_addresses:
+                raise ValueError(f"Adaptive canvas instruction changed at {a:x}")
+            code.append(f"if (adaptive_gui_instruction(s, 0x{a:x})) goto i_{a + 4:x};")
+            isolated.add(a)
+        if a == ADAPTIVE_BACKGROUND_BOUNDARY:
+            if item["assembly"] != "addis r29,r24,0x13":
+                raise ValueError("Adaptive background draw boundary changed")
+            code.append("draw_adaptive_background(s);")
+            isolated.add(a)
         if a in quick_save_progress_calls:
             if item["assembly"] != "bl 0x10743120" or a + 4 not in page_addresses:
                 raise ValueError(f"Quick-save progress boundary changed at {a:x}")
@@ -2534,19 +2547,6 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(shortlist_manager_hook(a))
         if a == 0x101195e8:
             code.append("season_day_boundary(s, 0x101195e8);")
-        if a == 0x1071a828:
-            require_control_cursor_block(instructions, selected)
-            code.append("if constexpr (Turbo) if (match_snapshot_requested()) {")
-            code.append(f"counter.publish(0x{a:x}); capture_match_snapshot(s);")
-            code.append("}")
-            code.append("if constexpr (Turbo) {")
-            code.append("next_control_cursor_entry(s, counter);")
-            code.append("goto i_1071a864;")
-            code.append("}")
-        if len(code) > hooks_start or (register_context_hooks and a in CAPTURE_OBSERVATIONS):
-            hooked.add(a)
-            # Only an allowed owner's own hook may sit on an inlined leaf.
-            owner_hooks = [OWNER_HOOK.fullmatch(line) for line in code[hooks_start:]]
         if a == 0x10131c00:
             # Skip the publisher splash (Feral, or its savechip alternate),
             # including its fades and 2.5-second wait. Keep the original
@@ -2563,6 +2563,19 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append(transfer(0x10131cb4, transfer_page, selected))
             isolated.add(a)
             continue
+        if a == 0x1071a828:
+            require_control_cursor_block(instructions, selected)
+            code.append("if constexpr (Turbo) if (match_snapshot_requested()) {")
+            code.append(f"counter.publish(0x{a:x}); capture_match_snapshot(s);")
+            code.append("}")
+            code.append("if constexpr (Turbo) {")
+            code.append("next_control_cursor_entry(s, counter);")
+            code.append("goto i_1071a864;")
+            code.append("}")
+        if len(code) > hooks_start or (register_context_hooks and a in CAPTURE_OBSERVATIONS):
+            hooked.add(a)
+            # Only an allowed owner's own hook may sit on an inlined leaf.
+            owner_hooks = [OWNER_HOOK.fullmatch(line) for line in code[hooks_start:]]
             if a in CAPTURE_OBSERVATIONS or not all(
                     match and (f"{match.group(1)}_adapter" in INLINE_OWNER_MODULES or a in CPP_LEAVES) for match in owner_hooks):
                 special.add(a)
@@ -3036,6 +3049,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_transfer_offer_unit_hooks(page, instructions, result)
     if injury_unit_hooks:
         require_injury_unit_hooks(page, instructions, result)
+    if finance_hooks:
+        require_finance_hooks(page, instructions, result)
+    if human_manager_hooks:
+        require_human_manager_hooks(page, instructions, result)
     if club_shortlist_storage_hooks:
         require_club_shortlist_storage_hooks(page, instructions, result, taken_over)
     if shortlist_category_hooks:
@@ -3052,10 +3069,6 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         require_shortlist_policy_hooks(page, instructions, result, taken_over)
     if profile_qualification_hooks:
         require_profile_qualification_hooks(page, instructions, result, taken_over)
-    if finance_hooks:
-        require_finance_hooks(page, instructions, result)
-    if human_manager_hooks:
-        require_human_manager_hooks(page, instructions, result)
     if contract_draft_hooks:
         require_contract_draft_hooks(page, instructions, result, taken_over)
     if contract_display_hooks:
@@ -3482,6 +3495,7 @@ def main():
                         (0x10345bb0, "Scope retirement creation policy to new careers, preserving loaded history"),
                         (0x10482ca0, "Suspend daily processing of the retired Inter-American Cup"),
                         (0x101312b8, "Exclude the retired Inter-American Cup from annual processing"),
+                        (0x10131c00, "Skip the publisher opening splash and its wait"),
                         (0x1048aa94, "Cancel only unplayed post-1998 Inter-American fixtures while reading"),
                         (0x1049dfa8, "Suppress future host announcements for the retired Inter-American Cup"),
                         (0x102a9e74, "Omit the retired Inter-American Cup from the sidebar menu"))
@@ -3495,5 +3509,4 @@ def main():
 
 
 if __name__ == "__main__":
-                        (0x10131c00, "Skip the publisher opening splash and its wait"),
     main()

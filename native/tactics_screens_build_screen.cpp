@@ -12,6 +12,9 @@
 // here too, with `keep` for a copy of the last result.
 #include "tactics_screens_build.hpp"
 #include "tactics_leaves.hpp"
+#include "adaptive_gui.hpp"
+#include "tactics_layout.hpp"
+#include "gui_guest_scope.hpp"
 #include <bit>
 
 namespace cm::aot::tactics_screens::build {
@@ -59,6 +62,10 @@ private:
     const std::uint32_t game, text, pool, tactics_global;
     std::uint32_t screen = 0;   // r26: the screen's state object
     std::uint32_t view = 0;     // r20: the View menu's column, sign-extended
+    TacticsLayout layout() const { return {gui_canvas(c.s)}; }
+    std::uint32_t additional_box = 0;
+    std::uint32_t additional_player_record = 0;
+    bool additional_column = false;
 
     std::uint32_t at(std::int32_t offset) const { return frame.at(offset); }
     std::uint32_t tactics() const { return c.u32(tactics_global); }
@@ -168,6 +175,19 @@ private:
     std::uint32_t box(std::uint32_t left, std::uint32_t top, std::uint32_t right, std::uint32_t bottom,
                       std::uint32_t kind, std::uint32_t data, std::uint32_t extra,
                       std::initializer_list<std::uint32_t> more, std::uint32_t back) {
+        const auto geometry = layout();
+        if (!additional_column) {
+            if (right == 440) right = geometry.list_right();
+            if (left == 530) left = geometry.pitch_right() - 250;
+            else if (left >= 450) left += geometry.extra_width();
+            if (right == 780) right = geometry.pitch_right();
+            if (right == 790) {
+                left = geometry.footer_left();
+                right = geometry.canvas.width - 10;
+            }
+            if (top >= 545) top += geometry.canvas.height - 600;
+            if (bottom >= 537) bottom += geometry.canvas.height - 600;
+        }
         stack_args(more);
         c.set({{3, game}, {4, left}, {5, top}, {6, right}, {7, bottom}, {8, kind}, {9, data}, {10, extra}});
         return call(0x10323c00, back);
@@ -177,6 +197,10 @@ private:
     std::uint32_t cell(std::uint32_t target, std::uint32_t box, std::uint32_t row, std::uint32_t column,
                        std::uint32_t flags, std::uint32_t colour, std::uint32_t font, std::uint32_t style,
                        std::initializer_list<std::uint32_t> more, std::uint32_t back) {
+        if (additional_column && box == list()) {
+            box = additional_box;
+            row -= 6; // the original view uses columns 6, 7 and 8
+        }
         stack_args(more);
         c.set({{3, game}, {4, box}, {5, row}, {6, column}, {7, flags}, {8, colour}, {9, font}, {10, style}});
         return call(target, back);
@@ -242,6 +266,7 @@ private:
     void cell_frames();
     void spots();
     void buttons();
+    void additional_information();
     // The pitch rectangle 0x103cbb30 fills in: left +0x130, top +0x12c, right +0x128, bottom +0x124.
     std::int32_t local(std::int32_t offset) const { return c.i32(at(offset)); }
     std::int32_t pitch_left() const { return local(0x130); }
@@ -761,6 +786,7 @@ void Builder::headings() {
     }
     const auto panel = [&](std::uint32_t left, std::uint32_t right, std::uint32_t bottom, std::uint32_t kind,
                            std::uint32_t style, std::uint32_t first, std::uint32_t back) {
+        if (right == 440) right = layout().list_right();
         stack_args({first, mark(), text});
         c.set({{3, game}, {4, left}, {5, 0x69}, {6, right}, {7, bottom}, {8, kind}, {9, 0}, {10, style}});
         return call(0x10744390, back);
@@ -847,8 +873,14 @@ void Builder::headings() {
         merge(0x149, 0x14c);
     }
 
+    // One original translucent backdrop spans the names and extra columns.
+    // Its canvas coordinates must not go through the selected-view box mapping.
+    const auto geometry = layout();
+    stack_args({0, 2, 0, 0xffffffffu});
+    c.set({{3, game}, {4, 110}, {5, 145}, {6, std::uint32_t(geometry.pitch_left() - 10)},
+           {7, std::uint32_t(geometry.list_bottom())}, {8, 1}, {9, 0}, {10, 1}});
+    call(0x10323c00, 0x103b58a8);
     // The list: with a heading row naming the ticked column, or without.
-    box(0x6e, 0x91, 0x1b8, 0x221, 1, 0, 1, {0, 2, 0, 0xffffffffu}, 0x103b58a8);
     if (c.i8(at(0x315)) != 0) {
         c.set(23, box(0x6e, 0x91, 0x1b8, 0x221, 9, at(0x144), 0x15, {0, 1, 0, 0xffffffffu}, 0x103b5900));
         c.put16(at(0x94), box(0x6e, 0x91, 0x1b8, 0x221, 2, at(0x92), 0x15, {0, 1, 0, 0xffffffffu}, 0x103b5948));
@@ -1099,8 +1131,14 @@ void Builder::view_column(std::uint32_t player) {
     };
     if (view_is(1, 8)) {
         // Position(s).
-        const auto record = record_of(0);
+        auto record = record_of(0);
         if (!record) return;
+        if (additional_column) {
+            // The original position formatter can repair a role byte. Extra
+            // columns describe a scratch record, never changing the player.
+            c.s.memory.copy_in(additional_player_record, c.s.memory.copy_out(record, 0x20));
+            record = additional_player_record;
+        }
         c.set({{3, record}, {4, text}, {5, 0x7d0}, {6, 1}});
         call(0x100cc4a0, 0x103b6344);
         keep(11);
@@ -1552,7 +1590,9 @@ std::int32_t quarter(std::int32_t value) { return value / 4; }
 // runs; colours depend on the competition (0x103c6bd0).
 void Builder::pitch() {
     stack_args({0, 0xffffffffu});
-    c.set({{3, 0x1c2}, {4, 0x91}, {5, 0x30c}, {6, 0x221}, {7, at(0x130)}, {8, at(0x12c)}, {9, at(0x128)},
+    const auto geometry = layout();
+    c.set({{3, std::uint32_t(geometry.pitch_left())}, {4, 0x91}, {5, std::uint32_t(geometry.pitch_right())},
+           {6, std::uint32_t(geometry.pitch_bottom())}, {7, at(0x130)}, {8, at(0x12c)}, {9, at(0x128)},
            {10, at(0x124)}, {12, c.toc(-0x4cac)}});
     c.set_f(1, double(c.f32(c.r(12))));
     call(0x103cbb30, 0x103b8cfc);
@@ -2040,6 +2080,52 @@ void Builder::build() {
     squad();
     pitch();
     buttons();
+    additional_information();
+}
+
+void Builder::additional_information() {
+    const auto geometry = layout();
+    if (!geometry.columns()) return;
+    GuiGuestScope preserve(c.s, 0x440);
+    const auto original_text = c.s.memory.copy_out(text, 0x7d0);
+    const auto original_view = view;
+    struct Scratch {
+        State& state; std::uint32_t address;
+        ~Scratch() { deallocate(state, address); }
+    } scratch{c.s, allocate(c.s, 0x20, true)};
+    if (!scratch.address) return;
+    additional_player_record = scratch.address;
+    const bool match = in_match(0x103b4874) != 0;
+    struct Column {unsigned view, name;};
+    const Column candidates[]{{1, 0x11b}, {5, 0x140}, {3, 0x133}, {4, 0x13a}};
+    const bool heading_row = c.i8(at(0x315)) != 0;
+    unsigned column = 0;
+    for (const auto& candidate : candidates) {
+        if (candidate.view == original_view || (match && candidate.view != 1)) continue;
+        if (column >= unsigned(geometry.columns())) break;
+        const auto left = geometry.list_right() + column * 160;
+        additional_column = true; // these coordinates are already laid out
+        additional_box = box(left, heading_row ? 145 : 153, left + 160,
+            geometry.list_bottom() - (heading_row ? 0 : 8), 1,
+            0, heading_row ? 21 : 20, {0, 1, 0, 0xffffffffu}, 0x103b5900);
+        additional_column = false;
+        localise(candidate.name, 0x103b47c8);
+        // The same grey/blue heading treatment and original game font.
+        stack_args({1, mark(), text});
+        c.set({{3, game}, {4, left}, {5, 105}, {6, left + 160}, {7, 140}, {8, 2}, {9, 0}, {10, 0xc}});
+        call(0x10744390, 0x103b5424);
+        view = candidate.view;
+        additional_column = true;
+        for (unsigned slot = 0; slot < 20; ++slot) {
+            c.set(25, slot); c.set(24, slot + (heading_row ? 1 : 0));
+            const auto player = entry_query(0x103ca4e0, 0x103b5a3c);
+            view_column(player);
+        }
+        additional_column = false;
+        ++column;
+    }
+    view = original_view;
+    c.s.memory.copy_in(text, original_text);
 }
 }
 

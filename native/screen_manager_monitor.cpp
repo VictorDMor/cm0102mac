@@ -194,12 +194,21 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
         for(;;) {
             c.set(4,extended(manager.current()));if(compare(c,c.r(4),16)>=0)break;
             const auto group=manager.group();
+            if (manager.current() == 0 && c.s.platform && manager.count(0) > 0) {
+                const auto history = manager.history().get();
+                const auto vector = history ? c.u32(history) : 0;
+                // Network screens share the original protocol's 800x600
+                // geometry. Only the local, disconnected builder opts in.
+                const auto builder = vector && !c.u32(address + 0x2c64) ? c.u32(vector) : 0;
+                if (c.s.platform->request_adaptive_screen(builder)) c.put8(group + 24, 1);
+            }
             if(byte_nonzero(c,c.u8(group+24))) {
                 if(compare(c,manager.count(manager.current()))<=0)c.put8(group+24,0);
                 else {
                     if(compare(c,std::int16_t(c.r(4)))==0){c.put8(c.r(25),0);c.put8(c.r(24),0);}
                     c.set({{5,0},{4,1}});c.put8(manager.group()+24,0);
                     p.call(0x10719560,0x1073c8d0,{monitor.screen()});
+                    if (manager.current() == 0 && c.s.platform) c.s.platform->apply_adaptive_screen(c.s, monitor.screen());
                     c.set({{4,1},{3,monitor.screen()+0x130000}});c.put8(c.r(3)-0x56c2,1);
                     monitor.history_callback(0,0x1073c904,false);
                     c.set({{4,0},{3,monitor.screen()+0x130000}});c.put8(c.r(3)-0x56c2,0);
