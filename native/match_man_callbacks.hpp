@@ -21,6 +21,9 @@ std::uint32_t prepare_actor(Cpu& c, std::uint32_t side, std::uint32_t index, std
 // halfword plus a float). `first` and `second` point at the slots. A missing or
 // staffless player orders last, one at position -2 first, and so does a player of role 1
 // whose staff rating (+0xf) is below 20.
+// Production compares each player's own role with the same weights on both sides.
+// Diagnostic opt-out for original/reconstruction comparisons only; never a saved setting.
+extern bool original_substitution_order;
 std::int32_t compare_by_scaled_score(Cpu& c, std::uint32_t first, std::uint32_t second);
 std::int32_t compare_by_score(Cpu& c, std::uint32_t first, std::uint32_t second);
 }

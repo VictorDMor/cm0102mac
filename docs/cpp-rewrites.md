@@ -1682,6 +1682,16 @@ Quirks kept: 0x10209d10's second and third levels and its self-call are unreacha
 32-bit n); 0x102102d0 rolls the staff pointer itself as a number; 0x10210c50 doesn't reset the best score between places and
 rates the occupant with the candidate's side record; 0x1020d7d0 copies the lineup record piecewise around padding bytes.
 
+Intentional simulation correction (2026-11-15, authorized by Victor): substitution comparators 0x1020ea00 / 0x1020ee00
+now form a consistent ordering. The scaled comparator uses each player's own role, with weights 1.35 for role bits 2/4,
+1.20 for 8 and 1.10 for 16 (the remaining conversion branches are unchanged). Both comparators tie players in the same
+special-priority bucket and compare signed score keys without overflowing subtraction. This changes selection, call/stack
+residues and volatile floating-point status where the corrected path differs; it is not claimed equivalent to the original.
+`CM_SUBSTITUTION_ORDER_ORIGINAL=1` restores the original policy for diagnostics, and `cm-match-man-checks` explicitly selects
+it for reconstruction checks. `cm-substitution-order-checks` instead tests the corrected production routes with ordering laws,
+original-defect controls, ABI/record-write checks, numeric extremes and all 720 permutations of six candidates for each
+comparator through the game's qsort. Equal keys have no guaranteed stable identity order. The save format is unchanged.
+
 ## MANAGER_MANAGER.CPP: manager records, jobs and the result tables
 
 `MANAGER_MANAGER.CPP` is 105 routines / 49,690 instructions in 0x10193630-0x101c42f0 (`tools/manager_manager_audit.py`;

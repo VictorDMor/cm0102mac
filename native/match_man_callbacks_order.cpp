@@ -5,10 +5,12 @@
 #include "match_man_callbacks_detail.hpp"
 #include "match_man_detail.hpp"
 #include <array>
+#include <cstdlib>
 #include <optional>
 
 namespace cm::aot::match_man {
 using namespace guest;
+bool original_substitution_order = std::getenv("CM_SUBSTITUTION_ORDER_ORIGINAL") != nullptr;
 
 namespace {
 // The role bits of the player (MATCH_PL), asked at the original's call site `back`.
@@ -24,6 +26,18 @@ std::optional<std::int32_t> settled_order(Cpu& c, std::uint32_t a, std::uint32_t
                                           std::uint32_t back_b) {
     const auto staff = [&](std::uint32_t player) { return c.u32(player + callback_player::staff); };
     const auto position = [&](std::uint32_t player) { return std::int32_t(c.i8(player + callback_player::position)); };
+    if (!original_substitution_order) {
+        if (a == b) return 0;
+        const bool missing_a = !a || !staff(a), missing_b = !b || !staff(b);
+        if (missing_a || missing_b) return int(missing_a) - int(missing_b);
+        const bool off_a = position(a) == -2, off_b = position(b) == -2;
+        if (off_a || off_b) return int(off_b) - int(off_a);
+        const bool emergency_a = role(c, a, back_a) == 1 && c.i8(staff(a) + staff_record::goalkeeping) < 20;
+        const bool emergency_b = role(c, b, back_b) == 1 && c.i8(staff(b) + staff_record::goalkeeping) < 20;
+        if (emergency_a || emergency_b) return int(emergency_b) - int(emergency_a);
+        return std::nullopt;
+    }
+    // Preserve the original's exact call/stack behavior only for diagnostic equivalence.
     if (compare_logical(c, a) == 0 || compare_logical(c, staff(a)) == 0) return 1;
     if (compare_logical(c, b) == 0 || compare_logical(c, staff(b)) == 0) return -1;
     if (compare(c, position(a), -2) == 0) return -1;
@@ -63,7 +77,7 @@ std::uint32_t player_score(Cpu& c, Fpu& fpu, std::uint32_t pool, std::uint32_t p
     return c.u32(result_at + 4);
 }
 
-// What the first player's role bits select for a score: a factor (pool offset) to
+// What a player's role bits select for a score: a factor (pool offset) to
 // multiply by, or an unscaled conversion, or nothing. The original asks MATCH_PL once
 // per test, in this order, at the call sites `back`.
 struct Scaling {
@@ -95,7 +109,8 @@ void rescale(Cpu& c, Fpu& fpu, const Frame& frame, std::uint32_t pool, Kept<R>& 
 
 // 0x1020ea00. Frame 0x60 saving r28-r31; r31 the pool of doubles (TOC -0x5278), r30 and
 // r29 the players, r28 and then r29 their scores. Answers score(a) - score(b).
-// Quirk kept: the second player's score is scaled by the first player's role bits.
+// The original used a's role for both scores and two weights for role 8. Production
+// uses each player's own role and the original first-player weight (1.20) for both.
 std::int32_t compare_by_scaled_score(Cpu& c, std::uint32_t first, std::uint32_t second) {
     Frame frame(c, 0x1020ea00, 0x60, {.first_gpr = 28});
     const auto pool = c.toc(slots::constants);
@@ -111,11 +126,16 @@ std::int32_t compare_by_scaled_score(Cpu& c, std::uint32_t first, std::uint32_t 
     rescale(c, fpu, frame, pool, score_a,
             scaling_of(c, a, constants::factor_8_first, {0x1020eb2c, 0x1020eb40, 0x1020eb88, 0x1020ebd0, 0x1020ec18, 0x1020ec2c}));
     Kept<29> score_b(c, c.r(29));
-    c.set(3, a);
+    c.set(3, original_substitution_order ? a : b);
     score_b = player_score(c, fpu, pool, b, frame.at(0x38), frame.at(0x40));
     rescale(c, fpu, frame, pool, score_b,
-            scaling_of(c, a, constants::factor_8_second, {0x1020ec9c, 0x1020ecb0, 0x1020ecf8, 0x1020ed40, 0x1020ed88, 0x1020ed9c}));
-    return std::int32_t(result(c, score_a - score_b));
+            scaling_of(c, original_substitution_order ? a : b,
+                       original_substitution_order ? constants::factor_8_second : constants::factor_8_first,
+                       {0x1020ec9c, 0x1020ecb0, 0x1020ecf8, 0x1020ed40, 0x1020ed88, 0x1020ed9c}));
+    // Only the sign is a qsort result. Subtraction can wrap and reverse the order.
+    const auto order = original_substitution_order ? score_a - score_b :
+        std::uint32_t((std::int32_t(score_a) > std::int32_t(score_b)) - (std::int32_t(score_a) < std::int32_t(score_b)));
+    return std::int32_t(result(c, order));
 }
 
 // 0x1020ee00. Frame 0x60 saving r30 and r31 (the second and first player). Answers
@@ -144,6 +164,8 @@ std::int32_t compare_by_score(Cpu& c, std::uint32_t first, std::uint32_t second)
     c.put64(frame.at(0x38), fpu.fctiwz(0, sum_a));
     const auto score_b = c.u32(frame.at(0x4c));
     const auto score_a = c.u32(frame.at(0x3c));
-    return std::int32_t(result(c, score_a - score_b));
+    const auto order = original_substitution_order ? score_a - score_b :
+        std::uint32_t((std::int32_t(score_a) > std::int32_t(score_b)) - (std::int32_t(score_a) < std::int32_t(score_b)));
+    return std::int32_t(result(c, order));
 }
 }

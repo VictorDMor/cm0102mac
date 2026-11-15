@@ -39,7 +39,7 @@ constexpr std::uint32_t prepare_player = 0x10223ac0;   // MATCH_PL: fills an act
 // Offsets into the pool of doubles at TOC -0x5278 (match_man::slots::constants).
 namespace constants {
 constexpr std::uint32_t conversion = 0x90;  // 2^52 + 2^31, the int-to-double bias
-// The factors of the score comparators, by the role bits of the first player.
+// Production uses factor_8_first for both players; factor_8_second is diagnostic-only.
 constexpr std::uint32_t factor_4_or_2 = 0x30, factor_16 = 0x40;
 constexpr std::uint32_t factor_8_first = 0x38, factor_8_second = 0x180;
 }

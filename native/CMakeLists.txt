@@ -3681,6 +3681,12 @@ if(CM_MATCH_MAN_COVERAGE)
     # Undefined behaviour the guest's wrapping arithmetic must never turn into: reported, not fatal.
     target_compile_options(cm_match_man_coverage PRIVATE "-fprofile-instr-generate=${CM_MATCH_MAN_PROFILE}" -fcoverage-mapping -ffp-contract=off
         -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+add_executable(cm-substitution-order-checks substitution_order_checks.cpp)
+target_link_libraries(cm-substitution-order-checks PRIVATE cm_aot)
+target_compile_options(cm-substitution-order-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_BENCHMARK_DIR}/match/2262/initial.snapshot")
+    add_test(NAME substitution_order COMMAND cm-substitution-order-checks "${CM_BENCHMARK_DIR}/match/2262")
+endif()
     target_compile_definitions(cm_match_man_coverage PRIVATE CM_MATCH_MAN_COVERAGE=1)
     target_sources(cm-match-man-checks PRIVATE $<TARGET_OBJECTS:cm_match_man_coverage>)
     target_compile_definitions(cm-match-man-checks PRIVATE CM_MATCH_MAN_COVERAGE=1)

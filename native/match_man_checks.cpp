@@ -15,6 +15,7 @@
 #include "code_fragment_adapter.hpp"
 #include "guest_abi.hpp"
 #include "match_man_adapter.hpp"
+#include "match_man_callbacks.hpp"
 #include "actor_construction_adapter.hpp"
 #include "match_replay.hpp"
 #include "match_turbo.hpp"
@@ -665,6 +666,11 @@ int main(int argc, char** argv) {
             else throw std::runtime_error("Unknown option " + std::string(option));
         }
         if (options.world.empty() && options.match.empty()) { std::cerr << usage; return 2; }
+        // These checks establish reconstruction equivalence, including callers of
+        // the intentionally repaired comparators. The corrected production policy
+        // has independent invariants/selection checks in cm-substitution-order-checks.
+        match_man::original_substitution_order = true;
+        std::cout << "Reconstruction checks: original substitution policy (corrected policy tested separately)\n";
         routine_child_exit = flush_child;
         set_match_turbo_enabled(false);
         // The assertion's error dialog needs Toolbox imports a snapshot has no host for.
