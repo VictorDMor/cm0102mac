@@ -593,6 +593,61 @@ Route route_of(State& s, std::uint32_t entry, bool original) {
     if (!WIFEXITED(status)) return Route::stopped;
     return Route(WEXITSTATUS(status));
 }
+// 0x101030c0 with a club whose ground row (+0x3c) is null, or whose row has a null word at +0x10: the
+// original reads address 0x10 and faults there, and the C++ returns without posting an item (0x102cc140),
+// with the stack pointer and r30/r31 as at entry. With both present the C++ posts one and the original
+// returns (their items are compared by the equivalence cases). Only meaningful with page zero unmapped.
+enum class Guard { posted = 40, silent, faulted, other };
+enum class Ground { whole, no_row, unnamed };
+Guard stadium_news(State& s, bool original, Ground ground) {
+    constexpr std::uint32_t entry = 0x101030c0, post_item = 0x102cc140, club_size = 0x248, ground_row = 0x3c;
+    const auto pid = ::fork();
+    if (pid < 0) throw std::runtime_error("fork");
+    if (pid == 0) {
+        static bool posted = false;
+        try {
+            guest::Cpu c(s);
+            routine_checker = nullptr;
+            dispatch_probe = [](State& target) {
+                if (target.pc != post_item) return false;
+                posted = true;
+                target.pc = target.r<4>(4128);
+                return true;
+            };
+            finance_declining = original;
+            s.memory.observer = nullptr;
+            const auto clubs = c.u32(c.toc(-0x7be8));
+            const auto club = clubs + club_size, record = clubs + 2 * club_size;
+            if (ground == Ground::no_row) c.put32(club + ground_row, 0);
+            if (ground == Ground::unnamed) c.put32(c.u32(club + ground_row) + 0x10, 0);
+            c.set({{3, 0}, {4, club}, {5, record}, {30, 0x30303030}, {31, 0x31313131}});
+            c.set_lr(return_sentinel);
+            const auto stack = c.sp();
+            s.pc = entry;
+            s.budget = s.executed + 50'000'000;
+            alarm(20);
+            if (original) finance_run_original(s, entry); else finance_run_rewrite(s, entry);
+            const bool restored = c.sp() == stack && c.r(30) == 0x30303030 && c.r(31) == 0x31313131;
+            _exit(int(!restored ? Guard::other : posted ? Guard::posted : Guard::silent));
+        } catch (const std::runtime_error& error) {
+            _exit(int(std::string_view(error.what()) == "Unmapped data access at " + hex_address(0x10) ? Guard::faulted : Guard::other));
+        } catch (...) {}
+        _exit(int(Guard::other));
+    }
+    int status = 0;
+    ::waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? Guard(WEXITSTATUS(status)) : Guard::other;
+}
+int guard_proof(State& s) {
+    if (options.null_page) return 0;  // the original reads zero there and goes on
+    bool ok = stadium_news(s, false, Ground::whole) == Guard::posted;
+    const auto reference = stadium_news(s, true, Ground::whole);
+    ok = ok && (reference == Guard::posted || reference == Guard::silent);  // the original's own post is not dispatched
+    for (const auto ground : {Ground::no_row, Ground::unnamed})
+        ok = ok && stadium_news(s, false, ground) == Guard::silent && stadium_news(s, true, ground) == Guard::faulted;
+    std::cout << "stadium news guard: " << (ok ? "ok" : "FAILED") << '\n';
+    return ok ? 0 : 1;
+}
 int production_proof(State& s) {
     unsigned returned = 0, framed = 0, controls = 0, failures = 0;
     const auto entries = finance_production_entries();
@@ -826,7 +881,7 @@ int main(int argc, char** argv) {
             state->memory.map(scratch_base, scratch_size);  // for a case's own rows; nothing of the game's lives here
             if (options.null_page) state->memory.map(0, 0x10000);
             state->code_fragment_observer = &inputs;
-            if (options.production) status |= production_proof(*state);
+            if (options.production) status |= production_proof(*state) | guard_proof(*state);
             else if (options.cases) {
                 routine_checker = &checker;
                 run_cases(*state, 0, random);

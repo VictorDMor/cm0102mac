@@ -100,12 +100,13 @@ FINANCE_CASES("news posters") {
             cases.push_back({.entry = stadium_works, .registers = {{4, club(2)}, {5, quantity}, {6, kind}},
                              .label = "stadium works kind " + number(std::int8_t(kind)) + " quantity " + number(quantity)});
 
-    // A stadium link: no club, no record, a stadium pointer or none (the original then reads the word at 0x10).
+    // A stadium link: no club, no record, a stadium pointer.
     cases.push_back({.entry = stadium_link, .registers = {{4, 0}, {5, club(0)}}, .label = "stadium link, no club"});
     cases.push_back({.entry = stadium_link, .registers = {{4, club(1)}, {5, 0}}, .label = "stadium link, no record"});
     cases.push_back({.entry = stadium_link, .registers = {{4, club(1)}, {5, club(2)}}, .label = "stadium link"});
-    cases.push_back({.entry = stadium_link, .registers = {{4, club(1)}, {5, club(2)}}, .memory = {{4, club(1) + 0x3c, 0}},
-                     .label = "stadium link, no stadium (address 0x10 is unmapped: both sides fault at the same read)"});
+    // A club without a ground row, or with a row that names no ground: the original reads address 0x10 and
+    // stops, the C++ posts nothing.
+    // Not a comparison: cm-finance-checks --production checks both outcomes (guard_proof).
 
     // Receivers appeased and the competition story: the club by its index.
     for (const auto index : indexes) {

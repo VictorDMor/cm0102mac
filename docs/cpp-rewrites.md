@@ -2073,9 +2073,12 @@ adapter (`invoke_unit`), calls inside a block are direct, so the 58 entries are 
   copied to the frame, so the merge loop stops on whatever the frame holds at +0x81 onward. The merged name's
   length byte is fixed, so the name asked for does not change; the count of merged bytes and r22 at the following
   calls do. The C++ reads the real frame bytes, as the generated body did. No capture reaches this routine.
-- 0x101030c0 reads the word at +0x10 of a null stadium (0x1010311c, the test before it only skips the read for a
-  non-null one). Address 0x10 is unmapped here, so a club without a stadium at that point stops the game with the
-  original and with the C++ alike; on the original machine page zero could be read. Not guarded.
+- 0x101030c0 can read address 0x10 two ways: through a null ground row (0x1010311c; the test before it only skips
+  the read for a non-null row) and through a row whose word at +0x10 is null (0x10103134). The original machine
+  could read page zero; here the game stopped. The C++ posts no item then and says so once in the run log
+  ("Stadium news for a club without a named ground"); the generated body is not guarded. Neither happens with the
+  game's own data: both callers store the row just before the call, and the two rows they use have the word.
+  `cm-finance-checks --production` checks both outcomes (the original faults at 0x10, the C++ returns).
 - 0x10102660 leaves the flag byte in r5 when the stadium index is -1 and the flag is set, so the seating text
   prints the flag where the capacity would go.
 - Limits of the inline draws below a limit are a signed byte, a halfword or a small product at every site outside

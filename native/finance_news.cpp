@@ -3,6 +3,7 @@
 // news desk (0x102cc140; 0x102cc400 for the board stories whose club has a second recipient).
 #include "finance_news.hpp"
 #include "finance_detail.hpp"
+#include <cstdio>
 
 namespace cm::aot::finance {
 using guest::Frame;
@@ -120,9 +121,14 @@ void post_stadium_works_news(Cpu& c, std::uint32_t club, std::uint32_t quantity,
     item.post(club, 0x10102e74);
 }
 
-// 0x101030c0. Nothing is posted for no club or no record. The second word is read through the club's word
-// at +0x3c: when that is null the original reads the word at address 0x10 (low memory) instead and posts only if
-// it is zero, with a second word read through the zero it finds.
+// 0x101030c0. Nothing is posted for no club or no record. The second word is read through the club's ground
+// row (+0x3c) and that row's word at +0x10. Either can send the original to address 0x10, which the original
+// machine could read and this one cannot: a null row, where the test is inverted (0x10103118 `bne` skips the
+// check for a non-null row and a null one falls into 0x1010311c `lwz r0,0x10(r3)`), and a row whose +0x10 is
+// null (0x10103134 `lwz r5,0x10(r5)`; 138 of the 7,106 rows of the career snapshot). The two callers, in
+// 0x100fa6e0, store the row just before the call and the two rows they use have the word, so neither happens
+// with the game's own data. There is no item then: what low memory held on the original is not known. Said
+// once per run. The generated body is not guarded and still stops there.
 void post_stadium_link_news(Cpu& c, std::uint32_t club, std::uint32_t record) {
     Frame frame(c, 0x101030c0, 0x130, {.first_gpr = 30});
     const Item item{c, frame.at(item_at)};
@@ -131,12 +137,17 @@ void post_stadium_link_news(Cpu& c, std::uint32_t club, std::uint32_t record) {
     if (club == 0 || record == 0) return;
     item.word(0, c.u32(club), 0x1010310c);
     const auto stadium = c.u32(club + 0x3c);
-    // 0x10103110 lwz r3,0x3c(r30); 0x10103114 cmplwi r3,0; 0x10103118 bne 0x10103128: a null stadium falls into
-    // 0x1010311c lwz r0,0x10(r3), a read of address 0x10 (r3 is 0) that tests the word and leaves on non-zero
-    // (0x10103124 bne 0x10103160). Address 0x10 is unmapped here, so the original and this code fault together
-    // at that read (the case "stadium link, no stadium"): the return below is never taken in this runtime.
-    if (stadium == 0 && c.u32(stadium + 0x10) != 0) return;
-    item.word(1, c.u32(c.u32(stadium + 0x10) + 0x10), 0x10103138);
+    const auto named = stadium != 0 ? c.u32(stadium + 0x10) : 0;
+    if (named == 0) {
+        static bool said = false;
+        if (!said) {
+            said = true;
+            std::fprintf(stderr, "Stadium news for a club without a named ground (club %u, %s): no item\n", unsigned(c.u32(club)),
+                         stadium == 0 ? "no ground row" : "the row names none");
+        }
+        return;
+    }
+    item.word(1, c.u32(named + 0x10), 0x10103138);
     item.word(2, c.u32(record), 0x10103148);
     item.post(club, 0x1010315c);
 }
