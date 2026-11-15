@@ -14,8 +14,10 @@
 // callee's prologue saves those into the stack image too.
 #include "aot_runtime.hpp"
 #include "guest_context_transfer.hpp"
+#include "guest_register_frame.hpp"
 #include "owner_in_place.hpp"
 #include <bit>
+#include <cstring>
 #include <exception>
 #include <initializer_list>
 #include <stdexcept>
@@ -127,10 +129,32 @@ class Frame {
 public:
     Frame(Cpu& cpu, std::uint32_t entry, std::uint32_t size, Saves saves)
         : c(cpu), caller_sp(cpu.sp()), saves_(normalized(saves)), scope(cpu.s, entry) {
-        for (unsigned n = saves_.first_fpr; n < 32; ++n)
-            c.put64(caller_sp + std::uint32_t(saves_.fpr_offset) + (n - saves_.first_fpr) * 8, c.s.r<8>(reg::fpr(n)));
-        for (unsigned n = saves_.first_gpr; n < 32; ++n)
-            c.put32(caller_sp + std::uint32_t(saves_.gpr_offset) + (n - saves_.first_gpr) * 4, c.r(n));
+        // Register file and stack hold the same big-endian bytes. Without an
+        // interested write observer, a certified save area is copied
+        // directly: GPRs in one span, FPRs one at a time (16-byte slots in
+        // the register file, 8 on the stack). Otherwise the scalar stores
+        // keep callbacks, their order and partial faults.
+        if (saves_.first_fpr < 32) {
+            const auto start = caller_sp + std::uint32_t(saves_.fpr_offset);
+            const auto count = 32 - saves_.first_fpr;
+            if (auto* guest = GuestRegisterFrame::unobserved_scratch(c.s.memory, start, count * 8)) {
+                for (unsigned i = 0; i < count; ++i)
+                    std::memcpy(guest + i * 8, c.s.registers.data() + reg::fpr(saves_.first_fpr + i), 8);
+            } else {
+                for (unsigned n = saves_.first_fpr; n < 32; ++n)
+                    c.put64(start + (n - saves_.first_fpr) * 8, c.s.r<8>(reg::fpr(n)));
+            }
+        }
+        if (saves_.first_gpr < 32) {
+            const auto start = caller_sp + std::uint32_t(saves_.gpr_offset);
+            const auto size = (32 - saves_.first_gpr) * 4;
+            if (auto* guest = GuestRegisterFrame::unobserved_scratch(c.s.memory, start, size)) {
+                std::memcpy(guest, c.s.registers.data() + reg::gpr(saves_.first_gpr), size);
+            } else {
+                for (unsigned n = saves_.first_gpr; n < 32; ++n)
+                    c.put32(start + (n - saves_.first_gpr) * 4, c.r(n));
+            }
+        }
         if (saves_.cr) c.put32(caller_sp + 4, condition_register());
         if (saves_.lr) c.put32(caller_sp + 8, c.lr());
         base_ = caller_sp - size;

@@ -266,6 +266,93 @@ void frame_restore_checks() {
             "Frame observer mutation or partial fault effects changed");
 }
 
+// The prologue's saves: the bulk copy leaves the scalar stores' bytes, and an
+// observer or an uncertified save area keeps the scalar order and faults.
+void frame_save_checks() {
+    constexpr std::uint32_t base = 0x38000000, caller = base + 0x100;
+    constexpr unsigned first_gpr = 27, first_fpr = 29;
+    constexpr std::uint32_t fpr_area = caller - 3 * 8, gpr_area = fpr_area - 5 * 4;
+    const auto prepare = [](State& state) {
+        guest::Cpu c(state);
+        c.set(1, caller);
+        for (unsigned n = first_gpr; n < 32; ++n) c.set(n, 0x01020304u * n);
+        for (unsigned n = first_fpr; n < 32; ++n) c.set_f(n, -1.0 / n);
+        for (unsigned field = 0; field < 8; ++field) c.set_cr(field, std::uint8_t(field + 3) & 0xf);
+        c.set_lr(0x10203040);
+    };
+    const guest::Saves saves{.first_gpr = first_gpr, .first_fpr = first_fpr, .cr = true};
+    std::vector<std::uint8_t> manual(0x200, 0);
+    const auto put = [&](std::uint32_t at, std::uint64_t value, unsigned size) {
+        for (unsigned i = 0; i < size; ++i) manual[at - base + i] = std::uint8_t(value >> (8 * (size - 1 - i)));
+    };
+    for (unsigned n = first_fpr; n < 32; ++n)
+        put(fpr_area + (n - first_fpr) * 8, std::bit_cast<std::uint64_t>(-1.0 / n), 8);
+    for (unsigned n = first_gpr; n < 32; ++n) put(gpr_area + (n - first_gpr) * 4, 0x01020304u * n, 4);
+    put(caller + 4, 0x3456789a, 4);
+    put(caller + 8, 0x10203040, 4);
+    put(caller - 0x60, caller, 4);
+    std::vector<std::pair<std::uint32_t, std::size_t>> order;
+    for (unsigned i = 0; i < 3; ++i) order.emplace_back(fpr_area + i * 8, 8);
+    for (unsigned i = 0; i < 5; ++i) order.emplace_back(gpr_area + i * 4, 4);
+    order.insert(order.end(), {{caller + 4, 4}, {caller + 8, 4}, {caller - 0x60, 4}});
+
+    // observed: 0 none, 1 an interval outside the save area, 2 one covering
+    // part of it, 3 Date diagnostics only. Bulk copies run only for 0 and 1.
+    for (unsigned observed = 0; observed < 4; ++observed) {
+        auto state = std::make_unique<State>();
+        auto& memory = state->memory;
+        memory.map(base, 0x200);
+        prepare(*state);
+        WriteObserver observer;
+        if (observed == 1) observer.interval(base + 0x180, base + 0x190);
+        if (observed == 2) observer.interval(gpr_area + 8, gpr_area + 9);
+        if (observed == 1 || observed == 2) memory.observer = &observer;
+        if (observed == 3) memory.date_observer = &observer;
+        const bool bulk = GuestRegisterFrame::unobserved_scratch(memory, fpr_area, 24) &&
+                          GuestRegisterFrame::unobserved_scratch(memory, gpr_area, 20);
+        require(bulk == (observed < 2), "Frame save path choice changed");
+        guest::Cpu c(*state);
+        guest::Frame frame(c, 0x10100000, 0x60, saves);
+        memory.observer = memory.date_observer = nullptr;
+        require(memory.copy_out(base, 0x200) == manual && c.sp() == caller - 0x60,
+                "Frame saves changed the prologue's stack bytes or stack pointer");
+        const auto expected_writes =
+            observed == 0 || observed == 1 ? decltype(order){}
+            : observed == 2 ? decltype(order){{gpr_area + 8, 4}} : order;
+        require(observer.writes == expected_writes, "Frame saves skipped an interested observer's callbacks or order");
+    }
+    // A hole in either save area: the stores before it are kept, then the
+    // fault; a faulting FPR area stores no GPRs.
+    for (const bool gpr_hole : {true, false}) {
+        auto state = std::make_unique<State>();
+        auto& memory = state->memory;
+        if (gpr_hole) {
+            memory.map(base, gpr_area + 12 - base);  // GPRs 30-31 unmapped
+            memory.map(fpr_area, 0x100);
+        } else {
+            memory.map(base, fpr_area + 16 - base);  // f31 unmapped
+            memory.map(caller, 0x100);
+        }
+        prepare(*state);
+        guest::Cpu c(*state);
+        bool faulted = false;
+        try {
+            guest::Frame frame(c, 0x10100000, 0x60, saves);
+        } catch (const std::runtime_error& error) {
+            faulted = std::string_view(error.what()).starts_with("Unmapped data access at ");
+        }
+        bool stores = true;
+        if (gpr_hole) {
+            stores = memory.read<4>(gpr_area + 8) == 0x01020304u * 29 &&
+                     memory.read<8>(fpr_area + 16) == std::bit_cast<std::uint64_t>(-1.0 / 31);
+        } else {
+            stores = memory.read<8>(fpr_area + 8) == std::bit_cast<std::uint64_t>(-1.0 / 30);
+            for (unsigned i = 0; i < 5; ++i) stores = stores && memory.read<4>(gpr_area + i * 4) == 0;
+        }
+        require(faulted && stores && c.sp() == caller, "An uncertified frame save area changed the stores before its fault");
+    }
+}
+
 void register_frame_checks() {
     constexpr unsigned first = 13;
     constexpr unsigned size = (32 - first) * 4;
@@ -344,6 +431,7 @@ void frame_observation_checks() {
 void checks() {
     read_notification_checks();
     frame_restore_checks();
+    frame_save_checks();
     write_notification_checks();
     word_write_order_checks();
     register_frame_checks();
