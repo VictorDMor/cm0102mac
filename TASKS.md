@@ -1152,10 +1152,6 @@ All kept as the original has them; recommendation so far is to change none. Read
 - [ ] **`convert_staff` clears `+0x6d`** after copying it; contract code reads that byte as a status, so this looks intentional. Only Windows files reach it, and `staff.dat` is listed with 0 records and doesn't exist.
 - [ ] **`clubs nat_club.dam` has odd values at `+0x1ec`** (-32,630 to 31,076, 100 zeros in 426 records). Not established whether the field is reputation there or whether this file goes through the same repair.
 
-## Later: coach report summary (idea, 2026-11-15)
-
-- [ ] Victor's idea for a future feature: show the coach's classification of a player. coach.cpp's text pool (TOC -0x4154) holds, after the report texts, a block of labels no instruction of the unit addresses directly: "Category: %s\nAbility: %s\nPotential: %s\nLoyalty: %s" with the values "Youth/Young/Veteran/Normal/Mature Player", "Not good enough", "Backup Player", "First Team Player", "Close to First Team Player", "Need more time", "Key Player", "Loyal Servant (over 3 yrs)", "Just joined (under 1 yr)", "Normal (1-3 yrs)", "Not Set", "Why did it get here" (0x10894eb4..0x10894fcf). It reads as a developer's view of what the written report (0x106b79b0, 2,820 instructions) decides. Not established: whether another idiom reaches these labels (a static search for unreferenced texts gave false positives on other label lists Victor knows are in the game), and where the report keeps the four classifications.
-
 ## Profile notes
 
 - Match play (600 advances, Arsenal, 2026-10-20): ~12% generated pages; ~28% routine-to-routine plumbing (`run_until`, `dispatch_page`, dispatch/native scopes, thread-local lookups, hook entry, diagnostics checks); ~15% `SemanticGuestCall` instruction methods; `spatial_role::invoke` 12.6%; rewritten bodies ~11%; guest memory ~8%.
