@@ -82,7 +82,7 @@ class ContractTests(unittest.TestCase):
             records = [r for r in self.records if r['address'] >> 12 == page]
             # Check this retained reference owner in isolation. SIPRINT's and
             # DATABASE.CPP's production takeovers are checked by their audits.
-            code = generate_page(page, records, {r['address'] for r in self.records}, userops=self.userops, screen_manager_hooks=False, contract_manager_hooks=False, siprint_hooks=False, database_hooks=False)
+            code = generate_page(page, records, {r['address'] for r in self.records}, userops=self.userops, screen_manager_hooks=False, contract_manager_hooks=False, siprint_hooks=False, database_hooks=False, display_hooks=False)
             require_engine_initialization_hooks(page, records, code)
             for entry in (a for a in ENGINE_INITIALIZATION_ENTRIES if a >> 12 == page):
                 hook, step = engine_initialization_hook(entry), f's.step(0x{entry:x});'

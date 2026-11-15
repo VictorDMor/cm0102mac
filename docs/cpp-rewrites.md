@@ -2124,3 +2124,24 @@ human whose turn it is (game record at TOC -0x7bb0: halfword +0x2c58, 0x2c0-byte
   entries and the six block runs take different paths (as in FINANCE.CPP); coverage is measured over both
   (`.local/rewrites/human_manager/covrun.sh`). The realloc failure of 0x1014b810 is reached by answering the heap's
   own resize 0x10774f40, which the realloc facade dispatches; the facade itself runs in place in the original.
+
+## DISPLAY.CPP: the display table, its input, drawing and network form
+
+32 routines, 0x10718b40..0x10725a00 (`tools/display_audit.py`, `native/display_*.cpp`, `cm-display-checks`). The main
+object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human row of 0x2c0 bytes, the one in use
+(+0x24). A table addresses its fields as `addis rX,table,0x13` plus a negative displacement (`display::table` names them).
+
+- Takes three entries over from older builder owners: the table's reset and destructor 0x10718b40 / 0x10718ba0 from
+  aggregate_object and the unit's static initializer 0x107259a0 from engine_initialization (`DISPLAY_TAKEOVERS` in the
+  generator, as SCRMAN took its constructor). Page 0x1071a is a turbo page: its hooks are the counter's semantic
+  boundary, and the audit accepts either form.
+- The adaptive interface's pins in 0x10718f60, 0x10718fc0 and 0x1071afc0 are carried by the C++: `screen_right` /
+  `screen_bottom` stand where the original has 799 / 599, and 0x10718fc0 calls `draw_adaptive_background` at 0x10719120
+  with r24 holding the table. The checker compares in 800x600; the adaptive checks exercise the rest.
+- 0x1071de80 interprets screen commands (SCRMAN calls it 37 times): one dispatcher and 26 command functions
+  (`display_interpreter.hpp`), two jump tables (27 and 11 entries). Every exit returns -1 except commands 4 and 6. The
+  stream's halfwords and words are little-endian inside big-endian memory; a failed read reports ("network.h" as the
+  file name) and leaves the destination, register or frame slot as it was, so later code reads stale values.
+- The table destructor 0x10718ba0 re-reads -0x56dc after clearing it, as the original; nothing between can store there.
+- In the run of all entries the interpreter's cases answer the outside routines its answered unit routines would reach
+  (network send, file lookups, graph_carbon drawing): `interpreter_outside_answers` in the checker.

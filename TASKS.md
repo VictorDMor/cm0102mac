@@ -3,6 +3,13 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: DISPLAY.CPP (delivered 2026-11-15)
+
+All 32 entries (13,178 instructions, 0x10718b40..0x10725a00) are C++ and routed (`native/display_*.cpp`, `tools/display_audit.py`, `cm-display-checks`), taking 0x10718b40/0x10718ba0 over from aggregate_object and 0x107259a0 from engine_initialization. Contract: `docs/cpp-rewrites.md`; open outcomes: `.local/rewrites/display/ledger.json`.
+
+- [ ] 19 entries have no dispatched call in captures (network send, the table's lifecycle, drags, 0x1071aa10, 0x1071a1c0): fixtures only. Network games are not captured.
+- [ ] Old owners' tests, not from this work: `test_aggregate_object_audit` / `test_engine_initialization_audit` pin a stale `SEMANTIC_REPLACEMENTS` length (963) and miss an isolated reference; the engine one also misses the hook at 0x103810d0 (taken over earlier).
+
 ## Now: HUMAN_MANAGER.CPP (delivered 2026-11-15)
 
 All 62 entries (7,746 instructions, 0x10145af0..0x1014d560) are C++ and routed (`native/human_manager*.cpp`, `tools/human_manager_audit.py`, `cm-human-manager-checks`). Contract and quirks: `docs/cpp-rewrites.md`; open outcomes and proofs: `.local/rewrites/human_manager/ledger.json`.
