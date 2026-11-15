@@ -2086,3 +2086,31 @@ adapter (`invoke_unit`), calls inside a block are direct, so the 58 entries are 
   is at most 32768). The draw and its division helpers are written once per block (for the native-first pass: one
   shared draw with a per-site register callback).
 - The 250,000 cap at the end of 0x100f4790 cannot act (every kind's range ends at 35,000 or below) and throws.
+
+## HUMAN_MANAGER.CPP: the human managers' records, tactic slots, lists and file
+
+62 routines, 0x10145af0..0x1014d560 (`tools/human_manager_audit.py`, `native/human_manager*.cpp`,
+`cm-human-manager-checks`). The table at TOC -0x7a54 holds `{records, count}`: one 0xa65c-byte record per human,
+indexed by `staff id - staff count + 16` (humans hold the last sixteen staff ids). A null staff argument means the
+human whose turn it is (game record at TOC -0x7bb0: halfword +0x2c58, 0x2c0-byte rows, staff word at +4).
+
+- 0x1014c2e0 (whether a human runs a club) is the hottest routine of the module (418 call sites, millions of calls a
+  day). Its saved r24-r31 and those of the routines it calls (its own option readers and DATABASE.CPP's range
+  tests) are read later as stale stack, so it holds the prologue's values in r24-r31 throughout and calls those
+  routines directly at the original stack pointer. 0x1014c490 asks the same of the human whose turn it is and,
+  unlike 0x1014c2e0, never checks that the club's manager has a human's id.
+- 0x1014bf80 (is a key in a human's list) leaves r4-r8 as the original does on every path: callers read r5-r10
+  after it, and the original holds r8 = record + 0x10000 across the binary search, which leaves r8 alone. Without
+  it the same-save-continue capture ended with a different stack byte. The native contract's checker does not
+  compare r4-r10, so only a pair finds this; `tools/register_contract.py --after` lists the callers that read them.
+- 0x1014b690 (remove a key from every list) returns from inside its loop at the first record with no list, and
+  after the loop sorts the list of whatever record r29 last held: when the loop never runs, the caller's r29.
+- The six squad routines (0x1014c890..0x1014d300) read the tactic-slot byte unsigned and use slot 0 for slot 1.
+- 0x1014a300/0x1014b0a0 read and write the records in the saved game (`human_manager.dat` inside the save): the
+  saved game's version (TOC -0x7b74, through its absolute value) selects older layouts below 0x3e021 (tactic slots
+  as 0x1e5c-byte images), 0x3e005 (the list as sixteen words) and 0x3e001 (the humans' staff byte +0x65 set to 20).
+  They hold r13-r31 as the original at each of their ~40 file calls per human.
+- A case's answer for a routine of the unit fires only while that routine is not under check, so the run of all
+  entries and the six block runs take different paths (as in FINANCE.CPP); coverage is measured over both
+  (`.local/rewrites/human_manager/covrun.sh`). The realloc failure of 0x1014b810 is reached by answering the heap's
+  own resize 0x10774f40, which the realloc facade dispatches; the facade itself runs in place in the original.

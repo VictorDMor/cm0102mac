@@ -1,0 +1,13 @@
+// HUMAN_MANAGER.CPP block "schedule".
+HUMAN_MANAGER_ROUTINE(0x10146830, 0x10146a20, NONE, "237afb9f40e85489", [](Cpu& c) { human_manager::choose_tactic_for_club(c, c.r(3), c.r(4), c.r(5), c.r(6)); })
+HUMAN_MANAGER_ROUTINE(0x10147fd0, 0x101481d0, NONE, "fd81c1d330af1ced", [](Cpu& c) { human_manager::set_away(c, c.r(3), c.r(4), c.r(5)); })
+HUMAN_MANAGER_ROUTINE(0x10148340, 0x101484a4, NONE, "ca58a3aa852b2b93", [](Cpu& c) { human_manager::set_runs_club(c, c.r(3), c.r(4), c.r(5)); })
+HUMAN_MANAGER_ROUTINE(0x10148660, 0x101487c4, NONE, "187914b429d13870", [](Cpu& c) { human_manager::set_runs_nation(c, c.r(3), c.r(4), c.r(5)); })
+HUMAN_MANAGER_ROUTINE(0x101492d0, 0x101494a4, NONE, "511384e1f70aaf67", [](Cpu& c) { human_manager::set_holiday(c, c.r(3), c.r(4), c.r(5)); })
+HUMAN_MANAGER_ROUTINE(0x101494b0, 0x10149690, R3, "427b796d490bd496", [](Cpu& c) { c.set(3, human_manager::booking_matches(c, c.r(3), c.r(4), c.r(5))); })
+HUMAN_MANAGER_ROUTINE(0x10149690, 0x10149790, R3, "a6e22ec1faf913d5", [](Cpu& c) { c.set(3, human_manager::any_booking_matches(c, c.r(3), c.r(4))); })
+HUMAN_MANAGER_ROUTINE(0x10149790, 0x101499e4, R3, "ecbe166e2310e44a", [](Cpu& c) { c.set(3, human_manager::set_booking(c, c.r(3), c.r(4), c.r(5))); })
+HUMAN_MANAGER_ROUTINE(0x101499f0, 0x10149bd0, R3, "4ae7ff95af4ebbf6", [](Cpu& c) { c.set(3, human_manager::booking_is_free(c, c.r(3), c.r(4), c.r(5))); })
+HUMAN_MANAGER_ROUTINE(0x10149bd0, 0x10149c8c, R3, "d16f063e30c35fdb", [](Cpu& c) { c.set(3, human_manager::clear_taken_bookings(c, c.r(3))); })
+HUMAN_MANAGER_ROUTINE(0x1014c5f0, 0x1014c678, R3, "008fe1ce872ac8f5", [](Cpu& c) { c.set(3, human_manager::club_head_staff(c, c.r(3))); })
+HUMAN_MANAGER_ROUTINE(0x1014c680, 0x1014c88c, NONE, "d0ca378ef58f887b", [](Cpu& c) { human_manager::drop_unfit_entries(c, c.r(3)); })

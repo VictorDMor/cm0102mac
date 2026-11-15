@@ -1,0 +1,10 @@
+// HUMAN_MANAGER.CPP tactics: the squad lists of a tactic slot, the recent file names, the squad flags.
+HUMAN_MANAGER_ROUTINE(0x10147310, 0x101476e0, R3, "1a357eb24211a882", [](Cpu& c) { c.set(3, human_manager::recent_file_path(c, c.r(3), std::int8_t(c.r(4)), c.r(5), std::int32_t(c.r(6)), c.r(7), c.r(8), c.r(9))); })
+HUMAN_MANAGER_ROUTINE(0x101476e0, 0x10147bbc, R3, "3c8406c64067906c", [](Cpu& c) { c.set(3, human_manager::remember_file(c, c.r(3), c.r(4), c.r(5), c.r(6))); })
+HUMAN_MANAGER_ROUTINE(0x10149f50, 0x1014a1a0, NONE, "0d0922b9744413f3", [](Cpu& c) { human_manager::set_flag(c, c.r(3), std::int8_t(c.r(4)), c.r(5), c.r(6)); })
+HUMAN_MANAGER_ROUTINE(0x1014c890, 0x1014caa0, R3, "1ca7bf91a7a8acfb", [](Cpu& c) { c.set(3, human_manager::squad_player(c, c.r(3), std::int8_t(c.r(4)), c.r(5))); })
+HUMAN_MANAGER_ROUTINE(0x1014caa0, 0x1014cce4, NONE, "771321a279eb5b50", [](Cpu& c) { human_manager::set_squad_player(c, c.r(3), std::int8_t(c.r(4)), c.r(5), c.r(6)); })
+HUMAN_MANAGER_ROUTINE(0x1014ccf0, 0x1014cef8, NONE, "f76f0abe48bcdfe7", [](Cpu& c) { human_manager::remove_squad_player(c, c.r(3), c.r(4), c.r(5)); })
+HUMAN_MANAGER_ROUTINE(0x1014cf00, 0x1014d0e8, NONE, "857f3d0f517fc9e5", [](Cpu& c) { human_manager::clear_squad_slot(c, c.r(3), std::int8_t(c.r(4)), c.r(5)); })
+HUMAN_MANAGER_ROUTINE(0x1014d0f0, 0x1014d2fc, NONE, "2bab19d845e8a788", [](Cpu& c) { human_manager::swap_squad_slots(c, c.r(3), std::int8_t(c.r(4)), std::int8_t(c.r(5)), c.r(6)); })
+HUMAN_MANAGER_ROUTINE(0x1014d300, 0x1014d514, R3, "445b341c440e4cb6", [](Cpu& c) { c.set(3, std::uint32_t(human_manager::squad_slot_of(c, c.r(3), c.r(4), c.r(5)))); })

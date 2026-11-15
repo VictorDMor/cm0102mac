@@ -4,6 +4,13 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
+## Now: HUMAN_MANAGER.CPP (delivered 2026-11-15)
+
+All 62 entries (7,746 instructions, 0x10145af0..0x1014d560) are C++ and routed (`native/human_manager*.cpp`, `tools/human_manager_audit.py`, `cm-human-manager-checks`). Contract and quirks: `docs/cpp-rewrites.md`; open outcomes and proofs: `.local/rewrites/human_manager/ledger.json`.
+
+- [ ] The census sees 10 entries dispatched in captures (plus the four they call); the rest rest on fixtures only.
+- [ ] Text paths: the folder path routine 0x10746300 is answered in every case, so the paths 0x10147150, 0x10147310 and 0x10145af0 build are not compared with real folder output.
+
 ## Now: FINANCE.CPP (delivered 2026-11-14)
 
 All 58 entries (18,706 instructions, 0x100f1000..0x10103600) are C++ and routed (`native/finance*.cpp`, `tools/finance_audit.py`, `cm-finance-checks`). Victor chose it from the 2026-11-13 inventory: the most generated time on the day. Contract and quirks: `docs/cpp-rewrites.md`; what was not compared to a return and the unreachability proofs: `.local/rewrites/finance/ledger.json`.
