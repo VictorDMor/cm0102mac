@@ -9,7 +9,7 @@ the scrollback. Remove ticked items once their commit is pushed.
 All 58 entries (18,706 instructions, 0x100f1000..0x10103600) are C++ and routed (`native/finance*.cpp`, `tools/finance_audit.py`, `cm-finance-checks`). Victor chose it from the 2026-11-13 inventory: the most generated time on the day. Contract and quirks: `docs/cpp-rewrites.md`; what was not compared to a return and the unreachability proofs: `.local/rewrites/finance/ledger.json`.
 
 - [ ] Install: `tools/dev.sh install` refused because the game was running (2026-11-14). The build is ready.
-- [ ] 36 of the 58 entries have no real call in any capture (fixtures only), among them the manager's constructor, the opening balances of a new game and the accounts read from a saved game.
+- [ ] 33 of the 58 entries have no real call in any capture (fixtures only), among them the manager's constructor, the opening balances of a new game and the accounts read from a saved game. (The commit message says 36: it left out 0x100fefa0, 0x100ffec0 and 0x101006a0, which run inside the 28 real calls of 0x10101400.)
 - [ ] Not guarded (for Victor): 0x101030c0 reads +0x10 of a null stadium (0x1010311c); page zero is unmapped here, so a club without a stadium on that news item stops the game, with the original and with the C++ alike. Same family as the commentary and award-screen stops; a generator guard would be the fix.
 - [ ] 0x100f84e0 (the CD folder check in the manager's constructor) stops its name merge on whatever the frame holds at +0x81 onward; not in the stack contract because no capture reaches it. The C++ reads the real frame, as the generated body did.
 - [ ] For the native-first pass (review, no effect on results): the sample-table draw, the draw below a limit and the division helpers are written once per block (`finance_detail.hpp`, `finance_setup.hpp`, `finance_board_engine.cpp`, `finance_daily_day.cpp`, `finance_season_*.cpp`, `finance_matchday.cpp`), with two conventions for a zero divisor at sites no real value reaches; the ledger line names in `finance_ledger.hpp` marked (inferred) are guesses.
@@ -1151,6 +1151,10 @@ All kept as the original has them; recommendation so far is to change none. Read
 - [ ] **Version 1 reputation times 500** (`native/db_files_legacy.cpp`) looks like a scale conversion, but a byte above 65 overflows the 16-bit field and turns negative. Same reachability as above; only worth limiting if the game should accept old databases.
 - [ ] **`convert_staff` clears `+0x6d`** after copying it; contract code reads that byte as a status, so this looks intentional. Only Windows files reach it, and `staff.dat` is listed with 0 records and doesn't exist.
 - [ ] **`clubs nat_club.dam` has odd values at `+0x1ec`** (-32,630 to 31,076, 100 zeros in 426 records). Not established whether the field is reputation there or whether this file goes through the same repair.
+
+## Later: coach report summary (idea, 2026-11-15)
+
+- [ ] Victor's idea for a future feature: show the coach's classification of a player. coach.cpp's text pool (TOC -0x4154) holds, after the report texts, a block of labels no instruction of the unit addresses directly: "Category: %s\nAbility: %s\nPotential: %s\nLoyalty: %s" with the values "Youth/Young/Veteran/Normal/Mature Player", "Not good enough", "Backup Player", "First Team Player", "Close to First Team Player", "Need more time", "Key Player", "Loyal Servant (over 3 yrs)", "Just joined (under 1 yr)", "Normal (1-3 yrs)", "Not Set", "Why did it get here" (0x10894eb4..0x10894fcf). It reads as a developer's view of what the written report (0x106b79b0, 2,820 instructions) decides. Not established: whether another idiom reaches these labels (a static search for unreferenced texts gave false positives on other label lists Victor knows are in the game), and where the report keeps the four classifications.
 
 ## Profile notes
 
