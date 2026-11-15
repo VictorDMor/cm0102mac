@@ -1218,6 +1218,131 @@ int main() {
                 "A Mac name containing '/' did not round-trip through its host ':' form");
         require(rename_named("CM 01-02:games:Cruzeiro 01/02.sav", "a:b.sav") == -37,
                 "Rename accepted ':' inside a Mac name");
+        {
+            // The career writer (0x1034ba30, mode 0x16) deletes the old save and
+            // renames its temporary file over the name, ignoring the rename's
+            // result. The delete must wait for the rename, which replaces the
+            // old save or leaves it alone, and a failed replace must report a
+            // failed save with the save markers as they were.
+            const auto games = user / "Files" / "games";
+            const auto career = games / "Career.sav", temporary_save = games / "Career.tmp";
+            const auto bytes_of = [](const fs::path& file) {
+                std::ifstream input(file, std::ios::binary);
+                return std::string(std::istreambuf_iterator<char>(input), {});
+            };
+            constexpr std::uint32_t toc = 0x7000f000, markers = 0x7100a000, guest_path = 0x70009000;
+            const auto previous_toc = s.r<4>(8);
+            s.wr<4>(8, toc);
+            s.memory.write<4>(toc - 0x63c0, markers);         // saved
+            s.memory.write<4>(toc - 0x6434, markers + 1);     // changed since
+            s.memory.write<4>(toc - 0x63c8, markers + 0x10);  // date of the save
+            const std::vector<std::uint8_t> before{0, 1, 1, 2, 3, 4, 5}, written{1, 0, 9, 9, 9, 9, 9};
+            const auto set_markers = [&](const std::vector<std::uint8_t>& value) {
+                s.memory.write<1>(markers, value[0]);
+                s.memory.write<1>(markers + 1, value[1]);
+                s.memory.copy_in(markers + 0x10, {value.begin() + 2, value.end()});
+            };
+            const auto read_markers = [&] {
+                std::vector<std::uint8_t> value{std::uint8_t(s.memory.read<1>(markers)), std::uint8_t(s.memory.read<1>(markers + 1))};
+                const auto date = s.memory.copy_out(markers + 0x10, 5);
+                value.insert(value.end(), date.begin(), date.end());
+                return value;
+            };
+            const std::string path_text = "CM 01-02:games:Career.sav";
+            std::vector<std::uint8_t> path_bytes(path_text.begin(), path_text.end());
+            path_bytes.push_back(0);
+            s.memory.copy_in(guest_path, path_bytes);
+            const auto begin_save = [&](const std::string& old_bytes, const std::string& new_bytes) {
+                std::ofstream(career, std::ios::binary) << old_bytes;
+                std::ofstream(temporary_save, std::ios::binary) << new_bytes;
+                set_markers(before);
+                s.wr<4>(12, guest_path);
+                s.wr<4>(16, 0x16);
+                require(s.platform->quick_save_write_begin(s), "Career writer refused to start");
+                s.wr<1>(2304, 4);  // cr0 not equal: the writer renames
+                s.platform->quick_save_write_mode(s);
+            };
+            const auto end_save = [&](std::int32_t rename_result) {
+                s.wr<4>(12, std::uint32_t(rename_result));
+                s.platform->quick_save_write_renamed(s);
+                set_markers(written);  // 0x1034de50..0x1034de88, before the epilogue
+                s.wr<4>(12, 1);
+                s.platform->quick_save_write_end(s);
+                return std::int8_t(s.r<4>(12));
+            };
+
+            // Parameter-block path.
+            begin_save("old career", "new career");
+            require(delete_named("CM 01-02:games:Career.sav") == 0 && bytes_of(career) == "old career",
+                    "The career writer's delete removed the old save before its replacement existed");
+            require(rename_named("CM 01-02:games:Career.tmp", "Career.sav") == 0 && bytes_of(career) == "new career" &&
+                    !fs::exists(temporary_save), "The career writer's rename did not replace the old save");
+            require(end_save(0) == 1 && read_markers() == written, "A replaced career save was not reported as saved");
+
+            // A replace that fails keeps the old save and reports the failure.
+            // A read-only folder refuses it (not for root, which skips this).
+            if (::geteuid() != 0) {
+                begin_save("kept career", "unplaced career");
+                require(delete_named("CM 01-02:games:Career.sav") == 0, "Held-back delete reported an error");
+                struct Writable {
+                    fs::path folder;
+                    ~Writable() { std::error_code e; fs::permissions(folder, fs::perms::owner_all, fs::perm_options::replace, e); }
+                } restore{games};
+                fs::permissions(games, fs::perms::owner_read | fs::perms::owner_exec, fs::perm_options::replace);
+                const auto refused = rename_named("CM 01-02:games:Career.tmp", "Career.sav");
+                fs::permissions(games, fs::perms::owner_all, fs::perm_options::replace);
+                require(refused == -54 && bytes_of(career) == "kept career" && bytes_of(temporary_save) == "unplaced career",
+                        "A failed replace lost the old career save");
+                require(end_save(refused) == 0 && read_markers() == before,
+                        "A failed replace was reported as saved or left the save markers changed");
+            }
+
+            // FSRef path, the one the game takes (Gestalt 'fs  ' answers 0x1302).
+            constexpr std::uint32_t old_ref = 0x7000a000, new_ref = 0x7000a100, units = 0x7000a200;
+            const auto make_ref = [&](const std::string& mac_path, std::uint32_t ref) {
+                string(s, name, mac_path);
+                require(call(s, "CarbonLib::FSMakeFSSpec", {0, 0, name, spec}) == 0 &&
+                        call(s, "CarbonLib::FSpMakeFSRef", {spec, ref}) == 0, "FSRef fixture");
+            };
+            begin_save("old career", "newer career");
+            make_ref("CM 01-02:games:Career.sav", old_ref);
+            make_ref("CM 01-02:games:Career.tmp", new_ref);
+            require(call(s, "CarbonLib::FSDeleteObject", {old_ref}) == 0 && bytes_of(career) == "old career",
+                    "The career writer's FSRef delete removed the old save before its replacement existed");
+            const std::u16string leaf = u"Career.sav";
+            for (std::size_t i = 0; i < leaf.size(); ++i) s.memory.write<2>(units + 2 * std::uint32_t(i), leaf[i]);
+            require(call(s, "CarbonLib::FSRenameUnicode", {new_ref, std::uint32_t(leaf.size()), units, 0, 0}) == 0 &&
+                    bytes_of(career) == "newer career" && !fs::exists(temporary_save),
+                    "The career writer's FSRef rename did not replace the old save");
+            require(end_save(0) == 1, "A replaced career save (FSRef) was not reported as saved");
+
+            // Only the save itself is held back: another file goes at once, and
+            // the save's own delete is still held after it.
+            const auto other = games / "Other.tmp";
+            begin_save("old career", "cased career");
+            std::ofstream(other, std::ios::binary) << "other";
+            require(delete_named("CM 01-02:games:Other.tmp") == 0 && !fs::exists(other),
+                    "A delete of another file during the career writer was held back");
+            fs::rename(career, games / "CAREER.SAV");
+            // Both kinds of volume end with one file under the asked-for name.
+            require(delete_named("CM 01-02:games:Career.sav") == 0 && bytes_of(games / "CAREER.SAV") == "old career",
+                    "The save's delete was not held back after another file's delete");
+            // The new file takes the name the game asked for, as delete-then-rename would.
+            require(rename_named("CM 01-02:games:Career.tmp", "Career.sav") == 0 && end_save(0) == 1,
+                    "Replacing a save whose name differs in case failed");
+            std::vector<std::string> names;
+            for (const auto& entry : fs::directory_iterator(games))
+                if (entry.path().extension() == ".sav" || entry.path().extension() == ".SAV")
+                    names.push_back(entry.path().filename().string());
+            require(std::ranges::count(names, std::string("Career.sav")) == 1 &&
+                    std::ranges::count(names, std::string("CAREER.SAV")) == 0 && bytes_of(career) == "cased career",
+                    "The replaced save did not take the name the game asked for");
+
+            // Outside the writer, a delete deletes at once.
+            require(delete_named("CM 01-02:games:Career.sav") == 0 && !fs::exists(career),
+                    "A delete outside the career writer was held back");
+            s.wr<4>(8, previous_toc);
+        }
         // The game ends a directory scan at its first error. A name MacRoman
         // cannot hold ("Wisła", sorted first) must not hide the saves after it.
         const auto listing = user / "Files" / "games" / "listing";

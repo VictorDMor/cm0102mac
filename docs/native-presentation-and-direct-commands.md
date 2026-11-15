@@ -128,6 +128,17 @@ observable. The original game's 256-byte path buffers limit guest paths to 255
 bytes. A human manager's linked fixture and live match engine prevent a save
 during match play. The original Save Game dialog remains available separately.
 
+An ordinary save runs the original writer (`0x1034ba30`, mode 0x16) against the
+chosen path. The writer deletes the old save (`0x1034ddd0`), then renames its
+temporary file over the name (`0x1034de4c`, same folder: its rename helper
+refuses two parents). It ignores the rename's result and marks the career saved,
+so a failed rename lost the old save and reported success. In interactive play
+the bridge holds that one delete back, and the rename replaces the old file in
+one `renamex_np` after a full sync of the new one. If the replace fails, the old
+save and the temporary file stay, the writer returns failure (the dispatcher's
+own dialog) and the saved markers go back to their earlier values. Replays and
+the quick save's staged writer keep the original's delete and rename.
+
 The original Save/Quit global action is withdrawn at the next event boundary
 only if it still equals the value owned by that native event. This prevents a
 held global action from masking keyboard input in its nested dialog. Other UI

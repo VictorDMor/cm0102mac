@@ -47,12 +47,15 @@
 #include <sys/xattr.h>
 #include <copyfile.h>
 #include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace cm::aot {
 namespace fs = std::filesystem;
 namespace {
 constexpr std::int16_t no_err = 0, file_not_found = -43, directory_not_found = -120;
-constexpr std::int16_t bad_name = -37, volume_not_found = -35, parameter_error = -50;
+constexpr std::int16_t bad_name = -37, volume_not_found = -35, parameter_error = -50, io_error = -36;
 struct FileError { std::int16_t code; };
 
 std::string convert(const std::string& input, CFStringEncoding from, CFStringEncoding to) {
@@ -465,53 +468,43 @@ struct NativePlatform::Impl {
         fs::permissions(output, fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::add);
         return output;
     }
-    std::int16_t delete_object(const fs::path& target) {
-        const auto fail = [&](std::int16_t error) { data_forks.note_write_audit_failure(target); return error; };
-        if (!fs::exists(fs::symlink_status(target))) return fail(file_not_found);
+    // What delete_object and rename_object refuse before touching anything:
+    // 0, a File Manager error, or `media_refusal` for an original media entry,
+    // which needs tombstones the bridge does not have (callers throw).
+    static constexpr std::int16_t media_refusal = 1;
+    std::int16_t delete_refusal(const fs::path& target) const {
+        if (!fs::exists(fs::symlink_status(target))) return file_not_found;
         if (volume_root(target) || target == overlay() ||
-            logical_path(target) == logical_path(directory(current_volume, current_directory))) return fail(-47);
+            logical_path(target) == logical_path(directory(current_volume, current_directory))) return -47;
         // Original media is immutable. Removing a private replacement must not
         // reveal the original again: that case needs persistent tombstones.
         const auto logical = logical_path(target);
         if (!under(fs::canonical(target.parent_path()), writable) ||
-            (under(logical, game) && fs::exists(fs::symlink_status(logical)))) {
-            data_forks.note_write_audit_failure(target);
-            throw std::runtime_error("Deleting an original media entry requires private tombstone support: " + target.string());
-        }
-        data_forks.make_durable(target.parent_path());
-        const auto status = native_delete_object(target);
-        if (status) data_forks.note_write_audit_failure(target);
-        if (!status) {
-            file_ids.erase(logical);
-            std::erase_if(directories, [&](const auto& entry) { return logical_path(entry.second) == logical; });
-        }
-        return status;
+            (under(logical, game) && fs::exists(fs::symlink_status(logical)))) return media_refusal;
+        return 0;
     }
-
     // `name` is a host name; callers convert Mac names with host_name.
-    std::int16_t rename_object(const fs::path& target, const std::string& name, std::uint32_t encoding = UINT32_MAX) {
-        const auto fail = [&](std::int16_t error) { data_forks.note_write_audit_failure(target); return error; };
+    std::int16_t rename_refusal(const fs::path& target, const std::string& name) const {
         if (name.empty() || name == "." || name == ".." || name.find('/') != std::string::npos ||
-            name.find('\0') != std::string::npos) return fail(bad_name);
-        if (!fs::exists(fs::symlink_status(target))) return fail(file_not_found);
-        const auto logical = logical_path(target);
+            name.find('\0') != std::string::npos) return bad_name;
+        if (!fs::exists(fs::symlink_status(target))) return file_not_found;
         // Renaming original entries requires a tombstone so the old media
         // name cannot reappear. Keep this unsupported case mutation-free.
+        const auto logical = logical_path(target);
         if (volume_root(target) || target == overlay() ||
             !under(fs::canonical(target.parent_path()), writable) ||
-            (under(logical, game) && fs::exists(fs::symlink_status(logical)))) {
-            data_forks.note_write_audit_failure(target);
-            throw std::runtime_error("Renaming an original media entry requires private tombstone support: " + target.string());
-        }
-        const auto destination = visible_child(target.parent_path(), name);
-        if (fs::exists(fs::symlink_status(destination)) && !fs::equivalent(target, destination)) return fail(-48);
-        data_forks.make_durable(target.parent_path());
-        const auto error = native_rename_object(target, name, encoding);
-        if (error) return fail(error);
-        const auto renamed = fs::canonical(target.parent_path() / name);
-        const auto new_logical = logical_path(renamed);
-        // PBHRename preserves file and directory IDs, including descendants of
-        // a renamed directory and the current-directory binding.
+            (under(logical, game) && fs::exists(fs::symlink_status(logical)))) return media_refusal;
+        return 0;
+    }
+    void forget_deleted(const fs::path& target) {
+        const auto logical = logical_path(target);
+        file_ids.erase(logical);
+        std::erase_if(directories, [&](const auto& entry) { return logical_path(entry.second) == logical; });
+    }
+    // PBHRename preserves file and directory IDs, including descendants of
+    // a renamed directory and the current-directory binding.
+    void remember_renamed(const fs::path& target, const fs::path& renamed) {
+        const auto logical = logical_path(target), new_logical = logical_path(renamed);
         std::map<fs::path, std::uint32_t> renamed_ids;
         for (const auto& [path, id] : file_ids)
             renamed_ids.emplace(path == logical ? new_logical :
@@ -522,6 +515,131 @@ struct NativePlatform::Impl {
             if (path == target) path = renamed;
             else if (under(path, target)) path = renamed / path.lexically_relative(target);
         }
+    }
+    // Notes a refused write for the audit and returns the refusal, or throws
+    // for an original media entry. `action` is "Deleting" or "Renaming".
+    std::int16_t refuse(std::int16_t refused, const fs::path& target, const char* action) {
+        data_forks.note_write_audit_failure(target);
+        if (refused == media_refusal)
+            throw std::runtime_error(std::string(action) + " an original media entry requires private tombstone support: " +
+                                     target.string());
+        return refused;
+    }
+    std::int16_t delete_object(const fs::path& target) {
+        if (const auto refused = delete_refusal(target)) return refuse(refused, target, "Deleting");
+        data_forks.make_durable(target.parent_path());
+        const auto status = native_delete_object(target);
+        if (status) data_forks.note_write_audit_failure(target);
+        else forget_deleted(target);
+        return status;
+    }
+    std::int16_t rename_object(const fs::path& target, const std::string& name, std::uint32_t encoding = UINT32_MAX) {
+        if (const auto refused = rename_refusal(target, name)) return refuse(refused, target, "Renaming");
+        const auto destination = visible_child(target.parent_path(), name);
+        if (fs::exists(fs::symlink_status(destination)) && !fs::equivalent(target, destination))
+            return refuse(-48, target, "Renaming");
+        data_forks.make_durable(target.parent_path());
+        const auto error = native_rename_object(target, name, encoding);
+        if (error) return refuse(error, target, "Renaming");
+        remember_renamed(target, fs::canonical(target.parent_path() / name));
+        return 0;
+    }
+
+    // The career writer deletes the old save, then renames its temporary file
+    // over the name in the same folder (0x1034ddd0, 0x1034de4c). When it does
+    // that interactively, the delete of the save is held back
+    // (`defer_save_delete`) and the rename replaces the old file in one step,
+    // so a failure leaves the old save in place.
+    bool save_replace_armed = false;
+    std::optional<fs::path> save_replace_pending;
+    bool save_replace_held = false;  // This save's delete was held back.
+    bool save_replace_failed = false;  // ... and its replace failed.
+
+    // Whether the delete of `target` can wait for the rename that replaces it:
+    // only the save being written, and only where delete_object would delete.
+    bool defer_save_delete(const fs::path& target, const std::optional<fs::path>& save) {
+        std::error_code error;
+        if (!save_replace_armed || !save || !fs::equivalent(target, *save, error) || error) return false;
+        save_replace_armed = false;
+        if (!fs::is_regular_file(fs::symlink_status(target, error)) || delete_refusal(target)) return false;
+        save_replace_pending = target;
+        save_replace_held = true;
+        return true;
+    }
+
+    // A full flush where the volume has one, fsync where it does not.
+    static bool sync_path(const fs::path& path) {
+        const int descriptor = ::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (descriptor < 0) return false;
+        const bool synced = ::fcntl(descriptor, F_FULLFSYNC) != -1 ||
+            ((errno == ENOTSUP || errno == EINVAL || errno == ENOTTY) && ::fsync(descriptor) == 0);
+        const int code = errno;
+        const bool closed = ::close(descriptor) == 0;
+        if (closed) errno = code;
+        return closed && synced;
+    }
+    static std::int16_t file_manager_error(int code) {
+        switch (code) {
+        case ENOENT: return file_not_found;
+        case EACCES: case EPERM: return -54;  // permErr
+        case EROFS: return -44;               // wPrErr
+        case ENOSPC: return -34;              // dskFulErr
+        case EBUSY: return -47;               // fBsyErr
+        default: return io_error;
+        }
+    }
+
+    // The rename of a career writer whose delete was held back. A rename to
+    // any other name performs that delete first, as the original would have.
+    std::int16_t rename_save_over(const fs::path& target, const std::string& name, std::uint32_t encoding = UINT32_MAX) {
+        const auto pending = std::exchange(save_replace_pending, std::nullopt);
+        const auto destination = visible_child(target.parent_path(), name);
+        std::error_code error;
+        if (!fs::equivalent(destination, *pending, error) || error || fs::equivalent(target, destination, error)) {
+            if (fs::exists(fs::symlink_status(*pending, error))) (void)delete_object(*pending);
+            return rename_object(target, name, encoding);
+        }
+        save_replace_failed = true;
+        if (const auto refused = rename_refusal(target, name)) return refuse(refused, target, "Renaming");
+        if (!fs::is_regular_file(fs::symlink_status(target, error))) return refuse(file_not_found, target, "Renaming");
+        // The new save reaches the disk before it takes the old one's place.
+        data_forks.make_durable(target.parent_path());
+        if (!sync_path(target)) {
+            const int code = errno;
+            std::fprintf(stderr, "Career save: cannot sync %s: %s\n", target.c_str(), std::strerror(code));
+            return refuse(file_manager_error(code), target, "Renaming");
+        }
+        // The name the game asked for, as delete-then-rename would leave it.
+        // POSIX rename has no use for the FSRenameUnicode encoding hint. The
+        // catalog matches names regardless of case; whether the volume does
+        // decides whether that name is the old file's entry.
+        const auto renamed_path = target.parent_path() / name;
+        const bool same_entry = fs::equivalent(destination, renamed_path, error) && !error;
+        if (::renamex_np(target.c_str(), renamed_path.c_str(), RENAME_NOFOLLOW_ANY)) {
+            const int code = errno;
+            std::fprintf(stderr, "Career save: cannot replace %s: %s\n", destination.c_str(), std::strerror(code));
+            return refuse(file_manager_error(code), target, "Renaming");
+        }
+        save_replace_failed = false;
+        if (destination.filename() != renamed_path.filename()) {
+            if (same_entry) {
+                // A volume that ignores case keeps the old entry's spelling
+                // when a rename replaces it: rename the spelling alone.
+                if (::renamex_np(destination.c_str(), renamed_path.c_str(), RENAME_NOFOLLOW_ANY))
+                    std::fprintf(stderr, "Career save: kept the name %s: %s\n", destination.filename().c_str(),
+                                 std::strerror(errno));
+            } else if (const auto status = delete_object(destination)) {
+                // A case-sensitive volume made a second file; the old one goes,
+                // as the original's delete would have removed it.
+                std::fprintf(stderr, "Career save: old save %s not removed (%d)\n", destination.c_str(), status);
+            }
+        }
+        // Done: a failed folder sync cannot undo it, so it is only logged.
+        if (!sync_path(renamed_path.parent_path()))
+            std::fprintf(stderr, "Career save: cannot sync folder %s: %s\n", renamed_path.parent_path().c_str(), std::strerror(errno));
+        // As delete_object, then rename_object, would have left the IDs.
+        forget_deleted(*pending);
+        remember_renamed(target, fs::canonical(renamed_path));
         return 0;
     }
 
@@ -1732,7 +1850,14 @@ bool NativePlatform::quick_save_write_begin(State& s) {
     impl_->quick_save_tracking_write = s.r<4>(16) == 0x16;
     impl_->quick_save_rename_ok = false;
     impl_->quick_save_needs_rename = false;
+    // A held delete waits for its own writer's rename; nothing between the two
+    // pumps events (0x1034ddd4..0x1034de4c), but keep it from a nested writer.
+    if (!impl_->save_replace_pending) {
+        impl_->save_replace_armed = impl_->save_replace_held = impl_->save_replace_failed = false;
+    }
     if (impl_->quick_save_tracking_write && !impl_->quick_save_active) {
+        // An ordinary save whose replace fails must leave the game unsaved.
+        impl_->quick_save_saved_markers = quick_save_markers(s);
         auto path = quick_save_guest_path(s, std::uint32_t(s.r<4>(12)));
         impl_->quick_save_write_target = impl_->quick_save_target(path);
         impl_->quick_save_destination.begin_save(std::move(path));
@@ -1740,14 +1865,26 @@ bool NativePlatform::quick_save_write_begin(State& s) {
     return true;
 }
 void NativePlatform::quick_save_write_mode(State& s) {
-    if (impl_->event_mode == EventMode::interactive && impl_->quick_save_tracking_write)
+    if (impl_->event_mode == EventMode::interactive && impl_->quick_save_tracking_write) {
         impl_->quick_save_needs_rename = (s.r<1>(2304) & 2) == 0;
+        // The original deletes the old save next (0x1034ddcc), then renames
+        // the new one over it and ignores the result (0x1034de4c): hold the
+        // delete back so the rename replaces the file or leaves it alone. A
+        // quick save writes into its own staging folder, where nothing exists.
+        impl_->save_replace_armed = impl_->quick_save_needs_rename && !impl_->quick_save_active;
+        impl_->save_replace_pending.reset();
+    }
 }
 void NativePlatform::quick_save_write_renamed(State& s) {
+    impl_->save_replace_armed = false;
+    // A held-back delete with no rename after it: the old save stays.
+    impl_->save_replace_pending.reset();
     if (impl_->event_mode == EventMode::interactive && impl_->quick_save_tracking_write)
         impl_->quick_save_rename_ok = !impl_->quick_save_needs_rename || s.r<4>(12) == 0;
 }
 void NativePlatform::quick_save_write_end(State& s) {
+    impl_->save_replace_armed = false;
+    impl_->save_replace_pending.reset();
     if (impl_->event_mode != EventMode::interactive || !impl_->quick_save_tracking_write) return;
     const bool success = std::int8_t(s.r<4>(12)) != 0 && impl_->quick_save_rename_ok;
     if (impl_->quick_save_active) {
@@ -1844,6 +1981,19 @@ void NativePlatform::quick_save_write_end(State& s) {
         impl_->quick_save_quiet = false;
         impl_->quick_save_active = false;
     } else {
+        if (std::int8_t(s.r<4>(12)) != 0 && !success) {
+            // The writer has already marked the career saved although its
+            // final rename failed. The old save is still there: report the
+            // failure, so the game's own dialog names the path and the save
+            // prompt and the autosave clock stay as they were.
+            const bool kept = impl_->save_replace_held && impl_->save_replace_failed;
+            std::fprintf(stderr, "Career save: the final rename failed; reported as failed%s\n",
+                         kept ? ", previous save kept" : "");
+            if (impl_->quick_save_saved_markers) restore_quick_save_markers(s, *impl_->quick_save_saved_markers);
+            s.wr<4>(12, 0);
+            impl_->command_status = kept ? "Save failed; previous save unchanged" : "Save failed";
+        }
+        impl_->quick_save_saved_markers.reset();
         impl_->quick_save_destination.finish_save(success);
         if (success) impl_->quick_save_last_target = std::move(impl_->quick_save_write_target);
         impl_->quick_save_write_target.reset();
@@ -2970,13 +3120,15 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
                 throw;
             }
         } else if (name == "CarbonLib::FSDeleteObject") {
-            status = impl_->delete_object(impl_->from_reference(s, arg(0)));
+            const auto target = impl_->from_reference(s, arg(0));
+            status = impl_->defer_save_delete(target, impl_->quick_save_write_target) ? no_err : impl_->delete_object(target);
         } else if (name == "CarbonLib::FSRenameUnicode") {
             const auto target = impl_->from_reference(s, arg(0));
             try {
                 std::string leaf;
                 status = native_unicode_name(impl_->unicode_units(s, arg(2), arg(1)), leaf);
-                if (!status) status = impl_->rename_object(target, leaf, arg(3));
+                if (!status) status = impl_->save_replace_pending ? impl_->rename_save_over(target, leaf, arg(3)) :
+                    impl_->rename_object(target, leaf, arg(3));
                 if (!status && arg(4)) impl_->write_reference(s, arg(4), impl_->reference_for(target.parent_path() / leaf));
                 if (status) impl_->data_forks.note_write_audit_failure(target);
             } catch (...) { impl_->data_forks.note_write_audit_failure(target); throw; }
@@ -3009,7 +3161,8 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
                 s.memory.read<4>(pb + 48), read_mac_string(s, s.memory.read<4>(pb + 18)));
             try {
                 const auto leaf = read_mac_string(s, replacement);
-                status = leaf.find(':') != std::string::npos ? bad_name : impl_->rename_object(target, host_name(leaf));
+                status = leaf.find(':') != std::string::npos ? bad_name : impl_->save_replace_pending ?
+                    impl_->rename_save_over(target, host_name(leaf)) : impl_->rename_object(target, host_name(leaf));
                 if (status) impl_->data_forks.note_write_audit_failure(target);
                 if (std::getenv("CM_AOT_TRACE_FILES"))
                     std::fprintf(stderr, "Native file rename: %s -> %s status=%d\n", target.c_str(), leaf.c_str(), status);
@@ -3017,9 +3170,11 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
         } else if (name == "CarbonLib::PBHDeleteSync") {
             const auto target = impl_->path(std::int16_t(s.memory.read<2>(arg(0) + 22)),
                 s.memory.read<4>(arg(0) + 48), read_mac_string(s, s.memory.read<4>(arg(0) + 18)));
-            status = impl_->delete_object(target);
+            const bool deferred = impl_->defer_save_delete(target, impl_->quick_save_write_target);
+            status = deferred ? no_err : impl_->delete_object(target);
             if (std::getenv("CM_AOT_TRACE_FILES"))
-                std::fprintf(stderr, "Native file delete: %s status=%d\n", target.c_str(), status);
+                std::fprintf(stderr, "Native file delete: %s status=%d%s\n", target.c_str(), status,
+                             deferred ? " (held until the save's rename)" : "");
         } else if (name == "CarbonLib::PBHOpenDFSync" || name == "CarbonLib::FSpOpenDF") {
             const bool parameter_block = name == "CarbonLib::PBHOpenDFSync";
             auto permission = std::int8_t(parameter_block ? s.memory.read<1>(arg(0) + 27) : arg(1));
