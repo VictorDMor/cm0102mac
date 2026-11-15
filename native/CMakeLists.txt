@@ -4372,6 +4372,37 @@ if(CM_HUMAN_MANAGER_COVERAGE)
 endif()
 
 # INJURY.CPP (tools/injury_unit_audit.py): injuries and illnesses: records, daily course, news and file form.
+# fog_of_war.cpp (tools/fog_of_war_audit.py): what each human manager knows of every person.
+file(GLOB CM_FOG_OF_WAR_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fog_of_war*.cpp")
+list(FILTER CM_FOG_OF_WAR_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_FOG_OF_WAR_SOURCES})
+file(GLOB CM_FOG_OF_WAR_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fog_of_war_checks*.cpp")
+add_executable(cm-fog-of-war-checks ${CM_FOG_OF_WAR_CHECK_SOURCES})
+target_link_libraries(cm-fog-of-war-checks PRIVATE cm_aot)
+target_compile_options(cm-fog-of-war-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME fog_of_war_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_fog_of_war_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        set(CM_FOG_OF_WAR_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        add_test(NAME fog_of_war_equivalence COMMAND cm-fog-of-war-checks ${CM_FOG_OF_WAR_INPUTS} --mutate 4 --call-trace --require-all)
+        add_test(NAME fog_of_war_production COMMAND cm-fog-of-war-checks ${CM_FOG_OF_WAR_INPUTS} --production --require-all)
+    endif()
+endif()
+option(CM_FOG_OF_WAR_COVERAGE "Instrument fog_of_war.cpp checker only" OFF)
+if(CM_FOG_OF_WAR_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fog_of_war-coverage")
+    set(CM_FOG_OF_WAR_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/fog_of_war-coverage/check-%p.profraw")
+    add_library(cm_fog_of_war_coverage OBJECT ${CM_FOG_OF_WAR_SOURCES})
+    target_link_libraries(cm_fog_of_war_coverage PRIVATE cm_aot)
+    # Undefined behaviour the guest's wrapping arithmetic must never turn into: reported, not fatal.
+    target_compile_options(cm_fog_of_war_coverage PRIVATE "-fprofile-instr-generate=${CM_FOG_OF_WAR_PROFILE}" -fcoverage-mapping -ffp-contract=off
+        -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+    target_compile_definitions(cm_fog_of_war_coverage PRIVATE CM_FOG_OF_WAR_COVERAGE=1)
+    target_sources(cm-fog-of-war-checks PRIVATE $<TARGET_OBJECTS:cm_fog_of_war_coverage>)
+    target_compile_definitions(cm-fog-of-war-checks PRIVATE CM_FOG_OF_WAR_COVERAGE=1)
+    target_link_options(cm-fog-of-war-checks PRIVATE "-fprofile-instr-generate=${CM_FOG_OF_WAR_PROFILE}" -fsanitize=undefined)
+endif()
+
 # DISPLAY.CPP (tools/display_audit.py): the display table, its controls, input, drawing and network form.
 file(GLOB CM_DISPLAY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/display_*.cpp")
 list(FILTER CM_DISPLAY_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")

@@ -2145,3 +2145,22 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
 - The table destructor 0x10718ba0 re-reads -0x56dc after clearing it, as the original; nothing between can store there.
 - In the run of all entries the interpreter's cases answer the outside routines its answered unit routines would reach
   (network send, file lookups, graph_carbon drawing): `interpreter_outside_answers` in the checker.
+
+## fog_of_war.cpp: what each human manager knows of every person
+
+24 routines (0x106fd120..0x106ff550, `tools/fog_of_war_audit.py`), native-first: `native/fog_of_war*.cpp`,
+`cm-fog-of-war-checks`. The game's table of sixteen slots (TOC -0x7978) holds one knowledge object per human
+manager (slot `people - 1 - id`); an object points at one 12-byte entry per person (level byte 0-3, the date last
+seen) and at its manager. "fog.dat" saves the preference byte and each present slot's manager index and entries.
+
+- Quirks kept: the reader accepts a manager index equal to the number of people (`index > count`); a failed
+  allocation while reading leaves the file open, and after any read failure the slots keep pointing at the
+  objects just destroyed; a failed write leaves the file open. In the daily floor (0x106fe820) a manager with no
+  club knows fully everyone without a contract: the contracted club (0) equals the manager's club (0).
+- `sight` (0x106fec70) draws its roll inline below a sign-extended byte, so its wide branch and the unit's copy of
+  random(n) (0x106fef10, called from there only) never run in the game; 0x106fef10 itself is checked by direct calls.
+- The file and lifecycle routines and `initial_level` hold the original's r13-r31 at their calls (CallRegisters):
+  a capture's replay compares every non-volatile register at each import (`observed_by_import`), and the file
+  layer passes most of them through to `PBWriteForkSync`. The daily rules make no call that reaches an import.
+- The generated reader inlines `labs` (0x10775550) of the saved game's version: a check sets the version cell
+  rather than answering the call. The stack audit of the 20 contract captures shows no reader of this unit's frames.

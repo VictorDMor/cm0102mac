@@ -251,7 +251,8 @@ The game's sort (0x10768300 and its three heapsorts: `qsort4x.c`, `qsort8x.c` an
 
 - MANAGER_MANAGER.CPP is paused at 51 of 105, not dropped: its 44 generated routines have no day weight (section "removing the PowerPC" below).
 - [ ] Typed comparators (idea, not started): the heapsort still reaches each comparator through the glue and the dispatcher, and the fused 8-byte sort (`tools/native_sort8.py`) stays the first hook at 0x10768660 for the three comparators it inlines. Calling C++ comparators directly from `qsort4x.cpp` would replace that fusion and is where the rest of the sort's time is: the day gained 1.28% and the week nothing, although the strict replay runs 2.46 billion fewer generated instructions on the day.
-- [ ] Next module: rerun `tools/game_inventory.py` with fresh day and week profiles, then choose between HUMAN_MANAGER.CPP (0x1014c2e0, 120 day samples on 2026-11-07) and MANAGER_MANAGER's remaining blocks.
+- [ ] Next module (inventory of 2026-11-15 after DISPLAY, `.local/inventory/2026-11-15-after-display`). Victor chose fog_of_war.cpp on 2026-11-15; it is delivered (24 routines, the inventory's 23 plus 0x106fe280; its commit is the record). Next by day weight: YEAR_RATINGS.CPP (5 routines, 606 instructions, 19 day / 3 week self samples, called only by AWARD_MANAGER), then TRANSFER_MANAGER.CPP's layers 0-2 (53 routines, 10,530 instructions, 43 of its 50 day samples). The whole of TRANSFER_MANAGER.CPP (127 entries, 41,313 instructions) and GAME.CPP (27 routines, 38,933; the top of the call graph, so last) exceed 20,000 instructions: their cost estimate waits on Victor.
+- [ ] fog_of_war.cpp: the load and new-game paths (reader, constructors, initial levels) rest on fixtures; no capture loads a saved game or starts a career. Owner play covers them.
 
 ## Now: award screens crash (2026-11-12)
 
