@@ -1,8 +1,6 @@
-"""Certify FINANCE.CPP's 58 entries and the unit's bounds.
+"""Certify FINANCE.CPP's 58 entries, the unit's bounds and its production owner.
 
 The private export is required evidence, rather than a reason to skip tests.
-The C++ of this unit is not written yet: no entry has an owner, and that test
-turns over at delivery.
 """
 from contextlib import closing
 import json
@@ -132,16 +130,47 @@ class FinanceAuditTests(unittest.TestCase):
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_finance_index(db, complete=False)
 
-    def test_no_entry_has_an_owner_yet(self):
-        # Turns over at delivery: every entry then has `finance_adapter` alone, and
-        # require_finance_index runs with complete=True.
+    def test_every_entry_is_routed_to_the_units_owner_alone(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS
-        self.assertEqual([owner for at, owner in OWNER_REPLACEMENTS if audit.MODULE[0] <= at < audit.MODULE[1]], [])
-        self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if audit.MODULE[0] <= at < audit.MODULE[1]], [])
-        self.assertEqual(audit.rewritten(drafts=True), [])
+        # Every entry is routed (no draft left), and nothing else owns one.
+        self.assertTrue(audit.COMPLETE)
+        self.assertEqual(audit.rewritten(), [(a, b, pinned) for a, b, _, pinned in CONTRACTS])
+        for entry in ENTRIES:
+            self.assertEqual([owner for at, owner in OWNER_REPLACEMENTS if at == entry], ['finance_adapter'])
+        self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at in ENTRIES], [])
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
-            with self.assertRaisesRegex(ValueError, 'all 58 complete'):
-                audit.require_finance_index(db, complete=True)
+            audit.require_finance_index(db)
+            audit.require_finance_index(db, complete=True)
+
+    def assert_hook(self, code, entry):
+        hook = audit.finance_hook(entry)
+        fragment = code.split(f'i_{entry:x}:', 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        self.assertEqual(code.count(hook), 1)
+        self.assertIn(hook, fragment)
+        step = f's.step(0x{entry:x});'
+        self.assertIn(step, fragment)
+        self.assertLess(fragment.index(hook), fragment.index(step))
+
+    def test_normal_hooks_precede_original_steps_and_detect_missing_or_duplicate_hook(self):
+        from compile_recomp import generate_page
+        selected = set(self.by_address)
+        for page in sorted({entry >> 12 for entry in ENTRIES}):
+            part = [r for r in self.records if r['address'] >> 12 == page]
+            normal = generate_page(page, part, selected, userops=self.program['userops'])
+            audit.require_finance_hooks(page, part, normal)
+            self.assertIn('#include "finance_adapter.hpp"', normal)
+            for entry in ENTRIES:
+                if entry >> 12 != page:
+                    continue
+                self.assert_hook(normal, entry)
+                hook = audit.finance_hook(entry)
+                step = f's.step(0x{entry:x});'
+                moved = normal.replace(hook, '').replace(step, step + '\n' + hook, 1)
+                for broken in (normal.replace(hook, ''), normal.replace(hook, hook + '\n' + hook), moved):
+                    with self.assertRaises(AssertionError):
+                        self.assert_hook(broken, entry)
+                    with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
+                        audit.require_finance_hooks(page, part, broken)
 
     def test_unit_bounds_are_its_private_toc_slots_and_its_neighbours(self):
         pool = self.word(TOC - 0x5598)

@@ -4,15 +4,17 @@ The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
 
-## Now: FINANCE.CPP, inventory closed (2026-11-14)
+## Now: FINANCE.CPP (delivered 2026-11-14)
 
-Victor chose it from the 2026-11-13 inventory: the most generated time on the day (109 of 471 self samples) and no routine in C++.
+All 58 entries (18,706 instructions, 0x100f1000..0x10103600) are C++ and routed (`native/finance*.cpp`, `tools/finance_audit.py`, `cm-finance-checks`). Victor chose it from the 2026-11-13 inventory: the most generated time on the day. Contract and quirks: `docs/cpp-rewrites.md`; what was not compared to a return and the unreachability proofs: `.local/rewrites/finance/ledger.json`.
 
-- [x] Inventory: 58 routines, 18,706 instructions, 0x100f1000..0x10103600 (`tools/finance_audit.py`, `finance_audit` in CTest, 8 tests). Two more than the whole-game inventory gave it: 0x100f1000 and 0x100f1010 are the constructor and destructor of the array element 0x100f84e0 allocates, reached only through their vectors. Bounds are the unit's private TOC slots (-0x55d0..-0x5598) and FILE_SCREENS.CPP's audit before it.
-- [x] Census (`.local/rewrites/finance/census.txt`): 20 of 76 captures replay, 8 reach the unit, 23 of 58 entries dispatched (22 on `same-save-continue`, 10 on `season-day`). The hot ones: 0x10103510 (1.3M calls on the day), 0x100f5770 (418k), 0x100f55b0 (106k), 0x100f2680 (6k). 35 entries have no dispatch in any capture (a census misses same-page calls).
-- [ ] Not done: stack audit of the unit's readers, decompiled C, block list, checker, any C++. Production is unchanged.
-- [ ] Cost estimate for the C++ (for Victor): 18,706 instructions at the 135 tokens per instruction of the first native-first block is about 2.5M tokens, and the skill's range (80 to 200k per 1,000) gives 1.5M to 3.7M, plus two or three batched reviews. The largest routines: 0x100fa6e0 (2,612), 0x100f2680 (2,115), 0x100f5770 (1,590), 0x100fd210 (1,290), 0x100f1050 (1,067).
-- [ ] Next: `--stack-audit-all` on `season-day` and `same-save-continue` for this range, decompile the 58 routines (`tools/DecompileSelected.java`), group them into blocks, and pilot the hot leaf 0x10103510 with 0x100f55b0 on the checker before fanning out.
+- [ ] Install: `tools/dev.sh install` refused because the game was running (2026-11-14). The build is ready.
+- [ ] 36 of the 58 entries have no real call in any capture (fixtures only), among them the manager's constructor, the opening balances of a new game and the accounts read from a saved game.
+- [ ] Not guarded (for Victor): 0x101030c0 reads +0x10 of a null stadium (0x1010311c); page zero is unmapped here, so a club without a stadium on that news item stops the game, with the original and with the C++ alike. Same family as the commentary and award-screen stops; a generator guard would be the fix.
+- [ ] 0x100f84e0 (the CD folder check in the manager's constructor) stops its name merge on whatever the frame holds at +0x81 onward; not in the stack contract because no capture reaches it. The C++ reads the real frame, as the generated body did.
+- [ ] For the native-first pass (review, no effect on results): the sample-table draw, the draw below a limit and the division helpers are written once per block (`finance_detail.hpp`, `finance_setup.hpp`, `finance_board_engine.cpp`, `finance_daily_day.cpp`, `finance_season_*.cpp`, `finance_matchday.cpp`), with two conventions for a zero divisor at sites no real value reaches; the ledger line names in `finance_ledger.hpp` marked (inferred) are guesses.
+- [ ] Coverage left open: the negative-limit result of `draw_below` in `finance_daily_day.cpp` is reached in one instantiation of the template and not in the other (same source line).
+- A case's answer for a routine of the unit fires only while that routine is not under check, so the run of all entries and the nine block runs (`--only`) take different paths; coverage is measured over both (`.local/rewrites/finance/covrun.sh`).
 
 ## Now: the rb_*.cpp rulebooks (2026-11-14)
 

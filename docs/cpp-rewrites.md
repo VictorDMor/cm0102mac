@@ -2029,3 +2029,57 @@ them would still run where a routed one calls it.
   null list; the C++ does the same.
 - 0x1018fdf0 with no person reports, calls exit, and would report and exit again; nothing guards the read through
   null that follows.
+
+## FINANCE.CPP: club accounts, budgets, the daily and seasonal passes, finance news
+
+58 entries / 18,706 instructions at 0x100f1000..0x10103600 (`tools/finance_audit.py`). The bounds: the unit's private
+TOC slots, -0x55d0..-0x5598 (string, float and double pools, two scrambled names, eight data tables, two jump
+tables), which no other code loads; the string pool starts "FINANCE.CPP"; FILE_SCREENS.CPP's audit ends where the
+unit starts. 332 outside call sites, all calls of an entry, and two pointers: the transition vectors of 0x100f1000
+and 0x100f1010, the constructor and destructor of an account as an array element, which only 0x100f84e0 and
+0x100f8720 load.
+
+The finance manager (the word in the cell at TOC -0x7ab8) holds one 0x168-byte account per club, indexed by the
+club's index: a signed 64-bit balance at +0, the club's index at +8, budget figures at +0xc..+0x14, a ledger of
+income and expense lines at +0x70..+0xbc kept twice (the second copy 0xa0 further on), and state bytes at
++0x160..+0x166. `native/finance_ledger*` has the account lookup 0x10103510, the wealth band 0x100f55b0 (-2..2 by
+the balance against the club's reputation; many proofs in the unit rest on that range) and the booking routines;
+`_setup*` the manager's construction, a new game's opening balances, the accounts' form in a saved game and the
+draw below a limit 0x100f2100; `_value*` what a club can pay (0x100f2680, 0x100f4790, 0x100f4f80); `_bid*` the
+bid limit 0x100f5770 and two bookings; `_matchday*` takings, the split of a fixture's income and ground
+expansion; `_daily*` the daily pass 0x100fa6e0 and the season roll; `_season*` the club review and donations;
+`_board*` the board's review with gifts, cover and bail-outs; `_news*` the nine news items and their texts.
+
+**Contract.** INJURY.CPP's: native inside, the original's frame, r13-r31/f14-f31 as the original holds them at
+every call (`cm-finance-checks` compares them in its call trace), and the frame stores the stack contract lists
+(`tools/stack_contract.py module FINANCE.CPP`: 0x100f2680, 0x100f4790, 0x100f55b0, 0x100f5770 and 0x10103510
+leave bytes later readers read). No routine is called by the match engine. Calls between blocks go through the
+adapter (`invoke_unit`), calls inside a block are direct, so the 58 entries are routed together.
+
+- 0x100f5770 returns 64 bits in r3:r4; every caller reads r4, some also r3. Its line's kind is `R3 | R4`.
+- 0x100fd1a0 ends its pass at the first inactive club (the `bne` after 0x100c7d00 goes to the epilogue): the clubs
+  after it are not refreshed. The decompiled C reads as a skip; only the call trace showed the difference, since
+  the refresh was answered in the cases.
+- A case's answer for a routine of the unit fires only while that routine is not under check. A run of every
+  entry therefore takes other paths than a block's own `--only` run: equivalence is the run of all entries plus
+  the nine block runs, and coverage is measured over both (`.local/rewrites/finance/covrun.sh`). A routine the
+  original calls inside its own generated page is not dispatched and cannot be answered or poked at all.
+- The daily pass has a fixed day on which two clubs move to grounds named in the unit's pool ("Falmer" and another):
+  their attendance is reset by reputation tier and the fixture list's entries are relinked (0x1048b180 and the list
+  routines). The two walks are one template with different registers and return addresses; each needs its own case.
+- 0x100fa7ac reads eight bytes of its frame that this call did not write (after 0x107156f0, which returns its own
+  buffer); the original copies the second word and never uses it.
+- 0x100f84e0 merges two scrambled names for the CD's folder check. The second has 16 characters and 17 bytes are
+  copied to the frame, so the merge loop stops on whatever the frame holds at +0x81 onward. The merged name's
+  length byte is fixed, so the name asked for does not change; the count of merged bytes and r22 at the following
+  calls do. The C++ reads the real frame bytes, as the generated body did. No capture reaches this routine.
+- 0x101030c0 reads the word at +0x10 of a null stadium (0x1010311c, the test before it only skips the read for a
+  non-null one). Address 0x10 is unmapped here, so a club without a stadium at that point stops the game with the
+  original and with the C++ alike; on the original machine page zero could be read. Not guarded.
+- 0x10102660 leaves the flag byte in r5 when the stadium index is -1 and the flag is set, so the seating text
+  prints the flag where the capacity would go.
+- Limits of the inline draws below a limit are a signed byte, a halfword or a small product at every site outside
+  0x100f2100, so their branch for limits past 0xffff throws; 0x100f2100 itself runs two levels (the third's range
+  is at most 32768). The draw and its division helpers are written once per block (for the native-first pass: one
+  shared draw with a per-site register callback).
+- The 250,000 cap at the end of 0x100f4790 cannot act (every kind's range ends at 35,000 or below) and throws.

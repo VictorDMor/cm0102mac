@@ -41,7 +41,7 @@ ROUTINES = (
     (0x10102d20, 0x10102e00), (0x10102e00, 0x10102e94), (0x10102ea0, 0x101030c0), (0x101030c0, 0x10103178),
     (0x10103180, 0x10103268), (0x10103270, 0x101032d8), (0x101032e0, 0x10103374), (0x10103380, 0x10103420),
     (0x10103420, 0x1010350c), (0x10103510, 0x101035f4))
-ROUTINE = re.compile(r'FINANCE_(ROUTINE|DRAFT)\(\s*(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+),\s*([\w|]+),\s*"([0-9a-f]+)"')
+ROUTINE = re.compile(r'FINANCE_(ROUTINE|DRAFT)\(\s*(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+),\s*([\w|]+(?: \| [\w]+)*),\s*"([0-9a-f]+)"')
 INCLUDE = re.compile(r'#include "(finance_routines_\w+\.inc)"')
 INCLUDES = ROOT / "native" / "finance_routines.inc"
 # Words inside routines that the export leaves out because nothing reaches them: the compiler's
@@ -81,8 +81,13 @@ def rewritten(path=INCLUDES, drafts=False):
 FINANCE_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 
 
-def require_finance_index(db, path=INCLUDES, complete=True):
+# Whether the generator requires every entry routed (FINANCE_ROUTINE).
+COMPLETE = True
+
+
+def require_finance_index(db, path=INCLUDES, complete=None):
     """Every listed routine's original instructions are still the ones its C++ follows."""
+    complete = COMPLETE if complete is None else complete
     registered = rewritten(path, drafts=True)
     if complete and tuple((entry, end) for entry, end, _ in rewritten(path)) != ROUTINES:
         raise ValueError("FINANCE.CPP requires all 58 complete production entries")

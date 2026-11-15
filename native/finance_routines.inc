@@ -1,0 +1,10 @@
+// FINANCE.CPP (tools/finance_audit.py): entry, end, results, digest of the original body, hook.
+#include "finance_routines_ledger.inc"
+#include "finance_routines_setup.inc"
+#include "finance_routines_value.inc"
+#include "finance_routines_bid.inc"
+#include "finance_routines_matchday.inc"
+#include "finance_routines_daily.inc"
+#include "finance_routines_season.inc"
+#include "finance_routines_board.inc"
+#include "finance_routines_news.inc"

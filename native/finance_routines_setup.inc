@@ -1,0 +1,6 @@
+FINANCE_ROUTINE(0x100f1050, 0x100f20fc, NONE, "99ce452fc80e4f12", [](Cpu& c) { finance::start_account(c, c.r(3), c.r(4)); })
+FINANCE_ROUTINE(0x100f2100, 0x100f2678, R3, "97ce6bc5aa0d4b7a", [](Cpu& c) { c.set(3, std::uint32_t(finance::random_below(c, std::int32_t(c.r(3))))); })
+FINANCE_ROUTINE(0x100f84e0, 0x100f8714, R3, "ae530b3f030731e2", [](Cpu& c) { c.set(3, finance::create_manager(c, c.r(3), c.r(4))); })
+FINANCE_ROUTINE(0x100f9b00, 0x100f9c44, R3, "3913ddde3d1026b2", [](Cpu& c) { c.set(3, finance::read_accounts(c, c.r(3), c.r(4)) ? 1u : 0u); })
+FINANCE_ROUTINE(0x100f9c50, 0x100f9d80, NONE, "6f71c2250e3d43ae", [](Cpu& c) { finance::write_accounts(c, c.r(3), c.r(4)); })
+FINANCE_ROUTINE(0x100f9d80, 0x100f9f3c, R3, "bc7c0bb02bb4aa64", [](Cpu& c) { c.set(3, finance::days_since_recorded(c, c.r(4), c.r(5))); })
