@@ -13,7 +13,7 @@ void initialize_native_debugging(bool enabled = false);
 void select_native_debugging(bool enabled);
 enum class DebugFeature : unsigned { recover_players, play_for_free, extend_contract, cancel_sale,
     remove_sale_clause, underdogs, underdogs_max, add_goal, repeat_goal, red_cards, injuries, extend_all_contracts,
-    match_result, force_purchase, all_draws, count };
+    match_result, force_purchase, all_draws, maximize_attributes, count };
 constexpr unsigned debug_feature_count = unsigned(DebugFeature::count);
 constexpr std::uint32_t all_debug_features = (1u << debug_feature_count) - 1;
 std::uint32_t native_debugging_features();
@@ -44,6 +44,8 @@ bool extend_debug_contract(State&, std::uint32_t staff);
 bool extend_debug_club_contracts(State&, std::uint32_t club);
 bool cancel_scheduled_sale(State&, std::uint32_t staff);
 bool remove_debug_sale_clause(State&, std::uint32_t staff);
+// One-shot attribute change. Subsequent training/ageing writes remain ordinary.
+bool maximize_debug_player_attributes(State&, std::uint32_t staff);
 // Select the match squad by decoded attributes, positions, condition and current
 // tactical instructions, optimizing the eleven roles together. Fixture may be
 // zero between fixtures; then the original UI's full nine-place bench is used.

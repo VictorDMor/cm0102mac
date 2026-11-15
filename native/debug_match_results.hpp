@@ -26,7 +26,6 @@ struct MatchResultDebugging {
     std::vector<ClubResultRule> clubs;
     std::vector<CompetitionDrawDay> draw_days;
     bool choosing_club = false;
-    bool removing_club = false;
     std::optional<std::uint32_t> confirm_removal;
     unsigned club_page = 0;
 };

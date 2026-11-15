@@ -1979,6 +1979,13 @@ target_link_libraries(cm-debug-options-checks PRIVATE cm_aot)
 target_compile_options(cm-debug-options-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot" AND EXISTS "${CM_BENCHMARK_DIR}/ui/match-tactics/initial.snapshot")
     # The match-day snapshot supplies a real fixture queue for the fixture list.
+add_executable(cm-debug-player-attributes-checks debug_player_attributes_checks.cpp)
+target_link_libraries(cm-debug-player-attributes-checks PRIVATE cm_aot)
+target_compile_options(cm-debug-player-attributes-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+    add_test(NAME debugging_player_attributes COMMAND cm-debug-player-attributes-checks
+        "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+endif()
     add_test(NAME debugging_options COMMAND cm-debug-options-checks "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot"
         "${CM_BENCHMARK_DIR}/ui/match-tactics/initial.snapshot")
 elseif(EXISTS "${CM_BENCHMARK_DIR}/ui/game-save/initial.snapshot")
@@ -2009,6 +2016,10 @@ target_link_libraries(cm-match-debugging-injury-checks PRIVATE cm_match_debugger
 target_compile_options(cm-match-debugging-injury-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-tactic-lab tactic_lab_main.cpp)
 target_link_libraries(cm-tactic-lab PRIVATE cm_match_debugger_factory)
+if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+    add_test(NAME lineup_loan_availability COMMAND cm-best-xi-checks --lineup-loans
+        "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+endif()
 target_compile_options(cm-tactic-lab PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 add_executable(cm-match-debugger-completion-checks match_debugger_completion_checks.cpp)
 target_link_libraries(cm-match-debugger-completion-checks PRIVATE cm_match_debugger_factory)

@@ -724,7 +724,7 @@ void check_new_career_boundary(const Checkpoint& initial, const Fixture& fixture
         set_debug_match_result(*actual, fixture.original, ForcedMatchResult::draw), "Could not arm new-career reset fixture");
     require(set_debug_draw_day(*actual, fixture.original, true), "Could not arm new-career draw-day reset");
     auto& choices = match_result_debugging(*actual);
-    choices.choosing_club = choices.removing_club = true;
+    choices.choosing_club = true;
     choices.confirm_removal = club;
     choices.club_page = 4;
     MatchRngWrites expected_rng(*expected), actual_rng(*actual);
@@ -745,7 +745,7 @@ void check_new_career_boundary(const Checkpoint& initial, const Fixture& fixture
         require(stopped && state->pc == 0x10345bb0, "New-career reset crossed its instruction boundary");
     }
     require(choices.fixtures.empty() && choices.clubs.empty() && choices.draw_days.empty() && !choices.choosing_club &&
-        !choices.removing_club && !choices.confirm_removal && choices.club_page == 0,
+        !choices.confirm_removal && choices.club_page == 0,
         "New-career boundary inherited recurring club state");
     require(expected_rng.writes.empty() && actual_rng.writes.empty(), "New-career reset consumed match RNG");
     same_guest_result(*expected, *actual, "New-career debugging reset");

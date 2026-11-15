@@ -2,6 +2,8 @@
 #include "match_debugging.hpp"
 #include "debug_localization.hpp"
 #include "best_xi_selection.hpp"
+#include "match_replay.hpp"
+#include "national_callup.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -398,8 +400,115 @@ void check_free_squad(State& s, std::uint32_t club, std::uint32_t opponent) {
     std::cout << "Free squad: " << managed.size() << " actual contracts zeroed, clauses/bonuses/release cleared, "
               << "unrelated terms and opponent isolation, disabled/invalid/repeat guards passed\n";
 }
-// Lineup drop-down modes: Best U23 and B Team against runs of the plain selector
-// on a roster reduced to the pool each mode is defined over.
+// Club employment is independent of a stale roster row or the contract owner.
+void check_lineup_loans(State& s, std::uint32_t club, std::uint32_t opponent,
+                        std::uint32_t tactics, std::uint32_t formation) {
+    const auto roster = s.memory.copy_out(club + 0x98, 200);
+    std::vector<std::uint32_t> staff;
+    for (unsigned i = 0; i < 50; ++i) {
+        const auto member = std::uint32_t(s.memory.read<4>(club + 0x98 + i * 4));
+        if (member && s.memory.read<4>(member + 0x14) && s.memory.read<4>(member + 0x24) == club &&
+            std::ranges::find(staff, member) == staff.end()) staff.push_back(member);
+    }
+    const auto set_roster = [&](const std::vector<std::uint32_t>& members) {
+        for (unsigned i = 0; i < 50; ++i) s.memory.write<4>(club + 0x98 + i * 4, i < members.size() ? members[i] : 0);
+    };
+    const auto run = [&](LineupMode mode) {
+        const auto before = s.registers; const auto unique = s.unique; const auto pc = s.pc;
+        require(select_debug_best_xi(s, club, 0, formation, 0, mode), "Loan lineup selection failed");
+        require(s.registers == before && s.unique == unique && s.pc == pc, "Loan selection clobbered caller");
+        return squad(s, tactics, club);
+    };
+    const auto in_lineup = [](const auto& lineup, auto member, unsigned from, unsigned to) {
+        return std::find(lineup.begin() + from, lineup.begin() + to, member) != lineup.begin() + to;
+    };
+    set_roster(staff);
+    const auto best = run(LineupMode::best_xi);
+    const auto random = rng_state(s);
+    // A loaned-out player can remain in the displayed roster. Neither a
+    // starter nor a substitute may enter the candidate pool for his parent.
+    {
+        require(opponent && opponent != club && best[0] && best[11], "Need two clubs and a full selection for loan checks");
+        const std::array loaned_out{best[0], best[11]};
+        std::map<std::uint32_t, std::uint32_t> attached;
+        for (auto member : loaned_out) {
+            attached[member] = std::uint32_t(s.memory.read<4>(member + 0x24));
+            require(attached[member] == club, "Loan fixture player must initially play for this club");
+            s.memory.write<4>(member + 0x24, opponent);
+        }
+        auto reduced = staff;
+        std::erase_if(reduced, [&](auto member) { return std::ranges::find(loaned_out, member) != loaned_out.end(); });
+        for (auto mode : {LineupMode::best_xi, LineupMode::under_23, LineupMode::b_team}) {
+            set_roster(reduced);
+            const auto expected = run(mode);
+            set_roster(staff);
+            const auto actual = run(mode);
+            for (auto member : loaned_out)
+                require(!in_lineup(actual, member, 0, 20), "Loaned-out player was selected as starter or substitute");
+            require(actual == expected, "Loaned-out players changed selection of the available players");
+            set_roster({loaned_out.begin(), loaned_out.end()});
+            require(run(mode) == std::array<std::uint32_t, 20>{}, "Only loaned-out players left: selection must be empty");
+        }
+        for (const auto& [member, current] : attached) s.memory.write<4>(member + 0x24, current);
+        set_roster(staff);
+        require(run(LineupMode::best_xi) == best, "Returning a loaned player did not restore selection");
+    }
+
+    require(random == rng_state(s), "Loan selection consumed game RNG");
+
+    // The reverse direction stays legal: a player currently here may still
+    // have his primary contract owned by another club (an incoming loan).
+    const auto manager = std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - 0x7b7c)));
+    const std::array borrowed{best[0], best[11]};
+    for (auto member : borrowed)
+        if (!invoke(s, 0x10082f20, {manager, member})) invoke(s, 0x10078e70, {manager, member, 10000});
+    std::map<std::uint32_t, std::uint32_t> owners;
+    for (auto member : borrowed) {
+        const auto contract = invoke(s, 0x10082f20, {manager, member});
+        require(contract != 0, "Incoming-loan fixture needs primary contracts");
+        owners[contract] = std::uint32_t(s.memory.read<4>(contract + 4));
+    }
+    const auto incoming_random = rng_state(s);
+    for (auto mode : {LineupMode::best_xi, LineupMode::under_23, LineupMode::b_team}) {
+        const auto expected = run(mode);
+        for (const auto& [contract, owner] : owners) s.memory.write<4>(contract + 4, s.memory.read<4>(opponent));
+        require(run(mode) == expected, "Foreign primary-contract ownership excluded an incoming loan");
+        for (const auto& [contract, owner] : owners) s.memory.write<4>(contract + 4, owner);
+    }
+    require(incoming_random == rng_state(s), "Incoming-loan selection consumed game RNG");
+
+    // National teams select players employed by clubs, not by the national
+    // squad record. Use real senior/U21 identities with a controlled roster.
+    const auto global = [&](unsigned offset) { return std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - offset))); };
+    const auto clubs = global(0x7be8), count = global(0x7b50), nations = global(0x7b04);
+    require(nations && count > 2 * nations, "Need real national squad records");
+    for (const auto national : {clubs + (count - 2 * nations) * 0x248, clubs + (count - nations) * 0x248}) {
+        require(is_national_squad(s, national), "National fixture identity is invalid");
+        const auto saved_roster = s.memory.copy_out(national + 0x98, 200);
+        std::map<std::uint32_t, std::uint32_t> previous_national;
+        for (auto p : staff) {
+            previous_national[p] = std::uint32_t(s.memory.read<4>(p + 0x20));
+            s.memory.write<4>(p + 0x20, national);
+        }
+        for (unsigned i = 0; i < 50; ++i) s.memory.write<4>(national + 0x98 + i * 4, i < staff.size() ? staff[i] : 0);
+        const auto national_random = rng_state(s);
+        for (auto mode : {LineupMode::best_xi, LineupMode::under_23, LineupMode::b_team}) {
+            const auto registers = s.registers; const auto unique = s.unique; const auto pc = s.pc;
+            require(select_debug_best_xi(s, national, 0, formation, 0, mode), "National lineup rejected club-employed players");
+            require(s.registers == registers && s.unique == unique && s.pc == pc, "National selection clobbered caller");
+            const auto selected = squad(s, tactics, national);
+            require(std::ranges::any_of(selected, [](auto p) { return p != 0; }), "Club-employer filter emptied a national squad");
+            for (auto p : selected) if (p) require(s.memory.read<4>(p + 0x24) == club, "National selection changed club employment");
+        }
+        require(national_random == rng_state(s), "National lineup selection consumed game RNG");
+        for (const auto& [p, previous] : previous_national) s.memory.write<4>(p + 0x20, previous);
+        s.memory.copy_in(national + 0x98, saved_roster);
+    }
+    s.memory.copy_in(club + 0x98, roster);
+    std::cout << "Lineup loans: all three modes, starters, bench, reduced/empty pools, returning/incoming loans, national squads and caller/RNG preservation passed\n";
+}
+
+// Best U23 and B Team against the plain selector on the pools each mode defines.
 void check_lineups(State& s, std::uint32_t club, std::uint32_t tactics, std::uint32_t formation) {
     const auto roster = s.memory.copy_out(club + 0x98, 200);
     std::vector<std::uint32_t> staff;
@@ -601,7 +710,41 @@ void check_lineups(State& s, std::uint32_t club, std::uint32_t tactics, std::uin
 int main(int argc, char** argv) {
     try {
         check_assignment_policy();
-        if (argc != 4) throw std::runtime_error("Expected original program, read-only game and private root");
+        if (argc == 3 && std::string_view(argv[1]) == "--lineup-loans") {
+            auto state = std::make_unique<State>(); load_match_snapshot(*state, argv[2]);
+            auto& s = *state;
+            // Captures can stop inside an imported call; use the audited game's TOC.
+            s.wr<4>(8, 0x108bba90);
+            s.budget = s.executed + 500000000;
+            const auto global = [&](unsigned offset) { return std::uint32_t(s.memory.read<4>(s.memory.read<4>(s.r<4>(8) - offset))); };
+            const auto clubs = global(0x7be8), tactics = global(0x7a6c), count = global(0x7b50), people = global(0x7be4);
+            require(clubs && tactics && count > 2 * global(0x7b04), "Capture lacks the original club/tactics tables");
+            std::uint32_t club = 0, opponent = 0;
+            unsigned largest = 0;
+            for (unsigned id = 0; id < count - 2 * global(0x7b04); ++id) {
+                const auto candidate = clubs + id * 0x248;
+                unsigned members = 0;
+                for (unsigned i = 0; i < 50; ++i) {
+                    const auto p = std::uint32_t(s.memory.read<4>(candidate + 0x98 + 4 * i));
+                    if (p && s.memory.read<4>(p) < people && s.memory.read<4>(p + 0x14) &&
+                        s.memory.read<4>(p + 0x24) == candidate) ++members;
+                }
+                if (members > largest) { opponent = club; club = candidate; largest = members; }
+                else if (!opponent && members >= 20) opponent = candidate;
+            }
+            require(largest >= 30 && opponent && opponent != club, "Capture needs two populated clubs");
+            const auto formation = invoke(s, 0x10773520, {0x18e0});
+            s.memory.copy_in(formation, std::vector<std::uint8_t>(0x18e0));
+            constexpr std::array<unsigned, 11> roles{1, 0x804, 4, 4, 0x204, 0x810, 16, 16, 0x210, 64, 64};
+            for (unsigned i = 0; i < roles.size(); ++i) {
+                s.memory.write<2>(formation + 0x12e + 2 * i, roles[i]);
+                s.memory.write<2>(formation + 0x150 + 2 * i, roles[i]);
+            }
+            initialize_native_debugging(false);
+            check_lineup_loans(s, club, opponent, tactics, formation);
+            return 0;
+        }
+        if (argc != 4) throw std::runtime_error("Expected original program, read-only game and private root, or --lineup-loans snapshot");
         require(debug_text(9, DebugText::best_xi) == "Melhor 11" && debug_text(0, DebugText::best_xi) == "Best XI",
                 "Portuguese/English Best XI labels");
         require(debug_text(9, DebugText::add_goal) == "Adicionar Gol" && debug_text(0, DebugText::add_goal) == "Add Goal" &&
@@ -708,6 +851,7 @@ int main(int argc, char** argv) {
         require(squad(s, tactics, club) == std::array<std::uint32_t, 20>{}, "Empty pool retained unavailable players");
         s.memory.copy_in(club + 0x98, roster);
         const auto opponent = std::uint32_t(s.memory.read<4>(live.match + 0x7aac + 0xd8 + 0x34));
+        check_lineup_loans(s, club, opponent, tactics, formation);
         check_lineups(s, club, tactics, formation);
         check_recovery(s, club, opponent, tactics, formation);
         check_free_squad(s, club, opponent);

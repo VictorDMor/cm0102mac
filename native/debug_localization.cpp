@@ -4,6 +4,13 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::maximize_attributes) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "Maximize Attributes", "Maximize Attributes", "Maximiser les attributs", "Attribute maximieren",
+            "Massimizza attributi", "Maximizar atributos", "Maksimer egenskaber", "Eigenschappen maximaliseren",
+            "Maksimer egenskaper", "Maximizar Atributos", "Maximera egenskaper"};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text == DebugText::call_up) {
         static constexpr std::array<std::string_view, 11> labels{
             "Call Up", "Call Up", "Convoquer", "Einberufen", "Convoca", "Convocar",

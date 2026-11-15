@@ -395,6 +395,11 @@ int main(int argc, char** argv) {
         invoke(0x102a54b0, {control(30026, 0)});
         invoke(0x1033d030, {});
         require(match_result_debugging(s).clubs.empty(), "Default club list was not empty");
+        const bool portuguese_list = c.u8(c.r(2) - 0x35ac) == 9;
+        label_control(portuguese_list ? "Nenhum time adicionado" : "No teams added", 1);
+        label_control(portuguese_list ? "P\341gina 1 / 1" : "Page 1 / 1", 1);
+        label_control(debug_text(s, DebugText::previous), 1);
+        label_control(debug_text(s, DebugText::next), 1);
         label_control(debug_text(s, DebugText::options_sidebar), 0x82);
         invoke(0x1073edb0, {ui});
         const auto history_title = c.r(3);
@@ -444,7 +449,11 @@ int main(int argc, char** argv) {
         invoke(0x1033d030, {});
         const auto selected_result_style = style(label_control(debug_text(s, DebugText::win), 1));
         const auto available_result_style = style(control(30302, club));
-        const auto club_name_style = style(control(30303, club));
+        invoke(0x100d0940, {club, 0, c.sp() + 0x200, 200, 1, 0});
+        std::string club_name;
+        for (unsigned i = 0; c.u8(c.sp() + 0x200 + i); ++i) club_name += char(c.u8(c.sp() + 0x200 + i));
+        const auto club_name_style = style(label_control(club_name, 1));
+        require(c.u8(control_grid(control(30028, club)) + 0xbb0) == 5, "Club table must have five columns");
         invoke(0x1076bb20, {0, 0xc0, 0, 0});
         require(available_result_style[6] == c.r(3), "Available result lacks tactics green text");
         require(selected_result_style[1] == 0x221 && selected_result_style[6] == c.u16(c.toc(-0x7bd0)),
@@ -453,19 +462,52 @@ int main(int argc, char** argv) {
         invoke(0x1033f840, {control(30302, club)});
         require(match_result_debugging(s).clubs.front().result == ForcedClubResult::loss, "Loss cell was ignored");
         invoke(0x1033d030, {});
-        invoke(0x1033f840, {control(30028, 0)});
-        invoke(0x1033d030, {});
-        require(match_result_debugging(s).removing_club, "Remove mode did not stay active");
-        invoke(0x1033f840, {control(30303, club)});
+        invoke(0x1033f840, {control(30028, club)});
         invoke(0x1033d030, {});
         require(match_result_debugging(s).confirm_removal == club, "Remove skipped confirmation");
         invoke(0x1033f840, {control(30305, 0)});
-        require(match_result_debugging(s).clubs.size() == 1, "No removed the club");
+        require(match_result_debugging(s).clubs.size() == 1 && !match_result_debugging(s).confirm_removal,
+                "Cancel removed the club or retained confirmation");
         invoke(0x1033d030, {});
-        invoke(0x1033f840, {control(30303, club)});
+        invoke(0x1033f840, {control(30028, club)});
+        invoke(0x1033d030, {});
+        c.put16(ui + 0x25819e, 40);
+        invoke(0x1033f840, {0xffffffffu});
+        require(c.r(3) == std::uint32_t(-11) && !match_result_debugging(s).confirm_removal &&
+                match_result_debugging(s).clubs.size() == 1, "Escape did not cancel removal in place");
+        c.put16(ui + 0x25819e, 0);
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30028, club)});
         invoke(0x1033d030, {});
         invoke(0x1033f840, {control(30304, 0)});
-        require(match_result_debugging(s).clubs.empty(), "Yes did not remove the club");
+        require(match_result_debugging(s).clubs.empty(), "Confirm did not remove the club");
+        // Page boundaries and deletion of the last row on the last page must
+        // not strand the user on a blank page or change another club's rule.
+        auto& club_choices = match_result_debugging(s);
+        const auto all_clubs = c.u32(c.toc(-0x7be8));
+        for (unsigned id = 0; id < c.u32(c.toc(-0x7b50)) && club_choices.clubs.size() < 13; ++id)
+            if (valid_debug_result_club(s, all_clubs + id * 0x248)) add_debug_result_club(s, all_clubs + id * 0x248);
+        require(club_choices.clubs.size() == 13, "Missing clubs for pagination fixture");
+        invoke(0x1033d030, {});
+        label_control(portuguese_list ? "P\341gina 1 / 2" : "Page 1 / 2", 1);
+        label_control(portuguese_list ? "1-12 de 13 times" : "1-12 of 13 teams", 1);
+        label_control(debug_text(s, DebugText::previous), 1);
+        invoke(0x1033f840, {control(30307, 0)});
+        invoke(0x1033d030, {});
+        require(club_choices.club_page == 1, "Next did not change pages");
+        label_control(portuguese_list ? "P\341gina 2 / 2" : "Page 2 / 2", 1);
+        label_control(portuguese_list ? "13 de 13 times" : "13 of 13 teams", 1);
+        label_control(debug_text(s, DebugText::next), 1);
+        const auto final_club = club_choices.clubs.back().club;
+        invoke(0x1033f840, {control(30028, final_club)});
+        invoke(0x1033d030, {});
+        invoke(0x1033f840, {control(30304, 0)});
+        invoke(0x1033d030, {});
+        require(club_choices.clubs.size() == 12 && club_choices.club_page == 0,
+                "Last-page deletion did not return to the remaining page");
+        for (const auto& rule : club_choices.clubs)
+            require(rule.result == ForcedClubResult::win && rule.club != final_club, "Removal altered another rule");
+        club_choices.clubs.clear();
         invoke(0x1033d030, {});
         // The native history monitor interprets -2 as Back; -4 only redraws.
         invoke(0x1033f840, {control(30308, 0)});
@@ -537,7 +579,7 @@ int main(int argc, char** argv) {
         for (unsigned language = 0; language < 11; ++language)
             for (auto text : {DebugText::options, DebugText::underdogs, DebugText::underdogs_max,
                              DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries,
-                             DebugText::extend_all_contracts, DebugText::force_purchase})
+                             DebugText::extend_all_contracts, DebugText::force_purchase, DebugText::maximize_attributes})
                 require(!debug_text(language, text).empty(), "Missing translation");
         require(debug_text(9, DebugText::extend_all_contracts) == "Renovar Todos os Contratos por 1 Ano" &&
                 debug_text(255, DebugText::extend_all_contracts) == "Extend All Contracts by 1 Year", "Collective renewal labels");
@@ -686,6 +728,43 @@ int main(int argc, char** argv) {
             return std::int32_t(c.r(3));
         };
         invoke(0x1073f1e0, {ui, 0, target, 0});
+        // Build the production submenu with the original hook's live frame;
+        // the entire player page requires an unavailable QuickDraw port here.
+        // Dispatch still uses the original command handler and production hook.
+        select_native_debugging_features(1u << unsigned(DebugFeature::maximize_attributes));
+        const auto profile = c.u32(target + 0x14);
+        const auto before_max_staff = s.memory.copy_out(target, 0x70);
+        const auto before_max_profile = s.memory.copy_out(profile, 0x48);
+        const auto build_player_debug_menu = [&] {
+            invoke(0x10719560, {page()});
+            const auto frame = s.memory.copy_out(c.sp() + 0x6c, 6);
+            const auto prior_staff = c.r(23);
+            c.set(23, target);
+            c.put16(c.sp() + 0x6c, 0xffff); // No existing top-level menu.
+            c.put16(c.sp() + 0x6e, 100); c.put16(c.sp() + 0x70, 100);
+            const auto saved_registers = s.registers; const auto saved_unique = s.unique; const auto saved_pc = s.pc;
+            append_debug_contract_action(s);
+            require(s.registers == saved_registers && s.unique == saved_unique && s.pc == saved_pc,
+                    "Player submenu changed its interrupted caller");
+            c.set(23, prior_staff); s.memory.copy_in(c.sp() + 0x6c, frame);
+        };
+        build_player_debug_menu();
+        const auto maximize = control(30009, 0);
+        require(text_of(maximize) == "     " + std::string(debug_text(s, DebugText::maximize_attributes)),
+                "Missing Maximize Attributes in player Debugging menu");
+        const auto ledger_slot = c.toc(-0x7b7c);
+        c.put32(ledger_slot, 0); c.put32(target + 0x24, 0);
+        build_player_debug_menu();
+        require(control(30009, 0) < c.u16(page() + 0x129da6), "Contractless player lost Maximize Attributes");
+        c.put32(ledger_slot, ledger); c.put32(target + 0x24, seller);
+        require(command(0x103a72c0, 30009) == -11 && c.u8(profile + 0x1b) == 20 &&
+                c.u8(profile + 0x25) == 1 && c.u8(profile + 0x2d) == 1, "Player action did not maximize/minimize attributes");
+        c.put8(profile + 0x1b, 7);
+        select_native_debugging_features(1u << unsigned(DebugFeature::force_purchase));
+        require(command(0x103a72c0, 30009) == 0 && c.u8(profile + 0x1b) == 7,
+                "Stale disabled Maximize Attributes action changed the player");
+        s.memory.copy_in(target, before_max_staff);
+        s.memory.copy_in(profile, before_max_profile);
         require(command(0x103a72c0, 30025) == -4, "Force Purchase did not open the original proposal screen");
         invoke(0x1073ef70, {ui, forced_proposal_seller_slot});
         require(c.r(3) == c.u32(seller) + 1, "Proposal did not retain its original seller");

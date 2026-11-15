@@ -26,6 +26,7 @@ constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned best_u23_action = 30023, b_team_action = 30024;
 constexpr unsigned call_up_action = 30031;
 constexpr unsigned force_purchase_action = 30025;
+constexpr unsigned maximize_attributes_action = 30009;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
 constexpr unsigned underdogs_action = 30018, underdogs_max_action = 30019;
@@ -275,17 +276,17 @@ namespace {
 constexpr unsigned debug_options_action = 30020, feature_action = 30100;
 constexpr unsigned debug_options_mode = 4;
 constexpr unsigned club_results_action = 30026, add_club_action = 30027, remove_club_action = 30028;
-constexpr unsigned force_club_action = 30029, club_result_action = 30300, club_row_action = 30303;
+constexpr unsigned force_club_action = 30029, club_result_action = 30300;
 constexpr unsigned club_yes_action = 30304, club_no_action = 30305, club_prev_action = 30306;
 constexpr unsigned club_next_action = 30307, club_back_action = 30308, club_results_mode = 5;
-constexpr unsigned clubs_per_page = 14;
+constexpr unsigned clubs_per_page = 12;
 std::optional<std::uint32_t> pending_features;
 constexpr std::array feature_labels{
     DebugText::recover_players, DebugText::play_for_free, DebugText::extend_contract,
     DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
     DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results,
-    DebugText::force_purchase, DebugText::all_draws};
+    DebugText::force_purchase, DebugText::all_draws, DebugText::maximize_attributes};
 static_assert(feature_labels.size() == debug_feature_count);
 std::uint32_t debugging_modal_mode(State& s) {
     GuestCall call(s);
@@ -300,6 +301,7 @@ bool action_enabled(unsigned action) {
         case cancel_sale_action: return native_debugging_feature(DebugFeature::cancel_sale);
         case remove_sale_clause_action: return native_debugging_feature(DebugFeature::remove_sale_clause);
         case force_purchase_action: return native_debugging_feature(DebugFeature::force_purchase);
+        case maximize_attributes_action: return native_debugging_feature(DebugFeature::maximize_attributes);
         case underdogs_action: return native_debugging_feature(DebugFeature::underdogs);
         case underdogs_max_action: return native_debugging_feature(DebugFeature::underdogs_max);
         case match_results_action: return native_debugging_feature(DebugFeature::match_result);
@@ -375,71 +377,107 @@ void build_club_results(State& s) {
     choices.choosing_club = false;
     GuestCall call(s);
     const auto ui = root(s), page = screen(s, ui), toc = std::uint32_t(s.r<4>(8));
+    const bool portuguese = s.memory.read<1>(toc - 0x35ac) == 9;
     const auto color = [&](unsigned offset) { return std::uint32_t(s.memory.read<2>(s.memory.read<4>(toc - offset))); };
-    draw_debugging_panel(call, ui, page, 110, 789, color(0x7bd4), color(0x7bc8),
-        debug_text(s, DebugText::forced_clubs));
-    call.call(0x1073ede0, {ui, call.text(debug_text(s, DebugText::forced_clubs))});
-    const auto button = [&](unsigned left, unsigned top, unsigned right, DebugText label,
-                            unsigned action, unsigned value = 0, bool selected = false) {
-        const auto ink = color(selected ? 0x7bd0 : 0x7bc8);
-        call.args({1, ink, call.text(debug_text(s, label)), action, value});
-        call.call(0x10744430, {ui, left, top, right, top + 30, selected ? 0x221u : 0x30u,
-            color(selected ? 0x7bd0 : 0x7bc4), 12});
+    const auto text = [&](DebugText label) { return debug_text(s, label); };
+    draw_debugging_panel(call, ui, page, 110, 789, color(0x7bd4), color(0x7bc8), text(DebugText::forced_clubs));
+    call.call(0x1073ede0, {ui, call.text(text(DebugText::forced_clubs))});
+    const auto label = [&](unsigned left, unsigned top, unsigned right, unsigned bottom,
+                           std::string_view value, unsigned font = 2) {
+        call.args({font, color(0x7bc8), call.text(value)});
+        call.call(0x10744390, {ui, left, top, right, bottom, 1, 0, 12});
+    };
+    const auto button = [&](unsigned left, unsigned top, unsigned right, std::string_view value,
+                            unsigned action) {
+        call.args({1, color(0x7bc8), call.text(value), action, 0});
+        call.call(0x10744430, {ui, left, top, right, top + 30, 0x30, color(0x7bc4), 12});
     };
     if (choices.confirm_removal) {
         const auto name = result_club_name(s, call, *choices.confirm_removal);
-        const bool portuguese = s.memory.read<1>(toc - 0x35ac) == 9;
-        const auto question = portuguese
-            ? "Tem certeza que quer remover " + name + " dos clubes com resultados for\347ados?"
-            : "Remove " + name + " from the teams with forced results?";
-        call.args({4, color(0x7bc8), call.text(question)});
-        call.call(0x10744390, {ui, 135, 200, 764, 310, 1, 0, 12});
-        button(245, 350, 435, DebugText::yes, club_yes_action);
-        button(465, 350, 655, DebugText::no, club_no_action);
+        label(140, 180, 759, 215, portuguese ? "Remover este time da lista?" : "Remove this team from the list?", 4);
+        label(140, 225, 759, 270, name, 4);
+        label(140, 285, 759, 325, portuguese ? "O resultado deste time deixar\341 de ser for\347ado por esta regra."
+            : "This team's results will no longer be forced by this rule.");
+        button(245, 350, 435, text(DebugText::remove), club_yes_action);
+        // Use the original Cancel translation, including languages other than Portuguese.
+        const auto pool = std::uint32_t(s.memory.read<4>(toc - 0x4e18));
+        const auto buffer = std::uint32_t(s.memory.read<4>(toc - 0x7bb8));
+        call.call(0x10727890, {buffer, pool + 0x544});
+        button(465, 350, 655, original_text(s, buffer), club_no_action);
         return;
     }
     call.call(0x102a1070, {4, 0});
-    button(125, 115, 275, DebugText::add, add_club_action);
-    if (!choices.clubs.empty())
-        button(285, 115, 435, DebugText::remove, remove_club_action, 0, choices.removing_club);
-    else choices.removing_club = false;
-    const unsigned pages = std::max(1u, (unsigned(choices.clubs.size()) + clubs_per_page - 1) / clubs_per_page);
+    button(125, 115, 315, portuguese ? "Adicionar time" : "Add team", add_club_action);
+    const unsigned count = unsigned(choices.clubs.size());
+    const unsigned pages = std::max(1u, (count + clubs_per_page - 1) / clubs_per_page);
     choices.club_page = std::min(choices.club_page, pages - 1);
-    // Use the instructions screen's pitch, typography and choice colors.
-    // The footer grid also owns the pitch shapes, as in the original modal.
-    s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{24, 28, 24, 24});
+    const unsigned begin = choices.club_page * clubs_per_page, end = std::min(count, begin + clubs_per_page);
+    const auto range = pages > 1 ? std::to_string(begin + 1) +
+        (begin + 1 == end ? "" : "-" + std::to_string(end)) + (portuguese ? " de " : " of ") : "";
+    label(325, 115, 774, 145, range + std::to_string(count) +
+        (portuguese ? (count == 1 ? " time" : " times") : (count == 1 ? " team" : " teams")));
+    label(130, 147, 769, 170, portuguese ? "Escolha o resultado de cada time. As altera\347\365es valem na hora."
+        : "Choose each team's result. Changes apply immediately.");
+    // Stable footer positions, explicit page count and inert unavailable arrows.
+    s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{22, 30, 24, 24});
     call.args({0, 1, 0, 0xffffffffu});
     const auto footer = call.call(0x107198c0, {page, 125, 509, 774, 539, 4, call.stack + 0xc0, 1});
-    const auto footer_button = [&](unsigned column, DebugText label, unsigned action) {
-        call.args({color(0x7bc8), call.text(debug_text(s, label)), action, 0});
-        call.call(0x107444e0, {ui, footer, column, 0, 0x30, color(0x7bc4), 12, 3});
+    const auto muted = call.call(0x1076bb20, {0x80, 0x80, 0x80, 0});
+    const auto footer_button = [&](unsigned column, DebugText value, unsigned action, bool enabled) {
+        call.args({enabled ? color(0x7bc8) : muted, call.text(text(value)), enabled ? action : 0, 0});
+        call.call(enabled ? 0x107444e0 : 0x107445a0,
+            {ui, footer, column, 0, enabled ? 0x30u : 1u, enabled ? color(0x7bc4) : 0u, 12, 2});
     };
-    footer_button(0, DebugText::back, club_back_action);
-    if (choices.club_page) footer_button(2, DebugText::previous, club_prev_action);
-    if (choices.club_page + 1 < pages) footer_button(3, DebugText::next, club_next_action);
+    footer_button(0, DebugText::back, club_back_action, true);
+    const auto page_label = std::string(portuguese ? "P\341gina " : "Page ") +
+        std::to_string(choices.club_page + 1) + " / " + std::to_string(pages);
+    call.args({color(0x7bc8), call.text(page_label)});
+    call.call(0x107445a0, {ui, footer, 1, 0, 1, 0, 12, 2});
+    footer_button(2, DebugText::previous, club_prev_action, choices.club_page != 0);
+    footer_button(3, DebugText::next, club_next_action, choices.club_page + 1 < pages);
     s.wr<8>(0x4010, float_bits<8>(float_value<4>(s.memory.read<4>(s.memory.read<4>(toc - 0x4ec4)))));
     call.args({1, footer});
-    call.call(0x103cbb30, {125, 157, 774, 493, call.stack + 0xd0,
+    call.call(0x103cbb30, {125, 175, 774, 485, call.stack + 0xd0,
         call.stack + 0xd4, call.stack + 0xd8, call.stack + 0xdc});
-    s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{49, 17, 17, 17});
+    if (!count) {
+        label(145, 245, 754, 280, portuguese ? "Nenhum time adicionado" : "No teams added", 4);
+        label(145, 290, 754, 355, portuguese
+            ? "Clique em Adicionar time, abra o clube desejado e escolha For\347ar Resultados."
+            : "Click Add team, open a club and choose Force Results.");
+        return;
+    }
+    // Heading and body share column boundaries. Names are labels, not inert links.
+    s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{44, 42, 14});
     call.args({0, 1, 0, 0xffffffffu});
-    const auto grid = call.call(0x107198c0, {page, 130, 162, 769, 488, 4, call.stack + 0xc0, clubs_per_page});
+    const auto heading = call.call(0x107198c0, {page, 130, 177, 769, 199, 3, call.stack + 0xc0, 1});
+    const std::array headings{portuguese ? "Time" : "Team", portuguese ? "Resultado for\347ado" : "Forced result",
+        portuguese ? "A\347\343o" : "Action"};
+    for (unsigned column = 0; column < headings.size(); ++column) {
+        call.args({color(0x7bc8), call.text(headings[column])});
+        call.call(0x107445a0, {ui, heading, column, 0, 1, 0, 12, 2});
+    }
+    s.memory.copy_in(call.stack + 0xc0, std::vector<std::uint8_t>{44, 14, 14, 14, 14});
+    call.args({0, 1, 0, 0xffffffffu});
+    const auto grid = call.call(0x107198c0, {page, 130, 201, 769, 483, 5, call.stack + 0xc0, clubs_per_page});
     const auto available_ink = call.call(0x1076bb20, {0, 0xc0, 0, 0});
-    const unsigned begin = choices.club_page * clubs_per_page;
-    for (unsigned i = begin; i < choices.clubs.size() && i < begin + clubs_per_page; ++i) {
+    for (unsigned i = begin; i < end; ++i) {
         const auto& rule = choices.clubs[i];
         const auto row = i - begin;
-        call.args({color(0x7b10), call.text(result_club_name(s, call, rule.club)), club_row_action, rule.club});
-        call.call(0x107444e0, {ui, grid, 0, row, 1, 0, 1, 3});
+        call.args({color(0x7b10), call.text(result_club_name(s, call, rule.club))});
+        call.call(0x107445a0, {ui, grid, 0, row, 1, 0, 1, 3});
         constexpr std::array labels{DebugText::win, DebugText::draw, DebugText::loss};
         for (unsigned value = 0; value < labels.size(); ++value) {
             const bool active = unsigned(rule.result) == value;
             const auto ink = active ? color(0x7bd0) : available_ink;
-            call.args({ink, call.text(debug_text(s, labels[value])), club_result_action + value, rule.club});
+            call.args({ink, call.text(text(labels[value])), club_result_action + value, rule.club});
             call.call(active ? 0x107445a0 : 0x107444e0,
                 {ui, grid, value + 1, row, active ? 0x221u : 1u, active ? ink : 0u, 12, 2});
         }
+        call.args({color(0x7bc8), call.text(text(DebugText::remove)), remove_club_action, rule.club});
+        call.call(0x107444e0, {ui, grid, 4, row, 0x30, color(0x7bc4), 12, 2});
     }
+    label(130, 486, 769, 506, portuguese ? "Dois times listados: regras se anulam. Resultado manual tem prioridade."
+        : "Two listed teams: club rules cancel out. Manual results take priority.");
 }
 
 bool dispatch_club_results(State& s, std::uint32_t control, unsigned action) {
@@ -458,11 +496,9 @@ bool dispatch_club_results(State& s, std::uint32_t control, unsigned action) {
         if (action == club_yes_action) {
             remove_debug_result_club(s, *choices.confirm_removal);
             choices.confirm_removal.reset();
-            choices.removing_club = false;
         } else if (action == club_no_action) choices.confirm_removal.reset();
     } else if (action == add_club_action) {
         choices.choosing_club = true;
-        choices.removing_club = false;
         GuestCall call(s);
         // Same Nations browser as the career sidebar's Nations & Clubs menu.
         const auto continent = call.call(0x10192250, {});
@@ -470,15 +506,16 @@ bool dispatch_club_results(State& s, std::uint32_t control, unsigned action) {
         call.call(0x10103600, {1, continent, nation, 0});
         result = -4;
     } else if (action == remove_club_action) {
-        choices.removing_club = !choices.removing_club;
-    } else if (action == club_row_action) {
         const auto club = std::uint32_t(s.memory.read<4>(control + 0x48));
-        if (choices.removing_club && std::ranges::find(choices.clubs, club, &ClubResultRule::club) != choices.clubs.end())
+        if (std::ranges::find(choices.clubs, club, &ClubResultRule::club) != choices.clubs.end())
             choices.confirm_removal = club;
     } else if (action >= club_result_action && action < club_result_action + 3) {
         set_debug_club_result(s, s.memory.read<4>(control + 0x48), ForcedClubResult(action - club_result_action));
     } else if (action == club_prev_action && choices.club_page) --choices.club_page;
-    else if (action == club_next_action) ++choices.club_page;
+    else if (action == club_next_action) {
+        const auto pages = std::max(1u, (unsigned(choices.clubs.size()) + clubs_per_page - 1) / clubs_per_page);
+        if (choices.club_page + 1 < pages) ++choices.club_page;
+    }
     else if (action == club_back_action) {
         choices.choosing_club = false;
         result = -2;
@@ -528,7 +565,7 @@ bool dispatch_debugging_sidebar(State& s) {
     if (s.memory.read<4>(control + 12) & 2) {
         if (action == club_results_action) {
             auto& choices = match_result_debugging(s);
-            choices.choosing_club = choices.removing_club = false;
+            choices.choosing_club = false;
             choices.confirm_removal.reset();
             open_club_results(s);
         } else {
@@ -933,6 +970,7 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
     GuestCall call(s);
     const auto bench = fixture ? std::min<unsigned>(s.memory.read<1>(fixture + 0x4e) >> 4, 9) : 9;
     std::vector<std::uint32_t> available;
+    const bool national = is_national_squad(s, club);
     // The game's stand-ins for a short squad (the grey rows of the squad list) are the people
     // numbered past the staff table's count: the original status operation tells them apart the
     // same way (10060d28, where they skip the contract lookup). They are never selected.
@@ -942,6 +980,11 @@ bool select_debug_best_xi(State& s, std::uint32_t club, unsigned managed,
         if (!staff || !s.memory.read<4>(staff + 0x14) ||
             std::find(available.begin(), available.end(), staff) != available.end()) continue;
         if (signed_value<4>(s.memory.read<4>(staff)) >= staff_count) continue;
+        // Roster membership and the display status do not establish where a
+        // player currently plays. Outgoing loans can remain listed here.
+        // Use the current club, not the primary contract owner: incoming
+        // loans remain eligible. A national squad spans many club employers.
+        if (!national && s.memory.read<4>(staff + 0x24) != club) continue;
         // The same eligibility/status operation used by the squad screen:
         // ineligible, unregistered, international duty, suspended, injured,
         // recovering and absent players cannot be picked.
@@ -1680,21 +1723,62 @@ bool forced_purchase_contract(State& s, std::uint32_t contract) {
     return status == 7 || status == 8;
 }
 
+namespace {
+std::uint32_t debug_attribute_player(const State& s, std::uint32_t staff) {
+    if (!staff) return 0;
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto global = [&](unsigned offset) {
+        const auto slot = std::uint32_t(s.memory.read<4>(toc - offset));
+        return slot ? std::uint32_t(s.memory.read<4>(slot)) : 0;
+    };
+    const auto people = global(0x7be0), count = global(0x7be4);
+    if (!people || staff < people || (staff - people) % 0x70 || (staff - people) / 0x70 >= count ||
+        std::uint64_t(staff) + 0x70 > (UINT64_C(1) << 32) || s.memory.read<4>(staff) != (staff - people) / 0x70) return 0;
+    const auto player = std::uint32_t(s.memory.read<4>(staff + 0x14));
+    const auto players = global(0x7b38), player_count = global(0x74d4);
+    if (!players || player < players || (player - players) % 0x48 || (player - players) / 0x48 >= player_count ||
+        std::uint64_t(player) + 0x48 > (UINT64_C(1) << 32)) return 0;
+    return player;
+}
+}
+
+bool maximize_debug_player_attributes(State& s, std::uint32_t staff) {
+    if (!native_debugging_feature(DebugFeature::maximize_attributes)) return false;
+    const auto player = debug_attribute_player(s, staff);
+    if (!player) return false;
+    // The original profile getter (100d2330) decodes signed technical bytes
+    // through current ability. Raw 100 saturates at displayed 20, including
+    // its goalkeeper exceptions; the remaining attributes use the 1..20 scale.
+    constexpr std::array technical{0x1e, 0x23, 0x24, 0x26, 0x27, 0x2a, 0x2b, 0x31, 0x32,
+        0x33, 0x35, 0x37, 0x38, 0x39, 0x3a, 0x3e, 0x41, 0x43};
+    constexpr std::array positive{0x1b, 0x1c, 0x1d, 0x1f, 0x20, 0x21, 0x22, 0x28, 0x29, 0x2c,
+        0x2e, 0x2f, 0x30, 0x34, 0x36, 0x3b, 0x3c, 0x3d, 0x3f, 0x40, 0x42, 0x44};
+    constexpr std::array personality{0x61, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69};
+    for (auto offset : technical) s.memory.write<1>(player + offset, 100);
+    for (auto offset : positive) s.memory.write<1>(player + offset, 20);
+    s.memory.write<1>(player + 0x25, 1); // Dirtiness: lower is better.
+    s.memory.write<1>(player + 0x2d, 1); // Injury proneness: lower is better.
+    for (auto offset : personality) s.memory.write<1>(staff + offset, 20);
+    return true;
+}
+
 void append_debug_contract_action(State& s) {
     if (!action_enabled(extend_contract_action) && !action_enabled(remove_sale_clause_action) &&
-        !action_enabled(cancel_sale_action) && !action_enabled(force_purchase_action)) return;
+        !action_enabled(cancel_sale_action) && !action_enabled(force_purchase_action) &&
+        !action_enabled(maximize_attributes_action)) return;
     const auto staff = std::uint32_t(s.r<4>(23 * 4));
     const auto original_stack = std::uint32_t(s.r<4>(4));
     GuestCall call(s);
-    // Every debugging action needs the player's primary contract; without
-    // one, leave out the submenu rather than show it empty.
+    // Attribute changes also apply to real unattached players. Contract-only
+    // actions still require a primary contract; never show an empty submenu.
+    const bool maximize = action_enabled(maximize_attributes_action) && debug_attribute_player(s, staff);
     const auto contract = debug_primary_contract(s, call, staff);
-    if (!contract) return;
-    const bool clause = action_enabled(remove_sale_clause_action) && s.memory.read<1>(contract + 0x1d);
-    const bool sale = action_enabled(cancel_sale_action) && current_managed_employer(s, call, staff) &&
+    const bool extend = contract && action_enabled(extend_contract_action);
+    const bool clause = contract && action_enabled(remove_sale_clause_action) && s.memory.read<1>(contract + 0x1d);
+    const bool sale = contract && action_enabled(cancel_sale_action) && current_managed_employer(s, call, staff) &&
         scheduled_sale(s, staff, false);
-    const bool purchase = action_enabled(force_purchase_action) && eligible_purchase_seller(s, call, contract);
-    if (!action_enabled(extend_contract_action) && !clause && !sale && !purchase) return;
+    const bool purchase = contract && action_enabled(force_purchase_action) && eligible_purchase_seller(s, call, contract);
+    if (!maximize && !extend && !clause && !sale && !purchase) return;
     // Build the same parent control and child menu used by the original
     // player comparison menu, then add the debugging actions to that child.
     const auto ui = root(s), page = screen(s, ui);
@@ -1712,7 +1796,8 @@ void append_debug_contract_action(State& s) {
             std::uint32_t(s.memory.read<2>(original_stack + 0x6e)),
             call.text(debug_text(s, text)), action, 0});
     };
-    if (action_enabled(extend_contract_action)) append(DebugText::extend_contract, extend_contract_action);
+    if (maximize) append(DebugText::maximize_attributes, maximize_attributes_action);
+    if (extend) append(DebugText::extend_contract, extend_contract_action);
     if (clause) append(DebugText::remove_sale_clause, remove_sale_clause_action);
     if (sale) append(DebugText::cancel_sale, cancel_sale_action);
     if (purchase) append(DebugText::force_purchase, force_purchase_action);
@@ -1724,7 +1809,7 @@ bool dispatch_debug_contract_action(State& s) {
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
     if (action != extend_contract_action && action != cancel_sale_action &&
-        action != remove_sale_clause_action && action != force_purchase_action) return false;
+        action != remove_sale_clause_action && action != force_purchase_action && action != maximize_attributes_action) return false;
     bool accepted = false;
     std::int32_t result = 0;
     if (s.memory.read<4>(control + 12) & 2) {
@@ -1739,11 +1824,12 @@ bool dispatch_debug_contract_action(State& s) {
                 if (transfer_screens::open_player_offer(cpu, staff, 0, cpu.u32(seller) + 1))
                     result = -4;
             }
-        } else if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
+        } else if (action == maximize_attributes_action) accepted = maximize_debug_player_attributes(s, staff);
+        else if (action == extend_contract_action) accepted = extend_debug_contract(s, staff);
         else if (action == remove_sale_clause_action) accepted = remove_debug_sale_clause(s, staff);
         else if (action == cancel_sale_action && current_managed_employer(s, call, staff))
             accepted = cancel_scheduled_sale(s, staff);
-        // Refresh the player page after changing a contract or a transfer.
+        // Refresh the player page after changing attributes, a contract or a transfer.
         if (accepted) {
             call.call(0x103ab9e0, {});
             result = -11;

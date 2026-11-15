@@ -54,6 +54,17 @@ The original squad status operation (`10060c00`) excludes ineligible,
 unregistered, absent, injured, recovering, suspended and internationally absent
 players from the club's 50-entry roster.
 
+All three Lineup modes also require the player's current club (`staff +0x24`)
+to match the selected club. A listed player loaned out cannot enter either the
+starting eleven or the bench, including U23 fallback and B Team selection.
+The primary contract's owner is not used for this check, so incoming loans
+remain available. National-team rosters are exempt from the club-employer check.
+`lineup_loan_availability` reproduces the outgoing-loan regression using an
+existing career snapshot. It covers all three modes, starters and bench,
+reduced/empty pools, returning players, foreign primary-contract ownership,
+senior/U21 national squads, caller preservation and unchanged RNG. It does not
+open a display or load a save in the app.
+
 Version 2 compares every available player for every formation slot. The original
 Mac profile getter (`100d2330`) decodes technical attributes using current ability
 and the original goalkeeper exceptions. Physical attributes use the same profile
