@@ -2164,3 +2164,30 @@ seen) and at its manager. "fog.dat" saves the preference byte and each present s
   layer passes most of them through to `PBWriteForkSync`. The daily rules make no call that reaches an import.
 - The generated reader inlines `labs` (0x10775550) of the saved game's version: a check sets the version cell
   rather than answering the call. The stack audit of the 20 contract captures shows no reader of this unit's frames.
+
+## TRANSFER_MANAGER.CPP: the native-first family
+
+The module's first 87 routines (`native/transfer_manager_*.cpp`, `transfer_manager_routines.inc`) were transcribed
+instruction by instruction before 2026-11-06. Routines written since are native-first and live apart:
+`native/transfer_manager_native_*`, lines `TRANSFER_MANAGER_NATIVE` (production) or `_DRAFT` (checkers only) in
+`transfer_manager_native_routines_<block>.inc`, their own adapter and `cm-transfer-manager-native-checks` (cloned from
+TRANSFER_OFFER.CPP's: world-state cases, mutations, call trace). `tools/transfer_manager_audit.py` reads both tables;
+the generated hook `try_modern_transfer_manager` hands entries it doesn't list to the native table. Both tables share
+one declining flag, so an original run of either side (or `CM_TRANSFER_MANAGER_ORIGINAL=1`) runs every routine of
+the module as generated code.
+
+- Same contract as TRANSFER_OFFER.CPP: native inside, the original's frame, and the original's r13-r31/f14-f31 at
+  every call (`keep`), which the checker compares at each call. Calls between native routines, a block's own
+  included, go through `invoke_native` so the call trace sees them on both sides.
+- `tools/call_arguments.py` used to stop at the prologue's `bl` to the FPR-save millicode (0x107737f0...) and
+  report mask 00 for every routine that saves FPRs, so no argument of theirs was compared. A leaf callee now
+  clobbers only what it writes; the corrected masks also show many routines passing r8-r10 on unread (0x103fb840
+  hands them to 0x10362ef0), which the rewrites set as the original holds them.
+- Stale frame reads kept: 0x103fa8e0 (sp+0x4c) and 0x103fa290 (sp+0x50) after their 0x107156f0 call, 0x103f8cc0
+  (sp+0x68), 0x103fa290's sp+0x40 on the 0x21 path, and 0x103e8d30's 50-word list at frame+0x38 for a human club,
+  which it never fills (ids past the people limit there are skipped; a case writes them).
+- Unreachable in the original, proved from the listing: 0x103ee1a0 is `li r3,1; blr`, so the tests of it for 0 in
+  0x103e8d30 and 0x103ed520 never take; 0x103f83c0 never stores reason 0x13; the second level of 0x103e3860
+  (as in 0x10415e50) can't see a range past 0xffff; 0x103e8500's draws after a count > 1 test never get range 0.
+- Several news routines read through a null club or contract (a field from guest address 0). The game stops there
+  (page zero is unmapped); the checker's `--null-page` maps it so the paths beyond are compared too.

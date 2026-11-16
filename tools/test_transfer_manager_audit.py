@@ -43,6 +43,28 @@ class TransferManagerAudit(unittest.TestCase):
             registry.write_text("TRANSFER_MANAGER_ROUTINE(0x10411f10, hook)\n")
             with self.assertRaisesRegex(ValueError, "Invalid"):
                 registered(registry)
+        with tempfile.TemporaryDirectory() as directory:
+            native = Path(directory)
+            registry = native / "routines.inc"
+            registry.write_text("TRANSFER_MANAGER_ROUTINE(0x103ea250, hook)\n")
+            line = 'TRANSFER_MANAGER_NATIVE{}(0x103e9220, 0x103e92b0, NONE, "{}", hook)\n'
+            routines = native / "transfer_manager_native_routines_x.inc"
+            routines.write_text(line.format("_DRAFT", "bfbfd94cd48f6e43"))
+            self.assertEqual([e for e, _, _ in registered(registry, native)], [0x103ea250])
+            routines.write_text(line.format("", "bfbfd94cd48f6e43"))
+            self.assertEqual([e for e, _, _ in registered(registry, native)], [0x103e9220, 0x103ea250])
+            routines.write_text(line.format("", "0000000000000000"))
+            with self.assertRaisesRegex(ValueError, "Invalid native"):
+                registered(registry, native)
+            routines.write_text(line.format("", "bfbfd94cd48f6e43") * 2)
+            with self.assertRaisesRegex(ValueError, "Duplicate native"):
+                registered(registry, native)
+            routines.write_text('TRANSFER_MANAGER_NATIVE(0x103e9220, 0x103e92b0, R3 | F1, "bfbfd94cd48f6e43", hook)\n')
+            with self.assertRaisesRegex(ValueError, "Unparsed native"):
+                registered(registry, native)
+            routines.write_text('TRANSFER_MANAGER_NATIVE(0x103ea250, 0x103ea26c, NONE, "b315c6a959dbe49a", hook)\n')
+            with self.assertRaisesRegex(ValueError, "both tables"):
+                registered(registry, native)
         with closing(sqlite3.connect(":memory:")) as db:
             db.execute("CREATE TABLE instructions(address INTEGER PRIMARY KEY, body TEXT NOT NULL)")
             with self.assertRaisesRegex(ValueError, "original differs"):

@@ -26,6 +26,7 @@ class Program:
     def __init__(self, db):
         self.db = db
         self.memo = {}
+        self.clobber_memo = {}
         self.cache = {}
 
     def record(self, address):
@@ -48,6 +49,30 @@ class Program:
             if isinstance(output, list) and output and output[0] == 'register' and output[2] == 4:
                 writes.add(int(output[1]))
         return reads, writes
+
+    def clobbers(self, entry):
+        """The registers a call of `entry` may change: VOLATILE, unless it is a leaf (no calls, no
+        indirect jumps), which changes only what it writes. The prologue's FPR-save millicode
+        (bl 0x107737f0 ...) is such a leaf and leaves the arguments alone."""
+        if entry in self.clobber_memo:
+            return self.clobber_memo[entry]
+        result, seen, pending = set(), set(), [entry]
+        while pending:
+            at = pending.pop()
+            if at in seen:
+                continue
+            seen.add(at)
+            record = self.record(at)
+            if record is None or 'CALL' in record['flow'] or record['flow'] in ('COMPUTED_JUMP', 'COMPUTED_CALL'):
+                result = set(VOLATILE)
+                break
+            result |= self.accesses(record)[1] & VOLATILE
+            if record['flow'] != 'TERMINATOR':
+                pending.extend(record.get('flows') or [])
+            if record.get('fallthrough') is not None:
+                pending.append(record['fallthrough'])
+        self.clobber_memo[entry] = frozenset(result)
+        return self.clobber_memo[entry]
 
     def mask(self, entry):
         if entry in self.memo:
@@ -77,7 +102,10 @@ class Program:
                     for offset, bit in ARGUMENTS.items():
                         if nested >> bit & 1 and offset not in after:
                             found |= 1 << bit
-                after |= VOLATILE
+                for target in record['flows']:
+                    after |= self.clobbers(target)
+                if not record['flows']:
+                    after |= VOLATILE
                 if record.get('fallthrough') is not None:
                     successors.append(record['fallthrough'])
             else:

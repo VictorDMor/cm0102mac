@@ -1,4 +1,5 @@
 #include "transfer_manager_adapter.hpp"
+#include "transfer_manager_native_adapter.hpp"
 #include "transfer_manager_approval.hpp"
 #include "transfer_manager_approval_bootstrap.hpp"
 #include "transfer_manager_callbacks.hpp"
@@ -33,8 +34,10 @@ namespace cm::aot {
 namespace {
 using guest::Cpu;
 
-// The original route remains available for comparisons of complete call graphs.
-bool declining = std::getenv("CM_TRANSFER_MANAGER_ORIGINAL") != nullptr;
+// The original route remains available for comparisons of complete call graphs. One flag for
+// the whole module (CM_TRANSFER_MANAGER_ORIGINAL=1, or a checker child running an original body),
+// so an original run of either table runs the other table's routines as originals too.
+bool& declining = transfer_manager_native_declining;
 
 struct Routine {
     std::uint32_t entry;
@@ -81,6 +84,8 @@ void transfer_manager_run_rewrite(State& s, std::uint32_t entry) {
 bool try_modern_transfer_manager(State& s, std::uint32_t entry) {
     if (declining || (routine_checker && !routine_checker->wants(entry))) return false;
     const auto* routine = lookup(entry);
+    // The routines written native-first have their own table, with drafts and the native contract.
+    if (!routine && transfer_manager_native_lists(entry)) return try_modern_transfer_manager_native(s, entry);
     if (!routine) throw std::logic_error("Unknown transfer-manager entry " + hex_address(entry));
     if (routine_checker)
         routine_checker->check(s, entry, transfer_manager_run_original, transfer_manager_run_rewrite,

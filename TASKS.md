@@ -3,6 +3,12 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Open: TRANSFER_MANAGER.CPP after layers 0-2 (2026-11-16)
+
+140 of 214 routines in C++ (53 native-first since 2026-11-16, 87 in the earlier instruction-by-instruction style). Left: 74 routines, 30,783 instructions at layers 13-22 (`tools/game_inventory.py`); the earlier 87 should move to the native family when touched.
+
+- Known failures, not caused by the TRANSFER_MANAGER commit: `transfer_manager_valuation_production` ("did not reach its Date dependency") and `transfer_manager_schedule_equivalence` ("Transfer schedule bucket") fail with the uncommitted DATE/calendar changes in the tree (`native/date*.cpp`, `calendar.hpp`, `date_subsystem_adapter.cpp`); neither routine reaches the 53 new entries, both reach DATE.
+
 ## Now: DISPLAY.CPP (delivered 2026-11-15)
 
 All 32 entries (13,178 instructions, 0x10718b40..0x10725a00) are C++ and routed (`native/display_*.cpp`, `tools/display_audit.py`, `cm-display-checks`), taking 0x10718b40/0x10718ba0 over from aggregate_object and 0x107259a0 from engine_initialization. Contract: `docs/cpp-rewrites.md`; open outcomes: `.local/rewrites/display/ledger.json`.

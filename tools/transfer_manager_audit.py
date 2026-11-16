@@ -268,13 +268,40 @@ SKIPPED_BRANCH = 0x10406a9c
 NON_POINTER_WORDS = {0x108a9538: 0x10400000, 0x108bfe88: 0x10400100}
 
 ROUTINE = re.compile(r"TRANSFER_MANAGER_ROUTINE\((0x[0-9a-f]+),")
+# Routines written native-first (native/transfer_manager_native_adapter.cpp): entry, end, results, digest.
+# TRANSFER_MANAGER_NATIVE runs in production and is hooked; a _DRAFT line runs in check tools only.
+NATIVE_REGISTRY = ROOT / "native"
+NATIVE = re.compile(r"TRANSFER_MANAGER_NATIVE(_DRAFT)?\((0x[0-9a-f]+), (0x[0-9a-f]+), \w+, \"([0-9a-f]{16})\"")
 
 
-def registered(path=REGISTRY):
+def native_lines(directory=NATIVE_REGISTRY):
+    """(entry, production) for every native line, each checked against the original's end and digest."""
+    lines = []
+    for path in sorted(directory.glob("transfer_manager_native_routines*.inc")):
+        text = path.read_text()
+        # Every use of the macros must parse; a line in another shape would silently escape the checks.
+        if len(re.findall(r"^\s*TRANSFER_MANAGER_NATIVE\w*\(", text, re.MULTILINE)) != len(NATIVE.findall(text)):
+            raise ValueError(f"Unparsed native transfer-manager line in {path.name}")
+        for draft, entry, end, fingerprint in NATIVE.findall(text):
+            entry, end = int(entry, 16), int(end, 16)
+            original = next((o for o in ORIGINAL if o[0] == entry), None)
+            if original is None or original[1] != end or original[3] != fingerprint:
+                raise ValueError(f"Invalid native transfer-manager line at 0x{entry:x}")
+            lines.append((entry, not draft))
+    if len({entry for entry, _ in lines}) != len(lines):
+        raise ValueError("Duplicate native transfer-manager entry")
+    return lines
+
+
+def registered(path=REGISTRY, native_directory=NATIVE_REGISTRY):
     entries = tuple(int(entry, 16) for entry in ROUTINE.findall(path.read_text()))
     if entries != tuple(sorted(set(entries))) or set(entries) - BOUNDS.keys():
         raise ValueError("Invalid or duplicate transfer-manager replacement entry")
-    return tuple((start, end, fingerprint) for start, end, _, fingerprint in ORIGINAL if start in entries)
+    native = native_lines(native_directory)
+    if set(entries) & {entry for entry, _ in native}:
+        raise ValueError("Transfer-manager entry listed in both tables")
+    production = set(entries) | {entry for entry, live in native if live}
+    return tuple((start, end, fingerprint) for start, end, _, fingerprint in ORIGINAL if start in production)
 
 
 TRANSFER_MANAGER_ENTRIES = tuple(start for start, _, _ in registered())
