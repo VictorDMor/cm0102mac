@@ -152,6 +152,7 @@ std::uint32_t read_humans(Cpu& c, std::uint32_t humans, std::uint32_t file) {
                     c.put32(at, c.u32(image + half * 0x20 + word * 4));
                     c.put32(at + 4, 0xffffffffu);
                 }
+            c.set(7, c.u32(image + 0x20 + 7 * 4));  // the unrolled copy's last load (0x1014aac8) leaves r7
         } else {
             call(callee::read, 0x1014ab1c, {record_now() + list_offset, list_item, list_count, handle()});
         }

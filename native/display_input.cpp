@@ -57,8 +57,9 @@ inline Rect rect_of(const Cpu& c, u32 control) {
             c.u32(control + control::bottom)};
 }
 // The pointer in the control's rectangle (the original's call to 0x1071c190 with the four words).
-inline u32 pointer_in(const Cpu& c, u32 control) {
+inline u32 pointer_in(Cpu& c, u32 control) {
     const auto r = rect_of(c, control);
+    c.set(7, r.bottom);  // the original passes the bottom in r7 and the callee leaves it there
     return pointer_inside(c, r.left, r.top, r.right, r.bottom);
 }
 // The global byte DAT_108b84d6 (TOC -0x35ba): set to 2 when the pointer touches something that reacts.
@@ -367,6 +368,7 @@ u32 text_field_key(Cpu& c, u32 table, u32 control_arg) {
     invoke(c, 0x1077dbf0, 0x1071b5d8, {buffer, G + control::text});
     regs.hold({{31, flags_base}});
     const Rect rect = rect_of(c, G);
+    c.set(7, rect.bottom);  // left in r7 by the original's argument load
     const u32 inside = pointer_inside(c, rect.left, rect.top, rect.right, rect.bottom);
     if (b(inside)) touch(c);
     const u32 pressed = c.u8(success_ptr);
@@ -543,6 +545,7 @@ u32 text_field_key(Cpu& c, u32 table, u32 control_arg) {
         c.put8(buffer + 1 + length, 0);
         c.put32(G + control::caret, c.u32(G + control::caret) + 1);
         c.put8(G + control::changed, 1);
+        c.set(7, typed);  // r7 holds the typed character (0x1071bc6c) up to the redraw
         refresh(0x1071bcbc, 0x1071bccc);
     }
     clear_input();

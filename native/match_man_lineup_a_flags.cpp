@@ -62,7 +62,8 @@ void ComputerLineup::choose_flags() {
                 bool settled = compare(c, id, -1) <= 0;
                 if (!settled) {
                     const auto person = c.u32(c.u32(c.toc(-0x7b5c)) + std::uint32_t(id) * 4);
-                    c.set({{3, person}, {4, club()}});
+                    // r7 is still the opposing team's rating loaded at 0x10208a34 for the draw's comparison.
+                    c.set({{3, person}, {4, club()}, {7, std::uint32_t(std::int32_t(c.i16(team() + 0x1ec)))}});
                     c.call(0x10452ed0, 0x10208ab0);
                     settled = compare(c, s8(c.r(3))) != 0;
                 }

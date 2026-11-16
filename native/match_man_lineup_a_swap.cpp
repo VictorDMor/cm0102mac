@@ -45,6 +45,8 @@ void ComputerLineup::assess_replacement() {
            {8, c.u32(club())}, {9, at(0x130)}, {10, 0xffffffff}});
     c.call(0x1048b180, 0x102070fc);
     if (compare(c, std::int32_t(c.r(3) & 0xffff)) == 0) return;
+    // r6 as the scan left it: only the same-reference branch below keeps it up to the call at 0x102072a8.
+    const auto scan_r6 = c.r(6);
 
     const auto competition_row = [&] { return c.u32(c.toc(-0x7bbc)) + c.u32(c.r(27)) * 0x6c; };
     // Our strength (r4) from the opposing record `team` (the caller's argument),
@@ -52,9 +54,15 @@ void ComputerLineup::assess_replacement() {
     // word is the current one (the word r28 points at), else the reference record.
     const auto reference = c.u32(extras + lineup_extras::reference);
     std::uint32_t own;
+    std::uint32_t arg6, arg7;  // r6/r7 the original holds at the call at 0x102072a8
     if (compare(c, c.i32(reference), c.i32(r28)) == 0) {
+        arg6 = scan_r6;
+        arg7 = reference;
         own = std::uint32_t(rating_of(team(), competition_row()));
     } else {
+        // mulhw by 0x55555556 of the team's rating (r7), and its sign bit (r6)
+        arg7 = std::uint32_t(std::int32_t((std::int64_t(0x55555556) * c.i16(team() + 0x1ec)) >> 32));
+        arg6 = arg7 >> 31;
         own = std::uint32_t(rating_of(team(), reference));
         if (compare(c, s8(c.u8(extras + lineup_extras::kind_byte)), 8) == 0) {
             // A fixture of kind 8: a flagged round (compared against the side's number,
@@ -90,7 +98,7 @@ void ComputerLineup::assess_replacement() {
         c.set_f(1, c.f64(pool() + lineup_pool::conversion));
         r16 = truncated_to_stack(c, fpu, at(0x8ec), fpu.fmul(strength, factor));
     }
-    c.set({{3, team()}, {4, club()}});
+    c.set({{3, team()}, {4, club()}, {6, arg6}, {7, arg7}});
     c.call(0x10464160, 0x102072ac);
     if (compare(c, s8(c.r(3))) != 0) {
         c.put8(self + lineup_side::changed, 1);
@@ -139,13 +147,20 @@ void ComputerLineup::assess_replacement() {
 // other club's rating, then scaled by what kind of club and rival it is.
 void ComputerLineup::opponent_strength() {
     const auto self = side();
+    const auto r7_in = c.r(7);  // the home branch of the original never writes r7
     const bool at_home = compare_logical(c, club(), c.u32(r26 + 0x1c)) == 0;
     const auto other = c.u32(r26 + (at_home ? 0x20 : 0x1c));
     const auto reference = c.u32(r26 + 0x14);
-    const auto row = compare(c, c.i32(reference), c.i32(r28)) == 0
+    const bool same = compare(c, c.i32(reference), c.i32(r28)) == 0;
+    const auto row = same
                          ? c.u32(c.toc(-0x7bbc)) + c.u32(c.r(27)) * 0x6c : reference;
     r17 = std::uint32_t(rating_of(other, row));
-    c.set({{3, other}, {4, club()}});
+    // r6/r7 as the branches of 0x10207444-0x10207684 leave them: home keeps r7 and sets r6 to the
+    // multiplier; away has r6 = mulhw(0x55555556, other's rating) and r7 = the multiplier
+    // (same reference as the competition) or the reference.
+    const auto third = std::uint32_t(std::int32_t((std::int64_t(0x55555556) * c.i16(other + 0x1ec)) >> 32));
+    c.set({{3, other}, {4, club()}, {6, at_home ? 0x55555556u : third},
+           {7, at_home ? r7_in : same ? 0x55555556u : reference}});
     c.call(0x10464160, at_home ? 0x102074d8 : 0x10207688);
     if (compare(c, s8(c.r(3))) != 0) r17 = scaled(r17, 0x20);
     else if (is_club_slot(club(), other)) r17 = scaled(r17, 0x30);
