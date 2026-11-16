@@ -167,6 +167,7 @@ catch(...){frame.fault(false);throw;}
  // Reads during selection have no active diagnostic observer and do not
  // modify state. An invalid descriptor retains the original fault prefix.
 ''' + target_flag + ''' try{
+  const Memory::ExactBounds exact_bounds(s.memory);  // the decline must see the fault
   const auto target=s.memory.read<4>(s.r<4>(24));
   ''' + selection + '''
  }

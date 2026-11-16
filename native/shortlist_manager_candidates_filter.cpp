@@ -41,6 +41,7 @@ bool try_empty_transfer_filter(Cpu& c, std::uint32_t transfers, std::uint32_t pe
     const auto flag_table = transfers + 0x9a0;
     if (!disjoint(person, 4) || !disjoint(flag_table, 4)) return false;
     try {
+        const Memory::ExactBounds exact_bounds(c.s.memory);
         const auto flag = c.u32(flag_table) + c.u32(person) * 10;
         if (!disjoint(flag, 1) || (c.u8(flag) & 0x10)) return false;
     } catch (const std::runtime_error&) {

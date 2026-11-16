@@ -55,6 +55,7 @@ std::optional<std::uint32_t> native_role(Cpu& c, std::uint32_t player, std::uint
     std::uint32_t match, value = 0, r4 = player;
     int position = 0;
     try {
+        const Memory::ExactBounds exact_bounds(c.s.memory);
         match = c.u32(match_slot);
         (void)c.u32(sp + 8);
         (void)c.u32(sp - 0x40);

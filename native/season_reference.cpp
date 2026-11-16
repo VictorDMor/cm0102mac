@@ -653,6 +653,7 @@ void season_day_boundary(State& s, std::uint32_t pc) {
             days = unsigned(input[0] - '0');
         }
         recorder = std::make_unique<Recorder>(s, directory, days);
+        s.memory.leave_hardware_bounds();  // a capture must finish its files on a fault
         s.memory.observer = recorder.get();
         recorder->stream.put(Event::boundary); put_input(recorder->stream, recorder->base, s); recorder->stream.put(std::uint8_t(0));
     } else if (!recorder->finished && recorder->owner == &s && !recorder->native_depth) {
@@ -723,6 +724,7 @@ void season_record_import_end(State& s, const char* name) {
         if (s.memory.date_observer) { std::fprintf(stderr, "Session capture refused: date diagnostics are attached\n"); return; }
         try { recorder = std::make_unique<Recorder>(s, directory, 0, true); }
         catch (const std::exception& error) { abandon_session(s, error.what()); return; }
+        s.memory.leave_hardware_bounds();  // a capture must finish its files on a fault
         s.memory.date_observer = recorder.get();
         return;
     }
@@ -802,6 +804,7 @@ void season_launch_capture(State& s, const std::filesystem::path& directory) {
         std::filesystem::create_directories(directory);
         if (!std::filesystem::is_empty(directory)) throw std::runtime_error("the launch capture directory is not empty");
         recorder = std::make_unique<Recorder>(s, directory, 0, true);
+        s.memory.leave_hardware_bounds();  // a capture must finish its files on a fault
     } catch (const std::exception& error) {
         std::fprintf(stderr, "Launch capture refused: %s\n", error.what());
         recorder.reset();
@@ -955,12 +958,15 @@ constexpr std::uint32_t stack_base = 0x70000000;
 bool ends_after_call(const State& s) {
     if (s.pc == return_sentinel) return true;
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         const auto instruction = std::uint32_t(s.memory.read<4>(s.pc - 4));
         return (instruction & 0xfc000003) == 0x48000001 || instruction == 0x4e800421 || instruction == 0x4e800021;
     } catch (const std::exception&) { return false; }
 }
 std::string compare_states(const State& expected, const State& actual, Comparison mode) {
     try {
+        const Memory::ExactBounds exact_bounds(expected.memory);
+        const Memory::ExactBounds exact_bounds1(actual.memory);
         for (const auto& [name, global, offset, size] : std::vector<std::tuple<const char*, std::uint32_t, unsigned, unsigned>>{
             {"game.date.day-of-year", date_global, 0, 2}, {"game.date.year", date_global, 2, 2},
             {"game.date.leap-year", date_global, 4, 1}, {"game.phase", phase_global, 0, 1},

@@ -18,8 +18,9 @@
 //                     should)
 //   --timing          skip the recorded RNG state writes instead of checking
 //                     each (checking needs a memory observer, which switches
-//                     C++ owners to their observed paths); the end state is
-//                     still checked
+//                     C++ owners to their observed paths), and use hardware
+//                     bounds as the game does (CM_AOT_EXACT_BOUNDS=1 keeps the
+//                     exact check); the end state is still checked
 //   --profile         sample the guest PC and its return addresses every
 //                     millisecond of CPU time, over all runs, into one file;
 //                     tools/guest_profile.py charges them to original routines
@@ -403,6 +404,10 @@ int main(int argc, char** argv) {
                 for (unsigned run = 0; run < runs; ++run) {
             auto state = cm::semantic_io_checks::clone(*initial);
             state->budget = UINT64_MAX;
+            // Timing measures the game's mode: hardware bounds (a stray access
+            // stops the process). Checked replays keep exact bounds.
+            if (timing && !stack_audit && !flip && !profile && !checker && !std::getenv("CM_AOT_EXACT_BOUNDS"))
+                state->memory.use_hardware_bounds();
             if (transcript) {
                 if (session) open_session_replay(capture, timing);
                 else if (timing) open_timing_replay(capture); else open_operation_replay(capture);
@@ -426,6 +431,7 @@ int main(int argc, char** argv) {
                 run_until(*state, expected->pc);
             }
             if (profile) guest_profiler::stop();
+            state->memory.leave_hardware_bounds();
             const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
             const auto cpu_seconds = double(std::clock() - cpu) / CLOCKS_PER_SEC;
             if (transcript) { require_season_replay_eof(); close_season_replay(); }

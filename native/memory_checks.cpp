@@ -6,6 +6,10 @@
 #include <chrono>
 #include <iostream>
 #include <random>
+#include <csignal>
+#include <cstdlib>
+#include <unistd.h>
+#include <sys/wait.h>
 
 using namespace cm::aot;
 namespace {
@@ -428,10 +432,111 @@ void frame_observation_checks() {
     require(!guest::stack_frame_writes_observed(memory, UINT32_MAX - 11, depth), "Nonwrapping final link byte rejected");
 }
 
+// Hardware bounds: mapped accesses work as in exact mode; an ExactBounds
+// region and leave_hardware_bounds bring back the exception; a stray access
+// runs the reporter (with exact checks restored) and exits with 70, including
+// addresses past 4 GiB, while faults elsewhere keep their own disposition.
+// Hardware-mode reads have no check left; a discarded value would be elided.
+volatile std::uint64_t sink = 0;
+// The reservation offset the child's stray access must report.
+std::uint64_t expected_fault = 0;
+int hardware_child(void (*body)(Memory&), std::uint64_t expected = 0) {
+    std::fflush(nullptr);
+    expected_fault = expected;
+    const auto child = fork();
+    require(child >= 0, "Cannot fork a hardware bounds child");
+    if (!child) {
+        try {
+            // The disposition a fault outside the guest space must reach.
+            struct sigaction previous{};
+            previous.sa_handler = [](int) { std::_Exit(73); };
+            sigemptyset(&previous.sa_mask);
+            sigaction(SIGSEGV, &previous, nullptr);
+            sigaction(SIGBUS, &previous, nullptr);
+            Memory memory;
+            memory.map(0x39000000, 0x100);
+            set_hardware_fault_reporter([](std::uint64_t address, const char* message, void* context) {
+                auto& memory = *static_cast<Memory*>(context);
+                // The reporter runs with exact checks: a stray read throws.
+                bool thrown = false;
+                try { (void)memory.read<4>(0x39000100); } catch (const std::runtime_error&) { thrown = true; }
+                char hex[32];
+                std::snprintf(hex, sizeof hex, expected_fault >> 32 ? "0x%llx" : "0x%08llx",
+                              static_cast<unsigned long long>(expected_fault));
+                const std::string text(message);
+                if (thrown && memory.exact_bounds() && address == expected_fault &&
+                    text.starts_with(std::string("Unmapped data access at ") + hex) &&
+                    text.find("host pc 0x") != std::string::npos) std::_Exit(71);
+                std::fprintf(stderr, "reporter: %s (expected 0x%llx)\n", message,
+                             static_cast<unsigned long long>(expected_fault));
+            }, &memory);
+            memory.use_hardware_bounds();
+            body(memory);
+        } catch (...) { std::_Exit(2); }
+        std::_Exit(0);
+    }
+    int status = 0;
+    require(waitpid(child, &status, 0) == child, "Cannot wait for the hardware bounds child");
+    if (WIFSIGNALED(status)) return -WTERMSIG(status);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1000;
+}
+void hardware_bounds_checks() {
+    {
+        Memory memory;
+        memory.map(0x39000000, 0x100);
+        require(memory.exact_bounds(), "Memory does not start with exact bounds");
+        memory.use_hardware_bounds();
+        require(!memory.exact_bounds(), "Hardware bounds did not take effect");
+        memory.write<4>(0x390000fc, 0x11223344);
+        memory.write<2>(0x39000010, 0xabcd);
+        require(memory.read<4>(0x390000fc) == 0x11223344 && memory.read<2>(0x39000010) == 0xabcd,
+                "Hardware bounds changed mapped accesses");
+        bool thrown = false;
+        {
+            const Memory::ExactBounds exact(memory);
+            require(memory.exact_bounds(), "ExactBounds did not restore exact checks");
+            try { (void)memory.read<4>(0x390000fe); }
+            catch (const std::runtime_error& error) {
+                thrown = std::string(error.what()) == "Unmapped data access at 0x390000fe";
+            }
+        }
+        require(thrown && !memory.exact_bounds(), "ExactBounds region lost the exception or the mode");
+        // Within the last host page a stray access is not trapped (documented).
+        require(memory.read<4>(0x39000100) == 0, "Host-page slack of a mapping is not zero");
+        bool second = false;
+        try { Memory other; other.use_hardware_bounds(); } catch (const std::runtime_error&) { second = true; }
+        require(second, "Two memories used hardware bounds at once");
+        memory.leave_hardware_bounds();
+        thrown = false;
+        try { memory.write<4>(0x39000100, 1); } catch (const std::runtime_error&) { thrown = true; }
+        require(thrown && memory.exact_bounds(), "Leaving hardware bounds lost the exception");
+    }
+    require(hardware_child([](Memory& memory) { sink = memory.read<4>(0x39100000); }, 0x39100000) == 71,
+            "A stray hardware read did not reach the reporter");
+    require(hardware_child([](Memory& memory) { memory.write<4>(0x38ff0000, 1); }, 0x38ff0000) == 71,
+            "A stray hardware word store did not reach the reporter");
+    require(hardware_child([](Memory& memory) { memory.write<8>(0xfffffffcu, 1); }, 0xfffffffc) == 71,
+            "A store across the 4 GiB end did not reach the reporter");
+    require(hardware_child([](Memory& memory) { sink = memory.read<1>(UINT64_C(0x1ffff0000)); }, UINT64_C(0x1ffff0000)) == 71,
+            "An address past 4 GiB escaped the reservation");
+    require(hardware_child([](Memory& memory) { memory.write<4>(0x39003ffe, 1); }, 0x39004000) == 71,
+            "A word crossing into an unmapped host page did not report that page");
+    require(hardware_child([](Memory& memory) {
+                const Memory::ExactBounds exact(memory);
+                try { (void)memory.read<4>(0x39100000); } catch (const std::runtime_error&) { std::_Exit(72); }
+            }) == 72, "An exact region in hardware mode did not throw");
+    const auto foreign = hardware_child([](Memory&) {
+        volatile int* null = nullptr;
+        (void)*null;
+    });
+    require(foreign == 73, "A host fault outside the guest space did not reach its previous handler");
+}
+
 void checks() {
     read_notification_checks();
     frame_restore_checks();
     frame_save_checks();
+    hardware_bounds_checks();
     write_notification_checks();
     word_write_order_checks();
     register_frame_checks();

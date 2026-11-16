@@ -135,6 +135,7 @@ bool recent_valid(const State& s, std::uint32_t match) {
 
 bool eligible_debug_goal(const State& s, std::uint32_t match, unsigned player) {
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         if (!active_player(s, match, player)) return false;
         const auto actor = actor_address(match, player);
         const auto score = signed_value<1>(s.memory.read<1>(match + (player < 20 ? 0xe03d : 0xe073)));
@@ -144,6 +145,7 @@ bool eligible_debug_goal(const State& s, std::uint32_t match, unsigned player) {
 
 unsigned debug_player_weight(const State& s, std::uint32_t match, unsigned player, DebugMatchEvent event) {
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         if (event == DebugMatchEvent::red_card)
             return active_player(s, match, player) && opposing_player(s, match, player) ? 1 : 0;
         if (event == DebugMatchEvent::injury)

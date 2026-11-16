@@ -864,6 +864,28 @@ end-to-end timings for loading and day/match processing, and compare results and
 save/reload behavior after each optimization. Do not infer a satisfactory user
 experience from compilation, instruction counts, microbenchmarks, or green tests.
 
+## Hardware bounds (2026-11-15)
+
+Guest memory has two bounds modes (`Memory`, `native/aot_runtime.hpp`). Exact,
+the default in checkers and strict replays, checks every scalar access to the
+byte and throws `Unmapped data access at ...`. The game (`run_probe`) and
+`cm-world-replay --timing` use hardware bounds: the access goes straight to the
+reservation (4 GiB plus a 4 GiB PROT_NONE guard), and a stray one raises
+SIGSEGV/SIGBUS. The handler prints the guest offset and host PC, runs the
+failure report with exact checks restored, and exits with 70 without unwinding.
+`CM_AOT_EXACT_BOUNDS=1` keeps the exact mode for diagnosis.
+
+Two differences follow, and they only matter when the run would fail anyway.
+Mappings are protected in 16 KiB host pages, so a stray access within a
+mapping's last host page reads or writes slack instead of failing. Nothing
+unwinds, so catch blocks and destructors do not run. Two rules:
+
+- Code that catches a fault and carries on (a preflight that declines to the
+  original, a probe of host state, a trace) opens `Memory::ExactBounds` inside
+  its `try`. Checkers run exact, so they cannot catch a missing region.
+- Work whose cleanup must run on a fault stays exact: quick saves run in an
+  `ExactBounds` region, and launch/session captures leave hardware mode.
+
 ## Measured filesystem performance
 
 The installed run `app.YEt2eA` issued 2,746 volume queries before its conversion

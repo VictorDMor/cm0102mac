@@ -16,6 +16,9 @@
 #include "routine_check.hpp"
 #include "owner_in_place.hpp"
 #include <algorithm>
+#include <sys/ucontext.h>
+#include <csignal>
+#include <atomic>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -31,13 +34,118 @@ std::string hex_address(std::uint32_t value) {
     result << "0x" << std::hex << std::setw(8) << std::setfill('0') << value;
     return result.str();
 }
+namespace {
+// The 4 GiB guest space, then a PROT_NONE guard as large again: any sum of two
+// 32-bit values used as an address faults inside the reservation in hardware
+// mode instead of reaching host memory.
+constexpr std::uint64_t reservation_size = (UINT64_C(1) << 33) + 0x10000;
+std::atomic<Memory*> hardware_memory{nullptr};
+std::atomic<std::uint8_t*> hardware_base{nullptr};
+HardwareFaultReporter fault_reporter = nullptr;
+void* fault_reporter_context = nullptr;
+struct sigaction previous_segv{}, previous_bus{};
+
+[[noreturn]] void hardware_fault_stop(std::uint64_t address, std::uint64_t host_pc) {
+    if (auto* memory = hardware_memory.load()) memory->leave_hardware_bounds();
+    // The guest PC in State is exact only at run starts and may predate
+    // unpublished page counts; the host PC names the faulting code (atos).
+    // The address is the first byte the host reported, which for an access
+    // that crosses into an unmapped page is that page's first byte.
+    char message[160];
+    if (address < (UINT64_C(1) << 32))
+        std::snprintf(message, sizeof message, "Unmapped data access at 0x%08x (hardware bounds; host pc 0x%llx)",
+                      unsigned(address), static_cast<unsigned long long>(host_pc));
+    else
+        std::snprintf(message, sizeof message,
+                      "Unmapped data access at 0x%llx, past the 4 GiB guest space (hardware bounds; host pc 0x%llx)",
+                      static_cast<unsigned long long>(address), static_cast<unsigned long long>(host_pc));
+    if (fault_reporter) fault_reporter(address, message, fault_reporter_context);
+    else std::fprintf(stderr, "%s\n", message);
+    std::fflush(stdout);
+    std::fflush(stderr);
+    std::_Exit(70);
+}
+
+void hardware_fault_signal(int signal, siginfo_t* info, void* raw) {
+    const auto base = reinterpret_cast<std::uintptr_t>(hardware_base.load(std::memory_order_relaxed));
+    const auto address = reinterpret_cast<std::uintptr_t>(info->si_addr);
+    if (base && hardware_memory.load(std::memory_order_relaxed) && address - base < reservation_size) {
+#if defined(__arm64__)
+        // Continue in hardware_fault_stop on this thread, below the red zone,
+        // with the faulting instruction as its return address for backtraces.
+        auto& thread = static_cast<ucontext_t*>(raw)->uc_mcontext->__ss;
+        const auto pc = __darwin_arm_thread_state64_get_pc(thread);
+        const auto sp = (__darwin_arm_thread_state64_get_sp(thread) - 1024) & ~std::uint64_t(15);
+        __darwin_arm_thread_state64_set_sp(thread, sp);
+        __darwin_arm_thread_state64_set_lr_fptr(thread, reinterpret_cast<void*>(pc));
+        thread.__x[0] = address - base;
+        thread.__x[1] = pc;
+        __darwin_arm_thread_state64_set_pc_fptr(thread, reinterpret_cast<void*>(&hardware_fault_stop));
+        return;
+#endif
+    }
+    // Not a guest access: hand it to the previous disposition, keeping this
+    // handler for later guest faults. Default or ignored: fault again with
+    // the default action (ignoring would retry the instruction forever).
+    const auto& previous = signal == SIGBUS ? previous_bus : previous_segv;
+    if (previous.sa_flags & SA_SIGINFO) {
+        if (previous.sa_sigaction) return previous.sa_sigaction(signal, info, raw);
+    } else if (previous.sa_handler != SIG_DFL && previous.sa_handler != SIG_IGN && previous.sa_handler) {
+        return previous.sa_handler(signal);
+    }
+    std::signal(signal, SIG_DFL);
+}
+}
+void set_hardware_fault_reporter(HardwareFaultReporter reporter, void* context) {
+    fault_reporter = reporter;
+    fault_reporter_context = context;
+}
 Memory::Memory() {
     // Only data is stored here. Never grant execute permission to these pages.
-    void* p = mmap(nullptr, UINT64_C(1) << 32, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    void* p = mmap(nullptr, reservation_size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
     if (p == MAP_FAILED) throw std::runtime_error("Cannot reserve legacy data address space");
     data_ = static_cast<std::uint8_t*>(p);
 }
-Memory::~Memory() { munmap(data_, UINT64_C(1) << 32); }
+Memory::~Memory() {
+    leave_hardware_bounds();
+    munmap(data_, reservation_size);
+}
+void Memory::use_hardware_bounds() {
+#if !defined(__arm64__)
+    throw std::runtime_error("Hardware bounds need an ARM64 host");
+#else
+    if (hardware_) return;
+    Memory* expected = nullptr;
+    if (!hardware_memory.compare_exchange_strong(expected, this))
+        throw std::runtime_error("Another guest memory already uses hardware bounds");
+    // Install the handler unless it is already the current one; a handler
+    // installed since then becomes the disposition for faults elsewhere.
+    const auto install = [](int signal, struct sigaction& previous) {
+        struct sigaction current{};
+        if (sigaction(signal, nullptr, &current) != 0) return false;
+        if ((current.sa_flags & SA_SIGINFO) && current.sa_sigaction == hardware_fault_signal) return true;
+        struct sigaction action{};
+        action.sa_sigaction = hardware_fault_signal;
+        action.sa_flags = SA_SIGINFO;
+        sigemptyset(&action.sa_mask);
+        return sigaction(signal, &action, &previous) == 0;
+    };
+    if (!install(SIGSEGV, previous_segv) || !install(SIGBUS, previous_bus)) {
+        hardware_memory.store(nullptr);
+        throw std::runtime_error("Cannot install the hardware bounds fault handler");
+    }
+    hardware_base.store(data_);
+    hardware_ = true;
+    --exact_bounds_;
+#endif
+}
+void Memory::leave_hardware_bounds() {
+    if (!hardware_) return;
+    hardware_ = false;
+    ++exact_bounds_;
+    Memory* expected = this;
+    if (hardware_memory.compare_exchange_strong(expected, nullptr)) hardware_base.store(nullptr);
+}
 void Memory::map(std::uint32_t start, std::uint64_t size) {
     if (!size || size > (UINT64_C(1) << 32) - start)
         throw std::runtime_error("Invalid data mapping");
@@ -141,7 +249,7 @@ void Memory::observe_scalar_read(std::uint64_t address, unsigned size) const {
 template <> void Memory::write<4>(std::uint64_t address, std::uint64_t value) {
     // Keep the common store frameless. The page bound certifies the whole
     // word, including unaligned words that extend into a contiguous page.
-    if (address >= (UINT64_C(1) << 32) || address + 4 > (*page_ends_)[address >> 16])
+    if (exact_bounds_ && (address >= (UINT64_C(1) << 32) || address + 4 > (*page_ends_)[address >> 16]))
         return write_word_slow(address, value);
     write_be<4>(data_ + address, value);
     if (observer || date_observer) report_word_write(address);

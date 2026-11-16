@@ -56,6 +56,7 @@ bool insert_link(Cpu& c, std::uint32_t base, std::uint32_t count, std::uint32_t 
         return false;
 
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         if (c.u32(descriptor) != (club_first ? 0x103663b0u : 0x10366410u) || c.u32(descriptor + 4) != toc)
             return false;
         (void)c.u32(toc_slot);

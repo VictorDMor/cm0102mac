@@ -227,6 +227,7 @@ bool settles_without_effect(State& s,SemanticGuestObserver* o) {
     const auto base=r(3),club=r(5),sp=r(1),link=std::uint32_t(s.r<4>(4128));
     std::uint32_t control_r31=0;
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         if(!club_control::plainly_uncontrolled(s,club))return false;
         control_r31=club_control::human_table_slot(s);
         const auto entry=word(base+0xdc)+word(club)*12;

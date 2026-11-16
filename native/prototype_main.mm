@@ -6,7 +6,39 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
+#include <string>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <spawn.h>
+
+extern char** environ;
+namespace {
+std::string stopped_run_directory;
+constexpr const char* stopped_title = "The native prototype stopped";
+std::string stopped_text() {
+    return "This development version has reached a part that still needs work. Diagnostic files were saved in:\n" +
+           stopped_run_directory;
+}
+void show_stopped_alert() {
+    NSAlert* alert = [NSAlert new];
+    alert.messageText = [NSString stringWithUTF8String:stopped_title];
+    alert.informativeText = [NSString stringWithUTF8String:stopped_text().c_str()];
+    [alert runModal];
+}
+// After a hardware bounds fault the guest call stack is still live, so the
+// alert comes from a separate process instead of a nested AppKit run loop.
+void show_stopped_alert_out_of_process() {
+    std::string script = std::string("on run argv\ndisplay alert \"") + stopped_title +
+                         "\" message (item 1 of argv) as critical\nend run";
+    const auto text = stopped_text();
+    const char* arguments[] = {"/usr/bin/osascript", "-e", script.c_str(), text.c_str(), nullptr};
+    pid_t child = 0;
+    if (posix_spawn(&child, arguments[0], nullptr, nullptr, const_cast<char* const*>(arguments), environ) == 0) {
+        int status = 0;
+        (void)waitpid(child, &status, 0);
+    }
+}
+}
 
 int main() {
     cm::aot::set_native_list_search_index(true);
@@ -102,6 +134,8 @@ int main() {
             [NSApplication sharedApplication];
             [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
             if (@available(macOS 14.0, *)) [NSApp activate];
+            stopped_run_directory = run_directory.string();
+            cm::aot::set_run_stop_presenter(show_stopped_alert_out_of_process);
             result = cm::aot::run_probe(argv.size(), argv.data());
             if (!result) return 0;
         } catch (const std::exception& error) {
@@ -113,10 +147,8 @@ int main() {
             [alert runModal];
             return 1;
         }
-        NSAlert* alert = [NSAlert new];
-        alert.messageText = @"The native prototype stopped";
-        alert.informativeText = [NSString stringWithFormat:@"This development version has reached a part that still needs work. Diagnostic files were saved in:\n%s", run_directory.c_str()];
-        [alert runModal];
+        stopped_run_directory = run_directory.string();
+        show_stopped_alert();
         return result;
     }
 }

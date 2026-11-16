@@ -15,6 +15,7 @@ std::optional<CommandScreen> original_command_screen(const State& s, std::uint16
     // until it becomes interactive again.
     if (mask != 0xffff || s.r<4>(4128) != 0x1076ff7c) return std::nullopt;
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         CommandScreen c;
         c.root = s.memory.read<4>(root_slot);
         if (!c.root || s.memory.read<2>(c.root + 0x2c38) == 0 ||
@@ -41,6 +42,7 @@ CommandContext original_command_context(const State& s, const CommandScreen& scr
     c.root = screen.root; c.screen = screen.screen; c.handler = screen.handler;
     const auto count = screen.count;
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         std::vector<std::pair<std::int16_t, std::int16_t>> enabled;
         c.identity = (std::uint64_t(c.handler) << 32) | c.screen;
         for (int i = 0; i < count; ++i) {

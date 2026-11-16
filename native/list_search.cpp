@@ -166,6 +166,7 @@ bool try_native_list_search(State& s) {
     const auto at = r(3), key = r(4), sp = r(1), link = std::uint32_t(s.r<4>(4128));
     std::optional<Outcome> outcome;
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         // The frame slots must be writable, as for the original's first stores.
         for (std::uint32_t slot : {sp - 0x18, sp - 0x14, sp - 0x10, sp - 0x0c, sp - 0x08, sp - 0x04, sp + 8, sp - 0x80})
             s.memory.read<4>(slot);

@@ -115,6 +115,7 @@ public:
         // Preflight the exact write slots. With diagnostics disabled, reads
         // use the same mapping checks without changing the guest state.
         try {
+            const Memory::ExactBounds exact_bounds(c.s.memory);
             for (const auto offset : {0x80u, 0x48u, 0x44u, 0x40u, 0x38u, 8u, 4u}) (void)c.u32(sp - offset);
             (void)c.u32(sp + 8);
             enabled = true;
@@ -170,6 +171,7 @@ private:
     }
 
     std::optional<std::int16_t> live_role(Cpu& c, std::uint32_t player, unsigned position) const try {
+        const Memory::ExactBounds exact_bounds(c.s.memory);
         const auto match = c.u32(player + 0x1a4);
         const auto side = c.u8(player + player_side);
         if (!match || side > 1) return std::nullopt;
@@ -190,6 +192,7 @@ private:
 
     std::optional<Distance> live_distance(Cpu& c, std::uint32_t player, std::uint32_t target_row,
                                           std::uint32_t target_column) const try {
+        const Memory::ExactBounds exact_bounds(c.s.memory);
         const auto slot = c.r(2) - 0x6424;
         if (aliases_stack(slot, 4)) return std::nullopt;
         const auto coordinates = c.u16(player + 0x105);

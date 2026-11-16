@@ -177,13 +177,37 @@ public:
     std::vector<std::pair<std::uint32_t, std::uint64_t>> mapped_ranges() const;
     Vector128 read_vector(std::uint64_t address) const;
     void write_vector(std::uint64_t address, const Vector128& value);
+
+    // Bounds of scalar accesses. Exact (the default): each access is checked
+    // to the byte against the mapped ranges, and a stray one throws
+    // "Unmapped data access at ...", which equivalence checks compare.
+    // Hardware (the game, timing replays): the access goes straight to the
+    // reservation, which is PROT_NONE outside mappings rounded to host pages;
+    // a stray access there stops the process (hardware_fault_stop) after the
+    // reporter set with set_hardware_fault_reporter has run. Bulk copies and
+    // clears stay exact. Code that catches a fault and carries on (preflights
+    // that decline to the original, probes of host state) opens an
+    // ExactBounds region around it. One memory per process can use hardware.
+    void use_hardware_bounds();
+    void leave_hardware_bounds();
+    bool exact_bounds() const { return exact_bounds_ != 0; }
+    class [[nodiscard]] ExactBounds {
+    public:
+        explicit ExactBounds(const Memory& memory) : memory_(memory) { ++memory_.exact_bounds_; }
+        ~ExactBounds() { --memory_.exact_bounds_; }
+        ExactBounds(const ExactBounds&) = delete;
+        ExactBounds& operator=(const ExactBounds&) = delete;
+    private:
+        const Memory& memory_;
+    };
+
     template <unsigned N> [[gnu::always_inline]] std::uint64_t read(std::uint64_t address) const {
-        check_scalar<N>(address);
+        if (exact_bounds_) check_scalar<N>(address);
         if (read_trace || date_observer) observe_scalar_read(address, N);
         return read_be<N>(data_ + address);
     }
     template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
-        check_scalar<N>(address);
+        if (exact_bounds_) check_scalar<N>(address);
         write_be<N>(data_ + address, value);
         if (observer && observer->observes_write(address, N))
             observer->written(std::uint32_t(address), data_ + address, N);
@@ -212,6 +236,9 @@ private:
     }
     void check(std::uint64_t address, std::uint64_t size) const;
     std::uint8_t* data_;
+    // Nonzero: exact checks (1 by default, plus open ExactBounds regions).
+    mutable std::uint32_t exact_bounds_ = 1;
+    bool hardware_ = false;
     struct Range { std::uint64_t start, end; };
     std::vector<Range> ranges_;
     std::unique_ptr<std::array<std::uint64_t, 65536>> page_ends_ =
@@ -222,6 +249,15 @@ private:
 };
 
 template <> void Memory::write<4>(std::uint64_t address, std::uint64_t value);
+
+// Runs once, on the faulting thread, when a memory in hardware mode takes a
+// stray access; the memory is back in exact mode, so the reporter may read
+// guest state under its own try blocks. The stack is not unwound (no
+// destructor or catch block runs) and the process then exits with 70, so
+// work that needs its cleanup on a fault (saves, captures) runs exact.
+// The address is an offset into the reservation and may exceed 32 bits.
+using HardwareFaultReporter = void (*)(std::uint64_t address, const char* message, void* context);
+void set_hardware_fault_reporter(HardwareFaultReporter reporter, void* context);
 
 [[noreturn, gnu::cold, gnu::noinline]] void instruction_budget_exhausted();
 // Instruction counts saturate rather than wrap (State::charge).

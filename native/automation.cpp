@@ -22,6 +22,7 @@ std::uint32_t peek(const State& s, std::uint32_t address, unsigned size) {
 }
 std::optional<std::array<std::uint32_t, 3>> game_date(const State& s) {
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         const auto date = peek(s, date_global, 4), phase = peek(s, phase_global, 4);
         if (!date || !phase) return std::nullopt;
         return std::array<std::uint32_t, 3>{peek(s, date, 2), peek(s, date + 2, 2), peek(s, phase, 1)};
@@ -268,6 +269,7 @@ void Automation::boundary(const State& s, const CommandContext& context, std::st
         json << "},\n  \"controls\": [";
         first = true;
         try {
+            const Memory::ExactBounds exact_bounds(s.memory);
             for (const auto& control : original_controls(s, context)) {
                 json << (first ? "\n    " : ",\n    ") << "[" << control.index << ", " << control.action << ", " << control.flags << "]";
                 first = false;

@@ -927,6 +927,7 @@ struct NativePlatform::Impl {
         };
         const auto queued_save_status = [&]() -> const char* {
             try {
+                const Memory::ExactBounds exact_bounds(s.memory);
                 if (s.memory.read<1>(game_toc - 0x356f))
                     return "Quick save queued until a safe screen";
             } catch (const std::runtime_error&) {}
@@ -1544,7 +1545,7 @@ struct NativePlatform::Impl {
         if (std::getenv("CM_AOT_TRACE_IMPORTS") || std::getenv("CM_AOT_TRACE_FILES")) {
             std::fprintf(stderr, "Volume query index=%d ref=%d", index, ref);
             if (index < 0 && name) {
-                try { std::fprintf(stderr, " name=%s", read_mac_string(s, name).c_str()); }
+                try { const Memory::ExactBounds exact_bounds(s.memory); std::fprintf(stderr, " name=%s", read_mac_string(s, name).c_str()); }
                 catch (...) { std::fprintf(stderr, " name=<unreadable>"); }
             }
             std::fprintf(stderr, "\n");
@@ -1710,6 +1711,7 @@ namespace {
 std::optional<std::string> quick_save_guest_path(const State& s, std::uint32_t address) {
     if (!address) return std::nullopt;
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         std::string path;
         // The original autosave path occupies 256 bytes in the dispatcher frame.
         for (unsigned i = 0; i < 256; ++i) {
@@ -1723,6 +1725,7 @@ std::optional<std::string> quick_save_guest_path(const State& s, std::uint32_t a
 enum class HumanMatchState { none, playing, finishing };
 HumanMatchState human_match_state(const State& s) {
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         // The original keeps sixteen human-manager records across match views,
         // including their nested tactics and confirmation screens. A match the
         // human only watches has no team link at +0xf0, but its engine is just
@@ -1749,6 +1752,7 @@ HumanMatchState human_match_state(const State& s) {
 // Command-S is for, and the dispatcher hook at 0x102a55b4 skips it as well.
 bool original_save_possible(const State& s) {
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         const auto toc = std::uint32_t(s.r<4>(8));
         if (toc < 0x8000) return false;
         const auto u32 = [&](std::uint32_t address) { return std::uint32_t(s.memory.read<4>(address)); };
@@ -1771,6 +1775,7 @@ bool original_save_possible(const State& s) {
 // What passes by itself, so a request can wait for it.
 bool original_save_settled(const State& s) {
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         const auto toc = std::uint32_t(s.r<4>(8));
         // An alert from 0x10769b60 can be up in the middle of any mutation.
         if (toc < 0x8000 || s.memory.read<1>(toc - 0x356f)) return false;
@@ -1779,6 +1784,7 @@ bool original_save_settled(const State& s) {
 }
 std::optional<std::array<std::uint8_t, 7>> quick_save_markers(const State& s) {
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         const auto toc = std::uint32_t(s.r<4>(8));
         if (toc < 0x8000) return std::nullopt;
         std::array<std::uint8_t, 7> markers{};
@@ -1833,7 +1839,7 @@ void NativePlatform::quick_save_load_end(State& s) {
     impl_->quick_save_load_target.reset();
     impl_->quick_save_loading = false;
     if (success && impl_->quick_save_last_target) {
-        try { load_debug_club_results(s, *impl_->quick_save_last_target); }
+        try { const Memory::ExactBounds exact_bounds(s.memory); load_debug_club_results(s, *impl_->quick_save_last_target); }
         catch (const std::exception& error) {
             impl_->command_status = "Forced club results could not be loaded";
             std::fprintf(stderr, "Forced club results load: %s\n", error.what());
@@ -2000,7 +2006,7 @@ void NativePlatform::quick_save_write_end(State& s) {
     }
     // A failed staged promotion clears r3 even if the original writer succeeded.
     if (success && impl_->quick_save_last_target && std::int8_t(s.r<4>(12)) != 0) {
-        try { save_debug_club_results(s, *impl_->quick_save_last_target); }
+        try { const Memory::ExactBounds exact_bounds(s.memory); save_debug_club_results(s, *impl_->quick_save_last_target); }
         catch (const std::exception& error) {
             impl_->command_status = "Career saved; forced club results could not be saved";
             std::fprintf(stderr, "Forced club results save: %s\n", error.what());
@@ -2065,7 +2071,8 @@ bool NativePlatform::quick_save_call_dispatcher_writer(State& s) {
     s.wr<4>(2440, s.r<4>(8));
     s.wr<4>(4128, continuation);
     s.pc = 0x1034ba30;
-    try { run_quick_save_until(s, continuation); }
+    // Exact bounds: a stray access must still unwind to quick_save_abandon.
+    try { const Memory::ExactBounds exact_bounds(s.memory); run_quick_save_until(s, continuation); }
     catch (...) {
         quick_save_abandon();
         impl_->quick_save_alert(quick_save_interrupted_message);
@@ -2076,6 +2083,7 @@ bool NativePlatform::quick_save_call_dispatcher_writer(State& s) {
     // dispatcher's own failure handling tells the player about the real path.
     if (impl_->quick_save_active) {
         try {
+            const Memory::ExactBounds exact_bounds(s.memory);
             const auto& destination = impl_->quick_save_destination.last();
             if (destination && impl_->quick_save_path_address) {
                 std::vector<std::uint8_t> path(destination->begin(), destination->end());
@@ -2157,7 +2165,7 @@ void NativePlatform::quick_save_at_screen_boundary(State& s) {
     s.wr<4>(4128, return_sentinel);
     s.pc = 0x1034ba30;
     auto* const caller_dispatch = s.dispatch_scope;
-    try { run_quick_save_until(s, return_sentinel); }
+    try { const Memory::ExactBounds exact_bounds(s.memory); run_quick_save_until(s, return_sentinel); }
     catch (...) {
         quick_save_abandon();
         impl_->quick_save_alert(quick_save_interrupted_message);
@@ -2178,6 +2186,7 @@ void NativePlatform::quick_save_at_screen_boundary(State& s) {
     if (impl_->quick_save_outcome != Outcome::complete) {
         bool disk_full = false;
         try {
+            const Memory::ExactBounds exact_bounds(s.memory);
             const auto toc = std::uint32_t(s.r<4>(8));
             for (const auto slot : {0x63ccu, 0x63d0u}) {
                 const auto flag = std::uint32_t(s.memory.read<4>(toc - slot));
@@ -2239,7 +2248,7 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
             (name == "CarbonLib::FSOpenFork" && std::int8_t(arg(3)) != 1) ||
             (name == "CarbonLib::FSpOpenDF" && std::int8_t(arg(1)) != 1)) return true;
         if (name != "CarbonLib::PBHOpenDFSync") return false;
-        try { return std::int8_t(s.memory.read<1>(arg(0) + 27)) != 1; }
+        try { const Memory::ExactBounds exact_bounds(s.memory); return std::int8_t(s.memory.read<1>(arg(0) + 27)) != 1; }
         catch (const std::runtime_error&) { return true; }
     };
     std::int16_t status = no_err;
@@ -3299,6 +3308,7 @@ bool NativePlatform::dispatch(State& s, std::string_view name) {
     }
     if (status && std::getenv("CM_AOT_TRACE_FILES") && name == "CarbonLib::PBGetCatInfoSync") {
         try {
+            const Memory::ExactBounds exact_bounds(s.memory);
             std::fprintf(stderr, "Native catalog failure: name=%s ref=%d dir=%u index=%d status=%d caller=%08x\n",
                 read_mac_string(s, s.memory.read<4>(arg(0) + 18)).c_str(),
                 std::int16_t(s.memory.read<2>(arg(0) + 22)), unsigned(s.memory.read<4>(arg(0) + 48)),

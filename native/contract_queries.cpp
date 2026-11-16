@@ -197,6 +197,7 @@ NativeRun run_native(State& s, std::uint32_t entry) {
     Native native(s);
     std::uint32_t result;
     try {
+        const Memory::ExactBounds exact_bounds(s.memory);
         if (entry == club_entry) {
             const auto found = native.club(native.r(3), native.r(4), native.r(5));
             if (!found) return {};
