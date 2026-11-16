@@ -206,17 +206,20 @@ public:
         if (read_trace || date_observer) observe_scalar_read(address, N);
         return read_be<N>(data_ + address);
     }
-    template <unsigned N> void write(std::uint64_t address, std::uint64_t value) {
+    // Inline: the mode test, the check in exact mode and the store. The
+    // observer callbacks (general, then Date) are out of line.
+    template <unsigned N> [[gnu::always_inline]] void write(std::uint64_t address, std::uint64_t value) {
         if (exact_bounds_) check_scalar<N>(address);
         write_be<N>(data_ + address, value);
-        if (observer && observer->observes_write(address, N))
-            observer->written(std::uint32_t(address), data_ + address, N);
-        if (date_observer) date_observer->written(std::uint32_t(address), data_ + address, N);
+        if (observer || date_observer) [[unlikely]] report_write(address, N);
+    }
+    // Whether a store of `size` bytes at `address` reaches an observer.
+    bool write_observed(std::uint64_t address, unsigned size) const {
+        return date_observer || (observer && observer->observes_write(address, size));
     }
 private:
     friend struct GuestRegisterFrame;
-    [[gnu::noinline]] void write_word_slow(std::uint64_t address, std::uint64_t value);
-    [[gnu::noinline]] void report_word_write(std::uint64_t address);
+    [[gnu::noinline]] void report_write(std::uint64_t address, unsigned size);
     // Keep diagnostic vector growth and virtual callbacks outside ordinary
     // loads so the native compiler can inline their checked scalar path.
     [[gnu::noinline]] void observe_scalar_read(std::uint64_t address, unsigned size) const;
@@ -247,8 +250,6 @@ private:
     // earlier one there keeps the slow path). Valid because mappings only grow.
     std::unique_ptr<std::array<Range, 65536>> partial_starts_ = std::make_unique<std::array<Range, 65536>>();
 };
-
-template <> void Memory::write<4>(std::uint64_t address, std::uint64_t value);
 
 // Runs once, on the faulting thread, when a memory in hardware mode takes a
 // stray access; the memory is back in exact mode, so the reporter may read

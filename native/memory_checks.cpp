@@ -191,8 +191,8 @@ void word_write_order_checks() {
             if (fail) throw std::runtime_error("Word observer fault");
         }
     };
-    // Cover both the boundary-indexed store and an interval that starts
-    // inside a 64 KiB page and therefore takes the slow validation path.
+    // Cover a mapping that starts on a 64 KiB boundary (page index) and one
+    // that starts inside a block (partial-start entry) of the exact check.
     for (const auto base : {0x37000000u, 0x37020100u}) {
         Memory memory;
         memory.map(base, 0x200);

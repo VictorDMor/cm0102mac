@@ -20,7 +20,7 @@ struct GuestRegisterFrame {
     // Direction-aware spans for register saves (writes) and restores (reads):
     // null unless the range is mapped and no diagnostic would see the access.
     static std::uint8_t* writable_span(Memory& memory, std::uint32_t address, unsigned size) {
-        if (memory.date_observer || (memory.observer && memory.observer->observes_write(address, size)) ||
+        if (memory.write_observed(address, size) ||
             !mapped_span(memory, address, size)) return nullptr;
         return memory.data_ + address;
     }
@@ -31,9 +31,8 @@ struct GuestRegisterFrame {
 
     // Borrow a mapped scratch range for an audited call-free sequence.
     static std::uint8_t* unobserved_scratch(Memory& memory, std::uint32_t address, unsigned size) {
-        if (memory.date_observer || memory.read_trace ||
-            (memory.observer && memory.observer->observes_write(address, size)) ||
-            !mapped_span(memory, address, size)) return nullptr;
+        if (memory.read_trace || memory.write_observed(address, size) || !mapped_span(memory, address, size))
+            return nullptr;
         return memory.data_ + address;
     }
 
@@ -45,8 +44,7 @@ struct GuestRegisterFrame {
         if constexpr (Restore) {
             if (memory.date_observer || memory.read_trace) return false;
         } else {
-            if (memory.date_observer ||
-                (memory.observer && memory.observer->observes_write(address, size))) return false;
+            if (memory.write_observed(address, size)) return false;
         }
 
         if (!mapped_span(memory, address, size)) return false;
