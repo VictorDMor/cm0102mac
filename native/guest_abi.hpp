@@ -18,6 +18,7 @@
 #include "owner_in_place.hpp"
 #include <bit>
 #include <cstring>
+#include <utility>
 #include <exception>
 #include <initializer_list>
 #include <stdexcept>
@@ -125,19 +126,30 @@ struct Saves {
     std::int32_t fpr_offset = 0;      // default: -(32 - first_fpr) * 8
     bool lr = true, cr = false;
 };
+namespace detail {
+// A register span of `words` words (1-32). A variable-size memcpy is a libc
+// call; each case is a constant-size copy the compiler emits inline.
+template <std::size_t... N>
+inline void copy_register_words(std::uint8_t* to, const std::uint8_t* from, unsigned words, std::index_sequence<N...>) {
+    (void)((words == N + 1 ? (std::memcpy(to, from, (N + 1) * 4), true) : false) || ...);
+}
+inline void copy_register_words(std::uint8_t* to, const std::uint8_t* from, unsigned words) {
+    copy_register_words(to, from, words, std::make_index_sequence<32>{});
+}
+}
 class Frame {
 public:
     Frame(Cpu& cpu, std::uint32_t entry, std::uint32_t size, Saves saves)
         : c(cpu), caller_sp(cpu.sp()), saves_(normalized(saves)), scope(cpu.s, entry) {
         // Register file and stack hold the same big-endian bytes. Without an
-        // interested write observer, a certified save area is copied
-        // directly: GPRs in one span, FPRs one at a time (16-byte slots in
-        // the register file, 8 on the stack). Otherwise the scalar stores
-        // keep callbacks, their order and partial faults.
+        // interested write observer or Date diagnostics, a certified save
+        // area is copied directly: GPRs in one span, FPRs one at a time
+        // (16-byte slots in the register file, 8 on the stack). Otherwise the
+        // scalar stores keep callbacks, their order and partial faults.
         if (saves_.first_fpr < 32) {
             const auto start = caller_sp + std::uint32_t(saves_.fpr_offset);
             const auto count = 32 - saves_.first_fpr;
-            if (auto* guest = GuestRegisterFrame::unobserved_scratch(c.s.memory, start, count * 8)) {
+            if (auto* guest = GuestRegisterFrame::writable_span(c.s.memory, start, count * 8)) {
                 for (unsigned i = 0; i < count; ++i)
                     std::memcpy(guest + i * 8, c.s.registers.data() + reg::fpr(saves_.first_fpr + i), 8);
             } else {
@@ -148,8 +160,8 @@ public:
         if (saves_.first_gpr < 32) {
             const auto start = caller_sp + std::uint32_t(saves_.gpr_offset);
             const auto size = (32 - saves_.first_gpr) * 4;
-            if (auto* guest = GuestRegisterFrame::unobserved_scratch(c.s.memory, start, size)) {
-                std::memcpy(guest, c.s.registers.data() + reg::gpr(saves_.first_gpr), size);
+            if (auto* guest = GuestRegisterFrame::writable_span(c.s.memory, start, size)) {
+                detail::copy_register_words(guest, c.s.registers.data() + reg::gpr(saves_.first_gpr), size / 4);
             } else {
                 for (unsigned n = saves_.first_gpr; n < 32; ++n)
                     c.put32(start + (n - saves_.first_gpr) * 4, c.r(n));
@@ -178,16 +190,28 @@ public:
         if (saves_.first_gpr < 32) {
             const auto start = caller_sp + std::uint32_t(saves_.gpr_offset);
             // The stack save area and register file have the same byte order.
-            // If the complete range cannot be certified, preserve the scalar
-            // reads, including writes to registers restored before a fault.
-            if (!c.s.memory.try_copy_unobserved(start, c.s.registers.data() + reg::gpr(saves_.first_gpr),
-                                                (32 - saves_.first_gpr) * 4)) {
+            // Without read diagnostics a certified range is copied; otherwise
+            // the scalar reads keep their callbacks, including writes to
+            // registers restored before a fault.
+            const auto words = 32 - saves_.first_gpr;
+            if (const auto* guest = GuestRegisterFrame::readable_span(c.s.memory, start, words * 4)) {
+                detail::copy_register_words(c.s.registers.data() + reg::gpr(saves_.first_gpr), guest, words);
+            } else {
                 for (unsigned n = saves_.first_gpr; n < 32; ++n)
                     c.set(n, c.u32(start + (n - saves_.first_gpr) * 4));
             }
         }
-        for (unsigned n = saves_.first_fpr; n < 32; ++n)
-            c.s.wr<8>(reg::fpr(n), c.u64(caller_sp + std::uint32_t(saves_.fpr_offset) + (n - saves_.first_fpr) * 8));
+        if (saves_.first_fpr < 32) {
+            const auto start = caller_sp + std::uint32_t(saves_.fpr_offset);
+            const auto count = 32 - saves_.first_fpr;
+            if (const auto* guest = GuestRegisterFrame::readable_span(c.s.memory, start, count * 8)) {
+                for (unsigned i = 0; i < count; ++i)
+                    std::memcpy(c.s.registers.data() + reg::fpr(saves_.first_fpr + i), guest + i * 8, 8);
+            } else {
+                for (unsigned n = saves_.first_fpr; n < 32; ++n)
+                    c.s.wr<8>(reg::fpr(n), c.u64(start + (n - saves_.first_fpr) * 8));
+            }
+        }
         if (saves_.cr) {
             // mtcrf 0x38: only cr2-cr4 come back.
             const auto word = c.u32(caller_sp + 4);

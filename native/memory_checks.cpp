@@ -312,8 +312,8 @@ void frame_save_checks() {
         if (observed == 2) observer.interval(gpr_area + 8, gpr_area + 9);
         if (observed == 1 || observed == 2) memory.observer = &observer;
         if (observed == 3) memory.date_observer = &observer;
-        const bool bulk = GuestRegisterFrame::unobserved_scratch(memory, fpr_area, 24) &&
-                          GuestRegisterFrame::unobserved_scratch(memory, gpr_area, 20);
+        const bool bulk = GuestRegisterFrame::writable_span(memory, fpr_area, 24) &&
+                          GuestRegisterFrame::writable_span(memory, gpr_area, 20);
         require(bulk == (observed < 2), "Frame save path choice changed");
         guest::Cpu c(*state);
         guest::Frame frame(c, 0x10100000, 0x60, saves);
@@ -324,6 +324,40 @@ void frame_save_checks() {
             observed == 0 || observed == 1 ? decltype(order){}
             : observed == 2 ? decltype(order){{gpr_area + 8, 4}} : order;
         require(observer.writes == expected_writes, "Frame saves skipped an interested observer's callbacks or order");
+    }
+    // The epilogue: f29-f31, r27-r31, cr2-cr4 and LR come back from the
+    // stack. Without read diagnostics (even with a write observer) the spans
+    // are copied; with them, the scalar reads keep their order.
+    for (unsigned observed = 0; observed < 3; ++observed) {
+        auto state = std::make_unique<State>();
+        auto& memory = state->memory;
+        memory.map(base, 0x200);
+        prepare(*state);
+        guest::Cpu c(*state);
+        guest::Frame frame(c, 0x10100000, 0x60, saves);
+        for (unsigned n = first_gpr; n < 32; ++n) c.set(n, 0);
+        for (unsigned n = first_fpr; n < 32; ++n) c.set_f(n, 0);
+        c.set_lr(0);
+        WriteObserver writes;
+        std::vector<std::pair<std::uint32_t, unsigned>> trace;
+        if (observed == 1) memory.observer = &writes;
+        if (observed == 2) memory.read_trace = &trace;
+        require((GuestRegisterFrame::readable_span(memory, fpr_area, 24) != nullptr) == (observed < 2),
+                "Frame restore path choice changed");
+        frame.leave();
+        memory.observer = nullptr;
+        memory.read_trace = nullptr;
+        bool restored = c.sp() == caller && c.lr() == 0x10203040 && c.r(0) == 0x10203040 && c.cr(3) == 6;
+        for (unsigned n = first_gpr; n < 32; ++n) restored = restored && c.r(n) == 0x01020304u * n;
+        for (unsigned n = first_fpr; n < 32; ++n) restored = restored && c.f(n) == -1.0 / n;
+        std::vector<std::pair<std::uint32_t, unsigned>> reads;
+        if (observed == 2) {
+            for (unsigned i = 0; i < 5; ++i) reads.emplace_back(gpr_area + i * 4, 4);
+            for (unsigned i = 0; i < 3; ++i) reads.emplace_back(fpr_area + i * 8, 8);
+            reads.insert(reads.end(), {{caller + 4, 4}, {caller + 8, 4}});
+        }
+        require(restored && writes.writes.empty() && trace == reads,
+                "Frame restore changed registers or the read diagnostics' order");
     }
     // A hole in either save area: the stores before it are kept, then the
     // fault; a faulting FPR area stores no GPRs.
