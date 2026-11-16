@@ -74,16 +74,11 @@ class Program:
         self.clobber_memo[entry] = frozenset(result)
         return self.clobber_memo[entry]
 
-    def mask(self, entry):
-        if entry in self.memo:
-            return self.memo[entry]
-        if entry == INDIRECT or self.record(entry) is None:
-            self.memo[entry] = ALL
-            return ALL
-        self.memo[entry] = 0  # a cycle adds nothing the first pass doesn't find
+    def scan(self, entry, nested):
+        """(mask, callees) of one routine, given `nested(target)`: the mask of each routine it calls."""
         written_at = {entry: frozenset()}
         pending = [entry]
-        found = 0
+        found, callees = 0, set()
         while pending:
             at = pending.pop()
             record = self.record(at)
@@ -98,11 +93,11 @@ class Program:
             successors = []
             if record['flow'] == 'UNCONDITIONAL_CALL':
                 for target in record['flows']:
-                    nested = self.mask(target)
+                    callees.add(target)
+                    mask = nested(target)
                     for offset, bit in ARGUMENTS.items():
-                        if nested >> bit & 1 and offset not in after:
+                        if mask >> bit & 1 and offset not in after:
                             found |= 1 << bit
-                for target in record['flows']:
                     after |= self.clobbers(target)
                 if not record['flows']:
                     after |= VOLATILE
@@ -118,8 +113,39 @@ class Program:
                 if written_at.get(next_at) != merged:
                     written_at[next_at] = merged
                     pending.append(next_at)
-        self.memo[entry] = found
-        return found
+        return found, callees
+
+    def mask(self, entry):
+        """The least fixed point over everything `entry` reaches: every routine starts at 0 and is
+        rescanned with its callees' current masks until none changes. Masks only grow, so this ends,
+        and the result no longer depends on which routine was asked first (a memo that answered 0 to
+        a call cycle did)."""
+        if entry in self.memo:
+            return self.memo[entry]
+        order, seen, stack, callees_of = [], set(), [entry], {}
+        while stack:
+            at = stack.pop()
+            if at in seen or at in self.memo:
+                continue
+            seen.add(at)
+            if at == INDIRECT or self.record(at) is None:
+                self.memo[at] = ALL
+                continue
+            order.append(at)
+            _, callees_of[at] = self.scan(at, lambda target: 0)
+            stack.extend(callees_of[at])
+        current = dict.fromkeys(order, 0)
+        lookup = lambda target: self.memo.get(target, current.get(target, ALL))
+        changed = True
+        while changed:
+            changed = False
+            for at in order:
+                found, _ = self.scan(at, lookup)
+                if found != current[at]:
+                    current[at] = found
+                    changed = True
+        self.memo.update(current)
+        return self.memo[entry]
 
 
 def main():
