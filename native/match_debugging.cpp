@@ -9,6 +9,7 @@
 #include "debug_underdogs.hpp"
 #include "debug_match_results.hpp"
 #include "debug_force_purchase.hpp"
+#include "debug_force_staff_signing.hpp"
 #include "best_xi_selection.hpp"
 #include "national_callup.hpp"
 #include "transfer_screens.hpp"
@@ -26,6 +27,7 @@ constexpr unsigned best_xi_action = 30004, recover_squad_action = 30005;
 constexpr unsigned best_u23_action = 30023, b_team_action = 30024;
 constexpr unsigned call_up_action = 30031;
 constexpr unsigned force_purchase_action = 30025;
+constexpr unsigned force_staff_signing_action = 30033;
 constexpr unsigned maximize_attributes_action = 30009;
 constexpr unsigned extend_contract_action = 30006, cancel_sale_action = 30007, remove_sale_clause_action = 30008;
 constexpr unsigned free_squad_action = 30017, extend_all_contracts_action = 30021;
@@ -303,7 +305,8 @@ constexpr std::array feature_labels{
     DebugText::cancel_sale, DebugText::remove_sale_clause, DebugText::underdogs,
     DebugText::underdogs_max, DebugText::add_goal, DebugText::repeat_goal,
     DebugText::red_cards, DebugText::injuries, DebugText::extend_all_contracts, DebugText::match_results,
-    DebugText::force_purchase, DebugText::all_draws, DebugText::maximize_attributes};
+    DebugText::force_purchase, DebugText::all_draws, DebugText::maximize_attributes,
+    DebugText::force_staff_signing};
 static_assert(feature_labels.size() == debug_feature_count);
 std::uint32_t debugging_modal_mode(State& s) {
     GuestCall call(s);
@@ -1663,21 +1666,27 @@ bool extend_debug_club_contracts(State& s, std::uint32_t club) {
 }
 
 namespace {
-std::uint32_t eligible_purchase_seller(State& s, GuestCall& call, std::uint32_t contract) {
+std::uint32_t active_debug_employer(const State& s, const guest::Cpu& c) {
+    const auto ui = root(s);
+    const auto manager = c.u32(ui + std::uint32_t(c.i16(ui + 0x2c58)) * 0x2c0 + 4);
+    return manager ? c.u32(manager + 0x24) : 0;
+}
+
+bool human_controls_club(GuestCall& call, std::uint32_t club, bool ignore_absence) {
+    // Use the transfer scheduler's test for a human-controlled club.
+    return call.call(0x1014c2e0, {club, ignore_absence, 1, 0, 0}) != 0;
+}
+
+std::uint32_t eligible_ai_employer(State& s, GuestCall& call, std::uint32_t contract) {
     if (!contract || (std::int8_t(s.memory.read<1>(contract + 0x38)) >> 2) == 5) return 0;
     const guest::Cpu c(s);
     const auto id = c.u32(contract + 4), clubs = c.u32(c.toc(-0x7be8));
     if (!clubs || id >= c.u32(c.toc(-0x7b50))) return 0;
-    const auto ui = root(s);
-    const auto manager = c.u32(ui + std::uint32_t(c.i16(ui + 0x2c58)) * 0x2c0 + 4);
-    if (!manager) return 0;
-    const auto buyer = c.u32(manager + 0x24), seller = clubs + id * 0x248;
-    // Use the transfer scheduler's test for a human-controlled club.
-    if (!buyer || buyer == seller || call.call(0x1014c2e0, {seller, 0, 1, 0, 0})) return 0;
-    return seller;
+    const auto buyer = active_debug_employer(s, c), seller = clubs + id * 0x248;
+    return buyer && buyer != seller && !human_controls_club(call, seller, false) ? seller : 0;
 }
 
-std::uint32_t purchase_offer_at(const guest::Cpu& c, std::uint32_t transfers, std::uint32_t index) {
+std::uint32_t debug_offer_at(const guest::Cpu& c, std::uint32_t transfers, std::uint32_t index) {
     if (!transfers || index >= c.u32(transfers + 4)) return 0;
     const auto slots = c.u32(transfers);
     return slots ? c.u32(slots + index * 4) : 0;
@@ -1693,19 +1702,23 @@ const ForcedPurchase* find_forced_purchase(const guest::Cpu& c, std::uint32_t of
         purchase.buyer != c.u32(offer + 8)) return nullptr;
     return &purchase;
 }
+constexpr auto staff_signing_option = DebugFeature::force_staff_signing;
+std::uint32_t staff_signing_role(const guest::Cpu&, std::uint32_t person);
+StaffSigningClubs eligible_staff_signing_clubs(guest::Cpu&, GuestCall&, std::uint32_t person);
+bool dispatch_debug_staff_signing(State&, std::uint32_t control);
 }
 
 std::uint32_t forced_purchase_seller(State& s, std::uint32_t player) {
     if (!action_enabled(force_purchase_action)) return 0;
     GuestCall call(s);
-    return eligible_purchase_seller(s, call, debug_primary_contract(s, call, player));
+    return eligible_ai_employer(s, call, debug_primary_contract(s, call, player));
 }
 
 void record_forced_purchase(State& s, std::uint32_t transfers, std::uint32_t draft,
                             std::uint32_t expected_revision, std::uint32_t seller) {
     const guest::Cpu c(s);
     const auto index = c.u32(draft + 0x28);
-    const auto offer = purchase_offer_at(c, transfers, index);
+    const auto offer = debug_offer_at(c, transfers, index);
     if (!offer || c.u32(draft + 0x2c) != expected_revision || c.u32(offer + 0x2c) != expected_revision ||
         c.u32(offer + 0x28) != index || c.u8(offer + 0x24) != 0 ||
         c.u32(offer + 8) != c.u32(draft + 8) || c.u32(offer + 12) != c.u32(draft + 12)) return;
@@ -1719,7 +1732,7 @@ bool forced_purchase_for_seller(State& s, std::uint32_t offer, std::uint32_t sel
     if (!purchase || purchase->seller != seller) return false;
     if (purchase->offer == offer) return true;
     // The transfer-completion screen validates its own copy of the live offer.
-    const auto live = purchase_offer_at(c, c.u32(c.toc(-0x7b40)), c.u32(offer + 0x28));
+    const auto live = debug_offer_at(c, c.u32(c.toc(-0x7b40)), c.u32(offer + 0x28));
     return live == purchase->offer && find_forced_purchase(c, live) == purchase;
 }
 
@@ -1733,7 +1746,7 @@ bool forced_purchase_contract(State& s, std::uint32_t contract) {
     const auto& purchase = found->second;
     if (purchase.revision != c.u32(contract + 0x74) || purchase.player != c.u32(contract) ||
         purchase.buyer != c.u32(contract + 4)) return false;
-    const auto live = purchase_offer_at(c, c.u32(c.toc(-0x7b40)), index);
+    const auto live = debug_offer_at(c, c.u32(c.toc(-0x7b40)), index);
     if (live != purchase.offer || find_forced_purchase(c, live) != &purchase) return false;
     const auto status = c.u8(live + 0x34);
     return status == 7 || status == 8;
@@ -1779,9 +1792,10 @@ bool maximize_debug_player_attributes(State& s, std::uint32_t staff) {
 }
 
 void append_debug_contract_action(State& s) {
+    const auto staff_enabled = native_debugging_feature(staff_signing_option);
     if (!action_enabled(extend_contract_action) && !action_enabled(remove_sale_clause_action) &&
         !action_enabled(cancel_sale_action) && !action_enabled(force_purchase_action) &&
-        !action_enabled(maximize_attributes_action)) return;
+        !action_enabled(maximize_attributes_action) && !staff_enabled) return;
     const auto staff = std::uint32_t(s.r<4>(23 * 4));
     const auto original_stack = std::uint32_t(s.r<4>(4));
     GuestCall call(s);
@@ -1793,8 +1807,10 @@ void append_debug_contract_action(State& s) {
     const bool clause = contract && action_enabled(remove_sale_clause_action) && s.memory.read<1>(contract + 0x1d);
     const bool sale = contract && action_enabled(cancel_sale_action) && current_managed_employer(s, call, staff) &&
         scheduled_sale(s, staff, false);
-    const bool purchase = contract && action_enabled(force_purchase_action) && eligible_purchase_seller(s, call, contract);
-    if (!maximize && !extend && !clause && !sale && !purchase) return;
+    const bool purchase = contract && action_enabled(force_purchase_action) && eligible_ai_employer(s, call, contract);
+    guest::Cpu c(s);
+    const bool sign_staff = staff_enabled && staff_signing_role(c, staff) && eligible_staff_signing_clubs(c, call, staff);
+    if (!maximize && !extend && !clause && !sale && !purchase && !sign_staff) return;
     // Build the same parent control and child menu used by the original
     // player comparison menu, then add the debugging actions to that child.
     const auto ui = root(s), page = screen(s, ui);
@@ -1817,6 +1833,7 @@ void append_debug_contract_action(State& s) {
     if (clause) append(DebugText::remove_sale_clause, remove_sale_clause_action);
     if (sale) append(DebugText::cancel_sale, cancel_sale_action);
     if (purchase) append(DebugText::force_purchase, force_purchase_action);
+    if (sign_staff) append(DebugText::force_staff_signing, force_staff_signing_action);
 }
 
 bool dispatch_debug_contract_action(State& s) {
@@ -1824,6 +1841,7 @@ bool dispatch_debug_contract_action(State& s) {
     const auto control = selected_control(s);
     if (!control) return false;
     const auto action = s.memory.read<4>(control + 8);
+    if (action == force_staff_signing_action) return dispatch_debug_staff_signing(s, control);
     if (action != extend_contract_action && action != cancel_sale_action &&
         action != remove_sale_clause_action && action != force_purchase_action && action != maximize_attributes_action) return false;
     bool accepted = false;
@@ -1832,7 +1850,7 @@ bool dispatch_debug_contract_action(State& s) {
         GuestCall call(s);
         const auto staff = call.call(0x1073ef70, {root(s), 0});
         if (action == force_purchase_action && action_enabled(action)) {
-            const auto seller = eligible_purchase_seller(s, call, debug_primary_contract(s, call, staff));
+            const auto seller = eligible_ai_employer(s, call, debug_primary_contract(s, call, staff));
             if (seller) {
                 guest::Cpu cpu(s);
                 cpu.set_lr(return_sentinel);
@@ -1854,5 +1872,112 @@ bool dispatch_debug_contract_action(State& s) {
     s.wr<4>(12, std::uint32_t(result));
     s.pc = s.r<4>(4128);
     return true;
+}
+
+namespace {
+// These slots are unused by the negotiation and offer confirmation screens.
+constexpr std::uint32_t staff_employer_field = 0x14 + 58 * 8, staff_buyer_field = 0x14 + 59 * 8;
+
+std::uint32_t staff_signing_role(const guest::Cpu& c, std::uint32_t person) {
+    if (!person || c.u32(person + 0x14) || !c.u32(person + 0x1c)) return 0;
+    switch (const auto role = c.u8(person + 0x62)) {
+        case 5: return 6; // A manager joins as assistant manager.
+        case 6: case 8: case 9: case 10: return role;
+        default: return 0;
+    }
+}
+
+StaffSigningClubs eligible_staff_signing_clubs(guest::Cpu& c, GuestCall& call, std::uint32_t person) {
+    // Club managers are employed without a primary record in the contract ledger.
+    const auto employer = c.u32(person + 0x24), clubs = c.u32(c.toc(-0x7be8));
+    if (!clubs || employer < clubs || (employer - clubs) % 0x248 ||
+        (employer - clubs) / 0x248 >= c.u32(c.toc(-0x7b50))) return {};
+    const auto buyer = active_debug_employer(c.s, c);
+    if (!buyer || employer == buyer || human_controls_club(call, employer, true)) return {};
+    return {c.u32(employer) + 1, c.u32(buyer) + 1};
+}
+
+bool matches_staff_offer(const guest::Cpu& c, std::uint32_t offer, std::uint32_t index,
+                         std::uint32_t revision, std::uint32_t person, std::uint32_t buyer, std::uint32_t role) {
+    // A staff offer enters review directly at stage 7, using the engine's direct-offer flag.
+    return offer && c.u32(offer + 0x28) == index && c.u32(offer + 0x2c) == revision &&
+        c.u32(offer + 12) == person && c.u32(offer + 8) == buyer && c.u8(offer + 0x11) == role &&
+        c.u8(offer + 0x37) == 1 && c.u8(offer + 0x34) == 7;
+}
+}
+
+std::uint32_t staff_signing_history(const guest::Cpu& c, std::uint32_t screens) {
+    const auto group = c.i16(screens + 0x2c58);
+    return group >= 0 && group < 16 ? c.u32(screens + std::uint32_t(group) * 0x2c0 + 0x10) : 0;
+}
+
+StaffSigningClubs staff_signing_clubs(const guest::Cpu& c, std::uint32_t history) {
+    if (!history || !native_debugging_feature(staff_signing_option)) return {};
+    return {c.u32(history + staff_employer_field), c.u32(history + staff_buyer_field)};
+}
+
+void set_staff_signing_clubs(guest::Cpu& c, std::uint32_t history, StaffSigningClubs clubs) {
+    if (!history) return;
+    c.put32(history + staff_employer_field, clubs.employer);
+    c.put32(history + staff_buyer_field, clubs.buyer);
+}
+
+void record_forced_staff_signing(State& s, StaffSigningClubs intended, std::uint32_t person, std::uint32_t buyer,
+                                 std::uint32_t role, std::uint32_t index, std::uint32_t revision) {
+    if (!intended || !native_debugging_feature(staff_signing_option) || !role) return;
+    guest::Cpu c(s);
+    if (role != staff_signing_role(c, person) || !buyer || c.u32(buyer) + 1 != intended.buyer) return;
+    const auto offer = debug_offer_at(c, c.u32(c.toc(-0x7b40)), index);
+    const auto id = c.u32(person);
+    if (!matches_staff_offer(c, offer, index, revision, id, intended.buyer - 1, role)) return;
+    GuestCall call(s);
+    const auto actual = eligible_staff_signing_clubs(c, call, person);
+    if (actual.employer != intended.employer || actual.buyer != intended.buyer) return;
+    forced_staff_signings(s).insert_or_assign(index, ForcedStaffSigning{offer, revision, id, role, intended});
+}
+
+bool forced_staff_contract(State& s, std::uint32_t contract, std::uint32_t person) {
+    const auto& marked = forced_staff_signings(static_cast<const State&>(s));
+    if (marked.empty()) return false;
+    const guest::Cpu c(s);
+    const auto index = c.u32(contract + 0x70);
+    const auto found = marked.find(index);
+    if (found == marked.end()) return false;
+    const auto& signing = found->second;
+    const auto offer = debug_offer_at(c, c.u32(c.toc(-0x7b40)), index);
+    if (offer != signing.offer || signing.revision != c.u32(contract + 0x74) || signing.person != c.u32(person) ||
+        signing.person != c.u32(contract) || signing.clubs.buyer - 1 != c.u32(contract + 4) ||
+        signing.role != c.u8(contract + 0x78) || signing.role != staff_signing_role(c, person) ||
+        !matches_staff_offer(c, offer, index, signing.revision, signing.person, signing.clubs.buyer - 1, signing.role)) return false;
+    const auto employer = c.u32(person + 0x24);
+    if (!employer || c.u32(employer) + 1 != signing.clubs.employer) return false;
+    GuestCall call(s);
+    return !human_controls_club(call, employer, true);
+}
+
+namespace {
+bool dispatch_debug_staff_signing(State& s, std::uint32_t control) {
+    std::uint32_t result = 0;
+    if (native_debugging_feature(staff_signing_option) && (s.memory.read<4>(control + 12) & 2)) {
+        guest::Cpu c(s);
+        GuestCall call(s);
+        const auto ui = root(s), person = call.call(0x1073ef70, {ui, 0});
+        if (const auto role = staff_signing_role(c, person)) {
+            const auto clubs = eligible_staff_signing_clubs(c, call, person);
+            if (clubs) {
+                const auto previous = staff_signing_history(c, ui);
+                call.call(0x100960d0, {person, 0, role, 1});
+                const auto opened = staff_signing_history(c, ui);
+                if (opened && opened != previous) {
+                    set_staff_signing_clubs(c, opened, clubs);
+                    result = std::uint32_t(-4);
+                }
+            }
+        }
+    }
+    s.wr<4>(12, result);
+    s.pc = s.r<4>(4128);
+    return true;
+}
 }
 }

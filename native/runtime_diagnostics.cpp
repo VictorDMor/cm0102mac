@@ -11,6 +11,7 @@
 #include "debug_underdogs.hpp"
 #include "debug_match_results.hpp"
 #include "debug_force_purchase.hpp"
+#include "debug_force_staff_signing.hpp"
 #include "match_actor_adapter.hpp"
 #include "actor_construction_adapter.hpp"
 #include "spatial_role_adapter.hpp"
@@ -95,6 +96,7 @@ struct RuntimeDiagnostics {
     UnderdogDebugging underdogs;
     MatchResultDebugging match_results;
     ForcedPurchases purchases;
+    ForcedStaffSignings staff_signings;
     MatchActorDiagnostics match_actor;
     ActorConstructionDiagnostics actor_construction;
     SpatialRoleDiagnostics spatial_role;
@@ -490,6 +492,18 @@ const ForcedPurchases& forced_purchases(const State& state) {
 }
 void clear_forced_purchases(State& state) {
     if (state.runtime_diagnostics) state.runtime_diagnostics->purchases.offers.clear();
+}
+
+ForcedStaffSignings& forced_staff_signings(State& state) {
+    if (!state.runtime_diagnostics) state.runtime_diagnostics = std::make_unique<RuntimeDiagnostics>();
+    return state.runtime_diagnostics->staff_signings;
+}
+const ForcedStaffSignings& forced_staff_signings(const State& state) {
+    static const ForcedStaffSignings empty;
+    return state.runtime_diagnostics ? state.runtime_diagnostics->staff_signings : empty;
+}
+void clear_forced_staff_signings(State& state) {
+    if (state.runtime_diagnostics) state.runtime_diagnostics->staff_signings.clear();
 }
 
 MatchEngineDiagnostics& match_engine_diagnostics(State& state) {

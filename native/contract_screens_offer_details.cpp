@@ -1,4 +1,5 @@
 #include "contract_screens.hpp"
+#include "debug_force_staff_signing.hpp"
 #include "contract_screens_controls.hpp"
 #include "screen_manager_detail.hpp"
 #include <array>
@@ -233,6 +234,11 @@ std::uint32_t offer_details_command(Cpu& c, std::uint32_t pressed) {
     }
     action.program.call(0x1007f200, 0x1009e770, {c.u32(action.contracts), action.draft, action.offer_id, action.revision,
                          std::uint32_t(action.role), 0, 1, 0});
+    if (!action.link) {
+        const auto forced = staff_signing_clubs(c, staff_signing_history(c, screens));
+        if (forced) record_forced_staff_signing(c.s, forced, action.person, action.destination(),
+                                                action.role, action.offer_id, action.revision);
+    }
     action.mark_participant();
     c.set(0, 0xffffffff);
     c.put32(action.draft, 0xffffffff);

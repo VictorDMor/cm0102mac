@@ -1917,6 +1917,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     }
     if page_addresses & (forced_purchase_branches.keys() | {0x10345bb0, 0x10346bc0}):
         code.insert(1, '#include "debug_force_purchase.hpp"')
+    if page_addresses & {0x10345bb0, 0x10346bc0}:
+        code.insert(1, '#include "debug_force_staff_signing.hpp"')
     if page == 0x10331:
         code.insert(1, '#include "calendar_adapter.hpp"')
     if page in (0x10747, 0x1077b):
@@ -2306,6 +2308,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("clear_match_result_debugging(s);")
         if a in (0x10345bb0, 0x10346bc0):
             code.append("clear_forced_purchases(s);")
+            code.append("clear_forced_staff_signings(s);")
         if a in forced_purchase_branches:
             expected, target, predicate = forced_purchase_branches[a]
             if item["assembly"] != expected or target not in page_addresses:

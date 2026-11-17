@@ -1,5 +1,6 @@
 #include "contract_manager_random.hpp"
 #include "debug_force_purchase.hpp"
+#include "debug_force_staff_signing.hpp"
 
 namespace cm::aot::contract_manager {
 using namespace detail;
@@ -83,7 +84,7 @@ void review_pending_contracts(Cpu& c,std::uint32_t manager_address,std::uint32_t
             }
             const auto current=c.u32(frame.at(0x44));c.set(3,current);const auto state=c.i8(current+0x64);c.set(4,c.u8(current+0x64));c.set(0,std::uint32_t(std::int32_t(state)));
             if(nonzero(c,state)){c.set(0,std::uint32_t(std::int32_t(state)));if(compare(c,state,2)==0)decision=1;continue;}
-            if (forced_purchase_contract(c.s, current)) {
+            if (forced_purchase_contract(c.s, current) || forced_staff_contract(c.s, current, person)) {
                 forced_best = current;
                 c.put_f64(frame.at(0x68), 0);
                 p.call(0x10738d10, 0x1008224c, {frame.at(0x90), frame.at(0x44), 4});

@@ -4,6 +4,13 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::force_staff_signing) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "Force Staff Signing", "Force Staff Signing", "Forcer la signature", "Verpflichtung erzwingen",
+            "Forza ingaggio", "Forzar fichaje", "Tving kontrakt", "Contract afdwingen",
+            "Tving signering", "For\347ar Assinar", "Tvinga kontrakt"};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text == DebugText::club_rule_pair_hint) {
         static constexpr std::array<std::string_view, 11> labels{
             "Two listed teams: only Win vs Loss keeps the club rules.",

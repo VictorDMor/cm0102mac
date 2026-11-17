@@ -2,6 +2,7 @@
 #include "debug_localization.hpp"
 #include "debug_match_results.hpp"
 #include "debug_force_purchase.hpp"
+#include "debug_force_staff_signing.hpp"
 #include "transfer_manager_native_adapter.hpp"
 #include "routine_check.hpp"
 #include "guest_abi.hpp"
@@ -738,26 +739,26 @@ int main(int argc, char** argv) {
         const auto profile = c.u32(target + 0x14);
         const auto before_max_staff = s.memory.copy_out(target, 0x70);
         const auto before_max_profile = s.memory.copy_out(profile, 0x48);
-        const auto build_player_debug_menu = [&] {
+        const auto build_profile_debug_menu = [&](std::uint32_t person) {
             invoke(0x10719560, {page()});
             const auto frame = s.memory.copy_out(c.sp() + 0x6c, 6);
             const auto prior_staff = c.r(23);
-            c.set(23, target);
+            c.set(23, person);
             c.put16(c.sp() + 0x6c, 0xffff); // No existing top-level menu.
             c.put16(c.sp() + 0x6e, 100); c.put16(c.sp() + 0x70, 100);
             const auto saved_registers = s.registers; const auto saved_unique = s.unique; const auto saved_pc = s.pc;
             append_debug_contract_action(s);
             require(s.registers == saved_registers && s.unique == saved_unique && s.pc == saved_pc,
-                    "Player submenu changed its interrupted caller");
+                    "Profile submenu changed its interrupted caller");
             c.set(23, prior_staff); s.memory.copy_in(c.sp() + 0x6c, frame);
         };
-        build_player_debug_menu();
+        build_profile_debug_menu(target);
         const auto maximize = control(30009, 0);
         require(text_of(maximize) == "     " + std::string(debug_text(s, DebugText::maximize_attributes)),
                 "Missing Maximize Attributes in player Debugging menu");
         const auto ledger_slot = c.toc(-0x7b7c);
         c.put32(ledger_slot, 0); c.put32(target + 0x24, 0);
-        build_player_debug_menu();
+        build_profile_debug_menu(target);
         require(control(30009, 0) < c.u16(page() + 0x129da6), "Contractless player lost Maximize Attributes");
         c.put32(ledger_slot, ledger); c.put32(target + 0x24, seller);
         require(command(0x103a72c0, 30009) == -11 && c.u8(profile + 0x1b) == 20 &&
@@ -893,8 +894,122 @@ int main(int argc, char** argv) {
         clear_forced_purchases(s);
         require(marked.empty() && !forced_purchase_for_seller(s, offer, seller), "Reset retained a forced purchase");
 
+        const auto staff_feature = 1u << unsigned(DebugFeature::force_staff_signing);
+        // The command harness submits through the original callbacks without
+        // executing the screen monitor's post-submit history navigation.
+        invoke(0x1073ee30, {ui});
+        invoke(0x1073e4b0, {ui, 0x108b92a4, 0x108b929c, 0, 0, 0});
+        require(c.r(3) == 1, "Could not open the original profile history for the staff fixture");
+        // The normal hiring flow still requires a vacancy. Use the original
+        // release action to make the fixture's assistant-manager slot available.
+        if (const auto assistant = c.u32(managed_club + 0x94)) {
+            invoke(0x1073f1e0, {ui, 0, assistant, 0});
+            require(command(0x1009eb30, 1) == -10 && c.u32(managed_club + 0x94) == 0,
+                    "Could not open an assistant-manager vacancy in the fixture");
+        }
+        require(debug_text(9, DebugText::force_staff_signing) == "For\347ar Assinar", "Portuguese staff signing label");
+        const auto people = c.u32(c.toc(-0x7be0)), people_count = c.u32(c.toc(-0x7be4));
+        const auto club_count_for_staff = c.u32(c.toc(-0x7b50));
+        std::array<std::uint32_t, 11> staff_by_role{};
+        for (unsigned i = 0; i < people_count; ++i) {
+            const auto staff = people + i * 0x70, employer = c.u32(staff + 0x24);
+            const auto role = c.u8(staff + 0x62);
+            if ((role != 5 && role != 6 && role != 8 && role != 9 && role != 10) || c.u32(staff + 0x14) ||
+                !c.u32(staff + 0x1c) || employer < clubs || (employer - clubs) % 0x248 ||
+                (employer - clubs) / 0x248 >= club_count_for_staff || employer == managed_club ||
+                c.u32(employer + 0x30) != c.u32(managed_club + 0x30)) continue;
+            staff_by_role[role] = staff;
+        }
+        const auto candidate = staff_by_role[5];
+        require(candidate, "Missing AI manager for staff-signing fixture");
+        const auto employer = c.u32(candidate + 0x24);
+        invoke(0x1073f1e0, {ui, 0, candidate, 0});
+        const auto has_staff_action = [&] {
+            for (unsigned i = 0; i < c.u16(page() + 0x129da6); ++i)
+                if (c.u32(item_address(i) + 8) == 30033) return true;
+            return false;
+        };
+        build_profile_debug_menu(candidate);
+        require(!has_staff_action() && command(0x103a72c0, 30033) == 0, "Disabled staff action remained available");
+        select_native_debugging_features(staff_feature);
+        build_profile_debug_menu(target);
+        require(!has_staff_action(), "A player showed the staff signing action");
+        build_profile_debug_menu(c.u32(managed_club + 0x90));
+        require(!has_staff_action(), "The user's own manager showed the staff signing action");
+        for (const auto role : {5, 6, 8, 9, 10}) {
+            require(staff_by_role[role], "Missing AI staff role for staff signing fixture");
+            build_profile_debug_menu(staff_by_role[role]);
+            require(has_staff_action() && text_of(control(30033, 0)) == "     " + std::string(debug_text(s, DebugText::force_staff_signing)),
+                    "Eligible staff did not show Forçar Assinar in the profile menu");
+        }
+
+        require(command(0x103a72c0, 30033) == -4, "Forçar Assinar did not open the original negotiation");
+        invoke(0x1073ef70, {ui, 8});
+        require(c.r(3) == 6, "Forced negotiation with a manager selected a role other than assistant manager");
+        const auto staff_signing = staff_signing_clubs(c, staff_signing_history(c, ui));
+        require(staff_signing.employer == c.u32(employer) + 1 && staff_signing.buyer == c.u32(managed_club) + 1,
+                "Negotiation did not retain both clubs");
+        invoke(0x10719560, {page()});
+        invoke(0x10096c60, {});
+        invoke(0x101487d0, {c.u32(c.toc(-0x7a54)), 0});
+        const auto staff_terms = c.r(3);
+        require(c.u32(staff_terms) == c.u32(candidate) && c.u32(staff_terms + 4) == c.u32(managed_club),
+                "Original staff negotiation did not create terms for the correct parties");
+        require(command(0x1009a440, 0x1c) == -11, "Staff role control did not redraw");
+        invoke(0x1073ef70, {ui, 8});
+        require(c.r(3) == 6, "The forced staff negotiation allowed switching away from assistant manager");
+        c.put32(staff_terms + 8, 0);
+        c.put32(staff_terms + 12, 0);
+        require(command(0x10097b70, 1) == -4, "Staff terms did not open the original confirmation");
+        require(bool(staff_signing_clubs(c, staff_signing_history(c, ui))), "Confirmation lost the staff signing override");
+        require(command(0x1009e290, 0x14) == -10, "Staff confirmation did not submit the original contract");
+        invoke(0x1007f720, {ledger, c.u32(candidate), c.u32(managed_club)});
+        const auto staff_pending = c.r(3);
+        require(staff_pending && forced_staff_contract(s, staff_pending, candidate), "Staff offer did not retain its override");
+        const auto staff_revision = c.u32(staff_pending + 0x74), staff_index = c.u32(staff_pending + 0x70);
+        c.put32(staff_pending + 0x74, staff_revision + 1);
+        require(!forced_staff_contract(s, staff_pending, candidate), "Another revision matched the staff signing override");
+        c.put32(staff_pending + 0x74, staff_revision);
+        c.put32(candidate + 0x24, managed_club);
+        require(!forced_staff_contract(s, staff_pending, candidate), "An outdated employer matched the staff signing override");
+        c.put32(candidate + 0x24, employer);
+        const auto previous_employer_manager = c.u32(employer + 0x90);
+        c.put32(employer + 0x90, c.u32(managed_club + 0x90));
+        require(!forced_staff_contract(s, staff_pending, candidate), "A human-controlled employer matched the staff signing override");
+        c.put32(employer + 0x90, previous_employer_manager);
+        const auto staff_offer = c.u32(c.u32(transfers) + staff_index * 4);
+        invoke(0x10081bd0, {ledger, candidate});
+        require(c.u8(staff_pending + 0x64) == 2 && c.u32(staff_pending + 8) == 0 && c.u8(staff_offer + 0x34) == 12,
+                "Staff did not accept the submitted terms through the original transfer flow");
+        invoke(0x103e80e0, {transfers, staff_offer, managed_club});
+        require(c.u8(staff_offer + 0x34) == 14, "Buyer did not confirm the staff transfer");
+        invoke(0x103eb440, {transfers, staff_index});
+        const auto staff_link = c.r(3);
+        s.platform = std::make_shared<NativePlatform>(files.path / "game", files.path / "working",
+                                                     AudioMode::offline, EventMode::isolated);
+        invoke(0x103eb650, {transfers, staff_link});
+        s.platform.reset();
+        require(c.u32(candidate + 0x24) == managed_club && c.u8(candidate + 0x62) == 6 &&
+                c.u32(managed_club + 0x94) == candidate && c.u32(employer + 0x90) != candidate,
+                "Confirmed manager did not join the buyer as assistant manager");
+
+        // With the toggle still enabled, an ordinary offer must use the ordinary decision.
+        invoke(0x1073ee30, {ui});
+        const auto ordinary_scout = staff_by_role[9];
+        invoke(0x100960d0, {ordinary_scout, 0, 9, 1});
+        require(!staff_signing_clubs(c, staff_signing_history(c, ui)), "A normal negotiation inherited a staff override");
+        invoke(0x10719560, {page()});
+        invoke(0x10096c60, {});
+        require(command(0x10097b70, 1) == -4 && command(0x1009e290, 0x14) == -10,
+                "Ordinary staff negotiation did not submit a proposal");
+        invoke(0x1007f720, {ledger, c.u32(ordinary_scout), c.u32(managed_club)});
+        require(c.r(3) && !forced_staff_contract(s, c.r(3), ordinary_scout) && forced_staff_signings(s).size() == 1,
+                "A normal staff proposal was recorded as forced");
+        clear_forced_staff_signings(s);
+        require(forced_staff_signings(s).empty(), "Reset retained a forced staff signing");
+
         if (argc == 3) check_fixture_results(argv[2]);
-        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization; forced purchase"
+        std::cout << "ok sidebar integration; independent options; deferred apply, cancel, reset; RNG; localization; forced purchase and staff signing"
                   << (argc == 3 ? "; fixture-list right-click match results" : "") << '\n';
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

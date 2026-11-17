@@ -1,4 +1,5 @@
 #include "contract_screens.hpp"
+#include "debug_force_staff_signing.hpp"
 #include "contract_screens_controls.hpp"
 #include "guest_fpu.hpp"
 #include "screen_manager_detail.hpp"
@@ -550,7 +551,9 @@ std::uint32_t negotiation_basic_command(Cpu& c, std::uint32_t pressed) {
     case 0x18: command.change_wage(false); return 0;
     case 0x19: command.set_wage(controls.value()); return redraw;
     case 0x1a: command.write(0x1009b278, 7, controls.value()); return redraw;
-    case 0x1c: command.cycle_role(); return redraw;
+    case 0x1c:
+        if (!staff_signing_clubs(c, staff_signing_history(c, command.screens))) command.cycle_role();
+        return redraw;
     case 0x1d: command.toggle_duration(); return 0;
     case 0x1e: {
         const auto flags = command.term_flags();

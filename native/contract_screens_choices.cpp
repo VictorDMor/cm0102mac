@@ -1,6 +1,7 @@
 #include "contract_screens.hpp"
 #include "contract_screens_calls.hpp"
 #include "contract_screens_controls.hpp"
+#include "debug_force_staff_signing.hpp"
 #include "screen_manager_detail.hpp"
 
 namespace cm::aot::contract_screens {
@@ -127,7 +128,13 @@ std::uint32_t confirm_negotiation(Cpu& c, Program& program, const Frame& frame,
         program.call(refresh_offer, 0x1009801c, {offer});
         return redraw;
     }
+    const auto previous = link ? 0 : staff_signing_history(c, screens);
+    const auto forced = staff_signing_clubs(c, previous);
     detail::call_owned(c, 0x1009dab0, 0x10098040, open_offer_details, link, kind, category, 0u, option, mode);
+    if (forced) {
+        const auto opened = staff_signing_history(c, screens);
+        if (opened != previous) set_staff_signing_clubs(c, opened, forced);
+    }
     return navigate;
 }
 
