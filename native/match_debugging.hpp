@@ -32,6 +32,7 @@ void append_fixture_result_controls(State&);
 bool dispatch_fixture_debugging_control(State&);
 void append_match_debugging_controls(State&);
 bool dispatch_match_debugging_control(State&);
+// Number keys are match-only; Z uses play/pause there and Continue elsewhere.
 bool deliver_match_shortcut(State&, const CommandContext&, const UIEvent&);
 void reset_match_debugging();
 bool append_forced_club_control(State&);

@@ -259,7 +259,22 @@ bool deliver_match_shortcut(State& s, const CommandContext& expected, const UIEv
     const bool toggle = character == 'z' || character == 'Z';
     if (!toggle && (character < '1' || character > '6' || !action_enabled(shortcut_first + character - '1'))) return false;
     const auto current = original_command_context(s, 0xffff);
-    if (!current.ready || current.handler != 0x1028dc80 || current != expected) return false;
+    if (!current.ready || current != expected) return false;
+    if (toggle && current.handler != 0x1028dc80) {
+        if (!current.actions[std::size_t(DirectCommand::continue_game)]) return false;
+        // DISPLAY's text_field_key (1071b520) owns typing while a field has a
+        // caret (+0x44), or while Tab/Return is transferring focus (12a936).
+        // Keep plain Z available there, even when the sidebar allows Continue.
+        for (const auto& control : original_controls(s, current)) {
+            if (!(control.flags & 8)) continue;
+            const auto record = current.screen + 0xba864 + std::uint32_t(control.index) * 0x17c;
+            if (std::int32_t(s.memory.read<4>(record + 0x44)) >= 0 ||
+                std::int16_t(s.memory.read<2>(current.screen + 0x12a936)) != -1) return false;
+        }
+        return event.kind == UIEvent::Kind::auto_key ||
+            deliver_original_command(s, current, DirectCommand::continue_game);
+    }
+    if (current.handler != 0x1028dc80) return false;
     // Both number rows arrive with the same character and different hardware
     // codes. A held key must never inject multiple events or toggle repeatedly.
     if (event.kind == UIEvent::Kind::auto_key) return true;

@@ -1,6 +1,8 @@
 #include "aot_runtime.hpp"
 #include "direct_commands.hpp"
 #include "callbacks.hpp"
+#include "match_debugging.hpp"
+#include "ui_bridge.hpp"
 #include <iostream>
 using namespace cm::aot;
 namespace {
@@ -81,6 +83,76 @@ int main(int argc, char** argv) {
         s.memory.write<2>(screen + 0x129da6, 1201);
         require(!original_command_context(s, 0xffff).ready, "Invalid control capacity");
 
+        controls({1022,1000,42});
+        s.memory.write<2>(screen + 0x12a936, 0xffff);
+        UIEvent z{UIEvent::Kind::key_down}; z.message = (6u << 8) | 'z';
+        const auto refused_key = [&](const UIEvent& event, const CommandContext& context) {
+            const auto old_root = s.memory.copy_out(root, 0x260000);
+            const auto old_screen = s.memory.copy_out(screen, 0x130000);
+            s.memory.write<1>(character, 'x'); s.memory.write<4>(key, 7);
+            require(!deliver_match_shortcut(s, context, event), "Unavailable shortcut consumed keyboard input");
+            require(old_root == s.memory.copy_out(root, 0x260000) && old_screen == s.memory.copy_out(screen, 0x130000) &&
+                    s.memory.read<1>(character) == 'x' && s.memory.read<4>(key) == 7 && s.memory.read<1>(pressed) == 0,
+                "Refused shortcut changed guest state");
+        };
+        for (const auto handler : {0x102c0000u, 0x10036f10u, 0x1028bc90u, 0x1028dc80u}) {
+            s.memory.write<4>(vector, handler); // Ordinary, squad, daily fixtures and live match screens.
+            if (handler == 0x1028dc80u) controls({1000,2,42}); // Match play/pause takes precedence over Continue.
+            for (const bool uppercase : {false, true}) {
+                z.message = (6u << 8) | (uppercase ? 'Z' : 'z'); z.modifiers = uppercase ? 0x200 : 0;
+                c = original_command_context(s, 0xffff);
+                const auto career = s.memory.copy_out(root, 0x260000);
+                require(deliver_match_shortcut(s, c, z), "Z did not activate Continue or match play/pause");
+                require(!deliver_match_shortcut(s, c, z), "Z duplicated an occupied input");
+                require(call_original(s, picker, arguments) == 1, "Z did not use the original Continue control picker");
+                require(career == s.memory.copy_out(root, 0x260000), "Z bypassed Continue and changed career state");
+                s.wr<4>(4128, 0x1076ff7c);
+                z.kind = UIEvent::Kind::auto_key;
+                require(deliver_match_shortcut(s, original_command_context(s, 0xffff), z) &&
+                        s.memory.read<1>(pressed) == 0 && s.memory.read<2>(screen + 0x12a904) == 0xffff,
+                    "Held Z repeated Continue");
+                z.kind = UIEvent::Kind::key_down;
+            }
+        }
+        s.memory.write<4>(vector, 0x1028bc90); controls({1022,1000,42});
+        z.message = (6u << 8) | 'z'; z.modifiers = 0;
+        c = original_command_context(s, 0xffff);
+        for (const auto modifier : {0x100, 0x800, 0x1000}) {
+            z.modifiers = modifier; refused_key(z, c);
+        }
+        z.modifiers = 0; z.kind = UIEvent::Kind::key_up; refused_key(z, c);
+        z.kind = UIEvent::Kind::key_down; z.message = 'a'; refused_key(z, c);
+        z.message = '1'; refused_key(z, c); // Debug number keys remain match-only.
+        z.message = (6u << 8) | 'z';
+        const auto field = screen + 0xba864 + 2 * 0x17c;
+        s.memory.write<4>(field + 12, 8); s.memory.write<4>(field + 0x44, 0);
+        refused_key(z, original_command_context(s, 0xffff));
+        z.kind = UIEvent::Kind::auto_key; refused_key(z, original_command_context(s, 0xffff));
+        z.kind = UIEvent::Kind::key_down;
+        s.memory.write<4>(field + 0x44, 0xffffffffu); s.memory.write<2>(screen + 0x12a936, 2);
+        refused_key(z, original_command_context(s, 0xffff));
+        s.memory.write<2>(screen + 0x12a936, 0xffff);
+        require(deliver_match_shortcut(s, original_command_context(s, 0xffff), z), "Unfocused text field blocked Continue");
+        require(call_original(s, picker, arguments) == 1, "Unfocused text field changed Continue target");
+        s.wr<4>(4128, 0x1076ff7c);
+        c = original_command_context(s, 0xffff);
+        s.memory.write<4>(screen + 0xba864 + 0x17c + 12, 0);
+        refused_key(z, c); refused_key(z, original_command_context(s, 0xffff));
+        controls({1022,1000,42}); c = original_command_context(s, 0xffff);
+        s.memory.write<2>(root + 0x2c3a, 1); refused_key(z, c);
+        s.memory.write<2>(root + 0x2c3a, 0);
+        s.memory.write<1>(root + 0x19, 1); refused_key(z, c);
+        s.memory.write<1>(root + 0x19, 0);
+        refused_key(z, original_command_context(s, 0x400));
+        s.wr<4>(4128, 0x1077018c); refused_key(z, c);
+        s.wr<4>(4128, 0x1076ff7c);
+        for (const auto handler : {0x10334940u, 0x100ee9d0u, 0x1033f840u}) {
+            s.memory.write<4>(vector, handler);
+            refused_key(z, c); refused_key(z, original_command_context(s, 0xffff));
+        }
+        s.memory.write<4>(vector, 0x102c0000); controls({42});
+        refused_key(z, original_command_context(s, 0xffff));
+
         const auto best = std::size_t(DirectCommand::best_xi);
         s.memory.write<4>(vector, 0x10036f10);
         s.memory.write<4>(descriptor + 0x14, 123); // Club.
@@ -122,7 +194,7 @@ int main(int argc, char** argv) {
         s.memory.write<4>(vector, 0x10036f10);
         s.memory.write<2>(root + 0x2c3a, 1);
         require(!deliver_original_command(s, c, DirectCommand::best_xi), "Best XI entered a nested dialog");
-        std::cout << "Original command context, stale/duplicate rejection, modal and control consumption checks passed\n";
+        std::cout << "Original commands, global Z, text editing, held/modifier/modal/busy guards and picker consumption checks passed\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
