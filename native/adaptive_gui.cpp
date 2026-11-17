@@ -12,216 +12,22 @@ namespace cm::aot {
 bool adaptive_screen_enabled(std::uint32_t builder) {
     return new_screens_enabled() && screen_template(builder) != ScreenTemplate::legacy;
 }
-bool adaptive_screen_available(const State& s, std::uint32_t builder) {
-    if (!adaptive_screen_enabled(builder)) return false;
-    if (screen_template(builder) == ScreenTemplate::league_selection) {
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto toc = std::uint32_t(s.r<4>(8)), manager = read(toc - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64) || read(manager + 4) ||
-            s.memory.read<1>(read(toc - 0x79e4))) return false;
-        const auto history = read(manager + 0x10);
-        return history && read(history) && read(read(history)) == builder;
-    }
-    if (screen_template(builder) == ScreenTemplate::load_browser) {
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(std::uint32_t(s.r<4>(8)) - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
-        const auto history = read(manager + 0x10);
-        if (!history || !read(history) || read(read(history)) != builder) return false;
-        const auto value = [&](unsigned index) { return read(history + 0x14 + index * 8); };
-        const auto extension = value(4), filter = value(5);
-        // FILE_SCREENS also serves save/delete, quick-start, tactics and folder
-        // choosers. Opt in only to the original saved-career Load workflow.
-        if (value(2) || value(12) != 5 || value(13) || value(17) || value(18) != 1 ||
-            !value(3) || !value(6) || !value(7) || !value(8) || !extension || !filter || read(filter) != 0x10355820) return false;
-        constexpr char suffix[] = ".sav";
-        for (unsigned i = 0; i < sizeof(suffix); ++i)
-            if (s.memory.read<1>(extension + i) != std::uint8_t(suffix[i])) return false;
-        return true;
-    }
-    if (screen_template(builder) == ScreenTemplate::startup) {
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(std::uint32_t(s.r<4>(8)) - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
-        const auto history = read(manager + 0x10);
-        // First-run setup places a covering grid over the menu before opening
-        // mandatory settings. Let that original transition keep its geometry.
-        return history && read(history) && read(read(history)) == builder && !read(history + 0x14);
-    }
-    if (screen_template(builder) == ScreenTemplate::daily_fixtures) {
-        const auto toc = std::uint32_t(s.r<4>(8));
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(toc - 0x7bb0), queue_slot = read(toc - 0x7420);
-        if (!manager || !queue_slot || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
-        const auto history = read(manager + 0x10), queue = read(queue_slot);
-        if (!history || !queue || !read(history) || read(read(history)) != builder) return false;
-        const auto group = read(history + 0x1c), groups = read(queue + 0x10), count = read(queue + 0x18);
-        if (!group || !groups || group < groups || (group - groups) % 0x20 || (group - groups) / 0x20 >= count) return false;
-        const auto first = std::int32_t(read(group + 4)), last = std::int32_t(read(group + 8));
-        const auto entries = read(queue + 0x1c);
-        return first >= 0 && last >= first && std::uint32_t(last) < read(queue + 0x24) &&
-               entries && read(entries + std::uint32_t(first) * 0x6c);
-    }
-    if (screen_template(builder) == ScreenTemplate::transfer_history) {
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(std::uint32_t(s.r<4>(8)) - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
-        const auto history = read(manager + 0x10);
-        return history && read(history) && read(read(history)) == builder && transfer_browser_native_enabled();
-    }
-    if (screen_template(builder) == ScreenTemplate::nations_and_clubs) {
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(std::uint32_t(s.r<4>(8)) - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
-        const auto history = read(manager + 0x10);
-        if (!history || !read(history) || read(read(history)) != builder) return false;
-        const auto tab = read(history + 0x14), mode = read(history + 0x14 + 19 * 8);
-        // The single-list nation picker selects tab 1 during construction.
-        if (mode == 2) return read(history + 0x14 + 1 * 8) != 0;
-        if (mode > 1 || tab < 1 || tab > 6) return false;
-        constexpr unsigned selection_slot[]{1, 4, 7, 10, 13, 16};
-        return read(history + 0x14 + selection_slot[tab - 1] * 8) != 0;
-    }
-    if (screen_template(builder) == ScreenTemplate::competition) {
-        const auto toc = std::uint32_t(s.r<4>(8));
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(toc - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
-        const auto history = read(manager + 0x10);
-        if (!history || !read(history) || read(read(history)) != builder) return false;
-        const auto competition = read(history + 0x14);
-        if (!competition) return false;
-        const auto section = read(history + 0x1c);
-        // Results, Calendar and Match Dates list games for the competition as
-        // a whole, including competitions with knockout stages.
-        if (section >= 2 && section <= 4) return true;
-        if (section != 1 || read(history + 0x34) > 2) return false;
-        const auto last = std::int32_t(read(competition + 0x30));
-        const auto selected = std::int32_t(read(history + 0x24));
-        if (last < -1 || last > 127 || selected < -2 || selected > last) return false;
-        const auto stages = read(competition + 0xc);
-        if (last >= 0 && !stages) return false;
-        const auto supported = [&](std::uint32_t stage) {
-            if (!stage || s.memory.read<1>(stage + 0x43) != 2) return false;
-            const auto clubs = std::int16_t(s.memory.read<2>(stage + 0x3e));
-            // Small groups with their own fixture list have a separate layout.
-            return clubs > 0 && (clubs > 8 || std::int16_t(s.memory.read<2>(stage + 0x3c)) <= 0);
-        };
-        if (selected >= -1) return supported(selected == -1 ? competition : read(stages + selected * 4));
-        // The original current-stage query can finalize competition records.
-        // Never call it from presentation. Before it resolves history2, opt in
-        // only when every possible stage belongs to this supported family.
-        if (!supported(competition)) return false;
-        for (int index = 0; index <= last; ++index)
-            if (!supported(read(stages + index * 4))) return false;
-        return true;
-    }
-    if (screen_template(builder) == ScreenTemplate::news_inbox) {
-        const auto toc = std::uint32_t(s.r<4>(8));
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(toc - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64) || !read(manager + 4)) return false;
-        const auto history = read(manager + 0x10);
-        if (!history) return false;
-        const auto descriptor = read(history);
-        return descriptor && read(descriptor) == builder && read(history + 0x1c) < 8 && read(history + 0x54);
-    }
-    if (screen_template(builder) == ScreenTemplate::loan_terms || screen_template(builder) == ScreenTemplate::negotiation_confirmation) {
-        const auto toc = std::uint32_t(s.r<4>(8));
-        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
-        const auto manager = read(toc - 0x7bb0);
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
-        const auto history = read(manager + 0x10), instance = read(manager + 4);
-        if (!history || !instance || !read(instance + 0x24)) return false;
-        const auto descriptor = read(history);
-        if (!descriptor || read(descriptor) != builder) return false;
-        if (builder == 0x1009dc00) {
-            // The confirmation reads the current human's embedded contract
-            // draft. Keep staff roles outside the player negotiation recipe.
-            const auto role = read(history + 0x14 + 4 * 8);
-            return (role >= 11 && role <= 13) || role == 15;
-        }
-        const auto count = read(toc - 0x7be4);
-        if (!count) return false;
-        auto subject = read(history + 0x14);
-        if (builder == 0x1041eb10) {
-            // Proposal confirmation owns a link; loan screens own a person
-            // pointer. Neither is the person ID stored by proposal editing.
-            if (!subject) subject = read(history + 0x24);
-            if (!subject) return false;
-            const auto offer = read(subject);
-            return offer && read(offer + 12) < read(count);
-        }
-        return subject && read(subject) < read(count) && read(subject + 0x14);
-    }
-    if (screen_template(builder) == ScreenTemplate::transfer_proposal || screen_template(builder) == ScreenTemplate::contract_negotiation) {
-        const auto toc = std::uint32_t(s.r<4>(8));
-        const auto manager = std::uint32_t(s.memory.read<4>(toc - 0x7bb0));
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || s.memory.read<4>(manager + 0x2c64)) return false;
-        const auto history = std::uint32_t(s.memory.read<4>(manager + 0x10));
-        if (!history) return false;
-        const auto descriptor = std::uint32_t(s.memory.read<4>(history));
-        const auto count = std::uint32_t(s.memory.read<4>(toc - 0x7be4));
-        // The proposal stores a person ID, unlike the player-details screen.
-        // Its original builder creates the transient draft on first entry.
-        const auto instance = std::uint32_t(s.memory.read<4>(manager + 4));
-        if (!descriptor || s.memory.read<4>(descriptor) != builder || !count ||
-            s.memory.read<4>(history + 0x14) >= s.memory.read<4>(count) || !instance) return false;
-        if (screen_template(builder) == ScreenTemplate::contract_negotiation) {
-            const auto tab = s.memory.read<4>(history + 0x1c), role = s.memory.read<4>(history + 0x14 + 8 * 8);
-            // Match the original playing-role predicate; staff negotiations
-            // have a different, tabless form and retain their legacy layout.
-            return tab >= 1 && tab <= 3 && ((role >= 11 && role <= 13) || role == 15) &&
-                   s.memory.read<4>(instance + 0x24);
-        }
-        return true;
-    }
-    if (screen_template(builder) == ScreenTemplate::search_tables || screen_template(builder) == ScreenTemplate::search_filters) {
-        const auto toc = std::uint32_t(s.r<4>(8));
-        const auto manager = std::uint32_t(s.memory.read<4>(toc - 0x7bb0));
-        if (!manager || s.memory.read<2>(manager + 0x2c58) || s.memory.read<4>(manager + 0x2c64)) return false;
-        const auto history = std::uint32_t(s.memory.read<4>(manager + 0x10));
-        if (screen_template(builder) == ScreenTemplate::search_filters) {
-            if (!history) return false;
-            const auto descriptor = std::uint32_t(s.memory.read<4>(history));
-            if (!descriptor || s.memory.read<4>(descriptor) != builder || !s.memory.read<4>(history + 0x1c)) return false;
-            const auto tab = s.memory.read<4>(history + 0x24);
-            if (tab != 1 && tab != 2) return false;
-        }
-        const auto engine = history ? std::uint32_t(s.memory.read<4>(history + 0x14)) : 0;
-        if (!engine) return false;
-        const auto preset = std::int8_t(s.memory.read<1>(engine));
-        if (preset < 0 || preset >= 10) return false;
-        const auto mode = s.memory.read<1>(engine + 4 + std::uint32_t(preset) * 0x2b0 + 0xd);
-        return mode >= 1 && mode <= 4;
-    }
-    if (screen_template(builder) == ScreenTemplate::player_details) {
-        const auto toc = std::uint32_t(s.r<4>(8));
-        const auto manager = std::uint32_t(s.memory.read<4>(toc - 0x7bb0));
-        if (!manager || s.memory.read<2>(manager + 0x2c58) != 0 || s.memory.read<4>(manager + 0x2c64)) return false;
-        const auto history = std::uint32_t(s.memory.read<4>(manager + 0x10));
-        if (!history) return false;
-        const auto section = s.memory.read<4>(history + 0x14 + 1 * 8);
-        if (section < 1 || section > 5) return false;
-        if (section == 1 && s.memory.read<4>(history + 0x14 + 4 * 8) != 0) return false;
-        if (section == 5) {
-            switch (s.memory.read<4>(history + 0x14 + 5 * 8)) {
-            case 1: case 2: case 4: case 8: case 16: break;
-            default: return false;
-            }
-        }
-        const auto staff = std::uint32_t(s.memory.read<4>(history + 0x14));
-        const auto count = std::uint32_t(s.memory.read<4>(toc - 0x7be4));
-        // Both the selected details grid and the player summary must exist.
-        // Keep each original builder's status/sentinel exclusions.
-        if (!staff || !count || !s.memory.read<4>(staff + 0x14) ||
-            std::int32_t(s.memory.read<4>(staff)) >= std::int32_t(s.memory.read<4>(count) - 16)) return false;
-        const auto status = s.memory.read<1>(staff + 0x62);
-        if (section != 2 && (status == 2 || (section != 1 && status == 1))) return false;
-        return section != 3 || s.memory.read<1>(staff + 0x60) != 5 ||
-            (s.memory.read<4>(staff + 0x24) && status == 11);
-    }
-    if (screen_template(builder) != ScreenTemplate::club_tables) return true;
+namespace {
+// The local, non-modal screen whose history node was opened by `builder`:
+// its manager and history, or zeros. Network screens share the original
+// protocol's 800x600 geometry and modal groups keep theirs.
+struct OpenScreen { std::uint32_t manager = 0, history = 0; };
+OpenScreen open_screen(const State& s, std::uint32_t builder) {
+    const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
+    const auto manager = read(std::uint32_t(s.r<4>(8)) - 0x7bb0);
+    if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return {};
+    const auto history = read(manager + 0x10);
+    if (!history) return {};
+    const auto descriptor = read(history);
+    if (!descriptor || read(descriptor) != builder) return {};
+    return {manager, history};
+}
+bool club_tables_available(const State& s) {
     switch (adaptive_club_section(s)) {
     case 1: case 2: case 3: case 4: return true;
     case 5: {
@@ -243,6 +49,162 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         return club_control::human_controlled(s,club,0,1,instance,0).value_or(false);
     }
     default: return false;
+    }
+}
+}
+bool adaptive_screen_available(const State& s, std::uint32_t builder) {
+    if (!adaptive_screen_enabled(builder)) return false;
+    const auto kind = screen_template(builder);
+    if (kind == ScreenTemplate::tactics) return true;
+    const auto toc = std::uint32_t(s.r<4>(8));
+    const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
+    if (kind == ScreenTemplate::club_tables) return club_tables_available(s);
+    const auto [manager, history] = open_screen(s, builder);
+    if (!history) return false;
+    const auto value = [&](unsigned index) { return read(history + 0x14 + index * 8); };
+    const auto instance = read(manager + 4);
+    switch (kind) {
+    case ScreenTemplate::league_selection:
+        return !instance && !s.memory.read<1>(read(toc - 0x79e4));
+    case ScreenTemplate::load_browser: {
+        const auto extension = value(4), filter = value(5);
+        // FILE_SCREENS also serves save/delete, quick-start, tactics and folder
+        // choosers. Opt in only to the original saved-career Load workflow.
+        if (value(2) || value(12) != 5 || value(13) || value(17) || value(18) != 1 ||
+            !value(3) || !value(6) || !value(7) || !value(8) || !extension || !filter || read(filter) != 0x10355820) return false;
+        constexpr char suffix[] = ".sav";
+        for (unsigned i = 0; i < sizeof(suffix); ++i)
+            if (s.memory.read<1>(extension + i) != std::uint8_t(suffix[i])) return false;
+        return true;
+    }
+    case ScreenTemplate::startup:
+        // First-run setup places a covering grid over the menu before opening
+        // mandatory settings. Let that original transition keep its geometry.
+        return !value(0);
+    case ScreenTemplate::daily_fixtures: {
+        const auto queue_slot = read(toc - 0x7420);
+        const auto queue = queue_slot ? read(queue_slot) : 0;
+        if (!queue) return false;
+        const auto group = value(1), groups = read(queue + 0x10), count = read(queue + 0x18);
+        if (!group || !groups || group < groups || (group - groups) % 0x20 || (group - groups) / 0x20 >= count) return false;
+        const auto first = std::int32_t(read(group + 4)), last = std::int32_t(read(group + 8));
+        const auto entries = read(queue + 0x1c);
+        return first >= 0 && last >= first && std::uint32_t(last) < read(queue + 0x24) &&
+               entries && read(entries + std::uint32_t(first) * 0x6c);
+    }
+    case ScreenTemplate::transfer_history:
+        return transfer_browser_native_enabled();
+    case ScreenTemplate::nations_and_clubs: {
+        const auto tab = value(0), mode = value(19);
+        // The single-list nation picker selects tab 1 during construction.
+        if (mode == 2) return value(1) != 0;
+        if (mode > 1 || tab < 1 || tab > 6) return false;
+        constexpr unsigned selection_slot[]{1, 4, 7, 10, 13, 16};
+        return value(selection_slot[tab - 1]) != 0;
+    }
+    case ScreenTemplate::competition: {
+        const auto competition = value(0);
+        if (!competition) return false;
+        const auto section = value(1);
+        // Results, Calendar and Match Dates list games for the competition as
+        // a whole, including competitions with knockout stages.
+        if (section >= 2 && section <= 4) return true;
+        if (section != 1 || value(4) > 2) return false;
+        const auto last = std::int32_t(read(competition + 0x30));
+        const auto selected = std::int32_t(value(2));
+        if (last < -1 || last > 127 || selected < -2 || selected > last) return false;
+        const auto stages = read(competition + 0xc);
+        if (last >= 0 && !stages) return false;
+        const auto supported = [&](std::uint32_t stage) {
+            if (!stage || s.memory.read<1>(stage + 0x43) != 2) return false;
+            const auto clubs = std::int16_t(s.memory.read<2>(stage + 0x3e));
+            // Small groups with their own fixture list have a separate layout.
+            return clubs > 0 && (clubs > 8 || std::int16_t(s.memory.read<2>(stage + 0x3c)) <= 0);
+        };
+        if (selected >= -1) return supported(selected == -1 ? competition : read(stages + selected * 4));
+        // The original current-stage query can finalize competition records.
+        // Never call it from presentation. Before it resolves history2, opt in
+        // only when every possible stage belongs to this supported family.
+        if (!supported(competition)) return false;
+        for (int index = 0; index <= last; ++index)
+            if (!supported(read(stages + index * 4))) return false;
+        return true;
+    }
+    case ScreenTemplate::news_inbox:
+        return instance && value(1) < 8 && value(8);
+    case ScreenTemplate::loan_terms:
+    case ScreenTemplate::negotiation_confirmation: {
+        if (!instance || !read(instance + 0x24)) return false;
+        if (builder == 0x1009dc00) {
+            // The confirmation reads the current human's embedded contract
+            // draft. Keep staff roles outside the player negotiation recipe.
+            const auto role = value(4);
+            return (role >= 11 && role <= 13) || role == 15;
+        }
+        const auto count = read(toc - 0x7be4);
+        if (!count) return false;
+        auto subject = value(0);
+        if (builder == 0x1041eb10) {
+            // Proposal confirmation owns a link; loan screens own a person
+            // pointer. Neither is the person ID stored by proposal editing.
+            if (!subject) subject = value(2);
+            if (!subject) return false;
+            const auto offer = read(subject);
+            return offer && read(offer + 12) < read(count);
+        }
+        return subject && read(subject) < read(count) && read(subject + 0x14);
+    }
+    case ScreenTemplate::transfer_proposal:
+    case ScreenTemplate::contract_negotiation: {
+        const auto count = read(toc - 0x7be4);
+        // The proposal stores a person ID, unlike the player-details screen.
+        // Its original builder creates the transient draft on first entry.
+        if (!count || value(0) >= read(count) || !instance) return false;
+        if (kind == ScreenTemplate::contract_negotiation) {
+            const auto tab = value(1), role = value(8);
+            // Match the original playing-role predicate; staff negotiations
+            // have a different, tabless form and retain their legacy layout.
+            return tab >= 1 && tab <= 3 && ((role >= 11 && role <= 13) || role == 15) &&
+                   read(instance + 0x24);
+        }
+        return true;
+    }
+    case ScreenTemplate::search_tables:
+    case ScreenTemplate::search_filters: {
+        if (kind == ScreenTemplate::search_filters) {
+            if (!value(1)) return false;
+            const auto tab = value(2);
+            if (tab != 1 && tab != 2) return false;
+        }
+        const auto engine = value(0);
+        if (!engine) return false;
+        const auto preset = std::int8_t(s.memory.read<1>(engine));
+        if (preset < 0 || preset >= 10) return false;
+        const auto mode = s.memory.read<1>(engine + 4 + std::uint32_t(preset) * 0x2b0 + 0xd);
+        return mode >= 1 && mode <= 4;
+    }
+    case ScreenTemplate::player_details: {
+        const auto section = value(1);
+        if (section < 1 || section > 5) return false;
+        if (section == 1 && value(4) != 0) return false;
+        if (section == 5) {
+            switch (value(5)) {
+            case 1: case 2: case 4: case 8: case 16: break;
+            default: return false;
+            }
+        }
+        const auto staff = value(0);
+        const auto count = read(toc - 0x7be4);
+        // Both the selected details grid and the player summary must exist.
+        // Keep each original builder's status/sentinel exclusions.
+        if (!staff || !count || !read(staff + 0x14) ||
+            std::int32_t(read(staff)) >= std::int32_t(read(count) - 16)) return false;
+        const auto status = s.memory.read<1>(staff + 0x62);
+        if (section != 2 && (status == 2 || (section != 1 && status == 1))) return false;
+        return section != 3 || s.memory.read<1>(staff + 0x60) != 5 ||
+            (read(staff + 0x24) && status == 11);
+    }
+    default: return true;
     }
 }
 std::uint32_t adaptive_club_section(const State& s) {
