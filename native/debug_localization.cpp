@@ -4,6 +4,21 @@
 
 namespace cm::aot {
 std::string_view debug_text(unsigned language, DebugText text) {
+    if (text == DebugText::club_rule_pair_hint) {
+        static constexpr std::array<std::string_view, 11> labels{
+            "Two listed teams: only Win vs Loss keeps the club rules.",
+            "Two listed teams: only Win vs Loss keeps the club rules.",
+            "Deux clubs : seule Victoire contre D\351faite conserve les r\350gles.",
+            "Zwei Teams: Nur Sieg gegen Niederlage beh\344lt die Vereinsregeln bei.",
+            "Due squadre: solo Vittoria contro Sconfitta mantiene le regole.",
+            "Dos equipos: solo Victoria contra Derrota mantiene las reglas.",
+            "To hold: Kun Sejr mod Nederlag bevarer klubreglerne.",
+            "Twee teams: alleen Winst tegen Verlies behoudt de clubregels.",
+            "To lag: Bare Seier mot Tap beholder klubbreglene.",
+            "Dois times: s\363 Vit\363ria contra Derrota mant\351m as regras dos clubes.",
+            "Tv\345 lag: bara Vinst mot F\366rlust beh\345ller klubbreglerna."};
+        return labels[language < labels.size() ? language : 0];
+    }
     if (text == DebugText::maximize_attributes) {
         static constexpr std::array<std::string_view, 11> labels{
             "Maximize Attributes", "Maximize Attributes", "Maximiser les attributs", "Attribute maximieren",

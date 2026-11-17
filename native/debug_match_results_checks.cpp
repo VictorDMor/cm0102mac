@@ -1,4 +1,5 @@
 #include "debug_match_results.hpp"
+#include "debug_underdogs.hpp"
 #include "match_debugger_checkpoint.hpp"
 #include "match_debugger_factory.hpp"
 #include "match_debugging.hpp"
@@ -328,19 +329,29 @@ void check_club_rules(const Checkpoint& initial, const Fixture& fixture, const s
     require(effective_debug_match_result(s, fixture.original) == ForcedMatchResult::home_win, "Default club rule was not victory");
     const auto later = copy_fixture(s, fixture.original);
     s.memory.write<4>(later + 0x28, s.memory.read<4>(later + 0x28) + 5);
+    constexpr std::array results{ForcedClubResult::win, ForcedClubResult::draw, ForcedClubResult::loss};
+    // Rows and columns are Win, Draw, Loss. Draw/Draw still uses normal simulation.
+    constexpr std::array<std::array<ForcedMatchResult, 3>, 3> paired_results{{
+        {ForcedMatchResult::normal, ForcedMatchResult::normal, ForcedMatchResult::home_win},
+        {ForcedMatchResult::normal, ForcedMatchResult::normal, ForcedMatchResult::normal},
+        {ForcedMatchResult::away_win, ForcedMatchResult::normal, ForcedMatchResult::normal}}};
     for (auto result : {ForcedClubResult::win, ForcedClubResult::draw, ForcedClubResult::loss}) {
         require(set_debug_club_result(s, home, result), "Could not change the club rule");
         const auto expected = result == ForcedClubResult::win ? ForcedMatchResult::home_win :
             result == ForcedClubResult::loss ? ForcedMatchResult::away_win : ForcedMatchResult::draw;
         require(effective_debug_match_result(s, later) == expected, "Club rule did not reach future fixtures");
         require(add_debug_result_club(s, away), "Could not add opposing club");
-        require(set_debug_club_result(s, away, ForcedClubResult::loss), "Could not set opposing rule");
-        require(effective_debug_match_result(s, later) == ForcedMatchResult::normal,
-            "Two listed clubs must use normal simulation, including compatible rules");
-        require(set_debug_match_result(s, later, ForcedMatchResult::away_win) &&
-            effective_debug_match_result(s, later) == ForcedMatchResult::away_win, "Manual choice did not override two club rules");
-        require(set_debug_match_result(s, later, ForcedMatchResult::normal) &&
-            effective_debug_match_result(s, later) == ForcedMatchResult::normal, "Clearing manual choice did not restore the two-club exception");
+        for (auto opposing : results) {
+            require(set_debug_club_result(s, away, opposing), "Could not set opposing rule");
+            const auto paired = paired_results[unsigned(result)][unsigned(opposing)];
+            for (const auto target : {fixture.original, fixture.queued, later})
+                require(effective_debug_match_result(s, target) == paired,
+                    "Two-club result did not respect the Win/Loss exception");
+            require(set_debug_match_result(s, later, ForcedMatchResult::draw) &&
+                effective_debug_match_result(s, later) == ForcedMatchResult::draw, "Manual choice did not override two club rules");
+            require(set_debug_match_result(s, later, ForcedMatchResult::normal) &&
+                effective_debug_match_result(s, later) == paired, "Clearing manual choice did not restore the paired club rules");
+        }
         require(remove_debug_result_club(s, away), "Could not remove opponent");
         require(set_debug_match_result(s, later, ForcedMatchResult::draw) &&
             effective_debug_match_result(s, later) == ForcedMatchResult::draw, "Manual choice did not override one club rule");
@@ -410,6 +421,19 @@ void check_club_rules(const Checkpoint& initial, const Fixture& fixture, const s
         play_quick(*played, fixture);
         check_played(*played, fixture, expected);
         require(match_result_debugging(*played).clubs.size() == 1, "Simulation consumed recurring rule");
+    }
+    for (auto result : {ForcedClubResult::win, ForcedClubResult::loss}) {
+        auto played = initial.restore();
+        const auto opposing = result == ForcedClubResult::win ? ForcedClubResult::loss : ForcedClubResult::win;
+        const auto expected = result == ForcedClubResult::win ? ForcedMatchResult::home_win : ForcedMatchResult::away_win;
+        require(add_debug_result_club(*played, home) && set_debug_club_result(*played, home, result) &&
+            add_debug_result_club(*played, away) && set_debug_club_result(*played, away, opposing),
+            "Could not arm complementary club rules");
+        play_quick(*played, fixture);
+        check_played(*played, fixture, expected);
+        require(match_result_debugging(*played).clubs.size() == 2 &&
+            effective_debug_match_result(*played, fixture.original) == expected,
+            "Simulation consumed or changed complementary club rules");
     }
 }
 
@@ -752,6 +776,67 @@ void check_new_career_boundary(const Checkpoint& initial, const Fixture& fixture
     select_native_debugging_features(result_feature);
 }
 
+void check_underdog_career_boundaries(const Checkpoint& initial) {
+    auto context = initial.restore();
+    require(bool(context->platform), "Missing isolated load bridge");
+    constexpr std::uint32_t base = 0x62000000, fixture = base, home = base + 0x100,
+        away = base + 0x400, staff = base + 0x800, player = base + 0x900;
+    const std::array fixtures{fixture};
+    select_native_debugging_features((1u << unsigned(DebugFeature::underdogs)) |
+        (1u << unsigned(DebugFeature::underdogs_max)));
+    for (bool new_career : {false, true}) for (auto mode : {UnderdogMode::normal, UnderdogMode::maximum}) {
+        State s;
+        s.memory.map(base, 0x2000);
+        s.memory.write<1>(fixture + 0x43, 0xff);
+        s.memory.write<4>(fixture + 0x1c, home); s.memory.write<4>(fixture + 0x20, away);
+        s.memory.write<2>(home + 0x1ec, 1000); s.memory.write<2>(away + 0x1ec, 9000);
+        s.memory.write<4>(home + 0x98, staff); s.memory.write<4>(staff + 0x14, player);
+        s.memory.write<2>(player + 4, 100); s.memory.write<1>(staff + 0x64, 8);
+        const auto before = s.memory.copy_out(base, 0x2000);
+        const auto registers = s.registers;
+        const auto unique = s.unique;
+        const auto reset = [&] {
+            if (!new_career) context->platform->quick_save_load_begin(s);
+            else {
+                // Exercise the real host boundary, stopping before the guest
+                // constructor. No career or original save is created.
+                s.pc = 0x10345bb0;
+                s.budget = s.executed;
+                bool stopped = false;
+                try { dispatch_page(s); }
+                catch (const std::runtime_error& error) {
+                    if (std::string_view(error.what()) != "Native instruction budget exhausted") throw;
+                    stopped = true;
+                }
+                require(stopped, "Underdog reset crossed the new-career boundary");
+            }
+        };
+        reset();
+        require(!s.runtime_diagnostics, "Empty career reset allocated diagnostics");
+        require(arm_debug_underdogs(s, fixtures, mode), "Could not arm underdog reset fixture");
+        reset();
+        require(underdog_debugging(s).fixtures.empty(), "Career boundary retained underdog plans");
+        { DebugUnderdogScope scope(s, fixture);
+          require(s.memory.read<1>(staff + 0x64) == 8, "Old underdog plan affected the loaded career"); }
+        require(s.memory.copy_out(base, 0x2000) == before, "Clearing underdogs changed guest bytes");
+        // Clearing a plan during an active scope must leave its depth and
+        // rollback intact, including a subsequent nested scope.
+        require(arm_debug_underdogs(s, fixtures, mode), "Could not rearm underdog reset fixture");
+        {
+            DebugUnderdogScope scope(s, fixture);
+            require(s.memory.read<1>(staff + 0x64) == 20, "Underdog control did not change the attribute");
+            reset();
+            require(underdog_debugging(s).fixtures.empty() && underdog_debugging(s).depth == 1,
+                "Career reset broke active underdog scope ownership");
+            DebugUnderdogScope nested(s, fixture);
+        }
+        require(!underdog_debugging(s).depth && s.memory.copy_out(base, 0x2000) == before,
+            "Career reset prevented temporary attribute restoration");
+        require(s.registers == registers && s.unique == unique, "Underdog reset changed caller registers");
+    }
+    select_native_debugging_features(result_feature);
+}
+
 // Route nested match calls through their normal dispatcher, with no
 // differential sampling, to isolate two rare inputs at their own call sites.
 struct MatchScript {
@@ -854,7 +939,7 @@ void check_official_forfeit(const Checkpoint& initial, const Fixture& fixture) {
 
 enum class InactivePlan {
     other_fixture, cleared, disabled, watched, detailed, other_background,
-    both_clubs, recurring_watched, recurring_detailed, other_club,
+    conflicting_clubs, recurring_watched, recurring_detailed, other_club,
     day_other_date, day_other_year, day_other_competition, day_cleared, day_disabled, day_watched, day_detailed
 };
 
@@ -863,7 +948,7 @@ void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& 
     auto actual = initial.restore();
     select_native_debugging_features(result_feature);
     const auto planned = (kind == InactivePlan::other_fixture || kind == InactivePlan::other_background) ? b.original : a.original;
-    const bool recurring = kind >= InactivePlan::both_clubs && kind <= InactivePlan::other_club;
+    const bool recurring = kind >= InactivePlan::conflicting_clubs && kind <= InactivePlan::other_club;
     const bool day_draw = kind >= InactivePlan::day_other_date;
     if (day_draw) {
         select_native_debugging_features(draw_feature);
@@ -883,10 +968,9 @@ void check_inactive(const Checkpoint& initial, const Fixture& a, const Fixture& 
     } else if (recurring) {
         const auto club_fixture = kind == InactivePlan::other_club ? b.original : a.original;
         require(add_debug_result_club(*actual, actual->memory.read<4>(club_fixture + 0x1c)), "Could not arm inactive club rule");
-        if (kind == InactivePlan::both_clubs) {
+        if (kind == InactivePlan::conflicting_clubs) {
             const auto away = actual->memory.read<4>(a.original + 0x20);
-            require(add_debug_result_club(*actual, away) && set_debug_club_result(*actual, away, ForcedClubResult::loss),
-                "Could not arm compatible opposing rule");
+            require(add_debug_result_club(*actual, away), "Could not arm conflicting opposing win rule");
         }
     } else require(set_debug_match_result(*actual, planned, ForcedMatchResult::away_win), "Could not prepare inactive choice");
     if (kind == InactivePlan::cleared)
@@ -939,11 +1023,12 @@ int main(int argc, char** argv) {
         check_cup(initial, world.first);
         check_load_boundary(initial, world.first, world.second);
         check_new_career_boundary(initial, world.first);
+        check_underdog_career_boundaries(initial);
         check_missing_scorer(initial, world.first);
         check_official_forfeit(initial, world.first);
         for (auto kind : {InactivePlan::other_fixture, InactivePlan::cleared, InactivePlan::disabled,
                           InactivePlan::watched, InactivePlan::detailed, InactivePlan::other_background,
-                          InactivePlan::both_clubs, InactivePlan::recurring_watched, InactivePlan::recurring_detailed, InactivePlan::other_club,
+                          InactivePlan::conflicting_clubs, InactivePlan::recurring_watched, InactivePlan::recurring_detailed, InactivePlan::other_club,
                           InactivePlan::day_other_date, InactivePlan::day_other_year, InactivePlan::day_other_competition,
                           InactivePlan::day_cleared, InactivePlan::day_disabled, InactivePlan::day_watched, InactivePlan::day_detailed})
             check_inactive(initial, world.first, world.second, kind);

@@ -93,7 +93,14 @@ ForcedMatchResult effective_debug_match_result(const State& s, std::uint32_t fix
     const auto home = s.memory.read<4>(fixture + 0x1c), away = s.memory.read<4>(fixture + 0x20);
     const auto h = std::ranges::find(rules, home, &ClubResultRule::club);
     const auto a = std::ranges::find(rules, away, &ClubResultRule::club);
-    if ((h == rules.end()) == (a == rules.end())) return ForcedMatchResult::normal;
+    if (h != rules.end() && a != rules.end()) {
+        if (h->result == ForcedClubResult::win && a->result == ForcedClubResult::loss)
+            return ForcedMatchResult::home_win;
+        if (h->result == ForcedClubResult::loss && a->result == ForcedClubResult::win)
+            return ForcedMatchResult::away_win;
+        return ForcedMatchResult::normal;
+    }
+    if (h == rules.end() && a == rules.end()) return ForcedMatchResult::normal;
     const bool home_rule = h != rules.end();
     const auto result = (home_rule ? h : a)->result;
     if (result == ForcedClubResult::draw) return ForcedMatchResult::draw;

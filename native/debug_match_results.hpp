@@ -32,14 +32,15 @@ struct MatchResultDebugging {
 // Manual and competition-day choices last for this session; club rules persist beside each career save.
 MatchResultDebugging& match_result_debugging(State&);
 const MatchResultDebugging& match_result_debugging(const State&);
-// Forgets every choice and rule. Unlike assigning through the accessor above, it does not create
+// Forgets every result choice/rule and armed underdog fixture at career boundaries.
+// Unlike assigning through the accessor above, it does not create
 // the runtime diagnostics of a state that has none (replays and check tools take other paths then).
 void clear_match_result_debugging(State&);
 bool debug_match_result_eligible(const State&, std::uint32_t fixture);
 bool set_debug_match_result(State&, std::uint32_t fixture, ForcedMatchResult);
 ForcedMatchResult debug_match_result(const State&, std::uint32_t fixture);
 // Manual choices override day draws, which override recurring club rules.
-// Two listed clubs cancel their recurring rules only.
+// Two listed clubs cancel their recurring rules unless they form a Win/Loss pair.
 bool debug_draw_day(const State&, std::uint32_t fixture);
 bool set_debug_draw_day(State&, std::uint32_t fixture, bool enabled);
 ForcedMatchResult effective_debug_match_result(const State&, std::uint32_t fixture);

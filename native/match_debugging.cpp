@@ -478,8 +478,7 @@ void build_club_results(State& s) {
         call.args({color(0x7bc8), call.text(text(DebugText::remove)), remove_club_action, rule.club});
         call.call(0x107444e0, {ui, grid, 4, row, 0x30, color(0x7bc4), 12, 2});
     }
-    label(130, 486, 769, 506, portuguese ? "Dois times listados: regras se anulam. Resultado manual tem prioridade."
-        : "Two listed teams: club rules cancel out. Manual results take priority.");
+    label(130, 486, 769, 506, text(DebugText::club_rule_pair_hint));
 }
 
 bool dispatch_club_results(State& s, std::uint32_t control, unsigned action) {

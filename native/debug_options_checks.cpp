@@ -2,6 +2,8 @@
 #include "debug_localization.hpp"
 #include "debug_match_results.hpp"
 #include "debug_force_purchase.hpp"
+#include "transfer_manager_native_adapter.hpp"
+#include "routine_check.hpp"
 #include "guest_abi.hpp"
 #include "code_fragment_adapter.hpp"
 #include "match_replay.hpp"
@@ -579,7 +581,8 @@ int main(int argc, char** argv) {
         for (unsigned language = 0; language < 11; ++language)
             for (auto text : {DebugText::options, DebugText::underdogs, DebugText::underdogs_max,
                              DebugText::repeat_goal, DebugText::red_cards, DebugText::injuries,
-                             DebugText::extend_all_contracts, DebugText::force_purchase, DebugText::maximize_attributes})
+                             DebugText::extend_all_contracts, DebugText::force_purchase, DebugText::maximize_attributes,
+                             DebugText::club_rule_pair_hint})
                 require(!debug_text(language, text).empty(), "Missing translation");
         require(debug_text(9, DebugText::extend_all_contracts) == "Renovar Todos os Contratos por 1 Ano" &&
                 debug_text(255, DebugText::extend_all_contracts) == "Extend All Contracts by 1 Year", "Collective renewal labels");
@@ -787,6 +790,36 @@ int main(int argc, char** argv) {
                 "Submitted bid must keep its zero fee and original pending state");
         invoke(0x103eb440, {transfers, id});
         const auto link = c.r(3);
+        const auto compare_transfer = [&](unsigned entry, std::initializer_list<unsigned> args, unsigned results) {
+            const auto registers = s.registers;
+            const auto unique = s.unique;
+            const auto pc = s.pc;
+            const bool previous_contract = routine_check_native_contract;
+            unsigned reg = 3;
+            for (const auto value : args) c.set(reg++, value);
+            c.set_lr(0xfffffff0);
+            routine_check_native_contract = true;
+            const auto differences = compare_routine_call(s, entry,
+                transfer_manager_native_run_original, transfer_manager_native_run_rewrite, results);
+            routine_check_native_contract = previous_contract;
+            s.registers = registers; s.unique = unique; s.pc = pc;
+            for (const auto& difference : differences)
+                std::cerr << "Forced purchase " << hex_address(entry) << ": " << difference << '\n';
+            require(differences.empty(), "Forced-purchase native path differs from the existing original override");
+        };
+        require(forced_purchase_for_seller(s, offer, seller) &&
+                !forced_purchase_for_seller(s, offer, managed_club), "Force flag leaked to the buying club");
+        // The generated override skips the flag-only review guard as well as
+        // the seller decision. Check both scheduler modes against that path.
+        compare_transfer(0x103ee1b0, {transfers, link, 0}, 0);
+        compare_transfer(0x103ee1b0, {transfers, link, 1}, 0);
+        compare_transfer(0x103e4740, {transfers, link, 0}, 0);
+        // A revised bid is an ordinary bid until explicitly marked again.
+        c.put32(offer + 0x2c, revision + 1);
+        require(!forced_purchase_for_seller(s, offer, seller), "Another offer revision retained forced acceptance");
+        compare_transfer(0x103ee1b0, {transfers, link, 0}, 0);
+        compare_transfer(0x103e4740, {transfers, link, 0}, 0);
+        c.put32(offer + 0x2c, revision);
         invoke(0x103eb650, {transfers, link});
         require(c.u8(offer + 0x34) == 5, "CPU seller did not approve the zero-fee bid");
 
@@ -811,6 +844,35 @@ int main(int argc, char** argv) {
         require(c.u8(offer + 0x10) == 2 && c.u8(pending + 0x64) == 2 && c.u32(pending + 8) == 0,
                 "Player did not accept the submitted zero-wage terms");
         require(c.u8(offer + 0x34) == 12, "Seller did not give final approval");
+        // Reopen the seller's pending review: an already approved offer skips
+        // this branch even without the force override.
+        const auto seller_approved = c.u8(offer + 0x37);
+        c.put8(offer + 0x37, 0);
+        // This AI fixture's board does not normally object. Supply a refusal
+        // at the external board boundary, retaining the real transfer checks.
+        // It must be skipped only for the marked seller, never for the buyer
+        // or a stale offer revision.
+        const auto previous_probe = dispatch_probe;
+        // Generated callers can enter a native owner directly. Decline that
+        // one owner so both compared paths receive the scripted board verdict.
+        RoutineChecker board_boundary([](std::uint32_t entry) { return entry != 0x101a0f50; }, 0, 0);
+        const auto previous_checker = routine_checker;
+        routine_checker = &board_boundary;
+        dispatch_probe = [](State& state) {
+            if (state.pc != 0x101a0f50) return false;
+            guest::Cpu cpu(state);
+            cpu.set(3, 0x800);
+            cpu.finish();
+            return true;
+        };
+        compare_transfer(0x103f9d60, {transfers, offer, seller, 0, 0}, RoutineChecker::result_r3);
+        compare_transfer(0x103f9d60, {transfers, offer, managed_club, 0, 0}, RoutineChecker::result_r3);
+        c.put32(offer + 0x2c, revision + 1);
+        compare_transfer(0x103f9d60, {transfers, offer, seller, 0, 0}, RoutineChecker::result_r3);
+        dispatch_probe = previous_probe;
+        routine_checker = previous_checker;
+        c.put32(offer + 0x2c, revision);
+        c.put8(offer + 0x37, seller_approved);
         invoke(0x103e80e0, {transfers, offer, managed_club});
         require(c.u8(offer + 0x34) == 14, "Buyer did not confirm the transfer");
         TransferFiles files;

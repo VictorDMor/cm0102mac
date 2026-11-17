@@ -83,8 +83,8 @@ DatabaseWorld DatabaseWorld::load(const std::filesystem::path& original_program,
                 throw std::runtime_error("Independent bootstrap did not complete the screen manager initializer");
             continue;
         }
-        // SIPRINT's C++ owns this one, past these counters.
-        if (engine_initialization::entries[entry] == 0x1074d340) continue;
+        // SIPRINT's C++ owns this one, past these counters; so does DISPLAY.CPP's (0x107259a0).
+        if (engine_initialization::entries[entry] == 0x1074d340 || engine_initialization::entries[entry] == 0x107259a0) continue;
         // DATABASE.CPP now owns its initializer directly. Check the date it
         // publishes (31 August 2001; month 7 is zero-based), rather than the superseded adapter count.
         if (engine_initialization::entries[entry] == 0x100de3b0) {

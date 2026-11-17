@@ -472,7 +472,12 @@ const MatchResultDebugging& match_result_debugging(const State& state) {
 }
 
 void clear_match_result_debugging(State& state) {
-    if (state.runtime_diagnostics) state.runtime_diagnostics->match_results = {};
+    if (!state.runtime_diagnostics) return;
+    state.runtime_diagnostics->match_results = {};
+    // Both features are session choices. The shared load/new-career boundary
+    // must discard old underdog plans too. An active scope still owns its
+    // attribute restoration and depth; clearing plans must not reset those.
+    state.runtime_diagnostics->underdogs.fixtures.clear();
 }
 
 ForcedPurchases& forced_purchases(State& state) {
