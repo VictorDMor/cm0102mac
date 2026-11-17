@@ -2,6 +2,7 @@
 #include "match_eng_advance.hpp"
 #include "debug_underdogs.hpp"
 #include "debug_match_results.hpp"
+#include "match_phase_timing.hpp"
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -35,6 +36,8 @@ constexpr ReportBacks report_backs(Reports r) {
 }  // namespace
 
 static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t count) {
+    using TimingPhase = match_phase_timing::Phase;
+    [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> advance_timing(TimingPhase::advance);
     Frame frame(c, 0x101d3f60, 0xd0, {.first_gpr = 15});
     Fpu fpu(c);
     Kept<31> r_match(c, match);
@@ -59,6 +62,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
     };
     // The calls that ask about a team's report and publish it (the original's 3 calls per team).
     const auto publish_reports = [&](Reports which) {
+        [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> report_timing(TimingPhase::reports);
         const auto b = report_backs(which);
         const auto team_report = [&](std::uint32_t flag_at, std::uint32_t team_at, std::uint32_t a, std::uint32_t bb, std::uint32_t cc,
                                      bool second) {
@@ -129,6 +133,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
     const auto flag = c.u8(match + over_flag);
     c.set({{4, flag}, {5, u(s8(flag))}});
     if (compare(c, s8(flag), 0) != 0) {
+        [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> event_timing(TimingPhase::event_simulation);
         c.set(3, match);
         call(c, 0x101db340, 0x101d3fac);
         c.set(3, match);
@@ -142,6 +147,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
     }
     // One pass of the loop: -1 to go on with the next count, otherwise the value to return.
     const auto pass = [&]() -> std::int32_t {
+        [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> phase_timing(TimingPhase::clock_and_restarts);
         const auto restart = field(restart_stage);
         c.set(4, u(restart));
         if (compare(c, restart, 1) == 0) {
@@ -461,6 +467,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
             }
         }
         // The ball's cells are worked out for both sides, and the teams' tactics are applied.
+        phase_timing.next(TimingPhase::tactics_and_ball);
         c.set(3, match);
         c.set(5, byte_7931(c, match));
         c.set(4, c.u8(match + possession_side));
@@ -492,6 +499,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
             }
         }
         // Every actor starts the tick unmarked.
+        phase_timing.next(TimingPhase::marking);
         const auto slot_at = [&](std::uint32_t index) { return match + (index << 2) + actors_at; };
         for (actor_i = 0;; actor_i = actor_i + 1) {
             c.set(4, u(s8(actor_i)));
@@ -608,6 +616,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
         }
 
         // Each actor takes its turn.
+        phase_timing.next(TimingPhase::actor_turns);
         c.put8(frame.at(0x3b), 0);
         const auto current = [&] { return c.u32(slot_at(std::uint32_t(actor_j))); };
         for (actor_j = 0;; actor_j = actor_j + 1) {
@@ -632,6 +641,7 @@ static std::uint32_t advance_impl(Cpu& c, std::uint32_t match, std::uint32_t cou
                 act_now = compare(c, s8(rating), roll) > 0;
             }
             if (act_now) {
+                [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> action_timing(TimingPhase::actor_dispatch);
                 c.set(3, current());
                 c.call(0x102775e0, 0x101d50f8);
             }

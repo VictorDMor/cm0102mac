@@ -1,10 +1,12 @@
 #include "match_pl_detail.hpp"
 #include "guest_fpu.hpp"
+#include "match_phase_timing.hpp"
 
 namespace cm::aot::match_pl {
 using namespace guest;
 
 void choose_secondary_action(Cpu& c, std::uint32_t player) {
+    [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> timing(match_phase_timing::Phase::secondary_action);
     Frame frame(c, 0x10281af0, 0xc0, {.first_gpr = 19});
     const auto messages = c.toc(-0x7ba8), doubles = c.toc(-0x51e8), seed = c.toc(-0x7b90),
                begin = c.toc(-0x7b8c), end = c.toc(-0x7b88), cursor = c.toc(-0x7b84), strings = c.toc(-0x51e4);

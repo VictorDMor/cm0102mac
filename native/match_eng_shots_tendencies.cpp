@@ -6,6 +6,7 @@
 #include "native_drawing.hpp"
 #include "season_reference.hpp"
 #include "match_turbo.hpp"
+#include "match_phase_timing.hpp"
 
 namespace cm::aot::match_eng {
 using namespace guest;
@@ -24,6 +25,7 @@ struct Bump { unsigned side = 0, doubled = 0, address = 0, old = 0, low = 0, sum
 namespace {
 template<class Execution>
 void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument) {
+    [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> timing(match_phase_timing::Phase::tendencies);
     Frame frame(c, 0x101df110, 0x120, {.first_gpr = 15, .first_fpr = 24});
     Execution kernel(c);
     auto& fp=kernel.fp;
@@ -185,7 +187,7 @@ void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument)
             sum = fp.fadds(c.f32(player + 0x80), sum);
             sum = fp.fadds(c.f32(player + 0xc4), sum);
             sum = fp.fadds(c.f32(pool + 0x2c), sum);
-            double blend = fp.multiply_add(0x101df2dc, sum, c.f32(pool + 0x54), c.f32(pool + 0x50));
+            double blend = tendency_detail::multiply_add<0x101df2dc>(fp, sum, c.f32(pool + 0x54), c.f32(pool + 0x50));
             blend = fp.fadd(blend, share);
             ratings.first = (fp.frsp(fp.fsub(blend, c.f64(table + 0x28))));
         }
@@ -259,12 +261,12 @@ void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument)
         {
             const double share2 = fitness_share();
             double sum = fp.fmuls(c.f32(pool + 0x18), c.f32(player + 0xc8));
-            sum = fp.multiply_add(0x101df778, c.f32(pool + 0x18), c.f32(player + 0xf4), sum);
+            sum = tendency_detail::multiply_add<0x101df778>(fp, c.f32(pool + 0x18), c.f32(player + 0xf4), sum);
             sum = fp.fadds(c.f32(player + 0xa0), sum);
             sum = fp.fadds(c.f32(player + 0xac), sum);
-            sum = fp.multiply_add(0x101df784, c.f64(table + 0x1b8), c.f32(player + 0x90), sum);
+            sum = tendency_detail::multiply_add<0x101df784>(fp, c.f64(table + 0x1b8), c.f32(player + 0x90), sum);
             sum = fp.fadd(c.f64(table + 0x130), sum);
-            double blend = fp.multiply_add(0x101df794, sum, c.f64(table + 0x90), c.f64(table + 0x200));
+            double blend = tendency_detail::multiply_add<0x101df794>(fp, sum, c.f64(table + 0x90), c.f64(table + 0x200));
             blend = fp.fadd(blend, share2);
             c.set_f(1, blend);
             ratings.second = (fp.frsp(fp.fsub(blend, c.f64(table + 0x28))));
@@ -322,13 +324,13 @@ void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument)
         {
             const double share3 = fitness_share();
             double sum = fp.fadds(c.f32(player + 0x98), c.f32(player + 0x74));
-            sum = fp.multiply_add(0x101dfca8, c.f64(table + 0x1b8), c.f32(player + 0x80), sum);
+            sum = tendency_detail::multiply_add<0x101dfca8>(fp, c.f64(table + 0x1b8), c.f32(player + 0x80), sum);
             sum = fp.fadd(fp.fmuls(c.f32(pool + 0x18), c.f32(player + 0x9c)), sum);
-            sum = fp.multiply_add(0x101dfcb0, c.f64(table + 0x1b8), c.f32(player + 0xbc), sum);
+            sum = tendency_detail::multiply_add<0x101dfcb0>(fp, c.f64(table + 0x1b8), c.f32(player + 0xbc), sum);
             sum = fp.fadd(c.f32(player + 0xac), sum);
             sum = fp.fadd(c.f32(player + 0xc4), sum);
             sum = fp.fadd(c.f64(table + 0x130), sum);
-            double blend = fp.multiply_add(0x101dfcc8, sum, c.f64(table + 0x90), c.f64(table + 0x220));
+            double blend = tendency_detail::multiply_add<0x101dfcc8>(fp, sum, c.f64(table + 0x90), c.f64(table + 0x220));
             blend = fp.fadd(blend, share3);
             c.set_f(1, blend);
             ratings.third = (fp.frsp(fp.fsub(blend, c.f64(table + 0x28))));
@@ -402,7 +404,7 @@ void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument)
             sum = fp.fadds(c.f32(player + 0xd0), sum);
             sum = fp.fadds(c.f32(pool + 0x2c), sum);
             c.set_f(1, c.f32(pool + 0x54));
-            double blend = fp.multiply_add(0x101e018c, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
+            double blend = tendency_detail::multiply_add<0x101e018c>(fp, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
             blend = fp.fadd(blend, share4);
             ratings.fourth = (fp.frsp(fp.fsub(blend, c.f64(table + 0x28))));
         }
@@ -415,7 +417,7 @@ void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument)
             const double magic4 = c.f64(table + magic_at);
             double sum = fp.fadds(c.f32(player + 0x78), tendency_detail::from_int_single(c, fp, frame.at(0x90), c.r(4), magic4));
             sum = fp.fadds(c.f32(pool + 0x2c), sum);
-            double blend = fp.multiply_add(0x101e01f8, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
+            double blend = tendency_detail::multiply_add<0x101e01f8>(fp, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
             blend = fp.fadd(blend, ratings.auxiliary);
             c.set_f(1, blend);
             ratings.sixth = (fp.frsp(fp.fsub(blend, c.f64(table + 0x28))));
@@ -425,7 +427,7 @@ void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument)
             double sum = fp.fadds(c.f32(player + 0xac), c.f32(player + 0xb0));
             sum = fp.fadds(c.f32(player + 0xd0), sum);
             sum = fp.fadds(c.f32(pool + 0x2c), sum);
-            double blend = fp.multiply_add(0x101e0240, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
+            double blend = tendency_detail::multiply_add<0x101e0240>(fp, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
             blend = fp.fadd(blend, share5);
             c.set_f(1, blend);
             ratings.seventh = (fp.frsp(fp.fsub(blend, c.f64(table + 0x28))));
@@ -435,7 +437,7 @@ void update_tendencies(Cpu& c, std::uint32_t match, std::uint32_t side_argument)
             double sum = fp.fadds(c.f32(player + 0xa8), c.f32(player + 0xb0));
             sum = fp.fadds(c.f32(player + 0xd0), sum);
             sum = fp.fadds(c.f32(pool + 0x2c), sum);
-            double blend = fp.multiply_add(0x101e0288, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
+            double blend = tendency_detail::multiply_add<0x101e0288>(fp, sum, c.f32(pool + 0x54), c.f32(pool + 0x2c));
             blend = fp.fadd(blend, share6);
             c.set_f(1, blend);
             ratings.eighth = (fp.frsp(fp.fsub(blend, c.f64(table + 0x28))));

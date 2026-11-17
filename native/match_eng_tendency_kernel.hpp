@@ -109,8 +109,12 @@ public:
         c.set_cr(field,std::uint8_t(less<<3 | greater<<2 | equal<<1 | (std::isnan(a)||std::isnan(b))));
         dirty=true;
     }
-    double multiply_add(std::uint32_t site,double a,double c0,double b) {
-        return status(original_multiply_add(fused_site_kind(site),std::bit_cast<std::uint64_t>(a),
+    template<std::uint32_t Site>
+    double multiply_add(double a,double c0,double b) {
+        // The instruction table is immutable. Resolve each fixed site once,
+        // keeping its precision/operation sourced from the generated original.
+        static const auto kind=fused_site_kind(Site);
+        return status(original_multiply_add(kind,std::bit_cast<std::uint64_t>(a),
                       std::bit_cast<std::uint64_t>(c0),std::bit_cast<std::uint64_t>(b)),true,{a,b,c0});
     }
     std::uint64_t fctiwz(unsigned n,double value) {
@@ -139,6 +143,14 @@ public:
         return bits;
     }
 };
+template<std::uint32_t Site>
+inline double multiply_add(Arithmetic& fp,double a,double c,double b) {
+    return fp.template multiply_add<Site>(a,c,b);
+}
+template<std::uint32_t Site>
+inline double multiply_add(guest::Fpu& fp,double a,double c,double b) {
+    return fp.multiply_add(Site,a,c,b);
+}
 struct Ratings {
     double auxiliary, seventh, eighth, sixth, fourth, first, third, second;
     void reload(guest::Cpu& c) {

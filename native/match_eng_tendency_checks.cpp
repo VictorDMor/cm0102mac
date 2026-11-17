@@ -4,7 +4,21 @@
 #include <string>
 #include <vector>
 using namespace cm::aot;
-struct Op { unsigned kind; double a,b,c; };
+struct Op { unsigned kind; double a,b,c; unsigned site; };
+template<class Floating>
+constexpr std::array<double(*)(Floating&,double,double,double),11> fused_operations{
+    match_eng::tendency_detail::multiply_add<0x101df2dc>,
+    match_eng::tendency_detail::multiply_add<0x101df778>,
+    match_eng::tendency_detail::multiply_add<0x101df784>,
+    match_eng::tendency_detail::multiply_add<0x101df794>,
+    match_eng::tendency_detail::multiply_add<0x101dfca8>,
+    match_eng::tendency_detail::multiply_add<0x101dfcb0>,
+    match_eng::tendency_detail::multiply_add<0x101dfcc8>,
+    match_eng::tendency_detail::multiply_add<0x101e018c>,
+    match_eng::tendency_detail::multiply_add<0x101e01f8>,
+    match_eng::tendency_detail::multiply_add<0x101e0240>,
+    match_eng::tendency_detail::multiply_add<0x101e0288>
+};
 struct StateObserver final : MemoryObserver {
     State* state = nullptr;
     void mapped(std::uint32_t,std::uint64_t) override {}
@@ -49,13 +63,15 @@ int main() {
         std::numeric_limits<double>::infinity(),-std::numeric_limits<double>::infinity(),
         std::bit_cast<double>(0x7ff8000000000001ULL),std::bit_cast<double>(0x7ff0000000000001ULL),1e-300,1e300};
     unsigned operations=0,exceptions=0;
+    std::array<unsigned,fused_operations<guest::Fpu>.size()> fused_executions{};
     for(unsigned test=0;test<10000;++test) {
         left->registers.fill(0);
         for(unsigned i=1280;i<1312;++i)left->registers[i]=next()&1;
         right->registers=left->registers;
         std::vector<Op> ops;
         auto number=[&] {return (next()%3) ? double(std::int32_t(next()))/128 : edges[next()%std::size(edges)];};
-        for(unsigned i=0,n=1+next()%32;i<n;++i)ops.push_back({unsigned(next()%12),number(),number(),number()});
+        for(unsigned i=0,n=1+next()%32;i<n;++i)
+            ops.push_back({unsigned(next()%12),number(),number(),number(),unsigned(next()%fused_executions.size())});
         guest::Fpu old(a); match_eng::tendency_detail::Arithmetic candidate(b);
         auto run=[&](auto& fp) {
             std::vector<std::uint64_t> results;
@@ -74,7 +90,11 @@ int main() {
                     case 8:results.push_back(fp.fctiwz(1,op.a));continue;
                     case 10:value=fp.fdivs(op.a,op.b);break;
                     case 11:fp.fcmp(0,op.a,op.b);value=0;break;
-                    case 9:value=fp.multiply_add(0x101df2dc,op.a,op.b,op.c);break;
+                    case 9:
+                        if constexpr(std::is_same_v<std::remove_reference_t<decltype(fp)>,match_eng::tendency_detail::Arithmetic>)
+                            ++fused_executions[op.site];
+                        value=fused_operations<std::remove_reference_t<decltype(fp)>>[op.site](fp,op.a,op.b,op.c);
+                        break;
                 }
                 results.push_back(std::bit_cast<std::uint64_t>(value));
             } catch(const std::exception& e) {error=e.what();break;}
@@ -90,5 +110,9 @@ int main() {
         }
         operations+=unsigned(expected.first.size());exceptions+=!expected.second.empty();
     }
-    std::cout<<"10000 native arithmetic sequences match, "<<operations<<" completed operations, "<<exceptions<<" matched exceptions\n";
+    for(const auto count:fused_executions)if(!count) {
+        std::cerr<<"A fixed multiply-add site was not exercised\n";return 1;
+    }
+    std::cout<<"10000 native arithmetic sequences match, "<<operations<<" completed operations, "<<exceptions
+             <<" matched exceptions, "<<fused_executions.size()<<" fixed multiply-add sites\n";
 }

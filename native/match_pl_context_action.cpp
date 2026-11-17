@@ -1,11 +1,13 @@
 #include "match_pl_detail.hpp"
 #include "guest_fpu.hpp"
+#include "match_phase_timing.hpp"
 
 namespace cm::aot::match_pl {
 using namespace guest;
 
 // Keep snapshots across callbacks; reload later actor and match fields live.
 void choose_context_action(Cpu& c, std::uint32_t player) {
+    [[maybe_unused]] match_phase_timing::OptionalScope<CM_MATCH_PHASE_TIMING> timing(match_phase_timing::Phase::context_action);
     Frame frame(c, 0x102836a0, 0x100, {.first_gpr = 13, .gpr_offset = -0x5c, .first_fpr = 30});
     const auto messages = c.toc(-0x7ba8), distances = c.toc(-0x6424), doubles = c.toc(-0x51e8),
                seed = c.toc(-0x7b90), begin = c.toc(-0x7b8c), end = c.toc(-0x7b88),
