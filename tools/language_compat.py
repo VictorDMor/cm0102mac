@@ -33,7 +33,7 @@ def align_english(data):
     return aligned
 
 
-def install_index_compatibility(game, runtime):
+def install_index_compatibility(game, runtime, archived_languages=()):
     """Install a private read overlay, leaving the verified original intact."""
     clubs = game / "Data/clubs club.dam"
     if sha256(clubs.read_bytes()) != ORIGINAL_CLUBS:
@@ -44,6 +44,11 @@ def install_index_compatibility(game, runtime):
     if target.exists():
         current = target.read_bytes()
         if current == aligned:
+            return
+        # A saved career extracts its exact database language here. Recognized
+        # installed season languages remain valid; new games read their own
+        # isolated pack instead of this transient save extraction directory.
+        if sha256(current) in archived_languages:
             return
         if sha256(current) != ORIGINAL_ENGLISH:
             raise ValueError("A custom private English language file was preserved")

@@ -973,7 +973,8 @@ void sort_production(State& s, std::uint32_t) { sort(s, false); }
 }
 
 int main(int argc, char** argv) {
-    if (argc != 2) return 2;
+    const bool database_only = argc == 3 && std::string_view(argv[2]) == "--database";
+    if (argc != 2 && !database_only) return 2;
     try {
         auto state = std::make_unique<State>();
         load_program(*state, argv[1]);
@@ -1000,6 +1001,25 @@ int main(int argc, char** argv) {
             }
             compared.insert(entry);
         };
+        if (database_only) {
+            for (unsigned mutation = 0; mutation < 16; ++mutation)
+                for (const auto target : {load_language, save_db, load_db})
+                    for (const auto status : {0u, 1u, 0xffu}) {
+                        auto c = initialize(*state, random, target);
+                        database_case(c, target, status, random);
+                        check();
+                    }
+            for (const auto& [target, from] : {std::pair{load_language, 0x10346df0u},
+                     std::pair{load_db, 0x103353b0u}, std::pair{save_db, 0x1034bc98u}}) {
+                auto c = initialize(*state, random, target);
+                database_case(c, target, 1, random);
+                call_site = from;
+                check();
+            }
+            if (compared.size() != 3) throw std::runtime_error("Database wrapper coverage incomplete");
+            std::cout << "Database wrappers: " << passed << " original/rewrite checks passed\n";
+            return 0;
+        }
         for (unsigned mutation = 0; mutation < 16; ++mutation) {
             auto c = initialize(*state, random, release_draft);
             release_case(c, 0);

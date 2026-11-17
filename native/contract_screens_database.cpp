@@ -1,4 +1,6 @@
 #include "contract_screens.hpp"
+#include "database_seasons.hpp"
+#include "platform.hpp"
 
 namespace cm::aot::contract_screens {
 using namespace guest;
@@ -7,6 +9,7 @@ void load_database_with_language_setup(Cpu& c, std::uint32_t directory, std::uin
     Frame frame(c, 0x1009ef30, 0x40, {});
     c.set({{0, c.lr()}, {3, directory}, {4, options}, {5, 1}});
     c.call(0x100a55a0, 0x1009ef44);
+    if (!c.r(3) && c.s.platform) c.s.platform->database_seasons().forget_loaded();
 }
 
 void save_database(Cpu& c, std::uint32_t directory, std::uint32_t options, std::uint32_t version) {
@@ -19,5 +22,6 @@ void load_database(Cpu& c, std::uint32_t directory, std::uint32_t options) {
     Frame frame(c, 0x1009ef90, 0x40, {});
     c.set({{0, c.lr()}, {3, directory}, {4, options}, {5, 0}});
     c.call(0x100a55a0, 0x1009efa4);
+    if (c.s.platform) c.s.platform->database_seasons().note_load(c.r(3) != 0);
 }
 }

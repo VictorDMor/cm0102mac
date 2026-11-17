@@ -4,6 +4,7 @@
 #include "adaptive_gui.hpp"
 #include "screen_layout.hpp"
 #include "profiling.hpp"
+#include "database_seasons.hpp"
 
 namespace cm::aot::screen_manager {
 using namespace detail;
@@ -217,8 +218,16 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
                     p.call(0x10719560,0x1073c8d0,{monitor.screen()});
                     if (manager.current() == 0 && c.s.platform) c.s.platform->apply_adaptive_screen(c.s, monitor.screen());
                     c.set({{4,1},{3,monitor.screen()+0x130000}});c.put8(c.r(3)-0x56c2,1);
+                    if (manager.current() == 0) {
+                        const auto history=manager.history().get();
+                        database_season_before_build(c.s,history?c.u32(c.u32(history)):0);
+                    }
                     monitor.history_callback(0,0x1073c904,false);
                     if (adaptive_builder) layout_built_screen(c.s,monitor.screen(),adaptive_builder);
+                    if (manager.current() == 0) {
+                        const auto history=manager.history().get();
+                        database_season_after_build(c.s,history?c.u32(c.u32(history)):0);
+                    }
                     c.set({{4,0},{3,monitor.screen()+0x130000}});c.put8(c.r(3)-0x56c2,0);
                     c.set(3,monitor.screen()+0x130000);c.put8(c.r(3)-0x5700,c.r(4));
                     c.set(3,manager.group());c.set(5,extended(c.i16(c.r(3))));
@@ -292,7 +301,12 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
                             if(!set)category=extended(c.i16(address+0x25819e));
                             if(compare(c,c.r(4),std::int16_t(category))==0){c.set(3,0);p.callback(callback,0x1073ccb4);c.set(30,std::uint32_t(-4));intercepted=true;}
                         }
-                        if(!intercepted){c.set({{4,c.u32(c.r(5)+16)},{3,c.r(27)}});p.callback(c.u32(c.r(4)+8),0x1073ccd0);c.set(30,c.r(3));}
+                        if(!intercepted){
+                            c.set({{4,c.u32(c.r(5)+16)},{3,c.r(27)}});
+                            const auto handler=c.u32(c.r(4)+8);
+                            if(database_season_event(c.s,handler?c.u32(handler):0,std::int16_t(c.r(27)))) c.set(30,std::uint32_t(-11));
+                            else {p.callback(handler,0x1073ccd0);c.set(30,c.r(3));}
+                        }
                     }
                 }
                 c.set(3,c.u32(c.r(22)));

@@ -1,4 +1,5 @@
 #include "utils_detail.hpp"
+#include "database_seasons.hpp"
 #include <array>
 
 namespace cm::aot::utils {
@@ -58,6 +59,7 @@ std::uint32_t data_path(Cpu& c, std::uint32_t variable, std::uint32_t file) {
     short_name(c, file, name);
     if (nonzero_logical(c, directory)) call(c, folder_location, 0x107462d8, {path, directory, name, 0});
     call(c, string_append, 0x107462e4, {path, name});
+    database_season_data_path(c.s, variable, name, path);
     return result(c, path);
 }
 

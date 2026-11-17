@@ -16,6 +16,7 @@
 #include "debug_match_results.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
+#include "database_seasons.hpp"
 #include "directory_catalog.hpp"
 #include "printing_bridge.hpp"
 #include "callbacks.hpp"
@@ -378,6 +379,7 @@ struct NativePlatform::Impl {
     struct EventHandler { std::uint32_t routine, reference; };
     std::map<std::pair<std::uint32_t, std::uint32_t>, EventHandler> apple_handlers;
     fs::path game, writable;
+    std::unique_ptr<DatabaseSeasons> seasons;
     std::map<std::uint32_t, fs::path> directories;
     std::map<fs::path, std::uint32_t> file_ids;
     std::uint32_t next_directory = 16, current_directory = 2;
@@ -1625,6 +1627,7 @@ NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio
     fs::create_directories(impl_->writable);
     impl_->directories.emplace(2, impl_->game);
     impl_->directories.emplace(3, impl_->writable);
+    impl_->seasons = std::make_unique<DatabaseSeasons>(impl_->writable);
 }
 NativePlatform::~NativePlatform() = default;
 GuiCanvas NativePlatform::gui_canvas_size() const { return impl_->canvas; }
@@ -1714,6 +1717,18 @@ void NativePlatform::apply_adaptive_screen(State& s, std::uint32_t display) {
     c.put16(display + 0x12a946, 0xffff);
 }
 const fs::path& NativePlatform::game_directory() const { return impl_->game; }
+DatabaseSeasons& NativePlatform::database_seasons() { return *impl_->seasons; }
+void NativePlatform::inspect_database_season_names() {
+    auto& seasons = *impl_->seasons;
+    fs::path file;
+    if (const auto& directory = seasons.names_directory(); directory) {
+        try {
+            const auto name = convert(*directory + "eng.lng", kCFStringEncodingMacRoman, kCFStringEncodingUTF8);
+            file = impl_->path(0, 0, name);
+        } catch (const FileError&) {}
+    }
+    seasons.inspect_database_names(file);
+}
 const fs::path& NativePlatform::writable_directory() const { return impl_->writable; }
 
 namespace {
@@ -1816,6 +1831,10 @@ void NativePlatform::set_quick_save_alert_observer(std::function<void(const std:
     impl_->quick_save_alert_observer = std::move(observer);
 }
 void NativePlatform::quick_save_load_begin(State& s) {
+    // Saved careers contain their own tables and language records. Their
+    // extraction must use the normal writable Data area, never a season pack.
+    impl_->seasons->end();
+    impl_->seasons->forget_loaded();
     // Match-result choices belong to the current career session, not a world
     // subsequently loaded into the same runtime (even at identical addresses).
     clear_match_result_debugging(s);

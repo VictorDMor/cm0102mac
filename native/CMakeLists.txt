@@ -32,6 +32,8 @@ target_compile_options(cm_ui PRIVATE -Wall -Wextra -Werror -Wpedantic -fobjc-arc
 target_link_libraries(cm_ui PUBLIC "-framework AppKit" "-framework Carbon" "-framework CoreText")
 add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arrays.cpp cpp_object_storage_allocation.cpp code_fragment_adapter.cpp code_fragment_registration.cpp code_fragment_lookup.cpp code_fragment_metadata.cpp runtime_lifecycle_adapter.cpp runtime_lifecycle_objects.cpp runtime_lifecycle_exit.cpp runtime_lifecycle_signal.cpp file_path_adapter.cpp file_path_names.cpp file_path_specs.cpp file_path_resolution.cpp file_controller_adapter.cpp file_controller_state.cpp file_controller_streams.cpp file_controller_paths.cpp file_controller_forks.cpp file_reference_bridge.cpp unicode_bridge.cpp fork_io_bridge.cpp stream_io_adapter.cpp stream_io_characters.cpp stream_io_read.cpp stream_io_write.cpp stream_buffer_adapter.cpp stream_buffer_storage.cpp stream_buffer_transfer.cpp stream_buffer_lifecycle.cpp allocator_adapter.cpp allocator_arenas.cpp allocator_pools.cpp allocator_facades.cpp formatted_output_adapter.cpp formatted_output_format.cpp formatted_output_numbers.cpp formatted_output_float.cpp formatted_output_descriptor.cpp formatted_output_facades.cpp floating_input_adapter.cpp decimal_input_bridge.cpp character_conversion_adapter.cpp formatted_input_adapter.cpp integer_parsing_adapter.cpp memory_primitives_adapter.cpp string_core_adapter.cpp collection_lookup_adapter.cpp background_selection_adapter.cpp rng_core_adapter.cpp date_subsystem_adapter.cpp date_subsystem_audit.cpp calendar_adapter.cpp aot_runtime.cpp aot_integrity.cpp performance_trace.cpp directory_catalog.cpp floating_point.cpp decimal_bridge.cpp carbon_bridge.cpp platform.cpp native_drawing.cpp direct_commands.cpp automation.cpp guest_profiler.cpp list_search.cpp sound_bridge.cpp text_bridge.cpp process_bridge.cpp resource_bridge.cpp filesystem_bridge.cpp printing_bridge.cpp callbacks.cpp apple_events.cpp speech_bridge.cpp data_forks.cpp match_replay.cpp season_reference.cpp ${CM_GENERATED_SOURCES})
 target_sources(cm_aot PRIVATE vector_context.cpp)
+target_sources(cm_aot PRIVATE database_seasons.cpp database_season_screen.cpp database_season_compatibility.cpp
+    english_season_rules.cpp eng_fa_trophy_2000.cpp eng_conference_cup.cpp league_selection_layout.cpp)
 target_sources(cm_aot PRIVATE adaptive_gui.cpp screen_layout.cpp search_filter_layout.cpp transfer_proposal_layout.cpp contract_negotiation_layout.cpp negotiation_dialog_layout.cpp news_inbox_layout.cpp)
 target_sources(cm_aot PRIVATE club_information_layout.cpp next_match_layout.cpp)
 target_sources(cm_aot PRIVATE league_standings_layout.cpp competition_fixtures_layout.cpp)
@@ -2564,6 +2566,26 @@ add_executable(cm-presentation-checks presentation_checks.cpp presentation.cpp)
 target_compile_options(cm-presentation-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME native_presentation_geometry COMMAND cm-presentation-checks)
 add_executable(cm-adaptive-gui-checks adaptive_gui_checks.cpp)
+add_executable(cm-database-seasons-checks database_seasons_checks.cpp)
+target_link_libraries(cm-database-seasons-checks PRIVATE cm_aot)
+target_compile_options(cm-database-seasons-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
+add_test(NAME database_season_pack_validation COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_season_databases.py")
+if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/database-packs/si-3968/pack.json" AND EXISTS "${CM_MATCH_DEBUGGER_GAME_DIR}/Data/index.dam")
+    if(EXISTS "${CMAKE_SOURCE_DIR}/../.local/database-packs/si-389/pack.json")
+        add_test(NAME database_season_conversion_and_persistence COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}")
+        set_tests_properties(database_season_conversion_and_persistence PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+        add_test(NAME database_season_2000_english_competitions COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
+            "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --english-2000)
+        set_tests_properties(database_season_2000_english_competitions PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    endif()
+    add_test(NAME database_season_history_2002 COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/../tools/check_season_databases.py" "$<TARGET_FILE:cm-database-seasons-checks>"
+        "${CM_ORACLE_DIR}" "${CM_MATCH_DEBUGGER_GAME_DIR}" --history-2002)
+    set_tests_properties(database_season_history_2002 PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+endif()
 target_link_libraries(cm-adaptive-gui-checks PRIVATE cm_aot)
 target_compile_options(cm-adaptive-gui-checks PRIVATE -Wall -Wextra -Werror -Wpedantic)
 add_test(NAME adaptive_gui_memory COMMAND cm-adaptive-gui-checks)
@@ -4748,6 +4770,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
     target_link_libraries(cm-contract-screens-checks PRIVATE cm_aot)
     target_compile_options(cm-contract-screens-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
     add_test(NAME contract_screens_equivalence COMMAND cm-contract-screens-checks "${CM_ORACLE_DIR}")
+    add_test(NAME contract_screens_database_equivalence COMMAND cm-contract-screens-checks "${CM_ORACLE_DIR}" --database)
     add_test(NAME contract_screens_audit
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_contract_screens_audit.py")
 endif()

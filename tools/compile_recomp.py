@@ -2098,6 +2098,10 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_replay.hpp"')
     if page == 0x1071a:
         code.insert(1, '#include "control_cursor.hpp"')
+    if page in (0x1014d, 0x1015b, 0x1015d, 0x10335, 0x10343):
+        code.insert(1, '#include "database_seasons.hpp"')
+    if page in (0x10351, 0x104c6, 0x104c7):
+        code.insert(1, '#include "season_competition_rules.hpp"')
     if any(item["address"] == 0x10774c24 for item in instructions):
         code.insert(1, '#include "allocator_bridge.hpp"')
     for item in instructions:
@@ -2167,6 +2171,72 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             if item["assembly"] != "bl 0x10743120" or a + 4 not in page_addresses:
                 raise ValueError(f"Quick-save progress boundary changed at {a:x}")
             code.append(f"if (s.platform && s.platform->quick_save_quiet_progress()) {{ s.wr<4>(2440, s.r<4>(8)); s.wr<4>(4128, 0x{a + 4:x}); goto i_{a + 4:x}; }}")
+        if a == 0x1015bc50:
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError("Nation symbolic-index mapper changed")
+            code.append("database_season_nation_index_name(s);")
+            isolated.add(a)
+        if a == 0x1014d560:
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError("Database symbolic-index initialization changed")
+            code.append("database_season_index_begin(s);")
+            isolated.add(a)
+        if a == 0x1015d900:
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError("Competition symbolic-index mapper changed")
+            code.append("database_season_competition_index_name(s);")
+            isolated.add(a)
+        if a == 0x1015bbb0:
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError("Missing symbolic-index diagnostic changed")
+            code.append("if (database_season_optional_index(s)) { s.pc = s.r<4>(4128); return true; }")
+            isolated.add(a)
+        if a == 0x10335f9c:
+            if item["assembly"] != "cmplwi r17,0x0":
+                raise ValueError("League-selection row boundary changed")
+            code.append("database_season_filter_league_row(s);")
+            isolated.add(a)
+        if a == 0x103511cc:
+            if item["assembly"] != "li r4,0x1":
+                raise ValueError("England competition allocation boundary changed")
+            code.append("reserve_cm0001_conference_cup_slot(s);")
+            isolated.add(a)
+        if a == 0x103514dc:
+            if item["assembly"] != "addi r3,r1,0x38" or 0x10351520 not in page_addresses:
+                raise ValueError("England competition publication boundary changed")
+            code.append("if (append_cm0001_conference_cup(s)) return true;")
+            isolated.add(a)
+        if a == 0x104c6a00:
+            if item["assembly"] != "lwz r3,0x108(r1)" or 0x104c6bec not in page_addresses:
+                raise ValueError("English cup load boundary changed")
+            code.append("if (skip_missing_saved_conference_cup(s)) return true;")
+            isolated.add(a)
+        if a == 0x104c6db0:
+            if item["assembly"] != "lha r9,0x40(r30)":
+                raise ValueError("English cup calendar allocation boundary changed")
+            code.append("if (apply_cm0001_conference_cup_rounds(s)) return true;")
+            isolated.add(a)
+        if a == 0x104c71a8:
+            if item["assembly"] != "bl 0x10775130":
+                raise ValueError("English cup entrant allocation boundary changed")
+            code.append("size_cm0001_conference_cup_entrants(s);")
+            isolated.add(a)
+        if a == 0x104c7214:
+            if item["assembly"] != "lwz r4,0x0(r28)" or not {0x104c73d8, 0x104c746c} <= page_addresses:
+                raise ValueError("FA Trophy qualifier selection boundary changed")
+            code.append("if (apply_cm0001_conference_cup_entrants(s)) return true;")
+            code.append("if (apply_cm0001_fa_trophy_qualifiers(s)) return true;")
+            isolated.add(a)
+        if a == 0x104c7124:
+            if item["assembly"] != "b 0x104c712c":
+                raise ValueError("FA Trophy round configuration boundary changed")
+            code.append("apply_cm0001_fa_trophy_rounds(s);")
+            isolated.add(a)
+        if a == 0x10343630:
+            if item["assembly"] != "mfspr r0,LR":
+                raise ValueError("Fresh-world setup boundary changed")
+            code.append("database_season_limit_leagues(s);")
+            isolated.add(a)
         if a in quick_save_hooks:
             expected, hook = quick_save_hooks[a]
             if item["assembly"] != expected:

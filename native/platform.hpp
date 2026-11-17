@@ -11,6 +11,7 @@
 
 namespace cm::aot {
 struct State;
+class DatabaseSeasons;
 enum class EventMode { interactive, isolated };
 class NativePlatform {
 public:
@@ -22,6 +23,8 @@ public:
     bool dispatch(State& state, std::string_view import);
     const std::filesystem::path& game_directory() const;
     const std::filesystem::path& writable_directory() const;
+    DatabaseSeasons& database_seasons();
+    void inspect_database_season_names();
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;
     std::vector<float> render_audio_offline(std::uint32_t frames);
     void observe_drawing(State&, std::uint32_t pc);

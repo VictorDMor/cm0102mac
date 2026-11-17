@@ -1,5 +1,6 @@
 #include "eng_conf_detail.hpp"
 #include "english_competition_rules.hpp"
+#include "season_competition_rules.hpp"
 
 namespace cm::aot::eng_conf {
 using namespace detail;
@@ -124,7 +125,8 @@ std::uint32_t collect_clubs(Cpu& c, std::uint32_t address) {
     if (compare(c, c.r(3), league.club_count()) != 0) return 0;
     c.put32(address + 0x28, p.call(0x1049f540, 0x10526428, {object, 5000}));
     c.put8(address + 0xe1, 1);
-    p.call(0x1049f6d0, 0x10526448, {object, 100000, 0});
+    if (const auto payment = english_season_rules(c.s).conference.club_payment)
+        p.call(0x1049f6d0, 0x10526448, {object, payment, 0});
     return 1;
 }
 

@@ -14,6 +14,7 @@ import struct
 import subprocess
 import tempfile
 from language_compat import install_index_compatibility
+from season_databases import install_database_packs
 
 PROJECT = Path(__file__).resolve().parent.parent
 APP_NAME = "reCM 01-02.app"
@@ -203,8 +204,12 @@ def install(source, support, applications, built_app=None):
             copy_mac(PROJECT / ".local/runtime", copied)
             copied.rename(runtime)
         print("Preserved existing prototype preferences and private files.", flush=True)
-    install_index_compatibility(game, runtime)
+    seasons = install_database_packs(game, runtime)
+    archived_languages = {digest(runtime / "Files/Databases" / key / "Data/eng.lng")
+                          for year, _, key in seasons if year != 2001}
+    install_index_compatibility(game, runtime, archived_languages)
     print("Verified the private English club-index compatibility file.", flush=True)
+    print("Verified private season databases: " + ", ".join(label for _, label, _ in seasons), flush=True)
     if destination.exists():
         check_app(destination)
     elif legacy.exists():
