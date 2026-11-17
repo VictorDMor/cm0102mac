@@ -1,4 +1,5 @@
 #include "print_panels.hpp"
+#include "profiled_main_thread.hpp"
 #import <AppKit/AppKit.h>
 
 namespace cm::aot {
@@ -22,6 +23,7 @@ PrintPanelResult retained(NSPrintInfo* info) {
 }
 }
 std::optional<PrintPanelResult> run_print_panel(PMPrintSettings settings, PMPageFormat format) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("run_print_panel", [&] { return run_print_panel(settings, format); });
     @autoreleasepool {
         NSPrintInfo* info = print_info(settings, format);
         if (!info) return std::nullopt;
@@ -33,6 +35,7 @@ std::optional<PrintPanelResult> run_print_panel(PMPrintSettings settings, PMPage
     }
 }
 std::optional<PrintPanelResult> run_page_layout(PMPageFormat format) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("run_page_layout", [&] { return run_page_layout(format); });
     @autoreleasepool {
         NSPrintInfo* info = print_info(nullptr, format);
         if (!info) return std::nullopt;

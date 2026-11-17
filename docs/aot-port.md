@@ -312,8 +312,8 @@ while idle. Since 2026-11-14 a heavy pass counts as work only when another came
 within the half second before it; the idle career screen went from about 34%
 to about 8% of a core (isolated copy, no automation, window without focus).
 
-The game does all its work on the main thread between those event calls, and
-behind another application or hidden, with no sound playing, macOS put it into
+Before 2026-11-16 the game did all its work on the main thread between those
+event calls. Behind another application or hidden, with no sound playing, macOS put it into
 App Nap, which stretches the waits of each AppKit pump: a sample of the hidden
 process had 70% of the main thread blocked under `nextEventMatchingMask`. The
 same three days of the 26-country career (day 361 to 364 of 2001) took 196 s
@@ -322,6 +322,156 @@ activity when the application finishes launching (the system may still sleep
 when idle), and behind takes as long as in front. The original's own
 background sleep (30 ticks, set by a suspend event) is not involved: the
 global stays 0, since no suspend event reaches the game.
+
+Since 2026-11-16 the application runs the complete guest state, callbacks,
+audio completion delivery and save operations on one dedicated worker.
+AppKit remains on main, servicing events independently of guest polls.
+`UIEventQueue` carries owned input values in order; the worker applies the
+original event masks and command validation. Main never calls into guest
+code. Presentation uses copied pixels/immutable drawing snapshots; main-queue
+requests may wait on the worker side only. C++ exceptions return to that caller.
+Print panels and native dialogs stay on main. A bootstrap delegate buffers
+Finder document/print/quit messages before lazy UI construction.
+
+Presentation now prepares Quartz images on the game worker from owned pixel
+vectors and immutable drawing snapshots. Data-provider release callbacks retain
+those host buffers directly, removing the two extra full-frame `CFDataCreate`
+copies. AppKit still installs/displays every frame synchronously; snapshots,
+resize/input ordering and native vector drawing at backing scale are unchanged.
+`cm-presentation-frame-checks` compares the previous image construction with the
+new path (raw bytes, padded strides, 1x/2x/4x pixels, lifetime and error paths).
+Its `--benchmark <existing-screen.png>` measures preparation and offscreen
+rasterization separately; it does not measure whole-game or window latency.
+
+The bridge uses Apple's main dispatch queue and C++ mutex/condition-variable,
+atomic and future facilities. The worker uses an explicit pthread stack of at
+least 8 MiB (or the existing main stack if larger): an original callback's
+temporary saved context alone occupies roughly 300 KiB. Worker locals and the
+captured callable are destroyed while main still services requests, before
+joining. Read-only pointer queries retain the existing 4 ms cache budget;
+command snapshots are resent after native menu mutations or queued commands.
+
+Logical window bounds and the requested adaptive canvas are immutable host
+snapshots. Worker getters copy their shared owner under a short mutex, without
+dispatching to main. AppKit publishes after create/dispose/commit, mode/scale,
+resize/display callbacks and native event service; desktop changes without a
+notification appear at the next service boundary. Mode changes remain
+synchronous. Requested canvas and committed guest bounds stay separate, so a
+failed guest allocation retains the old viewport. `cm-thread-host-checks
+--geometry` checks lifecycle and reads while main is deliberately paused;
+without an AppKit display it checks rejected scale changes, not accepted
+display-size transitions. If AppKit cannot expose the fixture window, native
+resize/delegate/style checks are explicitly unexercised. `--geometry-benchmark`
+measures only getter cost.
+
+`cm-world-replay --game-thread <capture> ...` exercises the same worker with
+recorded OS input and unchanged state/RNG checks. `cm-thread-host-checks`
+checks busy-worker responsiveness, input ordering/wakeup and shutdown without
+a window server; `--bootstrap` checks startup message transfer and `--appkit`
+exercises native windows. `cm-callback-checks --game-thread --abi <export>` and
+`--worker-fault` cover original callback context and terminal fault reporting.
+`CM_AOT_COOPERATIVE_UI=1` retains the former main-thread application path for
+diagnosis. Separating threads does not itself shorten simulation calculations;
+actual window/modal interaction still needs native macOS QA.
+
+`cm-world-replay-phases --game-thread <capture> 1 --timing --match-phases` prints
+aggregate host-clock durations for match advancement, tick phases and selected
+native routines. It does not enable guest-PC sampling, dispatch probes or extra
+memory observers, so it retains the normal timing replay's native eligibility.
+The CLI rejects combining it with sampler/checker/audit/census/flip options.
+The four tick phases are sequential; the overall advance, event-simulation and
+named routine scopes are inclusive and can nest or recurse. Do not sum every
+row. Build the separate `cm-world-replay-phases` target for attribution; it
+compiles the same owners with clocks enabled. The playable app and regular
+`cm-world-replay` erase every phase scope at compile time. Use the regular
+replay for before/after timings; it rejects `--match-phases`. Clock reads and
+instrumented code can perturb measured costs, so the phase report locates work
+but does not establish a speedup. Keep builds and other checks out of timing runs.
+
+### Optional Tracy boundary profiling
+
+`CM_ENABLE_TRACY` defaults to `OFF`. The optional, vendored Tracy 0.15.0 client
+is isolated in `cm_tracy`; seven native production translation units, the host
+checker and three generated pages receive its configuration.
+The option changes a configured header read only by those eleven files; toggling
+it keeps the Makefile compiler flags stable and avoids invalidating other pages.
+Normal builds erase all instrumentation arguments and do not link the client.
+The existing `CM_AOT_PERFORMANCE_TRACE` logs and guest sampler remain available.
+
+With no other build running, enable profiling and build the app:
+
+```sh
+cmake -S native -B .local/current/build -DCM_ENABLE_TRACY=ON
+tools/dev.sh build cm-native-prototype
+tools/dev.sh install
+```
+
+Open a matching [Tracy 0.15.0 collector](https://github.com/wolfpld/tracy/releases/tag/v0.15.0)
+and connect to `127.0.0.1:8086` before pressing Continue. Collection is on demand;
+discovery broadcasts, code transfer, frame images, callstack sampling, system
+tracing and Tracy crash handlers are disabled. The game's signal handlers keep
+ownership. `TRACY_PORT` can select another port when launching the process.
+
+The timeline distinguishes `Continue requested` (command 1000 selected),
+`Continue accepted` (the original returns -5 after its news/network gates),
+`Continue cleanup begin`, and `Screen monitor exited for Continue`. The native
+screen monitor also marks entry and scopes each dirty-screen rebuild. Cleanup
+begins after the monitor has decided to exit; it is not the click timestamp.
+
+`World loop begin/end` bracket the long-lived world routine, whose back edge is
+0x10119e70 -> 0x101195e8. `Day iteration begin/end` bracket each pass of that
+loop. A pass can include screen interaction and input waiting; it is not a
+measurement of pure simulation work or a guarantee that the calendar advanced.
+Sixty-five daily call sites have `Day: <service> [<call PC>] begin/after`
+messages, guarded against their original call and post-call instructions. Repeated
+calls retain distinct site labels; services without a verified name retain their
+original entry address. These encompass either original or native callees.
+Some post-call instructions are also branch joins, reached when a call was
+skipped. Attribute a duration only after observing a matching begin for that
+site, consume its first after marker, and ignore unmatched after markers.
+Adjacent messages are emitted previous-after before next-begin. Assertion/
+reporting calls are not instrumented as daily services.
+
+Dense events can share a nanosecond timestamp. Tracy 0.15.0's
+`Worker::InsertMessageData` inserts ties at `lower_bound`, so CSV message order
+alone does not preserve emission order. For these non-recursive call sites,
+group equal timestamps, close an outstanding begin first, pair same-time calls,
+and ignore unmatched join markers. A naive stack can turn tiny repeated calls
+into falsely long spans. The CSV also lacks thread identifiers for messages;
+these generated markers are all emitted by the game worker.
+
+An on-demand capture can start or stop inside any interval, so incomplete pairs
+are expected. Do not infer exact click-to-completion time from these markers;
+screen-monitor exit to the next input wait excludes work before that exit.
+`Progress draw begin/end` bracket the original progress routine;
+`Progress submit` marks its redraw call after valid text and visibility gates.
+These messages mark original control flow, not physical screen presentation.
+Use the subsequent `AppKit install and display` zone and `Presented frames`
+marker to locate the host drawing submission. Neither proves display scanout.
+
+CPU zones separate guest pixel copying, the immutable drawing snapshot, Quartz
+frame preparation, and AppKit installation/drawing. `Main dispatch round trip`
+on the worker includes queueing **and** execution; compare its span against
+`Main dispatch execution` on the host before attributing time to a wait.
+Each synchronous UI dispatch site also has a static
+`UI request: <operation>` zone on its caller and `UI execution: <operation>` on
+main, exposing counts and time per operation in Statistics or CSV exports.
+The synchronous call, callable ownership, exception transport and input/display
+order are unchanged. These nested durations overlap the generic dispatch and
+presentation zones; do not add them together. Profiling adds measurement cost,
+so use these traces for attribution, not as an uninstrumented speed benchmark.
+`AppKit event service (includes idle wait)` and `Input queue wait` deliberately
+include idle time and are not simulation CPU cost. Window tokens are attached
+to presentation zones; no game text, pixel captures or guest pointers are sent.
+Cached geometry reads no longer emit dispatch zones; adaptive-mode transitions
+still do. Guest-PC sampling is a separate mechanism and can change the path
+being timed: the native match-player role fast path deliberately declines while
+that sampler is running. Its sampled share can therefore overstate normal cost;
+confirm candidates with unprofiled paired replays.
+
+To return to the ordinary build, configure with `-DCM_ENABLE_TRACY=OFF`, then
+rebuild and install using the same commands. Frame ordering, input dispatch,
+simulation and save success/error semantics are identical in both modes.
 
 The app always has a memory observer attached: `NativeDrawingObserver`
 watches writes to the drawing surfaces' address range. C++ fast paths that
@@ -885,6 +1035,23 @@ unwinds, so catch blocks and destructors do not run. Two rules:
   its `try`. Checkers run exact, so they cannot catch a missing region.
 - Work whose cleanup must run on a fault stays exact: quick saves run in an
   `ExactBounds` region, and launch/session captures leave hardware mode.
+
+## Save IO measurements
+
+`cm-save-io-benchmark <existing-save>` measures native writes, durability,
+transactional promotion and confirmed cleanup on disposable copies of opaque
+serialized bytes, verifying the result byte-for-byte. It uses 64 KiB writes and
+clean staging; it does not measure serialization/compression or full save latency.
+Five runs on the 18.7/85.4 MB fixtures on 2026-11-16 put native IO plus completion
+at medians 21/42 ms and post-confirmation cleanup at about 0.2 ms. That cleanup
+was left synchronous. Promotion success still determines the original writer's
+return value and saved/dirty/date markers before simulation can resume.
+
+The old `ui/game-save`/`game-save2` captures currently diverge at native input
+before a valid full-save profile completes. Their timings are not performance
+evidence for the current serializer. The replay profiler now stops sampling
+before destroying its State on exception, so a divergence remains a diagnostic
+instead of becoming a stale-memory SIGPROF crash.
 
 ## Measured filesystem performance
 

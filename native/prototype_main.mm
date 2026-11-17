@@ -1,5 +1,7 @@
 #include "probe_host.hpp"
 #include "list_search.hpp"
+#include "main_thread.hpp"
+#include "ui_bridge.hpp"
 #import <AppKit/AppKit.h>
 #include <filesystem>
 #include <array>
@@ -136,7 +138,14 @@ int main() {
             if (@available(macOS 14.0, *)) [NSApp activate];
             stopped_run_directory = run_directory.string();
             cm::aot::set_run_stop_presenter(show_stopped_alert_out_of_process);
-            result = cm::aot::run_probe(argv.size(), argv.data());
+            const auto cooperative = std::getenv("CM_AOT_COOPERATIVE_UI");
+            if (cooperative && std::string_view(cooperative) == "1") result = cm::aot::run_probe(argv.size(), argv.data());
+            else {
+                cm::aot::prepare_native_ui();
+                result = cm::aot::run_game_thread([&] {
+                    return cm::aot::run_probe(argv.size(), argv.data());
+                }, cm::aot::service_native_ui);
+            }
             if (!result) return 0;
         } catch (const std::exception& error) {
             std::fprintf(stderr, "%s\n", error.what());

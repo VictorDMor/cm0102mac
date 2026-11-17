@@ -2,20 +2,26 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
 namespace cm::aot {
 struct State;
-enum class DirectCommand : std::uint32_t { continue_game, save_game, load_game, open_game_options, back_or_cancel, count };
+enum class DirectCommand : std::uint32_t { continue_game, save_game, load_game, open_game_options, back_or_cancel, best_xi, count };
 constexpr auto direct_command_count = std::size_t(DirectCommand::count);
 constexpr std::array<std::string_view, direct_command_count> direct_command_names{
-    "continue_game", "save_game", "load_game", "open_game_options", "back_or_cancel"};
+    "continue_game", "save_game", "load_game", "open_game_options", "back_or_cancel", "best_xi"};
 struct CommandContext {
     std::uint32_t root = 0, screen = 0, handler = 0;
     std::uint64_t identity = 0;
     std::array<std::int16_t, direct_command_count> actions{};
-    std::array<std::int16_t, direct_command_count> controls{-1,-1,-1,-1,-1};
+    std::array<std::int16_t, direct_command_count> controls = [] {
+        std::array<std::int16_t, direct_command_count> values{};
+        values.fill(-1);
+        return values;
+    }();
+    std::string best_xi_title; // Localized squad menu label in the game's single-byte encoding.
     bool ready = false;
     bool operator==(const CommandContext&) const = default;
 };

@@ -1,4 +1,7 @@
 #include "ui_bridge.hpp"
+#include "profiled_main_thread.hpp"
+#include "presentation_frame.hpp"
+#include "profiling.hpp"
 #include "native_drawing.hpp"
 #include "match_turbo.hpp"
 #include "match_speed.hpp"
@@ -17,18 +20,21 @@
 #include <chrono>
 #include <thread>
 #include <functional>
+#include <atomic>
 
 namespace {
-bool match_turbo = false;
-bool native_speed_enabled = false;
-std::uint16_t selected_match_speed = cm::aot::turbo_match_speed;
+std::atomic<bool> match_turbo{false};
+std::atomic<bool> native_speed_enabled{false};
+std::atomic<std::uint16_t> selected_match_speed{cm::aot::turbo_match_speed};
 std::filesystem::path match_speed_preference;
-bool debugging_available = false;
-std::uint32_t debugging_features = 0;
+std::atomic<bool> debugging_available{false};
+std::atomic<std::uint32_t> debugging_features{0};
 std::filesystem::path debugging_preference;
-bool screens_available = false;
-bool screens_enabled = cm::aot::default_new_screens;
+std::atomic<bool> screens_available{false};
+std::atomic<bool> screens_enabled{cm::aot::default_new_screens};
 std::filesystem::path screens_preference;
+// Main-thread only. The game accesses the owner solely through on_main.
+cm::aot::NativeUI* active_ui = nullptr;
 bool repeated_key_event(NSEvent* event) {
     // isARepeat is undefined for mouse/accessibility menu events and AppKit
     // raises NSInternalInconsistencyException if queried for a non-key event.
@@ -75,7 +81,7 @@ std::uint8_t original_character(NSEvent* event) {
 @end
 @interface CMDialogPanel : NSPanel {
 @public
-    std::deque<cm::aot::UIEvent>* pending;
+    cm::aot::UIEventQueue* pending;
 }
 @end
 @implementation CMDialogPanel
@@ -117,7 +123,7 @@ std::uint8_t original_character(NSEvent* event) {
 
 @interface CMNativeView : NSView {
 @public
-    std::deque<cm::aot::UIEvent>* pending;
+    cm::aot::UIEventQueue* pending;
     std::uint32_t token;
     bool paintQueued;
     double wheelRemainder;
@@ -134,6 +140,7 @@ std::uint8_t original_character(NSEvent* event) {
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent*)event { (void)event; return YES; }
 - (void)queueInput:(NSEvent*)native kind:(cm::aot::UIEvent::Kind)kind {
+    if (!pending) return;
     cm::aot::UIEvent event{kind, token};
     const auto host = [self.window convertPointToScreen:native.locationInWindow];
     const auto point = inversePoint({host.x, CGRectGetHeight(CGDisplayBounds(CGMainDisplayID())) - host.y});
@@ -162,6 +169,7 @@ std::uint8_t original_character(NSEvent* event) {
         wheelRemainder -= event.wheel_delta;
         if (!event.wheel_delta) return;
     }
+    if (kind == cm::aot::UIEvent::Kind::mouse_moved) event.message = 0xfa000000;
     pending->push_back(std::move(event));
 }
 - (void)mouseDown:(NSEvent*)event { [self queueInput:event kind:cm::aot::UIEvent::Kind::mouse_down]; }
@@ -172,7 +180,6 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)otherMouseUp:(NSEvent*)event { [self mouseUp:event]; }
 - (void)mouseMoved:(NSEvent*)event {
     [self queueInput:event kind:cm::aot::UIEvent::Kind::mouse_moved];
-    pending->back().message = 0xfa000000;
 }
 - (void)mouseDragged:(NSEvent*)event { [self mouseMoved:event]; }
 - (void)rightMouseDragged:(NSEvent*)event { [self mouseMoved:event]; }
@@ -213,7 +220,7 @@ std::uint8_t original_character(NSEvent* event) {
             cm::aot::draw_native_shapes(context, *nativeDrawing);
             CGContextRestoreGState(context);
         }
-    } else if (!paintQueued) {
+    } else if (pending && !paintQueued) {
         paintQueued = true;
         pending->push_back({cm::aot::UIEvent::Kind::update, token});
     }
@@ -222,7 +229,7 @@ std::uint8_t original_character(NSEvent* event) {
 
 @interface CMNativeAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate> {
 @public
-    std::deque<cm::aot::UIEvent>* pending;
+    cm::aot::UIEventQueue* pending;
     std::set<std::filesystem::path>* hostArguments;
     std::map<std::uint32_t, CMNativeWindow*>* gameWindows;
     bool launching;
@@ -271,9 +278,7 @@ std::uint8_t original_character(NSEvent* event) {
 }
 - (BOOL)windowShouldClose:(NSWindow*)window {
     if (!(window.styleMask & NSWindowStyleMaskTitled)) return YES;
-    if (std::none_of(pending->begin(), pending->end(), [](const auto& event) {
-        return event.kind == cm::aot::UIEvent::Kind::quit;
-    })) pending->push_back({cm::aot::UIEvent::Kind::quit});
+    if (!pending->contains(cm::aot::UIEvent::Kind::quit)) pending->push_back({cm::aot::UIEvent::Kind::quit});
     // Keep the window alive while the original game asks about saving/exiting.
     return NO;
 }
@@ -345,9 +350,7 @@ std::uint8_t original_character(NSEvent* event) {
 - (void)originalMenuAction:(NSMenuItem*)sender {
     if (!sender.enabled || repeated_key_event(NSApp.currentEvent)) return;
     if (sender.tag == 0x00020001 && selectCommand) { selectCommand(cm::aot::DirectCommand::save_game); return; }
-    if (std::any_of(pending->begin(), pending->end(), [](const auto& event) {
-        return event.kind == cm::aot::UIEvent::Kind::menu;
-    })) { NSBeep(); return; }
+    if (pending->contains(cm::aot::UIEvent::Kind::menu)) { NSBeep(); return; }
     cm::aot::UIEvent event{cm::aot::UIEvent::Kind::menu};
     event.message = std::uint32_t(sender.tag);
     pending->push_back(std::move(event));
@@ -425,9 +428,36 @@ std::uint8_t original_character(NSEvent* event) {
 @end
 
 namespace cm::aot {
+namespace {
+struct StartupEvents {
+    UIEventQueue pending;
+    std::set<std::filesystem::path> arguments;
+    std::map<std::uint32_t, CMNativeWindow*> windows;
+    CMNativeAppDelegate* delegate = [CMNativeAppDelegate new];
+    StartupEvents() {
+        delegate->pending = &pending;
+        delegate->hostArguments = &arguments;
+        delegate->gameWindows = &windows;
+        delegate->launching = true;
+        delegate->launchedWithDocuments = false;
+        NSArray<NSString*>* values = NSProcessInfo.processInfo.arguments;
+        for (NSUInteger i = 1; i < values.count; ++i)
+            arguments.insert(std::filesystem::absolute(values[i].fileSystemRepresentation).lexically_normal());
+        [NSApp setDelegate:delegate];
+    }
+    ~StartupEvents() { if (NSApp.delegate == delegate) [NSApp setDelegate:nil]; }
+};
+std::unique_ptr<StartupEvents> startup_events; // main-thread only
+}
+void prepare_native_ui() {
+    if (!on_main_thread()) throw std::logic_error("UI bootstrap must run on main");
+    [NSApplication sharedApplication];
+    if (!active_ui && !startup_events) startup_events = std::make_unique<StartupEvents>();
+}
 bool new_screens_available() { return screens_available; }
 bool new_screens_enabled() { return screens_available && screens_enabled; }
 void initialize_new_screens(const std::filesystem::path& preference) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("initialize_new_screens", [&] { initialize_new_screens(preference); });
     screens_available = true;
     screens_enabled = default_new_screens;
     screens_preference = preference;
@@ -446,6 +476,7 @@ void initialize_new_screens(const std::filesystem::path& preference) {
     }
 }
 void select_new_screens(bool enabled) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("select_new_screens", [&] { select_new_screens(enabled); });
     if (!screens_available || enabled == screens_enabled) return;
     if (!screens_preference.empty()) {
         @autoreleasepool {
@@ -464,13 +495,14 @@ void set_match_turbo_enabled(bool enabled) { match_turbo = enabled; }
 bool native_match_speed_enabled() { return native_speed_enabled; }
 bool native_debugging_available() { return debugging_available; }
 bool native_debugging_enabled() { return native_debugging_features() != 0; }
-std::uint32_t native_debugging_features() { return debugging_available ? debugging_features : 0; }
+std::uint32_t native_debugging_features() { return debugging_available ? debugging_features.load() : 0; }
 bool native_debugging_feature(DebugFeature feature) {
     return unsigned(feature) < debug_feature_count && (native_debugging_features() & (1u << unsigned(feature)));
 }
 void initialize_native_debugging(bool enabled) { debugging_available = true; debugging_features = enabled ? all_debug_features : 0; }
 void select_native_debugging(bool enabled) { select_native_debugging_features(enabled ? all_debug_features : 0); }
 void select_native_debugging_features(std::uint32_t features) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("select_native_debugging_features", [&] { select_native_debugging_features(features); });
     features &= all_debug_features;
     if (!debugging_available || features == debugging_features) return;
     if (!debugging_preference.empty()) {
@@ -492,6 +524,7 @@ void initialize_native_match_speed(std::uint16_t value) {
     match_turbo = true;
 }
 void select_native_match_speed(std::uint16_t value) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("select_native_match_speed", [&] { select_native_match_speed(value); });
     if (!native_speed_enabled || !valid_match_speed(value) || value == selected_match_speed) return;
     selected_match_speed = value;
     if (match_speed_preference.empty()) return;
@@ -539,6 +572,7 @@ NSString* menu_text(const std::string& bytes) {
 constexpr std::uint32_t quit_command = 0x71756974;
 }
 std::vector<LegacyRect> NativeUI::desktop_rectangles() const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("desktop_rectangles", [&] { return desktop_rectangles(); });
     @autoreleasepool {
         // AppKit supplies the current usable desktop, accounting for menu bars
         // and the Dock. Convert Cocoa's upward Y axis to original global space.
@@ -560,11 +594,12 @@ std::vector<LegacyRect> NativeUI::desktop_rectangles() const {
     }
 }
 struct NativeUI::Impl {
-    std::deque<UIEvent> pending;
+    UIEventQueue pending;
     std::set<unsigned short> host_command_keyups;
     std::set<std::filesystem::path> host_arguments;
     CMNativeAppDelegate* delegate;
-    bool finished_launch = false;
+    std::atomic<bool> finished_launch{false};
+    std::atomic<bool> pointer_invalidated{false};
     // Only the isolated validation app opts in. Some UI drivers deliver an
     // AppKit event without moving the physical desktop pointer. Use that event's
     // position for subsequent legacy GetMouse queries in this test mode.
@@ -582,6 +617,26 @@ struct NativeUI::Impl {
     // The game edited its own menus: refresh the command items even when the
     // command context is unchanged (refresh_commands re-asserts File > Save).
     bool menus_edited = true;
+    std::atomic<std::uint64_t> command_revision{0};
+    // Worker mode: whether the game is waiting for input, and when it last
+    // stopped waiting (systemUptime). A shortcut is refused while the game has
+    // been computing for over a second; the event's age cannot tell any more,
+    // since main dequeues continuously.
+    std::atomic<bool> worker_waiting{false};
+    std::atomic<double> worker_resumed_at{0};
+    bool worker_busy() const {
+        return game_thread_active() && !event_pointer && !worker_waiting.load() &&
+            NSProcessInfo.processInfo.systemUptime - worker_resumed_at.load() > 1.0;
+    }
+    // The session service_native_ui is running right now. A worker request
+    // drained inside that call must neither end it (AppKit is still using it)
+    // nor run it again; ends wait in ended_while_serviced until it returns.
+    NSModalSession serviced_session = nil;
+    std::vector<NSModalSession> ended_while_serviced;
+    void end_session(NSModalSession session) {
+        if (session == serviced_session) ended_while_serviced.push_back(session);
+        else [NSApp endModalSession:session];
+    }
     struct Menu { NSMenu* native; std::int16_t id; bool enabled; };
     std::map<std::uint32_t, Menu> menus;
     std::map<std::uint32_t, CMNativeWindow*> windows;
@@ -592,7 +647,23 @@ struct NativeUI::Impl {
         NSModalSession session = nil;
     };
     std::map<std::uint32_t, Dialog> dialogs;
+    std::vector<std::uint32_t> modal_order;
     std::map<std::uint32_t, LegacyRect> logical_bounds;
+    struct Geometry {
+        std::map<std::uint32_t, LegacyRect> bounds;
+        GuiCanvas canvas;
+        std::uint32_t primary = 0;
+        bool adaptive = false;
+    };
+    // AppKit alone writes geometry. Readers retain one immutable publication;
+    // neither a mutable host container nor an NSWindow crosses this boundary.
+    mutable std::mutex geometry_mutex;
+    std::shared_ptr<const Geometry> geometry = std::make_shared<const Geometry>();
+    std::shared_ptr<const Geometry> geometry_snapshot() const {
+        std::lock_guard lock(geometry_mutex);
+        return geometry;
+    }
+    bool publishing_geometry = false;
     std::uint32_t primary_window = 0;
     InterfaceScale requested_scale = InterfaceScale::original;
     bool adaptive = false;
@@ -607,6 +678,15 @@ struct NativeUI::Impl {
     std::string command_status = "Unavailable while starting";
     void refresh_commands() {
         for (NSMenuItem* item in direct_menu.itemArray) {
+            if (item.tag == NSInteger(DirectCommand::best_xi)) {
+                item.hidden = command_context.best_xi_title.empty();
+                // AppKit can consume a disabled menu's key equivalent. Remove
+                // it outside the squad so editors retain Command-A/Select All.
+                item.keyEquivalent = command_context.ready &&
+                    command_context.actions[std::size_t(DirectCommand::best_xi)] ? @"a" : @"";
+                if (!item.hidden) item.title = [[NSString alloc] initWithBytes:command_context.best_xi_title.data()
+                    length:command_context.best_xi_title.size() encoding:NSISOLatin1StringEncoding];
+            }
             if (item.tag >= 0 && item.tag < NSInteger(direct_command_count))
                 item.enabled = command_context.ready && command_context.actions[item.tag] != 0;
             else if (item.tag == 101) { item.enabled = NO; }
@@ -707,6 +787,10 @@ struct NativeUI::Impl {
             window.contentView.needsDisplay = YES;
         }
     }
+    void invalidate_pointer() {
+        pointer_reading.reset();
+        pointer_invalidated.store(true);
+    }
     void moved_window(NSWindow* window) {
         if (applying_layout || !layout || !primary_window || window != windows.at(primary_window)) return;
         if (window.inLiveResize) return;
@@ -721,13 +805,14 @@ struct NativeUI::Impl {
         layout->host.y += top - expected.y;
         moved_center = PresentationPoint{NSMidX(content), top + content.size.height / 2};
         // Related panels and continuous mouse polling share the moved inverse.
-        pointer_reading.reset();
+        invalidate_pointer();
         applying_layout = true;
         apply_window_frames();
         applying_layout = false;
     }
     void refresh_presentation() {
-        if (applying_layout || !primary_window || !screen()) return;
+        if (applying_layout) return;
+        if (!primary_window || !screen()) { publish_geometry(); return; }
         applying_layout = true;
         const auto area = available();
         const auto scale = adaptive && requested_scale == InterfaceScale::fit ? InterfaceScale::original : requested_scale;
@@ -739,7 +824,7 @@ struct NativeUI::Impl {
             layout->host.y = std::clamp(layout->host.y + moved_center->y - main.y - main.height / 2,
                 area.y, area.y + area.height - layout->host.height);
         }
-        pointer_reading.reset();
+        invalidate_pointer();
         apply_window_frames();
         for (NSMenuItem* item in scale_menu.itemArray) {
             const auto choice = interface_scales[item.tag];
@@ -747,6 +832,7 @@ struct NativeUI::Impl {
             item.state = choice == layout->effective ? NSControlStateValueOn : NSControlStateValueOff;
         }
         applying_layout = false;
+        publish_geometry();
     }
     double adaptive_scale() const {
         switch (requested_scale) {
@@ -760,12 +846,40 @@ struct NativeUI::Impl {
         const auto area = available();
         return bounded_gui_canvas(int(area.width / adaptive_scale()), int(area.height / adaptive_scale()));
     }
+    GuiCanvas publish_geometry() {
+        // Cocoa can deliver a resize notification while adjusting constraints.
+        // Keep the previous complete publication until the outer update ends.
+        if (publishing_geometry || applying_layout) return geometry_snapshot()->canvas;
+        publishing_geometry = true;
+        struct Reset { bool& flag; ~Reset() { flag = false; } } reset{publishing_geometry};
+        GuiCanvas canvas;
+        if (primary_window && adaptive) {
+            auto window = windows.at(primary_window);
+            const auto maximum = maximum_canvas();
+            const auto preferred = preferred_canvas.value_or(maximum);
+            const auto scale = adaptive_scale();
+            const auto minimum_size = NSMakeSize(800 * scale, 600 * scale);
+            const auto maximum_size = NSMakeSize(maximum.width * scale, maximum.height * scale);
+            if (!NSEqualSizes(window.contentMinSize, minimum_size)) window.contentMinSize = minimum_size;
+            if (!NSEqualSizes(window.contentMaxSize, maximum_size)) window.contentMaxSize = maximum_size;
+            canvas = {std::min(preferred.width, maximum.width), std::min(preferred.height, maximum.height)};
+        }
+        const auto previous = geometry_snapshot();
+        if (previous->bounds != logical_bounds || previous->canvas != canvas ||
+            previous->primary != primary_window || previous->adaptive != adaptive) {
+            auto next = std::make_shared<const Geometry>(Geometry{logical_bounds, canvas, primary_window, adaptive});
+            { std::lock_guard lock(geometry_mutex); geometry.swap(next); }
+            // Release the retired map outside the publication lock.
+        }
+        return canvas;
+    }
     void resized_window(NSWindow* window) {
         if (applying_layout || !adaptive || !primary_window || window != windows.at(primary_window) || window.inLiveResize) return;
         const auto size = [window contentRectForFrameRect:window.frame].size;
         preferred_canvas = bounded_gui_canvas(int(std::lround(size.width / adaptive_scale())),
                                               int(std::lround(size.height / adaptive_scale())));
-        pointer_reading.reset();
+        invalidate_pointer();
+        publish_geometry();
     }
     bool choose_scale(InterfaceScale choice) {
         if (primary_window && !scale_fits(choice, scene(), available())) return false;
@@ -837,6 +951,13 @@ struct NativeUI::Impl {
         delegate->hostArguments = &host_arguments;
         delegate->launching = true;
         delegate->launchedWithDocuments = false;
+        if (startup_events) {
+            delegate->launching = startup_events->delegate->launching;
+            delegate->launchedWithDocuments = startup_events->delegate->launchedWithDocuments;
+            finished_launch = !delegate->launching;
+            UIEvent event{UIEvent::Kind::launch};
+            while (startup_events->pending.pop(event)) pending.push_back(std::move(event));
+        }
         delegate->refreshPresentation = [this] { refresh_presentation(); };
         delegate->movePresentation = [this](NSWindow* window) { moved_window(window); };
         delegate->resizePresentation = [this](NSWindow* window) { resized_window(window); };
@@ -849,6 +970,7 @@ struct NativeUI::Impl {
             UIEvent event{UIEvent::Kind::command};
             event.message = std::uint32_t(command);
             event.command_context = command_context.identity;
+            ++command_revision;
             pending.push_back(event);
             command_context = {};
             command_status = "Queued for the original game";
@@ -856,6 +978,7 @@ struct NativeUI::Impl {
         };
         delegate->selectQuickSave = [this] {
             if (!quick_save_available) { NSBeep(); return; }
+            ++command_revision;
             pending.push_back({UIEvent::Kind::quick_save});
             quick_save_available = false;
             command_status = "Quick save requested";
@@ -874,21 +997,64 @@ struct NativeUI::Impl {
             }
         }
         [NSApp setDelegate:delegate];
+        startup_events.reset();
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
       }
     }
     ~Impl() {
         delegate->refreshPresentation = {}; delegate->movePresentation = {};
         delegate->resizePresentation = {};
-        delegate->selectScale = {}; delegate->selectCommand = {};
+        delegate->selectScale = {}; delegate->selectCommand = {}; delegate->selectQuickSave = {};
+        for (auto it = modal_order.rbegin(); it != modal_order.rend(); ++it) {
+            auto& dialog = dialogs.at(*it);
+            if (dialog.session) end_session(dialog.session);
+            dialog.session = nil;
+        }
+        for (const auto& [token, dialog] : dialogs) {
+            (void)token;
+            ((CMDialogPanel*)dialog.panel)->pending = nullptr;
+            [dialog.panel orderOut:nil]; [dialog.panel close];
+        }
         for (const auto& [token, event] : events) { (void)token; ReleaseEvent(event); }
-        for (const auto& [token, window] : windows) { (void)token; [window orderOut:nil]; [window close]; }
-        if (NSApp.delegate == delegate) [NSApp setDelegate:nil];
+        for (const auto& [token, window] : windows) {
+            (void)token;
+            auto view = (CMNativeView*)window.contentView;
+            view->pending = nullptr; view->inversePoint = {};
+            window.delegate = nil;
+            [window orderOut:nil]; [window close];
+        }
+        if (NSApp.delegate == delegate) { [NSApp setMainMenu:nil]; [NSApp setDelegate:nil]; }
     }
 };
-NativeUI::NativeUI(std::filesystem::path preference) : impl_(std::make_unique<Impl>(std::move(preference))) {}
-NativeUI::~NativeUI() = default;
+struct NativeUI::WorkerQueries {
+    bool launched = false;
+    std::optional<NativePointerState> pointer;
+    std::chrono::steady_clock::time_point pointer_at{};
+    std::optional<CommandContext> commands;
+    std::string status;
+    bool quick_save = false;
+    std::uint64_t command_revision = 0;
+};
+NativeUI::NativeUI(std::filesystem::path preference) : worker_(std::make_unique<WorkerQueries>()) {
+    CM_PROFILE_ON_MAIN("NativeUI::NativeUI", [&] {
+        if (active_ui) throw std::logic_error("Only one native UI may own AppKit");
+        impl_ = std::make_shared<Impl>(std::move(preference));
+        active_ui = this;
+    });
+}
+NativeUI::~NativeUI() {
+    CM_PROFILE_ON_MAIN("NativeUI::~NativeUI", [&] {
+        active_ui = nullptr;
+        impl_.reset();
+    });
+}
 GuiCanvas NativeUI::adaptive_canvas(bool enabled) {
+    if (!on_main_thread()) {
+        const auto snapshot = impl_->geometry_snapshot();
+        if (!snapshot->primary || snapshot->adaptive == enabled) return snapshot->canvas;
+        // Mode transitions still change the native window style synchronously.
+        return CM_PROFILE_ON_MAIN("NativeUI::adaptive_canvas", [&] { return adaptive_canvas(enabled); });
+    }
     if (!impl_->primary_window) return {};
     auto window = impl_->windows.at(impl_->primary_window);
     if (enabled != impl_->adaptive) {
@@ -898,26 +1064,22 @@ GuiCanvas NativeUI::adaptive_canvas(bool enabled) {
         else window.styleMask &= ~NSWindowStyleMaskResizable;
         impl_->applying_layout = false;
     }
-    if (!enabled) return {};
-    const auto maximum = impl_->maximum_canvas();
-    const auto preferred = impl_->preferred_canvas.value_or(maximum);
-    const auto scale = impl_->adaptive_scale();
-    window.contentMinSize = NSMakeSize(800 * scale, 600 * scale);
-    window.contentMaxSize = NSMakeSize(maximum.width * scale, maximum.height * scale);
-    return {std::min(preferred.width, maximum.width), std::min(preferred.height, maximum.height)};
+    return impl_->publish_geometry();
 }
 void NativeUI::commit_canvas(GuiCanvas canvas) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::commit_canvas", [&] { return commit_canvas(canvas); });
     if (!impl_->primary_window) return;
     auto& bounds = impl_->logical_bounds.at(impl_->primary_window);
     bounds[2] = bounds[0] + canvas.height;
     bounds[3] = bounds[1] + canvas.width;
     auto view = (CMNativeView*)impl_->windows.at(impl_->primary_window).contentView;
     view->logicalBounds = bounds;
-    impl_->pointer_reading.reset();
+    impl_->invalidate_pointer();
     impl_->delivered_pointer.reset();
     impl_->refresh_presentation();
 }
 void NativeUI::create_dialog(std::uint32_t token, const DialogDefinition& dialog, const std::vector<DialogItem>& items) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::create_dialog", [&] { return create_dialog(token, dialog, items); });
     @autoreleasepool {
         if (impl_->dialogs.contains(token)) throw std::runtime_error("Duplicate native dialog token");
         const auto& bounds = dialog.bounds;
@@ -975,41 +1137,56 @@ void NativeUI::create_dialog(std::uint32_t token, const DialogDefinition& dialog
         impl_->dialogs.emplace(token, Impl::Dialog{panel, target, items});
     }
 }
-bool NativeUI::is_dialog(std::uint32_t token) const { return impl_->dialogs.contains(token); }
+bool NativeUI::is_dialog(std::uint32_t token) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::is_dialog", [&] { return is_dialog(token); });
+    return impl_->dialogs.contains(token);
+}
 void NativeUI::show_dialog(std::uint32_t token) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::show_dialog", [&] { return show_dialog(token); });
     auto& dialog = impl_->dialogs.at(token);
     [dialog.panel makeKeyAndOrderFront:nil];
-    if (!dialog.session) dialog.session = [NSApp beginModalSessionForWindow:dialog.panel];
+    // Sessions end in reverse order of their beginning. While an end waits
+    // for the service loop to leave its session, begin none; dialog_click
+    // comes back here once that has happened.
+    if (!dialog.session && impl_->ended_while_serviced.empty()) {
+        dialog.session = [NSApp beginModalSessionForWindow:dialog.panel];
+        impl_->modal_order.push_back(token);
+    }
 }
 void NativeUI::show_alert(const std::string& title, const std::string& message) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::show_alert", [&] { return show_alert(title, message); });
     NSAlert* alert = [NSAlert new];
     alert.alertStyle = NSAlertStyleCritical;
     alert.messageText = [NSString stringWithUTF8String:title.c_str()];
     alert.informativeText = [NSString stringWithUTF8String:message.c_str()];
     [alert runModal];
 }
-void NativeUI::beep() { NSBeep(); }
+void NativeUI::beep() {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::beep", [&] { return beep(); });
+    NSBeep();
+}
 bool NativeUI::take_quick_save_request() {
-    const auto found = std::find_if(impl_->pending.begin(), impl_->pending.end(), [](const auto& event) {
-        return event.kind == UIEvent::Kind::quick_save;
-    });
-    if (found == impl_->pending.end()) return false;
-    impl_->pending.erase(found);
-    return true;
+    UIEvent event{UIEvent::Kind::quick_save};
+    return impl_->pending.take(event, UIEvent::Kind::quick_save);
 }
 std::int16_t NativeUI::dialog_click(std::uint32_t token, double timeout_seconds) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::dialog_click", [&] { return dialog_click(token, timeout_seconds); });
     @autoreleasepool {
         auto& dialog = impl_->dialogs.at(token);
         if (!dialog.session) show_dialog(token);
+        if (!dialog.session) return 0;
         const auto until = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_seconds);
         for (;;) {
-            [NSApp runModalSession:dialog.session];
+            // Drained inside the service loop's own run of this session: do
+            // not re-enter it. Report what is recorded; the caller asks again.
+            const bool nested = dialog.session == impl_->serviced_session;
+            if (!nested) [NSApp runModalSession:dialog.session];
             if (const auto clicked = dialog.target->clicked) {
                 dialog.target->clicked = 0;
                 return clicked;
             }
             const auto left = std::chrono::duration<double>(until - std::chrono::steady_clock::now()).count();
-            if (left <= 0) return 0;
+            if (left <= 0 || nested) return 0;
             // Sleeps until an event comes for the session (or the time is up).
             [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:left]
                                   inMode:NSModalPanelRunLoopMode dequeue:NO];
@@ -1017,17 +1194,22 @@ std::int16_t NativeUI::dialog_click(std::uint32_t token, double timeout_seconds)
     }
 }
 bool NativeUI::dialog_item_enabled(std::uint32_t token, std::int16_t item) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::dialog_item_enabled", [&] { return dialog_item_enabled(token, item); });
     const auto& items = impl_->dialogs.at(token).items;
     return item >= 1 && std::size_t(item) <= items.size() && items[std::size_t(item) - 1].enabled();
 }
 void NativeUI::dispose_dialog(std::uint32_t token) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::dispose_dialog", [&] { return dispose_dialog(token); });
     auto& dialog = impl_->dialogs.at(token);
-    if (dialog.session) [NSApp endModalSession:dialog.session];
+    if (dialog.session) impl_->end_session(dialog.session);
+    std::erase(impl_->modal_order, token);
+    ((CMDialogPanel*)dialog.panel)->pending = nullptr;
     [dialog.panel orderOut:nil];
     [dialog.panel close];
     impl_->dialogs.erase(token);
 }
 void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint32_t attributes, const LegacyRect& bounds) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::create_window", [&] { return create_window(token, kind, attributes, bounds); });
     @autoreleasepool {
         if (impl_->windows.contains(token)) throw std::runtime_error("Duplicate native window token");
         if (kind != 13 || (attributes & ~0x03220000u))
@@ -1071,19 +1253,25 @@ void NativeUI::create_window(std::uint32_t token, std::uint32_t kind, std::uint3
     }
 }
 void NativeUI::dispose_window(std::uint32_t token) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::dispose_window", [&] { return dispose_window(token); });
     auto window = impl_->windows.at(token);
     if (window.parentWindow) [window.parentWindow removeChildWindow:window];
     for (NSWindow* child in window.childWindows) [window removeChildWindow:child];
+    auto view = (CMNativeView*)window.contentView;
+    view->pending = nullptr; view->inversePoint = {};
+    window.delegate = nil;
     [window orderOut:nil]; [window close];
     impl_->windows.erase(token);
     impl_->logical_bounds.erase(token);
     if (impl_->primary_window == token) {
         impl_->primary_window = 0; impl_->layout.reset(); impl_->moved_center.reset();
     }
+    impl_->invalidate_pointer();
     impl_->refresh_presentation();
-    std::erase_if(impl_->pending, [token](const auto& event) { return event.window == token; });
+    impl_->pending.remove_window(token);
 }
 void NativeUI::show_window(std::uint32_t token, bool activate) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::show_window", [&] { return show_window(token, activate); });
     auto window = impl_->windows.at(token);
     if (impl_->background(token)) [window orderOut:nil];
     else {
@@ -1104,11 +1292,16 @@ void NativeUI::show_window(std::uint32_t token, bool activate) {
     [window displayIfNeeded];
 }
 LegacyRect NativeUI::window_bounds(std::uint32_t token, bool content) const {
+    if (!on_main_thread()) return impl_->geometry_snapshot()->bounds.at(token);
     (void)content; // Native chrome is host-only; guest class-13 bounds stay unchanged.
     return impl_->logical_bounds.at(token);
 }
-std::int32_t NativeUI::window_number(std::uint32_t token) const { return impl_->windows.at(token).windowNumber; }
+std::int32_t NativeUI::window_number(std::uint32_t token) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::window_number", [&] { return window_number(token); });
+    return impl_->windows.at(token).windowNumber;
+}
 NativeWindowHit NativeUI::find_window(std::int16_t x, std::int16_t y) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::find_window", [&] { return find_window(x, y); });
     @autoreleasepool {
         const auto main = CGDisplayBounds(CGMainDisplayID());
         // Classic FindWindow gives the main menu bar precedence over windows.
@@ -1129,47 +1322,36 @@ NativeWindowHit NativeUI::find_window(std::int16_t x, std::int16_t y) const {
     }
 }
 void NativeUI::set_window_title(std::uint32_t token, const std::string& title) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_window_title", [&] { return set_window_title(token, title); });
     @autoreleasepool { impl_->windows.at(token).title = [[NSString alloc] initWithUTF8String:title.c_str()]; }
 }
 void NativeUI::present_window(std::uint32_t token, std::uint32_t width, std::uint32_t height,
-                              std::uint32_t row_bytes, const std::vector<std::uint8_t>& argb,
+                              std::uint32_t row_bytes, std::vector<std::uint8_t> argb,
                               std::shared_ptr<const NativeDrawing> native) {
-    @autoreleasepool {
-        if (!width || !height || row_bytes < std::uint64_t(width) * 4 || argb.size() != std::uint64_t(row_bytes) * height)
-            throw std::runtime_error("Invalid native window pixel buffer");
-        const auto data = CFDataCreate(nullptr, argb.data(), argb.size());
-        const auto provider = CGDataProviderCreateWithCFData(data);
-        const auto colors = CGColorSpaceCreateDeviceRGB();
-        const auto image = CGImageCreate(width, height, 8, 32, row_bytes, colors,
-            CGBitmapInfo(kCGImageAlphaNoneSkipFirst) | CGBitmapInfo(kCGBitmapByteOrder32Big), provider, nullptr, false, kCGRenderingIntentDefault);
-        CGColorSpaceRelease(colors); CGDataProviderRelease(provider); CFRelease(data);
-        if (!image) throw std::runtime_error("Native Quartz rejected the original window pixel buffer");
-        CMNativeView* view = (CMNativeView*)impl_->windows.at(token).contentView;
-        view.renderedImage = [[NSImage alloc] initWithCGImage:image size:NSMakeSize(width, height)];
-        if (view->sourceImage) CGImageRelease(view->sourceImage);
-        view->sourceImage = image;
-        if (view->nativeBackground) CGImageRelease(view->nativeBackground);
-        view->nativeBackground = nullptr;
-        view->nativeDrawing = std::move(native);
-        if (view->nativeDrawing) {
-            const auto& background = *view->nativeDrawing;
-            if (background.width != int(width) || background.height != int(height) ||
-                background.background.size() != std::uint64_t(width) * height * 4)
-                throw std::runtime_error("Invalid native drawing background");
-            const auto baseData = CFDataCreate(nullptr, background.background.data(), background.background.size());
-            const auto baseProvider = CGDataProviderCreateWithCFData(baseData);
-            const auto baseColors = CGColorSpaceCreateDeviceRGB();
-            view->nativeBackground = CGImageCreate(background.width, background.height, 8, 32, background.width * 4,
-                baseColors, CGBitmapInfo(kCGImageAlphaNoneSkipFirst) | CGBitmapInfo(kCGBitmapByteOrder32Big),
-                baseProvider, nullptr, false, kCGRenderingIntentDefault);
-            CGColorSpaceRelease(baseColors); CGDataProviderRelease(baseProvider); CFRelease(baseData);
-            if (!view->nativeBackground) view->nativeDrawing.reset();
+    CM_PROFILE_ZONE("Present window");
+    CM_PROFILE_VALUE(token);
+    auto frame = prepare_presentation_frame(width, height, row_bytes, std::move(argb), std::move(native));
+    // Only installation and drawing need AppKit. Complete every frame before
+    // returning, retaining the original ordering with input, resize and capture.
+    CM_PROFILE_ON_MAIN("NativeUI::present_window", [&] {
+        CM_PROFILE_ZONE("AppKit install and display");
+        CM_PROFILE_VALUE(token);
+        @autoreleasepool {
+            CMNativeView* view = (CMNativeView*)impl_->windows.at(token).contentView;
+            view.renderedImage = [[NSImage alloc] initWithCGImage:frame.image.get() size:NSMakeSize(width, height)];
+            if (view->sourceImage) CGImageRelease(view->sourceImage);
+            view->sourceImage = frame.image.release();
+            if (view->nativeBackground) CGImageRelease(view->nativeBackground);
+            view->nativeBackground = frame.background.release();
+            view->nativeDrawing = std::move(frame.drawing);
+            view.needsDisplay = YES;
+            [view displayIfNeeded];
+            CM_PROFILE_FRAME("Presented frames");
         }
-        view.needsDisplay = YES;
-        [view displayIfNeeded];
-    }
+    });
 }
 std::vector<std::filesystem::path> NativeUI::save_window_images(const std::filesystem::path& directory) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::save_window_images", [&] { return save_window_images(directory); });
     @autoreleasepool {
         std::filesystem::create_directories(directory);
         std::vector<std::filesystem::path> paths;
@@ -1189,6 +1371,7 @@ std::vector<std::filesystem::path> NativeUI::save_window_images(const std::files
     }
 }
 std::vector<NativeDisplay> NativeUI::displays() const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::displays", [&] { return displays(); });
     std::uint32_t count = 0;
     std::vector<CGDirectDisplayID> ids(8);
     while (true) {
@@ -1216,8 +1399,12 @@ std::vector<NativeDisplay> NativeUI::displays() const {
     }
     return result;
 }
-void NativeUI::initialize_cursor() { @autoreleasepool { [[NSCursor arrowCursor] set]; } }
+void NativeUI::initialize_cursor() {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::initialize_cursor", [&] { return initialize_cursor(); });
+    @autoreleasepool { [[NSCursor arrowCursor] set]; }
+}
 void NativeUI::create_cursor(std::uint32_t token, const ColorCursor& cursor) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::create_cursor", [&] { return create_cursor(token, cursor); });
     @autoreleasepool {
         const auto data = CFDataCreate(nullptr, cursor.rgba.data(), cursor.rgba.size());
         const auto provider = CGDataProviderCreateWithCFData(data);
@@ -1230,14 +1417,27 @@ void NativeUI::create_cursor(std::uint32_t token, const ColorCursor& cursor) {
         impl_->cursors.insert_or_assign(token, [[NSCursor alloc] initWithImage:bitmap hotSpot:NSMakePoint(cursor.x, cursor.y)]);
     }
 }
-void NativeUI::set_cursor(std::uint32_t token) { [impl_->cursors.at(token) set]; }
+void NativeUI::set_cursor(std::uint32_t token) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_cursor", [&] { return set_cursor(token); });
+    [impl_->cursors.at(token) set];
+}
 void NativeUI::dispose_cursor(std::uint32_t token) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::dispose_cursor", [&] { return dispose_cursor(token); });
     const auto found = impl_->cursors.find(token);
     if (found == impl_->cursors.end()) throw std::runtime_error("Invalid or double native cursor disposal");
     if (NSCursor.currentCursor == found->second) [[NSCursor arrowCursor] set];
     impl_->cursors.erase(found);
 }
 NativePointerState NativeUI::pointer_state() const {
+    if (!on_main_thread()) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!impl_->event_pointer && !impl_->pointer_invalidated.load() && worker_->pointer &&
+            now - worker_->pointer_at < std::chrono::milliseconds(4)) return *worker_->pointer;
+        worker_->pointer = CM_PROFILE_ON_MAIN("NativeUI::pointer_state", [&] { impl_->pointer_reading.reset(); return pointer_state(); });
+        worker_->pointer_at = now;
+        return *worker_->pointer;
+    }
+    if (impl_->pointer_invalidated.exchange(false)) impl_->pointer_reading.reset();
     if (impl_->event_pointer && impl_->delivered_pointer) return *impl_->delivered_pointer;
     // Reuse a reading for 4 ms: a hand cannot move or click meaningfully faster.
     const auto now = std::chrono::steady_clock::now();
@@ -1258,6 +1458,7 @@ NativePointerState NativeUI::pointer_state() const {
     return *impl_->pointer_reading;
 }
 std::array<std::uint8_t, 16> NativeUI::key_map() const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::key_map", [&] { return key_map(); });
     std::array<std::uint8_t, 16> result{};
     if (NSApp.isActive) {
         for (unsigned key = 0; key < 128; ++key)
@@ -1266,49 +1467,123 @@ std::array<std::uint8_t, 16> NativeUI::key_map() const {
     }
     return result;
 }
-bool NativeUI::poll(UIEvent& event, double timeout_seconds, bool throttled) {
+void NativeUI::pump_native_events(double timeout_seconds, bool until_pending) {
+    const auto impl = impl_;
     @autoreleasepool {
-        if (!impl_->finished_launch) {
-            impl_->finished_launch = true;
-            [NSApp finishLaunching];
-            // Behind another application, or hidden, macOS puts an application
-            // that plays no sound and holds no activity into App Nap, which
-            // stretches the waits of this event pump. The game does all its
-            // work on this thread between pumps, so a Continue left to run in
-            // the background took 2 to 4 times as long (measured 2026-11-14).
-            // The system may still sleep when idle.
-            static id activity = [NSProcessInfo.processInfo
-                beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep
-                reason:@"The game processes on its main thread"];
-            (void)activity;
-        }
-        const auto now = std::chrono::steady_clock::now();
-        if (throttled && timeout_seconds <= 0 && impl_->pending.empty() && now - impl_->pumped_at < std::chrono::milliseconds(2)) return false;
-        impl_->pumped_at = now;
         NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:timeout_seconds];
-        while (impl_->pending.empty()) {
+        while (!until_pending || impl->pending.empty()) {
             NSEvent* native = [NSApp nextEventMatchingMask:NSEventMaskAny
                 untilDate:deadline
                 inMode:NSDefaultRunLoopMode dequeue:YES];
             if (native) {
+                const bool best_xi_key = native.type == NSEventTypeKeyDown &&
+                    (native.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift |
+                        NSEventModifierFlagControl | NSEventModifierFlagOption)) == NSEventModifierFlagCommand &&
+                    [native.charactersIgnoringModifiers.lowercaseString isEqualToString:@"a"] &&
+                    ((impl->command_context.ready && impl->command_context.actions[std::size_t(DirectCommand::best_xi)]) ||
+                     impl->host_command_keyups.contains(native.keyCode));
                 const bool command_key = native.type == NSEventTypeKeyDown && (native.modifierFlags & NSEventModifierFlagCommand) &&
-                    (native.keyCode == 1 || native.keyCode == 31 || native.keyCode == 36 || native.keyCode == 43 || native.keyCode == 33);
+                    (best_xi_key || native.keyCode == 1 || native.keyCode == 31 || native.keyCode == 36 || native.keyCode == 43 || native.keyCode == 33);
                 // A host shortcut consumes the entire key gesture. Sending its
                 // unmatched key-up to the original nested dialog can terminate
                 // filename editing or invoke an unrelated original accelerator.
                 if (native.type == NSEventTypeKeyDown) {
-                    if (command_key) impl_->host_command_keyups.insert(native.keyCode);
-                    else impl_->host_command_keyups.erase(native.keyCode);
-                } else if (native.type == NSEventTypeKeyUp && impl_->host_command_keyups.erase(native.keyCode)) continue;
-                if (command_key && native.keyCode != 1 && NSProcessInfo.processInfo.systemUptime - native.timestamp > 1.0) {
-                    impl_->command_status = "Refused: shortcut arrived while the game was busy";
-                    impl_->refresh_commands(); NSBeep(); continue;
+                    if (command_key) impl->host_command_keyups.insert(native.keyCode);
+                    else impl->host_command_keyups.erase(native.keyCode);
+                } else if (native.type == NSEventTypeKeyUp && impl->host_command_keyups.erase(native.keyCode)) continue;
+                if (best_xi_key && native.isARepeat) continue;
+                if (command_key && native.keyCode != 1 &&
+                    (NSProcessInfo.processInfo.systemUptime - native.timestamp > 1.0 || impl->worker_busy())) {
+                    impl->command_status = "Refused: shortcut arrived while the game was busy";
+                    ++impl->command_revision;
+                    impl->refresh_commands(); NSBeep(); continue;
                 }
                 [NSApp sendEvent:native];
                 [NSApp updateWindows];
             }
-            if (!native) break;
+            if (!native || !until_pending) break;
         }
+        // Also refresh at the existing host service boundary: visibleFrame can
+        // change with Dock/menu-bar configuration without a window resize.
+        impl->publish_geometry();
+    }
+}
+void service_native_ui() {
+    if (!on_main_thread()) throw std::logic_error("AppKit service must run on main");
+    CM_PROFILE_ZONE("AppKit event service (includes idle wait)");
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        if (active_ui) {
+            // Modal sessions belong to the host. Servicing them never calls
+            // original game code; their actions only record the chosen item.
+            const auto impl = active_ui->impl_;
+            if (!impl->modal_order.empty()) {
+                const auto session = impl->dialogs.at(impl->modal_order.back()).session;
+                {
+                    // Also on an exception out of an AppKit handler: a session
+                    // left marked would refuse every later click and dispose.
+                    struct Serviced {
+                        NativeUI::Impl& impl;
+                        ~Serviced() {
+                            impl.serviced_session = nil;
+                            for (const auto ended : std::exchange(impl.ended_while_serviced, {})) [NSApp endModalSession:ended];
+                        }
+                    } serviced{*impl};
+                    impl->serviced_session = session;
+                    [NSApp runModalSession:session];
+                }
+                impl->publish_geometry();
+                [NSApp nextEventMatchingMask:NSEventMaskAny
+                    untilDate:[NSDate dateWithTimeIntervalSinceNow:0.008]
+                    inMode:NSModalPanelRunLoopMode dequeue:NO];
+                return;
+            }
+            active_ui->pump_native_events(0.008, false);
+        } else {
+            // Install the game's delegate before consuming application input.
+            // In particular, Finder documents must not be sent to a nil
+            // delegate while run_probe is still loading the original program.
+            service_main_queue();
+        }
+    }
+}
+void NativeUI::finish_launch() {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::finish_launch", [&] { finish_launch(); });
+    if (!impl_->finished_launch) {
+        impl_->finished_launch = true;
+        [NSApp finishLaunching];
+    }
+    // App Nap previously stretched the cooperative pump's waits by 2–4x
+    // while hidden. Keep the active career (including its worker) eligible
+    // to run; the system may still sleep when idle.
+    static id activity = [NSProcessInfo.processInfo
+        beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep
+        reason:@"The game is processing an active career"];
+    (void)activity;
+}
+bool NativeUI::poll(UIEvent& event, double timeout_seconds, bool throttled) {
+    if (!on_main_thread()) {
+        // Also establishes the active-career activity if the bootstrap
+        // delegate already received applicationDidFinishLaunching.
+        if (!worker_->launched) { finish_launch(); worker_->launched = true; }
+        // The main loop already translates AppKit events. Wait on a value
+        // queue, not on the UI thread, and keep game callbacks on this owner.
+        if (!impl_->event_pointer) {
+            impl_->worker_waiting.store(true);
+            const bool received = impl_->pending.pop(event, timeout_seconds);
+            impl_->worker_resumed_at.store(NSProcessInfo.processInfo.systemUptime);
+            impl_->worker_waiting.store(false);
+            if (received) impl_->pointer_invalidated.store(true);
+            return received;
+        }
+        return CM_PROFILE_ON_MAIN("NativeUI::poll", [&] { return poll(event, timeout_seconds, throttled); });
+    }
+    @autoreleasepool {
+        finish_launch();
+        const auto now = std::chrono::steady_clock::now();
+        if (throttled && timeout_seconds <= 0 && impl_->pending.empty() && now - impl_->pumped_at < std::chrono::milliseconds(2)) return false;
+        impl_->pumped_at = now;
+        pump_native_events(timeout_seconds, true);
         if (impl_->pending.empty()) return false;
         // New input: the next pointer query reads the window server again, so
         // Button/GetMouse agree with the event the game is about to receive.
@@ -1344,8 +1619,7 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds, bool throttled) {
                 if (std::chrono::steady_clock::now() < impl_->validation_release_after) return false;
             }
         }
-        event = std::move(impl_->pending.front());
-        impl_->pending.pop_front();
+        if (!impl_->pending.pop(event)) return false;
         if (impl_->event_pointer && (event.kind == UIEvent::Kind::mouse_down ||
                                     event.kind == UIEvent::Kind::mouse_up ||
                                     event.kind == UIEvent::Kind::mouse_moved)) {
@@ -1358,6 +1632,7 @@ bool NativeUI::poll(UIEvent& event, double timeout_seconds, bool throttled) {
     }
 }
 void NativeUI::begin_event(std::uint32_t token, std::uint32_t event_class, std::uint32_t kind, const UIEvent& input) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::begin_event", [&] { return begin_event(token, event_class, kind, input); });
     EventRef event = nullptr;
     auto error = CreateEvent(nullptr, event_class, kind, GetCurrentEventTime(), 0, &event);
     if (error) throw std::runtime_error("Cannot create native Carbon event: " + std::to_string(error));
@@ -1370,10 +1645,12 @@ void NativeUI::begin_event(std::uint32_t token, std::uint32_t event_class, std::
     impl_->events.emplace(token, event);
 }
 void NativeUI::end_event(std::uint32_t token) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::end_event", [&] { return end_event(token); });
     ReleaseEvent(impl_->events.at(token)); impl_->events.erase(token);
 }
 NativeEventParameter NativeUI::event_parameter(std::uint32_t token, std::uint32_t name,
                                                std::uint32_t type, std::uint32_t size, bool data) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::event_parameter", [&] { return event_parameter(token, name, type, size, data); });
     NativeEventParameter result;
     std::array<std::uint8_t, 8> native{};
     ByteCount actual_size = UINT32_MAX;
@@ -1395,21 +1672,12 @@ NativeEventParameter NativeUI::event_parameter(std::uint32_t token, std::uint32_
     return result;
 }
 bool NativeUI::take_window_paint(UIEvent& event) {
-    const auto found = std::find_if(impl_->pending.begin(), impl_->pending.end(), [](const auto& item) {
-        return item.kind == UIEvent::Kind::update;
-    });
-    if (found == impl_->pending.end()) return false;
-    event = std::move(*found); impl_->pending.erase(found);
-    return true;
+    return impl_->pending.take(event, UIEvent::Kind::update);
 }
 void NativeUI::flush_events(std::uint16_t which, std::uint16_t stop) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::flush_events", [&] { return flush_events(which, stop); });
     @autoreleasepool {
-        for (auto it = impl_->pending.begin(); it != impl_->pending.end();) {
-            const auto mask = legacy_event_mask(*it);
-            if (mask & stop) return;
-            if (mask & which) it = impl_->pending.erase(it);
-            else ++it;
-        }
+        if (impl_->pending.flush(which, stop)) return;
         NSMutableArray<NSEvent*>* preserved = [NSMutableArray array];
         bool finished = false;
         for (unsigned count = 0; count < 10000; ++count) {
@@ -1425,7 +1693,9 @@ void NativeUI::flush_events(std::uint16_t which, std::uint16_t stop) {
     }
 }
 void NativeUI::create_menu(std::uint32_t token, const MenuDefinition& menu) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::create_menu", [&] { return create_menu(token, menu); });
     impl_->menus_edited = true;
+    ++impl_->command_revision;
     @autoreleasepool {
         if (impl_->menus.contains(token)) throw std::runtime_error("Duplicate native menu token");
         const bool application = menu.title == std::string(1, char(0x14));
@@ -1445,7 +1715,9 @@ void NativeUI::create_menu(std::uint32_t token, const MenuDefinition& menu) {
     }
 }
 void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_menu_bar", [&] { return set_menu_bar(menus); });
     impl_->menus_edited = true;
+    ++impl_->command_revision;
     @autoreleasepool {
         // AppKit permits only one parent for a submenu. Original SetMenuBar
         // can reinstall the same handles, so detach them before rebuilding.
@@ -1462,8 +1734,8 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
         NSMenuItem* game_top = [[NSMenuItem alloc] initWithTitle:@"Game" action:nil keyEquivalent:@""];
         impl_->direct_menu = [[NSMenu alloc] initWithTitle:@"Game"];
         impl_->direct_menu.autoenablesItems = NO;
-        NSArray<NSString*>* command_titles = @[@"Continue Game", @"Save Game…", @"Load Game…", @"Game Options…", @"Back or Cancel"];
-        NSArray<NSString*>* command_keys = @[@"\r", @"", @"o", @",", @"["];
+        NSArray<NSString*>* command_titles = @[@"Continue Game", @"Save Game…", @"Load Game…", @"Game Options…", @"Back or Cancel", @""];
+        NSArray<NSString*>* command_keys = @[@"\r", @"", @"o", @",", @"[", @"a"];
         for (std::size_t i = 0; i < direct_command_count; ++i) {
             NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:command_titles[i] action:@selector(directCommandAction:) keyEquivalent:command_keys[i]];
             item.tag = i; item.target = impl_->delegate;
@@ -1517,6 +1789,7 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
     }
 }
 std::uint32_t NativeUI::menu_key(std::uint8_t key) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::menu_key", [&] { return menu_key(key); });
     @autoreleasepool {
         if (!key) return 0;
         NSString* equivalent = [menu_text(std::string(1, char(key))) lowercaseString];
@@ -1533,6 +1806,15 @@ std::uint32_t NativeUI::menu_key(std::uint8_t key) const {
     }
 }
 void NativeUI::update_commands(const CommandContext& context, std::string_view status, bool quick_save_available) {
+    if (!on_main_thread()) {
+        const auto revision = impl_->command_revision.load();
+        if (worker_->commands == context && worker_->status == status && worker_->quick_save == quick_save_available &&
+            worker_->command_revision == revision) return;
+        CM_PROFILE_ON_MAIN("NativeUI::update_commands", [&] { update_commands(context, status, quick_save_available); });
+        worker_->commands = context; worker_->status = status; worker_->quick_save = quick_save_available;
+        worker_->command_revision = revision;
+        return;
+    }
     if (!impl_->menus_edited && impl_->command_context == context && impl_->command_status == status &&
         impl_->quick_save_available == quick_save_available) return;
     impl_->menus_edited = false;
@@ -1542,6 +1824,7 @@ void NativeUI::update_commands(const CommandContext& context, std::string_view s
     impl_->refresh_commands();
 }
 bool NativeUI::menu_selection_enabled(std::uint32_t selection) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::menu_selection_enabled", [&] { return menu_selection_enabled(selection); });
     const auto id = std::int16_t(selection >> 16);
     const auto item = std::uint16_t(selection);
     for (const auto token : impl_->menu_bar) {
@@ -1554,7 +1837,9 @@ bool NativeUI::menu_selection_enabled(std::uint32_t selection) const {
     return false;
 }
 void NativeUI::set_menu_item_enabled(std::uint32_t token, std::uint16_t item, bool enabled) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_menu_item_enabled", [&] { return set_menu_item_enabled(token, item, enabled); });
     impl_->menus_edited = true;
+    ++impl_->command_revision;
     auto& menu = impl_->menus.at(token);
     if (!item) {
         menu.enabled = enabled;
@@ -1566,6 +1851,7 @@ void NativeUI::set_menu_item_enabled(std::uint32_t token, std::uint16_t item, bo
 }
 std::optional<std::pair<std::uint32_t, std::uint16_t>> NativeUI::find_menu_command(
     std::uint32_t menu, std::uint32_t command, std::uint32_t index) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::find_menu_command", [&] { return find_menu_command(menu, command, index); });
     if (!index) return {};
     const auto targets = menu ? std::vector<std::uint32_t>{menu} : impl_->menu_bar;
     for (auto token : targets) {
@@ -1579,7 +1865,9 @@ std::optional<std::pair<std::uint32_t, std::uint16_t>> NativeUI::find_menu_comma
     return {};
 }
 void NativeUI::delete_menu_item(std::uint32_t menu, std::uint16_t item) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::delete_menu_item", [&] { return delete_menu_item(menu, item); });
     impl_->menus_edited = true;
+    ++impl_->command_revision;
     @autoreleasepool {
         auto& entry = impl_->menus.at(menu);
         if (!item || item > entry.native.numberOfItems) return;
@@ -1598,13 +1886,17 @@ void NativeUI::delete_menu_item(std::uint32_t menu, std::uint16_t item) {
     }
 }
 void NativeUI::append_menu_item(std::uint32_t menu, const MenuItem& item) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::append_menu_item", [&] { return append_menu_item(menu, item); });
     impl_->menus_edited = true;
+    ++impl_->command_revision;
     @autoreleasepool { impl_->append(menu, item); }
 }
 std::uint16_t NativeUI::count_menu_items(std::uint32_t menu) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::count_menu_items", [&] { return count_menu_items(menu); });
     return impl_->menus.at(menu).native.numberOfItems;
 }
 std::string NativeUI::menu_item_text(std::uint32_t menu, std::uint16_t item) const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::menu_item_text", [&] { return menu_item_text(menu, item); });
     @autoreleasepool {
         NSMenu* native = impl_->menus.at(menu).native;
         if (!item || item > native.numberOfItems) throw std::runtime_error("Invalid menu item index");
@@ -1615,12 +1907,26 @@ std::string NativeUI::menu_item_text(std::uint32_t menu, std::uint16_t item) con
         return {static_cast<const char*>(data.bytes), data.length};
     }
 }
-bool NativeUI::set_interface_scale(InterfaceScale scale) { return impl_->choose_scale(scale); }
-InterfaceScale NativeUI::interface_scale() const { return impl_->layout ? impl_->layout->effective : impl_->requested_scale; }
-double NativeUI::presentation_scale() const { return impl_->layout ? impl_->layout->scale : 1; }
-void NativeUI::redraw_menu_bar() { @autoreleasepool { [NSApp.mainMenu update]; } }
+bool NativeUI::set_interface_scale(InterfaceScale scale) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_interface_scale", [&] { return set_interface_scale(scale); });
+    return impl_->choose_scale(scale);
+}
+InterfaceScale NativeUI::interface_scale() const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::interface_scale", [&] { return interface_scale(); });
+    return impl_->layout ? impl_->layout->effective : impl_->requested_scale;
+}
+double NativeUI::presentation_scale() const {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::presentation_scale", [&] { return presentation_scale(); });
+    return impl_->layout ? impl_->layout->scale : 1;
+}
+void NativeUI::redraw_menu_bar() {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::redraw_menu_bar", [&] { return redraw_menu_bar(); });
+    @autoreleasepool { [NSApp.mainMenu update]; }
+}
 void NativeUI::set_menu_item_text(std::uint32_t menu, std::uint16_t item, const std::string& text) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_menu_item_text", [&] { return set_menu_item_text(menu, item, text); });
     impl_->menus_edited = true;
+    ++impl_->command_revision;
     @autoreleasepool {
         NSMenu* native = impl_->menus.at(menu).native;
         if (!item || item > native.numberOfItems) return; // Original preparation may refer to a removed Quit item.

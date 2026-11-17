@@ -44,6 +44,7 @@ game frame/content dimensions. Save/Load was not retested for this change.
 | `load_game` | Game > Load Game…; Command-O | Start screen only |
 | `open_game_options` | Game > Game Options…; Command-comma | Start screen and supported career screens |
 | `back_or_cancel` | Game > Back or Cancel; Command-[ | Original Back control, file/options dialog Cancel, or confirmation No |
+| `best_xi` | Game > localized Best XI; Command-A | Managed Squad with the enabled Lineup → Best XI item; unavailable in other sections, locked lists and dialogs |
 | `set_interface_scale` | View > Interface Scale | Native presentation; child IDs `.100`, `.125`, `.150`, `.200`, `.fit` |
 
 Load deliberately remains unavailable inside a career. The Mac original Restart

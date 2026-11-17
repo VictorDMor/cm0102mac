@@ -76,6 +76,25 @@ CommandContext original_command_context(const State& s, const CommandScreen& scr
             // Restart action ends at the empty 1076f880 routine; do not offer
             // a command which accepts confirmation but cannot restart.
             allow(DirectCommand::back_or_cancel, -2);
+            if (c.handler == 0x10036f10) {
+                const auto history = std::uint32_t(s.memory.read<4>(c.root + 0x10));
+                const auto value = [&](unsigned index) { return s.memory.read<4>(history + 0x14 + index * 8); };
+                if (value(4) == 1 && !(value(7) & 0x800)) {
+                    // Reuse the live Lineup item, which is built only for a
+                    // manageable squad. Its handler rechecks ownership/locks.
+                    allow(DirectCommand::best_xi, 30004);
+                    if (c.actions[std::size_t(DirectCommand::best_xi)]) {
+                        // A queued command must not select a different club or
+                        // fixture after a rebuild with the same control IDs.
+                        for (unsigned index : {0u, 1u, 3u, 4u, 7u})
+                            c.identity = (c.identity ^ value(index)) * 1099511628211ULL;
+                        const auto control = c.screen + 0xba864 + c.controls[std::size_t(DirectCommand::best_xi)] * 0x17c;
+                        const auto label = s.memory.copy_out(control + 0x78, 256);
+                        c.best_xi_title.assign(label.begin(), std::find(label.begin(), label.end(), 0));
+                        c.best_xi_title.erase(0, c.best_xi_title.find_first_not_of(' '));
+                    }
+                }
+            }
         }
         c.ready = true;
         return c;

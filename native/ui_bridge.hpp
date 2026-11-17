@@ -5,6 +5,9 @@
 #include <memory>
 #include <vector>
 #include <optional>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
 #include "menu_resource.hpp"
 #include "dialog_resource.hpp"
 #include "regions.hpp"
@@ -26,12 +29,33 @@ struct UIEvent {
     std::int32_t wheel_delta = 0;
     std::uint64_t command_context = 0;
 };
+// Host-produced value messages. No guest address or callback crosses this
+// queue; only the game owner consumes them at original event boundaries.
+class UIEventQueue {
+public:
+    void push_back(UIEvent);
+    bool pop(UIEvent&, double timeout_seconds = 0);
+    bool take(UIEvent&, UIEvent::Kind);
+    bool contains(UIEvent::Kind) const;
+    bool empty() const;
+    UIEvent front() const;
+    void remove_window(std::uint32_t);
+    bool flush(std::uint16_t which, std::uint16_t stop);
+private:
+    mutable std::mutex mutex_;
+    std::condition_variable changed_;
+    std::deque<UIEvent> events_;
+};
 struct NativeEventParameter {
     std::int32_t error = 0;
     std::uint32_t type = UINT32_MAX, size = UINT32_MAX;
     std::vector<std::uint8_t> bytes;
 };
 std::uint16_t legacy_event_mask(const UIEvent& event);
+// Services native events independently of simulation. Main-thread only.
+void service_native_ui();
+// Buffer Finder launch/open/quit messages before the lazy game UI exists.
+void prepare_native_ui();
 struct NativeDisplay {
     std::uint32_t id;
     std::array<std::int16_t, 4> bounds; // Top, left, bottom, right in logical screen coordinates.
@@ -55,8 +79,8 @@ public:
     void dispose_cursor(std::uint32_t token);
     std::array<std::uint8_t, 16> key_map() const;
     NativePointerState pointer_state() const;
-    // `throttled`: the caller polls with no wait in a busy loop; pump AppKit
-    // at most every 2 ms (queued input is still returned at once).
+    // `throttled` limits the diagnostic cooperative pump to once per 2 ms.
+    // The normal worker consumes the independently serviced input queue.
     bool poll(UIEvent& event, double timeout_seconds, bool throttled = false);
     bool take_window_paint(UIEvent& event);
     void flush_events(std::uint16_t which, std::uint16_t stop);
@@ -107,11 +131,19 @@ public:
     NativeWindowHit find_window(std::int16_t x, std::int16_t y) const;
     void set_window_title(std::uint32_t token, const std::string& title);
     void present_window(std::uint32_t token, std::uint32_t width, std::uint32_t height,
-                        std::uint32_t row_bytes, const std::vector<std::uint8_t>& argb,
+                        std::uint32_t row_bytes, std::vector<std::uint8_t> argb,
                         std::shared_ptr<const NativeDrawing> native = {});
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;
 private:
+    friend void service_native_ui();
+    void finish_launch();
+    void pump_native_events(double timeout_seconds, bool until_pending);
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    struct WorkerQueries;
+    // Used only by the single game owner, never by AppKit callbacks.
+    std::unique_ptr<WorkerQueries> worker_;
+    // A host pump can service destruction while inside AppKit's run loop.
+    // Its local shared owner keeps the native state alive until it returns.
+    std::shared_ptr<Impl> impl_;
 };
 }

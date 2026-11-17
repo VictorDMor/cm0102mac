@@ -4,7 +4,7 @@
 // benchmarks and for checking rewrites against the generated reference.
 //
 // cm-world-replay <capture> [runs] [--write-expected <path>] [--flip <address>]
-//                 [--profile <samples>] [--timing]
+//                 [--profile <samples>] [--timing] [--match-phases]
 //   <capture>         directory with initial.snapshot, expected.snapshot and,
 //                     when the operation calls the OS, imports.gz; a season
 //                     capture (capture.txt "days=N", recorded by the app with
@@ -24,6 +24,9 @@
 //   --profile         sample the guest PC and its return addresses every
 //                     millisecond of CPU time, over all runs, into one file;
 //                     tools/guest_profile.py charges them to original routines
+//   --match-phases    in cm-world-replay-phases, with --timing: aggregate phases without
+//                     activating the guest sampler or changing native routing;
+//                     advance includes the other phases (do not sum all rows)
 //   --check-club-control
 //                     compare club_control::human_controlled with the original
 //                     0x1014c2e0 for every club of the initial snapshot and
@@ -69,7 +72,9 @@
 //   --stack-audit-all as --stack-audit, listing every site, offset and writer
 //                     (the per-reader leftover contract needs all of them)
 #include "list_search.hpp"
+#include "main_thread.hpp"
 #include "match_replay.hpp"
+#include "match_phase_timing.hpp"
 #include "match_speed.hpp"
 #include "match_turbo.hpp"
 #include "guest_profiler.hpp"
@@ -194,7 +199,7 @@ std::optional<std::string> capture_field(const std::filesystem::path& capture, s
 }
 }
 
-int main(int argc, char** argv) {
+int replay_main(int argc, char** argv) {
     try {
         if (argc < 2) throw std::runtime_error("Usage: cm-world-replay <capture> [runs] [--write-expected <path>] [--flip <address>]");
         const std::filesystem::path capture = argv[1];
@@ -202,7 +207,7 @@ int main(int argc, char** argv) {
         std::optional<std::filesystem::path> write_expected;
         std::optional<std::uint32_t> flip;
         std::optional<std::filesystem::path> profile;
-        bool timing = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
+        bool timing = false, match_phases = false, stack_audit = false, stack_audit_all = false, club_control_check = false, club_control_shifted = false;
         std::optional<std::uint64_t> scramble;
         std::optional<RoutineChecker> checker;
         bool checker_corrupted = false;
@@ -217,6 +222,7 @@ int main(int argc, char** argv) {
             else if (option == "--flip" && i + 1 < argc) flip = std::uint32_t(std::stoul(argv[++i], nullptr, 0));
             else if (option == "--profile" && i + 1 < argc) profile = argv[++i];
             else if (option == "--timing") timing = true;
+            else if (option == "--match-phases") match_phases = true;
             else if (option == "--stack-audit") stack_audit = true;
             else if (option == "--stack-audit-all") stack_audit = stack_audit_all = true;
             else if (option == "--scramble-stack" && i + 1 < argc) { scramble = std::stoull(argv[++i], nullptr, 0); stack_audit = true; }
@@ -248,6 +254,10 @@ int main(int argc, char** argv) {
             else throw std::runtime_error("Unknown option " + std::string(option));
         }
         if (!runs) throw std::runtime_error("At least one run is needed");
+        if (match_phases && !CM_MATCH_PHASE_TIMING)
+            throw std::runtime_error("--match-phases needs the cm-world-replay-phases diagnostic target");
+        if (match_phases && (!timing || profile || checker || stack_audit || flip || !census.empty()))
+            throw std::runtime_error("--match-phases requires --timing without sampler/checker/audit/census/flip options");
         if (checker) {
             checker->corrupt_first = checker_corrupted;
             checker->strict_volatile = strict_volatile;
@@ -423,7 +433,15 @@ int main(int argc, char** argv) {
                 state->memory.date_observer = audit->observer();
             }
             const auto executed = state->executed, calls = state->native_calls;
+            // A replay mismatch can throw before the ordinary stop below.
+            // Stop sampling before unwinding destroys the sampled State.
+            struct ProfileStop {
+                bool enabled;
+                ~ProfileStop() { if (enabled) guest_profiler::stop(); }
+            } profile_stop{profile.has_value()};
             if (profile) guest_profiler::start(*state);
+            std::optional<match_phase_timing::Recorder> phases;
+            if (match_phases) phases.emplace();
             const auto begin = std::chrono::steady_clock::now();
             const auto cpu = std::clock();
             if (season) {
@@ -437,6 +455,7 @@ int main(int argc, char** argv) {
             state->memory.leave_hardware_bounds();
             const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
             const auto cpu_seconds = double(std::clock() - cpu) / CLOCKS_PER_SEC;
+            if (phases) { phases->report(std::cerr); phases.reset(); }
             if (transcript) { require_season_replay_eof(); close_season_replay(); }
             state->memory.observer = nullptr;
             if (audit) { state->memory.date_observer = nullptr; audit->report(std::cerr, stack_audit_all); }
@@ -502,4 +521,14 @@ int main(int argc, char** argv) {
         std::cerr << error.what() << '\n';
         return 1;
     }
+}
+
+int main(int argc, char** argv) {
+    // Exercise the production worker/stack with recorded OS input, without
+    // opening AppKit or recording a career. Final state/RNG checks are intact.
+    if (argc > 1 && std::string_view(argv[1]) == "--game-thread") {
+        try { return cm::aot::run_game_thread([&] { return replay_main(argc - 1, argv + 1); }, cm::aot::service_main_queue); }
+        catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+    }
+    return replay_main(argc, argv);
 }

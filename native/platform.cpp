@@ -28,6 +28,7 @@
 #include "hfs_names.hpp"
 #include "sound_bridge.hpp"
 #include "performance_trace.hpp"
+#include "profiling.hpp"
 #include "automation.hpp"
 #include "season_reference.hpp"
 #include "guest_profiler.hpp"
@@ -706,11 +707,19 @@ struct NativePlatform::Impl {
     }
     void present(State& s, const Port& port) {
         if (!port.window) return;
+        CM_PROFILE_ZONE("Presentation snapshot and submit");
+        CM_PROFILE_VALUE(port.window);
         const auto width = std::int32_t(port.bounds[3]) - port.bounds[1];
         const auto height = std::int32_t(port.bounds[2]) - port.bounds[0];
-        const auto original = s.memory.copy_out(port.pixels, port.row_bytes * height);
-        const auto native = drawing.snapshot(s, port.pixels);
-        if (port.depth == 32) user_interface().present_window(port.window, width, height, port.row_bytes, original, native);
+        auto original = [&] {
+            CM_PROFILE_ZONE("Guest pixel copy");
+            return s.memory.copy_out(port.pixels, port.row_bytes * height);
+        }();
+        const auto native = [&] {
+            CM_PROFILE_ZONE("Native drawing snapshot");
+            return drawing.snapshot(s, port.pixels);
+        }();
+        if (port.depth == 32) user_interface().present_window(port.window, width, height, port.row_bytes, std::move(original), native);
         else {
             std::vector<std::uint8_t> argb(std::size_t(width) * height * 4);
             for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
@@ -721,7 +730,7 @@ struct NativePlatform::Impl {
                     argb[at + 1 + i] = (channel << 3) | (channel >> 2);
                 }
             }
-            user_interface().present_window(port.window, width, height, width * 4, argb, native);
+            user_interface().present_window(port.window, width, height, width * 4, std::move(argb), native);
         }
         performance.mark("frame", s, port.window);
     }

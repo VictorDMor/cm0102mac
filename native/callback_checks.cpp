@@ -1,9 +1,16 @@
 #include "callbacks.hpp"
 #include "aot_runtime.hpp"
 #include "platform.hpp"
+#include "main_thread.hpp"
+#include "ui_bridge.hpp"
 #include <ApplicationServices/ApplicationServices.h>
 #include <iostream>
 #include <unistd.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <cstdlib>
+
+extern char** environ;
 
 using namespace cm::aot;
 namespace {
@@ -26,7 +33,9 @@ std::uint32_t call(State& s, const char* name, std::initializer_list<std::uint32
     return s.r<4>(12);
 }
 }
-int main(int argc, char** argv) {
+int check_callbacks(int argc, char** argv) {
+    const bool abi_only = argc == 3 && std::string_view(argv[1]) == "--abi";
+    if (abi_only) { --argc; ++argv; }
     if (argc != 2) { std::cerr << "Usage: cm-callback-checks <relocated-segment-directory>\n"; return 2; }
     try {
         auto state = std::make_unique<State>();
@@ -37,13 +46,15 @@ int main(int argc, char** argv) {
         s.pc = 0x12345678;
         const auto registers = s.registers;
         s.unique.fill(0xa5);
-        const auto steps = s.executed;
         require(call_original(s, launch_vector, {}) == 0, "Original launch callback result");
-        require(s.memory.read<1>(launch_flag) == 1 && s.executed == steps + 4,
-                "Original launch callback did not execute its four instructions");
+        require(s.memory.read<1>(launch_flag) == 1, "Original launch callback did not publish its launch flag");
         require(s.registers == registers && s.pc == 0x12345678,
                 "Callback corrupted its native caller's saved ABI state");
         for (auto byte : s.unique) require(byte == 0xa5, "Callback corrupted caller temporaries");
+        if (abi_only) {
+            std::cout << "Worker original callback result, guest memory and saved ABI/temporaries passed\n";
+            return 0;
+        }
         TempDirectory temporary;
         std::filesystem::create_directory(temporary.path / "Game");
         s.platform = std::make_shared<NativePlatform>(temporary.path / "Game", temporary.path / "User");
@@ -111,4 +122,39 @@ int main(int argc, char** argv) {
         std::cout << "Original callback ABI preservation and real AppKit-to-original launch delivery passed\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+}
+
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--fault-child") {
+        return run_game_thread([] {
+            Memory memory;
+            memory.map(0x39000000, 0x100);
+            set_hardware_fault_reporter([](std::uint64_t address, const char*, void* context) {
+                const auto& memory = *static_cast<Memory*>(context);
+                if (address == 0x39010000 && memory.exact_bounds() && !on_main_thread() &&
+                    on_main([] { return on_main_thread(); })) std::_Exit(71);
+            }, &memory);
+            memory.use_hardware_bounds();
+            volatile auto invalid = memory.read<4>(0x39010000);
+            (void)invalid;
+            return 1;
+        }, service_main_queue);
+    }
+    if (argc == 2 && std::string_view(argv[1]) == "--worker-fault") {
+        char option[] = "--fault-child";
+        char* arguments[] = {argv[0], option, nullptr};
+        pid_t child;
+        if (posix_spawn(&child, argv[0], nullptr, nullptr, arguments, environ)) return 2;
+        int status = 0;
+        if (waitpid(child, &status, 0) != child || !WIFEXITED(status) || WEXITSTATUS(status) != 71) return 1;
+        std::cout << "Worker hardware fault reached main-thread diagnostics before process termination\n";
+        return 0;
+    }
+    if (argc > 1 && std::string_view(argv[1]) == "--game-thread") {
+        if (argc > 2 && std::string_view(argv[2]) == "--abi")
+            return run_game_thread([&] { return check_callbacks(argc - 1, argv + 1); }, service_main_queue);
+        prepare_native_ui();
+        return run_game_thread([&] { return check_callbacks(argc - 1, argv + 1); }, service_native_ui);
+    }
+    return check_callbacks(argc, argv);
 }

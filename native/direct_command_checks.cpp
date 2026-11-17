@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
         auto state = std::make_unique<State>(); auto& s = *state;
         load_program(s, argv[1]);
         const auto root = allocate(s, 0x260000, true), screen = allocate(s, 0x130000, true);
-        const auto descriptor = allocate(s, 24, true), vector = descriptor + 16;
+        const auto descriptor = allocate(s, 0x200, true), vector = allocate(s, 8, true);
         s.memory.write<4>(0x108b3ee0, root);
         s.memory.write<2>(root + 0x2c38, 1);
         s.memory.write<4>(root + 0x24, screen);
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
         require(c.actions[4] == 3 && c.actions[0] == 0, "File modal whitelist and stale Continue rejection");
         s.memory.write<4>(vector, 0x102c0000); controls({1000,1022,1059,1071,-2});
         c = original_command_context(s, 0xffff);
-        require(c.actions == std::array<std::int16_t,5>{1000,1022,0,1059,-2}, "Career action identities and startup-only Load");
+        require(c.actions == std::array<std::int16_t,direct_command_count>{1000,1022,0,1059,-2,0}, "Career action identities and startup-only Load");
         s.memory.write<2>(root + 0x2c3a, 1);
         require(!original_command_context(s, 0xffff).ready, "Nested active frames must reject commands");
         s.memory.write<2>(root + 0x2c3a, 0);
@@ -80,6 +80,48 @@ int main(int argc, char** argv) {
         require(original_command_context(s, 0xffff).actions[0] == 0, "Must ignore records beyond live control count");
         s.memory.write<2>(screen + 0x129da6, 1201);
         require(!original_command_context(s, 0xffff).ready, "Invalid control capacity");
+
+        const auto best = std::size_t(DirectCommand::best_xi);
+        s.memory.write<4>(vector, 0x10036f10);
+        s.memory.write<4>(descriptor + 0x14, 123); // Club.
+        s.memory.write<4>(descriptor + 0x14 + 4 * 8, 1); // Squad section.
+        controls({1000,30004,30023,30024});
+        const auto best_control = screen + 0xba864 + 0x17c;
+        s.memory.write<4>(best_control + 0x38, 0x10); // Closed Lineup popup item.
+        const std::string title = "     Melhor 11";
+        s.memory.copy_in(best_control + 0x78, std::vector<std::uint8_t>(title.begin(), title.end()));
+        c = original_command_context(s, 0xffff);
+        require(c.actions[best] == 30004 && c.controls[best] == 1 && c.best_xi_title == "Melhor 11",
+            "Best XI must reuse the enabled localized Lineup item");
+        const auto squad_root = s.memory.copy_out(root, 0x260000);
+        require(deliver_original_command(s, c, DirectCommand::best_xi), "Best XI shortcut rejected the closed popup item");
+        require(!deliver_original_command(s, c, DirectCommand::best_xi), "Best XI was delivered twice");
+        require(call_original(s, picker, arguments) == 1 && s.memory.read<1>(pressed) == 0 &&
+                s.memory.read<2>(screen + 0x12a904) == 0xffff,
+            "Best XI did not pass through the original picker exactly once");
+        require(squad_root == s.memory.copy_out(root, 0x260000), "Best XI shortcut bypassed the handler and changed game state");
+        s.wr<4>(4128, 0x1076ff7c);
+        for (unsigned index : {0u,1u,3u,4u,7u}) {
+            const auto address = descriptor + 0x14 + index * 8;
+            const auto value = s.memory.read<4>(address);
+            s.memory.write<4>(address, value + 1);
+            require(!deliver_original_command(s, c, DirectCommand::best_xi), "Best XI accepted a stale squad/fixture context");
+            s.memory.write<4>(address, value);
+        }
+        s.memory.write<4>(descriptor + 0x14 + 7 * 8, 0x800);
+        require(!original_command_context(s, 0xffff).actions[best], "Best XI accepted a locked squad list");
+        s.memory.write<4>(descriptor + 0x14 + 7 * 8, 0);
+        s.memory.write<4>(best_control + 12, 0);
+        require(!original_command_context(s, 0xffff).actions[best] &&
+            !deliver_original_command(s, c, DirectCommand::best_xi), "Best XI accepted a disabled menu item");
+        controls({1000,30023,30024});
+        require(!original_command_context(s, 0xffff).actions[best], "Best XI appeared without its squad item");
+        controls({30004});
+        s.memory.write<4>(vector, 0x102c0000);
+        require(!original_command_context(s, 0xffff).actions[best], "Best XI appeared on another screen");
+        s.memory.write<4>(vector, 0x10036f10);
+        s.memory.write<2>(root + 0x2c3a, 1);
+        require(!deliver_original_command(s, c, DirectCommand::best_xi), "Best XI entered a nested dialog");
         std::cout << "Original command context, stale/duplicate rejection, modal and control consumption checks passed\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

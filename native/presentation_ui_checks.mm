@@ -26,10 +26,54 @@ NSMenuItem* named(NSMenu* menu, NSString* identifier) {
 }
 void drain(NativeUI& ui) { UIEvent event{UIEvent::Kind::update}; for (int i = 0; i < 64 && ui.poll(event,0); ++i) {} }
 
+void best_xi_menu(CMMenuCheckApplication* app) {
+    NativeUI ui;
+    ui.set_menu_bar({});
+    drain(ui);
+    auto item = named(NSApp.mainMenu,@"best_xi");
+    require(item && item.hidden && !item.enabled, "Best XI exposed outside a squad");
+    CommandContext context;
+    context.ready = true; context.identity = 4321;
+    context.actions[std::size_t(DirectCommand::best_xi)] = 30004;
+    context.best_xi_title = "Melhor 11";
+    const auto key = [&](bool repeat) {
+        return [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:NSEventModifierFlagCommand
+            timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:0 context:nil
+            characters:@"a" charactersIgnoringModifiers:@"a" isARepeat:repeat keyCode:0];
+    };
+    ui.update_commands(context,"Ready");
+    require(item.enabled && !item.hidden && [item.title isEqualToString:@"Melhor 11"] &&
+        [item.keyEquivalent isEqualToString:@"a"] && item.keyEquivalentModifierMask == NSEventModifierFlagCommand,
+        "Best XI lost its localized title or Command-A equivalent");
+    app.menuTestEvent = key(false);
+    require([NSApp.mainMenu performKeyEquivalent:app.menuTestEvent], "Command-A did not activate Best XI");
+    app.menuTestEvent = nil;
+    UIEvent event{UIEvent::Kind::update};
+    require(ui.poll(event,0) && event.kind == UIEvent::Kind::command &&
+        event.message == std::uint32_t(DirectCommand::best_xi) && event.command_context == context.identity,
+        "Command-A lost its queued game command/context");
+    require(!item.enabled && !ui.poll(event,0), "Command-A queued duplicate selection");
+    ui.update_commands(context,"Ready");
+    app.menuTestEvent = key(true);
+    [NSApp.mainMenu performKeyEquivalent:app.menuTestEvent];
+    app.menuTestEvent = nil;
+    require(!ui.poll(event,0), "Repeated Command-A selected the team again");
+    ui.update_commands({},"Dialog");
+    require(item.hidden && !item.enabled && ![NSApp.mainMenu performKeyEquivalent:key(false)] && !ui.poll(event,0),
+        "Best XI captured Command-A outside the squad");
+    context.best_xi_title = "B\344sta elvan"; // Existing Swedish game encoding.
+    ui.update_commands(context,"Ready");
+    require([item.title isEqualToString:@"Bästa elvan"], "Best XI native title used the wrong game encoding");
 }
-int main() {
+}
+int main(int argc, char** argv) {
     @autoreleasepool {
         auto app = (CMMenuCheckApplication*)[CMMenuCheckApplication sharedApplication];
+        if (argc == 2 && std::string_view(argv[1]) == "--best-xi-menu") {
+            try { best_xi_menu(app); std::cout << "Best XI native menu/shortcut checks passed\n"; return 0; }
+            catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+        }
+        if (argc != 1) return 2;
         auto pattern = (std::filesystem::temp_directory_path() / "cm-presentation-XXXXXX").string();
         if (!mkdtemp(pattern.data())) return 2;
         const std::filesystem::path temporary(pattern), preference = temporary / "candidate/Presentation.plist";

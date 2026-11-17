@@ -67,6 +67,7 @@ from compiler_arithmetic_audit import (require_compiler_arithmetic_contract, req
                                      require_compiler_arithmetic_hooks, compiler_arithmetic_hook, COMPILER_ARITHMETIC_ENTRIES)
 from native_drawing_audit import NATIVE_DRAWING_BOUNDARIES, require_native_drawing_contract
 from adaptive_gui_audit import ADAPTIVE_GUI_INSTRUCTIONS, ADAPTIVE_BACKGROUND_BOUNDARY
+from profiling_boundaries import PROFILE_BOUNDARIES, profiling_hook
 from register_context_audit import (require_register_context_contract, require_register_context_index,
                                    require_register_context_hooks, register_context_hook,
                                    REGISTER_CONTEXT_ENTRIES, CAPTURE_OBSERVATIONS)
@@ -1890,6 +1891,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.append("MatchPageCounter<Turbo, Finite> counter(s);")
     if page == 0x10203:
         code.insert(1, '#include "match_presentation.hpp"')
+    if page_addresses & PROFILE_BOUNDARIES.keys():
+        code.insert(1, '#include "profiling.hpp"')
     if page_addresses & (set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS)):
         code.insert(1, '#include "find_screens_fixups.hpp"')
     if page_addresses & set(PROFILE_OFFER_READS):
@@ -1903,11 +1906,11 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         code.insert(1, '#include "match_debugging.hpp"')
     if page == 0x10345:
         code.insert(1, '#include "debug_match_results.hpp"')
+    if page in (0x1048a, 0x104a8):
+        code.insert(1, '#include "english_competition_rules.hpp"')
     forced_purchase_branches = {
         # The CPU seller's decision, the player's willingness to negotiate,
         # and the seller's board review during completion.
-    if page in (0x1048a, 0x104a8):
-        code.insert(1, '#include "english_competition_rules.hpp"')
         0x103ee4c0: ("lwz r4,0x0(r16)", 0x103ee4e4, "forced_purchase_for_seller(s, s.r<4>(88), s.r<4>(112))"),
         0x103e4910: ("bge 0x103e49fc", 0x103e49fc, "forced_purchase_for_seller(s, s.r<4>(116), s.r<4>(80))"),
         0x103f9f20: ("or r3,r21,r21", 0x103f9f88, "forced_purchase_for_seller(s, s.r<4>(88), s.r<4>(120))"),
@@ -2137,9 +2140,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         a = item["address"]
         code.append(f"i_{a:x}: // {item['assembly']}")
         hooks_start = len(code)
-        if a in ADAPTIVE_GUI_INSTRUCTIONS:
-            if item["assembly"] != ADAPTIVE_GUI_INSTRUCTIONS[a] or a + 4 not in page_addresses:
-                raise ValueError(f"Adaptive canvas instruction changed at {a:x}")
+        if a in PROFILE_BOUNDARIES:
+            code.append(profiling_hook(a, item["assembly"]))
+            isolated.add(a)
         if a == 0x104a8518:
             if item["assembly"] != "li r3,0x1":
                 raise ValueError("League successful-load boundary changed")
@@ -2150,6 +2153,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
                 raise ValueError("Fixture successful-read boundary changed")
             code.append("{ guest::Cpu c(s); english_rules::loaded_premier_fixture(c, c.sp() + 0x12c); }")
             isolated.add(a)
+        if a in ADAPTIVE_GUI_INSTRUCTIONS:
+            if item["assembly"] != ADAPTIVE_GUI_INSTRUCTIONS[a] or a + 4 not in page_addresses:
+                raise ValueError(f"Adaptive canvas instruction changed at {a:x}")
             code.append(f"if (adaptive_gui_instruction(s, 0x{a:x})) goto i_{a + 4:x};")
             isolated.add(a)
         if a == ADAPTIVE_BACKGROUND_BOUNDARY:

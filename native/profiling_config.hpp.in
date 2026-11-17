@@ -1,0 +1,5 @@
+#pragma once
+#cmakedefine01 CM_ENABLE_TRACY
+#if CM_ENABLE_TRACY
+@cm_tracy_config_definitions@
+#endif
