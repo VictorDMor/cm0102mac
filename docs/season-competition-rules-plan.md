@@ -163,6 +163,54 @@ separate, explicit customization.
   transitions. Applying a later rule revision to an existing career is a
   distinct migration, not an automatic side effect of updating the app.
 
+### Container audit (2026-11-17)
+
+A career file is an archive: one type byte (3 plain, 4 run-length packed), a
+count, a 1000-entry directory (offset, size, 256-byte name) and the members.
+The 2001 reference save has 120. Besides the fixed `.dat` members, the
+original writer bundles **every `*.tmp` file in the game's temporary folder**
+(`Runtime/Files`), which is how the per-competition files travel. The original
+loader deletes every `*.tmp` there, then extracts the save's.
+
+Checked on an isolated copy of the game driven by `tools/game_driver.py`, with
+a copy of the reference save:
+
+- A 35-byte `native_rules.tmp` placed in the temporary folder before a quick
+  save became member 121 of the written file, bytes intact.
+- After a restart with the file removed, loading that save restored it,
+  identical.
+- A stale `.tmp` left in the folder was gone after loading a save that does
+  not contain it. Temporary files otherwise survive quitting the game.
+
+So a native member needs no change to the container and no new bytes in any
+existing member; the game's own save and load code carries it. Not checked: a
+save through the Save dialog (the quick save shares its writer, 0x1034ba30),
+what a new game does with the folder, and the original Mac or Windows
+applications reading such a file (the Mac one runs the same loader code).
+
+### Proposed career rules member (awaiting Victor's approval; nothing writes it yet)
+
+- **Name:** `native_rules.tmp`, written into the temporary folder at the
+  writer's entry (the existing hook at 0x1034ba30) and read after a
+  successful load (the loader's exit hook). Removed when a new career starts;
+  the loader already removes it before extracting.
+- **Content:** short text, one statement per line:
+  `CM-NATIVE-RULES 1`, `edition cm0001_389`, `revision 1`, then one
+  `set <field> <value>` per user override, with field names from
+  `CompetitionRules` (for example `set england.promotion.conference_promoted 1`).
+- **Meaning:** `edition` pins the career's edition, replacing the names-hash
+  guess where the member exists (the hash stays for saves without it).
+  `revision` pins the checked-in rules of that edition, so a later change to
+  the defaults does not reach an existing career. The `set` lines are the third
+  layer, applied after global and edition.
+- **Unknown input:** an unknown format version or revision keeps the text and
+  writes it back unchanged, applies no override and says so in the status
+  line; an unknown field is kept and ignored the same way. A malformed member
+  never blocks a load.
+- **Old saves and old builds:** a save without the member behaves as today.
+  An older build of the port carries the member through untouched, as it
+  does any `.tmp`.
+
 ## Delivery sequence
 
 | Milestone | Concrete work | Acceptance |
