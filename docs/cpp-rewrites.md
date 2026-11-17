@@ -1616,6 +1616,15 @@ addressing through r4 until the last test of each chain, which uses r3; with not
 listed item that is unread or has an action (the item's priority byte only counts with a null filter, which play never
 produces); the send-to-all loop walks the sixteen human managers, the last people in the table.
 
+News (`0x102cea30`) opts into New Screens through shared Yoga list/reading tracks. The builder computes its visible
+headline capacity before selection and scroll restoration, and reflows the original rich text at the available width;
+its links therefore retain the original measured spans. The article reserves a scrollbar gutter. Extra height favors
+reading, headline growth is bounded, and both capacities stay within AutoGrid's 30-row limit. The postpass keeps dates
+compact and stretches the original four top/four bottom tabs; it preserves guest registers, stack, commands and history.
+The original localized labels/fonts/colors and acknowledgement rules remain authoritative. Off/800x600, secondary
+groups and network sessions retain the legacy layout; message composition is outside this recipe. Focused checks use
+disposable existing captures to compare real inbox records/RNG and original tab, selection, filter and unread commands.
+
 ## DATABASE.CPP: records, lookups and queries (rewritten by layer)
 
 `DATABASE.CPP` is 189 routines / 64,495 instructions in 0x1009efc0-0x100de410 (`tools/database_audit.py`; the test
@@ -2148,6 +2157,127 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
 - The adaptive interface's pins in 0x10718f60, 0x10718fc0 and 0x1071afc0 are carried by the C++: `screen_right` /
   `screen_bottom` stand where the original has 799 / 599, and 0x10718fc0 calls `draw_adaptive_background` at 0x10719120
   with r24 holding the table. The checker compares in 800x600; the adaptive checks exercise the rest.
+- Search Filters (`0x10329fd0`) opt into New Screens using `form_layout.cpp` (Yoga v3.2.2's public C API) and
+  `search_filter_layout.cpp`. Yoga only lays out the shell; original AutoGrid refresh publishes both drawing and
+  input bounds. Its seven overlay grids share the field rectangle, while pitch decorations on the footer grid
+  retain explicit overrides. Text, colors, fonts, popup ownership and `0x103308c0`'s draft/apply/cancel handlers
+  remain original. Only local filter histories with a valid engine, draft and General/Attributes tab qualify.
+  Yoga is isolated in static targets; upstream headers/build flags do not propagate to the simulation. Its MIT
+  notice ships in the app. The focused checker compares original/adaptive transactions in disposable captures.
+- Transfer proposals (`0x10417b60`) use the same Yoga layer for bounded section/column tracks, measured
+  introduction rows, exchange lists and compact footers. `transfer_proposal_layout.cpp` preserves the original
+  control order, history indices, rich-text links and amount-menu ownership; explicit column bounds survive
+  the original in-place value refresh. New Screens off and 800x600 remain untouched. No proposal builder,
+  command, negotiation or draft calculation is replaced. The focused capture check covers new/existing,
+  pending and incoming footers, five-player exchanges, original edits/menus, discard and confirmation entry,
+  and unchanged guest ABI, draft/records/history and RNG. Negotiated reset and competing-bid menus retain
+  their original handlers; their specific flows are source-reviewed rather than exercised by this fixture.
+- Playing-role contract negotiation (`0x10096c60`) reuses Yoga form tracks for Basic, Bonuses and Clauses.
+  `contract_negotiation_layout.cpp` keeps original controls, indices, requested/draft terms and measured
+  rich-text links; the two clause grids share an inner row rectangle despite their different insets.
+  Field tracks reserve AutoGrid's scrollbar gutter from populated-row metadata, including before its
+  first refresh. Visible-row capacity and scroll positions stay original. Local playing roles 11–13/15
+  and tabs 1–3 opt in; staff forms retain their existing layout, while confirmations use the recipe below. New Screens
+  off and 800x600 are unchanged. Original builders and negotiation rules remain responsible for terms,
+  restrictions and actions; no new localization strings or generator hooks are needed.
+- Loan terms (0x1042ca40) and immediate proposal/contract/loan-trial confirmations
+  (0x1041eb10/0x1009dc00/0x1042efa0) reuse `negotiation_dialog_layout.cpp` behind New Screens.
+  Bounded Yoga tracks align loan fields and restore buttons; a shared confirmation recipe preserves
+  original text wrapping and measured hyperlink offsets in a centered column. Standalone titles and
+  the contract's rich title grid retain their original styles. Scroll positions and disabled controls
+  remain original; narrow overflowing confirmations retain legacy geometry when the original text
+  column cannot fit beside the scrollbar. Gates distinguish person pointers, offer links (including
+  the proposal's history-2 fallback), and contract roles. Later transfer completion (0x10423270)
+  remains separate. Existing-capture checks compare eight original/adaptive states, six window sizes,
+  scrolling, loan edits/restoration, confirmation entry and read-only dismissal; final submission is
+  hit-tested without dispatching a persistent transaction. No original builder or handler changed.
+- Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
+  Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
+  2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their
+  read-only eligibility keeps the original human-control and holiday/away veto. General Info (1) and
+  Stats (16) are public for normal and national clubs: metadata remains compact, staff gains up to 30
+  visible rows with the original scroll clamp, and statistics retains its original 17-row capacity.
+  Growing staff capacity also initializes the newly exposed row weights at +0xbd0; the original
+  constructor initializes only its first seven weights, so changing capacity alone creates empty hit rows.
+  Staff heading/underline keep their measured width; nation/person links remain whole-cell actions.
+  The existing club-bottom hook preserves original construction bounds; the postpass recognizes actual
+  grid shapes and moves lower tabs, heading/menu and explicit text coordinates. Original commands,
+  accounting queries, records and RNG remain authoritative; network groups keep legacy geometry.
+- Club Next Match (section 3, 0x1002a930) uses `next_match_layout.cpp`. The common bottom pin
+  preserves original construction at 545; a postpass bounds width to 1600 and grows the original
+  3:5 body up to 30 rows, initializing new row weights and using the original scroll clamp. Both
+  original 500/545 bottoms and the one-column no-fixture message retain their own structure.
+  Rich text emits a kind-1 base before its kind-2 links: left and value groups can share a row,
+  so each base establishes the shift inherited by its links. Value bases use their actual 355/362
+  origin rather than inferring the original pre-count's gutter. Typography, measured widths,
+  commands and fixture queries remain original. Focused checks reuse a captured fixture and
+  original date commands; missing player-history archives are temporarily marked absent through
+  the reader's existing size=-1 path and restored before layout/record comparisons. Current-season
+  data remains captured; archived-history rendering is outside that fixture's evidence.
+- Standard league standings (COMP_SCREENS.CPP builder 0x10065340, section 1) use
+  `league_standings_layout.cpp`: bounded shared tracks, original eleven column weights,
+  up to 30 rows including headings and separators, and aligned tabs/View/Print/stage controls.
+  Overall/Home/Away retain the original sorting and commands. Separator X overrides follow
+  the actual scrollbar gutter; newly visible rows receive unit weights before the first refresh.
+  Future/unavailable messages keep their original measured text, wrapping and row capacity.
+  Eligibility reads the selected stage directly; unresolved stages opt in only when every
+  possible stage is supported. Never call 0x10450a50 from layout: its virtual predicate can
+  finalize league records. Small groups combined with fixtures and knockout tables stay legacy.
+  Captured short/28-club leagues cover menus, scroll transitions, links, records/RNG and ABI;
+  controlled fixtures cover message states, indexed-stage eligibility and stage-command reset.
+  Actual multi-stage menu interaction remains source-reviewed. No new exact-PC hooks or
+  whole-module reconstruction are required.
+- Games of the Day (MATCH_SCREENS.CPP 0x1028ae80) uses `daily_fixtures_layout.cpp`.
+  Its nine-column list shares bounded tracks, retains original weights, initializes newly
+  exposed rows (up to 30), and keeps its 20px navigation gap. Back/Next become equal 170px
+  buttons; the title's invisible competition link, subtitle and Competition/Debugging toolbar
+  follow their displayed panels. Stage headings retain measured widths; neutral venues move
+  by the home-column delta, including the original scrollbar inset. AutoGrid column caches
+  are relative to the panel, not absolute screen coordinates. Existing left/right-click cells
+  keep their commands, fixture ownership and localized labels. Eligibility only reads the
+  live match-day queue and selected sublist; no match/date processing is added.
+  Existing queue checks cover normal, grouped/neutral and human fixtures, original debug
+  result menus and footer commands, plus controlled GUI overflow, friendly layout and result
+  variants. Scores with an archived report are source-reviewed; report navigation is not
+  dispatched. Post-layout checks retain queue/fixture/club/history/date/RNG and guest ABI.
+- Initial Prepare Game (SETUP.CPP builder `0x10334550`) uses `startup_layout.cpp`
+  after its original builder. The shared Yoga tracks bound the original nine
+  choices to two columns/five rows, preserve row-major order and update every
+  explicit hit rectangle, including the odd centered Web Sites item. The
+  two-cell footer stays disabled where the original disables it, with equal
+  compact widths. Existing header/sidebar hooks supply the remaining chrome.
+  The read-only gate requires local group zero, matching history and no
+  first-run settings overlay (`history0 == 0`); it deliberately needs no career
+  instance. New Screens Off and first-run/network screens retain classic
+  geometry. No new exact-PC hooks or SETUP workflow reconstruction. Existing
+  initialized startup captures verify choices, missing-file states, input,
+  classic fallback, config/history/RNG and guest ABI preservation.
+- Load Saved Game (FILE_SCREENS builder `0x100ee220`) uses `load_browser_layout.cpp`
+  after the existing native builder. Shared Yoga tracks align the filename field
+  and list in a bounded 1120px panel; taller canvases expose up to 30 rows with
+  original font metrics. Cancel/Info/OK retain their original actions with equal
+  170px widths. Expanded lists explicitly clear AutoGrid's stale scrollbar flag
+  and clamp scroll without rewriting history or filename buffers. The read-only
+  gate requires the local saved-career Load contract (mode zero, parent five,
+  `.sav`, original filter and Info button); Save/Delete/Quick Start/folder and
+  network choosers retain classic geometry. No file I/O, save-format or loader
+  semantics are replaced. Controlled catalogs exercise empty/short/overflow lists,
+  editing and the original selection/Info/OK/Cancel routes without opening a career;
+  layout checks preserve styles, localized text, buffers, history, RNG and guest ABI.
+- Nations & Clubs (FIND_SCREENS.CPP builder `0x10103850`) uses
+  `nations_and_clubs_layout.cpp` for the six tabs and restricted browser modes.
+  Each tab's history stores the selection, scroll position and list index in
+  consecutive slots. The layout uses that index after construction, expands the
+  original two-column groupings to up to 30 visible rows, and keeps the two
+  tab strips, filter, heading and Back/Next buttons aligned to the bounded panel.
+  List membership, localized labels and original AutoGrid input stay in the
+  existing callbacks. Classic, network and secondary screen groups keep their
+  original geometry. No change to the generated FIND_SCREENS routines.
+- Career sidebar (0x102a1070) and progress (0x1076e5f0) have audited geometry pins in
+  `tools/adaptive_gui_audit.py`. Sidebar background/menu grids follow canvas height, and all eight
+  bottom status/action branches follow its bottom edge. Progress text, fill, frame and partial repaint
+  share the committed canvas, including Continue's history-free processing interval. Widths/font styles
+  of the sidebar remain original; the network-only client's waiting redraw remains legacy.
 - 0x1071de80 interprets screen commands (SCRMAN calls it 37 times): one dispatcher and 26 command functions
   (`display_interpreter.hpp`), two jump tables (27 and 11 entries). Every exit returns -1 except commands 4 and 6. The
   stream's halfwords and words are little-endian inside big-endian memory; a failed read reports ("network.h" as the

@@ -62,7 +62,8 @@ private:
     const std::uint32_t game, text, pool, tactics_global;
     std::uint32_t screen = 0;   // r26: the screen's state object
     std::uint32_t view = 0;     // r20: the View menu's column, sign-extended
-    TacticsLayout layout() const { return {gui_canvas(c.s)}; }
+    bool layout_match = false;
+    TacticsLayout layout() const { return {gui_canvas(c.s), view, layout_match}; }
     std::uint32_t additional_box = 0;
     std::uint32_t additional_player_record = 0;
     bool additional_column = false;
@@ -183,7 +184,12 @@ private:
             if (right == 780) right = geometry.pitch_right();
             if (right == 790) {
                 left = geometry.footer_left();
-                right = geometry.canvas.width - 10;
+                right = geometry.footer_right();
+            }
+            // All adaptive data columns use the same full-height row grid.
+            if (!geometry.canvas.original() && top == 153 && bottom == 537) {
+                top = 145;
+                bottom = 545;
             }
             if (top >= 545) top += geometry.canvas.height - 600;
             if (bottom >= 537) bottom += geometry.canvas.height - 600;
@@ -369,6 +375,10 @@ void Builder::statics() {
     c.put16(at(0x92), c.u16(c.r(2) - 0x383e));
     c.put32(at(0xb4), at(0x92));
     c.put16(at(0x90), c.u16(c.r(2) - 0x383c));
+    if (!gui_canvas(c.s).original()) {
+        c.put8(at(0x90), 50);
+        c.put8(at(0x91), 50);
+    }
     c.put32(at(0xb0), at(0x90));
     c.put16(at(0x82), 0xffff);
     c.set({{5, at(0x92)}, {6, c.u16(c.r(2) - 0x383e)}});
@@ -2062,6 +2072,10 @@ void Builder::buttons() {
 void Builder::build() {
     statics();
     open_state();
+    if (!gui_canvas(c.s).original()) {
+        GuiGuestScope preserve(c.s, 0x440);
+        layout_match = in_match(0x103b4874) != 0;
+    }
     caption();
     read_only();
     if (flag(7, 8) == 0) {
@@ -2095,24 +2109,23 @@ void Builder::additional_information() {
     } scratch{c.s, allocate(c.s, 0x20, true)};
     if (!scratch.address) return;
     additional_player_record = scratch.address;
-    const bool match = in_match(0x103b4874) != 0;
     struct Column {unsigned view, name;};
     const Column candidates[]{{1, 0x11b}, {5, 0x140}, {3, 0x133}, {4, 0x13a}};
     const bool heading_row = c.i8(at(0x315)) != 0;
-    unsigned column = 0;
-    for (const auto& candidate : candidates) {
-        if (candidate.view == original_view || (match && candidate.view != 1)) continue;
-        if (column >= unsigned(geometry.columns())) break;
-        const auto left = geometry.list_right() + column * 160;
+    auto left = geometry.list_right();
+    for (const auto column_view : geometry.column_views()) {
+        if (!column_view) break;
+        const auto& candidate = *std::find_if(std::begin(candidates), std::end(candidates),
+            [=](const Column& column) { return column.view == column_view; });
+        const auto right = left + TacticsLayout::column_width(column_view);
         additional_column = true; // these coordinates are already laid out
-        additional_box = box(left, heading_row ? 145 : 153, left + 160,
-            geometry.list_bottom() - (heading_row ? 0 : 8), 1,
+        additional_box = box(left, 145, right, geometry.list_bottom(), 1,
             0, heading_row ? 21 : 20, {0, 1, 0, 0xffffffffu}, 0x103b5900);
         additional_column = false;
         localise(candidate.name, 0x103b47c8);
         // The same grey/blue heading treatment and original game font.
         stack_args({1, mark(), text});
-        c.set({{3, game}, {4, left}, {5, 105}, {6, left + 160}, {7, 140}, {8, 2}, {9, 0}, {10, 0xc}});
+        c.set({{3, game}, {4, std::uint32_t(left)}, {5, 105}, {6, std::uint32_t(right)}, {7, 140}, {8, 2}, {9, 0}, {10, 0xc}});
         call(0x10744390, 0x103b5424);
         view = candidate.view;
         additional_column = true;
@@ -2122,7 +2135,7 @@ void Builder::additional_information() {
             view_column(player);
         }
         additional_column = false;
-        ++column;
+        left = right;
     }
     view = original_view;
     c.s.memory.copy_in(text, original_text);

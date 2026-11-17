@@ -1,6 +1,9 @@
 #include "screen_manager_packets.hpp"
 #include "screen_manager_sound.hpp"
 #include "platform.hpp"
+#include "adaptive_gui.hpp"
+#include "screen_layout.hpp"
+#include "profiling.hpp"
 
 namespace cm::aot::screen_manager {
 using namespace detail;
@@ -162,6 +165,7 @@ struct Monitor {
 };
 }
 std::uint32_t run(Cpu& c,std::uint32_t address) {
+    CM_PROFILE_EVENT("Screen monitor entered");
     Frame frame(c,0x1073c730,0x1a0,{.first_gpr=16});
     keep(c,{{31,address},{22,c.toc(-0x7468)},{21,c.toc(-0x7bb8)},{24,c.toc(-0x5c0c)},{29,0},
             {25,c.toc(slot::success)},{26,c.toc(slot::message)},{28,c.toc(slot::pool)}});
@@ -194,23 +198,27 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
         for(;;) {
             c.set(4,extended(manager.current()));if(compare(c,c.r(4),16)>=0)break;
             const auto group=manager.group();
+            std::uint32_t adaptive_builder=0;
             if (manager.current() == 0 && c.s.platform && manager.count(0) > 0) {
                 const auto history = manager.history().get();
                 const auto vector = history ? c.u32(history) : 0;
                 // Network screens share the original protocol's 800x600
                 // geometry. Only the local, disconnected builder opts in.
                 const auto builder = vector && !c.u32(address + 0x2c64) ? c.u32(vector) : 0;
-                if (c.s.platform->request_adaptive_screen(builder)) c.put8(group + 24, 1);
+                if (adaptive_screen_available(c.s,builder)) adaptive_builder=builder;
+                if (c.s.platform->request_adaptive_screen(adaptive_builder)) c.put8(group + 24, 1);
             }
             if(byte_nonzero(c,c.u8(group+24))) {
                 if(compare(c,manager.count(manager.current()))<=0)c.put8(group+24,0);
                 else {
+                    CM_PROFILE_ZONE("Screen rebuild");
                     if(compare(c,std::int16_t(c.r(4)))==0){c.put8(c.r(25),0);c.put8(c.r(24),0);}
                     c.set({{5,0},{4,1}});c.put8(manager.group()+24,0);
                     p.call(0x10719560,0x1073c8d0,{monitor.screen()});
                     if (manager.current() == 0 && c.s.platform) c.s.platform->apply_adaptive_screen(c.s, monitor.screen());
                     c.set({{4,1},{3,monitor.screen()+0x130000}});c.put8(c.r(3)-0x56c2,1);
                     monitor.history_callback(0,0x1073c904,false);
+                    if (adaptive_builder) layout_built_screen(c.s,monitor.screen(),adaptive_builder);
                     c.set({{4,0},{3,monitor.screen()+0x130000}});c.put8(c.r(3)-0x56c2,0);
                     c.set(3,monitor.screen()+0x130000);c.put8(c.r(3)-0x5700,c.r(4));
                     c.set(3,manager.group());c.set(5,extended(c.i16(c.r(3))));
@@ -307,6 +315,7 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
         }
         if(byte_nonzero(c,c.r(23)) || compare(c,c.r(30),-7)==0)break;
     }
+    CM_PROFILE_EVENT_IF(c.r(30)==std::uint32_t(-5), "Continue cleanup begin");
     p.call(0x10727890,0x1073d4e8,{c.r(21),c.r(28)+0x83});
     auto out=packet(c,frame,address);c.put32(out.position,0);
     out.integer(1,7,0x1073d518,0xd8,0x58,0x85);out.integer(4,0,0x1073d598,0xb8,0x50,0x88);out.integer(4,0,0x1073d618,0x98,0x48,0x88);
@@ -339,6 +348,7 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
         c.set(3,extended(manager.current()));manager.current()=std::int16_t(c.r(3)+1);
     }
     c.set({{5,0},{4,1}});manager.current()=0;c.put8(address+0x12d568,1);c.put8(address+0x2c61,0);
+    CM_PROFILE_EVENT_IF(c.r(30)==std::uint32_t(-5), "Screen monitor exited for Continue");
     return c.r(30)==std::uint32_t(-5);
 }
 }

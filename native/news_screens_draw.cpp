@@ -1,4 +1,7 @@
 #include "news_screens_detail.hpp"
+#include "adaptive_gui.hpp"
+#include "form_layout.hpp"
+#include <algorithm>
 #include <array>
 
 namespace cm::aot::news_screens {
@@ -30,6 +33,10 @@ void draw_news(Cpu& c) {
     };
     const auto ink = [&] { return std::uint32_t(c.u16(ink_slot)); };
     const auto table_of_screen = [&] { return c.u32(stack(table_list) + std::uint32_t(std::int32_t(c.i16(stack(row_address)))) * 0x2c0); };
+    const auto canvas=gui_canvas(c.s);
+    const bool adaptive=!canvas.original() && adaptive_screen_available(c.s,0x102cea30);
+    const unsigned right=adaptive?unsigned(canvas.width-20):0x30c;
+    const unsigned title_right=right+10;
     bl(c, construct_array, 0x102cea6c, {f.at(labels), c.toc(slot::label_construct), c.toc(slot::label_destroy), label_size, label_count});
     c.set(5, c.u16(c.r(2) - 0x38d4));
     c.put16(f.at(0x6c), c.r(5));
@@ -105,12 +112,12 @@ void draw_news(Cpu& c) {
     // The title's table and the text in it.
     set_stack(table_list, screens + 0x24);
     outgoing({0, 0x30, c.u16(f.at(0x70)), none});
-    bl(c, add_table, 0x102cedd8, {table_of_screen(), 0x64, 0xa, 0x316, 0x46, 1, 0, 1});
+    bl(c, add_table, 0x102cedd8, {table_of_screen(), 0x64, 0xa, title_right, 0x46, 1, 0, 1});
     set_stack(row_y, 0);
     outgoing({0, 1, c.u16(f.at(0x70)), none});
-    const auto title_table = bl(c, add_table, 0x102cee30, {table_of_screen(), 0x64, 0x19, 0x316, 0x37, 1, 0, 1});
+    const auto title_table = bl(c, add_table, 0x102cee30, {table_of_screen(), 0x64, 0x19, title_right, 0x37, 1, 0, 1});
     set_stack(0x38, 0);
-    bl(c, draw_text, 0x102cee5c, {f.at(rendered), title_table, 0x64, 0x316, f.at(row_y), 7, c.u16(f.at(0x72)), 3});
+    bl(c, draw_text, 0x102cee5c, {f.at(rendered), title_table, 0x64, title_right, f.at(row_y), 7, c.u16(f.at(0x72)), 3});
     bl(c, set_screen_colours, 0x102cee70, {screens, c.u16(f.at(0x70)), c.u16(f.at(0x72)), text});
 
     // The tabs: the label's text, then enabled and its value, set when the next one starts.
@@ -128,16 +135,21 @@ void draw_news(Cpu& c) {
         c.put32(value_field + n * label_size, n);
     }
     set_stack(y, 0x50);
-    set_stack(bottom, 0x221);
+    set_stack(bottom, adaptive?unsigned(canvas.height-55):0x221);
     bl(c, add_tabs, 0x102cf018, {f.at(labels), 8, tab, f.at(y), f.at(bottom), 1});
 
     // The list of headlines: as many rows as fit.
     const auto line = bl(c, line_scale, 0x102cf020, {2});
-    const auto rows_fitting = std::uint32_t(divide_signed<4>(0x5a, line));
+    const auto top = stack(y);
+    ReadingLayout reading{{110,int(top),int(right),int(top+90)},
+        {110,int(top+95),int(right),int(top+115)},{110,int(top+120),int(right),int(top+155)},
+        {110,int(top+160),int(right),int(stack(bottom))}};
+    if(adaptive)reading=reading_layout({110,int(top),int(right),int(stack(bottom))});
+    auto rows_fitting = std::uint32_t(divide_signed<4>(unsigned(reading.list.height()), line));
+    if(adaptive)rows_fitting=std::clamp(rows_fitting,1u,30u);
     outgoing({0, 1, 0, none});
     value_field = rows_fitting & 0xff;
-    const auto top = stack(y);
-    Kept<27> list_table(c, bl(c, add_table, 0x102cf07c, {table_of_screen(), 0x6e, top, 0x30c, top + 0x5a, 2, f.at(0x6c), value_field}));
+    Kept<27> list_table(c, bl(c, add_table, 0x102cf07c, {table_of_screen(), 0x6e, top, right, unsigned(reading.list.bottom), 2, f.at(0x6c), value_field}));
     set_stack(row_y, 0);
     keep(c, {{13, none}, {14, 0}});
     history.set(5, 0, 0x102cf0a4);
@@ -309,11 +321,11 @@ void draw_news(Cpu& c) {
     bl(c, set_history_value, 0x102cf6dc, {screens, tab_values + 2, extended(table_id), 0});
 
     // The filter box and "next unread".
-    const auto filter_y = stack(y) + 0x5f;
+    const auto filter_y = unsigned(reading.toolbar.top);
     set_stack(y, filter_y);
     keep(c, {{13, filter_y}});
     outgoing({0, 2, 0, none});
-    Kept<17> filter_table(c, bl(c, add_table, 0x102cf738, {table_of_screen(), 0x195, filter_y, 0x28f, filter_y + 0x14, 2, f.at(0x68), 1}));
+    Kept<17> filter_table(c, bl(c, add_table, 0x102cf738, {table_of_screen(), right-375, filter_y, right-125, filter_y + 0x14, 2, f.at(0x68), 1}));
     bl(c, localized_text, 0x102cf748, {text, pool + phrase::filter});
     outgoing({ink(), text});
     bl(c, add_cell, 0x102cf778, {screens, filter_table, 0, 0, 1, 0, 0xc, 1});
@@ -324,24 +336,24 @@ void draw_news(Cpu& c) {
     if (nonzero(c, std::int32_t(bl(c, unread_count, 0x102cf810, {c.u32(c.toc(slot::news)), manager, 0})))) {
         const auto top_y = stack(y);
         outgoing({1, ink(), text, 5, 0});
-        bl(c, add_labelled_box, 0x102cf864, {screens, 0x28f, top_y, 0x30c, top_y + 0x14, 0x30, halfword(c, slot::button_font), 0xc});
+        bl(c, add_labelled_box, 0x102cf864, {screens, right-125, top_y, right, top_y + 0x14, 0x30, halfword(c, slot::button_font), 0xc});
     } else {
         const auto top_y = stack(y);
         outgoing({1, ink(), text});
-        bl(c, add_box, 0x102cf8a4, {screens, 0x28f, top_y, 0x30c, top_y + 0x14, 0x30, halfword(c, slot::button_font), 0x2c});
+        bl(c, add_box, 0x102cf8a4, {screens, right-125, top_y, right, top_y + 0x14, 0x30, halfword(c, slot::button_font), 0x2c});
     }
 
     // The selected item: headline, then the story.
     const auto headline_y = stack(y) + 0x19;
     set_stack(y, headline_y);
     outgoing({0, 2, 0, none});
-    Kept<15> body_table(c, bl(c, add_table, 0x102cf8fc, {table_of_screen(), 0x6e, headline_y, 0x30c, headline_y + 0x23, 1, 0, 1}));
+    Kept<15> body_table(c, bl(c, add_table, 0x102cf8fc, {table_of_screen(), 0x6e, headline_y, right, headline_y + 0x23, 1, 0, 1}));
     set_stack(row_y, 0);
     const std::uint32_t shown = c.r(14);
     if (compare_logical(c, shown) != 0) {
         bl(c, render_message, 0x102cf928, {shown, manager, f.at(rendered), 0, 0});
         set_stack(0x38, 0);
-        bl(c, draw_text, 0x102cf958, {f.at(rendered), body_table, 0x78, 0x302, f.at(row_y), 3, halfword(c, slot::headline_font), 3});
+        bl(c, draw_text, 0x102cf958, {f.at(rendered), body_table, 0x78, right-10, f.at(row_y), 3, halfword(c, slot::headline_font), 3});
     }
     c.set(4, stack(y));
     set_stack(y, stack(y) + 0x28);
@@ -349,19 +361,23 @@ void draw_news(Cpu& c) {
     const auto story_y = stack(y);
     const auto story_bottom = stack(bottom);
     c.set(8, story_bottom - story_y - 0x10);
-    const auto rows = std::uint32_t(divide_signed<4>(c.r(8), scale));
+    auto rows = std::uint32_t(divide_signed<4>(c.r(8), scale));
+    if(adaptive)rows=std::clamp(rows,1u,30u);
     outgoing({0, 2, 0, none});
-    body_table = bl(c, add_table, 0x102cf9c8, {table_of_screen(), 0x6e, story_y, 0x30c, story_bottom, 1, 0, rows & 0xff});
+    body_table = bl(c, add_table, 0x102cf9c8, {table_of_screen(), 0x6e, story_y, right, story_bottom, 1, 0, rows & 0xff});
     set_stack(row_y, 0);
     if (compare_logical(c, shown) != 0) {
         bl(c, render_message, 0x102cf9f4, {shown, manager, f.at(rendered), 1, 0});
         set_stack(0x38, 0);
-        bl(c, draw_text, 0x102cfa20, {f.at(rendered), body_table, 0x78, 0x302, f.at(row_y), 3, ink(), 0});
+        // Leave room for the original scrollbar even when a long article
+        // overflows; the original rich-text helper measures links and wraps.
+        bl(c, draw_text, 0x102cfa20, {f.at(rendered), body_table, 0x78, right-(adaptive?32:10), f.at(row_y), 3, ink(), 0});
         bl(c, release_block, 0x102cfa28, {c.u32(f.at(rendered))});
     }
 
     // The item's action button.
     const auto button_y = std::uint32_t(c.r(13));
+    const unsigned action_right=adaptive?300:0xeb;
     body_table = 0;
     if (compare_logical(c, shown) != 0) {
         const auto kind = bl(c, action_label, 0x102cfa4c, {shown, manager, text, 0x7d0, f.at(action_text)});
@@ -377,15 +393,15 @@ void draw_news(Cpu& c) {
                     keep(c, {{13, colour}});
                     outgoing({0x30, font, font, 0xc, 1, colour, text, 0, 3, stack(action_text), none});
                     bl(c, add_table_field, highlighted ? 0x102cfb0c : 0x102cfb8c,
-                       {c.u32(stack(table_list) + row), highlighted ? 0x802u : 0x2u, 0x6e, button_y, 0xeb, button_y + 0x14, 0, 0});
+                       {c.u32(stack(table_list) + row), highlighted ? 0x802u : 0x2u, 0x6e, button_y, action_right, button_y + 0x14, 0, 0});
                     body_table = 1;
                 } else {
                     outgoing({1, ink(), text});
-                    bl(c, add_box, 0x102cfbd0, {screens, 0x6e, button_y, 0xeb, button_y + 0x14, 0x30, halfword(c, slot::button_font), 0x2c});
+                    bl(c, add_box, 0x102cfbd0, {screens, 0x6e, button_y, action_right, button_y + 0x14, 0x30, halfword(c, slot::button_font), 0x2c});
                 }
             } else {
                 outgoing({1, ink(), text, 3, stack(action_text)});
-                bl(c, add_labelled_box, 0x102cfc20, {screens, 0x6e, button_y, 0xeb, button_y + 0x14, 0x30, halfword(c, slot::button_font), 0xc});
+                bl(c, add_labelled_box, 0x102cfc20, {screens, 0x6e, button_y, action_right, button_y + 0x14, 0x30, halfword(c, slot::button_font), 0xc});
             }
         }
     }

@@ -1,5 +1,6 @@
 #include "screen_manager_detail.hpp"
 #include "adaptive_gui.hpp"
+#include "screen_layout.hpp"
 #include <array>
 
 namespace cm::aot::screen_manager {
@@ -13,15 +14,19 @@ std::uint32_t create_control(Cpu& c,unsigned kind) {
     Frame frame(c,site.entry,site.size,{.first_gpr=site.first});
     auto word=[&](unsigned offset,std::uint32_t value){c.put32(frame.at(offset),value);};
     if(kind==0 || kind==1) {
+        const ScreenLayout layout{gui_canvas(c.s)};
+        const auto bounds=kind==0?layout.title():layout.subtitle();
         keep(c,{{31,0}});
         for(unsigned off:{0x40,0x54,0x58,0x5c})word(off,0);
         word(0x44,12);word(0x60,missing);
         if(kind==0) {
             word(0x38,0x30);word(0x3c,arg4);word(0x48,7);word(0x4c,arg5);word(0x50,arg6);
-            c.set({{4,1},{5,100},{6,10},{7,std::uint32_t(gui_canvas(c.s).width-10)},{8,70},{9,0},{10,0}});
+            c.set({{4,1},{5,std::uint32_t(bounds.left)},{6,std::uint32_t(bounds.top)},
+                   {7,std::uint32_t(bounds.right)},{8,std::uint32_t(bounds.bottom)},{9,0},{10,0}});
         } else {
             word(0x38,2);word(0x3c,0);word(0x48,6);word(0x4c,c.u16(c.toc(-0x7bd0)));word(0x50,arg4);
-            c.set({{4,1},{5,100},{6,80},{7,std::uint32_t(gui_canvas(c.s).width-10)},{8,125},{9,0},{10,0}});
+            c.set({{4,1},{5,std::uint32_t(bounds.left)},{6,std::uint32_t(bounds.top)},
+                   {7,std::uint32_t(bounds.right)},{8,std::uint32_t(bounds.bottom)},{9,0},{10,0}});
         }
     } else if(kind==2 || kind==3) {
         const bool multi=kind==3;
