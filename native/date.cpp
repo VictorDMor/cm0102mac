@@ -1,6 +1,7 @@
 // DATE.CPP: building dates, moving them, measuring between them (date.hpp).
 #include "date.hpp"
 #include "date_detail.hpp"
+#include "calendar.hpp"
 
 namespace cm::aot::date {
 namespace {
@@ -323,7 +324,8 @@ std::int32_t days_between(Cpu& c, std::uint32_t address, std::uint32_t other_hig
         other_later = later_day(c, compared.day(), date.day(), half);
         c.set(4, extended(compared.day()));
     }
-    // Whole years first, each as long as the year before the one being left.
+    // Whole years first: ascending crosses the year being left, descending
+    // crosses its predecessor. Keep the original leap call's ABI residue.
     std::uint32_t total = 0;
     const std::uint16_t target = other.year();
     c.compare_logical(0, year, target);
@@ -335,8 +337,8 @@ std::int32_t days_between(Cpu& c, std::uint32_t address, std::uint32_t other_hig
             const std::uint16_t reached = scratch.year();
             c.compare_logical(0, reached, target);
             if (other_later ? reached >= target : reached <= target) break;
-            const bool long_year = leap(c, std::uint32_t(reached - 1) & 0xffff, other_later ? 0x1071821c : 0x10718290);
-            const std::uint32_t length = long_year ? 366 : 365;
+            leap(c, std::uint32_t(reached - 1) & 0xffff, other_later ? 0x1071821c : 0x10718290);
+            const std::uint32_t length = calendar::year_length(other_later ? reached : std::uint16_t(reached - 1));
             total += other_later ? 0u - length : length;
             scratch.set_year(std::uint32_t(scratch.year()) + (other_later ? 1u : 0u - 1u));
         }
@@ -367,8 +369,9 @@ void interval(Cpu& c, std::uint32_t result_address, std::uint32_t address, std::
     }
     c.compare(0, other_later, 0);
     if (!other_later) {
-        // From the other date up to this one. A day count below zero borrows a year of this date's
-        // year's length: 0x107180b0 calls the leap test with the year its first compare left in r3.
+        // Retain the ordinal-year/remainder contract used by age and contract
+        // callers. A negative day remainder borrows the year before the end.
+        // The original tested the end year; preserve that call's ABI residue.
         const auto other_day = other.day();
         const auto days = extended(date.day()) - extended(other_day);
         c.compare(0, std::int32_t(days), 0);
@@ -378,7 +381,8 @@ void interval(Cpu& c, std::uint32_t result_address, std::uint32_t address, std::
             c.set(3, first);
             scratch.set_year(std::uint32_t(date.year()) - first);
         } else {
-            const std::uint32_t length = leap(c, year, 0x107180b4) ? 366 : 365;
+            leap(c, year, 0x107180b4);
+            const std::uint32_t length = calendar::year_length(std::uint16_t(year - 1));
             scratch.set_day(extended(date.day()) - extended(other_day) + length);
             const auto years = std::uint32_t(date.year()) - other.year();
             c.set(3, years);
@@ -421,7 +425,8 @@ void interval(Cpu& c, std::uint32_t result_address, std::uint32_t address, std::
         scratch.set_year(std::uint32_t(end_year) - date_copy.year());
         c.set(3, days);
     } else {
-        const std::uint32_t length = leap(c, end_year, 0x1071802c) ? 366 : 365;
+        leap(c, end_year, 0x1071802c);
+        const std::uint32_t length = calendar::year_length(std::uint16_t(end_year - 1));
         scratch.set_day(extended(end_day) - extended(date_copy.day()) + length);
         const auto years = std::uint32_t(end_year) - date_copy.year();
         c.set(3, years);

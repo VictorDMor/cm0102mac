@@ -62,15 +62,11 @@ bool fit_for_call_up(const State& s, std::uint32_t medical, std::uint32_t id) {
     const auto date = [&](std::uint32_t at) {
         return calendar::Date{std::int16_t(s.memory.read<2>(at)), std::uint16_t(s.memory.read<2>(at + 2))};
     };
-    auto end = date(word(s, std::uint32_t(s.r<4>(8)) - 0x7b80)), start = date(injury + 0x28);
-    // 10717dd0 returns a positive interval in either order. Borrow the end
-    // year's length, then apply the status operation's 365*years + days.
-    // Compute locally so even the original date service's scratch is untouched.
-    if (calendar::is_before(end, start)) std::swap(end, start);
-    auto days = int(end.day) - int(start.day);
-    auto years = int(end.year) - int(start.year);
-    if (days < 0) { days += calendar::year_length(end.year); --years; }
-    const auto elapsed = int(std::uint16_t(years)) * 365 + std::int16_t(days);
+    const auto end = date(word(s, std::uint32_t(s.r<4>(8)) - 0x7b80)), start = date(injury + 0x28);
+    // Retain the status operation's positive interval in either order, using
+    // actual calendar days across leap years without touching guest scratch.
+    const auto difference = calendar::absolute_days(end) - calendar::absolute_days(start);
+    const auto elapsed = difference < 0 ? -difference : difference;
     return elapsed >= std::int16_t(s.memory.read<2>(injury + 0x30)) &&
            elapsed >= std::int16_t(s.memory.read<2>(injury + 0x32));
 }
@@ -132,6 +128,7 @@ bool call_up_national_squad(State& s, std::uint32_t club, unsigned side) {
         return std::ranges::any_of(candidates, [=](const auto& p) { return p.staff == staff; });
     };
     std::vector<std::uint32_t> retained;
+    std::vector<std::uint32_t> released;
     for (unsigned slot = 0; slot < 50; ++slot) {
         const auto staff = word(s, club + 0x98 + slot * 4);
         if (!staff) continue;
@@ -139,10 +136,31 @@ bool call_up_national_squad(State& s, std::uint32_t club, unsigned side) {
         // Leave the other side's players alone unless selected for promotion.
         if (squad_kind(s, *team, staff) != team->kind) continue;
         if (selected(staff)) retained.push_back(staff);
-        // The original release clears both tactical squads, captaincies and
-        // set pieces, the roster slot, national employer, job and call-up bits.
-        else call(0x102b8d60, {0, team->nation, team->kind, staff});
+        else released.push_back(staff);
     }
+    // Preflight the complete change before releasing anyone. A locked
+    // tournament list must not be partly rebuilt by the bulk action. As at the
+    // original's own release sites (0x102ae2c0), the question names no player:
+    // with one, 0x102af090 also asks whether he accepts the call, which would
+    // refuse the release of exactly the players the candidate filter dropped.
+    if (!released.empty() &&
+        (!national_teams || !call(0x102af090, {national_teams, team->nation, team->kind, 0, 0, 0, 0})))
+        return false;
+    if (candidates.size() != retained.size()) {
+        if (!national_teams) return false;
+        // The release mode with no player asks only the shared squad/date
+        // permission. Add mode would also update injuries while checking them.
+        if (!call(0x102af090, {national_teams, team->nation, team->kind, 0, 0, 0, 0})) {
+            const auto row = word(s, national_teams + 4) + word(s, team->nation + 0x68) * 0x74 + team->kind * 0x14;
+            // 102af2ec..102af3c8 permits additions to a locked list only when
+            // replacement allowance remains and the final roster fits its cap.
+            const auto capacity = std::int8_t(s.memory.read<1>(row + 0x48));
+            if (!s.memory.read<1>(row + 0x4b) || int(candidates.size()) > capacity) return false;
+        }
+    }
+    // The original release clears both tactical squads, captaincies and set
+    // pieces, the roster slot, national employer, job and call-up bits.
+    for (const auto staff : released) call(0x102b8d60, {0, team->nation, team->kind, staff});
     for (const auto& candidate : candidates) {
         if (std::ranges::find(retained, candidate.staff) != retained.end()) continue;
         if (const auto previous = word(s, candidate.staff + 0x20)) {

@@ -4,8 +4,12 @@
 // yet built, and for the texts every language, style and name. Each call is
 // compared with the strict contract (every register at return, the condition
 // register, XER and CTR, all of memory): the unit's callers read what it leaves.
+// The authorized Gregorian boundary fixes amend only days_between's r3 and
+// interval's result/static day fields after executing the unmodified reference.
 #include "date_adapter.hpp"
 #include "date.hpp"
+#include "calendar.hpp"
+#include "date_subsystem_adapter.hpp"
 #include "match_replay.hpp"
 #include "routine_check.hpp"
 #include <array>
@@ -126,6 +130,70 @@ std::uint32_t by_value_high(Day d) { return (std::uint32_t(d.day) & 0xffff) << 1
 std::uint32_t by_value_low(Day d, std::uint32_t seed) { return d.leap << 24 | (0x00c3d2e1 ^ seed) >> 8; }
 bool leap_year(std::uint32_t year) { return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0); }
 
+// Independent oracle: count preceding year lengths, rather than using the
+// production absolute_days formula or its ascending/descending traversal.
+std::int32_t ordinal(Day date) {
+    static const auto starts = [] {
+        std::array<std::int32_t, 65537> result{};
+        for (unsigned year = 0; year < 65536; ++year)
+            result[year + 1] = result[year] + (leap_year(year) ? 366 : 365);
+        return result;
+    }();
+    return starts[date.year & 0xffff] + std::int16_t(date.day);
+}
+Day interval_expected(Day first, Day second) {
+    if (std::pair(first.year, first.day) > std::pair(second.year, second.day)) std::swap(first, second);
+    // Years retain the game's ordinal anniversary, also used for age records.
+    // Measure the remainder from that anniversary in the last completed year.
+    const auto anchor_year = second.year - unsigned(second.day < first.day);
+    return {ordinal(second) - ordinal({first.day, anchor_year}), anchor_year - first.year, 0};
+}
+void corrected_reference(State& s, std::uint32_t entry) {
+    if (entry != date::entry::days_between && entry != date::entry::interval) { original(s, entry); return; }
+    Cpu c(s);
+    const bool scalar = entry == date::entry::days_between;
+    const auto source = c.r(scalar ? 3 : 4), destination = c.r(3);
+    Day first{c.i16(source), c.u16(source + 2)};
+    const auto& own_static = statics[scalar ? 5 : 4];
+    // A fresh function-local static is initialized before the routine reads
+    // its source. Include that ordering when the source aliases the static.
+    if (source == c.toc(own_static.date) && !c.u8(toc + std::uint32_t(own_static.guard)))
+        first = {40, 1972, 1};
+    const auto word = c.r(scalar ? 4 : 5);
+    const Day second{std::int16_t(word >> 16), word & 0xffff};
+    original(s, entry);
+    if (scalar) c.set(3, std::uint32_t(ordinal(first) - ordinal(second)));
+    else {
+        const auto expected = interval_expected(first, second);
+        if (c.u16(destination + 2) != expected.year)
+            throw std::runtime_error("reference interval violated the retained ordinal-year contract");
+        c.put16(c.toc(statics[4].date), std::uint32_t(expected.day));
+        c.put16(destination, std::uint32_t(expected.day));
+    }
+}
+void legacy_rewrite(State& s, std::uint32_t entry) {
+    original_mode = false;
+    const bool handled = entry == date::entry::days_between
+        ? execute_semantic_calendar_boundary(s, entry) : execute_semantic_date(s, entry);
+    if (!handled) throw std::runtime_error("legacy date adapter declined its boundary entry");
+}
+
+void check_gregorian_helpers() {
+    for (unsigned year = 0; year <= 65535; ++year) {
+        const auto last = leap_year(year) ? 365 : 364;
+        for (int day : {0, last}) {
+            const cm::calendar::Date date{std::int16_t(day), std::uint16_t(year)};
+            if (cm::calendar::absolute_days(date) != ordinal({day, year}))
+                throw std::runtime_error("Gregorian absolute-day helper disagrees with independent year count");
+            if (year != 65535 && day == last) {
+                const cm::calendar::Date next{0, std::uint16_t(year + 1)};
+                if (cm::calendar::difference(next, date) != 1 || cm::calendar::difference(date, next) != -1)
+                    throw std::runtime_error("Gregorian year boundary is not one day in both orders");
+            }
+        }
+    }
+}
+
 std::vector<Case> core_cases() {
     using namespace date;
     std::vector<Case> cases;
@@ -187,6 +255,19 @@ std::vector<Case> core_cases() {
         add({.entry = entry::days_between, .r = {date_a, by_value_high(dated(100, 2075)), 0}, .a = d});
         add({.entry = entry::interval, .r = {date_a, date_a, by_value_high(dated(100, 2075)), 0}, .a = d});
     }
+    for (bool fresh : {false, true}) {
+        add({.entry = entry::days_between, .r = {0xfffffff0 - 5, by_value_high(dated(0, 2005)), 0}, .fresh_statics = fresh});
+        add({.entry = entry::interval, .r = {result_at, 0xfffffff0 - 4, by_value_high(dated(0, 2005)), 0}, .fresh_statics = fresh});
+    }
+    // Every year boundary in a complete Gregorian cycle, both directions,
+    // includes ordinary leap years and the 2100/2200/2300 century exceptions.
+    for (unsigned year = 1999; year < 2401; ++year)
+        for (bool reverse : {false, true}) {
+            auto first = dated(leap_year(year) ? 365 : 364, year), second = dated(0, year + 1);
+            if (reverse) std::swap(first, second);
+            add({.entry = entry::days_between, .r = {date_a, by_value_high(second), by_value_low(second, seed)}, .a = first});
+            add({.entry = entry::interval, .r = {result_at, date_a, by_value_high(second), by_value_low(second, seed)}, .a = first});
+        }
     for (int day = -3; day <= 370; ++day)
         for (std::uint32_t leap : {0u, 1u, 0x80u})
             for (auto routine : {entry::day_of_month, entry::month}) add({.entry = routine, .r = {date_a}, .a = {day, 2001, leap}});
@@ -235,6 +316,7 @@ std::vector<Case> text_cases() {
 int main(int argc, char** argv) {
     if (argc != 2 && argc != 3) { std::cerr << "usage: cm-date-checks WORLD_SNAPSHOT [--original-routing]\n"; return 2; }
     try {
+        check_gregorian_helpers();
         auto s = std::make_unique<State>();
         load_match_snapshot(*s, argv[1]);
         if (trace) {
@@ -278,7 +360,7 @@ int main(int argc, char** argv) {
             for (const auto& t : cases) {
                 if (!date_lists(t.entry) || (only && t.entry != std::stoul(only, nullptr, 16))) continue;
                 initialize(c, t);
-                const auto differences = compare_routine_call(*s, t.entry, original, rewrite, results, false, true);
+                const auto differences = compare_routine_call(*s, t.entry, corrected_reference, rewrite, results, false, true);
                 if (!differences.empty()) {
                     std::cout << "DIFFERS production=" << production << ' ' << describe(t) << '\n';
                     for (const auto& d : differences) std::cout << "  " << d << '\n';
@@ -288,6 +370,38 @@ int main(int argc, char** argv) {
             if (failures) break;
         }
         production_mode = false;
+        // The older calendar/date adapter remains callable by diagnostic
+        // routes. Its year boundaries must implement the same correction.
+        unsigned legacy_boundaries = 0;
+        for (unsigned year = 1999; year < 2401; ++year)
+            for (bool reverse : {false, true})
+                for (auto entry : {date::entry::days_between, date::entry::interval}) {
+                    Day first{leap_year(year) ? 365 : 364, year}, second{0, year + 1};
+                    if (reverse) std::swap(first, second);
+                    Case t{.entry = entry, .a = first};
+                    if (entry == date::entry::days_between) t.r = {date_a, by_value_high(second), 0};
+                    else t.r = {result_at, date_a, by_value_high(second), 0};
+                    initialize(c, t);
+                    const auto differences = compare_routine_call(*s, entry, corrected_reference, legacy_rewrite, results, false, true);
+                    if (differences.empty()) ++legacy_boundaries;
+                    else {
+                        ++failures; std::cout << "FAIL legacy Gregorian boundary " << describe(t) << '\n';
+                        for (const auto& d : differences) std::cout << "  " << d << '\n';
+                        throw std::runtime_error("legacy date adapter differs from corrected reference");
+                    }
+                }
+        // The raw reference must fail the corrected contract on both known
+        // boundary bugs. This detects accidentally restoring the old arithmetic.
+        unsigned boundary_controls = 0;
+        for (auto entry : {date::entry::days_between, date::entry::interval}) {
+            Case t{.entry = entry, .a = {365, 2004, 1}};
+            if (entry == date::entry::days_between) t.r = {date_a, 2005, 0};
+            else t.r = {result_at, date_a, 2005, 0};
+            initialize(c, t);
+            if (compare_routine_call(*s, entry, corrected_reference, original, results, false, true).empty()) {
+                ++failures; std::cout << "FAIL old year-boundary arithmetic control " << hex_address(entry) << '\n';
+            } else ++boundary_controls;
+        }
         // The comparison must fail when memory, a volatile register, the result or the prologue image differs.
         const std::pair<const char*, RoutineRunner> controls[]{
             {"memory", spoil_memory}, {"register", spoil_register}, {"result", spoil_result}, {"frame", spoil_frame}};
@@ -328,7 +442,9 @@ int main(int argc, char** argv) {
         for (const auto& [entry, n] : counts)
             std::cout << hex_address(entry) << " returned " << n[0] << " controlled + " << n[1] << " production\n";
         std::cout << counts.size() << " entries; " << ownership << " production ownership controls; " << controlled
-                  << "/4 negative controls; " << completed << " returned comparisons; " << failures << " failures\n";
+                  << "/4 negative controls; " << boundary_controls << "/2 old-boundary rejection controls; "
+                  << legacy_boundaries << " legacy boundary comparisons; "
+                  << completed << " returned comparisons (Gregorian result amendments explicit); " << failures << " failures\n";
         return failures ? 1 : 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

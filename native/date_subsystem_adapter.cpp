@@ -208,8 +208,9 @@ void record_interval(State& s) {
         } else {
             // This branch really calls leap with the residual r3, which may
             // be a day-derived value in the equal-year comparison.
+            const auto borrowed_year=std::uint16_t(reg(s,3)-1);
             call(s,0x10718440,0x107180b4);set(s,0,byte_value(reg(s,3)));record(s,0);
-            const auto length=reg(s,0)?366u:365u;
+            const auto length=cm::calendar::year_length(borrowed_year);
             set(s,0,short_value(s.memory.read<2>(reg(s,30))));set(s,3,reg(s,0)-reg(s,28));
             set(s,0,reg(s,3)+length);set(s,0,short_value(reg(s,0)));s.memory.write<2>(reg(s,31),reg(s,0));
             set(s,3,s.memory.read<2>(sp+0x92));set(s,0,s.memory.read<2>(reg(s,30)+2));
@@ -230,7 +231,7 @@ void record_interval(State& s) {
                 set(s,0,reg(s,30)-reg(s,0));s.memory.write<2>(reg(s,31)+2,reg(s,0));
             } else {
                 set(s,3,reg(s,30));call(s,0x10718440,0x1071802c);set(s,0,byte_value(reg(s,3)));record(s,0);
-                const auto length=reg(s,0)?366u:365u;
+                const auto length=cm::calendar::year_length(std::uint16_t(reg(s,30)-1));
                 set(s,0,short_value(s.memory.read<2>(sp+0x48)));set(s,3,reg(s,28)-reg(s,0));set(s,0,reg(s,3)+length);
                 set(s,3,short_value(reg(s,0)));set(s,0,s.memory.read<2>(sp+0x4a));s.memory.write<2>(reg(s,31),reg(s,3));
                 set(s,3,reg(s,30)-reg(s,0));set(s,0,reg(s,3)-1);s.memory.write<2>(reg(s,31)+2,reg(s,0));
@@ -254,8 +255,9 @@ void record_interval(State& s) {
                     set(s,3,s.memory.read<2>(sp+0x3a));set(s,0,s.memory.read<2>(sp+0x4a));s.memory.write<2>(reg(s,31),reg(s,4));
                     set(s,0,reg(s,0)-reg(s,3));s.memory.write<2>(reg(s,31)+2,reg(s,0));
                 } else {
-                    set(s,3,s.memory.read<2>(sp+0x4a));call(s,0x10718440,0x10717fa4);set(s,0,byte_value(reg(s,3)));record(s,0);
-                    const auto length=reg(s,0)?366u:365u;
+                    set(s,3,s.memory.read<2>(sp+0x4a));const auto borrowed_year=std::uint16_t(reg(s,3)-1);
+                    call(s,0x10718440,0x10717fa4);set(s,0,byte_value(reg(s,3)));record(s,0);
+                    const auto length=cm::calendar::year_length(borrowed_year);
                     set(s,3,short_value(s.memory.read<2>(sp+0x38)));set(s,0,short_value(s.memory.read<2>(sp+0x48)));
                     set(s,3,reg(s,0)-reg(s,3));set(s,0,reg(s,3)+length);set(s,4,short_value(reg(s,0)));
                     set(s,3,s.memory.read<2>(sp+0x3a));set(s,0,s.memory.read<2>(sp+0x4a));s.memory.write<2>(reg(s,31),reg(s,4));
@@ -390,10 +392,12 @@ void scalar_difference(State& s) {
         for(;;) {
             set(s,3,s.memory.read<2>(reg(s,year_pointer)));compare(s,reg(s,3),reg(s,terminal_register));
             if(later?reg(s,3)>=reg(s,terminal_register):reg(s,3)<=reg(s,terminal_register))break;
+            const auto crossed=std::uint16_t(reg(s,3)-(later?0u:1u));
             set(s,0,reg(s,3)-1);set(s,3,std::uint16_t(reg(s,0)));call(s,0x10718440,later?0x1071821c:0x10718290);
-            set(s,0,byte_value(reg(s,3)));record(s,0);const bool leap_year=reg(s,0)!=0;
-            // Ascending years intentionally classify current-1, as the Mac
-            // original does. This preserves the separately deferred quirk.
+            set(s,0,byte_value(reg(s,3)));record(s,0);
+            // Preserve the original leaf's register residue, but measure the
+            // year actually crossed (the current year when ascending).
+            const bool leap_year=cm::calendar::is_leap(crossed);
             if(later) {
                 set(s,31,reg(s,31)-(leap_year?366u:365u));set(s,3,s.memory.read<2>(reg(s,year_pointer)));set(s,0,reg(s,3)+1);
             } else {

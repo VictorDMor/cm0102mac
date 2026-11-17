@@ -136,6 +136,82 @@ int main(int argc, char** argv) {
                     roster(l, youth).contains(35) != allowed, "Sibling lock differed from original manual permission");
             require(locked_rng == rng(*locked), "Sibling permission consumed RNG");
         }
+        for (bool deadline_today : {false, true}) {
+            auto locked = cm::semantic_io_checks::clone(s); guest::Cpu l(*locked);
+            invoke(*locked, 0x102b8d60, {0, country, 0, staff(29)});
+            for (unsigned id = 0; id < 23; ++id)
+                if (id != 0 && id != 10) invoke(*locked, 0x102b8c50, {0, country, 0, staff(id)});
+            const auto before_roster = roster(l, senior);
+            require(before_roster.size() == 23, "Could not seed a full own squad");
+            l.put8(national_row + 0x4a, 1); l.put16(national_row + 0x40, c.u16(today));
+            l.put16(national_row + 0x42, c.u16(today + 2) + (deadline_today ? 0 : 1));
+            if (deadline_today) {
+                const auto calendar = l.u32(l.toc(-0x7a60));
+                const auto list = l.u32(l.u32(calendar + 12 * l.u16(today)));
+                require(list, "Missing own-squad deadline fixture list");
+                const auto fixture = invoke(*locked, 0x10773520, {0x50});
+                locked->memory.copy_in(fixture, std::vector<std::uint8_t>(0x50));
+                l.put32(fixture + 0xc, l.u32(senior)); l.put32(fixture + 0x10, l.u32(foreign_team));
+                l.put8(fixture + 0x40, 1); l.put8(fixture + 0x41, 1);
+                invoke(*locked, 0x10738d10, {list, fixture, 0x50});
+            }
+            const bool allowed = invoke(*locked, 0x102af090, {national_teams, country, 0, staff(0), 0, 0, 0}) != 0;
+            require(allowed == deadline_today, "Own-squad original release permission fixture");
+            const auto locked_rng = rng(*locked);
+            Writes changes(l.sp()); locked->memory.observer = &changes;
+            require(call_up_national_squad(*locked, senior) == allowed, "Own-squad lock did not reject the complete change");
+            locked->memory.observer = nullptr;
+            if (allowed) {
+                std::set<unsigned> selected{7, 35};
+                for (unsigned id = 9; id < 30; ++id) selected.insert(id);
+                require(roster(l, senior) == selected, "Exact-deadline own squad did not select the best 23");
+            } else {
+                require(changes.bytes.empty() && roster(l, senior) == before_roster && roster(l, youth).contains(35),
+                        "Blocked own-squad refresh partially changed roster, tactics or players");
+            }
+            require(locked_rng == rng(*locked), "Own-squad permission consumed RNG");
+        }
+        {
+            auto locked = cm::semantic_io_checks::clone(s); guest::Cpu l(*locked);
+            for (auto id : {0u, 10u, 29u}) {
+                invoke(*locked, 0x102b8d60, {0, country, 0, staff(id)});
+                invoke(*locked, 0x102b8c50, {0, country, 1, staff(id)});
+            }
+            const auto lock = national_row + 0x14;
+            l.put8(lock + 0x4a, 1); l.put16(lock + 0x40, c.u16(today)); l.put16(lock + 0x42, c.u16(today + 2) + 1);
+            require(!invoke(*locked, 0x102af090, {national_teams, country, 1, staff(0), 0, 0, 0}),
+                    "Reserve release fixture was not locked");
+            Writes changes(l.sp()); locked->memory.observer = &changes;
+            require(!call_up_national_squad(*locked, senior, 1), "Locked reserve refresh accepted");
+            locked->memory.observer = nullptr;
+            require(changes.bytes.empty() && roster(l, senior, 4).empty() && roster(l, senior, 8) == std::set<unsigned>({0, 10, 29}),
+                    "Locked reserve refresh changed either squad");
+        }
+        for (unsigned scenario = 0; scenario < 4; ++scenario) {
+            auto locked = cm::semantic_io_checks::clone(s); guest::Cpu l(*locked);
+            // Keep every incumbent eligible: the only proposed change is adding 9.
+            for (unsigned id = 0; id < 40; ++id)
+                l.put8(staff(id) + 0x62, id == 0 || id == 10 || id == 29 || (id == 9 && scenario != 3) ? 11 : 0);
+            l.put8(national_row + 0x4a, 1); l.put16(national_row + 0x40, c.u16(today));
+            l.put16(national_row + 0x42, c.u16(today + 2) + 1);
+            l.put8(national_row + 0x48, scenario == 2 ? 3 : 23);
+            l.put8(national_row + 0x4b, scenario == 1 || scenario == 2 ? 1 : 0);
+            require(!invoke(*locked, 0x102af090, {national_teams, country, 0, 0, 0, 0, 0}),
+                    "Add-only fixture was not locked");
+            if (scenario != 3)
+                require(bool(invoke(*locked, 0x102af090, {national_teams, country, 0, staff(9), 1, 0, 0})) == (scenario == 1),
+                        "Original locked-add replacement/capacity permission fixture");
+            const auto locked_rng = rng(*locked);
+            Writes changes(l.sp()); locked->memory.observer = &changes;
+            require(call_up_national_squad(*locked, senior) == (scenario == 1 || scenario == 3),
+                    "Locked addition did not respect replacement/capacity permission");
+            locked->memory.observer = nullptr;
+            auto selected = std::set<unsigned>{0, 10, 29};
+            if (scenario == 1) selected.insert(9);
+            require(roster(l, senior) == selected && (scenario == 1 || changes.bytes.empty()),
+                    "Locked add-only refresh changed a protected squad");
+            require(locked_rng == rng(*locked), "Locked addition consumed RNG");
+        }
         const auto retained = s.memory.copy_out(staff(10), 0x70), club_roster = s.memory.copy_out(clubs, 0x248);
         std::set<unsigned> expected{7, 35};
         for (unsigned id = 9; id < 30; ++id) expected.insert(id);
@@ -218,27 +294,27 @@ int main(int argc, char** argv) {
         require(call_up_national_squad(s, senior) && roster(c, senior).empty(), "Original special-nationality rule bypassed");
         c.put32(c.toc(-0x79fc), special); c.put8(staff(35) + 0x62, 0);
         c.put8(staff(33) + 0x62, 11);
-        // Compare the read-only injury interval with the game's actual interval
-        // operation, including equal/future dates, year borrowing and leap years.
-        const auto result = invoke(s, 0x10773520, {8});
-        for (const auto dates : std::array<std::array<unsigned,4>,8>{{
-                 {100,2001,100,2001}, {100,2001,86,2001}, {100,2001,87,2001}, {100,2001,114,2001},
-                 {3,2004,350,2003}, {3,2003,350,2002}, {350,2003,3,2004}, {100,2005,100,2001}}}) {
+        // Explicit calendar intervals, including both year-boundary directions.
+        // The old year-borrowing calculation returned zero or two for one day.
+        for (const auto dates : std::array<std::array<unsigned,5>,12>{{
+                 {100,2001,100,2001,0}, {100,2001,86,2001,14}, {100,2001,87,2001,13}, {100,2001,114,2001,14},
+                 {3,2004,350,2003,18}, {3,2003,350,2002,18}, {350,2003,3,2004,18}, {100,2005,100,2001,1461},
+                 {0,2005,365,2004,1}, {365,2004,0,2005,1}, {0,2004,364,2003,1}, {364,2003,0,2004,1}}}) {
             c.put16(today, dates[0]); c.put16(today + 2, dates[1]);
             c.put16(injury + 0x28, dates[2]); c.put16(injury + 0x2a, dates[3]);
-            invoke(s, 0x10717dd0, {result, today, c.u32(injury + 0x28), c.u32(injury + 0x2c)});
-            const int elapsed = int(c.u16(result + 2)) * 365 + c.i16(result);
+            const int elapsed = int(dates[4]);
             for (const auto threshold : {elapsed, elapsed + 1}) {
                 c.put16(injury + 0x30, threshold); c.put16(injury + 0x32, threshold);
                 require(call_up_national_squad(s, senior), "Injury-date case failed");
                 require(roster(c, senior) == (elapsed >= threshold ? std::set<unsigned>({33}) : std::set<unsigned>{}),
-                        "Injury eligibility differs from original date operation at its boundary");
+                        "Injury eligibility differs from elapsed calendar days at its boundary");
             }
         }
         require(random == rng(s), "Refresh consumed game RNG");
         require(debug_text(9, DebugText::call_up) == "Convocar" && debug_text(255, DebugText::call_up) == "Call Up", "Call-up labels");
         for (unsigned language = 0; language < 11; ++language) require(!debug_text(language, DebugText::call_up).empty(), "Missing translation");
         std::cout << "National call-up: top 23, ties, eligibility, promotion, unchanged incumbents, original manual bytes, "
-                     "tactics cleanup, repeat no-op, current ability, short/empty pool, youth age, caller and RNG passed\n";
+                     "locked roster preflight and deadlines, tactics cleanup, repeat no-op, current ability, "
+                     "short/empty pool, injury calendar boundaries, youth age, caller and RNG passed\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

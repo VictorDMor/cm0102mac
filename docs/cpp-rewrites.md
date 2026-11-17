@@ -1890,12 +1890,16 @@ set where a call or the return exposes them.
   use and flagged by a guard byte. The static dates are game memory and are written as the original writes them.
 - Adding a negative count of days calls the subtraction with the magnitude and the other way round; -32768 is its
   own magnitude, so the original recurses until the stack ends. Nothing passes it.
-- The count of days between two dates steps over whole years with the length of the year *before* the one it
-  leaves, in both directions, so it is neither Gregorian nor antisymmetric across years.
-- The interval routine (0x10717dd0) borrows a year when the day count is negative; from the later date's side it
-  takes that year's length from the register its first compare left the date's year in (0x107180b0 calls the leap
-  test without loading an argument). Its branch at 0x10717f18..0x10717ffc needs each date to be later than the
-  other, from the same two values: dead, and the C++ throws there.
+- Authorized correction (2026-11-15): signed day differences now use the actual year crossed, making them
+  Gregorian and antisymmetric. The old ascending loop classified the preceding year instead.
+- The interval routine (0x10717dd0) keeps the ordinal-year/day-remainder representation used by age records
+  and contracts, but now borrows the year before the later date when its day remainder is negative. The
+  original tested the later year, producing zero or two days at some one-day year boundaries. Existing leap
+  calls remain to preserve unrelated registers/stack. The checker amends only the authorized result fields
+  of the raw reference and separately verifies calendar boundaries and rejection of the old arithmetic.
+  This interval is not a total elapsed-day count: callers needing that use `calendar::absolute_days`, as
+  national call-up injury eligibility now does. The branch at 0x10717f18..0x10717ffc still needs each date
+  to be later than the other from the same values: dead, and the C++ throws there.
 - A calendar date with a day outside 1..31 or a month outside 0..11 is reported by the assert macro and then built
   with day 1 or month 0.
 - The formatters find the month by a search that leaves the month register as the caller had it when the day is

@@ -42,29 +42,20 @@ constexpr std::int16_t day_of_month(std::int16_t day, std::span<const std::int16
     return month < 0 ? -1 : day_from_threshold(day, thresholds[month]);
 }
 constexpr unsigned year_length(std::uint16_t year) { return is_leap(year) ? 366 : 365; }
+// Gregorian day offset from 1 January of year zero, which is a leap year.
+// All uint16 years and signed16 day offsets fit comfortably in int32.
+constexpr std::int32_t absolute_days(Date date) {
+    const auto year = std::int32_t(date.year);
+    return 365 * year + (year + 3) / 4 - (year + 99) / 100 + (year + 399) / 400 + date.day;
+}
 constexpr bool is_after(Date date, Date reference) {
     return date.year > reference.year || (date.year == reference.year && date.day > reference.day);
 }
 constexpr bool is_before(Date date, Date reference) {
     return is_after(reference, date);
 }
-constexpr bool difference_second_later(Date first, Date second) {
-    return is_after(second, first);
-}
-// The ascending original loop deliberately also uses current year minus one.
-// Thus cross-year difference is not generally antisymmetric or Gregorian.
-constexpr std::int32_t difference_year_step(std::uint16_t current, bool second_later) {
-    const auto length = std::int32_t(year_length(std::uint16_t(current - 1)));
-    return second_later ? -length : length;
-}
 constexpr std::int32_t difference(Date first, Date second) {
-    const bool later = difference_second_later(first, second);
-    std::int32_t result = int(first.day) - int(second.day);
-    for (auto year = first.year; year != second.year; ) {
-        result += difference_year_step(year, later);
-        year = std::uint16_t(int(year) + (later ? 1 : -1));
-    }
-    return result;
+    return absolute_days(first) - absolute_days(second);
 }
 // The original stores the initial sum/difference in a signed 16-bit day field.
 // This deliberately retains wrapping and one-direction-only normalization.
