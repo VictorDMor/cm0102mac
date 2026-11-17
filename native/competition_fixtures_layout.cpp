@@ -31,32 +31,42 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
             message = false;
         }
     }
-    if (body_index < 0) return;
-    const auto body = grid(body_index);
-    const auto original = rect(body);
-    const auto original_rows = c.u8(body + 0xbb1);
-    // The three builders use font 3 for row height.
+    // The gate enlarges the canvas before the builder runs, so a variant
+    // whose list is not one of the three shapes above must still get its
+    // title, tab bars and footer moved. Its own grids then stay where the
+    // builder put them, at the original width.
     const int line_height = c.i32(c.toc(-0x740c)) != -1 ? 21 : c.i32(c.toc(-0x3bdc) + 2 * 0x1404);
-    if (!original_rows || original_rows > 30 || line_height <= 0) return;
-
+    if (body_index >= 0) {
+        const auto rows = c.u8(grid(body_index) + 0xbb1);
+        // The three builders use font 3 for row height.
+        if (!rows || rows > 30 || line_height <= 0) body_index = -1;
+    }
+    const bool recognised = body_index >= 0;
+    const auto body = recognised ? grid(body_index) : 0;
     const ScreenLayout window{canvas};
-    auto available = window.content(original.top);
-    if (original.bottom == 500) available.bottom -= 45;
-    const int width = std::min(1600, available.width());
-    available.left += (available.width() - width) / 2;
-    available.right = available.left + width;
-    const std::array<FormTrack, 1> tracks{{
-        {original.height(), 1, std::max(original.height(), 30 * line_height + 16)}
-    }};
-    const auto list = form_tracks(available, tracks, false).front();
-    const int rows = message ? original_rows : std::clamp((list.height() - 16) / line_height, int(original_rows), 30);
-    const int heading_shift = list.left - original.left;
     const auto footer = window.footer();
+    const auto original = recognised ? rect(body) : ScreenRect{110, 125, 780, 545};
+    const auto original_rows = recognised ? c.u8(body + 0xbb1) : std::uint8_t(0);
+    auto list = original;
+    int rows = original_rows;
+    if (recognised) {
+        auto available = window.content(original.top);
+        if (original.bottom == 500) available.bottom -= 45;
+        const int width = std::min(1600, available.width());
+        available.left += (available.width() - width) / 2;
+        available.right = available.left + width;
+        const std::array<FormTrack, 1> tracks{{
+            {original.height(), 1, std::max(original.height(), 30 * line_height + 16)}
+        }};
+        list = form_tracks(available, tracks, false).front();
+        if (!message) rows = std::clamp((list.height() - 16) / line_height, int(original_rows), 30);
+    }
+    const int heading_shift = list.left - original.left;
 
     GuiGuestScope preserve(s);
     c.set(1, c.sp() - 0x400);
-    write(body, list);
-    if (!message) {
+    if (recognised) write(body, list);
+    if (recognised && !message) {
         for (int row = original_rows; row < rows; ++row) c.put8(body + 0xbd0 + row, 1);
         c.put8(body + 0xbb1, rows);
         if (c.i32(body + 0x14) + 1 <= rows) c.put8(body + 0xbef, 0);
@@ -66,7 +76,7 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
     for (unsigned i = 0; i < controls; ++i) {
         const auto control = display + 0xba864 + i * 0x17c;
         const auto owner = c.i16(control + 0x72);
-        if (owner == body_index) {
+        if (recognised && owner == body_index) {
             const int left = c.i32(control + 0x28), right = c.i32(control + 0x2c);
             // Empty-state text is centered. Group labels and their underlines
             // use the original measured width at a fixed five-pixel inset.
@@ -94,7 +104,7 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
         const auto at = grid(i);
         const auto old = rect(at);
         auto box = old;
-        if (at == body) box = list;
+        if (recognised && at == body) box = list;
         else if (old == ScreenRect{100, 80, 790, 115}) box.right = canvas.width - 10;
         else if (old == ScreenRect{100, 510, 790, 545}) box = {100, canvas.height - 90, canvas.width - 10, canvas.height - 55};
         else if (old == ScreenRect{110, 125, 360, 145}) box = {list.left, 125, list.left + 250, 145};
