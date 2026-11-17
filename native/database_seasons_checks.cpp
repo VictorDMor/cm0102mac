@@ -240,6 +240,28 @@ void check_english_construction(State& s) {
     require(invoke(s,0x104c7150,{object})==0 && c.u32(object+0xa4)==0 && random_state(s)==rng,
             "FA Trophy drew from an insufficient qualifier pool");
     c.put32(lower_slot,lower);
+    // Windows 3.89 sorts, draws and stores the ten qualifiers before it finds
+    // the Conference short: a direct selector call reports failure with the
+    // RNG advanced and the array kept (the constructor then raises the error).
+    const auto conference_slot=c.toc(-0x6874), conference_binding=c.u32(conference_slot);
+    const auto cursor=c.toc(-0x7b84), original_cursor=c.u32(cursor), pool=c.toc(-0x7b8c);
+    c.put32(conference_slot,0xffffffff);
+    c.put32(cursor,pool);
+    require(invoke(s,0x104c7150,{object})==0 && c.u32(object+0xa4)!=0 && c.u32(cursor)==pool+20,
+            "FA Trophy with a short Conference did not draw as Windows 3.89");
+    c.put32(cursor,original_cursor);
+    c.put32(conference_slot,conference_binding);
+    {
+        const auto entries=c.u32(object+0xa4), england=c.u32(c.u32(object+4)+8);
+        std::vector<unsigned> stored;
+        for(unsigned i=0;i<10;++i) {
+            const auto club=c.u32(entries+i*8);
+            require(club>=c.u32(c.toc(-0x7be8)) && c.u32(club+0x2c)==england && c.u32(c.u32(club+0x30))==lower &&
+                    std::ranges::find(stored,club)==stored.end(),"Short-Conference FA Trophy lost a stored qualifier");
+            stored.push_back(club);
+        }
+        invoke(s,0x10775170,{entries}); c.put32(object+0xa4,0);
+    }
     check_trophy_reputation_ties(s,object);
     deallocate(s,object);
 
