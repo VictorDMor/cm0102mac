@@ -18,7 +18,6 @@ struct ConferenceLeagueRules {
 enum class TrophyQualification { engine_default, english_lower_division };
 struct TrophyRules {
     TrophyQualification qualification = TrophyQualification::engine_default;
-    unsigned semifinal_leg_rule = 3;
 };
 
 struct CupDate {
@@ -53,5 +52,4 @@ void size_cm0001_conference_cup_entrants(State&);
 bool apply_cm0001_conference_cup_entrants(State&);
 bool apply_cm0001_conference_cup_rounds(State&);
 bool apply_cm0001_fa_trophy_qualifiers(State&);
-void apply_cm0001_fa_trophy_rounds(State&);
 }

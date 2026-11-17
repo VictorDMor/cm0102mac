@@ -22,7 +22,6 @@ constexpr auto cm0001_389 = [] {
     rules.conference.has_knockout_calendar = false;
     rules.conference.club_payment = 0;
     rules.fa_trophy.qualification = TrophyQualification::english_lower_division;
-    rules.fa_trophy.semifinal_leg_rule = 2;
     rules.conference_cup = &conference_cup_389;
     return rules;
 }();

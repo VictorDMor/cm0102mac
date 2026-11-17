@@ -73,14 +73,4 @@ bool apply_cm0001_fa_trophy_qualifiers(State& s) {
     s.pc = 0x104c73d8;
     return true;
 }
-
-void apply_cm0001_fa_trophy_rounds(State& s) {
-    const auto& rules = english_season_rules(s).fa_trophy;
-    if (rules.semifinal_leg_rule == TrophyRules{}.semifinal_leg_rule) return;
-    Cpu c(s);
-    // The fourth round is the semifinal. Windows 3.89 sets its leg rule
-    // to 2 at 0x542063 (round record +0x21).
-    constexpr unsigned semifinal = 3, round_size = 0x78, leg_rule = 0x23;
-    c.put8(c.r(31) + semifinal * round_size + leg_rule, rules.semifinal_leg_rule);
-}
 }

@@ -158,7 +158,7 @@ The England pilot identifies the 3.89 rules from the embedded database digest.
 The Trophy takes up to 50 English A Lower Division candidates in database order,
 sorts by descending reputation with the Windows CRT tie order, and swaps within
 the first tenth of the pool. It then takes the first ten and appends the 22
-Conference clubs. Its semifinal uses the 3.89 leg rule. The Conference calendar
+Conference clubs. Its semifinal leg rule is the same in both releases, so the original calendar is used unchanged. The Conference calendar
 shares the nominal round dates with CM01/02 and uses only default kickoff times.
 The 3.89 league has no playoff calendar or CM01/02 club payment. The existing
 three-place promotion customization still applies.

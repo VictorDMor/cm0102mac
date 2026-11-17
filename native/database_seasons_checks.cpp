@@ -284,7 +284,7 @@ void check_english_construction(State& s) {
     }
     check_trophy_entrants(c,trophy);
     require(c.u32(trophy+0xa0) && c.u8(c.u32(trophy+0xa0)+3*0x78+0x23)==2,
-            "FA Trophy semifinal leg rule");
+            "FA Trophy semifinal lost the original leg rule (2 on the Mac and in Windows 3.89)");
     invoke(s,0x104c7480,{trophy});
     require(c.u16(trophy+0x40)==2001 && c.u8(c.u32(trophy+0xa0)+3*0x78+0x23)==2,
             "FA Trophy switched editions on rollover");

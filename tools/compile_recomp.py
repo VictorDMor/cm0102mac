@@ -2232,11 +2232,6 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("if (apply_cm0001_conference_cup_entrants(s)) return true;")
             code.append("if (apply_cm0001_fa_trophy_qualifiers(s)) return true;")
             isolated.add(a)
-        if a == 0x104c7124:
-            if item["assembly"] != "b 0x104c712c":
-                raise ValueError("FA Trophy round configuration boundary changed")
-            code.append("apply_cm0001_fa_trophy_rounds(s);")
-            isolated.add(a)
         if a == 0x10343630:
             if item["assembly"] != "mfspr r0,LR":
                 raise ValueError("Fresh-world setup boundary changed")
