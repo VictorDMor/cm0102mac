@@ -1,4 +1,5 @@
 #include "form_layout.hpp"
+#include "guest_screen.hpp"
 #include "gui_guest_scope.hpp"
 #include <algorithm>
 #include <array>
@@ -6,32 +7,25 @@
 namespace cm::aot {
 void layout_transfer_proposal(State& s, std::uint32_t display, GuiCanvas canvas) {
     guest::Cpu c(s);
-    const auto grid = [display](unsigned i) { return display + 4 + i * 0xbf0; };
-    const auto control = [display](unsigned i) { return display + 0xba864 + i * 0x17c; };
-    const auto read = [&](std::uint32_t at) {
-        return ScreenRect{c.i32(at), c.i32(at+4), c.i32(at+8), c.i32(at+12)};
-    };
-    const auto write = [&](std::uint32_t at, ScreenRect box) {
-        c.put32(at,box.left); c.put32(at+4,box.top); c.put32(at+8,box.right); c.put32(at+12,box.bottom);
-    };
+    const GuestScreen screen{c, display};
     // Identify only this builder's declared sections; menu grids and the
     // navigation bar must retain their own positioning and popup links.
     int title=-1, intro=-1, terms=-1, exchange=-1, footer=-1;
     const unsigned grids=std::min<unsigned>(250,c.u16(display+0x129da4));
     const unsigned controls=std::min<unsigned>(1200,c.u16(display+0x129da6));
     for (unsigned i=0;i<grids;++i) {
-        const auto box=read(grid(i));
+        const auto box=screen.rect(screen.grid(i));
         if (box==ScreenRect{100,10,790,70}) title=int(i);
         if (box==ScreenRect{100,80,790,125}) intro=int(i);
-        if (box==ScreenRect{110,140,780,380} && c.u8(grid(i)+0xbb0)==7) terms=int(i);
-        if (box==ScreenRect{110,410,780,545} && c.u8(grid(i)+0xbb0)==3) exchange=int(i);
-        if (box==ScreenRect{100,555,790,590} && c.u8(grid(i)+0xbb1)==1) footer=int(i);
+        if (box==ScreenRect{110,140,780,380} && screen.columns(screen.grid(i))==7) terms=int(i);
+        if (box==ScreenRect{110,410,780,545} && screen.columns(screen.grid(i))==3) exchange=int(i);
+        if (box==ScreenRect{100,555,790,590} && screen.rows(screen.grid(i))==1) footer=int(i);
     }
     if (title<0 || intro<0 || terms<0 || exchange<0 || footer<0) return;
     unsigned intro_rows=1,term_rows=1,exchange_rows=1;
     for (unsigned i=0;i<controls;++i) {
-        const int owner=c.i16(control(i)+0x72);
-        const unsigned count=c.u32(control(i)+0x24)+1;
+        const int owner=c.i16(screen.control(i)+0x72);
+        const unsigned count=c.u32(screen.control(i)+0x24)+1;
         if (owner==intro) intro_rows=std::max(intro_rows,count);
         if (owner==terms) term_rows=std::max(term_rows,count);
         if (owner==exchange) exchange_rows=std::max(exchange_rows,count);
@@ -53,23 +47,23 @@ void layout_transfer_proposal(State& s, std::uint32_t display, GuiCanvas canvas)
     const auto rows=form_tracks(body,sections,false);
     const std::array<FormTrack,7> fields{{{32},{335,1},{32},{168},{32},{32},{32}}};
     const auto columns=form_tracks(rows[0],fields,true);
-    const unsigned button_count=c.u8(grid(footer)+0xbb0);
+    const unsigned button_count=screen.columns(screen.grid(footer));
     if (button_count<2 || button_count>4) return;
     auto buttons=shell.buttons(std::min(body.width(),int(button_count)*190));
     buttons.left-=buttons.right-body.right; buttons.right=body.right;
     const auto history=c.u32(c.toc(-0x7bb0)+0x10);
     const auto base_control=c.u32(history+0x14+15*8);
     if (base_control>=controls) return;
-    const unsigned base_row=c.u32(control(base_control)+0x24);
+    const unsigned base_row=c.u32(screen.control(base_control)+0x24);
     GuiGuestScope preserve(s);
     c.set(1,c.sp()-0x400);
     for (unsigned i=0;i<controls;++i) {
-        const auto at=control(i);
+        const auto at=screen.control(i);
         const int owner=c.i16(at+0x72);
         int left=c.i32(at+0x28),right=c.i32(at+0x2c);
         if (owner==title || owner==intro) {
             if (left && right) {
-                const auto moved=DetailsLayout::centered_text({left,0,right,0},read(grid(owner)),
+                const auto moved=DetailsLayout::centered_text({left,0,right,0},screen.rect(screen.grid(owner)),
                                                              owner==title?shell.title():subtitle);
                 c.put32(at+0x28,moved.left); c.put32(at+0x2c,moved.right);
             }
@@ -97,7 +91,7 @@ void layout_transfer_proposal(State& s, std::uint32_t display, GuiCanvas canvas)
                 c.put32(at+0x2c,columns[col==1?2:6].left-2);
             }
         } else if (owner<0) {
-            const auto before=read(at+0x10);
+            const auto before=screen.rect(at+0x10);
             auto after=before;
             if (before.top==385 && before.bottom==405 && before.width()==125) {
                 if (before.left==110 || before.left==235) {
@@ -110,21 +104,21 @@ void layout_transfer_proposal(State& s, std::uint32_t display, GuiCanvas canvas)
                 // Other bids stays attached to the title's leading edge.
                 after.left=shell.title().left+5; after.right=after.left+15;
             } else continue;
-            write(at+0x10,after);
+            screen.write(at+0x10,after);
             c.put32(at+0x28,after.left); c.put32(at+0x2c,after.right);
             c.put32(at+0x30,after.top); c.put32(at+0x34,after.bottom);
         }
     }
-    c.put8(grid(intro)+0xbb1,intro_rows);
-    c.put8(grid(terms)+0xbb1,term_rows);
-    c.put8(grid(exchange)+0xbb1,exchange_rows);
-    for (unsigned i=0;i<button_count;++i) c.put8(grid(footer)+0xbb2+i,1);
+    screen.set_rows(screen.grid(intro), intro_rows);
+    screen.set_rows(screen.grid(terms), term_rows);
+    screen.set_rows(screen.grid(exchange), exchange_rows);
+    for (unsigned i=0;i<button_count;++i) c.put8(screen.grid(footer)+0xbb2+i,1);
     const std::array<std::pair<int,ScreenRect>,5> panels{{
         {title,shell.title()},{intro,subtitle},{terms,rows[0]},{exchange,rows[4]},{footer,buttons}}};
     for (const auto& [index,box]:panels) {
-        write(grid(index),box);
-        c.set(3,grid(index)); c.call(0x10714630,0xfffffff0);
-        c.set({{3,grid(index)},{4,0}}); c.call(0x10714110,0xfffffff0);
+        screen.write(screen.grid(index),box);
+        screen.measure(screen.grid(index));
+        screen.publish(screen.grid(index));
     }
 }
 }
