@@ -1,4 +1,13 @@
-# English promotion preset
+# English competition rules
+
+Premier League matches name seven reserves, with the existing three-substitution
+allowance (2026-11-16). New seasons set the existing league byte `+0x46` to seven;
+successful league loads apply it only to the Premier League class. The fixture
+reader also updates the high nibble of `+0x4e` for that competition's unplayed
+rows, including lazily loaded years. Played rows, other competitions and the
+low-nibble substitution allowance are unchanged. Existing careers therefore
+adopt the bench on load, without a new season or a new save field.
+`CM_ENGLISH_RULES_ORIGINAL=1` disables both changes for original-rule checks.
 
 New English seasons use the original's rules between the Premier League and the
 First Division again (restored 2026-11-10 at Victor's request): two automatic
@@ -43,12 +52,12 @@ one, up to 20). Refusal is therefore rare.
 
 `native/english_competition_rules.hpp` holds the preset and seeding policy.
 `CM_ENGLISH_RULES_ORIGINAL=1` selects the original rules for newly configured
-seasons and for the existing equivalence checks. The default (`current`) differs
-from the original only between the Third Division and the Conference. This is an
+seasons and for the existing equivalence checks. The default promotion preset
+(`current`) differs from the original only between the Third Division and the Conference. This is an
 intentional gameplay change, not an original/C++ equivalence claim. Other
 competitions retain their existing rules.
 
-Existing careers retain the current season's saved rules, including an existing
+Existing careers retain the current season's saved promotion rules, including an existing
 playoff, and take the rules above at their normal next-season configuration; a
 season of the withdrawn preset is followed by one of the original's rules. League
 fields `+0xc0..+0xc3`, CupStage rounds and the existing entrant seed byte carry

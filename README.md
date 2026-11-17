@@ -17,7 +17,9 @@ sidebar menu and remove future unplayed games on load.
 New English seasons use the original's rules between the Premier League and the
 First Division (two automatic promotion places, a four-club playoff, three clubs
 down). Three clubs go down from the Third Division and three come up from the
-Conference. Existing seasons retain their saved rules until the next season. See
+Conference. Existing seasons retain their saved promotion rules until the next season.
+Premier League matches allow seven named reserves and three substitutions,
+including pending matches in existing careers after loading. See
 [competition rules](docs/native-competition-rules.md) for the original preset and
 backup.
 

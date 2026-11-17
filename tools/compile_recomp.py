@@ -1225,7 +1225,7 @@ PROFILE_OFFER_READS = {
 # Instructions generate_page lowers specially (beyond owner hooks and
 # quotient-free divisions); a leaf containing one is never inlined.
 SPECIAL_LOWERINGS = frozenset({
-    0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x10131c00,
+    0x1028d558, 0x10779ed8, 0x101195e8, 0x1071a828, 0x101fefc8, 0x10774c24, 0x10131c00, 0x104a8518,
     0x1034f1f8, 0x1034f318, 0x10345bb0, 0x10482ca0, 0x101312b8, 0x1048aa94, 0x1049dfa8, 0x10203738, 0x10147cf8, 0x10147e50, 0x101cce50, 0x10203574, 0x102036ac,
     0x102a9e74, 0x10772774, 0x107727d4, 0x10772a94, 0x10772768}) | set(NULL_BACKGROUND_GETTER_CALLS) | set(COMMENTARY_LINE_READS) | set(FIND_LIST_TITLE_READS) | set(FIND_LIST_FILTERS) | set(PROFILE_OFFER_READS) | set(ADAPTIVE_GUI_INSTRUCTIONS) | {ADAPTIVE_BACKGROUND_BOUNDARY}
 OWNER_HOOK = re.compile(r"if \(try_modern_(\w+)\(s, 0x[0-9a-f]+\)\) return true;")
@@ -1906,6 +1906,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     forced_purchase_branches = {
         # The CPU seller's decision, the player's willingness to negotiate,
         # and the seller's board review during completion.
+    if page in (0x1048a, 0x104a8):
+        code.insert(1, '#include "english_competition_rules.hpp"')
         0x103ee4c0: ("lwz r4,0x0(r16)", 0x103ee4e4, "forced_purchase_for_seller(s, s.r<4>(88), s.r<4>(112))"),
         0x103e4910: ("bge 0x103e49fc", 0x103e49fc, "forced_purchase_for_seller(s, s.r<4>(116), s.r<4>(80))"),
         0x103f9f20: ("or r3,r21,r21", 0x103f9f88, "forced_purchase_for_seller(s, s.r<4>(88), s.r<4>(120))"),
@@ -2138,6 +2140,16 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         if a in ADAPTIVE_GUI_INSTRUCTIONS:
             if item["assembly"] != ADAPTIVE_GUI_INSTRUCTIONS[a] or a + 4 not in page_addresses:
                 raise ValueError(f"Adaptive canvas instruction changed at {a:x}")
+        if a == 0x104a8518:
+            if item["assembly"] != "li r3,0x1":
+                raise ValueError("League successful-load boundary changed")
+            code.append("{ guest::Cpu c(s); english_rules::premier_bench(c, c.r(27)); }")
+            isolated.add(a)
+        if a == 0x1048aa94:
+            if item["assembly"] != "lwz r0,0x138(r1)":
+                raise ValueError("Fixture successful-read boundary changed")
+            code.append("{ guest::Cpu c(s); english_rules::loaded_premier_fixture(c, c.sp() + 0x12c); }")
+            isolated.add(a)
             code.append(f"if (adaptive_gui_instruction(s, 0x{a:x})) goto i_{a + 4:x};")
             isolated.add(a)
         if a == ADAPTIVE_BACKGROUND_BOUNDARY:

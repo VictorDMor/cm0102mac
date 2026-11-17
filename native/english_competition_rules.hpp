@@ -25,6 +25,19 @@ inline constexpr PromotionRules current{2, 4, 3, 3, 3};
 // CM_ENGLISH_RULES_ORIGINAL keeps the original game's rules and code paths
 // (the equivalence checks run with it).
 inline bool original_forced() { return std::getenv("CM_ENGLISH_RULES_ORIGINAL") != nullptr; }
+// Match squads: seven named reserves, still three substitutions. These are
+// existing bytes, not new save fields. The league type excludes English cups
+// and reserve/youth competitions even when their clubs play in the Premier League.
+inline void premier_bench(guest::Cpu& c, std::uint32_t league) {
+    if (!original_forced() && c.u32(league) == c.toc(-0x6020))
+        c.put8(league + 0x46, 7);
+}
+inline void loaded_premier_fixture(guest::Cpu& c, std::uint32_t fixture) {
+    // Runs for every fixture a load reads: the cheap tests come before the environment.
+    const auto id = c.u32(c.toc(-0x67a0));
+    if (id != 0xffffffffu && c.u32(fixture) == id && c.i8(fixture + 0x43) == -1 && !original_forced())
+        c.put8(fixture + 0x4e, 0x70 | (c.u8(fixture + 0x4e) & 0xf));
+}
 inline PromotionRules new_season() { return original_forced() ? original : current; }
 inline bool expanded_season(const guest::Cpu& c, std::uint32_t league) {
     return c.u8(league + 0xc0) == expanded.automatic &&

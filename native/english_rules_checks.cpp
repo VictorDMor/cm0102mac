@@ -307,13 +307,22 @@ void lower_divisions(const char* oracle) {
     std::cout<<"English rules: Third Division and Conference three-place exchange, 24 ground combinations, uneven zones, one-place season and negative control passed\n";
 }
 }
+int english_bench_checks(const char*, const char*, const char*);
 int main(int argc,char** argv) {
+    if(argc==5 && std::string_view(argv[1])=="--bench")
+        return english_bench_checks(argv[2],argv[3],argv[4]);
     if(argc!=2)return 2;
     try {
         dispatch_probe=probe;lower_divisions(argv[1]);
         auto state=std::make_unique<State>();load_program(*state,argv[1]);Cpu c(*state);
         dispatch_probe=probe;setup(c);
         invoke(c,0x10528e50,{first});invoke(c,0x1052bd60,{premier});
+        require(c.u8(premier+0x46)==7,"new Premier seasons name seven reserves");
+        // The normal fixture-rule writer must publish 7/3 to both match and
+        // tactics consumers; its delegation branch still handles other leagues.
+        c.put8(premier+0x47,3);
+        invoke(c,0x104530f0,{premier,data+0x9200});
+        require(c.u8(data+0x924e)==0x73,"Premier fixture names seven, permits three changes");
         require(c.u8(first+0xc0)==2 && c.u8(first+0xc1)==4 && c.u8(premier+0xc3)==3,"new seasons take the original's First Division and Premier League rules");
         // The withdrawn preset (three automatic places, an eight-club playoff, four down): a career's
         // season saved with it still ends by it, so the check goes on with the bytes such a save loads.

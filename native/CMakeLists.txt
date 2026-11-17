@@ -4618,7 +4618,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
 endif()
 
 # Authorized English promotion/playoff preset, separate from equivalence tests.
-add_executable(cm-english-rules-checks english_rules_checks.cpp)
+add_executable(cm-english-rules-checks english_rules_checks.cpp english_bench_checks.cpp)
 target_link_libraries(cm-english-rules-checks PRIVATE cm_aot)
 target_compile_options(cm-english-rules-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
@@ -4707,6 +4707,12 @@ target_compile_options(cm-ger-first-checks PRIVATE -Wall -Wextra -Werror -Wpedan
 add_test(NAME ger_first_equivalence COMMAND cm-ger-first-checks)
 if(Python3_EXECUTABLE)
     add_test(NAME ger_first_audit
+    if(IS_DIRECTORY "${CM_MATCH_DEBUGGER_GAME_DIR}" AND
+       EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        add_test(NAME english_premier_bench COMMAND cm-english-rules-checks --bench
+            "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot"
+            "${CM_MATCH_DEBUGGER_GAME_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/english-bench")
+    endif()
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_ger_first_audit.py")
 endif()
 
