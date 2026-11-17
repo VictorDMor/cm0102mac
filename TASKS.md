@@ -3,11 +3,12 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
-## Open: TRANSFER_MANAGER.CPP after layers 0-2 (2026-11-16)
+## Open: TRANSFER_MANAGER.CPP follow-ups (2026-11-16)
 
-140 of 214 routines in C++ (53 native-first since 2026-11-16, 87 in the earlier instruction-by-instruction style). Left: 74 routines, 30,783 instructions at layers 13-22 (`tools/game_inventory.py`); the earlier 87 should move to the native family when touched.
+All 214 routines are C++ in production; 127 native-first, 87 in the earlier instruction-by-instruction style (`transfer_manager_routines.inc`), to move to the native family when touched.
 
-- Known failures, not caused by the TRANSFER_MANAGER commit: `transfer_manager_valuation_production` ("did not reach its Date dependency") and `transfer_manager_schedule_equivalence` ("Transfer schedule bucket") fail with the uncommitted DATE/calendar changes in the tree (`native/date*.cpp`, `calendar.hpp`, `date_subsystem_adapter.cpp`); neither routine reaches the 53 new entries, both reach DATE.
+- Known failures, not caused by the TRANSFER_MANAGER commits: `transfer_manager_valuation_production` ("did not reach its Date dependency") and `transfer_manager_schedule_equivalence` ("Transfer schedule bucket") fail with the uncommitted DATE/calendar changes in the tree; season-day ends away from its recording with them (STALE even with the module forced original). Rerun the pair on season-day once that work is committed.
+- `transfer_manager_native_equivalence` takes ~45 min (all 127 entries, mutations, call trace); consider a lighter CTest and keep the full run for deliveries.
 
 ## Now: DISPLAY.CPP (delivered 2026-11-15)
 

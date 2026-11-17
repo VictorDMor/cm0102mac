@@ -15,7 +15,7 @@
 
 namespace cm::aot::transfer_manager_native_checks {
 inline constexpr std::uint32_t module_start = 0x103df0d0, module_end = 0x10411e60;
-inline constexpr std::size_t module_routines = 53;  // the native-first entries so far (layers 0-2); TRANSFER_MANAGER.CPP has 214
+inline constexpr std::size_t module_routines = 127;  // the native-first entries; the other 87 of the 214 are in transfer_manager_routines.inc
 // A mapped area outside the game's memory for rows a case builds.
 inline constexpr std::uint32_t scratch_base = 0x60000000, scratch_size = 0x100000;
 struct Write { unsigned size; std::uint32_t address, value; };
@@ -56,6 +56,16 @@ struct Scenario {
     std::uint32_t people() const { return global(-0x7be4); }
     // The transfer manager object (TRANSFER_MANAGER.CPP's routines take it in r3).
     std::uint32_t transfer_manager() const { return global(-0x7b40); }
+    // A person's contract as 0x10082f20 (primary) or 0x10083110 (second, a loan) finds it, without
+    // running the game: the per-person index (TOC -0x7b9c, 100-byte rows, words at +0/+4) into the
+    // contract manager's records (TOC -0x7b7c, 100 bytes each). 0 when there is none.
+    std::uint32_t contract_of(std::uint32_t person, bool second = false) const {
+        if (!person) return 0;
+        const auto id = std::int32_t(r32(person));
+        if (id >= std::int32_t(people())) return 0;
+        const auto index = std::int32_t(r32(global(-0x7b9c) + std::uint32_t(id) * 100 + (second ? 4 : 0)));
+        return index < 0 ? 0 : r32(global(-0x7b7c)) + std::uint32_t(index) * 100;
+    }
     // A match's two sides (0xd8 each at +0x7aac) and their 20 player records.
     std::uint32_t side(unsigned index) const { return match + 0x7aac + index * 0xd8; }
     std::uint32_t player(unsigned side, unsigned index) const { return match + 0x311c + side * 0x2350 + index * 0x1c4; }

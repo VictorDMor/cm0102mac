@@ -342,7 +342,7 @@ void post_offer_news_fb7(Cpu& c, std::uint32_t manager, std::uint32_t offer, std
     keep(c, 25, 0);
     const auto lookup = contract_club(c, person, 0x1040e3b4);
     keep(c, 25, lookup.found);
-    item.field(5, c.u32(lookup.club), 0x1040e40c);  // no guard: a person without a club reads address 0
+    item.field(5, c.u32(lookup.club), 0x1040e410);  // no guard: a person without a club reads address 0
     item.field(6, sign16(short_raw), 0x1040e420);
     const auto pointer = c.u32(offer_club + 0x30);
     item.field(7, pointer ? c.u32(pointer) : all_ones, 0x1040e444);

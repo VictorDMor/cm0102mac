@@ -1,0 +1,2 @@
+// Accepted call-trace findings of block "plan", each with its proof (format: transfer_manager_native_trace_accepted.inc).
+TRANSFER_MANAGER_NATIVE_TRACE_ACCEPTED(0x103ee17c, 0x10768300, 7, "0x10768300 sorts 16-byte rows: it reads r3 (rows), r4 (count), r5 (size) and r6 (the comparator, saved at 0x10768354); r7 is only counted by the mask because the comparator is called indirectly with two pointers")

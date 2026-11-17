@@ -2191,3 +2191,21 @@ the module as generated code.
   (as in 0x10415e50) can't see a range past 0xffff; 0x103e8500's draws after a count > 1 test never get range 0.
 - Several news routines read through a null club or contract (a field from guest address 0). The game stops there
   (page zero is unmapped); the checker's `--null-page` maps it so the paths beyond are compared too.
+- 2026-11-16: the other 74 routines (the offer pipeline from GAME.CPP's daily pass down, and 30 news-message
+  renderers called from NEWS.CPP's `render_message` 0x102be040) joined the family; the module is all C++, 127 of its
+  routines native-first. Some renderers are not only text: 0x10405ca0, 0x10401c90, 0x10402e70, 0x1040d0d0,
+  0x1040d820, 0x10410a60 and 0x103fe1a0 write a word of the stored news item through 0x102cd0c0.
+- A leftover reader no audit listed: the date words 0x103ea840, 0x103f3100 and 0x103ec0f0 copy into their frames are
+  read later as stale stack; same-save-continue diverged until the rewrites stored them at the original offsets.
+  0x10401c90 and 0x1040c580 copy a 400-byte text template into the frame, 0x10407a50 a 200-byte one (read by
+  MAIN.CPP); all are kept although later code overwrites them.
+- Checking: `Case::answers` reaches any routine, value 0 included, except those under check in the run (the `--only`
+  set), so cases that steer a native callee run with `--only` limited to their block ("answered: ..." labels). An
+  allocation failure is forced through a count or capacity that makes the request enormous; the growth
+  allocations of 0x103f45a0, the 16-byte list headers of 0x103e25d0/0x103e3170/0x103e3410 and 0x103f3670's growth
+  realloc can't be made to fail short of exhausting the heap. 0x103f3670's yearly history files are read through
+  the C library's buffer, so a case supplies a file record whose buffer holds the rows. `--null-page` is part of
+  the equivalence test: some case lists read page zero while building.
+- The call trace caught two wrong return addresses (0x1040e2d0's field 5 call, in production since ea39c099, and
+  0x103e70f0's call of 0x104ae570), and mutated cases a load order (0x103e76c0 faulted at another address); no
+  replay showed any of them.
