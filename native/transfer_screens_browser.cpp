@@ -1,4 +1,7 @@
 #include "transfer_screens_detail.hpp"
+#include "adaptive_gui.hpp"
+#include "form_layout.hpp"
+#include <array>
 
 namespace cm::aot::transfer_screens {
 using namespace detail;
@@ -14,10 +17,41 @@ void render_transfers_browser(Cpu& c) {
     Kept<27> menu_background(c,c.toc(-0x7bcc)); Kept<28> text(c,c.toc(-0x7bb8));
     Kept<29> pool(c,c.toc(slot::pool)); Kept<30> clubs(c,c.toc(slot::clubs));
     Kept<31> screens(c,c.toc(slot::screens)); Program p{c};
+    const ScreenLayout window{gui_canvas(c.s)};
+    const bool adaptive = !window.canvas.original() && adaptive_screen_available(c.s, 0x10426aa0);
+    constexpr ScreenRect classic_list{110, 170, 780, 535};
+    auto panel = classic_list;
+    int list_bottom = classic_list.bottom;
+    if (adaptive) {
+        panel = window.content(classic_list.top);
+        panel.bottom -= 10;
+        const int width = std::min(1440, panel.width());
+        panel.left += (panel.width() - width) / 2;
+        panel.right = panel.left + width;
+    }
+    struct PageLayout { int bottom; std::uint8_t rows; };
+    const auto page_layout = [&](std::uint32_t font_height) {
+        constexpr int vertical_inset = 16;
+        int bottom = classic_list.bottom;
+        if (adaptive && font_height > 0 && font_height <= classic_list.height() - vertical_inset) {
+            const auto maximum = std::max(classic_list.height(), 30 * int(font_height) + vertical_inset);
+            const std::array<FormTrack, 1> tracks{{{classic_list.height(), 1, maximum}}};
+            bottom = form_tracks(panel, tracks, false).front().bottom;
+        }
+        auto rows = divide_signed<4>(bottom - classic_list.top - vertical_inset, font_height);
+        if (adaptive) rows = std::min<std::uint64_t>(30, rows);
+        return PageLayout{bottom, std::uint8_t(rows)};
+    };
     const auto stack_args=[&](std::initializer_list<std::uint32_t> values) {
         unsigned offset=0x38;for(auto value:values){c.put32(f.at(offset),value);offset+=4;}
     };
     const auto container=[&]{return c.u32(screens+std::uint32_t(c.i16(screens+0x2c58))*0x2c0+0x24);};
+    const auto align_banner = [&](unsigned index, int left, int right) {
+        if (!adaptive || index >= c.u16(container() + 0x129da6)) return;
+        const auto control = container() + 0xba864 + index * 0x17c;
+        c.put32(control + 0x10, left); c.put32(control + 0x18, right);
+        c.put32(control + 0x28, left); c.put32(control + 0x2c, right);
+    };
     const auto menu_item=[&](unsigned back,unsigned parent,unsigned style,unsigned flags,unsigned caption,unsigned action,unsigned payload) {
         stack_args({flags,c.u16(menu_background),c.u16(selected),1,1,c.u16(background),caption,0,action,payload,parent});
         return p.call(0x10719740,back,{container(),style,0,0,0,0,0,0});
@@ -46,14 +80,17 @@ void render_transfers_browser(Cpu& c) {
     if(compare(c,nation_filter,-1)>0)p.call(0x10712eb0,0x10426bac,{indirect(c,-0x7b98)+nation_filter*0x128,0,0});
     else p.call(0x10712d00,0x10426bb4);
     p.call(0x10727890,0x10426bc0,{text,pool+0x28c1});
-    p.call(0x10744250,0x10426bd8,{screens,c.u16(c.toc(-0x7bdc)),c.u16(foreground),text});
+    const auto title = p.call(0x10744250,0x10426bd8,{screens,c.u16(c.toc(-0x7bdc)),c.u16(foreground),text});
+    align_banner(title, window.title().left, window.title().right);
     p.call(0x102a1070,0x10426be4,{4,0});
     if(byte_result(c,c.u8(f.at(0x156)))) {
         const auto month_name=p.call(0x107189d0,0x10426bf8,{c.u8(f.at(0x157))});
         p.call(0x10727890,0x10426c0c,{text,pool+0x28cb,month_name,std::uint16_t(year_or_row)});
     } else p.call(0x10727890,0x10426c20,{text,pool+0x28e4,std::uint16_t(year_or_row)});
-    p.call(0x107442f0,0x10426c2c,{screens,text});
-    const auto view_control=screen_button(0x10426c78,105,85,120,105,c.u16(background),1,0,0,12);
+    const auto period = p.call(0x107442f0,0x10426c2c,{screens,text});
+    align_banner(period, panel.left - 5, panel.right + 5);
+    const auto view_left = adaptive ? panel.left : 105;
+    const auto view_control=screen_button(0x10426c78,view_left,85,view_left+(adaptive ? 25 : 15),105,c.u16(background),1,0,0,12);
     menu_or_indices_or_to=menu(0x10426cc4,view_control,0x30);
     p.call(0x10727890,0x10426cd8,{text,pool+0x28f0});
     if(byte_result(c,c.u8(f.at(0x156)))) {
@@ -63,16 +100,18 @@ void render_transfers_browser(Cpu& c) {
     if(!byte_result(c,c.u8(f.at(0x156)))) {
         item=0;menu_or_capacity=c.u16(selected);menu_item(0x10426e80,menu_or_indices_or_to,0x2002,16,text,0,0);
     } else {item=0;menu_or_capacity=c.u16(selected);menu_item(0x10426f04,menu_or_indices_or_to,2,16,text,1,0);}
+    const auto period_right = panel.right + 5;
     if(compare(c,c.u32(glyph_or_nation_or_grid),-1)!=0) {
         p.call(0x1077b720,0x10426f20,{text,pool+0x28fd,42});
-        screen_button(0x10426f6c,743,85,763,105,c.u16(c.toc(-0x7bdc)),0,text,2,12);
-    } else screen_button(0x10426fc0,743,85,763,105,c.u16(c.toc(-0x7bdc)),1,pool+0x2900,2,12);
+        screen_button(0x10426f6c,period_right-42,85,period_right-22,105,c.u16(c.toc(-0x7bdc)),0,text,2,12);
+    } else screen_button(0x10426fc0,period_right-42,85,period_right-22,105,c.u16(c.toc(-0x7bdc)),1,pool+0x2900,2,12);
     if(compare(c,c.u32(glyph_or_nation_or_grid),-1)!=0) {
         p.call(0x1077b720,0x10426fdc,{text,pool+0x28fd,43});
-        screen_button(0x10427028,765,85,785,105,c.u16(c.toc(-0x7bdc)),0,text,3,12);
-    } else screen_button(0x1042707c,765,85,785,105,c.u16(c.toc(-0x7bdc)),1,pool+0x2902,3,12);
+        screen_button(0x10427028,period_right-20,85,period_right,105,c.u16(c.toc(-0x7bdc)),0,text,3,12);
+    } else screen_button(0x1042707c,period_right-20,85,period_right,105,c.u16(c.toc(-0x7bdc)),1,pool+0x2902,3,12);
     top_or_name_colour=145;p.call(0x10727890,0x1042708c,{text,pool+0x2904});
-    const auto nation_control=screen_button(0x104270d8,110,top_or_name_colour,235,top_or_name_colour+20,c.u16(c.toc(-0x7bc4)),1,text,0,12);
+    const auto filter_width = adaptive ? std::clamp(panel.width() / 6, 125, 175) : 125;
+    const auto nation_control=screen_button(0x104270d8,panel.left,top_or_name_colour,panel.left+filter_width,top_or_name_colour+20,c.u16(c.toc(-0x7bc4)),1,text,0,12);
     menu_or_capacity=menu(0x10427124,nation_control,0x130);
     p.call(0x10727890,0x10427138,{text,pool+0x2909});
     if(compare(c,nation_filter,-1)==0) {
@@ -137,16 +176,29 @@ void render_transfers_browser(Cpu& c) {
     }
     if(compare(c,c.u32(f.at(0x74)))>0) {
         const auto height=p.call(0x1076d470,0x10427784,{2});
-        menu_or_capacity=std::uint8_t(divide_signed<4>(535-top_or_name_colour-16,height));
+        const auto list = page_layout(height);
+        list_bottom = list.bottom;
+        menu_or_capacity=list.rows;
         const auto count=c.u32(f.at(0x74));const auto whole=divide_signed<4>(count,menu_or_capacity);
         const auto remainder=count-whole*menu_or_capacity;
         year_or_row=std::int32_t(std::int16_t(whole+(remainder!=0)));
+        auto page = std::int32_t(c.i16(f.at(0x154)));
+        if (adaptive && std::int32_t(year_or_row) > 0) {
+            // A taller viewport can remove the current last page. Keep the
+            // control captions, first row and command handler on the same page.
+            const auto clamped = std::clamp(page, 1, std::int32_t(year_or_row));
+            if (clamped != page) {
+                page = clamped;
+                const auto history = c.u32(screens + 0x10);
+                c.put32(history + 0x14 + 6 * 8, page);
+            }
+        }
         c.set(7,count);c.set(8,menu_or_capacity);c.set(9,count);
         p.history(0x104277e0,screens,7,year_or_row);
-        p.call(0x1074b270,0x10427804,{780,145,std::uint32_t(std::int32_t(c.i16(f.at(0x154)))),year_or_row,5,6,7,8});
+        p.call(0x1074b270,0x10427804,{unsigned(panel.right),145,std::uint32_t(page),year_or_row,5,6,7,8});
         stack_args({0,2,0,missing});
-        glyph_or_nation_or_grid=p.call(0x107198c0,0x10427854,{container(),110,top_or_name_colour,780,535,5,f.at(0x78),menu_or_capacity});
-        year_or_row=0;item=std::uint32_t(std::int32_t(c.i16(f.at(0x154)))-1)*std::uint8_t(menu_or_capacity);
+        glyph_or_nation_or_grid=p.call(0x107198c0,0x10427854,{container(),unsigned(panel.left),top_or_name_colour,unsigned(panel.right),unsigned(list.bottom),5,f.at(0x78),menu_or_capacity});
+        year_or_row=0;item=std::uint32_t(page-1)*std::uint8_t(menu_or_capacity);
         while(compare(c,year_or_row,std::uint8_t(menu_or_capacity))<0 && compare(c,item,c.u32(f.at(0x74)))<0) {
             group_or_record=c.u32(f.at(0x70))+item*0x28;
             p.call(0x10716b00,0x10427890,{group_or_record+0x20,text,2000,255});
@@ -190,13 +242,23 @@ void render_transfers_browser(Cpu& c) {
         p.history(0x10427d28,screens,9,std::uint32_t(std::int32_t(std::int16_t(glyph_or_nation_or_grid))));
     } else {
         const auto height=p.call(0x1076d470,0x10427d34,{3});
-        menu_or_capacity=std::uint8_t(divide_signed<4>(535-top_or_name_colour-16,height));
+        const auto list = page_layout(height);
+        list_bottom = list.bottom;
+        menu_or_capacity=list.rows;
         p.call(0x10727890,0x10427d58,{text,pool+0x2989,height});
         stack_args({c.u16(foreground),text,0});
-        p.call(0x1074a350,0x10427d90,{110,top_or_name_colour,780,535,2,0,std::uint8_t(menu_or_capacity),3});
+        p.call(0x1074a350,0x10427d90,{unsigned(panel.left),top_or_name_colour,unsigned(panel.right),unsigned(list.bottom),2,0,std::uint8_t(menu_or_capacity),3});
     }
     year_or_row=std::int8_t(p.call(0x1073ea20,0x10427d98,{screens}))==0;
     const auto next=p.call(0x1073eb00,0x10427db8,{screens,0});
+    const auto before_footer = adaptive ? c.u16(container() + 0x129da4) : 0;
     p.call(0x1074b0a0,0x10427dd0,{std::int8_t(next)==0,year_or_row});
+    if (adaptive && before_footer < 250 && c.u16(container() + 0x129da4) == before_footer + 1) {
+        // The newly emitted Back/Next grid will be measured on first draw.
+        const auto buttons = container() + 4 + before_footer * 0xbf0;
+        c.put32(buttons, panel.right - 340); c.put32(buttons + 4, list_bottom + 20);
+        c.put32(buttons + 8, panel.right); c.put32(buttons + 12, list_bottom + 55);
+        c.put8(buttons + 0xbb2, 1); c.put8(buttons + 0xbb3, 1);
+    }
 }
 }

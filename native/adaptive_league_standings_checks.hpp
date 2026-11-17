@@ -170,7 +170,9 @@ void league_standings_builder(const char* path) {
         require(s.registers==gate_registers && s.unique==gate_unique && s.pc==gate_pc &&
                 s.memory.copy_out(competition,0xec)==gate_record && random_state(s)==gate_rng,"Standings gate ran guest code");
         for(unsigned section:{0u,2u,3u,4u,7u,8u}) {
-            c.put32(setting(1),section); require(!adaptive_screen_available(s,0x10065340),"Non-table competition tab adapted");
+            c.put32(setting(1),section);
+            require(adaptive_screen_available(s,0x10065340) == (section >= 2 && section <= 4),
+                    "Competition tab eligibility changed unexpectedly");
         }
         c.put32(setting(1),1);
         c.put32(setting(4),3); require(!adaptive_screen_available(s,0x10065340),"Unknown standings view adapted"); c.put32(setting(4),0);

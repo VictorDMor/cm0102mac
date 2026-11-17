@@ -47,6 +47,7 @@ void layout_negotiation_dialog(State&, std::uint32_t display, GuiCanvas, bool lo
 void layout_news_inbox(State&, std::uint32_t display, GuiCanvas);
 void layout_next_match(State&, std::uint32_t display, GuiCanvas);
 void layout_league_standings(State&, std::uint32_t display, GuiCanvas);
+void layout_competition_fixtures(State&, std::uint32_t display, GuiCanvas, unsigned section);
 void layout_daily_fixtures(State&, std::uint32_t display, GuiCanvas);
 void layout_nations_and_clubs(State&, std::uint32_t display, GuiCanvas);
 void layout_club_information(State&, std::uint32_t display, GuiCanvas);

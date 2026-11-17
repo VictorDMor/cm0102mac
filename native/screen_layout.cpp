@@ -318,7 +318,14 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::loan_terms: layout_negotiation_dialog(s, display, layout.canvas, true); break;
     case ScreenTemplate::negotiation_confirmation: layout_negotiation_dialog(s, display, layout.canvas, false); break;
     case ScreenTemplate::news_inbox: layout_news_inbox(s, display, layout.canvas); break;
-    case ScreenTemplate::league_standings: layout_league_standings(s, display, layout.canvas); break;
+    case ScreenTemplate::competition: {
+        guest::Cpu c(s);
+        const auto history = c.u32(c.toc(-0x7bb0) + 0x10);
+        const auto section = c.u32(history + 0x1c);
+        if (section == 1) layout_league_standings(s, display, layout.canvas);
+        else layout_competition_fixtures(s, display, layout.canvas, section);
+        break;
+    }
     case ScreenTemplate::daily_fixtures: layout_daily_fixtures(s, display, layout.canvas); break;
     case ScreenTemplate::nations_and_clubs: layout_nations_and_clubs(s, display, layout.canvas); break;
     case ScreenTemplate::search_tables: {
@@ -330,7 +337,7 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
         apply_search_controls(s, display, layout);
         break;
     }
-    case ScreenTemplate::legacy: case ScreenTemplate::tactics: break;
+    case ScreenTemplate::legacy: case ScreenTemplate::tactics: case ScreenTemplate::transfer_history: break;
     }
 }
 }

@@ -2227,6 +2227,14 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   controlled fixtures cover message states, indexed-stage eligibility and stage-command reset.
   Actual multi-stage menu interaction remains source-reviewed. No new exact-PC hooks or
   whole-module reconstruction are required.
+- The competition screen's Results, Calendar and Match Dates tabs (sections
+  2–4 of `0x10065340`) use `competition_fixtures_layout.cpp`. The layout
+  preserves the original fixture cache, column weights and link payloads and
+  expands the visible rows to 30 on taller canvases. Explicit date-group
+  labels and underlines follow the list inset, while empty messages retain
+  their measured width and center. Original date navigation, competition
+  tabs, Print and Back/Next share the adaptive bounds. The local eligibility
+  check does not query or resolve a competition stage.
 - Games of the Day (MATCH_SCREENS.CPP 0x1028ae80) uses `daily_fixtures_layout.cpp`.
   Its nine-column list shares bounded tracks, retains original weights, initializes newly
   exposed rows (up to 30), and keeps its 20px navigation gap. Back/Next become equal 170px
@@ -2273,6 +2281,14 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   List membership, localized labels and original AutoGrid input stay in the
   existing callbacks. Classic, network and secondary screen groups keep their
   original geometry. No change to the generated FIND_SCREENS routines.
+- The global Transfers browser (`0x10426aa0`) lays out the existing native
+  five-column table before emitting controls. The bounded Yoga track provides
+  both the panel height and the page size, so the page label, original pager
+  commands and displayed records stay in sync. Enlarging the window clamps an
+  unavailable page to the new last page. Date controls, nation filter, empty
+  message and footer follow the same panel. Monthly/yearly selection and the
+  transfer cache remain owned by the existing handlers; the classic builder
+  path keeps its original capacity and coordinates.
 - Career sidebar (0x102a1070) and progress (0x1076e5f0) have audited geometry pins in
   `tools/adaptive_gui_audit.py`. Sidebar background/menu grids follow canvas height, and all eight
   bottom status/action branches follow its bottom edge. Progress text, fill, frame and partial repaint

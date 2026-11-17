@@ -12,6 +12,7 @@ bool try_modern_transfer_screens(State& s, std::uint32_t entry);
 // reached through the dispatcher, hooked by the generator or not yet.
 bool transfer_screens_dispatch_probe(State& s);
 bool transfer_screens_lists(std::uint32_t entry);
+bool transfer_browser_native_enabled();
 // For synthetic calls (routine_check.hpp): run one routine's original body or
 // its C++ from its entry state to its return.
 void transfer_screens_run_original(State& s, std::uint32_t entry);

@@ -3,6 +3,7 @@
 #include "platform.hpp"
 #include "new_screens.hpp"
 #include "screen_layout.hpp"
+#include "transfer_screens_adapter.hpp"
 #include "club_control.hpp"
 #include <algorithm>
 #include <vector>
@@ -61,6 +62,13 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         return first >= 0 && last >= first && std::uint32_t(last) < read(queue + 0x24) &&
                entries && read(entries + std::uint32_t(first) * 0x6c);
     }
+    if (screen_template(builder) == ScreenTemplate::transfer_history) {
+        const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
+        const auto manager = read(std::uint32_t(s.r<4>(8)) - 0x7bb0);
+        if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
+        const auto history = read(manager + 0x10);
+        return history && read(history) && read(read(history)) == builder && transfer_browser_native_enabled();
+    }
     if (screen_template(builder) == ScreenTemplate::nations_and_clubs) {
         const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
         const auto manager = read(std::uint32_t(s.r<4>(8)) - 0x7bb0);
@@ -74,16 +82,20 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         constexpr unsigned selection_slot[]{1, 4, 7, 10, 13, 16};
         return read(history + 0x14 + selection_slot[tab - 1] * 8) != 0;
     }
-    if (screen_template(builder) == ScreenTemplate::league_standings) {
+    if (screen_template(builder) == ScreenTemplate::competition) {
         const auto toc = std::uint32_t(s.r<4>(8));
         const auto read = [&](std::uint32_t at) { return std::uint32_t(s.memory.read<4>(at)); };
         const auto manager = read(toc - 0x7bb0);
         if (!manager || s.memory.read<2>(manager + 0x2c58) || read(manager + 0x2c64)) return false;
         const auto history = read(manager + 0x10);
-        if (!history || !read(history) || read(read(history)) != builder ||
-            read(history + 0x1c) != 1 || read(history + 0x34) > 2) return false;
+        if (!history || !read(history) || read(read(history)) != builder) return false;
         const auto competition = read(history + 0x14);
         if (!competition) return false;
+        const auto section = read(history + 0x1c);
+        // Results, Calendar and Match Dates list games for the competition as
+        // a whole, including competitions with knockout stages.
+        if (section >= 2 && section <= 4) return true;
+        if (section != 1 || read(history + 0x34) > 2) return false;
         const auto last = std::int32_t(read(competition + 0x30));
         const auto selected = std::int32_t(read(history + 0x24));
         if (last < -1 || last > 127 || selected < -2 || selected > last) return false;

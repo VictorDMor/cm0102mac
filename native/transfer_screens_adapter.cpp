@@ -52,6 +52,9 @@ bool run(State& s, const Routine& routine) {
 }
 
 bool transfer_screens_lists(std::uint32_t entry) { return listed(entry) != nullptr; }
+bool transfer_browser_native_enabled() {
+    return !declining && (!routine_checker || routine_checker->wants(0x10426aa0));
+}
 
 bool transfer_screens_dispatch_probe(State& s) {
     if (declining) return false;
