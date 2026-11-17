@@ -1,8 +1,52 @@
 # Competition rules by database edition
 
 Requested by Victor on 2026-11-17 after the CM00/01 FA Trophy initialization failure.
-Status: England pilot implemented for Conference, FA Trophy and Conference Cup.
-The remaining league exclusions are tracked below.
+Status: the rules registry exists (global rules, inherited and customized per
+edition) and carries the competition rules the port decides today. England's 2000/01
+pilot (Conference, FA Trophy, Conference Cup) runs through it. Career-level
+overrides, their persistence and the remaining league exclusions are open.
+
+## The registry (2026-11-17)
+
+`native/season_competition_rules.hpp` declares `CompetitionRules`: one struct
+with every rule the port decides, each field holding its global value.
+`global_rules` is that set. `native/competition_rules.cpp` defines the three
+editions by inheritance:
+
+| Edition | Database | Definition |
+| --- | --- | --- |
+| `cm0102` | 2001/2002 (Mac 3.9.62) | the global rules, unchanged |
+| `si_3968` | 2002/2003 (SI 3.9.68) | inherits `cm0102`; no change yet |
+| `cm0001_389` | 2000/2001 (CM00/01 3.89) | inherits the global rules; changes the Conference, FA Trophy qualification, adds the Conference Cup and lists the seven unavailable countries |
+
+To add a rule: add a field with its global value to the struct; every
+edition inherits it. To customize a season: assign the field in that
+edition's `inherit(...)` block. Code asks `competition_rules(state)` and never
+tests the edition or the year itself.
+
+The career's edition comes from the database names it embeds (SHA-256 of the
+English names file, also after loading a save), not from the calendar year.
+
+Rules carried today: English promotion places and Premier League named
+reserves, the Conference league's kickoff slots, playoff calendar and club
+payment, FA Trophy qualification, the Conference Cup, Série B as a single
+table, the Inter-American Cup's last edition, and unavailable countries.
+
+`CM_ENGLISH_RULES_ORIGINAL` and `CM_BRA_NAT_SECOND_RULES_ORIGINAL` restore the
+shipped game's values for the equivalence checks, applied after the edition.
+
+Still outside the registry, decided by the 00/01 release itself in
+`database_season_compatibility.cpp`: the optional symbolic indexes that data
+lacks and the Brazilian top-flight alias. They describe the data, not a rule.
+
+Between the moment a load replaces the database and the moment the loaded
+names are inspected, the edition reads as `cm0102`. No rule that differs by
+edition is read in that window today; the Premier bench hooks on league and
+fixture load are the ones to check when an edition first overrides them.
+
+Not there yet: user overrides per career, their place in the save, and
+declared mid-career transitions (see Persistence below). A season configured
+under one rule keeps it in its serialized fields, as before.
 
 ## Goal and completion criteria
 
@@ -172,4 +216,5 @@ and its save routines, with separate competition identities. Careers whose
 archive predates the Conference Cup continue without it.
 
 Next implementation task: persist explicit career rules revisions and user
-overrides and verify the division movement that feeds the next season.
+overrides (the third layer, after global and edition) and verify the division
+movement that feeds the next season.

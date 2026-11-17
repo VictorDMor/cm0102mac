@@ -138,8 +138,9 @@ top-flight name for continental qualification. The missing Danish database-name
 translation uses this season's English names, and the required Green 4 UI colour
 comes from the original Mac palette. Birth dates, contracts and history years
 are not shifted; Gregorian dates support the leap year 2000.
-The [edition-specific competition rules plan](docs/season-competition-rules-plan.md)
-tracks the remaining work for source-supported competitions and countries.
+Competition rules are one global set that each database season inherits and
+customizes; see the [competition rules by edition](docs/season-competition-rules-plan.md),
+which also tracks the remaining work for source-supported competitions and countries.
 
 For new 2002/2003 careers, installation completes the missing 2002 World Cup
 podium (Brazil, Germany, Turkey) and Ronaldo's Golden Shoe (eight goals), plus

@@ -140,7 +140,7 @@ std::uint32_t configure(Cpu& c, std::uint32_t address) {
     for (const auto [offset, value] : {std::pair{0xc4u, 3u}, {0xc5, 1}, {0xc6, 2},
              {0x42, 1}, {0xc7, 1}, {0xc8, 2}, {0xc9, 3}, {0xc0, 2}, {0xc1, 4}, {0xc2, 0}, {0xc3, 3}})
         c.put8(address + offset, value);
-    const auto rules = english_rules::new_season();
+    const auto rules = english_rules::new_season(c.s);
     c.put8(address + 0xc0, rules.automatic);
     c.put8(address + 0xc1, rules.playoff_clubs);
     c.set(9, c.u32(c.r(9))); c.put32(address + 0x1c, c.r(9));

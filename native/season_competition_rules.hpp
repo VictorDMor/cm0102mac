@@ -1,13 +1,41 @@
 #pragma once
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace cm::aot {
 struct State;
-enum class CompetitionEdition { cm0001_389_v1, cm0102 };
+// The database release a career was created from. It selects the career's
+// rules independently of the calendar year: a career begun in 2000 keeps its
+// edition in 2001.
+enum class CompetitionEdition { cm0001_389, cm0102, si_3968 };
+inline constexpr std::size_t competition_edition_count = 3;
 
-// Selected from the database embedded in the career, independently of its year.
+// Recognised from the database names embedded in the career (also in saves).
 CompetitionEdition competition_edition(const State&);
+
+namespace english_rules {
+// A season owns its rules in the existing serialized competition fields (the
+// league serializer reads +0xc0..+0xc3 at 0x104a77b0 and writes them at
+// 0x104a8980). The rules below are only read when a season is configured;
+// loading a career never changes its promotion places or an already-created playoff.
+struct PromotionRules {
+    unsigned automatic, playoff_clubs, premier_relegated;
+    // Between the Third Division and the Conference: no playoff, the same number each way.
+    unsigned conference_promoted, third_relegated;
+};
+// The game as shipped.
+inline constexpr PromotionRules original{2, 4, 3, 1, 1};
+// The First Division preset withdrawn on 2026-11-10: three automatic places, an eight-club
+// playoff and four clubs down from the Premier League. No new season takes it; a season
+// that was configured with it keeps its bytes and ends by it (`expanded_season`); only
+// its first two fields are read.
+inline constexpr PromotionRules expanded{3, 8, 4, 3, 3};
+// The original's rules between the Premier League and the First Division,
+// three places each way between the Third Division and the Conference.
+inline constexpr PromotionRules current{2, 4, 3, 3, 3};
+}
 
 struct ConferenceLeagueRules {
     bool use_tv_kickoff_slots = true;
@@ -37,13 +65,47 @@ struct ConferenceCupRules {
     std::array<CupRoundRules, 5> rounds;
 };
 
-struct EnglishSeasonRules {
+struct EnglandRules {
+    english_rules::PromotionRules promotion = english_rules::current;
+    // Named reserves in Premier League matches (still three substitutions).
+    // Zero leaves the engine's own value.
+    unsigned premier_named_reserves = 7;
     ConferenceLeagueRules conference;
     TrophyRules fa_trophy;
     const ConferenceCupRules* conference_cup = nullptr;
 };
 
-const EnglishSeasonRules& english_season_rules(const State&);
+struct BrazilRules {
+    // Série B as one 27-round table, four promoted, no playoff groups. False
+    // keeps the original group stages.
+    bool serie_b_single_table = true;
+};
+
+struct InternationalRules {
+    // The Inter-American Cup is not played after this year's edition.
+    int inter_american_cup_last_edition = 1998;
+};
+
+// Every rule the port decides, in one place. `global_rules` is the set every
+// edition starts from; an edition inherits it and changes only what its
+// database needs (competition_rules.cpp). A field added here is inherited by
+// all editions until one overrides it.
+struct CompetitionRules {
+    EnglandRules england;
+    BrazilRules brazil;
+    InternationalRules international;
+    // League-selection rows of countries this edition's data cannot run.
+    std::span<const unsigned> unavailable_countries;
+};
+inline constexpr CompetitionRules global_rules{};
+
+// The rules of one edition, as checked in.
+const CompetitionRules& edition_rules(CompetitionEdition);
+// The running career's rules: its edition's, with the test presets that keep
+// the original game's behaviour (CM_ENGLISH_RULES_ORIGINAL,
+// CM_BRA_NAT_SECOND_RULES_ORIGINAL) applied last.
+const CompetitionRules& competition_rules(const State&);
+inline const EnglandRules& english_season_rules(const State& s) { return competition_rules(s).england; }
 
 void reserve_cm0001_conference_cup_slot(State&);
 bool append_cm0001_conference_cup(State&);

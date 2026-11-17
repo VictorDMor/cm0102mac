@@ -1,4 +1,5 @@
 #include "bra_nat_second_adapter.hpp"
+#include "season_competition_rules.hpp"
 #include "guest_values.hpp"
 #include "guest_saved_registers.hpp"
 #include "import_descriptor_adapter.hpp"
@@ -15,7 +16,8 @@ using guest::compare;
 using guest::compare_logical;
 
 bool declining = std::getenv("CM_BRA_NAT_SECOND_ORIGINAL") != nullptr;
-const bool original_rules = std::getenv("CM_BRA_NAT_SECOND_RULES_ORIGINAL") != nullptr;
+// False: Série B is one table (season_competition_rules.hpp).
+bool original_rules(const State& s) { return !competition_rules(s).brazil.serie_b_single_table; }
 constexpr auto construct_entry = 0x105177b0u, destroy_entry = 0x10517af0u;
 constexpr auto advance_groups_entry = 0x10519010u, create_group_entry = 0x105190d0u;
 constexpr auto record_result_entry = 0x105192c0u, announce_result_entry = 0x10519390u;
@@ -42,7 +44,7 @@ struct Division {
     guest::Field<std::uint32_t> group_storage() const { return {cpu, address + 0xc}; }
     std::uint32_t groups() const { return group_storage(); }
     guest::Field<std::int32_t> group_capacity() const { return {cpu, address + 0x2c}; }
-    bool table_only() const { return !original_rules && group_capacity() == 0; }
+    bool table_only() const { return !original_rules(cpu.s) && group_capacity() == 0; }
     std::int32_t last_group() const { return cpu.i32(address + 0x30); }
     guest::Field<std::uint32_t> calendar_rows() const { return {cpu, address + 0xbc}; }
 };
@@ -622,7 +624,7 @@ void construct_competition(Cpu& cpu) {
 
         block(cpu, 0x10517830, 15);
         const auto current = object();
-        const auto capacity = original_rules ? 1u : 0u;
+        const auto capacity = original_rules(cpu.s) ? 1u : 0u;
         cpu.set({{5, 10}, {4, UINT32_MAX}, {0, capacity}});
         cpu.put8(current + 0x4b, 10);
         cpu.put8(object() + 0x44, 0xff);
@@ -737,7 +739,7 @@ void next_season(Cpu& cpu) {
     }
     destroy_groups(cpu, league, 0x10518dcc, 27, 28);
 
-    if (!original_rules) {
+    if (!original_rules(cpu.s)) {
         // The original saves own this array until the last legacy group
         // has been destroyed. The next season needs no stage storage.
         const auto groups = league.groups();

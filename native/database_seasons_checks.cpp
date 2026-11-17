@@ -227,6 +227,22 @@ void check_conference_cup(State& s, unsigned cup) {
         require(moved[i]==clubs[order[i]],"Conference Cup rollover seed order differs from Windows 3.89");
 }
 
+// The career's edition follows its database, and each edition inherits the
+// global rules except where competition_rules.cpp says otherwise.
+void check_edition_rules(const State& s, unsigned year) {
+    const auto expected=year==2000?CompetitionEdition::cm0001_389:year==2002?CompetitionEdition::si_3968:CompetitionEdition::cm0102;
+    require(competition_edition(s)==expected,"Database did not select its competition edition");
+    // The checked-in edition, without the environment's test presets.
+    const auto& rules=edition_rules(competition_edition(s));
+    require(rules.england.promotion.conference_promoted==global_rules.england.promotion.conference_promoted &&
+            rules.england.premier_named_reserves==global_rules.england.premier_named_reserves &&
+            rules.brazil.serie_b_single_table==global_rules.brazil.serie_b_single_table &&
+            rules.international.inter_american_cup_last_edition==global_rules.international.inter_american_cup_last_edition,
+            "Edition lost an inherited global rule");
+    require((rules.england.conference_cup!=nullptr)==(year==2000) && rules.unavailable_countries.size()==(year==2000?7u:0u) &&
+            (rules.england.conference.club_payment==0)==(year==2000),"Edition rules leaked across seasons");
+}
+
 void check_english_construction(State& s) {
     guest::Cpu c(s);
     // Negative control: hide the Lower Division binding only in this fixture.
@@ -558,6 +574,7 @@ void check_archive(State& s) {
     s.platform->career_database_replaced(); // The loader's hook at 0x10346dd4.
     require(invoke(s,0x1009ef30,{archive,1})==1,"Packed database reload");
     require(s.platform->database_seasons().legacy_2000()==(year==2000),"Embedded names did not restore compatibility identity");
+    check_edition_rules(s,year);
     require(!s.platform->database_seasons().loaded(),"Save load retained pack provenance");
     s.platform->quick_save_load_end(s);
     require(!s.platform->database_seasons().active(),"Completed save load resumed pack routing");
@@ -657,6 +674,7 @@ int main(int argc,char**argv) {
             require(seasons.selected()==index && !seasons.pending(),"Selection committed");
             const auto year=seasons.packs()[index].year;
             require(seasons.legacy_2000()==(year==2000),"Database compatibility profile leaked across seasons");
+            check_edition_rules(s,year);
             require(c.u16(c.toc(-0x7b80)+2)==year && c.u8(c.toc(-0x7b80)+4)==(year==2000),"Actual current year/leap flag did not change");
             require(s.memory.copy_out(c.toc(-0x79e8),5)==cutoff,"Historical contract cutoff changed");
             const auto clubs=c.u32(c.toc(-0x7be8)),people=c.u32(c.toc(-0x7be0));

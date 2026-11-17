@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <set>
+#include <string_view>
 #include <CommonCrypto/CommonDigest.h>
 
 namespace cm::aot {
@@ -73,20 +74,28 @@ void DatabaseSeasons::end() {
     previous_control = next_control = -1;
 }
 void DatabaseSeasons::inspect_database_names(const std::filesystem::path& path) {
-    legacy_2000_ = false;
+    // Embedded name data survives pruning/regeneration and is restored by the
+    // loader before INDEX. Never infer the release from year or staff counts.
+    struct Known { DatabaseRelease release; std::uintmax_t size; std::string_view sha256; };
+    static constexpr std::array known{
+        Known{DatabaseRelease::cm0001_389, 1130151, "b2b61aed6afaf90b2632b5f85ded0566884810d02e59d2aec1526ab4689a68a2"},
+        Known{DatabaseRelease::si_3968, 1993486, "391017caa3177e8343f5576f7dcebf5a716c7df58f60cc853dd39733f270b217"},
+    };
+    release_ = DatabaseRelease::other;
     std::error_code error;
-    if (std::filesystem::file_size(path, error) != 1130151 || error) return;
-    std::vector<unsigned char> bytes(1130151);
+    const auto size = std::filesystem::file_size(path, error);
+    if (error) return;
+    const auto candidate = std::ranges::find(known, size, &Known::size);
+    if (candidate == known.end()) return;
+    std::vector<unsigned char> bytes(size);
     std::ifstream input(path, std::ios::binary);
-    if (!input.read(reinterpret_cast<char*>(bytes.data()), bytes.size())) return;
+    if (!input.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()))) return;
     std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> digest;
     CC_SHA256(bytes.data(), CC_LONG(bytes.size()), digest.data());
     constexpr char hex[] = "0123456789abcdef";
     std::string actual;
     for (auto byte : digest) { actual += hex[byte >> 4]; actual += hex[byte & 15]; }
-    // Embedded name data survives pruning/regeneration and is restored by the
-    // loader before INDEX. Never infer the profile from year or staff counts.
-    legacy_2000_ = actual == "b2b61aed6afaf90b2632b5f85ded0566884810d02e59d2aec1526ab4689a68a2";
+    if (actual == candidate->sha256) release_ = candidate->release;
 }
 bool DatabaseSeasons::request(int direction) {
     if (!enabled() || !active_ || pending_ || (direction != -1 && direction != 1)) return false;

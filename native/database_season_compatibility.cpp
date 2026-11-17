@@ -9,14 +9,13 @@
 namespace cm::aot {
 namespace {
 using guest::Cpu;
-// These countries require competitions, awards or fixed club identities absent
-// from the audited CM00/01 data. Keep their football records; do not synthesize
-// leagues. Germany's missing reserve identities already have original -1 guards.
-constexpr std::array unavailable{8u, 11u, 15u, 20u, 21u, 23u, 31u};
 bool legacy(const State& s) {
-    return competition_edition(s) == CompetitionEdition::cm0001_389_v1;
+    return competition_edition(s) == CompetitionEdition::cm0001_389;
 }
-bool unavailable_row(unsigned row) { return std::ranges::find(unavailable, row) != unavailable.end(); }
+bool unavailable_row(const State& s, unsigned row) {
+    const auto rows = competition_rules(s).unavailable_countries;
+    return std::ranges::find(rows, row) != rows.end();
+}
 bool equals(Cpu& c, unsigned at, std::string_view value) {
     if (!at) return false;
     for (unsigned i = 0; i <= value.size(); ++i)
@@ -170,15 +169,19 @@ bool database_season_optional_index(State& s) {
     return found != optional_indexes.end() && c.i32(c.toc(found->slot)) == -1;
 }
 CompetitionEdition competition_edition(const State& s) {
-    if (s.platform && s.platform->database_seasons().legacy_2000())
-        return CompetitionEdition::cm0001_389_v1;
+    if (!s.platform) return CompetitionEdition::cm0102;
+    switch (s.platform->database_seasons().release()) {
+    case DatabaseRelease::cm0001_389: return CompetitionEdition::cm0001_389;
+    case DatabaseRelease::si_3968: return CompetitionEdition::si_3968;
+    case DatabaseRelease::other: break;
+    }
     return CompetitionEdition::cm0102;
 }
 void database_season_limit_leagues(State& s) {
-    if (!legacy(s)) return;
+    if (competition_rules(s).unavailable_countries.empty()) return;
     Cpu c(s);
     const auto descriptors = c.toc(-0x7b44), selected = c.toc(-0x64c4);
-    for (auto index : unavailable) {
+    for (auto index : competition_rules(s).unavailable_countries) {
         const auto row = descriptors + index * 0x4c, nation = c.u32(row);
         if (!nation) continue;
         c.put8(nation + 0x120, 0);
@@ -209,10 +212,10 @@ void database_season_limit_leagues(State& s) {
     c.put32(c.toc(-0x62b8), total); c.put32(c.toc(-0x62b4), full);
 }
 void database_season_filter_league_row(State& s) {
-    if (!legacy(s)) return;
+    if (competition_rules(s).unavailable_countries.empty()) return;
     Cpu c(s);
     // Only the builder's local pointer changes. A null descriptor nation means
     // a global competition to the world constructor and must never be written.
-    if (unavailable_row(c.u8(c.r(15)))) c.set(17, 0);
+    if (unavailable_row(s, c.u8(c.r(15)))) c.set(17, 0);
 }
 }

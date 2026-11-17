@@ -50,7 +50,9 @@ does not cover the cost while the cost is at least 500,000 times the byte at
 +0x40 of its club+0x80 record's +0x1c record (each refusal raises that byte by
 one, up to 20). Refusal is therefore rare.
 
-`native/english_competition_rules.hpp` holds the preset and seeding policy.
+`native/season_competition_rules.hpp` holds the presets and `native/competition_rules.cpp` says which
+each database season uses (docs/season-competition-rules-plan.md); `native/english_competition_rules.hpp`
+holds the seeding policy and the helpers that apply them.
 `CM_ENGLISH_RULES_ORIGINAL=1` selects the original rules for newly configured
 seasons and for the existing equivalence checks. The default promotion preset
 (`current`) differs from the original only between the Third Division and the Conference. This is an

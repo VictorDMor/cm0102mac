@@ -1,4 +1,5 @@
 #include "inter_amer_cup_retirement.hpp"
+#include "season_competition_rules.hpp"
 #include "guest_abi.hpp"
 
 namespace cm::aot {
@@ -14,7 +15,7 @@ struct CreationScope {
 }
 bool inter_amer_cup_retired(State& s) {
     guest::Cpu c(s);
-    return c.i16(c.toc(-0x7b80) + 2) > 1998;
+    return c.i16(c.toc(-0x7b80) + 2) > competition_rules(s).international.inter_american_cup_last_edition;
 }
 std::uint32_t inter_amer_cup_creation_id(State& s, std::uint32_t configured_id) {
     // The ruling-body factory already supports an absent competition (-1).

@@ -8,6 +8,9 @@
 
 namespace cm::aot {
 struct State;
+// Known releases of the database names a career embeds. Anything else is the
+// Mac 3.9.62 data or a database this port has no profile for.
+enum class DatabaseRelease { other, cm0001_389, si_3968 };
 struct DatabaseSeason {
     unsigned year;
     std::string label, directory;
@@ -28,7 +31,7 @@ public:
     void activate(std::size_t index);
     std::optional<std::size_t> loaded() const { return loaded_; }
     void note_load(bool success) { if (!success) forget_loaded(); else loaded_ = active_ ? std::optional(selected_) : std::nullopt; }
-    void forget_loaded() { loaded_.reset(); legacy_2000_ = false; names_directory_.reset(); }
+    void forget_loaded() { loaded_.reset(); release_ = DatabaseRelease::other; names_directory_.reset(); }
     // A saved-career load stops pack routing while it extracts its own files.
     // Until its database load starts, the running career still owns the
     // loaded tables and their edition, and a refused load resumes routing.
@@ -37,7 +40,8 @@ public:
     void inspect_database_names(const std::filesystem::path& file);
     void note_names_directory(std::string directory) { names_directory_ = std::move(directory); }
     const std::optional<std::string>& names_directory() const { return names_directory_; }
-    bool legacy_2000() const { return legacy_2000_; }
+    DatabaseRelease release() const { return release_; }
+    bool legacy_2000() const { return release_ == DatabaseRelease::cm0001_389; }
     void complete() { pending_.reset(); }
     bool active() const { return active_; }
     void preflight(std::size_t index) const;
@@ -51,7 +55,7 @@ private:
     std::optional<std::size_t> pending_;
     std::optional<std::size_t> loaded_;
     bool active_ = false, suspended_ = false;
-    bool legacy_2000_ = false;
+    DatabaseRelease release_ = DatabaseRelease::other;
     std::optional<std::string> names_directory_;
 };
 // Added controls use original creation/picking/drawing; only these two actions
