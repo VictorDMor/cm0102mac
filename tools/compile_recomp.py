@@ -1900,7 +1900,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
     if page in MATCH_SPEED_PAGES:
         code.insert(1, '#include "match_speed.hpp"')
     if page in (0x100ac, 0x100ad, 0x100ae, 0x100af,
-                0x102a5, 0x10346, 0x1034b, 0x1034c, 0x1034d):
+                0x102a5, 0x10345, 0x10346, 0x1034b, 0x1034c, 0x1034d):
         code.insert(1, '#include "platform.hpp"')
     if page in (0x1001f, 0x1028b, 0x1028c, 0x1028d, 0x102a1, 0x102a3, 0x102a5, 0x101cc, 0x10023, 0x10036, 0x1038c, 0x103a7):
         code.insert(1, '#include "match_debugging.hpp"')
@@ -2119,6 +2119,9 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         0x102a5690: ("bl 0x1034ba30", "if (s.platform && s.platform->quick_save_call_dispatcher_writer(s)) goto i_102a5694;"),
         0x10346bc0: ("mfspr r0,LR", "if (s.platform) s.platform->quick_save_load_begin(s);"),
         0x1034ba18: ("lwz r0,0x2078(r1)", "if (s.platform) s.platform->quick_save_load_end(s);"),
+        # Past the last exit that returns to the running career: the loader
+        # frees the current tables next (bl 0x100a4e50) and loads the save's.
+        0x10346dd4: ("lwz r3,-0x7b98(r2)", "if (s.platform) s.platform->career_database_replaced();"),
         0x1034ba30: ("mfspr r0,LR", "if (s.platform && !s.platform->quick_save_write_begin(s)) { s.wr<4>(12, 0); s.pc = std::uint32_t(s.r<4>(4128)); return true; }"),
         0x1034ddb8: ("beq 0x1034de50", "if (s.platform) s.platform->quick_save_write_mode(s);"),
         0x1034de50: ("lhz r0,0x2(r14)", "if (s.platform) s.platform->quick_save_write_renamed(s);"),
@@ -2306,6 +2309,7 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
             code.append("reset_match_debugging();")
         if a == 0x10345bb0:
             code.append("clear_match_result_debugging(s);")
+            code.append("if (s.platform) s.platform->career_load_reset();")
         if a in (0x10345bb0, 0x10346bc0):
             code.append("clear_forced_purchases(s);")
             code.append("clear_forced_staff_signings(s);")

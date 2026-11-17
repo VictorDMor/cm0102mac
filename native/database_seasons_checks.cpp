@@ -1,4 +1,5 @@
 #include "database_seasons.hpp"
+#include "season_competition_rules.hpp"
 #include "guest_abi.hpp"
 #include "platform.hpp"
 #include "adaptive_gui.hpp"
@@ -247,13 +248,18 @@ void check_english_construction(State& s) {
     database_season_limit_leagues(s);
     require(c.u8(c.u32(row)+0x120)==6,"English Conference selection was lost");
     constructing_england=true;
-    // Emulate the two caller links at the saved-world boundary before any
-    // Conference Cup member exists in the fixture's temporary directory.
-    const auto load_link=c.sp()+0x98, old_link=c.u32(load_link);
-    c.put32(load_link,0x1034a8e8);
-    require(invoke(s,0x103510d0,{row},0x10191d28)==1 && c.u32(row+0xc)==10,
+    // Enter the saved-career loader's bracket before any Conference Cup
+    // member exists in the fixture's temporary directory.
+    const bool routed=s.platform->database_seasons().active();
+    s.platform->quick_save_load_begin(s);
+    require(!s.platform->database_seasons().active() && s.platform->career_loading() &&
+            english_season_rules(s).conference_cup,"Load entry lost the running career's edition");
+    require(invoke(s,0x103510d0,{row})==1 && c.u32(row+0xc)==10,
             "Old save grew a Conference Cup with no saved member");
-    c.put32(load_link,old_link);
+    // A load that never reaches its database returns to the same career.
+    s.platform->quick_save_load_end(s);
+    require(s.platform->database_seasons().active()==routed && !s.platform->career_loading() &&
+            english_season_rules(s).conference_cup,"Refused load changed the running career's season state");
     invoke(s,0x10191e20);
     require(invoke(s,0x103510d0,{row})==1,"Actual England constructor");
     require(c.u32(row+0xc)==11 && fixture_insertions>0,"Incomplete English constructor coverage");
@@ -517,7 +523,7 @@ void check_archive(State& s) {
     require(invoke(s,0x10747cc0,{current,8,1,stream})==1 && invoke(s,0x10747cc0,{start,8,1,stream})==1,"Date fixture write");
     c.put32(scratch+900,stream);invoke(s,0x10747900,{scratch+900});
     s.platform->quick_save_load_begin(s);
-    require(!s.platform->database_seasons().active() && !s.platform->database_seasons().loaded(),"Save load retained pack provenance");
+    require(!s.platform->database_seasons().active(),"Save load kept routing to a season pack");
     // Deliberately leave the other release's names in the writable overlay.
     // The actual packed loader must extract its own languages before the
     // compatibility profile is inspected; pre-extraction hides ordering bugs.
@@ -526,8 +532,13 @@ void check_archive(State& s) {
     const auto runtime=s.platform->writable_directory();
     std::filesystem::copy_file(runtime/"Files/Databases"/packs[other].directory/"Data/eng.lng",
                                runtime/"Files/Data/eng.lng",std::filesystem::copy_options::overwrite_existing);
+    require(s.platform->database_seasons().loaded().has_value(),"Loader entry forgot the running career's database");
+    s.platform->career_database_replaced(); // The loader's hook at 0x10346dd4.
     require(invoke(s,0x1009ef30,{archive,1})==1,"Packed database reload");
     require(s.platform->database_seasons().legacy_2000()==(year==2000),"Embedded names did not restore compatibility identity");
+    require(!s.platform->database_seasons().loaded(),"Save load retained pack provenance");
+    s.platform->quick_save_load_end(s);
+    require(!s.platform->database_seasons().active(),"Completed save load resumed pack routing");
     if(year==2000)require(c.u32(c.toc(-0x6b88))==65,"Localized packed archive lost Brazilian competition identity");
     check_2002_history(s,year==2002);
     require(c.u32(c.toc(-0x7b50))==club_count && c.u32(c.toc(-0x7be4))==staff_count,"Packed database counts changed");

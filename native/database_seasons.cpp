@@ -68,7 +68,7 @@ void DatabaseSeasons::begin(bool tables_present) {
     error.clear();
 }
 void DatabaseSeasons::end() {
-    active_ = false;
+    active_ = suspended_ = false;
     pending_.reset();
     previous_control = next_control = -1;
 }

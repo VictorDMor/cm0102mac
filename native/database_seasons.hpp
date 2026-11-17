@@ -29,6 +29,11 @@ public:
     std::optional<std::size_t> loaded() const { return loaded_; }
     void note_load(bool success) { if (!success) forget_loaded(); else loaded_ = active_ ? std::optional(selected_) : std::nullopt; }
     void forget_loaded() { loaded_.reset(); legacy_2000_ = false; names_directory_.reset(); }
+    // A saved-career load stops pack routing while it extracts its own files.
+    // Until its database load starts, the running career still owns the
+    // loaded tables and their edition, and a refused load resumes routing.
+    void suspend() { suspended_ |= active_; active_ = false; names_directory_.reset(); }
+    void resume() { active_ |= suspended_; suspended_ = false; }
     void inspect_database_names(const std::filesystem::path& file);
     void note_names_directory(std::string directory) { names_directory_ = std::move(directory); }
     const std::optional<std::string>& names_directory() const { return names_directory_; }
@@ -45,7 +50,7 @@ private:
     std::size_t selected_ = 0, default_ = 0;
     std::optional<std::size_t> pending_;
     std::optional<std::size_t> loaded_;
-    bool active_ = false;
+    bool active_ = false, suspended_ = false;
     bool legacy_2000_ = false;
     std::optional<std::string> names_directory_;
 };

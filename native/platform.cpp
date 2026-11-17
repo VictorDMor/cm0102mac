@@ -380,6 +380,7 @@ struct NativePlatform::Impl {
     std::map<std::pair<std::uint32_t, std::uint32_t>, EventHandler> apple_handlers;
     fs::path game, writable;
     std::unique_ptr<DatabaseSeasons> seasons;
+    bool career_loading = false;
     std::map<std::uint32_t, fs::path> directories;
     std::map<fs::path, std::uint32_t> file_ids;
     std::uint32_t next_directory = 16, current_directory = 2;
@@ -1833,8 +1834,11 @@ void NativePlatform::set_quick_save_alert_observer(std::function<void(const std:
 void NativePlatform::quick_save_load_begin(State& s) {
     // Saved careers contain their own tables and language records. Their
     // extraction must use the normal writable Data area, never a season pack.
-    impl_->seasons->end();
-    impl_->seasons->forget_loaded();
+    // The loader has exits before it releases the running world, so the
+    // loaded pack and its edition are forgotten only in
+    // career_database_replaced().
+    impl_->career_loading = true;
+    impl_->seasons->suspend();
     // Match-result choices belong to the current career session, not a world
     // subsequently loaded into the same runtime (even at identical addresses).
     clear_match_result_debugging(s);
@@ -1855,7 +1859,20 @@ void NativePlatform::quick_save_load_begin(State& s) {
         impl_->quick_save_destination.begin_load(std::move(path));
     }
 }
+bool NativePlatform::career_loading() const { return impl_->career_loading; }
+void NativePlatform::career_database_replaced() {
+    if (!impl_->career_loading) return;
+    impl_->seasons->end();
+    impl_->seasons->forget_loaded();
+}
+void NativePlatform::career_load_reset() {
+    // A new career starts outside any loader. Bound a flag left behind by a
+    // loader that was abandoned without reaching its exit.
+    impl_->career_loading = false;
+}
 void NativePlatform::quick_save_load_end(State& s) {
+    impl_->seasons->resume();
+    impl_->career_loading = false;
     if (impl_->event_mode != EventMode::interactive) return;
     const bool success = std::int8_t(s.r<4>(12)) != 0;
     impl_->quick_save_destination.finish_load(success);

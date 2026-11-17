@@ -1,6 +1,7 @@
 #include "season_competition_rules.hpp"
 #include "cm0001_cup_order.hpp"
 #include "guest_abi.hpp"
+#include "platform.hpp"
 #include <cstdio>
 #include <vector>
 
@@ -28,11 +29,12 @@ const ConferenceCupRules* rules_for_cup(const Cpu& c, unsigned cup) {
 }
 
 bool restoring_england(const Cpu& c, unsigned england_stack) {
-    // The country constructor is shared by the fresh world and archive load.
-    // Its active frame is 0xb0 bytes. The caller (country dispatcher) has a
-    // 0x90-byte frame and restores its outer caller from the next link slot.
-    return c.u32(england_stack + 0xb8) == 0x10191d28 &&
-           c.u32(england_stack + 0x148) == 0x1034a8e8;
+    // The country constructor is shared by the fresh world and the saved
+    // career loader. The platform brackets the loader (0x10346bc0..0x1034ba18);
+    // a state captured inside it has only the guest stack: the constructor's
+    // 0xb0 frame, the dispatcher's 0x90 frame and the loader's call site.
+    return (c.s.platform && c.s.platform->career_loading()) ||
+           (c.u32(england_stack + 0xb8) == 0x10191d28 && c.u32(england_stack + 0x148) == 0x1034a8e8);
 }
 
 void release_entrants(Cpu& c, unsigned cup, unsigned entries) {

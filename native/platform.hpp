@@ -25,6 +25,11 @@ public:
     const std::filesystem::path& writable_directory() const;
     DatabaseSeasons& database_seasons();
     void inspect_database_season_names();
+    // True between the saved-career loader's entry and its single exit.
+    bool career_loading() const;
+    // The loader is about to replace the tables of the running world.
+    void career_database_replaced();
+    void career_load_reset();
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;
     std::vector<float> render_audio_offline(std::uint32_t frames);
     void observe_drawing(State&, std::uint32_t pc);
