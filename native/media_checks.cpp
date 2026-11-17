@@ -53,6 +53,7 @@ struct Options {
     std::uint32_t seed = 1;
     std::set<std::uint32_t> only;
     bool corrupt = false, strict = false, require_all = false, show_faults = false, call_trace = false, corrupt_trace = false, production = false, null_page = false;
+    bool injury_roster = false, raw_original = false;
 } options;
 
 struct Tally { std::uint64_t returned = 0, faulted = 0, timed_out = 0, calls = 0; };
@@ -237,6 +238,7 @@ bool (*scripted_services)(State&) = nullptr;
 std::array<std::pair<std::uint32_t, std::uint32_t>, 24> recent_dispatches;
 unsigned dispatches_seen = 0;
 bool trace_probe(State& s) {
+    if (!options.raw_original) correct_injury_roster_reference(s);
     recent_dispatches[dispatches_seen++ % recent_dispatches.size()] = {s.pc, std::uint32_t(s.r<4>(4128))};
     const auto back = std::uint32_t(s.r<4>(4128));
     if (back >= 0x10646d94 && back <= 0x106a8a50 && traced_calls->size() < 2'000'000) {
@@ -586,7 +588,7 @@ bool summary(const RoutineChecker* checker) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::cerr << "usage: cm-media-checks WORLD_SNAPSHOT [--all N] [--every N] [--mutate K] [--mutated-calls N] [--seed N] [--only 0x..,0x..] [--corrupt] [--strict] [--require-all] [--show-faults] [--call-trace] [--corrupt-trace] [--production] [--null-page] [--argument-masks FILE]\n"; return 2; }
+    if (argc < 2) { std::cerr << "usage: cm-media-checks WORLD_SNAPSHOT [--all N] [--every N] [--mutate K] [--mutated-calls N] [--seed N] [--only 0x..,0x..] [--corrupt] [--strict] [--require-all] [--show-faults] [--call-trace] [--corrupt-trace] [--production] [--null-page] [--argument-masks FILE] [--injury-roster] [--raw-original]\n"; return 2; }
     try {
         options.input = argv[1];
         for (int n = 2; n < argc; ++n) {
@@ -605,6 +607,8 @@ int main(int argc, char** argv) {
             else if (option == "--call-trace") options.call_trace = true;
             else if (option == "--corrupt-trace") options.call_trace = options.corrupt_trace = true;
             else if (option == "--production") options.production = true;
+            else if (option == "--injury-roster") options.injury_roster = true;
+            else if (option == "--raw-original") options.raw_original = true;
             // Maps low memory, so a path through a null pointer runs on as on the original machine
             // and returns to be compared, instead of counting as a fault on both sides.
             else if (option == "--null-page") options.null_page = true;
@@ -616,6 +620,7 @@ int main(int argc, char** argv) {
             }
             else throw std::runtime_error("Unknown option " + std::string(option));
         }
+        if (options.injury_roster) return check_injury_roster(options.input.string());
         auto state = std::make_unique<State>();
         load_match_snapshot(*state, options.input);
         state->memory.map(scratch_base, scratch_size);  // for a case's own rows; nothing of the game's lives here
@@ -626,6 +631,7 @@ int main(int argc, char** argv) {
         // host for. Both sides answer it here, so what follows the assert is compared
         // instead of stopping at the first dialog import.
         scripted_services = [](State& target) {
+            if (!options.raw_original) correct_injury_roster_reference(target);
             // exit(): nothing follows it in the game, so a run ends here and what it
             // wrote up to this call is compared.
             constexpr std::uint32_t exit_entry = 0x1076f7d0, dialog_entry = 0x10769b60;
@@ -646,6 +652,8 @@ int main(int argc, char** argv) {
         auto& s = *state;
         // Other modules' routines run as their originals on both sides.
         if (options.production) return production_proof(s);
+        if (!options.raw_original)
+            std::cout << "Reference oracle: squad members replace the subject at injury queries 0x1064c88c/0x10667e50 (authorized bug fix); --raw-original preserves the old behavior.\n";
         const auto wanted = [](std::uint32_t entry) {
             return media_lists(entry) && (options.only.empty() || options.only.count(entry) != 0);
         };

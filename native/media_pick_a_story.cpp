@@ -416,8 +416,10 @@ private:
         scratch = 0;
         c.put8(counter.at, 0);
         for (; compare(c, byte_word(c.u8(counter.at)), 0x32) < 0; c.put8(counter.at, c.u8(counter.at) + 1)) {
-            if (!nonzero_logical(c, c.u32(club + std::uint32_t(byte_word(c.u8(counter.at))) * 4 + 0x98))) continue;
-            if (compare(c, byte_word(program.call(0x10187680, 0x1064c88c, {c.u32(spare), player})), 2) == 0) scratch = scratch + 1;
+            const auto member = c.u32(club + std::uint32_t(byte_word(c.u8(counter.at))) * 4 + 0x98);
+            if (!nonzero_logical(c, member)) continue;
+            // Count the squad member's injury, not the story subject's once per occupied slot.
+            if (compare(c, byte_word(program.call(0x10187680, 0x1064c88c, {c.u32(spare), member})), 2) == 0) scratch = scratch + 1;
         }
         item.put(0x21, ext(std::int32_t(scratch)), 0x1064c8c8);
         spare = 0;

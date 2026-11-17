@@ -77,8 +77,7 @@ private:
         while (compare(c, byte_word(slot), records::Club::squad_slots) < 0) {
             const auto member = r.club_record().squad(std::uint32_t(byte_word(slot)));
             if (compare_logical(c, member, 0) != 0) {
-                // (quirk: the query is about the player on every occupied slot, not the member: the count is 0 or all)
-                const auto code = r.program.call(rated_query, 0x10667e50, {c.u32(c.toc(rated_table_slot)), r.player});
+                const auto code = r.program.call(rated_query, 0x10667e50, {c.u32(c.toc(rated_table_slot)), member});
                 if (compare(c, byte_word(code), 2) == 0) crowded = crowded + 1;
             }
             slot = slot + 1;

@@ -12,6 +12,10 @@
 #include <vector>
 
 namespace cm::aot::media_checks {
+// The original repeats the subject at two squad-injury queries. Only check tools
+// correct those arguments when comparing the deliberately fixed production code.
+void correct_injury_roster_reference(State&);
+int check_injury_roster(const std::string& snapshot);
 // A mapped area outside the game's memory for the rows a case writes.
 inline constexpr std::uint32_t scratch_base = 0x60000000, scratch_size = 0x100000;
 struct Write { unsigned size; std::uint32_t address, value; };

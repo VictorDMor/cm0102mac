@@ -1575,6 +1575,12 @@ text: 1,890 formatter calls and 508 refills. Those compress well: a text routine
 variables and decision trees whose leaves are a phrase, a return address and named arguments
 (`native/media_text_b_*`: 6,228 instructions in about 1,100 lines).
 
+Authorized correction (2026-11-15): the injury counts in 0x10649fb0 and 0x106620b0 query each occupied
+squad member instead of repeatedly querying the story's subject. This corrects the news count and the
+reaction selected at the existing four-injury threshold. `cm-media-checks --injury-roster` exercises real injury updates and compares
+ordered RNG writes with the original amended only at those two query arguments; `--raw-original` retains
+the uncorrected oracle for diagnosis.
+
 `cm-media-checks` compares cases and mutated inputs from the real career snapshot. Three things it adds to
 MATCH_ENG's checker: `--argument-masks` compares at each call the r3-r10 the callee reads, worked out from
 the export's p-code by `tools/call_arguments.py`, because a wrong argument to an answered callee shows nowhere
