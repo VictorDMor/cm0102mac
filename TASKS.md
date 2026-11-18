@@ -3,6 +3,13 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: COMP.CPP (Victor's pick, 2026-11-18)
+
+The base competition class, chosen ahead of the day-weight order because the competition editor needs its field readers in C++. 53 entries (0x1044fed0..0x10453394, 3,269 instructions): all written and compared with the original, 52 in production.
+
+- [ ] **0x10450ee0 (the fixture calendar) is a draft**: the game runs the original. Its realloc-failure outcome (assertion line 0x495) has no check, because the original runs `realloc` in place and the checker cannot fail it on both sides. Close it with a proof that the allocator cannot fail a shrinking resize (`allocator_facades.cpp`, `reallocate`), or by letting the checker fail the in-place call; then route it, set `COMPLETE = True` in `tools/comp_audit.py`, mark the workbook row `Concluído` and rerun the pair.
+- [ ] `tools/stack_contract.py module COMP.CPP` prints "no reader" because it uses the 2026-11-07 inventory; the reader under 0x10453190 came from the table directly.
+
 ## Decisions for Victor: landing the uncommitted backlog (2026-11-17)
 
 The whole backlog is on `main` as of 2026-11-17: dates/Call Up (dfe35ae6), MEDIA injury counts (baa1d4c8), forced-result pairs and underdog reset (4d2a5565), Premier bench (f3a1acf6), tendency site cache and phase scopes (7c174838), host threads/presentation frames/Tracy (3866d288), Z for Continue (f99d5376), adaptive screens (1a2a4677, 96e00afe), season databases and English edition rules (d89deb42), Force Staff Signing (5cf39e5c). f3a1acf6, 7c174838, 1a2a4677 and 96e00afe were not built on their own (f3a1acf6 and 7c174838 do not generate pages); bisect across them with care.

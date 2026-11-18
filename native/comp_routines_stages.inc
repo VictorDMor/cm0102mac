@@ -1,0 +1,13 @@
+// COMP.CPP block `stages` (comp_stages*.cpp): entry, end, results, digest of the original body, hook.
+COMP_ROUTINE(0x10450710, 0x104508f4, NONE, "fe5eee0c3c6b2503", [](Cpu& c) { comp::club_finish(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7)); })
+COMP_ROUTINE(0x10450900, 0x104509c0, R3, "a9358a4db6e4eb3b", [](Cpu& c) { c.set(3, comp::all_done(c, c.r(3))); })
+COMP_ROUTINE(0x10450a50, 0x10450b60, R3, "6734f52690a06b73", [](Cpu& c) { c.set(3, comp::current_stage(c, c.r(3))); })
+COMP_ROUTINE(0x10450c20, 0x10450da4, R3, "5545c4c179c392d5", [](Cpu& c) { c.set(3, std::uint32_t(comp::first_stage_of_group(c, c.r(3), std::int32_t(c.r(4))))); })
+COMP_ROUTINE(0x10450db0, 0x10450ed8, R3, "dc27c06a57d935ba", [](Cpu& c) { c.set(3, comp::round_played(c, c.r(3), std::int32_t(c.r(4)), std::int32_t(c.r(5)))); })
+COMP_ROUTINE(0x10451570, 0x1045171c, R3, "82a57e785caa09c4", [](Cpu& c) { c.set(3, comp::takes_part(c, c.r(3), c.r(4))); })
+COMP_ROUTINE(0x10451d10, 0x10451f48, R3, "9d2d34e2414ba46d", [](Cpu& c) { c.set(3, std::uint32_t(comp::all_clubs(c, c.r(3), c.r(4)))); })
+COMP_ROUTINE(0x10452ed0, 0x104530e4, R3, "03d4d236f5338b72", [](Cpu& c) { c.set(3, comp::club_still_in(c, c.r(3), c.r(4))); })
+COMP_ROUTINE(0x10451f50, 0x10451f80, R3, "dae5ce56a564144b", [](Cpu& c) { c.set(3, comp::lacks_property(c, c.r(4))); })
+COMP_ROUTINE(0x10451f80, 0x10452010, NONE, "3785bbef246de496", [](Cpu& c) { comp::set_club_bytes(c, c.r(3), c.r(6), c.r(7), c.r(8)); })
+COMP_ROUTINE(0x104530f0, 0x10453184, NONE, "aa1f1804b9755bb5", [](Cpu& c) { comp::pack_fixture_rules(c, c.r(3), c.r(4)); })
+COMP_ROUTINE(0x10451ca0, 0x10451cfc, R3, "47abc7e19edb948d", [](Cpu& c) { c.set(3, comp::stage_virtual_5c(c, c.r(3), c.r(4))); })

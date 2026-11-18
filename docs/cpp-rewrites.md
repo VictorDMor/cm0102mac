@@ -2310,6 +2310,33 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
 - In the run of all entries the interpreter's cases answer the outside routines its answered unit routines would reach
   (network send, file lookups, graph_carbon drawing): `interpreter_outside_answers` in the checker.
 
+## COMP.CPP: the base competition class
+
+53 routines (0x1044fed0..0x10453394, `tools/comp_audit.py`), native-first: `native/comp_*.cpp`. The audit's docstring
+holds the evidence for the fifteen entries outside the span of the module's string pool (TOC -0x49c0): the object
+file's run of function descriptors, the class vtable 0x108cf608 and the contiguity of an object file's code.
+
+- 20 entries are the base class's one-instruction virtual defaults. The comparators 0x104532c0 and 0x10453300 have no
+  direct caller: ARG_PRM.CPP and ARG_SECOND.CPP pass their descriptors to qsort.
+- 0x10453190 keeps its 0x70 frame and the original r29-r31 at its call at 0x10453280: the BlockMoveData bridge later
+  reads 417 bytes that `delete[]` leaves under that call (`same-save-continue` reaches it; the case checker cannot
+  see this reader, only the paired replay).
+- 0x10452ed0 is called from MATCH_ENG, MATCH_MAN and MATCH_PL, so it keeps the original frame until the match replays
+  have a stack audit.
+- 0x10452ed0 and 0x10451f80 call 0x10459b50, which reads r7-r10 that neither wrote: they are leftovers of the earlier
+  callees 0x104abf40 and 0x10494d20 (or the caller's own). The rewrite leaves them alone, which is equal only while
+  those callees run generated code; revisit when they are rewritten.
+- The news texts call 0x1074bab0, which copies register save areas into the news link row; the copy reaches r13-r24,
+  so those hold the original's values before each such call.
+- 0x10450ee0 (the fixture calendar) reads address 0 when its date allocation fails and never bounds its 1000-row
+  block, as the original. Its realloc-failure assertion (line 0x495) is written from the listing: the checker cannot
+  force it, because the original runs `realloc` in place.
+- Loop counters over stages are `char`/`short` and wrap as in the original.
+- No RNG draw and no save access in the module. The pool's "%s.tmp", "%s_%d.tmp", "CM3_TEMP" and "r" are read by no
+  instruction.
+- Only `same-save-continue` (13 entries) and the nation-awards `original-save` (one) reach the module among the
+  captures that still replay; the rest of the evidence is controlled cases on the season-day snapshot.
+
 ## fog_of_war.cpp: what each human manager knows of every person
 
 24 routines (0x106fd120..0x106ff550, `tools/fog_of_war_audit.py`), native-first: `native/fog_of_war*.cpp`,

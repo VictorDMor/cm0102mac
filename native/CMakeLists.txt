@@ -4523,6 +4523,39 @@ if(CM_FOG_OF_WAR_COVERAGE)
     target_link_options(cm-fog-of-war-checks PRIVATE "-fprofile-instr-generate=${CM_FOG_OF_WAR_PROFILE}" -fsanitize=undefined)
 endif()
 
+# COMP.CPP (tools/comp_audit.py): the base competition class. The glob is comp_*.cpp: competition_*.cpp and
+# compiler_*.cpp belong to other owners.
+file(GLOB CM_COMP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/comp_*.cpp")
+list(FILTER CM_COMP_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_COMP_SOURCES})
+file(GLOB CM_COMP_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/comp_checks*.cpp")
+add_executable(cm-comp-checks ${CM_COMP_CHECK_SOURCES})
+target_link_libraries(cm-comp-checks PRIVATE cm_aot)
+target_compile_options(cm-comp-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME comp_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_comp_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        set(CM_COMP_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        add_test(NAME comp_equivalence COMMAND cm-comp-checks ${CM_COMP_INPUTS} --mutate 4 --call-trace --require-all)
+        # --require-all here once every entry is in production (a block at a time until then).
+        add_test(NAME comp_production COMMAND cm-comp-checks ${CM_COMP_INPUTS} --production)
+    endif()
+endif()
+option(CM_COMP_COVERAGE "Instrument COMP.CPP checker only" OFF)
+if(CM_COMP_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/comp-coverage")
+    set(CM_COMP_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/comp-coverage/check-%p.profraw")
+    add_library(cm_comp_coverage OBJECT ${CM_COMP_SOURCES})
+    target_link_libraries(cm_comp_coverage PRIVATE cm_aot)
+    # Undefined behaviour the guest's wrapping arithmetic must never turn into: reported, not fatal.
+    target_compile_options(cm_comp_coverage PRIVATE "-fprofile-instr-generate=${CM_COMP_PROFILE}" -fcoverage-mapping -ffp-contract=off
+        -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+    target_compile_definitions(cm_comp_coverage PRIVATE CM_COMP_COVERAGE=1)
+    target_sources(cm-comp-checks PRIVATE $<TARGET_OBJECTS:cm_comp_coverage>)
+    target_compile_definitions(cm-comp-checks PRIVATE CM_COMP_COVERAGE=1)
+    target_link_options(cm-comp-checks PRIVATE "-fprofile-instr-generate=${CM_COMP_PROFILE}" -fsanitize=undefined)
+endif()
+
 # DISPLAY.CPP (tools/display_audit.py): the display table, its controls, input, drawing and network form.
 file(GLOB CM_DISPLAY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/display_*.cpp")
 list(FILTER CM_DISPLAY_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
