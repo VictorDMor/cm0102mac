@@ -382,6 +382,9 @@ struct NativePlatform::Impl {
     fs::path game, writable;
     std::unique_ptr<DatabaseSeasons> seasons;
     bool career_loading = false;
+    bool career_present = false;
+    // The switch was chosen in Game Settings since this career started or loaded.
+    bool career_switch_edited = false;
     CareerRules career_rules;
     std::optional<std::string> temporary_directory;
     std::map<std::uint32_t, fs::path> directories;
@@ -1444,6 +1447,7 @@ struct NativePlatform::Impl {
     // may reach the next one.
     void forget_career_rules() {
         career_rules.reset();
+        career_switch_edited = false;
         std::error_code error;
         if (const auto file = career_rules_file()) fs::remove(*file, error);
     }
@@ -1786,7 +1790,16 @@ void NativePlatform::inspect_database_season_names() {
     auto& seasons = *impl_->seasons;
     // A database indexed outside a career load starts a new game: the edition
     // follows its names again, not the rules of a career loaded earlier.
-    if (!impl_->career_loading) impl_->forget_career_rules();
+    // A switch chosen on the new game's own setup screens stays: choosing
+    // another season there indexes its database again.
+    if (!impl_->career_loading) {
+        const bool chosen = impl_->career_switch_edited && impl_->career_rules.historical_rules();
+        impl_->forget_career_rules();
+        if (chosen) {
+            impl_->career_rules.set_historical_rules(true);
+            impl_->career_switch_edited = true;
+        }
+    }
     fs::path file;
     if (const auto& directory = seasons.names_directory(); directory) {
         try {
@@ -1926,6 +1939,11 @@ void NativePlatform::quick_save_load_begin(State& s) {
     }
 }
 bool NativePlatform::career_loading() const { return impl_->career_loading; }
+bool NativePlatform::career_present() const { return impl_->career_present; }
+void NativePlatform::edit_career_historical_rules(bool on) {
+    impl_->career_rules.set_historical_rules(on);
+    impl_->career_switch_edited = true;
+}
 void NativePlatform::career_database_replaced() {
     if (!impl_->career_loading) return;
     impl_->seasons->end();
@@ -1933,6 +1951,9 @@ void NativePlatform::career_database_replaced() {
     // The running career's own rules go with its world; the loaded one's
     // arrive with its temporary members (career_members_extracted).
     impl_->career_rules.reset();
+    impl_->career_switch_edited = false;
+    // Until the loader reports success there is no career to edit.
+    impl_->career_present = false;
 }
 void NativePlatform::career_members_extracted(State& s) {
     if (std::int8_t(s.r<4>(12)) != 0) impl_->read_career_rules();
@@ -1941,13 +1962,15 @@ void NativePlatform::career_load_reset() {
     // A new career starts outside any loader. Bound a flag left behind by a
     // loader that was abandoned without reaching its exit.
     impl_->career_loading = false;
+    impl_->career_present = true;
     impl_->forget_career_rules();
 }
 void NativePlatform::quick_save_load_end(State& s) {
     impl_->seasons->resume();
     impl_->career_loading = false;
-    if (impl_->event_mode != EventMode::interactive) return;
     const bool success = std::int8_t(s.r<4>(12)) != 0;
+    if (success) impl_->career_present = true;
+    if (impl_->event_mode != EventMode::interactive) return;
     impl_->quick_save_destination.finish_load(success);
     if (success) impl_->quick_save_last_target = std::move(impl_->quick_save_load_target);
     else {

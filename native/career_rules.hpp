@@ -40,6 +40,10 @@ public:
     // Whether the career follows its competitions' historical timelines
     // ("Regras realistas"). Off for careers saved without the switch.
     bool historical_rules() const { return historical_rules_; }
+    // False for a member this build keeps without interpreting: changing
+    // anything would be lost, since its text is written back as read.
+    bool editable() const { return !opaque_; }
+    void set_historical_rules(bool on) { if (editable()) historical_rules_ = on; }
     // The pinned edition's rules with the career's overrides, under each test
     // preset, or null when it has no override.
     const RulePresets* customized() const { return customized_ ? &*customized_ : nullptr; }

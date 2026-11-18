@@ -268,7 +268,15 @@ override.
 - **Old saves and old builds:** a save without the member behaves as before
   and gains the member on its next save. An older build of the port carries
   the member through untouched, as it does any `.tmp`.
-- **No editor yet:** nothing in the game sets an override or the switch.
+- **Switch in Game Settings:** inside a career, Game Settings has a
+  “Realistic Rules” On/Off row (`career_rules_option.cpp`, localized). The
+  choice is pending until OK, the original Defaults action leaves it alone,
+  and it reaches the save with the next save. The row is absent before any
+  career, while a load is replacing the world, and for a member this build
+  keeps without interpreting. A choice made on a new game's setup screens
+  belongs to that game; the next New Game or load starts from its own. A change
+  takes effect where each competition next reads its rules (season setup).
+- **No override editor yet:** nothing in the game sets a `set` statement.
 
 Checked with `cm-database-seasons-checks` (format, round trip, ignored and
 unknown input, load and save hooks, new career) and on an isolated copy of
@@ -338,5 +346,6 @@ archive predates the Conference Cup continue without it.
 
 The career's edition, rules revision, historical-rules switch and explicit
 overrides are persisted (Career rules member) and the shared timeline
-resolver exists, with no entry yet. Next implementation task: an editor for
-the career's switch and overrides, then the first verified historical change.
+resolver exists, with no entry yet. Game Settings edits the switch. Next
+implementation task: the first verified historical change; an editor for the
+individual overrides follows when there is a rule a player would want to pin.

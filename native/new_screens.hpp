@@ -15,7 +15,6 @@ void select_new_screens(bool enabled);
 std::string_view new_screens_label(unsigned language);
 void begin_new_screens_options();
 void append_new_screens_option(State&);
-unsigned new_screens_option_event(const State&);
 bool dispatch_new_screens_option(State&, unsigned action);
 void finish_new_screens_options(unsigned action, std::int32_t result);
 }

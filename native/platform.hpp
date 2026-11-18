@@ -33,6 +33,11 @@ public:
     void inspect_database_season_names();
     // True between the saved-career loader's entry and its single exit.
     bool career_loading() const;
+    // A career has been started or loaded in this session (a New Game that
+    // was abandoned on its setup screens counts until the next one).
+    bool career_present() const;
+    // The Game Settings choice for the career in memory.
+    void edit_career_historical_rules(bool on);
     // The loader is about to replace the tables of the running world.
     void career_database_replaced();
     // The loader's second pass extracted the save's `*.tmp` members into the

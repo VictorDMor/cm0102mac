@@ -691,6 +691,7 @@ void check_archive(State& s) {
                                runtime/"Files/Data/eng.lng",std::filesystem::copy_options::overwrite_existing);
     require(s.platform->database_seasons().loaded().has_value(),"Loader entry forgot the running career's database");
     s.platform->career_database_replaced(); // The loader's hook at 0x10346dd4.
+    require(!s.platform->career_present(),"A career being replaced is still offered for editing");
     require(invoke(s,0x1009ef30,{archive,1})==1,"Packed database reload");
     {
         // The loader's hook at 0x10346ee8, after its extraction of the
@@ -712,7 +713,12 @@ void check_archive(State& s) {
     require(s.platform->database_seasons().legacy_2000()==(year==2000),"Embedded names did not restore compatibility identity");
     check_edition_rules(s,year);
     require(!s.platform->database_seasons().loaded(),"Save load retained pack provenance");
-    s.platform->quick_save_load_end(s);
+    {
+        const auto registers=s.registers;
+        c.set(3,1);s.platform->quick_save_load_end(s);
+        s.registers=registers;
+    }
+    require(s.platform->career_present(),"Loaded career is not offered for editing");
     require(!s.platform->database_seasons().active(),"Completed save load resumed pack routing");
     {
         // The career writer's entry (mode 0x16) leaves the member for the
@@ -734,8 +740,15 @@ void check_archive(State& s) {
         c.set(3,1);s.platform->career_members_extracted(s);s.registers=registers;
         require(career.edition()==edition,"Rules member fixture");
         s.platform->inspect_database_season_names();
-        require(!career.edition() && !std::filesystem::exists(rules_file) &&
+        require(!career.edition() && !career.historical_rules() && !std::filesystem::exists(rules_file) &&
                 s.platform->database_seasons().legacy_2000()==(year==2000),"New database kept the loaded career's rules");
+        // A switch chosen on the new game's setup screens survives choosing another season there.
+        s.platform->career_load_reset();
+        s.platform->edit_career_historical_rules(true);
+        s.platform->inspect_database_season_names();
+        require(career.historical_rules() && !career.edition(),"New game lost the switch chosen during its setup");
+        s.platform->career_load_reset();
+        require(!career.historical_rules(),"Next new game inherited the switch");
     }
     if(year==2000)require(c.u32(c.toc(-0x6b88))==65,"Localized packed archive lost Brazilian competition identity");
     check_2002_history(s,year==2002);

@@ -2,6 +2,8 @@
 #include "preferences_screen_detail.hpp"
 #include "match_debugging.hpp"
 #include "new_screens.hpp"
+#include "career_rules_option.hpp"
+#include "settings_toggle.hpp"
 
 namespace cm::aot::preferences_screen::detail {
 namespace {
@@ -93,7 +95,7 @@ void create_settings_frame(Call& a){
     a.offset(8,1,0x74);a.offset(9,1,0x70);a.offset(10,1,0x6c);a.value(3,0xa5);a.value(5,0x2d4);a.call(0x103cbb30);
     a.value(7,0x0);a.value(3,0x1);a.store(1,0x38,7);a.sign8(4,20);a.combine(0,4,3,false,true);a.value(6,0xffffffff);
     a.store(1,0x3c,3);a.shift_right(3,0,1);a.intersect(0,0,4);a.offset(5,19,0x64);a.store(1,0x40,7);a.subtract(0,0,3);
-    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,(native_debugging_available() ? 0xf : 0xe) + unsigned(new_screens_available()));a.offset(9,1,0x84);
+    a.mask(3,0,0x1,false,1);a.offset(7,18,-0x41);a.store(1,0x44,6);a.offset(0,3,0xe + host_settings_rows());a.offset(9,1,0x84);
     a.value(4,0xaa);a.load<2>(3,23,0x0,true);a.mask(10,0,0xff,false,0);a.value(6,0x2cf);a.value(8,0x5);
     a.multiply(0,3,0x2c0);a.indexed_load(3,22,0);a.call(0x107198c0);
 }
@@ -107,6 +109,7 @@ void return_to_caller(Call& a){
 namespace cm::aot::preferences_screen {
 void build_screen(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
     if (build_debugging_options_screen(s)) return;
+    prepare_realistic_rules_option(s);
     SemanticGuestCall a(s,build_screen_entry,d,o);
     detail::initialize_resources(a);
     detail::capture_session(a);
@@ -129,6 +132,7 @@ void build_screen(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* 
     detail::build_print_choices(a);
     append_debugging_option(s);
     append_new_screens_option(s);
+    append_realistic_rules_option(s);
     detail::return_to_caller(a);
 }
 }
