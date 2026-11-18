@@ -103,9 +103,8 @@ def rewritten(path=INCLUDES, drafts=False):
 COMP_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 
 
-# Whether the generator requires every entry routed (COMP_ROUTINE). False while an entry is still a draft:
-# 0x10450ee0 (its allocation-failure outcomes have no check), which the game keeps running as the original.
-COMPLETE = False
+# Whether the generator requires every entry routed (COMP_ROUTINE); False while an entry is still a draft.
+COMPLETE = True
 
 
 def require_comp_index(db, path=INCLUDES, complete=None):

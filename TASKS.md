@@ -5,9 +5,8 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now: COMP.CPP (Victor's pick, 2026-11-18)
 
-The base competition class, chosen ahead of the day-weight order because the competition editor needs its field readers in C++. 53 entries (0x1044fed0..0x10453394, 3,269 instructions): all written and compared with the original, 52 in production.
+The base competition class, chosen ahead of the day-weight order because the competition editor needs its field readers in C++. 53 entries (0x1044fed0..0x10453394, 3,269 instructions): all in production (2026-11-18). Next module: LEAGUE.CPP.
 
-- [ ] **0x10450ee0 (the fixture calendar) is a draft**: the game runs the original. Its realloc-failure outcome (assertion line 0x495) has no check, because the original runs `realloc` in place and the checker cannot fail it on both sides. Close it with a proof that the allocator cannot fail a shrinking resize (`allocator_facades.cpp`, `reallocate`), or by letting the checker fail the in-place call; then route it, set `COMPLETE = True` in `tools/comp_audit.py`, mark the workbook row `Concluído` and rerun the pair.
 - [ ] `tools/stack_contract.py module COMP.CPP` prints "no reader" because it uses the 2026-11-07 inventory; the reader under 0x10453190 came from the table directly.
 
 ## Decisions for Victor: landing the uncommitted backlog (2026-11-17)

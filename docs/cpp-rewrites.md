@@ -2329,8 +2329,10 @@ file's run of function descriptors, the class vtable 0x108cf608 and the contigui
 - The news texts call 0x1074bab0, which copies register save areas into the news link row; the copy reaches r13-r24,
   so those hold the original's values before each such call.
 - 0x10450ee0 (the fixture calendar) reads address 0 when its date allocation fails and never bounds its 1000-row
-  block, as the original. Its realloc-failure assertion (line 0x495) is written from the listing: the checker cannot
-  force it, because the original runs `realloc` in place.
+  block, as the original. Its resize-failure assertion (line 0x495) is written from the listing and has no case: the
+  checker cannot force it (the original runs `realloc` in place), and the original cannot reach it without first
+  storing rows beyond the block, since the allocator's resize only fails when it must grow
+  (`comp_routines_calendar.inc`).
 - Loop counters over stages are `char`/`short` and wrap as in the original.
 - No RNG draw and no save access in the module. The pool's "%s.tmp", "%s_%d.tmp", "CM3_TEMP" and "r" are read by no
   instruction.
