@@ -2,7 +2,6 @@
 #include "preferences_screen_detail.hpp"
 #include "match_debugging.hpp"
 #include "new_screens.hpp"
-#include "career_rules_option.hpp"
 #include "settings_toggle.hpp"
 
 namespace cm::aot::preferences_screen::detail {
@@ -109,7 +108,6 @@ void return_to_caller(Call& a){
 namespace cm::aot::preferences_screen {
 void build_screen(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* o){
     if (build_debugging_options_screen(s)) return;
-    prepare_realistic_rules_option(s);
     SemanticGuestCall a(s,build_screen_entry,d,o);
     detail::initialize_resources(a);
     detail::capture_session(a);
@@ -132,7 +130,6 @@ void build_screen(State& s,SemanticDependencyDispatch* d,SemanticGuestObserver* 
     detail::build_print_choices(a);
     append_debugging_option(s);
     append_new_screens_option(s);
-    append_realistic_rules_option(s);
     detail::return_to_caller(a);
 }
 }

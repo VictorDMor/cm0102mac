@@ -2,7 +2,6 @@
 #include "preferences_screen_detail.hpp"
 #include "match_debugging.hpp"
 #include "new_screens.hpp"
-#include "career_rules_option.hpp"
 #include "settings_toggle.hpp"
 
 namespace cm::aot::preferences_screen::detail {

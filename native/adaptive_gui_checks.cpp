@@ -7,8 +7,6 @@
 #include "code_fragment_adapter.hpp"
 #include "routine_check.hpp"
 #include "new_screens.hpp"
-#include "career_rules.hpp"
-#include "career_rules_option.hpp"
 #include "debug_localization.hpp"
 #include "match_debugging.hpp"
 #include "debug_match_results.hpp"
@@ -1260,68 +1258,6 @@ void screen_options(const char* path, unsigned language, bool debugging) {
     require(std::int32_t(invoke(0x1033f840, {fallback})) == -9 && new_screens_enabled(), "Disabled option could not be enabled again");
     c.put16(root + 0x25819e, 0);
     close();
-    // "Regras realistas" belongs to a career: no row without one.
-    const auto has = [&](unsigned action) {
-        for (unsigned i = 0; i < c.u16(display() + 0x129da6); ++i)
-            if (c.u32(display() + 0xba864 + i * 0x17c + 8) == action) return true;
-        return false;
-    };
-    invoke(0x1033ce70, {1}); controls();
-    require(!has(realistic_rules_action), "Career rules row without a platform");
-    close();
-    s.platform = std::make_shared<NativePlatform>(temp.path / "game", temp.path / "user", AudioMode::offline);
-    invoke(0x1033ce70, {1}); controls();
-    require(!has(realistic_rules_action), "Career rules row before any career");
-    close();
-    s.platform->career_load_reset();
-    auto& rules = s.platform->career_rules();
-    invoke(0x1033ce70, {1}); controls();
-    {
-        const auto on = find(realistic_rules_action, 1), cell = display() + 0xba864 + on * 0x17c;
-        const auto screens = display() + 0xba864 + find(new_screens_action, 0) * 0x17c;
-        require(c.i32(cell + 0x1c) < 490 && c.i32(cell + 0x14) >= c.i32(screens + 0x1c) &&
-                c.i32(cell + 0x1c) > c.i32(cell + 0x14), "Career rules row overlaps its neighbours");
-        unsigned names = 0;
-        for (unsigned i = 0; i < c.u16(display() + 0x129da6); ++i) {
-            std::string label; const auto item = display() + 0xba864 + i * 0x17c;
-            for (unsigned j = 0; j < 200 && c.u8(item + 0x78 + j); ++j) label += char(c.u8(item + 0x78 + j));
-            names += label == " " + std::string(realistic_rules_label(language));
-        }
-        require(names == 1, "Missing or duplicated localized career rules option");
-        // The current choice is plain text; only the other one carries the action.
-        const auto offered = [&](unsigned value) {
-            for (unsigned i = 0; i < c.u16(display() + 0x129da6); ++i) {
-                const auto item = display() + 0xba864 + i * 0x17c;
-                if (c.u32(item + 8) == realistic_rules_action && c.u32(item + 0x48) == value) return true;
-            }
-            return false;
-        };
-        require(!offered(0), "Off was not the current career rules choice");
-        const auto before = random_state(s);
-        require(std::int32_t(invoke(0x1033f840, {on})) == -11 && !rules.historical_rules(), "Career rules applied before OK");
-        require(random_state(s) == before, "Career rules option drew RNG");
-        controls();
-        require(offered(0) && !offered(1), "Career rules choice was not shown as pending");
-        require(std::int32_t(invoke(0x1033f840, {find(40, 0)})) == -9 && !rules.historical_rules(), "Cancel kept the career rules choice");
-        close();
-    }
-    invoke(0x1033ce70, {1}); controls();
-    invoke(0x1033f840, {find(realistic_rules_action, 1)}); controls();
-    require(std::int32_t(invoke(0x1033f840, {find(41, 0)})) == -9 && rules.historical_rules(), "OK did not switch the career rules on");
-    require(rules.text(CompetitionEdition::cm0102).find("historical_rules on") != std::string::npos, "Switch is not in the career member");
-    close();
-    // Defaults reset preferences of the installation, never a career's rules.
-    invoke(0x1033ce70, {1}); controls();
-    invoke(0x1033f840, {find(39, 0)}); controls();
-    require(std::int32_t(invoke(0x1033f840, {find(41, 0)})) == -9 && rules.historical_rules(), "Defaults changed the career rules");
-    close();
-    // A member this build cannot interpret is not editable.
-    rules.read("CM-NATIVE-RULES 99\nfuture\n");
-    invoke(0x1033ce70, {1}); controls();
-    require(!has(realistic_rules_action), "Row offered for an opaque member");
-    close();
-    select_new_screens(true);
-    s.platform.reset();
     // A committed Off is consumed only at the same safe canvas-rebuild boundary.
     s.platform = std::make_shared<NativePlatform>(temp.path / "game", temp.path / "user", AudioMode::offline);
     const auto scratch = allocate(s, 32, true); world(s, scratch, scratch + 16);
