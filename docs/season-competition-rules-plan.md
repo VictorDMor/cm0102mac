@@ -110,7 +110,7 @@ A rule profile is keyed by **source edition, logical competition and revision**,
 not by the current calendar year or raw database ordinal. A career beginning
 in 2000 must not accidentally switch to another database's rules in 2001.
 
-### Optional historical rule changes (planned)
+### Optional historical rule changes
 
 “Regras realistas” (working title) is a per-career switch for historical
 changes. The database edition supplies the starting rules. With the switch
@@ -133,6 +133,26 @@ change applies. With the switch off, 2004/05 keeps the knockout format.
 Select the format when configuring that competition's season, before its
 first draw. Toggling mid-tournament affects its next edition. Loading a
 save restores the current tournament, including draws and results.
+
+The resolver exists (2026-11-17): `RuleChange` entries in the `timeline`
+table of `competition_rules.cpp`, resolved by
+`competition_rules(state, RuleCompetition, season)`. A season is the calendar
+year it starts in, taken from the competition object being configured. An
+edition's rules are those of its own first season, so only later entries
+apply to it. The table is empty: no change is verified yet. To add one:
+
+1. Wire the competition's season setup to the seasonal call, as
+   `english_rules::new_season` does for English promotion and relegation
+   (the only reader so far), and list it in `wired`; the build refuses an
+   entry for a competition nothing reads seasonally.
+2. Add the entry with its source, and its seasons before, at and after to
+   `check_rule_timelines` (`database_seasons_checks.cpp`), replacing the
+   check that the table is empty.
+3. Raise `rules_revision` and keep the previous revision resolvable
+   (`career_rules.hpp`).
+
+A reform that reaches simulation results needs Victor's approval first, like
+any other change of rules.
 
 ## Rule contents and validation
 
@@ -317,6 +337,6 @@ and its save routines, with separate competition identities. Careers whose
 archive predates the Conference Cup continue without it.
 
 The career's edition, rules revision, historical-rules switch and explicit
-overrides are persisted (Career rules member). Next implementation task: the
-shared timeline resolver for optional historical rules, then an editor for
-the career's overrides.
+overrides are persisted (Career rules member) and the shared timeline
+resolver exists, with no entry yet. Next implementation task: an editor for
+the career's switch and overrides, then the first verified historical change.

@@ -125,7 +125,24 @@ std::vector<std::string> CareerRules::read(std::string_view text) {
         ignored.emplace_back("england.promotion: conference_promoted and third_relegated differ");
     }
     if (!overrides.empty()) customized_ = original_presets(resolve());
+    for (const auto& item : overrides) overrides_.emplace_back(std::size_t(item.field - fields.data()), item.value);
     return ignored;
+}
+
+void CareerRules::apply(CompetitionRules& rules) const {
+    for (const auto& [field, value] : overrides_) fields[field].set(rules, value);
+}
+
+CompetitionRules resolve_rules(const CompetitionRules& edition, std::span<const RuleChange> timeline, bool historical,
+                               const CareerRules* career, RuleCompetition competition, int season, int edition_season) {
+    const auto seasonal = historical ? with_rule_changes(edition, timeline, competition, season, edition_season) : edition;
+    auto rules = seasonal;
+    if (career) career->apply(rules);
+    // read() balanced the Conference exchange against the edition; a
+    // historical change can unbalance a one-sided override again.
+    if (rules.england.promotion.conference_promoted != rules.england.promotion.third_relegated)
+        rules.england.promotion = seasonal.england.promotion;
+    return rules;
 }
 
 std::string CareerRules::text(CompetitionEdition current) const {

@@ -296,6 +296,61 @@ void check_career_rules_text() {
     require(career.text(CompetitionEdition::si_3968).find("edition si_3968\n")!=std::string::npos,"Reset kept a rules member");
 }
 
+// Optional historical rule changes: each competition follows its own
+// timeline, only with the career's switch on, and the career's overrides
+// still come last.
+void check_rule_timelines() {
+    // Listed out of season order on purpose: two successive reforms of the
+    // English exchange, one unrelated Brazilian change, nothing for the Trophy.
+    static constexpr std::array timeline{
+        RuleChange{RuleCompetition::english_leagues,2006,[](CompetitionRules& rules){rules.england.promotion.playoff_clubs=8;},"fixture"},
+        RuleChange{RuleCompetition::brazilian_serie_b,2003,[](CompetitionRules& rules){rules.brazil.serie_b_single_table=false;},"fixture"},
+        RuleChange{RuleCompetition::english_leagues,2004,[](CompetitionRules& rules){
+            rules.england.promotion.conference_promoted=1;rules.england.promotion.third_relegated=1;},"fixture"},
+        RuleChange{RuleCompetition::english_leagues,2006,[](CompetitionRules& rules){rules.england.promotion.conference_promoted=2;},"fixture"},
+    };
+    const auto& edition=edition_rules(CompetitionEdition::cm0102);
+    const auto english=[&](int season,bool historical=true,const CareerRules* career=nullptr) {
+        return resolve_rules(edition,timeline,historical,career,RuleCompetition::english_leagues,season,2001).england.promotion;
+    };
+    require(english(2003).conference_promoted==3 && english(2003).playoff_clubs==4,"Rule change applied before its first season");
+    require(english(2004).conference_promoted==1 && english(2004).third_relegated==1 && english(2005).playoff_clubs==4,
+            "Rule change missing at or after its first season");
+    // The second reform changes two fields and carries the rest of the first forward.
+    require(english(2006).conference_promoted==2 && english(2006).third_relegated==1 && english(2006).playoff_clubs==8 &&
+            english(2030).conference_promoted==2,"Successive rule changes did not accumulate in season order");
+    require(english(2030,false).conference_promoted==3 && english(2030,false).playoff_clubs==4,
+            "Historical rules applied with the career's switch off");
+    // Timelines are independent: one competition's reform is not another's.
+    const auto serie_b=[&](int season,bool historical) {
+        return resolve_rules(edition,timeline,historical,nullptr,RuleCompetition::brazilian_serie_b,season,2001);
+    };
+    require(serie_b(2002,true).brazil.serie_b_single_table && !serie_b(2003,true).brazil.serie_b_single_table &&
+            serie_b(2003,false).brazil.serie_b_single_table && serie_b(2010,true).england.promotion.conference_promoted==3,
+            "Competition timelines are not independent");
+    const auto trophy=resolve_rules(edition,timeline,true,nullptr,RuleCompetition::fa_trophy,2030,2001);
+    require(trophy.england.promotion.conference_promoted==3 && trophy.brazil.serie_b_single_table &&
+            trophy.england.fa_trophy.qualification==edition.england.fa_trophy.qualification,"Empty timeline changed rules");
+    // The career's explicit overrides apply after the historical changes.
+    CareerRules career;
+    require(career.read("CM-NATIVE-RULES 1\nedition cm0102\nrevision 1\nhistorical_rules on\n"
+                        "set england.promotion.conference_promoted 3\nset england.promotion.third_relegated 3\n").empty(),
+            "Timeline fixture member");
+    require(english(2006,true,&career).conference_promoted==3 && english(2006,true,&career).third_relegated==3 &&
+            english(2006,true,&career).playoff_clubs==8,"Career override did not apply after the historical change");
+    // A one-sided override that a historical change leaves unbalanced changes neither side.
+    require(career.read("CM-NATIVE-RULES 1\nedition cm0102\nrevision 1\nhistorical_rules on\n"
+                        "set england.promotion.conference_promoted 3\n").empty() &&
+            english(2003,true,&career).conference_promoted==3 && english(2004,true,&career).conference_promoted==1 &&
+            english(2004,true,&career).third_relegated==1,"Historical change left a one-sided override unbalanced");
+    // An edition's rules are its first season's: a later database does not replay older reforms.
+    const auto later=resolve_rules(edition,timeline,true,nullptr,RuleCompetition::english_leagues,2030,2004).england.promotion;
+    require(later.conference_promoted==2 && later.third_relegated==3 && later.playoff_clubs==8,
+            "A change from before the edition's season was applied over its rules");
+    // No change is verified yet, so the checked-in timelines are empty.
+    require(rule_timeline().empty(),"A historical rule change was added without its season checks");
+}
+
 void check_english_construction(State& s) {
     guest::Cpu c(s);
     // Negative control: hide the Lower Division binding only in this fixture.
@@ -648,6 +703,11 @@ void check_archive(State& s) {
         require(career.edition()==edition && career.historical_rules() && career.customized() &&
                 !(*career.customized())[0][0].brazil.serie_b_single_table &&
                 competition_edition(s)==edition,"Loaded career's rules member was not applied");
+        // With the switch on, a season's rules are the career's own: no change is checked in.
+        const auto season=competition_rules(s,RuleCompetition::brazilian_serie_b,2030);
+        require(!season.brazil.serie_b_single_table &&
+                season.england.promotion.conference_promoted==competition_rules(s).england.promotion.conference_promoted &&
+                (season.england.conference_cup!=nullptr)==(year==2000),"Season rules differ from the career's with an empty timeline");
     }
     require(s.platform->database_seasons().legacy_2000()==(year==2000),"Embedded names did not restore compatibility identity");
     check_edition_rules(s,year);
@@ -693,6 +753,7 @@ void check_archive(State& s) {
 int main(int argc,char**argv) {
     try {
         check_career_rules_text();
+        check_rule_timelines();
         const bool english_only=argc==5 && std::string_view(argv[4])=="--english-2000";
         if(argc!=4 && (argc!=5 || (!english_only && std::string_view(argv[4])!="--history-2002")))
             throw std::runtime_error("Usage: cm-database-seasons-checks PROGRAM GAME PRIVATE_RUNTIME [--history-2002|--english-2000]");

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 namespace cm::aot {
 struct State;
@@ -118,12 +119,69 @@ inline constexpr RulePresets original_presets(const CompetitionRules& rules) {
              {with_original_presets(rules, true, false), with_original_presets(rules, true, true)}}};
 }
 
+// Optional historical rule changes ("Regras realistas"). Each competition has
+// its own timeline: zero or more verified changes, each in force from the
+// competition season it names (the calendar year that season starts in, 2004
+// for 2004/05) until a later entry changes the same rule again. A career
+// follows the timelines only with its switch on; its edition supplies the
+// starting rules either way.
+enum class RuleCompetition {
+    english_leagues, // promotion and relegation between the English divisions
+    english_premier,
+    english_conference,
+    fa_trophy,
+    conference_cup,
+    brazilian_serie_b,
+    inter_american_cup,
+};
+struct RuleChange {
+    RuleCompetition competition;
+    int first_season;
+    // Changes only the fields this reform touched; the rest carries forward.
+    void (*apply)(CompetitionRules&);
+    // Where the rule and its first season were verified.
+    std::string_view source;
+};
+// A competition's rules in one of its seasons: `rules`, which are those of
+// the season `after`, with every later change of that competition up to
+// `season`, oldest first. Only that competition's fields carry their history
+// in the result; read another competition's from its own resolution.
+constexpr CompetitionRules with_rule_changes(CompetitionRules rules, std::span<const RuleChange> timeline,
+                                             RuleCompetition competition, int season, int after) {
+    for (int applied = after;;) {
+        // The next season with an entry, whatever order the table lists them in.
+        const RuleChange* next = nullptr;
+        for (const auto& change : timeline)
+            if (change.competition == competition && change.first_season <= season && change.first_season > applied &&
+                (!next || change.first_season < next->first_season))
+                next = &change;
+        if (!next) return rules;
+        // Entries of one season apply together, in table order.
+        applied = next->first_season;
+        for (const auto& change : timeline)
+            if (change.competition == competition && change.first_season == applied) change.apply(rules);
+    }
+}
+// The checked-in timelines of every competition (competition_rules.cpp).
+std::span<const RuleChange> rule_timeline();
+
 // The rules of one edition, as checked in.
 const CompetitionRules& edition_rules(CompetitionEdition);
 // The running career's rules: its edition's, with the test presets that keep
 // the original game's behaviour applied last. A career's own overrides
 // (career_rules.hpp) come between the two.
 const CompetitionRules& competition_rules(const State&);
+// The same for one competition in the season being configured, which adds
+// that competition's historical changes where the career follows them. Read
+// it when a competition's season is set up, before its first draw, with the
+// season the competition object itself is entering: a season already under
+// way keeps the rules it was configured with.
+CompetitionRules competition_rules(const State&, RuleCompetition, int season);
+// The season an edition's database starts in. Its rules are that season's:
+// only later timeline entries change them.
+constexpr int edition_season(CompetitionEdition edition) {
+    return edition == CompetitionEdition::cm0001_389 ? 2000 : edition == CompetitionEdition::si_3968 ? 2002 : 2001;
+}
 inline const EnglandRules& english_season_rules(const State& s) { return competition_rules(s).england; }
 
 void reserve_cm0001_conference_cup_slot(State&);

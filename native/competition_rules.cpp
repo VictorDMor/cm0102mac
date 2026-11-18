@@ -2,7 +2,9 @@
 #include "aot_runtime.hpp"
 #include "career_rules.hpp"
 #include "platform.hpp"
+#include <algorithm>
 #include <array>
+#include <utility>
 #include <cstdlib>
 
 namespace cm::aot {
@@ -56,6 +58,19 @@ static_assert(si_3968.england.conference.club_payment == global_rules.england.co
 static_assert(!si_3968.england.conference_cup && si_3968.unavailable_countries.empty());
 static_assert(cm0001_389.england.conference_cup && cm0001_389.unavailable_countries.size() == 7);
 
+// Historical rule changes, per competition. Each entry needs its source and a
+// check of the seasons before, at and after it (database_seasons_checks.cpp).
+// None is verified yet: with the switch on, every competition still plays by
+// its edition's rules.
+constexpr std::array<RuleChange, 0> timeline{};
+// The competitions whose season setup reads the seasonal rules. An entry for
+// any other would be ignored, so wire its reader first (as
+// english_rules::new_season does) and list it here.
+constexpr std::array wired{RuleCompetition::english_leagues};
+static_assert(std::ranges::all_of(timeline, [](const RuleChange& change) {
+    return std::ranges::find(wired, change.competition) != wired.end();
+}), "a timeline entry names a competition nothing reads seasonally");
+
 constexpr const CompetitionRules& checked_in(CompetitionEdition edition) {
     switch (edition) {
     case CompetitionEdition::cm0001_389: return cm0001_389;
@@ -73,9 +88,29 @@ static_assert(std::size_t(CompetitionEdition::si_3968) + 1 == competition_editio
 
 const CompetitionRules& edition_rules(CompetitionEdition edition) { return checked_in(edition); }
 
-const CompetitionRules& competition_rules(const State& s) {
+std::span<const RuleChange> rule_timeline() { return timeline; }
+
+namespace {
+// The equivalence checks' presets: {english, brazilian}. The English one is
+// read on every use, the Brazilian one once (season_competition_rules.hpp).
+std::pair<bool, bool> test_presets() {
     static const bool brazilian = std::getenv("CM_BRA_NAT_SECOND_RULES_ORIGINAL") != nullptr;
-    const bool english = std::getenv("CM_ENGLISH_RULES_ORIGINAL") != nullptr;
+    return {std::getenv("CM_ENGLISH_RULES_ORIGINAL") != nullptr, brazilian};
+}
+}
+
+CompetitionRules competition_rules(const State& s, RuleCompetition competition, int season) {
+    const auto* career = s.platform ? &s.platform->career_rules() : nullptr;
+    if (!career || !career->historical_rules()) return competition_rules(s);
+    const auto edition = competition_edition(s);
+    const auto [english, brazilian] = test_presets();
+    return with_original_presets(
+        resolve_rules(edition_rules(edition), timeline, true, career, competition, season, edition_season(edition)),
+        english, brazilian);
+}
+
+const CompetitionRules& competition_rules(const State& s) {
+    const auto [english, brazilian] = test_presets();
     const auto edition = competition_edition(s);
     // The career's own overrides come after its edition; the test presets stay last.
     if (s.platform)

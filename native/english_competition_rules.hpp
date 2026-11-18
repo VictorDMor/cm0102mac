@@ -18,7 +18,11 @@ inline void loaded_premier_fixture(guest::Cpu& c, std::uint32_t fixture) {
     if (const auto reserves = competition_rules(c.s).england.premier_named_reserves)
         c.put8(fixture + 0x4e, (reserves << 4) | (c.u8(fixture + 0x4e) & 0xf));
 }
-inline PromotionRules new_season(const State& s) { return competition_rules(s).england.promotion; }
+// Read where a league season is configured. `league` has its season year
+// already (+0x40: the constructor and the rollover set it before configuring).
+inline PromotionRules new_season(const guest::Cpu& c, std::uint32_t league) {
+    return competition_rules(c.s, RuleCompetition::english_leagues, c.i16(league + 0x40)).england.promotion;
+}
 inline bool expanded_season(const guest::Cpu& c, std::uint32_t league) {
     return c.u8(league + 0xc0) == expanded.automatic &&
            c.u8(league + 0xc1) == expanded.playoff_clubs;
