@@ -4,7 +4,24 @@
 #include <array>
 
 namespace cm::aot {
-void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canvas, unsigned section) {
+namespace {
+// Keep seasons and record categories readable while giving the remaining
+// space to the original columns (including third place and the host).
+void size_history_columns(const GuestScreen& screen, std::uint32_t area, int width, int leading_limit) {
+    const auto first = area + 0xbb2;
+    const int columns = screen.columns(area);
+    int rest = 0;
+    for (int col = 1; col < columns; ++col) rest += screen.c.u8(first + col);
+    const int leading = screen.c.u8(first);
+    if (!rest || !leading || width * leading <= leading_limit * (leading + rest)) return;
+    screen.c.put8(first, (leading_limit + 4) / 8);
+    for (int col = 1; col < columns; ++col) {
+        const int share = (width - leading_limit) * screen.c.u8(first + col);
+        screen.c.put8(first + col, std::max(1, (share + 4*rest) / (8*rest)));
+    }
+}
+}
+void layout_competition_list(State& s, std::uint32_t display, GuiCanvas canvas, unsigned section, bool historical) {
     guest::Cpu c(s);
     const GuestScreen screen{c, display};
     const auto grid_count = std::min<unsigned>(250, c.u16(display + 0x129da4));
@@ -16,7 +33,11 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
         if (box.left != 110 || box.right != 780 || (box.bottom != 500 && box.bottom != 545)) continue;
         const auto columns = screen.columns(at);
         const auto type = c.u32(at + 0x18);
-        if (box.top == 125 && columns == 1 && type == 2) {
+        if (historical) {
+            if ((section == 1 && box.top == 125 && columns >= 3 && columns <= 5 && type == 2) ||
+                (section != 1 && box.top == 190 && columns == 2 && type == 1))
+                body_index = int(i);
+        } else if (box.top == 125 && columns == 1 && type == 2) {
             body_index = int(i);
             message = true;
         } else if ((section == 4 && box.top == 125 && columns == 2 && type == 1) ||
@@ -26,13 +47,16 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
         }
     }
     // The gate enlarges the canvas before the builder runs, so a variant
-    // whose list is not one of the three shapes above must still get its
+    // whose list does not match its original grid shape must still get its
     // title, tab bars and footer moved. Its own grids then stay where the
     // builder put them, at the original width.
-    const int line_height = c.i32(c.toc(-0x740c)) != -1 ? 21 : c.i32(c.toc(-0x3bdc) + 2 * 0x1404);
+    const bool records = historical && section != 1;
+    const int font = records ? 2 : 3;
+    const int inset = records ? 0 : 16;
+    const int line_height = c.i32(c.toc(-0x740c)) != -1 ? (records ? 18 : 21)
+        : c.i32(c.toc(-0x3bdc) + (font-1) * 0x1404);
     if (body_index >= 0) {
         const auto rows = screen.rows(screen.grid(body_index));
-        // The three builders use font 3 for row height.
         if (!rows || rows > 30 || line_height <= 0) body_index = -1;
     }
     const bool recognised = body_index >= 0;
@@ -50,21 +74,33 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
         available.left += (available.width() - width) / 2;
         available.right = available.left + width;
         const std::array<FormTrack, 1> tracks{{
-            {original.height(), 1, std::max(original.height(), 30 * line_height + 16)}
+            {original.height(), 1, std::max(original.height(), 30 * line_height + inset)}
         }};
         list = form_tracks(available, tracks, false).front();
-        if (!message) rows = std::clamp((list.height() - 16) / line_height, int(original_rows), 30);
+        if (!message) rows = std::clamp((list.height() - inset) / line_height, int(original_rows), 30);
     }
     const int heading_shift = list.left - original.left;
 
     GuiGuestScope preserve(s);
     c.set(1, c.sp() - 0x400);
+    // Record text and its invisible links have absolute, measured X bounds.
+    // Move them together by the displacement of their value column.
+    int old_value_start = 0;
+    if (recognised && records) {
+        screen.measure(body);
+        old_value_start = original.left + c.i32(body + 0x20);
+    }
     if (recognised) screen.write(body, list);
     if (recognised && !message) {
         screen.show_rows(body, original_rows, rows);
         screen.set_rows(body, rows);
         screen.hide_scrollbar_if_fits(body, rows);
         screen.resize_rows(body);
+        if (historical) {
+            const int gutter = c.u8(body + 0xbef) ? 22 : 0;
+            size_history_columns(screen, body, list.width() - gutter, section == 2 ? 340 : 90);
+            screen.measure(body);
+        }
     }
     const auto controls = std::min<unsigned>(1200, c.u16(display + 0x129da6));
     for (unsigned i = 0; i < controls; ++i) {
@@ -77,7 +113,11 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
             if (message && right > left) {
                 const int shift = (list.left + list.right - original.left - original.right) / 2;
                 c.put32(control + 0x28, left + shift); c.put32(control + 0x2c, right + shift);
-            } else if (left == 115 && right > left) {
+            } else if (records && right > left) {
+                const int shift = list.left + c.i32(body + 0x20) - old_value_start;
+                c.put32(control + 0x28, left + shift);
+                c.put32(control + 0x2c, right + shift);
+            } else if (!historical && left == 115 && right > left) {
                 c.put32(control + 0x28, left + heading_shift);
                 c.put32(control + 0x2c, right + heading_shift);
             }
@@ -88,6 +128,7 @@ void layout_competition_fixtures(State& s, std::uint32_t display, GuiCanvas canv
         auto box = old;
         if (old == ScreenRect{100, 10, 790, 70}) box = window.title();
         else if (old == ScreenRect{110, 150, 780, 185}) box = {list.left, 150, list.right, 185};
+        else if (historical && old == ScreenRect{110,125,235,145}) box = {list.left,125,list.left+125,145};
         else if (old == ScreenRect{710, 15, 785, 35}) box = window.anchor(old, LayoutAxis::trailing, LayoutAxis::fixed);
         else continue;
         screen.write(control + 0x10, box);

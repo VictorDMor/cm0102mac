@@ -1,5 +1,6 @@
 #include "adaptive_gui.hpp"
 #include "guest_abi.hpp"
+#include "guest_screen.hpp"
 #include "platform.hpp"
 #include "tactics_layout.hpp"
 #include "match_replay.hpp"
@@ -201,6 +202,7 @@ void checks() {
     s.platform = platform;
 }
 struct Clock final : CodeFragmentBoundaryObserver {
+    std::uint64_t microseconds = 1000000000ULL, step_us = 0;
     bool idle_input = false;
     void enter(const State&, std::uint32_t, bool) override {}
     void leave(State&, std::uint32_t, bool) override {}
@@ -212,7 +214,10 @@ struct Clock final : CodeFragmentBoundaryObserver {
         else if (idle_input && std::string_view(name) == "CarbonLib::WaitNextEvent") {
             s.memory.clear(s.r<4>(16), 16); s.wr<4>(12, 0);
         }
-        else if (std::string_view(name) == "CarbonLib::Microseconds") s.memory.write<8>(s.r<4>(12), 1000000000ULL);
+        else if (std::string_view(name) == "CarbonLib::Microseconds") {
+            s.memory.write<8>(s.r<4>(12), microseconds);
+            microseconds += step_us;
+        }
         else if (!idle_input && std::string_view(name) == "CarbonLib::FSMakeFSSpec") s.wr<4>(12, std::uint32_t(-43));
         // The captured window does not exist in this headless fixture. Button
         // presses still draw into the real guest canvas; only the host blit is omitted.
@@ -1112,7 +1117,12 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_chrome_checks.hpp"
 #include "adaptive_next_match_checks.hpp"
 #include "adaptive_league_standings_checks.hpp"
+#include "adaptive_knockout_checks.hpp"
+#include "adaptive_group_stage_checks.hpp"
+#include "adaptive_archived_commentary_checks.hpp"
+#include "adaptive_live_match_checks.hpp"
 #include "adaptive_competition_fixtures_checks.hpp"
+#include "adaptive_competition_history_checks.hpp"
 #include "adaptive_daily_fixtures_checks.hpp"
 #include "adaptive_nations_and_clubs_checks.hpp"
 #include "adaptive_transfer_history_checks.hpp"
@@ -1281,7 +1291,12 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--club-info") club_info_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--chrome") chrome_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--next-match") next_match_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--live-match") live_match_builder(argv[1]);
+        else if (argc == 4 && std::string_view(argv[2]) == "--archived-commentary") archived_commentary_builder(argv[1], argv[3]);
+        else if (argc == 4 && std::string_view(argv[2]) == "--group-stage") group_stage_builder(argv[1], argv[3]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--knockout-rounds") knockout_rounds_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--league-standings") league_standings_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--competition-history") competition_history_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--competition-fixtures") competition_fixtures_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--daily-fixtures") daily_fixtures_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--nations-and-clubs") nations_and_clubs_builder(argv[1]);

@@ -81,6 +81,14 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         // First-run setup places a covering grid over the menu before opening
         // mandatory settings. Let that original transition keep its geometry.
         return !value(0);
+    case ScreenTemplate::match_report: {
+        const auto tab = value(2);
+        if (builder == 0x1028c430) {
+            // Mode 1 draws only the transition. The live builder has no tab 5.
+            return value(0) && value(1) != 1 && tab >= 1 && tab <= 10 && tab != 5;
+        }
+        return !value(0) && std::int32_t(value(30)) >= 0 && tab >= 1 && tab <= 7;
+    }
     case ScreenTemplate::daily_fixtures: {
         const auto queue_slot = read(toc - 0x7420);
         const auto queue = queue_slot ? read(queue_slot) : 0;
@@ -102,6 +110,8 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         constexpr unsigned selection_slot[]{1, 4, 7, 10, 13, 16};
         return value(selection_slot[tab - 1]) != 0;
     }
+    case ScreenTemplate::competition_history:
+        return value(0) && value(1) >= 1 && value(1) <= 7;
     case ScreenTemplate::competition: {
         const auto competition = value(0);
         if (!competition) return false;
@@ -116,10 +126,11 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         const auto stages = read(competition + 0xc);
         if (last >= 0 && !stages) return false;
         const auto supported = [&](std::uint32_t stage) {
-            if (!stage || s.memory.read<1>(stage + 0x43) != 2) return false;
-            const auto clubs = std::int16_t(s.memory.read<2>(stage + 0x3e));
-            // Small groups with their own fixture list have a separate layout.
-            return clubs > 0 && (clubs > 8 || std::int16_t(s.memory.read<2>(stage + 0x3c)) <= 0);
+            if (!stage) return false;
+            const auto kind = s.memory.read<1>(stage + 0x43);
+            if (kind == 1) return true; // CUP_STAGE draw, including its pending-draw message
+            if (kind != 2) return false;
+            return std::int16_t(s.memory.read<2>(stage + 0x3e)) > 0;
         };
         if (selected >= -1) return supported(selected == -1 ? competition : read(stages + selected * 4));
         // The original current-stage query can finalize competition records.

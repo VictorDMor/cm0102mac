@@ -33,6 +33,33 @@ The whole backlog is on `main` as of 2026-11-17: dates/Call Up (dfe35ae6), MEDIA
 - [ ] **Date fix follow-up:** `transfer_manager_valuation_production` and `transfer_manager_schedule_equivalence` still fail and `season-day` is STALE with the Gregorian arithmetic (dfe35ae6). Amend those references; re-recording `season-day` is Victor's.
 - [ ] **Call Up:** the squad cap is enforced only on locked lists (its value outside tournaments was not found), and a refused Call Up shows no message.
 
+## Live match layout (2026-11-18)
+
+- [x] Adapt the nine live match tabs, including Latest Scores and the live league table, using the shared report layout. Apply incoming possession rectangles to the current overview or pitch without changing the original match data.
+- [x] Replay the first goal in Cruzeiro–Uberlândia. Check the scorer link, score, possession update packets, play/pause/resume and tab navigation, with original 800×600 and disabled fallbacks. The app was rebuilt for arm64.
+- [x] Installed and landed with the other adaptive competition and match screens (2026-11-18).
+
+## Competition history layout (2026-11-18)
+
+- [x] Adapt all seven Historial tabs. The winners list allocates space for the season, placings and host. Links within record descriptions follow the text column.
+- [x] Rebuild for arm64 and run six focused CTests. The history replay pages through 89 Mineiro editions to the earliest winner, checks embedded club links and tab navigation, and opens both a five-column World Cup history and an empty qualifying history.
+- [x] Installed and landed with the other adaptive competition and match screens (2026-11-18).
+
+## Archived match report layout (2026-11-18)
+
+- [x] Adapt the archived scoreboard, Overview, Match Statistics and Player Ratings. Summary-only archives also adapt the four unavailable-detail messages.
+- [x] Rebuilt the game and verified five focused CTests. The group-stage replay opens Juventus–Real Madrid from its score, switches all seven tabs, exercises player, club and competition hit areas, and checks both Bayern–Spartak goal rows. Classic and disabled layout preserve the original display.
+- [x] Archived Commentary uses a compact minute column and up to 28 visible lines. The February replay loads both original event files, checks text and style, and pages through Uberlândia–Cruzeiro (169 rows) and Fluminense–Friburguense (98 rows) to the final whistle. A shortened event log verifies that expansion clears the scrollbar when everything fits. Six focused CTests passed.
+- [x] Archived Action Zones scales the pitch, markings and possession bars together. The February replay verifies both captured matches, period selection through the original menu, unavailable extra time and classic fallbacks. Six focused CTests passed. Inspected the original renderer's output at 1280×900.
+- [x] Adapted both Team Data tabs for full-detail archives. The two February match replays exercise both pages on each side, compare original values and player links, and check column alignment and page navigation. All six focused CTests passed. Inspected Cruzeiro's table at 1280×900.
+- [x] Installed and landed with the other adaptive competition and match screens (2026-11-18).
+
+## Now: adaptive knockout round (2026-11-17)
+
+- [x] Adapt section 1 knockout pairings, pending-draw messages, round headings and live draw controls using the shared competition-stage layout.
+- [x] Rebuilt the app and passed the knockout, league standings and competition fixtures checks. The knockout fixture covers original team/score links, two legs, switching from playoff to groups, live draw controls, a 40-tie overflow and classic fallback. The captured playoff is World Cup European qualifying; the UEFA Cup itself was not exercised.
+- [x] Installed and landed with the other adaptive competition and match screens (2026-11-18).
+
 ## Now: adaptive competition results and fixtures (2026-11-17)
 
 Victor approved adapting the competition results and fixtures screen. Its

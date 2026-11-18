@@ -5,6 +5,7 @@
 // The stream holds little-endian values (the swap in the original); every read checks its length and
 // reports "network.h" on failure, then carries on with what the original's variable held.
 #include "display_interpreter.hpp"
+#include "form_layout.hpp"
 
 namespace cm::aot::display {
 namespace {
@@ -300,14 +301,16 @@ std::uint32_t command_8(Interpreter& s) {
         in.s16(net(0x1072209c, 0x9b4, 0x1e4, 0x90), v.h1822);
         {
             const auto r = record();
-            c.put32(r + 0x28, sign(v.h1828));
-            c.put32(r + 0x2c, sign(v.h1824));
-            c.put32(r + 0x30, sign(v.h1826));
-            c.put32(r + 0x34, sign(v.h1822));
-            c.put32(r + 0x10, sign(v.h1828));
-            c.put32(r + 0x18, sign(v.h1824));
-            c.put32(r + 0x14, sign(v.h1826));
-            c.put32(r + 0x1c, sign(v.h1822));
+            const auto box = live_match_update_rect(c.s, s.table, v.target_index,
+                {v.h1828,v.h1826,v.h1824,v.h1822});
+            c.put32(r + 0x28, box.left);
+            c.put32(r + 0x2c, box.right);
+            c.put32(r + 0x30, box.top);
+            c.put32(r + 0x34, box.bottom);
+            c.put32(r + 0x10, box.left);
+            c.put32(r + 0x18, box.right);
+            c.put32(r + 0x14, box.top);
+            c.put32(r + 0x1c, box.bottom);
         }
         break;
     case 2:  // 0x10722150: word at +0x38

@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -21,7 +21,9 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x100ee220: return ScreenTemplate::load_browser;
     case 0x103b3c50: case 0x103baec0: return ScreenTemplate::tactics;
     case 0x1001e2b0: return ScreenTemplate::club_tables;
+    case 0x1006ff50: return ScreenTemplate::competition_history;
     case 0x10065340: return ScreenTemplate::competition;
+    case 0x1028c430: case 0x1028f280: return ScreenTemplate::match_report;
     case 0x1028ae80: return ScreenTemplate::daily_fixtures;
     case 0x10103850: return ScreenTemplate::nations_and_clubs;
     case 0x10389ce0: return ScreenTemplate::player_details;

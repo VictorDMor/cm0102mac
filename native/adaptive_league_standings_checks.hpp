@@ -179,9 +179,9 @@ void league_standings_builder(const char* path) {
         c.put16(manager+0x2c58,1); require(!adaptive_screen_available(s,0x10065340),"Secondary standings adapted"); c.put16(manager+0x2c58,0);
         const auto network=c.u32(manager+0x2c64);
         c.put32(manager+0x2c64,1); require(!adaptive_screen_available(s,0x10065340),"Network standings adapted"); c.put32(manager+0x2c64,network);
-        c.put8(competition+0x43,1); require(!adaptive_screen_available(s,0x10065340),"Cup stage adapted as a league"); c.put8(competition+0x43,2);
+        c.put8(competition+0x43,1); require(adaptive_screen_available(s,0x10065340),"Cup stage excluded"); c.put8(competition+0x43,2);
         const auto clubs=c.u16(competition+0x3e);
-        c.put16(competition+0x3e,8); require(!adaptive_screen_available(s,0x10065340),"Compact group adapted as a full league"); c.put16(competition+0x3e,clubs);
+        c.put16(competition+0x3e,8); require(adaptive_screen_available(s,0x10065340),"Compact group excluded"); c.put16(competition+0x3e,clubs);
         // Controlled topology is only read by eligibility, never dispatched as
         // a competition. It covers the mixed-stage, selected-stage distinction.
         const auto child=allocate(s,0xec,true), children=allocate(s,4,true);
@@ -190,8 +190,11 @@ void league_standings_builder(const char* path) {
         c.put32(competition+0xc,children); c.put32(competition+0x30,0);
         require(adaptive_screen_available(s,0x10065340),"Unresolved all-league stages rejected");
         c.put8(child+0x43,1);
-        require(!adaptive_screen_available(s,0x10065340),"Unresolved mixed-stage competition adapted");
-        c.put32(setting(2),0); require(!adaptive_screen_available(s,0x10065340),"Selected cup child adapted");
+        require(adaptive_screen_available(s,0x10065340),"Unresolved league/cup competition excluded");
+        c.put8(child+0x43,0);
+        require(!adaptive_screen_available(s,0x10065340),"Unresolved unknown stage adapted");
+        c.put8(child+0x43,1);
+        c.put32(setting(2),0); require(adaptive_screen_available(s,0x10065340),"Selected cup child excluded");
         c.put8(child+0x43,2); require(adaptive_screen_available(s,0x10065340),"Selected league child rejected");
         c.put8(competition+0x43,1); require(adaptive_screen_available(s,0x10065340),"League child under cup parent rejected");
         c.put8(competition+0x43,2);

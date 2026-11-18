@@ -2222,11 +2222,16 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   Future/unavailable messages keep their original measured text, wrapping and row capacity.
   Eligibility reads the selected stage directly; unresolved stages opt in only when every
   possible stage is supported. Never call 0x10450a50 from layout: its virtual predicate can
-  finalize league records. Small groups combined with fixtures and knockout tables stay legacy.
+  finalize league records. Compact groups keep their eleven-column standings at the original height. The six-column
+  fixture list below uses the original font-2 row height and no frame inset, and gains up to
+  30 rows. Its scroll position is independent of the standings and their qualification lines.
   Captured short/28-club leagues cover menus, scroll transitions, links, records/RNG and ABI;
   controlled fixtures cover message states, indexed-stage eligibility and stage-command reset.
-  Actual multi-stage menu interaction remains source-reviewed. No new exact-PC hooks or
-  whole-module reconstruction are required.
+  Section 1 also adapts the nine-column knockout draw built by 0x10067d50. The list starts
+  below the original optional stage selector, round title and live draw toolbar. The original
+  builder still formats both legs and assigns team and score actions. The Copa do Brasil
+  draw-date message, friendly cup live controls and European qualifying playoff with a real
+  switch back to its group stage are covered by the existing disposable UI capture.
 - The competition screen's Results, Calendar and Match Dates tabs (sections
   2–4 of `0x10065340`) use `competition_fixtures_layout.cpp`. The layout
   preserves the original fixture cache, column weights and link payloads and
@@ -2298,6 +2303,9 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   (`display_interpreter.hpp`), two jump tables (27 and 11 entries). Every exit returns -1 except commands 4 and 6. The
   stream's halfwords and words are little-endian inside big-endian memory; a failed read reports ("network.h" as the
   file name) and leaves the destination, register or frame slot as it was, so later code reads stale values.
+  Command 8 sub 1 (a control's rectangle) passes its bounds through `live_match_update_rect`: with New Screens on
+  and the live match displayed, the possession bars (0x10291470, 0x10293fb0) and the Latest Scores headings
+  (0x102988f0) follow the laid-out screen. Otherwise, and for every other caller, the bounds are the original's.
 - The table destructor 0x10718ba0 re-reads -0x56dc after clearing it, as the original; nothing between can store there.
 - In the run of all entries the interpreter's cases answer the outside routines its answered unit routines would reach
   (network send, file lookups, graph_carbon drawing): `interpreter_outside_answers` in the checker.
