@@ -373,6 +373,28 @@ void check_english_construction(State& s) {
     c.put32(cursor,pool);
     require(invoke(s,0x104c7150,{object})==0 && c.u32(object+0xa4)!=0 && c.u32(cursor)==pool+20,
             "FA Trophy with a short Conference did not draw as Windows 3.89");
+    // The next-season caller (return address 0x104c756c) takes 0 for success,
+    // so there the short Conference fails before any draw, with no array left
+    // and the caller's stack pointer and saved registers as at the call.
+    {
+        const auto kept=c.u32(object+0xa4);
+        invoke(s,0x10775170,{kept});c.put32(object+0xa4,0);
+        c.put32(cursor,pool);
+        const auto random=random_state(s);
+        std::array<std::uint32_t,20> saved{};
+        const auto kept_registers=[&]{
+            std::array<std::uint32_t,20> now{};
+            now[0]=std::uint32_t(s.r<4>(4));
+            for(unsigned n=13;n<32;++n)now[n-12]=std::uint32_t(s.r<4>(n*4));
+            return now;
+        };
+        saved=kept_registers();
+        const auto result=invoke(s,0x104c7150,{object},0x104c756c);
+        require(std::int32_t(result)<0 && c.u32(object+0xa4)==0 && random_state(s)==random && kept_registers()==saved,
+                "FA Trophy rollover with a short Conference did not fail cleanly before drawing");
+        // The lines below read the array of a constructor-path selection.
+        require(invoke(s,0x104c7150,{object})==0 && c.u32(object+0xa4)!=0,"FA Trophy fixture restore");
+    }
     c.put32(cursor,original_cursor);
     c.put32(conference_slot,conference_binding);
     {
