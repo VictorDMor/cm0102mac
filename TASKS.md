@@ -3,6 +3,13 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: LEAGUE.CPP (2026-11-18, after COMP.CPP)
+
+The base league class: the inventory attributes 60 routines, 12,417 instructions (0x1049e680..0x104aaae4), bounds not proven yet. Victor approved the cost (estimate 1-2.5M tokens). Files `native/league_base_*` (`league_*.cpp` already holds two screen layouts).
+
+- [ ] Inventory, audit, checker, adapter, generator hook, pilot block and brief.
+- [ ] Blocks, each checked against the original; review; route; pairs (season-day needs `CM_ENGLISH_RULES_ORIGINAL=1`); workbook; cleanup.
+
 ## Now: COMP.CPP (Victor's pick, 2026-11-18)
 
 The base competition class, chosen ahead of the day-weight order because the competition editor needs its field readers in C++. 53 entries (0x1044fed0..0x10453394, 3,269 instructions): all in production (2026-11-18). Next module: LEAGUE.CPP.
