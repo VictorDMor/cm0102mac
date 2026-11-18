@@ -36,7 +36,7 @@ The whole backlog is on `main` as of 2026-11-17: dates/Call Up (dfe35ae6), MEDIA
   - About 140 profiling boundaries are isolated/special in production pages although the events compile to nothing; a plain pre-body statement would do.
   - A queued command can be re-enabled by the worker's next `update_commands` while still in flight.
   - The modal and shortcut fixes have no automated case; watch dialog dismissal and Cmd+Return during Continue in play.
-- [ ] **Date fix follow-up:** `transfer_manager_valuation_production` and `transfer_manager_schedule_equivalence` still fail and `season-day` is STALE with the Gregorian arithmetic (dfe35ae6). Amend those references; re-recording `season-day` is Victor's.
+- [ ] **Date fix follow-up:** `transfer_manager_valuation_production` and `transfer_manager_schedule_equivalence` still fail. `season-day` is not stale (checked 2026-11-18): it replays to its recorded end with `CM_ENGLISH_RULES_ORIGINAL=1`, since it predates the English promotion and bench rules; `tools/replay_sweep.py` and a bare `cm-world-replay` do not set that, and without it the replay stops at "allocation 0x29084f20 ... expected=83 actual=115". Amend the two references.
 - [ ] **Call Up:** the squad cap is enforced only on locked lists (its value outside tournaments was not found), and a refused Call Up shows no message.
 
 ## Live match layout (2026-11-18)

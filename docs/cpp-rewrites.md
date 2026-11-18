@@ -2336,8 +2336,10 @@ file's run of function descriptors, the class vtable 0x108cf608 and the contigui
 - Loop counters over stages are `char`/`short` and wrap as in the original.
 - No RNG draw and no save access in the module. The pool's "%s.tmp", "%s_%d.tmp", "CM3_TEMP" and "r" are read by no
   instruction.
-- Only `same-save-continue` (13 entries) and the nation-awards `original-save` (one) reach the module among the
-  captures that still replay; the rest of the evidence is controlled cases on the season-day snapshot.
+- `same-save-continue` (13 entries), `season-day` (0x10450900, 0x10450b60, 0x10452ed0; it needs
+  `CM_ENGLISH_RULES_ORIGINAL=1`, as every replay of that capture does since the English rule changes) and the
+  nation-awards `original-save` (one) reach the module among the captures that still replay; the rest of the
+  evidence is controlled cases on the season-day snapshot.
 
 ## fog_of_war.cpp: what each human manager knows of every person
 
