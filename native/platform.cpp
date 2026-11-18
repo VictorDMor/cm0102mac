@@ -16,6 +16,7 @@
 #include "debug_match_results.hpp"
 #include "resource_bridge.hpp"
 #include "filesystem_bridge.hpp"
+#include "career_rules.hpp"
 #include "database_seasons.hpp"
 #include "directory_catalog.hpp"
 #include "printing_bridge.hpp"
@@ -381,6 +382,8 @@ struct NativePlatform::Impl {
     fs::path game, writable;
     std::unique_ptr<DatabaseSeasons> seasons;
     bool career_loading = false;
+    CareerRules career_rules;
+    std::optional<std::string> temporary_directory;
     std::map<std::uint32_t, fs::path> directories;
     std::map<fs::path, std::uint32_t> file_ids;
     std::uint32_t next_directory = 16, current_directory = 2;
@@ -1406,6 +1409,62 @@ struct NativePlatform::Impl {
         } catch (const FileError&) { return std::nullopt; }
         catch (const std::exception&) { return std::nullopt; }
     }
+    // The career rules member's host file, once the guest has resolved its
+    // temporary folder (every database load, save and career load does).
+    std::optional<fs::path> career_rules_file() const {
+        if (!temporary_directory) return std::nullopt;
+        try {
+            return writable_path(path(0, 0, convert(*temporary_directory + std::string(CareerRules::member_name),
+                                                    kCFStringEncodingMacRoman, kCFStringEncodingUTF8)));
+        } catch (const FileError&) { return std::nullopt; }
+        catch (const std::exception&) { return std::nullopt; }
+    }
+    void read_career_rules() {
+        career_rules.reset();
+        const auto file = career_rules_file();
+        std::error_code error;
+        if (!file || !fs::is_regular_file(*file, error)) return;
+        std::string text;
+        if (const auto size = fs::file_size(*file, error); !error && size <= CareerRules::member_limit) {
+            text.resize(size);
+            std::ifstream input(*file, std::ios::binary);
+            if (!input.read(text.data(), std::streamsize(size))) error = std::make_error_code(std::errc::io_error);
+        } else if (!error) error = std::make_error_code(std::errc::file_too_large);
+        if (error) {
+            // Its content is unknown, so the next save writes the defaults over it.
+            std::fprintf(stderr, "Career rules not read: %s\n", error.message().c_str());
+            command_status = "Career rules could not be read; using the defaults";
+            return;
+        }
+        const auto ignored = career_rules.read(text);
+        for (const auto& line : ignored) std::fprintf(stderr, "Career rules not applied: %s\n", line.c_str());
+        if (!ignored.empty()) command_status = "Career rules: " + std::to_string(ignored.size()) + " statement(s) not applied";
+    }
+    // The previous career is gone: neither its rules nor its member's file
+    // may reach the next one.
+    void forget_career_rules() {
+        career_rules.reset();
+        std::error_code error;
+        if (const auto file = career_rules_file()) fs::remove(*file, error);
+    }
+    void write_career_rules(CompetitionEdition edition) {
+        const auto file = career_rules_file();
+        if (!file) {
+            std::fprintf(stderr, "Career rules not saved: temporary folder unknown\n");
+            return;
+        }
+        const auto text = career_rules.text(edition);
+        std::error_code error;
+        fs::create_directories(file->parent_path(), error);
+        std::ofstream output(*file, std::ios::binary | std::ios::trunc);
+        if (!output.write(text.data(), std::streamsize(text.size())) || !output.flush()) {
+            output.close();
+            // A stale member must not travel in this save.
+            fs::remove(*file, error);
+            std::fprintf(stderr, "Career rules not saved: cannot write %s\n", file->string().c_str());
+            command_status = "Career rules could not be saved";
+        }
+    }
     std::optional<std::string> quick_save_guest_staging_path(const fs::path& staged) const {
         if (!under(staged, writable)) return std::nullopt;
         try {
@@ -1719,8 +1778,15 @@ void NativePlatform::apply_adaptive_screen(State& s, std::uint32_t display) {
 }
 const fs::path& NativePlatform::game_directory() const { return impl_->game; }
 DatabaseSeasons& NativePlatform::database_seasons() { return *impl_->seasons; }
+CareerRules& NativePlatform::career_rules() { return impl_->career_rules; }
+void NativePlatform::note_temporary_directory(std::string guest_directory) {
+    impl_->temporary_directory = std::move(guest_directory);
+}
 void NativePlatform::inspect_database_season_names() {
     auto& seasons = *impl_->seasons;
+    // A database indexed outside a career load starts a new game: the edition
+    // follows its names again, not the rules of a career loaded earlier.
+    if (!impl_->career_loading) impl_->forget_career_rules();
     fs::path file;
     if (const auto& directory = seasons.names_directory(); directory) {
         try {
@@ -1864,11 +1930,18 @@ void NativePlatform::career_database_replaced() {
     if (!impl_->career_loading) return;
     impl_->seasons->end();
     impl_->seasons->forget_loaded();
+    // The running career's own rules go with its world; the loaded one's
+    // arrive with its temporary members (career_members_extracted).
+    impl_->career_rules.reset();
+}
+void NativePlatform::career_members_extracted(State& s) {
+    if (std::int8_t(s.r<4>(12)) != 0) impl_->read_career_rules();
 }
 void NativePlatform::career_load_reset() {
     // A new career starts outside any loader. Bound a flag left behind by a
     // loader that was abandoned without reaching its exit.
     impl_->career_loading = false;
+    impl_->forget_career_rules();
 }
 void NativePlatform::quick_save_load_end(State& s) {
     impl_->seasons->resume();
@@ -1893,6 +1966,8 @@ void NativePlatform::quick_save_load_end(State& s) {
     if (!success || !impl_->quick_save_destination.last() || !impl_->quick_save_last_target) impl_->quick_save_queued = false;
 }
 bool NativePlatform::quick_save_write_begin(State& s) {
+    // A career save (mode 0x16) bundles the temporary folder's `*.tmp` files.
+    if (s.r<4>(16) == 0x16) impl_->write_career_rules(competition_edition(s));
     if (impl_->event_mode != EventMode::interactive) return true;
     // The original writer pumps events. A nested writer must not replace the
     // active transaction's tracking or write into the destination mid-save.

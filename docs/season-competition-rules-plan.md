@@ -109,9 +109,30 @@ becomes a requirement.
 A rule profile is keyed by **source edition, logical competition and revision**,
 not by the current calendar year or raw database ordinal. A career beginning
 in 2000 must not accidentally switch to another database's rules in 2001.
-Historical transitions, if implemented, are explicit entries in that career's
-profile. Logical identifiers are proposed internal identifiers, not assumed
-original game IDs.
+
+### Optional historical rule changes (planned)
+
+“Regras realistas” (working title) is a per-career switch for historical
+changes. The database edition supplies the starting rules. With the switch
+on, each competition also follows its own timeline of changes, keyed by the
+first competition season in which each change applies. The pinned profile
+revision includes this timeline. Explicit user overrides still apply last.
+With the switch off, resolve the edition rules and explicit overrides alone.
+
+Use the same resolver for domestic leagues, domestic cups and international
+competitions. A timeline can be empty or contain several successive reforms.
+Each entry identifies its competition, effective season and the rule fields
+or policy it changes. Carry other fields forward. Adding a reform that uses
+existing fields or policies should require only a timeline entry and its
+tests. Record the source for the rule and its first applicable season.
+
+For example, in a career started with the 2001/02 database, the UEFA Cup
+uses knockout rounds throughout 2003/04. With the switch on, the 2004/05
+edition includes a group stage and subsequent editions keep it until another
+change applies. With the switch off, 2004/05 keeps the knockout format.
+Select the format when configuring that competition's season, before its
+first draw. Toggling mid-tournament affects its next edition. Loading a
+save restores the current tournament, including draws and results.
 
 ## Rule contents and validation
 
@@ -188,28 +209,54 @@ save through the Save dialog (the quick save shares its writer, 0x1034ba30),
 what a new game does with the folder, and the original Mac or Windows
 applications reading such a file (the Mac one runs the same loader code).
 
-### Proposed career rules member (awaiting Victor's approval; nothing writes it yet)
+### Career rules member (2026-11-17)
 
-- **Name:** `native_rules.tmp`, written into the temporary folder at the
-  writer's entry (the existing hook at 0x1034ba30) and read after a
-  successful load (the loader's exit hook). Removed when a new career starts;
-  the loader already removes it before extracting.
+Victor approved the member; every career save written by the port carries it.
+`native/career_rules.hpp` holds the format and the list of rules a career may
+override.
+
+- **Name and lifecycle:** `native_rules.tmp`, in the folder the game resolves
+  for `CM3_TEMP`. Written at the career writer's entry (0x1034ba30, mode
+  0x16) from the running career's state, so the original code bundles it.
+  Read at 0x10346ee8, right after the loader's second pass extracts the
+  save's temporary members (0x10346ee4); the running career's rules are
+  dropped earlier, where its world is released (0x10346dd4). A new career
+  (0x10345bb0) or a database indexed outside a load forgets the rules and
+  removes the file.
 - **Content:** short text, one statement per line:
-  `CM-NATIVE-RULES 1`, `edition cm0001_389`, `revision 1`, then one
-  `set <field> <value>` per user override, with field names from
-  `CompetitionRules` (for example `set england.promotion.conference_promoted 1`).
-- **Meaning:** `edition` pins the career's edition, replacing the names-hash
-  guess where the member exists (the hash stays for saves without it).
-  `revision` pins the checked-in rules of that edition, so a later change to
-  the defaults does not reach an existing career. The `set` lines are the third
-  layer, applied after global and edition.
-- **Unknown input:** an unknown format version or revision keeps the text and
-  writes it back unchanged, applies no override and says so in the status
-  line; an unknown field is kept and ignored the same way. A malformed member
-  never blocks a load.
-- **Old saves and old builds:** a save without the member behaves as today.
-  An older build of the port carries the member through untouched, as it
-  does any `.tmp`.
+  `CM-NATIVE-RULES 1`, `edition cm0001_389`, `revision 1`,
+  `historical_rules on|off`, then one `set <field> <value>` per override (for
+  example `set england.promotion.conference_promoted 1`).
+- **Meaning:** `edition` pins the career's edition from the extraction on,
+  replacing the names-hash guess (which still decides for saves without the
+  member, and during the part of a load that precedes the extraction).
+  `revision` names the checked-in rules of that edition. `historical_rules`
+  is the “Regras realistas” switch; missing means off. Nothing reads it until
+  the timeline resolver exists. The `set` lines apply after the edition and
+  any enabled historical changes; the test presets still apply last.
+- **Overridable now:** `england.promotion.conference_promoted` and
+  `england.promotion.third_relegated` (1 or 3, and equal),
+  `england.premier_named_reserves` (0 or 7), `brazil.serie_b_single_table`
+  (0 or 1): the values existing checks already run. Other fields wait for
+  their engine paths to be checked with other values.
+- **Unknown input:** an unknown format version, edition or revision keeps the
+  whole text and writes it back unchanged, applying nothing. An unknown
+  field or value is kept and ignored the same way. Each case leaves a status
+  line and a log line. A member that cannot be read never blocks a load; an
+  empty one counts as absent. A build that raises an edition's revision must
+  keep the previous revision's rules and resolve members that name it.
+- **Old saves and old builds:** a save without the member behaves as before
+  and gains the member on its next save. An older build of the port carries
+  the member through untouched, as it does any `.tmp`.
+- **No editor yet:** nothing in the game sets an override or the switch.
+
+Checked with `cm-database-seasons-checks` (format, round trip, ignored and
+unknown input, load and save hooks, new career) and on an isolated copy of
+the game with a copy of the reference save: the quick save's archive carries
+the member, and a member patched inside the save is what the next load reads
+and the next save writes. Not checked: the Save dialog path (same writer), a
+writer mode other than 0x16 bundling the file, and the original Mac or
+Windows applications reading such a save.
 
 ## Delivery sequence
 
@@ -241,6 +288,12 @@ alone does not finish its save or season-transition behavior.
 - Check calendar boundaries, progression, balanced division exchange,
   qualifying dependencies and exact existing serialized fields. Include unknown
   profile revisions and failed/partial reads in persistence tests.
+- Exercise the shared resolver with successive changes in one competition
+  and an independent change in another (for example, format and promotion
+  places). Check seasons before, at and after each boundary with the switch
+  on and off. Include a competition with an empty timeline. Reload on both
+  sides of a transition and preserve the current edition's fixtures when
+  toggling after a draw.
 - Test 2000 -> 2001 -> 2002 switching and loading a career with another pack
   selected. Preserve Victor's explicit custom-rule policy.
 - Live gameplay, visual checks and full-season QA remain Victor's; they are not
@@ -263,6 +316,7 @@ in the port. The Trophy and Conference Cup share the PowerPC knockout object
 and its save routines, with separate competition identities. Careers whose
 archive predates the Conference Cup continue without it.
 
-Next implementation task: persist explicit career rules revisions and user
-overrides (the third layer, after global and edition) and verify the division
-movement that feeds the next season.
+The career's edition, rules revision, historical-rules switch and explicit
+overrides are persisted (Career rules member). Next implementation task: the
+shared timeline resolver for optional historical rules, then an editor for
+the career's overrides.

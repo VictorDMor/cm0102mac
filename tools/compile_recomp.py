@@ -2122,6 +2122,8 @@ def generate_page(page, instructions, selected, local_temporaries=True, userops=
         # Past the last exit that returns to the running career: the loader
         # frees the current tables next (bl 0x100a4e50) and loads the save's.
         0x10346dd4: ("lwz r3,-0x7b98(r2)", "if (s.platform) s.platform->career_database_replaced();"),
+        # The loader's second pass has just extracted the save's temporary members.
+        0x10346ee8: ("extsb. r0,r3", "if (s.platform) s.platform->career_members_extracted(s);"),
         0x1034ba30: ("mfspr r0,LR", "if (s.platform && !s.platform->quick_save_write_begin(s)) { s.wr<4>(12, 0); s.pc = std::uint32_t(s.r<4>(4128)); return true; }"),
         0x1034ddb8: ("beq 0x1034de50", "if (s.platform) s.platform->quick_save_write_mode(s);"),
         0x1034de50: ("lhz r0,0x2(r14)", "if (s.platform) s.platform->quick_save_write_renamed(s);"),

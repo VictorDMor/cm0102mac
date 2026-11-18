@@ -150,7 +150,16 @@ void database_season_data_path(State& s, std::uint32_t variable, std::uint32_t n
     // DATABASE copies/extracts both plain and packed names into CM3_TEMP before
     // INDEX. Preserve the resolved guest directory, including its legitimate
     // empty/current-directory fallback, and inspect it only after extraction.
-    if (folder == "CM3_TEMP" && file.empty()) seasons.note_names_directory(text(s, output));
+    if (folder == "CM3_TEMP") {
+        // The same folder collects the `*.tmp` members of a save. `file` is
+        // the name this resolution appended.
+        auto resolved = text(s, output);
+        if (file.empty()) seasons.note_names_directory(resolved);
+        if (resolved.ends_with(file)) {
+            resolved.resize(resolved.size() - file.size());
+            s.platform->note_temporary_directory(std::move(resolved));
+        }
+    }
     const auto replacement = seasons.data_path(folder, file);
     if (!replacement) return;
     if (replacement->size() >= 256) throw std::runtime_error("Database path exceeds guest buffer");

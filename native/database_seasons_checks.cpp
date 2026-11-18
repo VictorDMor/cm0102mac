@@ -1,4 +1,5 @@
 #include "database_seasons.hpp"
+#include "career_rules.hpp"
 #include "season_competition_rules.hpp"
 #include "guest_abi.hpp"
 #include "platform.hpp"
@@ -8,7 +9,9 @@
 #include "form_layout.hpp"
 #include "gui_guest_scope.hpp"
 #include "routine_check.hpp"
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <algorithm>
 #include <array>
 
@@ -241,6 +244,56 @@ void check_edition_rules(const State& s, unsigned year) {
             "Edition lost an inherited global rule");
     require((rules.england.conference_cup!=nullptr)==(year==2000) && rules.unavailable_countries.size()==(year==2000?7u:0u) &&
             (rules.england.conference.club_payment==0)==(year==2000),"Edition rules leaked across seasons");
+}
+
+// The career's own rules: the member's text, what it applies, and what it
+// keeps for a build that understands more.
+void check_career_rules_text() {
+    CareerRules career;
+    require(career.text(CompetitionEdition::cm0001_389)==
+            "CM-NATIVE-RULES 1\nedition cm0001_389\nrevision 1\nhistorical_rules off\n" &&
+            !career.edition() && !career.customized(),"New career's rules member");
+    const std::string member="CM-NATIVE-RULES 1\nedition cm0001_389\nrevision 1\nhistorical_rules on\n"
+        "set england.premier_named_reserves 0\nset future.rule 5\nset brazil.serie_b_single_table 2\n"
+        "set england.promotion.conference_promoted 1\nset england.promotion.third_relegated 1\nlater statement\n";
+    auto ignored=career.read(member);
+    require(ignored.size()==3 && career.edition()==CompetitionEdition::cm0001_389 && career.historical_rules(),
+            "Career rules member header or ignored statements");
+    auto* rules=career.customized();
+    require(rules && (*rules)[0][0].england.premier_named_reserves==0 &&
+            (*rules)[0][0].england.promotion.conference_promoted==1 && (*rules)[0][0].england.promotion.third_relegated==1 &&
+            (*rules)[0][0].brazil.serie_b_single_table && (*rules)[0][0].england.conference_cup &&
+            (*rules)[0][0].england.conference.club_payment==0,"Career override or inherited edition rule");
+    // Written back with every statement, the ones this build ignored included.
+    require(career.text(CompetitionEdition::cm0102)==member,"Career rules member changed in a round trip");
+    // The test presets stay last: an override that names the port's values loses to them.
+    ignored=career.read("CM-NATIVE-RULES 1\nedition cm0102\nrevision 1\nset england.premier_named_reserves 7\n"
+                        "set brazil.serie_b_single_table 1\nset england.promotion.conference_promoted 3\n"
+                        "set england.promotion.third_relegated 3\n");
+    rules=career.customized();
+    require(ignored.empty() && rules && (*rules)[0][0].england.premier_named_reserves==7 &&
+            (*rules)[1][0].england.premier_named_reserves==0 && (*rules)[1][0].england.promotion.conference_promoted==1 &&
+            (*rules)[1][0].brazil.serie_b_single_table && !(*rules)[0][1].brazil.serie_b_single_table,
+            "Original presets no longer apply after career overrides");
+    // One side of the Conference exchange alone changes neither.
+    ignored=career.read("CM-NATIVE-RULES 1\nedition cm0102\nrevision 1\nset england.promotion.conference_promoted 1\n");
+    require(ignored.size()==1 && !career.customized() && !career.historical_rules(),
+            "Unbalanced Conference exchange was applied");
+    // A format, edition or revision this build does not know: nothing applied, text intact.
+    using namespace std::string_view_literals;
+    for(std::string_view unknown:{"CM-NATIVE-RULES 2\nedition cm0102\nrevision 1\nset brazil.serie_b_single_table 0\n"sv,
+                                  "CM-NATIVE-RULES 1\nedition cm0304\nrevision 1\nset brazil.serie_b_single_table 0\n"sv,
+                                  "CM-NATIVE-RULES 1\nedition cm0102\nrevision 2\nset brazil.serie_b_single_table 0\n"sv,
+                                  "CM-NATIVE-RULES 1\nedition cm0102\n"sv,"garbage\0bytes\n"sv}) {
+        ignored=career.read(unknown);
+        require(ignored.size()==1 && !career.edition() && !career.customized() &&
+                career.text(CompetitionEdition::cm0102)==unknown,"Unknown career rules member was applied or rewritten");
+    }
+    // An empty member (an interrupted write) is no member: the next save writes a whole one.
+    require(career.read("\n").empty() && !career.edition() &&
+            career.text(CompetitionEdition::cm0102).starts_with("CM-NATIVE-RULES 1\nedition cm0102\n"),"Empty rules member was kept");
+    career.reset();
+    require(career.text(CompetitionEdition::si_3968).find("edition si_3968\n")!=std::string::npos,"Reset kept a rules member");
 }
 
 void check_english_construction(State& s) {
@@ -560,7 +613,18 @@ void check_archive(State& s) {
     const auto stream=invoke(s,0x107475b0,{archive,member,1,0,4});require(stream,"Date fixture section open");
     require(invoke(s,0x10747cc0,{current,8,1,stream})==1 && invoke(s,0x10747cc0,{start,8,1,stream})==1,"Date fixture write");
     c.put32(scratch+900,stream);invoke(s,0x10747900,{scratch+900});
+    // The save's rules member, as the original loader's extraction leaves it
+    // in the temporary folder. It belongs to the career being loaded: nothing
+    // reads it before the running world is released.
+    const auto edition=competition_edition(s);
+    auto& career=s.platform->career_rules();
+    const auto rules_file=s.platform->writable_directory()/
+        (std::filesystem::is_directory(s.platform->writable_directory()/"Files/Temp")?"Files/Temp":"Files")/CareerRules::member_name;
+    const auto rules_member="CM-NATIVE-RULES 1\nedition "+std::string(edition_name(edition))+
+        "\nrevision 1\nhistorical_rules on\nset brazil.serie_b_single_table 0\nset future.rule 5\n";
+    std::ofstream(rules_file,std::ios::binary)<<rules_member;
     s.platform->quick_save_load_begin(s);
+    require(!career.edition() && !career.customized(),"Load entry read the incoming career's rules");
     require(!s.platform->database_seasons().active(),"Save load kept routing to a season pack");
     // Deliberately leave the other release's names in the writable overlay.
     // The actual packed loader must extract its own languages before the
@@ -573,11 +637,46 @@ void check_archive(State& s) {
     require(s.platform->database_seasons().loaded().has_value(),"Loader entry forgot the running career's database");
     s.platform->career_database_replaced(); // The loader's hook at 0x10346dd4.
     require(invoke(s,0x1009ef30,{archive,1})==1,"Packed database reload");
+    {
+        // The loader's hook at 0x10346ee8, after its extraction of the
+        // temporary members: a failed extraction (r3 = 0) reads nothing.
+        const auto registers=s.registers;
+        c.set(3,0);s.platform->career_members_extracted(s);
+        require(!career.edition() && !career.customized(),"Failed extraction read a rules member");
+        c.set(3,1);s.platform->career_members_extracted(s);
+        s.registers=registers;
+        require(career.edition()==edition && career.historical_rules() && career.customized() &&
+                !(*career.customized())[0][0].brazil.serie_b_single_table &&
+                competition_edition(s)==edition,"Loaded career's rules member was not applied");
+    }
     require(s.platform->database_seasons().legacy_2000()==(year==2000),"Embedded names did not restore compatibility identity");
     check_edition_rules(s,year);
     require(!s.platform->database_seasons().loaded(),"Save load retained pack provenance");
     s.platform->quick_save_load_end(s);
     require(!s.platform->database_seasons().active(),"Completed save load resumed pack routing");
+    {
+        // The career writer's entry (mode 0x16) leaves the member for the
+        // original code to bundle, unknown statement included.
+        std::filesystem::remove(rules_file);
+        const auto registers=s.registers;
+        c.set(4,0x16);
+        require(s.platform->quick_save_write_begin(s),"Career writer entry refused");
+        s.registers=registers;
+        std::ostringstream written;written<<std::ifstream(rules_file,std::ios::binary).rdbuf();
+        require(written.str()==rules_member,"Career writer did not leave the rules member");
+        // A new career starts without the previous one's rules.
+        require(career.edition()==edition,"Saving dropped the career's rules");
+        s.platform->career_load_reset();
+        require(!career.edition() && !career.historical_rules() && !career.customized() &&
+                !std::filesystem::exists(rules_file),"New career kept another career's rules or member");
+        // So does a database indexed outside a load (the New Game path), before any world is built.
+        std::ofstream(rules_file,std::ios::binary)<<rules_member;
+        c.set(3,1);s.platform->career_members_extracted(s);s.registers=registers;
+        require(career.edition()==edition,"Rules member fixture");
+        s.platform->inspect_database_season_names();
+        require(!career.edition() && !std::filesystem::exists(rules_file) &&
+                s.platform->database_seasons().legacy_2000()==(year==2000),"New database kept the loaded career's rules");
+    }
     if(year==2000)require(c.u32(c.toc(-0x6b88))==65,"Localized packed archive lost Brazilian competition identity");
     check_2002_history(s,year==2002);
     require(c.u32(c.toc(-0x7b50))==club_count && c.u32(c.toc(-0x7be4))==staff_count,"Packed database counts changed");
@@ -593,6 +692,7 @@ void check_archive(State& s) {
 }
 int main(int argc,char**argv) {
     try {
+        check_career_rules_text();
         const bool english_only=argc==5 && std::string_view(argv[4])=="--english-2000";
         if(argc!=4 && (argc!=5 || (!english_only && std::string_view(argv[4])!="--history-2002")))
             throw std::runtime_error("Usage: cm-database-seasons-checks PROGRAM GAME PRIVATE_RUNTIME [--history-2002|--english-2000]");

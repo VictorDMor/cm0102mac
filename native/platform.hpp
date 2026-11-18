@@ -12,6 +12,7 @@
 namespace cm::aot {
 struct State;
 class DatabaseSeasons;
+class CareerRules;
 enum class EventMode { interactive, isolated };
 class NativePlatform {
 public:
@@ -24,11 +25,19 @@ public:
     const std::filesystem::path& game_directory() const;
     const std::filesystem::path& writable_directory() const;
     DatabaseSeasons& database_seasons();
+    // The running career's own rules (the save member native_rules.tmp).
+    CareerRules& career_rules();
+    // The guest's resolved temporary folder, where the original save code
+    // collects and restores `*.tmp` members.
+    void note_temporary_directory(std::string guest_directory);
     void inspect_database_season_names();
     // True between the saved-career loader's entry and its single exit.
     bool career_loading() const;
     // The loader is about to replace the tables of the running world.
     void career_database_replaced();
+    // The loader's second pass extracted the save's `*.tmp` members into the
+    // temporary folder (0x10346ee4, result in r3).
+    void career_members_extracted(State&);
     void career_load_reset();
     std::vector<std::filesystem::path> save_window_images(const std::filesystem::path& directory) const;
     std::vector<float> render_audio_offline(std::uint32_t frames);

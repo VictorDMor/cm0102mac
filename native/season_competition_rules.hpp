@@ -99,11 +99,30 @@ struct CompetitionRules {
 };
 inline constexpr CompetitionRules global_rules{};
 
+// The equivalence checks compare with the generated original under two
+// environment variables, which restore the shipped game's values whatever the
+// edition. Each keeps the timing its checks rely on: the English one is read
+// on every use (english_bench_checks toggles it), the Brazilian one once.
+inline constexpr CompetitionRules with_original_presets(CompetitionRules rules, bool english, bool brazilian) {
+    if (english) {
+        rules.england.promotion = english_rules::original;
+        rules.england.premier_named_reserves = 0;
+    }
+    if (brazilian) rules.brazil.serie_b_single_table = false;
+    return rules;
+}
+// One rule set under each combination of the two: [english][brazilian].
+using RulePresets = std::array<std::array<CompetitionRules, 2>, 2>;
+inline constexpr RulePresets original_presets(const CompetitionRules& rules) {
+    return {{{with_original_presets(rules, false, false), with_original_presets(rules, false, true)},
+             {with_original_presets(rules, true, false), with_original_presets(rules, true, true)}}};
+}
+
 // The rules of one edition, as checked in.
 const CompetitionRules& edition_rules(CompetitionEdition);
 // The running career's rules: its edition's, with the test presets that keep
-// the original game's behaviour (CM_ENGLISH_RULES_ORIGINAL,
-// CM_BRA_NAT_SECOND_RULES_ORIGINAL) applied last.
+// the original game's behaviour applied last. A career's own overrides
+// (career_rules.hpp) come between the two.
 const CompetitionRules& competition_rules(const State&);
 inline const EnglandRules& english_season_rules(const State& s) { return competition_rules(s).england; }
 

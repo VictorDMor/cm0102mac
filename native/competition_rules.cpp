@@ -1,4 +1,7 @@
 #include "season_competition_rules.hpp"
+#include "aot_runtime.hpp"
+#include "career_rules.hpp"
+#include "platform.hpp"
 #include <array>
 #include <cstdlib>
 
@@ -62,25 +65,8 @@ constexpr const CompetitionRules& checked_in(CompetitionEdition edition) {
     return cm0102;
 }
 
-// The equivalence checks compare with the generated original under two
-// environment variables, which restore the shipped game's values whatever the
-// edition. Each keeps the timing its checks rely on: the English one is read
-// on every use (english_bench_checks toggles it), the Brazilian one once.
-constexpr CompetitionRules with_original_presets(CompetitionRules rules, bool english, bool brazilian) {
-    if (english) {
-        rules.england.promotion = english_rules::original;
-        rules.england.premier_named_reserves = 0;
-    }
-    if (brazilian) rules.brazil.serie_b_single_table = false;
-    return rules;
-}
-using Presets = std::array<std::array<CompetitionRules, 2>, 2>; // [english][brazilian]
-constexpr Presets presets(CompetitionEdition edition) {
-    const auto& rules = checked_in(edition);
-    return {{{with_original_presets(rules, false, false), with_original_presets(rules, false, true)},
-             {with_original_presets(rules, true, false), with_original_presets(rules, true, true)}}};
-}
-constexpr std::array<Presets, competition_edition_count> resolved{
+constexpr RulePresets presets(CompetitionEdition edition) { return original_presets(checked_in(edition)); }
+constexpr std::array<RulePresets, competition_edition_count> resolved{
     presets(CompetitionEdition(0)), presets(CompetitionEdition(1)), presets(CompetitionEdition(2))};
 static_assert(std::size_t(CompetitionEdition::si_3968) + 1 == competition_edition_count);
 }
@@ -90,6 +76,10 @@ const CompetitionRules& edition_rules(CompetitionEdition edition) { return check
 const CompetitionRules& competition_rules(const State& s) {
     static const bool brazilian = std::getenv("CM_BRA_NAT_SECOND_RULES_ORIGINAL") != nullptr;
     const bool english = std::getenv("CM_ENGLISH_RULES_ORIGINAL") != nullptr;
-    return resolved[std::size_t(competition_edition(s))][english][brazilian];
+    const auto edition = competition_edition(s);
+    // The career's own overrides come after its edition; the test presets stay last.
+    if (s.platform)
+        if (const auto* career = s.platform->career_rules().customized()) return (*career)[english][brazilian];
+    return resolved[std::size_t(edition)][english][brazilian];
 }
 }

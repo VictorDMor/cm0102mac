@@ -1,3 +1,4 @@
+#include "career_rules.hpp"
 #include "database_seasons.hpp"
 #include "guest_abi.hpp"
 #include "platform.hpp"
@@ -170,6 +171,9 @@ bool database_season_optional_index(State& s) {
 }
 CompetitionEdition competition_edition(const State& s) {
     if (!s.platform) return CompetitionEdition::cm0102;
+    // A career saved by this port names its edition; older saves and new
+    // careers are recognised by their database names.
+    if (const auto pinned = s.platform->career_rules().edition()) return *pinned;
     switch (s.platform->database_seasons().release()) {
     case DatabaseRelease::cm0001_389: return CompetitionEdition::cm0001_389;
     case DatabaseRelease::si_3968: return CompetitionEdition::si_3968;
