@@ -346,3 +346,45 @@ overrides are persisted (Career rules member) and the shared timeline
 resolver exists, with no entry yet. Next: the advanced competition editor
 (TASKS.md), starting from an inventory of what one rewritten league sets at
 season setup.
+
+## Competition editor: what a league sets at season setup (2026-11-18)
+
+First inventory for the advanced competition editor (TASKS.md), read from the
+rewritten English and Brazilian state league setups (`eng_prm_lifecycle.cpp`,
+`eng_first`, `eng_third`, `eng_conf`, `bra_reg_*`). “Value” means the setup
+stores a number in the competition record and shared engine code reads it
+later; “structure” means code or tables shaped around the number.
+
+Values written into the competition record (meanings marked * are inferred
+from how the values differ between leagues, not traced to their readers):
+
+| Field | Premier | Seen elsewhere | Meaning |
+| --- | --- | --- | --- |
+| +0xc0 | 0 | First 2, Third 3, Conference 1 | automatic promotion places |
+| +0xc1 | 0 | First and Third 4 | promotion playoff clubs |
+| +0xc3 | 3 | Third 1, Paraná 4 | relegation places |
+| +0xc4, +0xc5 | 3, 1 | same everywhere read | points for a win and a draw * |
+| +0xc7..+0xc9 | 1, 2, 3 | Brazilian states 3, 1, 0 | tie-break order * |
+| +0x46, +0x47 | unset (7 with the named-reserves rule) | Brazilian states 7, 3 | bench size and substitutions * |
+| +0x3c | 2 | | meetings per pair * |
+| +0x4a, +0x4c, +0x42, +0xc6, +0xe2/+0xe4 | 9, 2, 1, 2, 10000 | | not identified |
+| prize calls 0x1049f540, 0x1049f6d0 | 250000; 12000000 from 2000, else 5000000 | | money amounts, purpose not traced |
+
+Structure:
+
+- **Number of clubs** (+0x3e = 20): the setup also sizes the standings by it
+  and takes the clubs whose division is the Premier League in the database,
+  failing unless it finds exactly that many. Changing it means choosing which
+  clubs come or go, and a calendar with the matching number of rounds.
+- **Calendar**: 38 rounds as a checked-in table of dates, weekdays and TV
+  kick-off options (`eng_prm_calendar_rules.inc`), with eight December
+  variants picked by the weekday of Christmas.
+- **Promotion playoffs, cups and group stages**: separate routines per
+  competition.
+
+Not in the league setup at all, so not located yet: suspension thresholds and
+lengths, extra time and penalties, squad registration.
+
+Next: trace the readers of the starred and unidentified fields in the shared
+league code, so each becomes a named field of `CompetitionRules`; then the
+first editable set is the value table above for every rewritten league.
