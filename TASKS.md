@@ -3,6 +3,15 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: competition editor, stage 1 (Victor, 2026-11-19)
+
+Victor chose to build the values editor before COMP_UTIL.CPP. Stage 1 edits the plain values a competition stores in its record at season setup (promotion and relegation places, points, tie-breaks, bench and substitutions, prizes, legs), for every league and cup including those whose modules are still generated, by applying overrides at one common point after the competition's own setup. Reachable at New Game and during a career. Structure (number of clubs, stages, calendar) is stage 2, after COMP_UTIL.CPP.
+
+- [ ] Field map: every such field with its readers and a confirmed meaning, when an edit takes effect, what the save already carries, and the common apply point (`.local/rewrites/editor/fields.md`, then the confirmed part into the rules plan).
+- [ ] Rule packs in TOML (toml++): schema and validation shared by loader and editor; the shipped packs equal to the original values and checked against them; the save carries the resolved values, not a reference to a pack; the existing `native_rules.tmp` line format still read.
+- [ ] The apply point, with a check that defaults change nothing (paired replays identical).
+- [ ] The editor screens (New Game and in career).
+
 ## CUP.CPP delivered (2026-11-19)
 
 The base cup class: 47 entries (0x10478f20..0x104866f0, 13,700 instructions), all in production. Files `native/cup_base_*`. Next by the competition base: COMP_UTIL.CPP (33 routines, 21,438 instructions: over the size that needs Victor's go-ahead on cost).
