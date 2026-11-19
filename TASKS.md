@@ -13,6 +13,7 @@ Victor's shape for it (2026-11-19): **a separate editor, as Football Manager's, 
 - [ ] Custom database: a base season plus the user's changes, in TOML (toml++); schema and validation shared by loader and editor; chosen at New Game next to the season; the save carries the resolved values and the scheduled changes, never a reference to a file; `native_rules.tmp` in its current line format still read.
 - [ ] Apply points (league `set_up`, cup vt+0x9c, `governing_body`), with the proof that defaults change nothing (paired replays identical), and scheduled changes applied at the chosen season through the per-career timeline.
 - [ ] The editor itself, opened from the start screen; then the in-career screen that schedules a change for a future season.
+- Victor's answers (2026-11-19): promotion and relegation that do not balance with the neighbouring division are **warned about, not refused** (the editor shows the warning; the game applies them); head-to-head as a tie-break waits for **stage 2**; cup rounds edited during a career apply **only from the following season** for now.
 
 ## CUP.CPP delivered (2026-11-19)
 
