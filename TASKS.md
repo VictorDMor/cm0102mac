@@ -3,6 +3,10 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: CUP.CPP (2026-11-19, after LEAGUE.CPP)
+
+The base cup class: 47 entries (0x10478f20..0x104866f0, 13,700 instructions; the inventory had 42). Files `native/cup_base_*`. Pilot of 9 entries written; seven blocks to write (tree, result, draws, rounds, storage, daily, queries), then the all-blocks run, review, route, pairs, workbook, cleanup. The Inter-American Cup retirement hook at 0x10482ca0 stays ahead of the module's hook.
+
 ## Now: LEAGUE.CPP (2026-11-18, after COMP.CPP)
 
 The base league class: 67 entries (0x1049e4f0..0x104aac14, 12,587 instructions), all in production (2026-11-19). Files `native/league_base_*`. Next module: CUP.CPP (`native/cup_base_*`).
