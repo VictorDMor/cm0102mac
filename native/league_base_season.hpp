@@ -80,28 +80,6 @@ inline constexpr std::uint32_t rand = 0x1077b770, allocate_array = 0x107735f0, r
                                has_fixtures = 0x100c7d00;
 }
 
-// The game's sample stream (the cells at TOC -0x7b90 salt, -0x7b8c start, -0x7b88 end, -0x7b84 cursor): the cursor
-// steps through a table of halfwords two bytes at a time; past the end it restarts at the start and a rand() gives
-// the salt (its low 16 bits). A draw is (halfword at the cursor + salt) reduced to the bound.
-struct Pool {
-    Cpu& c;
-    std::uint32_t salt, start, end, cursor;
-    static Pool at(Cpu& cpu) {
-        return {cpu, cpu.toc(slot::seed), cpu.toc(slot::start), cpu.toc(slot::end), cpu.toc(slot::cursor)};
-    }
-    // `back` is the return address of the rand call in the routine that inlines the step.
-    void advance(std::uint32_t back) const {
-        const auto next = c.u32(cursor) + 2;
-        const auto last = c.u32(end);
-        c.put32(cursor, next);
-        if (next > last) {
-            c.put32(cursor, start);
-            c.call(entry::rand, back);
-            c.put32(salt, c.r(3) & 0xffff);
-        }
-    }
-    std::uint32_t sample() const { return c.u32(salt) + c.u16(c.u32(cursor)); }
-};
 // The draw the small-bound arm shares: the sample reduced by `bound` (|bound| < 0x10000), negative for a negative bound.
 inline std::int32_t reduce(std::uint32_t sample, std::int32_t bound) {
     const auto remainder = bound == -1 ? 0 : std::int32_t(sample) % bound;  // divw of INT_MIN by -1 is undefined on the PowerPC

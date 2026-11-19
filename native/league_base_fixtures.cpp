@@ -19,9 +19,15 @@
 namespace cm::aot::league_base {
 namespace {
 namespace fixture {
+// The shared stream with the leftover this routine's inline step leaves: r4 holds the stepped cursor.
+void advance_stream(Cpu& c, std::uint32_t back) {
+    const auto pool = Pool::at(c);
+    c.set(4, c.u32(pool.cursor) + 2);
+    pool.advance(back);
+}
+
 // TOC cells of the game's globals this routine reads (word = address of the value, unless noted).
 inline constexpr std::int32_t
-    stream_seed = -0x7b90, stream_start = -0x7b8c /* the word itself is the start pointer */, stream_limit = -0x7b88,
     stream_cursor = -0x7b84, season_seed = -0x7450, derby_competition = -0x67c0, derby_club_a = -0x7a04,
     derby_club_b = -0x7a08;
 inline constexpr std::uint32_t rand_entry = 0x1077b770, srand_entry = 0x1077b790, allocate_entry = 0x107735f0,
@@ -30,50 +36,6 @@ inline constexpr std::uint32_t club_region = 0x3c;      // a club's pointer to i
 inline constexpr std::uint32_t region_parent = 0x14;    // a region's pointer to its parent region (inferred)
 inline constexpr std::uint32_t slot_for_club = 0xb0, slot_final_place = 0xb4;  // the league's virtual slots
 inline constexpr std::uint32_t preset_flag = 0x100;     // bit of the flag word (+0xdc): the league presets its rows
-
-// The row fields the original copies one by one: the 0x44-byte row's bytes 5-7, 0x1e-0x1f, 0x2e-0x2f and
-// 0x3e-0x3f are never copied.
-struct Field { std::uint8_t offset, size; };
-inline constexpr std::array<Field, 32> fields = {{
-    {0x00, 4}, {0x04, 1}, {0x08, 4}, {0x0c, 4}, {0x10, 4}, {0x14, 1}, {0x15, 1}, {0x16, 1}, {0x17, 1},
-    {0x18, 2}, {0x1a, 2}, {0x1c, 2}, {0x20, 4}, {0x24, 1}, {0x25, 1}, {0x26, 1}, {0x27, 1}, {0x28, 2},
-    {0x2a, 2}, {0x2c, 2}, {0x30, 4}, {0x34, 1}, {0x35, 1}, {0x36, 1}, {0x37, 1}, {0x38, 2}, {0x3a, 2},
-    {0x3c, 2}, {0x40, 1}, {0x41, 1}, {0x42, 1}, {0x43, 1}}};
-using Image = std::array<std::uint32_t, 32>;
-
-Image read_row(Cpu& c, std::uint32_t row) {
-    Image image{};
-    for (std::size_t n = 0; n < fields.size(); ++n) {
-        const auto at = row + fields[n].offset;
-        image[n] = fields[n].size == 4 ? c.u32(at) : fields[n].size == 2 ? c.u16(at) : c.u8(at);
-    }
-    return image;
-}
-void write_row(Cpu& c, std::uint32_t row, const Image& image) {
-    for (std::size_t n = 0; n < fields.size(); ++n) {
-        const auto at = row + fields[n].offset;
-        if (fields[n].size == 4) c.put32(at, image[n]);
-        else if (fields[n].size == 2) c.put16(at, image[n]);
-        else c.put8(at, image[n]);
-    }
-}
-void copy_row(Cpu& c, std::uint32_t from, std::uint32_t to) { write_row(c, to, read_row(c, from)); }
-
-// The buffered random stream: advance by two halfwords, refilling from rand when the cursor passes the limit
-// (unsigned), then the sample is the halfword under the cursor plus the seed word.
-void advance_stream(Cpu& c, std::uint32_t back) {
-    const auto cursor = c.toc(stream_cursor);
-    const auto next = c.u32(cursor) + 2;
-    const auto limit = c.u32(c.toc(stream_limit));
-    c.put32(cursor, next);
-    c.set(4, next);
-    if (next > limit) {
-        c.put32(cursor, c.toc(stream_start));
-        const auto drawn = invoke(c, rand_entry, back);
-        c.put32(c.toc(stream_seed), drawn & 0xffff);
-    }
-}
-std::uint32_t stream_sample(Cpu& c) { return std::uint32_t(c.u16(c.u32(c.toc(stream_cursor)))) + c.u32(c.toc(stream_seed)); }
 
 // rand * count / 32768, truncated toward zero, as the original's mulhw/rlwimi/srawi/addze sequence (low 32 bits).
 std::uint32_t scale(std::uint32_t draw, std::int32_t count) {
@@ -117,7 +79,7 @@ void draw_fixture_order(Cpu& c, std::uint32_t league, std::int32_t pairs) {
     c.set({{4, used + positive()}, {5, 0}, {6, positive()}});
     // The seed to restore after the shuffle: the stream's sample reduced to 1..30000.
     advance_stream(c, 0x104a4ab8);
-    const auto sample = std::int32_t(stream_sample(c));
+    const auto sample = std::int32_t(Pool::at(c).sample());
     const auto quotient = sample / 30000;
     const auto remainder = std::uint32_t(sample) - std::uint32_t(quotient) * 30000u;
     const auto restored = remainder + 1;
@@ -211,7 +173,7 @@ void draw_fixture_order(Cpu& c, std::uint32_t league, std::int32_t pairs) {
             if (std::int8_t(found_b) != -1 && std::int8_t(found_a) != -1) {
                 advance_stream(c, 0x104a5248);
                 c.set(4, c.u32(c.toc(stream_cursor)));
-                const auto draw = std::int32_t(stream_sample(c));
+                const auto draw = std::int32_t(Pool::at(c).sample());
                 const bool even = (draw & 1) == 0;
                 // Even: the second club leads the pair (slot 0), the first goes to slot pairs/2; odd: reverse.
                 const auto lead = sext8(even ? found_b : found_a), follow = sext8(even ? found_a : found_b);

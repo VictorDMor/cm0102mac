@@ -435,9 +435,8 @@ std::uint32_t sort_standings(Cpu& c, std::uint32_t league, std::uint32_t rows) {
                 from_first = 1;
                 c.set(15, 1);
             }
-            c.set({{4, rows}, {3, league}});
-            c.link(0x1049ec3c);
-            rank_by_head_to_head(c, league, rows);
+            // Through the dispatcher, not a direct call: 0x1049f030 is a draft, so production runs the original here.
+            invoke(c, 0x1049f030, 0x1049ec3c, {league, rows});
             break;
         }
         ++index;
@@ -482,16 +481,7 @@ std::uint32_t sort_standings(Cpu& c, std::uint32_t league, std::uint32_t rows) {
                             const auto upper = base_again + offset, lower = base_again + next;
                             // The two rows exchange every field except the padding at +0x1e, +0x2e, +0x3e
                             // and +0x1f/+0x2f/+0x3f (the original copies field by field).
-                            struct Field { std::uint32_t at; unsigned size; };
-                            static constexpr Field fields[] = {
-                                {0x00, 4}, {0x04, 1}, {0x08, 4}, {0x0c, 4}, {0x10, 4}, {0x14, 1}, {0x15, 1}, {0x16, 1}, {0x17, 1},
-                                {0x18, 2}, {0x1a, 2}, {0x1c, 2}, {0x20, 4}, {0x24, 1}, {0x25, 1}, {0x26, 1}, {0x27, 1},
-                                {0x28, 2}, {0x2a, 2}, {0x2c, 2}, {0x30, 4}, {0x34, 1}, {0x35, 1}, {0x36, 1}, {0x37, 1},
-                                {0x38, 2}, {0x3a, 2}, {0x3c, 2}, {0x40, 1}, {0x41, 1}, {0x42, 1}, {0x43, 1}};
-                            std::uint32_t saved[std::size(fields)];
-                            for (std::size_t n = 0; n < std::size(fields); ++n)
-                                saved[n] = fields[n].size == 4 ? c.u32(upper + fields[n].at)
-                                         : fields[n].size == 2 ? c.u16(upper + fields[n].at) : c.u8(upper + fields[n].at);
+                            const auto saved = read_row(c, upper);
                             // The registers the swap leaves behind (the sort's next calls and its exit see them).
                             c.set({{13, lha(c, upper + 0x18)}, {4, lha(c, upper + 0x1c)}, {5, c.u32(upper + 0x20)},
                                    {6, c.u8(upper + 0x24)}, {7, c.u8(upper + 0x25)}, {8, c.u8(upper + 0x26)},
@@ -501,18 +491,8 @@ std::uint32_t sort_standings(Cpu& c, std::uint32_t league, std::uint32_t rows) {
                                    {22, lha(c, upper + 0x38)}, {21, lha(c, upper + 0x3a)}, {20, lha(c, upper + 0x3c)},
                                    {19, c.u8(upper + 0x40)}, {18, c.u8(upper + 0x41)}, {17, c.u8(upper + 0x42)},
                                    {16, c.u8(upper + 0x43)}, {3, lower}, {14, 1}, {15, c.u8(upper + 0x17)}});
-                            for (std::size_t n = 0; n < std::size(fields); ++n) {
-                                const auto from = lower + fields[n].at, to = upper + fields[n].at;
-                                if (fields[n].size == 4) c.put32(to, c.u32(from));
-                                else if (fields[n].size == 2) c.put16(to, c.u16(from));
-                                else c.put8(to, c.u8(from));
-                            }
-                            for (std::size_t n = 0; n < std::size(fields); ++n) {
-                                const auto to = lower + fields[n].at;
-                                if (fields[n].size == 4) c.put32(to, saved[n]);
-                                else if (fields[n].size == 2) c.put16(to, saved[n]);
-                                else c.put8(to, saved[n]);
-                            }
+                            copy_row(c, lower, upper);
+                            write_row(c, lower, saved);
                             swapped = 1;
                         }
                     }

@@ -6,6 +6,7 @@
 // "(inferred)" marks a name no reader has confirmed.
 #include "comp_detail.hpp"
 #include "league_base.hpp"
+#include <array>
 
 namespace cm::aot::league_base {
 using guest::Frame;
@@ -126,4 +127,52 @@ inline void report(Cpu& c, const Frame& frame, const CheckSite& site) {
     guest::report_assertion(c, {site.at, pool + text::source_file, pool + text::report_format, pool + text::error,
                                 frame.at(site.name), frame.at(site.extension), site.line});
 }
+
+// The game's sample stream (the cells at TOC -0x7b90 salt, -0x7b8c start, -0x7b88 end, -0x7b84 cursor): the cursor
+// steps through a table of halfwords two bytes at a time; past the end it restarts at the start and a rand() gives
+// the salt (its low 16 bits). A draw is (halfword at the cursor + salt) reduced to the bound.
+struct Pool {
+    Cpu& c;
+    std::uint32_t salt, start, end, cursor;
+    static Pool at(Cpu& cpu) { return {cpu, cpu.toc(-0x7b90), cpu.toc(-0x7b8c), cpu.toc(-0x7b88), cpu.toc(-0x7b84)}; }
+    // `back` is the return address of the rand call in the routine that inlines the step.
+    void advance(std::uint32_t back) const {
+        const auto next = c.u32(cursor) + 2;
+        const auto last = c.u32(end);
+        c.put32(cursor, next);
+        if (next > last) {
+            c.put32(cursor, start);
+            c.call(0x1077b770, back);  // rand
+            c.put32(salt, c.r(3) & 0xffff);
+        }
+    }
+    std::uint32_t sample() const { return c.u32(salt) + c.u16(c.u32(cursor)); }
+};
+
+// The row fields the original copies one by one: the 0x44-byte standings row's bytes 5-7, 0x1e-0x1f, 0x2e-0x2f and
+// 0x3e-0x3f are never copied.
+struct RowField { std::uint8_t offset, size; };
+inline constexpr std::array<RowField, 32> row_fields = {{
+    {0x00, 4}, {0x04, 1}, {0x08, 4}, {0x0c, 4}, {0x10, 4}, {0x14, 1}, {0x15, 1}, {0x16, 1}, {0x17, 1},
+    {0x18, 2}, {0x1a, 2}, {0x1c, 2}, {0x20, 4}, {0x24, 1}, {0x25, 1}, {0x26, 1}, {0x27, 1}, {0x28, 2},
+    {0x2a, 2}, {0x2c, 2}, {0x30, 4}, {0x34, 1}, {0x35, 1}, {0x36, 1}, {0x37, 1}, {0x38, 2}, {0x3a, 2},
+    {0x3c, 2}, {0x40, 1}, {0x41, 1}, {0x42, 1}, {0x43, 1}}};
+using RowImage = std::array<std::uint32_t, 32>;
+inline RowImage read_row(Cpu& c, std::uint32_t row) {
+    RowImage image{};
+    for (std::size_t n = 0; n < row_fields.size(); ++n) {
+        const auto at = row + row_fields[n].offset;
+        image[n] = row_fields[n].size == 4 ? c.u32(at) : row_fields[n].size == 2 ? c.u16(at) : c.u8(at);
+    }
+    return image;
+}
+inline void write_row(Cpu& c, std::uint32_t row, const RowImage& image) {
+    for (std::size_t n = 0; n < row_fields.size(); ++n) {
+        const auto at = row + row_fields[n].offset;
+        if (row_fields[n].size == 4) c.put32(at, image[n]);
+        else if (row_fields[n].size == 2) c.put16(at, image[n]);
+        else c.put8(at, image[n]);
+    }
+}
+inline void copy_row(Cpu& c, std::uint32_t from, std::uint32_t to) { write_row(c, to, read_row(c, from)); }
 }

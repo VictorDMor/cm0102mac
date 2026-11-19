@@ -127,6 +127,7 @@ void schedule_fixtures(Cpu& c, std::uint32_t league_object, std::uint32_t date_a
     // +-65535 would take the scaled arm and call 0x104a3350, but the bounds here are a rating halfword (at most
     // 32768 in size) and a rating plus 1500 (at most 34267), so that arm (0x104a2d1c.., 0x104a2e7c..) cannot run.
     const auto draw = [&](std::int32_t bound, std::uint32_t back) {
+        h.publish();  // r20, r21 and r25 as the original holds them at the rand call (0x104a2cf0, 0x104a2e50)
         pool.advance(back);
         if (bound >= 0x10000 || bound <= -0x10000) throw std::logic_error("0x104a28d0: draw bound beyond 65535 (unreachable)");
         return reduce(pool.sample(), bound);
@@ -194,8 +195,8 @@ void schedule_fixtures(Cpu& c, std::uint32_t league_object, std::uint32_t date_a
         for (;;) {
             h.publish();
             const auto candidate = invoke(c, entry::list_next, 0x104a304c, {at(local::iterator)});
+            h.v[19] = candidate;  // `or. r19,r3,r3` at 0x104a304c: r19 is 0 when the list is exhausted
             if (!candidate) break;
-            h.v[19] = candidate;
             if (c.i8(league_object + field::owner) != c.i8(candidate + node::kind_byte)) continue;
             const bool fixed = c.u8(slot_at + 0xe) == 3;
             std::int32_t strength;

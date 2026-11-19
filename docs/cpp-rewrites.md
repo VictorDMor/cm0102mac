@@ -2345,7 +2345,8 @@ file's run of function descriptors, the class vtable 0x108cf608 and the contigui
 
 67 routines (0x1049e4f0..0x104aac14, 12,587 instructions, `tools/league_audit.py`), native-first: `native/league_base_*.cpp`
 (`league_*.cpp` already held two screen layouts). 65 run in production; 0x1049f030 (head-to-head order) and 0x104a0ab0
-(a rollover news pass) are drafts, each with one outcome no case returns from.
+(a rollover news pass) are drafts, each with one outcome no case returns from; the module's own code calls them
+through the dispatcher, not directly, so that the game runs the original for them.
 
 - Blocks: the save reader 0x104a6850 and writer 0x104a8530, fixture generation 0x104a4970 (draws `rand`, reseeds with
   `srand` twice), season setup and schedule rounds, standings and results, the daily update and season end, news.
