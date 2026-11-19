@@ -62,7 +62,9 @@ void news_prize_money(Cpu& c, std::uint32_t competition, std::uint32_t club, std
 void news_competition_year(Cpu& c, std::uint32_t competition, std::uint32_t club, std::uint32_t value) {
     const Frame frame(c, 0x104527c0, 0x130, {.first_gpr = 28});
     const auto news = c.toc(toc::news);
-    c.set({{28, competition}, {29, club}, {30, value}, {31, news}});
+    // r4 and r5 still hold the arguments at the first call, which sets r3 alone: a direct C++ caller has not
+    // put them in the registers, and the news manager reads what is there.
+    c.set({{4, club}, {5, value}, {28, competition}, {29, club}, {30, value}, {31, news}});
     if (std::int8_t(invoke(c, news_item::enabled, 0x104527f4, {c.u32(news)})) == 0) return;
     const auto item = frame.at(0x38);
     invoke(c, news_item::start, 0x1045280c, {item, 0x1f, 0});

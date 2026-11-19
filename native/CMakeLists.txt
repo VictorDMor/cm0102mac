@@ -4555,6 +4555,39 @@ if(CM_COMP_COVERAGE)
     target_link_options(cm-comp-checks PRIVATE "-fprofile-instr-generate=${CM_COMP_PROFILE}" -fsanitize=undefined)
 endif()
 
+# LEAGUE.CPP (tools/league_audit.py): the base league class. The glob is league_base_*.cpp:
+# league_selection_layout.cpp and league_standings_layout.cpp belong to other owners.
+file(GLOB CM_LEAGUE_BASE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/league_base_*.cpp")
+list(FILTER CM_LEAGUE_BASE_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_LEAGUE_BASE_SOURCES})
+file(GLOB CM_LEAGUE_BASE_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/league_base_checks*.cpp")
+add_executable(cm-league-base-checks ${CM_LEAGUE_BASE_CHECK_SOURCES})
+target_link_libraries(cm-league-base-checks PRIVATE cm_aot)
+target_compile_options(cm-league-base-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME league_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_league_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        set(CM_LEAGUE_BASE_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        # --require-all joins these once every entry is routed (tools/league_audit.py COMPLETE).
+        add_test(NAME league_equivalence COMMAND cm-league-base-checks ${CM_LEAGUE_BASE_INPUTS} --mutate 4 --call-trace)
+        add_test(NAME league_production COMMAND cm-league-base-checks ${CM_LEAGUE_BASE_INPUTS} --production)
+    endif()
+endif()
+option(CM_LEAGUE_BASE_COVERAGE "Instrument LEAGUE.CPP checker only" OFF)
+if(CM_LEAGUE_BASE_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/league-base-coverage")
+    set(CM_LEAGUE_BASE_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/league-base-coverage/check-%p.profraw")
+    add_library(cm_league_base_coverage OBJECT ${CM_LEAGUE_BASE_SOURCES})
+    target_link_libraries(cm_league_base_coverage PRIVATE cm_aot)
+    # Undefined behaviour the guest's wrapping arithmetic must never turn into: reported, not fatal.
+    target_compile_options(cm_league_base_coverage PRIVATE "-fprofile-instr-generate=${CM_LEAGUE_BASE_PROFILE}" -fcoverage-mapping -ffp-contract=off
+        -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+    target_compile_definitions(cm_league_base_coverage PRIVATE CM_LEAGUE_BASE_COVERAGE=1)
+    target_sources(cm-league-base-checks PRIVATE $<TARGET_OBJECTS:cm_league_base_coverage>)
+    target_compile_definitions(cm-league-base-checks PRIVATE CM_LEAGUE_BASE_COVERAGE=1)
+    target_link_options(cm-league-base-checks PRIVATE "-fprofile-instr-generate=${CM_LEAGUE_BASE_PROFILE}" -fsanitize=undefined)
+endif()
+
 # DISPLAY.CPP (tools/display_audit.py): the display table, its controls, input, drawing and network form.
 file(GLOB CM_DISPLAY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/display_*.cpp")
 list(FILTER CM_DISPLAY_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")

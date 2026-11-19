@@ -2341,6 +2341,31 @@ file's run of function descriptors, the class vtable 0x108cf608 and the contigui
   nation-awards `original-save` (one) reach the module among the captures that still replay; the rest of the
   evidence is controlled cases on the season-day snapshot.
 
+## LEAGUE.CPP: the base league class
+
+67 routines (0x1049e4f0..0x104aac14, 12,587 instructions, `tools/league_audit.py`), native-first: `native/league_base_*.cpp`
+(`league_*.cpp` already held two screen layouts). 65 run in production; 0x1049f030 (head-to-head order) and 0x104a0ab0
+(a rollover news pass) are drafts, each with one outcome no case returns from.
+
+- Blocks: the save reader 0x104a6850 and writer 0x104a8530, fixture generation 0x104a4970 (draws `rand`, reseeds with
+  `srand` twice), season setup and schedule rounds, standings and results, the daily update and season end, news.
+- `english_rules::premier_bench` used to be a generator hook at 0x104a8518 inside the loader; the rewrite calls it
+  after the `fclose`, before the success return.
+- Generated callers read r4-r10 after 26 of these entries (`league_base_volatile_readers.inc`); the checker compares
+  them at return. Four cross-block differences of that kind appeared only when all blocks ran together (a comparator's
+  r5 handed up by qsort, r9 of 0x104a44f0, the pilot comparators' r4/r5, r4-r7 of 0x104aa340).
+- Stack readers: 0x104a1540 keeps every frame store (GAME.CPP 0x1011d1d4 and the BlockMoveData bridge read what it
+  leaves); 0x104a28d0 builds its frame at the original sp; the writer keeps its locals at sp+0x38..0x40 (MAIN.CPP
+  0x107795d8) and 0x104a60e0 its frame (STADIUM.CPP 0x104affc0). 0x104a26b0 is called from MATCH_ENG.
+- Left unwritten on proofs, in the RNG code: draws of 0x104a28d0 with a bound beyond +-65535 (its bounds are an int16
+  rating and that plus 1500), the deeper levels of 0x104a3350 (the second level's bound is at most 32768), and a
+  division by n-1 in 0x104a00a0 where n is always even (the rewrite throws there).
+- A typed COMP routine called directly needs its argument registers set: `comp::news_competition_year` now puts r4/r5
+  itself (the league news calls it through the dispatcher; the direct call faulted before that change and was not
+  retried after it).
+- `season-day` and `same-save-continue` reach 21 and 25 entries, the nation-awards `original-save` the writer; no
+  capture reaches the loader.
+
 ## fog_of_war.cpp: what each human manager knows of every person
 
 24 routines (0x106fd120..0x106ff550, `tools/fog_of_war_audit.py`), native-first: `native/fog_of_war*.cpp`,

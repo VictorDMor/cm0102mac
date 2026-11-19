@@ -5,10 +5,12 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now: LEAGUE.CPP (2026-11-18, after COMP.CPP)
 
-The base league class: the inventory attributes 60 routines, 12,417 instructions (0x1049e680..0x104aaae4), bounds not proven yet. Victor approved the cost (estimate 1-2.5M tokens). Files `native/league_base_*` (`league_*.cpp` already holds two screen layouts).
+The base league class: 67 entries (0x1049e4f0..0x104aac14, 12,587 instructions), all written and compared with the original, 65 in production. Files `native/league_base_*`.
 
-- [ ] Inventory, audit, checker, adapter, generator hook, pilot block and brief.
-- [ ] Blocks, each checked against the original; review; route; pairs (season-day needs `CM_ENGLISH_RULES_ORIGINAL=1`); workbook; cleanup.
+- [ ] **Unexplained save difference (Victor, 2026-11-18: let it pass, he reports errors from play).** Loading the reference career and quick-saving at once, five runs with `CM_LEAGUE_ORIGINAL=1` wrote saves 80-106 bytes apart; of four C++ runs two were in that range and two were 6,823 and 47,725 bytes apart, spread over the whole file and each byte off by 6. Not investigated: it may be timing noise that happened to fall on C++ runs, or memory the C++ loader or writer reads that varies between runs. The script is in the session scratchpad (`league_load.sh`); the paired replays and the checker do not show it.
+- [ ] **No code review was run on this module** (same decision). Run `/code-review medium` on `native/league_base_*` before trusting the RNG and save paths; ask it to check the three proofs listed in `docs/cpp-rewrites.md`.
+- [ ] Two drafts: 0x1049f030 (allocation failure, assertion line 0x17d, cannot be forced on both sides) and 0x104a0ab0 ("club already in the seen list" has no returning case). Close them, then `COMPLETE = True` and the workbook row `Concluído`.
+- [ ] `comp::news_competition_year` direct call: retry it from `league_base_news.cpp` now that it sets r4/r5.
 
 ## Now: COMP.CPP (Victor's pick, 2026-11-18)
 
