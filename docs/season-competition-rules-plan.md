@@ -388,3 +388,32 @@ lengths, extra time and penalties, squad registration.
 Next: trace the readers of the starred and unidentified fields in the shared
 league code, so each becomes a named field of `CompetitionRules`; then the
 first editable set is the value table above for every rewritten league.
+
+## Competition editor, stage 1: the editable values (2026-11-19)
+
+From the field map of the three base classes (COMP, LEAGUE, CUP in C++) and the readers found in the export. Only
+fields whose meaning a reader confirms are listed; six fields stay unknown and twelve likely, and are not editable.
+
+| Value | Where | Takes effect |
+| --- | --- | --- |
+| Automatic promotion places, playoff clubs, relegation places | league +0xc0, +0xc1, +0xc3 | at once on screens; decides at the season's end |
+| Points for a win and for a draw | league +0xc4, +0xc5 | results after the edit; earlier points are not recomputed |
+| Tie-break order (up to four criteria) | league +0xc7..+0xca | at once: the table is re-sorted from stored statistics; head-to-head needs its blocks, allocated at placement |
+| Bench size and substitutions | league and cup +0x46, +0x47 | fixtures made after the edit (copied into each fixture's +0x4e): next season for a league, next round for a cup. The match engine caps each at 9 |
+| Prize pool and how it is shared | league and cup +0x28, +0xe1 | at the season's end; a cup's pool is paid out tie by tie |
+| Ruling body (discipline tables) | +0x4a | at once, but it is not saved: the constructor restores it on every load, so the override belongs in `governing_body` |
+| Cup round: legs, extra-time and replay kind, prize per round | round row +0x22, +0x23, +0x24, +0x6c, +0x70, +0x74 | rounds whose fixtures are not made yet |
+
+Not plain values, so stage 2: the number of clubs (+0x3e: the setup collects exactly that many clubs of the division
+and sizes the table and calendar by it), meetings per pair (+0x3c must match the calendar's round count +0xa6), the
+calendar tables, the stage structure. Suspensions are code in the per-body rulebooks; the only value is the ruling
+body. Extra time and penalties of a league are a flag word (+0xa8) every setup leaves at 0. Squad registration limits
+were not found as competition fields.
+
+Apply point. Every value above except +0x4a is saved with the competition, and `configure` never runs on load, so an
+override written into the record once persists. For leagues the common point is the entry of `set_up` (0x104a00a0,
+native, 202 call sites: every derived league at construction and rollover and the league stages of cups), which runs
+after `configure` and `collect_clubs` and before anything consumes the values; the return of `configure` would be too
+early for +0x28 and +0xe1. For cups it is the entry of vt+0x9c (0x10479100, native, shared by 60 vtables). CUP_STAGE
+(0x104bd8c0) and six vtables without +0x9c are not covered. Setup is not idempotent (`collect_clubs` pays every club),
+so an edit during a season writes the record directly and never re-runs a setup.
