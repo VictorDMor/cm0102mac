@@ -219,8 +219,9 @@ void announce_pairings(Cpu& c, std::uint32_t league, std::uint32_t seen) {
                  ++stage_index, stage_offset += 4) {
                 const auto stage = c.u32(c.u32(league + competition::stages) + stage_offset);
                 if (c.u8(stage + competition::kind) == league::kind) {
-                    // Through the dispatcher, not a direct call: 0x104a0ab0 is a draft, so production runs the original here.
-                    invoke(c, 0x104a0ab0, 0x104a0dfc, {stage, seen});
+                    c.set({{3, stage}, {4, seen}});
+                    c.link(0x104a0dfc);
+                    announce_pairings(c, stage, seen);
                 }
                 c.set({{25, stage_offset + 4}, {24, std::uint32_t(stage_index) + 1}});
             }

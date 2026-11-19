@@ -304,7 +304,12 @@ LEAGUE_CASES("table: rank") {
                                      "rank " + hex(l) + " list " + hex(list[0] * 1000 + list[1] * 100 + list[2] * 10 + list[3]) + " scramble " + std::to_string(scrambled)));
             }
         }
-        // The allocation failure (assertion, line 0x17d) cannot be driven: the original's call of 0x10775200 runs in place, so an answer reaches only the rewrite.
+        // The allocation failure (assertion, line 0x17d): the club count is a signed halfword passed as the element count of
+        // the clearing allocator 0x10775200 (element size 0x44). A negative count makes the 32-bit product 0x44 * count wrap to
+        // 2^32 - 0x44 * |count|; the real allocator rejects sizes above 0xffffffb7, on both sides alike (no answer needed).
+        for (const std::uint32_t negative : {0xffffu, 0xfffeu, 0x8000u})
+            cases.push_back(make(rank_head_to_head, {{3, l}, {4, rows}}, scramble(w, l, 3, 1).h(l + 0x3e, negative).sort_words(l, 0).w,
+                                 "rank " + hex(l) + " allocation fails, clubs " + hex(negative)));
         // Fewer clubs than rows, one club, none.
         for (const std::uint32_t count : {0u, 1u, 2u, 3u})
             cases.push_back(make(rank_head_to_head, {{3, l}, {4, rows}}, scramble(w, l, 3, 1).h(l + 0x3e, count).sort_words(l, 0).w,

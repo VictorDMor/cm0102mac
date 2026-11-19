@@ -77,8 +77,9 @@ std::uint32_t daily_update(Cpu& c, std::uint32_t league, std::uint32_t date, std
             auto day = (std::uint32_t(c.u16(c.toc(cell::descriptors) + std::uint32_t(std::int32_t(code) * 0x4c) + 0x16)) + 1) & 0xffff;
             if (day > 0x16c) day = 0;
             if (std::int32_t(day) == c.i16(today) && c.i16(league + competition::year) == std::int32_t(c.u16(today + 2))) {
-                // Through the dispatcher, not a direct call: 0x104a0ab0 is a draft, so production runs the original here.
-                invoke(c, 0x104a0ab0, 0x104a16b0, {league, 0});
+                c.set({{3, league}, {4, 0}});
+                c.link(0x104a16b0);
+                announce_pairings(c, league, 0);
             }
         }
     }

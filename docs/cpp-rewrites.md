@@ -2344,10 +2344,10 @@ file's run of function descriptors, the class vtable 0x108cf608 and the contigui
 ## LEAGUE.CPP: the base league class
 
 67 routines (0x1049e4f0..0x104aac14, 12,587 instructions, `tools/league_audit.py`), native-first: `native/league_base_*.cpp`
-(`league_*.cpp` already held two screen layouts). 65 run in production; 0x1049f030 (head-to-head order) and 0x104a0ab0
-(a rollover news pass) are drafts, each with one outcome no case returns from; the module's own code calls them
-through the dispatcher, not directly, so that the game runs the original for them.
-
+(`league_*.cpp` already held two screen layouts), all in production.
+- The allocation failure of 0x1049f030 is checked with a negative club count: the element count is a signed halfword,
+  so the 32-bit size wraps past what the allocator accepts and the real allocator returns null on both sides. No
+  `answers` entry can do that, because the generated original runs the allocator in place.
 - Blocks: the save reader 0x104a6850 and writer 0x104a8530, fixture generation 0x104a4970 (draws `rand`, reseeds with
   `srand` twice), season setup and schedule rounds, standings and results, the daily update and season end, news.
 - `english_rules::premier_bench` used to be a generator hook at 0x104a8518 inside the loader; the rewrite calls it

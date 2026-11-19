@@ -435,8 +435,9 @@ std::uint32_t sort_standings(Cpu& c, std::uint32_t league, std::uint32_t rows) {
                 from_first = 1;
                 c.set(15, 1);
             }
-            // Through the dispatcher, not a direct call: 0x1049f030 is a draft, so production runs the original here.
-            invoke(c, 0x1049f030, 0x1049ec3c, {league, rows});
+            c.set({{3, league}, {4, rows}});
+            c.link(0x1049ec3c);
+            rank_by_head_to_head(c, league, rows);
             break;
         }
         ++index;

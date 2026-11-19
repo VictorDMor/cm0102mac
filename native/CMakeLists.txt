@@ -4570,7 +4570,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json")
         set(CM_LEAGUE_BASE_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
         # --require-all joins these once every entry is routed (tools/league_audit.py COMPLETE).
         add_test(NAME league_equivalence COMMAND cm-league-base-checks ${CM_LEAGUE_BASE_INPUTS} --mutate 4 --call-trace)
-        add_test(NAME league_production COMMAND cm-league-base-checks ${CM_LEAGUE_BASE_INPUTS} --production)
+        add_test(NAME league_production COMMAND cm-league-base-checks ${CM_LEAGUE_BASE_INPUTS} --production --require-all)
     endif()
 endif()
 option(CM_LEAGUE_BASE_COVERAGE "Instrument LEAGUE.CPP checker only" OFF)

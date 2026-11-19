@@ -483,6 +483,17 @@ LEAGUE_CASES("rollover: announce") {
                     base.label = label("matches duplicate row");
                     cases.push_back(base);
                 }
+                // The seen list built by the game's own routines (0x10738c00 constructs it, the draw's 0x10738d10 appends the
+                // first club), the draw's list empty and real: a club listed twice is found in the seen list (no second draw),
+                // and the other rows are not found in a list that already holds a club.
+                if (drawn == 3 && involved) {
+                    Case seen{.entry = announce, .registers = {{3, league}, {4, 0}}, .memory = {w32(w.row(league, 1), first)},
+                              .answers = {{0x104646d0, 1}, {0x102cdbf0, 1}, {0x1048b4e0, 3}}, .label = label("seen list found")};
+                    cases.push_back(seen);
+                    seen.memory = {w32(w.row(league, 2), first)};
+                    seen.label = label("seen list found later row");
+                    cases.push_back(seen);
+                }
             }
         cases.push_back({.entry = announce, .registers = {{3, league}, {4, 0}}, .answers = {{0x104646d0, 0}}, .label = label("not national")});
         cases.push_back({.entry = announce, .registers = {{3, league}, {4, 0}}, .memory = {w8(league + 0x44, 0)}, .answers = {{0x104646d0, 1}}, .label = label("owned")});

@@ -1,7 +1,7 @@
 // LEAGUE.CPP block `table` (league_base_table*.cpp): entry, end, results, digest of the original body, hook.
 // The standings' order (league_base_table_order.cpp).
 LEAGUE_BASE_ROUTINE(0x1049eb30, 0x1049f030, R3, "a51811b4130d4028", [](Cpu& c) { c.set(3, league_base::sort_standings(c, c.r(3), c.r(4))); })
-LEAGUE_BASE_DRAFT(0x1049f030, 0x1049f318, NONE, "c5d487064e9387a4", [](Cpu& c) { league_base::rank_by_head_to_head(c, c.r(3), c.r(4)); })
+LEAGUE_BASE_ROUTINE(0x1049f030, 0x1049f318, NONE, "c5d487064e9387a4", [](Cpu& c) { league_base::rank_by_head_to_head(c, c.r(3), c.r(4)); })
 LEAGUE_BASE_ROUTINE(0x1049f9a0, 0x1049fc74, R3, "c6794985f8027236", [](Cpu& c) { c.set(3, std::uint32_t(league_base::compare_standings(c, c.r(3), c.r(4)))); })
 LEAGUE_BASE_ROUTINE(0x1049fc80, 0x1049fdb4, R3, "c9a688a53f424f32", [](Cpu& c) { c.set(3, std::uint32_t(league_base::compare_standings_by_name(c, c.r(3), c.r(4)))); })
 LEAGUE_BASE_ROUTINE(0x1049fdc0, 0x1049ff88, R3, "e2d2740b622b11ca", [](Cpu& c) { c.set(3, std::uint32_t(league_base::compare_head_to_head(c, c.r(3), c.r(4)))); })

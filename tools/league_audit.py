@@ -120,7 +120,7 @@ LEAGUE_BASE_ENTRIES = tuple(entry for entry, _ in ROUTINES)
 
 # Whether the generator requires every entry routed (LEAGUE_BASE_ROUTINE); False while an entry is still
 # unwritten or a draft.
-COMPLETE = False
+COMPLETE = True
 
 
 def require_league_base_index(db, path=INCLUDES, complete=None):
