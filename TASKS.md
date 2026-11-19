@@ -5,12 +5,13 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 ## Now: competition editor, stage 1 (Victor, 2026-11-19)
 
-Victor chose to build the values editor before COMP_UTIL.CPP. Stage 1 edits the plain values a competition stores in its record at season setup (promotion and relegation places, points, tie-breaks, bench and substitutions, prizes, legs), for every league and cup including those whose modules are still generated, by applying overrides at one common point after the competition's own setup. Reachable at New Game and during a career. Structure (number of clubs, stages, calendar) is stage 2, after COMP_UTIL.CPP.
+Victor's shape for it (2026-11-19): **a separate editor, as Football Manager's, opened from the start screen, saving into a custom database**; competitions only for now, almost everything later. Inside a career the user may change rules too, **choosing the future season from which they apply**. Stage 1 edits the plain values listed in `docs/season-competition-rules-plan.md` ("the editable values"); structure (clubs, stages, calendar) is stage 2, after COMP_UTIL.CPP.
 
-- [ ] Field map: every such field with its readers and a confirmed meaning, when an edit takes effect, what the save already carries, and the common apply point (`.local/rewrites/editor/fields.md`, then the confirmed part into the rules plan).
-- [ ] Rule packs in TOML (toml++): schema and validation shared by loader and editor; the shipped packs equal to the original values and checked against them; the save carries the resolved values, not a reference to a pack; the existing `native_rules.tmp` line format still read.
-- [ ] The apply point, with a check that defaults change nothing (paired replays identical).
-- [ ] The editor screens (New Game and in career).
+- [x] Field map: confirmed values, when an edit takes effect, what the save carries, the apply points (rules plan; working notes in `.local/rewrites/editor/fields.md`).
+- [ ] The original values as data: a tool that creates each season database's world and dumps every competition's editable values, giving the shipped base packs and the check that they equal the original.
+- [ ] Custom database: a base season plus the user's changes, in TOML (toml++); schema and validation shared by loader and editor; chosen at New Game next to the season; the save carries the resolved values and the scheduled changes, never a reference to a file; `native_rules.tmp` in its current line format still read.
+- [ ] Apply points (league `set_up`, cup vt+0x9c, `governing_body`), with the proof that defaults change nothing (paired replays identical), and scheduled changes applied at the chosen season through the per-career timeline.
+- [ ] The editor itself, opened from the start screen; then the in-career screen that schedules a change for a future season.
 
 ## CUP.CPP delivered (2026-11-19)
 
