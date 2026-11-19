@@ -3,9 +3,13 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
-## Now: CUP.CPP (2026-11-19, after LEAGUE.CPP)
+## CUP.CPP delivered (2026-11-19)
 
-The base cup class: 47 entries (0x10478f20..0x104866f0, 13,700 instructions; the inventory had 42). Files `native/cup_base_*`. Pilot of 9 entries written; seven blocks to write (tree, result, draws, rounds, storage, daily, queries), then the all-blocks run, review, route, pairs, workbook, cleanup. The Inter-American Cup retirement hook at 0x10482ca0 stays ahead of the module's hook.
+The base cup class: 47 entries (0x10478f20..0x104866f0, 13,700 instructions), all in production. Files `native/cup_base_*`. Next by the competition base: COMP_UTIL.CPP (33 routines, 21,438 instructions: over the size that needs Victor's go-ahead on cost).
+
+- [ ] From the review, open: `process_fixture` (0x1047bfb0) hands the fixture manager copy bytes it never writes on outcomes 1 and 2 (stale stack; `docs/cpp-rewrites.md`). No stack reader is catalogued there; a capture through a cup round would settle it (Victor's to record).
+- [ ] Style, from the review: `process_fixture` and the rounds draw still call this module's own routines and DATE.CPP through the dispatcher; the rounds block is close to register transcription (`o.v[n]`); the slot gather and two-pass placement are written three times in the draws; the memory-error report four times; the date-order test four times.
+- [ ] Tests that are "Not Run" for lack of a built checker can hide old failures: `cup_stage_production` had been failing since 2026-11-07 (a one-unit leaf budget, after the generator split that leaf in two runs) and was only seen when its checker was built for this delivery. Fixed. Worth one pass over the unbuilt checkers when disk allows.
 
 ## Now: LEAGUE.CPP (2026-11-18, after COMP.CPP)
 

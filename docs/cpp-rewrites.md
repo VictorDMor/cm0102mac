@@ -2367,6 +2367,35 @@ file's run of function descriptors, the class vtable 0x108cf608 and the contigui
 - `season-day` and `same-save-continue` reach 21 and 25 entries, the nation-awards `original-save` the writer; no
   capture reaches the loader.
 
+## CUP.CPP: the base cup class
+
+47 routines (0x10478f20..0x104866f0, 13,700 instructions, `tools/cup_audit.py`), native-first: `native/cup_base_*.cpp`
+(`cup_stage*` is another module), all in production.
+
+- Blocks: the fixture tree 0x10479100 and the draws (RNG through the buffered stream, scaled with 65535.0), a fixture's
+  result 0x1047bfb0 (who goes through a tie; MATCH_DAY calls it through vt +0xc), the round's draw and fixtures, the
+  save reader 0x104831a0 and writer 0x10484420, the daily update 0x10482ca0, news, prizes and ranks.
+- The Inter-American Cup retirement is tested twice: the generator hook `inter_amer_cup_skip_daily` stays ahead of
+  the module's hook at 0x10482ca0, and the C++ body begins with the same test, because a dispatch probe or a direct
+  call does not pass the generated entry. Change the policy in both.
+- Series ties (fixture flags 0x2000): the decider 0x10482640 takes 3 from the winner's mark at fixture +0x3d/+0x3e and
+  answers 4 until a mark is below -5. The postponed path of 0x1047bfb0 hands the fixture copy to the fixture manager
+  with those marks intact; a first version zeroed them, which only a review caught, since no case had nonzero marks.
+  The checker now captures the 0x50 bytes handed to 0x104888f0 and 0x10489900 (`Case::Capture`).
+- 0x1047bfb0 passes on bytes of its fixture copy at sp+0x360 that it never writes on outcomes 1 and 2 (0x38e, 0x39c,
+  0x3ad-0x3af, 0x364/0x378 unless the derived cup's vt +0x84 fills them). They are whatever earlier code left at that
+  depth and reach fixture records; no stack reader is listed for it and only four captured calls reach the routine.
+- Stack readers: 0x1047f3a0 keeps every frame store (the BlockMoveData bridge reads them, and it reads its own stale
+  byte at sp+0xe7); the daily routine calls DATE 0x107156b0 at the original stack pointer (GAME.CPP 0x1011d1d4 reads
+  what it leaves). Both rest on the paired replays.
+- Left unwritten on proofs the review confirmed: the floating-point arm of the tree's draw and the recursion of
+  0x1047a9e0 (bounds are sign-extended halfwords; the finer bound is at most 32768), the dead assertion
+  0x10481f6c..0x10481fcc, the repeated compare at 0x10482228, the dead `or r29,r3,r3` at 0x104859f4.
+- Several outcomes return only with the checker's `--null-page` (a null competition record, a failed `new(8)`, a null
+  fixture read before its null test): the original reads address 0 there.
+- `season-day` reaches 3 entries and `same-save-continue` 14; the nation-awards `original-save` the writer. No capture
+  reaches the loader, the tree or three of the four draws.
+
 ## fog_of_war.cpp: what each human manager knows of every person
 
 24 routines (0x106fd120..0x106ff550, `tools/fog_of_war_audit.py`), native-first: `native/fog_of_war*.cpp`,

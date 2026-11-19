@@ -92,8 +92,10 @@ bool probe(State& s) {
     else if(target==0x10739890){
         c.put32(c.r(6),0x43555000);c.put32(c.r(7),0x43505000);
         // Cpu::call executes the following version-text leaf before the probe.
-        // Its single charged block is external; the next boundary resets this.
-        if(ownership_mode)s.budget=s.executed+1;
+        // Its charged runs are external; the next boundary resets this. The leaf is two runs
+        // since database_checks_search.cpp compares the PC with its entry (0x10768810), which
+        // gives its blr a run of its own.
+        if(ownership_mode)s.budget=s.executed+2;
     }
     else if(target==0x1077b720)c.put32(a,c.r(8));
     else if(target==0x1077b770)result=0x9876;

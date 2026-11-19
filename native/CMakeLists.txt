@@ -4588,6 +4588,40 @@ if(CM_LEAGUE_BASE_COVERAGE)
     target_link_options(cm-league-base-checks PRIVATE "-fprofile-instr-generate=${CM_LEAGUE_BASE_PROFILE}" -fsanitize=undefined)
 endif()
 
+# CUP.CPP (tools/cup_audit.py): the base cup class. The glob is cup_base_*.cpp: cup_stage*.cpp is CUP_STAGE.CPP.
+file(GLOB CM_CUP_BASE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cup_base_*.cpp")
+list(FILTER CM_CUP_BASE_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_CUP_BASE_SOURCES})
+file(GLOB CM_CUP_BASE_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cup_base_checks*.cpp")
+add_executable(cm-cup-base-checks ${CM_CUP_BASE_CHECK_SOURCES})
+target_link_libraries(cm-cup-base-checks PRIVATE cm_aot)
+target_compile_options(cm-cup-base-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME cup_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_cup_audit.py")
+    if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        set(CM_CUP_BASE_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
+        # --require-all joins these once every entry is routed (tools/cup_audit.py COMPLETE). season-day predates
+        # the English rule changes: its snapshot needs the original rules.
+        add_test(NAME cup_equivalence COMMAND cm-cup-base-checks ${CM_CUP_BASE_INPUTS} --mutate 4 --call-trace)
+        add_test(NAME cup_production COMMAND cm-cup-base-checks ${CM_CUP_BASE_INPUTS} --production --require-all)
+        set_tests_properties(cup_equivalence cup_production PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
+    endif()
+endif()
+option(CM_CUP_BASE_COVERAGE "Instrument CUP.CPP checker only" OFF)
+if(CM_CUP_BASE_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/cup-base-coverage")
+    set(CM_CUP_BASE_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/cup-base-coverage/check-%m.profraw")
+    add_library(cm_cup_base_coverage OBJECT ${CM_CUP_BASE_SOURCES})
+    target_link_libraries(cm_cup_base_coverage PRIVATE cm_aot)
+    # Undefined behaviour the guest's wrapping arithmetic must never turn into: reported, not fatal.
+    target_compile_options(cm_cup_base_coverage PRIVATE "-fprofile-instr-generate=${CM_CUP_BASE_PROFILE}" -fcoverage-mapping -ffp-contract=off
+        -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+    target_compile_definitions(cm_cup_base_coverage PRIVATE CM_CUP_BASE_COVERAGE=1)
+    target_sources(cm-cup-base-checks PRIVATE $<TARGET_OBJECTS:cm_cup_base_coverage>)
+    target_compile_definitions(cm-cup-base-checks PRIVATE CM_CUP_BASE_COVERAGE=1)
+    target_link_options(cm-cup-base-checks PRIVATE "-fprofile-instr-generate=${CM_CUP_BASE_PROFILE}" -fsanitize=undefined)
+endif()
+
 # DISPLAY.CPP (tools/display_audit.py): the display table, its controls, input, drawing and network form.
 file(GLOB CM_DISPLAY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/display_*.cpp")
 list(FILTER CM_DISPLAY_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
