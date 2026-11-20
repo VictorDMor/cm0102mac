@@ -64,7 +64,8 @@ bool CompetitionEditorDocument::edited(std::size_t competition, const Parameter&
     return find(competition, p, round) != nullptr;
 }
 
-std::string CompetitionEditorDocument::set(std::size_t competition, const Parameter& p, std::int32_t round, std::int32_t value) {
+CompetitionEditorDocument::Refusal CompetitionEditorDocument::set(std::size_t competition, const Parameter& p, std::int32_t round, std::int32_t value) {
+    using Why = Refusal::Kind;
     const auto t = target(competition);
     const auto same = [&](const ov::Override& o) { return !o.from_season && o.target == t && o.parameter == &p && o.round == round; };
     if (value == original(competition, p, round)) {
@@ -72,8 +73,10 @@ std::string CompetitionEditorDocument::set(std::size_t competition, const Parame
         return {};
     }
     const ov::Override entry{.target = t, .parameter = &p, .round = round, .value = value};
-    if (auto why = ov::problem(entry); !why.empty()) return why;
-    if (round >= 0 && std::size_t(round) >= competitions_.at(competition).rounds.size()) return "the cup has no such round";
+    if (!competition_values::range_problem(p, value).empty()) return {Why::range, p.min, p.max, {}};
+    if (p.id.starts_with("league.tiebreak.") && value == 4) return {Why::head_to_head, 0, 0, {}};
+    if (auto why = ov::problem(entry); !why.empty()) return {Why::other, 0, 0, std::move(why)};
+    if (round >= 0 && std::size_t(round) >= competitions_.at(competition).rounds.size()) return {Why::no_round, 0, 0, {}};
     if (t.kind == Kind::league) {
         // The game does not write places beyond the club count (competition_overrides.hpp), so neither is saved.
         static const std::array<std::string_view, 3> places{"league.promotion.automatic", "league.promotion.playoff", "league.relegation.places"};
@@ -81,8 +84,7 @@ std::string CompetitionEditorDocument::set(std::size_t competition, const Parame
             const auto clubs = original(competition, *competition_values::find_parameter("league.structure.clubs"), -1);
             std::int32_t sum = 0;
             for (const auto id : places) sum += id == p.id ? value : this->value(competition, *competition_values::find_parameter(id), -1);
-            if (value > clubs || sum > clubs)
-                return "promotion, playoff and relegation places (" + std::to_string(sum) + ") exceed the league's " + std::to_string(clubs) + " clubs";
+            if (value > clubs || sum > clubs) return {Why::places, sum, clubs, {}};
         }
     }
     if (const auto at = std::ranges::find_if(entries_, same); at != entries_.end()) at->value = value;
@@ -106,23 +108,21 @@ std::size_t CompetitionEditorDocument::scheduled(std::size_t competition) const 
     return std::size_t(std::ranges::count_if(entries_, [&](const ov::Override& o) { return o.target == t && o.from_season; }));
 }
 
-std::vector<std::string> CompetitionEditorDocument::warnings(std::size_t competition) const {
-    std::vector<std::string> out;
+std::vector<CompetitionEditorDocument::Warning> CompetitionEditorDocument::warnings(std::size_t competition) const {
+    std::vector<Warning> out;
     const auto t = target(competition);
     const auto touches = [&](std::string_view prefix) {
         return std::ranges::any_of(entries_, [&](const ov::Override& o) { return o.target == t && o.parameter->id.starts_with(prefix); });
     };
     if (touches("league.promotion.") || touches("league.relegation."))
-        out.push_back("Promotion and relegation places are not compared with the divisions above and below: if they do not "
-                      "balance, the divisions change size at the season's end.");
+        out.push_back({Warning::Kind::places_unchecked});
     if (touches("league.bench") || touches("cup.bench") || touches("league.substitutions") || touches("cup.substitutions")) {
         const auto kind = t.kind == Kind::league ? "league." : "cup.";
         const auto bench = value(competition, *competition_values::find_parameter(std::string(kind) + "bench"), -1);
         const auto subs = value(competition, *competition_values::find_parameter(std::string(kind) + "substitutions"), -1);
-        if (subs > bench) out.push_back("More substitutions than named reserves: a match allows at most as many as the bench holds.");
+        if (subs > bench) out.push_back({Warning::Kind::more_substitutions_than_bench});
     }
-    if (const auto n = scheduled(competition))
-        out.push_back(std::to_string(n) + " value(s) of this competition start in a later season; they are kept as they are.");
+    if (const auto n = scheduled(competition)) out.push_back({Warning::Kind::scheduled, n});
     return out;
 }
 

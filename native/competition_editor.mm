@@ -3,6 +3,7 @@
 #include "career_rules.hpp"
 #include "competition_defaults.hpp"
 #include "competition_editor_document.hpp"
+#include "competition_editor_text.hpp"
 #include <algorithm>
 #include <charconv>
 #include <fstream>
@@ -14,6 +15,7 @@
 namespace fs = std::filesystem;
 using cm::aot::CompetitionEdition;
 using cm::aot::CompetitionEditorDocument;
+using T = cm::aot::EditorText;
 using cm::aot::competition_values::Kind;
 using cm::aot::competition_values::Parameter;
 
@@ -33,29 +35,35 @@ std::string plain(NSString* text) {
 }
 fs::path path_of(NSURL* url) { return fs::path(url.fileSystemRepresentation); }
 
+// The language the window was opened in (the game's language byte).
+unsigned language = 0;
+NSString* tr(T text) { return utf8(std::string(cm::aot::editor_text(language, text))); }
+NSString* tr(T text, std::initializer_list<std::string> values) { return utf8(cm::aot::filled(cm::aot::editor_text(language, text), values)); }
+NSString* label_of(const Parameter& p) { return utf8(cm::aot::editor_label(language, p)); }
+
 NSString* edition_title(CompetitionEdition edition) {
     switch (edition) {
-    case CompetitionEdition::cm0001_389: return @"2000/01 database";
-    case CompetitionEdition::cm0102: return @"2001/02 database";
-    case CompetitionEdition::si_3968: return @"2002/03 database";
+    case CompetitionEdition::cm0001_389: return tr(T::edition_database, {"2000/01"});
+    case CompetitionEdition::cm0102: return tr(T::edition_database, {"2001/02"});
+    case CompetitionEdition::si_3968: return tr(T::edition_database, {"2002/03"});
     }
     return @"?";
 }
 NSString* effect_note(const Parameter& p) {
     using E = cm::aot::competition_values::Effect;
     switch (p.effect) {
-    case E::at_once: return @"";
-    case E::results_after_edit: return @"counts for every result of the career";
-    case E::fixtures_after_edit: return @"copied into each fixture when it is made";
-    case E::season_end: return @"paid at the season's end";
-    case E::rounds_not_drawn: return @"";
+    case E::results_after_edit: return tr(T::effect_results);
+    case E::fixtures_after_edit: return tr(T::effect_fixtures);
+    case E::season_end: return tr(T::effect_season_end);
+    case E::at_once:
+    case E::rounds_not_drawn: break;
     }
     return @"";
 }
 // The tie-break codes of a league table's ordering (league_base_table_order.cpp).
 NSArray<NSString*>* tie_break_titles() {
-    return @[@"— (ends the list)", @"Goal difference", @"Goals scored", @"Wins", @"Head-to-head (not editable yet)",
-             @"Away goals", @"Keep the order"];
+    return @[tr(T::tie_break_end), tr(T::tie_break_goal_difference), tr(T::tie_break_goals_scored), tr(T::tie_break_wins),
+             tr(T::tie_break_head_to_head), tr(T::tie_break_away_goals), tr(T::tie_break_keep_order)];
 }
 bool is_tie_break(const Parameter& p) { return p.id.starts_with("league.tiebreak."); }
 
@@ -109,51 +117,53 @@ struct Shown {
 }
 
 - (void)build {
-    const CGFloat width = 980, height = 660, list = 300, top = 44, bottom = 76;
+    const CGFloat width = 1120, height = 660, list = 300, top = 44, bottom = 76;
     self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, width, height)
                                               styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable |
                                                         NSWindowStyleMaskMiniaturizable
                                                 backing:NSBackingStoreBuffered defer:NO];
-    self.window.title = @"Competition Editor";
+    self.window.title = tr(T::window_title);
     self.window.releasedWhenClosed = NO;
     self.window.delegate = self;
-    self.window.minSize = NSMakeSize(820, 480);
+    self.window.minSize = NSMakeSize(1000, 480);
     NSView* content = self.window.contentView;
 
     // Top row: the database, its base, and what to do with it.
     CGFloat x = 12;
     const CGFloat row = height - top + 8;
-    NSTextField* caption = [NSTextField labelWithString:@"Database:"];
-    caption.frame = NSMakeRect(x, row + 4, 70, 20);
+    NSTextField* caption = [NSTextField labelWithString:tr(T::database)];
+    [caption sizeToFit];
+    caption.frame = NSMakeRect(x, row + 4, caption.frame.size.width, 20);
     caption.autoresizingMask = NSViewMinYMargin;
     [content addSubview:caption];
-    x += 72;
+    x += caption.frame.size.width + 6;
     self.name = [NSTextField textFieldWithString:@""];
-    self.name.placeholderString = @"Name of this custom database";
-    self.name.frame = NSMakeRect(x, row + 2, 220, 24);
+    self.name.placeholderString = tr(T::name_placeholder);
+    self.name.frame = NSMakeRect(x, row + 2, 190, 24);
     self.name.autoresizingMask = NSViewMinYMargin;
     self.name.target = self;
     self.name.action = @selector(nameChanged:);
     [content addSubview:self.name];
-    x += 228;
-    self.edition = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(x, row, 170, 28) pullsDown:NO];
+    x += 196;
+    self.edition = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(x, row, 190, 28) pullsDown:NO];
     self.edition.autoresizingMask = NSViewMinYMargin;
     self.edition.target = self;
     self.edition.action = @selector(editionChanged:);
     [content addSubview:self.edition];
-    x += 178;
-    [self button:@"New" action:@selector(newDatabase:) x:&x y:row in:content];
-    [self button:@"Open…" action:@selector(openDatabase:) x:&x y:row in:content];
-    [self button:@"Save" action:@selector(saveDatabase:) x:&x y:row in:content];
-    [self button:@"Save As…" action:@selector(saveDatabaseAs:) x:&x y:row in:content];
-    self.chosen = [NSButton checkboxWithTitle:@"Use for new careers" target:self action:@selector(chosenChanged:)];
-    self.chosen.frame = NSMakeRect(x + 8, row + 4, 180, 20);
+    x += 196;
+    [self button:tr(T::new_database) action:@selector(newDatabase:) x:&x y:row in:content];
+    [self button:tr(T::open) action:@selector(openDatabase:) x:&x y:row in:content];
+    [self button:tr(T::save) action:@selector(saveDatabase:) x:&x y:row in:content];
+    [self button:tr(T::save_as) action:@selector(saveDatabaseAs:) x:&x y:row in:content];
+    self.chosen = [NSButton checkboxWithTitle:tr(T::use_for_new) target:self action:@selector(chosenChanged:)];
+    [self.chosen sizeToFit];
+    self.chosen.frame = NSMakeRect(x + 8, row + 4, self.chosen.frame.size.width + 8, 20);
     self.chosen.autoresizingMask = NSViewMinYMargin;
     [content addSubview:self.chosen];
 
     // Left: the competitions.
     self.search = [[NSSearchField alloc] initWithFrame:NSMakeRect(12, height - top - 30, list, 24)];
-    self.search.placeholderString = @"Nation or competition";
+    self.search.placeholderString = tr(T::search);
     self.search.delegate = self;
     self.search.autoresizingMask = NSViewMinYMargin;
     [content addSubview:self.search];
@@ -227,26 +237,24 @@ struct Shown {
     std::ifstream input(path, std::ios::binary);
     const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     if (!input && text.empty()) {
-        [self alert:@"The database cannot be read" text:utf8(path.string())];
+        [self alert:tr(T::cannot_read) text:utf8(path.string())];
         return NO;
     }
     auto database = cm::aot::competition_overrides::read_custom_database(text);
     if (!database) {
-        [self alert:@"This is not a custom database this version reads"
-               text:[NSString stringWithFormat:@"Line %u: %@", database.error().line, utf8(database.error().message)]];
+        // The parser's own message stays in English: it quotes the file.
+        [self alert:tr(T::not_custom_database) text:tr(T::line, {std::to_string(database.error().line), database.error().message})];
         return NO;
     }
     if (std::ranges::find(editions, database->base) == editions.end()) {
-        [self alert:@"No competitions recorded for this database's base"
-               text:[NSString stringWithFormat:@"It was made from the %@. Start a New Game on that database once, and the editor will know its competitions.",
-                                               edition_title(database->base)]];
+        [self alert:tr(T::no_base_title) text:tr(T::no_base_text, {plain(edition_title(database->base))})];
         return NO;
     }
     if (!document || document->base() != database->base) {
         if (![self start:database->base]) return NO;
     }
     if (const auto why = document->load(*database); !why.empty()) {
-        [self alert:@"The database was not opened" text:utf8(why)];
+        [self alert:tr(T::not_opened) text:utf8(why)];
         return NO;
     }
     file = path;
@@ -267,14 +275,14 @@ struct Shown {
         if (!output.write(text.data(), std::streamsize(text.size())).flush()) {
             output.close();
             fs::remove(temporary, error);
-            [self alert:@"The database was not saved" text:utf8(path.string())];
+            [self alert:tr(T::not_saved) text:utf8(path.string())];
             return NO;
         }
     }
     fs::rename(temporary, path, error);
     if (error) {
         fs::remove(temporary, error);
-        [self alert:@"The database was not saved" text:utf8(error.message())];
+        [self alert:tr(T::not_saved) text:utf8(error.message())];
         return NO;
     }
     // A chosen database saved under another name stays the chosen one, under its new name.
@@ -296,7 +304,7 @@ struct Shown {
         fs::create_directories(setup.selection_file.parent_path(), error);
         std::ofstream output(setup.selection_file, std::ios::binary | std::ios::trunc);
         if (!(output << path->string() << '\n').flush()) {
-            [self alert:@"The choice was not saved" text:utf8(setup.selection_file.string())];
+            [self alert:tr(T::choice_not_saved) text:utf8(setup.selection_file.string())];
             return NO;
         }
     } else fs::remove(setup.selection_file, error);
@@ -316,7 +324,7 @@ struct Shown {
     fs::create_directories(setup.databases_directory, error);
     NSSavePanel* panel = [NSSavePanel savePanel];
     panel.directoryURL = [NSURL fileURLWithPath:utf8(setup.databases_directory.string())];
-    NSString* suggestion = self.name.stringValue.length ? self.name.stringValue : @"Custom database";
+    NSString* suggestion = self.name.stringValue.length ? self.name.stringValue : tr(T::default_name);
     panel.nameFieldStringValue = [suggestion stringByAppendingString:@".toml"];
     if ([panel runModal] != NSModalResponseOK) return NO;
     auto path = path_of(panel.URL);
@@ -328,10 +336,10 @@ struct Shown {
 - (BOOL)settle {
     if (!document || !document->dirty()) return YES;
     NSAlert* alert = [NSAlert new];
-    alert.messageText = @"Save the changes to this custom database?";
-    [alert addButtonWithTitle:@"Save"];
-    [alert addButtonWithTitle:@"Cancel"];
-    [alert addButtonWithTitle:@"Don't Save"];
+    alert.messageText = tr(T::save_changes);
+    [alert addButtonWithTitle:tr(T::save)];
+    [alert addButtonWithTitle:tr(T::cancel)];
+    [alert addButtonWithTitle:tr(T::dont_save)];
     const auto answer = [alert runModal];
     if (answer == NSAlertFirstButtonReturn) return [self save];
     return answer == NSAlertThirdButtonReturn;
@@ -420,11 +428,24 @@ struct Shown {
         const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
         number = !text.empty() && error == std::errc{} && end == text.data() + text.size();
     }
-    const auto why = number ? document->set(*selected, *item.parameter, item.round, value) : std::string("a whole number is needed");
-    if (!why.empty()) {
+    NSString* why = nil;
+    if (!number) why = tr(T::need_number);
+    else if (const auto refusal = document->set(*selected, *item.parameter, item.round, value); !refusal.empty()) {
+        using Kind = CompetitionEditorDocument::Refusal::Kind;
+        const auto a = std::to_string(refusal.a), b = std::to_string(refusal.b);
+        switch (refusal.kind) {
+        case Kind::range: why = tr(T::need_range, {a, b}); break;
+        case Kind::places: why = tr(T::places_exceed, {a, b}); break;
+        case Kind::head_to_head: why = tr(T::head_to_head_refused); break;
+        case Kind::no_round: why = tr(T::no_such_round); break;
+        case Kind::none:
+        case Kind::other: why = utf8(refusal.detail); break;
+        }
+    }
+    if (why) {
         NSBeep();
         [self show:item];
-        self.status.stringValue = [NSString stringWithFormat:@"%@: %@", utf8(std::string(item.parameter->label)), utf8(why)];
+        self.status.stringValue = [NSString stringWithFormat:@"%@: %@", label_of(*item.parameter), why];
         self.status.textColor = NSColor.systemRedColor;
         return;
     }
@@ -449,10 +470,10 @@ struct Shown {
 - (NSString*)title:(std::size_t)competition {
     const auto& e = document->competitions()[competition];
     NSString* name = game_text(e.identity.name);
-    if (e.identity.stage >= 0) name = [name stringByAppendingFormat:@" (stage %d)", e.identity.stage + 1];
+    if (e.identity.stage >= 0) name = [name stringByAppendingFormat:@" (%@)", tr(T::stage, {std::to_string(e.identity.stage + 1)})];
     NSString* nation = e.identity.nation.empty() ? game_text(e.identity.continent) : game_text(e.identity.nation);
     return [NSString stringWithFormat:@"%@%@  %@%@", document->modified(competition) ? @"● " : @"", nation, name,
-                                      e.kind == Kind::cup ? @"  · cup" : @""];
+                                      e.kind == Kind::cup ? [@"  · " stringByAppendingString:tr(T::cup_tag)] : @""];
 }
 
 - (void)filter {
@@ -504,7 +525,7 @@ struct Shown {
         const auto original = document->original(*selected, *item.parameter, item.round);
         NSString* was = is_tie_break(*item.parameter) && original >= 0 && original < 7
                             ? tie_break_titles()[NSUInteger(original)] : [NSString stringWithFormat:@"%d", original];
-        note = [NSString stringWithFormat:@"original: %@", was];
+        note = tr(T::original, {plain(was)});
     }
     item.label.stringValue = note;
     item.label.textColor = edited ? NSColor.systemOrangeColor : NSColor.tertiaryLabelColor;
@@ -520,7 +541,7 @@ struct Shown {
 
 - (CGFloat)rows:(const std::vector<const Parameter*>&)parameters round:(std::int32_t)r at:(CGFloat)y in:(NSView*)view {
     for (const auto* p : parameters) {
-        NSTextField* label = [NSTextField labelWithString:utf8(std::string(p->label))];
+        NSTextField* label = [NSTextField labelWithString:label_of(*p)];
         label.frame = NSMakeRect(16, y + 3, 280, 20);
         label.lineBreakMode = NSLineBreakByTruncatingTail;
         [view addSubview:label];
@@ -566,27 +587,24 @@ struct Shown {
     const auto selected = [self selected];
     CGFloat y = 14;
     if (!document || document->competitions().empty()) {
-        NSTextField* empty = [NSTextField wrappingLabelWithString:
-            @"No competitions are recorded yet.\n\nA competition's original values are set by the game's code, so the editor "
-            @"learns them from the game: start a New Game once (with the leagues you want to edit), then quit, open the app "
-            @"again and open the editor from the start screen."];
+        NSTextField* empty = [NSTextField wrappingLabelWithString:tr(T::empty_state)];
         empty.frame = NSMakeRect(16, y, 560, 120);
         [view addSubview:empty];
         y += 130;
     } else if (!selected) {
-        y = [self heading:@"Choose a competition on the left." at:y in:view];
+        y = [self heading:tr(T::choose) at:y in:view];
     } else {
         const auto& e = document->competitions()[*selected];
         NSString* title = game_text(e.identity.name);
-        if (e.identity.stage >= 0) title = [title stringByAppendingFormat:@" (stage %d)", e.identity.stage + 1];
+        if (e.identity.stage >= 0) title = [title stringByAppendingFormat:@" (%@)", tr(T::stage, {std::to_string(e.identity.stage + 1)})];
         y = [self heading:title at:y in:view];
         y = [self rows:CompetitionEditorDocument::parameters(e.kind, false) round:-1 at:y in:view];
         if (e.kind == Kind::cup && !e.rounds.empty()) {
             y += 10;
-            y = [self heading:@"Rounds" at:y in:view];
+            y = [self heading:tr(T::rounds) at:y in:view];
             if (round >= std::int32_t(e.rounds.size())) round = 0;
             NSPopUpButton* choice = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(16, y, 200, 26) pullsDown:NO];
-            for (std::size_t i = 0; i < e.rounds.size(); ++i) [choice addItemWithTitle:[NSString stringWithFormat:@"Round %zu of %zu", i + 1, e.rounds.size()]];
+            for (std::size_t i = 0; i < e.rounds.size(); ++i) [choice addItemWithTitle:tr(T::round_of, {std::to_string(i + 1), std::to_string(e.rounds.size())})];
             [choice selectItemAtIndex:round];
             choice.target = self;
             choice.action = @selector(roundChanged:);
@@ -595,8 +613,9 @@ struct Shown {
             y = [self rows:CompetitionEditorDocument::parameters(e.kind, true) round:round at:y in:view];
         }
         y += 10;
-        NSButton* revert = [NSButton buttonWithTitle:@"Revert this competition" target:self action:@selector(revertCompetition:)];
-        revert.frame = NSMakeRect(16, y, 200, 28);
+        NSButton* revert = [NSButton buttonWithTitle:tr(T::revert) target:self action:@selector(revertCompetition:)];
+        [revert sizeToFit];
+        revert.frame = NSMakeRect(16, y, revert.frame.size.width + 12, 28);
         [view addSubview:revert];
         self.revert = revert;
         y += 40;
@@ -612,16 +631,22 @@ struct Shown {
     self.window.documentEdited = document && document->dirty();
     NSMutableArray<NSString*>* lines = [NSMutableArray array];
     if (const auto selected = [self selected])
-        for (const auto& warning : document->warnings(*selected)) [lines addObject:utf8(warning)];
+        for (const auto& warning : document->warnings(*selected)) {
+            using Kind = CompetitionEditorDocument::Warning::Kind;
+            switch (warning.kind) {
+            case Kind::places_unchecked: [lines addObject:tr(T::warn_places)]; break;
+            case Kind::more_substitutions_than_bench: [lines addObject:tr(T::warn_substitutions)]; break;
+            case Kind::scheduled: [lines addObject:tr(T::warn_scheduled, {std::to_string(warning.n)})]; break;
+            }
+        }
     if (document) {
         const auto count = document->database().overrides.size();
-        NSString* where = file ? utf8(file->filename().string()) : @"not saved yet";
+        NSString* where = file ? utf8(file->filename().string()) : tr(T::not_saved_yet);
         // What the game will use is what the selection file names, whichever database is open here.
         const auto chosen = cm::aot::selected_custom_database(setup.selection_file);
-        NSString* use = !chosen ? @"new careers start with the original rules"
-                        : file && *chosen == *file ? @"new careers start with this database"
-                        : [NSString stringWithFormat:@"new careers start with another database: %@", utf8(chosen->filename().string())];
-        [lines addObject:[NSString stringWithFormat:@"%zu changed value(s) · %@ · %@", count, where, use]];
+        NSString* use = !chosen ? tr(T::uses_original)
+                        : file && *chosen == *file ? tr(T::uses_this) : tr(T::uses_other, {chosen->filename().string()});
+        [lines addObject:[NSString stringWithFormat:@"%@ · %@ · %@", tr(T::changed_values, {std::to_string(count)}), where, use]];
     }
     self.status.stringValue = [lines componentsJoinedByString:@"\n"];
 }
@@ -641,7 +666,12 @@ struct Shown {
 
 - (void)open:(const cm::aot::CompetitionEditorSetup&)given {
     setup = given;
-    if (!self.window) [self build];
+    const unsigned now = setup.language ? setup.language() : 0;
+    if (self.window && !self.window.visible && now != language) self.window = nil;
+    if (!self.window) {
+        language = now;
+        [self build];
+    }
     if (!self.window.visible) {
         [self findEditions];
         document.reset();

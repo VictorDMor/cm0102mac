@@ -31,15 +31,28 @@ public:
     // The value the database gives from the career's start: the edit, else the original.
     std::int32_t value(std::size_t competition, const Parameter&, std::int32_t round) const;
     bool edited(std::size_t competition, const Parameter&, std::int32_t round) const;
-    // Sets it; the original value removes the edit. "" or why it was refused (nothing changes then).
-    std::string set(std::size_t competition, const Parameter&, std::int32_t round, std::int32_t value);
+    // Why an edit was refused, for the window to say in the user's language: `range` carries the parameter's
+    // bounds in a and b, `places` their sum and the club count, `other` the validator's English text.
+    struct Refusal {
+        enum class Kind { none, range, places, head_to_head, no_round, other } kind = Kind::none;
+        std::int32_t a = 0, b = 0;
+        std::string detail;
+        bool empty() const { return kind == Kind::none; }
+    };
+    // Sets it; the original value removes the edit. Nothing changes when it is refused.
+    Refusal set(std::size_t competition, const Parameter&, std::int32_t round, std::int32_t value);
     void revert(std::size_t competition);
     // Whether the database changes this competition at all, and how many of its entries start in a later season
     // (made by hand or by the in-career screen; the window keeps them and does not edit them).
     bool modified(std::size_t competition) const;
     std::size_t scheduled(std::size_t competition) const;
     // What the user should know about the competition's edits; they are saved and applied all the same.
-    std::vector<std::string> warnings(std::size_t competition) const;
+    // `scheduled` carries the number of entries in n.
+    struct Warning {
+        enum class Kind { places_unchecked, more_substitutions_than_bench, scheduled } kind;
+        std::size_t n = 0;
+    };
+    std::vector<Warning> warnings(std::size_t competition) const;
     void rename(std::string to) { if (to != name) { name = std::move(to); dirty_ = true; } }
     bool dirty() const { return dirty_; }
     void saved() { dirty_ = false; }

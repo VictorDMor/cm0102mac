@@ -463,3 +463,8 @@ against them and saves a custom database; entries that start in a later season, 
 not recorded, are kept as read. "Use for new careers" writes the file's path to `Custom Databases/selected.txt`,
 which the platform reads at start-up, and passes the choice to the game worker through a slot the worker takes at
 its event boundary (`select_custom_database`). The editor never touches the guest.
+
+The editor's texts follow the language chosen in the game (`native/competition_editor_text.*`: the eleven language
+IDs of the live language byte, English for an unknown one). The worker reads the byte at its event boundary and
+passes it on; the window takes it when it opens, and the menu item's title follows it. The parser's messages about a
+file that cannot be read stay in English.

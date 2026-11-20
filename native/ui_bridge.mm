@@ -684,6 +684,7 @@ struct NativeUI::Impl {
     CommandContext command_context;
     bool quick_save_available = false;
     bool competition_editor_enabled = false;
+    std::string competition_editor_title;
     std::string command_status = "Unavailable while starting";
     void refresh_commands() {
         for (NSMenuItem* item in direct_menu.itemArray) {
@@ -700,7 +701,8 @@ struct NativeUI::Impl {
                 item.enabled = command_context.ready && command_context.actions[item.tag] != 0;
             else if (item.tag == 101) { item.enabled = NO; }
             else if (item.tag == 102) { item.enabled = quick_save_available; }
-            else if (item.tag == 103) { item.hidden = !delegate->openCompetitionEditor; item.enabled = competition_editor_enabled; }
+            else if (item.tag == 103) { item.hidden = !delegate->openCompetitionEditor; item.enabled = competition_editor_enabled;
+                if (!competition_editor_title.empty()) item.title = [NSString stringWithUTF8String:competition_editor_title.c_str()]; }
             else if (item.tag == 100) { item.title = [NSString stringWithUTF8String:command_status.c_str()]; item.enabled = NO; }
         }
         for (const auto& [token, menu] : menus) {
@@ -1181,9 +1183,10 @@ void NativeUI::set_competition_editor(std::function<void()> open, std::function<
     impl_->delegate->toolsMayQuit = std::move(may_quit);
     impl_->refresh_commands();
 }
-void NativeUI::set_competition_editor_enabled(bool enabled) {
-    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_competition_editor_enabled", [&] { return set_competition_editor_enabled(enabled); });
+void NativeUI::set_competition_editor_enabled(bool enabled, const std::string& title) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_competition_editor_enabled", [&] { return set_competition_editor_enabled(enabled, title); });
     impl_->competition_editor_enabled = enabled;
+    impl_->competition_editor_title = title;
     impl_->refresh_commands();
 }
 bool NativeUI::take_quick_save_request() {

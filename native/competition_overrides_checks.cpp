@@ -14,6 +14,7 @@
 #include "career_rules.hpp"
 #include "competition_defaults.hpp"
 #include "competition_editor_document.hpp"
+#include "competition_editor_text.hpp"
 #include "competition_overrides.hpp"
 #include "competition_values.hpp"
 #include "comp_detail.hpp"
@@ -891,6 +892,21 @@ void check_editor_document() {
            "editor: a saved database opens with its edits, keeps a scheduled entry and an unknown competition's");
     again.revert(1);
     expect(again.scheduled(1) == 1 && !again.edited(1, param("league.relegation.places"), -1) && again.dirty(), "editor: revert keeps scheduled entries");
+    // Every text and every registry label exists in every language of the game, with its placeholders.
+    bool complete = true;
+    const auto holes = [](std::string_view text) { return std::count(text.begin(), text.end(), '{'); };
+    for (unsigned language = 0; language < editor_language_count; ++language) {
+        for (std::size_t i = 0; i < std::size_t(EditorText::count); ++i) {
+            const auto text = editor_text(language, EditorText(i));
+            complete &= !text.empty() && holes(text) == holes(editor_text(0, EditorText(i)));
+        }
+        for (const auto& p : competition_values::parameters())
+            complete &= language < 2 || editor_label(language, p) != std::string(p.label) || p.id == "league.prize.pool" || p.id == "cup.prize.pool";
+    }
+    expect(complete, "editor: every text and label is translated in the 11 game languages");
+    expect(editor_text(9, EditorText::save) == "Salvar" && editor_text(200, EditorText::save) == "Save" &&
+           editor_label(9, param("league.tiebreak.2")) == "Critério de desempate 2" &&
+           filled(editor_text(9, EditorText::round_of), {"1", "3"}) == "Rodada 1 de 3", "editor: Portuguese texts, and English for an unknown language");
     CompetitionEditorDocument other(CompetitionEdition::si_3968, {});
     expect(read && !other.load(*read).empty(), "editor: a database of another base is refused");
 }

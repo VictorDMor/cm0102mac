@@ -9,6 +9,8 @@
 #include "competition_defaults.hpp"
 #include "competition_editor.hpp"
 #include "competition_editor_document.hpp"
+#include "competition_editor_text.hpp"
+#include <atomic>
 #include "direct_commands.hpp"
 #include <mutex>
 #include "quick_save.hpp"
@@ -671,6 +673,7 @@ struct NativePlatform::Impl {
             CompetitionEditorSetup setup{.defaults_directory = writable / "Competition Defaults",
                                          .databases_directory = writable / "Custom Databases",
                                          .selection_file = custom_database_selection(),
+                                         .language = [language = editor_language] { return language->load(); },
                                          .selection_changed = [choice = editor_choice](std::optional<fs::path> file) {
                                              const std::lock_guard lock(choice->mutex);
                                              choice->pending = std::move(file);
@@ -687,6 +690,8 @@ struct NativePlatform::Impl {
     };
     std::shared_ptr<EditorChoice> editor_choice = std::make_shared<EditorChoice>();
     std::optional<bool> editor_enabled;
+    // The game's language byte as last seen at an event boundary: the editor's window and menu item follow it.
+    std::shared_ptr<std::atomic<unsigned>> editor_language = std::make_shared<std::atomic<unsigned>>(0);
     bool career_seen = false;
     std::uint32_t new_port(State& s, std::uint16_t depth, const LegacyRect& bounds) {
         if (depth != 16 && depth != 32) throw std::runtime_error("Unsupported original GWorld pixel depth");
@@ -964,9 +969,11 @@ struct NativePlatform::Impl {
             // The editor belongs to the start screen: once a career was started or a load began in this session
             // it stays closed (a running career's changes are the in-career screen's).
             career_seen |= career_present || career_loading;
-            if (const bool enabled = !career_seen; editor_enabled != enabled) {
+            const unsigned language = s.memory.read<1>(std::uint32_t(s.r<4>(8)) - 0x35ac);
+            if (const bool enabled = !career_seen; editor_enabled != enabled || editor_language->load() != language) {
                 editor_enabled = enabled;
-                user_interface().set_competition_editor_enabled(enabled);
+                editor_language->store(language);
+                user_interface().set_competition_editor_enabled(enabled, std::string(editor_text(language, EditorText::menu_item)));
             }
         }
         user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing",

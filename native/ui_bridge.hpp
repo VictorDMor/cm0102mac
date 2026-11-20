@@ -121,7 +121,7 @@ public:
     // user picks it. The item is hidden without one and enabled only while the host says so. `may_quit` is asked
     // on the main thread before a quit is passed to the game; false cancels it.
     void set_competition_editor(std::function<void()> open, std::function<bool()> may_quit);
-    void set_competition_editor_enabled(bool enabled);
+    void set_competition_editor_enabled(bool enabled, const std::string& title);
     // Waits for the player to acknowledge a message the game itself cannot show.
     void show_alert(const std::string& title, const std::string& message);
     void beep();

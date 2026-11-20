@@ -12,6 +12,8 @@ struct CompetitionEditorSetup {
     std::filesystem::path defaults_directory;   // one recorded-defaults file per edition
     std::filesystem::path databases_directory;  // where custom databases are saved by default
     std::filesystem::path selection_file;       // holds the path of the database new careers start with
+    // The game's language ID (competition_editor_text.hpp) when the window opens.
+    std::function<unsigned()> language;
     // The choice changed, or the chosen file was saved again: none when no database is chosen.
     std::function<void(std::optional<std::filesystem::path>)> selection_changed;
 };
