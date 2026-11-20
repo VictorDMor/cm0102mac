@@ -3,6 +3,15 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: COMP_UTIL.CPP (2026-11-20, Victor's go-ahead; pilot first, then he sets the pace)
+
+Competition utilities, the next module by the competition base. Inventory closed: 35 entries, 0x10462cd0..0x10477d54, 21,480 instructions (`tools/comp_util_audit.py`; working folder `.local/rewrites/comp_util/` with the ledger, the census, per-entry callers and callees and the decompiled C). Nothing routed yet.
+
+- [x] Inventory and audit (`comp_util_audit`, 11 tests). Two entries more than the heuristic's 33: the comparators 0x10463580 (a descriptor, no caller) and 0x10477cd0.
+- [ ] 0x10462b80 (84 instructions, between COMP_STATS's last proven routine and this module's first; callers in CLUB_SCREENS, PLAYER_SEARCH, PRINTOUTS, RECORD_UTILS) has no TOC load, assertion or descriptor: unowned, pinned as `AMBIGUOUS_NEIGHBOUR` in the audit for whichever module proves it.
+- [ ] Blocks (instructions): numeric_ids 110, club_queries 653, comparators 138, fixture_log 384, record_stream 265, random_shuffle 798, rating_sort 274, interpolation 70, round_codes 7,552, round_text 6,297, result_headline 4,737, comp_screens_list 202. Pilots: numeric_ids, then club_queries (0x10464160 is the hottest entry, 153k calls on season-day). Existing captures reach 6 of the 35 entries; the rest need fixtures.
+- [ ] After the two pilots: the measured cost to Victor before the rest.
+
 ## Deferred: 2000/01 league structures (Victor, 2026-11-20: after the recompilation)
 
 A New Game on the 2000/01 database raises the original's error boxes while the career is set up, one per competition whose 2001/02 code does not fit the 2000/01 data (seen on screen: `BEL_THIRD.CPP 81`, then `cro_a1.cpp 87`). Only England was adapted to the edition so far. Finish line: a 2000/01 New Game with every selectable country sets up every competition with no error box. The reference for each league's 2000/01 format is the CM 00/01 3.89 Windows executable already in `.local/season-databases/cm00_389.exe` (as for England).

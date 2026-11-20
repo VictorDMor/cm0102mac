@@ -4608,6 +4608,8 @@ target_link_libraries(cm-cup-base-checks PRIVATE cm_aot)
 target_compile_options(cm-cup-base-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
 if(EXISTS "${CM_ORACLE_DIR}/program.json")
     add_test(NAME cup_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_cup_audit.py")
+    # COMP_UTIL.CPP (tools/comp_util_audit.py): inventory only, nothing routed yet (ZERO_ROUTED).
+    add_test(NAME comp_util_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_comp_util_audit.py")
     if(EXISTS "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
         set(CM_CUP_BASE_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
         # --require-all joins these once every entry is routed (tools/cup_audit.py COMPLETE). season-day predates
