@@ -52,8 +52,14 @@ public:
     // the one that new career uses; a change after that entry affects only
     // later New Games. A loaded career uses only what its save carries.
     // Returns "" or why the file was not taken (then none is chosen).
-    // CM_CUSTOM_DATABASE=<path> chooses one when the platform starts.
+    // When the platform starts, CM_CUSTOM_DATABASE=<path> chooses one, else the competition editor's last choice
+    // (competition_editor.hpp); the editor's later choices arrive at the worker's event boundary.
     std::string select_custom_database(const std::optional<std::filesystem::path>& file);
+    // The apply points offer a competition about to be set up without entries (competition_defaults.hpp). Recorded
+    // only for a career started in this session on a recognised release, with no `set` rule and no test preset.
+    void record_competition_defaults(const State&, std::uint32_t object, bool league, std::int32_t id, std::int32_t stage);
+    // Where those records are: one file per edition.
+    std::filesystem::path competition_defaults_directory() const;
     // The chosen custom database's name, if one is chosen.
     std::optional<std::string> custom_database_name() const;
     // The loader is about to replace the tables of the running world.

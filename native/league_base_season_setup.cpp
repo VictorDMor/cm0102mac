@@ -106,7 +106,8 @@ inline constexpr std::int32_t competition = 0xa4, word_ac = 0xac, home = 0xb0, a
 
 bool set_up(Cpu& c, std::uint32_t league_object) {
     // The career's own values (competition_overrides.hpp), before anything here reads the record: only object
-    // fields, no register, stack byte or call; nothing at all when the career has none.
+    // fields, no register, stack byte or call. Without entries it only reads the object (the host's record of
+    // defaults); without a platform it does nothing.
     competition_overrides::at_setup(c.s, league_object, competition_overrides::Kind::league);
     const Frame frame(c, 0x104a00a0, 0x130, {.first_gpr = 19});
     Held h(c);

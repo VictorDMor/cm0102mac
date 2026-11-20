@@ -13,6 +13,7 @@
 #include "regions.hpp"
 #include "cursor_resource.hpp"
 #include "presentation.hpp"
+#include <functional>
 #include "direct_commands.hpp"
 
 namespace cm::aot {
@@ -116,6 +117,11 @@ public:
     bool is_dialog(std::uint32_t token) const;
     void show_dialog(std::uint32_t token);
     bool take_quick_save_request();
+    // A tool of the app's own in the Game menu ("Competition Editor…"): `open` runs on the main thread when the
+    // user picks it. The item is hidden without one and enabled only while the host says so. `may_quit` is asked
+    // on the main thread before a quit is passed to the game; false cancels it.
+    void set_competition_editor(std::function<void()> open, std::function<bool()> may_quit);
+    void set_competition_editor_enabled(bool enabled);
     // Waits for the player to acknowledge a message the game itself cannot show.
     void show_alert(const std::string& title, const std::string& message);
     void beep();

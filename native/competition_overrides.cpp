@@ -198,6 +198,11 @@ std::expected<OverrideSet, OverrideSet::BuildError> OverrideSet::from(std::vecto
     return set;
 }
 
+bool OverrideSet::has(const Target& target) const {
+    const auto it = std::lower_bound(entries_.begin(), entries_.end(), target, [](const Override& o, const Target& t) { return o.target < t; });
+    return it != entries_.end() && it->target == target;
+}
+
 std::optional<std::int32_t> OverrideSet::value(const Target& target, const Parameter& p, std::int32_t round,
                                                std::int32_t season) const {
     const auto wanted = std::tuple(target, rank(&p), round);
@@ -262,11 +267,14 @@ std::optional<Target> target_of(const State& s, std::uint32_t object) {
 }
 
 void at_setup(State& s, std::uint32_t object, Kind kind) {
-    const auto* set = active(s);
-    if (!set) return;
+    if (!s.platform) return;
     const auto target = target_of(s, object);
     if (!target || target->kind != kind) return;
-    write_in_force(s, *set, object, *target);
+    const auto* set = active(s);
+    // What configure wrote is the default only while no entry was ever written over it: a setup at a rollover may
+    // find last season's values in the record.
+    if (!set || !set->has(*target)) s.platform->record_competition_defaults(s, object, kind == Kind::league, target->id, target->stage);
+    if (set) write_in_force(s, *set, object, *target);
 }
 
 std::int8_t ruling_body(const State& s, std::uint32_t competition, std::int8_t stored) {

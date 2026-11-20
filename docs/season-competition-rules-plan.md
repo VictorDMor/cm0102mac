@@ -445,3 +445,21 @@ member stays within its limit; otherwise a log line and no entries. A loaded car
 `apply_now` writes a running career's record directly (never a setup, which pays the clubs); a cup's prize pool and
 its round rows wait for the next setup. Checked by `cm-competition-overrides-checks` and, with the real packs, by
 `check_custom_database` in `cm-database-seasons-checks`.
+
+## Competition editor: defaults and the window (2026-11-20)
+
+A competition's original values are written by code (its `configure`), so no file holds them. `at_setup` offers each
+league and cup it reaches, before any entry is written, to `CompetitionDefaults` (`native/competition_defaults.hpp`),
+which appends it once per key to `<writable>/Competition Defaults/<edition>.toml` in the full-dump format. It records
+only in a career started in this session on a recognised release, with no `set` rule, no test preset and no entry for
+that competition; it reads the guest and writes a host file, nothing else, and does nothing without a platform. Each
+record is a dump of its own: a reader skips one that does not parse (a torn append, a registry that has grown) and
+the game records it again.
+
+The editor (`native/competition_editor.mm`, an AppKit window on the main thread; its logic is
+`CompetitionEditorDocument`, checked without a window) opens from Game > Competition Editor… until a career is
+started or loaded in the session. It shows the recorded competitions of one edition, edits the registry's values
+against them and saves a custom database; entries that start in a later season, or belong to a competition that was
+not recorded, are kept as read. "Use for new careers" writes the file's path to `Custom Databases/selected.txt`,
+which the platform reads at start-up, and passes the choice to the game worker through a slot the worker takes at
+its event boundary (`select_custom_database`). The editor never touches the guest.

@@ -92,6 +92,8 @@ public:
     };
     static std::expected<OverrideSet, BuildError> from(std::vector<Override>, Repeats);
     bool empty() const { return entries_.empty(); }
+    // Whether any entry is for this target.
+    bool has(const Target&) const;
     std::size_t size() const { return entries_.size(); }
     // Sorted by target, then registry order, round and first season (none first).
     const std::vector<Override>& entries() const { return entries_; }
@@ -124,7 +126,9 @@ const OverrideSet* active(const State&);
 std::optional<Target> target_of(const State&, std::uint32_t object);
 
 // The apply point: the entry of LEAGUE.CPP set_up 0x104a00a0 (kind league) and of CUP.CPP's tree 0x10479100 (kind
-// cup). Returns at once when the career has no entry; skips an object of another kind and a CUP_STAGE object.
+// cup). Skips an object of another kind and a CUP_STAGE object. A target without entries is first offered to the
+// platform's record of defaults (competition_defaults.hpp: guest reads and a host file, nothing else); then, when
+// the career has no entry, it returns.
 // A league's promotion and relegation entries are skipped, with a log line, when with the record's other places one
 // of them or their sum would exceed the league's club count.
 void at_setup(State&, std::uint32_t object, Kind);

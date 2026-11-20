@@ -6,7 +6,11 @@
 #include "process_bridge.hpp"
 #include "ui_bridge.hpp"
 #include "native_drawing.hpp"
+#include "competition_defaults.hpp"
+#include "competition_editor.hpp"
+#include "competition_editor_document.hpp"
 #include "direct_commands.hpp"
+#include <mutex>
 #include "quick_save.hpp"
 #include <functional>
 #include "quick_save_transaction.hpp"
@@ -388,6 +392,7 @@ struct NativePlatform::Impl {
     CareerRules career_rules;
     // The custom database new careers start with (select_custom_database).
     std::optional<competition_overrides::CustomDatabase> custom_database;
+    std::optional<CompetitionDefaults> competition_defaults;
     // The database names were last inspected outside a load: the release is
     // the one a New Game builds its world from.
     bool new_game_names = false;
@@ -659,9 +664,30 @@ struct NativePlatform::Impl {
     }
 
     NativeUI& user_interface() {
-        if (!ui) ui = std::make_unique<NativeUI>(writable.parent_path() / "Presentation.plist");
+        if (!ui) {
+            ui = std::make_unique<NativeUI>(writable.parent_path() / "Presentation.plist");
+            // The competition editor is a window of its own on the main thread; what it chooses for new careers
+            // comes back through `editor_choice`, which the game worker takes at its event boundary.
+            CompetitionEditorSetup setup{.defaults_directory = writable / "Competition Defaults",
+                                         .databases_directory = writable / "Custom Databases",
+                                         .selection_file = custom_database_selection(),
+                                         .selection_changed = [choice = editor_choice](std::optional<fs::path> file) {
+                                             const std::lock_guard lock(choice->mutex);
+                                             choice->pending = std::move(file);
+                                         }};
+            ui->set_competition_editor([setup] { show_competition_editor(setup); }, [] { return competition_editor_may_quit(); });
+        }
         return *ui;
     }
+    fs::path custom_database_selection() const { return writable / "Custom Databases" / "selected.txt"; }
+    // The editor's latest choice not yet taken: outer none when nothing is pending.
+    struct EditorChoice {
+        std::mutex mutex;
+        std::optional<std::optional<fs::path>> pending;
+    };
+    std::shared_ptr<EditorChoice> editor_choice = std::make_shared<EditorChoice>();
+    std::optional<bool> editor_enabled;
+    bool career_seen = false;
     std::uint32_t new_port(State& s, std::uint16_t depth, const LegacyRect& bounds) {
         if (depth != 16 && depth != 32) throw std::runtime_error("Unsupported original GWorld pixel depth");
         const auto width = std::int32_t(bounds[3]) - bounds[1], height = std::int32_t(bounds[2]) - bounds[0];
@@ -923,6 +949,25 @@ struct NativePlatform::Impl {
             else if (command_status.starts_with("Dispatched") || command_status.starts_with("Original"))
                 command_status = "Original game returned to an interactive screen";
 
+        }
+        if (s.platform) {
+            std::optional<std::optional<fs::path>> choice;
+            {
+                const std::lock_guard lock(editor_choice->mutex);
+                choice = std::exchange(editor_choice->pending, std::nullopt);
+            }
+            if (choice) {
+                const auto why = s.platform->select_custom_database(*choice);
+                command_status = !why.empty() ? "Custom database not chosen: " + why
+                                 : *choice ? "Custom database chosen for new careers" : "New careers use the original rules";
+            }
+            // The editor belongs to the start screen: once a career was started or a load began in this session
+            // it stays closed (a running career's changes are the in-career screen's).
+            career_seen |= career_present || career_loading;
+            if (const bool enabled = !career_seen; editor_enabled != enabled) {
+                editor_enabled = enabled;
+                user_interface().set_competition_editor_enabled(enabled);
+            }
         }
         user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing",
                                          s.platform && s.platform->quick_save_available());
@@ -1720,7 +1765,9 @@ NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio
     impl_->directories.emplace(3, impl_->writable);
     impl_->seasons = std::make_unique<DatabaseSeasons>(impl_->writable);
     // Read once, for the owner to try a custom database before the editor exists, and for tests.
+    // The editor's choice, kept between launches; CM_CUSTOM_DATABASE overrides it for a run.
     if (const char* custom = std::getenv("CM_CUSTOM_DATABASE"); custom && *custom) select_custom_database(fs::path(custom));
+    else if (const auto chosen = selected_custom_database(impl_->custom_database_selection())) select_custom_database(*chosen);
 }
 NativePlatform::~NativePlatform() = default;
 GuiCanvas NativePlatform::gui_canvas_size() const { return impl_->canvas; }
@@ -1839,6 +1886,18 @@ void NativePlatform::inspect_database_season_names() {
     seasons.inspect_database_names(file);
     // The New Game entry (career_load_reset) takes the custom database against this release.
     impl_->new_game_names = !impl_->career_loading;
+}
+fs::path NativePlatform::competition_defaults_directory() const { return impl_->writable / "Competition Defaults"; }
+void NativePlatform::record_competition_defaults(const State& s, std::uint32_t object, bool league, std::int32_t id, std::int32_t stage) {
+    const competition_overrides::Target target{league ? competition_values::Kind::league : competition_values::Kind::cup, id, stage};
+    // Only a career started in this session on a recognised database, with no rule of its own and no test
+    // preset: a loaded career's setups (rollovers) run under its `set` statements and its drifted structure.
+    static const bool preset = std::getenv("CM_ENGLISH_RULES_ORIGINAL") || std::getenv("CM_BRA_NAT_SECOND_RULES_ORIGINAL");
+    if (preset || !impl_->new_game_names || impl_->career_rules.edition() || impl_->career_rules.customized()) return;
+    const auto edition = release_edition(impl_->seasons->release());
+    if (!edition) return;
+    if (!impl_->competition_defaults) impl_->competition_defaults.emplace(competition_defaults_directory());
+    impl_->competition_defaults->record(s, object, target, *edition);
 }
 std::optional<std::string> NativePlatform::custom_database_name() const {
     if (!impl_->custom_database) return std::nullopt;

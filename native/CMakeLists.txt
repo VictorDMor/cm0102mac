@@ -34,7 +34,8 @@ add_library(cm_aot STATIC cpp_object_storage_adapter.cpp cpp_object_storage_arra
 target_sources(cm_aot PRIVATE vector_context.cpp)
 target_sources(cm_aot PRIVATE database_seasons.cpp database_season_screen.cpp database_season_compatibility.cpp
     competition_rules.cpp career_rules.cpp eng_fa_trophy_2000.cpp eng_conference_cup.cpp league_selection_layout.cpp)
-target_sources(cm_aot PRIVATE competition_values.cpp competition_overrides.cpp)
+target_sources(cm_aot PRIVATE competition_values.cpp competition_overrides.cpp competition_defaults.cpp competition_editor_document.cpp competition_editor.mm)
+set_source_files_properties(competition_editor.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 target_sources(cm_aot PRIVATE adaptive_gui.cpp screen_layout.cpp search_filter_layout.cpp transfer_proposal_layout.cpp contract_negotiation_layout.cpp negotiation_dialog_layout.cpp news_inbox_layout.cpp)
 target_sources(cm_aot PRIVATE club_information_layout.cpp next_match_layout.cpp)
 target_sources(cm_aot PRIVATE league_standings_layout.cpp competition_fixtures_layout.cpp match_report_layout.cpp)

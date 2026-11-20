@@ -12,6 +12,8 @@
 // named-reserves rule yielding to a bench entry; apply_now.
 #include "aot_runtime.hpp"
 #include "career_rules.hpp"
+#include "competition_defaults.hpp"
+#include "competition_editor_document.hpp"
 #include "competition_overrides.hpp"
 #include "competition_values.hpp"
 #include "comp_detail.hpp"
@@ -682,6 +684,35 @@ void check_snapshot(const fs::path& snapshot, const fs::path& root) {
     s.platform = std::make_shared<NativePlatform>(root / "game", root / "snapshot", AudioMode::offline, EventMode::isolated);
     auto& career = s.platform->career_rules();
     guest::Cpu c(s);
+    // The record of defaults: nothing without a known edition; then one entry per competition, with the object's
+    // values, and none for a competition the career has entries for. The guest is only read.
+    if (premier && cup) {
+        const auto directory = s.platform->competition_defaults_directory();
+        const auto file = CompetitionDefaults::file(directory, CompetitionEdition::cm0102);
+        const auto before = s.memory.copy_out(premier, 0xec);
+        ov::at_setup(s, premier, L);
+        career.read("CM-NATIVE-RULES 1\nedition cm0102\nrevision 1\n");
+        ov::at_setup(s, premier, L);
+        expect(!std::filesystem::exists(file), "no defaults are recorded for an unrecognised database or a loaded career");
+        career.reset();
+        CompetitionDefaults defaults(directory);
+        defaults.record(s, premier, premier_target, CompetitionEdition::cm0102);
+        defaults.record(s, premier, premier_target, CompetitionEdition::cm0102);
+        const auto recorded = read_competition_defaults(file);
+        expect(recorded.size() == 1 && recorded.front().kind == L && recorded.front().identity.id == premier_target.id &&
+               recorded.front().identity.stage == -1 &&
+               recorded.front().values.at("league.points.win") == std::int8_t(s.memory.read<1>(premier + 0xc4)) &&
+               recorded.front().values.at("league.structure.clubs") == 20, "defaults: the league once, with its values");
+        expect(s.memory.copy_out(premier, 0xec) == before, "recording defaults leaves the league's object alone");
+        // A torn record is skipped and the others kept; a later session records only what is missing.
+        { std::ofstream(file, std::ios::app) << "# Competition values: torn\n[league.77]\nid = 77\n"; }
+        CompetitionDefaults again(directory);
+        again.record(s, premier, premier_target, CompetitionEdition::cm0102);
+        again.record(s, cup, cup_target, CompetitionEdition::cm0102);
+        unsigned skipped = 0;
+        const auto reread = read_competition_defaults(file, &skipped);
+        expect(reread.size() == 2 && skipped == 1 && reread.back().kind == C, "defaults: a torn record is skipped, a later session adds only the new cup");
+    }
     // The ruling body as governing_body sees it.
     const auto manager = global(s, -0x7aa4);
     if (manager && premier) {
@@ -810,6 +841,60 @@ void check_snapshot(const fs::path& snapshot, const fs::path& root) {
 }
 }  // namespace
 
+// The editor's document (competition_editor_document.hpp), without a window.
+void check_editor_document() {
+    using competition_values::Entry;
+    const auto param = [](std::string_view id) -> const ov::Parameter& { return *competition_values::find_parameter(id); };
+    const auto entry = [](competition_values::Kind kind, std::int32_t id, std::int32_t stage, const char* nation) {
+        Entry e;
+        e.kind = kind;
+        e.identity.id = id;
+        e.identity.stage = stage;
+        e.identity.nation = nation;
+        for (const auto& p : competition_values::parameters())
+            if (p.scope == (kind == competition_values::Kind::league ? competition_values::Scope::league : competition_values::Scope::cup))
+                e.values[std::string(p.id)] = p.read_only ? 20 : p.min + 1;
+        return e;
+    };
+    auto cup = entry(competition_values::Kind::cup, 7, -1, "ING");
+    cup.rounds.resize(2);
+    for (auto& row : cup.rounds)
+        for (const auto& p : competition_values::parameters())
+            if (p.scope == competition_values::Scope::cup_round) row[std::string(p.id)] = 1;
+    CompetitionEditorDocument doc(CompetitionEdition::cm0102,
+                                  {cup, entry(competition_values::Kind::cup, 7, 0, "ING"), entry(competition_values::Kind::league, 3, -1, "ING"),
+                                   entry(competition_values::Kind::league, 1, -1, "BEL")});
+    const auto& list = doc.competitions();
+    expect(list.size() == 3 && list[0].identity.id == 1 && list[1].identity.id == 3 && list[2].kind == competition_values::Kind::cup,
+           "editor: by nation, leagues first, cup stages left out");
+    const auto& win = param("league.points.win");
+    expect(doc.value(1, win, -1) == 1 && !doc.edited(1, win, -1) && !doc.dirty(), "editor: a new document shows the originals");
+    expect(doc.set(1, win, -1, 2).empty() && doc.value(1, win, -1) == 2 && doc.original(1, win, -1) == 1 && doc.edited(1, win, -1) &&
+           doc.modified(1) && !doc.modified(0) && doc.dirty(), "editor: an edit");
+    expect(!doc.set(1, win, -1, 500).empty() && doc.value(1, win, -1) == 2, "editor: a value out of range is refused and nothing changes");
+    expect(!doc.set(1, param("league.relegation.places"), -1, 21).empty() && !doc.set(1, param("league.promotion.playoff"), -1, 19).empty() &&
+           doc.set(1, param("league.relegation.places"), -1, 4).empty(), "editor: places beyond the 20 clubs are refused");
+    expect(!doc.set(1, param("league.tiebreak.1"), -1, 4).empty(), "editor: head-to-head is refused");
+    expect(!doc.warnings(1).empty() && doc.warnings(0).empty(), "editor: changed places carry the neighbouring-division warning");
+    expect(doc.set(2, param("cup.round.legs"), 1, 2).empty() && !doc.set(2, param("cup.round.legs"), 2, 2).empty() &&
+           doc.value(2, param("cup.round.legs"), 1) == 2 && doc.value(2, param("cup.round.legs"), 0) == 1, "editor: a cup round, and none beyond the cup's");
+    expect(doc.set(1, win, -1, 1).empty() && !doc.edited(1, win, -1), "editor: the original value removes the edit");
+    doc.rename("Teste \xC3\xA7");
+    // Through the file and back, with a scheduled entry the window does not edit and one for an unknown competition.
+    auto database = doc.database();
+    database.overrides.add({.target = {competition_values::Kind::league, 3, -1}, .parameter = &win, .value = 2, .from_season = 2004});
+    database.overrides.add({.target = {competition_values::Kind::league, 99, -1}, .parameter = &win, .value = 5});
+    const auto read = ov::read_custom_database(ov::write_custom_database(database));
+    CompetitionEditorDocument again(CompetitionEdition::cm0102, {cup, entry(competition_values::Kind::league, 3, -1, "ING"), entry(competition_values::Kind::league, 1, -1, "BEL")});
+    expect(read && again.load(*read).empty() && !again.dirty() && again.name == doc.name && again.value(1, param("league.relegation.places"), -1) == 4 &&
+           again.value(1, win, -1) == 1 && again.scheduled(1) == 1 && again.database().overrides == database.overrides,
+           "editor: a saved database opens with its edits, keeps a scheduled entry and an unknown competition's");
+    again.revert(1);
+    expect(again.scheduled(1) == 1 && !again.edited(1, param("league.relegation.places"), -1) && again.dirty(), "editor: revert keeps scheduled entries");
+    CompetitionEditorDocument other(CompetitionEdition::si_3968, {});
+    expect(read && !other.load(*read).empty(), "editor: a database of another base is refused");
+}
+
 int main(int argc, char** argv) {
     const auto root = fs::temp_directory_path() / ("cm-competition-overrides-checks-" + std::to_string(::getpid()));
     try {
@@ -818,6 +903,7 @@ int main(int argc, char** argv) {
         check_set();
         check_member();
         check_adopt();
+        check_editor_document();
         check_platform(root);
         if (argc > 1) check_snapshot(argv[1], root);
     } catch (const std::exception& e) {

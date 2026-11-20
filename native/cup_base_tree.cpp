@@ -566,8 +566,8 @@ void Tree::tie_totals() {
 
 std::int32_t map_fixture_tree(Cpu& c, std::uint32_t cup) {
     // The career's own values (competition_overrides.hpp), after configure built the round table and before the
-    // tree or any fixture reads it: only object and round-row fields, no register, stack byte or call; nothing at
-    // all when the career has none.
+    // tree or any fixture reads it: only object and round-row fields, no register, stack byte or call. Without
+    // entries it only reads the object (the host's record of defaults); without a platform it does nothing.
     competition_overrides::at_setup(c.s, cup, competition_overrides::Kind::cup);
     const Frame frame(c, entry, frame_size, {.first_gpr = 13});
     return Tree(c, cup, frame).run();

@@ -190,6 +190,8 @@ Entry read_entry(const Guest& g, std::uint32_t object, Kind kind) {
 }
 }  // namespace
 
+Entry read_competition(const State& state, std::uint32_t object, Kind kind) { return read_entry(Guest(state), object, kind); }
+
 std::vector<Entry> read_competitions(const State& state, unsigned* skipped) {
     const Guest g(state);
     std::vector<Entry> out;

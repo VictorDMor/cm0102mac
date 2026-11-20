@@ -240,11 +240,14 @@ std::uint8_t original_character(NSEvent* event) {
     std::function<void(NSInteger)> selectScale;
     std::function<void(cm::aot::DirectCommand)> selectCommand;
     std::function<void()> selectQuickSave;
+    std::function<void()> openCompetitionEditor;
+    std::function<bool()> toolsMayQuit;
 }
 - (void)originalMenuAction:(NSMenuItem*)sender;
 - (void)interfaceScaleAction:(NSMenuItem*)sender;
 - (void)directCommandAction:(NSMenuItem*)sender;
 - (void)quickSaveAction:(NSMenuItem*)sender;
+- (void)competitionEditorAction:(NSMenuItem*)sender;
 - (void)originalQuitAction:(NSMenuItem*)sender;
 - (void)validationClick:(NSMenuItem*)sender;
 - (void)validationMove:(NSMenuItem*)sender;
@@ -256,6 +259,9 @@ std::uint8_t original_character(NSEvent* event) {
 }
 - (void)quickSaveAction:(NSMenuItem*)sender {
     if (sender.enabled && !repeated_key_event(NSApp.currentEvent)) selectQuickSave();
+}
+- (void)competitionEditorAction:(NSMenuItem*)sender {
+    if (sender.enabled && openCompetitionEditor) openCompetitionEditor();
 }
 - (void)applicationDidChangeScreenParameters:(NSNotification*)notification {
     (void)notification; if (refreshPresentation) refreshPresentation();
@@ -391,6 +397,8 @@ std::uint8_t original_character(NSEvent* event) {
 }
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)application {
     (void)application;
+    // A host tool with unsaved work asks first; the game's own checks follow.
+    if (toolsMayQuit && !toolsMayQuit()) return NSTerminateCancel;
     pending->push_back({cm::aot::UIEvent::Kind::quit});
     // Let the original game perform its save/quit checks before it exits.
     return NSTerminateCancel;
@@ -675,6 +683,7 @@ struct NativeUI::Impl {
     NSMenu* direct_menu = nil;
     CommandContext command_context;
     bool quick_save_available = false;
+    bool competition_editor_enabled = false;
     std::string command_status = "Unavailable while starting";
     void refresh_commands() {
         for (NSMenuItem* item in direct_menu.itemArray) {
@@ -691,6 +700,7 @@ struct NativeUI::Impl {
                 item.enabled = command_context.ready && command_context.actions[item.tag] != 0;
             else if (item.tag == 101) { item.enabled = NO; }
             else if (item.tag == 102) { item.enabled = quick_save_available; }
+            else if (item.tag == 103) { item.hidden = !delegate->openCompetitionEditor; item.enabled = competition_editor_enabled; }
             else if (item.tag == 100) { item.title = [NSString stringWithUTF8String:command_status.c_str()]; item.enabled = NO; }
         }
         for (const auto& [token, menu] : menus) {
@@ -1164,6 +1174,17 @@ void NativeUI::show_alert(const std::string& title, const std::string& message) 
 void NativeUI::beep() {
     if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::beep", [&] { return beep(); });
     NSBeep();
+}
+void NativeUI::set_competition_editor(std::function<void()> open, std::function<bool()> may_quit) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_competition_editor", [&] { return set_competition_editor(open, may_quit); });
+    impl_->delegate->openCompetitionEditor = std::move(open);
+    impl_->delegate->toolsMayQuit = std::move(may_quit);
+    impl_->refresh_commands();
+}
+void NativeUI::set_competition_editor_enabled(bool enabled) {
+    if (!on_main_thread()) return CM_PROFILE_ON_MAIN("NativeUI::set_competition_editor_enabled", [&] { return set_competition_editor_enabled(enabled); });
+    impl_->competition_editor_enabled = enabled;
+    impl_->refresh_commands();
 }
 bool NativeUI::take_quick_save_request() {
     UIEvent event{UIEvent::Kind::quick_save};
@@ -1747,6 +1768,9 @@ void NativeUI::set_menu_bar(const std::vector<std::uint32_t>& menus) {
         quick.tag = 102; quick.target = impl_->delegate; quick.identifier = @"quick_save";
         quick.keyEquivalentModifierMask = NSEventModifierFlagCommand;
         [impl_->direct_menu addItem:quick];
+        NSMenuItem* editor = [[NSMenuItem alloc] initWithTitle:@"Competition Editor…" action:@selector(competitionEditorAction:) keyEquivalent:@""];
+        editor.tag = 103; editor.target = impl_->delegate; editor.identifier = @"competition_editor";
+        [impl_->direct_menu addItem:editor];
         NSMenuItem* status = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
         status.tag = 100; [impl_->direct_menu addItem:status];
         NSMenuItem* load_help = [[NSMenuItem alloc] initWithTitle:@"Load: start screen only; save and quit first" action:nil keyEquivalent:@""];

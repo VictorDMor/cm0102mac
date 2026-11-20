@@ -76,6 +76,10 @@ struct Entry {
 // Objects of another kind are counted in `skipped` when given.
 std::vector<Entry> read_competitions(const State& state, unsigned* skipped = nullptr);
 
+// One league or cup object (the caller knows its kind). The identity is the object's own record's; a stage's
+// key (the owner's id and the stage index) is the caller's to set, as read_competitions does.
+Entry read_competition(const State& state, std::uint32_t object, Kind kind);
+
 // The stable text key of an entry: "12" or "12-s0" (competition id, stage).
 std::string key(const Identity& identity);
 
