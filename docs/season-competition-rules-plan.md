@@ -417,3 +417,31 @@ after `configure` and `collect_clubs` and before anything consumes the values; t
 early for +0x28 and +0xe1. For cups it is the entry of vt+0x9c (0x10479100, native, shared by 60 vtables). CUP_STAGE
 (0x104bd8c0) and six vtables without +0x9c are not covered. Setup is not idempotent (`collect_clubs` pays every club),
 so an edit during a season writes the record directly and never re-runs a setup.
+
+## Competition overrides: from a custom database to the game (2026-11-19)
+
+No user interface yet. `native/competition_overrides.hpp` holds the entries (competition key, parameter of the
+registry, value, optional first season), their validation, the custom database file (`competition_values.hpp`
+differences mode, UTF-8: header `format`, `base`, `name`, then only the changed keys; `[kind.key.from.SEASON]`
+tables for a later first season) and the apply points: the entry of LEAGUE.CPP `set_up` and of CUP.CPP's tree
+(vt+0x9c) write the values in force at the object's season into the record; `governing_body` reads the ruling body
+from the entries (+0x4a is not saved); the Premier League's named-reserves rule yields to a bench entry after a
+load. With no entry none of these touches guest memory or registers. A league stage is keyed by its record id and
+its +0x44, which the stage constructor sets before set_up. A cup's stages are not editable in this version: their
+keys are refused, and the cup hook skips CUP_STAGE objects by their vtable (TOC -0x613c), since that constructor
+calls the tree directly (0x104bc6cc) and its +0x44 is a competition type. At set_up, a league's promotion and
+relegation entries are skipped (log line) when one of the three counts, or their sum, would exceed its club count;
+balance against the neighbouring divisions is not checked.
+
+The career's entries travel in `native_rules.tmp` as `value league|cup <key> <parameter> <int> [from <season>]` and
+`value round <cup key> <round> <parameter> <int> [from <season>]`, under the same format and revision. Older builds
+keep the lines but do not apply them (setups rewrite the values, the ruling body is the constructor's, the
+Premier bench rule rewrites that league and its fixtures on load). The writer never writes a member above the
+reader's 1 MiB: it keeps the previous one and logs it. `NativePlatform::select_custom_database` (or
+`CM_CUSTOM_DATABASE=<path>` at start-up) chooses the file; the New Game entry (0x10345bb0, inside the world build
+0x10343630, after the setup screens indexed the database) copies its entries if that database's names are a
+recognised release (the Mac 3.9.62 `eng.lng` is now recognised as `cm0102_3962`) of the file's base edition and the
+member stays within its limit; otherwise a log line and no entries. A loaded career uses what its save carries.
+`apply_now` writes a running career's record directly (never a setup, which pays the clubs); a cup's prize pool and
+its round rows wait for the next setup. Checked by `cm-competition-overrides-checks` and, with the real packs, by
+`check_custom_database` in `cm-database-seasons-checks`.

@@ -85,5 +85,53 @@ struct ParseError {
     unsigned line = 0;
     std::string message;
 };
+// The full dump `write` makes: every registered key of every table must be there. Values are not range-checked:
+// a dump holds the game's run-time state, which leaves the registry's ranges (a cup's pool goes negative as it
+// pays out; 16 round rows of the season-day career hold 0 legs). Its strings are the game records' 8-bit texts, one
+// `\u00XX` per byte outside printable ASCII: the dump does not decide their encoding, and the round trip stays
+// byte-identical. They identify a competition for a reader; nothing reads them back into the game.
 std::expected<std::vector<Entry>, ParseError> parse(std::string_view text);
+
+// A custom database: only the values a user changed from a base database (competition_overrides.hpp gives them
+// their meaning). The same tables as the full dump, with every key optional:
+//
+//   format = 1
+//   base = "cm0102"
+//   name = "Two points for a win"
+//
+//   [league.12]
+//   points.win = 2
+//
+//   [league.12.from.2004]          # from the competition season starting in 2004 on
+//   points.win = 3
+//
+//   [[cup.39.round]]               # round 0: unchanged
+//   [[cup.39.round]]               # round 1
+//   legs = 1
+//
+// Round tables are positional, as in the dump; an empty one changes nothing. Read-only parameters (the dump's
+// `.structure` tables) cannot be given, and every value must be in its parameter's range. Identity keys of the
+// dump (`id`, `name`, ...) are accepted and ignored, but `id` and `stage` must agree with the table's key. A cup's
+// stages (`[cup.39-s0]`) are refused: in this version only a cup's own object is editable (league stages are).
+// The file is UTF-8 (a leading byte-order mark is skipped): strings are TOML basic strings, raw UTF-8 or the
+// escapes \b \t \n \f \r \" \\ \uXXXX \UXXXXXXXX; the writer escapes only what TOML requires. Comments may
+// follow a value or a header.
+struct Difference {
+    Kind kind = Kind::league;
+    std::int32_t id = 0, stage = -1;              // the table's competition key
+    std::optional<std::int32_t> from_season;      // [kind.key.from.SEASON]: none for [kind.key]
+    std::int32_t round = -1;                      // the round row of a cup_round parameter, else -1
+    const Parameter* parameter = nullptr;
+    std::int32_t value = 0;
+    unsigned line = 0;                            // where it was read; 0 for a value built in memory
+};
+struct Differences {
+    std::int32_t format = 1;
+    std::string base, name;
+    unsigned base_line = 0;
+    std::vector<Difference> values;
+};
+inline constexpr std::int32_t differences_format = 1;
+std::string write_differences(const Differences&);
+std::expected<Differences, ParseError> parse_differences(std::string_view text);
 }

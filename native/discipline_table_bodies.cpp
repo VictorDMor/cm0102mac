@@ -1,9 +1,17 @@
 // DISCIPLINE.CPP table block (discipline_table.hpp): what the manager asks of the ruling bodies
 // (RULING_BODY.CPP objects) on behalf of other modules, native-first.
+#include "competition_overrides.hpp"
 #include "discipline_table.hpp"
 #include "discipline_table_detail.hpp"
 
 namespace cm::aot::discipline {
+std::uint32_t governing_body(const guest::Cpu& c, std::uint32_t manager_object, std::uint32_t competition_object) {
+    // +0x4a is not saved (the constructor restores it on every load), so a career's override is read here.
+    const auto index = competition_overrides::ruling_body(c.s, competition_object, c.i8(competition_object + competition::ruling_body));
+    if (index == no_ruling_body) return 0;
+    return body_object(c, manager_object, std::uint32_t(std::int32_t(index)));
+}
+
 namespace {
 namespace callee {
 constexpr std::uint32_t virtual_call = 0x10781320, ban_check = 0x105bc600, human_manager_check = 0x1014c2e0,
@@ -14,13 +22,6 @@ namespace vtable {
 constexpr std::uint32_t competition_method = 8, all_bodies_method = 0xc;
 }
 
-// The ruling body object governing a competition object: null when the competition has none (index -1) or its
-// slot holds none.
-std::uint32_t governing_body(const guest::Cpu& c, std::uint32_t manager_object, std::uint32_t competition_object) {
-    const auto index = c.i8(competition_object + competition::ruling_body);
-    if (index == no_ruling_body) return 0;
-    return body_object(c, manager_object, std::uint32_t(std::int32_t(index)));
-}
 
 // `lwz r12,0(r3); lwz r12,vtable_offset(r12); bl 0x10781320; lwz r2,0x14(r1)`: the glue switches the TOC for the
 // method and leaves the caller's in the frame's linkage word. The caller sets r4... as the method reads them.

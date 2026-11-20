@@ -1,4 +1,5 @@
 #pragma once
+#include "competition_overrides.hpp"
 #include "season_competition_rules.hpp"
 #include <array>
 #include <optional>
@@ -19,10 +20,28 @@ namespace cm::aot {
 //   revision 1
 //   historical_rules off
 //   set england.premier_named_reserves 0
+//   value league 12 league.points.win 2
+//   value league 12 league.points.win 3 from 2004
+//   value cup 39 cup.prize.pool 1000000
+//   value round 39 2 cup.round.legs 1
+//
+// A `value` line is one competition override (competition_overrides.hpp):
+// `value league|cup <key> <parameter id> <int>`, or for a cup round row
+// `value round <cup key> <round index> <parameter id> <int>`, each optionally
+// followed by `from <season>`. The member carries the resolved entries, never
+// a reference to the custom database they came from. They need no new format
+// or revision: `revision` names the edition's checked-in rules, which these
+// lines do not change, and a build that does not know `value` keeps the lines
+// and ignores them, as for any unknown statement. Such a build does not apply
+// the entries: each competition's next setup writes its own values again; the
+// ruling body is the constructor's at once (it is not saved); and the Premier
+// League's named-reserves rule rewrites that league's bench and its loaded
+// fixtures on every load. A later save by this build restores none of it.
 class CareerRules {
 public:
     inline static constexpr std::string_view member_name = "native_rules.tmp";
-    // The format is a few lines of text; a larger member is dropped.
+    // The format is a few lines of text; a larger member is dropped on read,
+    // and never written (the platform keeps the previous one and says so).
     inline static constexpr std::size_t member_limit = 1024 * 1024;
 
     // A new career, or a load that replaces the running one.
@@ -49,6 +68,17 @@ public:
     const RulePresets* customized() const { return customized_ ? &*customized_ : nullptr; }
     // Applies the overrides to rules resolved elsewhere (a season of a timeline).
     void apply(CompetitionRules&) const;
+    // The career's competition overrides (`value` lines this build applies).
+    const competition_overrides::OverrideSet& competition_overrides() const { return competition_overrides_; }
+    // Replaces them: the `value` lines this build applied give way to one line
+    // per entry; lines it ignored stay. False (and nothing changes) for a
+    // member kept without interpreting.
+    bool set_competition_overrides(const competition_overrides::OverrideSet&);
+    // A new career's start from a custom database: its entries replace the
+    // career's when `edition` (the database in use, none when it is not a
+    // recognised release) is the file's base and the member stays within
+    // `member_limit`. "" when adopted, else why not (nothing changes then).
+    std::string adopt(const competition_overrides::CustomDatabase&, std::optional<CompetitionEdition> edition);
 
 private:
     std::optional<CompetitionEdition> edition_;
@@ -60,7 +90,12 @@ private:
     // Index into the overridable fields, and the value.
     std::vector<std::pair<std::size_t, long>> overrides_;
     std::optional<RulePresets> customized_;
+    competition_overrides::OverrideSet competition_overrides_;
 };
+// One `value` line and its reading; the reading is null for a line that is
+// not a valid entry for this build.
+std::string value_statement(const competition_overrides::Override&);
+std::optional<competition_overrides::Override> read_value_statement(std::string_view line);
 
 // The revision of an edition's checked-in rules. A member with another
 // revision is kept and not applied, so a build that raises this must keep the

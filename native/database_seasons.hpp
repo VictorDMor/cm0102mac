@@ -1,4 +1,5 @@
 #pragma once
+#include "season_competition_rules.hpp"
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -8,9 +9,13 @@
 
 namespace cm::aot {
 struct State;
-// Known releases of the database names a career embeds. Anything else is the
-// Mac 3.9.62 data or a database this port has no profile for.
-enum class DatabaseRelease { other, cm0001_389, si_3968 };
+// Known releases of the database names a career embeds. Anything else is a
+// database this port has no profile for (an edited or translated names file,
+// a data update); its rules are the Mac 3.9.62 data's.
+enum class DatabaseRelease { other, cm0102_3962, cm0001_389, si_3968 };
+// The edition a recognised release selects; none for `other`
+// (competition_edition() then uses cm0102).
+std::optional<CompetitionEdition> release_edition(DatabaseRelease);
 struct DatabaseSeason {
     unsigned year;
     std::string label, directory;

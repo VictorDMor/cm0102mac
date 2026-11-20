@@ -83,6 +83,25 @@ namespace {
 bool in_top_table(const Parameter& p) { return p.scope != Scope::cup_round && !p.read_only; }
 bool in_structure(const Parameter& p) { return p.scope != Scope::cup_round && p.read_only; }
 bool for_kind(const Parameter& p, Kind kind) { return p.scope == (kind == Kind::league ? Scope::league : Scope::cup); }
+
+// Where a key may appear: a competition's own table, its `.structure` table (read-only values), or a round table
+// (every round parameter, read-only ones included). Built once from the registry.
+enum class Place { top, structure, round };
+const Parameter* lookup(Kind kind, Place place, std::string_view key) {
+    using Table = std::map<std::string, const Parameter*, std::less<>>;
+    static const auto tables = [] {
+        std::array<Table, 5> t;  // league top, league structure, cup top, cup structure, rounds
+        for (const auto& p : registry) {
+            const auto index = p.scope == Scope::cup_round ? 4 : (p.scope == Scope::league ? 0 : 2) + (p.read_only ? 1 : 0);
+            t[std::size_t(index)].emplace(toml_key(p), &p);
+        }
+        return t;
+    }();
+    const auto index = place == Place::round ? 4 : (kind == Kind::league ? 0 : 2) + (place == Place::structure ? 1 : 0);
+    const auto& table = tables[std::size_t(index)];
+    const auto it = table.find(key);
+    return it == table.end() ? nullptr : it->second;
+}
 }  // namespace
 namespace {
 constexpr std::uint32_t toc_base = 0x108bba90;
@@ -393,12 +412,9 @@ struct Parser {
                     return true;
                 }
         }
-        for (const auto& p : parameters()) {
-            const bool here = section == Section::round ? p.scope == Scope::cup_round
-                            : for_kind(p, entry->kind) && (section == Section::top ? in_top_table(p) : in_structure(p));
-            if (!here || toml_key(p) != name) continue;
-            return integer((section == Section::round ? *round : entry->values)[std::string(p.id)]);
-        }
+        const auto place = section == Section::round ? Place::round : section == Section::top ? Place::top : Place::structure;
+        if (const auto* p = lookup(entry->kind, place, name))
+            return integer((section == Section::round ? *round : entry->values)[std::string(p->id)]);
         return fail("unknown key '" + std::string(name) + "'");
     }
 
@@ -453,5 +469,291 @@ std::expected<std::vector<Entry>, ParseError> parse(std::string_view text) {
     }
     if (!p.complete()) return std::unexpected(ParseError{p.line, p.error});
     return std::move(p.entries);
+}
+
+namespace {
+void quote_utf8(std::string& out, std::string_view value);
+std::string table_name(Kind kind, std::int32_t id, std::int32_t stage, const std::optional<std::int32_t>& from) {
+    std::string name = kind == Kind::league ? "league." : "cup.";
+    name += key(Identity{.id = id, .stage = stage});
+    if (from) name += ".from." + std::to_string(*from);
+    return name;
+}
+}  // namespace
+
+std::string write_differences(const Differences& d) {
+    std::string out = "# Custom competition database: only the values that differ from its base (competition_values.hpp).\n";
+    put(out, "format", d.format);
+    for (const auto& [key, value] : {std::pair{"base", &d.base}, std::pair{"name", &d.name}}) {
+        out += key;
+        out += " = ";
+        quote_utf8(out, *value);
+        out += '\n';
+    }
+    // One table per competition and season, in key order; a table's own values in registry order, then its rounds.
+    using Group = std::tuple<std::int32_t, std::int32_t, int, std::int32_t>;  // id, stage, kind, season (none first)
+    const auto group_of = [](const Difference& v) {
+        return Group{v.id, v.stage, int(v.kind), v.from_season ? *v.from_season : INT32_MIN};
+    };
+    const auto rank = [](const Parameter* p) { return p ? p - parameters().data() : -1; };
+    std::vector<const Difference*> sorted;
+    for (const auto& v : d.values) if (v.parameter) sorted.push_back(&v);
+    std::stable_sort(sorted.begin(), sorted.end(), [&](const Difference* a, const Difference* b) {
+        return std::tuple(group_of(*a), a->round, rank(a->parameter)) < std::tuple(group_of(*b), b->round, rank(b->parameter));
+    });
+    for (std::size_t i = 0; i < sorted.size();) {
+        const auto& first = *sorted[i];
+        const auto group = group_of(first);
+        const auto name = table_name(first.kind, first.id, first.stage, first.from_season);
+        out += "\n[" + name + "]\n";
+        std::int32_t written_rounds = 0;
+        for (; i < sorted.size() && group_of(*sorted[i]) == group; ++i) {
+            const auto& v = *sorted[i];
+            if (v.round >= 0) {
+                // The rounds before this one, empty, keep the positions; then this round's header once.
+                for (; written_rounds <= v.round; ++written_rounds)
+                    out += "\n# round " + std::to_string(written_rounds) + "\n[[" + name + ".round]]\n";
+            }
+            put(out, toml_key(*v.parameter).c_str(), v.value);
+        }
+    }
+    return out;
+}
+
+namespace {
+// TOML basic strings as UTF-8 (the differences file is the one people and their tools edit): the escapes \b \t \n
+// \f \r \" \\ \uXXXX \UXXXXXXXX, raw UTF-8 otherwise; control characters other than tab must be escaped.
+void append_utf8(std::string& out, std::uint32_t code) {
+    if (code < 0x80) out.push_back(char(code));
+    else if (code < 0x800) { out.push_back(char(0xc0 | code >> 6)); out.push_back(char(0x80 | (code & 0x3f))); }
+    else if (code < 0x10000) {
+        out.push_back(char(0xe0 | code >> 12)); out.push_back(char(0x80 | (code >> 6 & 0x3f))); out.push_back(char(0x80 | (code & 0x3f)));
+    } else {
+        out.push_back(char(0xf0 | code >> 18)); out.push_back(char(0x80 | (code >> 12 & 0x3f)));
+        out.push_back(char(0x80 | (code >> 6 & 0x3f))); out.push_back(char(0x80 | (code & 0x3f)));
+    }
+}
+// The length of the well-formed UTF-8 sequence at `text[i]` (a lead byte >= 0x80), or 0.
+std::size_t utf8_sequence(std::string_view text, std::size_t i) {
+    const auto lead = std::uint8_t(text[i]);
+    const std::size_t length = lead >= 0xc2 && lead <= 0xdf ? 2 : lead >= 0xe0 && lead <= 0xef ? 3 : lead >= 0xf0 && lead <= 0xf4 ? 4 : 0;
+    if (!length || i + length > text.size()) return 0;
+    std::uint32_t code = lead & (0x7f >> length);
+    for (std::size_t k = 1; k < length; ++k) {
+        const auto b = std::uint8_t(text[i + k]);
+        if ((b & 0xc0) != 0x80) return 0;
+        code = code << 6 | (b & 0x3f);
+    }
+    const std::uint32_t minimum[] = {0, 0, 0x80, 0x800, 0x10000};
+    if (code < minimum[length] || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return 0;
+    return length;
+}
+bool unquote_utf8(std::string_view text, std::string& out) {
+    if (text.size() < 2 || text.front() != '"' || text.back() != '"') return false;
+    out.clear();
+    const auto body = text.substr(1, text.size() - 2);
+    for (std::size_t i = 0; i < body.size();) {
+        const auto c = std::uint8_t(body[i]);
+        if (c == '"') return false;
+        if ((c < 0x20 && c != '\t') || c == 0x7f) return false;
+        if (c >= 0x80) {
+            const auto length = utf8_sequence(body, i);
+            if (!length) return false;
+            out.append(body.substr(i, length));
+            i += length;
+            continue;
+        }
+        if (c != '\\') { out.push_back(char(c)); ++i; continue; }
+        if (++i >= body.size()) return false;
+        const char e = body[i++];
+        switch (e) {
+        case 'b': out.push_back('\b'); break;
+        case 't': out.push_back('\t'); break;
+        case 'n': out.push_back('\n'); break;
+        case 'f': out.push_back('\f'); break;
+        case 'r': out.push_back('\r'); break;
+        case '"': out.push_back('"'); break;
+        case '\\': out.push_back('\\'); break;
+        case 'u': case 'U': {
+            const std::size_t digits = e == 'u' ? 4 : 8;
+            if (i + digits > body.size()) return false;
+            std::uint32_t code = 0;
+            const auto [p, ec] = std::from_chars(body.data() + i, body.data() + i + digits, code, 16);
+            if (ec != std::errc() || p != body.data() + i + digits || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return false;
+            append_utf8(out, code);
+            i += digits;
+            break;
+        }
+        default: return false;
+        }
+    }
+    return true;
+}
+// Writes a UTF-8 string as a TOML basic string with only the escapes TOML requires.
+void quote_utf8(std::string& out, std::string_view value) {
+    out += '"';
+    for (const unsigned char c : value) {
+        switch (c) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\b': out += "\\b"; break;
+        case '\t': out += "\\t"; break;
+        case '\n': out += "\\n"; break;
+        case '\f': out += "\\f"; break;
+        case '\r': out += "\\r"; break;
+        default:
+            if (c < 0x20 || c == 0x7f) {
+                char buffer[8];
+                std::snprintf(buffer, sizeof buffer, "\\u%04X", c);
+                out += buffer;
+            } else out += char(c);
+        }
+    }
+    out += '"';
+}
+
+// The differences mode: every key optional, header keys first, ranges enforced, read-only values refused.
+struct DifferencesParser {
+    Differences result;
+    unsigned line = 0;
+    std::string error;
+    bool in_table = false;
+    Kind kind = Kind::league;
+    std::int32_t id = 0, stage = -1, round = -1;
+    std::optional<std::int32_t> from;
+    std::set<std::string> seen_keys, seen_tables, header_keys;
+    std::map<std::string, std::int32_t> round_counts;   // per table name, the round tables given so far
+
+    bool fail(std::string message) { error = std::move(message); return false; }
+
+    bool header(std::string_view text, bool array) {
+        std::vector<std::string_view> parts;
+        for (std::string_view rest = text;;) {
+            const auto dot = rest.find('.');
+            parts.push_back(rest.substr(0, dot));
+            if (dot == std::string_view::npos) break;
+            rest.remove_prefix(dot + 1);
+        }
+        if (parts.size() < 2) return fail("a table needs a kind and a key");
+        if (parts[0] == "league") kind = Kind::league;
+        else if (parts[0] == "cup") kind = Kind::cup;
+        else return fail("unknown table kind '" + std::string(parts[0]) + "'");
+        if (!Parser::key_id(parts[1], id, stage)) return fail("bad competition key '" + std::string(parts[1]) + "'");
+        if (kind == Kind::cup && stage >= 0)
+            return fail("[" + std::string(text) + "]: a cup's stages are not editable in this version, only the cup itself");
+        std::size_t next = 2;
+        from.reset();
+        if (parts.size() > next && parts[next] == "from") {
+            std::int32_t season = 0;
+            if (parts.size() < next + 2 || !Parser::number(parts[next + 1], season) || season < 0)
+                return fail("[" + std::string(text) + "]: 'from' needs a season (the year it starts in)");
+            from = season;
+            next += 2;
+        }
+        const auto name = table_name(kind, id, stage, from);
+        seen_keys.clear();
+        in_table = true;
+        round = -1;
+        if (parts.size() == next) {
+            if (array) return fail("a competition is a plain table");
+            if (!seen_tables.insert(name).second) return fail("duplicate table [" + std::string(text) + "]");
+            return true;
+        }
+        if (parts.size() == next + 1 && parts[next] == "round" && array) {
+            if (kind != Kind::cup) return fail("only a cup has round tables");
+            round = round_counts[name]++;
+            if (round >= 64) return fail("more than 64 round tables");
+            return true;
+        }
+        if (parts.size() == next + 1 && parts[next] == "structure")
+            return fail("[" + std::string(text) + "]: the structure is read-only and cannot be changed");
+        return fail("unknown table [" + std::string(text) + "]");
+    }
+
+    bool assign(std::string_view name, std::string_view value) {
+        std::int32_t n = 0;
+        std::string s;
+        if (!in_table) {
+            if (!header_keys.insert(std::string(name)).second) return fail("duplicate key '" + std::string(name) + "'");
+            if (name == "format") {
+                if (!Parser::number(value, n)) return fail("'format' needs an integer");
+                if (n != differences_format) return fail("unknown format " + std::to_string(n) + " (this build reads " + std::to_string(differences_format) + ")");
+                result.format = n;
+                return true;
+            }
+            if (name == "base" || name == "name") {
+                if (!unquote_utf8(value, s)) return fail("'" + std::string(name) + "' needs a TOML basic string (UTF-8)");
+                if (name == "base") { result.base = s; result.base_line = line; }
+                else result.name = s;
+                return true;
+            }
+            return fail("unknown key '" + std::string(name) + "' before the first table");
+        }
+        if (!seen_keys.insert(std::string(name)).second) return fail("duplicate key '" + std::string(name) + "'");
+        if (round < 0) {
+            if (name == "id" || name == "stage") {
+                if (!Parser::number(value, n)) return fail("'" + std::string(name) + "' needs an integer");
+                if (n != (name == "id" ? id : stage)) return fail("'" + std::string(name) + "' disagrees with the table's key");
+                return true;
+            }
+            if (name == "parent" || name == "nation_number") {
+                if (!Parser::number(value, n)) return fail("'" + std::string(name) + "' needs an integer");
+                return true;
+            }
+            if (name == "name" || name == "short_name" || name == "continent" || name == "nation") {
+                if (!unquote_utf8(value, s)) return fail("'" + std::string(name) + "' needs a TOML basic string (UTF-8)");
+                return true;
+            }
+        }
+        const auto* p = round >= 0 ? lookup(kind, Place::round, name) : lookup(kind, Place::top, name);
+        if (!p && round < 0) p = lookup(kind, Place::structure, name);
+        if (!p) return fail("unknown key '" + std::string(name) + "'");
+        if (p->read_only) return fail("'" + std::string(name) + "' (" + std::string(p->id) + ") is read-only");
+        if (!Parser::number(value, n)) return fail("'" + std::string(name) + "' needs an integer");
+        if (const auto problem = range_problem(*p, n); !problem.empty()) return fail(problem);
+        result.values.push_back({.kind = kind, .id = id, .stage = stage, .from_season = from, .round = round,
+                                 .parameter = p, .value = n, .line = line});
+        return true;
+    }
+};
+
+// A '#' outside a quoted string starts a comment.
+std::string_view without_comment(std::string_view line) {
+    bool quoted = false;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        if (quoted && line[i] == '\\') { ++i; continue; }
+        if (line[i] == '"') quoted = !quoted;
+        else if (line[i] == '#' && !quoted) return line.substr(0, i);
+    }
+    return line;
+}
+}  // namespace
+
+std::expected<Differences, ParseError> parse_differences(std::string_view text) {
+    DifferencesParser p;
+    if (text.starts_with("\xEF\xBB\xBF")) text.remove_prefix(3);
+    while (!text.empty()) {
+        ++p.line;
+        const auto newline = text.find('\n');
+        auto line = trim(without_comment(text.substr(0, newline)));
+        text = newline == std::string_view::npos ? std::string_view() : text.substr(newline + 1);
+        if (line.empty()) continue;
+        bool ok;
+        if (line.starts_with("[[")) {
+            if (!line.ends_with("]]")) return std::unexpected(ParseError{p.line, "unterminated table header"});
+            ok = p.header(trim(line.substr(2, line.size() - 4)), true);
+        } else if (line.front() == '[') {
+            if (line.back() != ']') return std::unexpected(ParseError{p.line, "unterminated table header"});
+            ok = p.header(trim(line.substr(1, line.size() - 2)), false);
+        } else {
+            const auto eq = line.find('=');
+            if (eq == std::string_view::npos) return std::unexpected(ParseError{p.line, "expected 'key = value'"});
+            ok = p.assign(trim(line.substr(0, eq)), trim(line.substr(eq + 1)));
+        }
+        if (!ok) return std::unexpected(ParseError{p.line, p.error});
+    }
+    for (const auto* required : {"format", "base", "name"})
+        if (!p.header_keys.contains(required)) return std::unexpected(ParseError{1, std::string("missing header key '") + required + "'"});
+    return std::move(p.result);
 }
 }

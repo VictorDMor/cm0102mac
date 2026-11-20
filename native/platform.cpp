@@ -386,6 +386,11 @@ struct NativePlatform::Impl {
     // The switch was chosen in Game Settings since this career started or loaded.
     bool career_switch_edited = false;
     CareerRules career_rules;
+    // The custom database new careers start with (select_custom_database).
+    std::optional<competition_overrides::CustomDatabase> custom_database;
+    // The database names were last inspected outside a load: the release is
+    // the one a New Game builds its world from.
+    bool new_game_names = false;
     std::optional<std::string> temporary_directory;
     std::map<std::uint32_t, fs::path> directories;
     std::map<fs::path, std::uint32_t> file_ids;
@@ -1443,6 +1448,21 @@ struct NativePlatform::Impl {
         for (const auto& line : ignored) std::fprintf(stderr, "Career rules not applied: %s\n", line.c_str());
         if (!ignored.empty()) command_status = "Career rules: " + std::to_string(ignored.size()) + " statement(s) not applied";
     }
+    // A new career's rules take the chosen custom database's entries when it
+    // was made from the edition of the database in use (CareerRules::adopt).
+    void install_custom_database() {
+        if (!custom_database) return;
+        const auto why = !new_game_names ? std::string("no database was indexed for this New Game")
+                                         : career_rules.adopt(*custom_database, release_edition(seasons->release()));
+        if (!why.empty()) {
+            std::fprintf(stderr, "Custom database \"%s\" not used for this career: %s\n", custom_database->name.c_str(), why.c_str());
+            command_status = "Custom database not used: " + why;
+            return;
+        }
+        std::fprintf(stderr, "Custom database \"%s\": %zu value(s) for this career\n", custom_database->name.c_str(),
+                     custom_database->overrides.size());
+        command_status = "Custom database \"" + custom_database->name + "\" in use";
+    }
     // The previous career is gone: neither its rules nor its member's file
     // may reach the next one.
     void forget_career_rules() {
@@ -1458,6 +1478,13 @@ struct NativePlatform::Impl {
             return;
         }
         const auto text = career_rules.text(edition);
+        if (text.size() > CareerRules::member_limit) {
+            // The reader would drop it: the previous member stays, and this save does not carry the career's rules.
+            std::fprintf(stderr, "CAREER RULES NOT SAVED: the member would be %zu bytes, above the %zu-byte limit; "
+                         "the previous member is kept\n", text.size(), CareerRules::member_limit);
+            command_status = "Career rules too large to save; the previous rules member is kept";
+            return;
+        }
         std::error_code error;
         fs::create_directories(file->parent_path(), error);
         std::ofstream output(*file, std::ios::binary | std::ios::trunc);
@@ -1692,6 +1719,8 @@ NativePlatform::NativePlatform(fs::path game, fs::path writable, AudioMode audio
     impl_->directories.emplace(2, impl_->game);
     impl_->directories.emplace(3, impl_->writable);
     impl_->seasons = std::make_unique<DatabaseSeasons>(impl_->writable);
+    // Read once, for the owner to try a custom database before the editor exists, and for tests.
+    if (const char* custom = std::getenv("CM_CUSTOM_DATABASE"); custom && *custom) select_custom_database(fs::path(custom));
 }
 NativePlatform::~NativePlatform() = default;
 GuiCanvas NativePlatform::gui_canvas_size() const { return impl_->canvas; }
@@ -1808,6 +1837,34 @@ void NativePlatform::inspect_database_season_names() {
         } catch (const FileError&) {}
     }
     seasons.inspect_database_names(file);
+    // The New Game entry (career_load_reset) takes the custom database against this release.
+    impl_->new_game_names = !impl_->career_loading;
+}
+std::optional<std::string> NativePlatform::custom_database_name() const {
+    if (!impl_->custom_database) return std::nullopt;
+    return impl_->custom_database->name;
+}
+std::string NativePlatform::select_custom_database(const std::optional<fs::path>& file) {
+    impl_->custom_database.reset();
+    if (!file) return {};
+    const auto refuse = [&](std::string why) {
+        std::fprintf(stderr, "Custom database %s not selected: %s\n", file->string().c_str(), why.c_str());
+        return why;
+    };
+    constexpr std::uintmax_t limit = 4 * 1024 * 1024;
+    std::error_code error;
+    const auto size = fs::file_size(*file, error);
+    if (error) return refuse(error.message());
+    if (size > limit) return refuse("larger than 4 MiB");
+    std::string text(size, '\0');
+    std::ifstream input(*file, std::ios::binary);
+    if (!input.read(text.data(), std::streamsize(size))) return refuse("cannot be read");
+    auto database = competition_overrides::read_custom_database(text);
+    if (!database) return refuse("line " + std::to_string(database.error().line) + ": " + database.error().message);
+    std::fprintf(stderr, "Custom database \"%s\" (%s, %zu values) selected for new careers\n", database->name.c_str(),
+                 std::string(edition_name(database->base)).c_str(), database->overrides.size());
+    impl_->custom_database = std::move(*database);
+    return {};
 }
 const fs::path& NativePlatform::writable_directory() const { return impl_->writable; }
 
@@ -1952,6 +2009,7 @@ void NativePlatform::career_database_replaced() {
     // arrive with its temporary members (career_members_extracted).
     impl_->career_rules.reset();
     impl_->career_switch_edited = false;
+    impl_->new_game_names = false;
     // Until the loader reports success there is no career to edit.
     impl_->career_present = false;
 }
@@ -1964,6 +2022,7 @@ void NativePlatform::career_load_reset() {
     impl_->career_loading = false;
     impl_->career_present = true;
     impl_->forget_career_rules();
+    impl_->install_custom_database();
 }
 void NativePlatform::quick_save_load_end(State& s) {
     impl_->seasons->resume();

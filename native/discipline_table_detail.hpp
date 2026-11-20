@@ -22,6 +22,9 @@ namespace competition {
 inline constexpr std::uint32_t ruling_body = 0x4a, ruling_argument = 4;
 }
 inline constexpr std::int8_t no_ruling_body = -1;
+// The ruling body object governing a competition object: null when the competition has none (index -1) or its
+// slot holds none. The index is the object's +0x4a unless the career overrides it (competition_overrides.hpp).
+std::uint32_t governing_body(const guest::Cpu& c, std::uint32_t manager_object, std::uint32_t competition_object);
 // A person record (0x70 bytes, DATABASE.CPP): +0 the person id, +0x24 the human manager object when the person
 // is one. A human manager's 20 pointers at +0x19c.
 namespace person_record {

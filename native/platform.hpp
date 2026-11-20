@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,6 +39,23 @@ public:
     bool career_present() const;
     // The Game Settings choice for the career in memory.
     void edit_career_historical_rules(bool on);
+    // The custom database (competition_overrides.hpp) every new career starts
+    // with, from here on; none clears the choice. Call it on the game worker
+    // (the thread running the guest), between guest calls, like every other
+    // member. It reads and checks the file now and changes no career: the
+    // entries are copied into a new career's rules at the New Game entry
+    // (career_load_reset, 0x10345bb0, where the world is about to be built,
+    // after the setup screens indexed the database), if the database the
+    // setup indexed is a recognised release whose edition is the file's base
+    // and the member stays within its limit (else a log line and the career
+    // starts without them). So a change during a New Game's setup screens is
+    // the one that new career uses; a change after that entry affects only
+    // later New Games. A loaded career uses only what its save carries.
+    // Returns "" or why the file was not taken (then none is chosen).
+    // CM_CUSTOM_DATABASE=<path> chooses one when the platform starts.
+    std::string select_custom_database(const std::optional<std::filesystem::path>& file);
+    // The chosen custom database's name, if one is chosen.
+    std::optional<std::string> custom_database_name() const;
     // The loader is about to replace the tables of the running world.
     void career_database_replaced();
     // The loader's second pass extracted the save's `*.tmp` members into the

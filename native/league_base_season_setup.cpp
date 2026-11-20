@@ -7,6 +7,7 @@
 // 0x50 bytes at sp+0xa4: its stale bytes are read: the byte at sp+0xf3 holds MAIN.CPP's leftovers, CLAUDE.md's
 // stack contract) and files one fixture per match: from the league's preset fixtures (+0xe8) when they are of the
 // league's year, else from the matrix. Finally it asks 0x104a28d0 to schedule the fixtures of every round of kind 3.
+#include "competition_overrides.hpp"
 #include "date.hpp"
 #include "guest_values.hpp"
 #include "league_base_detail.hpp"
@@ -104,6 +105,9 @@ inline constexpr std::int32_t competition = 0xa4, word_ac = 0xac, home = 0xb0, a
 }
 
 bool set_up(Cpu& c, std::uint32_t league_object) {
+    // The career's own values (competition_overrides.hpp), before anything here reads the record: only object
+    // fields, no register, stack byte or call; nothing at all when the career has none.
+    competition_overrides::at_setup(c.s, league_object, competition_overrides::Kind::league);
     const Frame frame(c, 0x104a00a0, 0x130, {.first_gpr = 19});
     Held h(c);
     std::uint32_t& walker = h.v[19];   // the pointer into the matrix, later the round offset or a counter

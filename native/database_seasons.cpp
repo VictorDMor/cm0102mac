@@ -78,6 +78,11 @@ void DatabaseSeasons::inspect_database_names(const std::filesystem::path& path) 
     // loader before INDEX. Never infer the release from year or staff counts.
     struct Known { DatabaseRelease release; std::uintmax_t size; std::string_view sha256; };
     static constexpr std::array known{
+        // The names file the Mac 3.9.62 game ships (its Data/eng.lng), and the
+        // copy the installer aligns for the index (tools/language_compat.py
+        // install_index_compatibility), which is the one the game reads.
+        Known{DatabaseRelease::cm0102_3962, 1622983, "f305bc9731a06098f24dc860f9156f539d4d965e610f90196e3e2792be1ef194"},
+        Known{DatabaseRelease::cm0102_3962, 1622983, "d949309b50c822c337546e04b7eb893507aba3cf0bec9aa95d4ef7f9d8f6ffa1"},
         Known{DatabaseRelease::cm0001_389, 1130151, "b2b61aed6afaf90b2632b5f85ded0566884810d02e59d2aec1526ab4689a68a2"},
         Known{DatabaseRelease::si_3968, 1993486, "391017caa3177e8343f5576f7dcebf5a716c7df58f60cc853dd39733f270b217"},
     };
@@ -95,7 +100,8 @@ void DatabaseSeasons::inspect_database_names(const std::filesystem::path& path) 
     constexpr char hex[] = "0123456789abcdef";
     std::string actual;
     for (auto byte : digest) { actual += hex[byte >> 4]; actual += hex[byte & 15]; }
-    if (actual == candidate->sha256) release_ = candidate->release;
+    for (const auto& known_release : known)
+        if (known_release.size == size && actual == known_release.sha256) release_ = known_release.release;
 }
 bool DatabaseSeasons::request(int direction) {
     if (!enabled() || !active_ || pending_ || (direction != -1 && direction != 1)) return false;

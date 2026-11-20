@@ -169,17 +169,21 @@ bool database_season_optional_index(State& s) {
     const auto found = std::ranges::find(optional_indexes, c.lr(), &IndexRequirement::caller);
     return found != optional_indexes.end() && c.i32(c.toc(found->slot)) == -1;
 }
+std::optional<CompetitionEdition> release_edition(DatabaseRelease release) {
+    switch (release) {
+    case DatabaseRelease::cm0102_3962: return CompetitionEdition::cm0102;
+    case DatabaseRelease::cm0001_389: return CompetitionEdition::cm0001_389;
+    case DatabaseRelease::si_3968: return CompetitionEdition::si_3968;
+    case DatabaseRelease::other: break;
+    }
+    return std::nullopt;
+}
 CompetitionEdition competition_edition(const State& s) {
     if (!s.platform) return CompetitionEdition::cm0102;
     // A career saved by this port names its edition; older saves and new
     // careers are recognised by their database names.
     if (const auto pinned = s.platform->career_rules().edition()) return *pinned;
-    switch (s.platform->database_seasons().release()) {
-    case DatabaseRelease::cm0001_389: return CompetitionEdition::cm0001_389;
-    case DatabaseRelease::si_3968: return CompetitionEdition::si_3968;
-    case DatabaseRelease::other: break;
-    }
-    return CompetitionEdition::cm0102;
+    return release_edition(s.platform->database_seasons().release()).value_or(CompetitionEdition::cm0102);
 }
 void database_season_limit_leagues(State& s) {
     if (competition_rules(s).unavailable_countries.empty()) return;

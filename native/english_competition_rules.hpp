@@ -1,4 +1,5 @@
 #pragma once
+#include "competition_overrides.hpp"
 #include "guest_values.hpp"
 #include "season_competition_rules.hpp"
 #include <array>
@@ -7,14 +8,21 @@ namespace cm::aot::english_rules {
 // Match squads: seven named reserves, still three substitutions. These are
 // existing bytes, not new save fields. The league type excludes English cups
 // and reserve/youth competitions even when their clubs play in the Premier League.
+// A career's own bench for the league (competition_overrides.hpp) wins: the
+// record and the fixtures already hold it, from the setup that made them.
 inline void premier_bench(guest::Cpu& c, std::uint32_t league) {
     if (c.u32(league) != c.toc(-0x6020)) return;
+    if (competition_overrides::active(c.s) &&
+        competition_overrides::bench_overridden(c.s, c.i32(c.u32(league + 4)), c.i16(league + 0x40))) return;
     if (const auto reserves = competition_rules(c.s).england.premier_named_reserves) c.put8(league + 0x46, reserves);
 }
 inline void loaded_premier_fixture(guest::Cpu& c, std::uint32_t fixture) {
     // Runs for every fixture a load reads: the cheap tests come before the rules.
     const auto id = c.u32(c.toc(-0x67a0));
     if (id == 0xffffffffu || c.u32(fixture) != id || c.i8(fixture + 0x43) != -1) return;
+    // +0x2c: the league's season year the setup copied into the fixture.
+    if (competition_overrides::active(c.s) &&
+        competition_overrides::bench_overridden(c.s, std::int32_t(id), c.i16(fixture + 0x2c))) return;
     if (const auto reserves = competition_rules(c.s).england.premier_named_reserves)
         c.put8(fixture + 0x4e, (reserves << 4) | (c.u8(fixture + 0x4e) & 0xf));
 }

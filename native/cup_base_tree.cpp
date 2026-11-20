@@ -24,6 +24,7 @@
 // many small places, and each assignment is repeated where it happens (`c.set(4..10, ...)`, with the instruction
 // address) rather than reconstructed. The non-volatile registers are set before the assertion and the dialog
 // (imports) as the original holds them there.
+#include "competition_overrides.hpp"
 #include "cup_base_detail.hpp"
 #include "cup_base_tree.hpp"
 #include <array>
@@ -564,6 +565,10 @@ void Tree::tie_totals() {
 }
 
 std::int32_t map_fixture_tree(Cpu& c, std::uint32_t cup) {
+    // The career's own values (competition_overrides.hpp), after configure built the round table and before the
+    // tree or any fixture reads it: only object and round-row fields, no register, stack byte or call; nothing at
+    // all when the career has none.
+    competition_overrides::at_setup(c.s, cup, competition_overrides::Kind::cup);
     const Frame frame(c, entry, frame_size, {.first_gpr = 13});
     return Tree(c, cup, frame).run();
 }

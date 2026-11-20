@@ -785,6 +785,21 @@ void check_archive(State& s) {
     std::cout<<"Summer/calendar-year start selection, original packed database/language reload and date bytes passed\n";
 }
 }
+// A custom database made from the 2001/02 data is taken by a New Game on the
+// real 2001 names (the Mac 3.9.62 release) and refused on the other packs.
+void check_custom_database(State& s, unsigned year) {
+    auto& platform=*s.platform; auto& career=platform.career_rules();
+    const auto file=platform.writable_directory()/"custom-database-check.toml";
+    std::ofstream(file)<<"format = 1\nbase = \"cm0102\"\nname = \"check\"\n\n[league.0]\npoints.win = 2\n";
+    require(platform.select_custom_database(file).empty(),"Custom database fixture");
+    platform.career_load_reset();
+    const bool used=!career.competition_overrides().empty();
+    require(used==(year==2001),year==2001?"The 2001 names refused a custom database made from them":"Another database took a 2001 custom database");
+    platform.select_custom_database(std::nullopt);
+    platform.career_load_reset();
+    require(career.competition_overrides().empty(),"A cleared custom database reached the next career");
+    std::filesystem::remove(file);
+}
 int main(int argc,char**argv) {
     try {
         check_career_rules_text();
@@ -871,6 +886,7 @@ int main(int argc,char**argv) {
             const auto year=seasons.packs()[index].year;
             require(seasons.legacy_2000()==(year==2000),"Database compatibility profile leaked across seasons");
             check_edition_rules(s,year);
+            check_custom_database(s,year);
             require(c.u16(c.toc(-0x7b80)+2)==year && c.u8(c.toc(-0x7b80)+4)==(year==2000),"Actual current year/leap flag did not change");
             require(s.memory.copy_out(c.toc(-0x79e8),5)==cutoff,"Historical contract cutoff changed");
             const auto clubs=c.u32(c.toc(-0x7be8)),people=c.u32(c.toc(-0x7be0));
