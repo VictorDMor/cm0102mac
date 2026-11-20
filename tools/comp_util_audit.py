@@ -43,9 +43,12 @@ seven callers are CLUB_SCREENS, PLAYER_SEARCH, PRINTOUTS and RECORD_UTILS (none 
 here). It takes a club and a fixture and returns 1..4, calling DATABASE.CPP's 0x100c7d00. The unit
 that ends up owning it (COMP_STATS's audit or this one) must pin it; AMBIGUOUS_NEIGHBOUR records it.
 
-Production: nothing is routed yet (inventory step). The pieces the hook step turns on are written like
-cup_audit's: the routine list comp_util_routines.inc (COMP_UTIL_ROUTINE / COMP_UTIL_DRAFT lines,
-digest pinned), the hook text and the COMPLETE switch. ZERO_ROUTED says so explicitly.
+Production: the pilot blocks are routed, the rest is not. native/comp_util_routines.inc (with its block files)
+lists each C++ routine with the digest of the original body it replaces (COMP_UTIL_ROUTINE routes it,
+COMP_UTIL_DRAFT only runs it in the check tools); the generator hooks exactly the listed entries
+(COMP_UTIL_HOOKED), so every other entry runs its generated body. Routed today: numeric_ids (0x10464010,
+0x10464880, 0x104648c0) and club_queries (0x104646d0, 0x10464160, 0x10464900), 6 of the 35. A block lands by
+adding its lines to the .inc; ROUTED in tools/test_comp_util_audit.py pins the set.
 """
 import re
 from pathlib import Path
@@ -73,9 +76,7 @@ INCLUDES = ROOT / "native" / "comp_util_routines.inc"
 # Words inside routines that the export leaves out because nothing reaches them: the compiler's
 # alignment no-op after an unconditional branch.
 UNREACHABLE = frozenset({0x10463690, 0x10463b04, 0x1047710c})
-# No entry is routed to C++ yet: the audit's inventory step. The hook step replaces this with the
-# adapter's name ("comp_util_adapter" in compile_recomp.OWNER_REPLACEMENTS) and fills the list.
-ZERO_ROUTED = True
+# The adapter (compile_recomp.OWNER_REPLACEMENTS names it for each hooked entry).
 OWNER = "comp_util_adapter"
 
 
@@ -103,8 +104,10 @@ def rewritten(path=INCLUDES, drafts=False):
     return found
 
 
-# Every entry carries the hook once the adapter exists; an unlisted entry or a draft declines outside a checker.
+# The entries of the unit's inventory, and those the generator hooks: the ones comp_util_routines*.inc lists (an
+# unlisted entry keeps its generated body and carries no hook; a draft declines outside a checker).
 COMP_UTIL_ENTRIES = tuple(entry for entry, _ in ROUTINES)
+COMP_UTIL_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
 
 # Whether the generator requires every entry routed (COMP_UTIL_ROUTINE); False while an entry is still
@@ -133,14 +136,17 @@ def comp_util_hook(address):
 
 
 def require_comp_util_hooks(page, instructions, code):
-    """Each entry on the page carries the hook once, before its first step. Only meaningful once the
-    generator emits the hooks (ZERO_ROUTED False)."""
+    """Each hooked entry on the page carries the hook once, before its first step; an unhooked entry carries none."""
     addresses = {r['address'] for r in instructions}
     for entry, _ in ROUTINES:
         if entry >> 12 != page or entry not in addresses:
             continue
         hook, step = comp_util_hook(entry), f's.step(0x{entry:x});'
         fragment = code.split(f'i_{entry:x}:', 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+        if entry not in COMP_UTIL_HOOKED:
+            if hook in code:
+                raise ValueError(f'Unexpected COMP_UTIL.CPP hook at {entry:x}')
+            continue
         if code.count(hook) != 1 or hook not in fragment or step not in fragment or fragment.index(hook) > fragment.index(step):
             raise ValueError(f'Missing or misplaced COMP_UTIL.CPP hook at {entry:x}')
 

@@ -10,7 +10,10 @@ Competition utilities, the next module by the competition base. Inventory closed
 - [x] Inventory and audit (`comp_util_audit`, 11 tests). Two entries more than the heuristic's 33: the comparators 0x10463580 (a descriptor, no caller) and 0x10477cd0.
 - [ ] 0x10462b80 (84 instructions, between COMP_STATS's last proven routine and this module's first; callers in CLUB_SCREENS, PLAYER_SEARCH, PRINTOUTS, RECORD_UTILS) has no TOC load, assertion or descriptor: unowned, pinned as `AMBIGUOUS_NEIGHBOUR` in the audit for whichever module proves it.
 - [ ] Blocks (instructions): numeric_ids 110, club_queries 653, comparators 138, fixture_log 384, record_stream 265, random_shuffle 798, rating_sort 274, interpolation 70, round_codes 7,552, round_text 6,297, result_headline 4,737, comp_screens_list 202. Pilots: numeric_ids, then club_queries (0x10464160 is the hottest entry, 153k calls on season-day). Existing captures reach 6 of the 35 entries; the rest need fixtures.
-- [ ] After the two pilots: the measured cost to Victor before the rest.
+- [x] Pilots in production (2026-11-20): numeric_ids (0x10464010, 0x10464880, 0x104648c0) and club_queries (0x104646d0, 0x10464900, 0x10464160). 6 of 35 entries routed; `cm-comp-util-checks`, tests `comp_util_equivalence` and `comp_util_production`.
+- [ ] For the next blocks' brief: COMP.CPP's `comp_*.cpp` glob needs the `comp_util` filter already in CMake; an indirect call's argument mask is conservative (0x10781320 gave six false findings until the one real target was confirmed); random grids do not tell a fused multiply-add from a separate one, so floating-point blocks need cases on the thresholds; `--compare-f1` does not apply to routines that return only r3; `Held` lives in `league_base_news_detail.hpp`.
+- [ ] Open from the pilots: 0x10464160's league virtual +0xa0 is checked against the career's one real target (0x104a14f0) only; its stack readers' offsets are met by reproducing every local store, not by an audit of the C++ run; no capture reaches 0x104648c0 or 0x10464900 (fixtures only).
+- [ ] The measured cost to Victor before the rest: the pilots took 447k tokens for 763 instructions with the checker, the generator hook and the replay wiring included, and the `low` review 75k.
 
 ## Deferred: 2000/01 league structures (Victor, 2026-11-20: after the recompilation)
 

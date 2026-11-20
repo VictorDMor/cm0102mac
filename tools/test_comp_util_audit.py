@@ -1,9 +1,9 @@
-"""Certify COMP_UTIL.CPP's 35 entries, the unit's bounds and (today) that nothing is routed to C++.
+"""Certify COMP_UTIL.CPP's 35 entries, the unit's bounds and which of them are routed to C++.
 
 The private export is required evidence, rather than a reason to skip tests. Production ownership is
-stated, not skipped: ZERO_ROUTED is true, so the tests assert that no entry is in the generator's owner
-tables, that no hook is emitted and that the hook checker rejects a page without hooks. The hook step
-flips ZERO_ROUTED and replaces those assertions with cup_audit's (hook before the first step, once).
+asserted, not skipped: exactly the six entries of the pilot blocks (numeric_ids and club_queries) are routed
+and hooked, the other 29 have no routine line, no owner and no hook, and the hook checker rejects a page that
+lacks a hook, misplaces it or carries one for an unrouted entry.
 """
 from contextlib import closing
 import json
@@ -77,8 +77,9 @@ ADDED = {0x10463580, 0x10477cd0}
 PREVIOUS_UNIT_COMPARATOR = (0x10462a30, 0x10462a40)   # COMP_STATS.CPP's, the previous descriptor
 PREVIOUS_UNIT_LAST = (0x10462a40, 0x10462b78)         # COMP_STATS.CPP's last proven routine
 NEXT_UNIT_FIRST = 0x10477d60                          # CONMEBOL_SEEDING.CPP
-# Nothing is routed: the inventory step (audit.ZERO_ROUTED).
-ROUTED = frozenset()
+# The routed entries: block numeric_ids (0x10464010, 0x10464880, 0x104648c0) and block club_queries (0x104646d0,
+# 0x10464160, 0x10464900), each with the digest of the original body that comp_util_routines*.inc pins.
+ROUTED = frozenset({0x10464010, 0x10464880, 0x104648c0, 0x104646d0, 0x10464160, 0x10464900})
 AMBIGUOUS_CALLERS = (0x1002b6d0, 0x10042704, 0x10043190, 0x1005fd2c, 0x102fe7e4, 0x1030b6e0, 0x1030d630)
 
 
@@ -138,30 +139,52 @@ class CompUtilAuditTests(unittest.TestCase):
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_comp_util_index(db, complete=False)
 
-    def test_nothing_is_routed_yet_and_the_hook_checks_fail_when_they_should(self):
-        # The inventory step: zero entries routed, stated rather than skipped.
+    def test_exactly_the_pilot_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
-        self.assertTrue(audit.ZERO_ROUTED)
+        pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
         self.assertFalse(audit.COMPLETE)
-        self.assertEqual({entry for entry, _, _ in audit.rewritten(drafts=True)}, ROUTED)
+        listed = audit.rewritten(drafts=True)
+        for entry, end, expected in listed:
+            self.assertEqual(pinned[entry], (end, expected))
+        self.assertEqual({entry for entry, _, _ in listed}, ROUTED)
         self.assertEqual({entry for entry, _, _ in audit.rewritten()}, ROUTED)
-        self.assertEqual([owner for at, owner in OWNER_REPLACEMENTS if at in ENTRIES], [])
+        self.assertEqual(set(audit.COMP_UTIL_HOOKED), ROUTED)
+        self.assertEqual(len(ENTRIES) - len(ROUTED), 29)
+        for entry in ENTRIES:
+            owners = [owner for at, owner in OWNER_REPLACEMENTS if at == entry]
+            self.assertEqual(owners, [audit.OWNER] if entry in ROUTED else [], hex(entry))
         self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at in ENTRIES], [])
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_comp_util_index(db)
             with self.assertRaisesRegex(ValueError, 'requires all 35'):
                 audit.require_comp_util_index(db, complete=True)
-        # No page emits a hook, and the hook checker rejects such a page.
-        entry = 0x10464160
-        part = [r for r in self.records if r['address'] >> 12 == entry >> 12]
-        page = generate_page(entry >> 12, part, set(self.by_address), userops=self.program['userops'])
-        self.assertNotIn('try_modern_comp_util', page)
-        self.assertNotIn('comp_util_adapter', page)
-        with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
-            audit.require_comp_util_hooks(entry >> 12, part, page)
-        hooked = page.replace(f's.step(0x{entry:x});', audit.comp_util_hook(entry) + f'\ns.step(0x{entry:x});', 1)
-        with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
-            audit.require_comp_util_hooks(entry >> 12, part, hooked)   # the other entries of the page still lack it
+        selected = set(self.by_address)
+        # Every page of the unit: its hooked entries carry the hook once, before the first step; the others none.
+        for page in sorted({entry >> 12 for entry in ENTRIES}):
+            part = [r for r in self.records if r['address'] >> 12 == page]
+            normal = generate_page(page, part, selected, userops=self.program['userops'])
+            audit.require_comp_util_hooks(page, part, normal)
+            on_page = [entry for entry in ENTRIES if entry >> 12 == page]
+            hooked = [entry for entry in on_page if entry in ROUTED]
+            self.assertEqual('#include "comp_util_adapter.hpp"' in normal, bool(hooked), hex(page))
+            for entry in on_page:
+                hook = audit.comp_util_hook(entry)
+                fragment = normal.split(f'i_{entry:x}:', 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+                if entry not in ROUTED:
+                    self.assertNotIn(hook, normal)
+                    # An unrouted entry given a hook is rejected.
+                    step = f's.step(0x{entry:x});'
+                    with self.assertRaisesRegex(ValueError, 'Unexpected'):
+                        audit.require_comp_util_hooks(page, part, normal.replace(step, hook + '\n' + step, 1))
+                    continue
+                step = f's.step(0x{entry:x});'
+                self.assertEqual(normal.count(hook), 1)
+                self.assertIn(hook, fragment)
+                self.assertLess(fragment.index(hook), fragment.index(step))
+                moved = normal.replace(hook, '').replace(step, step + '\n' + hook, 1)
+                for broken in (normal.replace(hook, ''), normal.replace(hook, hook + '\n' + hook), moved):
+                    with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
+                        audit.require_comp_util_hooks(page, part, broken)
 
     def test_unit_bounds_are_its_pool_descriptors_slots_and_neighbours(self):
         pool = self.word(TOC - 0x47e4)
