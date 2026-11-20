@@ -3,6 +3,13 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: 2000/01 league structures (Victor, 2026-11-20)
+
+A New Game on the 2000/01 database raises the original's error boxes while the career is set up, one per competition whose 2001/02 code does not fit the 2000/01 data (seen on screen: `BEL_THIRD.CPP 81`, then `cro_a1.cpp 87`). Only England was adapted to the edition so far. Finish line: a 2000/01 New Game with every selectable country sets up every competition with no error box. The reference for each league's 2000/01 format is the CM 00/01 3.89 Windows executable already in `.local/season-databases/cm00_389.exe` (as for England).
+
+- [x] List every dialog, headless: `tools/check_season_databases.py <checker> <program> <game> --survey-2000` runs the new-world routine from its staff-record stage through the competition dispatcher with everything selected and prints each dialog with its caller (about a minute; fixture insertion stubbed). 14 dialogs: Belgium `BEL_THIRD 81`; Croatia `cro_a1 87`, `cro_a2a 87`, `cro_a2b 87`; France `FRA_FIRST 108`, `FRA_CUP 76`; Germany `GER_REGIONAL 81`; Japan `JAP_J2 77`, `JAP_J_CUP 69`; Portugal `POR_SECOND_B 78`; Spain `SPA_SECOND_B 79`; Sweden `SWE_SECOND 646`; and two under the global competitions, `COMP_STATS 1664` and `asia_super_cup 201`, which the real game did not show first and may be artefacts of the skipped stages. Read so far: Belgium wants 16 clubs in one Third Division and the 2000/01 data has two groups of 16 (A and B) and none in the single one; Croatia's first division wants 16 and has 12. The run ends after the dispatcher in a later stage (unmapped read at 0x5cc): dialogs after that point are not listed.
+- [ ] Per competition on the list: the condition that fails, what 3.89 does, the edition rule that adapts it.
+
 ## Now: competition editor, stage 1 (Victor, 2026-11-19)
 
 Victor's shape for it (2026-11-19): **a separate editor, as Football Manager's, opened from the start screen, saving into a custom database**; competitions only for now, almost everything later. Inside a career the user may change rules too, **choosing the future season from which they apply**. Stage 1 edits the plain values listed in `docs/season-competition-rules-plan.md` ("the editable values"); structure (clubs, stages, calendar) is stage 2, after COMP_UTIL.CPP.

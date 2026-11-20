@@ -45,6 +45,16 @@ std::vector<unsigned>* constructor_rows=nullptr;
 std::vector<unsigned> constructor_targets;
 bool constructing_england=false;
 unsigned fixture_insertions=0;
+std::vector<std::string>* survey_messages=nullptr;
+unsigned survey_row=0xffffffff;
+// The country whose constructor is running (survey only); the global competitions have no nation.
+std::string survey_country(guest::Cpu& c) {
+    if(survey_row>=34) return "no constructor running";
+    const auto nation=c.u32(c.toc(-0x7b44)+survey_row*0x4c);
+    if(!nation) return "global competitions";
+    std::string name; for(unsigned j=0;j<50 && c.u8(nation + 0xae + j);++j) name+=char(c.u8(nation + 0xae + j));
+    return name;
+}
 bool reject_dialog(State& s) {
     // Exercise the real competition constructors and participant selectors.
     // Scheduling inserts are outside this fixture: no full career/fixture
@@ -53,6 +63,10 @@ bool reject_dialog(State& s) {
         ++fixture_insertions;
         s.wr<4>(12,1);
         s.pc=s.r<4>(4128); return true;
+    }
+    if(survey_messages && !constructor_rows && std::ranges::find(constructor_targets,s.pc)!=constructor_targets.end()) {
+        // Survey only: note which country's constructor is running; execution continues unchanged.
+        guest::Cpu c(s); survey_row=(c.r(3)-c.toc(-0x7b44))/0x4c; return false;
     }
     if(constructor_rows && std::ranges::find(constructor_targets,s.pc)!=constructor_targets.end()) {
         guest::Cpu c(s);
@@ -68,10 +82,12 @@ bool reject_dialog(State& s) {
     constexpr unsigned dialog=0x10769b60;
     if(s.pc!=dialog)return false;
     guest::Cpu c(s); std::string message;
-    for(auto p:{c.r(3),c.r(4),c.toc(-0x7bb8)}) {
+    for(auto p:{c.r(3),c.r(4),survey_messages?0u:c.toc(-0x7bb8)}) {
         message+=" | ";
         for(unsigned i=0;p && i<500 && c.u8(p+i);++i)message+=char(c.u8(p+i));
     }
+    // The survey answers the dialog's Ok and goes on, as a player would.
+    if(survey_messages) { survey_messages->push_back("row "+std::to_string(survey_row)+" ("+survey_country(c)+")"+message+" (from "+hex_address(c.lr())+")"); s.pc=c.lr(); return true; }
     throw std::runtime_error("Unexpected original error dialog"+message);
 }
 unsigned invoke(State& s, unsigned entry, std::initializer_list<unsigned> args={}, unsigned stop=return_sentinel) {
@@ -461,6 +477,95 @@ void check_english_construction(State& s) {
     constructing_england=false;
     std::cout<<"All eleven English competitions, shared cup member reload and both cup rollovers passed (fixture insertion stubbed)\n";
 }
+// Not a check: lists what each country's constructor says on the loaded database. Every selectable country is
+// selected with its optional lower divisions; fixture insertion is stubbed as in check_english_construction.
+void survey_constructors(State& s) {
+    guest::Cpu c(s);
+    const auto rows=c.toc(-0x7b44), ui=c.toc(-0x7bb0);
+    c.put16(ui+0x25819e,10); // Original Select All command.
+    invoke(s,0x103366f0,{0xffffffff});
+    for(unsigned i=0;i<34;++i) {
+        const auto nation=c.u32(rows+i*0x4c);
+        if(nation && (c.u8(nation+0x120)&2) && invoke(s,0x10192d60,{nation,0,0})==1) c.put8(nation+0x120,c.u8(nation+0x120)|4);
+    }
+    database_season_limit_leagues(s);
+    constructing_england=true;
+    invoke(s,0x10191e20);
+    // Run the original dispatcher itself, as New Game does after Select All. Dialogs are recorded with the row
+    // whose constructor was running; the constructors are not stubbed.
+    constructor_targets.clear();
+    for(unsigned i=0;i<34;++i) if(c.u32(rows+i*0x4c+8)) constructor_targets.push_back(c.u32(c.u32(rows+i*0x4c+8)));
+    std::vector<std::string> messages; survey_messages=&messages; survey_row=0xffffffff;
+    std::string outcome;
+    try {
+        // Enter the new-world routine (0x10343630, the page that calls 0x10191cd0) through its own prologue, then
+        // continue at 0x10344200 on its second pass (r14=2, r13=0x2c progress total, as 0x10346b68..0x10346b7c
+        // set them): the first pass only counts progress and everything before is staff/club preparation, skipped here.
+        // Every service-creation stage up to the 0x10191cd0 call then runs as the original. Stop when 0x10191cd0 returns.
+        s.wr<4>(4128,return_sentinel); s.pc=0x10343630; s.budget=s.executed+22;
+        try { run_until(s,return_sentinel); }
+        catch(const std::runtime_error& e) { if(std::string_view(e.what())!="Native instruction budget exhausted") throw; }
+        require(s.pc==0x10343688,"New-world prologue did not reach its frame");
+        s.pc=0x10343990; s.budget=s.executed+20000000000ull;
+        run_until(s,0x10344200);
+        std::cout<<"reached 0x10344200 after "<<s.executed<<" instructions\n";
+        s.wr<4>(14*4,2); s.wr<4>(13*4,0x2c);
+        // The generated page reaches 0x10345bb4 through the native 0x10191cd0 wrapper, so this stop is never seen and
+        // the page runs on into its next stage; that later stage fails (fixture) after all constructors have spoken.
+        run_until(s,0x10345bb4);
+        outcome="0x10191cd0 returned "+std::to_string(s.r<4>(12));
+    }
+    catch(const std::exception& e) {
+        guest::Cpu c2(s); std::string chain; auto sp=c2.sp();
+        for(unsigned depth=0;depth<12 && sp;++depth) { const auto back=c2.u32(sp); if(!back) break; chain+=" "+hex_address(c2.u32(back+8)); sp=back; }
+        outcome="run ended (after the dispatcher; later stage) at "+hex_address(s.pc)+", return addresses up the stack:"+chain+": "+e.what(); }
+    survey_messages=nullptr; constructor_targets.clear();
+    std::cout<<outcome<<", "<<messages.size()<<" dialogs\n";
+    for(const auto& message:messages)std::cout<<"  dialog "<<message<<"\n";
+    // The two conditions read from the original (0x105d2330 for BEL_THIRD, 0x106dbcb0 for cro_a1): each walks the
+    // club table (stride 0x248) counting clubs whose division (club+0x30 -> first word) is the competition's
+    // definition, and wants exactly 16. Recount with the same tests on the memory the run left.
+    {
+        const auto clubs=c.u32(c.toc(-0x7be8)), total=c.u32(c.toc(-0x7b50)), nations=c.u32(c.toc(-0x7b04));
+        const auto definition_name=[&](unsigned id) {
+            std::string name; const auto record=c.u32(c.toc(-0x7bbc))+id*0x6c;
+            for(unsigned j=0;j<50 && c.u8(record + 0x1a + j);++j) name+=char(c.u8(record + 0x1a + j));
+            return name;
+        };
+        const auto belgium_division=c.u32(c.toc(-0x6968)), belgium_nation=c.u32(c.toc(-0x6788));
+        const auto croatia_division=c.u32(c.toc(-0x6a40));
+        unsigned belgium=0, belgium_by_division=0, croatia=0;
+        for(unsigned i=0;i<total;++i) {
+            const auto club=clubs+i*0x248, division=c.u32(club+0x30), group=c.u32(club+0x38);
+            if(division && c.u32(division)==croatia_division) ++croatia;
+            if(i+2*nations>=total || !division || c.u32(division)!=belgium_division) continue;
+            ++belgium_by_division;
+            if(group && c.u32(group)==belgium_nation) ++belgium;
+        }
+        std::cout<<"BEL_THIRD 0x105d2330: wants 16 clubs (club index < "<<total-2*nations<<", club+0x30 -> first word == "<<belgium_division
+                 <<" ["<<definition_name(belgium_division)<<"], club+0x38 -> first word == "<<belgium_nation<<"): found "<<belgium
+                 <<" ("<<belgium_by_division<<" by division alone)\n";
+        {
+            // Context for Belgium: where the Belgian clubs sit (club+0x2c is the club's nation, as in check_trophy_entrants).
+            const auto nation=c.u32(c.toc(-0x7b44)+10*0x4c);
+            std::vector<std::pair<unsigned,unsigned>> by_division; unsigned undivided=0;
+            for(unsigned i=0;i+2*nations<total;++i) {
+                const auto club=clubs+i*0x248, division=c.u32(club+0x30);
+                if(c.u32(club+0x2c)!=nation) continue;
+                if(!division) { ++undivided; continue; }
+                const auto id=c.u32(division);
+                const auto found=std::ranges::find_if(by_division,[id](const auto& entry){return entry.first==id;});
+                if(found==by_division.end()) by_division.emplace_back(id,1); else ++found->second;
+            }
+            std::cout<<"Belgian clubs by division:";
+            for(auto [id,count]:by_division) std::cout<<" "<<definition_name(id)<<"="<<count;
+            std::cout<<" no division="<<undivided<<"\n";
+        }
+        std::cout<<"cro_a1 0x106dbcb0: wants 16 clubs (club+0x30 -> first word == "<<croatia_division<<" ["<<definition_name(croatia_division)
+                 <<"], first 16 taken): found "<<croatia<<"\n";
+    }
+    constructing_england=false;
+}
 void check_legacy_boundaries(State& s) {
     guest::Cpu c(s);
     require(s.platform->database_seasons().legacy_2000(),"CM00 profile missing");
@@ -805,9 +910,10 @@ int main(int argc,char**argv) {
         check_career_rules_text();
         check_rule_timelines();
         const bool english_only=argc==5 && std::string_view(argv[4])=="--english-2000";
-        if(argc!=4 && (argc!=5 || (!english_only && std::string_view(argv[4])!="--history-2002")))
+        const bool survey=argc==5 && std::string_view(argv[4])=="--survey-2000";
+        if(argc!=4 && (argc!=5 || (!english_only && !survey && std::string_view(argv[4])!="--history-2002")))
             throw std::runtime_error("Usage: cm-database-seasons-checks PROGRAM GAME PRIVATE_RUNTIME [--history-2002|--english-2000]");
-        const bool history_only=argc==5 && !english_only;
+        const bool history_only=argc==5 && !english_only && !survey;
         auto state=std::make_unique<State>(); auto& s=*state;
         load_program(s,argv[1]);
         dispatch_probe=reject_dialog;
@@ -871,7 +977,7 @@ int main(int argc,char**argv) {
         if (!seasons.names_directory() || *seasons.names_directory()!=temporary_names)
             throw std::runtime_error("Database temporary-directory resolution: ["+
                                      seasons.names_directory().value_or("<missing>")+"] expected ["+temporary_names+"]");
-        const std::vector<std::size_t> sequence=english_only?std::vector<std::size_t>{1,0}:history_only?std::vector<std::size_t>{original,updated,original,updated}:
+        const std::vector<std::size_t> sequence=english_only||survey?std::vector<std::size_t>{1,0}:history_only?std::vector<std::size_t>{original,updated,original,updated}:
             std::vector<std::size_t>{1,0,1,2,1,0,1,2};
         for(auto index:sequence) {
             if(index!=seasons.selected())require(seasons.request(index>seasons.selected()?1:-1),"Queue season switch");
@@ -907,6 +1013,7 @@ int main(int argc,char**argv) {
                 require(c.u16(row+0x2e)>=year && c.u16(row+0x2e)<=year+1,"League start year");
             }
             std::cout<<seasons.packs()[index].label<<": clubs="<<club_count<<" staff="<<staff_count<<" year="<<c.u16(c.toc(-0x7b80)+2)<<std::endl;
+            if(year==2000 && survey) { survey_constructors(s); return 0; }
             if(year==2000 && english_only) { check_english_construction(s); return 0; }
             if(year==2000) { check_legacy_boundaries(s); check_layout(s); check_archive(s); seasons.begin(true); }
         }
