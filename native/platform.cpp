@@ -969,7 +969,9 @@ struct NativePlatform::Impl {
             // The editor belongs to the start screen: once a career was started or a load began in this session
             // it stays closed (a running career's changes are the in-career screen's).
             career_seen |= career_present || career_loading;
-            const unsigned language = s.memory.read<1>(std::uint32_t(s.r<4>(8)) - 0x35ac);
+            // The game's own TOC, not r2: at this boundary r2 can be another fragment's TOC, and it is zero
+            // during startup.
+            const unsigned language = s.memory.read<1>(0x108bba90u - 0x35ac);
             if (const bool enabled = !career_seen; editor_enabled != enabled || editor_language->load() != language) {
                 editor_enabled = enabled;
                 editor_language->store(language);
