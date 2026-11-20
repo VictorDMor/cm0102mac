@@ -446,7 +446,7 @@ member stays within its limit; otherwise a log line and no entries. A loaded car
 its round rows wait for the next setup. Checked by `cm-competition-overrides-checks` and, with the real packs, by
 `check_custom_database` in `cm-database-seasons-checks`.
 
-## Competition editor: defaults and the window (2026-11-20)
+## Competition editor: defaults and the screen (2026-11-20)
 
 A competition's original values are written by code (its `configure`), so no file holds them. `at_setup` offers each
 league and cup it reaches, before any entry is written, to `CompetitionDefaults` (`native/competition_defaults.hpp`),
@@ -456,15 +456,27 @@ that competition; it reads the guest and writes a host file, nothing else, and d
 record is a dump of its own: a reader skips one that does not parse (a torn append, a registry that has grown) and
 the game records it again.
 
-The editor (`native/competition_editor.mm`, an AppKit window on the main thread; its logic is
-`CompetitionEditorDocument`, checked without a window) opens from Game > Competition Editor… until a career is
-started or loaded in the session. It shows the recorded competitions of one edition, edits the registry's values
-against them and saves a custom database; entries that start in a later season, or belong to a competition that was
-not recorded, are kept as read. "Use for new careers" writes the file's path to `Custom Databases/selected.txt`,
-which the platform reads at start-up, and passes the choice to the game worker through a slot the worker takes at
-its event boundary (`select_custom_database`). The editor never touches the guest.
+The editor is a screen of the game's own interface (`native/competition_editor_screen.cpp`, decided by Victor on
+2026-11-20; the AppKit window it replaced lasted one day). The start screen gains one button; while the editor is
+open the same screen is rebuilt with the editor's controls in place of the nine choices. As the season selector, the
+controls are made by the game's own routines after the original builder (`competition_editor_after_build`), a click
+is taken before the original handler and answered with a rebuild (`competition_editor_event`), and nothing is drawn
+by the host except the darkened picture under the panel (`competition_editor_backdrop`, frame buffer pixels only).
+The nine choices are moved off the canvas and lose their pick flag, so neither a click nor the Game menu's commands
+reach them. Its logic is `CompetitionEditorDocument`, checked without a screen.
+
+It edits with steppers and choosers (no text entry): the base season, the database, a nation filter, the
+competitions in pages (a competition's stages sit behind it), and the registry's values of the selected one. Every
+change is saved at once to `Custom Databases/custom-N.toml`; the first change to the original rules starts a
+database. "Use for new careers" writes the file's path to `Custom Databases/selected.txt`, which the platform reads
+at start-up, and calls `select_custom_database` directly (the screen runs on the game worker). Entries that start in
+a later season, or belong to a competition that is not listed, are kept as read.
+
+The values it shows are complete without a New Game: `tools/install_native.py` installs
+`.local/competition-bases/<edition>.toml` as `<support>/Competition Bases/`, one full dump per base season, made
+once by a New Game with every nation and extra division selected in an isolated copy (the recorder above writes it;
+private game-derived data, never in Git). The editor reads the installed file first and adds what a New Game
+recorded. Names are in the language the dump was made in (Portuguese), whatever the game's language.
 
 The editor's texts follow the language chosen in the game (`native/competition_editor_text.*`: the eleven language
-IDs of the live language byte, English for an unknown one). The worker reads the byte at its event boundary and
-passes it on; the window takes it when it opens, and the menu item's title follows it. The parser's messages about a
-file that cannot be read stay in English.
+IDs of the live language byte, English for an unknown one), converted to the game's Windows-1252.

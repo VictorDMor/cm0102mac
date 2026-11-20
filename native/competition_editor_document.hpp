@@ -1,7 +1,7 @@
 #pragma once
-// What the competition editor edits, without any window: the recorded defaults of one edition
-// (competition_defaults.hpp) and a custom database being made from them (competition_overrides.hpp). The window
-// (competition_editor.mm) only shows this and calls it.
+// What the competition editor edits, without any screen: the values of one edition (competition_defaults.hpp)
+// and a custom database being made from them (competition_overrides.hpp). The screen
+// (competition_editor_screen.cpp) only shows this and calls it.
 #include "competition_overrides.hpp"
 #include <filesystem>
 #include <optional>

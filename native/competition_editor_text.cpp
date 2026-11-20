@@ -307,6 +307,30 @@ constexpr std::array<Row, std::size_t(T::count)> texts{{
      "{0} verdi(er) for denne turneringen gjelder fra en senere sesong; de beholdes som de er.",
      "{0} valor(es) desta competição começam em uma temporada futura; ficam como estão.",
      "{0} värde(n) för den här tävlingen börjar gälla en senare säsong; de behålls som de är."},
+    // back
+    {"Back", "Retour", "Zurück", "Indietro", "Atrás", "Tilbage", "Terug", "Tilbake", "Voltar", "Tillbaka"},
+    // all_nations
+    {"All nations", "Tous les pays", "Alle Länder", "Tutti i paesi", "Todos los países", "Alle lande", "Alle landen",
+     "Alle land", "Todos os países", "Alla länder"},
+    // international
+    {"International", "International", "International", "Internazionale", "Internacional", "International",
+     "Internationaal", "Internasjonal", "Internacional", "Internationell"},
+    // yes
+    {"Yes", "Oui", "Ja", "Sì", "Sí", "Ja", "Ja", "Ja", "Sim", "Ja"},
+    // no
+    {"No", "Non", "Nein", "No", "No", "Nej", "Nee", "Nei", "Não", "Nej"},
+    // original_rules
+    {"Original rules", "Règles d'origine", "Originalregeln", "Regole originali", "Reglas originales",
+     "Originale regler", "Originele regels", "Originale regler", "Regras originais", "Originalregler"},
+    // no_bases
+    {"The competition rules of this database are not installed.", "Les règles des compétitions de cette base ne sont pas installées.",
+     "Die Wettbewerbsregeln dieser Datenbank sind nicht installiert.", "Le regole delle competizioni di questo database non sono installate.",
+     "Las reglas de las competiciones de esta base no están instaladas.", "Turneringsreglerne for denne database er ikke installeret.",
+     "De competitieregels van deze database zijn niet geïnstalleerd.", "Turneringsreglene for denne databasen er ikke installert.",
+     "As regras das competições desta base não estão instaladas.", "Tävlingsreglerna för den här databasen är inte installerade."},
+    // saved_as
+    {"Saved: {0}", "Enregistré : {0}", "Gespeichert: {0}", "Salvato: {0}", "Guardado: {0}", "Gemt: {0}", "Opgeslagen: {0}",
+     "Lagret: {0}", "Salvo: {0}", "Sparat: {0}"},
 }};
 
 struct Label {

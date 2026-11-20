@@ -5,6 +5,7 @@
 // Calls through `invoke` reach other modules' routines (generated or C++); a routine of this block calls
 // its siblings directly after `link`. The registers r4-r10 are left alone wherever the original leaves them:
 // callers (0x10725770's formatter, 0x10719350's callers) read the volatile registers their callee left.
+#include "competition_editor_screen.hpp"
 #include "display_drawing.hpp"
 #include "adaptive_gui.hpp"
 #include <cstdint>
@@ -88,6 +89,7 @@ u32 draw_screen(Cpu& c, u32 table, u32 left_raw, u32 top_raw, u32 right_raw, u32
     // 0x10719120: the adaptive interface paints its background (it reads r24, the table) before the loops.
     regs.apply();
     draw_adaptive_background(c.s);
+    competition_editor_backdrop(c.s, table);
     regs.hold({{29, table + 0x130000}});
 
     // The original walks each order list with r23 as the index and r31 as its byte offset.

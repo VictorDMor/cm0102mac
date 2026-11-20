@@ -53,7 +53,7 @@ public:
     // later New Games. A loaded career uses only what its save carries.
     // Returns "" or why the file was not taken (then none is chosen).
     // When the platform starts, CM_CUSTOM_DATABASE=<path> chooses one, else the competition editor's last choice
-    // (competition_editor.hpp); the editor's later choices arrive at the worker's event boundary.
+    // (competition_editor_screen.hpp), which calls this for its later choices, on the game worker.
     std::string select_custom_database(const std::optional<std::filesystem::path>& file);
     // The apply points offer a competition about to be set up without entries (competition_defaults.hpp). Recorded
     // only for a career started in this session on a recognised release, with no `set` rule and no test preset.

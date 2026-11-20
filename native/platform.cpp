@@ -7,9 +7,7 @@
 #include "ui_bridge.hpp"
 #include "native_drawing.hpp"
 #include "competition_defaults.hpp"
-#include "competition_editor.hpp"
 #include "competition_editor_document.hpp"
-#include "competition_editor_text.hpp"
 #include <atomic>
 #include "direct_commands.hpp"
 #include <mutex>
@@ -668,31 +666,10 @@ struct NativePlatform::Impl {
     NativeUI& user_interface() {
         if (!ui) {
             ui = std::make_unique<NativeUI>(writable.parent_path() / "Presentation.plist");
-            // The competition editor is a window of its own on the main thread; what it chooses for new careers
-            // comes back through `editor_choice`, which the game worker takes at its event boundary.
-            CompetitionEditorSetup setup{.defaults_directory = writable / "Competition Defaults",
-                                         .databases_directory = writable / "Custom Databases",
-                                         .selection_file = custom_database_selection(),
-                                         .language = [language = editor_language] { return language->load(); },
-                                         .selection_changed = [choice = editor_choice](std::optional<fs::path> file) {
-                                             const std::lock_guard lock(choice->mutex);
-                                             choice->pending = std::move(file);
-                                         }};
-            ui->set_competition_editor([setup] { show_competition_editor(setup); }, [] { return competition_editor_may_quit(); });
         }
         return *ui;
     }
     fs::path custom_database_selection() const { return writable / "Custom Databases" / "selected.txt"; }
-    // The editor's latest choice not yet taken: outer none when nothing is pending.
-    struct EditorChoice {
-        std::mutex mutex;
-        std::optional<std::optional<fs::path>> pending;
-    };
-    std::shared_ptr<EditorChoice> editor_choice = std::make_shared<EditorChoice>();
-    std::optional<bool> editor_enabled;
-    // The game's language byte as last seen at an event boundary: the editor's window and menu item follow it.
-    std::shared_ptr<std::atomic<unsigned>> editor_language = std::make_shared<std::atomic<unsigned>>(0);
-    bool career_seen = false;
     std::uint32_t new_port(State& s, std::uint16_t depth, const LegacyRect& bounds) {
         if (depth != 16 && depth != 32) throw std::runtime_error("Unsupported original GWorld pixel depth");
         const auto width = std::int32_t(bounds[3]) - bounds[1], height = std::int32_t(bounds[2]) - bounds[0];
@@ -954,29 +931,6 @@ struct NativePlatform::Impl {
             else if (command_status.starts_with("Dispatched") || command_status.starts_with("Original"))
                 command_status = "Original game returned to an interactive screen";
 
-        }
-        if (s.platform) {
-            std::optional<std::optional<fs::path>> choice;
-            {
-                const std::lock_guard lock(editor_choice->mutex);
-                choice = std::exchange(editor_choice->pending, std::nullopt);
-            }
-            if (choice) {
-                const auto why = s.platform->select_custom_database(*choice);
-                command_status = !why.empty() ? "Custom database not chosen: " + why
-                                 : *choice ? "Custom database chosen for new careers" : "New careers use the original rules";
-            }
-            // The editor belongs to the start screen: once a career was started or a load began in this session
-            // it stays closed (a running career's changes are the in-career screen's).
-            career_seen |= career_present || career_loading;
-            // The game's own TOC, not r2: at this boundary r2 can be another fragment's TOC, and it is zero
-            // during startup.
-            const unsigned language = s.memory.read<1>(0x108bba90u - 0x35ac);
-            if (const bool enabled = !career_seen; editor_enabled != enabled || editor_language->load() != language) {
-                editor_enabled = enabled;
-                editor_language->store(language);
-                user_interface().set_competition_editor_enabled(enabled, std::string(editor_text(language, EditorText::menu_item)));
-            }
         }
         user_interface().update_commands(commands, commands.ready ? command_status : "Unavailable while processing",
                                          s.platform && s.platform->quick_save_available());

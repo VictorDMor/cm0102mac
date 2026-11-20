@@ -134,6 +134,27 @@ def install_icon(game, resources, stage):
                    check=True, capture_output=True)
 
 
+def install_competition_bases(support):
+    """The complete competition values of each base season (the competition editor's originals), generated
+    into .local/competition-bases by a New Game with every nation. Private game-derived data: never in Git."""
+    source = PROJECT / ".local/competition-bases"
+    files = sorted(source.glob("*.toml")) if source.is_dir() else []
+    if not files:
+        print("No competition bases to install (.local/competition-bases is empty): the editor shows only "
+              "what a New Game recorded.", flush=True)
+        return
+    destination = support / "Competition Bases"
+    destination.mkdir(exist_ok=True)
+    for item in files:
+        temporary = destination / (item.name + ".installing")
+        shutil.copy2(item, temporary)
+        if digest(item) != digest(temporary):
+            temporary.unlink()
+            raise RuntimeError("An installed competition base failed verification.")
+        temporary.rename(destination / item.name)
+    print("Installed competition bases: " + ", ".join(item.stem for item in files), flush=True)
+
+
 def install(source, support, applications, built_app=None):
     destination = applications / APP_NAME
     legacy = applications / LEGACY_APP_NAME
@@ -210,6 +231,7 @@ def install(source, support, applications, built_app=None):
     install_index_compatibility(game, runtime, archived_languages)
     print("Verified the private English club-index compatibility file.", flush=True)
     print("Verified private season databases: " + ", ".join(label for _, label, _ in seasons), flush=True)
+    install_competition_bases(support)
     if destination.exists():
         check_app(destination)
     elif legacy.exists():

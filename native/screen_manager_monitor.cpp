@@ -1,3 +1,4 @@
+#include "competition_editor_screen.hpp"
 #include "screen_manager_packets.hpp"
 #include "screen_manager_sound.hpp"
 #include "platform.hpp"
@@ -227,6 +228,7 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
                     if (manager.current() == 0) {
                         const auto history=manager.history().get();
                         database_season_after_build(c.s,history?c.u32(c.u32(history)):0);
+                        competition_editor_after_build(c.s,history?c.u32(c.u32(history)):0);
                     }
                     c.set({{4,0},{3,monitor.screen()+0x130000}});c.put8(c.r(3)-0x56c2,0);
                     c.set(3,monitor.screen()+0x130000);c.put8(c.r(3)-0x5700,c.r(4));
@@ -304,7 +306,8 @@ std::uint32_t run(Cpu& c,std::uint32_t address) {
                         if(!intercepted){
                             c.set({{4,c.u32(c.r(5)+16)},{3,c.r(27)}});
                             const auto handler=c.u32(c.r(4)+8);
-                            if(database_season_event(c.s,handler?c.u32(handler):0,std::int16_t(c.r(27)))) c.set(30,std::uint32_t(-11));
+                            if(database_season_event(c.s,handler?c.u32(handler):0,std::int16_t(c.r(27))) ||
+                               competition_editor_event(c.s,handler?c.u32(handler):0,std::int16_t(c.r(27)))) c.set(30,std::uint32_t(-11));
                             else {p.callback(handler,0x1073ccd0);c.set(30,c.r(3));}
                         }
                     }
