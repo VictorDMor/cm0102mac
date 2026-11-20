@@ -474,8 +474,12 @@ a later season, or belong to a competition that is not listed, are kept as read.
 
 The values it shows are complete without a New Game: `tools/install_native.py` installs
 `.local/competition-bases/<edition>.toml` as `<support>/Competition Bases/`, one full dump per base season, made
-once by a New Game with every nation and extra division selected in an isolated copy (the recorder above writes it;
-private game-derived data, never in Git). The editor reads the installed file first and adds what a New Game
+by `tools/competition_bases.py`: New Games in an isolated copy with every nation and extra division selected, seven
+nations at a time, joined (the recorder above writes each; private game-derived data, never in Git). The batches
+keep a New Game with all 26 nations on the 2002/03 database away from the original's "no more people" message
+(`database::refuse_more_people`, inside `generate_extra_staff`), which stops it before any competition is set up.
+As of 2026-11-20 only the 2001/02 base exists: 2002/03 also stalled in a batch (TASKS.md), so that season and
+2000/01 show what a New Game recorded. The editor reads the installed file first and adds what a New Game
 recorded. Names are in the language the dump was made in (Portuguese), whatever the game's language.
 
 The editor's texts follow the language chosen in the game (`native/competition_editor_text.*`: the eleven language
