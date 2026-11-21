@@ -3,19 +3,16 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
-## Now: COMP_UTIL.CPP (2026-11-20, Victor's go-ahead; pilot first, then he sets the pace)
+## COMP_UTIL.CPP: delivered 2026-11-21 (35 of 35 in production)
 
-Competition utilities, the next module by the competition base. Inventory closed: 35 entries, 0x10462cd0..0x10477d54, 21,480 instructions (`tools/comp_util_audit.py`; working folder `.local/rewrites/comp_util/` with the ledger, the census, per-entry callers and callees and the decompiled C). Nothing routed yet.
+Record in the commits and `docs/cpp-rewrites.md` ("COMP_UTIL.CPP: competition utilities"). What stays open:
 
-- [x] Inventory and audit (`comp_util_audit`, 11 tests). Two entries more than the heuristic's 33: the comparators 0x10463580 (a descriptor, no caller) and 0x10477cd0.
-- [ ] 0x10462b80 (84 instructions, between COMP_STATS's last proven routine and this module's first; callers in CLUB_SCREENS, PLAYER_SEARCH, PRINTOUTS, RECORD_UTILS) has no TOC load, assertion or descriptor: unowned, pinned as `AMBIGUOUS_NEIGHBOUR` in the audit for whichever module proves it.
-- Blocks (instructions): numeric_ids 110, club_queries 653, comparators 138, fixture_log 384, record_stream 265, random_shuffle 798, rating_sort 274, interpolation 70, round_codes 7,552, round_text 6,297, result_headline 4,737, comp_screens_list 202. Pilots: numeric_ids, then club_queries (0x10464160 is the hottest entry, 153k calls on season-day). Existing captures reach 6 of the 35 entries; the rest need fixtures.
-- [x] In production (26 of 35 entries; `cm-comp-util-checks`, tests `comp_util_equivalence` and `comp_util_production`): numeric_ids, club_queries (pilots), comparators, interpolation, rating_sort, comp_screens_list, record_stream, fixture_log, random_shuffle (2026-11-21).
-- [ ] Left: round_codes 7,552, round_text 6,297, result_headline 4,737 (nine entries). Victor decides how, perhaps as generated tables; state the cost first.
-- [ ] The brief for a block is `.local/rewrites/comp_util/brief.md` (lessons included). An agent must run builds and checks in the foreground: one waited ten hours for a notification that never came.
-- [ ] Open, by entry: 0x10464160's league virtual +0xa0 is checked against the career's one real target (0x104a14f0) only; no stack audit reaches any entry but the captures' six, so the stores a callee reads were reproduced from the listing; 0x10477b40 leaves r8-r10 as the original because its caller 0x104eec00 hands them to a virtual call nobody traced; allocation-failure and assertion paths of 0x10477490 and 0x10477b40 run only through answered allocator calls; captures reach 0x10464010, 0x10464880, 0x104646d0, 0x10464160, 0x104647e0 and (same-save-continue) 0x10462cd0, the rest is fixtures; a shuffle of 10,923 items or more never ends, in the original as in the C++ (its halfword counter wraps), untested; record_stream is not a stream: it moves a fixture reference in and out of a news item (NEWS 0x102cb4b0 / 0x102cb570).
-- [ ] The code-review skill returned nothing three times on 2026-11-21 (six seconds, no file read); the review of the second group ran as a plain Sonnet agent with the reference paths. Check the skill before relying on it again.
+- [ ] 0x10462b80 (84 instructions, before this module's first entry; callers in CLUB_SCREENS, PLAYER_SEARCH, PRINTOUTS, RECORD_UTILS) has no TOC load, assertion or descriptor: unowned, pinned as `AMBIGUOUS_NEIGHBOUR` in `tools/comp_util_audit.py` for whichever module proves it.
+- [ ] Captures reach 6 of the 35 entries; the rest rests on fixtures, with no stack audit. A capture that publishes cup result news (0x10464d00) and fixture-round news would close that. Victor's to record, if he wants it.
+- [ ] The round_text cases answer the news appenders 0x1074b830 / 0x1074bab0; the result_headline cases run them for real against a scratch item and the round_text cases could do the same.
+- [ ] The code-review skill returned nothing three times on 2026-11-21 (six seconds, no file read); this module's reviews ran as plain Sonnet agents with the reference paths. Check the skill before relying on it again.
 - [ ] `season-day` pairs need `CM_ENGLISH_RULES_ORIGINAL=1` (STALE without it, a known issue older than this module).
+- Next module: rerun `tools/game_inventory.py` with fresh day and week profiles and take the next by routine layer and day weight.
 
 ## Deferred: 2000/01 league structures (Victor, 2026-11-20: after the recompilation)
 
@@ -43,7 +40,7 @@ Victor's shape for it (2026-11-19): **a separate editor, as Football Manager's, 
 
 ## CUP.CPP delivered (2026-11-19)
 
-The base cup class: 47 entries (0x10478f20..0x104866f0, 13,700 instructions), all in production. Files `native/cup_base_*`. Next by the competition base: COMP_UTIL.CPP (33 routines, 21,438 instructions: over the size that needs Victor's go-ahead on cost).
+The base cup class: 47 entries (0x10478f20..0x104866f0, 13,700 instructions), all in production. Files `native/cup_base_*`. COMP_UTIL.CPP followed (delivered 2026-11-21).
 
 - [ ] From the review, open: `process_fixture` (0x1047bfb0) hands the fixture manager copy bytes it never writes on outcomes 1 and 2 (stale stack; `docs/cpp-rewrites.md`). No stack reader is catalogued there; a capture through a cup round would settle it (Victor's to record).
 - [ ] Style, from the review: `process_fixture` and the rounds draw still call this module's own routines and DATE.CPP through the dispatcher; the rounds block is close to register transcription (`o.v[n]`); the slot gather and two-pass placement are written three times in the draws; the memory-error report four times; the date-order test four times.

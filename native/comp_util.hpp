@@ -181,4 +181,13 @@ void competition_round_news(Cpu&, std::uint32_t club, std::uint32_t fixture, std
 // 0x104698c0: the same for a fixture's result line: kinds 6 and 7, or -2, with a round's text (`with_round`, a signed
 // byte) or without; any other kind builds nothing. No result.
 void fixture_round_news(Cpu&, std::uint32_t club, std::uint32_t code, std::uint32_t record, std::uint32_t kind, std::uint32_t with_round, std::uint32_t item);
+
+// Block `result_headline` (comp_util_headline.cpp, comp_util_headline_tables.inc, drafted by tools/comp_util_headline.py).
+// 0x10464d00: the news item about `club`'s result in a fixture row: the headline sentence (one of 173 localized texts, by
+// who goes through and how: the tie's decider, the result's grade 1..7 that 0x10464900 answers, the two scores, a first
+// leg, a round's name or the competition's), the two clubs, the score when the statistics know the fixture and, for a
+// friendly, the competition's name and the round's text. `side` is any value but 2, 4 and -1 for a club that goes through;
+// `round_code` a halfword (above 0 the round's name is asked for, -2 for the aggregate sentences). Answers nothing: r3 is what
+// the last callee left. Keeps the original's 0x450-byte frame, the registers at each call and the formatter's stack words.
+void result_headline(Cpu&, std::uint32_t club, std::uint32_t fixture, std::uint32_t grade, std::uint32_t side, std::uint32_t round_code, std::uint32_t item);
 }

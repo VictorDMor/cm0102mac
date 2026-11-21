@@ -13,3 +13,4 @@
 #include "comp_util_routines_random_shuffle.inc"
 #include "comp_util_routines_round_codes.inc"
 #include "comp_util_routines_round_text.inc"
+#include "comp_util_routines_result_headline.inc"

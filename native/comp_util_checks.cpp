@@ -75,7 +75,7 @@ struct Options {
     unsigned all = 40, every = 400, mutate = 0, mutated_calls = 4;
     std::uint32_t seed = 1;
     std::set<std::uint32_t> only;
-    bool corrupt = false, null_page = false, cases = true, strict = false, require_all = false, show_faults = false, call_trace = false, corrupt_trace = false, production = false;
+    bool corrupt = false, null_page = false, cases = true, strict = false, require_all = false, show_faults = false, show_sites = false, call_trace = false, corrupt_trace = false, production = false;
 } options;
 
 struct Tally { std::uint64_t returned = 0, faulted = 0, timed_out = 0, calls = 0; };
@@ -476,6 +476,9 @@ void compare_traces(State& s, std::uint32_t entry) {
     }
 }
 void print_trace_findings() {
+    // --show-sites: each paired call site of the run (the address after its `bl`, the callee) and how many pairs it had.
+    if (options.show_sites)
+        for (const auto& [site, pairs] : traced_sites) std::cout << "site return " << hex_address(site.first) << " -> " << hex_address(site.second) << " pairs=" << pairs << '\n';
     std::cout << "call_trace_pairs=" << traced_pairs << " sites=" << traced_sites.size() << " findings=" << trace_findings.size()
               << " truncated_traces=" << truncated_traces << " accepted_argument_differences=" << accepted_seen << '\n';
     if (pokes_fired || pokes_unfired)
@@ -735,7 +738,7 @@ bool summary(const RoutineChecker* checker) {
 }
 
 int main(int argc, char** argv) {
-    const auto usage = "usage: cm-comp-util-checks [--world SNAPSHOT] [--all N] [--every N] [--mutate K] [--mutated-calls N] [--seed N] [--only 0x..,0x..] [--corrupt] [--no-cases] [--strict] [--require-all] [--show-faults] [--call-trace] [--corrupt-trace] [--argument-masks FILE] [--null-page] [--production]\n";
+    const auto usage = "usage: cm-comp-util-checks [--world SNAPSHOT] [--all N] [--every N] [--mutate K] [--mutated-calls N] [--seed N] [--only 0x..,0x..] [--corrupt] [--no-cases] [--strict] [--require-all] [--show-faults] [--call-trace] [--show-sites] [--corrupt-trace] [--argument-masks FILE] [--null-page] [--production]\n";
     try {
         for (int n = 1; n < argc; ++n) {
             const std::string_view option(argv[n]);
@@ -753,6 +756,7 @@ int main(int argc, char** argv) {
             else if (option == "--require-all") options.require_all = true;
             else if (option == "--show-faults") options.show_faults = true;
             else if (option == "--call-trace") options.call_trace = true;
+            else if (option == "--show-sites") options.show_sites = options.call_trace = true;
             else if (option == "--corrupt-trace") options.call_trace = options.corrupt_trace = true;
             else if (option == "--production") options.production = true;
             // Maps low memory, so a path through a null pointer runs on as on the original machine

@@ -2489,3 +2489,29 @@ the module as generated code.
 - The call trace caught two wrong return addresses (0x1040e2d0's field 5 call, in production since ea39c099, and
   0x103e70f0's call of 0x104ae570), and mutated cases a load order (0x103e76c0 faulted at another address); no
   replay showed any of them.
+
+## COMP_UTIL.CPP: competition utilities
+
+35 entries (0x10462cd0..0x10477d54, 21,480 instructions; `tools/comp_util_audit.py`), files `native/comp_util*`,
+checker `cm-comp-util-checks`. The neighbour 0x10462b80 has no proof of owner and stays pinned as ambiguous.
+
+- **Three routines are tables compiled as code** and land as generated data with a small typed function around
+  it, not as transcribed branches. `tools/comp_util_tables.py` reads the jump tables of 0x1046f1f0 (a digit per
+  round code, language and kind: inferred, the grammatical gender class of the round's name) and 0x10469bb0 (one
+  localized format per round code) by emulating their range checks over every halfword code;
+  `tools/comp_util_headline.py` walks the decision tree of 0x10464d00 (the result sentence of a news item)
+  symbolically into 173 rows over 22 named facts. Both tools fail on a shape they cannot name, check that every
+  table entry is reached (or that exactly one row matches each reachable combination), and have a `check` mode
+  that fails when the committed `.inc` is stale. The `.inc` files hold numbers and string-pool offsets, never text.
+- The language these routines switch on is the preferences record's byte +8; a case sets it through the byte at
+  TOC -0x35ac.
+- An error arm of 0x1046f1f0 does not return: 1,667 of them fall through into the next range test, which is why a
+  code outside one stretch still answers from a later one.
+- With language 8 and a kind no caller passes, 0x10469bb0 translates text it never initialised (leftover stack)
+  and faults; the rewrite faults alike.
+- r4-r10 are left as the original except for the entries listed, with their proof, in
+  `comp_util_volatile_free.inc`. 0x10463990 was removed from that list: two callers reach it through a vtable.
+- Captures reach only 0x10464010, 0x10464880, 0x104646d0, 0x10464160, 0x104647e0 and 0x10462cd0; everything else
+  rests on fixtures built from the season-day world state, and no stack audit exists for those entries: the
+  stores a callee could read were reproduced from the listing. The season-day pair needs
+  `CM_ENGLISH_RULES_ORIGINAL=1`.

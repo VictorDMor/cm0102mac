@@ -85,6 +85,14 @@ inline constexpr std::uint32_t first_club = 0x1c, second_club = 0x20,
                                goals_43 = 0x43, goals_44 = 0x44,  // signed bytes: a leg's two scores (inferred)
                                goals_47 = 0x47, goals_48 = 0x48,
                                goals_4b = 0x4b, goals_4c = 0x4c;
+// What the result headline (0x10464d00, comp_util_headline.cpp) reads of a fixture row beside the above.
+inline constexpr std::uint32_t competition_id = 0x00,                       // word: compared with two special competitions' ids
+                               stats_leg = 0x08, first_club_id = 0x0c, second_club_id = 0x10,  // words: 0x1029eb20 looks the row up by them
+                               record = 0x14,                               // word: the competition's record (comp::record)
+                               first_leg = 0x18,                            // word: a record with a name (+0x18) and a gender (+0x4b), or 0
+                               date_a = 0x28, date_b = 0x2a,                // halfwords: the arguments of DATE 0x107156b0
+                               round_code_30 = 0x30, round_code_32 = 0x32,  // halfwords (the same codes as comp_util.hpp's round texts)
+                               tiebreak_first = 0x3d, tiebreak_second = 0x3e;  // bytes (inferred: each side's tie-break value, signed)
 }
 // The fixture reference 0x10463be0 writes into a news item and 0x10463dc0 reads back (the game's match row, 0x50
 // bytes): eighteen of its fields travel as consecutive words of the item, the others are derived. The ids at +0,

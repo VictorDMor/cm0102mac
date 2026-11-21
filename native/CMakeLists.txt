@@ -4643,8 +4643,8 @@ if(CM_CUP_BASE_COVERAGE)
     target_link_options(cm-cup-base-checks PRIVATE "-fprofile-instr-generate=${CM_CUP_BASE_PROFILE}" -fsanitize=undefined)
 endif()
 
-# COMP_UTIL.CPP (tools/comp_util_audit.py): competition utilities. Blocks land one at a time, so --require-all
-# joins the tests once every entry is routed (COMPLETE); comp_util_audit's test is registered with the cup's above.
+# COMP_UTIL.CPP (tools/comp_util_audit.py): competition utilities. Every entry is routed (COMPLETE), so the production
+# test requires all 35; comp_util_audit's test is registered with the cup's above.
 file(GLOB CM_COMP_UTIL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/comp_util*.cpp")
 list(FILTER CM_COMP_UTIL_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
 target_sources(cm_aot PRIVATE ${CM_COMP_UTIL_SOURCES})
@@ -4656,7 +4656,7 @@ if(EXISTS "${CM_ORACLE_DIR}/program.json" AND EXISTS "${CM_BENCHMARK_DIR}/world/
     set(CM_COMP_UTIL_INPUTS --world "${CM_BENCHMARK_DIR}/world/season-day/initial.snapshot")
     # season-day predates the English rule changes: its snapshot needs the original rules.
     add_test(NAME comp_util_equivalence COMMAND cm-comp-util-checks ${CM_COMP_UTIL_INPUTS} --mutate 4 --call-trace)
-    add_test(NAME comp_util_production COMMAND cm-comp-util-checks ${CM_COMP_UTIL_INPUTS} --production)
+    add_test(NAME comp_util_production COMMAND cm-comp-util-checks ${CM_COMP_UTIL_INPUTS} --production --require-all)
     set_tests_properties(comp_util_equivalence comp_util_production PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
 endif()
 option(CM_COMP_UTIL_COVERAGE "Instrument COMP_UTIL.CPP checker only" OFF)

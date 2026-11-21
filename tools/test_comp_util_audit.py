@@ -2,9 +2,8 @@
 
 The private export is required evidence, rather than a reason to skip tests. Production ownership is
 asserted, not skipped: exactly the entries of the routed blocks (numeric_ids, club_queries, comparators,
-interpolation, rating_sort, comp_screens_list, record_stream, fixture_log, random_shuffle, round_codes and round_text: 34 of the 35) are routed and hooked, the other one has no
-routine line, no owner and no hook, and the hook checker rejects a page that
-lacks a hook, misplaces it or carries one for an unrouted entry.
+interpolation, rating_sort, comp_screens_list, record_stream, fixture_log, random_shuffle, round_codes, round_text and result_headline: all 35) are routed and hooked, and the hook checker
+rejects a page that lacks a hook, misplaces it or carries one for an entry that is not hooked.
 """
 from contextlib import closing
 import json
@@ -13,6 +12,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from unittest import mock
 
 import comp_util_audit as audit
 from tactics_audit import digest, routine_records
@@ -84,13 +84,14 @@ NEXT_UNIT_FIRST = 0x10477d60                          # CONMEBOL_SEEDING.CPP
 # interpolation (0x10476780), rating_sort (0x10477870, 0x10477b40), comp_screens_list (0x10477490), record_stream
 # (0x10463be0, 0x10463dc0), fixture_log (0x10463990, 0x10463a90, 0x104770c0, 0x10477270) and random_shuffle
 # (0x10462cd0, 0x10463000, 0x104635b0), round_codes (0x1046f1f0, 0x10476ec0) and round_text (0x10469bb0, 0x10476f40,
-# 0x104768a0, 0x104769d0, 0x10469710, 0x104698c0).
+# 0x104768a0, 0x104769d0, 0x10469710, 0x104698c0) and result_headline (0x10464d00): all 35.
 ROUTED = frozenset({0x10464010, 0x10464880, 0x104648c0, 0x104646d0, 0x10464160, 0x10464900,
                     0x10463580, 0x104647a0, 0x104647c0, 0x104647e0, 0x10464830, 0x10477cd0, 0x104777c0,
                     0x10476780, 0x10477870, 0x10477b40, 0x10477490,
                     0x10463be0, 0x10463dc0, 0x10463990, 0x10463a90, 0x104770c0, 0x10477270,
                     0x10462cd0, 0x10463000, 0x104635b0,
-                    0x1046f1f0, 0x10476ec0, 0x10469bb0, 0x10476f40, 0x104768a0, 0x104769d0, 0x10469710, 0x104698c0})
+                    0x1046f1f0, 0x10476ec0, 0x10469bb0, 0x10476f40, 0x104768a0, 0x104769d0, 0x10469710, 0x104698c0,
+                    0x10464d00})
 AMBIGUOUS_CALLERS = (0x1002b6d0, 0x10042704, 0x10043190, 0x1005fd2c, 0x102fe7e4, 0x1030b6e0, 0x1030d630)
 
 
@@ -153,22 +154,25 @@ class CompUtilAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertFalse(audit.COMPLETE)
+        self.assertTrue(audit.COMPLETE)
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
             self.assertEqual(pinned[entry], (end, expected))
         self.assertEqual({entry for entry, _, _ in listed}, ROUTED)
         self.assertEqual({entry for entry, _, _ in audit.rewritten()}, ROUTED)
         self.assertEqual(set(audit.COMP_UTIL_HOOKED), ROUTED)
-        self.assertEqual(len(ENTRIES) - len(ROUTED), 1)
+        self.assertEqual(ROUTED, set(ENTRIES))
         for entry in ENTRIES:
             owners = [owner for at, owner in OWNER_REPLACEMENTS if at == entry]
             self.assertEqual(owners, [audit.OWNER] if entry in ROUTED else [], hex(entry))
         self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at in ENTRIES], [])
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_comp_util_index(db)
-            with self.assertRaisesRegex(ValueError, 'requires all 35'):
-                audit.require_comp_util_index(db, complete=True)
+            audit.require_comp_util_index(db, complete=True)
+            # The completeness check fails when an entry is not a production routine.
+            with mock.patch.object(audit, 'rewritten', return_value=[r for r in audit.rewritten() if r[0] != 0x10464d00]):
+                with self.assertRaisesRegex(ValueError, 'requires all 35'):
+                    audit.require_comp_util_index(db, complete=True)
         selected = set(self.by_address)
         # Every page of the unit: its hooked entries carry the hook once, before the first step; the others none.
         for page in sorted({entry >> 12 for entry in ENTRIES}):
@@ -196,6 +200,10 @@ class CompUtilAuditTests(unittest.TestCase):
                 for broken in (normal.replace(hook, ''), normal.replace(hook, hook + '\n' + hook), moved):
                     with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
                         audit.require_comp_util_hooks(page, part, broken)
+                # With every entry routed, an entry that is not hooked is simulated: its hook is then unexpected.
+                with mock.patch.object(audit, 'COMP_UTIL_HOOKED', tuple(e for e in audit.COMP_UTIL_HOOKED if e != entry)):
+                    with self.assertRaisesRegex(ValueError, 'Unexpected'):
+                        audit.require_comp_util_hooks(page, part, normal)
 
     def test_unit_bounds_are_its_pool_descriptors_slots_and_neighbours(self):
         pool = self.word(TOC - 0x47e4)
