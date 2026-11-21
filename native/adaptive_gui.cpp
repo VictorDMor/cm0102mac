@@ -153,11 +153,12 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::loan_terms:
     case ScreenTemplate::negotiation_confirmation: {
         if (!instance || !read(instance + 0x24)) return false;
-        // The message screens read nothing here that the layout depends on: it moves the grids of
-        // the shared shape and declines any other arrangement.
+        // The message screens stay classic until they have a layout of their own: the confirmation
+        // recipe left their panel off-centre and their standalone Back button stretched (Victor,
+        // 2026-11-21).
         switch (builder) {
         case 0x10421fb0: case 0x10423270: case 0x1042a810: case 0x10420b50: case 0x10421070:
-        case 0x1009e8f0: return true;
+        case 0x1009e8f0: return false;
         default: break;
         }
         if (builder == 0x1009dc00) {
