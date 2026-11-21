@@ -150,17 +150,22 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     }
     case ScreenTemplate::news_inbox:
         return instance && value(1) < 8 && value(8);
+    case ScreenTemplate::message_screen:
+        // The layout moves the grids of the shared shape and declines any other arrangement.
+        return instance && read(instance + 0x24);
+    case ScreenTemplate::transfer_status:
+    case ScreenTemplate::previous_offers: {
+        // History 0 is a person ID for the status screen and the offer record for previous offers.
+        // The builders read the person (and the bidder club) from it, and the manager's club.
+        const auto count = read(toc - 0x7be4), clubs = read(toc - 0x7b50);
+        if (!instance || !read(instance + 0x24) || !count || !clubs) return false;
+        if (kind == ScreenTemplate::transfer_status) return value(0) < read(count);
+        const auto offer = value(0);
+        return offer && read(offer + 12) < read(count) && read(offer + 8) < read(clubs);
+    }
     case ScreenTemplate::loan_terms:
     case ScreenTemplate::negotiation_confirmation: {
         if (!instance || !read(instance + 0x24)) return false;
-        // The message screens stay classic until they have a layout of their own: the confirmation
-        // recipe left their panel off-centre and their standalone Back button stretched (Victor,
-        // 2026-11-21).
-        switch (builder) {
-        case 0x10421fb0: case 0x10423270: case 0x1042a810: case 0x10420b50: case 0x10421070:
-        case 0x1009e8f0: return false;
-        default: break;
-        }
         if (builder == 0x1009dc00) {
             // The confirmation reads the current human's embedded contract
             // draft. Keep staff roles outside the player negotiation recipe.

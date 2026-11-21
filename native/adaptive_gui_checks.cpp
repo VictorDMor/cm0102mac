@@ -1112,6 +1112,8 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_proposal_checks.hpp"
 #include "adaptive_contract_checks.hpp"
 #include "adaptive_negotiation_dialog_checks.hpp"
+#include "adaptive_transfer_status_checks.hpp"
+#include "adaptive_message_screens_checks.hpp"
 #include "adaptive_news_checks.hpp"
 #include "adaptive_finances_checks.hpp"
 #include "adaptive_club_info_checks.hpp"
@@ -1290,6 +1292,9 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--proposal") proposal_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--contract") contract_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--negotiation-dialogs") negotiation_dialog_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--transfer-status") transfer_status_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--previous-offers") previous_offers_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--message-screens") message_screens_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--news") news_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--finances") finances_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--club-info") club_info_builder(argv[1]);

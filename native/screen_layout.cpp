@@ -324,6 +324,9 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::loan_terms: layout_negotiation_dialog(s, display, layout.canvas, true); break;
     case ScreenTemplate::negotiation_confirmation: layout_negotiation_dialog(s, display, layout.canvas, false); break;
     case ScreenTemplate::news_inbox: layout_news_inbox(s, display, layout.canvas); break;
+    case ScreenTemplate::transfer_status: layout_transfer_status(s, display, layout.canvas); break;
+    case ScreenTemplate::previous_offers: layout_previous_offers(s, display, layout.canvas); break;
+    case ScreenTemplate::message_screen: layout_message_screen(s, display, layout.canvas); break;
     case ScreenTemplate::competition:
     case ScreenTemplate::competition_history: {
         guest::Cpu c(s);

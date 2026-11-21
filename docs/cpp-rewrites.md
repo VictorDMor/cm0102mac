@@ -2187,14 +2187,37 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   the contract's rich title grid retain their original styles. Scroll positions and disabled controls
   remain original; narrow overflowing confirmations retain legacy geometry when the original text
   column cannot fit beside the scrollbar. Gates distinguish person pointers, offer links (including
-  the proposal's history-2 fallback), and contract roles. Since 2026-11-21 the message screens of
-  the same shape use the confirmation recipe too, gated only on a career being open: the offer
-  decision from the news (0x10421fb0), transfer completion (0x10423270, with a one-button footer
-  in one state), the transfer-list confirmation (0x1042a810), the offer restriction (0x10420b50)
-  and feedback (0x10421070) messages and the staff release (0x1009e8f0). No fixture opens them:
-  the layout declines a screen whose grids are not the shared shape. Existing-capture checks compare eight original/adaptive states, six window sizes,
+  the proposal's history-2 fallback), and contract roles. The message
+  screens (offer decision from the news 0x10421fb0, transfer completion 0x10423270, transfer-list
+  confirmation 0x1042a810, offer restriction 0x10420b50 and feedback 0x10421070, staff release
+  0x1009e8f0) use their own dialog layout, `message_screen_layout.cpp`, described below. Existing-capture checks compare eight original/adaptive states, six window sizes,
   scrolling, loan edits/restoration, confirmation entry and read-only dismissal; final submission is
   hit-tested without dispatching a persistent transaction. No original builder or handler changed.
+- Message screens (the six builders above) use `message_screen_layout.cpp`: their builders put a short
+  message in the middle row of nineteen and size the buttons by a column specification, so the confirmation
+  recipe gave a tall empty panel, and a four-button footer (completion: Back, No, Postpone, Yes) kept the
+  classic geometry. The layout makes a dialog: a panel up to 800 wide centered under the title bars, as
+  tall as the message rows plus one row of padding each side (at least five rows), the message rows
+  compacted into it (the controls' rows keep their order and spacing; the grid's first/last row and row
+  count follow), the text and its links shifted together to the new center, and the buttons (a grid
+  footer of one to six columns or one standalone control) as one row of equal 190px cells under the panel,
+  right-aligned to it, the block in the upper third of the content area. It declines on a scrollbar, a
+  missing or duplicated grid, or a message too tall for the canvas. Gate: a career is open.
+  `--message-screens` opens all six through their original openers (the loan listing too) on real records
+  and checks, besides the usual ABI/records/RNG/picker/redraw/Off checks, the dialog geometry above.
+  Unexercised: feedback reasons other than 1, restriction reasons other than 5, longer messages.
+- Player transfer status (0x10428ab0) uses `transfer_status_layout.cpp`: the seven-column price grid and
+  the two-column choices grid share one rectangle and one row table, so both get the same bounded panel
+  (up to 960 wide, row height up to 28px). Only the widest label column grows; the minus, amount, plus
+  and automatic cells keep their width, the intro paragraph and its links move together, the footer
+  buttons are equal 190px cells right-aligned to the panel, and the price menu still opens at its
+  control. Title and subtitle already follow the shell. Previous offers (0x10422600) uses
+  `previous_offers_layout.cpp`: the same panel for its message grid, the subtitle grid and the single
+  standalone footer button, with each centered text and its links moved by one shift. Gates: a career,
+  a person in range (status) or an offer record with person and bidder in range. `--transfer-status`
+  (eight price/choice states, price menu, edits, redraw) and `--previous-offers` (six message states)
+  use the original openers. Unexercised: non-player persons, the Set action (hit-tested only), a
+  previous offer whose person has no contract.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -37,11 +37,15 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x10096c60: return ScreenTemplate::contract_negotiation;
     case 0x1042ca40: return ScreenTemplate::loan_terms;
     case 0x1041eb10: case 0x1009dc00: case 0x1042efa0: return ScreenTemplate::negotiation_confirmation;
-    // Message screens of the same shape (title, one wrapped message at 110,140-780,545, a footer of
-    // buttons): an offer for one of the manager's players from the news, a completed transfer, a
-    // transfer-list confirmation, an offer's restriction and feedback messages, and a staff release.
+    // Message screens (title, one message at 110,140-780,545, a row of buttons that is a grid of one to
+    // six columns or one standalone control): an offer for one of the manager's players from the news, a
+    // completed transfer, a transfer-list confirmation, an offer's restriction and feedback messages, and a
+    // staff release. They get a dialog layout of their own.
     case 0x10421fb0: case 0x10423270: case 0x1042a810: case 0x10420b50: case 0x10421070:
-    case 0x1009e8f0: return ScreenTemplate::negotiation_confirmation;
+    case 0x1009e8f0: return ScreenTemplate::message_screen;
+    // Player transfer status (asking price, squad status and listing choices) and the previous offers.
+    case 0x10428ab0: return ScreenTemplate::transfer_status;
+    case 0x10422600: return ScreenTemplate::previous_offers;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }
