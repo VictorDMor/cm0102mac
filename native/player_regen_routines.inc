@@ -4,3 +4,6 @@
 // Each block appends the #include of its player_regen_routines_<block>.inc below.
 #include "player_regen_routines_regen_queries.inc"
 #include "player_regen_routines_candidate_score.inc"
+#include "player_regen_routines_regen_lists.inc"
+#include "player_regen_routines_club_placement.inc"
+#include "player_regen_routines_detach.inc"

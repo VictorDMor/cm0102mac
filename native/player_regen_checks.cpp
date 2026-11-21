@@ -58,6 +58,19 @@ constexpr std::uint32_t volatile_free[] = {
     0,
 };
 bool player_regen_reads_volatile(std::uint32_t entry) { return std::ranges::find(volatile_free, entry) == std::end(volatile_free); }
+// An entry whose callers read only some of r4-r10 after the call (tools/register_contract.py --after ENTRY lists them) is
+// compared on those registers alone: bit n of the mask is r(4+n). A routine that no listed register's writer is part of
+// (player_regen_volatile_read.inc gives the proof) leaves every other register dead for its callers.
+struct VolatileRead { std::uint32_t entry; unsigned mask; };
+constexpr VolatileRead volatile_read[] = {
+#include "player_regen_volatile_read.inc"
+    {0, 0},
+};
+unsigned player_regen_volatile_mask(std::uint32_t entry) {
+    if (!player_regen_reads_volatile(entry)) return 0;
+    for (const auto& read : volatile_read) if (read.entry == entry) return read.mask;
+    return 0x7f;
+}
 bool player_regen_dead_stack_free(std::uint32_t) { return true; }
 bool player_regen_native_code(std::uint32_t address) { return player_regen_code(address); }
 }
@@ -127,8 +140,9 @@ void save_rng(State& s) {
     s.memory.write<4>(rng_image + 16, is_mapped(s, cursor) ? std::uint32_t(s.memory.read<2>(cursor)) : 0xffffffffu);
 }
 void save_volatile(State& s, std::uint32_t entry) {
-    if (!player_regen_reads_volatile(entry)) return;
-    for (unsigned n = 4; n <= 10; ++n) s.memory.write<4>(volatile_image + n * 4, std::uint32_t(s.r<4>(guest::reg::gpr(n))));
+    const auto mask = player_regen_volatile_mask(entry);
+    for (unsigned n = 4; n <= 10; ++n)
+        if (mask >> (n - 4) & 1) s.memory.write<4>(volatile_image + n * 4, std::uint32_t(s.r<4>(guest::reg::gpr(n))));
 }
 void bounded_original(State& s, std::uint32_t entry) {
     alarm(60); s.budget = s.executed + 4'000'000'000ULL; player_regen_run_original(s, entry);
@@ -528,7 +542,7 @@ void print_trace_findings() {
 }
 
 void report_difference(std::uint32_t entry, std::string_view kind, const std::vector<std::string>& lines, std::string_view detail = {}) {
-    std::cerr << kind << " difference at " << hex_address(entry);
+    std::cerr << kind << " difference at " << hex_address(entry) << " [" << current_label << "]";
     if (!detail.empty()) std::cerr << " (" << detail << ")";
     std::cerr << ":\n";
     for (const auto& line : lines) std::cerr << "  " << line << '\n';

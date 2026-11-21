@@ -2562,3 +2562,18 @@ search and queued test, the two qsort comparators) and `candidate_score` (the po
   FPSCR bits follow from the same operations in the same order (including a repeated `fctiwz` of the pow result around the scaled draw).
 - No stack audit reader reads bytes these entries leave (season-day and same-save-continue: the only readers of this module's bytes are
   0x101d1900 and 0x10371b2c, of 0x102d8920's writes). 0x102dc410 and 0x102dbf00 leave r4-r10 free (`player_regen_volatile_free.inc`).
+- Blocks `regen_lists`, `club_placement` and `detach` are routed too (27 of 47 entries). The regen object's lists are
+  `{entries, count, capacity}` at +4/+8/+0xc (A, 0x1c-byte retirement entries), +0x10/+0x14/+0x18 (B, 0xc), +0x1c/+0x20/+0x24 (C, 0x10)
+  and +0x3c/+0x40/+0x44 (D, 0x10); a full list (count = capacity - 1) reallocates 250 entries more (0x107751b0) and an absent block
+  reports the assertion and ends the game. Quirks kept: the appender of C tests list D's count; list A's appender copies only some
+  fields (+0 +4 +8 +0xa +0x10 +0x12 +0x18 +0x19) and its removal clears the vacated entry's id, byte +0x18 and four halfwords but not
+  +0x19; the registration 0x102df1a0 accepts an id equal to the people count, and its D growth tests the list's COUNT (not its block)
+  for the assertion.
+- The two club scores keep their 16-bit values in 32-bit registers and truncate (extsh) only where the original does; their draw bounds
+  are bytes or halfwords, so no scaled draw is reachable. 0x102e21c0 and 0x102e1f20 dispatch through TOC jump tables (-0x50b4 and
+  -0x50b8 for the staff, -0x50ac and -0x50b0 for the player; read from the executable, the cases are in `player_regen_detach.cpp`).
+- A routine that calls out runs inside a `Frame` of the original's size (its callees keep the original stack depth: a mutated run
+  that changes a stale stack word a callee reads differs otherwise) with the callee-saved registers set as the original holds them.
+  Entries whose callers read only r9 and r10 (0x102e99f0, 0x102ea3c0, 0x102dc000: `register_contract.py --after`) are compared on those
+  registers (`player_regen_volatile_read.inc`, a mask the checker applies), which no routine of the block writes.
+

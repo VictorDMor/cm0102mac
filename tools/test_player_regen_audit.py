@@ -1,5 +1,5 @@
-"""Certify PLAYER_REGEN.CPP's 47 entries, the unit's bounds and which of them are routed to C++ (the nine of the two
-pilot blocks, regen_queries and candidate_score).
+"""Certify PLAYER_REGEN.CPP's 47 entries, the unit's bounds and which of them are routed to C++ (the 27 of the blocks
+regen_queries, candidate_score, regen_lists, club_placement and detach).
 
 The private export is required evidence, rather than a reason to skip tests. Production ownership is asserted,
 not skipped: exactly the routed entries are listed, owned and hooked, and the hook checker rejects a page that carries a
@@ -95,10 +95,15 @@ ADDED = {0x102eb4e0, 0x102eb550}
 REMOVED = {0x102d5b30, 0x102d5bb0, 0x102d5dc0, 0x102d6770, 0x102d7dc0, 0x102d7e80, 0x102d81a0}
 LOADER = tuple(a for a, *_ in audit.AMBIGUOUS_NEIGHBOURS[:7])
 SEARCH_SIDE = tuple(a for a, *_ in audit.AMBIGUOUS_NEIGHBOURS[7:])
-# The routed entries: block regen_queries (0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610) and
-# block candidate_score (0x102da630, 0x102dc410, 0x102dbf00).
+# The routed entries: block regen_queries (0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610), block
+# candidate_score (0x102da630, 0x102dc410, 0x102dbf00), block regen_lists (0x102deb70, 0x102ded90, 0x102dbeb0, 0x102dea50,
+# 0x102dec50, 0x102dee70, 0x102df020, 0x102df1a0, 0x102df6d0, 0x102eb670), block club_placement (0x102ea670, 0x102e9b90,
+# 0x102e99f0, 0x102ea3c0, 0x102e98a0, 0x102dc000) and block detach (0x102e1f20, 0x102e21c0).
 ROUTED = frozenset({0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610,
-                    0x102da630, 0x102dc410, 0x102dbf00})
+                    0x102da630, 0x102dc410, 0x102dbf00,
+                    0x102deb70, 0x102ded90, 0x102dbeb0, 0x102dea50, 0x102dec50, 0x102dee70, 0x102df020, 0x102df1a0, 0x102df6d0, 0x102eb670,
+                    0x102ea670, 0x102e9b90, 0x102e99f0, 0x102ea3c0, 0x102e98a0, 0x102dc000,
+                    0x102e1f20, 0x102e21c0})
 # The three audited units whose code loads a literal before their pool load only binary data and preamble pieces.
 BINARY_BEFORE_POOL = {'CONTRACT_SCREENS.CPP', 'FORMATION.CPP', 'MANAGER_MANAGER.CPP'}
 

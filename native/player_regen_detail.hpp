@@ -26,7 +26,9 @@ inline constexpr std::int32_t
     rng_salt = -0x7b90,         // cell: the pool's salt word (the last refill's value)
     rng_start = -0x7b8c,        // the pool's first sample (the slot holds the address itself, not a cell)
     rng_end = -0x7b88,          // cell: the address of the pool's last sample
-    rng_cursor = -0x7b84;       // cell: the address of the sample the next draw reads
+    rng_cursor = -0x7b84,       // cell: the address of the sample the next draw reads
+    nation_count = -0x7b04,     // cell: how many nations there are (the bound of the random nation of a staff entry)
+    bsearch_comparator = -0x6328; // the word the retirement search hands bsearch as its comparator (the list A entry comparator's descriptor)
 }
 
 // The unit's doubles, read from guest memory (never host literals). +0 is the bias of a signed integer converted
@@ -43,6 +45,12 @@ inline constexpr std::uint32_t conversion_high = 0x43300000;
 namespace list {
 inline constexpr std::uint32_t entries = 0x04, count = 0x08;
 }
+// The four lists of the regen object, each a block of entries with its count and its capacity (the constructor makes
+// every capacity 250 entries; a full list grows by 250).
+struct ListSlots { std::uint32_t entries, count, capacity; };
+inline constexpr ListSlots retirement_list{0x04, 0x08, 0x0c}, queue_list{0x10, 0x14, 0x18}, staff_pool_list{0x1c, 0x20, 0x24},
+                           player_pool_list{0x3c, 0x40, 0x44};
+inline constexpr std::uint32_t list_growth = 0xfa;
 // The regen object itself: the word at +0x20 (the non-player staff pool's, inferred: nonzero when the pool holds entries).
 namespace regen_object { inline constexpr std::uint32_t staff_pool_word = 0x20; }
 // A list A entry (retirement entry, 0x1c bytes): its first word is the person's id.
@@ -92,6 +100,7 @@ namespace kind_record { inline constexpr std::uint32_t size = 100, class_byte = 
 
 namespace callee {
 inline constexpr std::uint32_t reseed = 0x1077b770;  // the pooled generator's refill
+inline constexpr std::uint32_t reallocate = 0x107751b0, bsearch = 0x10775600, quit = 0x1076f7d0;
 }
 // The addresses after the original's `bl reseed` at each inline draw this module's pilots make (the callee saves
 // the return address, and the call trace pairs the calls by it).
@@ -99,6 +108,8 @@ namespace refill_site {
 inline constexpr std::uint32_t random_first = 0x102da684, random_second = 0x102da770,
                                age_term = 0x102dc4c8, nation_term = 0x102dc6b0, unattached_term = 0x102dc960,
                                final_term = 0x102dc9dc;
+// 0x102df1a0's inline draw of the random nation of a staff entry (its scaled form's second draw is a call of 0x102da630: random_first).
+inline constexpr std::uint32_t nation_draw = 0x102df458;
 }
 
 // The prologue's `stw r0,8(r1)`: the saved link register in the caller's frame. A routine that can call a dependency (the
@@ -106,6 +117,19 @@ inline constexpr std::uint32_t random_first = 0x102da684, random_second = 0x102d
 // generated instruction budget) sees the C++ routine entered and framed when the dependency stops. Its bytes are the
 // callee's part of the caller's frame, free under the native contract; no reader reads them (the stack audit).
 inline void save_link(Cpu& c) { c.put32(c.sp() + 8, c.lr()); }
+
+// `bl target` with the arguments in r3...: runs the callee (its C++ owner, through the dispatcher, at the original's return
+// address `back`) and returns its r3. The link register is kept: a routine finishes through it, and a call sets it.
+inline std::uint32_t invoke(Cpu& c, std::uint32_t target, std::uint32_t back, std::initializer_list<std::uint32_t> arguments = {}) {
+    unsigned n = 3;
+    for (const auto argument : arguments) c.set(n++, argument);
+    const auto link = c.lr();
+    c.call(target, back);
+    c.set_lr(link);
+    return c.r(3);
+}
+// The value of a global the TOC slot names (`lwz rX,slot(r2); lwz rX,0(rX)`).
+inline std::uint32_t cell(Cpu& c, std::int32_t slot) { return c.u32(c.toc(slot)); }
 
 // The signed value of a byte or halfword (the original's extsb / extsh).
 inline std::int32_t sext8(std::uint32_t v) { return std::int32_t(std::int8_t(v & 0xff)); }
