@@ -90,4 +90,51 @@ void sort_by_strength(Cpu&, std::uint32_t clubs, std::int32_t count);
 // Answers true; false after reporting the game's assertion for no list (line 0x2781), no rows (0x278c) or a failed
 // allocation (0x2794), leaving the list as it was.
 bool sort_screen_list(Cpu&, std::uint32_t list);
+// Block `record_stream` (comp_util_stream.cpp): a fixture reference (the game's 0x50-byte match row) to and from a
+// news item. `cursor` is the address of a byte holding the item's next word index; both routines advance it by
+// 18, the number of words (a byte: it wraps at 256). The item's set-word and word routines report the game's
+// assertion for an index outside 0..49 (as a signed byte): the writer then skips that word, the reader stores 0.
+// 0x10463be0 (reference, item, cursor): writes eighteen of the row's fields as words.
+void write_fixture_reference(Cpu&, std::uint32_t reference, std::uint32_t item, std::uint32_t cursor);
+// 0x10463dc0 (item, reference, cursor): reads them back and rebuilds the club (+0x1c, +0x20), row (+0x18) and
+// competition record (+0x14) pointers from the ids (0 for -1).
+void read_fixture_reference(Cpu&, std::uint32_t item, std::uint32_t reference, std::uint32_t cursor);
+// Block `fixture_log` (comp_util_log.cpp): the history log, a global table of 0x1c-byte rows (TOC cells -0x7a34
+// rows, -0x7a38 count): the competition's record (+4), the winner, runner-up, third and host clubs (+8..+0x14)
+// and the year (+0x18, a halfword).
+// 0x10463990: appends a row for `competition` (an object; its record is stored), reusing the first row of the
+// table's trailing run of empty rows (+4 of 0), else growing the table by 20 rows (DATABASE 0x100a4ce0; no row
+// is written when it fails). The year is the game date's. Leaves r4 (the scan's row index, or the table after a
+// growth), r5 (the row last tested) and r6 (the slot, 0 for none) as the original does; r7..r10 are untouched.
+void append_history(Cpu&, std::uint32_t competition, std::uint32_t winner, std::uint32_t runner_up, std::uint32_t third, std::uint32_t host);
+// 0x10463a90: the club that took `place` (0 the winner, 1 the runner-up, 2 the third, a signed byte in the
+// register) in the competition with record `record`: sorts the table, searches it for the record (any year) and takes
+// the first of the matching rows. 0 when there is none; the game's assertion (line 0x196) and 0 for another place.
+// Leaves r4..r10 as the original does (callers read r7..r10).
+std::uint32_t history_club(Cpu&, std::uint32_t record, std::uint32_t place_register);
+// 0x104770c0: copies the rows in which `club` (or `second_club`, when not 0) placed into a new block, sorts it
+// by compare_history_rows with the two clubs in the unit's context words, stores the block's address at `out`
+// and answers the row count. A failed allocation reports the game's assertion (line 0x2702) and answers 0
+// (`out` 0). Read for r3 only.
+std::uint32_t club_history(Cpu&, std::uint32_t club, std::uint32_t second_club, std::uint32_t out);
+// 0x10477270: the qsort comparator of those rows (two row addresses): rows whose competition record has no
+// continent or nation sort first, then the current competitions (0x104646d0) before the others, then by the
+// competition's reputation (higher first), its id, the place the context club took (winner, runner-up, other)
+// and the year (older first). Leaves r4 and r5 as the original does.
+std::int32_t compare_history_rows(Cpu&, std::uint32_t first, std::uint32_t second);
+// Block `random_shuffle` (comp_util_shuffle.cpp): the pooled generator's draws (see the file's header for the
+// draw's definition).
+// 0x10463000: one draw below `bound` (0 for 0, no draw); the out-of-line copy of the game's Random(n), also for
+// bounds of 0x10000 or more in magnitude (a scaled draw plus a second, smaller one). Leaves only r3 (no caller
+// reads another register).
+std::int32_t pooled_draw(Cpu&, std::int32_t bound);
+// 0x10462cd0: shuffles `count` (a signed halfword in the register) words at `array` by 3 * count random swaps,
+// each of two draws below count. Counts from 10923 on never end (the original's halfword counter wraps).
+// Leaves r3..r5 as the last swap did and r7..r10 as the callee left them (callers read r7..r10).
+void shuffle(Cpu&, std::uint32_t array, std::uint32_t count_register);
+// 0x104635b0: the game's "pick `take` of `count`": validates 0 <= take <= count (else the game's assertion, line
+// 0xf1), sorts the `count` words at `array` by the descriptor at TOC -0x6188 (club reputation, empty last) and
+// shuffles min(3 * take, count) swaps over the whole array, each of two draws below that number. Leaves
+// r3..r5 as the last swap and r7..r10 as the callees left them.
+void shuffle_front(Cpu&, std::uint32_t array, std::uint32_t count_register, std::uint32_t take_register);
 }

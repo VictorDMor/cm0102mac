@@ -8,3 +8,6 @@
 #include "comp_util_routines_interpolation.inc"
 #include "comp_util_routines_rating_sort.inc"
 #include "comp_util_routines_comp_screens_list.inc"
+#include "comp_util_routines_record_stream.inc"
+#include "comp_util_routines_fixture_log.inc"
+#include "comp_util_routines_random_shuffle.inc"

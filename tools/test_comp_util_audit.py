@@ -2,7 +2,7 @@
 
 The private export is required evidence, rather than a reason to skip tests. Production ownership is
 asserted, not skipped: exactly the entries of the routed blocks (numeric_ids, club_queries, comparators,
-interpolation, rating_sort and comp_screens_list: 17 of the 35) are routed and hooked, the other 18 have no
+interpolation, rating_sort, comp_screens_list, record_stream, fixture_log and random_shuffle: 26 of the 35) are routed and hooked, the other 9 have no
 routine line, no owner and no hook, and the hook checker rejects a page that
 lacks a hook, misplaces it or carries one for an unrouted entry.
 """
@@ -81,10 +81,14 @@ NEXT_UNIT_FIRST = 0x10477d60                          # CONMEBOL_SEEDING.CPP
 # The routed entries, each with the digest of the original body that comp_util_routines*.inc pins: block
 # numeric_ids (0x10464010, 0x10464880, 0x104648c0), club_queries (0x104646d0, 0x10464160, 0x10464900),
 # comparators (0x10463580, 0x104647a0, 0x104647c0, 0x104647e0, 0x10464830, 0x10477cd0, 0x104777c0),
-# interpolation (0x10476780), rating_sort (0x10477870, 0x10477b40) and comp_screens_list (0x10477490).
+# interpolation (0x10476780), rating_sort (0x10477870, 0x10477b40), comp_screens_list (0x10477490), record_stream
+# (0x10463be0, 0x10463dc0), fixture_log (0x10463990, 0x10463a90, 0x104770c0, 0x10477270) and random_shuffle
+# (0x10462cd0, 0x10463000, 0x104635b0).
 ROUTED = frozenset({0x10464010, 0x10464880, 0x104648c0, 0x104646d0, 0x10464160, 0x10464900,
                     0x10463580, 0x104647a0, 0x104647c0, 0x104647e0, 0x10464830, 0x10477cd0, 0x104777c0,
-                    0x10476780, 0x10477870, 0x10477b40, 0x10477490})
+                    0x10476780, 0x10477870, 0x10477b40, 0x10477490,
+                    0x10463be0, 0x10463dc0, 0x10463990, 0x10463a90, 0x104770c0, 0x10477270,
+                    0x10462cd0, 0x10463000, 0x104635b0})
 AMBIGUOUS_CALLERS = (0x1002b6d0, 0x10042704, 0x10043190, 0x1005fd2c, 0x102fe7e4, 0x1030b6e0, 0x1030d630)
 
 
@@ -154,7 +158,7 @@ class CompUtilAuditTests(unittest.TestCase):
         self.assertEqual({entry for entry, _, _ in listed}, ROUTED)
         self.assertEqual({entry for entry, _, _ in audit.rewritten()}, ROUTED)
         self.assertEqual(set(audit.COMP_UTIL_HOOKED), ROUTED)
-        self.assertEqual(len(ENTRIES) - len(ROUTED), 18)
+        self.assertEqual(len(ENTRIES) - len(ROUTED), 9)
         for entry in ENTRIES:
             owners = [owner for at, owner in OWNER_REPLACEMENTS if at == entry]
             self.assertEqual(owners, [audit.OWNER] if entry in ROUTED else [], hex(entry))

@@ -34,15 +34,20 @@ inline constexpr std::int32_t
     success_flag = -0x7bac,    // cell: the byte every assertion report clears
     finance_manager = -0x7ab8, // cell: the finance object 0x10103510 looks accounts up in (0 when there is none)
     screens_vector = -0x6190,  // the transition vector of the screen-row comparator 0x104777c0
+    rng_salt = -0x7b90,        // cell: the pool's salt word (the last refill's value)
+    rng_start = -0x7b8c,       // the pool's first sample (the slot holds the address itself, not a cell)
+    rng_end = -0x7b88,         // cell: the address of the pool's last sample
+    rng_cursor = -0x7b84,      // cell: the address of the sample the next draw reads
     competitions = comp::toc::competitions,   // cell: the competition objects by id
-    records = comp::toc::records;             // cell: the 0x6c-byte competition records by id
+    records = comp::toc::records,             // cell: the 0x6c-byte competition records by id
+    clubs = comp::toc::clubs;                 // cell: the 0x248-byte club rows
 }
 
 // The unit's doubles (`constants` + offset, read from guest memory: never host literals). +8 is the bias of a
 // signed integer converted through the stack (0x4330000080000000), +0x50 the bias of an unsigned one
 // (0x4330000000000000); the others are the weights and thresholds of 0x10464160 (their values are the game's).
 namespace constant {
-inline constexpr std::uint32_t signed_bias = 0x08, limit_scale = 0x10, weight_a = 0x18, weight_b = 0x20,
+inline constexpr std::uint32_t word_range = 0x00 /* the pooled draw's scale: 65535.0 (inferred) */, signed_bias = 0x08, limit_scale = 0x10, weight_a = 0x18, weight_b = 0x20,
                                games_scale = 0x28, ramp_start = 0x30, ramp_scale = 0x38, share_divisor = 0x40,
                                promotion_divisor = 0x48, unsigned_bias = 0x50;
 }
@@ -81,11 +86,42 @@ inline constexpr std::uint32_t first_club = 0x1c, second_club = 0x20,
                                goals_47 = 0x47, goals_48 = 0x48,
                                goals_4b = 0x4b, goals_4c = 0x4c;
 }
+// The fixture reference 0x10463be0 writes into a news item and 0x10463dc0 reads back (the game's match row, 0x50
+// bytes): eighteen of its fields travel as consecutive words of the item, the others are derived. The ids at +0,
+// +4, +0xc and +0x10 are -1 for none; each has a pointer (+0x14, +0x18, +0x1c, +0x20) that the reader rebuilds from
+// the id (0 for -1). `row_table` is the cell of the 0x50-byte row table the +4 id indexes (inferred: the game's
+// fixture rows).
+namespace fixture_reference {
+inline constexpr std::uint32_t competition_id = 0x00, row_id = 0x04, word_08 = 0x08, first_club_id = 0x0c, second_club_id = 0x10,
+                               competition_record = 0x14, row = 0x18, first_club = 0x1c, second_club = 0x20,
+                               half_28 = 0x28, half_2a = 0x2a, half_30 = 0x30, half_32 = 0x32,  // halfwords (inferred: the fixture's date and time)
+                               byte_3d = 0x3d, byte_3e = 0x3e, byte_42 = 0x42, byte_43 = 0x43, byte_44 = 0x44,
+                               byte_47 = 0x47, byte_48 = 0x48, byte_4b = 0x4b, byte_4c = 0x4c;  // signed bytes
+inline constexpr std::uint32_t fields = 18;  // words in a news item, from the index the cursor byte names
+inline constexpr std::int32_t row_table = -0x7548;  // TOC cell: the 0x50-byte rows the +4 id indexes
+inline constexpr std::uint32_t row_size = 0x50;
+}
+// The history log (the unit's third table): 0x1c-byte rows, one per competition and year. `rows` and `count` are
+// TOC cells (the table's pointer and its length); `compare` the DATABASE comparator's transition vector.
+// A row's +0 is not written by the appender (kept from whatever the slot held).
+namespace history_log {
+inline constexpr std::int32_t rows = -0x7a34, count = -0x7a38, compare = -0x7a3c, year_date = -0x7b80,
+                              rows_vector = -0x4980;  // the transition vector of the row comparator 0x10477270
+inline constexpr std::uint32_t row_size = 0x1c, competition = 0x04 /* the competition's record */, winner = 0x08,
+                               runner_up = 0x0c, third = 0x10, host = 0x14, year = 0x18 /* halfword */,
+                               grow_step = 0x14 /* rows added when the table is full */, collect_step = 10;
+// The comparator's context: two club rows, the words at TOC offsets -0x3768 and -0x376c (written by 0x104770c0).
+inline constexpr std::int32_t context_first = -0x3768, context_second = -0x376c;
+}
 // What the unit calls of other modules.
 namespace callee {
 inline constexpr std::uint32_t allocate = 0x10775130, release = 0x10775170, fill_memory = 0x10778300,  // new[], delete[], memset
                                finance_account = 0x10103510, divide64 = 0x10773960, member_ids = 0x100d06f0,
-                               choose_places = 0x10210c50, rate_person = 0x10216830;
+                               choose_places = 0x10210c50, rate_person = 0x10216830,
+                               set_item_word = 0x102cb4b0, item_word = 0x102cb570,  // NEWS.CPP (item, index[, value])
+                               grow_log = 0x100a4ce0, compare_log_rows = 0x100cde70,  // DATABASE.CPP: grow the history log by n rows; its row comparator
+                               sort = 0x10768300, search = 0x10775600, resize = 0x107751b0,  // qsort, bsearch, realloc
+                               reseed = 0x1077b770;  // the pooled generator's refill
 
 inline constexpr std::uint32_t stats_row = 0x10459b50,       // COMP_STATS.CPP (statistics object, club) -> row, or 0
                                marks_record = 0x104abf40;    // (statistics owner, competition record) -> byte, nonzero: excluded
