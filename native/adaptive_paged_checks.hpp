@@ -3,7 +3,8 @@
 // an existing capture, built with New Screens off and on at six canvases, and the adaptive run must keep every
 // control, command, record and RNG draw and only move them: a centered content panel, the toolbar above it on
 // its own side, and a compact two-button footer, equal and right-aligned to the panel. A mutant of each
-// geometric property must be rejected by the same checker. Needs TransferScene (adaptive_transfer_status_checks.hpp).
+// geometric property must be rejected by the same checker. A table with a scrollbar (UEFA Coefficients) must keep
+// its scroll state and leave the scrollbar its gutter. Needs TransferScene (adaptive_transfer_status_checks.hpp).
 #include <functional>
 #include <map>
 struct PagedCase { const char* name; std::function<void(TransferScene&)> open; };
@@ -50,6 +51,12 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
             (name + ": footer buttons unequal or overlapping").c_str());
     require(buttons[1].right == footer.right && buttons[0].left == footer.left, (name + ": footer buttons not flush with the footer").c_str());
 
+    // The original's own scroll state (scrollbar flag, last row, offset) is not the layout's to change.
+    const unsigned panel_at = 4 + unsigned(shape.panel) * 0xbf0;
+    const bool scrolls = c.u8(t.grid(shape.panel) + 0xbef);
+    for (unsigned field : {0xbefu, 0x14u, 0x15u, 0x16u, 0x17u, 0x1fcu, 0x1fdu, 0x1feu, 0x1ffu, 0xbb1u})
+        require(old[panel_at + field] == c.u8(t.grid(shape.panel) + field), (name + ": scroll state or row count changed").c_str());
+
     std::map<unsigned, std::pair<int, int>> widths; // column -> (old width, new width)
     for (unsigned i = 0; i < t.controls(); ++i) {
         const auto at = t.control(i); const unsigned old_at = 0xba864 + i * 0x17c;
@@ -60,6 +67,8 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
             if (box.top == 0 && box.bottom == 0) continue;
             require(box.left >= body.left && box.right <= body.right && box.top >= body.top && box.bottom <= body.bottom,
                     (name + ": panel control outside its panel").c_str());
+            // The scrollbar keeps its gutter at the panel's right edge, as in the original (24px at classic width).
+            require(!scrolls || box.right <= body.right - 22, (name + ": a cell runs under the scrollbar").c_str());
             const int old_left = display_word(old, old_at + 0x28), old_right = display_word(old, old_at + 0x2c);
             if (message) {
                 // A message line carries with the panel's left edge and its text area's right edge.
@@ -72,6 +81,9 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
                 const unsigned column = c.u32(at + 0x20);
                 auto [it, inserted] = widths.try_emplace(column, std::pair{before.width(), box.width()});
                 require(inserted || it->second == std::pair{before.width(), box.width()}, (name + ": cells of one column differ").c_str());
+            } else if (old_left <= panel_box.left && old_right >= panel_box.right) {
+                // A link that spans its row (Manager Status) spans the panel's row.
+                require(c.i32(at + 0x28) == body.left && c.i32(at + 0x2c) == body.right, (name + ": row link does not span the panel").c_str());
             } else {
                 // Explicit text bounds (an empty-table message) stay centered in the panel.
                 require(std::abs((c.i32(at + 0x28) + c.i32(at + 0x2c)) - (old_left + old_right) - (body.left + body.right - panel_box.left - panel_box.right)) <= 1 &&
@@ -97,10 +109,11 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
         }
     }
     if (!message && !widths.empty()) {
-        int grown = 0, shrunk = 0, previous_right = -1;
+        // A column with no cell in this state (an empty table) has no control to witness its growth.
+        int grown = 0, shrunk = 0;
         for (const auto& [column, pair] : widths) { grown += pair.second > pair.first; shrunk += pair.second < pair.first; }
-        require(!shrunk && grown <= 1 && (grown == 1 || body.width() == panel_box.width()), (name + ": more than the widest column changed width").c_str());
-        (void)previous_right;
+        require(!shrunk && grown <= 1 && (grown == 1 || widths.size() < c.u8(t.grid(shape.panel) + 0xbb0) || body.width() == panel_box.width()),
+                (name + ": more than the widest column changed width").c_str());
     }
 }
 
@@ -112,7 +125,8 @@ inline void require_rejected(const std::function<void()>& verify, const char* mu
 }
 
 inline void paged_screen_fixture(const char* path, const char* title, unsigned builder, ScreenRect panel_box, bool message,
-                                 const std::vector<PagedCase>& cases, const std::function<void(TransferScene&)>& negative_gate) {
+                                 const std::vector<PagedCase>& cases, const std::function<void(TransferScene&)>& negative_gate,
+                                 const std::function<std::vector<std::uint8_t>(TransferScene&)>& extra_records = {}) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
     for (unsigned scenario = 0; scenario < cases.size(); ++scenario) {
@@ -125,7 +139,7 @@ inline void paged_screen_fixture(const char* path, const char* title, unsigned b
                 cases[scenario].open(t);
                 require(t.builder() == builder, "Paged screen did not open through its original opener");
                 bool on = adaptive;
-                const auto records = [&] { return t.records(); };
+                const auto records = [&] { auto bytes = t.records(); if (extra_records) { const auto more = extra_records(t); bytes.insert(bytes.end(), more.begin(), more.end()); } return bytes; };
                 const auto pick = [&] {
                     for (unsigned i = 0; i < t.controls(); ++i) {
                         const int owner = c.i16(t.control(i) + 0x72);
@@ -178,16 +192,46 @@ inline void paged_screen_fixture(const char* path, const char* title, unsigned b
                         c.put32(t.grid(shape.panel) + 4, panel_box.top); c.put32(t.grid(shape.panel) + 12, panel_box.bottom);
                         require_rejected(verify, "panel left at classic coordinates"); restore(saved);
                     }
-                    {   // a toolbar or pager control goes back to its classic place
+                    {   // a toolbar or pager control (or, with none, the subtitle) goes back to its classic place
                         bool moved = false;
-                        for (unsigned k = 0; k < t.controls() && !moved; ++k) {
-                            const auto at = t.control(k); const unsigned old_at = 0xba864 + k * 0x17c;
-                            if (c.i16(at + 0x72) >= 0 || display_word(old, old_at + 0x14) < 125 || display_word(old, old_at + 0x1c) > panel_box.top ||
-                                c.i32(at + 0x10) == display_word(old, old_at + 0x10)) continue;
-                            c.put32(at + 0x10, display_word(old, old_at + 0x10)); c.put32(at + 0x18, display_word(old, old_at + 0x18)); moved = true;
+                        for (int pass = 0; pass < 2 && !moved; ++pass)
+                            for (unsigned k = 0; k < t.controls() && !moved; ++k) {
+                                const auto at = t.control(k); const unsigned old_at = 0xba864 + k * 0x17c;
+                                if (c.i16(at + 0x72) >= 0) continue;
+                                const bool toolbar = display_word(old, old_at + 0x14) >= 125 && display_word(old, old_at + 0x1c) <= panel_box.top;
+                                if (pass == 0 && !toolbar) continue;
+                                if (pass == 1 && display_word(old, old_at + 0x14) != 80) continue;
+                                if (c.i32(at + 0x10) == display_word(old, old_at + 0x10) && c.i32(at + 0x18) == display_word(old, old_at + 0x18)) continue;
+                                c.put32(at + 0x10, display_word(old, old_at + 0x10)); c.put32(at + 0x18, display_word(old, old_at + 0x18)); moved = true;
+                            }
+                        // A screen with no toolbar (UEFA Coefficients) has its subtitle already following the shell at build time.
+                        bool has_toolbar = false;
+                        for (unsigned k = 0; k < t.controls(); ++k) {
+                            const unsigned old_at = 0xba864 + k * 0x17c;
+                            has_toolbar |= std::int16_t(display_word(old, old_at + 0x70) & 0xffff) < 0 &&
+                                           display_word(old, old_at + 0x14) >= 125 && display_word(old, old_at + 0x1c) <= panel_box.top;
                         }
-                        require(moved, "Paged screen fixture found no toolbar control to mutate");
-                        require_rejected(verify, "toolbar control left at classic coordinates"); restore(saved);
+                        require(moved || !has_toolbar, "Paged screen fixture found no toolbar or subtitle control to mutate");
+                        if (moved) require_rejected(verify, "toolbar control left at classic coordinates");
+                        restore(saved);
+                    }
+                    {   // a row link that spans the panel goes back to its classic span (only Manager Status has one)
+                        for (unsigned k = 0; k < t.controls(); ++k) {
+                            const auto at = t.control(k); const unsigned old_at = 0xba864 + k * 0x17c;
+                            if (c.i16(at + 0x72) != shape.panel || display_word(old, old_at + 0x28) != panel_box.left || display_word(old, old_at + 0x2c) != panel_box.right) continue;
+                            c.put32(at + 0x28, panel_box.left); c.put32(at + 0x2c, panel_box.right);
+                            require_rejected(verify, "row link left at its classic span"); restore(saved); break;
+                        }
+                    }
+                    if (c.u8(t.grid(shape.panel) + 0xbef)) {   // a cell of the last column runs under the scrollbar
+                        bool widened = false;
+                        for (unsigned k = 0; k < t.controls() && !widened; ++k) {
+                            const auto at = t.control(k);
+                            if (c.i16(at + 0x72) != shape.panel || c.u32(at + 0x20) + 1 != c.u8(t.grid(shape.panel) + 0xbb0) || (!c.i32(at + 0x14) && !c.i32(at + 0x1c))) continue;
+                            c.put32(at + 0x18, t.rect(t.grid(shape.panel)).right); widened = true;
+                        }
+                        require(widened, "Paged screen fixture found no last-column cell to widen");
+                        require_rejected(verify, "cell under the scrollbar"); restore(saved);
                     }
                     verify();
                     on = false; select_new_screens(false); build(canvas);

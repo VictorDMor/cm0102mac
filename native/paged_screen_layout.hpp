@@ -1,6 +1,7 @@
 #pragma once
 #include "form_layout.hpp"
 #include "guest_screen.hpp"
+#include "gui_guest_scope.hpp"
 #include <algorithm>
 #include <array>
 #include <utility>
@@ -92,5 +93,62 @@ inline void move_chrome(const GuestScreen& screen, guest::Cpu& c, unsigned contr
         screen.write(at + 0x10, box);
         if (mirrored) { c.put32(at + 0x28, box.left); c.put32(at + 0x2c, box.right); }
     }
+}
+
+// A screen with one table of `columns` columns at `panel_box` (the grid the builder created for it, with or
+// without a scrollbar), standalone controls above it and the Back/Next footer: the same pass for every
+// such table. With `or_message` the table may instead be one column holding one centered message. It declines (classic geometry) on a missing or duplicated table or footer. Only the widest
+// column takes the extra width; a scrollbar keeps its gutter at the table's right edge because the last
+// column's track runs to the grid's edge, and the original's own scroll state and rows are untouched.
+inline void layout_table_screen(State& s, std::uint32_t display, GuiCanvas canvas, ScreenRect panel_box, unsigned columns, bool or_message = false) {
+    guest::Cpu c(s);
+    const GuestScreen screen{c, display};
+    const ScreenLayout shell{canvas};
+    int table = -1, footer = -1;
+    bool ambiguous = false;
+    const auto claim = [&](int& slot, unsigned i) { ambiguous |= slot >= 0; slot = int(i); };
+    const unsigned grids = std::min<unsigned>(250, c.u16(display + 0x129da4));
+    const unsigned controls = std::min<unsigned>(1200, c.u16(display + 0x129da6));
+    for (unsigned i = 0; i < grids; ++i) {
+        const auto grid = screen.grid(i);
+        if (screen.rect(grid) == panel_box && (screen.columns(grid) == columns || (or_message && screen.columns(grid) == 1))) claim(table, i);
+        else if (is_footer(screen, grid, shell)) claim(footer, i);
+    }
+    if (ambiguous || table < 0 || footer < 0) return;
+    const auto table_grid = screen.grid(table), footer_grid = screen.grid(footer);
+    const unsigned rows = screen.rows(table_grid);
+    if (!rows || rows > 30) return;
+    const auto panel = body(shell, panel_box, rows);
+
+    GuiGuestScope preserve(s);
+    c.set(1, c.sp() - 0x400);
+    // Read the columns the builder's rectangle produced, not the ones a previous pass left behind.
+    screen.measure(table_grid);
+    ColumnMap map;
+    if (!map.read(c, screen, table_grid, panel_box.width(), panel)) return;
+    for (unsigned i = 0; i < controls; ++i) {
+        const auto at = screen.control(i);
+        if (c.i16(at + 0x72) != table) continue;
+        // A link that spans its whole row (Manager Status) keeps spanning the panel.
+        if (c.i32(at + 0x28) <= panel_box.left && c.i32(at + 0x2c) >= panel_box.right && c.i32(at + 0x28) && c.i32(at + 0x2c)) {
+            c.put32(at + 0x28, panel.left); c.put32(at + 0x2c, panel.right);
+            continue;
+        }
+        if (c.i32(at + 0x28) || c.i32(at + 0x2c)) {
+            // Centered text with measured bounds (an empty table's message) stays centered in the panel.
+            const int center = (panel.left + panel.right - panel_box.left - panel_box.right) / 2;
+            c.put32(at + 0x28, c.i32(at + 0x28) + center); c.put32(at + 0x2c, c.i32(at + 0x2c) + center);
+            continue;
+        }
+        const unsigned column = c.u32(at + 0x20);
+        if (column >= map.count()) continue;
+        const auto [first, last] = map.cell(column);
+        c.put32(at + 0x28, first); c.put32(at + 0x2c, last);
+    }
+    move_chrome(screen, c, controls, shell, panel_box, panel);
+    screen.write(table_grid, panel);
+    screen.measure(table_grid);
+    screen.publish(table_grid);
+    place_footer(screen, c, footer_grid, footer_box(shell, panel));
 }
 }

@@ -1118,6 +1118,10 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_board_confidence_checks.hpp"
 #include "adaptive_manager_statistics_checks.hpp"
 #include "adaptive_world_rankings_checks.hpp"
+#include "adaptive_uefa_coefficients_checks.hpp"
+#include "adaptive_hall_of_fame_checks.hpp"
+#include "adaptive_manager_status_checks.hpp"
+#include "adaptive_job_information_checks.hpp"
 #include "adaptive_news_checks.hpp"
 #include "adaptive_finances_checks.hpp"
 #include "adaptive_club_info_checks.hpp"
@@ -1301,6 +1305,10 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--board-confidence") board_confidence_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--manager-statistics") manager_statistics_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--world-rankings") world_rankings_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--uefa-coefficients") uefa_coefficients_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--hall-of-fame") hall_of_fame_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--manager-status") manager_status_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--job-information") job_information_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--message-screens") message_screens_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--news") news_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--finances") finances_builder(argv[1]);

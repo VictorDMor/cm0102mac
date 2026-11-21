@@ -163,6 +163,10 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     }
     case ScreenTemplate::manager_statistics:
     case ScreenTemplate::world_rankings:
+    case ScreenTemplate::uefa_coefficients:
+    case ScreenTemplate::hall_of_fame:
+    case ScreenTemplate::manager_status:
+    case ScreenTemplate::job_information:
         // Tables of the whole game's managers or nations: no record of the history is read by the layout.
         return instance && read(instance + 0x24);
     case ScreenTemplate::transfer_status:

@@ -2243,8 +2243,35 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   canvases, panel centering/height, footer equality and alignment, toolbar sides, column widths (one column
   grows), text bounds, picker hits, in-place redraw, Off, and the original Back result and RNG, and each runs
   three mutants through the same checker (footer drift, classic panel, classic toolbar control). Unexercised:
-  Job Information, the other MANAGER_SCREENS builders, UEFA Coefficients (a six-column table with a scrollbar
-  flag) and screens reached with other nations' histories in play, and pages that build a scrollbar.
+  the other MANAGER_SCREENS builders and screens reached with other nations' histories in play.
+- UEFA Coefficients (0x10074d80, COMP_SCREENS.CPP, opener 0x10074d00 from the Competitions menu), Hall of Fame
+  (0x1033fcf0, opener 0x1033fc60 from the Game menu), Manager Status (0x10338b40, opener 0x10338a90, dispatcher
+  action 0x3fc) and Job Information (0x101c74e0, opener 0x101c7370 from the Manager menu) are one more table family on `paged_screen_layout.hpp`: its `layout_table_screen` takes the table's
+  classic rectangle and column count (`uefa_coefficients_layout.cpp` 110,145-780,535 with six columns;
+  `hall_of_fame_layout.cpp` 110,170-780,535 with five; `manager_status_layout.cpp` 110,145-780,535 with three;
+  `job_information_layout.cpp` 110,170-780,535 with five, or one column holding a centered message when there are no
+  jobs) and does the same pass as the rankings: a centered panel up to 960 wide with rows up to 28px, only the widest column
+  (nation, manager) taking the extra width, standalone controls above the table kept on their side (the Hall of Fame's
+  year-range control on the left edge and its nation control on the right) and the compact Back/Next footer. The UEFA
+  table always has a scrollbar (52 nations, 17 rows with the header as the first scrolled row; the scroll offset is
+  history slot 0). The original grid keeps 24px for it at the right edge, and the layout leaves it: the last
+  column's track runs to the grid's edge, so its cells stop 24px short, and the rows, last row, offset and flag are
+  not touched. Manager Status owns an invisible link per row with explicit bounds spanning the row; they span the
+  panel. Job Information lists the clubs of the chosen nation whose manager's job is insecure: a club enters
+  the list when a short at +6 of its 0x4c-byte statistics row is below 4050, so a capture without vacancies is
+  given some by writing that short for clubs the original "has a manager" test accepts; the table then grows a
+  scrollbar from the seventeenth job (history slot 1 is its offset). `--uefa-coefficients` (top, offset 17, offset 35), `--hall-of-fame` (an empty table, and twenty or seven
+  managers written into the live ranking table of the disposable capture copy, then read by the original builder;
+  the 324,000 bytes of the table are compared before and after the layout) `--manager-status` (the capture's one
+  human manager) and `--job-information` (no jobs, five, sixteen, twenty and twenty scrolled, the written rows
+  compared before and after) check, at six canvases, centering, height, footer equality and alignment, toolbar sides, column
+  widths, the scrollbar gutter and scroll state, text bounds, picker hits, in-place redraw, Off and the original Back
+  result and RNG, with mutants (footer drift, classic panel, classic toolbar control or subtitle, a cell under the
+  scrollbar, a row link at its classic span). Unexercised: the nation chosen through the Hall of Fame's and Job Information's menus (the popups
+  open at 0,0 and are placed when they open), the Hall of Fame's "Gravar como texto"/"Carregar" file commands,
+  a Manager Status with several managers (a capture has one), UEFA coefficients with real values (a new world
+  has zeros) and the sort links' effect. The Hall of Fame's date column shows 1970 for the fixture's synthetic
+  rows: only the geometry is compared.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

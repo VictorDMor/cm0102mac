@@ -330,6 +330,10 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::board_confidence: layout_board_confidence(s, display, layout.canvas); break;
     case ScreenTemplate::manager_statistics: layout_manager_statistics(s, display, layout.canvas); break;
     case ScreenTemplate::world_rankings: layout_world_rankings(s, display, layout.canvas); break;
+    case ScreenTemplate::uefa_coefficients: layout_uefa_coefficients(s, display, layout.canvas); break;
+    case ScreenTemplate::hall_of_fame: layout_hall_of_fame(s, display, layout.canvas); break;
+    case ScreenTemplate::manager_status: layout_manager_status(s, display, layout.canvas); break;
+    case ScreenTemplate::job_information: layout_job_information(s, display, layout.canvas); break;
     case ScreenTemplate::competition:
     case ScreenTemplate::competition_history: {
         guest::Cpu c(s);

@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -51,6 +51,13 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x101c8fb0: return ScreenTemplate::board_confidence;
     case 0x101c4460: return ScreenTemplate::manager_statistics;
     case 0x100745f0: return ScreenTemplate::world_rankings;
+    // The Competitions menu's UEFA Coefficients and the Game menu's Hall of Fame: one table and the Back/Next footer.
+    case 0x10074d80: return ScreenTemplate::uefa_coefficients;
+    case 0x1033fcf0: return ScreenTemplate::hall_of_fame;
+    // Manager Status (dispatcher action 0x3fc): a three-column table of the game's managers.
+    case 0x10338b40: return ScreenTemplate::manager_status;
+    // The Manager menu's Job Information: the jobs on offer in a nation, or a message when there are none.
+    case 0x101c74e0: return ScreenTemplate::job_information;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }
