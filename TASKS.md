@@ -3,6 +3,15 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Now: PLAYER_REGEN.CPP (Victor's pick, 2026-11-21)
+
+Retirements and newgen players and staff. Inventory closed: 47 entries, 0x102d8230..0x102eb6f8, 19,660 instructions (`tools/player_regen_audit.py`, 12 tests; working folder `.local/rewrites/player_regen/` with the ledger, calls, census, decompiled C and the brief). Nothing routed yet.
+
+- [x] Inventory and audit. Against the heuristic's 52: the seven routines 0x102d5b30..0x102d8224 (2,486 instructions, a player-config loader whose slot names "CM3_DATA" before this unit's pool) are out, pinned as ambiguous neighbours for whoever audits OFFICIALS_MANAGER; the comparators 0x102eb4e0 and 0x102eb550 are in. 0x102eb700..0x102eb930 (169 instructions, descriptors taken by SCOUT_MANAGER code) unowned.
+- [ ] Blocks (instructions): regen_queries 141 and candidate_score 863 (pilots), regen_lists 882, club_placement 1,255, retire_decision 1,944, detach 551, news_posting 677, news_texts 1,847, persistence 791, newgen_staff 1,872, newgen_player 5,336, retirement_processor 1,860, regen_pending_processor 1,203, lifecycle_and_drivers 438.
+- Risks to settle per block: 17 entries draw RNG inline (0x102e4530 131 sites, 0x102e27e0 61, data-dependent order); `pow` through the host bridge; mixed single/double and fused multiply-adds in 0x102dcb20, 0x102dd910, 0x102df780, 0x102e4530; 0x102dcb20/0x102dd910 read the caller's r19 and 0x102e27e0 its r20; `retire.dat` save and load (0x102ea870, 0x102ead70).
+- Captures: 19 of 47 entries reached (season-day, same-save-continue); 0x102e4530 once; 0x102e27e0, 0x102dcb20, 0x102dd910 by none. 62 of 76 captures are stale.
+
 ## COMP_UTIL.CPP: delivered 2026-11-21 (35 of 35 in production)
 
 Record in the commits and `docs/cpp-rewrites.md` ("COMP_UTIL.CPP: competition utilities"). What stays open:
@@ -12,7 +21,6 @@ Record in the commits and `docs/cpp-rewrites.md` ("COMP_UTIL.CPP: competition ut
 - [ ] The round_text cases answer the news appenders 0x1074b830 / 0x1074bab0; the result_headline cases run them for real against a scratch item and the round_text cases could do the same.
 - [ ] The code-review skill returned nothing three times on 2026-11-21 (six seconds, no file read); this module's reviews ran as plain Sonnet agents with the reference paths. Check the skill before relying on it again.
 - [ ] `season-day` pairs need `CM_ENGLISH_RULES_ORIGINAL=1` (STALE without it, a known issue older than this module).
-- Next module: rerun `tools/game_inventory.py` with fresh day and week profiles and take the next by routine layer and day weight.
 
 ## Deferred: 2000/01 league structures (Victor, 2026-11-20: after the recompilation)
 
