@@ -68,9 +68,11 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         return !instance && !s.memory.read<1>(read(toc - 0x79e4));
     case ScreenTemplate::load_browser: {
         const auto extension = value(4), filter = value(5);
-        // FILE_SCREENS also serves save/delete, quick-start, tactics and folder
-        // choosers. Opt in only to the original saved-career Load workflow.
-        if (value(2) || value(12) != 5 || value(13) || value(17) || value(18) != 1 ||
+        // FILE_SCREENS also serves quick-start, tactics and folder choosers. Opt in only to the
+        // saved-career workflows: Load (mode 0), Save (1) and Delete (2), from the start screen or
+        // inside a career, with or without the Info button. The layout itself declines any other
+        // arrangement of grids.
+        if ((value(2) & 0xff) > 2 || value(13) || value(17) || value(18) > 1 ||
             !value(3) || !value(6) || !value(7) || !value(8) || !extension || !filter || read(filter) != 0x10355820) return false;
         constexpr char suffix[] = ".sav";
         for (unsigned i = 0; i < sizeof(suffix); ++i)
@@ -102,6 +104,11 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     }
     case ScreenTemplate::transfer_history:
         return transfer_browser_native_enabled();
+    case ScreenTemplate::training_schedule:
+    case ScreenTemplate::training_coaches:
+        return value(0) && value(1) && value(2);
+    case ScreenTemplate::training:
+        return value(0) && s.memory.read<1>(value(0) + 0x860) < 10;
     case ScreenTemplate::nations_and_clubs: {
         const auto tab = value(0), mode = value(19);
         // The single-list nation picker selects tab 1 during construction.
@@ -197,7 +204,6 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::player_details: {
         const auto section = value(1);
         if (section < 1 || section > 5) return false;
-        if (section == 1 && value(4) != 0) return false;
         if (section == 5) {
             switch (value(5)) {
             case 1: case 2: case 4: case 8: case 16: break;
@@ -206,11 +212,14 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         }
         const auto staff = value(0);
         const auto count = read(toc - 0x7be4);
-        // Both the selected details grid and the player summary must exist.
-        // Keep each original builder's status/sentinel exclusions.
-        if (!staff || !count || !read(staff + 0x14) ||
+        // The final database entries are sentinels. Staff-only profiles also
+        // need the non-playing attributes table emitted for their status.
+        if (!staff || !count ||
             std::int32_t(read(staff)) >= std::int32_t(read(count) - 16)) return false;
         const auto status = s.memory.read<1>(staff + 0x62);
+        if (!read(staff + 0x14))
+            return section == 1 && value(4) == 1 && read(staff + 0x1c) && status != 1 && status != 2;
+        if (section == 1 && value(4) != 0) return false;
         if (section != 2 && (status == 2 || (section != 1 && status == 1))) return false;
         return section != 3 || s.memory.read<1>(staff + 0x60) != 5 ||
             (read(staff + 0x24) && status == 11);

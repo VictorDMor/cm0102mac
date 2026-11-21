@@ -9,13 +9,17 @@ void layout_load_browser(State& s, std::uint32_t display, GuiCanvas canvas) {
     const GuestScreen screen{c, display};
     const unsigned count = std::min<unsigned>(250, c.u16(display + 0x129da4));
     int field = -1, list = -1, buttons = -1;
+    unsigned button_columns = 0;  // Cancel, Info, OK; without Info when the dialog has no save to describe
     const ScreenLayout shell{canvas};
     for (unsigned i = 0; i < count; ++i) {
         const auto box = screen.rect(screen.grid(i));
         const auto columns = screen.columns(screen.grid(i)), rows = screen.rows(screen.grid(i));
         if (box == ScreenRect{190,195,700,231} && columns == 2 && rows == 1) field = int(i);
         else if (box == ScreenRect{190,234,700,510} && columns == 1 && rows == 6) list = int(i);
-        else if ((box == ScreenRect{100,555,790,590} || box == shell.footer()) && columns == 3 && rows == 1) buttons = int(i);
+        else if ((box == ScreenRect{100,555,790,590} || box == shell.footer()) && (columns == 2 || columns == 3) && rows == 1) {
+            buttons = int(i);
+            button_columns = columns;
+        }
     }
     if (field < 0 || list < 0 || buttons < 0) return;
     const int line_height = c.i32(c.toc(-0x740c)) != -1 ? 21 : c.i32(c.toc(-0x3bdc) + 3 * 0x1404);
@@ -39,8 +43,8 @@ void layout_load_browser(State& s, std::uint32_t display, GuiCanvas canvas) {
     // is clamped locally without rewriting the browser's history or filename.
     screen.hide_scrollbar_if_fits(screen.grid(list), rows);
     screen.resize_rows(screen.grid(list));
-    screen.write(screen.grid(buttons), {available.right - 510, canvas.height - 45, available.right, canvas.height - 10});
-    for (unsigned column = 0; column < 3; ++column) c.put8(screen.grid(buttons) + 0xbb2 + column, 1);
+    screen.write(screen.grid(buttons), {available.right - 170 * int(button_columns), canvas.height - 45, available.right, canvas.height - 10});
+    for (unsigned column = 0; column < button_columns; ++column) c.put8(screen.grid(buttons) + 0xbb2 + column, 1);
     for (int index : {field,list,buttons}) {
         screen.measure(screen.grid(index));
         screen.publish(screen.grid(index));

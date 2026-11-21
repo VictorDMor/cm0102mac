@@ -311,7 +311,13 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
         case 5: layout_club_information(s, display, layout.canvas); break;
         }
         break;
-    case ScreenTemplate::player_details: apply_player_details(s, display, layout); break;
+    case ScreenTemplate::player_details: {
+        guest::Cpu c(s);
+        const auto history = c.u32(c.toc(-0x7bb0) + 0x10);
+        if (c.u32(c.u32(history + 0x14) + 0x14)) apply_player_details(s, display, layout);
+        else layout_staff_profile(s, display, layout.canvas);
+        break;
+    }
     case ScreenTemplate::search_filters: layout_search_filters(s, display, layout.canvas); break;
     case ScreenTemplate::transfer_proposal: layout_transfer_proposal(s, display, layout.canvas); break;
     case ScreenTemplate::contract_negotiation: layout_contract_negotiation(s, display, layout.canvas); break;
@@ -330,6 +336,9 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     }
     case ScreenTemplate::match_report: layout_match_report(s, display, layout.canvas); break;
     case ScreenTemplate::daily_fixtures: layout_daily_fixtures(s, display, layout.canvas); break;
+    case ScreenTemplate::training_schedule: layout_training_schedule(s, display, layout.canvas); break;
+    case ScreenTemplate::training_coaches: layout_training_coaches(s, display, layout.canvas); break;
+    case ScreenTemplate::training: layout_training(s, display, layout.canvas); break;
     case ScreenTemplate::nations_and_clubs: layout_nations_and_clubs(s, display, layout.canvas); break;
     case ScreenTemplate::search_tables: {
         guest::Cpu c(s);

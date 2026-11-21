@@ -35,6 +35,9 @@ struct LoadBrowserFiles {
 void load_browser_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path/"Screens.plist"); select_new_screens(true);
+    // Load with Info (the workflow every later check follows), then Save and Delete with and without it:
+    // those are checked for the gate, the geometry, the picker and Cancel.
+    for (auto [mode,info]:{std::pair{0u,1u},{1u,1u},{1u,0u},{2u,0u}})
     for (unsigned files_count:{0u,3u,12u,40u})
     for (auto canvas:{GuiCanvas{800,600},GuiCanvas{801,601},GuiCanvas{800,900},
                       GuiCanvas{1440,600},GuiCanvas{1280,900},GuiCanvas{3200,1800}}) {
@@ -70,8 +73,8 @@ void load_browser_builder(const char* path) {
         };
         const auto filter=c.toc(-0x63c4);
         c.put32(c.sp()+0x38,c.u16(c.toc(-0x7bc8))); c.put32(c.sp()+0x3c,5);
-        for (unsigned offset:{0x40u,0x44u,0x48u,0x4cu})c.put32(c.sp()+offset,offset==0x4c?1:0);
-        invoke(0x100edf20,{text(scratch+64,"Restore Saved Game"),text(scratch+128,"Select File"),0,
+        for (unsigned offset:{0x40u,0x44u,0x48u,0x4cu})c.put32(c.sp()+offset,offset==0x4c?info:0);
+        invoke(0x100edf20,{text(scratch+64,"Restore Saved Game"),text(scratch+128,"Select File"),mode,
             text(scratch+256,"fixture-saves"),text(scratch+512,".sav"),0,filter,c.u16(c.toc(-0x7bc4))});
         const auto history=c.u32(ui+0x10);
         const auto setting=[history](unsigned index){return history+0x14+index*8;};
@@ -96,7 +99,7 @@ void load_browser_builder(const char* path) {
         std::vector<unsigned> entries;
         for (unsigned i=0;i<c.u16(display+0x129da4);++i) {
             if (rect(grid(i))==ScreenRect{190,195,700,231})field=int(i);
-            if (rect(grid(i))==ScreenRect{100,555,790,590} && c.u8(grid(i)+0xbb0)==3)footer=int(i);
+            if (rect(grid(i))==ScreenRect{100,555,790,590} && c.u8(grid(i)+0xbb0)==2+info)footer=int(i);
         }
         const auto action=[&](unsigned code) {
             for(unsigned i=0;i<c.u16(display+0x129da6);++i)
@@ -139,9 +142,9 @@ void load_browser_builder(const char* path) {
             require(list_box.width()<=1120 && list_box.left>=110 && list_box.right<=canvas.width-20 && list_box.bottom<=canvas.height-65 &&
                 field_box.left==list_box.left && field_box.right==list_box.right && field_box.height()==36 &&
                 list_box.top-field_box.bottom==8 && capacity>6,"Adaptive load list/filename bounds are not aligned");
-            require(rect(grid(footer))==ScreenRect{list_box.right-510,canvas.height-45,list_box.right,canvas.height-10},
+            require(rect(grid(footer))==ScreenRect{list_box.right-170*int(2+info),canvas.height-45,list_box.right,canvas.height-10},
                 "Load footer did not follow the panel");
-            for(unsigned col=0;col<3;++col)require(c.u8(grid(footer)+0xbb2+col)==1,"Load footer buttons are unequal");
+            for(unsigned col=0;col<2+info;++col)require(c.u8(grid(footer)+0xbb2+col)==1,"Load footer buttons are unequal");
         }
         const auto hit=[&](unsigned index) {
             const auto box=rect(control(index)+0x10);
@@ -151,11 +154,12 @@ void load_browser_builder(const char* path) {
             return std::int16_t(invoke(c.u8(display)==1?0x1071aa10:0x1071a280,{display}));
         };
         for(unsigned code:{3u,5u,4u}) {
+            if(code==5 && !info)continue;
             const auto index=action(code);
             require(hit(index)==std::int16_t(index),"Original picker missed a load footer command");
         }
         const auto gui=s.memory.copy_out(display,0x130000);
-        for(auto [slot,replacement]:{std::pair{2u,1u},{2u,2u},{12u,4u},{12u,6u},{13u,1u},{17u,1u},{18u,0u},
+        for(auto [slot,replacement]:{std::pair{2u,3u},{13u,1u},{17u,1u},{18u,2u},
                                      {3u,0u},{4u,0u},{5u,0u},{6u,0u},{7u,0u},{8u,0u}}) {
             const auto saved=c.u32(setting(slot)); c.put32(setting(slot),replacement);
             require(!adaptive_screen_available(s,0x100ee220),"Load layout accepted another chooser mode or incomplete buffers");
@@ -174,7 +178,8 @@ void load_browser_builder(const char* path) {
             require(s.memory.copy_out(display,0x130000)==gui,"Load fallback changed controls");
             c.put32(ui+0x2c64,0); c.put16(ui+0x2c58,0); select_new_screens(true);
         }
-        if(!files_count && canvas==GuiCanvas{1280,900}) {
+        const bool load=!mode && info;
+        if(load && !files_count && canvas==GuiCanvas{1280,900}) {
             hit(unsigned(editor));
             require(c.i32(control(editor)+0x44)>=0,"Resized filename field did not receive focus");
             c.put8(c.toc(-0x7bac),0);
@@ -194,7 +199,7 @@ void load_browser_builder(const char* path) {
                 "Load Off failed to restore classic layout while retaining filename");
             select_new_screens(true);
         }
-        if(files_count) {
+        if(load && files_count) {
             const auto first=unsigned(c.i32(grid(list)+0x1fc));
             const auto chosen=entries.at(first);
             const auto label=string_at(control(chosen)+0x78);
@@ -206,12 +211,12 @@ void load_browser_builder(const char* path) {
             require(c.u32(setting(14))==retained && unsigned(c.i32(grid(list)+0x1fc))==retained && string_at(name)==label.substr(0,30),
                     "Load redraw lost selection/scroll");
         }
-        if(files_count==12) {
-            const auto info=action(5); require(hit(info)==std::int16_t(info),"Info hit failed after selection");
-            require(std::int32_t(invoke(0x100ee9d0,{info}))==-4 && files.opened==1 &&
+        if(load && files_count==12) {
+            const auto about=action(5); require(hit(about)==std::int16_t(about),"Info hit failed after selection");
+            require(std::int32_t(invoke(0x100ee9d0,{about}))==-4 && files.opened==1 &&
                 c.u32(c.u32(c.u32(ui+0x10)))==0x100ef840 && !adaptive_screen_available(s,0x100ee220),
                     "Info did not enter its original separate screen");
-        } else if(files_count==40) {
+        } else if(load && files_count==40) {
             const auto selected=string_at(name); const auto ok=action(4);
             require(hit(ok)==std::int16_t(ok) && std::int32_t(invoke(0x100ee9d0,{ok}))==-9 &&
                 c.u32(ui+0x2581a0)==5 && c.u32(ui+0x2581a4)==result_path && string_at(result_path).ends_with(selected+".sav") && files.opened==0,

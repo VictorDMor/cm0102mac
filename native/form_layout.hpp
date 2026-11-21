@@ -51,6 +51,10 @@ void layout_competition_list(State&, std::uint32_t display, GuiCanvas, unsigned 
 ScreenRect live_match_update_rect(State&, std::uint32_t display, int control, ScreenRect);
 void layout_match_report(State&, std::uint32_t display, GuiCanvas);
 void layout_daily_fixtures(State&, std::uint32_t display, GuiCanvas);
+void layout_staff_profile(State&, std::uint32_t display, GuiCanvas);
+void layout_training_schedule(State&, std::uint32_t display, GuiCanvas);
+void layout_training_coaches(State&, std::uint32_t display, GuiCanvas);
+void layout_training(State&, std::uint32_t display, GuiCanvas);
 void layout_nations_and_clubs(State&, std::uint32_t display, GuiCanvas);
 void layout_club_information(State&, std::uint32_t display, GuiCanvas);
 }

@@ -1,6 +1,7 @@
 #include "adaptive_gui.hpp"
 #include "guest_abi.hpp"
 #include "guest_screen.hpp"
+#include "gui_guest_scope.hpp"
 #include "platform.hpp"
 #include "tactics_layout.hpp"
 #include "match_replay.hpp"
@@ -1125,6 +1126,9 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_competition_history_checks.hpp"
 #include "adaptive_daily_fixtures_checks.hpp"
 #include "adaptive_nations_and_clubs_checks.hpp"
+#include "adaptive_training_schedule_checks.hpp"
+#include "adaptive_staff_profile_checks.hpp"
+#include "adaptive_training_checks.hpp"
 #include "adaptive_transfer_history_checks.hpp"
 #include "adaptive_startup_checks.hpp"
 #include "adaptive_load_browser_checks.hpp"
@@ -1299,6 +1303,10 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--competition-history") competition_history_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--competition-fixtures") competition_fixtures_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--daily-fixtures") daily_fixtures_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--staff-profile") training_builder(argv[1], TrainingPage::staff_profile);
+        else if (argc == 3 && std::string_view(argv[2]) == "--training-coaches") training_builder(argv[1], TrainingPage::coaches);
+        else if (argc == 3 && std::string_view(argv[2]) == "--training-schedule") training_builder(argv[1], TrainingPage::schedule);
+        else if (argc == 3 && std::string_view(argv[2]) == "--training") training_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--nations-and-clubs") nations_and_clubs_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--transfer-history") transfer_history_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--startup") startup_builder(argv[1]);

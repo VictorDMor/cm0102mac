@@ -2271,9 +2271,12 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   original font metrics. Cancel/Info/OK retain their original actions with equal
   170px widths. Expanded lists explicitly clear AutoGrid's stale scrollbar flag
   and clamp scroll without rewriting history or filename buffers. The read-only
-  gate requires the local saved-career Load contract (mode zero, parent five,
-  `.sav`, original filter and Info button); Save/Delete/Quick Start/folder and
-  network choosers retain classic geometry. No file I/O, save-format or loader
+  gate requires a local saved-career chooser (`.sav`, the original filter, no
+  folders-only or plain-cancel flag): Load, Save and Delete (modes 0-2, since
+  2026-11-20), from any parent, with the three-button footer or the two-button
+  one without Info. Quick Start, folder and network choosers retain classic
+  geometry. The values a real Save or Delete passes (parent, Info) were not
+  read from a capture: the fixture opens them with the Load call's arguments. No file I/O, save-format or loader
   semantics are replaced. Controlled catalogs exercise empty/short/overflow lists,
   editing and the original selection/Info/OK/Cancel routes without opening a career;
   layout checks preserve styles, localized text, buffers, history, RNG and guest ABI.
