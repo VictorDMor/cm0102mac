@@ -13,3 +13,4 @@
 0x102e98a0,  // its one caller is the direct `bl` of the constructor 0x102d8230 and reads nothing after the call: tools/register_contract.py --after 0x102e98a0
 0x102e1f20,  // its one caller is the direct `bl` of 0x102d8920 and reads nothing after the call: tools/register_contract.py --after 0x102e1f20
 0x102e21c0,  // its one caller is the direct `bl` of 0x102d8920 and reads nothing after the call: tools/register_contract.py --after 0x102e21c0
+0x102ea870,  // its one caller is the direct `bl` of SETUP's save at 0x1034d7d8 and reads nothing after the call: tools/register_contract.py --after 0x102ea870

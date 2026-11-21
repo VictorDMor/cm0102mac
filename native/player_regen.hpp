@@ -129,4 +129,26 @@ void detach_player(Cpu&, std::uint32_t owner, std::uint32_t person);
 // managers', the slot arrays at +0x84, +0x160, +0x174, +0x190, the words +0x80 and +0x94), clears the link, and both job bytes
 // are set to 0 at the end.
 void detach_staff(Cpu&, std::uint32_t owner, std::uint32_t person);
+
+// Block `retire_decision` (player_regen_retire.cpp): who retires, and the 0x1c-byte retirement entry (list A's layout) the decision fills.
+// 0x102dcb20: whether `person` retires in the daily scan (true: the entry at `entry` is filled: id, club id or -1, reason byte +0x18 = 1, 2
+// or 0x20, +0x19 = 0, the announcement date +8 and the retirement date +0x10). A staff member without job bytes (+0x62, +0x60) reads the
+// caller's r19: `incoming_r19` is that register at the edge. Single-precision value of the player (fused fnmsub, frsp, fmuls, truncated),
+// the age limit lowered by the contract and the club, the competition's row for the dates. Leaves r8-r10 as the last callee did.
+bool decide_retirement(Cpu&, std::uint32_t person, std::uint32_t entry, std::uint32_t incoming_r19);
+// 0x102dd910: the same for the new game's scan (a person with no club never retires: false at once): simpler thresholds, double
+// precision for the first step of the score, no draws for dates outside the competitions (tomorrow). Leaves r7-r10 as the last callee did.
+bool decide_retirement_with_club(Cpu&, std::uint32_t person, std::uint32_t entry, std::uint32_t incoming_r19);
+// 0x102de6e0: the unattached (not on the human manager's protect list; staff with no club or national link and a byte below 50 one in five;
+// a player idle over a year when a draw below his +0xa is under 750): fills a kind 0x10 entry dated today and returns true.
+bool decide_unattached_retirement(Cpu&, std::uint32_t person, std::uint32_t entry);
+// 0x102de470: queues an injury retirement for `person`: an existing entry of his is removed, the new one (kind 8, club id or -1) is due
+// today plus one day plus a draw below half of `days` (the argument's low halfword), appended to list A of `regen`.
+void schedule_injury_retirement(Cpu&, std::uint32_t regen, std::uint32_t person, std::uint32_t days_register);
+
+// Block `persistence` (player_regen_file.cpp): "retire.dat" in a saved game's archive: for lists A, B, C and D, the count word and the
+// entries. 0x102ea870 writes it (failures report the game's assertion; the writer carries on writing after a failure), 0x102ead70 reads
+// it (count plus 250 entries of capacity, the block reallocated; true when every step worked, else false after the assertion).
+void save_regen_file(Cpu&, std::uint32_t regen, std::uint32_t archive);
+std::uint32_t load_regen_file(Cpu&, std::uint32_t regen, std::uint32_t archive);
 }

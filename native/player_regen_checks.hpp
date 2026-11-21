@@ -18,6 +18,10 @@ inline constexpr std::uint32_t module_start = 0x102d8230, module_end = 0x102eb6f
 inline constexpr std::size_t module_routines = 47;
 // A mapped area outside the game's memory for rows a case builds.
 inline constexpr std::uint32_t scratch_base = 0x60000000, scratch_size = 0x100000;
+// The fake archive's state (Case::Archive): +0 calls, +4 opens, +8 writes, +0xc reads, +0x10 closes, +0x14 position, +0x18 length, +0x1c mode,
+// +0x20..+0x33 the open call's r3-r7, the call log at +0x100 (16 bytes a call), the file's bytes at archive_data.
+inline constexpr std::uint32_t archive_state = scratch_base + 0x80000, archive_data = archive_state + 0x2000, archive_data_size = 0x3c000,
+                               archive_handle = archive_state + 0x40;
 struct Write { unsigned size; std::uint32_t address, value; };
 struct Case {
     std::uint32_t entry = 0;
@@ -54,6 +58,22 @@ struct Case {
     // State::stream_io_entry_original or allocator_entry_original from a case list, which would leak into
     // every other block's cases.
     std::vector<std::uint32_t> original_owners = {};
+    // An in-memory stand-in for the zip archive's entry functions (ZIPDIR.CPP: 0x107475b0 open, 0x10747cc0 write, 0x10747a80 read,
+    // 0x10747900 close), answered on both sides when `enabled`: the file's bytes, its position and length, the counts of each call and a
+    // log of every call (kind, size, count, result) live in scratch memory (archive_state), where the comparison of memory sees them, so the
+    // bytes a routine writes, and the calls it makes in order, are compared. A read case gives the file's bytes and length through `memory`
+    // (archive_data, archive_state + 0x18). Failures are injected by call number (from 1, per kind): `fail_*` returns 0 items, `short_*` one
+    // item fewer than asked; `fail_open` makes the open return 0; `keep_handle` leaves the handle variable alone at close (else it is zeroed).
+    struct Archive {
+        bool enabled = false, fail_open = false, keep_handle = false;
+        unsigned fail_write = 0, short_write = 0, fail_read = 0, short_read = 0;
+    };
+    Archive archive = {};
+    // An expectation checked on the final state of both runs (not of the mutated ones): false is a failure of the whole check. For what
+    // the two runs can agree on and still get wrong (the bytes of a file against an independent serialization, a round trip).
+    std::function<bool(State&)> verify = nullptr;
+    // Start with FPSCR cleared (the snapshot's has the sticky inexact bit set, which hides a missing inexact result).
+    bool clear_fpscr = false;
 };
 struct Scenario {
     State& s;

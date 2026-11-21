@@ -23,6 +23,7 @@
 #include "routine_check.hpp"
 #include "allocator_adapter.hpp"
 #include "stream_io_adapter.hpp"
+#include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <algorithm>
@@ -144,8 +145,10 @@ void save_volatile(State& s, std::uint32_t entry) {
     for (unsigned n = 4; n <= 10; ++n)
         if (mask >> (n - 4) & 1) s.memory.write<4>(volatile_image + n * 4, std::uint32_t(s.r<4>(guest::reg::gpr(n))));
 }
+void verify_run(State& s, const char* who);
 void bounded_original(State& s, std::uint32_t entry) {
     alarm(60); s.budget = s.executed + 4'000'000'000ULL; player_regen_run_original(s, entry);
+    verify_run(s, "original");
     save_volatile(s, entry);
     save_rng(s);
 }
@@ -153,6 +156,7 @@ void bounded_rewrite(State& s, std::uint32_t entry) {
     alarm(60);
     s.budget = s.executed + 4'000'000'000ULL;
     player_regen_run_rewrite(s, entry);
+    verify_run(s, "rewrite");
     if (options.corrupt_draw) {
         // The generator's control: one draw too many, as the rewrite would make by drawing an extra time.
         const auto cell = rng_variable(s, -0x7b84);
@@ -273,6 +277,22 @@ const std::vector<std::pair<std::uint32_t, std::uint32_t>>* case_answers = nullp
 const std::vector<Case::Poke>* case_pokes = nullptr;
 const std::vector<Case::Capture>* case_captures = nullptr;
 const std::vector<Case::NthAnswer>* case_nth_answers = nullptr;
+const Case::Archive* case_archive = nullptr;
+const std::function<bool(State&)>* case_verify = nullptr;
+bool mutating = false;
+// Failed expectations (Case::verify), counted in memory the forked children share with the parent.
+unsigned* expectation_failures = [] {
+    void* shared = ::mmap(nullptr, sizeof(unsigned), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+    if (shared == MAP_FAILED) throw std::runtime_error("mmap");
+    return static_cast<unsigned*>(shared);
+}();
+void verify_run(State& s, const char* who) {
+    if (!case_verify || mutating || !*case_verify) return;
+    if (!(*case_verify)(s)) {
+        __atomic_fetch_add(expectation_failures, 1, __ATOMIC_SEQ_CST);
+        std::cerr << "EXPECTATION FAILED in the " << who << " run [" << current_label << "]\n";
+    }
+}
 // Dispatches of each routine with an nth answer, in this process: every compared run is a fresh child.
 std::map<std::uint32_t, unsigned> nth_dispatches;
 void store(State& s, const Write& write, std::uint32_t value) {
@@ -335,6 +355,65 @@ std::map<std::uint32_t, unsigned> argument_masks;
 constexpr std::size_t trace_limit = 2'000'000;
 std::vector<TracedCall>* traced_calls = nullptr;
 bool (*scripted_services)(State&) = nullptr;
+// The fake archive (Case::Archive): answers the four entry functions of a zip entry from scratch memory.
+bool archive_service(State& s, const Case::Archive& a) {
+    guest::Cpu c(s);
+    const auto word = [&](std::uint32_t offset) { return c.u32(archive_state + offset); };
+    const auto put = [&](std::uint32_t offset, std::uint32_t value) { c.put32(archive_state + offset, value); };
+    const auto kind = s.pc == 0x107475b0 ? 1u : s.pc == 0x10747cc0 ? 2u : s.pc == 0x10747a80 ? 3u : s.pc == 0x10747900 ? 4u : 0u;
+    if (kind == 0) return false;
+    const auto calls = word(0);
+    put(0, calls + 1);
+    put(kind * 4, word(kind * 4) + 1);
+    const auto number = word(kind * 4);
+    const auto r3 = c.r(3), r4 = c.r(4), r5 = c.r(5), r6 = c.r(6);
+    std::uint32_t result = 0;
+    if (kind == 1) {
+        for (unsigned n = 0; n < 5; ++n) put(0x20 + 4 * n, c.r(3 + n));
+        put(0x1c, r5);
+        if (!a.fail_open) {
+            put(0x14, 0);
+            if (r5 == 1) put(0x18, 0);  // a write opens a fresh file
+            result = archive_handle;
+        }
+    } else if (kind == 2 || kind == 3) {
+        const auto size = r4, count = r5, handle = r6;
+        auto items = count;
+        if (kind == 2) {
+            if (handle == 0 || a.fail_write == number) items = 0;
+            else if (a.short_write == number && items > 0) --items;
+        } else {
+            if (handle == 0 || a.fail_read == number) items = 0;
+            else {
+                const auto available = size == 0 ? 0u : (word(0x18) - word(0x14)) / size;
+                items = std::min(items, available);
+                if (a.short_read == number && items > 0) --items;
+            }
+        }
+        const auto bytes = size * items;
+        if (word(0x14) + bytes > archive_data_size) throw std::runtime_error("fake archive: the file outgrows its area");
+        for (std::uint32_t at = 0; at < bytes; ++at) {
+            if (kind == 2) s.memory.write<1>(archive_data + word(0x14) + at, s.memory.read<1>(r3 + at));
+            else s.memory.write<1>(r3 + at, s.memory.read<1>(archive_data + word(0x14) + at));
+        }
+        if (items != 0) put(0x14, word(0x14) + bytes);
+        if (kind == 2 && word(0x14) > word(0x18)) put(0x18, word(0x14));
+        result = items;
+    } else {
+        if (!a.keep_handle) c.put32(r3, 0);
+        result = r3;
+    }
+    if (calls < 64) {
+        put(0x100 + calls * 16, kind);
+        // The close is given only the handle variable's address: the other registers are leftovers, not arguments.
+        put(0x104 + calls * 16, kind == 4 ? 0 : r4);
+        put(0x108 + calls * 16, kind == 4 ? 0 : r5);
+        put(0x10c + calls * 16, result);
+    }
+    c.set(3, result);
+    s.pc = s.r<4>(4128);
+    return true;
+}
 std::array<std::pair<std::uint32_t, std::uint32_t>, 4000> recent_dispatches;
 unsigned dispatches_seen = 0;
 bool trace_probe(State& s) {
@@ -552,6 +631,7 @@ void report_difference(std::uint32_t entry, std::string_view kind, const std::ve
 // Repeats the call now due with changed inputs; undoes them afterwards.
 void mutate_call(State& s, std::uint32_t entry, unsigned results, std::mt19937& random) {
     if (!options.mutate) return;
+    struct Guard { Guard() { mutating = true; } ~Guard() { mutating = false; } } guard;
     auto reads = reads_of(s, entry);
     std::vector<Read> candidates;
     for (const auto& read : reads) {
@@ -715,6 +795,7 @@ void run_cases(State& s, std::mt19937& random) {
         for (unsigned n = 14; n < 32; ++n) c.set_f(n, 1000.0 + n * 3.25);
         for (const auto& [n, value] : item.registers) c.set(n, value);
         if (item.f1) c.set_f(1, *item.f1);
+        if (item.clear_fpscr) for (unsigned byte = 1280; byte < 1312; ++byte) s.registers[byte] = 0;
         c.set_lr(return_sentinel);
         s.pc = item.entry;
         std::vector<std::pair<Write, std::uint32_t>> undo;
@@ -731,6 +812,8 @@ void run_cases(State& s, std::mt19937& random) {
         case_pokes = &item.pokes;
         case_captures = &item.captures;
         case_nth_answers = &item.nth_answers;
+        case_archive = &item.archive;
+        case_verify = &item.verify;
         const auto outcome = compare_call(s, item.entry, results_of(item.entry), options.strict);
         auto& tally = case_tally[item.entry];
         ++tally.calls; tally.returned += outcome.returned; tally.faulted += outcome.faulted; tally.timed_out += outcome.timed_out;
@@ -749,6 +832,8 @@ void run_cases(State& s, std::mt19937& random) {
         case_pokes = nullptr;
         case_captures = nullptr;
         case_nth_answers = nullptr;
+        case_archive = nullptr;
+        case_verify = nullptr;
     }
     s.registers = saved;
 }
@@ -837,6 +922,7 @@ int main(int argc, char** argv) {
                     const auto from = std::uint32_t(target.r<4>(guest::reg::gpr(capture.reg)));
                     for (std::uint32_t at = 0; at < capture.size; ++at) target.memory.write<1>(capture.to + at, target.memory.read<1>(from + at));
                 }
+            if (case_archive && case_archive->enabled && archive_service(target, *case_archive)) return true;
             if (case_nth_answers && !(routine_checker && routine_checker->wants(target.pc))) {
                 bool counted = false;
                 for (const auto& item : *case_nth_answers) {
@@ -892,6 +978,7 @@ int main(int argc, char** argv) {
             return kinds.count(wrong_return) && kinds.count(wrong_count) && kinds.count(wrong_order) && kinds.count(0) ? 0 : 1;
         }
         if (options.corrupt || options.corrupt_draw) { std::cerr << "The negative control found no difference\n"; return 1; }
+        if (*expectation_failures) { std::cerr << *expectation_failures << " expectation(s) failed\n"; return 1; }
         return checker.differences() || !complete || !trace_findings.empty() ? 1 : 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return (options.corrupt || options.corrupt_draw) && std::string_view(error.what()).find("differs") != std::string_view::npos ? 0 : 2; }
 }

@@ -48,10 +48,11 @@ Not decided, so not entries (AMBIGUOUS_NEIGHBOURS):
   0x102eb8f0; no routine of this unit calls or names them. They have no TOC slot of their own, so only that evidence
   attributes them (to PLAYER_SEARCH.CPP, SCOUT_MANAGER.CPP or a shared weak symbol); pinned, attributed to none.
 
-Production: the 27 entries of the blocks regen_queries (0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550,
+Production: the 33 entries of the blocks regen_queries (0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550,
 0x102eb610), candidate_score (0x102da630, 0x102dc410, 0x102dbf00), regen_lists (0x102deb70, 0x102ded90, 0x102dbeb0, 0x102dea50,
 0x102dec50, 0x102dee70, 0x102df020, 0x102df1a0, 0x102df6d0, 0x102eb670), club_placement (0x102ea670, 0x102e9b90, 0x102e99f0,
-0x102ea3c0, 0x102e98a0, 0x102dc000) and detach (0x102e1f20, 0x102e21c0) are C++ (native/player_regen*.cpp). native/player_regen_routines.inc
+0x102ea3c0, 0x102e98a0, 0x102dc000), detach (0x102e1f20, 0x102e21c0), retire_decision (0x102dcb20, 0x102dd910, 0x102de6e0,
+0x102de470) and persistence (0x102ea870, 0x102ead70) are C++ (native/player_regen*.cpp). native/player_regen_routines.inc
 (with its block files) lists each C++ routine with the digest of the original body it replaces (PLAYER_REGEN_ROUTINE routes it,
 PLAYER_REGEN_DRAFT only runs it in the check tools); the generator hooks exactly the listed entries (PLAYER_REGEN_HOOKED), so every
 other entry runs its generated body. ROUTED in tools/test_player_regen_audit.py pins the set.

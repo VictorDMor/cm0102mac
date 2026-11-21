@@ -2604,3 +2604,17 @@ search and queued test, the two qsort comparators) and `candidate_score` (the po
   Entries whose callers read only r9 and r10 (0x102e99f0, 0x102ea3c0, 0x102dc000: `register_contract.py --after`) are compared on those
   registers (`player_regen_volatile_read.inc`, a mask the checker applies), which no routine of the block writes.
 
+- Blocks `retire_decision` (0x102dcb20, 0x102dd910, 0x102de6e0, 0x102de470) and `persistence` (`retire.dat`: 0x102ea870, 0x102ead70) are
+  routed too (33 of 47). No capture reaches the three decisions, so their cases start from the real people (season-day) and edit the fields
+  over every threshold, with the contract manager's, date, competition and protect-list callees answered where a path needs a value.
+  The decisions read the callee-saved r19 of their caller (a staff member with no job byte): the hooks hand it over (`incoming_r19`); the
+  callers never write it. 0x102dcb20 values a player in single precision (fsubs, a fused fnmsub, frsp, fmuls) with 1.0 - 0.075 * (age -
+  limit): single against double precision changes the truncated value at 1500, 3500 and 5500 (the cases of the search), while fused against
+  separate never does after the frsp. 0x102dd910 truncates the fnmsub 1.0 - 0.1 * gap in double precision: fused against separate differs
+  only in FPSCR (gap 10: -5.55e-17 against 0, sticky XX), so those cases clear FPSCR first (`clear_fpscr`). That truncation is 0 for every
+  gap the routine can reach (1..15), so its score is always 0 and the branches after it (score >= 5000, the draw of the player with no club)
+  are dead code the C++ keeps.
+- The persistence file is, for lists A, B, C and D, the 4-byte count and `count` entries of 0x1c, 0xc, 0x10 and 0x10 bytes. The writer
+  carries on writing after a failed call (the handle variable by address goes to the close routine); the reader fails with the alert when
+  retire.dat is absent. The checker's `Case::Archive` is an in-memory stand-in for the zip entry functions, whose file bytes, call log and
+  counts end in scratch memory; `Case::verify` checks the final state against an independent serialization (and a load against the image).

@@ -7,3 +7,5 @@
 #include "player_regen_routines_regen_lists.inc"
 #include "player_regen_routines_club_placement.inc"
 #include "player_regen_routines_detach.inc"
+#include "player_regen_routines_retire_decision.inc"
+#include "player_regen_routines_persistence.inc"

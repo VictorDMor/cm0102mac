@@ -98,12 +98,15 @@ SEARCH_SIDE = tuple(a for a, *_ in audit.AMBIGUOUS_NEIGHBOURS[7:])
 # The routed entries: block regen_queries (0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610), block
 # candidate_score (0x102da630, 0x102dc410, 0x102dbf00), block regen_lists (0x102deb70, 0x102ded90, 0x102dbeb0, 0x102dea50,
 # 0x102dec50, 0x102dee70, 0x102df020, 0x102df1a0, 0x102df6d0, 0x102eb670), block club_placement (0x102ea670, 0x102e9b90,
-# 0x102e99f0, 0x102ea3c0, 0x102e98a0, 0x102dc000) and block detach (0x102e1f20, 0x102e21c0).
+# 0x102e99f0, 0x102ea3c0, 0x102e98a0, 0x102dc000), block detach (0x102e1f20, 0x102e21c0), block retire_decision (0x102dcb20, 0x102dd910,
+# 0x102de6e0, 0x102de470) and block persistence (0x102ea870, 0x102ead70).
 ROUTED = frozenset({0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610,
                     0x102da630, 0x102dc410, 0x102dbf00,
                     0x102deb70, 0x102ded90, 0x102dbeb0, 0x102dea50, 0x102dec50, 0x102dee70, 0x102df020, 0x102df1a0, 0x102df6d0, 0x102eb670,
                     0x102ea670, 0x102e9b90, 0x102e99f0, 0x102ea3c0, 0x102e98a0, 0x102dc000,
-                    0x102e1f20, 0x102e21c0})
+                    0x102e1f20, 0x102e21c0,
+                    0x102dcb20, 0x102dd910, 0x102de6e0, 0x102de470,
+                    0x102ea870, 0x102ead70})
 # The three audited units whose code loads a literal before their pool load only binary data and preamble pieces.
 BINARY_BEFORE_POOL = {'CONTRACT_SCREENS.CPP', 'FORMATION.CPP', 'MANAGER_MANAGER.CPP'}
 
