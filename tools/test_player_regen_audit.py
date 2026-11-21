@@ -1,8 +1,9 @@
-"""Certify PLAYER_REGEN.CPP's 47 entries, the unit's bounds and which of them are routed to C++ (none yet).
+"""Certify PLAYER_REGEN.CPP's 47 entries, the unit's bounds and which of them are routed to C++ (the nine of the two
+pilot blocks, regen_queries and candidate_score).
 
 The private export is required evidence, rather than a reason to skip tests. Production ownership is asserted,
-not skipped: no entry is routed or hooked, and the hook checker rejects a page that carries a hook for an entry that is not
-hooked or lacks one for an entry that is.
+not skipped: exactly the routed entries are listed, owned and hooked, and the hook checker rejects a page that carries a
+hook for an entry that is not hooked or lacks one for an entry that is.
 """
 from contextlib import closing
 import json
@@ -94,8 +95,10 @@ ADDED = {0x102eb4e0, 0x102eb550}
 REMOVED = {0x102d5b30, 0x102d5bb0, 0x102d5dc0, 0x102d6770, 0x102d7dc0, 0x102d7e80, 0x102d81a0}
 LOADER = tuple(a for a, *_ in audit.AMBIGUOUS_NEIGHBOURS[:7])
 SEARCH_SIDE = tuple(a for a, *_ in audit.AMBIGUOUS_NEIGHBOURS[7:])
-# The routed entries: none yet.
-ROUTED = frozenset()
+# The routed entries: block regen_queries (0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610) and
+# block candidate_score (0x102da630, 0x102dc410, 0x102dbf00).
+ROUTED = frozenset({0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610,
+                    0x102da630, 0x102dc410, 0x102dbf00})
 # The three audited units whose code loads a literal before their pool load only binary data and preamble pieces.
 BINARY_BEFORE_POOL = {'CONTRACT_SCREENS.CPP', 'FORMATION.CPP', 'MANAGER_MANAGER.CPP'}
 
@@ -174,14 +177,19 @@ class PlayerRegenAuditTests(unittest.TestCase):
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_player_regen_index(db, complete=False)
 
-    def test_nothing_is_routed_or_hooked_and_the_hook_checks_fail_when_they_should(self):
+    def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
+        pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
         self.assertFalse(audit.COMPLETE)
-        self.assertEqual(audit.rewritten(drafts=True), [])
-        self.assertEqual(audit.rewritten(), [])
+        listed = audit.rewritten(drafts=True)
+        for entry, end, expected in listed:
+            self.assertEqual(pinned[entry], (end, expected))
+        self.assertEqual({entry for entry, _, _ in listed}, ROUTED)
+        self.assertEqual({entry for entry, _, _ in audit.rewritten()}, ROUTED)
         self.assertEqual(set(audit.PLAYER_REGEN_HOOKED), ROUTED)
         for entry in ENTRIES:
-            self.assertEqual([owner for at, owner in OWNER_REPLACEMENTS if at == entry], [], hex(entry))
+            owners = [owner for at, owner in OWNER_REPLACEMENTS if at == entry]
+            self.assertEqual(owners, [audit.OWNER] if entry in ROUTED else [], hex(entry))
         self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at in ENTRIES], [])
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_player_regen_index(db)
@@ -189,24 +197,39 @@ class PlayerRegenAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'requires all 47'):
                 audit.require_player_regen_index(db, complete=True)
         selected = set(self.by_address)
+        # Every page of the unit: its hooked entries carry the hook once, before the first step; the others none.
         for page in sorted({entry >> 12 for entry in ENTRIES}):
             part = [r for r in self.records if r['address'] >> 12 == page]
             normal = generate_page(page, part, selected, userops=self.program['userops'])
             audit.require_player_regen_hooks(page, part, normal)
-            self.assertNotIn('player_regen_adapter', normal, hex(page))
-            for entry in (e for e in ENTRIES if e >> 12 == page):
-                hook, step = audit.player_regen_hook(entry), f's.step(0x{entry:x});'
-                self.assertNotIn(hook, normal)
-                # An unrouted entry given a hook is rejected.
-                with self.assertRaisesRegex(ValueError, 'Unexpected'):
-                    audit.require_player_regen_hooks(page, part, normal.replace(step, hook + '\n' + step, 1))
-                # A hooked entry (simulated) without its hook, or with it misplaced, is rejected.
-                with mock.patch.object(audit, 'PLAYER_REGEN_HOOKED', (entry,)):
+            on_page = [entry for entry in ENTRIES if entry >> 12 == page]
+            hooked = [entry for entry in on_page if entry in ROUTED]
+            self.assertEqual('#include "player_regen_adapter.hpp"' in normal, bool(hooked), hex(page))
+            for entry in on_page:
+                hook = audit.player_regen_hook(entry)
+                fragment = normal.split(f'i_{entry:x}:', 1)[-1].split(f'i_{entry + 4:x}:', 1)[0]
+                step = f's.step(0x{entry:x});'
+                if entry not in ROUTED:
+                    self.assertNotIn(hook, normal)
+                    # An unrouted entry given a hook is rejected.
+                    with self.assertRaisesRegex(ValueError, 'Unexpected'):
+                        audit.require_player_regen_hooks(page, part, normal.replace(step, hook + '\n' + step, 1))
+                    # A hooked entry (simulated) without its hook, or with it misplaced, is rejected.
+                    with mock.patch.object(audit, 'PLAYER_REGEN_HOOKED', audit.PLAYER_REGEN_HOOKED + (entry,)):
+                        with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
+                            audit.require_player_regen_hooks(page, part, normal)
+                    continue
+                self.assertEqual(normal.count(hook), 1)
+                self.assertIn(hook, fragment)
+                self.assertLess(fragment.index(hook), fragment.index(step))
+                moved = normal.replace(hook, '').replace(step, step + '\n' + hook, 1)
+                for broken in (normal.replace(hook, ''), normal.replace(hook, hook + '\n' + hook), moved):
                     with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
+                        audit.require_player_regen_hooks(page, part, broken)
+                # An entry that is not hooked is simulated: its hook is then unexpected.
+                with mock.patch.object(audit, 'PLAYER_REGEN_HOOKED', tuple(e for e in audit.PLAYER_REGEN_HOOKED if e != entry)):
+                    with self.assertRaisesRegex(ValueError, 'Unexpected'):
                         audit.require_player_regen_hooks(page, part, normal)
-                    moved = normal.replace(step, step + '\n' + hook, 1)
-                    with self.assertRaisesRegex(ValueError, 'Missing or misplaced'):
-                        audit.require_player_regen_hooks(page, part, moved)
 
     def test_unit_bounds_are_its_pool_assertion_lines_slots_descriptors_and_neighbours(self):
         pool = self.word(TOC - 0x50a0)

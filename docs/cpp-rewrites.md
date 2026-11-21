@@ -2542,3 +2542,23 @@ checker `cm-comp-util-checks`. The neighbour 0x10462b80 has no proof of owner an
   rests on fixtures built from the season-day world state, and no stack audit exists for those entries: the
   stores a callee could read were reproduced from the listing. The season-day pair needs
   `CM_ENGLISH_RULES_ORIGINAL=1`.
+
+## PLAYER_REGEN.CPP: retirements, newgen players and staff
+
+47 entries (0x102d8230..0x102eb6f8, 19,660 instructions; `tools/player_regen_audit.py`), files `native/player_regen*`, checker
+`cm-player-regen-checks`, switch `CM_PLAYER_REGEN_ORIGINAL`. Pilot blocks routed: `regen_queries` (the person class, the list A
+search and queued test, the two qsort comparators) and `candidate_score` (the pooled Random 0x102da630, the candidate score
+0x102dc410 with 808,000 calls a season day, the pick 0x102dbf00).
+
+- The module's draws are inline copies of the pooled Random (cursor at TOC -0x7b84, refill `bl 0x1077b770`). The checker copies the
+  pool's cursor, salt, end, the generator's state word and the sample under the cursor into the compared memory after every call
+  (`--corrupt-draw` is its control), and a refill is called through `c.call` with the original's return address (the call trace pairs
+  calls by it) with the link register restored afterwards, because a routine finishes through it.
+- The scaled form of Random (bound of 0x10000 or more in magnitude) has a second bound of `n * 10 / 65535` with the product wrapping in
+  a word, so at most 32768 in magnitude: only two of the original's four inlined levels run. The scaled draw leaves r4..r9 as the
+  last executed level does (r10 never); small draws leave them alone. The cubed term of 0x102dc410 reaches the scaled form (a byte
+  +0x2f of 82 or more halves to 41, whose cube exceeds 65535).
+- `pow` is the host's `std::pow`, as `carbon_bridge.cpp` computes it, called directly: the glue 0x10780fc0 only saves and reloads r2.
+  FPSCR bits follow from the same operations in the same order (including a repeated `fctiwz` of the pow result around the scaled draw).
+- No stack audit reader reads bytes these entries leave (season-day and same-save-continue: the only readers of this module's bytes are
+  0x101d1900 and 0x10371b2c, of 0x102d8920's writes). 0x102dc410 and 0x102dbf00 leave r4-r10 free (`player_regen_volatile_free.inc`).

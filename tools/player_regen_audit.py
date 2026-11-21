@@ -48,10 +48,11 @@ Not decided, so not entries (AMBIGUOUS_NEIGHBOURS):
   0x102eb8f0; no routine of this unit calls or names them. They have no TOC slot of their own, so only that evidence
   attributes them (to PLAYER_SEARCH.CPP, SCOUT_MANAGER.CPP or a shared weak symbol); pinned, attributed to none.
 
-Production: nothing is routed yet. native/player_regen_routines.inc (with its block files) will list each C++ routine with
-the digest of the original body it replaces (PLAYER_REGEN_ROUTINE routes it, PLAYER_REGEN_DRAFT only runs it in the check
-tools); the generator will hook exactly the listed entries (PLAYER_REGEN_HOOKED), so every other entry runs its generated
-body. ROUTED in tools/test_player_regen_audit.py pins the set.
+Production: the nine entries of the pilot blocks regen_queries (0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550,
+0x102eb610) and candidate_score (0x102da630, 0x102dc410, 0x102dbf00) are C++ (native/player_regen*.cpp). native/player_regen_routines.inc
+(with its block files) lists each C++ routine with the digest of the original body it replaces (PLAYER_REGEN_ROUTINE routes it,
+PLAYER_REGEN_DRAFT only runs it in the check tools); the generator hooks exactly the listed entries (PLAYER_REGEN_HOOKED), so every
+other entry runs its generated body. ROUTED in tools/test_player_regen_audit.py pins the set.
 """
 import re
 from pathlib import Path
@@ -113,7 +114,7 @@ def routine_lines(path=INCLUDES):
 
 def rewritten(path=INCLUDES, drafts=False):
     """(entry, end, digest) of each routine whose C++ is verified and routed (PLAYER_REGEN_ROUTINE), with
-    drafts also the PLAYER_REGEN_DRAFT ones, which only check tools run. Empty today."""
+    drafts also the PLAYER_REGEN_DRAFT ones, which only check tools run."""
     found = sorted((int(entry, 16), int(end, 16), digest) for stage, entry, end, _, digest in
                    ROUTINE.findall(routine_lines(path)) if drafts or stage == "ROUTINE")
     bounds = dict(ROUTINES)
@@ -132,7 +133,7 @@ PLAYER_REGEN_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
 
 # Whether the generator requires every entry routed (PLAYER_REGEN_ROUTINE); False while an entry is still
-# unwritten or a draft. None of the 47 is routed yet.
+# unwritten or a draft. Nine of the 47 are routed (the pilot blocks).
 COMPLETE = False
 
 
