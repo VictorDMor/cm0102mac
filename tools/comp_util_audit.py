@@ -50,7 +50,8 @@ routes it, COMP_UTIL_DRAFT only runs it in the check tools); the generator hooks
 0x104648c0), club_queries (0x104646d0, 0x10464160, 0x10464900), comparators (0x10463580, 0x104647a0, 0x104647c0,
 0x104647e0, 0x10464830, 0x10477cd0, 0x104777c0), interpolation (0x10476780), rating_sort (0x10477870, 0x10477b40),
 comp_screens_list (0x10477490), record_stream (0x10463be0, 0x10463dc0), fixture_log (0x10463990, 0x10463a90, 0x104770c0,
-0x10477270) and random_shuffle (0x10462cd0, 0x10463000, 0x104635b0), 26 of the 35. A block lands by adding its lines to the .inc; ROUTED in
+0x10477270), random_shuffle (0x10462cd0, 0x10463000, 0x104635b0), round_codes (0x1046f1f0, 0x10476ec0) and round_text
+(0x10469bb0, 0x10476f40, 0x104768a0, 0x104769d0, 0x10469710, 0x104698c0), 34 of the 35 (0x10464d00 is not routed). A block lands by adding its lines to the .inc; ROUTED in
 tools/test_comp_util_audit.py pins the set.
 """
 import re

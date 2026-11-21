@@ -11,3 +11,5 @@
 #include "comp_util_routines_record_stream.inc"
 #include "comp_util_routines_fixture_log.inc"
 #include "comp_util_routines_random_shuffle.inc"
+#include "comp_util_routines_round_codes.inc"
+#include "comp_util_routines_round_text.inc"

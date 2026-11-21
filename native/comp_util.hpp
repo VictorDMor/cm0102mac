@@ -137,4 +137,48 @@ void shuffle(Cpu&, std::uint32_t array, std::uint32_t count_register);
 // shuffles min(3 * take, count) swaps over the whole array, each of two draws below that number. Leaves
 // r3..r5 as the last swap and r7..r10 as the callees left them.
 void shuffle_front(Cpu&, std::uint32_t array, std::uint32_t count_register, std::uint32_t take_register);
+
+// Block `round_codes` and the text of a round (comp_util_rounds.cpp): data drafted by tools/comp_util_tables.py.
+// 0x1046f1f0: a round code (a halfword in the register) and a kind byte to a small class (0..7; inferred: the
+// grammatical gender of the round's name), under the preferences record's language byte (TOC -0x7ac8, +8):
+// only languages 2, 3, 4, 5 and 9 have tables, one set for kind 3 and one for any other kind; every other
+// language answers 0. A code outside a table's stretches (or a table's error arm) reports the error text into
+// the game's shared buffer and answers 0 (language 2, kind 3, codes from 1156 on answer 0 without it). Leaves r5
+// (the code, sign-extended) where a table's language was reached; the registers the report's sprintf leaves.
+std::int32_t round_gender(Cpu&, std::uint32_t code_register, std::uint32_t kind_register);
+// 0x10476ec0: the gender of a competition's name: of the first round code (`code_register`), else of the second,
+// else the competition record's own byte (+0x6a for kind 1, +0x67 otherwise), 1 for no record. Leaves r3 (and
+// what round_gender leaves when a code decides).
+std::uint32_t competition_gender(Cpu&, std::uint32_t record, std::uint32_t second_code_register, std::uint32_t code_register, std::uint32_t kind_register);
+// 0x10469bb0: the localized name of a round code into `buffer` (`size` bytes of it; below 30 the game's assertion,
+// line 0x110f). The buffer first holds the empty text; kinds 0, 1 and 3 have tables (any other kind reports the
+// assertion at line 0x15e2); each code has one localized format of a pool string, or (the out-of-range codes and
+// the table's error arms) the error text reported into the game's shared buffer, leaving the caller's buffer as
+// it was. Answers `buffer`.
+std::uint32_t round_text(Cpu&, std::uint32_t buffer, std::uint32_t size_register, std::uint32_t code_register, std::uint32_t kind_register);
+
+// Block `round_text` (comp_util_rounds_text.cpp): the sentences built around a round's name. A competition record's
+// long name is at +0x1a and the short one at +0x4d, each with a gender byte (+0x6a, +0x67); a fixture row has two
+// round codes, halfwords at +0x30 and +0x32 (0 for none). Every routine keeps the original's frame and calls.
+// 0x10476f40: the name for one or two round codes into `buffer` (at least 200 bytes; a null buffer or a smaller size
+// reports the assertion at line 0x26a0 and answers 0): the first code's name, else the second's (a code is tested as
+// a whole register), else 0; with both, the two names in the pair format with each one's gender twice. Answers 1 once
+// a name is made.
+std::uint32_t round_pair_text(Cpu&, std::uint32_t first_code, std::uint32_t second_code, std::uint32_t buffer, std::uint32_t size, std::uint32_t kind);
+// 0x104768a0: 0x104769d0 for the competition a fixture row names (+0x14 its record, the codes +0x32 and +0x30); a null
+// fixture, buffer or record or a size below 0x67 reports the assertions at lines 0x2587 and 0x258f and answers 0.
+std::uint32_t fixture_name_text(Cpu&, std::uint32_t fixture, std::uint32_t kind, std::uint32_t buffer, std::uint32_t size);
+// 0x104769d0: a competition's name with its round(s) into `buffer` (`size` below 0x67: the assertion at line 0x25af, 0).
+// `kind` 1 takes the record's long name, 2 and 3 its short one (3 asks for the other kind of round text); a record
+// is null for none. The two special competitions (the id at TOC -0x6750) swap to another record when `code_32` is 0x453
+// or 0x456. Language 8 (0x10727880) rewrites the names through 0x10728ac0 and the round texts through the byte table
+// at TOC -0x618c. The buffer then gets the name and the round texts in one of four formats, or a plain copy; answers 1.
+// The locals stay in its frame as the original's (the name at 0x138, the round texts at 0xd4 and 0x70).
+std::uint32_t competition_name_text(Cpu&, std::uint32_t record, std::uint32_t code_32, std::uint32_t code_30, std::uint32_t kind, std::uint32_t buffer, std::uint32_t size);
+// 0x10469710: a news item's sentence about a fixture's competition and round (kind 2, 4 or -1 in one format, else the
+// other) naming the club, then the item's name and text rows (0x1074b830 begins it, 0x1074bab0 appends). No result.
+void competition_round_news(Cpu&, std::uint32_t club, std::uint32_t fixture, std::uint32_t kind, std::uint32_t item);
+// 0x104698c0: the same for a fixture's result line: kinds 6 and 7, or -2, with a round's text (`with_round`, a signed
+// byte) or without; any other kind builds nothing. No result.
+void fixture_round_news(Cpu&, std::uint32_t club, std::uint32_t code, std::uint32_t record, std::uint32_t kind, std::uint32_t with_round, std::uint32_t item);
 }
