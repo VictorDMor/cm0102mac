@@ -327,6 +327,9 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::transfer_status: layout_transfer_status(s, display, layout.canvas); break;
     case ScreenTemplate::previous_offers: layout_previous_offers(s, display, layout.canvas); break;
     case ScreenTemplate::message_screen: layout_message_screen(s, display, layout.canvas); break;
+    case ScreenTemplate::board_confidence: layout_board_confidence(s, display, layout.canvas); break;
+    case ScreenTemplate::manager_statistics: layout_manager_statistics(s, display, layout.canvas); break;
+    case ScreenTemplate::world_rankings: layout_world_rankings(s, display, layout.canvas); break;
     case ScreenTemplate::competition:
     case ScreenTemplate::competition_history: {
         guest::Cpu c(s);

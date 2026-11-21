@@ -2218,6 +2218,33 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   (eight price/choice states, price menu, edits, redraw) and `--previous-offers` (six message states)
   use the original openers. Unexercised: non-player persons, the Set action (hit-tested only), a
   previous offer whose person has no contract.
+- Board Confidence (0x101c8fb0, MANAGER_SCREENS.CPP, opener 0x101c8ed0 from the Manager menu), Manager Statistics
+  (0x101c4460, opener 0x101c42f0) and the FIFA World Rankings (0x100745f0, COMP_SCREENS.CPP, opener 0x10074550 from
+  the Competitions menu) share `paged_screen_layout.hpp` and have a layout file each: `board_confidence_layout.cpp`,
+  `manager_statistics_layout.cpp`, `world_rankings_layout.cpp`. All three build one content panel at the classic
+  rectangle (a 16-row message grid at 110,155-780,540; a table at 110,170-780,535), optional standalone controls
+  above it, and the Back/Next footer from the footer helper 0x1074b0a0, which already follows the canvas (100,H-45 to
+  W-10,H-10) as one wide cell and one narrow one. The panel becomes up to 960 wide, centered in the content area, with
+  row height up to 28px. Only the widest column of a table (managers, nations) takes the extra width: rank, club,
+  status and points keep theirs, each cell with its original insets in its track; a one-column "no statistics"
+  table keeps its measured message, shifted to the panel's center. Board lines keep their wrapping and move by
+  the panel's left edge (their right bound by its right edge). The standalone controls above the panel keep their
+  side: the left half (the board's two request links, the chosen-nation control of Manager Statistics) moves with the
+  panel's left edge, the right half (the pager "." "*" "Pg n/m" "+" "/") with its right edge, text bounds with
+  them; Manager Statistics' subtitle, which its builder lays at the classic 100,80-790,125, follows the shell like
+  the others. The footer is one 340px block right-aligned to the panel, two equal cells (AutoGrid's equal-width
+  flags at +0xbb2). The nation menu keeps the original popup, placed when it opens. The layout declines (classic
+  geometry) on a missing, duplicated or scrolling grid; no page of these three builds a scrollbar, and the
+  fixtures show the layout ran for every state the gates admit. Gates: a career for the two tables; for
+  Board Confidence also a history club inside the database's club array. `--board-confidence` (the managed
+  club and two others whose messages wrap differently), `--manager-statistics` (first page, a nation without
+  statistics, two later pages) and `--world-rankings` (first page, a confederation with no nations, a middle and
+  the last page) open them through their original openers on `tactics-views/initial.snapshot` and compare, at six
+  canvases, panel centering/height, footer equality and alignment, toolbar sides, column widths (one column
+  grows), text bounds, picker hits, in-place redraw, Off, and the original Back result and RNG, and each runs
+  three mutants through the same checker (footer drift, classic panel, classic toolbar control). Unexercised:
+  Job Information, the other MANAGER_SCREENS builders, UEFA Coefficients (a six-column table with a scrollbar
+  flag) and screens reached with other nations' histories in play, and pages that build a scrollbar.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

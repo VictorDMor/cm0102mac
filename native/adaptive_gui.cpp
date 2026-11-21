@@ -153,6 +153,18 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::message_screen:
         // The layout moves the grids of the shared shape and declines any other arrangement.
         return instance && read(instance + 0x24);
+    case ScreenTemplate::board_confidence: {
+        // The opener stores the manager's own club; the builder reads its record.
+        const auto clubs_slot = read(toc - 0x7be8), total_slot = read(toc - 0x7b50);
+        if (!clubs_slot || !total_slot) return false;
+        const auto clubs = read(clubs_slot), total = read(total_slot), club = value(0);
+        return instance && read(instance + 0x24) && clubs && total && club >= clubs &&
+               club < clubs + total * 0x248 && (club - clubs) % 0x248 == 0;
+    }
+    case ScreenTemplate::manager_statistics:
+    case ScreenTemplate::world_rankings:
+        // Tables of the whole game's managers or nations: no record of the history is read by the layout.
+        return instance && read(instance + 0x24);
     case ScreenTemplate::transfer_status:
     case ScreenTemplate::previous_offers: {
         // History 0 is a person ID for the status screen and the offer record for previous offers.

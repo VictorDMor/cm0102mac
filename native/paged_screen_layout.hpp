@@ -1,0 +1,96 @@
+#pragma once
+#include "form_layout.hpp"
+#include "guest_screen.hpp"
+#include <algorithm>
+#include <array>
+#include <utility>
+#include <vector>
+
+namespace cm::aot::paged_screen {
+// Helpers shared by the screens that follow the Back/Next history pattern: a subtitle, an optional
+// toolbar row above the content, one content panel and a two-button footer. The original builders keep
+// every text, link, command and row; these helpers only place their panels and controls.
+
+// The columns AutoGrid measured for a grid's original rectangle (offsets from its left edge) and the
+// tracks that carry them to a new width: only the widest column takes the extra width, so ranks and
+// numbers keep their size and the names grow.
+struct ColumnMap {
+    std::vector<int> low, high, left, right;
+    std::vector<ScreenRect> tracks;
+    unsigned count() const { return unsigned(left.size()); }
+    bool read(const guest::Cpu& c, const GuestScreen& screen, std::uint32_t grid, int original_width, ScreenRect panel) {
+        const unsigned n = screen.columns(grid);
+        if (n < 1 || n > 8) return false;
+        int previous = 0, widest = 0;
+        for (unsigned i = 0; i < n; ++i) {
+            const int first = c.i32(grid + 0x1c + i * 4), last = c.i32(grid + 0x10c + i * 4);
+            if (first < previous || last <= first || last > original_width) return false;
+            low.push_back(i ? high.back() : 0); left.push_back(first); right.push_back(last);
+            // Each track ends where its cell does, the last one at the grid's edge.
+            high.push_back(i + 1 < n ? last : original_width);
+            if (last - first > right[widest] - left[widest]) widest = int(i);
+            previous = last;
+        }
+        std::vector<FormTrack> spans;
+        for (unsigned i = 0; i < n; ++i) spans.push_back({high[i] - low[i], i == unsigned(widest) ? 1.0f : 0.0f});
+        tracks = form_tracks(panel, spans, true);
+        return true;
+    }
+    // Horizontal bounds of a cell: its original insets inside the track.
+    std::pair<int,int> cell(unsigned column) const {
+        return {tracks[column].left + left[column] - low[column], tracks[column].right - (high[column] - right[column])};
+    }
+};
+
+// The content panel of such a screen: centered, at most 960 wide, as tall as its rows can use.
+inline ScreenRect body(const ScreenLayout& shell, ScreenRect original, unsigned rows) {
+    auto available = shell.content(original.top);
+    const int width = std::min(960, available.width());
+    available.left += (available.width() - width) / 2; available.right = available.left + width;
+    const std::array<FormTrack,1> sections{{{original.height(), 1, int(rows) * 28 + 16}}};
+    return form_tracks(available, sections, false).front();
+}
+
+// The Back/Next footer: both buttons together, right-aligned to the panel.
+inline ScreenRect footer_box(const ScreenLayout& shell, ScreenRect panel) {
+    auto box = shell.buttons(std::min(panel.width(), 340));
+    box.left -= box.right - panel.right; box.right = panel.right;
+    return box;
+}
+inline bool is_footer(const GuestScreen& screen, std::uint32_t grid, const ScreenLayout& shell) {
+    const auto box = screen.rect(grid);
+    return (box == shell.footer() || box == ScreenRect{100, 555, 790, 590}) &&
+           screen.columns(grid) == 2 && screen.rows(grid) == 1;
+}
+// Equal-width buttons: AutoGrid divides the rectangle by the columns once they are flagged.
+inline void place_footer(const GuestScreen& screen, guest::Cpu& c, std::uint32_t grid, ScreenRect box) {
+    for (unsigned column = 0; column < screen.columns(grid); ++column) c.put8(grid + 0xbb2 + column, 1);
+    screen.write(grid, box);
+    screen.measure(grid);
+    screen.publish(grid);
+}
+
+// Standalone controls (owner < 0): the subtitle follows the shell, and a toolbar between the subtitle
+// and the panel keeps its side: controls on the left half move with the panel's left edge, the pager
+// and other controls on the right half with its right edge. Explicit text bounds move with them.
+inline void move_chrome(const GuestScreen& screen, guest::Cpu& c, unsigned controls, const ScreenLayout& shell,
+                        ScreenRect panel, ScreenRect body_after) {
+    constexpr ScreenRect subtitle{100, 80, 790, 125};
+    const int lead = body_after.left - panel.left, trail = body_after.right - panel.right;
+    for (unsigned i = 0; i < controls; ++i) {
+        const auto at = screen.control(i);
+        if (c.i16(at + 0x72) >= 0) continue;
+        const auto old = screen.rect(at + 0x10);
+        auto box = old;
+        if (old == subtitle) box = shell.subtitle();
+        else if (old.top >= 125 && old.bottom <= panel.top && old.left >= panel.left && old.right <= panel.right) {
+            const int shift = old.left < (panel.left + panel.right) / 2 ? lead : trail;
+            box.left += shift; box.right += shift;
+        } else continue;
+        // Their text bounds mirror the rectangle.
+        const bool mirrored = c.i32(at + 0x28) == old.left && c.i32(at + 0x2c) == old.right;
+        screen.write(at + 0x10, box);
+        if (mirrored) { c.put32(at + 0x28, box.left); c.put32(at + 0x2c, box.right); }
+    }
+}
+}

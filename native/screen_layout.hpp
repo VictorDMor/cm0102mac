@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -46,6 +46,11 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // Player transfer status (asking price, squad status and listing choices) and the previous offers.
     case 0x10428ab0: return ScreenTemplate::transfer_status;
     case 0x10422600: return ScreenTemplate::previous_offers;
+    // The Manager menu's Board Confidence and Manager Statistics, and the Competitions menu's FIFA World
+    // Rankings: Back/Next screens with one content panel (a message or a ranked table) and a pager.
+    case 0x101c8fb0: return ScreenTemplate::board_confidence;
+    case 0x101c4460: return ScreenTemplate::manager_statistics;
+    case 0x100745f0: return ScreenTemplate::world_rankings;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }
