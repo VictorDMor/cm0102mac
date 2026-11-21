@@ -153,6 +153,13 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::loan_terms:
     case ScreenTemplate::negotiation_confirmation: {
         if (!instance || !read(instance + 0x24)) return false;
+        // The message screens read nothing here that the layout depends on: it moves the grids of
+        // the shared shape and declines any other arrangement.
+        switch (builder) {
+        case 0x10421fb0: case 0x10423270: case 0x1042a810: case 0x10420b50: case 0x10421070:
+        case 0x1009e8f0: return true;
+        default: break;
+        }
         if (builder == 0x1009dc00) {
             // The confirmation reads the current human's embedded contract
             // draft. Keep staff roles outside the player negotiation recipe.

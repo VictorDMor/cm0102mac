@@ -2187,8 +2187,12 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   the contract's rich title grid retain their original styles. Scroll positions and disabled controls
   remain original; narrow overflowing confirmations retain legacy geometry when the original text
   column cannot fit beside the scrollbar. Gates distinguish person pointers, offer links (including
-  the proposal's history-2 fallback), and contract roles. Later transfer completion (0x10423270)
-  remains separate. Existing-capture checks compare eight original/adaptive states, six window sizes,
+  the proposal's history-2 fallback), and contract roles. Since 2026-11-21 the message screens of
+  the same shape use the confirmation recipe too, gated only on a career being open: the offer
+  decision from the news (0x10421fb0), transfer completion (0x10423270, with a one-button footer
+  in one state), the transfer-list confirmation (0x1042a810), the offer restriction (0x10420b50)
+  and feedback (0x10421070) messages and the staff release (0x1009e8f0). No fixture opens them:
+  the layout declines a screen whose grids are not the shared shape. Existing-capture checks compare eight original/adaptive states, six window sizes,
   scrolling, loan edits/restoration, confirmation entry and read-only dismissal; final submission is
   hit-tested without dispatching a persistent transaction. No original builder or handler changed.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.

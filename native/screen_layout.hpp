@@ -37,6 +37,11 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x10096c60: return ScreenTemplate::contract_negotiation;
     case 0x1042ca40: return ScreenTemplate::loan_terms;
     case 0x1041eb10: case 0x1009dc00: case 0x1042efa0: return ScreenTemplate::negotiation_confirmation;
+    // Message screens of the same shape (title, one wrapped message at 110,140-780,545, a footer of
+    // buttons): an offer for one of the manager's players from the news, a completed transfer, a
+    // transfer-list confirmation, an offer's restriction and feedback messages, and a staff release.
+    case 0x10421fb0: case 0x10423270: case 0x1042a810: case 0x10420b50: case 0x10421070:
+    case 0x1009e8f0: return ScreenTemplate::negotiation_confirmation;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }

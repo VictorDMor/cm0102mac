@@ -5,8 +5,9 @@
 #include <array>
 
 namespace cm::aot {
-// Loan editing and the three confirmation builders share a content panel,
-// title/subtitle and footer. Original builders retain all state and controls.
+// Loan editing, the three confirmation builders and the message screens of the same shape
+// (screen_layout.hpp) share a content panel, title/subtitle and a footer of one to three buttons.
+// Original builders retain all state and controls.
 void layout_negotiation_dialog(State& s, std::uint32_t display, GuiCanvas canvas, bool loan_terms) {
     guest::Cpu c(s);
     const GuestScreen screen{c, display};
@@ -24,7 +25,7 @@ void layout_negotiation_dialog(State& s, std::uint32_t display, GuiCanvas canvas
     const auto old=screen.rect(screen.grid(fields));
     const unsigned rows=screen.rows(screen.grid(fields)),buttons=screen.columns(screen.grid(footer));
     if(!rows || rows>30 || screen.columns(screen.grid(fields))!=(loan_terms?7:1) ||
-       c.u32(screen.grid(fields)+0x18)!=2 || screen.rows(screen.grid(footer))!=1 || buttons<2 || buttons>3)return;
+       c.u32(screen.grid(fields)+0x18)!=2 || screen.rows(screen.grid(footer))!=1 || buttons<1 || buttons>3)return;
     const ScreenLayout shell{canvas};
     auto available=shell.content(old.top);
     const int width=std::min(960,available.width());
