@@ -43,12 +43,14 @@ seven callers are CLUB_SCREENS, PLAYER_SEARCH, PRINTOUTS and RECORD_UTILS (none 
 here). It takes a club and a fixture and returns 1..4, calling DATABASE.CPP's 0x100c7d00. The unit
 that ends up owning it (COMP_STATS's audit or this one) must pin it; AMBIGUOUS_NEIGHBOUR records it.
 
-Production: the pilot blocks are routed, the rest is not. native/comp_util_routines.inc (with its block files)
-lists each C++ routine with the digest of the original body it replaces (COMP_UTIL_ROUTINE routes it,
-COMP_UTIL_DRAFT only runs it in the check tools); the generator hooks exactly the listed entries
-(COMP_UTIL_HOOKED), so every other entry runs its generated body. Routed today: numeric_ids (0x10464010,
-0x10464880, 0x104648c0) and club_queries (0x104646d0, 0x10464160, 0x10464900), 6 of the 35. A block lands by
-adding its lines to the .inc; ROUTED in tools/test_comp_util_audit.py pins the set.
+Production: the routed blocks are the pilots and the blocks after them, the rest is not. native/comp_util_routines.inc
+(with its block files) lists each C++ routine with the digest of the original body it replaces (COMP_UTIL_ROUTINE
+routes it, COMP_UTIL_DRAFT only runs it in the check tools); the generator hooks exactly the listed entries
+(COMP_UTIL_HOOKED), so every other entry runs its generated body. Routed today: numeric_ids (0x10464010, 0x10464880,
+0x104648c0), club_queries (0x104646d0, 0x10464160, 0x10464900), comparators (0x10463580, 0x104647a0, 0x104647c0,
+0x104647e0, 0x10464830, 0x10477cd0, 0x104777c0), interpolation (0x10476780), rating_sort (0x10477870, 0x10477b40)
+and comp_screens_list (0x10477490), 17 of the 35. A block lands by adding its lines to the .inc; ROUTED in
+tools/test_comp_util_audit.py pins the set.
 """
 import re
 from pathlib import Path

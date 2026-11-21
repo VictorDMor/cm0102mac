@@ -41,4 +41,53 @@ std::uint32_t fixture_class(Cpu&, std::uint32_t club, std::uint32_t fixture);
 // (readers in STAFF_CONTRACTS.CPP, SHORTLIST_MANAGER.CPP, SPAIN_RULES.CPP and a boundary routine read them);
 // r4-r10 are not left as the original does (no caller reads them: tools/register_contract.py --after).
 std::uint32_t contenders_class(Cpu&, std::uint32_t first_club, std::uint32_t second_club);
+
+// Block `comparators` (comp_util_compare.cpp): the unit's qsort comparators. The sort (QSORT4X.CPP 0x10768300)
+// calls each through its transition vector with two pointers to the elements and reads r3 (the three-way
+// result) and nothing else; the comparators still leave r4-r7 (and f0, f1) as the original does. A "slot" is
+// the address of an array element holding a pointer to the record.
+// 0x10463580: records (not slots) with a double at +4, the larger first; equal and unordered compare equal.
+// Sets FPSCR as the original's fcmpo does.
+std::int32_t compare_score_descending(Cpu&, std::uint32_t first, std::uint32_t second);
+// 0x104647a0: slots of clubs, by reputation (+0x1ec) descending. Leaves r4 (the first reputation), r5 (the first club).
+std::int32_t compare_club_reputation(Cpu&, std::uint32_t first_slot, std::uint32_t second_slot);
+// 0x104647c0: records (not slots), by the signed byte at +4 ascending. Leaves r4 (the second byte, unsigned).
+std::int32_t compare_tag_ascending(Cpu&, std::uint32_t first, std::uint32_t second);
+// 0x104647e0: slots of clubs, empty slots last, by reputation descending. Leaves r4 (the second club).
+std::int32_t compare_club_reputation_nulls_last(Cpu&, std::uint32_t first_slot, std::uint32_t second_slot);
+// 0x10464830: slots of clubs, empty slots last, by reputation ASCENDING (the twin of 0x104647e0 with the
+// difference the other way round). Leaves r5 (the first club).
+std::int32_t compare_club_reputation_ascending(Cpu&, std::uint32_t first_slot, std::uint32_t second_slot);
+// 0x10477cd0: slots of clubs, clubs without a division record (+0x34) last, then by that record's reputation
+// descending, its id (word +0) descending and the club's byte +0x23c ascending. Leaves r4..r7 as the original.
+std::int32_t compare_club_division(Cpu&, std::uint32_t first_slot, std::uint32_t second_slot);
+// 0x104777c0: 0x50-byte rows of the COMP_SCREENS list (not slots) by their group byte (+0x42), halfwords +0x32,
+// +0x34, +0x30 (each ascending) and the club names (UTILS 0x107465f0, case-sensitive: its r5 is 1). Frames its call.
+std::int32_t compare_screen_rows(Cpu&, std::uint32_t first, std::uint32_t second);
+
+// Block `interpolation` (comp_util_interpolation.cpp).
+// 0x10476780: `index * (to - from) / (count - 1)` as a signed byte (the mean of the two ends for a count of 1);
+// outside 0..100 the game's assertion (line 0x256e) is reported and the value clamped. Leaves r4, r6 and r7
+// as the original does (r7 the count; r4 the index and r6 the first end when the count is not 1, r4 the clamp
+// after an assertion).
+std::int8_t interpolated_share(Cpu&, std::int8_t from, std::int8_t to, std::int16_t index, std::int16_t count);
+
+// Block `rating_sort` (comp_util_rating.cpp).
+// 0x10477870: a club's rating for seeding: -10,000,000 for no club; else the finance balance / 300 (the finance
+// manager's account, TOC -0x7ab8) or, without a manager, the club's word +4 / 400; plus 16 x its reputation;
+// plus the worth of the fifteen places the computer fills from the club's members with player data
+// (0x10210c50, each pick rated by 0x10216830).
+std::int32_t club_strength(Cpu&, std::uint32_t club);
+// 0x10477b40: sorts `count` club pointers by club_strength, best first (a selection sort on a copy of the ratings,
+// swapping while the earlier is lower; empty slots rate 0). A failed allocation reports the game's assertion
+// (line 0x292b) and leaves the array. Leaves r4-r10 as the original's loops end (a caller's virtual call
+// reads r8-r10); no result.
+void sort_by_strength(Cpu&, std::uint32_t clubs, std::int32_t count);
+
+// Block `comp_screens_list` (comp_util_screens.cpp).
+// 0x10477490: orders the 0x50-byte rows of a COMP_SCREENS list (a NETWORK utility object: count +0, rows from +4,
+// cursor +0xc): copies them out, sorts the copy with compare_screen_rows, empties the list and adds the rows back.
+// Answers true; false after reporting the game's assertion for no list (line 0x2781), no rows (0x278c) or a failed
+// allocation (0x2794), leaving the list as it was.
+bool sort_screen_list(Cpu&, std::uint32_t list);
 }

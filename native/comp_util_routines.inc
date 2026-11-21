@@ -4,3 +4,7 @@
 // Each block appends the #include of its comp_util_routines_<block>.inc below.
 #include "comp_util_routines_numeric_ids.inc"
 #include "comp_util_routines_club_queries.inc"
+#include "comp_util_routines_comparators.inc"
+#include "comp_util_routines_interpolation.inc"
+#include "comp_util_routines_rating_sort.inc"
+#include "comp_util_routines_comp_screens_list.inc"

@@ -29,6 +29,11 @@ inline constexpr std::int32_t
     special_a = -0x6888,       // cells: three competition ids that 0x104646d0 accepts at once (inferred)
     special_b = -0x67bc,
     special_c = -0x6734,
+    pool = -0x47e4,            // the unit's strings: +0 the file name, +0xe the report format, +0x1b the report title
+    message_buffer = -0x7ba8,  // the assertion report's shared message buffer
+    success_flag = -0x7bac,    // cell: the byte every assertion report clears
+    finance_manager = -0x7ab8, // cell: the finance object 0x10103510 looks accounts up in (0 when there is none)
+    screens_vector = -0x6190,  // the transition vector of the screen-row comparator 0x104777c0
     competitions = comp::toc::competitions,   // cell: the competition objects by id
     records = comp::toc::records;             // cell: the 0x6c-byte competition records by id
 }
@@ -48,9 +53,22 @@ inline constexpr std::uint32_t conversion_high = 0x43300000;
 // The club row (0x248 bytes: comp_detail.hpp `club`).
 namespace club {
 inline constexpr std::uint32_t competition_record = 0x30,  // word: the club's league record (its +0 the competition id)
+                               value = 0x04,               // word: what the ranking divides by 400 without a finance manager (inferred)
+                               division_record = 0x34,     // word: a competition record (+0 id, +0x18 reputation) the sorts order by (inferred)
                                second_record = 0x38,       // word: a second competition record (inferred)
-                               reputation = 0x1ec;         // halfword
+                               reputation = 0x1ec,         // halfword
+                               name = 0x221,               // the club's name (a C string), what the screens' lists compare last
+                               tiebreak = 0x23c;           // signed byte: the last key of the division sort (inferred)
 }
+// The 0x6c-byte competition record's reputation, which the division sort compares (comp::record::reputation).
+// A row of the COMP_SCREENS list (0x50 bytes, copied whole): its club and the keys 0x104777c0 sorts by.
+namespace screen_row {
+inline constexpr std::uint32_t club = 0x1c, key_30 = 0x30, key_32 = 0x32, key_34 = 0x34 /* halfwords */, group = 0x42 /* signed byte */, size = 0x50;
+}
+// A record with a double at +4 (0x10463580's sort key).
+namespace scored { inline constexpr std::uint32_t score = 0x04; }
+// A byte at +4 (0x104647c0's sort key).
+namespace tagged { inline constexpr std::uint32_t tag = 0x04; }
 // A club's row in a league's statistics (COMP_STATS.CPP 0x10459b50): bytes (inferred: the season's figures).
 namespace stats_row {
 inline constexpr std::uint32_t games = 0x04,     // byte: games played, below 25 the early-season weights apply
@@ -65,6 +83,10 @@ inline constexpr std::uint32_t first_club = 0x1c, second_club = 0x20,
 }
 // What the unit calls of other modules.
 namespace callee {
+inline constexpr std::uint32_t allocate = 0x10775130, release = 0x10775170, fill_memory = 0x10778300,  // new[], delete[], memset
+                               finance_account = 0x10103510, divide64 = 0x10773960, member_ids = 0x100d06f0,
+                               choose_places = 0x10210c50, rate_person = 0x10216830;
+
 inline constexpr std::uint32_t stats_row = 0x10459b50,       // COMP_STATS.CPP (statistics object, club) -> row, or 0
                                marks_record = 0x104abf40;    // (statistics owner, competition record) -> byte, nonzero: excluded
 }
