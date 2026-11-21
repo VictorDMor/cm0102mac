@@ -1122,6 +1122,7 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_hall_of_fame_checks.hpp"
 #include "adaptive_manager_status_checks.hpp"
 #include "adaptive_job_information_checks.hpp"
+#include "adaptive_holiday_checks.hpp"
 #include "adaptive_news_checks.hpp"
 #include "adaptive_finances_checks.hpp"
 #include "adaptive_club_info_checks.hpp"
@@ -1309,6 +1310,7 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--hall-of-fame") hall_of_fame_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--manager-status") manager_status_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--job-information") job_information_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--holiday") holiday_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--message-screens") message_screens_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--news") news_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--finances") finances_builder(argv[1]);

@@ -167,7 +167,8 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::hall_of_fame:
     case ScreenTemplate::manager_status:
     case ScreenTemplate::job_information:
-        // Tables of the whole game's managers or nations: no record of the history is read by the layout.
+    case ScreenTemplate::holiday:
+        // Tables of the whole game's managers or nations and the holiday dialog: the layout reads no record of the history.
         return instance && read(instance + 0x24);
     case ScreenTemplate::transfer_status:
     case ScreenTemplate::previous_offers: {

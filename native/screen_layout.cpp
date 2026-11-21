@@ -334,6 +334,7 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::hall_of_fame: layout_hall_of_fame(s, display, layout.canvas); break;
     case ScreenTemplate::manager_status: layout_manager_status(s, display, layout.canvas); break;
     case ScreenTemplate::job_information: layout_job_information(s, display, layout.canvas); break;
+    case ScreenTemplate::holiday: layout_holiday(s, display, layout.canvas); break;
     case ScreenTemplate::competition:
     case ScreenTemplate::competition_history: {
         guest::Cpu c(s);

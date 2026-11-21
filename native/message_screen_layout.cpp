@@ -7,9 +7,10 @@
 
 namespace cm::aot {
 // Message screens (the offer decision from the news, transfer completion, transfer-list confirmation, an
-// offer's restriction and feedback messages, and the staff release): the title and subtitle, one wrapped
-// or centered message in a one-column grid at 110,140-780,545, and a row of buttons that is either a grid
-// of one to six columns or one standalone control at 100,555-790,590. Their builders place the message by
+// offer's restriction and feedback messages, the staff release, and the manager's job confirmations: apply for
+// a job, rescind the contract, retire): the title and subtitle, one wrapped or centered message in a
+// one-column grid at 110,140-780,545 (110,145-780,535 for the manager's confirmations), and a row of
+// buttons that is either a grid of one to six columns or one standalone control at 100,555-790,590. Their builders place the message by
 // row (a short message in the middle row of nineteen) and size the buttons by a column specification, so
 // the original shape is a tall panel with a few words in it and unequal buttons.
 //
@@ -20,7 +21,9 @@ namespace cm::aot {
 void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
     guest::Cpu c(s);
     const GuestScreen screen{c, display};
-    constexpr ScreenRect message_box{110,140,780,545}, footer_box{100,555,790,590};
+    constexpr ScreenRect footer_box{100,555,790,590};
+    constexpr std::array<ScreenRect,2> message_boxes{{{110,140,780,545}, {110,145,780,535}}};
+    ScreenRect message_box = message_boxes[0];
     int message = -1, footer = -1;
     bool ambiguous = false;
     const unsigned grids = std::min<unsigned>(250, c.u16(display + 0x129da4));
@@ -28,7 +31,9 @@ void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
     for (unsigned i = 0; i < grids; ++i) {
         const auto grid = screen.grid(i);
         const auto box = screen.rect(grid);
-        if (box == message_box && screen.columns(grid) == 1) { ambiguous |= message >= 0; message = int(i); }
+        if (std::find(message_boxes.begin(), message_boxes.end(), box) != message_boxes.end() && screen.columns(grid) == 1) {
+            ambiguous |= message >= 0; message = int(i); message_box = box;
+        }
         else if (box == footer_box && screen.rows(grid) == 1 && screen.columns(grid) >= 1 && screen.columns(grid) <= 6) {
             ambiguous |= footer >= 0; footer = int(i);
         }

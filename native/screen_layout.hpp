@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -43,6 +43,9 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // staff release. They get a dialog layout of their own.
     case 0x10421fb0: case 0x10423270: case 0x1042a810: case 0x10420b50: case 0x10421070:
     case 0x1009e8f0: return ScreenTemplate::message_screen;
+    // The manager's confirmations (Yes/No under one question): apply for a job, rescind the contract, retire.
+    // They are message screens too, with their panel at 110,145-780,535.
+    case 0x101c8730: case 0x101c8b60: case 0x101c98c0: return ScreenTemplate::message_screen;
     // Player transfer status (asking price, squad status and listing choices) and the previous offers.
     case 0x10428ab0: return ScreenTemplate::transfer_status;
     case 0x10422600: return ScreenTemplate::previous_offers;
@@ -58,6 +61,8 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x10338b40: return ScreenTemplate::manager_status;
     // The Manager menu's Job Information: the jobs on offer in a nation, or a message when there are none.
     case 0x101c74e0: return ScreenTemplate::job_information;
+    // The Manager menu's holiday dialog: its settings and a Yes/No footer.
+    case 0x101c9eb0: return ScreenTemplate::holiday;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }

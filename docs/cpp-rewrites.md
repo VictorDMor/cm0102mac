@@ -2272,6 +2272,27 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   a Manager Status with several managers (a capture has one), UEFA coefficients with real values (a new world
   has zeros) and the sort links' effect. The Hall of Fame's date column shows 1970 for the fixture's synthetic
   rows: only the geometry is compared.
+- The manager's job confirmations and the holiday dialog (Manager menu). Applying for a job (builder 0x101c8730,
+  opener 0x101c8650, called from a CLUB_SCREENS routine at 0x1005ea84; the menu path was not traced), rescinding the contract (0x101c8b60, opener 0x101c8a80 through the wrapper 0x101aa650, dispatcher
+  actions 0x41c/0x41d, argument the club) and retiring (0x101c98c0, opener 0x101c9880, action 0x3f2) are message
+  screens with their panel at 110,145-780,535 instead of 110,140-780,545 (a question, a Yes/No footer of two
+  columns), so they share `message_screen_layout.cpp`, which now accepts either panel rectangle; the dialog, the
+  text carried to the new center and the two 190px buttons under the panel are as described above. Holiday
+  (0x101c9eb0, opener 0x101c9e70, action 0x3ef) has its own `holiday_layout.cpp`: an intro paragraph above a
+  thirteen-row list of seven settings, each a text with a link measured to its current value, and a Yes/No
+  footer. The panel is centered and at most 800 wide, keeps its classic height (the rows keep theirs), the
+  settings' text and links move with the list's left edge (a full line also follows its right edge, a link keeps
+  its measured width), the intro spans the panel and the buttons are equal 190px cells right-aligned under
+  it; the layout declines on a scrollbar, a missing or duplicated grid or a canvas too short for the buttons.
+  Gate: a career is open. At a width of exactly 800 the bounded panel is the classic one; the checker then
+  tells that the layout ran by the footer. `--message-screens` gained the three confirmations (opened through
+  their openers, answered No) and now runs mutants (classic panel, a button drifted, a button inside the
+  panel, text off the panel's center) through the same checker; `--holiday` opens the dialog and flips its
+  settings through the original handler (first, second, third, all), at six canvases, and compares records,
+  RNG, the link texts and the No result with the original, with mutants (classic panel, footer drift, footer
+  at the bottom row, a setting at classic bounds, the intro at its classic span). Unexercised: Yes (it starts
+  the holiday), the confirmations' Yes (they change club or end the career), the other languages' longer
+  texts, confirmation texts that wrap to more lines than the three clubs of the fixture give.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

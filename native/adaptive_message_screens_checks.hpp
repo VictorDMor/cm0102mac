@@ -3,13 +3,15 @@
 // real records of an existing capture. Built with New Screens off and on; the adaptive run must keep every
 // control, action, record and RNG draw, and make a dialog of it: a panel centered under the title bars, the
 // message centered in it, equal buttons on one row inside the panel's horizontal bounds, right-aligned to it.
+// The manager's three confirmations (apply for a job, rescind the contract, retire) are message screens whose
+// panel is 110,145-780,535: they are opened through their own openers and answer No (action 1) like the others.
 // Needs TransferScene from adaptive_transfer_status_checks.hpp.
 void message_screens_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
-    constexpr unsigned scenarios = 7;
-    const char* names[scenarios]{"offer decision", "completion", "listing", "listing (loan)", "restriction", "feedback", "staff release"};
-    const unsigned builders[scenarios]{0x10421fb0, 0x10423270, 0x1042a810, 0x1042a810, 0x10420b50, 0x10421070, 0x1009e8f0};
+    constexpr unsigned scenarios = 10;
+    const char* names[scenarios]{"offer decision", "completion", "listing", "listing (loan)", "restriction", "feedback", "staff release", "apply for job", "rescind contract", "retire"};
+    const unsigned builders[scenarios]{0x10421fb0, 0x10423270, 0x1042a810, 0x1042a810, 0x10420b50, 0x10421070, 0x1009e8f0, 0x101c8730, 0x101c8b60, 0x101c98c0};
     for (unsigned scenario = 0; scenario < scenarios; ++scenario) {
         std::vector<std::uint8_t> baseline;
         for (bool adaptive : {false, true}) {
@@ -37,7 +39,10 @@ void message_screens_builder(const char* path) {
                 case 2: case 3: t.invoke(0x1042a780, {t.person, scenario == 3 ? 1u : 0u}); break;
                 case 4: t.invoke(0x10420aa0, {link, 35, 5}); break;
                 case 5: t.invoke(0x10420f00, {t.person, other, 1, 0}); break;
-                default: t.invoke(0x1009e880, {t.person}); break;
+                case 6: t.invoke(0x1009e880, {t.person}); break;
+                case 7: t.invoke(0x101c8650, {other}); break;
+                case 8: t.invoke(0x101c8a80, {t.managed}); break;
+                default: t.invoke(0x101c9880, {}); break;
                 }
                 require(t.builder() == builders[scenario], "Message screen did not open through its original opener");
                 bool on = adaptive;
@@ -47,7 +52,7 @@ void message_screens_builder(const char* path) {
                     Shape r;
                     for (unsigned i = 0; i < t.grids(); ++i) {
                         const auto box = t.rect(t.grid(i)); const auto columns = c.u8(t.grid(i) + 0xbb0);
-                        if (box == ScreenRect{110, 140, 780, 545} && columns == 1) r.message = int(i);
+                        if ((box == ScreenRect{110, 140, 780, 545} || box == ScreenRect{110, 145, 780, 535}) && columns == 1) r.message = int(i);
                         if (box == ScreenRect{100, 555, 790, 590} && c.u8(t.grid(i) + 0xbb1) == 1) r.footer = int(i);
                     }
                     for (unsigned i = 0; i < t.controls(); ++i) {
@@ -65,18 +70,13 @@ void message_screens_builder(const char* path) {
                         if (ours && c.u32(t.control(i) + 8) && t.enabled(i)) require(t.hit(i) == int(i), "Message picker missed an original control");
                     }
                 };
-                const auto build = [&](GuiCanvas size) {
-                    t.check_gate(on, "Message gate disagrees with preference");
-                    t.rebuild(size);
-                    const auto before = shape();
-                    require(before.message >= 0, "Original message panel absent");
-                    const auto old = t.layout(records, "Message screen");
-                    if (!on || size.original()) { require(t.s.memory.copy_out(t.display, 0x129da8) == old, "Legacy message screen changed"); pick(); return; }
+                // Every property the layout promises, read from the guest after it ran.
+                const auto verify = [&](GuiCanvas size, const Shape& before, const std::vector<std::uint8_t>& old) {
                     const auto panel = t.rect(t.grid(before.message));
                     const ScreenLayout shell{size};
                     const auto title = shell.title();
                     // Panel: a bounded dialog centered under the title bars, in the upper half of the screen.
-                    require(panel != ScreenRect{110, 140, 780, 545}, "Message recipe did not run");
+                    require(panel != ScreenRect{110, 140, 780, 545} && panel != ScreenRect{110, 145, 780, 535}, "Message recipe did not run");
                     require(std::abs((panel.left + panel.right) - (title.left + title.right)) <= 2, "Message panel is not centered under the title bars");
                     require(panel.left >= 110 && panel.width() <= 800 && panel.right <= size.width - 10 && panel.top >= 140 && panel.bottom < size.height - 10,
                             "Message panel outside the content area");
@@ -124,6 +124,18 @@ void message_screens_builder(const char* path) {
                                 require(a.right <= b.left || b.right <= a.left, "Message buttons overlap");
                             }
                     }
+                };
+                Shape last_before;
+                std::vector<std::uint8_t> last_old;
+                const auto build = [&](GuiCanvas size) {
+                    t.check_gate(on, "Message gate disagrees with preference");
+                    t.rebuild(size);
+                    const auto before = shape();
+                    require(before.message >= 0, "Original message panel absent");
+                    const auto old = t.layout(records, "Message screen");
+                    if (!on || size.original()) { require(t.s.memory.copy_out(t.display, 0x129da8) == old, "Legacy message screen changed"); pick(); return; }
+                    verify(size, before, old);
+                    last_before = before; last_old = old;
                     pick();
                 };
                 const GuiCanvas canvas = adaptive ? GuiCanvas{1360, 786} : GuiCanvas{800, 600};
@@ -137,12 +149,50 @@ void message_screens_builder(const char* path) {
                     std::vector<std::uint8_t> again;
                     for (unsigned k = 0; k < t.controls(); ++k) { const auto part = t.s.memory.copy_out(t.control(k) + 0x10, 16); again.insert(again.end(), part.begin(), part.end()); }
                     require(again == boxes, "Message redraw lost the layout's control bounds");
+                    // Mutants: each geometric promise, broken in the guest, must be refused by the same checker.
+                    const auto check = [&] { verify(canvas, last_before, last_old); };
+                    const auto saved_display = t.s.memory.copy_out(t.display, 0x129da8);
+                    const auto restore = [&] { t.s.memory.copy_in(t.display, saved_display); };
+                    const auto refused = [&](const char* mutant) {
+                        bool rejected = false;
+                        try { check(); } catch (const std::runtime_error&) { rejected = true; }
+                        require(rejected, (std::string("Message checker accepted mutant: ") + mutant).c_str());
+                        restore();
+                    };
+                    check();
+                    {   // the panel stays at its classic rectangle
+                        const auto grid = t.grid(last_before.message);
+                        c.put32(grid, 110); c.put32(grid + 4, scenario >= 7 ? 145 : 140); c.put32(grid + 8, 780); c.put32(grid + 12, scenario >= 7 ? 535 : 545);
+                        refused("panel left at classic coordinates");
+                    }
+                    if (!last_before.footer_controls.empty()) {   // the last button drifts right
+                        const auto at = t.control(last_before.footer_controls.back());
+                        c.put32(at + 0x10, c.i32(at + 0x10) + 5); c.put32(at + 0x18, c.i32(at + 0x18) + 5);
+                        refused("button drifted");
+                    }
+                    if (!last_before.footer_controls.empty()) {   // the first button climbs into the panel
+                        const auto at = t.control(last_before.footer_controls.front());
+                        const auto panel = t.rect(t.grid(last_before.message));
+                        c.put32(at + 0x14, panel.bottom - 5);
+                        refused("button inside the panel");
+                    }
+                    {   // the message text moves off the panel's center
+                        bool done = false;
+                        for (unsigned k = 0; k < t.controls() && !done; ++k) {
+                            const auto at = t.control(k);
+                            if (c.i16(at + 0x72) != last_before.message || c.u32(at + 8) || !c.i32(at + 0x28) || !c.i32(at + 0x2c)) continue;
+                            c.put32(at + 0x28, c.i32(at + 0x28) + 30); c.put32(at + 0x2c, c.i32(at + 0x2c) + 30); done = true;
+                        }
+                        require(done, "Message fixture found no text to mutate");
+                        refused("text off the panel's center");
+                    }
+                    check();
                 }
                 if (adaptive) { on = false; select_new_screens(false); build(canvas); }
                 // Safe dismissals through the original handlers: records unchanged, same result in both runs.
                 std::vector<std::uint8_t> outcome;
                 const auto saved = records();
-                const unsigned back = scenario == 0 || scenario == 4 ? 1 : scenario == 2 || scenario == 3 ? 1 : 0;
+                const unsigned back = scenario == 0 || scenario == 4 || scenario >= 7 ? 1 : scenario == 2 || scenario == 3 ? 1 : 0;
                 if (back) {
                     const int i = t.find(back);
                     require(i >= 0 && t.hit(i) == i, "Message dismissal control missing");
