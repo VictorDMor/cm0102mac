@@ -175,7 +175,11 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
         // The layout reads no record of the history; a friendly is arranged by a managed club.
         return instance && read(instance + 0x24);
     case ScreenTemplate::text_entry:
-        // The layout reads no record; the dialogs name a person of the career.
+    case ScreenTemplate::disciplinary:
+    case ScreenTemplate::role_choice:
+    case ScreenTemplate::head_to_head:
+        // The layout reads no record (the dialogs name a person or two clubs of the career); it only moves what the
+        // builder placed.
         return instance && read(instance + 0x24);
     case ScreenTemplate::credits:
     case ScreenTemplate::web_sites:

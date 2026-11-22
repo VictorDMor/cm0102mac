@@ -2376,6 +2376,32 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   differs per screen: word 0 (job offer, the first squad notice, transfer request with the player ID in word 2), word 1
   (Intertoto, invitation) and word 4 (the second squad notice); the probed openers do not check the item type. Unexercised: the confirming buttons (they sign, answer
   or remove news), a real item of each type, other languages.
+- Seventh round of New Screens: nine more builders and two new layouts. Seven joined `ScreenTemplate::message_screen`
+  (`--message-screens` scenarios 30-36): the "disk full" and "not enough memory" notices 0x10340db0 / 0x10341120 (openers
+  0x10340d40 / 0x103410b0 without arguments; two pre-wrapped lines and one Ok at 100,555-790,590; Ok 51 / 52), "take control of
+  a club" 0x1033bdc0 (opener 0x1033bd50(club); No 32) and "reassume control" 0x1033c970 (0x1033c900(instance); No 37), and three
+  news-driven questions: entering the English cup in a later round 0x104c65a0 (opener 0x104c6510(instance, item ID); the
+  competition name comes from a global the news handler sets), a player's appeal against his punishment 0x106fcbb0
+  (0x106fc7f0, which reads fourteen payload words: person index in value 4) and the ultimatum to the board 0x10702ba0
+  (0x10702a40). `disciplinary_layout.cpp` lays out two grids that share one rectangle at 110,140-780,545 as one panel: the
+  disciplinary action on a player 0x1010ff90 (opener 0x1010fef0(person), from the person action handler at 0x103a7edc /
+  0x103a9e1c; a seven-column grid with the intro line, the action row "label - level +" and the reason heading, a two-column
+  grid with the five reasons, Cancelar 4 / Confirmar 5), the press question 0x1067bea0 (opener 0x1067b920(instance, item ID);
+  three explicit lines, three replies 5253, Cancel 4252 / Ok 4251; its seven-column grid has an empty column the column map
+  would refuse, so it is only read when a control needs it) and the role in the club 0x100952b0 (opener
+  0x10094ae0(person, 0, 0, 1) as the transfer-request flow calls it; two two-column grids and the Back/Choose footer). The panel
+  is centered, at most 800 wide, as tall as its last used row plus one, the wide column of each grid takes the extra width, the
+  intro line and name link follow the edges, and the buttons become equal 190px cells under the panel. `head_to_head_layout.cpp`
+  lays out the club screen's "Last meetings" 0x10041550 (opener 0x100413b0(club, club), from the club handler at 0x100399b4):
+  the eleven-column summary (one column measured empty: `ColumnMap::read` takes `allow_empty` and up to sixteen columns) and
+  the meetings table become one panel of at most 960, the summary at its height and the meetings as tall as 28px rows allow, the
+  View and Filter menus on their sides, the Back/Next buttons right-aligned. Checks: `--disciplinary` (six states: three levels
+  and reasons, two press states, the role screen; answers compared with the original, the press ones with the news queue too;
+  a reason is highlighted under the mouse, so colors are not compared between runs), `--head-to-head` (three club pairs; the world
+  holds no earlier meetings, so the cells are empty) and the new message scenarios, each at six canvases with mutants refused.
+  Unexercised: the confirming buttons, a real news item for the four news screens, the history cells of the head-to-head table,
+  other languages. Still classic: 0x10048e00 / 0x1004a4a0 (their openers look the friendly up in a table that is empty in the
+  capture), awards, competition 0x10073d00, national team 0x102bc400, the transfer-rules article 0x106ff680.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

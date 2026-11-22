@@ -21,14 +21,17 @@ struct ColumnMap {
     unsigned count() const { return unsigned(left.size()); }
     // `grow_mask` names the columns (bit i = column i) that share the extra width when several columns carry
     // the same kind of content (two nations side by side); 0 means only the widest one grows.
+    // `allow_empty` accepts a column AutoGrid measured as empty (its last pixel just before its first, as the head-to-head
+    // summary has, a table of up to sixteen columns): such a column keeps no cell and a track of no width.
     bool read(const guest::Cpu& c, const GuestScreen& screen, std::uint32_t grid, int original_width, ScreenRect panel,
-              unsigned grow_mask = 0) {
+              unsigned grow_mask = 0, bool allow_empty = false) {
         const unsigned n = screen.columns(grid);
-        if (n < 1 || n > 8) return false;
+        if (n < 1 || n > (allow_empty ? 16u : 8u)) return false;
         int previous = 0, widest = 0;
         for (unsigned i = 0; i < n; ++i) {
             const int first = c.i32(grid + 0x1c + i * 4), last = c.i32(grid + 0x10c + i * 4);
-            if (first < previous || last <= first || last > original_width) return false;
+            if (first < previous || last > original_width) return false;
+            if (last <= first && !(allow_empty && last >= first - 2)) return false;
             low.push_back(i ? high.back() : 0); left.push_back(first); right.push_back(last);
             // Each track ends where its cell does, the last one at the grid's edge.
             high.push_back(i + 1 < n ? last : original_width);

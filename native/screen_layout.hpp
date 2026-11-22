@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection, friendly_countries, friendly_dates, credits, web_sites, text_entry };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection, friendly_countries, friendly_dates, credits, web_sites, text_entry, disciplinary, role_choice, head_to_head };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -64,6 +64,11 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x102bd090: case 0x102bd920: return ScreenTemplate::message_screen;
     // The invitation to a friendly tournament (opened from the news): a question and three buttons, Back first.
     case 0x10049550: return ScreenTemplate::message_screen;
+    // The game's "disk full" and "not enough memory" notices (two lines and one Ok), the question to take control of
+    // (or reassume control of) another club, entering the FA Cup in a later round, a player's appeal against his
+    // punishment and the ultimatum to the board (opened from the news or a menu, each a question and a No/Yes footer).
+    case 0x10340db0: case 0x10341120: case 0x1033bdc0: case 0x1033c970: case 0x104c65a0: case 0x106fcbb0:
+    case 0x10702ba0: return ScreenTemplate::message_screen;
     // The reasons for rejecting an offer (the offer decision's Reject, the proposal screen's rejection): choices
     // in a two-column panel and a footer of two or three buttons.
     case 0x1041f8f0: return ScreenTemplate::bid_rejection;
@@ -92,6 +97,13 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x1062c380: return ScreenTemplate::web_sites;
     // Text entry dialogs: the player's nickname and Send Message.
     case 0x103ac1c0: case 0x102d0500: return ScreenTemplate::text_entry;
+    // Disciplinary action on a player: two overlapping grids (the action row and the reasons) and a Cancel/Confirm footer.
+    // The press question opened from the news has the same two grids with a Cancel/Ok footer.
+    case 0x1010ff90: case 0x1067bea0: return ScreenTemplate::disciplinary;
+    // Choosing a player's role in the club (his squad status), reached from the contract negotiation and the news.
+    case 0x100952b0: return ScreenTemplate::role_choice;
+    // The club screen's "Last meetings" with another club: a summary table, the meetings and the Back/Next footer.
+    case 0x10041550: return ScreenTemplate::head_to_head;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }

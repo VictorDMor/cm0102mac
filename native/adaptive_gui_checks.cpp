@@ -1127,6 +1127,8 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_friendly_checks.hpp"
 #include "adaptive_info_pages_checks.hpp"
 #include "adaptive_text_entry_checks.hpp"
+#include "adaptive_disciplinary_checks.hpp"
+#include "adaptive_head_to_head_checks.hpp"
 #include "adaptive_news_checks.hpp"
 #include "adaptive_finances_checks.hpp"
 #include "adaptive_club_info_checks.hpp"
@@ -1319,6 +1321,8 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--friendly-countries") friendly_countries_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--friendly-dates") friendly_dates_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--text-entry") text_entry_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--disciplinary") disciplinary_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--head-to-head") head_to_head_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--credits") credits_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--web-sites") web_sites_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--message-screens") message_screens_builder(argv[1]);
