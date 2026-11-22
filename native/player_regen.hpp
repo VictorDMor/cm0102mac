@@ -151,4 +151,31 @@ void schedule_injury_retirement(Cpu&, std::uint32_t regen, std::uint32_t person,
 // it (count plus 250 entries of capacity, the block reallocated; true when every step worked, else false after the assertion).
 void save_regen_file(Cpu&, std::uint32_t regen, std::uint32_t archive);
 std::uint32_t load_regen_file(Cpu&, std::uint32_t regen, std::uint32_t archive);
+// Block `news_posting` (player_regen_news.cpp): the three messages the module posts, each built as a news item on its frame and handed to
+// the news manager (0x102cc030 and the routines 0x102cc140, 0x102cc280, 0x102cc400, 0x102cc8e0 by who should read it). The callees run
+// through the dispatcher at the original's return addresses.
+// 0x102df780: message 0xbce, a youth player promoted at `club`: the person's and the club's names and the scores of the club's assistant
+// manager (+0x94) and five coaches (+0x160...), the first of which that scores above the club's reputation thresholds is named as the
+// prospect's discoverer (great: above reputation / 50 + 75, good: above reputation / 100 + 50; the two scores come from 0x10219e40 with a
+// noise term of a pooled draw below 2500 and a fused multiply-add of the club's kind byte). Nothing posts for a null person or club.
+void announce_youth_promotion(Cpu&, std::uint32_t person, std::uint32_t club);
+// 0x102e0090: message 0xbba, the retirement of a person with a club (`reason` and `flag` are the callers' bytes, signed): skipped for a player
+// whose job is 8 or 5, for a person with no club and when 0x102cdbf0 says the club's news is not wanted. Goes to the readers of the person's
+// prominence (0x102cc8e0 for a famous nation and a high reputation, 0x102cc400 for a high one, 0x102cc280 for a club with a manager's
+// post, else 0x102cc140 to the club or to each interested manager 0x103fc710 lists); a retiring injured player (reason 8) of ability above
+// 4250 also has his contract's club told (0x100edc10). The contract manager's answer is stored in the cell at TOC -0x7b78.
+void announce_retirement(Cpu&, std::uint32_t person, std::uint32_t reason, std::uint32_t flag);
+// 0x102e13c0: message 0xbbb, the retirement of a person with no player record or a job other than 8 and 5: the contract's club (when the
+// contract is not of kind 5) and the age, to each interested manager 0x103fc710 lists (0x102cc140).
+void announce_staff_retirement(Cpu&, std::uint32_t person, std::uint32_t reason);
+
+// Block `news_texts` (player_regen_news_text.cpp): the callbacks that build the text of those messages. `item` holds the message's words
+// (0x102cb570), `kind` is 0 for the headline and nonzero for the body, `out` the item the sentence goes to (0x1074b830 begins the
+// text, 0x1074bab0 appends the person's name when 0x100cbde0 says to). The sentence is a localized format (0x10727890) chosen by the
+// message's reason, the club, the nation and the person's job; the values passed are the gender and name of the club and nation and a
+// position's or job's name (0x100c6bf0, 0x100c6af0, which also write a byte the format reads back from the frame).
+// 0x102dfbc0: message 0xbce, 0x102e0510: 0xbba (one pooled draw below 2 picks between two sentences), 0x102e15b0: 0xbbb.
+void youth_promotion_text(Cpu&, std::uint32_t item, std::uint32_t kind, std::uint32_t out);
+void retirement_text(Cpu&, std::uint32_t item, std::uint32_t kind, std::uint32_t out);
+void staff_retirement_text(Cpu&, std::uint32_t item, std::uint32_t kind, std::uint32_t out);
 }

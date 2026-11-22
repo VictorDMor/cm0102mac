@@ -9,3 +9,4 @@
 #include "player_regen_routines_detach.inc"
 #include "player_regen_routines_retire_decision.inc"
 #include "player_regen_routines_persistence.inc"
+#include "player_regen_routines_news.inc"

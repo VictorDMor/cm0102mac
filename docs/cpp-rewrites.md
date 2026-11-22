@@ -2639,3 +2639,26 @@ search and queued test, the two qsort comparators) and `candidate_score` (the po
   carries on writing after a failed call (the handle variable by address goes to the close routine); the reader fails with the alert when
   retire.dat is absent. The checker's `Case::Archive` is an in-memory stand-in for the zip entry functions, whose file bytes, call log and
   counts end in scratch memory; `Case::verify` checks the final state against an independent serialization (and a load against the image).
+
+- Blocks `news_posting` (0x102df780, 0x102e0090, 0x102e13c0) and `news_texts` (0x102dfbc0, 0x102e0510, 0x102e15b0) are routed too (39 of 47;
+  `player_regen_news*.cpp`, `player_regen_news_detail.hpp`, cases in `player_regen_checks_news.cpp`). The posting routines build a news item on their
+  own frame (sp+0x38 or sp+0xb0, so its address, an argument every callee sees, is the original's), set its words one call of 0x102cb4b0 at a time
+  and hand it to the news manager (0x102cc030, or by prominence 0x102cc8e0, 0x102cc400, 0x102cc280, 0x102cc140 to the club or to each interested manager
+  0x103fc710 lists at sp+0x38, up to 30). The text builders read the words back (0x102cb570), build the name into a frame buffer (0x100cb590) and format
+  one sentence (0x10727890). The formatter's argument list is positional: a sentence passes the gender and name values in the orders the languages need
+  (up to 13 values: r5-r10 and the stack words from sp+0x38), so a site is one `say` line (pool offset, address of the original's `bl`, values); a
+  site with fewer than six values leaves r6-r10 as the last callee left them. The title routines 0x100c6bf0 and 0x100c6af0 write their kind byte through
+  a frame pointer only for some inputs, and the sentence reads that byte back whether or not it was written: the rewrite reads the same frame address.
+- 0x102df780 draws once per coach it looks at (assistant manager +0x94, coaches +0x160...; the pooled generator, one refill site) and computes the score
+  with the one `fmadd` of the news: the constant at +0x98 of the unit's table is 12.5 (0x4029000000000000), the kind byte of the club (signed) times it plus half
+  the reputation plus the noise (a draw modulo 2500): all of them integers or half integers far below 2^53, so the product and the sum are exact and
+  fused against separate rounding cannot differ (FPSCR included: the cases with `clear_fpscr` agree; the rewrite uses the builder's multiply-add all the
+  same). The scores come from 0x10219e40 (answered per call in the scripted cases, real in the others) and are compared as signed halfwords with
+  reputation / 50 + 75 (great) and reputation / 100 + 50 (good).
+- Registers: every routine of the two blocks is compared on all of r4-r10 at return (no exemption, no mask). The posting routines return through the last
+  callee's leftovers except where the original sets r4, r5 or r6 with no call after (the early exits of 0x102e0090 leave the club in r4; its dispatch
+  leaves r4 = the player record, r5 = the club's +0x30 or +0x2c word, r6 = the club or the staff record when the readers' loop runs no call); r13-r31 are set
+  as the original holds them at each call (the callees save them). The text builders end with the name appenders, so r4-r10 are theirs.
+- 0x102e15b0 reads the club row's +0x23b and +0x221 for a club that is null (word -1) in the sentences of the non-human branch: the original reads the
+  addresses 0x23b and 0x221, which the checker's cases fault on (both sides alike) unless `--null-page` maps low memory; both modes agree. Whether the game
+  can post a staff retirement text with no club in that branch is not established.
