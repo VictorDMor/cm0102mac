@@ -1,7 +1,9 @@
 #include "native_drawing.hpp"
 #include "platform.hpp"
 #include "regions.hpp"
+#include <Accelerate/Accelerate.h>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <map>
 #include <tuple>
@@ -49,6 +51,13 @@ void erase_region(NativeDrawing& scene, DrawingRect rect) {
     for (auto& shape : scene.shapes) subtract(shape.clips, rect);
     std::erase_if(scene.shapes, [](const auto& shape) { return shape.clips.empty(); });
 }
+void expand_rgb555(const std::uint8_t* source, std::uint8_t* destination) {
+    const auto pixel = read_be<2>(source);
+    for (unsigned c = 0; c < 3; ++c) {
+        const auto channel = (pixel >> (10 - c * 5)) & 31;
+        destination[c + 1] = (channel << 3) | (channel >> 2);
+    }
+}
 std::uint16_t shade(std::uint16_t pixel, unsigned percent, bool gray) {
     unsigned channels[3]{unsigned((pixel >> 10) & 31), unsigned((pixel >> 5) & 31), unsigned(pixel & 31)};
     if (gray) channels[0] = channels[1] = channels[2] = (channels[0] + channels[1] + channels[2]) / 3;
@@ -57,6 +66,22 @@ std::uint16_t shade(std::uint16_t pixel, unsigned percent, bool gray) {
 }
 void shade_scene(NativeDrawing& scene, unsigned percent, bool gray = false) {
     for (auto& shape : scene.shapes) shape.color = shade(shape.color, percent, gray);
+    if (!gray && scene.background.size() >= 4096 * 4) {
+        static constexpr auto identity = [] {
+            std::array<std::uint8_t, 256> values{};
+            for (unsigned i = 0; i < values.size(); ++i) values[i] = i;
+            return values;
+        }();
+        std::array<std::uint8_t, 256> intensity;
+        for (unsigned i = 0; i < intensity.size(); ++i) {
+            const auto level = std::min(31u, (i >> 3) * percent / 100);
+            intensity[i] = (level << 3) | (level >> 2);
+        }
+        vImage_Buffer pixels{scene.background.data(), std::size_t(scene.height), std::size_t(scene.width),
+                             std::size_t(scene.width) * 4};
+        if (vImageTableLookUp_ARGB8888(&pixels, &pixels, identity.data(), intensity.data(), intensity.data(),
+                                      intensity.data(), kvImageNoFlags) == kvImageNoError) return;
+    }
     for (std::size_t i = 0; i < scene.background.size(); i += 4) {
         auto* p = scene.background.data() + i;
         const auto color = shade(((p[1] >> 3) << 10) | ((p[2] >> 3) << 5) | (p[3] >> 3), percent, gray);
@@ -122,11 +147,26 @@ struct NativeDrawingObserver::Impl {
         unsigned row_bytes, depth;
         NativeDrawing scene;
         std::vector<std::uint8_t> raw, dirty;
-        bool changed = false;
+        int first_dirty_row, end_dirty_row;
         void flush() {
-            if (!changed) return;
+            if (first_dirty_row >= end_dirty_row) return;
+            const int first = first_dirty_row, end = end_dirty_row;
+            first_dirty_row = scene.height;
+            end_dirty_row = 0;
+            const auto start_pixel = std::size_t(first) * scene.width;
+            const auto begin = dirty.begin() + start_pixel, limit = dirty.begin() + std::size_t(end) * scene.width;
+            if (depth == 16 && limit - begin >= 4096 && std::all_of(begin, limit, [](auto v) { return v != 0; })) {
+                for (int y = first; y < end; ++y) {
+                    const auto* in = raw.data() + std::size_t(y) * row_bytes;
+                    auto* out = scene.background.data() + std::size_t(y) * scene.width * 4;
+                    for (int x = 0; x < scene.width; ++x) expand_rgb555(in + x * 2, out + x * 4);
+                }
+                std::fill(begin, limit, 0);
+                erase_region(scene, {0, first, scene.width, end - first});
+                return;
+            }
             std::vector<DrawingRect> rows;
-            for (int y = 0; y < scene.height; ++y) {
+            for (int y = first; y < end; ++y) {
                 int start = -1;
                 for (int x = 0; x <= scene.width; ++x) {
                     const auto at = std::size_t(y) * scene.width + x;
@@ -136,13 +176,7 @@ struct NativeDrawingObserver::Impl {
                         const auto* p = raw.data() + std::size_t(y) * row_bytes + x * (depth / 8);
                         auto* out = scene.background.data() + at * 4;
                         if (depth == 32) std::copy_n(p, 4, out);
-                        else {
-                            const auto pixel = read_be<2>(p);
-                            for (unsigned c = 0; c < 3; ++c) {
-                                const auto v = (pixel >> (10 - c * 5)) & 31;
-                                out[c + 1] = (v << 3) | (v >> 2);
-                            }
-                        }
+                        else expand_rgb555(p, out);
                     } else if (start >= 0) {
                         const DrawingRect row{start, y, x - start, 1};
                         if (!rows.empty() && rows.back().x == row.x && rows.back().width == row.width &&
@@ -153,7 +187,6 @@ struct NativeDrawingObserver::Impl {
                 }
             }
             for (auto r : rows) erase_region(scene, r);
-            changed = false;
         }
         void append(NativeShape shape) {
             if (shape.clips.empty()) {
@@ -232,7 +265,7 @@ void NativeDrawingObserver::register_surface(State& s, std::uint32_t address, in
     if (!address || width <= 0 || height <= 0 || (depth != 16 && depth != 32) ||
         row_bytes < std::uint64_t(width) * (depth / 8)) return;
     Impl::Surface surface{address, row_bytes, depth, {width, height, std::vector<std::uint8_t>(std::size_t(width) * height * 4), {}},
-        s.memory.copy_out(address, std::size_t(row_bytes) * height), std::vector<std::uint8_t>(std::size_t(width) * height, 1), true};
+        s.memory.copy_out(address, std::size_t(row_bytes) * height), std::vector<std::uint8_t>(std::size_t(width) * height, 1), 0, height};
     surface.flush();
     impl_->surfaces.insert_or_assign(address, std::move(surface));
     impl_->low = std::min(impl_->low, address);
@@ -261,7 +294,8 @@ void NativeDrawingObserver::written(std::uint32_t address, const std::uint8_t* b
             std::fill(surface.dirty.begin() + row * surface.scene.width + x1,
                       surface.dirty.begin() + row * surface.scene.width + x2, 1);
         }
-        surface.changed = true;
+        surface.first_dirty_row = std::min(surface.first_dirty_row, int(offset / surface.row_bytes));
+        surface.end_dirty_row = std::max(surface.end_dirty_row, int((offset + length - 1) / surface.row_bytes + 1));
     }
 }
 void NativeDrawingObserver::cleared(std::uint32_t address, std::uint64_t size) { written(address, nullptr, size); }

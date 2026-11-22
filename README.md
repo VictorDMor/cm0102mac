@@ -197,8 +197,8 @@ been accepted as inputs to this pipeline.
 ## Developer build
 
 The current workflow targets **Apple Silicon and macOS 13 or later**. It requires
-Apple Command Line Tools with C++23 support, CMake 3.28+, Python 3, and Ghidra with
-a compatible JDK. Ghidra 12.0 with its native ARM64 decompiler was used for the
+Apple Command Line Tools with C++23 support, CMake 3.28+, Zstandard with its
+static library (`brew install zstd`), Python 3, and Ghidra with a compatible JDK. Ghidra 12.0 with its native ARM64 decompiler was used for the
 recorded builds. Swift 6 is needed only for the optional asset inspector.
 
 With your original Mac media mounted, analyze it and build locally:

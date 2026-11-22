@@ -15,6 +15,15 @@ and retain their source, original references, validation logs and build recipes.
 Do not classify archived baseline/reference programs as disposable solely by
 their size or executable format.
 
+## Replay capture files
+
+The native capture writer stores each new `.snapshot` as a level-1 Zstandard
+frame with a checksum. The payload is the original snapshot format. Match and
+world replay readers detect the format from the file header and also accept
+existing uncompressed captures. To inspect the original bytes of a compressed
+capture, use `zstd -dc initial.snapshot`. The game's career saves use their own
+format.
+
 ## Cycle storage control on 2026-10-19
 
 The user reaffirmed removal of old artifacts that can be recreated and storage

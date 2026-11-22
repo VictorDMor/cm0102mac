@@ -44,6 +44,59 @@ void setup(State& s, const std::filesystem::path& program) {
     s.wr<4>(12, 3); s.wr<4>(16, 4); s.wr<4>(20, 1); s.wr<4>(24, 0x7fff); s.wr<4>(28, text); s.wr<4>(32, UINT32_MAX);
     s.pc = 0x1076ca50; s.budget = 1000000;
 }
+void rgb555_redraw_checks(const std::filesystem::path& program) {
+    auto state = std::make_unique<State>();
+    setup(*state, program);
+    auto& s = *state;
+    constexpr std::uint32_t base = 0x36000000, overlay = 0x36100000;
+    constexpr unsigned width = 257, height = 256, stride = width * 2 + 6;
+    std::vector<std::uint8_t> raw(stride * height, 0xa5), expected(width * height * 4);
+    s.memory.map(base, raw.size());
+    s.memory.map(overlay, expected.size());
+    for (unsigned i = 0; i < width * height; ++i) {
+        const auto word = std::uint16_t(i);
+        const auto at = i / width * stride + i % width * 2;
+        raw[at] = word >> 8;
+        raw[at + 1] = std::uint8_t(word);
+        expected[i * 4] = std::uint8_t(i); // The unused byte may come from a 32-bit blit.
+        for (unsigned c = 0; c < 3; ++c) {
+            const auto level = (word >> (10 - c * 5)) & 31;
+            expected[i * 4 + 1 + c] = level * 8 + level / 4;
+        }
+    }
+    s.memory.copy_in(overlay, expected);
+    NativeDrawingObserver drawing;
+    drawing.register_surface(s, base, width, height, stride, 16);
+    drawing.register_surface(s, overlay, width, height, width * 4, 32);
+    drawing.copy_surface(s, overlay, base, {0, 0, width, height}, 0, 0);
+    // Force a new color in every pixel, independently of the overlaid image.
+    s.memory.clear(base, raw.size());
+    drawing.snapshot(s, base);
+    s.memory.copy_in(base, raw);
+    require(drawing.snapshot(s, base)->background == expected, "Dense RGB555 redraw, padding or skipped byte");
+
+    s.memory.write<2>(base + 7 * stride + 2, 0x7c00);
+    s.memory.write<2>(base + 11 * stride + 6, 0x03e0);
+    for (const auto [index, channel] : {std::pair{7 * width + 1, 1u}, {11 * width + 3, 2u}})
+        for (unsigned c = 1; c <= 3; ++c) expected[index * 4 + c] = c == channel ? 255 : 0;
+    require(drawing.snapshot(s, base)->background == expected, "Sparse RGB555 redraw changed untouched pixels");
+
+    // Exercise the original modal dim operation on a subrectangle of the image.
+    s.memory.write<4>(s.r<4>(8) - 0x3564, base);
+    s.wr<4>(12, 3); s.wr<4>(16, 5);
+    s.wr<4>(20, width - 2); s.wr<4>(24, height - 2);
+    drawing.boundary(s, 0x10769980);
+    drawing.boundary(s, 0x10769b48);
+    for (unsigned y = 5; y <= height - 2; ++y) for (unsigned x = 3; x <= width - 2; ++x) {
+        for (unsigned c = 1; c <= 3; ++c) {
+            auto& value = expected[(y * width + x) * 4 + c];
+            const auto level = (value / 8) * 60 / 100;
+            value = level * 8 + level / 4;
+        }
+    }
+    require(drawing.snapshot(s, base)->background == expected, "vImage dim, skipped byte or clip extent");
+    s.memory.observer = nullptr;
+}
 void euro_checks(const std::filesystem::path& program) {
     auto state = std::make_unique<State>();
     setup(*state, program);
@@ -104,6 +157,7 @@ int main(int argc, char** argv) {
     try {
         require(argc == 2, "Usage: cm-native-drawing-checks ORIGINAL_PROGRAM");
         write_range_checks();
+        rgb555_redraw_checks(argv[1]);
         euro_checks(argv[1]);
         auto original = std::make_unique<State>(); auto observed = std::make_unique<State>();
         setup(*original, argv[1]); setup(*observed, argv[1]);

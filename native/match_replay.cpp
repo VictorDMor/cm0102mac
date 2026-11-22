@@ -1,8 +1,10 @@
 #include "match_replay.hpp"
+#include "snapshot_stream.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
-#include <fstream>
+#include <istream>
+#include <ostream>
 #include <limits>
 #include <stdexcept>
 
@@ -43,14 +45,12 @@ void receive_bytes(std::istream& in, Memory& memory, std::uint32_t start,
         offset += length;
     }
 }
-void save(const State& s, const std::filesystem::path& path) {
+void write_payload(const State& s, std::ostream& out) {
     const auto ranges = s.memory.mapped_ranges();
     if (ranges.size() > std::numeric_limits<std::uint32_t>::max() ||
         s.allocated.size() > std::numeric_limits<std::uint32_t>::max() ||
         s.available.size() > std::numeric_limits<std::uint32_t>::max())
         throw std::runtime_error("Match snapshot table is too large");
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) throw std::runtime_error("Cannot create private match snapshot");
     out.write(magic.data(), magic.size());
     put(out, s.pc);
     put(out, s.executed);
@@ -82,18 +82,19 @@ const char* snapshot_path() {
 }
 }
 bool match_snapshot_requested() { return !captured && snapshot_path(); }
-void save_runtime_snapshot(const State& state, const std::filesystem::path& path) { save(state, path); }
+void save_runtime_snapshot(const State& state, const std::filesystem::path& path) {
+    write_snapshot_file(path, [&](std::ostream& out) { write_payload(state, out); });
+}
 void capture_match_snapshot(const State& state) {
     const char* path = snapshot_path();
     if (!path || captured) return;
     if (!std::filesystem::path(path).is_absolute())
         throw std::runtime_error("Match snapshot requires an absolute private path");
+    save_runtime_snapshot(state, path);
     captured = true;
-    save(state, path);
 }
-void load_match_snapshot(State& s, const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) throw std::runtime_error("Cannot open private match snapshot");
+namespace {
+void read_payload(State& s, std::istream& in) {
     if (take<std::array<char, 8>>(in) != magic)
         throw std::runtime_error("Unrecognized private match snapshot");
     s.pc = take<std::uint32_t>(in);
@@ -126,6 +127,10 @@ void load_match_snapshot(State& s, const std::filesystem::path& path) {
     }
     if (in.peek() != std::char_traits<char>::eof())
         throw std::runtime_error("Private match snapshot has trailing data");
+}
+}
+void load_match_snapshot(State& s, const std::filesystem::path& path) {
+    read_snapshot_file(path, [&](std::istream& in) { read_payload(s, in); });
 }
 std::uint64_t match_snapshot_memory_hash(const State& s) {
     std::uint64_t hash = UINT64_C(14695981039346656037);

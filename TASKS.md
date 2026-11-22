@@ -3,6 +3,19 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Background fixtures in the seven-day Continue
+
+- [x] Profiled side tendencies on the January 11–18 replay. Of 73,840 calls, 1,118 sampled calls spent 97.6% inside the roster loop. Timed floating-point/rating publication and reload around external calls extrapolate to roughly 9 ms per week after subtracting the measured clock overhead. This estimate excludes other register/stack operations interleaved with the calculations.
+- [x] Two separately seeded samples (551 and 584 calls) attributed 67.7% and 68.0% of total tendency time to the first three per-player rating sections, including their helpers, random draws, register traffic and arithmetic. The first section includes player-condition and role preparation.
+- [x] Tested using C++ values for conversion results immediately available after their PowerPC stack writes (about 11 million reloads per week, estimated from the sample). The candidate preserved the original writes and observer path. Across eight alternating full-week pairs it won 4/8 on elapsed time and CPU (median paired improvements 0.41% and 0.007%). It won 3/6 within tendencies. Discarded. Strict replays matched final state and ordered RNG; corrupting a forwarded result caused a detected RNG divergence. The focused conversion/observer checks and 10,000 arithmetic sequences passed. Experimental source and measurements: `.local/tendency-week-intermediates/`.
+
+- [x] Measured the current seven-day replay on the game worker. Immediate background matches dispatched 209,482 player actions; scheduled background matches dispatched 53,688. Together their action calls took 1.06 s inclusive in the diagnostic run. The simulated-statistics caller separately sent 355 matches through the minute-by-minute engine. Within minute-by-minute simulation across all callers, side tendencies accounted for 821 ms over 73,840 calls; the next largest timed child took 73 ms.
+- [x] Tried the existing in-place owner dispatch at the action call site in an isolated build. Both strict replays matched ordered RNG writes and the final state. Over eight alternating pairs the candidate won three on elapsed time and one on CPU, with median paired regressions of 0.84% elapsed and 1.02% CPU. Discarded the candidate. Raw results and the exact experimental sources are in `.local/background-week-nov18/`.
+
+## Zstandard replay snapshots
+
+- [x] Verified streaming Zstandard level 1 and legacy snapshots, corruption detection and interrupted writes. The seven-day replay reached the same final state with both formats. Its snapshots shrank from 122,346,140 to 20,811,529 bytes. Across 11 runs per format, median load time for both snapshots was 62 ms raw and 103 ms compressed.
+
 ## Next module: waits on Victor (inventory of 2026-11-22)
 
 `.local/inventory/2026-11-22/report.md`: 3,121 of 7,742 routines are C++ (892,628 of 1,951,899 instructions). First by generated self samples is GAME.CPP (27 routines, 38,933 instructions, day 195 / week 148 samples, 7 routines at layer 0, attribution inferred: the inventory is not closed). It is over 20,000 instructions, so it needs his go-ahead with the cost (PLAYER_REGEN.CPP cost about 400 tokens per instruction). Smaller ones next by weight: MENUBAR.CPP 9,939, VIRTUAL_STAFF.CPP 2,378, TRAINING_MANAGER.CPP 6,282, KEY_NATION.CPP 3,276, WEATHER.CPP 3,246.
@@ -73,6 +86,12 @@ The base league class: 67 entries (0x1049e4f0..0x104aac14, 12,587 instructions),
 The base competition class, chosen ahead of the day-weight order because the competition editor needs its field readers in C++. 53 entries (0x1044fed0..0x10453394, 3,269 instructions): all in production (2026-11-18). Next module: LEAGUE.CPP.
 
 - [ ] `tools/stack_contract.py module COMP.CPP` prints "no reader" because it uses the 2026-11-07 inventory; the reader under 0x10453190 came from the table directly.
+
+## vImage presentation pilot (2026-11-18)
+
+- [x] Compared all 32,768 colors with both values of the unused bit. The vImage RGB555 converter needs a rounding correction and lost to bulk C++ in the same redraw. Use C++ for dense RGB555 rows and limit sparse redraws to the affected rows. Use Accelerate's in-place vImage table lookup for large fades and modal dimming.
+- [x] Built arm64 and passed native drawing, presentation frame, platform and live match checks. Twelve alternating pairs rendering a captured 1280×900 live match into Quartz gave these median milliseconds (old → release): full repaint 1.596 → 1.276, 21×21 score change 0.763 → 0.198, fade 2.704 → 1.483, modal dim 2.068 → 1.406. Each improved in every pair. These timings cover offscreen drawing, not gameplay or screen refresh.
+- [x] Committed and installed on 2026-11-22 by the main session, at Victor's request.
 
 ## Decisions for Victor: landing the uncommitted backlog (2026-11-17)
 
