@@ -16,9 +16,15 @@ the scrollback. Remove ticked items once their commit is pushed.
 
 - [x] Verified streaming Zstandard level 1 and legacy snapshots, corruption detection and interrupted writes. The seven-day replay reached the same final state with both formats. Its snapshots shrank from 122,346,140 to 20,811,529 bytes. Across 11 runs per format, median load time for both snapshots was 62 ms raw and 103 ms compressed.
 
-## Next module: waits on Victor (inventory of 2026-11-22)
+## Now: the text drawing floor (Victor's pick, 2026-11-22)
 
-`.local/inventory/2026-11-22/report.md`: 3,121 of 7,742 routines are C++ (892,628 of 1,951,899 instructions). First by generated self samples is GAME.CPP (27 routines, 38,933 instructions, day 195 / week 148 samples, 7 routines at layer 0, attribution inferred: the inventory is not closed). It is over 20,000 instructions, so it needs his go-ahead with the cost (PLAYER_REGEN.CPP cost about 400 tokens per instruction). Smaller ones next by weight: MENUBAR.CPP 9,939, VIRTUAL_STAFF.CPP 2,378, TRAINING_MANAGER.CPP 6,282, KEY_NATION.CPP 3,276, WEATHER.CPP 3,246.
+Every finished module still reaches the same generated code through the game's assertion box (0x10739890 -> 0x10768810 / 0x10769b60): the font engine and the drawing layer. Rewriting it is what lets a module run with no PowerPC under it. `.local/inventory/2026-11-22/floor.json` lists the closure from DATE.CPP followed through C++ owners (234 routines, 42,798 instructions; the inventory report counts 154 / 22,259 without them). The font engine is rewritten, not replaced by Core Text (decided 2026-11-06).
+
+- [ ] Font engine (T2K.C, T2KSC.C, T2KTT.C, T2KEXTRA.C, T2KSTRM.C, TRUETYPE.C, AUTOGRID.C, GLYPH.C, GHINTS.C, HSTRAT97.C, TSIMEM.C: about 106 routines, 15,700 instructions in the closure): close the inventory, write the checker (glyph bitmaps and metrics, original against C++), pilot, then the blocks.
+- [ ] graph_carbon.cpp (33 routines, 3,883) and FONT.CPP (19 routines, 2,217), with the assertion path's own routines.
+- [ ] LANGLIB.CPP's five generated routines (16,460 instructions: look for tables compiled as code, as in COMP_UTIL.CPP).
+- [ ] The 44 unattributed routines (2,750) and the single routines of other modules in the closure: find why the closure reaches them.
+- Other candidates by weight, from `.local/inventory/2026-11-22/report.md`: GAME.CPP (27 routines, 38,933 instructions, 195 of the day's 335 generated samples; needs Victor's go-ahead for the cost), MENUBAR.CPP 9,939, VIRTUAL_STAFF.CPP 2,378, TRAINING_MANAGER.CPP 6,282, KEY_NATION.CPP 3,276, WEATHER.CPP 3,246.
 
 ## PLAYER_REGEN.CPP: delivered 2026-11-22 (47 of 47 in production)
 
