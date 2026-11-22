@@ -3,6 +3,10 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
+## Next module: waits on Victor (inventory of 2026-11-22)
+
+`.local/inventory/2026-11-22/report.md`: 3,121 of 7,742 routines are C++ (892,628 of 1,951,899 instructions). First by generated self samples is GAME.CPP (27 routines, 38,933 instructions, day 195 / week 148 samples, 7 routines at layer 0, attribution inferred: the inventory is not closed). It is over 20,000 instructions, so it needs his go-ahead with the cost (PLAYER_REGEN.CPP cost about 400 tokens per instruction). Smaller ones next by weight: MENUBAR.CPP 9,939, VIRTUAL_STAFF.CPP 2,378, TRAINING_MANAGER.CPP 6,282, KEY_NATION.CPP 3,276, WEATHER.CPP 3,246.
+
 ## PLAYER_REGEN.CPP: delivered 2026-11-22 (47 of 47 in production)
 
 Retirements and newgen players and staff: 47 entries, 0x102d8230..0x102eb6f8, 19,660 instructions, all handwritten C++ in production (`tools/player_regen_audit.py`; `cm-player-regen-checks`; the record is in the commits and `docs/cpp-rewrites.md`).
