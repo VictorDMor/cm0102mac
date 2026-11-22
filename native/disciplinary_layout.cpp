@@ -3,7 +3,9 @@
 namespace cm::aot {
 // Disciplinary action on a player (builder 0x1010ff90, opener 0x1010fef0, opened from the player's action menu) and the
 // press question (builder 0x1067bea0, opener 0x1067b920, opened from a news item: defend, criticize or say nothing, with a
-// Cancel/Ok footer), which has the same shape: two
+// Cancel/Ok footer), which has the same shape, and the Manager menu's meetings with the board (builder 0x105d6ac0, opener 0x105d6a20(club): the
+// demands to choose) and with the league (0x106ee9a0, opener 0x106ee900(club): the issues to discuss), an intro line over seven columns and the options
+// in two, with a Cancel/Confirm footer: two
 // grids over the same rectangle 110,140-780,545, one of seven columns (the intro line with the player's name as a link,
 // the action row "label - level +" and the reason heading) and one of two columns (the five reasons in the wide
 // column), and a Cancel/Confirm footer of two columns at 100,555-790,590. The original builder keeps every text,

@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <unistd.h>
 
 using namespace cm::aot;
@@ -1129,6 +1130,9 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_text_entry_checks.hpp"
 #include "adaptive_disciplinary_checks.hpp"
 #include "adaptive_head_to_head_checks.hpp"
+#include "adaptive_awards_checks.hpp"
+#include "adaptive_tabbed_checks.hpp"
+#include "adaptive_centered_dialog_checks.hpp"
 #include "adaptive_news_checks.hpp"
 #include "adaptive_finances_checks.hpp"
 #include "adaptive_club_info_checks.hpp"
@@ -1321,6 +1325,10 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--friendly-countries") friendly_countries_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--friendly-dates") friendly_dates_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--text-entry") text_entry_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--centered-dialog") centered_dialog_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--tabbed-pages") tabbed_pages_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--invited-clubs") invited_clubs_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--awards") awards_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--disciplinary") disciplinary_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--head-to-head") head_to_head_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--credits") credits_builder(argv[1]);

@@ -344,6 +344,9 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::disciplinary: layout_disciplinary(s, display, layout.canvas); break;
     case ScreenTemplate::role_choice: layout_role_choice(s, display, layout.canvas); break;
     case ScreenTemplate::head_to_head: layout_head_to_head(s, display, layout.canvas); break;
+    case ScreenTemplate::paged_table: layout_paged_table(s, display, layout.canvas); break;
+    case ScreenTemplate::tabbed_page: layout_tabbed_page(s, display, layout.canvas); break;
+    case ScreenTemplate::centered_dialog: layout_centered_dialog(s, display, layout.canvas); break;
     case ScreenTemplate::competition:
     case ScreenTemplate::competition_history: {
         guest::Cpu c(s);

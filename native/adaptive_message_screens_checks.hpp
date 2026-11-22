@@ -14,16 +14,16 @@
 void message_screens_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
-    constexpr unsigned scenarios = 37;
+    constexpr unsigned scenarios = 43;
     const char* names[scenarios]{"offer decision", "completion", "listing", "listing (loan)", "restriction", "feedback", "staff release", "apply for job", "rescind contract", "retire",
         "remove exchange player", "shortlist add", "shortlist remove", "compare first", "compare second", "withdraw bid", "release", "release (no contract)", "trial 2 weeks", "trial 1 week", "trial 4 weeks", "loan recall",
         "scout player", "two players needed", "Intertoto place", "job offer", "transfer request", "invalid squad (national team)", "invalid squad (under 21)", "friendly tournament invitation",
-        "disk full", "no memory", "FA Cup round", "take control of a club", "reassume control", "appeal against punishment", "ultimatum to the board"};
+        "disk full", "no memory", "FA Cup round", "take control of a club", "reassume control", "appeal against punishment", "ultimatum to the board", "national squad: remove from the main squad", "national squad: remove from the reserve squad", "national squad: first-team limit", "national squad: Under-21 limit", "special holiday for a player", "counsellor for a player"};
     const unsigned builders[scenarios]{0x10421fb0, 0x10423270, 0x1042a810, 0x1042a810, 0x10420b50, 0x10421070, 0x1009e8f0, 0x101c8730, 0x101c8b60, 0x101c98c0,
         0x10422b50, 0x10424f80, 0x10424f80, 0x104249e0, 0x104249e0, 0x104265c0, 0x1042ae90, 0x1042ae90, 0x1042b580, 0x1042b580, 0x1042b580, 0x1042f7c0, 0x103ac810, 0x103acc50, 0x10075410, 0x101c94e0, 0x10093bd0, 0x102bd090, 0x102bd920, 0x10049550,
-        0x10340db0, 0x10341120, 0x104c65a0, 0x1033bdc0, 0x1033c970, 0x106fcbb0, 0x10702ba0};
+        0x10340db0, 0x10341120, 0x104c65a0, 0x1033bdc0, 0x1033c970, 0x106fcbb0, 0x10702ba0, 0x102bc400, 0x102bc400, 0x102bc400, 0x102bc400, 0x10702580, 0x10702580};
     // The control that answers No or Back: dismisses the screen without touching a record (0: none exercised).
-    const unsigned dismissals[scenarios]{1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 2, 11, 1, 1, 1, 3, 3, 3, 1, 54, 56, 1, 1, 34, 1, 1, 1, 51, 52, 2, 32, 37, 1, 2};
+    const unsigned dismissals[scenarios]{1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 2, 11, 1, 1, 1, 3, 3, 3, 1, 54, 56, 1, 1, 34, 1, 1, 1, 51, 52, 2, 32, 37, 1, 2, 1, 1, 1, 1, 2, 2};
     for (unsigned scenario = 0; scenario < scenarios; ++scenario) {
         std::vector<std::uint8_t> baseline;
         for (bool adaptive : {false, true}) {
@@ -101,6 +101,12 @@ void message_screens_builder(const char* path) {
                     const auto news = t.news_item(6000, {0, 0, 0, 0});
                     t.invoke(0x10702a40, {t.instance, news}); break;
                 }
+                case 37: case 38: case 39: case 40: {   // the national team squad: the manager has the international side (instance +0x20); a player of it, the squad (0 main, 1 reserve, 2 Under-21) and whether it is the limit notice
+                    c.put32(t.instance + 0x20, t.managed);
+                    const unsigned squad[4]{0, 1, 0, 2}, limit[4]{0, 0, 1, 1};
+                    t.invoke(0x102bc340, {t.person, squad[scenario - 37], limit[scenario - 37]}); break;
+                }
+                case 41: case 42: t.invoke(0x10702470, {t.person, scenario == 41 ? 1u : 0u}); break;   // the player's action menu: a special holiday (1) or a spiritual counsellor (0) for him
                 default: t.invoke(0x1042f670, {t.person}); break;
                 }
                 require(t.builder() == builders[scenario], "Message screen did not open through its original opener");

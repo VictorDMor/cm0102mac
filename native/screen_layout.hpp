@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection, friendly_countries, friendly_dates, credits, web_sites, text_entry, disciplinary, role_choice, head_to_head };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection, friendly_countries, friendly_dates, credits, web_sites, text_entry, disciplinary, role_choice, head_to_head, paged_table, tabbed_page, centered_dialog };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -62,6 +62,10 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // The "invalid squad" notices of the national teams (opened from the news): a panel of wrapped lines at
     // 110,145-780,535 and one Ok button at 110,555-780,590.
     case 0x102bd090: case 0x102bd920: return ScreenTemplate::message_screen;
+    // The national team squad screen (a player added to, or removed from, the international squad of the manager's
+    // nation; the person's action menu opens it): a confirmation (No/Yes) or the "only N players may be selected" notice (Ok),
+    // both in the manager's 110,145-780,535 panel.
+    case 0x102bc400: return ScreenTemplate::message_screen;
     // The invitation to a friendly tournament (opened from the news): a question and three buttons, Back first.
     case 0x10049550: return ScreenTemplate::message_screen;
     // The game's "disk full" and "not enough memory" notices (two lines and one Ok), the question to take control of
@@ -100,10 +104,22 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // Disciplinary action on a player: two overlapping grids (the action row and the reasons) and a Cancel/Confirm footer.
     // The press question opened from the news has the same two grids with a Cancel/Ok footer.
     case 0x1010ff90: case 0x1067bea0: return ScreenTemplate::disciplinary;
+    // The Manager menu's meetings with the board (demands) and with the league (issues to discuss) have the same two grids: an intro
+    // line and the options, and a Cancel/Confirm footer.
+    case 0x105d6ac0: case 0x106ee9a0: return ScreenTemplate::disciplinary;
+    // Granting a player a special holiday or sending him to a spiritual counsellor (a confirmation opened from the player's action menu).
+    case 0x10702580: return ScreenTemplate::message_screen;
     // Choosing a player's role in the club (his squad status), reached from the contract negotiation and the news.
     case 0x100952b0: return ScreenTemplate::role_choice;
     // The club screen's "Last meetings" with another club: a summary table, the meetings and the Back/Next footer.
     case 0x10041550: return ScreenTemplate::head_to_head;
+    // The awards of a competition (the list of an award over the seasons and the nominees of an award) and the friendly tour's
+    // invited clubs: one table under the subtitle and the Back/Next footer.
+    case 0x10000180: case 0x100026d0: case 0x10048450: return ScreenTemplate::paged_table;
+    // Pages with a tab bar: the transfer rules article of the news, the Historial, the game database and a club's Historial.
+    // The tournament setup of the friendly tour: a fixed dialog in the middle of the window.
+    case 0x10046de0: return ScreenTemplate::centered_dialog;
+    case 0x106ff680: case 0x10145290: case 0x10106840: case 0x1003b7f0: return ScreenTemplate::tabbed_page;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }

@@ -2402,6 +2402,41 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   Unexercised: the confirming buttons, a real news item for the four news screens, the history cells of the head-to-head table,
   other languages. Still classic: 0x10048e00 / 0x1004a4a0 (their openers look the friendly up in a table that is empty in the
   capture), awards, competition 0x10073d00, national team 0x102bc400, the transfer-rules article 0x106ff680.
+- Eighth round of New Screens: twelve more builders, three new layout files and one new test per family. The national team squad
+  screen 0x102bc400 (opener 0x102bc340(person, squad, limit-notice flag) from the person action handler at 0x103a8da4 / 0x103a8e4c;
+  squad 0 main, 1 reserve, 2 Under-21; it needs the manager's international side in the instance at +0x20, which the check sets on the
+  disposable copy, else the builder raises its own error dialog) is a message screen: a confirmation ("remove X from the squad?",
+  No 1 / Yes 2) or the "only N players may be selected" notice (Ok 1), so it joined `message_screen` (`--message-screens` scenarios
+  37-40), as did the confirmation 0x10702580 (opener 0x10702470(person, flag) from the person action handler at 0x103a7b6c / 0x103a7bd8 /
+  0x103a9aac: flag 1 grants the player a special two-week holiday, flag 0 sends him to a spiritual counsellor; No 2 / Yes 3; scenarios 41-42).
+  The Manager menu's meetings with the board 0x105d6ac0 (opener 0x105d6a20(club), from the handler at 0x101c92a8) and with the league
+  0x106ee9a0 (0x106ee900(club), 0x101c9304) have the disciplinary dialog's two grids (an intro line over seven columns, the options in two)
+  and a Cancel/Confirm footer: they joined `ScreenTemplate::disciplinary` (`--disciplinary` states 6-7). `paged_table_layout.cpp` hands a table at the classic content rectangle to the shared table recipe: the awards of a competition, the award's list over the seasons 0x10000180
+  (opener 0x10000070(subject), where the subject is the `+8` word of an entry of the awards table `*(toc -0x7bb4)`, 29 categories; with
+  the Ver menu above the table or without it; empty in the January 2002 capture, which shows the one centered message) and the nominees
+  of an award 0x100026d0 (opener 0x100025b0(entry): entry `+0x24` is {record pointer, short count} and each 16-byte record names a
+  person index and a club index; the check writes 0, 3, 16 and 30 records there), and the friendly tour's invited clubs 0x10048450
+  (opener 0x10048330(link to a club, 0) from the club handler at 0x1003a1d4 and the dispatcher at 0x102a880c: four columns, the managed
+  club's own tournament at 170 with a disabled "invite another" button, another club's at 145; the capture invites nobody, so the cells are empty). `tabbed_page_layout.cpp` is the shape of a page
+  with a tab bar (two grids over 100,T-790,T+35 plus the body at 110,<top>-780,545, optionally a second bar under the body and a
+  filter pair, page controls or a summary line above it): the transfer rules article of the news 0x106ff680 (opener
+  0x106ff550(instance, item ID), four tabs at 140, lines pre-wrapped at 115..775), the Historial 0x10145290 (opener 0x101451d0(tab 0-4))
+  and the game database 0x10106840 (opener 0x10106530(tab 0-3): nations, clubs and staff as a three-column list of 16 rows with a
+  filter pair, page controls and a summary line), and a club's Historial 0x1003b7f0 (opener 0x1003b3a0(club); tabs above, four under
+  the body). The page becomes one centered panel of at most 960: the tab bar spans it with equal tabs, the body is as tall as its rows
+  can use (28px each), the second bar sits under it, the filter pair and page controls keep their side, a summary line spans it and the
+  Back/Next footer is right-aligned. `centered_dialog_layout.cpp` moves a fixed dialog whole to the middle of the canvas (every grid,
+  standalone control and measured text area by half of the extra width and height, sizes unchanged): the friendly tour's tournament
+  setup 0x10046de0 (opener 0x10046c80(club); a frame at 170,137-719,461 with the option rows and Cancelar/Ok). Checks:
+  `--awards` (two lists, four nominee states), `--invited-clubs` (two states), `--tabbed-pages` (four article tabs, four Historial tabs, four database tabs, two clubs),
+  `--centered-dialog` (two clubs; the options' commands are compared, Cancel and Ok leave through the screens that opened the dialog,
+  which the fixture does not have), each at six canvases with mutants refused. Unexercised: populated invited clubs and a populated award list (nobody has won an
+  award in the capture; the layout reads the grid's column count and hands any table of up to eight columns to the recipe), the
+  Historial and club Historial bodies (a tab's sub-builder fills them from text files that the check platform does not have: the
+  bodies are one empty row), real news for the article, how a player reaches the tournament setup, other languages. Still classic:
+  the competition team comparison 0x10073d00, the club Historial's file-backed sibling 0x101434a0 (needs its text file), the
+  compare-players screen 0x1038e350, 0x100465c0 / 0x10048450 / 0x10048e00 / 0x1004a4a0 / 0x10054810 and the rest of the list in
+  `.local/rewrites/screens/NOTES.md`.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

@@ -99,20 +99,20 @@ inline void verify_disciplinary(TransferScene& t, GuiCanvas size, const Discipli
         if (placed[i - 1].row == placed[i].row) require(placed[i - 1].box.right <= placed[i].box.left, (name + ": cells of one row overlap").c_str());
         else require(placed[i - 1].box.bottom <= placed[i].box.top, (name + ": rows overlap").c_str());
     }
-    require(lines >= (kind == 1 ? 3u : kind == 2 ? 0u : 2u) && cells >= (kind == 1 ? 3u : kind == 2 ? 8u : 9u), (name + ": fixture found too few lines or cells to check").c_str());
+    require(lines >= (kind == 1 ? 3u : kind == 2 ? 0u : kind == 3 ? 1u : 2u) && cells >= (kind == 1 ? 3u : kind == 2 ? 8u : kind == 3 ? 2u : 9u), (name + ": fixture found too few lines or cells to check").c_str());
 }
 
 inline void disciplinary_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
-    constexpr unsigned scenarios = 6;
-    const char* names[scenarios]{"first level", "level 2, reason 3", "heaviest level, reason 2", "press question", "press question, answer", "role in the club"};
+    constexpr unsigned scenarios = 8;
+    const char* names[scenarios]{"first level", "level 2, reason 3", "heaviest level, reason 2", "press question", "press question, answer", "role in the club", "meeting with the board", "meeting with the league"};
     const unsigned levels[scenarios]{1, 2, 5}, reasons[scenarios]{0, 3, 2};
-    const unsigned builders[scenarios]{0x1010ff90, 0x1010ff90, 0x1010ff90, 0x1067bea0, 0x1067bea0, 0x100952b0};
+    const unsigned builders[scenarios]{0x1010ff90, 0x1010ff90, 0x1010ff90, 0x1067bea0, 0x1067bea0, 0x100952b0, 0x105d6ac0, 0x106ee9a0};
     // The answer exercised by each scenario: Cancel (4), the plus button (1) and a reason (3); the press question's Cancel (4252) and a reply (5253).
-    const unsigned answers[scenarios]{4, 1, 3, 4252, 5253, 1};
+    const unsigned answers[scenarios]{4, 1, 3, 4252, 5253, 1, 8, 4};
     // The row of the second reason (the mutant that climbs onto the one above it) and how many lines and cells the fixture must find.
-    const unsigned second_reason[scenarios]{7, 7, 7, 5, 5, 3};
+    const unsigned second_reason[scenarios]{7, 7, 7, 5, 5, 3, 3, 3};
     for (unsigned scenario = 0; scenario < scenarios; ++scenario) {
         std::vector<std::uint8_t> baseline;
         for (bool adaptive : {false, true}) {
@@ -122,7 +122,9 @@ inline void disciplinary_builder(const char* path) {
                 auto& c = t.c;
                 t.rows_may_move = true;
                 const bool press = builders[scenario] == 0x1067bea0, role = builders[scenario] == 0x100952b0;
-                if (role) t.invoke(0x10094ae0, {t.person, 0, 0, 1});
+                const bool meeting = builders[scenario] == 0x105d6ac0 || builders[scenario] == 0x106ee9a0;
+                if (meeting) t.invoke(builders[scenario] == 0x105d6ac0 ? 0x105d6a20 : 0x106ee900, {t.managed});   // the Manager menu's meetings: the club's record is the previous screen's first value
+                else if (role) t.invoke(0x10094ae0, {t.person, 0, 0, 1});
                 else if (press) t.invoke(0x1067b920, {t.instance, t.news_item(6000, {0, 0, 0})});
                 else {
                     t.invoke(0x1010fef0, {t.person});
@@ -148,7 +150,7 @@ inline void disciplinary_builder(const char* path) {
                     require(shape.wide >= 0 && shape.narrow >= 0 && shape.footer >= 0, "Original disciplinary panels absent");
                     old = t.layout(records, "Disciplinary");
                     if (!on || size.original()) { require(t.s.memory.copy_out(t.display, 0x129da8) == old, "Legacy disciplinary screen changed"); pick(); return; }
-                    verify_disciplinary(t, size, shape, old, "Disciplinary", press ? 1 : role ? 2 : 0);
+                    verify_disciplinary(t, size, shape, old, "Disciplinary", press ? 1 : role ? 2 : meeting ? 3 : 0);
                     pick();
                 };
                 const GuiCanvas canvas = adaptive ? GuiCanvas{1280, 900} : GuiCanvas{800, 600};
@@ -172,7 +174,7 @@ inline void disciplinary_builder(const char* path) {
                     sample(again);
                     require(again == boxes, "Disciplinary redraw lost the layout's control bounds");
                     // Mutants: each geometric promise, broken in the guest, must be refused by the checker.
-                    const auto verify = [&] { verify_disciplinary(t, canvas, shape, old, "Disciplinary", press ? 1 : role ? 2 : 0); };
+                    const auto verify = [&] { verify_disciplinary(t, canvas, shape, old, "Disciplinary", press ? 1 : role ? 2 : meeting ? 3 : 0); };
                     const auto saved = t.s.memory.copy_out(t.display, 0x129da8);
                     const auto restore = [&] { t.s.memory.copy_in(t.display, saved); };
                     const auto put_rect = [&](unsigned at, ScreenRect r) { c.put32(at, r.left); c.put32(at + 4, r.top); c.put32(at + 8, r.right); c.put32(at + 12, r.bottom); };
@@ -219,7 +221,7 @@ inline void disciplinary_builder(const char* path) {
                         require(done, "Disciplinary fixture found no reason to mutate");
                         require_rejected(verify, "reasons overlap"); restore();
                     }
-                    if (!press && !role) {   // a narrow column of the action row takes the extra width
+                    if (!press && !role && !meeting) {   // a narrow column of the action row takes the extra width
                         bool done = false;
                         for (unsigned k = 0; k < t.controls() && !done; ++k) {
                             const auto at = t.control(k);
