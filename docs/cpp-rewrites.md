@@ -2915,6 +2915,13 @@ Block files: `native/font_engine_*.cpp` (`util`: the fixed-point helpers; `strea
 - **Errors unwind by setjmp/longjmp**: every API entry runs `setjmp` (0x10773eb0) on the tsiMemObject's jump buffer at +0x10 and
   stores the code in its `errCode`; error sites call `longjmp` (0x10773f30) with a T2K error code (10009 = 0x2719 bad block, 0x2718
   allocation). Assertions are not errors: the game's reporter 0x107755c0 (text, file, line) returns and the engine goes on.
+- **t2ktt_head and truetype_tables** (`native/font_engine_t2ktt_head.cpp`, `font_engine_truetype_tables.cpp`; 27 routines): the input stream's constructors and delete,
+  the hint font (the TrueType interpreter's state: `new_hint_font`, `set_hint_size`, `load_glyph_program`, `delete_hint_font`; the last two sizes never run in the game),
+  the cmap lookups, the table readers (cmap, kern, hhea, head, maxp, loca), the glyph reader and the directory lookups. The three API entries that take an error pointer call the
+  generated setjmp from their C++ frame (r26-r31 and cr0 as the original holds them: the jump buffer keeps them and the checker compares it), catch the longjmp's
+  `GuestContextTransfer` themselves and free the object's blocks; the checker's `font_engine_run_rewrite` runs inside a `GuestDispatchScope` so the transfer has an owner.
+  The callers' reads of r9/r10 pass through chains `register_contract.py --after` does not follow: every entry is compared on r9/r10 and the routines whose original writes them
+  (unrolled loops, pass and flag counters) leave them as it does.
 - **Fixed-point helpers are exact transcriptions**: 16.16 multiply/divide from 16-bit halves of the magnitudes (INT_MIN keeps its sign
   through `neg`; `srawi` then mask is a logical shift; a divisor shifted in the divide loop shifts as signed). They are in
   `font_engine_util.cpp` with the registers they leave (callers' indirect calls can read r4-r8): `Leftovers`.
@@ -2927,3 +2934,26 @@ Block files: `native/font_engine_*.cpp` (`util`: the fixed-point helpers; `strea
   glyph's metrics and bitmap hash into guest memory, and the dirty pages (the engine's heap, the caches, the log) and the allocator
   tables are compared between a run with every hook declining and the production routing. Three font files ship (small.t2k and
   medium.t2k are byte-identical); the game requests cmd = 2 only, so AUTOGRID.C, GHINTS.C and HSTRAT97.C do not run in it.
+- **TSIMEM.C** (`font_engine_tsimem.cpp`, 8 routines): the allocator over the game's malloc. Each routine builds the original's frame and sets the registers
+  the original holds at every call out, because the callee's prologue saves them: 0x10767bb0 (`tsi_DeAllocMem`) leaves its saved r28-r31, link register and back
+  chain where the game's printf reads them. Error sites are the original's own steps (`raise`: r3 = mem + 0x10, r4 = code, the stamp 0x5500aaff at mem + 0x174, then `c.call`
+  of the generated longjmp at the routine's sp); the generated longjmp owner throws `GuestContextTransfer` to the dispatch scope of the generated API entry's setjmp, and
+  `guest::Frame` runs no epilogue on the way. The checks answer the longjmp (stamp, arguments, following code compared) and an end-to-end **error sweep**
+  (`CM_FONT_ENGINE_E2E_FAULTS=oom:1-185,header:1-185,...`) injects allocator failures and corrupted blocks at every allocation of a short run so the
+  real transfers through the generated entries run on both sides. `font_engine_stack_exact.inc` lists the entries whose dead stack is compared byte for byte
+  (`routine_check_dead_stack_exact`, off elsewhere). The stack contract itself is the checker's **leaver check**: at every entry
+  into one of the five leavers (original run and C++ run, through the dispatcher or by a direct call) it records the stack pointer relative to the checked
+  entry's, the link register and the registers the leaver's prologue saves, and compares the two sequences in order. `font_engine_stack_exact.inc` is only an extra,
+  stricter comparison, kept for entries whose engine callees are all generated or listed.
+- **GLYPH.C** (`font_engine_glyph.cpp`, 6 routines): the glyph record the outlines are built in (`glyph_record`): the compact point format of the .t2k files (0x1075b970),
+  a glyph read from a stream (0x1075bc90: contours and points, or a composite's component list in a buffer that grows by half), the empty glyph, the merge of a component into
+  a composite (0x1075c0f0) and the release (0x1075c8c0). 0x1075c830 (the point arrays) is a stack-contract leaver: its frame is built as the original's, and the stack audit
+  (`cm-world-replay CAPTURE 1 --timing --stack-audit-all`; `CM_FONT_ENGINE_ONLY=0x..,0x..` runs only those routed entries as C++, to isolate a block in a replay) finds the same values at the printf readers.
+- **TRUETYPE.C, the sfnt** (`font_engine_truetype_glyph.cpp`, 12 routines): the sfnt object (a font's tables over a stream), its creation (0x10766ab0) and deletion (0x10767190) with the setjmp
+  the API entries run on the memory object (the C++ catches the allocator's longjmp transfer at the setjmp's return, as main_program does, then frees what the memory object holds; setjmp stores the
+  condition register, so cr0 is set as the original's last compare left it), the table loader (0x10765810), the cmap lookups, the glyph by index (T2K compact or TrueType data) and the metrics.
+  The checks run on the snapshot's three real fonts, one field of the sfnt or one byte of the font file changed per case, and the end-to-end error sweep runs both catch paths for real.
+- **STYLE** (`font_engine_style.cpp`): the bold style the sfnt layer calls through two function pointers (advance widths and glyph outline) and the corner
+  intersection the outline routine uses; the outline routine allocates and releases a copy through `tsi_AllocMem`/`tsi_DeAllocMem` at its own frame's sp with
+  the original's r14-r31 (mirrored by its loop variables). Both pointer-called routines leave r3-r10 as the original on every path and are compared in full.
+  **T2KEXTRA** (`font_engine_t2kextra.cpp`): the colour (sub-pixel) bitmap conversion for command bit 0x80, dormant for the game: cases only.

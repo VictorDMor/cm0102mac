@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdlib>
 #include <stdexcept>
+#include <vector>
 
 namespace cm::aot {
 // Set while a checker child runs original bodies, and for the whole run with
@@ -33,6 +34,23 @@ constexpr auto sorted_routines() {
 constexpr auto routines = sorted_routines();
 static_assert(std::ranges::adjacent_find(routines, {}, &Routine::entry) == routines.end(), "a routine is listed twice");
 
+// CM_FONT_ENGINE_ONLY=0xENTRY,0xENTRY,...: only these routed entries run their C++ (a replay that isolates one block); the rest
+// run generated. Unset: every routed entry.
+bool selected(std::uint32_t entry) {
+    static const auto only = [] {
+        std::vector<std::uint32_t> entries;
+        if (const char* text = std::getenv("CM_FONT_ENGINE_ONLY"))
+            for (const char* at = text; *at;) {
+                char* end = nullptr;
+                const auto value = std::strtoul(at, &end, 16);
+                if (end == at) break;
+                entries.push_back(std::uint32_t(value));
+                at = *end ? end + 1 : end;
+            }
+        return entries;
+    }();
+    return only.empty() || std::ranges::find(only, entry) != only.end();
+}
 const Routine* listed(std::uint32_t entry) {
     const auto found = std::ranges::lower_bound(routines, entry, {}, &Routine::entry);
     return found != routines.end() && found->entry == entry ? &*found : nullptr;
@@ -82,20 +100,29 @@ std::vector<std::uint32_t> font_engine_entries() {
 }
 
 bool font_engine_dispatch_probe(State& s) {
-    if (font_engine_declining) return false;
+    if (font_engine_declining || !selected(s.pc)) return false;
     const auto* routine = listed(s.pc);
     return routine && (!routine_checker || routine_checker->wants(s.pc)) && run(s, *routine);
 }
 
+// The checker's leaver check (font_engine_checks.cpp): called for the original's entry into a leaver (the hook is reached at every
+// entry, through the dispatcher or from the same page, and for a call from another page twice: the checker de-duplicates).
+void (*font_engine_leaver_probe)(State&, std::uint32_t) = nullptr;
 bool try_modern_font_engine(State& s, std::uint32_t entry) {
+    if (font_engine_leaver_probe && font_engine_declining) [[unlikely]] font_engine_leaver_probe(s, entry);
     // A check run with --only runs the other routines' originals, so each
     // routine is checked at every call from the original's own callers.
-    if (font_engine_declining || (routine_checker && !routine_checker->wants(entry))) return false;
+    if (font_engine_declining || !selected(entry) || (routine_checker && !routine_checker->wants(entry))) return false;
     const auto* routine = listed(entry);
     // A draft outside a checker, or an entry not written yet: the generated body runs.
     if (!routine || (!routine_checker && !routine->production)) return false;
     return run(s, *routine);
 }
 void font_engine_run_original(State& s, std::uint32_t entry) { run_original(s, entry); }
-void font_engine_run_rewrite(State& s, std::uint32_t entry) { run_rewrite(s, entry); }
+// A checker runs the rewrite outside any dispatcher; the production dispatcher a longjmp's transfer is addressed to is stood in for by a
+// scope (a routine that took a setjmp catches its own longjmp, and any other transfer leaves the run).
+void font_engine_run_rewrite(State& s, std::uint32_t entry) {
+    GuestDispatchScope scope(s);
+    run_rewrite(s, entry);
+}
 }

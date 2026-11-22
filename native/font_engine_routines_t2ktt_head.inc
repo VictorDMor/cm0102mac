@@ -1,0 +1,20 @@
+// The font engine, block `t2ktt_head` (font_engine_t2ktt_head.cpp): the stream constructors, the hint font and the cmap lookups. The
+// callers' reads of r4-r10 are in font_engine_volatile_{free,read}.inc; the three scale callbacks are reached by pointer only and are
+// compared on every register.
+FONT_ENGINE_ROUTINE(0x107630e0, 0x107630f0, R3, "1942a7148f421a2c", [](Cpu& c) { c.set(3, std::uint32_t(font_engine::stream_remaining(c, c.r(3)))); })
+FONT_ENGINE_ROUTINE(0x107630f0, 0x107631b8, R3, "48381f9f87d6ea89", [](Cpu& c) { c.set(3, font_engine::new_substream(c, c.r(3), c.r(4), c.r(5), c.r(6), c.r(7), c.r(8))); })
+FONT_ENGINE_ROUTINE(0x107631c0, 0x1076327c, R3, "99241bfa7bc30bb7", [](Cpu& c) { c.set(3, font_engine::new_input_stream(c, c.r(3), c.r(4), c.r(5), c.r(6))); })
+FONT_ENGINE_ROUTINE(0x10763280, 0x1076328c, NONE, "8cd56b6852e0897d", [](Cpu& c) { font_engine::stream_rewind(c, c.r(3)); })
+FONT_ENGINE_ROUTINE(0x10763290, 0x107632a0, NONE, "e86610bb09c1e151", [](Cpu& c) { font_engine::stream_seek(c, c.r(3), c.r(4)); })
+FONT_ENGINE_ROUTINE(0x107632a0, 0x10763350, NONE, "2755bb5ae07f0a71", [](Cpu& c) { font_engine::delete_input_stream(c, c.r(3), c.r(4)); })
+FONT_ENGINE_ROUTINE(0x10763350, 0x1076338c, R3, "bec17c554aaae898", [](Cpu& c) { c.set(3, font_engine::read_packed(c, c.r(3))); })
+FONT_ENGINE_ROUTINE(0x10763390, 0x1076381c, R3, "c185d7e9f7bc8f63", [](Cpu& c) { c.set(3, font_engine::new_hint_font(c, c.r(3), c.r(4), c.r(5))); })
+FONT_ENGINE_ROUTINE(0x10763820, 0x10763840, R3, "05b5f5ee295ccc77", [](Cpu& c) { c.set(3, std::uint32_t(font_engine::scale_shifted(c, c.r(3), std::int32_t(c.r(4))))); })
+FONT_ENGINE_ROUTINE(0x10763840, 0x10763888, R3, "15cc6be57898165e", [](Cpu& c) { c.set(3, std::uint32_t(font_engine::scale_divided(c, c.r(3), std::int32_t(c.r(4))))); })
+FONT_ENGINE_ROUTINE(0x10763890, 0x107638bc, R3, "beb95cb69f0b7a72", [](Cpu& c) { c.set(3, std::uint32_t(font_engine::scale_fixed(c, c.r(3), std::int32_t(c.r(4))))); })
+FONT_ENGINE_ROUTINE(0x107638c0, 0x10763ea4, NONE, "25fae3470b7781d5", [](Cpu& c) { font_engine::set_hint_size(c, c.r(3), std::int32_t(c.r(4)), std::int32_t(c.r(5))); })
+FONT_ENGINE_ROUTINE(0x10763eb0, 0x107642d4, NONE, "591e83ae989604e3", [](Cpu& c) { font_engine::load_glyph_program(c, c.r(3), c.r(4)); })
+FONT_ENGINE_ROUTINE(0x107642e0, 0x107643c8, NONE, "da478f5431cf3656", [](Cpu& c) { font_engine::delete_hint_font(c, c.r(3)); })
+FONT_ENGINE_ROUTINE(0x107643d0, 0x107644c0, NONE, "aee6244474038248", [](Cpu& c) { font_engine::scale_ratio(c, c.r(3), c.r(4), c.r(5)); })
+FONT_ENGINE_ROUTINE(0x107644c0, 0x107645a0, R3, "b75deb37c2094ce4", [](Cpu& c) { c.set(3, font_engine::cmap4_lookup(c, c.r(3), c.r(4))); })
+FONT_ENGINE_ROUTINE(0x107645a0, 0x1076460c, R3, "e51446a3c04e725e", [](Cpu& c) { c.set(3, font_engine::cmap6_lookup(c, c.r(3), c.r(4))); })

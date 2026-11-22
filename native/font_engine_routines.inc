@@ -4,3 +4,10 @@
 // Each block appends the #include of its font_engine_routines_<block>.inc below.
 #include "font_engine_routines_util.inc"
 #include "font_engine_routines_stream.inc"
+#include "font_engine_routines_tsimem.inc"
+#include "font_engine_routines_glyph.inc"
+#include "font_engine_routines_t2ktt_head.inc"
+#include "font_engine_routines_truetype_tables.inc"
+#include "font_engine_routines_style.inc"
+#include "font_engine_routines_truetype_glyph.inc"
+#include "font_engine_routines_t2kextra.inc"

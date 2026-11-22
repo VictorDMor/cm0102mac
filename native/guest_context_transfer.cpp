@@ -24,9 +24,15 @@ bool GuestDispatchScope::resumes(const GuestContextTransfer& transfer) const noe
     return transfer.state == state_ && transfer.destination == this;
 }
 GuestNativeScope::GuestNativeScope(State& state) noexcept : GuestNativeScope(state, state.pc) {}
+// A checker's observation of every native scope as it opens (the registers are still the caller's: the font engine's leaver check
+// reads a frame's determinants there). Null outside a checker.
+void (*native_scope_probe)(State&, std::uint32_t) = nullptr;
 GuestNativeScope::GuestNativeScope(State& state, std::uint32_t function) noexcept : state_(&state),
     function_(function), frame_(std::uint32_t(state.r<4>(4))), previous_(state.native_scope),
-    dispatcher_(state.dispatch_scope) { state.native_scope = this; }
+    dispatcher_(state.dispatch_scope) {
+    if (native_scope_probe) [[unlikely]] native_scope_probe(state, function);
+    state.native_scope = this;
+}
 GuestNativeScope::~GuestNativeScope() { state_->native_scope = previous_; }
 // A capture without a State is inert: it is never linked or found.
 GuestScalarContextCapture::GuestScalarContextCapture(State* state) noexcept

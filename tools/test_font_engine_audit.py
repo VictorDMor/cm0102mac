@@ -160,7 +160,20 @@ CONTRACTS = (
 ENTRIES = tuple(a for a, _, _, _ in CONTRACTS)
 # The routed entries: block util (the six fixed-point helpers, the sort and the distance) and block stream (the three readers).
 ROUTED = frozenset({0x10767ce0, 0x10767d40, 0x10767dc0, 0x10767e40, 0x10767eb0, 0x10767f20,
-                    0x10762f40, 0x10762fd0, 0x10763050})
+                    0x10762f40, 0x10762fd0, 0x10763050,
+                    0x10767460, 0x107675c0, 0x10767690, 0x10767720, 0x10767820, 0x107678a0, 0x10767a00, 0x10767bb0,
+                    # t2ktt_head
+                    0x107630e0, 0x107630f0, 0x107631c0, 0x10763280, 0x10763290, 0x107632a0, 0x10763350, 0x10763390, 0x10763820, 0x10763840,
+                    0x10763890, 0x107638c0, 0x10763eb0, 0x107642e0, 0x107643d0, 0x107644c0, 0x107645a0,
+                    # glyph
+                    0x1075b970, 0x1075bba0, 0x1075bc90, 0x1075c0f0, 0x1075c830, 0x1075c8c0,
+                    # truetype_tables
+                    0x10764610, 0x107649a0, 0x10764b10, 0x10764bf0, 0x10764d10, 0x10764e50, 0x10764f60, 0x10765060, 0x10765730, 0x10765780,
+                    0x1075e0c0, 0x1075e1a0, 0x1075e320,
+                    0x10761070,
+                    # truetype_glyph
+                    0x10765810, 0x10766430, 0x107664a0, 0x10766770, 0x107668d0, 0x10766ab0, 0x10766cc0, 0x10766d30, 0x10766dc0, 0x107670e0,
+                    0x10767190, 0x10767430})
 # Per unit: routines, instructions (the inventory the brief's block list is built on).
 UNIT_COUNTS = {'AUTOGRID': (46, 4432), 'FNT': (125, 5069), 'GHINTS': (5, 840), 'GLYPH': (6, 1018), 'HSTRAT97': (3, 1477),
                'STYLE': (3, 549), 'T2K': (9, 2484), 'T2KEXTRA': (1, 126), 'T2KSC': (9, 1821), 'T2KSTRM': (3, 101),

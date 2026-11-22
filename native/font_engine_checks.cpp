@@ -45,6 +45,7 @@ extern "C" void __llvm_profile_set_filename(const char*);
 
 using namespace cm::aot;
 using namespace cm::aot::font_engine_checks;
+namespace cm::aot { extern bool routine_check_dead_stack_exact; }  // routine_check.cpp: compare the dead stack too
 
 namespace {
 // Every routine of the unit is written native-first and compared under the native contract (r4-r10 are not compared).
@@ -71,7 +72,14 @@ unsigned font_engine_volatile_mask(std::uint32_t entry) {
     for (const auto& read : volatile_read) if (read.entry == entry) return read.mask;
     return 0x7f;
 }
-bool font_engine_dead_stack_free(std::uint32_t) { return true; }
+// The dead stack below an entry's stack pointer is free (the per-reader contract), except for the entries listed in
+// font_engine_stack_exact.inc: those are compared byte for byte there too, where a routine writes a frame a known reader reads
+// (0x10767bb0 and the routines that call it at their own frame's sp) and its rewrite builds the original's frame.
+constexpr std::uint32_t stack_exact[] = {
+#include "font_engine_stack_exact.inc"
+    0,
+};
+bool font_engine_dead_stack_free(std::uint32_t entry) { return std::ranges::find(stack_exact, entry) == std::end(stack_exact); }
 bool font_engine_native_code(std::uint32_t address) { return font_engine_code(address); }
 }
 
@@ -126,12 +134,75 @@ void save_volatile(State& s, std::uint32_t entry) {
         if (mask >> (n - 4) & 1) s.memory.write<4>(volatile_image + n * 4, std::uint32_t(s.r<4>(guest::reg::gpr(n))));
 }
 void verify_run(State& s, const char* who);
+
+// ---- The leaver check: the project's stack contract, per reader. The bytes the game's printf reads as leftovers are what the five leavers
+// leave in their own frames: the saved registers their prologues store, the link register and the back chain. Every time a leaver is
+// entered, in the original run and in the rewrite run, the check records what determines that frame (the entry's stack pointer relative to
+// the checked entry's, the link register, the registers the leaver's prologue saves) and compares the two sequences in order. Where it
+// observes: the original's entry into a hooked entry (font_engine_adapter.cpp, at the entry instruction and at call sites from other
+// pages: a repeat with no instruction between is the same entry), and the C++'s `guest::Frame` of the leaver (the native scope probe of
+// guest_context_transfer.cpp: it runs when the frame opens, before its stores, whether the leaver is reached through the dispatcher or by a
+// direct C++ call). The record goes to a log in the scratch area both sides map (count, an FNV hash of every event, then the first events),
+// so the memory comparison reports a difference; CM_FONT_ENGINE_LEAVER_LOG=1 prints the events of a child.
+struct Leaver { std::uint32_t entry; unsigned first_gpr; };
+// The registers each leaver's prologue saves (first..r31): 0x1075c830, 0x10761d50 and 0x10762e30 r29, 0x10767bb0 r28, 0x107617b0 (stmw) r15.
+constexpr Leaver leavers[] = {{0x1075c830, 29}, {0x107617b0, 15}, {0x10761d50, 29}, {0x10762e30, 29}, {0x10767bb0, 28}};
+constexpr std::uint32_t leaver_log = scratch_base + 0xe0000, leaver_stride = 96, leaver_capacity = 600;
+std::uint32_t leaver_base = 0, last_leaver_entry = 0;
+std::uint64_t last_leaver_executed = ~std::uint64_t(0);
+void record_leaver(State& s, std::uint32_t entry, bool original) {
+    const auto* leaver = std::ranges::find(leavers, entry, &Leaver::entry);
+    if (leaver == std::end(leavers)) return;
+    // The original's hook runs at a call site in another page and again at the entry with no instruction between: one entry. (Native code
+    // charges no instructions, so the C++ side is never de-duplicated.)
+    if (original) {
+        if (entry == last_leaver_entry && s.executed == last_leaver_executed) return;
+        last_leaver_entry = entry;
+        last_leaver_executed = s.executed;
+    }
+    std::vector<std::uint32_t> words{entry, std::uint32_t(s.r<4>(4)) - leaver_base, std::uint32_t(s.r<4>(4128))};
+    for (unsigned n = leaver->first_gpr; n < 32; ++n) words.push_back(std::uint32_t(s.r<4>(guest::reg::gpr(n))));
+    const auto count = std::uint32_t(s.memory.read<4>(leaver_log));
+    auto hash = std::uint32_t(s.memory.read<4>(leaver_log + 4));
+    if (!count) hash = 2166136261u;
+    for (const auto word : words) hash = (hash ^ word) * 16777619u;
+    if (std::getenv("CM_FONT_ENGINE_LEAVER_LOG")) {
+        std::fprintf(stderr, "LEAVER %u:", count);
+        for (const auto word : words) std::fprintf(stderr, " %x", word);
+        std::fprintf(stderr, "\n");
+    }
+    if (count < leaver_capacity)
+        for (std::size_t n = 0; n < words.size(); ++n) s.memory.write<4>(leaver_log + 8 + count * leaver_stride + 4 * std::uint32_t(n), words[n]);
+    s.memory.write<4>(leaver_log, count + 1);
+    s.memory.write<4>(leaver_log + 4, hash);
+}
+// The C++ side: a native scope opens with the function's entry (guest::Frame); the original's frames are never native, so only the C++
+// run (hooks not declining) is recorded here.
+void record_scope(State& s, std::uint32_t function) { if (!font_engine_declining) record_leaver(s, function, false); }
+void record_original(State& s, std::uint32_t entry) { record_leaver(s, entry, true); }
+// A case that answers a leaver: neither side runs its body, so the entry is recorded where the answer is given (the same entry state).
+void record_answered(State& s) { record_leaver(s, s.pc, font_engine_declining); }
+}
+namespace cm::aot { extern void (*font_engine_leaver_probe)(State&, std::uint32_t); extern void (*native_scope_probe)(State&, std::uint32_t); }
+namespace cm::aot::font_engine_checks {
+// A run's start (the checked entry's stack pointer): the check's origin. Also called by the end-to-end sweeps.
+void install_leaver_check(State& s) {
+    leaver_base = std::uint32_t(s.r<4>(4));
+    last_leaver_entry = 0;
+    last_leaver_executed = ~std::uint64_t(0);
+    font_engine_leaver_probe = record_original;
+    native_scope_probe = record_scope;
+}
+}
+namespace {
 void bounded_original(State& s, std::uint32_t entry) {
+    font_engine_checks::install_leaver_check(s);
     alarm(60); s.budget = s.executed + 4'000'000'000ULL; font_engine_run_original(s, entry);
     verify_run(s, "original");
     save_volatile(s, entry);
 }
 void bounded_rewrite(State& s, std::uint32_t entry) {
+    font_engine_checks::install_leaver_check(s);
     alarm(60);
     s.budget = s.executed + 4'000'000'000ULL;
     font_engine_run_rewrite(s, entry);
@@ -279,6 +350,7 @@ Comparison compare_call(State& s, std::uint32_t entry, unsigned results, bool st
     std::vector<std::string> found;
     routine_check_native_contract = font_engine_native(entry);
     routine_check_dead_stack_free = font_engine_dead_stack_free(entry);
+    routine_check_dead_stack_exact = !routine_check_dead_stack_free;
     try {
         found = compare_routine_call(s, entry, bounded_original, bounded_rewrite, results, false, strict);
     } catch (const std::runtime_error& error) {
@@ -468,6 +540,13 @@ void compare_traces(State& s, std::uint32_t entry) {
         } else if (seen->second != calls.size()) {
             record(site, wrong_count, seen->second, calls.size());
         }
+    }
+    // A call the original makes and the rewrite does not (an answered assertion or longjmp leaves nothing else to compare). Calls to the
+    // module's own routines are left out: the rewrite makes those directly, so they never reach the dispatcher.
+    if (!truncated) for (const auto& [site, count] : original_calls) {
+        if (sites.count(site) || (site.second >= module_start && site.second < module_end)) continue;
+        const auto made = std::ranges::count_if(original, [&](const TracedCall& call) { return call.back == site.first && call.target == site.second && call.after_bl; });
+        if (made) record(site, wrong_count, std::uint64_t(made), 0);
     }
     const auto next_shown = [&](const std::vector<TracedCall>& calls, std::size_t& at, const auto& shown) {
         while (at < calls.size() && !shown(Site{calls[at].back, calls[at].target})) ++at;
@@ -684,13 +763,13 @@ struct OriginalOwners {
 void run_cases(State& s, std::mt19937& random) {
     Scenario scenario{s};
     std::vector<Case> cases;
-    // While writing cases: CM_FONT_ENGINE_BLOCK=name runs one block of them, and
+    // While writing cases: CM_FONT_ENGINE_BLOCK=name (or name,name: several blocks, in registration order, sharing the run's random draws) runs those blocks, and
     // CM_FONT_ENGINE_LABEL=text keeps the cases whose label contains it. A filtered run says
     // so, and one that selects nothing is an error: it would read as a pass.
     const char* only_block = std::getenv("CM_FONT_ENGINE_BLOCK");
     const char* only_label = std::getenv("CM_FONT_ENGINE_LABEL");
     for (const auto& [name, list] : blocks())
-        if (!only_block || std::string_view(only_block) == name) list(scenario, cases);
+        if (!only_block || (std::string(",") + only_block + ",").find(std::string(",") + name + ",") != std::string::npos) list(scenario, cases);
     if (only_label) std::erase_if(cases, [&](const Case& item) { return item.label.find(only_label) == std::string::npos; });
     if (only_block || only_label) {
         std::cerr << "FILTERED RUN: " << cases.size() << " cases (CM_FONT_ENGINE_BLOCK/LABEL); not a full check\n";
@@ -847,6 +926,7 @@ int main(int argc, char** argv) {
                     if (target.pc != item.entry) continue;
                     if (!counted) { ++nth_dispatches[item.entry]; counted = true; }
                     if (nth_dispatches[item.entry] != item.nth) continue;
+                    record_answered(target);
                     guest::Cpu(target).set(3, item.answer);
                     target.pc = target.r<4>(4128);
                     return true;
@@ -854,6 +934,7 @@ int main(int argc, char** argv) {
             }
             if (case_answers) for (const auto& [entry, answer] : *case_answers)
                 if (target.pc == entry && !(routine_checker && routine_checker->wants(entry))) {
+                    record_answered(target);
                     guest::Cpu(target).set(3, answer);
                     target.pc = target.r<4>(4128);
                     return true;
@@ -867,6 +948,9 @@ int main(int argc, char** argv) {
         // Other modules' routines run as their originals or their C++ alike on both sides:
         // left out, this module's hooks decline only inside the original runs.
         const auto wanted = [](std::uint32_t entry) {
+            // A routine a case answers is not run in that case, so it is not under check there (the answer would reach one side only).
+            if (case_answers) for (const auto& answer : *case_answers) if (answer.first == entry) return false;
+            if (case_nth_answers) for (const auto& answer : *case_nth_answers) if (answer.entry == entry) return false;
             return font_engine_lists(entry) && (options.only.empty() || options.only.count(entry) != 0);
         };
         RoutineChecker checker(wanted, options.all, options.every);

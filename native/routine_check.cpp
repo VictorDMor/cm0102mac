@@ -24,6 +24,7 @@ extern "C" int __llvm_profile_write_file(void);
 #endif
 
 namespace cm::aot {
+extern bool routine_check_dead_stack_exact;  // defined below
 RoutineChecker* routine_checker = nullptr;
 bool (*dispatch_probe)(State&) = nullptr;
 void (*routine_child_exit)() = nullptr;
@@ -370,7 +371,7 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
             // Native-first: the dead stack below the entry stack pointer and the callee's part of
             // the caller's frame (linkage words, parameter words) are free.
             if (routine_check_native_contract &&
-                ((at < stack && stack - at <= 0x100000) || (at >= stack + 4 && at < stack + 12) ||
+                ((at < stack && stack - at <= 0x100000 && !routine_check_dead_stack_exact) || (at >= stack + 4 && at < stack + 12) ||
                  (at >= stack + 0x18 && at < stack + 0x38))) continue;
             if (routine_check_dead_stack_free && at < stack && stack - at <= 0x100000) continue;
             ++differing;
@@ -392,6 +393,9 @@ std::vector<std::string> compare_reports(const State& s, const Report& expected,
 bool routine_check_child() { return in_child; }
 bool routine_check_native_contract = false;
 bool routine_check_dead_stack_free = false;
+// Under the native contract the dead stack is left out; a checker sets this to compare it byte for byte for one entry (the font
+// engine's stack-contract routines: font_engine_stack_exact.inc). Declared by the checker that uses it.
+bool routine_check_dead_stack_exact = false;
 
 RoutineChecker::RoutineChecker(std::function<bool(std::uint32_t)> wanted, std::uint64_t all, std::uint64_t every)
     : wanted_(std::move(wanted)), all_(all), every_(every) {}

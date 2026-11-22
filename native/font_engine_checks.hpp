@@ -82,6 +82,8 @@ inline std::string hex(std::uint32_t value) {
     return text;
 }
 // font_engine_checks_e2e.cpp: the end-to-end comparison (see there).
+// font_engine_checks.cpp: starts the leaver check (the stack contract of the five leavers) for the run that begins at this state's stack pointer.
+void install_leaver_check(State& s);
 int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, const std::vector<std::filesystem::path>& files);
 using CaseList = std::function<void(const Scenario&, std::vector<Case>&)>;
 struct CaseBlock {

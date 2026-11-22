@@ -10,10 +10,12 @@
 // font code's own 0x10750200. The two runs are two forked children: the original with every hook declining, the other with the
 // routed entries (the production path). A run reports the engine entries the dispatcher saw, the sizes and styles it covered.
 #include "font_engine_checks.hpp"
+#include "allocator_adapter.hpp"
 #include "application_exit.hpp"
 #include "font_engine_adapter.hpp"
 #include "guest_abi.hpp"
 #include "routine_check.hpp"
+#include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <algorithm>
@@ -96,9 +98,62 @@ std::vector<std::uint32_t> mapped_codes(State& s, const Font& font) {
 struct Plan {
     std::vector<unsigned> flags, sizes;
     bool codes_at_every_size = false;
+    // The characters requested through the cache and the cmap codes rendered by the engine's entry (the error sweep uses a few).
+    unsigned first_char = 0x20, last_char = 0xff;
+    std::size_t code_limit = ~std::size_t(0);
 };
+
+// The error sweep (CM_FONT_ENGINE_E2E_FAULTS): a fault injected into the allocator at the n-th malloc TSIMEM.C's tsi_AllocMem makes
+// in a run (its return address 0x107678e4), so that the engine's error exits run for real, through the generated API entries'
+// setjmp: "oom" answers the malloc with null (error 0x2718); "header", "trailer" and "slot" spoil every block the table holds
+// (the next release raises 0x2719 or 0x271f); "count" and "full" make the table full by count and by slots (0x271c, 0x2721).
+struct Fault { std::string kind; unsigned nth = 0; };
+Fault g_fault;
+unsigned g_allocations = 0, g_fired = 0;
+// What the two forked children saw, counted in memory they share with the parent: injections that fired and longjmp transfers.
+struct Seen { unsigned fired, transfers; };
+Seen* seen = [] {
+    void* shared = ::mmap(nullptr, sizeof(Seen), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+    if (shared == MAP_FAILED) throw std::runtime_error("mmap");
+    return static_cast<Seen*>(shared);
+}();
+constexpr std::uint32_t alloc_malloc_return = 0x107678e4, game_malloc = 0x10775130, longjmp_entry = 0x10773f30;
+bool inject_fault(State& s) {
+    guest::Cpu c(s);
+    if (s.pc == longjmp_entry) {
+        __atomic_fetch_add(&seen->transfers, 1, __ATOMIC_SEQ_CST);
+        if (std::getenv("CM_FONT_ENGINE_E2E_TRACE"))
+            std::cerr << "longjmp code " << std::hex << c.r(4) << std::dec << " (" << g_fault.kind << ' ' << g_fault.nth << ")\n";
+    }
+    if (s.pc != game_malloc || c.lr() != alloc_malloc_return) return false;
+    ++g_allocations;
+    // tsi_AllocMem's frame is the sp at its malloc call: the return address into its caller sits at sp + 0x58.
+    if (std::getenv("CM_FONT_ENGINE_E2E_TRACE") && g_fault.kind == "census") std::cerr << "allocation from " << std::hex << c.u32(c.sp() + 0x58) << std::dec << '\n';
+    if (g_fault.kind.empty() || g_allocations != g_fault.nth) return false;
+    ++g_fired;
+    __atomic_fetch_add(&seen->fired, 1, __ATOMIC_SEQ_CST);
+    const auto mem = c.r(30);  // tsi_AllocMem holds its object in r30
+    if (g_fault.kind == "oom") {
+        c.set(3, 0);
+        s.pc = c.lr();
+        return true;
+    }
+    const auto table = c.u32(mem + 0xc), capacity = c.u32(mem + 8);
+    if (g_fault.kind == "count") { c.put32(mem + 4, capacity); return false; }
+    for (std::uint32_t slot = 0; slot < capacity; ++slot) {
+        const auto header = c.u32(table + 4 * slot);
+        if (g_fault.kind == "full") { if (!header) c.put32(table + 4 * slot, 0x20000000 + 4 * slot); continue; }
+        if (!header) continue;
+        if (g_fault.kind == "header") c.put32(header, c.u32(header) ^ 1);
+        else if (g_fault.kind == "trailer") c.put8(header + 0x10 + c.u32(header + 4), 0);
+        else if (g_fault.kind == "trailer2") c.put8(header + 0x11 + c.u32(header + 4), 0);
+        else if (g_fault.kind == "slot") c.put32(header + 8, (slot + 1) % capacity);
+    }
+    return false;
+}
 std::map<std::uint32_t, std::uint64_t> dispatched;  // the engine entries the dispatcher saw in this child (written out at the end)
 bool probe(State& s) {
+    if (inject_fault(s)) return true;
     if (s.pc >= module_start && s.pc < module_end) ++dispatched[s.pc];
     constexpr std::uint32_t exit_entry = 0x1076f7d0, dialog_entry = 0x10769b60;
     if (s.pc == exit_entry) throw ApplicationExit{};
@@ -119,6 +174,7 @@ void sweep(State& s, bool original) {
     routine_checker = nullptr;
     dispatch_probe = probe;
     s.budget = ~std::uint64_t(0) / 2;
+    install_leaver_check(s);
     guest::Cpu c(s);
     c.set(2, game_toc);
     for (unsigned n = 13; n < 32; ++n) c.set(n, 0x5a000000u + n * 0x10101u);
@@ -157,7 +213,7 @@ void sweep(State& s, bool original) {
             for (const auto size : plan.sizes) {
                 // The game's glyph path: the selector, then each character through the cache.
                 call(0x10750320, {cell, flags, size});
-                for (unsigned ch = 0x20; ch <= 0xff; ++ch) {
+                for (unsigned ch = plan.first_char; ch <= plan.last_char; ++ch) {
                     const auto glyph = call(0x10750580, {cell, flags, size, ch});
                     const auto width = word(s, glyph + 0x0c), rows = word(s, glyph + 0x10);
                     put(flags << 16 | size << 8 | ch);
@@ -169,7 +225,7 @@ void sweep(State& s, bool original) {
                 // The engine's character entry on every code the cmap maps, at the sizes selected, through the scaler.
                 if (plan.codes_at_every_size || size == plan.sizes.front()) {
                     const auto scaler = word(s, record + 0x14);
-                    for (const auto code : codes[index]) {
+                    for (const auto code : std::vector<std::uint32_t>(codes[index].begin(), codes[index].begin() + std::ptrdiff_t(std::min(codes[index].size(), plan.code_limit)))) {
                         s.memory.write<4>(error, 0);
                         call(0x10760e30, {scaler, code, 0, 0, 5, 2, error});
                         put(0xc0de0000u | code);
@@ -192,10 +248,58 @@ void sweep(State& s, bool original) {
         std::ofstream out(std::string(file) + (original ? ".original" : ".rewrite"));
         for (const auto& [entry, count] : dispatched) out << hex_address(entry) << ' ' << count << '\n';
     }
+    if (std::getenv("CM_FONT_ENGINE_E2E_TRACE")) std::cerr << (original ? "original" : "rewrite") << ": allocations " << g_allocations << " fired " << g_fired << '\n';
     c.set(3, 0);
 }
 void sweep_original(State& s, std::uint32_t) { sweep(s, true); }
 void sweep_rewrite(State& s, std::uint32_t) { sweep(s, false); }
+
+// The error sweep: "kind:n" or "kind:from-to", comma separated. Each injection runs the sweep twice from the same state (the original, the
+// routed build) and compares what they leave. The allocator's malloc is made to dispatch on both sides (State::allocator_entry_original)
+// so the injection reaches both. A run that faults ends in the same fault on both sides or counts as a difference: a fault with the same
+// message in both is counted apart ("faulted alike"), its memory compared like any other.
+int run_fault_sweep(State& s, const std::string& spec) {
+    const auto malloc_switch = std::ranges::find(allocator_entries, game_malloc) - allocator_entries.begin();
+    s.allocator_entry_original[std::size_t(malloc_switch)] = true;
+    unsigned runs = 0, identical = 0, alike = 0, different = 0, not_reached = 0, no_transfer = 0;
+    std::map<std::string, unsigned> by_kind;
+    std::size_t from = 0;
+    while (from < spec.size()) {
+        auto to = spec.find(',', from);
+        if (to == std::string::npos) to = spec.size();
+        const auto item = spec.substr(from, to - from);
+        from = to + 1;
+        const auto colon = item.find(':'), dash = item.find('-');
+        const auto kind = item.substr(0, colon);
+        const unsigned first = unsigned(std::stoul(item.substr(colon + 1))), last = dash == std::string::npos ? first : unsigned(std::stoul(item.substr(dash + 1)));
+        for (unsigned nth = first; nth <= last; ++nth) {
+            g_fault = {kind, nth};
+            *seen = {};
+            auto lines = compare_routine_call(s, 0x10750580, sweep_original, sweep_rewrite, 0, false);
+            ++runs;
+            if (!seen->fired) { ++not_reached; continue; }
+            if (!seen->transfers && kind != "count" && kind != "full") ++no_transfer;
+            // Both sides stopped at the same fault: drop the pair of lines, keep the comparison of everything else.
+            std::string original_stop, rewrite_stop;
+            for (const auto& line : lines) {
+                if (line.starts_with("the original stopped: ")) original_stop = line.substr(22);
+                if (line.starts_with("the rewrite stopped: ")) rewrite_stop = line.substr(21);
+            }
+            const bool faulted_alike = !original_stop.empty() && original_stop == rewrite_stop;
+            if (faulted_alike) std::erase_if(lines, [](const std::string& line) { return line.starts_with("the original stopped: ") || line.starts_with("the rewrite stopped: "); });
+            if (lines.empty()) { ++identical; alike += faulted_alike; ++by_kind[kind]; continue; }
+            ++different;
+            std::cout << "difference at " << kind << ' ' << nth << ':';
+            for (const auto& line : lines) std::cout << " | " << line;
+            std::cout << '\n';
+        }
+    }
+    std::cout << "error sweep: " << runs << " injections, " << identical << " identical (" << alike << " ended in the same fault), " << different
+              << " different, " << not_reached << " past the run's last allocation, " << no_transfer << " without a longjmp\n";
+    for (const auto& [kind, count] : by_kind) std::cout << "  " << kind << ": " << count << " identical\n";
+    std::cout << "error sweep: " << (different ? "DIFFERENT" : "identical") << '\n';
+    return different ? 1 : 0;
+}
 }
 
 int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, const std::vector<std::filesystem::path>& files) {
@@ -254,6 +358,10 @@ int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, cons
     }
     plan.flags.assign(flag_set.begin(), flag_set.end());
     plan.sizes.assign(size_set.begin(), size_set.end());
+    const char* faults = std::getenv("CM_FONT_ENGINE_E2E_FAULTS");
+    if (faults) {  // the error sweep: a short plan (the first allocations are where each error lands)
+        plan = Plan{.flags = {0, 1, 2}, .sizes = {14}, .first_char = 0x41, .last_char = 0x43, .code_limit = 3};
+    }
     g_fonts = distinct;
     g_plan = plan;
     for (const auto& font : distinct) g_codes.push_back(mapped_codes(s, font));
@@ -263,6 +371,7 @@ int run_end_to_end(State& s, bool list_only, bool exhaustive, bool corrupt, cons
               << 224 * plan.flags.size() * plan.sizes.size() * distinct.size() << " cached glyph requests, " << mapped << " mapped codes\n";
     s.memory.map(log_base, log_size);
     routine_check_native_contract = true;  // the entries are compared one by one in the cases; here what the runs leave in memory
+    if (faults) return run_fault_sweep(s, faults);
     // The two runs from the same state, compared: dirty pages (the engine's heap, the glyph caches, the log), the allocator
     // tables and the registers the runs leave.
     const auto differences = compare_routine_call(s, 0x10750580, sweep_original, sweep_rewrite, 0, corrupt);
