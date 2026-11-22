@@ -2293,6 +2293,39 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   at the bottom row, a setting at classic bounds, the intro at its classic span). Unexercised: Yes (it starts
   the holiday), the confirmations' Yes (they change club or end the career), the other languages' longer
   texts, confirmation texts that wrap to more lines than the three clubs of the fixture give.
+- The transfer dialogs of TRANSFER_SCREENS (all eight builders from 0x1041f8f0). Their openers' arguments, read from the
+  rewritten openers in `transfer_screens_confirmations.cpp` and the callers: bid rejection 0x1041f8f0 (opener
+  0x1041f830(link, link): the offer link is history 0, and history 1 when 0 is empty; history 2 holds the chosen reason; opened
+  from the offer decision's Reject and the proposal screen's refused offer), remove the exchange player from a
+  proposal 0x10422b50 (opener 0x10422ac0(link, person ID)), add to the shortlist 0x10424f80 (0x104248a0(person, mode)),
+  set a player as the first or second to compare 0x104249e0 (0x10424930(person, _, which)), withdraw a bid 0x104265c0
+  (0x10426550(link)), release a player 0x1042ae90 (0x1042ae20(person)), end a loan early 0x1042f7c0 (0x1042f670(person); it
+  opens only when the original's eligibility test passes, otherwise the original shows an error dialog and no
+  builder runs) and the trial period selection 0x1042b580 (0x1042b500(person); history 1 is the weeks, 1 to 4). Six
+  are message screens (one-column panel at 110,140-780,545, a No/Yes footer of two columns), so they only
+  joined `ScreenTemplate::message_screen`: the dialog, text carried to the new center and 190px buttons are as above.
+  The trial period is the same panel as a grid of seven columns holding one row (label, minus, weeks, plus) with
+  no explicit bounds, so `message_screen_layout.cpp` now accepts a seven-column panel: the cells come from the
+  columns AutoGrid measured for the classic rectangle (`paged_screen::ColumnMap`, only the widest column, the
+  label, takes the extra width) and are written as explicit bounds. Bid rejection has its own
+  `bid_rejection_layout.cpp`: a two-column panel (a narrow marker column and a wide one) with two full-width lines
+  (explicit bounds), seven choices (the first three always offered, four restricted reasons either buttons or
+  disabled labels) and a footer of two buttons (No/Yes) or three when more than one offer is pending (No/All/Yes).
+  The panel is centered, at most 800 wide and as tall as its last used row plus one (trailing empty rows are
+  dropped through `set_rows`/`resize_rows`, keeping the used-row range and scroll), full lines follow both
+  edges, links keep their measured width, the choices follow the wide column, and the footer's buttons are
+  equal 190px cells right-aligned under the panel; it declines on a scrollbar, a missing or duplicated
+  grid, a footer of another size or a canvas too short. Gates: a career is open; bid rejection also needs the
+  offer (history 0, else 1) to name a person inside the database. `--message-screens` gained scenarios 10-21 (the
+  six builders, shortlist add and remove, compare first and second, a release with and without compensation, the trial period at 2, 1 and 4
+  weeks, with a cell-order/width check for the seven-column panel and a mutant that moves the plus button out of the
+  panel) answered through their No or Back; `--bid-rejection` (new, `adaptive_bid_rejection_checks.hpp`) builds one
+  offer, two chosen reasons, two pending offers (the manager's offer array and the first offer's chain list written
+  in the scratch copy, which gives the three-button footer), and the offer in history 1, at six canvases, with
+  mutants (classic panel, a drifted button, the footer at the bottom row, a line at classic bounds, overlapping choices) and the
+  gate's refusals. Unexercised: the Yes and All buttons (they send offers, shortlist or release players, withdraw
+  bids), the screens' text in the other ten languages, bid rejections with more than two pending offers or with reasons
+  other than those the fixture's offers allow (its choices are a mix of buttons and disabled labels).
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

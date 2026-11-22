@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -46,6 +46,15 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // The manager's confirmations (Yes/No under one question): apply for a job, rescind the contract, retire.
     // They are message screens too, with their panel at 110,145-780,535.
     case 0x101c8730: case 0x101c8b60: case 0x101c98c0: return ScreenTemplate::message_screen;
+    // The transfer dialogs of TRANSFER_SCREENS: remove the exchange player from a proposal, add a player to the
+    // shortlist, set a player as the first or second to compare, withdraw a bid, release a player, end a loan
+    // early (each a question with a No/Yes footer) and the trial period selection (one row of controls and a
+    // Back/Offer footer). All have the message shape: one panel at 110,140-780,545 and a row of buttons.
+    case 0x10422b50: case 0x10424f80: case 0x104249e0: case 0x104265c0: case 0x1042ae90: case 0x1042f7c0:
+    case 0x1042b580: return ScreenTemplate::message_screen;
+    // The reasons for rejecting an offer (the offer decision's Reject, the proposal screen's rejection): choices
+    // in a two-column panel and a footer of two or three buttons.
+    case 0x1041f8f0: return ScreenTemplate::bid_rejection;
     // Player transfer status (asking price, squad status and listing choices) and the previous offers.
     case 0x10428ab0: return ScreenTemplate::transfer_status;
     case 0x10422600: return ScreenTemplate::previous_offers;

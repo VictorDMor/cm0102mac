@@ -5,13 +5,22 @@
 // message centered in it, equal buttons on one row inside the panel's horizontal bounds, right-aligned to it.
 // The manager's three confirmations (apply for a job, rescind the contract, retire) are message screens whose
 // panel is 110,145-780,535: they are opened through their own openers and answer No (action 1) like the others.
+// The transfer dialogs of TRANSFER_SCREENS are message screens too, each opened through its original opener with
+// the arguments its callers pass: remove the exchange player from a proposal (a link and a person ID), add a player
+// to the shortlist or set one to compare (a person and a mode), withdraw a bid (a link), release a player, end a
+// loan early (a person), and the trial period selection (a person; its seven-column row of controls is the one
+// panel that is not a single column, tried at its shortest, middle and longest periods).
 // Needs TransferScene from adaptive_transfer_status_checks.hpp.
 void message_screens_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
-    constexpr unsigned scenarios = 10;
-    const char* names[scenarios]{"offer decision", "completion", "listing", "listing (loan)", "restriction", "feedback", "staff release", "apply for job", "rescind contract", "retire"};
-    const unsigned builders[scenarios]{0x10421fb0, 0x10423270, 0x1042a810, 0x1042a810, 0x10420b50, 0x10421070, 0x1009e8f0, 0x101c8730, 0x101c8b60, 0x101c98c0};
+    constexpr unsigned scenarios = 22;
+    const char* names[scenarios]{"offer decision", "completion", "listing", "listing (loan)", "restriction", "feedback", "staff release", "apply for job", "rescind contract", "retire",
+        "remove exchange player", "shortlist add", "shortlist remove", "compare first", "compare second", "withdraw bid", "release", "release (no contract)", "trial 2 weeks", "trial 1 week", "trial 4 weeks", "loan recall"};
+    const unsigned builders[scenarios]{0x10421fb0, 0x10423270, 0x1042a810, 0x1042a810, 0x10420b50, 0x10421070, 0x1009e8f0, 0x101c8730, 0x101c8b60, 0x101c98c0,
+        0x10422b50, 0x10424f80, 0x10424f80, 0x104249e0, 0x104249e0, 0x104265c0, 0x1042ae90, 0x1042ae90, 0x1042b580, 0x1042b580, 0x1042b580, 0x1042f7c0};
+    // The control that answers No or Back: dismisses the screen without touching a record (0: none exercised).
+    const unsigned dismissals[scenarios]{1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 2, 11, 1, 1, 1, 3, 3, 3, 1};
     for (unsigned scenario = 0; scenario < scenarios; ++scenario) {
         std::vector<std::uint8_t> baseline;
         for (bool adaptive : {false, true}) {
@@ -42,7 +51,15 @@ void message_screens_builder(const char* path) {
                 case 6: t.invoke(0x1009e880, {t.person}); break;
                 case 7: t.invoke(0x101c8650, {other}); break;
                 case 8: t.invoke(0x101c8a80, {t.managed}); break;
-                default: t.invoke(0x101c9880, {}); break;
+                case 9: t.invoke(0x101c9880, {}); break;
+                case 10: t.invoke(0x10422ac0, {link, c.u32(t.person)}); break;
+                case 11: case 12: t.invoke(0x104248a0, {t.person, scenario == 11 ? 1u : 0u}); break;
+                case 13: case 14: t.invoke(0x10424930, {t.person, 0, scenario == 13 ? 1u : 0u}); break;
+                case 15: t.invoke(0x10426550, {link}); break;
+                case 16: t.invoke(0x1042ae20, {t.person}); break;
+                case 17: c.put8(t.contract + 0x38, c.u8(t.contract + 0x38) & 3); t.invoke(0x1042ae20, {t.person}); break;
+                case 18: case 19: case 20: t.invoke(0x1042b500, {t.person}); t.set_value(1, scenario == 18 ? 2 : scenario == 19 ? 1 : 4); break;
+                default: t.invoke(0x1042f670, {t.person}); break;
                 }
                 require(t.builder() == builders[scenario], "Message screen did not open through its original opener");
                 bool on = adaptive;
@@ -52,7 +69,7 @@ void message_screens_builder(const char* path) {
                     Shape r;
                     for (unsigned i = 0; i < t.grids(); ++i) {
                         const auto box = t.rect(t.grid(i)); const auto columns = c.u8(t.grid(i) + 0xbb0);
-                        if ((box == ScreenRect{110, 140, 780, 545} || box == ScreenRect{110, 145, 780, 535}) && columns == 1) r.message = int(i);
+                        if ((box == ScreenRect{110, 140, 780, 545} || box == ScreenRect{110, 145, 780, 535}) && (columns == 1 || columns == 7)) r.message = int(i);
                         if (box == ScreenRect{100, 555, 790, 590} && c.u8(t.grid(i) + 0xbb1) == 1) r.footer = int(i);
                     }
                     for (unsigned i = 0; i < t.controls(); ++i) {
@@ -103,6 +120,26 @@ void message_screens_builder(const char* path) {
                         }
                     }
                     require(first <= last, "Message has no rows");
+                    if (c.u8(t.grid(before.message) + 0xbb0) == 7) {
+                        // The trial period's cells: in column order, apart from each other, only the widest grew.
+                        struct Cell { unsigned column; ScreenRect box; int old_width; };
+                        std::vector<Cell> cells;
+                        for (unsigned i = 0; i < t.controls(); ++i) {
+                            const auto at = t.control(i);
+                            if (c.i16(at + 0x72) != before.message) continue;
+                            const unsigned at_old = 0xba864 + i * 0x17c;
+                            cells.push_back({c.u32(at + 0x20), t.rect(at + 0x10), display_word(old, at_old + 0x18) - display_word(old, at_old + 0x10)});
+                        }
+                        std::sort(cells.begin(), cells.end(), [](const Cell& a, const Cell& b) { return a.column < b.column; });
+                        require(cells.size() >= 3, "Message cells missing");
+                        int widest = 0; for (const auto& cell : cells) widest = std::max(widest, cell.old_width);
+                        for (std::size_t i = 0; i < cells.size(); ++i) {
+                            if (i) require(cells[i - 1].box.right <= cells[i].box.left, "Message cells overlap or are out of order");
+                            const int grown = cells[i].box.width() - cells[i].old_width;
+                            require(cells[i].old_width == widest ? grown >= 0 : std::abs(grown) <= 1, "Message cell width changed besides the widest");
+                        }
+                    }
+
                     require(panel.height() == int(std::max(last - first + 3, 5u)) * 28 + 16, "Message panel not bounded to its message");
                     require(std::abs((text_top + text_bottom) - (panel.top + panel.bottom)) <= 28, "Message not vertically centered in its panel");
                     // Buttons, Back included: one row, equal size, inside the panel's bounds, right-aligned to it.
@@ -162,7 +199,7 @@ void message_screens_builder(const char* path) {
                     check();
                     {   // the panel stays at its classic rectangle
                         const auto grid = t.grid(last_before.message);
-                        c.put32(grid, 110); c.put32(grid + 4, scenario >= 7 ? 145 : 140); c.put32(grid + 8, 780); c.put32(grid + 12, scenario >= 7 ? 535 : 545);
+                        c.put32(grid, 110); c.put32(grid + 4, scenario >= 7 && scenario <= 9 ? 145 : 140); c.put32(grid + 8, 780); c.put32(grid + 12, scenario >= 7 && scenario <= 9 ? 535 : 545);
                         refused("panel left at classic coordinates");
                     }
                     if (!last_before.footer_controls.empty()) {   // the last button drifts right
@@ -178,10 +215,17 @@ void message_screens_builder(const char* path) {
                     }
                     {   // the message text moves off the panel's center
                         bool done = false;
-                        for (unsigned k = 0; k < t.controls() && !done; ++k) {
+                        for (unsigned k = 0; k < t.controls() && !done && (scenario < 18 || scenario > 20); ++k) {
                             const auto at = t.control(k);
                             if (c.i16(at + 0x72) != last_before.message || c.u32(at + 8) || !c.i32(at + 0x28) || !c.i32(at + 0x2c)) continue;
                             c.put32(at + 0x28, c.i32(at + 0x28) + 30); c.put32(at + 0x2c, c.i32(at + 0x2c) + 30); done = true;
+                        }
+                        if (!done) {   // the trial period's cells: the plus button leaves the panel
+                            for (unsigned k = 0; k < t.controls(); ++k) {
+                                const auto at = t.control(k);
+                                if (c.i16(at + 0x72) != last_before.message || c.u32(at + 0x20) != 4) continue;
+                                c.put32(at + 0x10, c.i32(at + 0x10) + 500); c.put32(at + 0x18, c.i32(at + 0x18) + 500); done = true;
+                            }
                         }
                         require(done, "Message fixture found no text to mutate");
                         refused("text off the panel's center");
@@ -192,7 +236,7 @@ void message_screens_builder(const char* path) {
                 // Safe dismissals through the original handlers: records unchanged, same result in both runs.
                 std::vector<std::uint8_t> outcome;
                 const auto saved = records();
-                const unsigned back = scenario == 0 || scenario == 4 || scenario >= 7 ? 1 : scenario == 2 || scenario == 3 ? 1 : 0;
+                const unsigned back = dismissals[scenario];
                 if (back) {
                     const int i = t.find(back);
                     require(i >= 0 && t.hit(i) == i, "Message dismissal control missing");

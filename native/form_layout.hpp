@@ -56,6 +56,7 @@ void layout_hall_of_fame(State&, std::uint32_t display, GuiCanvas);
 void layout_manager_status(State&, std::uint32_t display, GuiCanvas);
 void layout_job_information(State&, std::uint32_t display, GuiCanvas);
 void layout_holiday(State&, std::uint32_t display, GuiCanvas);
+void layout_bid_rejection(State&, std::uint32_t display, GuiCanvas);
 void layout_next_match(State&, std::uint32_t display, GuiCanvas);
 void layout_competition_stage(State&, std::uint32_t display, GuiCanvas);
 void layout_competition_list(State&, std::uint32_t display, GuiCanvas, unsigned section, bool historical);

@@ -1,5 +1,6 @@
 #include "form_layout.hpp"
 #include "guest_screen.hpp"
+#include "paged_screen_layout.hpp"
 #include "gui_guest_scope.hpp"
 #include <algorithm>
 #include <array>
@@ -13,6 +14,10 @@ namespace cm::aot {
 // buttons that is either a grid of one to six columns or one standalone control at 100,555-790,590. Their builders place the message by
 // row (a short message in the middle row of nineteen) and size the buttons by a column specification, so
 // the original shape is a tall panel with a few words in it and unequal buttons.
+//
+// The trial period selection (one row of a label, a minus button, the weeks and a plus button) has the same
+// panel as a grid of seven columns and no explicit text bounds: its cells follow the new width with only the
+// label column growing, like a table's.
 //
 // Here the screen becomes a dialog: a centered panel only as tall as its message needs plus a row of
 // padding on each side, with equal buttons under it, right-aligned to its edge, the whole block in the
@@ -31,7 +36,7 @@ void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
     for (unsigned i = 0; i < grids; ++i) {
         const auto grid = screen.grid(i);
         const auto box = screen.rect(grid);
-        if (std::find(message_boxes.begin(), message_boxes.end(), box) != message_boxes.end() && screen.columns(grid) == 1) {
+        if (std::find(message_boxes.begin(), message_boxes.end(), box) != message_boxes.end() && (screen.columns(grid) == 1 || screen.columns(grid) == 7)) {
             ambiguous |= message >= 0; message = int(i); message_box = box;
         }
         else if (box == footer_box && screen.rows(grid) == 1 && screen.columns(grid) >= 1 && screen.columns(grid) <= 6) {
@@ -82,6 +87,13 @@ void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
 
     GuiGuestScope preserve(s);
     c.set(1, c.sp() - 0x400);
+    // The columns of a seven-column panel, as AutoGrid measured them for the builder's rectangle.
+    paged_screen::ColumnMap map;
+    const bool columned = screen.columns(message_grid) != 1;
+    if (columned) {
+        screen.measure(message_grid);
+        if (!map.read(c, screen, message_grid, message_box.width(), panel)) return;
+    }
     for (unsigned i = 0; i < controls; ++i) {
         const auto at = screen.control(i);
         const int owner = c.i16(at + 0x72), left = c.i32(at + 0x28), right = c.i32(at + 0x2c);
@@ -89,6 +101,10 @@ void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
             c.put32(at + 0x24, unsigned(int(c.u32(at + 0x24)) + row_delta));
             // Text and links carry explicit bounds measured at the original wrapping; they move together.
             if (left && right) { c.put32(at + 0x28, left + shift); c.put32(at + 0x2c, right + shift); }
+            else if (columned && c.u32(at + 0x20) < map.count()) {
+                const auto [first_x, last_x] = map.cell(c.u32(at + 0x20));
+                c.put32(at + 0x28, first_x); c.put32(at + 0x2c, last_x);
+            }
         } else if (footer >= 0 && owner == footer) {
             const unsigned column = c.u32(at + 0x20);
             if (column < cells.size()) {

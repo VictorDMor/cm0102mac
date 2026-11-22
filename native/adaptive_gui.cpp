@@ -170,6 +170,14 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::holiday:
         // Tables of the whole game's managers or nations and the holiday dialog: the layout reads no record of the history.
         return instance && read(instance + 0x24);
+    case ScreenTemplate::bid_rejection: {
+        // The builder takes the offer from history 0, or from history 1 when that is empty, and reads
+        // the player it names and the manager's club.
+        const auto count = read(toc - 0x7be4);
+        const auto link = value(0) ? value(0) : value(1);
+        const auto offer = link ? read(link) : 0;
+        return instance && read(instance + 0x24) && count && offer && read(offer + 12) < read(count);
+    }
     case ScreenTemplate::transfer_status:
     case ScreenTemplate::previous_offers: {
         // History 0 is a person ID for the status screen and the offer record for previous offers.
