@@ -160,6 +160,13 @@ std::uint32_t load_regen_file(Cpu&, std::uint32_t regen, std::uint32_t archive);
 // cursor cell there). `owner` is unused.
 void regenerate_staff(Cpu&, std::uint32_t owner, std::uint32_t person, std::uint32_t incoming_r20);
 
+// Block `newgen_player` (player_regen_newgen_player.cpp): 0x102e4530 creates a new young player in place of a retired one (`person` a
+// person record marked for regeneration whose club is 0, `owner` the regen object whose player pool's first entry names the player
+// record slot and the nations): the person reset, his nation chosen, the player record's ability, reputations, age, birth day and
+// personality bytes drawn by the nation's reputation and his position ratings, and the person placed with a club or moved on. 131
+// inline draw sites, the order data dependent (see the file). Callers read no register after the call.
+void regenerate_player(Cpu&, std::uint32_t owner, std::uint32_t person);
+
 // Block `news_posting` (player_regen_news.cpp): the three messages the module posts, each built as a news item on its frame and handed to
 // the news manager (0x102cc030 and the routines 0x102cc140, 0x102cc280, 0x102cc400, 0x102cc8e0 by who should read it). The callees run
 // through the dispatcher at the original's return addresses.

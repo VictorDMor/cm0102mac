@@ -2765,3 +2765,25 @@ search and queued test, the two qsort comparators) and `candidate_score` (the po
   to its start) and at each draw position in turn, forced remainders at the tested attributes, all 61 refill sites paired by the call trace, every `if` outcome of the
   source hit (`contract != 0` after the clear only with the clear answered: a real contract is cleared by it), 15 source-level controls found. The cases with a
   null staff record run with `--null-page` (the original reads addresses 0x24..0x43 otherwise: both sides fault).
+
+- Block `newgen_player` (0x102e4530, `player_regen_newgen_player.cpp`, cases in `player_regen_checks_newgen_player.cpp`) creates a new young player in place of a
+  retired one (the caller 0x102dabb0 reads no register after it; no callee-saved register of the caller is read). 131 inline draw sites, none in a loop, the
+  order data dependent. The order: the draw below 4 that may replace the person's nation (a wide Random below the nations' count; the second nation by the
+  plan's third index with draws below 100 and 3), then one of two branches. A nation with no flag byte (+0x120) and a reputation word (+0x6c) under 350
+  (`modest_nation`) draws the age first (a wide Random below the reputation against a draw below 1000, then below 5 plus 23 or below 7 plus 17), the ability
+  (+4 of the player record = trunc(factor * potential) in one multiply-add with a wide draw below trunc(factor' * potential)) by the age (above 20: factors
+  0.55 and 0.25, else 0.6 and 0.25), then +8, +0xc, +0xa and the age tier's clamps; any other nation (`strong_nation`) draws the ability by the position ratings
+  (four arms: +0x15, +0x11/+0x10, +0xf = 20, else), +8, +0xc, +0xa and then the age by a draw below 10000 with the ability's cap. Both then take the birth day
+  (below 365), the personality bytes (+0x1b, +0x36, +0x1d, +0x2e with a wide draw below 3 times a bonus of -5, 0 or 5, +0x34, +0x44, +0x3c, +0x3d, then +0x1e,
+  +0x24, +0x2c, +0x2f by age) and the placement (a draw below 4, the club pick 0x102e99f0, the signing 0x102dc000, the youth news and a release; else draws below 15
+  and 10 and the move 0x102ea3c0). The wide Random takes the scaled form only for the nations' count and the nation's reputation word (every other bound is
+  below 24576 in magnitude); its second draw is a real call of 0x102da630, and the two inline copies allocate their registers differently (the registers the
+  callee leaves, which the next callee reads, are set per copy). No capture reaches the entry: the checks start from the real people, player records and nations
+  of season-day, edited over every byte the routine branches on, with the pool refilling at every draw, at chosen draws and with forced remainders, negative
+  salts, and the callees that open files answered (0x10186ea0) or the nation count restored for the callees that loop over it. The default run is 727 cases
+  (7.9 minutes serial: every site paired by the call trace with `--argument-masks`, findings 0; every operand of every `if` seen both ways but one); CM_NEWGEN_PLAYER_FULL=1
+  (155,832 cases: every value of each rating and personality byte, every potential, 12,000 random setups) was run by hand in label groups on the final code, with every 8th potential
+  (CM_NEWGEN_PLAYER_STRIDE=8): 35,000 cases, no difference. The routine's r7..r10 leftovers are read by
+  0x1014b690, 0x10309850 and 0x100c2800: r7 and r8 are set where the original's `li` are, r9 and r10 pass through. 3 of the 131 refill sites are not
+  written: the original's age-tier tree asks twice about the age (`age <= 20` then `> 26`, `> 23`, `> 20`), so three of its five ability arms (refills
+  0x102e50e4, 0x102e52d0, 0x102e54bc) are dead code (proved from the listing: each entry has the one predecessor, the age register is not written between).
