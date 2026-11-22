@@ -2787,3 +2787,56 @@ search and queued test, the two qsort comparators) and `candidate_score` (the po
   0x1014b690, 0x10309850 and 0x100c2800: r7 and r8 are set where the original's `li` are, r9 and r10 pass through. 3 of the 131 refill sites are not
   written: the original's age-tier tree asks twice about the age (`age <= 20` then `> 26`, `> 23`, `> 20`), so three of its five ability arms (refills
   0x102e50e4, 0x102e52d0, 0x102e54bc) are dead code (proved from the listing: each entry has the one predecessor, the age register is not written between).
+
+- Block `retirement_processor` (0x102d8920, `player_regen_retirement_processor.cpp`, cases in `player_regen_checks_retirement_processor.cpp`) is the daily walk of list A
+  of the regen object: it sorts the list, then for each entry in order either drops it (a person under 30 with a club or a blocking class, one the contract manager or
+  the transfer manager holds back, one on a short contract: 210 days or more away or age 38 are the limits), retires the person (announce, release the contract, shortlist,
+  national and dispute bookkeeping, detach a player, then by kind: a pure player may be given a staff record from list C by three draws (the byte +0x67, % 100, a bound that is
+  the cube of the ability byte plus the player's halfword, wide above 0xffff, and % 50000 with a second chance; the staff record's halfwords are then derived by pow in three
+  variants and a position byte of 20 swaps two bytes), a person with both records goes to the player pool, anyone else is registered for regeneration or regenerated at once
+  by job) or, for the first entry not yet due, posts the announcement once and ends the walk; last it sorts list B. The routine calls this module's routines directly
+  (`remove_retirement`, `announce_retirement`, `detach_player`, `regenerate_staff` with its own r20: the address of the pool's cursor cell, which never selects a job here
+  because it is called only for a person with a club, ...) and the other modules' through the dispatcher at the original's return addresses; r13-r31 are mirrored for the
+  callees' prologues; r7/r8 are set where the inline arithmetic leaves them for a later callee (r8-r10 are read by 0x102df020 and 0x10365590, r7-r10 by the sorts; the caller
+  reads r6-r10). 12 inline refill sites, all paired by the call trace, plus the call of 0x102da630 of the wide draws; the wide forms at the bytes' draws (+0x67, +0x63, signed
+  bytes) and the first draw's wide copy at 0x102d8e10 and 0x102d980c are unreachable (a signed byte bound), and the cap at 199999 of the second chance cannot be exceeded (the
+  scaled part is at most 199996 and the tenth of a draw below 30 at most 3). Real captures reach it (season-day once, 18 retirements, 8 conversions; same-save-continue 7 times). The default run is about 2,180 cases (3 minutes: real people of season-day with list A and B rewritten per case,
+  dates on both sides of both thresholds, every filter, hold and short-contract combination with the deciding outside routines answered, controlled draw scripts for the
+  conversion and its equalities, negative salts, a refill at each draw position, the tails by person kind and job byte): all 12 inline refill sites paired by the call trace with
+  `--argument-masks`, findings 0, every operand of every `if` seen both ways but the unreachable cap; CM_RETIREMENT_FULL=12000 (random sweep, run once by hand in nine label groups): 11,436
+  cases returned, no difference (563 end at a callee that reaches the file system, on both sides). 30 source-level controls were found (thresholds, moduli, refill addresses, the
+  weights and limits of the three ability variants); not found, and why: the weak variant's third factor (its limit 1.0 always binds), the cap, the r20 handed to `regenerate_staff`
+  (never selects a job here), and the import glue's stack word. The live check (`--check-routines`) on season-day (1 call) and same-save-continue (7 calls) and the paired
+  replay (MATCH=2) agree; the stack audit lists two readers (0x10371b2c, 0x101d1900) of bytes the dispute callee leaves at this frame's depth, which every callee reached at the
+  original stack pointer reproduces. With this block all 47 entries of the module are routed.
+
+
+- Blocks `regen_pending_processor` (0x102dabb0, `player_regen_pending.cpp`) and `lifecycle_and_drivers` (the constructor 0x102d8230, the destructor 0x102d85c0 and
+  the scans 0x102d86c0 and 0x102d8830, `player_regen_lifecycle.cpp`) are written and hooked. 0x102dabb0 regenerates the due entries of the queue (list B: its year
+  halfword unsigned against the game's, then the day halfword signed, with the compiler's xor/shift compare evaluated as the original does), each by 0x102e4530 and
+  0x102df6d0 (an id outside 0..the people count reports the assertion of line 0x36e and ends; the count itself is accepted), while the player pool (list D) is
+  not empty; then, with more than 2 entries in list C, up to count - 2 times, the best candidate (0x102dbf00) of the nation the first entry names takes that
+  entry's 0x44-byte staff record (table TOC -0x79f8). A person with no player record draws +0x28, +0x2a (below 1500) and +0x2c (below 500), each plus 1. One with a
+  record may swap the staff bytes +0x30/+0x31 (signed, with a draw below 4 and one below 50), runs 0x100c3870, and takes the club's coach or assistant manager post
+  by the reputation against the player's halfword +0xa (0.5 then 0.75; the coach loop does not stop at the first empty slot: every empty one of the five gets him);
+  then +0x2a, +0x28, +0x2c are trunc(min(cap, factor * max(pow(role byte, 2), halfword))) (the third compares 0.75 * pow), with factor/cap 0.9/7500 for a halfword
+  +0xa above 7500, else 0.75/6000 after a draw below the signed byte +0x63 (none for 0) that is nonzero, 0.5/4500 when it is zero. The maximum and the capped
+  product evaluate pow and the conversions again where the original does, so FPSCR is the original's; the scaled form of the draw below the byte is unreachable
+  (a signed byte). r20 and r21 are mirrored across iterations (the date's address, then the byte and the draw). No stack reader reads anything these routines
+  leave (season-day and same-save-continue, `--stack-audit-all` with the originals running).
+- The module's routines are called as C++ with the registers the original's `bl` sets (`Run::direct`): 0x102e4530's first callee (0x102b8180) reads r4 as a leftover
+  argument, so a direct call that left r4 alone faulted (found by the first creation case; the same call through the dispatcher passed because the checker
+  compares the callee in isolation from the same registers). The constructor builds a Pascal name from two obfuscated pieces of the unit's data and asks for it
+  (FSMakeFSSpec through the glue 0x1077fee0) until it is found, alerting each time; `Case::lookups` (player_regen_checks.hpp) answers that import per call (a refusal
+  once, twice, an OSErr whose low halfword is zero but not the word). The scans keep the retirement entry on their frame (+0x44, its dates begun by 0x10715880 at
+  +0x4c/+0x54) so the decisions see the original's addresses; the daily scan reads the caller's r19 (the decisions' job byte of a staff member with no job bytes).
+  The destructor frees the four blocks that exist, the per-nation club lists (read count each time) and, for a positive halfword flag, the object.
+- Checks: `regen_pending` 920 cases (the queue's date and id outcomes, creation for real, a window of the real people table [base cell and count rewritten] with one edited
+  candidate: player record or none, club or none, the reputation thresholds, the answered human/busy/free routines, the swap draws, every role byte class against the
+  caps of the three variants), `lifecycle` 301 (scans over windows of the first real people: age, link, id, class, queued, contract flag, retirements, the staff r19 family;
+  the destructor on the real object and copies; the constructor with the file refused, each allocation refused, loading retire.dat from the in-memory archive). Findings 0;
+  all 6 refill sites of 0x102dabb0 and every dispatcher callee site of both blocks paired (the module's routines called as C++ and the pow glue are not traced); every operand of every `if` of both sources seen both ways; 16 + 11 source controls, all found but one
+  (the r21 mirror: callee-saved registers are not compared by a native-first trace, and no stack reader reads them), `--corrupt` and `--corrupt-draw`. Two constructor cases
+  fault on both sides (allocation 1 and 3 refused in a new game write through the null block): `--null-page` runs them to the assertions (301 returned, the four assertion sites
+  paired). CM_REGEN_PENDING_FULL=1 (every role byte, 6,144 ability cases): no difference. Live: season-day 1 call and same-save-continue 7 calls of 0x102dabb0 checked,
+  0 differ; the pair replay MATCH=2.

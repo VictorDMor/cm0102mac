@@ -74,7 +74,12 @@ struct Case {
     std::function<bool(State&)> verify = nullptr;
     // Start with FPSCR cleared (the snapshot's has the sticky inexact bit set, which hides a missing inexact result).
     bool clear_fpscr = false;
+    // The system's file lookup (FSMakeFSSpec, an import the generated code and the C++ both reach through the glue 0x1077fee0): the answers of
+    // its calls in order (the OSErr in r3); calls beyond the list find the file (0); an empty list leaves the import unanswered. Counted in scratch memory (fs_lookup_state), so each run
+    // starts from the case's count of 0.
+    std::vector<std::uint32_t> lookups = {};
 };
+inline constexpr std::uint32_t fs_lookup_state = scratch_base + 0x7f000;
 struct Scenario {
     State& s;
     std::uint32_t r32(std::uint32_t at) const { return std::uint32_t(s.memory.read<4>(at)); }

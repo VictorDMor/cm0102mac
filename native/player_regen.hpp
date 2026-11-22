@@ -167,6 +167,16 @@ void regenerate_staff(Cpu&, std::uint32_t owner, std::uint32_t person, std::uint
 // inline draw sites, the order data dependent (see the file). Callers read no register after the call.
 void regenerate_player(Cpu&, std::uint32_t owner, std::uint32_t person);
 
+// Block `retirement_processor` (player_regen_retirement_processor.cpp): 0x102d8920, the daily walk of list A of the regen object (`regen`): sorts
+// it, then for each entry in order: one whose retirement date has come either is dropped (a young person with a club, or one the contract or
+// transfer manager holds back, or one on a short contract) or retires (the retirement announced, the contract, shortlist, national and dispute
+// bookkeeping released, a player detached from his club, a pure player perhaps given a staff record from list C with abilities derived from his
+// player record, a person with both records moved to the player pool, others registered for regeneration or regenerated in place at once); the first
+// entry not yet due is announced when its announcement date has come (once) and the walk goes on; the walk ends at an entry already announced or whose
+// announcement date has not come. Last it sorts list B. The callers read r6-r10 (what
+// the last sort leaves).
+void process_retirements(Cpu&, std::uint32_t regen);
+
 // Block `news_posting` (player_regen_news.cpp): the three messages the module posts, each built as a news item on its frame and handed to
 // the news manager (0x102cc030 and the routines 0x102cc140, 0x102cc280, 0x102cc400, 0x102cc8e0 by who should read it). The callees run
 // through the dispatcher at the original's return addresses.
@@ -194,4 +204,22 @@ void announce_staff_retirement(Cpu&, std::uint32_t person, std::uint32_t reason)
 void youth_promotion_text(Cpu&, std::uint32_t item, std::uint32_t kind, std::uint32_t out);
 void retirement_text(Cpu&, std::uint32_t item, std::uint32_t kind, std::uint32_t out);
 void staff_retirement_text(Cpu&, std::uint32_t item, std::uint32_t kind, std::uint32_t out);
+
+// Block `regen_pending_processor` (player_regen_pending.cpp): 0x102dabb0 regenerates the people of the queue (list B) whose date has come
+// (0x102e4530, then the entry leaves the queue; an id outside the people table reports the game's assertion and stops) while the player pool
+// (list D) is not empty, then gives the staff of the pool (list C, while more than 2 remain) the best candidate's abilities of a player: the staff
+// record's +0x28, +0x2a, +0x2c from the player record's halfwords (the square of the role byte, factors and caps by the player's value),
+// and the club's coach or assistant manager post. The caller reads no register after the call.
+void process_regen_queue(Cpu&, std::uint32_t regen);
+
+// Block `lifecycle_and_drivers` (player_regen_lifecycle.cpp): the regen object's constructor and destructor and the two scans that fill list A.
+// 0x102d8230: builds the object (`archive` 0: a new game: the initial scan and ten sentinel entries of list C (the last ten staff rows' indexes); else retire.dat is loaded
+// from it), asking the system for the game's data file until it exists; returns the object (a missing block reports the assertion and ends the game).
+std::uint32_t construct_regen_object(Cpu&, std::uint32_t object, std::uint32_t archive);
+// 0x102d85c0: frees the blocks, the per-nation club lists and (a positive `flag` halfword) the object; returns the object.
+std::uint32_t destroy_regen_object(Cpu&, std::uint32_t object, std::uint32_t flag);
+// 0x102d86c0 (daily) and 0x102d8830 (new game): append the retirement entries the decisions give for the people table to list A and sort it. They read
+// the callee-saved r19 their caller held (`incoming_r19`) for the decisions.
+void scan_retirements(Cpu&, std::uint32_t regen, std::uint32_t incoming_r19);
+void scan_initial_retirements(Cpu&, std::uint32_t regen, std::uint32_t incoming_r19);
 }

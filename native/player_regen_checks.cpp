@@ -100,10 +100,19 @@ std::map<std::uint32_t, Tally> case_tally, mutated_tally;
 std::map<std::uint32_t, std::uint64_t> observed_calls;
 unsigned clocks = 0;
 
+// The current case's FSMakeFSSpec answers (Case::lookups), null outside a case.
+const std::vector<std::uint32_t>* case_lookups = nullptr;
 struct Inputs final : CodeFragmentBoundaryObserver {
     void enter(const State&, std::uint32_t, bool) override {}
     void leave(State&, std::uint32_t, bool) override {}
     bool import_fixture(State& s, const char* name) override {
+        if (case_lookups && std::string_view(name) == "CarbonLib::FSMakeFSSpec") {
+            const auto n = std::uint32_t(s.memory.read<4>(fs_lookup_state));
+            s.memory.write<4>(fs_lookup_state, n + 1);
+            s.wr<4>(12, n < case_lookups->size() ? (*case_lookups)[n] : 0u);
+            s.pc = s.r<4>(4128);
+            return true;
+        }
         if (std::string_view(name) != "CarbonLib::Microseconds") return false;
         s.memory.write<8>(s.r<4>(12), 1000000000ULL + 1000000ULL * ++clocks);
         s.pc = s.r<4>(4128);
@@ -809,6 +818,8 @@ void run_cases(State& s, std::mt19937& random) {
         current_label = item.label;
         const OriginalOwners owners(s, item.original_owners);
         case_answers = &item.answers;
+        case_lookups = item.lookups.empty() ? nullptr : &item.lookups;
+        s.memory.write<4>(fs_lookup_state, 0);
         case_pokes = &item.pokes;
         case_captures = &item.captures;
         case_nth_answers = &item.nth_answers;
@@ -829,6 +840,7 @@ void run_cases(State& s, std::mt19937& random) {
         }
         s.memory.observer = saved_observer;
         case_answers = nullptr;
+        case_lookups = nullptr;
         case_pokes = nullptr;
         case_captures = nullptr;
         case_nth_answers = nullptr;

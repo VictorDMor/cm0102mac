@@ -2,8 +2,6 @@
 // other entry). An entry goes here only with the listing's proof that no caller can read them: no direct
 // caller reads them (tools/register_contract.py --after ENTRY), and no virtual, comparator or qsort path can
 // hand them on. One line each: 0xENTRY,  // the proof
-0x102dc410,  // its two callers are the direct `bl`s of 0x102dbf00 (no descriptor, no virtual slot) and read r3 only: tools/register_contract.py --after 0x102dc410
-0x102dbf00,  // its one caller is the direct `bl` of 0x102dabb0 (no descriptor, no virtual slot) and reads r3 only: tools/register_contract.py --after 0x102dbf00
 0x102deb70,  // its three callers are direct `bl`s (0x102d8920, 0x102dabb0, 0x102dbeb0; no descriptor, no virtual slot) and read nothing after the call: tools/register_contract.py --after 0x102deb70
 0x102ded90,  // its one caller is the direct `bl` of 0x102e4530 (no descriptor, no virtual slot) and reads nothing after the call: tools/register_contract.py --after 0x102ded90
 0x102dbeb0,  // its two callers are direct `bl`s of CONTRACT_MANAGER's C++ (no descriptor, no virtual slot) and read nothing after the call: tools/register_contract.py --after 0x102dbeb0

@@ -12,3 +12,6 @@
 #include "player_regen_routines_news.inc"
 #include "player_regen_routines_newgen_staff.inc"
 #include "player_regen_routines_newgen_player.inc"
+#include "player_regen_routines_retirement_processor.inc"
+#include "player_regen_routines_pending.inc"
+#include "player_regen_routines_lifecycle.inc"

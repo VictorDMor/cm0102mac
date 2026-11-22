@@ -137,8 +137,8 @@ PLAYER_REGEN_HOOKED = tuple(entry for entry, _, _ in rewritten(drafts=True))
 
 
 # Whether the generator requires every entry routed (PLAYER_REGEN_ROUTINE); False while an entry is still
-# unwritten or a draft. 41 of the 47 are routed (the pilot blocks, then block by block; docs/cpp-rewrites.md).
-COMPLETE = False
+# unwritten or a draft. All 47 are routed (the pilot blocks, then block by block; docs/cpp-rewrites.md).
+COMPLETE = True
 
 
 def require_player_regen_index(db, path=INCLUDES, complete=None):

@@ -3,17 +3,13 @@
 The live work list. Claude keeps it current during a run; read this instead of
 the scrollback. Remove ticked items once their commit is pushed.
 
-## Now: PLAYER_REGEN.CPP (Victor's pick, 2026-11-21)
+## PLAYER_REGEN.CPP: delivered 2026-11-22 (47 of 47 in production)
 
-Retirements and newgen players and staff. Inventory closed: 47 entries, 0x102d8230..0x102eb6f8, 19,660 instructions (`tools/player_regen_audit.py`, 12 tests; working folder `.local/rewrites/player_regen/` with the ledger, calls, census, decompiled C and the brief). Nothing routed yet.
+Retirements and newgen players and staff: 47 entries, 0x102d8230..0x102eb6f8, 19,660 instructions, all handwritten C++ in production (`tools/player_regen_audit.py`; `cm-player-regen-checks`; the record is in the commits and `docs/cpp-rewrites.md`).
 
-- [x] Inventory and audit. Against the heuristic's 52: the seven routines 0x102d5b30..0x102d8224 (2,486 instructions, a player-config loader whose slot names "CM3_DATA" before this unit's pool) are out, pinned as ambiguous neighbours for whoever audits OFFICIALS_MANAGER; the comparators 0x102eb4e0 and 0x102eb550 are in. 0x102eb700..0x102eb930 (169 instructions, descriptors taken by SCOUT_MANAGER code) unowned.
-- [x] In production (41 of 47 entries; `cm-player-regen-checks`, tests `player_regen_equivalence` and `player_regen_production`): regen_queries, candidate_score (pilots), regen_lists, club_placement, detach, retire_decision, persistence, news_posting, news_texts (2026-11-21), newgen_staff (2026-11-22; its cases make `player_regen_equivalence` take 35 minutes), newgen_player (2026-11-22; the test now takes 42 minutes; exhaustive sweeps by hand with `CM_NEWGEN_PLAYER_FULL=1`).
-- [ ] Left (instructions): retirement_processor 1,860, regen_pending_processor 1,203, lifecycle_and_drivers 438. The brief for a block is `.local/rewrites/player_regen/brief.md`.
-- [ ] Callees outside the module go through `invoke` (`c.call` at the original return address) even when they are C++: equal results, but not the direct typed calls the port wants. Convert once the module is complete, or decide to keep.
-- [ ] The checker compares a mask of r4-r10 for the entries in `player_regen_volatile_read.inc` (the registers a caller reads); 13 of the 18 entries of the three later blocks are reached by no capture. No capture reaches the four retirement decisions (0x102dcb20, 0x102dd910, 0x102de6e0, 0x102de470): cases and a line-by-line review only; their r19 input was traced statically, not read in a replay. `retire.dat`: the cases use an in-memory archive; the real zip code ran for one save in same-save-continue, and no load.
-- Risks to settle per block: 17 entries draw RNG inline (0x102e4530 131 sites, 0x102e27e0 61, data-dependent order); `pow` through the host bridge; mixed single/double and fused multiply-adds in 0x102dcb20, 0x102dd910, 0x102df780, 0x102e4530; 0x102dcb20/0x102dd910 read the caller's r19 and 0x102e27e0 its r20; `retire.dat` save and load (0x102ea870, 0x102ead70).
-- Captures: 19 of 47 entries reached (season-day, same-save-continue); 0x102e4530 once; 0x102e27e0, 0x102dcb20, 0x102dd910 by none. 62 of 76 captures are stale.
+- [ ] Callees outside the module go through `invoke` (`c.call` at the original return address) even when they are C++: equal results, but not the direct typed calls the port wants. Convert, or decide to keep.
+- [ ] `player_regen_equivalence` takes 46 minutes, 35 of them the cases of newgen_staff. Move its random sweep behind an option like the later blocks' (`CM_NEWGEN_PLAYER_FULL`, `CM_REGEN_PENDING_FULL`, `CM_RETIREMENT_FULL`) if the time gets in the way.
+- Limits: the seven neighbours 0x102d5b30..0x102d8224 stay without a proven owner (for whoever audits OFFICIALS/the player-config loader). No capture reaches newgen_staff 0x102e27e0, the retirement decisions or the lifecycle entries: cases and line-by-line reviews only, no stack audit. The exemptions in `player_regen_volatile_free.inc` rest on `tools/register_contract.py`, which treats every `bl` as writing r4-r10; four were removed after reviews followed the callers by hand (`.local/rewrites/player_regen/pending/leftover_flow.py` does it properly for one start address).
 
 ## COMP_UTIL.CPP: delivered 2026-11-21 (35 of 35 in production)
 

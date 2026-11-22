@@ -62,6 +62,8 @@ std::int32_t score_of(Cpu& c, std::uint32_t person) {
             // The bound is the cubed value as fctiwz truncates it (saturating, NaN to the most negative).
             pool.advance(refill_site::nation_term);
             const auto bound = low_word(fp.fctiwz(0, cubed));
+            // The scaled form's inline copy leaves the sum in r7 (r8 is not written); the small form leaves both alone.
+            if (bound >= 0x10000 || bound <= -0x10000) c.set(7, std::uint32_t(pool.sum()));
             term = pool.draw_advanced(bound, refill_site::random_first, &cubed);
         }
         score = add(score, term);
@@ -98,6 +100,12 @@ std::int32_t score_of(Cpu& c, std::uint32_t person) {
 
     // 6. The last draw, below the score itself.
     if (score == 0) return 0;
+    // The scaled form's inline copy leaves the sum in r7 and the sample in r8 (the small form leaves them alone): the pick's caller reads them.
+    if (score >= 0x10000 || score <= -0x10000) {
+        pool.advance(refill_site::final_term);
+        c.set({{7, std::uint32_t(pool.sum())}, {8, c.u16(cell(c, toc::rng_cursor))}});
+        return pool.draw_advanced(score, refill_site::random_first);
+    }
     return pool.draw(score, refill_site::final_term, refill_site::random_first);
 }
 }

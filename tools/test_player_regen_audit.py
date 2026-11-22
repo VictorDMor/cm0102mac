@@ -100,7 +100,7 @@ SEARCH_SIDE = tuple(a for a, *_ in audit.AMBIGUOUS_NEIGHBOURS[7:])
 # 0x102dec50, 0x102dee70, 0x102df020, 0x102df1a0, 0x102df6d0, 0x102eb670), block club_placement (0x102ea670, 0x102e9b90,
 # 0x102e99f0, 0x102ea3c0, 0x102e98a0, 0x102dc000), block detach (0x102e1f20, 0x102e21c0), block retire_decision (0x102dcb20, 0x102dd910,
 # 0x102de6e0, 0x102de470), block persistence (0x102ea870, 0x102ead70), block news_posting (0x102df780, 0x102e0090, 0x102e13c0) and
-# block news_texts (0x102dfbc0, 0x102e0510, 0x102e15b0) block newgen_staff (0x102e27e0) and block newgen_player (0x102e4530).
+# block news_texts (0x102dfbc0, 0x102e0510, 0x102e15b0) and block newgen_staff (0x102e27e0) and block newgen_player (0x102e4530) and blocks regen_pending_processor (0x102dabb0) and lifecycle_and_drivers (0x102d8230, 0x102d85c0, 0x102d86c0, 0x102d8830).
 ROUTED = frozenset({0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 0x102eb610,
                     0x102da630, 0x102dc410, 0x102dbf00,
                     0x102deb70, 0x102ded90, 0x102dbeb0, 0x102dea50, 0x102dec50, 0x102dee70, 0x102df020, 0x102df1a0, 0x102df6d0, 0x102eb670,
@@ -109,7 +109,9 @@ ROUTED = frozenset({0x102de3c0, 0x102de3f0, 0x102dbe90, 0x102eb4e0, 0x102eb550, 
                     0x102dcb20, 0x102dd910, 0x102de6e0, 0x102de470,
                     0x102ea870, 0x102ead70,
                     0x102df780, 0x102e0090, 0x102e13c0, 0x102dfbc0, 0x102e0510, 0x102e15b0,
-                    0x102e27e0, 0x102e4530})
+                    0x102e27e0, 0x102e4530,
+                    0x102dabb0, 0x102d8230, 0x102d85c0, 0x102d86c0, 0x102d8830,
+                    0x102d8920})  # 0x102d8920: block retirement_processor
 # The three audited units whose code loads a literal before their pool load only binary data and preamble pieces.
 BINARY_BEFORE_POOL = {'CONTRACT_SCREENS.CPP', 'FORMATION.CPP', 'MANAGER_MANAGER.CPP'}
 
@@ -191,7 +193,7 @@ class PlayerRegenAuditTests(unittest.TestCase):
     def test_exactly_the_routed_blocks_are_routed_and_hooked_and_the_hook_checks_fail_when_they_should(self):
         from compile_recomp import OWNER_REPLACEMENTS, SEMANTIC_REPLACEMENTS, generate_page
         pinned = {a: (b, d) for a, b, _, d in CONTRACTS}
-        self.assertFalse(audit.COMPLETE)
+        self.assertTrue(audit.COMPLETE)
         listed = audit.rewritten(drafts=True)
         for entry, end, expected in listed:
             self.assertEqual(pinned[entry], (end, expected))
@@ -204,9 +206,8 @@ class PlayerRegenAuditTests(unittest.TestCase):
         self.assertEqual([owner for at, owner in SEMANTIC_REPLACEMENTS if at in ENTRIES], [])
         with closing(sqlite3.connect(EXPORT / 'instructions.sqlite')) as db:
             audit.require_player_regen_index(db)
-            # The completeness check fails while an entry is not a production routine.
-            with self.assertRaisesRegex(ValueError, 'requires all 47'):
-                audit.require_player_regen_index(db, complete=True)
+            # Every entry is a production routine: the completeness check passes.
+            audit.require_player_regen_index(db, complete=True)
         selected = set(self.by_address)
         # Every page of the unit: its hooked entries carry the hook once, before the first step; the others none.
         for page in sorted({entry >> 12 for entry in ENTRIES}):
