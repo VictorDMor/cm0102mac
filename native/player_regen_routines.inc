@@ -10,3 +10,4 @@
 #include "player_regen_routines_retire_decision.inc"
 #include "player_regen_routines_persistence.inc"
 #include "player_regen_routines_news.inc"
+#include "player_regen_routines_newgen_staff.inc"

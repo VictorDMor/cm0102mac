@@ -2745,3 +2745,23 @@ search and queued test, the two qsort comparators) and `candidate_score` (the po
 - 0x102e15b0 reads the club row's +0x23b and +0x221 for a club that is null (word -1) in the sentences of the non-human branch: the original reads the
   addresses 0x23b and 0x221, which the checker's cases fault on (both sides alike) unless `--null-page` maps low memory; both modes agree. Whether the game
   can post a staff retirement text with no club in that branch is not established.
+
+- Block `newgen_staff` (0x102e27e0, `player_regen_newgen_staff.cpp`, cases in `player_regen_checks_newgen_staff.cpp`) regenerates a retired non-player staff
+  person in place, with 61 inline draw sites whose order depends on the data. The draws in the original's order: a bound of trunc(0.75 * the staff record's
+  halfword +0x26) (none when it is 0; double precision, and `|bound| <= 24576` so the scaled form of Random can never run), then below 750, 200 and 50; the age by
+  the job (one draw, the jump table at TOC -0x50bc: jobs 0, 5, 9 and everything outside 0..10 take the default arm; a table of {modulus, offset, refill site});
+  for a manager (job 1) with a club and a staff record the attribute bytes by the club's reputation (halfword +0x1ec: above 6250 with the flag byte +0x241 nonzero,
+  above 6250 with it zero, above 3250, the rest: four constexpr tables of plain / difference (two draws below 100, the first remainder kept across the second) /
+  tested (a draw below 5, 10 or 100 chooses between two draws) attributes); then below 365 (the birth day), below 125 (the personality tier by ten thresholds)
+  and, with a club, a staff record and a job the contract manager's test (0x1007e4f0) passes, below 28 and below 6 (the contract end).
+  One single-precision step: +0x24 is replaced by trunc(0.5f * +0x26) when it is below it (fsubs, fsubs, fmuls, fcmpo, fctiwz).
+- The job byte is the club side's (+0x62), else the national side's (+0x60), else the callee-saved r20 the caller held: 0x102d8920 loads it from TOC -0x7b84
+  (the address of the pool's cursor cell, 0x10be8284 in this executable) at 0x102d893c and never writes it again, so for a person with neither link the job is
+  that address's low byte as a signed byte (-124: above 10 unsigned, the default arm). The hook reads r20 before the frame. r4-r10 are compared in full (no mask):
+  the last callee (0x100c3870) leaves them; every call gets the registers the original sets just before it (the callee-saved r19-r22 are mirrored for the callees'
+  prologues), and the path that skips the contract block sets r4 (the last draw's sum) and r5 (the cursor) as the original's arithmetic leaves them (not
+  observable: the callee overwrites both). No capture reaches the entry: ~4,300 cases from the real people (the job byte over 0..255 on each of its three sources,
+  reputations around 3250 and 6250, potentials around the bound's thresholds, the contract test's answers), the pool refilling at every draw (the pool's end cell set
+  to its start) and at each draw position in turn, forced remainders at the tested attributes, all 61 refill sites paired by the call trace, every `if` outcome of the
+  source hit (`contract != 0` after the clear only with the clear answered: a real contract is cleared by it), 15 source-level controls found. The cases with a
+  null staff record run with `--null-page` (the original reads addresses 0x24..0x43 otherwise: both sides fault).

@@ -151,6 +151,15 @@ void schedule_injury_retirement(Cpu&, std::uint32_t regen, std::uint32_t person,
 // it (count plus 250 entries of capacity, the block reallocated; true when every step worked, else false after the assertion).
 void save_regen_file(Cpu&, std::uint32_t regen, std::uint32_t archive);
 std::uint32_t load_regen_file(Cpu&, std::uint32_t regen, std::uint32_t archive);
+// Block `newgen_staff` (player_regen_newgen_staff.cpp): 0x102e27e0 regenerates a retired non-player staff person in place (`person` a
+// person record whose staff record is +0x1c): the kind-table row and links reset, the staff record's ability halfwords drawn (+0x24
+// below 0.75 of +0x26, +0x28, +0x2c, +0x2a), the age by the job, a manager's attribute bytes by his club's reputation, the birth year
+// and day, the personality tier (+0x43), and for a person with a club whose job takes a contract the new end date (the contract
+// manager's calls). 61 inline draw sites, the order data dependent (see the file). The job byte is the club side's (+0x62), else the
+// national side's (+0x60), else the caller's callee-saved r20 (`incoming_r20`: the caller 0x102d8920 keeps the address of the pool's
+// cursor cell there). `owner` is unused.
+void regenerate_staff(Cpu&, std::uint32_t owner, std::uint32_t person, std::uint32_t incoming_r20);
+
 // Block `news_posting` (player_regen_news.cpp): the three messages the module posts, each built as a news item on its frame and handed to
 // the news manager (0x102cc030 and the routines 0x102cc140, 0x102cc280, 0x102cc400, 0x102cc8e0 by who should read it). The callees run
 // through the dispatcher at the original's return addresses.
