@@ -1,0 +1,6 @@
+// The font engine (tools/font_engine_audit.py): entry, end, results, digest of the original body, hook.
+// FONT_ENGINE_ROUTINE runs in production; FONT_ENGINE_DRAFT only in the check tools. Entries not listed run generated. The
+// hooks read the guest ABI's arguments and set r3.
+// Each block appends the #include of its font_engine_routines_<block>.inc below.
+#include "font_engine_routines_util.inc"
+#include "font_engine_routines_stream.inc"

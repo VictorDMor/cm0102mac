@@ -4730,6 +4730,42 @@ if(CM_PLAYER_REGEN_COVERAGE)
     target_link_options(cm-player-regen-checks PRIVATE "-fprofile-instr-generate=${CM_PLAYER_REGEN_PROFILE}" -fsanitize=undefined)
 endif()
 
+# The font engine (tools/font_engine_audit.py): the T2K scaler under the game's text, rewritten block by block. The module is not
+# complete: the production test names no --require-all until every entry is routed (COMPLETE). The inputs are a UI state with
+# fonts loaded (the save-info capture); the end-to-end comparison renders every glyph of every shipped font.
+file(GLOB CM_FONT_ENGINE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/font_engine*.cpp")
+list(FILTER CM_FONT_ENGINE_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")
+target_sources(cm_aot PRIVATE ${CM_FONT_ENGINE_SOURCES})
+file(GLOB CM_FONT_ENGINE_CHECK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/font_engine_checks*.cpp")
+add_executable(cm-font-engine-checks ${CM_FONT_ENGINE_CHECK_SOURCES})
+target_link_libraries(cm-font-engine-checks PRIVATE cm_aot)
+target_compile_options(cm-font-engine-checks PRIVATE -Wall -Wextra -Werror -Wpedantic -ffp-contract=off)
+if(EXISTS "${CM_ORACLE_DIR}/program.json")
+    add_test(NAME font_engine_audit COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tools/test_font_engine_audit.py")
+endif()
+if(EXISTS "${CM_ORACLE_DIR}/program.json" AND EXISTS "${CM_BENCHMARK_DIR}/ui/save-info/initial.snapshot")
+    set(CM_FONT_ENGINE_INPUTS --world "${CM_BENCHMARK_DIR}/ui/save-info/initial.snapshot")
+    add_test(NAME font_engine_equivalence COMMAND cm-font-engine-checks ${CM_FONT_ENGINE_INPUTS} --mutate 4 --call-trace --require-all)
+    add_test(NAME font_engine_production COMMAND cm-font-engine-checks ${CM_FONT_ENGINE_INPUTS} --production)
+    # The equivalence gate of the module: the engine over every font file the snapshot holds, original against production routing (about a minute;
+    # CM_FONT_ENGINE_EXHAUSTIVE=1 widens it to every style and size, minutes a file: .local/rewrites/font_engine/brief.md).
+    add_test(NAME font_engine_end_to_end COMMAND cm-font-engine-checks ${CM_FONT_ENGINE_INPUTS} --end-to-end)
+    set_tests_properties(font_engine_equivalence font_engine_production font_engine_end_to_end PROPERTIES ENVIRONMENT "CM_ENGLISH_RULES_ORIGINAL=1")
+endif()
+option(CM_FONT_ENGINE_COVERAGE "Instrument the font engine checker only" OFF)
+if(CM_FONT_ENGINE_COVERAGE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/font-engine-coverage")
+    set(CM_FONT_ENGINE_PROFILE "${CMAKE_CURRENT_BINARY_DIR}/font-engine-coverage/check-%m.profraw")
+    add_library(cm_font_engine_coverage OBJECT ${CM_FONT_ENGINE_SOURCES})
+    target_link_libraries(cm_font_engine_coverage PRIVATE cm_aot)
+    target_compile_options(cm_font_engine_coverage PRIVATE "-fprofile-instr-generate=${CM_FONT_ENGINE_PROFILE}" -fcoverage-mapping -ffp-contract=off
+        -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero,float-cast-overflow)
+    target_compile_definitions(cm_font_engine_coverage PRIVATE CM_FONT_ENGINE_COVERAGE=1)
+    target_sources(cm-font-engine-checks PRIVATE $<TARGET_OBJECTS:cm_font_engine_coverage>)
+    target_compile_definitions(cm-font-engine-checks PRIVATE CM_FONT_ENGINE_COVERAGE=1)
+    target_link_options(cm-font-engine-checks PRIVATE "-fprofile-instr-generate=${CM_FONT_ENGINE_PROFILE}" -fsanitize=undefined)
+endif()
+
 # DISPLAY.CPP (tools/display_audit.py): the display table, its controls, input, drawing and network form.
 file(GLOB CM_DISPLAY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/display_*.cpp")
 list(FILTER CM_DISPLAY_SOURCES EXCLUDE REGEX "_checks(_[a-z0-9_]+)?\\.cpp$")

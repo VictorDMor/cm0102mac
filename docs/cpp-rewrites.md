@@ -2866,3 +2866,29 @@ search and queued test, the two qsort comparators) and `candidate_score` (the po
   fault on both sides (allocation 1 and 3 refused in a new game write through the null block): `--null-page` runs them to the assertions (301 returned, the four assertion sites
   paired). CM_REGEN_PENDING_FULL=1 (every role byte, 6,144 ability cases): no difference. Live: season-day 1 call and same-save-continue 7 calls of 0x102dabb0 checked,
   0 differ; the pair replay MATCH=2.
+
+## The font engine: T2K under the game's text (tools/font_engine_audit.py)
+
+263 routines at 0x10751350..0x10768080 (22,909 instructions, fourteen compilation units) are the font scaler the game links:
+Bitstream's T2K with its TrueType interpreter and autogridder, under FONT.CPP (the game's wrapper, not part of this audit) and
+reached from the assertion box through graph_carbon.cpp. The audit pins the entries, ends and digests, the units (the pool
+slots and source names AUTOGRID.C .. TSIMEM.C, link order; "FNT", "STYLE" and "UTIL" are three units without a string, named
+by guess), the API (eleven entries FONT.CPP calls), the 127 entries only descriptors name and the three jump tables.
+Block files: `native/font_engine_*.cpp` (`util`: the fixed-point helpers; `stream`: the input stream readers), the checker
+`cm-font-engine-checks`, the brief for the next blocks in `.local/rewrites/font_engine/brief.md`.
+
+- **Errors unwind by setjmp/longjmp**: every API entry runs `setjmp` (0x10773eb0) on the tsiMemObject's jump buffer at +0x10 and
+  stores the code in its `errCode`; error sites call `longjmp` (0x10773f30) with a T2K error code (10009 = 0x2719 bad block, 0x2718
+  allocation). Assertions are not errors: the game's reporter 0x107755c0 (text, file, line) returns and the engine goes on.
+- **Fixed-point helpers are exact transcriptions**: 16.16 multiply/divide from 16-bit halves of the magnitudes (INT_MIN keeps its sign
+  through `neg`; `srawi` then mask is a logical shift; a divisor shifted in the divide loop shifts as signed). They are in
+  `font_engine_util.cpp` with the registers they leave (callers' indirect calls can read r4-r8): `Leftovers`.
+- **The checker's UI state needs r2**: a UI snapshot (`.local/benchmarks/ui/save-info`) is taken at an import boundary and has r2 = 0
+  in its register file; the cases set the game's TOC (0x108bba90) as any call has it.
+- **End to end** (`cm-font-engine-checks --world .../ui/save-info/initial.snapshot --end-to-end`, about a minute; `CM_FONT_ENGINE_EXHAUSTIVE=1`
+  every style 0..0x1f and every size 6..72, minutes a file, `CM_FONT_ENGINE_E2E_FONT=n` one file): the game's own font code (FONT.CPP,
+  generated in both runs) drives the engine over each font file of the snapshot with a fresh font record, renders every character
+  0x20..0xff at each style and size through its glyph cache and every cmap code through the engine's character entry, logs each
+  glyph's metrics and bitmap hash into guest memory, and the dirty pages (the engine's heap, the caches, the log) and the allocator
+  tables are compared between a run with every hook declining and the production routing. Three font files ship (small.t2k and
+  medium.t2k are byte-identical); the game requests cmd = 2 only, so AUTOGRID.C, GHINTS.C and HSTRAT97.C do not run in it.
