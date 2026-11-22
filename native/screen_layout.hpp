@@ -13,7 +13,7 @@ struct ScreenRect {
     bool operator==(const ScreenRect&) const = default;
 };
 enum class LayoutAxis { fixed, stretch, trailing, centered };
-enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection };
+enum class ScreenTemplate { legacy, startup, league_selection, load_browser, tactics, club_tables, competition, competition_history, match_report, daily_fixtures, nations_and_clubs, player_details, search_tables, search_filters, transfer_history, transfer_proposal, contract_negotiation, loan_terms, negotiation_confirmation, news_inbox, training, training_coaches, training_schedule, transfer_status, previous_offers, message_screen, board_confidence, manager_statistics, world_rankings, uefa_coefficients, hall_of_fame, manager_status, job_information, holiday, bid_rejection, friendly_countries, friendly_dates, credits, web_sites, text_entry };
 constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     switch (builder) {
     case 0x10334550: return ScreenTemplate::startup;
@@ -72,6 +72,14 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     case 0x101c74e0: return ScreenTemplate::job_information;
     // The Manager menu's holiday dialog: its settings and a Yes/No footer.
     case 0x101c9eb0: return ScreenTemplate::holiday;
+    // Arranging a friendly tour: the country table and the date table.
+    case 0x10045930: return ScreenTemplate::friendly_countries;
+    case 0x10043b00: return ScreenTemplate::friendly_dates;
+    // The Game menu's Credits and Web Sites.
+    case 0x105e9ad0: return ScreenTemplate::credits;
+    case 0x1062c380: return ScreenTemplate::web_sites;
+    // Text entry dialogs: the player's nickname and Send Message.
+    case 0x103ac1c0: case 0x102d0500: return ScreenTemplate::text_entry;
     case 0x102cea30: return ScreenTemplate::news_inbox;
     default: return ScreenTemplate::legacy;
     }

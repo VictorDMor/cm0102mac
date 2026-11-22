@@ -19,7 +19,10 @@ struct ColumnMap {
     std::vector<int> low, high, left, right;
     std::vector<ScreenRect> tracks;
     unsigned count() const { return unsigned(left.size()); }
-    bool read(const guest::Cpu& c, const GuestScreen& screen, std::uint32_t grid, int original_width, ScreenRect panel) {
+    // `grow_mask` names the columns (bit i = column i) that share the extra width when several columns carry
+    // the same kind of content (two nations side by side); 0 means only the widest one grows.
+    bool read(const guest::Cpu& c, const GuestScreen& screen, std::uint32_t grid, int original_width, ScreenRect panel,
+              unsigned grow_mask = 0) {
         const unsigned n = screen.columns(grid);
         if (n < 1 || n > 8) return false;
         int previous = 0, widest = 0;
@@ -33,7 +36,8 @@ struct ColumnMap {
             previous = last;
         }
         std::vector<FormTrack> spans;
-        for (unsigned i = 0; i < n; ++i) spans.push_back({high[i] - low[i], i == unsigned(widest) ? 1.0f : 0.0f});
+        for (unsigned i = 0; i < n; ++i)
+            spans.push_back({high[i] - low[i], (grow_mask ? (grow_mask >> i) & 1 : i == unsigned(widest)) ? 1.0f : 0.0f});
         tracks = form_tracks(panel, spans, true);
         return true;
     }
@@ -74,10 +78,19 @@ inline void place_footer(const GuestScreen& screen, guest::Cpu& c, std::uint32_t
 // Standalone controls (owner < 0): the subtitle follows the shell, and a toolbar between the subtitle
 // and the panel keeps its side: controls on the left half move with the panel's left edge, the pager
 // and other controls on the right half with its right edge. Explicit text bounds move with them.
+// With `pager_band`, the small controls on the right of the subtitle's own band (a pager at 632-785 x 85-105)
+// keep their offsets from each other and have their right end follow the panel's right edge.
+inline bool in_pager_band(ScreenRect box) { return box.top >= 80 && box.bottom <= 125 && box.left >= 400 && box.right - box.left <= 200; }
 inline void move_chrome(const GuestScreen& screen, guest::Cpu& c, unsigned controls, const ScreenLayout& shell,
-                        ScreenRect panel, ScreenRect body_after) {
+                        ScreenRect panel, ScreenRect body_after, bool pager_band = false) {
     constexpr ScreenRect subtitle{100, 80, 790, 125};
     const int lead = body_after.left - panel.left, trail = body_after.right - panel.right;
+    int band_right = 0;
+    for (unsigned i = 0; pager_band && i < controls; ++i) {
+        const auto at = screen.control(i);
+        if (c.i16(at + 0x72) < 0 && in_pager_band(screen.rect(at + 0x10))) band_right = std::max(band_right, screen.rect(at + 0x10).right);
+    }
+    const int band_shift = band_right ? body_after.right - band_right : 0;
     for (unsigned i = 0; i < controls; ++i) {
         const auto at = screen.control(i);
         if (c.i16(at + 0x72) >= 0) continue;
@@ -87,6 +100,8 @@ inline void move_chrome(const GuestScreen& screen, guest::Cpu& c, unsigned contr
         else if (old.top >= 125 && old.bottom <= panel.top && old.left >= panel.left && old.right <= panel.right) {
             const int shift = old.left < (panel.left + panel.right) / 2 ? lead : trail;
             box.left += shift; box.right += shift;
+        } else if (band_right && in_pager_band(old)) {
+            box.left += band_shift; box.right += band_shift;
         } else continue;
         // Their text bounds mirror the rectangle.
         const bool mirrored = c.i32(at + 0x28) == old.left && c.i32(at + 0x2c) == old.right;
@@ -100,7 +115,8 @@ inline void move_chrome(const GuestScreen& screen, guest::Cpu& c, unsigned contr
 // such table. With `or_message` the table may instead be one column holding one centered message. It declines (classic geometry) on a missing or duplicated table or footer. Only the widest
 // column takes the extra width; a scrollbar keeps its gutter at the table's right edge because the last
 // column's track runs to the grid's edge, and the original's own scroll state and rows are untouched.
-inline void layout_table_screen(State& s, std::uint32_t display, GuiCanvas canvas, ScreenRect panel_box, unsigned columns, bool or_message = false) {
+inline void layout_table_screen(State& s, std::uint32_t display, GuiCanvas canvas, ScreenRect panel_box, unsigned columns, bool or_message = false,
+                                unsigned grow_mask = 0, bool pager_band = false) {
     guest::Cpu c(s);
     const GuestScreen screen{c, display};
     const ScreenLayout shell{canvas};
@@ -125,7 +141,7 @@ inline void layout_table_screen(State& s, std::uint32_t display, GuiCanvas canva
     // Read the columns the builder's rectangle produced, not the ones a previous pass left behind.
     screen.measure(table_grid);
     ColumnMap map;
-    if (!map.read(c, screen, table_grid, panel_box.width(), panel)) return;
+    if (!map.read(c, screen, table_grid, panel_box.width(), panel, grow_mask)) return;
     for (unsigned i = 0; i < controls; ++i) {
         const auto at = screen.control(i);
         if (c.i16(at + 0x72) != table) continue;
@@ -145,7 +161,7 @@ inline void layout_table_screen(State& s, std::uint32_t display, GuiCanvas canva
         const auto [first, last] = map.cell(column);
         c.put32(at + 0x28, first); c.put32(at + 0x2c, last);
     }
-    move_chrome(screen, c, controls, shell, panel_box, panel);
+    move_chrome(screen, c, controls, shell, panel_box, panel, pager_band);
     screen.write(table_grid, panel);
     screen.measure(table_grid);
     screen.publish(table_grid);

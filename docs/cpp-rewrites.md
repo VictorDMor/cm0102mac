@@ -2326,6 +2326,40 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   gate's refusals. Unexercised: the Yes and All buttons (they send offers, shortlist or release players, withdraw
   bids), the screens' text in the other ten languages, bid rejections with more than two pending offers or with reasons
   other than those the fixture's offers allow (its choices are a mix of buttons and disabled labels).
+- Arranging a friendly tour, Credits, Web Sites and the text entry dialogs (a fifth batch of the legacy screens, all
+  layout-only). The friendly screens are CLUB_SCREENS builders reached from the club screens' handler (control type 0xb,
+  opener 0x10045800(club)): Choose Country (0x10045930; history 1 is the chosen nation, 4 the "available only" filter) is
+  a four-column table, two nations per row (name, confederation, name, confederation), sixteen rows and a scrollbar, a
+  Filtrar control above its right edge and Cancel(3)/Next(4); Choose Dates (0x10043b00; history 1 is the page, 1 to 20)
+  is a six-column table of seventeen rows, a pager of five small controls in the subtitle's band (632-785 x 85-105) and
+  Back/Next (Next becomes action 10 once an available date, action 8, is chosen). Both use
+  `paged_screen::layout_table_screen` (`friendly_layout.cpp`), which gained two options: `grow_mask` (the two name
+  columns of the countries share the extra width equally; every other table still grows only its widest column) and
+  `pager_band` (the pager keeps its offsets and its right end follows the panel's right edge; the other chrome rules
+  are unchanged). Credits (0x105e9ad0, opener 0x105e9a40, Game menu action 0x42b and the start menu) and Web Sites
+  (0x1062c380, opener 0x1062c300, action 0x42c) are one-column text tables of measured text areas (`info_pages_layout.cpp`;
+  Credits has a section menu at the left above a sixteen-row scrolling table, whose measured lines reach four pixels into
+  the 24px scrollbar gutter in the original and keep that), with Back/Next; their gate needs no career, because the start menu opens
+  them. The text entry dialogs (`text_entry_layout.cpp`) are the player's nickname (builder 0x103ac1c0, opener
+  0x103ac0d0(person), Cancel(52)/Remove(53)/OK(51)) and Send Message (builder 0x102d0500, opener 0x102d02b0(person or
+  instance), Cancel(7)/Send): a title, a subtitle, one edit control at 150,310-740,370 and a footer grid at 100,555-790,590 of
+  two or three columns. The edit control becomes at most 800 wide, centered under the title bars and in the upper middle
+  of the content area (rectangle and text bounds move together; its height stays 60), with equal 190px buttons
+  right-aligned under it; any other arrangement stays classic. Gates: a career is open (friendly screens, text entry);
+  none beyond the local non-modal screen for Credits and Web Sites. The checkers are `--friendly-countries`,
+  `--friendly-dates`, `--credits`, `--web-sites` (the shared `paged_screen_fixture`, now with `PagedOptions`: columns that
+  may grow, the pager band, the footer's back action) and `--text-entry` (`adaptive_text_entry_checks.hpp`): the countries
+  in available and all-nations states, the dates on the first, fifth and last page and with a date chosen, Credits on the
+  first section, the last section, scrolled and with no career, Web Sites with and without a career, the dialogs for the
+  nickname (three buttons), a message to a person and to the manager (two buttons), each at six canvases (the layouts
+  ran at every one: the footer is no longer at the classic strip), comparing controls, actions, records and RNG with
+  the original, answering Cancel in both runs, and mutants (panel at classic coordinates, a drifted footer button, a
+  toolbar or pager left behind, a cell under the scrollbar, the edit control at its classic rectangle or its text bounds left
+  behind, the footer at the classic strip). Unexercised: the screens after Choose Dates (Next from the dates screen did not
+  open another builder in the fixture), typing into the edit control (the original picker does not report it either,
+  so only its rectangle and bounds are checked), the nickname's Remove/OK and Send (they change records or send mail), the
+  other ten languages' texts, and the Credits and Web Sites text lines' look at 3200 pixels (the lines keep their measured
+  extent and sit in the panel's middle).
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their

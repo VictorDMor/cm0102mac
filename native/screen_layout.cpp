@@ -336,6 +336,11 @@ void layout_built_screen(State& s, std::uint32_t display, std::uint32_t builder)
     case ScreenTemplate::job_information: layout_job_information(s, display, layout.canvas); break;
     case ScreenTemplate::holiday: layout_holiday(s, display, layout.canvas); break;
     case ScreenTemplate::bid_rejection: layout_bid_rejection(s, display, layout.canvas); break;
+    case ScreenTemplate::friendly_countries: layout_friendly_countries(s, display, layout.canvas); break;
+    case ScreenTemplate::friendly_dates: layout_friendly_dates(s, display, layout.canvas); break;
+    case ScreenTemplate::credits: layout_credits(s, display, layout.canvas); break;
+    case ScreenTemplate::web_sites: layout_web_sites(s, display, layout.canvas); break;
+    case ScreenTemplate::text_entry: layout_text_entry(s, display, layout.canvas); break;
     case ScreenTemplate::competition:
     case ScreenTemplate::competition_history: {
         guest::Cpu c(s);

@@ -9,13 +9,17 @@
 #include <map>
 struct PagedCase { const char* name; std::function<void(TransferScene&)> open; };
 struct PagedShape { int panel = -1, footer = -1; };
+// What a screen adds to the common promises: how many columns may grow (two nations side by side), whether the
+// pager sits in the subtitle's band and must follow the panel's right edge, and the action of the screen's
+// "back" button (the footer's first button).
+struct PagedOptions { unsigned grow = 1; bool pager_band = false; unsigned back = 0xfffffffeu; };
 
 inline PagedShape paged_shape(TransferScene& t, ScreenRect panel_box, GuiCanvas size) {
     PagedShape r;
     for (unsigned i = 0; i < t.grids(); ++i) {
         const auto box = t.rect(t.grid(i));
         if (box == panel_box) r.panel = int(i);
-        else if (t.c.u8(t.grid(i) + 0xbb0) == 2 && t.c.u8(t.grid(i) + 0xbb1) == 1 && box.left >= 100 && box.bottom == size.height - 10) r.footer = int(i);
+        else if (t.c.u8(t.grid(i) + 0xbb0) == 2 && t.c.u8(t.grid(i) + 0xbb1) == 1 && box.left >= 100 && (box.bottom == size.height - 10 || box == ScreenRect{100, 555, 790, 590})) r.footer = int(i);
     }
     return r;
 }
@@ -23,7 +27,7 @@ inline PagedShape paged_shape(TransferScene& t, ScreenRect panel_box, GuiCanvas 
 // Every property the layout promises, read from the guest after it ran. `old` is the display image from before.
 // `message` selects the one-column message check (lines carried with the panel) instead of the column check.
 inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& shape, const std::vector<std::uint8_t>& old,
-                         ScreenRect panel_box, bool message, const char* what) {
+                         ScreenRect panel_box, bool message, const char* what, const PagedOptions& options = {}) {
     auto& c = t.c;
     const std::string name = what;
     const ScreenLayout shell{size};
@@ -58,6 +62,7 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
         require(old[panel_at + field] == c.u8(t.grid(shape.panel) + field), (name + ": scroll state or row count changed").c_str());
 
     std::map<unsigned, std::pair<int, int>> widths; // column -> (old width, new width)
+    int band_right = 0, band_shift = 0, band_count = 0;
     for (unsigned i = 0; i < t.controls(); ++i) {
         const auto at = t.control(i); const unsigned old_at = 0xba864 + i * 0x17c;
         const int owner = c.i16(at + 0x72);
@@ -68,8 +73,11 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
             require(box.left >= body.left && box.right <= body.right && box.top >= body.top && box.bottom <= body.bottom,
                     (name + ": panel control outside its panel").c_str());
             // The scrollbar keeps its gutter at the panel's right edge, as in the original (24px at classic width).
-            require(!scrolls || box.right <= body.right - 22, (name + ": a cell runs under the scrollbar").c_str());
             const int old_left = display_word(old, old_at + 0x28), old_right = display_word(old, old_at + 0x2c);
+            // Text areas with measured bounds (Credits lines) keep the extent the original gave them, which reaches
+            // a few pixels into the gutter; they may not go further than that.
+            const int allowance = std::max(0, before.right - (panel_box.right - 22));
+            require(!scrolls || box.right <= body.right - 22 + allowance, (name + ": a cell runs under the scrollbar").c_str());
             if (message) {
                 // A message line carries with the panel's left edge and its text area's right edge.
                 const int lead = body.left - panel_box.left, trail = body.right - panel_box.right;
@@ -95,6 +103,16 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
             const bool toolbar = before.top >= 125 && before.bottom <= panel_box.top && before.left >= panel_box.left && before.right <= panel_box.right;
             if (before == ScreenRect{100, 80, 790, 125}) {
                 require(box == shell.subtitle(), (name + ": subtitle did not follow the shell").c_str());
+            } else if (options.pager_band && before.top >= 80 && before.bottom <= 125 && before.left >= 400 && before.width() <= 200) {
+                // The pager keeps its size and its offsets from the other pager controls; its right end is the panel's.
+                const int shift = box.left - before.left;
+                require(box.right - before.right == shift && box.top == before.top && box.bottom == before.bottom,
+                        (name + ": pager control resized or moved vertically").c_str());
+                if (!band_count++) band_shift = shift;
+                require(shift == band_shift, (name + ": pager controls moved apart").c_str());
+                band_right = std::max(band_right, box.right);
+                if (display_word(old, old_at + 0x28) == before.left && display_word(old, old_at + 0x2c) == before.right)
+                    require(c.i32(at + 0x28) == box.left && c.i32(at + 0x2c) == box.right, (name + ": pager text bounds stayed behind").c_str());
             } else if (toolbar) {
                 const int shift = before.left < (panel_box.left + panel_box.right) / 2 ? body.left - panel_box.left : body.right - panel_box.right;
                 require(box.left == before.left + shift && box.right == before.right + shift && box.top == before.top && box.bottom == before.bottom,
@@ -108,12 +126,20 @@ inline void verify_paged(TransferScene& t, GuiCanvas size, const PagedShape& sha
             }
         }
     }
+    if (options.pager_band) {
+        require(band_count > 0, (name + ": the pager's controls are missing").c_str());
+        require(band_right == body.right && band_right <= size.width - 10, (name + ": pager does not end at the panel's right edge").c_str());
+    }
     if (!message && !widths.empty()) {
         // A column with no cell in this state (an empty table) has no control to witness its growth.
-        int grown = 0, shrunk = 0;
-        for (const auto& [column, pair] : widths) { grown += pair.second > pair.first; shrunk += pair.second < pair.first; }
-        require(!shrunk && grown <= 1 && (grown == 1 || widths.size() < c.u8(t.grid(shape.panel) + 0xbb0) || body.width() == panel_box.width()),
-                (name + ": more than the widest column changed width").c_str());
+        int grown = 0, shrunk = 0, extra = -1;
+        bool equal = true;
+        for (const auto& [column, pair] : widths) {
+            grown += pair.second > pair.first; shrunk += pair.second < pair.first;
+            if (pair.second > pair.first) { if (extra >= 0 && std::abs(extra - (pair.second - pair.first)) > 1) equal = false; extra = pair.second - pair.first; }
+        }
+        require(!shrunk && grown <= int(options.grow) && equal && (grown == int(options.grow) || widths.size() < c.u8(t.grid(shape.panel) + 0xbb0) || body.width() - panel_box.width() < int(options.grow)),
+                (name + ": more than the widest column changed width" + [&]{ std::string d; for (const auto& [col, pr] : widths) d += " c" + std::to_string(col) + ":" + std::to_string(pr.first) + ">" + std::to_string(pr.second); return d; }()).c_str());
     }
 }
 
@@ -126,7 +152,8 @@ inline void require_rejected(const std::function<void()>& verify, const char* mu
 
 inline void paged_screen_fixture(const char* path, const char* title, unsigned builder, ScreenRect panel_box, bool message,
                                  const std::vector<PagedCase>& cases, const std::function<void(TransferScene&)>& negative_gate,
-                                 const std::function<std::vector<std::uint8_t>(TransferScene&)>& extra_records = {}) {
+                                 const std::function<std::vector<std::uint8_t>(TransferScene&)>& extra_records = {},
+                                 const PagedOptions& options = {}) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
     for (unsigned scenario = 0; scenario < cases.size(); ++scenario) {
@@ -158,7 +185,7 @@ inline void paged_screen_fixture(const char* path, const char* title, unsigned b
                     require(shape.panel >= 0 && shape.footer >= 0, "Original paged panels absent");
                     old = t.layout(records, title);
                     if (!on || size.original()) { require(t.s.memory.copy_out(t.display, 0x129da8) == old, "Legacy paged screen changed"); pick(); return; }
-                    verify_paged(t, size, shape, old, panel_box, message, title);
+                    verify_paged(t, size, shape, old, panel_box, message, title, options);
                     pick();
                 };
                 const GuiCanvas canvas = adaptive ? GuiCanvas{1280, 900} : GuiCanvas{800, 600};
@@ -178,7 +205,7 @@ inline void paged_screen_fixture(const char* path, const char* title, unsigned b
                     sample(again);
                     require(again == boxes, "Paged screen redraw lost the layout's control bounds");
                     // Mutants: each geometric promise, broken in the guest, must be refused by the checker.
-                    const auto verify = [&] { verify_paged(t, canvas, shape, old, panel_box, message, title); };
+                    const auto verify = [&] { verify_paged(t, canvas, shape, old, panel_box, message, title, options); };
                     const auto restore = [&](const std::vector<std::uint8_t>& image) { t.s.memory.copy_in(t.display, image); };
                     const auto saved = t.s.memory.copy_out(t.display, 0x129da8);
                     verify();
@@ -223,6 +250,17 @@ inline void paged_screen_fixture(const char* path, const char* title, unsigned b
                             require_rejected(verify, "row link left at its classic span"); restore(saved); break;
                         }
                     }
+                    if (options.pager_band) {   // the pager goes back to its classic place
+                        bool moved = false;
+                        for (unsigned k = 0; k < t.controls() && !moved; ++k) {
+                            const auto at = t.control(k); const unsigned old_at = 0xba864 + k * 0x17c;
+                            if (c.i16(at + 0x72) >= 0 || display_word(old, old_at + 0x14) < 80 || display_word(old, old_at + 0x1c) > 125 || display_word(old, old_at + 0x10) < 400) continue;
+                            if (display_word(old, old_at + 0x18) - display_word(old, old_at + 0x10) > 200 || c.i32(at + 0x10) == display_word(old, old_at + 0x10)) continue;
+                            c.put32(at + 0x10, display_word(old, old_at + 0x10)); c.put32(at + 0x18, display_word(old, old_at + 0x18)); moved = true;
+                        }
+                        require(moved, "Paged screen fixture found no pager control to mutate");
+                        require_rejected(verify, "pager control left at classic coordinates"); restore(saved);
+                    }
                     if (c.u8(t.grid(shape.panel) + 0xbef)) {   // a cell of the last column runs under the scrollbar
                         bool widened = false;
                         for (unsigned k = 0; k < t.controls() && !widened; ++k) {
@@ -238,7 +276,7 @@ inline void paged_screen_fixture(const char* path, const char* title, unsigned b
                 }
                 // Dismissing the screen through its original Back button: same result and RNG with and without the layout.
                 std::vector<std::uint8_t> outcome;
-                const int back = t.find(0xfffffffeu);
+                const int back = t.find(options.back);
                 require(back >= 0 && t.hit(back) == back, "Paged screen Back button missing");
                 const auto rng = random_state(t.s);
                 const auto result = std::int32_t(t.invoke(c.u32(c.u32(t.history() + 8)), {unsigned(back)}));

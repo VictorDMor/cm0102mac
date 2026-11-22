@@ -1124,6 +1124,9 @@ void player_builder(const char* path, unsigned section = 1) {
 #include "adaptive_job_information_checks.hpp"
 #include "adaptive_holiday_checks.hpp"
 #include "adaptive_bid_rejection_checks.hpp"
+#include "adaptive_friendly_checks.hpp"
+#include "adaptive_info_pages_checks.hpp"
+#include "adaptive_text_entry_checks.hpp"
 #include "adaptive_news_checks.hpp"
 #include "adaptive_finances_checks.hpp"
 #include "adaptive_club_info_checks.hpp"
@@ -1313,6 +1316,11 @@ int main(int argc, char** argv) {
         else if (argc == 3 && std::string_view(argv[2]) == "--job-information") job_information_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--holiday") holiday_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--bid-rejection") bid_rejection_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--friendly-countries") friendly_countries_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--friendly-dates") friendly_dates_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--text-entry") text_entry_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--credits") credits_builder(argv[1]);
+        else if (argc == 3 && std::string_view(argv[2]) == "--web-sites") web_sites_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--message-screens") message_screens_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--news") news_builder(argv[1]);
         else if (argc == 3 && std::string_view(argv[2]) == "--finances") finances_builder(argv[1]);

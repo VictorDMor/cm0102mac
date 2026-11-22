@@ -170,6 +170,17 @@ bool adaptive_screen_available(const State& s, std::uint32_t builder) {
     case ScreenTemplate::holiday:
         // Tables of the whole game's managers or nations and the holiday dialog: the layout reads no record of the history.
         return instance && read(instance + 0x24);
+    case ScreenTemplate::friendly_countries:
+    case ScreenTemplate::friendly_dates:
+        // The layout reads no record of the history; a friendly is arranged by a managed club.
+        return instance && read(instance + 0x24);
+    case ScreenTemplate::text_entry:
+        // The layout reads no record; the dialogs name a person of the career.
+        return instance && read(instance + 0x24);
+    case ScreenTemplate::credits:
+    case ScreenTemplate::web_sites:
+        // Plain text pages of the Game menu, also reached from the start menu before any career exists.
+        return true;
     case ScreenTemplate::bid_rejection: {
         // The builder takes the offer from history 0, or from history 1 when that is empty, and reads
         // the player it names and the manager's club.
