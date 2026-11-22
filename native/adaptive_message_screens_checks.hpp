@@ -14,13 +14,14 @@
 void message_screens_builder(const char* path) {
     Temporary temp;
     initialize_new_screens(temp.path / "Screens.plist");
-    constexpr unsigned scenarios = 22;
+    constexpr unsigned scenarios = 30;
     const char* names[scenarios]{"offer decision", "completion", "listing", "listing (loan)", "restriction", "feedback", "staff release", "apply for job", "rescind contract", "retire",
-        "remove exchange player", "shortlist add", "shortlist remove", "compare first", "compare second", "withdraw bid", "release", "release (no contract)", "trial 2 weeks", "trial 1 week", "trial 4 weeks", "loan recall"};
+        "remove exchange player", "shortlist add", "shortlist remove", "compare first", "compare second", "withdraw bid", "release", "release (no contract)", "trial 2 weeks", "trial 1 week", "trial 4 weeks", "loan recall",
+        "scout player", "two players needed", "Intertoto place", "job offer", "transfer request", "invalid squad (national team)", "invalid squad (under 21)", "friendly tournament invitation"};
     const unsigned builders[scenarios]{0x10421fb0, 0x10423270, 0x1042a810, 0x1042a810, 0x10420b50, 0x10421070, 0x1009e8f0, 0x101c8730, 0x101c8b60, 0x101c98c0,
-        0x10422b50, 0x10424f80, 0x10424f80, 0x104249e0, 0x104249e0, 0x104265c0, 0x1042ae90, 0x1042ae90, 0x1042b580, 0x1042b580, 0x1042b580, 0x1042f7c0};
+        0x10422b50, 0x10424f80, 0x10424f80, 0x104249e0, 0x104249e0, 0x104265c0, 0x1042ae90, 0x1042ae90, 0x1042b580, 0x1042b580, 0x1042b580, 0x1042f7c0, 0x103ac810, 0x103acc50, 0x10075410, 0x101c94e0, 0x10093bd0, 0x102bd090, 0x102bd920, 0x10049550};
     // The control that answers No or Back: dismisses the screen without touching a record (0: none exercised).
-    const unsigned dismissals[scenarios]{1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 2, 11, 1, 1, 1, 3, 3, 3, 1};
+    const unsigned dismissals[scenarios]{1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2, 2, 2, 11, 1, 1, 1, 3, 3, 3, 1, 54, 56, 1, 1, 34, 1, 1, 1};
     for (unsigned scenario = 0; scenario < scenarios; ++scenario) {
         std::vector<std::uint8_t> baseline;
         for (bool adaptive : {false, true}) {
@@ -59,6 +60,29 @@ void message_screens_builder(const char* path) {
                 case 16: t.invoke(0x1042ae20, {t.person}); break;
                 case 17: c.put8(t.contract + 0x38, c.u8(t.contract + 0x38) & 3); t.invoke(0x1042ae20, {t.person}); break;
                 case 18: case 19: case 20: t.invoke(0x1042b500, {t.person}); t.set_value(1, scenario == 18 ? 2 : scenario == 19 ? 1 : 4); break;
+                case 22: t.invoke(0x103ac780, {t.person, 0}); break;
+                case 23: t.invoke(0x103acc10, {t.person}); break;
+                case 24: {   // a news item naming the managed club (its index in the club array)
+                    const auto news = t.news_item(6000, {0, (t.managed - c.u32(c.toc(-0x7be8))) / 0x248});
+                    t.invoke(0x10075380, {t.instance, news}); break;
+                }
+                case 25: {   // a job offer from another club, named by its index in the club array
+                    const auto news = t.news_item(6000, {(other - c.u32(c.toc(-0x7be8))) / 0x248});
+                    t.invoke(0x101c9350, {t.instance, news}); break;
+                }
+                case 26: {   // the managed club's player asks for a transfer: club index, an unused word and the player's ID
+                    const auto news = t.news_item(6000, {(t.managed - c.u32(c.toc(-0x7be8))) / 0x248, 0, c.u32(t.person)});
+                    t.invoke(0x10093ae0, {t.instance, news}); break;
+                }
+                case 27: case 28: {   // an invalid squad notice of an international side: the club's index (word 0, or word 4 of the second kind)
+                    const auto index = (other - c.u32(c.toc(-0x7be8))) / 0x248;
+                    const auto news = scenario == 27 ? t.news_item(6000, {index, 0, 0, 0, 0, 0}) : t.news_item(6000, {0, 0, 0, 0, index, 0});
+                    t.invoke(scenario == 27 ? 0x102bcec0 : 0x102bd7f0, {t.instance, news}); break;
+                }
+                case 29: {   // an invitation by another club to a tournament slot
+                    const auto news = t.news_item(6000, {0, (other - c.u32(c.toc(-0x7be8))) / 0x248, 0});
+                    t.invoke(0x100493c0, {t.instance, news}); break;
+                }
                 default: t.invoke(0x1042f670, {t.person}); break;
                 }
                 require(t.builder() == builders[scenario], "Message screen did not open through its original opener");
@@ -74,7 +98,7 @@ void message_screens_builder(const char* path) {
                     }
                     for (unsigned i = 0; i < t.controls(); ++i) {
                         const int owner = c.i16(t.control(i) + 0x72);
-                        if ((r.footer >= 0 && owner == r.footer) || (owner < 0 && t.rect(t.control(i) + 0x10) == ScreenRect{100, 555, 790, 590}))
+                        if ((r.footer >= 0 && owner == r.footer) || (owner < 0 && (t.rect(t.control(i) + 0x10) == ScreenRect{100, 555, 790, 590} || t.rect(t.control(i) + 0x10) == ScreenRect{110, 555, 780, 590})))
                             r.footer_controls.push_back(i);
                     }
                     return r;
@@ -199,7 +223,8 @@ void message_screens_builder(const char* path) {
                     check();
                     {   // the panel stays at its classic rectangle
                         const auto grid = t.grid(last_before.message);
-                        c.put32(grid, 110); c.put32(grid + 4, scenario >= 7 && scenario <= 9 ? 145 : 140); c.put32(grid + 8, 780); c.put32(grid + 12, scenario >= 7 && scenario <= 9 ? 535 : 545);
+                        const bool confirmation = (scenario >= 7 && scenario <= 9) || scenario >= 24;
+                        c.put32(grid, 110); c.put32(grid + 4, confirmation ? 145 : 140); c.put32(grid + 8, 780); c.put32(grid + 12, confirmation ? 535 : 545);
                         refused("panel left at classic coordinates");
                     }
                     if (!last_before.footer_controls.empty()) {   // the last button drifts right
@@ -241,8 +266,15 @@ void message_screens_builder(const char* path) {
                     const int i = t.find(back);
                     require(i >= 0 && t.hit(i) == i, "Message dismissal control missing");
                     const auto result = std::int32_t(t.invoke(c.u32(c.u32(t.history() + 8)), {unsigned(i)}));
-                    require(records() == saved, "Message dismissal changed records");
+                    // The answers to news-driven questions may answer the news (decline the job, say no to the request): their
+                    // effect is part of the outcome compared between the original and the adaptive run instead.
+                    require(scenario >= 24 || records() == saved, "Message dismissal changed records");
                     for (unsigned shift : {24u, 16u, 8u, 0u}) outcome.push_back(std::uint32_t(result) >> shift);
+                    // The news questions read the item and may mark it or change the person: those effects must be the same too.
+                    if (scenario >= 24) {
+                        const auto queue = t.news_queue(), after = records();
+                        outcome.insert(outcome.end(), queue.begin(), queue.end()); outcome.insert(outcome.end(), after.begin(), after.end());
+                    }
                 }
                 if (!adaptive) baseline = outcome;
                 else require(outcome == baseline, "Adaptive message screen changed the original command outcome");

@@ -8,10 +8,11 @@
 
 namespace cm::aot {
 // Message screens (the offer decision from the news, transfer completion, transfer-list confirmation, an
-// offer's restriction and feedback messages, the staff release, and the manager's job confirmations: apply for
-// a job, rescind the contract, retire): the title and subtitle, one wrapped or centered message in a
+// offer's restriction and feedback messages, the staff release, the manager's job confirmations: apply for
+// a job, rescind the contract, retire, and the questions and notices opened from the news or a person: scouting,
+// choosing two players, the Intertoto place, a job offer, a transfer request, an invalid national squad): the title and subtitle, one wrapped or centered message in a
 // one-column grid at 110,140-780,545 (110,145-780,535 for the manager's confirmations), and a row of
-// buttons that is either a grid of one to six columns or one standalone control at 100,555-790,590. Their builders place the message by
+// buttons that is either a grid of one to six columns or one standalone control at 100,555-790,590 (110,555-780,590 for the national team notices). Their builders place the message by
 // row (a short message in the middle row of nineteen) and size the buttons by a column specification, so
 // the original shape is a tall panel with a few words in it and unequal buttons.
 //
@@ -26,7 +27,8 @@ namespace cm::aot {
 void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
     guest::Cpu c(s);
     const GuestScreen screen{c, display};
-    constexpr ScreenRect footer_box{100,555,790,590};
+    // The classic button strip, and the narrower one of the national team notices (its one Ok button is panel-wide).
+    constexpr ScreenRect footer_box{100,555,790,590}, notice_box{110,555,780,590};
     constexpr std::array<ScreenRect,2> message_boxes{{{110,140,780,545}, {110,145,780,535}}};
     ScreenRect message_box = message_boxes[0];
     int message = -1, footer = -1;
@@ -57,7 +59,7 @@ void layout_message_screen(State& s, std::uint32_t display, GuiCanvas canvas) {
             const unsigned row = c.u32(at + 0x24);
             if (row >= rows) return;
             first = std::min(first, row); last = std::max(last, row);
-        } else if (owner < 0 && screen.rect(at + 0x10) == footer_box) standalone.push_back(i);
+        } else if (owner < 0 && (screen.rect(at + 0x10) == footer_box || screen.rect(at + 0x10) == notice_box)) standalone.push_back(i);
     }
     // A message screen without a message, or with both kinds of footer, is not one this recipe knows.
     if (first > last || standalone.size() > 1 || (footer >= 0 && !standalone.empty())) return;

@@ -52,6 +52,18 @@ constexpr ScreenTemplate screen_template(std::uint32_t builder) {
     // Back/Offer footer). All have the message shape: one panel at 110,140-780,545 and a row of buttons.
     case 0x10422b50: case 0x10424f80: case 0x104249e0: case 0x104265c0: case 0x1042ae90: case 0x1042f7c0:
     case 0x1042b580: return ScreenTemplate::message_screen;
+    // More confirmations with the message shape: have a player scouted (Yes/No), the "choose two players" notice
+    // (one OK button) and entering the English place in the Intertoto Cup (a No/Yes footer at the manager's
+    // confirmation rectangle, 110,145-780,535).
+    case 0x103ac810: case 0x103acc50: case 0x10075410: return ScreenTemplate::message_screen;
+    // Two more questions opened from the news: accepting a job offer from a club (No/Yes) and a player's
+    // transfer request (a footer of three buttons, Back first). Both are panels at 110,145-780,535.
+    case 0x101c94e0: case 0x10093bd0: return ScreenTemplate::message_screen;
+    // The "invalid squad" notices of the national teams (opened from the news): a panel of wrapped lines at
+    // 110,145-780,535 and one Ok button at 110,555-780,590.
+    case 0x102bd090: case 0x102bd920: return ScreenTemplate::message_screen;
+    // The invitation to a friendly tournament (opened from the news): a question and three buttons, Back first.
+    case 0x10049550: return ScreenTemplate::message_screen;
     // The reasons for rejecting an offer (the offer decision's Reject, the proposal screen's rejection): choices
     // in a two-column panel and a footer of two or three buttons.
     case 0x1041f8f0: return ScreenTemplate::bid_rejection;

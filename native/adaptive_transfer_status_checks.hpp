@@ -48,6 +48,23 @@ struct TransferScene {
         for (unsigned i = 0; i < controls(); ++i) if (c.u32(control(i) + 8) == action && enabled(i)) return int(i);
         return -1;
     }
+    // A news item of the given type and word payload for the manager, published by the original constructor and queue
+    // insertion (the openers of the news-driven screens take the manager and this ID); returns the ID the queue gave it.
+    unsigned news_item(unsigned type, std::initializer_list<unsigned> payload) {
+        const auto queue = c.u32(c.toc(-0x7bf0)), item = allocate(s, 256, true), out = allocate(s, 256, true);
+        invoke(0x102bdf90, {item, type, 0});
+        unsigned slot = 0;
+        for (const auto word : payload) invoke(0x102cb4b0, {item, slot++, word});
+        invoke(0x102cbc10, {queue, item, instance, 0});
+        const auto id = c.u32(queue + 16);
+        require((invoke(0x102ccdd0, {queue, instance, id, out}) & 0xff) != 0, "News fixture: the published item cannot be fetched");
+        return id;
+    }
+    // The news queue's items, for the screens that read (and may mark) them.
+    std::vector<std::uint8_t> news_queue() {
+        const auto queue = c.u32(c.toc(-0x7bf0));
+        return s.memory.copy_out(c.u32(queue), c.u32(queue + 4) * 0xe4);
+    }
     std::vector<std::uint8_t> meanings() const {
         std::vector<std::uint8_t> bytes;
         for (unsigned i = 0; i < controls(); ++i)

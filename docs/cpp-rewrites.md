@@ -2360,6 +2360,22 @@ object (TOC -0x7bb0) owns two display tables (+0x2c68, +0x12d6b0) and, per human
   so only its rectangle and bounds are checked), the nickname's Remove/OK and Send (they change records or send mail), the
   other ten languages' texts, and the Credits and Web Sites text lines' look at 3200 pixels (the lines keep their measured
   extent and sit in the panel's middle).
+- Eight more builders joined `ScreenTemplate::message_screen` (sixth round): have a player scouted 0x103ac810 (opener
+  0x103ac780(person, flag), Yes 55 / No 54; from the person screens' action menu), the "choose two players" notice 0x103acc50
+  (opener 0x103acc10(person); the Compare action 1076 opens it when fewer than two players are chosen; one OK, 56), and six
+  screens opened from **news items**: the Intertoto place 0x10075410 (opener 0x10075380), a job offer 0x101c94e0 (0x101c9350),
+  a player's transfer request 0x10093bd0 (0x10093ae0, three buttons, Back 34 first), the two "invalid squad" notices of the
+  national teams 0x102bd090 / 0x102bd920 (0x102bcec0 / 0x102bd7f0; lines pre-wrapped at 115..775 and one Ok button
+  at 110,555-780,590, which the layout now also accepts as its standalone button) and the friendly tournament invitation
+  0x10049550 (0x100493c0, three buttons). A news-driven opener takes (the manager's person, the item's ID): the screen's
+  history holds that pair and the builder fetches the item again through 0x102ccdd0 and reads its payload words
+  (0x102cb570). Fixtures can therefore publish one with the original constructor and queue insertion (`TransferScene::news_item`:
+  0x102bdf90, 0x102cb4b0 per word, 0x102cbc10; the ID the queue gives is its +0x10 field) instead of needing a real
+  event; the answer handlers of these screens may mark the item or change the person, so `--message-screens` compares those
+  records between the original and the adaptive run instead of requiring them unchanged. Where the club sits in the payload
+  differs per screen: word 0 (job offer, the first squad notice, transfer request with the player ID in word 2), word 1
+  (Intertoto, invitation) and word 4 (the second squad notice); the probed openers do not check the item type. Unexercised: the confirming buttons (they sign, answer
+  or remove news), a real item of each type, other languages.
 - Club information (section 5, builder 0x1002f1e0) uses `club_information_layout.cpp`.
   Shared Yoga tracks bound table width and row spacing. Finance/Income/Expenditure (history27 low bits
   2/4/8) retain their backing/text layers, 10px inset, five column weights and 14-row capacity. Their
